@@ -100,7 +100,7 @@ run_ios_bindings() {
   if (cd "$ROOT_DIR/platforms/swift" \
         && xcodebuild \
              -scheme FragmentColor \
-             -destination "generic/platform=iOS Simulator,arch=arm64" \
+             -destination "generic/platform=iOS Simulator" \
              -sdk iphonesimulator \
              ARCHS=arm64 ONLY_ACTIVE_ARCH=YES SUPPORTS_MACCATALYST=NO \
              build); then
@@ -161,7 +161,7 @@ run_ios_examples() {
   if (cd "$ROOT_DIR/platforms/swift/healthcheck" \
         && xcodebuild \
              -scheme FragmentColorHealthcheck \
-             -destination "generic/platform=iOS Simulator,arch=arm64" \
+             -destination "generic/platform=iOS Simulator" \
              -sdk iphonesimulator \
              ARCHS=arm64 ONLY_ACTIVE_ARCH=YES SUPPORTS_MACCATALYST=NO \
              build); then

@@ -181,12 +181,7 @@ pub fn pick_sample_count(
 ) -> u32 {
     let flags = adapter.get_texture_format_features(fmt).flags;
 
-    if wanted == 0 {
-        wanted = 1;
-    }
-    if wanted > 16 {
-        wanted = 16;
-    }
+    wanted = wanted.clamp(1, 16);
     // Round down to nearest power of two
     while wanted > 1 && !wanted.is_power_of_two() {
         wanted /= 2;

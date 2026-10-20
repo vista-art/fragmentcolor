@@ -19,8 +19,8 @@ permissions:
 
 jobs:
   healthcheck-ios:
-    # macos-14 is ARM64 with Xcode 15 preinstalled.
-    runs-on: macos-14
+    # macos-15 is ARM64 with Xcode 16 preinstalled.
+    runs-on: macos-15
     env:
       # sccache interacts poorly with cross-compilation to iOS targets;
       # disable it for this job even if it's enabled elsewhere.

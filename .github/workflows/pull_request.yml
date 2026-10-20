@@ -47,7 +47,7 @@ jobs:
 
           # NOTE: iOS / Android healthchecks live in their own workflow files
           # (healthcheck_ios.yml + healthcheck_android.yml) so they can run
-          # on macos-14 / ubuntu-latest-with-KVM respectively, independent of
+          # on macos-15 / ubuntu-latest-with-KVM respectively, independent of
           # the main PR pipeline.
 
   test_core:
@@ -58,7 +58,7 @@ jobs:
     runs-on: "ubuntu-latest"
     steps:
       - name: Collect telemetry data
-        uses: catchpoint/workflow-telemetry-action@v2
+        uses: step-security/workflow-telemetry-action@dbe3c1c09393511e90d52c6f49096984d1b7fe3b # v2.0.0
         with:
           comment_on_pr: false
 
@@ -125,7 +125,7 @@ jobs:
         run: cargo build -p fce --example app_healthcheck
 
   # iOS + Android bindings live in dedicated workflow files:
-  #   - .github/workflows/healthcheck_ios.yml     (runs on macos-14 with Xcode)
+  #   - .github/workflows/healthcheck_ios.yml     (runs on macos-15 with Xcode)
   #   - .github/workflows/healthcheck_android.yml (runs on ubuntu-latest with KVM)
 
   test_web_bindings:
@@ -136,7 +136,7 @@ jobs:
     runs-on: "ubuntu-latest"
     steps:
       - name: Collect telemetry data
-        uses: catchpoint/workflow-telemetry-action@v2
+        uses: step-security/workflow-telemetry-action@dbe3c1c09393511e90d52c6f49096984d1b7fe3b # v2.0.0
         with:
           comment_on_pr: false
 
