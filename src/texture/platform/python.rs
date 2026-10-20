@@ -1,8 +1,8 @@
 #![cfg(python)]
 
 use crate::SamplerOptions;
-use crate::texture::{Mipmap, Texture, TextureId};
-use crate::{Size, TextureFormat};
+use crate::TextureFormat;
+use crate::texture::{Mipmap, PyTextureBytes, Texture, TextureId};
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 
@@ -17,24 +17,21 @@ impl Mipmap {
     #[staticmethod]
     #[pyo3(name = "build", signature = (bytes, format, size=None))]
     #[lsp_doc("docs/api/texture/mipmap/build.md")]
+    #[allow(private_interfaces)]
     pub fn build_py(
-        bytes: pyo3::Py<pyo3::types::PyAny>,
+        bytes: PyTextureBytes<'_>,
         format: TextureFormat,
         size: Option<crate::size::PySize>,
     ) -> pyo3::PyResult<Mipmap> {
-        Python::attach(|py| -> pyo3::PyResult<Mipmap> {
-            let bytes = crate::texture::py_to_texture_bytes(bytes.bind(py))?;
-            let size: Option<Size> = size.map(Into::into);
-            let input = crate::TextureInput {
-                data: crate::TextureData::Bytes(bytes),
-                options: crate::TextureOptions {
-                    size,
-                    format,
-                    ..Default::default()
-                },
-            };
-            Ok(Self::build(input)?)
-        })
+        let input = crate::TextureInput {
+            data: crate::TextureData::Bytes(bytes.try_into()?),
+            options: crate::TextureOptions {
+                size: size.map(Into::into),
+                format,
+                ..Default::default()
+            },
+        };
+        Ok(Self::build(input)?)
     }
 
     #[pyo3(name = "format")]
@@ -134,23 +131,23 @@ impl Texture {
 
     #[pyo3(name = "write")]
     #[lsp_doc("docs/api/texture/texture/write.md")]
-    pub fn write_py(&self, data: pyo3::Py<pyo3::types::PyAny>) -> pyo3::PyResult<()> {
-        pyo3::Python::attach(|py| -> pyo3::PyResult<()> {
-            let bytes = crate::texture::py_to_texture_bytes(data.bind(py))?;
-            self.write(&bytes)?;
-            Ok(())
-        })
+    #[allow(private_interfaces)]
+    pub fn write_py(&self, data: PyTextureBytes<'_>) -> pyo3::PyResult<()> {
+        let bytes: Vec<u8> = data.try_into()?;
+        self.write(&bytes)?;
+        Ok(())
     }
 
     #[pyo3(name = "write_region")]
     #[lsp_doc("docs/api/texture/texture/write_region.md")]
+    #[allow(private_interfaces)]
     pub fn write_region_py(
         &self,
-        data: pyo3::Py<pyo3::types::PyAny>,
+        data: PyTextureBytes<'_>,
         region: pyo3::Py<pyo3::types::PyAny>,
     ) -> pyo3::PyResult<()> {
         pyo3::Python::attach(|py| -> pyo3::PyResult<()> {
-            let bytes = crate::texture::py_to_texture_bytes(data.bind(py))?;
+            let bytes: Vec<u8> = data.try_into()?;
             let r = crate::texture::region::py_to_texture_region(region.bind(py))?;
             self.write_region(&bytes, r)?;
             Ok(())

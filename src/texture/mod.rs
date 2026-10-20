@@ -535,25 +535,29 @@ impl From<PyTextureId> for TextureId {
     }
 }
 
+/// Raw texture bytes from Python: `bytes` or a sequence of ints,
+/// or a contiguous `uint8` ndarray of any shape, tried in that order.
 #[cfg(python)]
-pub(crate) fn py_to_texture_bytes<'py>(
-    any: &pyo3::Bound<'py, pyo3::PyAny>,
-) -> pyo3::PyResult<Vec<u8>> {
-    if let Ok(bytes) = any.extract::<Vec<u8>>() {
-        return Ok(bytes);
-    }
-    if let Ok(array) = any.cast::<numpy::PyArrayDyn<u8>>() {
-        use numpy::PyArrayMethods;
+#[derive(FromPyObject)]
+pub(crate) enum PyTextureBytes<'py> {
+    #[pyo3(annotation = "bytes | Sequence[int]")]
+    Bytes(Vec<u8>),
+    #[pyo3(annotation = "ndarray[uint8]")]
+    Array(numpy::PyReadonlyArrayDyn<'py, u8>),
+}
 
-        let view = array.readonly();
-        let bytes = view.as_slice().map_err(|_| {
-            crate::error::PyFragmentColorError::new_err("ndarray must be contiguous")
-        })?;
-        return Ok(bytes.to_vec());
+#[cfg(python)]
+impl TryFrom<PyTextureBytes<'_>> for Vec<u8> {
+    type Error = PyErr;
+
+    fn try_from(value: PyTextureBytes<'_>) -> Result<Self, Self::Error> {
+        match value {
+            PyTextureBytes::Bytes(bytes) => Ok(bytes),
+            PyTextureBytes::Array(array) => array.as_slice().map(<[u8]>::to_vec).map_err(|_| {
+                crate::error::PyFragmentColorError::new_err("ndarray must be contiguous")
+            }),
+        }
     }
-    Err(crate::error::PyFragmentColorError::new_err(
-        "Expected raw byte data",
-    ))
 }
 
 impl std::fmt::Display for TextureId {
