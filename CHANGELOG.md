@@ -55,6 +55,8 @@ A render made only of compute passes leaves the target alone. `Renderer::render`
 
 Compute passes reuse their pipelines. The compute pipeline cache keyed on the memory addresses of bind group layouts that every render built from scratch, so the key never matched. Each compute pass compiled a new shader module and pipeline on every frame and kept all of them, which grew memory for as long as the app ran. The key now holds the layout entries themselves, and layouts are built only along with a new pipeline.
 
+`mat3x3<f32>` values reach the GPU in the layout WGSL declares. WGSL pads each `vec3` column of a `mat3x3` to 16 bytes, so the matrix spans 48 bytes, but the renderer packed its 9 values into 36. The second and third columns landed at the wrong offsets in uniforms, struct fields, and storage buffers alike, so shaders read a shifted matrix. The renderer now writes the padding, and `Shader.get` still returns the 9 values.
+
 ## 0.12.5: WebGL2 fixes
 
 A patch release that makes the WebGL2 fallback work. There are no API changes.

@@ -174,7 +174,7 @@ impl UniformData {
             Self::UVec3(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
             Self::UVec4(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
             Self::Mat2(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
-            Self::Mat3(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::Mat3(v) => mat3_bytes(v),
             Self::Mat4(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
             Self::Texture(_m) => Vec::new(),
             Self::Sampler(_s) => Vec::new(),
@@ -277,7 +277,12 @@ impl UniformData {
             Self::UVec3(_) => Self::UVec3(words(bytes)),
             Self::UVec4(_) => Self::UVec4(words(bytes)),
             Self::Mat2(_) => Self::Mat2(words(bytes)),
-            Self::Mat3(_) => Self::Mat3(words(bytes)),
+            Self::Mat3(_) => Self::Mat3(
+                bytes
+                    .chunks(MAT3_COLUMN_STRIDE)
+                    .flat_map(|column| words(column.get(..12).unwrap_or(column)))
+                    .collect(),
+            ),
             Self::Mat4(_) => Self::Mat4(words(bytes)),
             Self::Texture(_) | Self::Sampler(_) => self.clone(),
             Self::Array(_)
@@ -304,7 +309,7 @@ impl UniformData {
             Self::UVec3(_) => 12,
             Self::UVec4(_) => 16,
             Self::Mat2(_) => 16,
-            Self::Mat3(_) => 36,
+            Self::Mat3(_) => 3 * MAT3_COLUMN_STRIDE as u32,
             Self::Mat4(_) => 64,
             Self::Texture(_) => 0,
             Self::Sampler(_) => 0,
@@ -323,6 +328,19 @@ impl UniformData {
             Self::Bytes(b) => b.len() as u32,
         }
     }
+}
+
+/// Bytes between the columns of a `mat3x3<f32>`, since WGSL aligns each `vec3` column to 16.
+const MAT3_COLUMN_STRIDE: usize = 16;
+
+/// Lays out 9 floats as the three padded `vec3` columns of a `mat3x3<f32>`.
+fn mat3_bytes(values: &[f32]) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(3 * MAT3_COLUMN_STRIDE);
+    for column in values.chunks(3) {
+        bytes.extend_from_slice(bytemuck::cast_slice(column));
+        bytes.resize(bytes.len().next_multiple_of(MAT3_COLUMN_STRIDE), 0);
+    }
+    bytes
 }
 
 /// Converts from a Naga type to our internal Uniform representation
@@ -861,10 +879,10 @@ mod tests {
         assert_eq!(UniformData::Float(1.0).to_bytes().len(), 4);
         assert_eq!(UniformData::Vec3(vec![1.0, 2.0, 3.0]).to_bytes().len(), 12);
         assert_eq!(UniformData::Mat2(vec![0.0; 4]).to_bytes().len(), 16);
-        assert_eq!(UniformData::Mat3(vec![0.0; 9]).to_bytes().len(), 36);
+        assert_eq!(UniformData::Mat3(vec![0.0; 9]).to_bytes().len(), 48);
         assert_eq!(UniformData::Mat4(vec![0.0; 16]).to_bytes().len(), 64);
         assert_eq!(UniformData::Vec3(vec![0.0; 3]).size(), 12);
-        assert_eq!(UniformData::Mat3(vec![0.0; 9]).size(), 36);
+        assert_eq!(UniformData::Mat3(vec![0.0; 9]).size(), 48);
     }
 
     // Story: Array stride padding is honored; elements land at multiples of stride with zeros in between.
