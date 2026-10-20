@@ -1,7 +1,7 @@
 #![cfg(python)]
 
 use crate::shader::{UniformInput, lsp_doc};
-use crate::{Shader, ShaderError};
+use crate::{Shader, ShaderError, UniformData};
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyBool, PyByteArray, PyBytes, PyMemoryView};
 
@@ -55,14 +55,8 @@ impl Shader {
 
     #[pyo3(name = "get")]
     #[lsp_doc("docs/api/core/shader/get.md")]
-    pub fn get_py(&self, key: &str) -> Result<Py<PyAny>, PyErr> {
-        Python::attach(|py| -> Result<Py<PyAny>, PyErr> {
-            let data = self.object.get_uniform_data(key)?;
-
-            let object = data.into_pyobject(py)?;
-
-            Ok(object.unbind())
-        })
+    pub fn get_py(&self, key: &str) -> Result<UniformData, ShaderError> {
+        self.object.get_uniform_data(key)
     }
 
     #[pyo3(name = "list_uniforms")]
