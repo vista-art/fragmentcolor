@@ -1,7 +1,7 @@
 #![cfg(python)]
 
 use crate::texture::{Mipmap, Texture, TextureId, TextureRegion};
-use crate::{SamplerOptions, TextureFormat};
+use crate::{CompareFunction, SamplerOptions, TextureFormat};
 use lsp_doc::lsp_doc;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
@@ -175,6 +175,33 @@ impl TryFrom<PySamplerOptions<'_>> for SamplerOptions {
                 })?,
             },
         })
+    }
+}
+
+#[pymethods]
+impl SamplerOptions {
+    // A value type for `Texture.set_sampler_options`, which documents it.
+    // Swift and Kotlin build it as a record, so it has no page of its own.
+    #[doc(hidden)]
+    #[new]
+    #[pyo3(signature = (
+        repeat_x = SamplerOptions::default().repeat_x,
+        repeat_y = SamplerOptions::default().repeat_y,
+        smooth = SamplerOptions::default().smooth,
+        compare = SamplerOptions::default().compare,
+    ))]
+    pub fn new_py(
+        repeat_x: bool,
+        repeat_y: bool,
+        smooth: bool,
+        compare: Option<CompareFunction>,
+    ) -> Self {
+        Self {
+            repeat_x,
+            repeat_y,
+            smooth,
+            compare,
+        }
     }
 }
 

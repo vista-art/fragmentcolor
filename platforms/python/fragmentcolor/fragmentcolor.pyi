@@ -30,6 +30,7 @@ __all__ = [
     "TextureFormat",
     "Mipmap",
     "SamplerOptions",
+    "CompareFunction",
     "TextureTarget",
     "RenderCanvasTarget",
     "RenderCanvasFrame",
@@ -4311,7 +4312,7 @@ class Texture:
         pixels = [255, 255, 255, 255]
 
         texture = renderer.create_texture(pixels, size=[1, 1])
-        opts = {"repeat_x": True, "repeat_y": True, "smooth": True, "compare": None}
+        opts = SamplerOptions(repeat_x=True, repeat_y=True, smooth=True, compare=None)
         texture.set_sampler_options(opts)
         ```
         """
@@ -4552,7 +4553,23 @@ class Mipmap:
         """
 
 @final
-class SamplerOptions: ...
+class SamplerOptions:
+    repeat_x: bool
+    repeat_y: bool
+    smooth: bool
+    compare: CompareFunction | None
+    def __new__(cls, repeat_x: bool = ..., repeat_y: bool = ..., smooth: bool = ..., compare: CompareFunction | None = ...) -> SamplerOptions: ...
+
+@final
+class CompareFunction:
+    Never: ClassVar[CompareFunction]
+    Less: ClassVar[CompareFunction]
+    Equal: ClassVar[CompareFunction]
+    LessEqual: ClassVar[CompareFunction]
+    Greater: ClassVar[CompareFunction]
+    NotEqual: ClassVar[CompareFunction]
+    GreaterEqual: ClassVar[CompareFunction]
+    Always: ClassVar[CompareFunction]
 
 @final
 class TextureTarget:

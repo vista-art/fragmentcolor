@@ -46,6 +46,7 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<crate::TextureFormat>()?;
     m.add_class::<crate::texture::Mipmap>()?;
     m.add_class::<crate::SamplerOptions>()?;
+    m.add_class::<crate::CompareFunction>()?;
 
     // TextureTarget (headless) API
     m.add_class::<PyTextureTarget>()?;

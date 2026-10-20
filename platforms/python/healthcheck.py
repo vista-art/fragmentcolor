@@ -2,7 +2,7 @@ import os
 import platform
 import importlib
 import numpy as np
-from fragmentcolor import Renderer, Shader, Pass
+from fragmentcolor import CompareFunction, Pass, Renderer, SamplerOptions, Shader
 
 # Debug diagnostics for CI
 if os.environ.get("FC_HEALTHCHECK_VERBOSE") == "1":
@@ -74,6 +74,22 @@ def check_shader_set_values():
     assert isinstance(light, bytes) and len(light) == 32
     assert np.frombuffer(light[16:20], dtype=np.float32)[0] == 0.5
     print("Shader.set shaped every value to its declared type")
+
+
+def check_sampler_options(texture):
+    """SamplerOptions builds from keywords, keeps the Rust defaults, and reads back."""
+    defaults = SamplerOptions()
+    assert (defaults.repeat_x, defaults.repeat_y, defaults.smooth) == (False, False, True)
+    assert defaults.compare is None
+
+    opts = SamplerOptions(repeat_x=True, compare=CompareFunction.LessEqual)
+    assert opts.repeat_x and not opts.repeat_y and opts.smooth
+    assert opts.compare == CompareFunction.LessEqual
+    opts.smooth = False
+    opts.compare = None
+    assert not opts.smooth and opts.compare is None
+    texture.set_sampler_options(opts)
+    print("SamplerOptions and CompareFunction build from Python")
 
 
 def run():
@@ -222,6 +238,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     # SamplerOptions via dict (conversion path)
     tex.set_sampler_options(
         {"repeat_x": True, "repeat_y": False, "smooth": True, "compare": None})
+    check_sampler_options(tex)
 
     # Push constants smoke: solid color via var<immediate>
     pc_shader = Shader("""
