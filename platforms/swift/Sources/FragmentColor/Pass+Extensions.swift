@@ -22,7 +22,7 @@ extension Pass {
         return Pass.compute(name: name)
     }
 
-    /// A render pass already holding `shader` (unlabeled overload).
+    /// A pass holding `shader`, render or compute to match it (unlabeled overload).
     public static func fromShader(_ name: String, _ shader: Shader) -> Pass {
         return Pass.fromShader(name: name, shader: shader)
     }
