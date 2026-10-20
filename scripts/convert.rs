@@ -3,7 +3,7 @@ mod convert {
 
     use crate::reflect::{Build, Reflection, StrConst, inline_str_consts};
     use crate::source_text::is_ident_char;
-    use crate::{js_objectize_sampleroptions_literal, js_region_new_to_array, simplify_js_size_from};
+    use crate::js_region_new_to_array;
 
     /// API facts the converter reads, derived from the source model.
     struct Facts {
@@ -1160,28 +1160,6 @@ mod convert {
         }
     }
 
-    fn map_assert(line: &str, lang: Lang) -> Option<String> {
-        // assert_eq!(a, b);
-        let t = line.trim_start();
-        if !t.starts_with("assert_eq!(") {
-            return None;
-        }
-        let mut inner = &t["assert_eq!(".len()..];
-        if let Some(end) = inner.find(')') {
-            inner = &inner[..end];
-        }
-        let mut parts = inner.splitn(2, ',');
-        let a = parts.next().unwrap_or("").trim();
-        let b = parts.next().unwrap_or("").trim();
-        match lang {
-            Lang::Js | Lang::Swift | Lang::Kotlin => Some(format!(
-                "if (JSON.stringify({}) !== JSON.stringify({})) {{ throw new Error(\"assert_eq failed\"); }}",
-                a, b
-            )),
-            Lang::Py => Some(format!("assert {} == {}", a, b)),
-        }
-    }
-
     fn parse_use_fragmentcolor(line: &str) -> Option<Vec<String>> {
         // Returns a flat list of imported names from `use fragmentcolor::...` syntax
         // Supports nested paths before a group: e.g., `use fragmentcolor::mesh::{Mesh, Vertex};`
@@ -1303,14 +1281,9 @@ mod convert {
         }
         // UFCS associated calls remaining: Type::method( -> Type.method(
         rhs = replace_static_call_to_dot(&rhs);
-        // Python-specific cleanups: simplify Type.new(args) -> Type(args); Size.from(x) -> x; strip unwrap()
+        // Python-specific cleanups: simplify Type.new(args) -> Type(args); strip unwrap()
         if let Lang::Py = lang {
             rhs = simplify_py_static_new(&rhs);
-            rhs = simplify_py_size_from(&rhs);
-            // Convert SamplerOptions { ... } -> { ... } Python dict
-            if rhs.contains("SamplerOptions {") {
-                rhs = pythonize_sampleroptions_literal(&rhs);
-            }
             if rhs.contains(".unwrap()") {
                 rhs = rhs.replace(".unwrap()", "");
             }
@@ -1326,15 +1299,9 @@ mod convert {
             // JS fixups:
             // 1) None -> null
             rhs = rhs.replace("None", "null");
-            // 2) SamplerOptions { ... } -> { ... }
-            if rhs.contains("SamplerOptions {") {
-                rhs = js_objectize_sampleroptions_literal(&rhs);
-            }
-            // 3) Size.from(x) -> x
-            rhs = simplify_js_size_from(&rhs);
-            // 4) ScreenRegion.new(a,b,c,d) -> [a,b,c,d]
+            // 2) ScreenRegion.new(a,b,c,d) -> [a,b,c,d]
             rhs = js_region_new_to_array(&rhs);
-            // 5) std.fs.read(path) -> "/healthcheck/public/favicon.png" (served by healthcheck server)
+            // 3) std.fs.read(path) -> "/healthcheck/public/favicon.png" (served by healthcheck server)
             if let Some(i) = rhs.find("std.fs.read(") {
                 let before = &rhs[..i];
                 let after = &rhs[i + "std.fs.read(".len()..];
@@ -1831,16 +1798,6 @@ mod convert {
                 continue;
             }
 
-            // Map assert_eq!
-            if let Some(mapped) = map_assert(t, lang) {
-                out.push(match lang {
-                    Lang::Js | Lang::Swift | Lang::Kotlin => ensure_js_semicolon(&mapped),
-                    Lang::Py => mapped,
-                });
-                idx += 1;
-                continue;
-            }
-
             // let assignments (single-line cases)
             if let Some(mapped) = handle_let_assignment(
                 t,
@@ -1869,12 +1826,6 @@ mod convert {
             if matches!(lang, Lang::Js | Lang::Swift | Lang::Kotlin) {
                 // None -> null
                 line = line.replace("None", "null");
-                // SamplerOptions { ... } -> { ... }
-                if line.contains("SamplerOptions {") {
-                    line = js_objectize_sampleroptions_literal(&line);
-                }
-                // Size.from(x) -> x
-                line = simplify_js_size_from(&line);
                 // ScreenRegion.new(a,b,c,d) -> [a,b,c,d]
                 line = js_region_new_to_array(&line);
                 // std.fs.read("...") -> "/healthcheck/public/favicon.png"
@@ -1891,12 +1842,6 @@ mod convert {
             // 1.1) Python: simplify Type.new(args) -> Type(args)
             if let Lang::Py = lang {
                 line = simplify_py_static_new(&line);
-                // Map Size.from([w,h]) or Size.from((w,h)) -> (w,h)
-                line = simplify_py_size_from(&line);
-                // Convert SamplerOptions literal to dict
-                if line.contains("SamplerOptions {") {
-                    line = pythonize_sampleroptions_literal(&line);
-                }
                 // Drop Result-style unwrap() noise
                 if line.contains(".unwrap()") {
                     line = line.replace(".unwrap()", "");
@@ -1905,11 +1850,6 @@ mod convert {
 
             // 1.1) Convert Vec syntax (vec![], Vec::new()) into JS/Py arrays
             line = convert_vec_syntax(&line);
-
-            // 2) Drop explicit module prefix on every target — Swift/Kotlin
-            // both fall through `swift::finalize` / `kotlin::finalize` after this so
-            // they want the same plain `Shader` token the JS/Py emitters do.
-            line = line.replace("fragmentcolor.Shader", "Shader");
 
             // 3) Handling for Shader::default();
             if line.contains("Shader::default()")
@@ -2280,39 +2220,6 @@ mod convert {
         out
     }
 
-    // Convert Size.from(arg) -> arg (strip the wrapper) for Python.
-    fn simplify_py_size_from(line: &str) -> String {
-        let needle = "Size.from(";
-        if let Some(start) = line.find(needle) {
-            // Find matching closing parenthesis
-            let mut depth = 0i32;
-            let mut end = start + needle.len();
-            let chars: Vec<char> = line.chars().collect();
-            let mut i = end;
-            while i < chars.len() {
-                let c = chars[i];
-                if c == '(' {
-                    depth += 1;
-                }
-                if c == ')' {
-                    if depth == 0 {
-                        end = i;
-                        break;
-                    }
-                    depth -= 1;
-                }
-                i += 1;
-            }
-            if end > start + needle.len() {
-                let before = &line[..start];
-                let inner = &line[start + needle.len()..end];
-                let after = &line[end + 1..]; // skip ')'
-                return format!("{}{}{}", before, inner.trim(), after);
-            }
-        }
-        line.to_string()
-    }
-
     // Replace `.size()` (allowing whitespace as `.size ( )`) with `.size` in Python output
     fn replace_py_size_calls(line: &str) -> String {
         let chars: Vec<char> = line.chars().collect();
@@ -2354,124 +2261,6 @@ mod convert {
         }
         out
     }
-
-    // Pythonize a Rust literal: SamplerOptions { repeat_x: true, ... }
-    fn pythonize_sampleroptions_literal(line: &str) -> String {
-        let needle = "SamplerOptions {";
-        if let Some(start) = line.find(needle) {
-            let chars: Vec<char> = line.chars().collect();
-            let mut depth = 0i32;
-            let mut i = start + needle.len();
-            let mut end = i;
-            while i < chars.len() {
-                let c = chars[i];
-                if c == '{' {
-                    depth += 1;
-                }
-                if c == '}' {
-                    if depth == 0 {
-                        end = i;
-                        break;
-                    }
-                    depth -= 1;
-                }
-                i += 1;
-            }
-            if end > start {
-                let before = &line[..start];
-                let inside = &line[start + needle.len()..end];
-                let after = &line[end + 1..];
-                let mut fields: Vec<String> = Vec::new();
-                for part in inside.split(',') {
-                    let p = part.trim();
-                    if p.is_empty() {
-                        continue;
-                    }
-                    if let Some(colon) = p.find(':') {
-                        let key = p[..colon].trim();
-                        let mut val = p[colon + 1..].trim().to_string();
-                        val = val.replace("true", "True").replace("false", "False");
-                        if val.starts_with("CompareFunction::") {
-                            let name = val.trim_start_matches("CompareFunction::");
-                            val = format!("\"{}\"", name);
-                        }
-                        fields.push(format!("\"{}\": {}", key, val));
-                    }
-                }
-                let dict = format!("{{{}}}", fields.join(", "));
-                return format!("{}{}{}", before, dict, after);
-            }
-        }
-        line.to_string()
-    }
-}
-
-// JS: Size.from(x) -> x
-fn simplify_js_size_from(line: &str) -> String {
-    let needle = "Size.from(";
-    if let Some(start) = line.find(needle) {
-        // Find matching ')'
-        let mut depth: i32 = 0;
-        let mut end = start + needle.len();
-        let chars: Vec<char> = line.chars().collect();
-        let mut i = end;
-        while i < chars.len() {
-            let c = chars[i];
-            if c == '(' { depth += 1; }
-            if c == ')' {
-                if depth == 0 { end = i; break; }
-                depth -= 1;
-            }
-            i += 1;
-        }
-        if end > start + needle.len() {
-            let before = &line[..start];
-            let inner = &line[start + needle.len()..end];
-            let after = &line[end + 1..];
-            return format!("{}{}{}", before, inner.trim(), after);
-        }
-    }
-    line.to_string()
-}
-
-// JS: SamplerOptions { repeat_x: true, ... } -> { repeat_x: true, ... }
-fn js_objectize_sampleroptions_literal(line: &str) -> String {
-    let needle = "SamplerOptions {";
-    if let Some(start) = line.find(needle) {
-        let chars: Vec<char> = line.chars().collect();
-        let mut depth = 0i32;
-        let mut i = start + needle.len();
-        let mut end = i;
-        while i < chars.len() {
-            let c = chars[i];
-            if c == '{' { depth += 1; }
-            if c == '}' {
-                if depth == 0 { end = i; break; }
-                depth -= 1;
-            }
-            i += 1;
-        }
-        if end > start {
-            let before = &line[..start];
-            let inside = &line[start + needle.len()..end];
-            let after = &line[end + 1..];
-            let mut fields: Vec<String> = Vec::new();
-            for part in inside.split(',') {
-                let p = part.trim();
-                if p.is_empty() { continue; }
-                if let Some(colon) = p.find(':') {
-                    let key = p[..colon].trim();
-                    let mut val = p[colon + 1..].trim().to_string();
-                    // Map booleans and None
-                    val = val.replace("None", "null");
-                    // keep true/false as-is for JS
-                    fields.push(format!("{}: {}", key, val));
-                }
-            }
-            return format!("{}{{{}}}{}", before, fields.join(", "), after);
-        }
-    }
-    line.to_string()
 }
 
 // JS: ScreenRegion.new(a,b,c,d) -> [a,b,c,d]
