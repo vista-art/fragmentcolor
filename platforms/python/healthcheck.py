@@ -188,6 +188,27 @@ def check_image_layout(renderer):
     print("get_image returns (height, width, 4) and round-trips through create_texture")
 
 
+def check_tight_writes(renderer):
+    """Texture writes take tightly packed rows at any width."""
+    # 2 pixels * 4 bytes = 8 bytes per row, far from the 256 a buffer copy needs
+    texture = renderer.create_texture([255] * 16, size=[2, 2])
+    texture.write(bytes(16))
+    texture.write(np.zeros((2, 2, 4), dtype=np.uint8))
+
+    storage = renderer.create_storage_texture([3, 2], TextureFormat.Rgba)
+    pixels = bytes(range(3 * 2 * 4))
+    storage.write(pixels)
+    assert bytes(storage.get_image()) == pixels, "write read rows at the wrong stride"
+
+    # Pixels (1, 1) and (2, 1) of the 3x2 texture
+    patch = bytes(range(100, 108))
+    storage.write_region(patch, [1, 1, 2, 1])
+    image = bytes(storage.get_image())
+    assert image[16:24] == patch, "write_region read rows at the wrong stride"
+    assert image[:16] == pixels[:16], "write_region wrote outside its region"
+    print("Texture.write and write_region take tightly packed rows")
+
+
 INTEGER_ATTRIBUTES_SHADER = """
 struct VOut {
   @builtin(position) pos: vec4<f32>,
@@ -431,6 +452,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_size(renderer, tex)
     check_ndarray_layouts(renderer)
     check_image_layout(renderer)
+    check_tight_writes(renderer)
     check_vertex_values()
     check_mesh_inputs()
 
