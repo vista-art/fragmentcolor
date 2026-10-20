@@ -98,7 +98,7 @@ impl Texture {
     #[pyo3(name = "set_sampler_options")]
     #[lsp_doc("docs/api/texture/texture/set_sampler_options.md")]
     #[allow(private_interfaces)]
-    pub fn set_sampler_options_py(&self, options: PySamplerOptions) -> pyo3::PyResult<()> {
+    pub fn set_sampler_options_py(&self, options: PySamplerOptions<'_>) -> pyo3::PyResult<()> {
         self.set_sampler_options(options.try_into()?);
         Ok(())
     }
