@@ -363,7 +363,7 @@ import { Renderer, Shader } from "fragmentcolor";
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([16, 16]);
-renderer.render(new Shader(""), target);
+renderer.render(Shader.default(), target);
 
 const image = await target.getImage();
 
@@ -376,13 +376,12 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from rendercanvas.auto import RenderCanvas, loop
 from fragmentcolor import Renderer, Shader
 
 
 renderer = Renderer()
 target = renderer.create_texture_target([16, 16])
-renderer.render(Shader(""), target)
+renderer.render(Shader.default(), target)
 
 image = target.get_image()
 
@@ -400,7 +399,7 @@ import FragmentColor
 
 let renderer = Renderer()
 let target = try await renderer.createTextureTarget([16, 16])
-try renderer.render(Shader(""), target)
+try renderer.render(Shader.default(), target)
 
 let image = try await target.getImage()
 `}
@@ -417,7 +416,7 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 val target = renderer.createTextureTarget(16u, 16u)
-renderer.render(Shader(""), target)
+renderer.render(Shader.default(), target)
 
 val image = target.getImage()
 `}
