@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use fragmentcolor::{Pass, Renderer, SamplerOptions, Shader, Target, Texture};
+use fragmentcolor::{Pass, Renderer, SamplerOptions, Shader, Target, Texture, TextureOptions};
 
 // Samples a 2x1 texture at `(u, 0.5)` and paints the whole target with it.
 const SAMPLE_AT_U: &str = r#"
@@ -21,12 +21,26 @@ const SAMPLE_AT_U: &str = r#"
 const RED: [u8; 4] = [255, 0, 0, 255];
 const BLUE: [u8; 4] = [0, 0, 255, 255];
 
+const RED_BLUE: &[u8] = &[255, 0, 0, 255, 0, 0, 255, 255];
+
 async fn red_blue_texture(renderer: &Renderer) -> Texture {
-    let pixels: &[u8] = &[255, 0, 0, 255, 0, 0, 255, 255];
     renderer
-        .create_texture((pixels, [2, 1]))
+        .create_texture((RED_BLUE, [2, 1]))
         .await
         .expect("create_texture failed")
+}
+
+// A 2x1 size with a nearest sampler that repeats along x.
+fn repeat_x_options() -> TextureOptions {
+    TextureOptions {
+        size: Some([2, 1].into()),
+        sampler: SamplerOptions {
+            repeat_x: true,
+            smooth: false,
+            ..Default::default()
+        },
+        ..Default::default()
+    }
 }
 
 async fn sample(renderer: &Renderer, shader: &Shader, u: f32) -> Vec<u8> {
@@ -63,6 +77,48 @@ fn repeat_wraps_past_the_edge() {
 
         // Assert
         assert_eq!(clamped, BLUE, "clamped: u = 1.25 reads the last texel");
+        assert_eq!(wrapped, RED, "repeated: u = 1.25 wraps to the first texel");
+    });
+}
+
+// Story: Sampler options passed to create_texture wrap the texture from its first render.
+#[test]
+fn creation_options_wrap_past_the_edge() {
+    pollster::block_on(async move {
+        // Arrange
+        let renderer = Renderer::new();
+        let texture = renderer
+            .create_texture((RED_BLUE, repeat_x_options()))
+            .await
+            .expect("create_texture failed");
+        let shader = Shader::new(SAMPLE_AT_U).expect("shader failed");
+        shader.set("tex", &texture).expect("set tex");
+
+        // Act
+        let wrapped = sample(&renderer, &shader, 1.25).await;
+
+        // Assert
+        assert_eq!(wrapped, RED, "repeated: u = 1.25 wraps to the first texel");
+    });
+}
+
+// Story: Sampler options passed to create_storage_texture wrap the texture from its first render.
+#[test]
+fn storage_creation_options_wrap_past_the_edge() {
+    pollster::block_on(async move {
+        // Arrange
+        let renderer = Renderer::new();
+        let texture = renderer
+            .create_storage_texture((RED_BLUE, repeat_x_options()))
+            .await
+            .expect("create_storage_texture failed");
+        let shader = Shader::new(SAMPLE_AT_U).expect("shader failed");
+        shader.set("tex", &texture).expect("set tex");
+
+        // Act
+        let wrapped = sample(&renderer, &shader, 1.25).await;
+
+        // Assert
         assert_eq!(wrapped, RED, "repeated: u = 1.25 wraps to the first texel");
     });
 }

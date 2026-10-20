@@ -256,7 +256,7 @@ impl Renderer {
             wgpu_size,
             wgpu_format,
             usage,
-            crate::texture::SamplerOptions::default(),
+            options.sampler,
         )?;
 
         if let Some(bytes) = bytes_opt {

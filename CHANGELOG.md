@@ -77,6 +77,8 @@ Compute passes reuse their pipelines. The compute pipeline cache keyed on the me
 
 `mat3x3<f32>` values reach the GPU in the layout WGSL declares. WGSL pads each `vec3` column of a `mat3x3` to 16 bytes, so the matrix spans 48 bytes, but the renderer packed its 9 values into 36. The second and third columns landed at the wrong offsets in uniforms, struct fields, and storage buffers alike, so shaders read a shifted matrix. The renderer now writes the padding, and `Shader.get` still returns the 9 values.
 
+`TextureOptions.sampler` takes effect when a texture is created. `Renderer.create_texture` and `Renderer.create_storage_texture` built every texture with the default sampler and dropped the options they were given, so a texture wrapped and filtered as asked only after a call to `Texture.set_sampler_options`. Textures loaded from glTF use the wrap and filter settings of their glTF sampler. glTF repeats by default, so UVs outside 0 to 1 now tile the texture where they used to clamp to its edge.
+
 ## 0.12.5: WebGL2 fixes
 
 A patch release that makes the WebGL2 fallback work. There are no API changes.

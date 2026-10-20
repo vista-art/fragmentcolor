@@ -692,6 +692,7 @@ impl TextureObject {
         let mipmaps = options.mipmaps;
         let opt_size = options.size;
         let opt_format = options.format;
+        let sampler = options.sampler;
 
         // URL variants need an async fetch on the calling thread; everything
         // else runs on the background worker. Pre-fetch and forward the
@@ -708,7 +709,7 @@ impl TextureObject {
         };
 
         crate::renderer::background::run(move || -> Result<Self, TextureError> {
-            match data {
+            let object = match data {
                 TextureData::Bytes(bytes) => {
                     if let Some(sz) = opt_size {
                         let wfmt = format_override
@@ -748,7 +749,9 @@ impl TextureObject {
                 TextureData::CloneOf(_) | TextureData::Empty => Err(TextureError::InvalidInput(
                     "from_input: CloneOf and Empty are handled by Renderer::create_texture; do not pass them to the dispatcher".into(),
                 )),
-            }
+            }?;
+            object.set_sampler_options(&context.device, sampler);
+            Ok(object)
         })
         .await
     }
