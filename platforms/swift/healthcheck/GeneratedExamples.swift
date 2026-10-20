@@ -534,6 +534,18 @@ private enum _GeneratedExamples {
         }
     }
 
+    static func _example_core_shader_default() async throws {
+        do {
+
+
+            let shader = Shader.default()
+
+            // The default shader includes a "resolution" uniform
+            try shader.set("resolution", [800.0, 600.0])
+            let res = try shader.get("resolution")
+        }
+    }
+
     static func _example_core_shader_fetch() async throws {
         do {
 
@@ -1859,6 +1871,42 @@ private enum _GeneratedExamples {
             try renderer.render(shader, target)
 
             let image = try await target.getImage()
+        }
+    }
+
+    static func _example_targets_texture_target_get_image() async throws {
+        do {
+
+
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([16, 16])
+            try renderer.render(Shader(""), target)
+
+            let image = try await target.getImage()
+        }
+    }
+
+    static func _example_targets_texture_target_resize() async throws {
+        do {
+
+
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([64, 64])
+
+            target.resize([128, 32])
+        }
+    }
+
+    static func _example_targets_texture_target_size() async throws {
+        do {
+
+
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([64, 64])
+            let size = target.size()
+            let width = size.width
+            let height = size.height
+            let depth = size.depth
         }
     }
 

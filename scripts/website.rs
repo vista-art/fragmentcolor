@@ -484,10 +484,9 @@ mod website {
                 }
             }
 
-            // If no methods were discovered, fall back to docs files in the folder
-            if method_files.is_empty()
-                && obj_dir.exists()
-                && obj_dir.is_dir()
+            // Then every other page in the folder. The API map skips trait
+            // methods, such as `Target::size` on TextureTarget or `Default::default`.
+            if obj_dir.is_dir()
                 && let Ok(read_dir) = std::fs::read_dir(&obj_dir)
             {
                 let mut files: Vec<String> = read_dir
@@ -501,9 +500,10 @@ mod website {
                             None
                         }
                     })
+                    .filter(|stem| !method_files.contains(stem))
                     .collect();
                 files.sort();
-                method_files = files;
+                method_files.extend(files);
             }
 
             if is_hidden_category(&cat_rel) {

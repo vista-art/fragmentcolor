@@ -2405,3 +2405,133 @@ lang="kotlin"
 </TabItem>
 
 </Tabs>
+
+
+---
+
+### Shader::default()
+
+Creates a new [Shader](/api/core/shader) from the default shader source.
+
+Useful for examples and quick demos. Includes a "**resolution**" uniform.
+
+```wgsl
+struct VertexOutput {
+    @builtin(position) coords: vec4<f32>,
+}
+
+@group(0) @binding(0)
+var<uniform> resolution: vec2<f32>;
+
+@vertex
+fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
+    let x = f32(i32(in_vertex_index) - 1);
+    let y = f32(i32(in_vertex_index & 1u) * 2 - 1);
+    return VertexOutput(vec4<f32>(x, y, 0.0, 1.0));
+}
+
+@fragment
+fn fs_main(pixel: VertexOutput) -> @location(0) vec4<f32> {
+    let _dummy = resolution.x + resolution.y * 0.0;
+    return vec4<f32>(1.0, 0.0, 0.0, 1.0);
+}
+```
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Shader};
+
+let shader = Shader::default();
+
+// The default shader includes a "resolution" uniform
+shader.set("resolution", [800.0, 600.0])?;
+let res: [f32; 2] = shader.get("resolution")?;
+
+assert!(shader.list_keys().len() >= 1);
+assert_eq!(res, [800.0, 600.0]);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 11-14}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+import { Shader } from "fragmentcolor";
+
+const shader = Shader.default();
+
+// The default shader includes a "resolution" uniform
+shader.set("resolution", [800.0, 600.0]);
+const res = shader.get("resolution");
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+from fragmentcolor import Shader
+
+shader = Shader.default()
+
+# The default shader includes a "resolution" uniform
+shader.set("resolution", [800.0, 600.0])
+res = shader.get("resolution")
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+
+import FragmentColor
+
+let shader = Shader.default()
+
+// The default shader includes a "resolution" uniform
+try shader.set("resolution", [800.0, 600.0])
+let res = try shader.get("resolution")
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+
+import org.fragmentcolor.*
+
+val shader = Shader.default()
+
+// The default shader includes a "resolution" uniform
+shader.set("resolution", floatArrayOf(800.0f, 600.0f))
+val res = shader.get("resolution")
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>

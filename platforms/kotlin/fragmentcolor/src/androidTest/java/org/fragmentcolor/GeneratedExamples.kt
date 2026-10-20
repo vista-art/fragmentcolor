@@ -472,6 +472,16 @@ class GeneratedExamples {
         shader.clearMeshes()
     }
 
+    @Suppress("unused") private suspend fun _example_core_shader_default() {
+
+
+        val shader = Shader.default()
+
+        // The default shader includes a "resolution" uniform
+        shader.set("resolution", floatArrayOf(800.0f, 600.0f))
+        val res = shader.get("resolution")
+    }
+
     @Suppress("unused") private suspend fun _example_core_shader_fetch() {
 
 
@@ -1476,6 +1486,36 @@ class GeneratedExamples {
         renderer.render(shader, target)
 
         val image = target.getImage()
+    }
+
+    @Suppress("unused") private suspend fun _example_targets_texture_target_get_image() {
+
+
+        val renderer = Renderer()
+        val target = renderer.createTextureTarget(16u, 16u)
+        renderer.render(Shader(""), target)
+
+        val image = target.getImage()
+    }
+
+    @Suppress("unused") private suspend fun _example_targets_texture_target_resize() {
+
+
+        val renderer = Renderer()
+        val target = renderer.createTextureTarget(64u, 64u)
+
+        target.resize(128u, 32u)
+    }
+
+    @Suppress("unused") private suspend fun _example_targets_texture_target_size() {
+
+
+        val renderer = Renderer()
+        val target = renderer.createTextureTarget(64u, 64u)
+        val size = target.size()
+        val width = size.width
+        val height = size.height
+        val depth = size.depth
     }
 
     @Suppress("unused") private suspend fun _example_targets_texture_target_texture() {

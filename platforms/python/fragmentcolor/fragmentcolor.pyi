@@ -853,6 +853,18 @@ class Shader:
             return vec4<f32>(1.0, 0.0, 0.0, 1.0);
         }
         ```
+
+        Example:
+
+        ```python
+        from fragmentcolor import Shader
+
+        shader = Shader.default()
+
+        # The default shader includes a "resolution" uniform
+        shader.set("resolution", [800.0, 600.0])
+        res = shader.get("resolution")
+        ```
         """
     @staticmethod
     def from_vertex(v: Vertex) -> Shader:
