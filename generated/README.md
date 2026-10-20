@@ -5,6 +5,6 @@ and might be shared between multiple crates in the workspace.
 
 Currently, it is used to build:
 - api_map.rs: a public API map used by the docs export pipeline and bindings
-- api_objects.txt: a newline-delimited list of public JS-visible objects (wasm-bindgen structs), used to brand JS prototypes during local web builds
+- embedded_shaders.rs: the shader registry lookup, with each category behind its `shaders-<category>` feature
 
 Do not edit files in this folder manually.

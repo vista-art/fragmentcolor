@@ -89,7 +89,6 @@ fn generate_docs() {
     let catalog = codegen::build_catalog();
     let api_map = codegen::scan_api(&catalog);
     codegen::export_api_map(&api_map);
-    codegen::export_api_objects(&catalog);
     println!("✅ API map successfully generated!\n");
 
     println!("🔎 Validating documentation...");
