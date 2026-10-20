@@ -4,6 +4,8 @@ import importlib
 import numpy as np
 from fragmentcolor import (
     CompareFunction,
+    Instance,
+    Mesh,
     Mipmap,
     Pass,
     Renderer,
@@ -11,6 +13,8 @@ from fragmentcolor import (
     Shader,
     Size,
     TextureFormat,
+    Vertex,
+    VertexValue,
 )
 
 # Debug diagnostics for CI
@@ -150,6 +154,52 @@ def check_ndarray_layouts(renderer):
     for label, array in layouts.items():
         assert np.array_equal(rendered(array), expected), f"create_texture read a {label} array out of order"
     print("ndarray texture bytes read in row-major order for every layout")
+
+
+INTEGER_ATTRIBUTES_SHADER = """
+struct VOut {
+  @builtin(position) pos: vec4<f32>,
+  @location(0) @interpolate(flat) id: u32,
+  @location(1) @interpolate(flat) cell: vec2<i32>,
+};
+@vertex fn vs_main(
+  @location(0) position: vec2<f32>,
+  @location(1) id: u32,
+  @location(2) cell: vec2<i32>,
+) -> VOut {
+  var out: VOut;
+  out.pos = vec4f(position, 0., 1.);
+  out.id = id;
+  out.cell = cell;
+  return out;
+}
+@fragment fn fs_main(v: VOut) -> @location(0) vec4<f32> {
+  return vec4f(f32(v.id), f32(v.cell.x), 0., 1.);
+}
+"""
+
+
+def check_vertex_values():
+    """A VertexValue keeps its integer type through Vertex.set and Instance.set."""
+    mesh = Mesh()
+    mesh.add_vertex(
+        Vertex([0.0, 0.0]).set("id", VertexValue.u32(3)).set("cell", VertexValue.i32x2([-1, 2])))
+    Shader(INTEGER_ATTRIBUTES_SHADER).add_mesh(mesh)
+
+    plain = Mesh()
+    plain.add_vertex(Vertex([0.0, 0.0]).set("id", 3).set("cell", [-1, 2]))
+    try:
+        Shader(INTEGER_ATTRIBUTES_SHADER).add_mesh(plain)
+    except Exception as e:
+        print(f"plain ints read as floats: {e}")
+    else:
+        raise AssertionError("plain Python ints should read as float attributes")
+
+    instanced = Mesh()
+    instanced.add_vertex(Vertex([0.0, 0.0]).set("cell", VertexValue.i32x2([0, 0])))
+    instanced.add_instance(Instance().set("id", VertexValue.u32(7)))
+    Shader(INTEGER_ATTRIBUTES_SHADER).add_mesh(instanced)
+    print("VertexValue keeps integer attribute types")
 
 
 def run():
@@ -301,6 +351,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_sampler_options(tex)
     check_size(renderer, tex)
     check_ndarray_layouts(renderer)
+    check_vertex_values()
 
     # Push constants smoke: solid color via var<immediate>
     pc_shader = Shader("""
