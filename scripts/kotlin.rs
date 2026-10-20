@@ -3,10 +3,7 @@ mod kotlin {
     //!
     //! `convert::to_kotlin` runs the per-line emitter with `Lang::Kotlin`,
     //! producing a JS-shaped intermediate. This module finishes the job
-    //! with the bulk-text swaps that don't fit a per-line model. Folding
-    //! these into per-line `Lang::Kotlin` match arms inside `convert.rs`
-    //! is queued for the next pass; doing them here keeps the transition
-    //! incremental.
+    //! with the bulk-text swaps that don't fit a per-line model.
     //!
     //! Kotlin differs from Swift in:
     //!   - `null` stays as `null` (Kotlin keyword).
@@ -748,7 +745,6 @@ mod kotlin {
         // would turn integer indices into `0.0f`.
         out = rewrite_list_args(&out);
         out = rewrite_shader_set_array(&out);
-        out = rewrite_readtexture_to_getimage(&out);
         out = rewrite_flat_enum_variants(&out);
         // Flatten the 4×4 row form into a single 16-float list for
         // `Model.setTransform`. The source writes
@@ -762,7 +758,6 @@ mod kotlin {
         out = rewrite_shader_new_to_compose(&out);
         out = rewrite_texture_region_name(&out);
         out = rewrite_write_region_array_arg(&out);
-        out = rewrite_unregister_texture_id(&out);
         out = rewrite_instance_set_vertex_value(&out);
         out = rewrite_arrayof_float_to_listof(&out);
         out = drop_underscore_val(&out);
@@ -1213,8 +1208,7 @@ mod kotlin {
             [size_expr, format_expr, data_expr] => {
                 let size = parse_size_to_kotlin(size_expr.trim());
                 let fmt = rewrite_flat_enum_variants(format_expr.trim());
-                let data = convert_array_to_bytearray(data_expr.trim());
-                format!("{}({}, {}, {}, null){}", before, size, fmt, data, after_tuple)
+                format!("{}({}, {}, {}, null){}", before, size, fmt, data_expr.trim(), after_tuple)
             }
             _ => line.to_string(),
         }
@@ -1243,13 +1237,6 @@ mod kotlin {
             }
         }
         // Fallback: pass through (may be already correct)
-        s.to_string()
-    }
-
-    // Convert integer/double array to ByteArray for data param of createStorageTexture
-    fn convert_array_to_bytearray(s: &str) -> String {
-        // `Array(N) { 0 }` → keep as-is but note that write() takes ByteArray
-        // For now pass through — actual type conversion is the caller's concern
         s.to_string()
     }
 
@@ -1532,12 +1519,6 @@ mod kotlin {
                     return format!("{}, floatArrayOf({})){}",  before, floats, rest);
                 }
             }
-        line.to_string()
-    }
-
-    // `renderer.readTexture(texture.id())` is now a real uniffi mobile binding —
-    // no rewrite needed. The old `readTextureAsync` no longer exists.
-    fn rewrite_readtexture_to_getimage(line: &str) -> String {
         line.to_string()
     }
 
@@ -2397,15 +2378,6 @@ mod kotlin {
             "{}writeRegion({}, TextureRegionMobile({}, {}, 0u, {}, {}, 0u, null, null)){}",
             before, bytes_arg, x, y, w, h, after
         )
-    }
-
-    // `renderer.unregisterTexture(id)` → `renderer.unregisterTexture(id.id)` when
-    // `id` is a local variable (not a ULong literal). The extension method accepts
-    // TextureId directly, so this rewrite is actually handled by the extension.
-    // We leave it as-is — the extension method covers it.
-    // (No rewrite needed; the extension method makes `unregisterTexture(id: TextureId)` work.)
-    fn rewrite_unregister_texture_id(line: &str) -> String {
-        line.to_string()
     }
 
     // Convert `Instance().set("key", arrayOf(...))` where the arrayOf value

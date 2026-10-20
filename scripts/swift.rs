@@ -7,10 +7,6 @@ mod swift {
     //! template literals). This module finishes the job with the lexical
     //! swaps that don't fit a per-line model.
     //!
-    //! Folding these into per-line `Lang::Swift` match arms inside
-    //! `convert.rs` is queued for the next pass; doing them here keeps the
-    //! transition incremental.
-    //!
     //! Rules applied in order:
     //!
     //! 1. Backtick template literals (`...`) → triple-quoted strings (`"""..."""`)
