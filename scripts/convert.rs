@@ -1337,12 +1337,13 @@ mod convert {
         }
         // UFCS associated calls remaining: Type::method( -> Type.method(
         rhs = replace_static_call_to_dot(&rhs);
-        // Python-specific cleanups: simplify Type.new(args) -> Type(args); strip unwrap()
+        // Python simplifies Type.new(args) -> Type(args). Python and JS throw on
+        // errors, so neither keeps Rust's unwrap().
         if let Lang::Py = lang {
             rhs = simplify_py_static_new(&rhs);
-            if rhs.contains(".unwrap()") {
-                rhs = rhs.replace(".unwrap()", "");
-            }
+        }
+        if matches!(lang, Lang::Py | Lang::Js) && rhs.contains(".unwrap()") {
+            rhs = rhs.replace(".unwrap()", "");
         }
         // Strip refs '&'
         rhs = strip_refs(&rhs);
@@ -1896,10 +1897,10 @@ mod convert {
             // 1.1) Python: simplify Type.new(args) -> Type(args)
             if let Lang::Py = lang {
                 line = simplify_py_static_new(&line);
-                // Drop Result-style unwrap() noise
-                if line.contains(".unwrap()") {
-                    line = line.replace(".unwrap()", "");
-                }
+            }
+            // Drop Result-style unwrap() noise: Python and JS throw on errors
+            if matches!(lang, Lang::Py | Lang::Js) && line.contains(".unwrap()") {
+                line = line.replace(".unwrap()", "");
             }
 
             // 1.1) Convert Vec syntax (vec![], Vec::new()) into JS/Py arrays
