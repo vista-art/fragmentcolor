@@ -14,6 +14,21 @@ The committed Swift wrapper in `platforms/swift/Sources/FragmentColor/generated/
 
 `Shader.set` on the web checks what it receives before binding a texture. Any object exported by the library used to pass as a `Texture`, so handing it a `Shader`, `Pass`, or `Mesh`, or a plain object with a copied `__wbg_ptr` field, read that object's memory as a texture. A `Texture` binds as before. Anything else throws a type mismatch error, as it does in Python.
 
+`Shader.set` follows one set of rules in every language. Each binding used to coerce values on its own, so a call that worked in Python could fail in JavaScript. Rust now shapes the value to the type the shader declares for the key, nested and indexed keys included, and the bindings only pass it along. A number fits an `f32`, `i32`, or `u32` uniform, as long as it is a whole number in range for the integer types. A vector takes exactly as many numbers as it has components, and `mat2x2`, `mat3x3`, and `mat4x4` take 4, 9, or 16. Anything else throws an error that names the key and both sides, such as `resolution: expected vec2<f32>, got 3 number(s)`. The call itself reads the same in all five languages.
+
+The shared rules fix these bugs:
+
+- On the web, plain numbers and arrays reach `u32`, `i32`, and integer vector uniforms. Arrays were always read as floats, so `shader.set("count", 3)` failed on a `u32`.
+- `mat2x2` uniforms work from JavaScript, Swift, and Kotlin, which read four numbers as a `vec4`.
+- Python raises on a list of the wrong length. A three-item list for a `vec2` used to succeed without writing anything.
+- Indexed keys such as `buf.items[2].v` check the declared type. They compared only byte counts, so a `vec4<u32>` landed in a `vec4<f32>` slot.
+- JavaScript and Python can send raw bytes to a storage-buffer or push-constant root: a `Uint8Array` on the web, or `bytes`, `bytearray`, and `memoryview` in Python. Swift takes `Data` and Kotlin takes `ByteArray`.
+- `Shader.get` reads the current value. Struct roots returned the defaults reflected from the shader, whatever had been set since. Struct, array, and buffer roots now read as their current bytes, and indexed keys can be read too.
+
+A few inputs that used to fail now convert. Any typed array other than `Uint8Array` counts as numbers, so an `Int32Array` set into a `vec2<f32>` becomes floats. In Rust, an integer literal fits a float uniform, so `shader.set("scale", 2)` works on an `f32`. A bool writes 1 or 0 into a numeric uniform.
+
+On Swift and Kotlin, the generated `set(key:value:)` takes a `UniformValue` (a bool, a number, a list of numbers, a texture, or bytes) in place of a `UniformData`. The `shader.set("key", value)` overloads that the docs use read the same. Swift adds `Int`, `Double`, `[Int]`, and `Data` overloads, and Kotlin adds `DoubleArray` and `ByteArray`.
+
 The npm package no longer ships the test harness. `wasm-bindgen-test` was a runtime dependency of the web build, so the package exported a `WasmBindgenTestContext` class and the `__wbgtest_*` helpers next to the real API. It is a development dependency now, and the bundle carries only the library's own exports.
 
 Unused build inputs are gone. The web build no longer declares `serde-wasm-bindgen` or `gloo-utils`, which no code called, and the stale `generated/wasm_exports.txt` list, which nothing read, is deleted. The Python extension builds without pyo3's `experimental-async` feature, since no Python method is async.
