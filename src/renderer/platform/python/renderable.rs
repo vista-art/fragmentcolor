@@ -1,4 +1,4 @@
-use crate::{Pass, PassObject, PyPassIterator, Renderable, Scene, Shader};
+use crate::{Mesh, Pass, PassObject, PyPassIterator, Renderable, Scene, Shader};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PySequence};
 use std::sync::Arc;
@@ -38,9 +38,19 @@ impl<'py> TryFrom<&'py Bound<'py, Scene>> for PyRenderable {
     }
 }
 
+impl<'py> TryFrom<&'py Bound<'py, Mesh>> for PyRenderable {
+    type Error = PyErr;
+    fn try_from(mesh: &Bound<'py, Mesh>) -> PyResult<Self> {
+        Python::attach(|_| -> PyResult<Self> {
+            let iterator = mesh.call_method0("passes")?.extract::<PyPassIterator>()?;
+            Ok(Self { iterator })
+        })
+    }
+}
+
 impl PyRenderable {
     /// Build a renderable from a Python object:
-    /// - Scene, Pass, Shader
+    /// - Scene, Pass, Shader, Mesh
     /// - Or a Python sequence (list/tuple) of these; collects all passes across items
     pub fn from_any<'py>(obj: &Bound<'py, PyAny>) -> PyResult<Self> {
         // Try object with renderable_type()
@@ -61,8 +71,12 @@ impl PyRenderable {
                     let scene = obj.cast::<Scene>()?;
                     Ok(PyRenderable::try_from(scene)?)
                 }
+                "Mesh" => {
+                    let mesh = obj.cast::<Mesh>()?;
+                    Ok(PyRenderable::try_from(mesh)?)
+                }
                 _ => Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-                    "Expected Scene, Pass, or Shader",
+                    "Expected Scene, Pass, Shader, or Mesh",
                 )),
             };
         }
@@ -85,7 +99,7 @@ impl PyRenderable {
         }
 
         Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-            "Expected a Pass, Shader, or a sequence of them",
+            "Expected a Scene, Pass, Shader, Mesh, or a sequence of them",
         ))
     }
 }

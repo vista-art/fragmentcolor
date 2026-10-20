@@ -419,6 +419,20 @@ impl Mesh {
     pub fn clear_indices_py(&mut self) {
         self.clear_indices();
     }
+
+    // Internal hook for PyRenderable dispatch, not part of the public docs.
+    #[doc(hidden)]
+    pub fn renderable_type(&self) -> &'static str {
+        "Mesh"
+    }
+
+    // Internal hook for PyRenderable dispatch, not part of the public docs.
+    #[doc(hidden)]
+    #[pyo3(name = "passes")]
+    pub fn passes_py(&self) -> crate::PyPassIterator {
+        let list = <Self as crate::Renderable>::passes(self);
+        crate::PyPassIterator(list.iter().cloned().collect())
+    }
 }
 
 /// Tiny factory class to construct typed VertexValue variants from Python.

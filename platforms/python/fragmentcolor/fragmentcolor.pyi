@@ -1593,6 +1593,8 @@ class Mesh:
         mesh.clear_indices(); # back to auto-derived dedup
         ```
         """
+    def renderable_type(self) -> str: ...
+    def passes(self) -> _PyPassIterator: ...
 
 @final
 class Vertex:
