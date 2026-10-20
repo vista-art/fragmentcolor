@@ -10,6 +10,8 @@ On Android, `renderer.createTarget(surface)` builds the target on the renderer y
 
 `Model(mesh, material)` and `model.material()` no longer reset the Material on Swift, Kotlin, JavaScript, and Python. Both rebuilt the Material with `Material::custom`, which put the caller's Material back to the `Opaque` alpha mode and single-sided culling but left the shader's alpha flag untouched, so `Mask` and `Blend` materials drew with mismatched pipeline state. The bindings now share the Material the way Rust does.
 
+The committed Swift wrapper in `platforms/swift/Sources/FragmentColor/generated/` is regenerated. Swift Package Manager compiles it from the release tag, and it predated 0.12.0, so it lacked `Scene`, `Model`, `Material`, `Camera`, `Light`, and the rest of the 0.12 surface that the Swift extensions build on. The iOS healthcheck now fails when the committed wrapper differs from what `./fc build_ios` generates.
+
 ## 0.12.5: WebGL2 fixes
 
 A patch release that makes the WebGL2 fallback work. There are no API changes.

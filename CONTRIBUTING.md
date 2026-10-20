@@ -39,6 +39,7 @@ Contributions are welcome! This document outlines the current workflow for devel
    - `docs/website/package.json` (version only)
 3. Create a draft PR and implement the planned tasks (see `ROADMAP.md`).
 4. Ensure all docs exist (`docs/api`), doctests pass, healthchecks are annotated, and the site builds.
+5. If the uniffi surface changed (anything under `#[uniffi::export]`, or the uniffi version), run `./fc build_ios` and commit `platforms/swift/Sources/FragmentColor/generated/FragmentColor.swift`. Swift Package Manager compiles that file from the release tag, and the iOS healthcheck fails when it is stale.
 
 ## Release process
 
