@@ -18,6 +18,8 @@ The npm package no longer ships the test harness. `wasm-bindgen-test` was a runt
 
 Unused build inputs are gone. The web build no longer declares `serde-wasm-bindgen` or `gloo-utils`, which no code called, and the stale `generated/wasm_exports.txt` list, which nothing read, is deleted. The Python extension builds without pyo3's `experimental-async` feature, since no Python method is async.
 
+The Python package declares NumPy as a dependency. `TextureTarget.get_image()` returns a NumPy array, but the wheel did not require NumPy, so on an environment without it the call failed with a panic from the NumPy bridge instead of returning pixels. `pip install fragmentcolor` now pulls in `numpy>=1.16`.
+
 ## 0.12.5: WebGL2 fixes
 
 A patch release that makes the WebGL2 fallback work. There are no API changes.

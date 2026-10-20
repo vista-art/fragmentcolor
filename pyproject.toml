@@ -28,7 +28,7 @@ classifiers = [
     "Topic :: Multimedia :: Graphics :: 3D Rendering",
 ]
 
-dependencies = ["rendercanvas", "gltf"]
+dependencies = ["rendercanvas", "gltf", "numpy>=1.16"]
 
 [project.optional-dependencies]
 test = ["pytest < 5.0.0", "pytest-cov[all]"]
