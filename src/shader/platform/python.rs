@@ -55,8 +55,8 @@ impl Shader {
 
     #[pyo3(name = "get")]
     #[lsp_doc("docs/api/core/shader/get.md")]
-    pub fn get_py(&self, key: &str) -> Result<UniformData, ShaderError> {
-        self.object.get_uniform_data(key)
+    pub fn get_py(&self, key: &str) -> Result<PyUniformData, ShaderError> {
+        Ok(self.object.get_uniform_data(key)?.into())
     }
 
     #[pyo3(name = "list_uniforms")]
@@ -178,5 +178,44 @@ impl PyUniformValue<'_> {
             Self::Numbers(numbers) => UniformInput::Numbers(numbers),
             Self::Number(number) => UniformInput::Number(number),
         })
+    }
+}
+
+/// A `Shader.get` result for Python, in the shapes a key's current bytes decode to.
+/// Struct, array, and buffer roots decode to raw bytes, so they arrive as `bytes`.
+#[derive(IntoPyObject)]
+pub enum PyUniformData {
+    Bool(bool),
+    UInt(u32),
+    Int(i32),
+    Float(f32),
+    Floats(Vec<f32>),
+    UInts(Vec<u32>),
+    Ints(Vec<i32>),
+    Texture(crate::texture::TextureMeta),
+    Sampler(crate::texture::SamplerInfo),
+    Bytes(Vec<u8>),
+}
+
+impl From<UniformData> for PyUniformData {
+    fn from(data: UniformData) -> Self {
+        use UniformData as U;
+        match data {
+            U::Bool(value) => Self::Bool(value),
+            U::UInt(value) => Self::UInt(value),
+            U::Int(value) => Self::Int(value),
+            U::Float(value) => Self::Float(value),
+            U::Vec2(v) | U::Vec3(v) | U::Vec4(v) | U::Mat2(v) | U::Mat3(v) | U::Mat4(v) => {
+                Self::Floats(v)
+            }
+            U::UVec2(v) | U::UVec3(v) | U::UVec4(v) => Self::UInts(v),
+            U::IVec2(v) | U::IVec3(v) | U::IVec4(v) => Self::Ints(v),
+            U::Texture(meta) => Self::Texture(meta),
+            U::Sampler(info) => Self::Sampler(info),
+            U::Bytes(bytes) => Self::Bytes(bytes),
+            shape @ (U::Array(_) | U::Struct(_) | U::Storage(_) | U::PushConstant(_)) => {
+                Self::Bytes(shape.to_bytes())
+            }
+        }
     }
 }

@@ -589,7 +589,7 @@ class Shader:
         shader.set("resolution", [800.0, 600.0])
         ```
         """
-    def get(self, key: str) -> bool | int | float | bytes | _SamplerInfo | _TextureMeta | list[dict[str, Any]] | list[float] | list[int] | dict[str, Any]:
+    def get(self, key: str) -> bool | int | float | bytes | _SamplerInfo | _TextureMeta | list[float] | list[int]:
         """
         Returns the current value of the uniform identified by the given key.
 
