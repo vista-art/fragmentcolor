@@ -564,7 +564,7 @@ class Shader:
         - A number fits an `f32`, `i32`, or `u32` uniform. Integer uniforms take whole numbers in range.
         - A vector takes exactly as many numbers as it has components. A `mat2x2`, `mat3x3`, or `mat4x4` takes 4, 9, or 16.
         - A `Texture` created by a `Renderer` binds to a texture uniform.
-        - Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` in Python, `Data` in Swift, or a `ByteArray` in Kotlin.
+        - Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` (or a `bytearray` or `memoryview`) in Python, `Data` in Swift, or a `ByteArray` in Kotlin.
 
         Example:
 
