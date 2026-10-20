@@ -40,6 +40,12 @@ docs/api/core/shader/hidden/compose_mobile.md=>docs/api/core/shader/new.md: Mobi
 docs/api/core/shader/hidden/fetch_mobile.md=>docs/api/core/shader/fetch.md: Mobile exposes fetch as an async instance method (uniffi 0.31 lacks async constructors); Swift/Kotlin shims wrap it as a static factory.
 docs/api/core/shader/hidden/fetch_compose_mobile.md=>docs/api/core/shader/fetch.md: Mobile multi-part fetch variant; same async-method workaround as fetch_mobile.
 
+# Pass::set_depth_target accepts a TextureTarget or a depth Texture via
+# `impl TryInto<DepthTarget>`. Mobile takes the TextureTarget through
+# setDepthTarget(TargetHandle) and the Texture through setDepthTexture;
+# Swift/Kotlin extensions spell both as setDepthTarget(...).
+docs/api/core/pass/hidden/set_depth_texture_mobile.md=>docs/api/core/pass/set_depth_target.md: Mobile splits the Texture form of Pass::set_depth_target into a separate setDepthTexture method.
+
 # TextureTarget::texture() — the canonical doc lives at
 # docs/api/targets/texture_target/texture.md and the Web binding is the
 # `_js` shim under hidden/, so the suffix-strip rule already credits Web

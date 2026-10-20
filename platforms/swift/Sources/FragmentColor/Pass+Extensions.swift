@@ -111,15 +111,9 @@ extension Pass {
 
     /// Attach a depth `Texture` (created via `Renderer.createDepthTexture`)
     /// as the depth-stencil attachment. Mirrors the Kotlin
-    /// `Pass.setDepthTarget(Texture)` extension: the uniffi layer takes a
-    /// `MobileTextureTarget`, but the depth-texture handle is the natural
-    /// shape for the doc example.
+    /// `Pass.setDepthTarget(Texture)` extension.
     public func setDepthTarget(_ texture: Texture) throws {
-        // The depth-texture handle shares the underlying Arc<dyn Target>;
-        // re-wrap as a `MobileTextureTarget` so the `TargetHandle.texture`
-        // variant accepts it.
-        let asMobile = MobileTextureTarget(unsafeFromHandle: texture.uniffiCloneHandle())
-        try self.setDepthTarget(target: .texture(asMobile))
+        try self.setDepthTexture(texture: texture)
     }
 
     // MARK: - Clear colour

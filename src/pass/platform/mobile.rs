@@ -19,7 +19,7 @@ use crate::pass::error::PassError;
 use crate::pass::{Pass, PassInput};
 use crate::renderer::platform::mobile::FragmentColorError;
 use crate::renderer::renderable::{RenderableHandle, SceneObjectHandle, TargetHandle};
-use crate::{Mesh, ScreenRegion, Shader};
+use crate::{Mesh, ScreenRegion, Shader, Texture};
 
 // -----------------------------------------------------------------
 // Mobile-only record types
@@ -148,6 +148,18 @@ impl Pass {
                 "setDepthTarget: WindowTarget cannot be used as a depth attachment; use a depth Texture instead".into(),
             )),
         }
+    }
+
+    /// Set a depth `Texture` from `Renderer.createDepthTexture` as the
+    /// depth attachment. Swift and Kotlin expose it as `setDepthTarget(texture)`.
+    #[uniffi::method(name = "setDepthTexture")]
+    #[lsp_doc("docs/api/core/pass/hidden/set_depth_texture_mobile.md")]
+    pub fn set_depth_texture_mobile(
+        &self,
+        texture: Arc<Texture>,
+    ) -> Result<(), FragmentColorError> {
+        self.set_depth_target(texture.as_ref())
+            .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
     }
 
     /// Set the clear colour for this pass (as `[r, g, b, a]` in linear 0..1 space).
