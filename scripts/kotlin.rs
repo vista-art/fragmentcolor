@@ -1009,21 +1009,35 @@ mod kotlin {
     }
 
     /// The method every type with a slice getter named `getter` reads one element with.
-    /// Fails the build when one of them has none, since Kotlin has no `getter` to index.
+    /// Fails the build when one of those types has none, as Kotlin has no `getter` to index,
+    /// or when they read it through methods of different names, as a line can't type its receiver.
     fn index_accessor(getter: &str, index: &str) -> &'static str {
         let getters: Vec<&SliceGetter> =
             facts().slice_getters.iter().filter(|g| g.getter == getter).collect();
-        let accessors: BTreeSet<Option<&str>> =
-            getters.iter().map(|g| g.accessor.as_deref()).collect();
+        let missing: Vec<&str> =
+            getters.iter().filter(|g| g.accessor.is_none()).map(|g| g.owner.as_str()).collect();
+        if !missing.is_empty() {
+            panic!(
+                "kotlin: `.{getter}()[{index}]` indexes a slice getter of {}, \
+                 which the Android bindings leave out without one exported method \
+                 that takes an unsigned index and returns the element",
+                missing.join(", "),
+            );
+        }
+        let accessors: BTreeSet<&str> =
+            getters.iter().filter_map(|g| g.accessor.as_deref()).collect();
         match accessors.into_iter().collect::<Vec<_>>().as_slice() {
-            [Some(only)] => only,
+            [only] => only,
             _ => {
-                let owners: Vec<&str> = getters.iter().map(|g| g.owner.as_str()).collect();
+                let methods: Vec<String> = getters
+                    .iter()
+                    .filter_map(|g| Some(format!("`{}.{}`", g.owner, g.accessor.as_deref()?)))
+                    .collect();
                 panic!(
-                    "kotlin: `.{getter}()[{index}]` indexes a slice getter of {}, \
-                     which the Android bindings leave out without one exported method \
-                     that takes an unsigned index and returns the element",
-                    owners.join(", "),
+                    "kotlin: `.{getter}()[{index}]` can't become one method call, \
+                     since the types with a `{getter}` slice getter read an element through {}, \
+                     and a line rewrite can't tell which of them the receiver is",
+                    methods.join(", "),
                 )
             }
         }
