@@ -3,7 +3,6 @@ mod convert {
 
     use crate::reflect::{Build, Reflection, StrConst, inline_str_consts};
     use crate::source_text::{Nesting, arg_spans, closing, is_ident_char, split_args};
-    use crate::js_region_new_to_array;
 
     /// API facts the converter reads, derived from the source model.
     struct Facts {
@@ -1348,8 +1347,8 @@ mod convert {
             // JS fixups:
             // 1) None -> null
             rhs = rhs.replace("None", "null");
-            // 2) ScreenRegion.new(a,b,c,d) -> [a,b,c,d]
-            rhs = js_region_new_to_array(&rhs);
+            // 2) ScreenRegion.new((x, y), (w, h)) -> an array literal
+            rhs = region_new_to_array(&rhs, lang);
             // 3) std.fs.read(path) -> "/healthcheck/public/favicon.png" (served by healthcheck server)
             if let Some(i) = rhs.find("std.fs.read(") {
                 let before = &rhs[..i];
@@ -1875,8 +1874,8 @@ mod convert {
             if matches!(lang, Lang::Js | Lang::Swift | Lang::Kotlin) {
                 // None -> null
                 line = line.replace("None", "null");
-                // ScreenRegion.new(a,b,c,d) -> [a,b,c,d]
-                line = js_region_new_to_array(&line);
+                // ScreenRegion.new((x, y), (w, h)) -> an array literal
+                line = region_new_to_array(&line, lang);
                 // std.fs.read("...") -> "/healthcheck/public/favicon.png"
                 if let Some(i) = line.find("std.fs.read(") {
                     let before = &line[..i];
@@ -2271,31 +2270,31 @@ mod convert {
         }
         out
     }
-}
 
-// JS: ScreenRegion.new(a,b,c,d) -> [a,b,c,d]
-fn js_region_new_to_array(line: &str) -> String {
-    let needle = "ScreenRegion.new(";
-    if let Some(start) = line.find(needle) {
-        let chars: Vec<char> = line.chars().collect();
-        let mut depth = 0i32;
-        let mut i = start + needle.len();
-        let mut end = i;
-        while i < chars.len() {
-            let c = chars[i];
-            if c == '(' { depth += 1; }
-            if c == ')' {
-                if depth == 0 { end = i; break; }
-                depth -= 1;
-            }
-            i += 1;
-        }
-        if end > start {
-            let before = &line[..start];
-            let args = &line[start + needle.len()..end];
-            let after = &line[end + 1..];
-            return format!("{}[{}]{}", before, args.trim(), after);
-        }
+    /// `ScreenRegion.new((x, y), (w, h))` → an array literal.
+    /// JS reads `[x, y, w, h]` as the origin and size `ScreenRegion::new` takes,
+    /// while the Swift and Kotlin rewrites read `[(x, y), (w, h)]`.
+    fn region_new_to_array(line: &str, lang: Lang) -> String {
+        let needle = "ScreenRegion.new(";
+        let Some(start) = line.find(needle) else {
+            return line.to_string();
+        };
+        let open = start + needle.len() - 1;
+        let Some(close) = closing(line, open) else {
+            return line.to_string();
+        };
+        let args = line[open + 1..close].trim();
+        let items = match lang {
+            Lang::Js => split_args(args)
+                .into_iter()
+                .map(|arg| match closing(&arg, 0) {
+                    Some(end) if arg.starts_with('(') && end == arg.len() - 1 => arg[1..end].trim().to_string(),
+                    _ => arg,
+                })
+                .collect::<Vec<_>>()
+                .join(", "),
+            Lang::Py | Lang::Swift | Lang::Kotlin => args.to_string(),
+        };
+        format!("{}[{items}]{}", &line[..start], &line[close + 1..])
     }
-    line.to_string()
 }
