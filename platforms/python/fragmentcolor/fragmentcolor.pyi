@@ -1368,7 +1368,7 @@ class Mesh:
     Example:
 
     ```python
-    from fragmentcolor import Mesh, Vertex
+    from fragmentcolor import Mesh, Vertex, VertexValue
 
     mesh = Mesh()
     mesh.add_vertex([0.0, 0.5, 0.0])
@@ -1701,7 +1701,7 @@ class Vertex:
         Example:
 
         ```python
-        from fragmentcolor import Vertex
+        from fragmentcolor import Vertex, VertexValue
         v = Vertex([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0])
         ```
         """

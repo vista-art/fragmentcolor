@@ -534,7 +534,7 @@ mod reflect {
         pub fn str_consts(&self, build: Build) -> Vec<StrConst> {
             let exported: BTreeSet<&str> = self
                 .types_in(build)
-                .filter(|t| is_exported(&t.attrs, build))
+                .filter(|t| exported_type_name(&t.attrs, &t.ident, build).is_some())
                 .map(|t| t.ident.as_str())
                 .collect();
             let exposed: BTreeSet<(&str, String)> = self
@@ -915,15 +915,109 @@ mod reflect {
         out
     }
 
-    /// Whether the type carries the binding attribute that exports it in `build`.
-    fn is_exported(attrs: &[Attribute], build: Build) -> bool {
-        metas(attrs, build).iter().any(|m| match build {
+    /// The name a binding exports the type under in `build`: the
+    /// `#[pyclass(name)]`, the `js_name`, or the Rust name; `None` when that
+    /// build has no binding for it.
+    pub fn exported_type_name(attrs: &[Attribute], ident: &str, build: Build) -> Option<String> {
+        let metas = metas(attrs, build);
+        let binding = metas.iter().find(|m| match build {
             Build::Python => meta_ident(m) == "pyclass",
             Build::Wasm => meta_ident(m) == "wasm_bindgen",
             Build::Ios | Build::Android => {
                 meta_ident(m) == "derive" && meta_args(m).contains("uniffi")
             }
-        })
+        })?;
+        let key = match build {
+            Build::Python => Some("name"),
+            Build::Wasm => Some("js_name"),
+            Build::Ios | Build::Android => None,
+        };
+        Some(
+            key.and_then(|k| arg_value(&meta_args(binding), k))
+                .unwrap_or_else(|| ident.to_string()),
+        )
+    }
+
+    /// What the `#[pymodule]` in `src/platforms/python.rs` registers, in
+    /// registration order.
+    pub struct PythonModule {
+        /// Rust idents passed to `add_class`.
+        pub classes: Vec<String>,
+        /// Rust idents passed to `wrap_pyfunction!`.
+        pub functions: Vec<String>,
+        /// Names given to `m.add("...", ...)`.
+        pub exceptions: Vec<String>,
+    }
+
+    impl PythonModule {
+        pub const FILE: &'static str = "src/platforms/python.rs";
+
+        pub fn read(root: &Path) -> PythonModule {
+            let path = root.join(Self::FILE);
+            let text = fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("reflect: cannot read {}: {e}", path.display()));
+            let code: String = text
+                .lines()
+                .map(|line| line.split("//").next().unwrap_or(""))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let mut module = PythonModule {
+                classes: Vec::new(),
+                functions: Vec::new(),
+                exceptions: Vec::new(),
+            };
+            let mut rest = code.as_str();
+            while let Some(at) = rest.find("add_class::<") {
+                rest = &rest[at + "add_class::<".len()..];
+                let end = rest.find('>').unwrap_or(rest.len());
+                let path = rest[..end].trim();
+                module
+                    .classes
+                    .push(path.rsplit("::").next().unwrap_or(path).trim().to_string());
+            }
+            let mut rest = code.as_str();
+            while let Some(at) = rest.find("wrap_pyfunction!(") {
+                rest = &rest[at + "wrap_pyfunction!(".len()..];
+                let end = rest.find(',').unwrap_or(rest.len());
+                module.functions.push(rest[..end].trim().to_string());
+            }
+            let mut rest = code.as_str();
+            while let Some(at) = rest.find(".add(") {
+                rest = &rest[at + ".add(".len()..];
+                if let Some(stripped) = rest.trim_start().strip_prefix('"')
+                    && let Some(end) = stripped.find('"')
+                {
+                    module.exceptions.push(stripped[..end].to_string());
+                }
+            }
+            module
+        }
+    }
+
+    impl Reflection {
+        /// Names Python code can import from `fragmentcolor`.
+        pub fn python_exports(&self, root: &Path) -> BTreeSet<String> {
+            let module = PythonModule::read(root);
+            let classes = module.classes.iter().filter_map(|rust| {
+                let ty = self.type_named(rust, Build::Python)?;
+                exported_type_name(&ty.attrs, &ty.ident, Build::Python)
+            });
+            classes
+                .chain(module.functions.iter().cloned())
+                .chain(module.exceptions.iter().cloned())
+                .collect()
+        }
+
+        /// Names JS code can import from `fragmentcolor`: exported classes and functions.
+        pub fn wasm_exports(&self) -> BTreeSet<String> {
+            let types = self
+                .types_in(Build::Wasm)
+                .filter_map(|t| exported_type_name(&t.attrs, &t.ident, Build::Wasm));
+            let fns = self
+                .binding_fns(Build::Wasm, "wasm_bindgen")
+                .map(|f| exported_name(f, Build::Wasm));
+            types.chain(fns).collect()
+        }
     }
 
     /// The name a binding exports a function under: `js_name` on the web,

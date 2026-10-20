@@ -1,4 +1,6 @@
 mod convert {
+    use std::collections::BTreeSet;
+
     use crate::reflect::{Build, Reflection, StrConst, inline_str_consts};
     use crate::{js_objectize_sampleroptions_literal, js_region_new_to_array, simplify_js_size_from};
 
@@ -6,6 +8,10 @@ mod convert {
     struct Facts {
         /// String constants the JS bindings don't expose.
         js_consts: Vec<StrConst>,
+        /// Names an example can import from `fragmentcolor` in JS.
+        js_exports: BTreeSet<String>,
+        /// Names an example can import from `fragmentcolor` in Python.
+        py_exports: BTreeSet<String>,
     }
 
     static FACTS: std::sync::OnceLock<Facts> = std::sync::OnceLock::new();
@@ -14,6 +20,8 @@ mod convert {
     pub fn install(model: &Reflection) {
         let _ = FACTS.set(Facts {
             js_consts: model.str_consts(Build::Wasm),
+            js_exports: model.wasm_exports(),
+            py_exports: model.python_exports(&crate::meta::workspace_root()),
         });
     }
 
@@ -1822,23 +1830,19 @@ mod convert {
 
             // Imports from fragmentcolor
             if let Some(list) = parse_use_fragmentcolor(t) {
-                // Drop names that aren't exposed as constructible types in the
-                // foreign bindings (Target/WindowTarget/TextureTarget — the
-                // first is a Rust trait, the latter two are returned by
-                // factory methods, never constructed; Size is auto-converted
-                // from arrays/tuples; VertexValue is internal).
-                // SamplerOptions IS exposed (uniffi::Record / wasm_bindgen /
-                // pyo3::pyclass) so it stays in the import list.
-                let list: Vec<String> = list
-                    .into_iter()
-                    .filter(|name| {
-                        name != "Target"
-                            && name != "WindowTarget"
-                            && name != "TextureTarget"
-                            && name != "Size"
-                            && name != "VertexValue"
-                    })
-                    .collect();
+                // Keep the names the binding exports. Swift and Kotlin swap
+                // the line for a module import in their finalize step.
+                let list: Vec<String> = match lang {
+                    Lang::Js => list
+                        .into_iter()
+                        .filter(|name| facts().js_exports.contains(name))
+                        .collect(),
+                    Lang::Py => list
+                        .into_iter()
+                        .filter(|name| facts().py_exports.contains(name))
+                        .collect(),
+                    Lang::Swift | Lang::Kotlin => list,
+                };
                 match lang {
                     Lang::Js | Lang::Swift | Lang::Kotlin => out.push(format!(
                         "import {{ {} }} from \"fragmentcolor\";",
@@ -1852,44 +1856,6 @@ mod convert {
                 }
                 idx += 1;
                 continue;
-            }
-
-            // Sanitize any raw Python import lines
-            if let Lang::Py = lang {
-                if t.starts_with("from fragmentcolor import ") {
-                    let raw = t.trim_start_matches("from fragmentcolor import ").trim();
-                    let mut names: Vec<String> =
-                        raw.split(',').map(|s| s.trim().to_string()).collect();
-                    names.retain(|name| {
-                        name != "Target"
-                            && name != "WindowTarget"
-                            && name != "TextureTarget"
-                            && name != "Size"
-                    });
-                    if !names.is_empty() {
-                        out.push(format!("from fragmentcolor import {}", names.join(", ")));
-                    }
-                    idx += 1;
-                    continue;
-                }
-                if t.starts_with("from fragmentcolor import {")
-                    && let (Some(lb), Some(rb)) = (t.find('{'), t.find('}'))
-                {
-                    let inside = &t[lb + 1..rb];
-                    let mut names: Vec<String> =
-                        inside.split(',').map(|s| s.trim().to_string()).collect();
-                    names.retain(|name| {
-                        name != "Target"
-                            && name != "WindowTarget"
-                            && name != "TextureTarget"
-                            && name != "Size"
-                    });
-                    if !names.is_empty() {
-                        out.push(format!("from fragmentcolor import {}", names.join(", ")));
-                    }
-                    idx += 1;
-                    continue;
-                }
             }
 
             // Map assert_eq!

@@ -34,10 +34,11 @@ mod python_stubs {
     use quote::ToTokens;
     use syn::{Attribute, FnArg, GenericArgument, Meta, Pat, PathArguments, ReturnType, Type};
 
-    use super::reflect::{self, Build, Reflection, TypeKind, arg_value, split_top_level};
+    use super::reflect::{
+        self, Build, PythonModule, Reflection, TypeKind, arg_value, split_top_level,
+    };
 
     const STUB_PATH: &str = "platforms/python/fragmentcolor/fragmentcolor.pyi";
-    const MODULE_INIT: &str = "src/platforms/python.rs";
     const EXAMPLES_DIR: &str = "platforms/python/examples";
 
     const PY_KEYWORDS: &[&str] = &[
@@ -96,12 +97,6 @@ mod python_stubs {
         functions: BTreeMap<String, Method>,
     }
 
-    struct Module {
-        classes: Vec<String>,
-        functions: Vec<String>,
-        exceptions: Vec<String>,
-    }
-
     /// Context shared by the renderers.
     struct Ctx<'a> {
         root: &'a Path,
@@ -126,7 +121,7 @@ mod python_stubs {
         println!("cargo::rerun-if-changed={}", EXAMPLES_DIR);
 
         let bindings = scan(model);
-        let module = read_module(root);
+        let module = PythonModule::read(root);
 
         // Registered classes keep their Python name. A class that is only
         // returned from a method can't be imported, so its stub name is private.
@@ -134,7 +129,8 @@ mod python_stubs {
         for rust in &module.classes {
             let Some(class) = bindings.classes.get(rust) else {
                 panic!(
-                    "python_stubs: `{rust}` is registered in {MODULE_INIT} but has no #[pyclass]"
+                    "python_stubs: `{rust}` is registered in {} but has no #[pyclass]",
+                    PythonModule::FILE
                 );
             };
             stub_names.insert(rust.clone(), class.py_name.clone());
@@ -185,7 +181,8 @@ mod python_stubs {
         for rust in &module.functions {
             let Some(method) = bindings.functions.get(rust) else {
                 panic!(
-                    "python_stubs: `{rust}` is registered in {MODULE_INIT} but has no #[pyfunction]"
+                    "python_stubs: `{rust}` is registered in {} but has no #[pyfunction]",
+                    PythonModule::FILE
                 );
             };
             functions.push_str(&render_method(root, "", method, &ctx, 0));
@@ -287,7 +284,8 @@ mod python_stubs {
                 continue;
             };
             let mut class = Class {
-                py_name: arg_value(&args, "name").unwrap_or_else(|| ty.ident.clone()),
+                py_name: reflect::exported_type_name(&ty.attrs, &ty.ident, Build::Python)
+                    .unwrap_or_else(|| ty.ident.clone()),
                 subclass: split_top_level(&args).iter().any(|a| a == "subclass"),
                 lsp_doc: reflect::lsp_doc(&ty.attrs),
                 ..Default::default()
@@ -429,50 +427,6 @@ mod python_stubs {
             ret,
             lsp_doc: reflect::lsp_doc(attrs),
         }
-    }
-
-    /// Reads `add_class::<T>`, `wrap_pyfunction!(f, ...)` and `m.add("Error", ...)`
-    /// from the `#[pymodule]` initializer, in registration order.
-    fn read_module(root: &Path) -> Module {
-        let path = root.join(MODULE_INIT);
-        let text = fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("python_stubs: cannot read {}: {e}", path.display()));
-        let code: String = text
-            .lines()
-            .map(|line| line.split("//").next().unwrap_or(""))
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let mut module = Module {
-            classes: Vec::new(),
-            functions: Vec::new(),
-            exceptions: Vec::new(),
-        };
-        let mut rest = code.as_str();
-        while let Some(at) = rest.find("add_class::<") {
-            rest = &rest[at + "add_class::<".len()..];
-            let end = rest.find('>').unwrap_or(rest.len());
-            let path = rest[..end].trim();
-            module
-                .classes
-                .push(path.rsplit("::").next().unwrap_or(path).trim().to_string());
-        }
-        let mut rest = code.as_str();
-        while let Some(at) = rest.find("wrap_pyfunction!(") {
-            rest = &rest[at + "wrap_pyfunction!(".len()..];
-            let end = rest.find(',').unwrap_or(rest.len());
-            module.functions.push(rest[..end].trim().to_string());
-        }
-        let mut rest = code.as_str();
-        while let Some(at) = rest.find(".add(") {
-            rest = &rest[at + ".add(".len()..];
-            if let Some(stripped) = rest.trim_start().strip_prefix('"')
-                && let Some(end) = stripped.find('"')
-            {
-                module.exceptions.push(stripped[..end].to_string());
-            }
-        }
-        module
     }
 
     // ---------------------------------------------------------------------
