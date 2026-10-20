@@ -17,7 +17,7 @@ mod kotlin {
     //!   - Import becomes `import org.fragmentcolor.*`.
     //!   - Trailing semicolons are optional and we strip them.
     //!
-    //! Literal suffixes (`0.5f`, `1u`) follow the parameter types
+    //! Literal suffixes (`0.5f`, `1u`) and `arrayOf` → `listOf` follow the parameter types
     //! of the uniffi exports for Android and of the hand-written `*Extensions.kt` files.
     //!
     //! Enum entries follow the flat uniffi enums.
@@ -44,8 +44,13 @@ mod kotlin {
         Unsigned(String),
         /// Any other number: `Double`, `Int`, `Long`, `Short` or `Byte`.
         Number,
-        /// Any other type.
-        Other,
+        List(Box<KType>),
+        /// `Array<T>`, which `arrayOf(...)` already builds.
+        Array,
+        /// `FloatArray`, `ByteArray` and the other primitive arrays.
+        PrimitiveArray,
+        /// Any other type, by name.
+        Named(String),
     }
 
     /// A function Kotlin code can call, from uniffi or an extension file.
@@ -75,6 +80,20 @@ mod kotlin {
         /// An integer needs the `u` suffix. Holds the Kotlin type
         /// a value converts to when an array spreads into separate arguments.
         unsigned: Option<String>,
+        /// How `arrayOf(...)` becomes a `List` here.
+        list: Option<Elems>,
+        /// The type an `arrayOf(numbers)` here builds through its constructor.
+        wrap: Option<String>,
+    }
+
+    /// How a list's elements change when `arrayOf` becomes `listOf`.
+    #[derive(PartialEq, Eq, PartialOrd, Ord)]
+    enum Elems {
+        AsIs,
+        Float,
+        Unsigned,
+        /// Each `arrayOf(numbers)` element builds this type.
+        Wrap(String),
     }
 
     /// Slots by needle, then by argument count.
@@ -165,7 +184,7 @@ mod kotlin {
             _ => None,
         };
         let Some(segment) = segment else {
-            return KType::Other;
+            return KType::Named(String::new());
         };
         let inner = match &segment.arguments {
             syn::PathArguments::AngleBracketed(args) => args.args.iter().find_map(|arg| match arg {
@@ -183,18 +202,26 @@ mod kotlin {
             ("u64", _) => KType::Unsigned("ULong".into()),
             ("f64" | "i8" | "i16" | "i32" | "i64", _) => KType::Number,
             ("Option" | "Arc" | "Box", Some(t)) => uniffi_type(t),
-            _ => KType::Other,
+            // uniffi passes bytes as a `ByteArray`.
+            ("Vec", Some(t)) if uniffi_type(t) == KType::Unsigned("UByte".into()) => KType::PrimitiveArray,
+            ("Vec", Some(t)) => KType::List(Box::new(uniffi_type(t))),
+            _ => KType::Named(ident),
         }
     }
 
-    /// The type a Kotlin parameter declaration such as `Float` names.
+    /// The type a Kotlin parameter declaration such as `List<Float>` names.
     fn kotlin_type(text: &str) -> KType {
         let text = text.trim().trim_end_matches('?');
+        if let Some(element) = text.strip_prefix("List<").and_then(|t| t.strip_suffix('>')) {
+            return KType::List(Box::new(kotlin_type(element)));
+        }
         match text {
             "Float" => KType::Float,
             "UInt" | "ULong" | "UShort" | "UByte" => KType::Unsigned(text.to_string()),
             "Double" | "Int" | "Long" | "Short" | "Byte" => KType::Number,
-            _ => KType::Other,
+            _ if text.starts_with("Array<") => KType::Array,
+            _ if text.ends_with("Array") => KType::PrimitiveArray,
+            _ => KType::Named(text.to_string()),
         }
     }
 
@@ -251,6 +278,7 @@ mod kotlin {
     /// Slots for every needle and argument count some overload takes.
     /// Positions where receivers need opposite rewrites land in `conflicts` and get none.
     fn plan_calls(callables: &[Callable], conflicts: &mut Vec<Conflict>) -> CallPlans {
+        let wraps = float_list_types(callables);
         let mut by_needle: BTreeMap<&str, Vec<&Callable>> = BTreeMap::new();
         for c in callables {
             by_needle.entry(&c.needle).or_default().push(c);
@@ -266,12 +294,24 @@ mod kotlin {
                     overloads.iter().copied().filter(|c| c.takes(argc)).collect();
                 let slots = (0..argc)
                     .map(|i| Receivers::new(needle, argc, i, &fitting))
-                    .map(|receivers| plan_slot(&receivers, conflicts))
+                    .map(|receivers| plan_slot(&receivers, &wraps, conflicts))
                     .collect();
                 plans.entry(needle.to_string()).or_default().insert(argc, slots);
             }
         }
         plans
+    }
+
+    /// Types whose generated constructor takes one float list, such as `Vertex`.
+    fn float_list_types(callables: &[Callable]) -> BTreeSet<&str> {
+        callables
+            .iter()
+            .filter_map(|c| {
+                let owner = c.owner.as_deref()?;
+                let float_list = matches!(c.params.as_slice(), [KType::List(e)] if **e == KType::Float);
+                (c.generated && float_list && c.needle == format!("{owner}(")).then_some(owner)
+            })
+            .collect()
     }
 
     /// The overloads of a call that take `argc` arguments, seen from the argument at `position`.
@@ -372,11 +412,25 @@ mod kotlin {
         matches!(t, KType::Float | KType::Number)
     }
 
+    fn is_list(t: &KType) -> bool {
+        matches!(t, KType::List(_))
+    }
+
+    fn is_array(t: &KType) -> bool {
+        matches!(t, KType::Array | KType::PrimitiveArray)
+    }
+
     /// What the argument at one position of a call needs.
-    fn plan_slot(receivers: &Receivers, conflicts: &mut Vec<Conflict>) -> Slot {
+    fn plan_slot(
+        receivers: &Receivers,
+        wraps: &BTreeSet<&str>,
+        conflicts: &mut Vec<Conflict>,
+    ) -> Slot {
         Slot {
             float: float_slot(receivers, conflicts),
             unsigned: unsigned_slot(receivers, conflicts),
+            list: list_slot(receivers, wraps, conflicts),
+            wrap: wrap_slot(receivers, wraps),
         }
     }
 
@@ -412,6 +466,65 @@ mod kotlin {
             return None;
         }
         Some(unsigned)
+    }
+
+    /// How an `arrayOf(...)` here becomes a `List`.
+    fn list_slot(
+        receivers: &Receivers,
+        wraps: &BTreeSet<&str>,
+        conflicts: &mut Vec<Conflict>,
+    ) -> Option<Elems> {
+        let wants = receivers.owners(|ts| has(ts, is_list) && !ts.contains(&&KType::Array));
+        let rejects = receivers.owners(|ts| has(ts, is_array) && !has(ts, is_list));
+        let changes = |arg: &str| array_inner(arg).is_some();
+        if !wants.is_empty() && !rejects.is_empty() {
+            conflicts.push(receivers.disagreement("a List", &wants, &rejects, changes));
+            return None;
+        }
+        let elems: BTreeSet<Elems> =
+            receivers.types().filter_map(|t| list_elems(t, wraps)).collect();
+        if elems.len() > 1 {
+            let n = receivers.position + 1;
+            let reason = format!("it takes lists of different element types at argument {n}");
+            conflicts.push(receivers.conflict(reason, changes));
+            return None;
+        }
+        if wants.is_empty() || receivers.any(|t| *t == KType::Array) {
+            return None;
+        }
+        elems.into_iter().next()
+    }
+
+    /// How the elements of a `List` parameter type change.
+    fn list_elems(ty: &KType, wraps: &BTreeSet<&str>) -> Option<Elems> {
+        let KType::List(element) = ty else {
+            return None;
+        };
+        Some(match &**element {
+            KType::Float => Elems::Float,
+            KType::Unsigned(_) => Elems::Unsigned,
+            KType::Named(name) if wraps.contains(name.as_str()) => Elems::Wrap(name.clone()),
+            _ => Elems::AsIs,
+        })
+    }
+
+    /// The one type, such as `Vertex`, an `arrayOf(numbers)` here builds
+    /// through its constructor, when no receiver takes a list or an array.
+    fn wrap_slot(receivers: &Receivers, wraps: &BTreeSet<&str>) -> Option<String> {
+        if receivers.any(is_list) || receivers.any(is_array) {
+            return None;
+        }
+        let built: BTreeSet<&str> = receivers
+            .types()
+            .filter_map(|t| match t {
+                KType::Named(name) if wraps.contains(name.as_str()) => Some(name.as_str()),
+                _ => None,
+            })
+            .collect();
+        match built.into_iter().collect::<Vec<_>>().as_slice() {
+            [only] => Some(only.to_string()),
+            _ => None,
+        }
     }
 
     /// Finalize the Kotlin output emitted by `convert(_, Lang::Kotlin, _)`.
@@ -609,25 +722,12 @@ mod kotlin {
         // Before the unsigned pass, which suffixes the index it moves into the call.
         out = rewrite_index_accessors(&out);
         out = rewrite_unsigned_args(&out);
-        out = rewrite_render_array_to_list(&out);
-        out = rewrite_shader_fetch_array_to_list(&out);
-        out = rewrite_removemeshes_array_to_list(&out);
-        out = rewrite_addinstances_array_to_list(&out);
-        out = rewrite_addvertices_array_to_list(&out);
-        out = rewrite_fromvertices_array_to_list(&out);
-        out = rewrite_addvertex_array_to_vertex(&out);
-        out = rewrite_vertex_constructor_array(&out);
-        out = rewrite_setclearcolor_array(&out);
+        // Before the generic `arrayOf` → `listOf<Float>` fallback, which
+        // would turn integer indices into `0.0f`.
+        out = rewrite_list_args(&out);
         out = rewrite_shader_set_array(&out);
         out = rewrite_readtexture_to_getimage(&out);
         out = rewrite_flat_enum_variants(&out);
-        // `mesh.setIndices(arrayOf(0, 1, 2))` must become
-        // `mesh.setIndices(listOf(0u, 1u, 2u))` — indices are UInt on the
-        // uniffi binding. Run BEFORE rewrite_arrayof_float_to_listof so we
-        // grab the all-numeric arrayOf first; otherwise the float pass turns
-        // the integer indices into `0.0f, 1.0f, 2.0f` and the type mismatch
-        // surfaces in kotlinc.
-        out = rewrite_setindices_array_to_uint_list(&out);
         // Flatten the 4×4 row form into a single 16-float list for
         // `Model.setTransform`. The source writes
         // `[[2,0,0,0], [0,2,0,0], [0,0,2,0], [3,0,0,1]]`; after the
@@ -642,7 +742,6 @@ mod kotlin {
         out = rewrite_instance_new(&out);
         out = rewrite_arrayof_byte_literals(&out);
         out = rewrite_shader_new_to_compose(&out);
-        out = rewrite_quad_arrayof_to_listof(&out);
         out = rewrite_texture_region_name(&out);
         out = rewrite_write_region_array_arg(&out);
         out = rewrite_unregister_texture_id(&out);
@@ -759,6 +858,51 @@ mod kotlin {
     /// The slots of a call to `needle` with `argc` arguments.
     fn slots_of(needle: &str, argc: usize) -> Option<&'static [Slot]> {
         facts().calls.get(needle)?.get(&argc).map(Vec::as_slice)
+    }
+
+    /// `arrayOf(...)` → `listOf(...)` where the parameter is a `List`,
+    /// with the suffix or constructor its elements need.
+    ///
+    /// Where the parameter is a type built from a float list,
+    /// such as `Vertex`, `arrayOf(numbers)` becomes `Vertex(listOf(...))`.
+    fn rewrite_list_args(line: &str) -> String {
+        map_calls(line, &|needle, args| {
+            let slots = slots_of(needle, args.len())?;
+            let new: Vec<String> = args
+                .iter()
+                .zip(slots)
+                .map(|(arg, slot)| {
+                    let rewritten = match (&slot.list, &slot.wrap) {
+                        (Some(elems), _) => array_to_list(arg, elems),
+                        (None, Some(ty)) => scalar_items(arg).map(|items| float_list_of(ty, &items)),
+                        (None, None) => None,
+                    };
+                    rewritten.unwrap_or_else(|| arg.clone())
+                })
+                .collect();
+            (new != args).then_some(new)
+        })
+    }
+
+    /// `arg` as a `listOf(...)`, or `None` when it isn't one `arrayOf(...)`.
+    fn array_to_list(arg: &str, elems: &Elems) -> Option<String> {
+        let inner = array_inner(arg)?;
+        let items: Vec<String> = match elems {
+            Elems::AsIs => return Some(format!("listOf({inner})")),
+            Elems::Float => scalar_items(arg)?.iter().map(|i| floatify_if_numeric(i)).collect(),
+            Elems::Unsigned => scalar_items(arg)?.iter().map(|i| unsigned_literal(i)).collect(),
+            Elems::Wrap(ty) => split_args(inner)
+                .iter()
+                .map(|item| scalar_items(item).map_or_else(|| item.clone(), |nums| float_list_of(ty, &nums)))
+                .collect(),
+        };
+        Some(format!("listOf({})", items.join(", ")))
+    }
+
+    /// `T(listOf(...))` with every number a `Float`.
+    fn float_list_of(ty: &str, items: &[String]) -> String {
+        let floats: Vec<String> = items.iter().map(|i| floatify_if_numeric(i)).collect();
+        format!("{ty}(listOf({}))", floats.join(", "))
     }
 
     /// The text inside `arg` when it is exactly one `arrayOf(...)`.
@@ -1336,246 +1480,6 @@ mod kotlin {
         result
     }
 
-    // `renderer.render(arrayOf(pass, pass2), target)` →
-    // `renderer.render(listOf(pass, pass2), target)`
-    fn rewrite_render_array_to_list(line: &str) -> String {
-        // Replace `render(arrayOf(` → `render(listOf(` only when the arg is a collection of Pass objects
-        // We detect this by looking for `arrayOf(` immediately after `render(`
-        let needle = ".render(arrayOf(";
-        if line.contains(needle) {
-            return line.replace(needle, ".render(listOf(");
-        }
-        line.to_string()
-    }
-
-    // `Shader.fetch(arrayOf("a", "b"))` → `Shader.fetch(listOf("a", "b"))`
-    //
-    // The uniffi binding for `Shader::fetch(impl Into<ShaderInput>)` exposes
-    // a `fetch(parts: List<String>)` overload on Kotlin. The default
-    // bracket→arrayOf rewrite produces `Array<String>`, which doesn't match
-    // `List<String>` in Kotlin's type system; this swap aligns the call to
-    // the uniffi overload. (The single-string `fetch(input: String)` overload
-    // is unaffected — only array-literal arguments hit this path.)
-    //
-    // Same fix applies to `Shader.compose(parts)` for parity.
-    fn rewrite_shader_fetch_array_to_list(line: &str) -> String {
-        let line = if line.contains("Shader.fetch(arrayOf(") {
-            line.replace("Shader.fetch(arrayOf(", "Shader.fetch(listOf(")
-        } else {
-            line.to_string()
-        };
-        if line.contains("Shader.compose(arrayOf(") {
-            line.replace("Shader.compose(arrayOf(", "Shader.compose(listOf(")
-        } else {
-            line
-        }
-    }
-
-    // `shader.removeMeshes(arrayOf(m1, m2))` → `shader.removeMeshes(listOf(m1, m2))`
-    fn rewrite_removemeshes_array_to_list(line: &str) -> String {
-        let needle = "removeMeshes(arrayOf(";
-        if line.contains(needle) {
-            return line.replace(needle, "removeMeshes(listOf(");
-        }
-        line.to_string()
-    }
-
-    // `m.addInstances([...])` → `m.addInstances(listOf(...))`
-    // The `[...]` is converted to `arrayOf(...)` by rewrite_bracket_array_to_arrayof.
-    fn rewrite_addinstances_array_to_list(line: &str) -> String {
-        let needle = "addInstances(arrayOf(";
-        if line.contains(needle) {
-            return line.replace(needle, "addInstances(listOf(");
-        }
-        line.to_string()
-    }
-
-    // `m.addVertices(listOf(arrayOf(x, y), ...))` → `m.addVertices(listOf(Vertex(listOf(xf, yf)), ...))`
-    // Also converts `addVertices(arrayOf(` → `addVertices(listOf(` first.
-    fn rewrite_addvertices_array_to_list(line: &str) -> String {
-        let line = if line.contains("addVertices(arrayOf(") {
-            line.replace("addVertices(arrayOf(", "addVertices(listOf(")
-        } else {
-            line.to_string()
-        };
-        // Now convert inner arrayOf elements to Vertex(listOf(...))
-        convert_inner_array_elements_to_vertex(&line, "addVertices(listOf(")
-    }
-
-    // `Mesh.fromVertices(listOf(arrayOf(x, y), ...))` → `Mesh.fromVertices(listOf(Vertex(listOf(xf, yf)), ...))`
-    fn rewrite_fromvertices_array_to_list(line: &str) -> String {
-        let line = if line.contains("fromVertices(arrayOf(") {
-            line.replace("fromVertices(arrayOf(", "fromVertices(listOf(")
-        } else {
-            line.to_string()
-        };
-        convert_inner_array_elements_to_vertex(&line, "fromVertices(listOf(")
-    }
-
-    // Convert `arrayOf(x, y, z)` elements inside a `listOf(...)` call (at fn_prefix) to
-    // `Vertex(listOf(xf, yf, zf))`.
-    fn convert_inner_array_elements_to_vertex(line: &str, fn_prefix: &str) -> String {
-        let Some(start) = line.find(fn_prefix) else { return line.to_string(); };
-        let list_start = start + fn_prefix.len();
-        let chars: Vec<char> = line.chars().collect();
-
-        // Find the matching close paren of listOf(
-        let mut depth = 0i32;
-        let mut list_end = None;
-        let mut j = list_start;
-        while j < chars.len() {
-            match chars[j] {
-                '(' => depth += 1,
-                ')' => {
-                    if depth == 0 { list_end = Some(j); break; }
-                    depth -= 1;
-                }
-                _ => {}
-            }
-            j += 1;
-        }
-        let Some(list_end) = list_end else { return line.to_string(); };
-
-        let list_inner: String = chars[list_start..list_end].iter().collect();
-        // Split into elements
-        let elements = split_args(&list_inner);
-
-        // Convert each element that is `arrayOf(...)` to `Vertex(listOf(...))`
-        let converted: Vec<String> = elements.iter().map(|el| {
-            let el = el.trim();
-            if el.starts_with("arrayOf(") && el.ends_with(')') {
-                let floats_str = &el["arrayOf(".len()..el.len() - 1];
-                let list_floats = convert_to_float_list(floats_str);
-                format!("Vertex(listOf({}))", list_floats)
-            } else {
-                el.to_string()
-            }
-        }).collect();
-
-        let before = &line[..start + fn_prefix.len() - 1]; // up to but not incl '('
-        let after: String = chars[list_end + 1..].iter().collect();
-        format!("{}({}){}", before, converted.join(", "), after)
-    }
-
-    // `mesh.addVertex(arrayOf(0.0, 0.0, 0.0))` → `mesh.addVertex(Vertex(listOf(0.0f, 0.0f, 0.0f)))`
-    // `mesh.addVertex(Vertex.new(arrayOf(...)))` → same
-    fn rewrite_addvertex_array_to_vertex(line: &str) -> String {
-        let needle = "addVertex(";
-        let Some(start) = line.find(needle) else { return line.to_string(); };
-        let call_start = start + needle.len();
-        let chars: Vec<char> = line.chars().collect();
-
-        let mut depth = 0i32;
-        let mut end = call_start;
-        let mut j = call_start;
-        while j < chars.len() {
-            match chars[j] {
-                '(' => depth += 1,
-                ')' => {
-                    if depth == 0 { end = j; break; }
-                    depth -= 1;
-                }
-                _ => {}
-            }
-            j += 1;
-        }
-
-        let inner: String = chars[call_start..end].iter().collect();
-        let inner_trim = inner.trim();
-
-        // Already a Vertex? Skip
-        if inner_trim.starts_with("Vertex(") || inner_trim.starts_with("Vertex.new(") {
-            // strip `Vertex.new(arrayOf(...))` → `Vertex(listOf(...))`
-            if inner_trim.starts_with("Vertex.new(arrayOf(") && inner_trim.ends_with("))") {
-                let floats_str = &inner_trim["Vertex.new(arrayOf(".len()..inner_trim.len() - 2];
-                let list_floats = convert_to_float_list(floats_str);
-                let before = &line[..start + needle.len() - 1];
-                let after = &line[end + 1..];
-                return format!("{}(Vertex(listOf({}))){}",  before, list_floats, after);
-            }
-            // Already `Vertex(...)` — pass through
-            return line.to_string();
-        }
-
-        // `arrayOf(0.0, 0.0)` → `Vertex(listOf(0.0f, 0.0f))`
-        if inner_trim.starts_with("arrayOf(") && inner_trim.ends_with(')') {
-            let floats_str = &inner_trim["arrayOf(".len()..inner_trim.len() - 1];
-            let list_floats = convert_to_float_list(floats_str);
-            let before = &line[..start + needle.len() - 1];
-            let after = &line[end + 1..];
-            // before = "mesh.addVertex" (no trailing `(`), format adds `(Vertex(listOf(X)))`
-            // Pattern: {before}(Vertex(listOf({floats}))){after}  — 3 closing parens
-            return format!("{}(Vertex(listOf({}))){}",  before, list_floats, after);
-        }
-
-        line.to_string()
-    }
-
-    // `Vertex(arrayOf(...))` → `Vertex(listOf(...f, ...))`
-    fn rewrite_vertex_constructor_array(line: &str) -> String {
-        let needle = "Vertex(arrayOf(";
-        if let Some(start) = line.find(needle) {
-            let inner_start = start + needle.len();
-            let chars: Vec<char> = line.chars().collect();
-            // Find the matching `)` for the arrayOf
-            let mut depth = 0i32;
-            let mut array_end = inner_start;
-            let mut j = inner_start;
-            while j < chars.len() {
-                match chars[j] {
-                    '(' => depth += 1,
-                    ')' => {
-                        if depth == 0 { array_end = j; break; }
-                        depth -= 1;
-                    }
-                    _ => {}
-                }
-                j += 1;
-            }
-            let floats_str: String = chars[inner_start..array_end].iter().collect();
-            // Check that after `arrayOf(...)` there's a `)` closing `Vertex(`
-            let after_array: String = chars[array_end + 1..].iter().collect();
-            if let Some(rest) = after_array.strip_prefix(')') {
-                let before = &line[..start];
-                let list_floats = convert_to_float_list(&floats_str);
-                return format!("{}Vertex(listOf({})){}",  before, list_floats, rest);
-            }
-        }
-        line.to_string()
-    }
-
-    // `pass.setClearColor(arrayOf(r, g, b, a))` → `pass.setClearColor(listOf(rf, gf, bf, af))`
-    fn rewrite_setclearcolor_array(line: &str) -> String {
-        let needle = "setClearColor(arrayOf(";
-        if let Some(start) = line.find(needle) {
-            let inner_start = start + needle.len();
-            let chars: Vec<char> = line.chars().collect();
-            let mut depth = 0i32;
-            let mut array_end = inner_start;
-            let mut j = inner_start;
-            while j < chars.len() {
-                match chars[j] {
-                    '(' => depth += 1,
-                    ')' => {
-                        if depth == 0 { array_end = j; break; }
-                        depth -= 1;
-                    }
-                    _ => {}
-                }
-                j += 1;
-            }
-            let floats_str: String = chars[inner_start..array_end].iter().collect();
-            // After the arrayOf(...) there's a `)` closing setClearColor
-            let after_array: String = chars[array_end + 1..].iter().collect();
-            if let Some(rest) = after_array.strip_prefix(')') {
-                let before = &line[..start];
-                let list_floats = convert_to_float_list(&floats_str);
-                return format!("{}setClearColor(listOf({})){}",  before, list_floats, rest);
-            }
-        }
-        line.to_string()
-    }
-
     // `shader.set("key", arrayOf(x, y))` → `shader.set("key", floatArrayOf(xf, yf))`
     // ShaderExtensions.kt has `fun Shader.set(key: String, value: FloatArray)`.
     fn rewrite_shader_set_array(line: &str) -> String {
@@ -1617,32 +1521,6 @@ mod kotlin {
         line.to_string()
     }
 
-    /// Find the slice between the opening `(` and its matching `)`, starting from
-    /// `open_index` (the index of `(` in `chars`). Returns `(inner_text, close_index)`.
-    fn find_paren_pair(chars: &[char], open_index: usize) -> Option<(String, usize)> {
-        if open_index >= chars.len() || chars[open_index] != '(' {
-            return None;
-        }
-        let inner_start = open_index + 1;
-        let mut depth = 0i32;
-        let mut j = inner_start;
-        while j < chars.len() {
-            match chars[j] {
-                '(' => depth += 1,
-                ')' => {
-                    if depth == 0 {
-                        let inner: String = chars[inner_start..j].iter().collect();
-                        return Some((inner, j));
-                    }
-                    depth -= 1;
-                }
-                _ => {}
-            }
-            j += 1;
-        }
-        None
-    }
-
     /// `.setTransform(arrayOf(arrayOf(...), arrayOf(...), arrayOf(...), arrayOf(...)))`
     /// becomes `.setTransform(listOf(<16 floats>))`. The 4×4 row form reads
     /// well in source but the binding takes the column-major mat4 as a flat
@@ -1653,19 +1531,18 @@ mod kotlin {
         let Some(start) = line.find(needle) else {
             return line.to_string();
         };
-        let chars: Vec<char> = line.chars().collect();
         // Open paren of inner `arrayOf(` (the outer-list constructor).
         let inner_open = start + needle.len() - 1;
-        let Some((inner, inner_close)) = find_paren_pair(&chars, inner_open) else {
+        let Some(inner_close) = closing(line, inner_open) else {
             return line.to_string();
         };
         // Outer setTransform paren must close right after the inner arrayOf.
-        if inner_close + 1 >= chars.len() || chars[inner_close + 1] != ')' {
+        if !line[inner_close + 1..].starts_with(')') {
             return line.to_string();
         }
         // Each row is its own `arrayOf(a, b, c, d)`. Walk the comma-separated
         // top-level args, strip the `arrayOf(...)` shell, and collect floats.
-        let parts = split_args(&inner);
+        let parts = split_args(&line[inner_open + 1..inner_close]);
         let mut flat: Vec<String> = Vec::with_capacity(16);
         for raw in parts {
             let s = raw.trim();
@@ -1701,43 +1578,6 @@ mod kotlin {
             flat.join(", "),
             suffix
         )
-    }
-
-    /// `mesh.setIndices(arrayOf(0, 1, 2))` → `mesh.setIndices(listOf(0u, 1u, 2u))`.
-    /// The uniffi binding takes `List<UInt>`. The bracket-to-arrayOf pass already
-    /// converted `[0, 1, 2]`; we catch the `setIndices(arrayOf(...))` shape and
-    /// rewrite it before the generic `arrayOf` → `listOf<Float>` pass clobbers it.
-    fn rewrite_setindices_array_to_uint_list(line: &str) -> String {
-        let needle = ".setIndices(arrayOf(";
-        let Some(start) = line.find(needle) else {
-            return line.to_string();
-        };
-        let chars: Vec<char> = line.chars().collect();
-        let inner_open = start + needle.len() - 1; // index of inner `(`
-        let Some((inner, inner_close)) = find_paren_pair(&chars, inner_open) else {
-            return line.to_string();
-        };
-        // Outer paren of `setIndices(` — must close immediately after `arrayOf(...)`.
-        if inner_close + 1 >= chars.len() || chars[inner_close + 1] != ')' {
-            return line.to_string();
-        }
-        let parts: Vec<String> = inner
-            .split(',')
-            .map(|p| {
-                let t = p.trim();
-                if t.parse::<u64>().is_ok() {
-                    format!("{}u", t)
-                } else if let Ok(f) = t.parse::<f64>() {
-                    // Float literal in source — coerce back to integer index.
-                    format!("{}u", f as u64)
-                } else {
-                    t.to_string()
-                }
-            })
-            .collect();
-        let prefix = &line[..start];
-        let suffix = &line[inner_close + 2..]; // skip ')' of arrayOf and ')' of setIndices
-        format!("{}.setIndices(listOf({})){}", prefix, parts.join(", "), suffix)
     }
 
     /// Apply float-suffix promotion to every numeric arg of every `<prefix>(...)` call in `line`.
@@ -2507,61 +2347,6 @@ mod kotlin {
         let before = &line[..start];
         let after: String = chars[inner_end + 1..].iter().collect();
         format!("{}byteArrayOf({}){}", before, byte_elements.join(", "), after)
-    }
-
-    // `Quad(arrayOf(x1, y1), arrayOf(x2, y2))` → `Quad(listOf(x1f, y1f), listOf(x2f, y2f))`
-    // The Kotlin Quad constructor takes (min: List<Float>, max: List<Float>).
-    fn rewrite_quad_arrayof_to_listof(line: &str) -> String {
-        let needle = "Quad(arrayOf(";
-        if !line.contains(needle) { return line.to_string(); }
-        // Find `Quad(` start
-        let Some(start) = line.find("Quad(") else { return line.to_string(); };
-        let call_start = start + "Quad(".len();
-        let chars: Vec<char> = line.chars().collect();
-
-        // Find the closing paren for Quad(
-        let mut depth = 0i32;
-        let mut call_end = None;
-        let mut j = call_start;
-        while j < chars.len() {
-            match chars[j] {
-                '(' => depth += 1,
-                ')' => {
-                    if depth == 0 { call_end = Some(j); break; }
-                    depth -= 1;
-                }
-                _ => {}
-            }
-            j += 1;
-        }
-        let Some(call_end) = call_end else { return line.to_string(); };
-        let inner: String = chars[call_start..call_end].iter().collect();
-        let parts = split_args(&inner);
-        if parts.len() != 2 { return line.to_string(); }
-
-        let min_arg = parts[0].trim();
-        let max_arg = parts[1].trim();
-
-        fn arrayof_to_listof_floats(s: &str) -> String {
-            if s.starts_with("arrayOf(") && s.ends_with(')') {
-                let inner = &s["arrayOf(".len()..s.len() - 1];
-                let floats = inner.split(',').map(|v| {
-                    let v = v.trim();
-                    if v.ends_with('f') { v.to_string() }
-                    else if v.contains('.') { format!("{}f", v) }
-                    else { format!("{}.0f", v) }
-                }).collect::<Vec<_>>().join(", ");
-                format!("listOf({})", floats)
-            } else {
-                s.to_string()
-            }
-        }
-
-        let min_out = arrayof_to_listof_floats(min_arg);
-        let max_out = arrayof_to_listof_floats(max_arg);
-        let before = &line[..start];
-        let after: String = chars[call_end + 1..].iter().collect();
-        format!("{}Quad({}, {}){}", before, min_out, max_out, after)
     }
 
     // `Shader.new([...])` → `Shader.compose(listOf(...))`
