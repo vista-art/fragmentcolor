@@ -95,7 +95,7 @@ mod example {
     }
 
     impl Example {
-        /// Split a Rust code fence. Fails on a block it can't place.
+        /// Split a Rust code fence. Fails on a block it can't place or close.
         pub fn parse(code: &str) -> Result<Example, String> {
             let mut rust: Vec<(String, bool)> = Vec::new();
             // Each block, with the number of Rust lines before it.
@@ -111,9 +111,17 @@ mod example {
                     if text.trim() == "*/" {
                         blocks.push((*lang, rust.len(), std::mem::take(lines)));
                         open = None;
-                    } else {
-                        lines.push(text);
+                        continue;
                     }
+                    // Rust nests block comments, so either one would move the end of the block.
+                    if text.contains("/*") || text.contains("*/") {
+                        return Err(format!(
+                            "the [{}] block's `{}` line holds `/*` or `*/`, which Rust reads as a comment edge",
+                            lang.tag(),
+                            text.trim()
+                        ));
+                    }
+                    lines.push(text);
                     continue;
                 }
                 match hidden.then(|| opener(&text)).flatten() {
