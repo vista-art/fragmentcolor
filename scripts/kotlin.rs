@@ -146,7 +146,24 @@ mod kotlin {
         callables.extend(extension_callables());
         let mut conflicts = Vec::new();
         let calls = plan_calls(&callables, &mut conflicts);
-        let enums = model
+        let _ = FACTS.set(Facts {
+            consts: model.str_consts(Build::Android),
+            calls,
+            conflicts,
+            enums: flat_enum_spellings(model),
+            slice_getters: model.slice_getters(Build::Android),
+        });
+    }
+
+    fn facts() -> &'static Facts {
+        FACTS
+            .get()
+            .unwrap_or_else(|| panic!("kotlin::install must run before examples convert"))
+    }
+
+    /// Each flat enum's Kotlin entries, keyed by their Rust and their Kotlin spelling.
+    fn flat_enum_spellings(model: &Reflection) -> BTreeMap<String, BTreeMap<String, String>> {
+        model
             .flat_enums(Build::Android)
             .into_iter()
             .map(|e| {
@@ -160,20 +177,7 @@ mod kotlin {
                     .collect();
                 (e.ident, spellings)
             })
-            .collect();
-        let _ = FACTS.set(Facts {
-            consts: model.str_consts(Build::Android),
-            calls,
-            conflicts,
-            enums,
-            slice_getters: model.slice_getters(Build::Android),
-        });
-    }
-
-    fn facts() -> &'static Facts {
-        FACTS
-            .get()
-            .unwrap_or_else(|| panic!("kotlin::install must run before examples convert"))
+            .collect()
     }
 
     /// The Kotlin type uniffi generates for a Rust parameter type.
