@@ -29,56 +29,60 @@ jobs:
           VERSION="${RAW#v}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Wait for registries (npm, PyPI, GitHub Release xcframework)
+      - name: Wait for registries (npm, PyPI)
         env:
           VERSION: ${{ steps.vars.outputs.version }}
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          echo "Waiting for npm, PyPI and the xcframework release asset to be available..."
-          # The PyPI wheel matrix and the Swift xcframework build can take ~30 min
-          # to land, so wait up to 40 min (240 × 10s) before giving up.
+          echo "Waiting for npm and PyPI to serve the release..."
+          # The PyPI wheel matrix can take ~30 min to land, so wait up to
+          # 40 min (240 × 10s) before giving up.
           OK=0
           for i in $(seq 1 240); do
-            NPM_OK=0; PYPI_OK=0; XCF_OK=0
+            NPM_OK=0; PYPI_OK=0
             if npm view "fragmentcolor@$VERSION" version >/dev/null 2>&1; then NPM_OK=1; fi
             if curl -sSf "https://pypi.org/pypi/fragmentcolor/$VERSION/json" >/dev/null 2>&1; then PYPI_OK=1; fi
-            if gh release view "v$VERSION" --json assets -q '.assets[].name' 2>/dev/null | grep -q "FragmentColorFFI.xcframework.zip"; then XCF_OK=1; fi
-            if [ "$NPM_OK" = "1" ] && [ "$PYPI_OK" = "1" ] && [ "$XCF_OK" = "1" ]; then echo "OK"; OK=1; break; fi
-            echo "Not available yet (npm=$NPM_OK pypi=$PYPI_OK xcf=$XCF_OK), retrying in 10s... ($i/240)"; sleep 10
+            if [ "$NPM_OK" = "1" ] && [ "$PYPI_OK" = "1" ]; then echo "OK"; OK=1; break; fi
+            echo "Not available yet (npm=$NPM_OK pypi=$PYPI_OK), retrying in 10s... ($i/240)"; sleep 10
           done
           if [ "$OK" != "1" ]; then
-            echo "::error::Timed out after 40 min waiting for registries (npm=$NPM_OK pypi=$PYPI_OK xcf=$XCF_OK). Re-run this workflow once the publish jobs have all finished."
+            echo "::error::Timed out after 40 min waiting for registries (npm=$NPM_OK pypi=$PYPI_OK). Re-run this workflow once the publish jobs have all finished."
             exit 1
           fi
 
-      - name: Pin Swift Package.swift to the released xcframework
+      - name: Copy the Package.swift pin from the release tag
         id: swift_pin
         env:
           VERSION: ${{ steps.vars.outputs.version }}
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Download the xcframework asset, compute its SPM checksum, and
-          # write it into Package.swift so consumers pulling the tag see
-          # a matching URL + checksum pair.
-          mkdir -p .release-tmp
-          gh release download "v$VERSION" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --pattern "FragmentColorFFI.xcframework.zip" \
-            --dir .release-tmp \
-            --clobber
-          # Use sha256 directly; `swift package compute-checksum` isn't
-          # available on ubuntu-latest, but it produces the same hex
-          # digest as a plain sha256sum over the zip bytes.
-          CHECKSUM=$(sha256sum .release-tmp/FragmentColorFFI.xcframework.zip | awk '{print $1}')
-          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
-          # Update both version and checksum literals in Package.swift.
-          if [ -f Package.swift ]; then
-            sed -i "s/^let fragmentcolorVersion = \".*\"$/let fragmentcolorVersion = \"${VERSION}\"/" Package.swift
-            sed -i "s/^let fragmentcolorChecksum = \".*\"$/let fragmentcolorChecksum = \"${CHECKSUM}\"/" Package.swift
+          # prepare_release.yml committed the pin on the commit the tag points at.
+          git fetch --depth=1 origin "refs/tags/v$VERSION:refs/tags/v$VERSION"
+          TAGGED=$(git show "v$VERSION:Package.swift")
+          PIN_VERSION=$(sed -n -E 's/^let fragmentcolorVersion = "(.*)"$/\1/p' <<< "$TAGGED")
+          CHECKSUM=$(sed -n -E 's/^let fragmentcolorChecksum = "(.*)"$/\1/p' <<< "$TAGGED")
+          if [ "$PIN_VERSION" != "$VERSION" ] || [ -z "$CHECKSUM" ]; then
+            echo "::error::Package.swift at v$VERSION pins version '$PIN_VERSION'. Start releases with the Prepare release workflow."
+            exit 1
           fi
-          rm -rf .release-tmp
+          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
+          sed -i "s/^let fragmentcolorVersion = \".*\"$/let fragmentcolorVersion = \"${VERSION}\"/" Package.swift
+          sed -i "s/^let fragmentcolorChecksum = \".*\"$/let fragmentcolorChecksum = \"${CHECKSUM}\"/" Package.swift
+
+      - name: Delete the release branch
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          set -euo pipefail
+          BRANCH="release/v$VERSION"
+          BRANCH_SHA=$(git ls-remote origin "refs/heads/$BRANCH" | cut -f1)
+          if [ -z "$BRANCH_SHA" ]; then echo "No $BRANCH branch to delete."; exit 0; fi
+          TAG_SHA=$(git rev-parse "v$VERSION^{commit}")
+          if [ "$BRANCH_SHA" != "$TAG_SHA" ]; then
+            echo "::warning::$BRANCH ($BRANCH_SHA) is not the v$VERSION commit ($TAG_SHA). Leaving it in place."
+            exit 0
+          fi
+          git push origin --delete "$BRANCH"
 
       - name: Compute next range and bump dependencies
         id: bump
@@ -154,7 +158,7 @@ jobs:
             - examples/python requirements.txt: fragmentcolor>=${{ steps.vars.outputs.version }}
             - docs Examples.mdx: Kotlin/Maven snippet pinned to ${{ steps.vars.outputs.version }}
             - VersionBadge.astro updated
-            - Package.swift pinned to xcframework checksum ${{ steps.swift_pin.outputs.checksum }}
+            - Package.swift: pin copied from the v${{ steps.vars.outputs.version }} tag (xcframework checksum ${{ steps.swift_pin.outputs.checksum }})
           branch: "chore/bump-consumers-v${{ steps.vars.outputs.version }}"
           labels: chore
           signoff: false
