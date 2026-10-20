@@ -208,7 +208,7 @@ fn uniform_input(key: &str, value: &JsValue) -> Result<UniformInput, ShaderError
         }
         let kind = Reflect::get(value, &"__fc_kind".into())
             .ok()
-            .and_then(|k| k.as_string())
+            .and_then(|kind| kind.as_string())
             .unwrap_or_else(|| "an unknown object".into());
         return Err(ShaderError::TypeMismatch(format!(
             "{key}: expected a Texture, got {kind}"
