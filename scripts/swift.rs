@@ -697,12 +697,10 @@ mod swift {
         }
     }
 
-    /// `T.new(args)` → `T(args)` when an unlabeled initializer of `T`
-    /// takes that many arguments, array literals only where it takes arrays.
-    /// The call gets `try` when an initializer of `T` throws, and nested calls
-    /// get the same rewrite. Otherwise `T.new` stays, as for the static `Shader.new([...])`.
+    /// `T.new(args)` → `T(args)`, nested calls too,
+    /// wherever [`init_call`] finds an initializer to call.
+    /// Otherwise `T.new` stays, as for the static `Shader.new([...])`.
     fn rewrite_dot_new(line: &str) -> String {
-        let facts = facts();
         let mut out = String::with_capacity(line.len());
         let mut rest = line;
         while let Some(at) = rest.find(".new(") {
@@ -710,25 +708,9 @@ mod swift {
             let before = head.trim_end_matches(is_ident_char);
             let ty = &head[before.len()..];
             let open = at + ".new".len();
-            let call = match (facts.unlabeled_inits.get(ty), closing(rest, open)) {
-                (Some(inits), Some(close)) if !before.ends_with('.') => {
-                    let inner = &rest[open + 1..close];
-                    let args = split_args(inner);
-                    let fits = inits.iter().any(|params| {
-                        params.len() == args.len()
-                            && args
-                                .iter()
-                                .zip(params)
-                                .all(|(arg, param)| !arg.starts_with('[') || param.starts_with('['))
-                    });
-                    fits.then(|| {
-                        let throws = facts.inits.get(ty).is_some_and(|fx| fx.throws);
-                        let prefix = if throws { "try " } else { "" };
-                        (format!("{prefix}{ty}({})", rewrite_dot_new(inner)), close)
-                    })
-                }
-                _ => None,
-            };
+            let call = closing(rest, open)
+                .filter(|_| !before.ends_with('.'))
+                .and_then(|close| Some((init_call(ty, &rest[open + 1..close])?, close)));
             match call {
                 Some((call, close)) => {
                     out.push_str(before);
@@ -743,6 +725,24 @@ mod swift {
         }
         out.push_str(rest);
         out
+    }
+
+    /// `T(args)` for `T.new(args)`, with `try` when an initializer of `T` throws.
+    /// `None` unless an unlabeled one takes as many arguments, arrays at array literals.
+    fn init_call(ty: &str, inner: &str) -> Option<String> {
+        let facts = facts();
+        let inits = facts.unlabeled_inits.get(ty)?;
+        let args = split_args(inner);
+        let fits = inits.iter().any(|params| {
+            params.len() == args.len()
+                && args
+                    .iter()
+                    .zip(params)
+                    .all(|(arg, param)| !arg.starts_with('[') || param.starts_with('['))
+        });
+        let throws = facts.inits.get(ty).is_some_and(|fx| fx.throws);
+        let prefix = if throws { "try " } else { "" };
+        fits.then(|| format!("{prefix}{ty}({})", rewrite_dot_new(inner)))
     }
 
     /// Rewrite `let (width, height) = expr.size()` → `let size = expr.size()`.
