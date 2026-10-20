@@ -145,6 +145,9 @@ fn generate_docs() {
     println!("==> website::cleanup_site()");
     website::cleanup_site(&outcome.expected);
 
+    println!("==> website::cleanup_examples()");
+    website::cleanup_examples(&outcome);
+
     println!("==> website::write_healthcheck_aggregators()");
     website::write_healthcheck_aggregators(
         &outcome.ex_js,

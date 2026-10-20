@@ -610,33 +610,86 @@ mod website {
 
     /// Step 3: cleanup stale site files (non-destructive to source docs)
     pub fn cleanup_site(expected: &std::collections::HashSet<String>) {
+        let site_root = meta::workspace_root().join("docs/website/src/content/docs/api");
+        remove_unlisted(&site_root, "mdx", expected);
+    }
+
+    /// Step 3b: removes the example files this export did not write,
+    /// so a deleted or renamed docs/api page leaves no example behind.
+    pub fn cleanup_examples(outcome: &ExportOutcome) {
         let root = meta::workspace_root();
-        let site_root = root.join("docs/website/src/content/docs/api");
-        fn walk_and_cleanup(
-            root: &std::path::Path,
+        let examples = [
+            ("platforms/web/examples", "js", &outcome.ex_js),
+            ("platforms/python/examples", "py", &outcome.ex_py),
+            ("platforms/swift/examples", "swift", &outcome.ex_swift),
+            ("platforms/kotlin/examples", "kt", &outcome.ex_kotlin),
+        ];
+        for (dir, ext, written) in examples {
+            // An export that wrote nothing failed; keep what is on disk.
+            if written.is_empty() {
+                continue;
+            }
+            let mut keep = written.clone();
+            // The Python aggregator lives next to the examples it runs.
+            if ext == "py" {
+                keep.insert("main.py".to_string());
+            }
+            let dir = root.join(dir);
+            remove_unlisted(&dir, ext, &keep);
+            remove_empty_dirs(&dir);
+        }
+    }
+
+    /// Removes each `.{ext}` file under `dir` whose path relative to `dir`
+    /// is not in `keep`. Matching ignores case, so on a case-insensitive disk
+    /// a file whose name differs from a kept one only in case is never removed.
+    fn remove_unlisted(
+        dir: &std::path::Path,
+        ext: &str,
+        keep: &std::collections::HashSet<String>,
+    ) {
+        fn walk(
+            dir: &std::path::Path,
             base: &std::path::Path,
-            expected: &std::collections::HashSet<String>,
+            ext: &str,
+            keep: &std::collections::HashSet<String>,
         ) {
-            if let Ok(read_dir) = std::fs::read_dir(root) {
-                for entry in read_dir.flatten() {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        walk_and_cleanup(&path, base, expected);
-                        continue;
-                    }
-                    if let Some(ext) = path.extension().and_then(|s| s.to_str())
-                        && ext == "mdx"
-                        && let Ok(rel) = path.strip_prefix(base)
-                    {
-                        let key = rel.to_string_lossy().replace('\\', "/");
-                        if !expected.contains(&key) {
-                            let _ = std::fs::remove_file(&path);
-                        }
+            let Ok(read_dir) = std::fs::read_dir(dir) else {
+                return;
+            };
+            for entry in read_dir.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, base, ext, keep);
+                    continue;
+                }
+                if path.extension().and_then(|s| s.to_str()) == Some(ext)
+                    && let Ok(rel) = path.strip_prefix(base)
+                {
+                    let key = rel.to_string_lossy().replace('\\', "/").to_lowercase();
+                    if !keep.contains(&key) {
+                        let _ = std::fs::remove_file(&path);
                     }
                 }
             }
         }
-        walk_and_cleanup(&site_root, &site_root, expected);
+        let keep = keep.iter().map(|k| k.to_lowercase()).collect();
+        walk(dir, dir, ext, &keep);
+    }
+
+    /// Removes the empty directories under `dir`, deepest first.
+    fn remove_empty_dirs(dir: &std::path::Path) {
+        let Ok(read_dir) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in read_dir.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                remove_empty_dirs(&path);
+                // remove_dir refuses a directory that still holds anything.
+                let _ = std::fs::remove_dir(&path);
+            }
+        }
     }
 
     /// Step 4: write healthcheck aggregators referencing all generated example files
