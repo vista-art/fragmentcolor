@@ -420,6 +420,11 @@ mod kotlin {
         matches!(t, KType::Array | KType::PrimitiveArray)
     }
 
+    /// `Array<T>`, the only parameter type an `arrayOf(...)` already fits, so it needs no `listOf`.
+    fn is_object_array(t: &KType) -> bool {
+        *t == KType::Array
+    }
+
     /// What the argument at one position of a call needs.
     fn plan_slot(
         receivers: &Receivers,
@@ -474,7 +479,7 @@ mod kotlin {
         wraps: &BTreeSet<&str>,
         conflicts: &mut Vec<Conflict>,
     ) -> Option<Elems> {
-        let wants = receivers.owners(|ts| has(ts, is_list) && !ts.contains(&&KType::Array));
+        let wants = receivers.owners(|ts| has(ts, is_list) && !has(ts, is_object_array));
         let rejects = receivers.owners(|ts| has(ts, is_array) && !has(ts, is_list));
         let changes = |arg: &str| array_inner(arg).is_some();
         if !wants.is_empty() && !rejects.is_empty() {
@@ -489,7 +494,7 @@ mod kotlin {
             conflicts.push(receivers.conflict(reason, changes));
             return None;
         }
-        if wants.is_empty() || receivers.any(|t| *t == KType::Array) {
+        if wants.is_empty() || receivers.any(is_object_array) {
             return None;
         }
         elems.into_iter().next()
