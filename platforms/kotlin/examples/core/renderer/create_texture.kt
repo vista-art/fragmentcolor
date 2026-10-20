@@ -1,5 +1,4 @@
 import org.fragmentcolor.*
+val image = "examples/assets/logo.png"
 val renderer = Renderer()
-val png: ByteArray = byteArrayOf()
-val image = "/healthcheck/public/favicon.png"
 val tex = renderer.createTexture(image)

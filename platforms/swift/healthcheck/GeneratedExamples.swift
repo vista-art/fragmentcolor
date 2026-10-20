@@ -328,8 +328,8 @@ private enum _GeneratedExamples {
 
     static func _example_core_renderer_create_texture() async throws {
         do {
+            let image = "examples/assets/logo.png"
             let renderer = Renderer()
-            let image = "/healthcheck/public/favicon.png"
             let tex = try await renderer.createTexture(image)
         }
     }
@@ -1661,13 +1661,13 @@ private enum _GeneratedExamples {
 
     static func _example_scene_scene_load() async throws {
         do {
+            let glb_bytes = "path/to/model.glb"
 
             // A path — """.gltf""" JSON (with external buffers/images) or a """.glb""" container.
             let scene = try Scene.load("path/to/model.gltf")
 
             // In-memory """.glb""" bytes — fetched from disk, the network, or another
             // asset pipeline before this point.
-            let glb_bytes = "/healthcheck/public/favicon.png"
             let scene2 = try Scene.load(glb_bytes)
         }
     }

@@ -290,9 +290,8 @@ class GeneratedExamples {
     }
 
     @Suppress("unused") private suspend fun _example_core_renderer_create_texture() {
+        val image = "examples/assets/logo.png"
         val renderer = Renderer()
-        val png: ByteArray = byteArrayOf()
-        val image = "/healthcheck/public/favicon.png"
         val tex = renderer.createTexture(image)
     }
 
@@ -1317,6 +1316,7 @@ class GeneratedExamples {
     }
 
     @Suppress("unused") private suspend fun _example_scene_scene_load() {
+        val glb_bytes = "path/to/model.glb"
 
         // A path — """.gltf""" JSON (with external buffers/images) or a """.glb""" container.
         val scene = Scene.load("path/to/model.gltf")
@@ -1324,8 +1324,6 @@ class GeneratedExamples {
         val bytes: ByteArray = byteArrayOf()
         // In-memory """.glb""" bytes — fetched from disk, the network, or another
         // asset pipeline before this point.
-        val png: ByteArray = byteArrayOf()
-        val glb_bytes = "/healthcheck/public/favicon.png"
         val scene2 = Scene.load(glb_bytes)
     }
 

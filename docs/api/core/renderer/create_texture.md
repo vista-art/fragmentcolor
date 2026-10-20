@@ -30,9 +30,15 @@ A full mipmap chain is generated for source images by default (`options.mipmaps 
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+# let image = std::fs::read("examples/assets/logo.png")?;
+# /*[swift]
+# let image = "examples/assets/logo.png"
+# */
+# /*[kotlin]
+# val image = "examples/assets/logo.png"
+# */
 use fragmentcolor::Renderer;
 let renderer = Renderer::new();
-let image = std::fs::read("examples/assets/logo.png")?;
 let tex = renderer.create_texture(&image[..]).await?;
 # _ = tex.size();
 # Ok(())

@@ -1,4 +1,4 @@
 import FragmentColor
+let image = "examples/assets/logo.png"
 let renderer = Renderer()
-let image = "/healthcheck/public/favicon.png"
 let tex = try await renderer.createTexture(image)

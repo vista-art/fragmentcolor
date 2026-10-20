@@ -10,8 +10,11 @@ Create a [Texture](https://fragmentcolor.org/api/texture/texture) from various i
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+# let image = std::fs::read("./examples/assets/image.png")?;
+# /*[js]
+# const image = "/healthcheck/public/favicon.png";
+# */
 use fragmentcolor::Renderer;
-let image = std::fs::read("./examples/assets/image.png")?;
 let renderer = Renderer::new();
 let tex = renderer.create_texture(&image).await?;
 // use in a shader uniform

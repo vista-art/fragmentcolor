@@ -540,16 +540,16 @@ A full mipmap chain is generated for source images by default (`options.mipmaps 
 <Code
 code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let image = std::fs::read("examples/assets/logo.png")?;
 use fragmentcolor::Renderer;
 let renderer = Renderer::new();
-let image = std::fs::read("examples/assets/logo.png")?;
 let tex = renderer.create_texture(&image[..]).await?;
 _ = tex.size();
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 6-9}"
+lang="rust" meta="collapse={1-2, 6-9}"
 />
 
 </TabItem>
@@ -564,7 +564,7 @@ const tex = await renderer.createTexture(image);
 // use in a shader uniform
 // shader.set("tex", tex);
 `}
-lang="js"
+lang="js" meta="collapse={2-2}"
 />
 
 </TabItem>
@@ -585,11 +585,11 @@ lang="python"
 <Code
 code={`
 import FragmentColor
+let image = "examples/assets/logo.png"
 let renderer = Renderer()
-let image = "/healthcheck/public/favicon.png"
 let tex = try await renderer.createTexture(image)
 `}
-lang="swift"
+lang="swift" meta="collapse={2-2}"
 />
 
 </TabItem>
@@ -598,12 +598,11 @@ lang="swift"
 <Code
 code={`
 import org.fragmentcolor.*
+val image = "examples/assets/logo.png"
 val renderer = Renderer()
-val png: ByteArray = byteArrayOf()
-val image = "/healthcheck/public/favicon.png"
 val tex = renderer.createTexture(image)
 `}
-lang="kotlin"
+lang="kotlin" meta="collapse={2-2}"
 />
 
 </TabItem>

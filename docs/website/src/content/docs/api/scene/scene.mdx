@@ -144,6 +144,7 @@ for the duration. Two implications:
 <Code
 code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+let glb_bytes: Vec<u8> = std::fs::read("path/to/model.glb")?;
 use fragmentcolor::Scene;
 
 // A path — \`.gltf\` JSON (with external buffers/images) or a \`.glb\` container.
@@ -151,13 +152,12 @@ let scene = Scene::load("path/to/model.gltf")?;
 
 // In-memory \`.glb\` bytes — fetched from disk, the network, or another
 // asset pipeline before this point.
-let glb_bytes: Vec<u8> = std::fs::read("path/to/model.glb")?;
 let scene2 = Scene::load(glb_bytes)?;
 let _ = (scene, scene2);
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 11-13}"
+lang="rust" meta="collapse={1-2, 11-13}"
 />
 
 </TabItem>
@@ -182,16 +182,16 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import Scene
+glb_bytes = open("path/to/model.glb", "rb").read()
 
 # A path — \`.gltf\` JSON (with external buffers/images) or a \`.glb\` container.
 scene = Scene.load("path/to/model.gltf")
 
 # In-memory \`.glb\` bytes — fetched from disk, the network, or another
 # asset pipeline before this point.
-glb_bytes = open("path/to/model.glb", "rb").read()
 scene2 = Scene.load(glb_bytes)
 `}
-lang="python"
+lang="python" meta="collapse={2-2}"
 />
 
 </TabItem>
@@ -200,16 +200,16 @@ lang="python"
 <Code
 code={`
 import FragmentColor
+let glb_bytes = "path/to/model.glb"
 
 // A path — """.gltf""" JSON (with external buffers/images) or a """.glb""" container.
 let scene = try Scene.load("path/to/model.gltf")
 
 // In-memory """.glb""" bytes — fetched from disk, the network, or another
 // asset pipeline before this point.
-let glb_bytes = "/healthcheck/public/favicon.png"
 let scene2 = try Scene.load(glb_bytes)
 `}
-lang="swift"
+lang="swift" meta="collapse={2-2}"
 />
 
 </TabItem>
@@ -218,6 +218,7 @@ lang="swift"
 <Code
 code={`
 import org.fragmentcolor.*
+val glb_bytes = "path/to/model.glb"
 
 // A path — """.gltf""" JSON (with external buffers/images) or a """.glb""" container.
 val scene = Scene.load("path/to/model.gltf")
@@ -225,11 +226,9 @@ val scene = Scene.load("path/to/model.gltf")
 val bytes: ByteArray = byteArrayOf()
 // In-memory """.glb""" bytes — fetched from disk, the network, or another
 // asset pipeline before this point.
-val png: ByteArray = byteArrayOf()
-val glb_bytes = "/healthcheck/public/favicon.png"
 val scene2 = Scene.load(glb_bytes)
 `}
-lang="kotlin"
+lang="kotlin" meta="collapse={2-2}"
 />
 
 </TabItem>
