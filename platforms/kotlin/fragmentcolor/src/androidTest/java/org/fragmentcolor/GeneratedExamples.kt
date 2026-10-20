@@ -187,7 +187,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_core_pass_set_compute_dispatch() {
         val cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
         val pass = Pass("compute"); pass.addShader(cs)
-        pass.setComputeDispatch(64u,64u,1u)
+        pass.setComputeDispatch(64u, 64u, 1u)
     }
 
     @Suppress("unused") private suspend fun _example_core_pass_set_depth_target() {
@@ -361,7 +361,7 @@ class GeneratedExamples {
         """)
 
         val pass = Pass.compute("seed")
-        pass.setComputeDispatch(1u,1u,1u)
+        pass.setComputeDispatch(1u, 1u, 1u)
         pass.addShader(compute)
         renderer.render(pass, target)
 

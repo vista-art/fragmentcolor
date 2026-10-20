@@ -17,7 +17,7 @@ mod kotlin {
     //!   - Import becomes `import org.fragmentcolor.*`.
     //!   - Trailing semicolons are optional and we strip them.
     //!
-    //! Float literal suffixes (`0.5f`) follow the parameter types
+    //! Literal suffixes (`0.5f`, `1u`) follow the parameter types
     //! of the uniffi exports for Android and of the hand-written `*Extensions.kt` files.
     //!
     //! Enum entries follow the flat uniffi enums.
@@ -40,8 +40,8 @@ mod kotlin {
     enum KType {
         /// `Float`. A Kotlin `0.5` is a `Double` and doesn't convert.
         Float,
-        /// `UInt`, `ULong`, `UShort` or `UByte`.
-        Unsigned,
+        /// `UInt`, `ULong`, `UShort` or `UByte`, by name.
+        Unsigned(String),
         /// Any other number: `Double`, `Int`, `Long`, `Short` or `Byte`.
         Number,
         /// Any other type.
@@ -57,6 +57,8 @@ mod kotlin {
         params: Vec<KType>,
         /// How many trailing parameters have a default.
         defaults: usize,
+        /// Whether uniffi generates it.
+        generated: bool,
     }
 
     impl Callable {
@@ -70,6 +72,9 @@ mod kotlin {
     struct Slot {
         /// A number needs the `f` suffix.
         float: bool,
+        /// An integer needs the `u` suffix. Holds the Kotlin type
+        /// a value converts to when an array spreads into separate arguments.
+        unsigned: Option<String>,
     }
 
     /// Slots by needle, then by argument count.
@@ -114,6 +119,7 @@ mod kotlin {
                     needle,
                     params: params.clone(),
                     defaults: 0,
+                    generated: true,
                 });
             }
         }
@@ -169,7 +175,10 @@ mod kotlin {
         let ident = segment.ident.to_string();
         match (ident.as_str(), inner) {
             ("f32", _) => KType::Float,
-            ("u8" | "u16" | "u32" | "u64", _) => KType::Unsigned,
+            ("u8", _) => KType::Unsigned("UByte".into()),
+            ("u16", _) => KType::Unsigned("UShort".into()),
+            ("u32", _) => KType::Unsigned("UInt".into()),
+            ("u64", _) => KType::Unsigned("ULong".into()),
             ("f64" | "i8" | "i16" | "i32" | "i64", _) => KType::Number,
             ("Option" | "Arc" | "Box", Some(t)) => uniffi_type(t),
             _ => KType::Other,
@@ -181,7 +190,7 @@ mod kotlin {
         let text = text.trim().trim_end_matches('?');
         match text {
             "Float" => KType::Float,
-            "UInt" | "ULong" | "UShort" | "UByte" => KType::Unsigned,
+            "UInt" | "ULong" | "UShort" | "UByte" => KType::Unsigned(text.to_string()),
             "Double" | "Int" | "Long" | "Short" | "Byte" => KType::Number,
             _ => KType::Other,
         }
@@ -215,6 +224,7 @@ mod kotlin {
                     needle,
                     defaults: params.iter().filter(|(_, default)| *default).count(),
                     params: params.into_iter().map(|(ty, _)| ty).collect(),
+                    generated: false,
                 });
             }
         }
@@ -267,6 +277,7 @@ mod kotlin {
         needle: &'a str,
         argc: usize,
         position: usize,
+        overloads: &'a [&'a Callable],
         /// The types each owner takes at `position`.
         by_owner: BTreeMap<&'a str, Vec<&'a KType>>,
     }
@@ -287,6 +298,7 @@ mod kotlin {
                 needle,
                 argc,
                 position,
+                overloads,
                 by_owner,
             }
         }
@@ -344,15 +356,25 @@ mod kotlin {
         *t == KType::Float
     }
 
+    fn is_unsigned(t: &KType) -> bool {
+        matches!(t, KType::Unsigned(_))
+    }
+
     /// `Double`, `Int` and the other numbers a `Float` literal doesn't fit.
     fn is_other_number(t: &KType) -> bool {
-        matches!(t, KType::Number | KType::Unsigned)
+        matches!(t, KType::Number | KType::Unsigned(_))
+    }
+
+    /// `Float`, `Double`, `Int` and the other numbers an unsigned literal doesn't fit.
+    fn is_signed(t: &KType) -> bool {
+        matches!(t, KType::Float | KType::Number)
     }
 
     /// What the argument at one position of a call needs.
     fn plan_slot(receivers: &Receivers, conflicts: &mut Vec<Conflict>) -> Slot {
         Slot {
             float: float_slot(receivers, conflicts),
+            unsigned: unsigned_slot(receivers, conflicts),
         }
     }
 
@@ -366,6 +388,28 @@ mod kotlin {
             return false;
         }
         receivers.any(is_float) && !receivers.any(is_other_number)
+    }
+
+    /// The unsigned type an integer here converts to,
+    /// taken from the overloads uniffi generates.
+    fn unsigned_slot(receivers: &Receivers, conflicts: &mut Vec<Conflict>) -> Option<String> {
+        let unsigned = receivers
+            .overloads
+            .iter()
+            .filter(|c| c.generated)
+            .find_map(|c| match &c.params[receivers.position] {
+                KType::Unsigned(name) => Some(name.clone()),
+                _ => None,
+            })?;
+        let rejects = receivers.owners(|ts| has(ts, is_signed) && !has(ts, is_unsigned));
+        if !rejects.is_empty() {
+            let wants = receivers.owners(|ts| has(ts, is_unsigned));
+            let changes = |arg: &str| unsigned_literal(arg) != arg;
+            let conflict = receivers.disagreement("an unsigned integer", &wants, &rejects, changes);
+            conflicts.push(conflict);
+            return None;
+        }
+        Some(unsigned)
     }
 
     /// Finalize the Kotlin output emitted by `convert(_, Lang::Kotlin, _)`.
@@ -555,16 +599,12 @@ mod kotlin {
         }
         // API-specific rewrites (all now see arrayOf(...) for array literals)
         out = rewrite_create_target_canvas(&out);
-        out = rewrite_createtexturetarget_size_array(&out);
-        out = rewrite_createdepthtexture_size_array(&out);
-        out = rewrite_resize_size_array(&out);
         out = rewrite_createstoragetexture_tuple(&out);
         out = rewrite_createtexture_path(&out);
         out = rewrite_createtexture_pixels_tuple(&out);
         out = rewrite_mipmap_build_tuple(&out);
         out = rewrite_setviewport_tuple(&out);
-        out = rewrite_setcomputedispatch_int_to_uint(&out);
-        out = rewrite_getpass_int_to_uint(&out);
+        out = rewrite_unsigned_args(&out);
         out = rewrite_render_array_to_list(&out);
         out = rewrite_shader_fetch_array_to_list(&out);
         out = rewrite_removemeshes_array_to_list(&out);
@@ -602,7 +642,6 @@ mod kotlin {
         out = rewrite_texture_region_name(&out);
         out = rewrite_write_region_array_arg(&out);
         out = rewrite_unregister_texture_id(&out);
-        out = rewrite_set_instance_count_uint(&out);
         out = rewrite_instance_set_vertex_value(&out);
         out = rewrite_arrayof_float_to_listof(&out);
         out = drop_underscore_val(&out);
@@ -719,6 +758,20 @@ mod kotlin {
         facts().calls.get(needle)?.get(&argc).map(Vec::as_slice)
     }
 
+    /// The text inside `arg` when it is exactly one `arrayOf(...)`.
+    fn array_inner(arg: &str) -> Option<&str> {
+        let open = "arrayOf".len();
+        (arg.starts_with("arrayOf(") && closing(arg, open) == Some(arg.len() - 1))
+            .then(|| &arg[open + 1..arg.len() - 1])
+    }
+
+    /// The elements of an `arrayOf(...)` that holds no nested lists.
+    fn scalar_items(arg: &str) -> Option<Vec<String>> {
+        let items = split_args(array_inner(arg)?);
+        let nested = items.iter().any(|i| i.starts_with("arrayOf(") || i.starts_with("listOf("));
+        (!nested).then_some(items)
+    }
+
     /// Give number literals an `f` where the parameter is a `Float`.
     fn rewrite_float_args(line: &str) -> String {
         map_calls(line, &|needle, args| {
@@ -730,6 +783,52 @@ mod kotlin {
                 .collect();
             (new != args).then_some(new)
         })
+    }
+
+    /// Give integer literals a `u` where the parameter is unsigned,
+    /// which Kotlin never converts a signed literal to. A lone `arrayOf(w, h)`
+    /// spreads into the separate unsigned parameters that stand for a Rust `Size` on mobile.
+    fn rewrite_unsigned_args(line: &str) -> String {
+        map_calls(line, &|needle, args| {
+            let plans = facts().calls.get(needle)?;
+            let spread = match args {
+                [only] if !plans.contains_key(&1) => scalar_items(only).and_then(|items| {
+                    let slots = plans.get(&items.len())?;
+                    slots
+                        .iter()
+                        .zip(&items)
+                        .map(|(slot, item)| Some(to_unsigned(item, slot.unsigned.as_deref()?)))
+                        .collect::<Option<Vec<String>>>()
+                }),
+                _ => None,
+            };
+            let spread_out = spread.is_some();
+            let args = spread.unwrap_or_else(|| args.to_vec());
+            let slots = plans.get(&args.len())?;
+            let new: Vec<String> = args
+                .iter()
+                .zip(slots)
+                .map(|(arg, slot)| if slot.unsigned.is_some() { unsigned_literal(arg) } else { arg.clone() })
+                .collect();
+            (spread_out || new != args).then_some(new)
+        })
+    }
+
+    /// `64` → `64u`. Anything but an integer literal passes through.
+    fn unsigned_literal(arg: &str) -> String {
+        let is_literal = arg.starts_with(|c: char| c.is_ascii_digit())
+            && arg.chars().all(|c| c.is_ascii_digit() || c == '_');
+        if is_literal { format!("{arg}u") } else { arg.to_string() }
+    }
+
+    /// A spread element as the unsigned type `ty`:
+    /// literals stay for the suffix, other values convert.
+    fn to_unsigned(item: &str, ty: &str) -> String {
+        if item.starts_with(|c: char| c.is_ascii_digit()) {
+            item.to_string()
+        } else {
+            format!("{item}.to{ty}()")
+        }
     }
 
     /// `AlphaMode.Mask` → `AlphaMode.MASK`. uniffi renders a flat enum
@@ -814,82 +913,12 @@ mod kotlin {
     // `createTarget(canvas)` is web-only (HTMLCanvas). On Android it requires a
     // Surface. The healthcheck examples that create a canvas create a TextureTarget
     // instead (same size as the canvas was intended to be), or skip the call.
-    // We replace `renderer.createTarget(canvas)` with a texture-target fallback.
+    // We replace `renderer.createTarget(canvas)` with a texture-target fallback,
+    // whose size `rewrite_unsigned_args` then types.
     fn rewrite_create_target_canvas(line: &str) -> String {
         // Match `<var> = <renderer>.createTarget(canvas)` → texture target
         if line.contains("createTarget(canvas)") {
-            return line.replace("createTarget(canvas)", "createTextureTarget(800u, 600u)");
-        }
-        line.to_string()
-    }
-
-    // `createTextureTarget(arrayOf(w, h))` → `createTextureTarget(w.toUInt(), h.toUInt())`
-    // The uniffi API takes `(width: UInt, height: UInt)` as separate primitive args.
-    fn rewrite_createtexturetarget_size_array(line: &str) -> String {
-        rewrite_two_arg_size_call(line, "createTextureTarget")
-    }
-
-    // `createDepthTexture(arrayOf(w, h))` → `createDepthTexture(w.toUInt(), h.toUInt())`
-    fn rewrite_createdepthtexture_size_array(line: &str) -> String {
-        rewrite_two_arg_size_call(line, "createDepthTexture")
-    }
-
-    // `resize(arrayOf(w, h))` → `resize(w.toUInt(), h.toUInt())`
-    fn rewrite_resize_size_array(line: &str) -> String {
-        rewrite_two_arg_size_call(line, "resize")
-    }
-
-    // Generic helper: `fn([w, h])` or `fn(arrayOf(w, h))` → `fn(w.toUInt(), h.toUInt())`
-    fn rewrite_two_arg_size_call(line: &str, fn_name: &str) -> String {
-        let needle = format!("{}(", fn_name);
-        if let Some(start) = line.find(&needle) {
-            let call_start = start + needle.len();
-            let chars: Vec<char> = line.chars().collect();
-            // Find matching closing paren
-            let mut depth = 0i32;
-            let mut end = None;
-            let mut j = call_start;
-            while j < chars.len() {
-                match chars[j] {
-                    '(' | '[' => depth += 1,
-                    ')' => {
-                        if depth == 0 { end = Some(j); break; }
-                        depth -= 1;
-                    }
-                    ']' => { depth -= 1; }
-                    _ => {}
-                }
-                j += 1;
-            }
-            let Some(end) = end else { return line.to_string(); };
-            let inner: String = chars[call_start..end].iter().collect();
-            let inner_trim = inner.trim();
-
-            // Pattern: `[w, h]` → extract w and h (JS array literal)
-            if inner_trim.starts_with('[') && inner_trim.ends_with(']') {
-                let args_str = &inner_trim[1..inner_trim.len() - 1];
-                let args: Vec<&str> = args_str.splitn(2, ',').collect();
-                if args.len() == 2 {
-                    let w = to_uint_arg(args[0].trim());
-                    let h = to_uint_arg(args[1].trim());
-                    let before = &line[..start + needle.len() - 1];
-                    let after = &line[end + 1..];
-                    return format!("{}({}, {}){}", before, w, h, after);
-                }
-            }
-
-            // Pattern: `arrayOf(w, h)` → extract w and h
-            if inner_trim.starts_with("arrayOf(") && inner_trim.ends_with(')') {
-                let args_str = &inner_trim["arrayOf(".len()..inner_trim.len() - 1];
-                let args: Vec<&str> = args_str.splitn(2, ',').collect();
-                if args.len() == 2 {
-                    let w = to_uint_arg(args[0].trim());
-                    let h = to_uint_arg(args[1].trim());
-                    let before = &line[..start + needle.len() - 1];
-                    let after = &line[end + 1..];
-                    return format!("{}({}, {}){}", before, w, h, after);
-                }
-            }
+            return line.replace("createTarget(canvas)", "createTextureTarget(800, 600)");
         }
         line.to_string()
     }
@@ -1287,96 +1316,6 @@ mod kotlin {
         } else {
             line
         }
-    }
-
-    // `pass.setComputeDispatch(64, 64, 1)` → `pass.setComputeDispatch(64u, 64u, 1u)`
-    //
-    // The uniffi-generated member method takes `(UInt, UInt, UInt)` and Kotlin
-    // member methods take precedence over the Int-arg extension in
-    // PassExtensions.kt. Signed→unsigned conversion of integer constants is
-    // disallowed, so we suffix each literal with `u` to make them UInt.
-    fn rewrite_setcomputedispatch_int_to_uint(line: &str) -> String {
-        let needle = ".setComputeDispatch(";
-        let Some(start) = line.find(needle) else {
-            return line.to_string();
-        };
-        let call_start = start + needle.len();
-        let chars: Vec<char> = line.chars().collect();
-        let mut depth = 0i32;
-        let mut end = call_start;
-        let mut j = call_start;
-        while j < chars.len() {
-            match chars[j] {
-                '(' => depth += 1,
-                ')' => {
-                    if depth == 0 {
-                        end = j;
-                        break;
-                    }
-                    depth -= 1;
-                }
-                _ => {}
-            }
-            j += 1;
-        }
-        let inner: String = chars[call_start..end].iter().collect();
-        // Suffix each comma-separated bare integer with `u`
-        let parts: Vec<String> = inner
-            .split(',')
-            .map(|p| {
-                let trimmed = p.trim();
-                if trimmed.parse::<u64>().is_ok() {
-                    format!("{}u", trimmed)
-                } else {
-                    p.to_string()
-                }
-            })
-            .collect();
-        let new_inner = parts.join(",");
-        let before = &line[..call_start];
-        let after = &line[end..];
-        format!("{}{}{}", before, new_inner, after)
-    }
-
-    // `scene.getPass(1)` → `scene.getPass(1u)`
-    //
-    // Same reasoning as `rewrite_setcomputedispatch_int_to_uint`: the uniffi
-    // member takes a `UInt` index and Kotlin won't coerce a signed literal
-    // into an unsigned parameter. The argument is always a single index, so a
-    // bare integer literal gets the `u` suffix; a non-literal (variable) is
-    // left for the Int extension overload in `SceneExtensions.kt`.
-    fn rewrite_getpass_int_to_uint(line: &str) -> String {
-        let needle = ".getPass(";
-        let Some(start) = line.find(needle) else {
-            return line.to_string();
-        };
-        let call_start = start + needle.len();
-        let chars: Vec<char> = line.chars().collect();
-        let mut depth = 0i32;
-        let mut end = call_start;
-        let mut j = call_start;
-        while j < chars.len() {
-            match chars[j] {
-                '(' => depth += 1,
-                ')' => {
-                    if depth == 0 {
-                        end = j;
-                        break;
-                    }
-                    depth -= 1;
-                }
-                _ => {}
-            }
-            j += 1;
-        }
-        let inner: String = chars[call_start..end].iter().collect();
-        let trimmed = inner.trim();
-        if trimmed.parse::<u64>().is_ok() {
-            let before = &line[..call_start];
-            let after = &line[end..];
-            return format!("{}{}u{}", before, trimmed, after);
-        }
-        line.to_string()
     }
 
     // `shader.removeMeshes(arrayOf(m1, m2))` → `shader.removeMeshes(listOf(m1, m2))`
@@ -2722,43 +2661,6 @@ mod kotlin {
     // We leave it as-is — the extension method covers it.
     // (No rewrite needed; the extension method makes `unregisterTexture(id: TextureId)` work.)
     fn rewrite_unregister_texture_id(line: &str) -> String {
-        line.to_string()
-    }
-
-    // `m.setInstanceCount(1_000_000)` → `m.setInstanceCount(1_000_000u)`
-    // The Kotlin API takes UInt.
-    fn rewrite_set_instance_count_uint(line: &str) -> String {
-        let needle = "setInstanceCount(";
-        if let Some(start) = line.find(needle) {
-            let arg_start = start + needle.len();
-            let chars: Vec<char> = line.chars().collect();
-            let mut depth = 0i32;
-            let mut arg_end = None;
-            let mut j = arg_start;
-            while j < chars.len() {
-                match chars[j] {
-                    '(' => depth += 1,
-                    ')' => {
-                        if depth == 0 { arg_end = Some(j); break; }
-                        depth -= 1;
-                    }
-                    _ => {}
-                }
-                j += 1;
-            }
-            if let Some(arg_end) = arg_end {
-                let arg: String = chars[arg_start..arg_end].iter().collect();
-                let arg = arg.trim();
-                // Already a UInt literal?
-                if arg.ends_with('u') { return line.to_string(); }
-                // Numeric literal (possibly with underscores)
-                if arg.chars().all(|c| c.is_ascii_digit() || c == '_') {
-                    let before = &line[..start];
-                    let after: String = chars[arg_end + 1..].iter().collect();
-                    return format!("{}setInstanceCount({}u){}", before, arg, after);
-                }
-            }
-        }
         line.to_string()
     }
 
