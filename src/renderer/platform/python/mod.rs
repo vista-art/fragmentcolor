@@ -137,8 +137,8 @@ impl Renderer {
         })
     }
 
-    /// Single Python entry point. Accepts bytes, list, str (path or URL),
-    /// numpy ndarray, or a Mipmap handle. Optional kwargs:
+    /// Single Python entry point. Accepts bytes or a sequence of ints, a path
+    /// string, a uint8 numpy ndarray, or a Mipmap handle. Optional kwargs:
     /// `size=(w, h)` (forces raw-pixel interpretation of bytes),
     /// `format=TextureFormat.X`, `mipmaps=True/False`.
     #[pyo3(
@@ -146,18 +146,17 @@ impl Renderer {
         signature = (input, size=None, format=None, mipmaps=None)
     )]
     #[lsp_doc("docs/api/core/renderer/create_texture.md")]
+    #[allow(private_interfaces)]
     pub fn create_texture_py(
         &self,
-        input: Py<PyAny>,
+        input: PyTextureSource<'_>,
         size: Option<PySize>,
         format: Option<crate::TextureFormat>,
         mipmaps: Option<bool>,
     ) -> Result<crate::texture::Texture, PyErr> {
-        Python::attach(|py| -> Result<crate::texture::Texture, PyErr> {
-            let spec = py_to_texture_spec(input.bind(py), size, format, mipmaps)?;
-            let tex = pollster::block_on(self.create_texture(spec))?;
-            Ok(tex)
-        })
+        let spec = py_to_texture_spec(input, size, format, mipmaps)?;
+        let tex = pollster::block_on(self.create_texture(spec))?;
+        Ok(tex)
     }
 
     #[pyo3(name = "load")]
@@ -265,12 +264,24 @@ impl Renderer {
     }
 }
 
-/// Convert any supported Python input into a `TextureInput`. Centralizes the
-/// dispatch that used to live duplicated across four `create_texture_*`
-/// methods. Numpy arrays auto-infer their size into the spec; explicit
-/// kwargs (`size`, `format`, `mipmaps`) override the inferred values.
+/// A `create_texture` source from Python, tried in this order.
+/// A uint8 ndarray comes first so it never reads as a flat byte sequence.
+#[derive(FromPyObject)]
+pub(crate) enum PyTextureSource<'py> {
+    #[pyo3(annotation = "ndarray[uint8]")]
+    Array(numpy::PyReadonlyArrayDyn<'py, u8>),
+    #[pyo3(annotation = "bytes | Sequence[int]")]
+    Bytes(Vec<u8>),
+    #[pyo3(annotation = "str")]
+    Path(String),
+    #[pyo3(annotation = "Mipmap")]
+    Mipmap(crate::texture::Mipmap),
+}
+
+/// Builds the `TextureInput` for `create_texture`. An ndarray fills in its
+/// own size unless `size` is given; the other kwargs apply to every source.
 fn py_to_texture_spec(
-    input: &pyo3::Bound<'_, PyAny>,
+    input: PyTextureSource<'_>,
     explicit_size: Option<PySize>,
     explicit_format: Option<crate::TextureFormat>,
     explicit_mipmaps: Option<bool>,
@@ -288,87 +299,64 @@ fn py_to_texture_spec(
         options.mipmaps = m;
     }
 
-    // PyBytes
-    if let Ok(b) = input.extract::<Py<pyo3::types::PyBytes>>() {
-        let vec: Vec<u8> = pyo3::Python::attach(|py| b.extract(py))?;
-        return Ok(TextureInput {
-            data: TextureData::Bytes(vec),
-            options,
-        });
+    let data = match input {
+        PyTextureSource::Array(array) => {
+            let (rgba, size) = ndarray_to_rgba(&array)?;
+            options.size.get_or_insert(size);
+            TextureData::Bytes(rgba)
+        }
+        PyTextureSource::Bytes(bytes) => TextureData::Bytes(bytes),
+        PyTextureSource::Path(path) => TextureData::Path(path.into()),
+        PyTextureSource::Mipmap(chain) => TextureData::Prepared(chain),
+    };
+    Ok(TextureInput { data, options })
+}
+
+/// Expands an `(h, w)` or `(h, w, 1 | 3 | 4)` uint8 array to RGBA8 bytes.
+fn ndarray_to_rgba(
+    array: &numpy::PyReadonlyArrayDyn<'_, u8>,
+) -> Result<(Vec<u8>, crate::Size), PyErr> {
+    use numpy::PyUntypedArrayMethods;
+
+    let shape = array.shape();
+    if shape.len() != 2 && shape.len() != 3 {
+        return Err(crate::error::PyFragmentColorError::new_err(format!(
+            "ndarray must have 2 or 3 dimensions, got {}",
+            shape.len()
+        )));
     }
-    // PyList of u8
-    if let Ok(pylist) = input.extract::<Py<pyo3::types::PyList>>() {
-        let vec: Vec<u8> = pyo3::Python::attach(|py| pylist.extract(py))?;
-        return Ok(TextureInput {
-            data: TextureData::Bytes(vec),
-            options,
-        });
-    }
-    // str path or URL — Path (URLs go through the Url variant elsewhere; the
-    // canonical create_texture handles both via TextureData's own dispatch).
-    if let Ok(path) = input.extract::<String>() {
-        return Ok(TextureInput {
-            data: TextureData::Path(std::path::PathBuf::from(path)),
-            options,
-        });
-    }
-    // numpy ndarray → RGBA8 + auto-fill size if not explicitly provided.
-    if let Ok(any) = input.cast::<numpy::PyArrayDyn<u8>>() {
-        use numpy::{PyArrayMethods, PyUntypedArrayMethods};
-        let arr = any.readonly();
-        let shape = arr.shape();
-        if shape.len() == 2 || shape.len() == 3 {
-            let h = shape[0] as u32;
-            let w = shape[1] as u32;
-            let c = if shape.len() == 3 { shape[2] } else { 1 };
-            let mut rgba = vec![0u8; (w as usize) * (h as usize) * 4];
-            let data = arr.as_slice().map_err(|_| {
-                crate::error::PyFragmentColorError::new_err("ndarray must be contiguous")
-            })?;
-            for y in 0..(h as usize) {
-                for x in 0..(w as usize) {
-                    let src_idx = (y * (w as usize) + x) * c;
-                    let dst_idx = (y * (w as usize) + x) * 4;
-                    match c {
-                        1 => {
-                            let v = data[src_idx];
-                            rgba[dst_idx..dst_idx + 4].copy_from_slice(&[v, v, v, 255]);
-                        }
-                        3 => {
-                            let r = data[src_idx];
-                            let g = data[src_idx + 1];
-                            let b = data[src_idx + 2];
-                            rgba[dst_idx..dst_idx + 4].copy_from_slice(&[r, g, b, 255]);
-                        }
-                        4 => {
-                            rgba[dst_idx..dst_idx + 4].copy_from_slice(&data[src_idx..src_idx + 4]);
-                        }
-                        _ => {
-                            return Err(crate::error::PyFragmentColorError::new_err(
-                                "ndarray last dimension must be 1, 3, or 4",
-                            ));
-                        }
-                    }
+    let h = shape[0] as u32;
+    let w = shape[1] as u32;
+    let c = if shape.len() == 3 { shape[2] } else { 1 };
+    let mut rgba = vec![0u8; (w as usize) * (h as usize) * 4];
+    let data = array
+        .as_slice()
+        .map_err(|_| crate::error::PyFragmentColorError::new_err("ndarray must be contiguous"))?;
+    for y in 0..(h as usize) {
+        for x in 0..(w as usize) {
+            let src_idx = (y * (w as usize) + x) * c;
+            let dst_idx = (y * (w as usize) + x) * 4;
+            match c {
+                1 => {
+                    let v = data[src_idx];
+                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&[v, v, v, 255]);
+                }
+                3 => {
+                    let r = data[src_idx];
+                    let g = data[src_idx + 1];
+                    let b = data[src_idx + 2];
+                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&[r, g, b, 255]);
+                }
+                4 => {
+                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&data[src_idx..src_idx + 4]);
+                }
+                _ => {
+                    return Err(crate::error::PyFragmentColorError::new_err(
+                        "ndarray last dimension must be 1, 3, or 4",
+                    ));
                 }
             }
-            if options.size.is_none() {
-                options.size = Some(crate::Size::new(w, h, None));
-            }
-            return Ok(TextureInput {
-                data: TextureData::Bytes(rgba),
-                options,
-            });
         }
     }
-    // Mipmap handle (built off-thread via Mipmap.build).
-    if let Ok(chain_ref) = input.cast::<crate::texture::Mipmap>() {
-        let chain = chain_ref.borrow().clone();
-        return Ok(TextureInput {
-            data: TextureData::Prepared(chain),
-            options,
-        });
-    }
-    Err(crate::error::PyFragmentColorError::new_err(
-        "Unsupported input for create_texture (expected bytes, list, str path, numpy ndarray, or Mipmap)",
-    ))
+    Ok((rgba, crate::Size::new(w, h, None)))
 }
