@@ -1118,6 +1118,17 @@ mod reflect {
         pub variants: Vec<String>,
     }
 
+    /// A slice getter of a type uniffi exports, such as `Mipmap::levels()`,
+    /// that the binding leaves out, paired with the method that reads one element instead.
+    pub struct SliceGetter {
+        pub owner: String,
+        /// The getter, camelCased the way examples call it.
+        pub getter: String,
+        /// The one exported method of `owner`, such as `level`,
+        /// that takes an unsigned index and returns the slice's element type.
+        pub accessor: Option<String>,
+    }
+
     impl Reflection {
         /// Functions the uniffi bindings export in `build`.
         pub fn uniffi_fns(&self, build: Build) -> Vec<UniffiFn> {
@@ -1160,14 +1171,80 @@ mod reflect {
                 .collect()
         }
 
+        /// The slice getters of the types uniffi exports in `build`
+        /// that no uniffi export of the same type shares a name with.
+        pub fn slice_getters(&self, build: Build) -> Vec<SliceGetter> {
+            let mut out = Vec::new();
+            for ty in self
+                .types_in(build)
+                .filter(|t| exported_type_name(&t.attrs, &t.ident, build).is_some())
+            {
+                let owner = ty.ident.as_str();
+                let exported: Vec<&FnDef> = self
+                    .uniffi_defs(build)
+                    .filter(|(o, _)| *o == owner)
+                    .map(|(_, f)| f)
+                    .collect();
+                let names: BTreeSet<String> =
+                    exported.iter().map(|f| uniffi_name(f, build)).collect();
+                for getter in self.plain_fns(owner, build) {
+                    let name = getter.sig.ident.to_string().to_lower_camel_case();
+                    let Some(element) = slice_element(&getter.sig) else {
+                        continue;
+                    };
+                    let reads_self =
+                        getter.sig.receiver().is_some() && typed_params(&getter.sig).is_empty();
+                    if !reads_self || names.contains(&name) {
+                        continue;
+                    }
+                    let accessors: Vec<&FnDef> = exported
+                        .iter()
+                        .copied()
+                        .filter(|f| reads_element(f, element))
+                        .collect();
+                    out.push(SliceGetter {
+                        owner: owner.to_string(),
+                        getter: name,
+                        accessor: match accessors.as_slice() {
+                            [only] => Some(uniffi_name(only, build)),
+                            _ => None,
+                        },
+                    });
+                }
+            }
+            out
+        }
+
         /// Every function of a uniffi export block in `build`, with its type.
         fn uniffi_defs(&self, build: Build) -> impl Iterator<Item = (&str, &FnDef)> {
-            self.binding_impls(build, build.binding_attr()).flat_map(move |imp| {
-                imp.fns
-                    .iter()
-                    .filter(move |f| f.cfg.holds(build))
-                    .map(move |f| (imp.self_ident.as_str(), f))
-            })
+            self.binding_impls(build, build.binding_attr())
+                .flat_map(move |imp| {
+                    imp.fns
+                        .iter()
+                        .filter(move |f| f.cfg.holds(build))
+                        .map(move |f| (imp.self_ident.as_str(), f))
+                })
+        }
+
+        /// Functions of the impl blocks of `owner` in `build`
+        /// that are neither trait impls nor a binding's export blocks.
+        fn plain_fns<'a>(
+            &'a self,
+            owner: &'a str,
+            build: Build,
+        ) -> impl Iterator<Item = &'a FnDef> {
+            let binding = build.binding_attr();
+            self.impls
+                .iter()
+                .filter(move |imp| {
+                    imp.self_ident == owner
+                        && !imp.is_trait_impl
+                        && imp.cfg.holds(build)
+                        && !metas(&imp.attrs, build)
+                            .iter()
+                            .any(|m| meta_ident(m) == binding)
+                })
+                .flat_map(move |imp| imp.fns.iter().filter(move |f| f.cfg.holds(build)))
         }
     }
 
@@ -1222,5 +1299,47 @@ mod reflect {
 
     fn returns_result(sig: &Signature) -> bool {
         return_type(sig).and_then(last_ident).as_deref() == Some("Result")
+    }
+
+    /// `T` of a `&[T]` or `Vec<T>` return type.
+    fn slice_element(sig: &Signature) -> Option<&Type> {
+        match return_type(sig)? {
+            Type::Reference(r) => match &*r.elem {
+                Type::Slice(slice) => Some(&slice.elem),
+                _ => None,
+            },
+            ty => generic_arg(ty, "Vec"),
+        }
+    }
+
+    /// Whether `f` reads the receiver at one unsigned index
+    /// and returns `element`, directly or in a `Result`.
+    fn reads_element(f: &FnDef, element: &Type) -> bool {
+        let index = match typed_params(&f.sig).as_slice() {
+            [ty] => last_ident(ty),
+            _ => None,
+        };
+        let unsigned = matches!(index.as_deref(), Some("u8" | "u16" | "u32" | "u64"));
+        let value = return_type(&f.sig).map(|ty| generic_arg(ty, "Result").unwrap_or(ty));
+        unsigned && f.sig.receiver().is_some() && value.is_some_and(|v| same_type(v, element))
+    }
+
+    /// The first type argument of `ty` when its last path segment is `name`.
+    fn generic_arg<'a>(ty: &'a Type, name: &str) -> Option<&'a Type> {
+        let Type::Path(p) = ty else {
+            return None;
+        };
+        let segment = p.path.segments.last().filter(|s| s.ident == name)?;
+        let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
+            return None;
+        };
+        args.args.iter().find_map(|arg| match arg {
+            syn::GenericArgument::Type(t) => Some(t),
+            _ => None,
+        })
+    }
+
+    fn same_type(a: &Type, b: &Type) -> bool {
+        a.to_token_stream().to_string() == b.to_token_stream().to_string()
     }
 }

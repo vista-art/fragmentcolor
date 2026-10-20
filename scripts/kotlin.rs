@@ -26,7 +26,7 @@ mod kotlin {
 
     use heck::ToShoutySnakeCase;
 
-    use crate::reflect::{Build, CallKind, Reflection, StrConst};
+    use crate::reflect::{Build, CallKind, Reflection, SliceGetter, StrConst};
     use crate::source_text::{
         Nesting, arg_spans, closing, code_only, extension_files, read_ident, skip_space, split_args,
         top_level_words,
@@ -100,6 +100,7 @@ mod kotlin {
         /// Kotlin spelling of each flat enum entry,
         /// keyed by its Rust and its Kotlin spelling.
         enums: BTreeMap<String, BTreeMap<String, String>>,
+        slice_getters: Vec<SliceGetter>,
     }
 
     static FACTS: std::sync::OnceLock<Facts> = std::sync::OnceLock::new();
@@ -146,6 +147,7 @@ mod kotlin {
             calls,
             conflicts,
             enums,
+            slice_getters: model.slice_getters(Build::Android),
         });
     }
 
@@ -604,6 +606,8 @@ mod kotlin {
         out = rewrite_createtexture_pixels_tuple(&out);
         out = rewrite_mipmap_build_tuple(&out);
         out = rewrite_setviewport_tuple(&out);
+        // Before the unsigned pass, which suffixes the index it moves into the call.
+        out = rewrite_index_accessors(&out);
         out = rewrite_unsigned_args(&out);
         out = rewrite_render_array_to_list(&out);
         out = rewrite_shader_fetch_array_to_list(&out);
@@ -645,7 +649,6 @@ mod kotlin {
         out = rewrite_instance_set_vertex_value(&out);
         out = rewrite_arrayof_float_to_listof(&out);
         out = drop_underscore_val(&out);
-        out = rewrite_levels_indexing(&out);
         // Generic fallback: strip `.new(` from any remaining
         // `<UpperCamelCase>.new(...)` constructor call that the specific
         // rewrites above didn't claim. Must run last so handlers like
@@ -828,6 +831,56 @@ mod kotlin {
             item.to_string()
         } else {
             format!("{item}.to{ty}()")
+        }
+    }
+
+    /// `chain.levels()[0]` → `chain.level(0)` where the binding
+    /// reads one element of a Rust slice getter by index.
+    fn rewrite_index_accessors(line: &str) -> String {
+        let getters: BTreeSet<&str> =
+            facts().slice_getters.iter().map(|g| g.getter.as_str()).collect();
+        let mut out = line.to_string();
+        for getter in getters {
+            let needle = format!(".{getter}()[");
+            let mut done = String::with_capacity(out.len());
+            let mut rest = out.as_str();
+            while let Some(at) = rest.find(&needle) {
+                let after = &rest[at + needle.len()..];
+                let tail = after.trim_start_matches(|c: char| c.is_ascii_digit() || c == '_');
+                let index = &after[..after.len() - tail.len()];
+                if !index.is_empty() && after[index.len()..].starts_with(']') {
+                    done.push_str(&rest[..at]);
+                    done.push_str(&format!(".{}({index})", index_accessor(getter, index)));
+                    rest = &after[index.len() + 1..];
+                } else {
+                    done.push_str(&rest[..at + needle.len()]);
+                    rest = after;
+                }
+            }
+            done.push_str(rest);
+            out = done;
+        }
+        out
+    }
+
+    /// The method every type with a slice getter named `getter` reads one element with.
+    /// Fails the build when one of them has none, since Kotlin has no `getter` to index.
+    fn index_accessor(getter: &str, index: &str) -> &'static str {
+        let getters: Vec<&SliceGetter> =
+            facts().slice_getters.iter().filter(|g| g.getter == getter).collect();
+        let accessors: BTreeSet<Option<&str>> =
+            getters.iter().map(|g| g.accessor.as_deref()).collect();
+        match accessors.into_iter().collect::<Vec<_>>().as_slice() {
+            [Some(only)] => only,
+            _ => {
+                let owners: Vec<&str> = getters.iter().map(|g| g.owner.as_str()).collect();
+                panic!(
+                    "kotlin: `.{getter}()[{index}]` indexes a slice getter of {}, \
+                     which the Android bindings leave out without one exported method \
+                     that takes an unsigned index and returns the element",
+                    owners.join(", "),
+                )
+            }
         }
     }
 
@@ -2728,26 +2781,6 @@ mod kotlin {
             return String::new();
         }
         line.to_string()
-    }
-
-    // `chain.levels()[N]` → `chain.level(Nu)`
-    // The uniffi mobile API exposes `level(index: UInt): ByteArray` not `levels(): List<ByteArray>`.
-    fn rewrite_levels_indexing(line: &str) -> String {
-        // Pattern: `.levels()[N]` where N is a non-negative integer literal
-        let needle = ".levels()[";
-        let Some(start) = line.find(needle) else { return line.to_string(); };
-        let idx_start = start + needle.len();
-        let chars: Vec<char> = line.chars().collect();
-        let mut idx_end = idx_start;
-        while idx_end < chars.len() && (chars[idx_end].is_ascii_digit() || chars[idx_end] == '_') {
-            idx_end += 1;
-        }
-        if idx_end >= chars.len() || chars[idx_end] != ']' { return line.to_string(); }
-        let index_str: String = chars[idx_start..idx_end].iter().collect();
-        let index_str = index_str.replace('_', "");
-        let before = &line[..start];
-        let after: String = chars[idx_end + 1..].iter().collect();
-        format!("{}.level({}u){}", before, index_str, after)
     }
 
     // Expand `val (a, b) = expr` destructuring into two separate `val` lines
