@@ -181,6 +181,25 @@ fn py_to_vertex(obj: &Bound<'_, PyAny>) -> PyResult<Vertex> {
     ))
 }
 
+/// Python side of `Into<Vertex>` for the Mesh methods.
+/// Takes what `Vertex.new` takes plus the `(position, uv)` and `(position, uv, color)` tuples.
+fn py_into_vertex(obj: &Bound<'_, PyAny>) -> PyResult<Vertex> {
+    if let Ok(v) = py_to_vertex(obj) {
+        return Ok(v);
+    }
+    if let Ok(v) = obj.extract::<([f32; 3], [f32; 2])>() {
+        return Ok(Vertex::from(v));
+    }
+    if let Ok(v) = obj.extract::<([f32; 3], [f32; 2], [f32; 4])>() {
+        return Ok(Vertex::from(v));
+    }
+
+    Err(PyErr::new::<PyTypeError, _>(
+        "Unsupported vertex type (expected Vertex, number, sequence of 2 to 4 numbers, \
+         (position, uv) or (position, uv, color))",
+    ))
+}
+
 fn py_to_instance(obj: &Bound<'_, PyAny>) -> PyResult<Instance> {
     use pyo3::types::PyDict;
 
@@ -330,7 +349,7 @@ impl Mesh {
             let mut list: Vec<Vertex> = Vec::with_capacity(len);
             for i in 0..len {
                 let item = seq.get_item(i)?;
-                list.push(py_to_vertex(&item)?);
+                list.push(py_into_vertex(&item)?);
             }
             Ok(Mesh::from_vertices(list))
         })
@@ -340,7 +359,7 @@ impl Mesh {
     #[lsp_doc("docs/api/geometry/mesh/add_vertex.md")]
     pub fn add_vertex_py(&mut self, vertex: Py<PyAny>) -> PyResult<()> {
         Python::attach(|py| -> PyResult<()> {
-            let vertex = py_to_vertex(vertex.bind(py))?;
+            let vertex = py_into_vertex(vertex.bind(py))?;
             self.add_vertex(vertex);
             Ok(())
         })
@@ -354,7 +373,7 @@ impl Mesh {
             let len = seq.len()?;
             for i in 0..len {
                 let item = seq.get_item(i)?;
-                let vertex = py_to_vertex(&item)?;
+                let vertex = py_into_vertex(&item)?;
                 self.add_vertex(vertex);
             }
             Ok(())
