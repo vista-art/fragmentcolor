@@ -837,13 +837,6 @@ mod kotlin {
         out = rewrite_list_args(&out);
         out = rewrite_shader_set_array(&out);
         out = rewrite_flat_enum_variants(&out);
-        // Flatten the 4×4 row form into a single 16-float list for
-        // `Model.setTransform`. The source writes
-        // `[[2,0,0,0], [0,2,0,0], [0,0,2,0], [3,0,0,1]]`; after the
-        // bracket→arrayOf pass that becomes
-        // `arrayOf(arrayOf(...), arrayOf(...), ...)`. The binding takes
-        // `List<Float>` of 16, not `Array<List<Float>>`.
-        out = rewrite_settransform_mat4_flatten(&out);
         out = rewrite_float_args(&out);
         out = rewrite_shader_new_to_compose(&out);
         out = rename_stand_ins(&out);
@@ -1041,7 +1034,7 @@ mod kotlin {
         let inner = array_inner(arg)?;
         let items: Vec<String> = match elems {
             Elems::AsIs => return Some(format!("listOf({inner})")),
-            Elems::Float => scalar_items(arg)?.iter().map(|i| floatify_if_numeric(i)).collect(),
+            Elems::Float => row_items(arg).or_else(|| scalar_items(arg))?.iter().map(|i| floatify_if_numeric(i)).collect(),
             Elems::Unsigned => scalar_items(arg)?.iter().map(|i| unsigned_literal(i)).collect(),
             Elems::Wrap(ty) => split_args(inner)
                 .iter()
@@ -1067,6 +1060,17 @@ mod kotlin {
         let open = "arrayOf".len();
         (arg.starts_with("arrayOf(") && closing(arg, open) == Some(arg.len() - 1))
             .then(|| &arg[open + 1..arg.len() - 1])
+    }
+
+    /// The numbers of an `arrayOf(...)` of number rows, row after row,
+    /// the order a flat list such as the matrix of `Model.setTransform` takes them in.
+    fn row_items(arg: &str) -> Option<Vec<String>> {
+        let rows = split_args(array_inner(arg)?);
+        let mut items = Vec::new();
+        for row in &rows {
+            items.extend(scalar_items(row)?);
+        }
+        (!rows.is_empty()).then_some(items)
     }
 
     /// The elements of an `arrayOf(...)` that holds no nested lists.
@@ -1501,65 +1505,6 @@ mod kotlin {
                 }
             }
         line.to_string()
-    }
-
-    /// `.setTransform(arrayOf(arrayOf(...), arrayOf(...), arrayOf(...), arrayOf(...)))`
-    /// becomes `.setTransform(listOf(<16 floats>))`. The 4×4 row form reads
-    /// well in source but the binding takes the column-major mat4 as a flat
-    /// 16-element `List<Float>`. Walks the outer arrayOf, flattens each inner
-    /// numeric arrayOf into the parts list, then rejoins.
-    fn rewrite_settransform_mat4_flatten(line: &str) -> String {
-        let needle = ".setTransform(arrayOf(";
-        let Some(start) = line.find(needle) else {
-            return line.to_string();
-        };
-        // Open paren of inner `arrayOf(` (the outer-list constructor).
-        let inner_open = start + needle.len() - 1;
-        let Some(inner_close) = closing(line, inner_open) else {
-            return line.to_string();
-        };
-        // Outer setTransform paren must close right after the inner arrayOf.
-        if !line[inner_close + 1..].starts_with(')') {
-            return line.to_string();
-        }
-        // Each row is its own `arrayOf(a, b, c, d)`. Walk the comma-separated
-        // top-level args, strip the `arrayOf(...)` shell, and collect floats.
-        let parts = split_args(&line[inner_open + 1..inner_close]);
-        let mut flat: Vec<String> = Vec::with_capacity(16);
-        for raw in parts {
-            let s = raw.trim();
-            // Strip `arrayOf(...)` or `listOf(...)` wrapper.
-            let body = if let Some(b) = s
-                .strip_prefix("arrayOf(")
-                .and_then(|b| b.strip_suffix(')'))
-            {
-                b
-            } else if let Some(b) = s
-                .strip_prefix("listOf(")
-                .and_then(|b| b.strip_suffix(')'))
-            {
-                b
-            } else {
-                // Not a recognised row shape — bail out and leave the line alone.
-                return line.to_string();
-            };
-            for el in split_args(body) {
-                flat.push(floatify_if_numeric(el.trim()));
-            }
-        }
-        if flat.len() != 16 {
-            // Only flatten when the shape is exactly 16 floats; otherwise the
-            // call is probably something we shouldn't rewrite.
-            return line.to_string();
-        }
-        let prefix = &line[..start];
-        let suffix = &line[inner_close + 2..];
-        format!(
-            "{}.setTransform(listOf({})){}",
-            prefix,
-            flat.join(", "),
-            suffix
-        )
     }
 
     /// Returns `s` with the `f` suffix appended if it's a bare numeric literal
