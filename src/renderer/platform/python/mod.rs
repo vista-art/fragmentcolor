@@ -6,7 +6,7 @@ use crate::{
 use lsp_doc::lsp_doc;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyBytes, PyDict, PyList};
 
 pub mod iterator;
 pub use iterator::*;
@@ -137,7 +137,7 @@ impl Renderer {
         })
     }
 
-    /// Single Python entry point. Accepts bytes or a sequence of ints, a path
+    /// Single Python entry point. Accepts bytes or a list of ints, a path
     /// string, a uint8 numpy ndarray, or a Mipmap handle. Optional kwargs:
     /// `size=(w, h)` (forces raw-pixel interpretation of bytes),
     /// `format=TextureFormat.X`, `mipmaps=True/False`.
@@ -264,16 +264,18 @@ impl Renderer {
     }
 }
 
-/// A `create_texture` source from Python, tried in this order.
-/// A uint8 ndarray comes first so it never reads as a flat byte sequence.
+/// A `create_texture` source from Python. Raw bytes come only as
+/// `bytes` or a `list` of ints, so an int ndarray never reads as bytes.
 #[derive(FromPyObject)]
 pub(crate) enum PyTextureSource<'py> {
-    #[pyo3(annotation = "ndarray[uint8]")]
-    Array(numpy::PyReadonlyArrayDyn<'py, u8>),
-    #[pyo3(annotation = "bytes | Sequence[int]")]
-    Bytes(Vec<u8>),
+    #[pyo3(annotation = "bytes")]
+    Bytes(Bound<'py, PyBytes>),
+    #[pyo3(annotation = "list[int]")]
+    List(Bound<'py, PyList>),
     #[pyo3(annotation = "str")]
     Path(String),
+    #[pyo3(annotation = "ndarray[uint8]")]
+    Array(numpy::PyReadonlyArrayDyn<'py, u8>),
     #[pyo3(annotation = "Mipmap")]
     Mipmap(crate::texture::Mipmap),
 }
@@ -300,13 +302,14 @@ fn py_to_texture_spec(
     }
 
     let data = match input {
+        PyTextureSource::Bytes(bytes) => TextureData::Bytes(bytes.as_bytes().to_vec()),
+        PyTextureSource::List(list) => TextureData::Bytes(list.extract()?),
+        PyTextureSource::Path(path) => TextureData::Path(path.into()),
         PyTextureSource::Array(array) => {
             let (rgba, size) = ndarray_to_rgba(&array)?;
             options.size.get_or_insert(size);
             TextureData::Bytes(rgba)
         }
-        PyTextureSource::Bytes(bytes) => TextureData::Bytes(bytes),
-        PyTextureSource::Path(path) => TextureData::Path(path.into()),
         PyTextureSource::Mipmap(chain) => TextureData::Prepared(chain),
     };
     Ok(TextureInput { data, options })
