@@ -28,26 +28,32 @@ impl From<PyTextureId> for TextureId {
     }
 }
 
-/// Raw texture bytes from Python: `bytes` or a sequence of ints,
-/// or a contiguous `uint8` ndarray of any shape, tried in that order.
+/// Raw texture bytes from Python: a `uint8` ndarray of any shape and layout,
+/// or `bytes` or a sequence of ints, tried in that order.
 #[derive(FromPyObject)]
 pub enum PyTextureBytes<'py> {
-    #[pyo3(annotation = "bytes | Sequence[int]")]
-    Bytes(Vec<u8>),
     #[pyo3(annotation = "ndarray[uint8]")]
     Array(numpy::PyReadonlyArrayDyn<'py, u8>),
+    #[pyo3(annotation = "bytes | Sequence[int]")]
+    Bytes(Vec<u8>),
 }
 
-impl TryFrom<PyTextureBytes<'_>> for Vec<u8> {
-    type Error = PyErr;
-
-    fn try_from(value: PyTextureBytes<'_>) -> Result<Self, Self::Error> {
+impl From<PyTextureBytes<'_>> for Vec<u8> {
+    fn from(value: PyTextureBytes<'_>) -> Self {
         match value {
-            PyTextureBytes::Bytes(bytes) => Ok(bytes),
-            PyTextureBytes::Array(array) => array.as_slice().map(<[u8]>::to_vec).map_err(|_| {
-                crate::error::PyFragmentColorError::new_err("ndarray must be contiguous")
-            }),
+            PyTextureBytes::Array(array) => ndarray_bytes(&array),
+            PyTextureBytes::Bytes(bytes) => bytes,
         }
+    }
+}
+
+/// The array's elements in row-major order, whatever its memory layout,
+/// so a Fortran-ordered, flipped, or sliced array reads like its C copy.
+pub(crate) fn ndarray_bytes(array: &numpy::PyReadonlyArrayDyn<'_, u8>) -> Vec<u8> {
+    let view = array.as_array();
+    match view.as_slice() {
+        Some(bytes) => bytes.to_vec(),
+        None => view.iter().copied().collect(),
     }
 }
 
@@ -222,7 +228,7 @@ impl Mipmap {
         size: Option<crate::size::PySize>,
     ) -> pyo3::PyResult<Mipmap> {
         let input = crate::TextureInput {
-            data: crate::TextureData::Bytes(bytes.try_into()?),
+            data: crate::TextureData::Bytes(bytes.into()),
             options: crate::TextureOptions {
                 size: size.map(Into::into),
                 format,
@@ -302,7 +308,7 @@ impl Texture {
     #[pyo3(name = "write")]
     #[lsp_doc("docs/api/texture/texture/write.md")]
     pub fn write_py(&self, data: PyTextureBytes<'_>) -> pyo3::PyResult<()> {
-        let bytes: Vec<u8> = data.try_into()?;
+        let bytes: Vec<u8> = data.into();
         self.write(&bytes)?;
         Ok(())
     }
@@ -314,7 +320,7 @@ impl Texture {
         data: PyTextureBytes<'_>,
         region: Option<PyTextureRegion<'_>>,
     ) -> pyo3::PyResult<()> {
-        let bytes: Vec<u8> = data.try_into()?;
+        let bytes: Vec<u8> = data.into();
         let region = match region {
             Some(region) => TextureRegion::try_from(region)?,
             None => TextureRegion::default(),

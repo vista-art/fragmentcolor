@@ -2,7 +2,16 @@ import os
 import platform
 import importlib
 import numpy as np
-from fragmentcolor import CompareFunction, Pass, Renderer, SamplerOptions, Shader, Size
+from fragmentcolor import (
+    CompareFunction,
+    Mipmap,
+    Pass,
+    Renderer,
+    SamplerOptions,
+    Shader,
+    Size,
+    TextureFormat,
+)
 
 # Debug diagnostics for CI
 if os.environ.get("FC_HEALTHCHECK_VERBOSE") == "1":
@@ -103,6 +112,44 @@ def check_size(renderer, texture):
     target.resize(size)
     assert (target.size.width, target.size.height) == (32, 8)
     print("Size reads its fields and passes back in")
+
+
+LOAD_TEXELS_SHADER = """
+@group(0) @binding(0) var tex: texture_2d<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+  return textureLoad(tex, vec2<i32>(pos.xy), 0);
+}
+"""
+
+
+def check_ndarray_layouts(renderer):
+    """Texture bytes read an ndarray in row-major order, whatever its memory layout."""
+    image = np.arange(2 * 3 * 4, dtype=np.uint8).reshape(2, 3, 4) * 10
+    layouts = {
+        "Fortran-ordered": np.asfortranarray(image),
+        "flipped": image[::-1].copy()[::-1],
+        "sliced": np.repeat(image, 2, axis=1)[:, ::2],
+    }
+    for label, array in layouts.items():
+        assert not array.flags["C_CONTIGUOUS"], label
+        level = Mipmap.build(array, TextureFormat.Rgba, size=[3, 2]).level(0)
+        assert level == image.tobytes(), f"Mipmap.build read a {label} array out of order"
+
+    def rendered(array):
+        shader = Shader(LOAD_TEXELS_SHADER)
+        shader.set("tex", renderer.create_texture(array, format=TextureFormat.Rgba))
+        target = renderer.create_texture_target([3, 2])
+        renderer.render(shader, target)
+        return target.get_image()
+
+    expected = rendered(image)
+    for label, array in layouts.items():
+        assert np.array_equal(rendered(array), expected), f"create_texture read a {label} array out of order"
+    print("ndarray texture bytes read in row-major order for every layout")
 
 
 def run():
@@ -253,6 +300,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
         {"repeat_x": True, "repeat_y": False, "smooth": True, "compare": None})
     check_sampler_options(tex)
     check_size(renderer, tex)
+    check_ndarray_layouts(renderer)
 
     # Push constants smoke: solid color via var<immediate>
     pc_shader = Shader("""

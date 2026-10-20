@@ -22,7 +22,7 @@ pub(crate) mod ktx2_loader;
 
 mod platform;
 #[cfg(python)]
-pub(crate) use platform::{PyTextureId, PyTextureSource};
+pub(crate) use platform::{PyTextureId, PyTextureSource, ndarray_bytes};
 
 use crate::{RenderContext, Size};
 use image::{DynamicImage, GenericImageView};

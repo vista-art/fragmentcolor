@@ -313,9 +313,7 @@ fn ndarray_to_rgba(
     let w = shape[1] as u32;
     let c = if shape.len() == 3 { shape[2] } else { 1 };
     let mut rgba = vec![0u8; (w as usize) * (h as usize) * 4];
-    let data = array
-        .as_slice()
-        .map_err(|_| crate::error::PyFragmentColorError::new_err("ndarray must be contiguous"))?;
+    let data = crate::texture::ndarray_bytes(array);
     for y in 0..(h as usize) {
         for x in 0..(w as usize) {
             let src_idx = (y * (w as usize) + x) * c;
