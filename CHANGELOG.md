@@ -83,6 +83,8 @@ The Rust examples for `TextureTarget.size` and `TextureTarget.resize` compile, a
 
 Python `TextureTarget.get_image()` returns an array of shape `(height, width, 4)`, indexed `image[y, x]`. It returned `(width, height, 4)` indexed `[x, y]`, the transpose of what `Renderer.create_texture`, `Mipmap.build`, Pillow, and Matplotlib read, so `create_texture(target.get_image())` mirrored the image across its diagonal and swapped the width and height of a target that is not square. This breaks code that indexes the result as `[x, y]`. Swap the two indices, or call `image.transpose(1, 0, 2)` for the old layout. The array's memory now holds the same bytes that `get_image` returns in Rust, JavaScript, Swift, and Kotlin.
 
+`Texture.write` and `Texture.write_region` take tightly packed rows at any width. Without an explicit `bytes_per_row`, the write path padded each row to a multiple of 256 bytes and asked for that much data, so a texture taller than one row failed with `Input data smaller than required for layout` whenever its row was not already a multiple of 256 bytes. A 2x2 RGBA texture asked for 264 bytes instead of 16. Only copies between a buffer and a texture need 256-byte rows, and `Queue::write_texture` takes any stride. A row now defaults to the region width times the bytes per pixel, and an explicit `bytes_per_row` only has to cover that width, so a tight stride such as 16 is accepted too. The fix reaches every binding.
+
 ## 0.12.5: WebGL2 fixes
 
 A patch release that makes the WebGL2 fallback work. There are no API changes.
