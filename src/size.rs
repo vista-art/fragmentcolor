@@ -11,7 +11,10 @@ use pyo3::prelude::*;
 pub mod error;
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass(from_py_object, get_all, set_all, module = "fragmentcolor"))]
+#[cfg_attr(
+    python,
+    pyclass(from_py_object, get_all, set_all, module = "fragmentcolor")
+)]
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, PartialOrd)]
 pub struct Size {
