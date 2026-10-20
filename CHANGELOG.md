@@ -1029,304 +1029,169 @@ not exported, etc.). Tracked under _Carried over to 0.12.0_.
 - [ ] Specialized alias objects (`Compute`, `RenderPass`, `ComputePass`)
 - [ ] Custom blending
 
-## 0.10.11 Texture write API, renderer texture updates, and external video textures
-
-### API additions
-
-- Add `Texture::id`, `Texture::write`, and `Texture::write_with`.
-- Add `Renderer::update_texture`, `Renderer::update_texture_with`, and `Renderer::unregister_texture`.
-- Add public `TextureWriteOptions` to control upload origin, size, bytes-per-row, and rows-per-image.
-
-### Web
-
-- Add `Renderer::create_external_texture_from_html_video` for sampling HTML video via `texture_external`.
-
-### Python / RenderCanvas
-
-- Restore compatibility with RenderCanvas versions that removed custom string-based `get_context("fragmentcolor")` integrations.
-- `Renderer::create_target` no longer depends on a custom RenderCanvas context name; it now reads screen present info directly, creates the surface from that data, and reuses the cached `RenderCanvasTarget`.
-
-### Docs & generation
-
-- Add docs and generated examples for the new texture-write APIs across Rust, JavaScript, and Python.
-- Support language-specific override snippets when the generic Rust-to-JS/Python conversion is insufficient.
-
-## 0.10.10 Web glue guard, ArrayBuffer handling fixes, and website hero cleanup
-
-### Build system
-
-- Web (WASM): add a post-bindgen patch step in `build_web` that hardens the generated glue.
-  - Guard the `Uint8Array(ArrayBuffer)` constructor used by wasm-bindgen shims against detached ArrayBuffer.
-  - On failure, fall back to `new Uint8Array(wasm.memory.buffer)` (live memory) to avoid crashes in long prod runs.
-
-### Web (WASM)
-
-- TextureInput (JS bridge): make ArrayBuffer handling robust on Web; treat `byte_length() == 0` as detached/empty and return an empty byte vector instead of throwing.
-- ImageData/Canvas extraction: use `ImageData.data().0` (Clamped<Vec<u8>>) for efficient copies; remove incorrect `copy_to()` usage on clamped data.
-
-### Docs & website
-
-- ShaderHero: simplify the component and remove heavy per-frame instrumentation/noise; keep a concise render loop and error stop.
-
-### Tooling & misc
-
-- Update `run_docs`, `astro.config.mjs`, and lockfiles for the site and examples.
-
-
-## 0.10.9 Bugfix: Stable kind branding for JS (avoids mangling in minified builds)
-
-### Bugfixes
-
-- Stable kind branding for JS (avoids mangling in minified builds)
-  - `crate::impl_fc_kind!(TypeName, "TypeName");` in each type's file
-  - `pub mod fc_kind;` and `pub use fc_kind::FcKind;` in lib.rs
-
-## 0.10.8 Concurrency‑safe uniforms, typed errors, and web gallery
-
-### API changes
-
-- RendererError: add `MsaaViewMissing` and `DepthSampleCountMismatch`; InitializationError: `AdapterNotSet`.
-- ShaderError: add `Busy`. `set()` is now non‑blocking (queues last‑wins updates); read methods may transiently return `Busy` under contention.
-
-### Internals
-
-- Non‑blocking uniform updates with pending queue; renderer flushes pending before binding.
-- Pass adopts kind (Render/Compute) from the first attached shader.
-- Web (WASM): pre‑grow linear memory by 64 MiB to reduce mid‑frame `memory.grow` stalls.
-
-### Bug fixes
-
-- JavaScript: fix "Invalid target type in render" in website by shipping branded JS prototypes in the npm package.
-- Web gallery/healthcheck: use `init({ module_or_path })` for reliable WASM initialization.
-
-### Docs & website
-
-- Replace old healthcheck pages with a Visual Gallery at `/gallery`; default `run_web` to Gallery.
-- Homepage: add `ShaderHero` and tighten hero spacing; Astro now points to local pkg dir so subpath imports resolve.
-
-### Examples
-
-- Rust: `swirl` shader moved to `examples/rust/examples/shaders/swirl.wgsl`; example loads by path and uses top‑level `draw`/`resize`.
-- Web: simplify pass dependencies and update to `createTextureTarget()` API.
-
-## 0.10.7 Documentation automation, website integration, API completeness, build system, and release flow
-
-This is our biggest release to date and it feels extremely weird to merely bump a patch version!
-
-The amount of changes introduced here deserves a major version bump!
-
-Most of the following features were originally planned for future releases, but I get carried away
-and implemented them now, focusing on API completeness before tackling iOS and Android support.
-
-### Geometry/Instancing Refinement
-
-- [x] Per-mesh bind-group updates to allow different textures per mesh in a single pass.
-- [x] Mesh-Shader compatibility enforcement and Shader-centric mesh attachment API (Shader.add_mesh, Pass.add_mesh_to_shader).
-- [x] Geometry/Instancing Refinement:
-  - [x] Shader source-derived validation/mapping of @location inputs from Naga
-  - [x] Multiple meshes per Pass and per-mesh draw calls.
-  - [x] Design a Idiomatic/simple way to create complex shapes with Mesh and Vertex.
-  - [x] Mesh builders for common shapes (only Quad for now)
-  - [x] Meshes grouped by Shader; multiple Pipelines per Pass with multiple meshes.
-
-### Shader API Completeness
-
-- [x] Support for all ways to upload data to a GPU:
-  - [x] VertexBuffer
-  - [x] IndexBuffer
-  - [x] StorageBuffer
-  - [x] StorageBuffer: Arrays
-  - [x] Uniform
-  - [x] Uniform: Arrays
-  - [x] Texture
-  - [x] StorageTexture
-  - [x] Sampler
-  - [x] PushConstant
-
-### Complete Texture and Storage API
-
-#### Core types
-
-- [x] Rename internal renderer/texture.rs::Texture -> TextureObject with sampler options (RwLock)
-- [x] Public API: Texture wrapper (Arc\<TextureObject\>, TextureId handle), add Arc\<RenderContext\>
-- [x] Handle registry in RenderContext (DashMap\<TextureId, Arc\<TextureObject\>\>) + AtomicU64 allocator
-- [x] Introduce TextureId newtype to avoid conflict with TexturePool, keep TexturePool as-is
-- [x] Introduce TextureMeta (id + naga metadata: dim, arrayed, class)
-
-#### Shader UX
-
-- [x] UniformData::Texture carries TextureMeta; From<&Texture> sets id only (preserves shader metadata)
-- [x] UniformData::Storage((inner, span, access)) with CPU-side blob backing. set("ssbo.*") updates the blob at field offsets (from Naga) and renders on next frame.
-- [x] JS/Python conversions to allow shader.set("key", texture)
-- [x] Naga parsing: detect image/sampler bindings; store TextureMeta/SamplerInfo in UniformData
-- [x] AddressSpace handling: accept Uniform/Handle; WorkGroup (unbound) ignored; PushConstant supported natively (single-root) with uniform-buffer fallback (Web or over limit/multi-root).
-- [x] Array element indexing for Storage and Uniforms using naga stride, including nested array/struct offsets. Added unit tests.
-- [x] Unified cross-target URL fetching helper (native via ureq, WASM via fetch) and refactored Shader.fetch and texture URL loading to use it. Removed ureq usage from WASM paths.
-- [x] Texture & Sampler support
-
-#### Renderer bindings and draw
-
-- [x] Bind group layout: add Texture (sampled/depth/storage) and Sampler entries using Naga metadata
-- [x] Storage buffers: bind as BufferBindingType::Storage/ReadOnlyStorage based on access flags; upload CPU blob each frame via a dedicated pool
-- [x] Render: bind TextureView and Sampler (resolve from TextureId); fallback/default sampler if needed
-
-#### Unified input and ergonomics
-
-- [x] TextureInput enum (Bytes, Path, CloneOf); From impls for &[u8], Vec<u8], &Path, PathBuf, &Texture
-- [x] TextureOptions (size, format, sampler) with conversions from Size/TextureFormat; TextureFormat wrapper decoupled from wgpu
-- [x] create_texture prefers encoded bytes or path; use create_texture_with for raw bytes + options
-- [x] Aliases: create_2d_texture / create_3d_texture / create_storage_texture / create_depth_texture
-
-#### Cleanup
-
-- [x] Remove all Box<dyn Error>, created module-scoped error types
-
-### Rendering
-
-#### Renderer Internals
-
-- [x] Surface configuration selection and view_formats
-- [x] Surface frame acquire recovery (WindowTarget)
-- [x] Sample-count negotiation helper
-- [x] Store and propagate sample_count in RenderContext
-- [x] Pipeline cache keyed by (ShaderHash, format, samples)
-- [x] MSAA render path with resolve
-- [x] TextureTarget MSAA + resolve (optional)
-- [x] Centralized frame acquire retry in Renderer
-- [x] Pooling for transient targets/readback
-
-#### Renderer API
-
-- [x] create_texture(input: Into\<TextureInput\>) -> Texture (Rust)
-- [x] create_texture_from_file(&Path) -> Texture (Rust)
-- [x] create_texture_with(input, options: TextureOptions) -> Texture (Rust); alias helpers: create_texture_with_size, create_texture_with_format
-- [x] Web: createTexture(input) (Uint8Array/URL/query selector)
-- [x] Python: create_texture(input) (bytes/path/ndarray)
-
-### Build System and Documentation
-
-- [x] Build System
-  - [x] Unit test all packages before building
-  - [x] Git hook: test builds for all platforms before push
-  - [x] Script to Test, Compile & Publish JS
-  - [x] Script to Test, Compile & Publish Python
-  - [x] Script to Test, Compile & Publish Rust + Winit
-  - [x] GHA wheel: Test build all packages for all OSses
-
-- [x] Automated documentation pipeline:
-  - [x] Doc strings centralized in `docs/api` and consumed in Rust via `#[lsp_doc]`.
-  - [x] Build-time validation: ensures object/method docs exist and include a `## Example` section.
-  - [x] Website generator: converts `docs/api` into MDX pages under `docs/website`, downshifting method headings and stripping object H1.
-  - [x] JS/Python examples are sliced from annotated healthcheck scripts.
-
-- [x] Release Management & Website Automation
-- [x] Website moved into this repository under `docs/website`.
-- [x] Automatically update docs from Rust Doc Comments
-- [x] Script to copy contents and publish to Website
-- [x] Post-publish workflow: after tags publish to npm & PyPI, update consumers (website & JS example) to the released version and push to main.
-- [x] Healthcheck example markers add
-
-### Platforms
-
-- [x] iOS/Android scaffolding: platform wrappers and targets aligned with Python/JS method order (bindings not generated yet)
-  - [x] Renderer: `new_ios`, `create_target_ios`, `create_texture_target_ios`, `render_ios`
-  - [x] Renderer: `new_android`, `create_target_android`, `create_texture_target_android`, `render_android`
-  - [x] Types: `IosTarget`, `IosTextureTarget`, `AndroidTarget`, `AndroidTextureTarget`
-
-## Documentation and Tooling
-
-- [x] Aggressive build system that does a lot of magic
-- [x] 100% feature parity guaranteed across all languages
-- [x] Normalized API links to <https://fragmentcolor.org>.
-- [x] Wired all public items to `#[lsp_doc]` sources (Renderer, Shader, Pass, Frame, etc.).
-- [x] Docs examples standardized: async wrapper + pollster, no futures dependency, no filesystem reads. Prefer create_texture in examples; use create_texture_with only on its own page or for raw-byte cases.
-- [x] Removed inline JS/Python examples on core API pages (these are generated elsewhere). Hidden platform docs left intact.
-- [x] Removed stale mobile code paths: `headless()`, `render_bitmap()`, and platform `FragmentColor` wrappers.
-- [x] Moved platform-specific cfgs out of `renderer/mod.rs`; added `renderer::platform::all::create_instance()` and moved the winit `HasDisplaySize` impl to `renderer/platform/winit.rs`.
-- [x] build.rs validation: ignore mobile wrapper variants (`*_ios`, `*_android`) just like `*_js` and `*_py` when mapping docs.
-
-## 0.10.6 JavaScript support (skipped released due to unstable build)
-
-- [x] Adds JavaScript support
-- [x] Publishes to NPM
-- [x] Refactor to remove constructors returning tuples
-- [x] Lazy-loaded Renderer with easier API
-- [x] Chore: Script to automatically bump version
-- [x] Updates WGPU version and other dependencies
-
-## V 0.10.5 Fixes Python support for Windows and Linux
-
-- [x] Fixes Python support for Windows and Linux
-- [x] Automatically generate artifacts
-- [x] Automatically publish to Pypi
-
-## V 0.10.4 Fixes Python Import Error
-
-- [x] Fixes Python import in Pypi distribution
-- [x] Fixes Pass and Frame objects
-- [x] Adds missing methods from public API
-
-## V 0.10.3 Rust 2024 Edition
-
-- [x] Upgrades to Rust 2024 edition
-- [x] Minor fixes in documentation
-
-## V 0.10.2 Python support
-
-- [x] Initial Python Draft Implementation
-- [x] Publish to Pip
-
-### V 0.10.1 Cleanup and Fix Bugs
-
-- [x] Simplify Shader Internal representation
-- [x] BufferPool implementation
-- [x] Graceful runtime error handling (no panics)
-- [x] Fix uniform getter and setter
-- [x] Renderer render() method now has two arguments: Renderable and Target
-- [x] Make the Renderer support Shader, Pass and Frame as input
-  - [x] Shader
-  - [x] Pass
-  - [x] Frame
-- [x] Improve public interface for Target - make the default easy (one target)
-- [x] Set up cross-platform initializers (helper functions)
-- [x] remove boilerplate from Rust demos
-
-### V 0.10.0 Set up basic API and basic data structures
-
-- [x] Renderer
-- [x] Shader
-  - [x] decide how to handle generic set() function
-        [x] Pass
-  - [x] RenderPass
-  - [x] ComputePass
-- [x] Frame
-- [x] Renderer
-- [x] Target
-- [x] Design main public interface
-- [x] Experimental GLSL Support
-
-## Earlier Versions (before V 0.9.0 in 2023)
-
-The initial versions of this library (up tp 0.9.0) were completely discarded.
-
-About one year after not touching the code, in January 2025 I force-pushed and rewrote the **v0.10.0** branch from scratch.
-
----
-
-## TEMPLATE
-
-### Fixed
-
-- Bumps patch version
+## 0.10.11: Texture writes and HTML video textures
 
 ### Added
 
-- Bumps minor version
+- `Texture::id`, `Texture::write`, and `Texture::write_with`.
+- `Renderer::update_texture`, `Renderer::update_texture_with`, and `Renderer::unregister_texture`.
+- `TextureWriteOptions` sets the upload origin, size, bytes per row, and rows per image.
+- Web: `Renderer::create_external_texture_from_html_video` samples an HTML video through `texture_external`.
 
-### Deprecated
+### Python and RenderCanvas
 
-- This is unused until the initial public release. While in prototyping stage, the API is a hot mess and can change anytime in a whim.
+- Works with RenderCanvas versions that dropped string-based `get_context("fragmentcolor")` integrations. `Renderer::create_target` reads the screen's present info directly, creates the surface from it, and reuses the cached `RenderCanvasTarget`.
 
-### Removed
+### Docs and generation
 
-- Bumps major version
+- Docs and generated JavaScript and Python examples for the texture-write APIs.
+- Override snippets per language where the generic Rust conversion falls short.
+
+## 0.10.10: Web glue guard and ArrayBuffer fixes
+
+### Web
+
+- `build_web` patches the generated wasm-bindgen glue: when the `Uint8Array(ArrayBuffer)` constructor meets a detached buffer, it falls back to `new Uint8Array(wasm.memory.buffer)`, which avoids crashes in long sessions.
+- `TextureInput` from JavaScript treats an `ArrayBuffer` with `byte_length() == 0` as detached and empty, and returns no bytes instead of throwing.
+- `ImageData` and canvas reads copy through `ImageData.data().0`, which replaces an incorrect `copy_to()` on clamped data.
+
+### Website and tooling
+
+- The hero shader component is simpler, with its per-frame instrumentation removed.
+- `run_docs`, `astro.config.mjs`, and the lockfiles for the site and examples are updated.
+
+## 0.10.9: Stable class branding in minified JavaScript
+
+### Fixed
+
+- Each type carries a stable kind brand, so minified JavaScript builds still recognize FragmentColor objects. Types register with `crate::impl_fc_kind!(TypeName, "TypeName")`, and the crate exports `fc_kind` and `FcKind`.
+
+## 0.10.8: Uniforms that never block, typed errors, and a web gallery
+
+### API changes
+
+- `RendererError` gains `MsaaViewMissing` and `DepthSampleCountMismatch`, and `InitializationError` gains `AdapterNotSet`.
+- `ShaderError` gains `Busy`. `set()` no longer blocks: it queues updates, and the last one wins. Read methods may return `Busy` briefly under contention.
+
+### Internals
+
+- Uniform updates queue without blocking, and the renderer applies them before binding.
+- A `Pass` takes its kind (render or compute) from its first shader.
+- The web build grows linear memory by 64 MiB up front to avoid `memory.grow` stalls mid-frame.
+
+### Fixed
+
+- JavaScript: the npm package ships branded prototypes, which fixes "Invalid target type in render" on the website.
+- The web gallery and healthcheck initialize WebAssembly with `init({ module_or_path })`.
+
+### Website
+
+- A visual gallery at `/gallery` replaces the old healthcheck pages, and `run_web` opens it by default.
+- The homepage gains the hero shader. Astro points at the local package directory so subpath imports resolve.
+
+### Examples
+
+- Rust: the `swirl` shader moves to `examples/rust/examples/shaders/swirl.wgsl`, loads by path, and uses top-level `draw` and `resize`.
+- Web: simpler pass dependencies and the `createTextureTarget()` API.
+
+## 0.10.7: Docs pipeline, website, API completeness, and release flow
+
+The largest release so far, shipped as a patch. Most of these features were planned for later releases and landed early to round out the API before the iOS and Android work.
+
+### Geometry and instancing
+
+- Several meshes per pass, each with its own draw call and bind group updates, so meshes in one pass can use different textures.
+- Shaders own their meshes. `Shader.add_mesh` checks compatibility on attach against the `@location` inputs that naga reflects from the source, and `Pass.add_mesh_to_shader` attaches through a pass.
+- Meshes group by shader, with one pipeline per shader in a pass.
+- `Mesh` and `Vertex` build custom shapes, and `Quad` is the first built-in shape.
+
+### Shaders
+
+- Every way to get data to the GPU: vertex and index buffers, storage buffers and their arrays, uniforms and their arrays, textures, storage textures, samplers, and push constants.
+- `shader.set("key", texture)` binds a texture in Rust, JavaScript, and Python, with texture and sampler bindings detected from the shader.
+- `set("ssbo.*")` writes storage buffer fields at the offsets naga reports, uploaded on the next frame.
+- Array elements are addressable by index in storage buffers and uniforms, nested structs and arrays included.
+- Push constants run natively for a single root, and fall back to a uniform buffer on the web, over the size limit, or with several roots.
+- One fetch helper for native and the web loads `Shader.fetch` and texture URLs.
+
+### Textures and storage
+
+- A public `Texture` handle with a `TextureId`, registered with the renderer.
+- `TextureMeta` carries a texture's id plus the dimension, array flag, and class that naga reflects.
+- Storage buffers bind as read-only or read-write from their access flags and upload their CPU copy each frame.
+- `TextureInput` (bytes, a path, or a clone of a texture) and `TextureOptions` (size, format, sampler), with a `TextureFormat` independent of wgpu.
+- `create_texture(input)`, `create_texture_from_file(path)`, and `create_texture_with(input, options)`, plus `create_texture_with_size`, `create_texture_with_format`, `create_2d_texture`, `create_3d_texture`, `create_storage_texture`, and `create_depth_texture`. Web: `createTexture` takes a `Uint8Array`, a URL, or a query selector. Python: `create_texture` takes bytes, a path, or a NumPy array.
+- Error types per module replace every `Box<dyn Error>`.
+
+### Rendering
+
+- Surface configuration picks formats and `view_formats`, and window targets recover from failed frame acquisition, with retries centralized in the renderer.
+- MSAA with resolve, on window targets and optionally on texture targets. The sample count is negotiated and stored in the render context.
+- The pipeline cache keys on shader hash, format, and sample count.
+- Pools for transient targets and readback buffers.
+
+### Build system and documentation
+
+- Unit tests for every package before each build, and a git hook that test-builds every platform before a push.
+- Scripts that test, compile, and publish JavaScript, Python, and Rust, and a GitHub Actions job that builds every package on every OS.
+- Docs live in `docs/api` and reach Rust through `#[lsp_doc]`. The build checks that every object and method has a page with a `## Example` section.
+- The website moves into this repository under `docs/website` and is generated from `docs/api`, with JavaScript and Python examples taken from annotated healthcheck scripts.
+- After a tag publishes to npm and PyPI, a workflow updates the website and the JavaScript example to the new version.
+- Feature parity across languages, checked at build time, with every public item linked to its `docs/api` page.
+- API links point at <https://fragmentcolor.org>. Docs examples share one style: an async wrapper with pollster, and no filesystem reads.
+- Unused mobile code is gone: `headless()`, `render_bitmap()`, and the platform `FragmentColor` wrappers.
+
+### Platforms
+
+- Scaffolding for iOS and Android, with no generated bindings: `new_ios`, `create_target_ios`, `create_texture_target_ios`, and `render_ios`, the Android equivalents, and the `IosTarget`, `IosTextureTarget`, `AndroidTarget`, and `AndroidTextureTarget` types.
+
+## 0.10.6: JavaScript support
+
+Not published: the build was unstable.
+
+- JavaScript support, published to npm
+- Constructors no longer return tuples
+- A lazily loaded `Renderer` with a simpler API
+- A script that bumps the version
+- wgpu and other dependencies updated
+
+## 0.10.5: Python on Windows and Linux
+
+- Python works on Windows and Linux
+- Build artifacts are generated and published to PyPI automatically
+
+## 0.10.4: Python import fix
+
+- The PyPI package imports correctly
+- `Pass` and `Frame` fixes
+- Missing public API methods added
+
+## 0.10.3: Rust 2024 edition
+
+- The crate moves to the Rust 2024 edition
+- Small documentation fixes
+
+## 0.10.2: Python support
+
+- A first Python implementation, published to PyPI
+
+## 0.10.1: Cleanup and bug fixes
+
+- A simpler internal shader representation
+- A `BufferPool` for uniform buffers
+- Runtime errors return instead of panicking
+- Uniform getters and setters fixed
+- `Renderer::render` takes two arguments: a renderable and a target
+- The renderer accepts a `Shader`, a `Pass`, or a `Frame`
+- A simpler `Target` interface for the common single-target case
+- Helper functions that initialize each platform
+- Less boilerplate in the Rust demos
+
+## 0.10.0: The basic API
+
+- `Renderer`, `Shader` with a generic `set()`, `Pass` (render and compute), `Frame`, and `Target`
+- Experimental GLSL support
+
+## Before 0.10
+
+Versions up to 0.9.0 were discarded. 0.10.0 is a rewrite from scratch, begun in January 2025.
