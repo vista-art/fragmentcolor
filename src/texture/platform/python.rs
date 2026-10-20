@@ -118,10 +118,13 @@ impl Texture {
     pub fn write_region_py(
         &self,
         data: PyTextureBytes<'_>,
-        region: Option<PyTextureRegion>,
+        region: Option<PyTextureRegion<'_>>,
     ) -> pyo3::PyResult<()> {
         let bytes: Vec<u8> = data.try_into()?;
-        let region: TextureRegion = region.map(Into::into).unwrap_or_default();
+        let region = match region {
+            Some(region) => TextureRegion::try_from(region)?,
+            None => TextureRegion::default(),
+        };
         self.write_region(&bytes, region)?;
         Ok(())
     }
