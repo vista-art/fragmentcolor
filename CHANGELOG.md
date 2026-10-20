@@ -16,6 +16,8 @@ The committed Swift wrapper in `platforms/swift/Sources/FragmentColor/generated/
 
 The npm package no longer ships the test harness. `wasm-bindgen-test` was a runtime dependency of the web build, so the package exported a `WasmBindgenTestContext` class and the `__wbgtest_*` helpers next to the real API. It is a development dependency now, and the bundle carries only the library's own exports.
 
+Unused build inputs are gone. The web build no longer declares `serde-wasm-bindgen` or `gloo-utils`, which no code called, and the stale `generated/wasm_exports.txt` list, which nothing read, is deleted.
+
 ## 0.12.5: WebGL2 fixes
 
 A patch release that makes the WebGL2 fallback work. There are no API changes.
