@@ -1713,23 +1713,22 @@ mod kotlin {
         }
     }
 
+    /// Remove `new ` used as a constructor prefix, in code only, never in strings or comments.
     fn drop_new_keyword(line: &str) -> String {
-        let chars: Vec<char> = line.chars().collect();
+        let code = code_only(line);
         let mut out = String::with_capacity(line.len());
-        let mut i = 0usize;
-        while i < chars.len() {
-            if chars[i..].starts_with(&['n', 'e', 'w', ' ']) {
-                let left_ok = i == 0 || !is_ident_char(chars[i - 1]);
-                let right_ok =
-                    i + 4 < chars.len() && (chars[i + 4].is_alphabetic() || chars[i + 4] == '_');
-                if left_ok && right_ok {
-                    i += 4;
-                    continue;
-                }
+        let (mut copied, mut search) = (0, 0);
+        while let Some(found) = code[search..].find("new ") {
+            let at = search + found;
+            let left_ok = code[..at].chars().next_back().is_none_or(|c| !is_ident_char(c));
+            let right_ok = code[at + 4..].chars().next().is_some_and(|c| c.is_alphabetic() || c == '_');
+            if left_ok && right_ok {
+                out.push_str(&line[copied..at]);
+                copied = at + 4;
             }
-            out.push(chars[i]);
-            i += 1;
+            search = at + 4;
         }
+        out.push_str(&line[copied..]);
         out
     }
 
