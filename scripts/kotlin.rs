@@ -756,13 +756,6 @@ mod kotlin {
             }
 
             let rewritten = rewrite_line(&line);
-            // Handle Kotlin destructuring: `val (a, b) = expr` is not supported for
-            // non-data-class types. Expand to two separate val declarations.
-            let rewritten = if let Some(expanded) = expand_destructuring_val(&rewritten) {
-                expanded
-            } else {
-                rewritten
-            };
             // Rename duplicate `val <name>` declarations to avoid conflicting declarations.
             let rewritten = rename_duplicate_val(&rewritten, &mut declared_vals);
             out.push(rewritten);
@@ -2236,49 +2229,5 @@ mod kotlin {
             return String::new();
         }
         line.to_string()
-    }
-
-    // Expand `val (a, b) = expr` destructuring into two separate `val` lines
-    // since Kotlin's destructuring only works for `data class` Pair / Triple.
-    // Returns `Some(expanded)` if it matched, `None` otherwise.
-    fn expand_destructuring_val(line: &str) -> Option<String> {
-        let trimmed = line.trim_start();
-        if !trimmed.starts_with("val (") { return None; }
-        // Pattern: `val (a, b) = expr`
-        let rest = &trimmed["val (".len()..];
-        let close = rest.find(')')?;
-        let names_str = &rest[..close];
-        let after_close = rest[close + 1..].trim_start();
-        if !after_close.starts_with('=') { return None; }
-        let rhs = after_close[1..].trim();
-        let names: Vec<&str> = names_str.split(',').map(|s| s.trim()).collect();
-        if names.len() < 2 { return None; }
-        let indent_len = line.len() - trimmed.len();
-        let indent = &line[..indent_len];
-        // Emit: `val tmp_size = expr; val a = tmp_size.field0; val b = tmp_size.field1`
-        // For baseSize() which returns Size, use .width and .height
-        let tmp = "tmp_size";
-        let mut out = format!("{}val {} = {}", indent, tmp, rhs);
-        // Try to use named fields based on context
-        let field_names = if rhs.contains("baseSize") || rhs.contains("size") {
-            vec!["width", "height"]
-        } else {
-            // Generic: use component1(), component2()
-            (0..names.len()).map(|i| match i {
-                0 => "component1()",
-                1 => "component2()",
-                2 => "component3()",
-                _ => "componentN()",
-            }).collect::<Vec<_>>()
-        };
-        for (idx, name) in names.iter().enumerate() {
-            let field = field_names.get(idx).copied().unwrap_or("componentN()");
-            // Both branches currently produce the same `tmp.field` accessor —
-            // the conditional is here so future emitters (e.g. `.field` getter
-            // vs `.field()` method) can diverge without restructuring.
-            let accessor = format!("{}.{}", tmp, field);
-            out.push_str(&format!("\n{}val {} = {}", indent, name, accessor));
-        }
-        Some(out)
     }
 }
