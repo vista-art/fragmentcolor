@@ -10,8 +10,8 @@ The `region` argument accepts anything convertible into a `TextureRegion`:
 - A `TextureRegion` constructed explicitly with `.with_stride(...)` / `.with_rows(...)` for advanced data-layout control
 
 ## Notes
-- See `Texture::write` for format and alignment details.
-- `bytes_per_row` (set via `.with_stride(...)`) must be a multiple of 256 when provided.
+- See `Texture::write` for format and row layout details.
+- `bytes_per_row` (set via `.with_stride(...)`) defaults to the region width times the bytes per pixel. A larger value skips the padding at the end of each source row.
 - `rows_per_image` (set via `.with_rows(...)`) defaults to the region height.
 
 ## Example

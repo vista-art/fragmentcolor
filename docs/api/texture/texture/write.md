@@ -4,7 +4,7 @@ Efficiently upload raw pixel data into an existing texture. Ideal for video play
 
 - Whole texture updates: use `Texture.write(&bytes)`.
 - Sub-rectangle updates or explicit data layout: use `Texture.write_region(&bytes, region)`.
-- Bytes per row must be a multiple of 256. When unspecified, compute it from the pixel stride and align up.
+- `bytes` holds tightly packed rows: each row is the texture width times the bytes per pixel, with no padding. For padded rows, pass the stride to `Texture.write_region`.
 
 ## Notes
 - Supported formats initially: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, and other 4-bytes-per-pixel formats. Unsupported formats return an error.

@@ -53,9 +53,9 @@ extension TextureRegionMobile {
 
     // MARK: - Builder-style setters
 
-    /// Set `bytes_per_row` (must be a multiple of 256 when passed to
-    /// `Texture.writeRegion`). Returns a new value — `TextureRegionMobile`
-    /// is a value type.
+    /// Set `bytes_per_row` for source data with row padding.
+    /// It must be at least the region width times the bytes per pixel.
+    /// Returns a new value, since `TextureRegionMobile` is a value type.
     public func withStride(_ bytesPerRow: UInt32) -> TextureRegionMobile {
         return TextureRegionMobile(
             originX: originX, originY: originY, originZ: originZ,
