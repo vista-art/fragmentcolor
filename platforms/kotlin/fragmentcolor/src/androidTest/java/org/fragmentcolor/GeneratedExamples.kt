@@ -29,10 +29,10 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_core_pass_Pass() {
 
+        val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
 
         val renderer = Renderer()
-        // HEADLESS: canvas creation not needed on Android
-        val target = renderer.createTextureTarget(800u, 600u)
+        val target = renderer.createTarget(canvas)
         val shader = Shader.default()
 
         val pass = Pass("First Pass")
@@ -239,14 +239,12 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_core_renderer_Renderer() {
 
+        val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
 
         val renderer = Renderer()
 
-        // Use your platform's windowing system to create a window
-        // HEADLESS: canvas creation not needed on Android
-
-        // Create a Target from it
-        val target = renderer.createTextureTarget(800u, 600u)
+        // The canvas comes from your platform's windowing system
+        val target = renderer.createTarget(canvas)
         val texture_target = renderer.createTextureTarget(16u, 16u)
 
         // RENDERING
@@ -283,13 +281,12 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_core_renderer_create_target() {
 
+        val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
 
         val renderer = Renderer()
 
-        // Use your platform's windowing system to create a window.
-        // HEADLESS: canvas creation not needed on Android
-
-        val target = renderer.createTextureTarget(800u, 600u)
+        // The canvas comes from your platform's windowing system.
+        val target = renderer.createTarget(canvas)
     }
 
     @Suppress("unused") private suspend fun _example_core_renderer_create_texture() {
@@ -1433,13 +1430,12 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_targets_target_Target() {
 
+        val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
 
         val renderer = Renderer()
 
-        // Use your platform's windowing system to create a window.
-        // HEADLESS: canvas creation not needed on Android
-
-        val target = renderer.createTextureTarget(800u, 600u)
+        // The canvas comes from your platform's windowing system.
+        val target = renderer.createTarget(canvas)
 
         // To animate, render again in your event loop...
         renderer.render(Shader.default(), target)
@@ -1543,12 +1539,12 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_targets_window_target_WindowTarget() {
 
-
-        // Use your platform's windowing system to create a window.
-        // HEADLESS: canvas creation not needed on Android
+        val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(800u, 600u)
+
+        // The canvas comes from your platform's windowing system.
+        val target = renderer.createTarget(canvas)
 
         renderer.render(Shader.default(), target)
     }

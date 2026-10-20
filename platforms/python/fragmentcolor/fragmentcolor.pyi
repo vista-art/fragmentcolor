@@ -66,16 +66,13 @@ class Renderer:
     Example:
 
     ```python
-    from rendercanvas.auto import RenderCanvas, loop
-
     from fragmentcolor import Shader, Renderer
+    from rendercanvas.auto import RenderCanvas
+    canvas = RenderCanvas(size=(800, 600))
 
     renderer = Renderer()
 
-    # Use your platform's windowing system to create a window
-    canvas = RenderCanvas(size=(800, 600))
-
-    # Create a Target from it
+    # The canvas comes from your platform's windowing system
     target = renderer.create_target(canvas)
     texture_target = renderer.create_texture_target([16, 16])
 
@@ -112,18 +109,18 @@ class Renderer:
         """
         Creates a [Target](https://fragmentcolor.org/api/core/target) attached to a platform-specific canvas or window.
 
+        In Rust, we officially support Winit. Check the examples folder for details.
+
         Example:
 
         ```python
-        from rendercanvas.auto import RenderCanvas, loop
-
         from fragmentcolor import Renderer
+        from rendercanvas.auto import RenderCanvas
+        canvas = RenderCanvas(size=(800, 600))
 
         renderer = Renderer()
 
-        # Use your platform's windowing system to create a window.
-        canvas = RenderCanvas(size=(800, 600))
-
+        # The canvas comes from your platform's windowing system.
         target = renderer.create_target(canvas)
         ```
         """

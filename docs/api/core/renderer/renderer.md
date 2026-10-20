@@ -18,16 +18,28 @@ description below for details.
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+# let canvas = fragmentcolor::headless_window([800, 600]);
+# /*[js]
+# const canvas = document.createElement("canvas");
+# */
+# /*[python]
+# from rendercanvas.auto import RenderCanvas
+# canvas = RenderCanvas(size=(800, 600))
+# */
+# /*[swift]
+# import QuartzCore
+# let canvas = CAMetalLayer()
+# */
+# /*[kotlin]
+# val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+# */
 
 use fragmentcolor::{Shader, Renderer, Target};
 
 let renderer = Renderer::new();
 
-// Use your platform's windowing system to create a window
-let window = fragmentcolor::headless_window([800, 600]);
-
-// Create a Target from it
-let target = renderer.create_target(window).await?;
+// The canvas comes from your platform's windowing system
+let target = renderer.create_target(canvas).await?;
 let texture_target = renderer.create_texture_target([16, 16]).await?;
 
 // RENDERING

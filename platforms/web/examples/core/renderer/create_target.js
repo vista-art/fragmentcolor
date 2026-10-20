@@ -1,9 +1,8 @@
 
 import { Renderer } from "fragmentcolor";
+const canvas = document.createElement("canvas");
 
 const renderer = new Renderer();
 
-// Use your platform's windowing system to create a window.
-const canvas = document.createElement('canvas');
-
+// The canvas comes from your platform's windowing system.
 const target = await renderer.createTarget(canvas);

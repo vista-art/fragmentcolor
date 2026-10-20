@@ -15,16 +15,17 @@
 
 import Foundation
 import FragmentColor
+import QuartzCore
 
 @available(iOS 16.0, *)
 private enum _GeneratedExamples {
     static func _example_core_pass_Pass() async throws {
         do {
 
+            let canvas = CAMetalLayer()
 
             let renderer = Renderer()
-            // iOS: window/canvas provided by CAMetalLayer at runtime
-            let target = try await renderer.createTextureTarget([800, 600])
+            let target = try await renderer.createTarget(canvas)
             let shader = Shader.default()
 
             let pass = Pass("First Pass")
@@ -267,14 +268,12 @@ private enum _GeneratedExamples {
     static func _example_core_renderer_Renderer() async throws {
         do {
 
+            let canvas = CAMetalLayer()
 
             let renderer = Renderer()
 
-            // Use your platform's windowing system to create a window
-            // iOS: window/canvas provided by CAMetalLayer at runtime
-
-            // Create a Target from it
-            let target = try await renderer.createTextureTarget([800, 600])
+            // The canvas comes from your platform's windowing system
+            let target = try await renderer.createTarget(canvas)
             let texture_target = try await renderer.createTextureTarget([16, 16])
 
             // RENDERING
@@ -318,13 +317,12 @@ private enum _GeneratedExamples {
     static func _example_core_renderer_create_target() async throws {
         do {
 
+            let canvas = CAMetalLayer()
 
             let renderer = Renderer()
 
-            // Use your platform's windowing system to create a window.
-            // iOS: window/canvas provided by CAMetalLayer at runtime
-
-            let target = try await renderer.createTextureTarget([800, 600])
+            // The canvas comes from your platform's windowing system.
+            let target = try await renderer.createTarget(canvas)
         }
     }
 
@@ -1810,13 +1808,12 @@ private enum _GeneratedExamples {
     static func _example_targets_target_Target() async throws {
         do {
 
+            let canvas = CAMetalLayer()
 
             let renderer = Renderer()
 
-            // Use your platform's windowing system to create a window.
-            // iOS: window/canvas provided by CAMetalLayer at runtime
-
-            let target = try await renderer.createTextureTarget([800, 600])
+            // The canvas comes from your platform's windowing system.
+            let target = try await renderer.createTarget(canvas)
 
             // To animate, render again in your event loop...
             try renderer.render(Shader.default(), target)
@@ -1938,12 +1935,12 @@ private enum _GeneratedExamples {
     static func _example_targets_window_target_WindowTarget() async throws {
         do {
 
-
-            // Use your platform's windowing system to create a window.
-            // iOS: window/canvas provided by CAMetalLayer at runtime
+            let canvas = CAMetalLayer()
 
             let renderer = Renderer()
-            let target = try await renderer.createTextureTarget([800, 600])
+
+            // The canvas comes from your platform's windowing system.
+            let target = try await renderer.createTarget(canvas)
 
             try renderer.render(Shader.default(), target)
         }

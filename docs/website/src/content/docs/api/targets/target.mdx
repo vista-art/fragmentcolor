@@ -25,16 +25,14 @@ It contains a GPU surface texture attached to a platform-specific window or an o
 <Code
 code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let canvas = fragmentcolor::headless_window([800, 600]);
 
 use fragmentcolor::{Renderer, Shader};
 
 let renderer = Renderer::new();
 
-// Use your platform's windowing system to create a window.
-// We officially support Winit. Check the examples folder for details.
-let window = fragmentcolor::headless_window([800, 600]);
-
-let target = renderer.create_target(window).await?;
+// The canvas comes from your platform's windowing system.
+let target = renderer.create_target(canvas).await?;
 
 // To animate, render again in your event loop...
 renderer.render(&Shader::default(), &target)?;
@@ -44,7 +42,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 17-19}"
+lang="rust" meta="collapse={1-2, 15-17}"
 />
 
 </TabItem>
@@ -54,12 +52,11 @@ lang="rust" meta="collapse={1-1, 17-19}"
 code={`
 
 import { Renderer, Shader } from "fragmentcolor";
+const canvas = document.createElement("canvas");
 
 const renderer = new Renderer();
 
-// Use your platform's windowing system to create a window.
-const canvas = document.createElement('canvas');
-
+// The canvas comes from your platform's windowing system.
 const target = await renderer.createTarget(canvas);
 
 // To animate, render again in your event loop...
@@ -67,7 +64,7 @@ renderer.render(Shader.default(), target);
 renderer.render(Shader.default(), target);
 
 `}
-lang="js"
+lang="js" meta="collapse={2-2}"
 />
 
 </TabItem>
@@ -105,19 +102,19 @@ lang="python"
 code={`
 
 import FragmentColor
+import QuartzCore
+let canvas = CAMetalLayer()
 
 let renderer = Renderer()
 
-// Use your platform's windowing system to create a window.
-// iOS: window/canvas provided by CAMetalLayer at runtime
-
-let target = try await renderer.createTextureTarget([800, 600])
+// The canvas comes from your platform's windowing system.
+let target = try await renderer.createTarget(canvas)
 
 // To animate, render again in your event loop...
 try renderer.render(Shader.default(), target)
 try renderer.render(Shader.default(), target)
 `}
-lang="swift"
+lang="swift" meta="collapse={2-3}"
 />
 
 </TabItem>
@@ -127,19 +124,18 @@ lang="swift"
 code={`
 
 import org.fragmentcolor.*
+val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
 
 val renderer = Renderer()
 
-// Use your platform's windowing system to create a window.
-// HEADLESS: canvas creation not needed on Android
-
-val target = renderer.createTextureTarget(800u, 600u)
+// The canvas comes from your platform's windowing system.
+val target = renderer.createTarget(canvas)
 
 // To animate, render again in your event loop...
 renderer.render(Shader.default(), target)
 renderer.render(Shader.default(), target)
 `}
-lang="kotlin"
+lang="kotlin" meta="collapse={2-2}"
 />
 
 </TabItem>

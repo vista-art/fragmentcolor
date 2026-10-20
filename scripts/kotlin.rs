@@ -839,7 +839,6 @@ mod kotlin {
             out = next;
         }
         // API-specific rewrites (all now see arrayOf(...) for array literals)
-        out = rewrite_create_target_canvas(&out);
         out = rewrite_setviewport_tuple(&out);
         // After the rewrites above, which still read the tuple of their own call.
         out = spread_tuple_args(&out);
@@ -1301,19 +1300,6 @@ mod kotlin {
         // `.asSlice()` is a Rust-specific method — drop it entirely
         out = out.replace(".asSlice()", "");
         out
-    }
-
-    // `createTarget(canvas)` is web-only (HTMLCanvas). On Android it requires a
-    // Surface. The healthcheck examples that create a canvas create a TextureTarget
-    // instead (same size as the canvas was intended to be), or skip the call.
-    // We replace `renderer.createTarget(canvas)` with a texture-target fallback,
-    // whose size `rewrite_unsigned_args` then types.
-    fn rewrite_create_target_canvas(line: &str) -> String {
-        // Match `<var> = <renderer>.createTarget(canvas)` → texture target
-        if line.contains("createTarget(canvas)") {
-            return line.replace("createTarget(canvas)", "createTextureTarget(800, 600)");
-        }
-        line.to_string()
     }
 
     // `pass.setViewport(arrayOf((0, 0), (32, 32)))` →

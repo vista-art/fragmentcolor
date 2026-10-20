@@ -12,16 +12,24 @@ It contains a GPU surface texture attached to a platform-specific window or an o
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+# let canvas = fragmentcolor::headless_window([800, 600]);
+# /*[js]
+# const canvas = document.createElement("canvas");
+# */
+# /*[swift]
+# import QuartzCore
+# let canvas = CAMetalLayer()
+# */
+# /*[kotlin]
+# val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+# */
 
 use fragmentcolor::{Renderer, Shader};
 
 let renderer = Renderer::new();
 
-// Use your platform's windowing system to create a window.
-// We officially support Winit. Check the examples folder for details.
-let window = fragmentcolor::headless_window([800, 600]);
-
-let target = renderer.create_target(window).await?;
+// The canvas comes from your platform's windowing system.
+let target = renderer.create_target(canvas).await?;
 
 // To animate, render again in your event loop...
 renderer.render(&Shader::default(), &target)?;

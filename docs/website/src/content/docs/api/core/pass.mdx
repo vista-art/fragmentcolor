@@ -34,12 +34,12 @@ it won't add the shader to its internal list and log a warning message in the co
 <Code
 code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let canvas = fragmentcolor::headless_window([100, 100]);
 
 use fragmentcolor::{ Shader, Pass, Renderer };
 
 let renderer = Renderer::new();
-let window = fragmentcolor::headless_window([100, 100]);
-let target = renderer.create_target(window).await?;
+let target = renderer.create_target(canvas).await?;
 let shader = Shader::default();
 
 let mut pass = Pass::new("First Pass");
@@ -58,7 +58,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 22-24}"
+lang="rust" meta="collapse={1-2, 22-24}"
 />
 
 </TabItem>
@@ -68,9 +68,9 @@ lang="rust" meta="collapse={1-1, 22-24}"
 code={`
 
 import { Shader, Pass, Renderer } from "fragmentcolor";
+const canvas = document.createElement("canvas");
 
 const renderer = new Renderer();
-const canvas = document.createElement('canvas');
 const target = await renderer.createTarget(canvas);
 const shader = Shader.default();
 
@@ -87,7 +87,7 @@ renderer.render(pass, target);
 renderer.render([pass, pass2], target);
 
 `}
-lang="js"
+lang="js" meta="collapse={2-2}"
 />
 
 </TabItem>
@@ -131,10 +131,11 @@ lang="python"
 code={`
 
 import FragmentColor
+import QuartzCore
+let canvas = CAMetalLayer()
 
 let renderer = Renderer()
-// iOS: window/canvas provided by CAMetalLayer at runtime
-let target = try await renderer.createTextureTarget([800, 600])
+let target = try await renderer.createTarget(canvas)
 let shader = Shader.default()
 
 let pass = Pass("First Pass")
@@ -149,7 +150,7 @@ try renderer.render(pass, target)
 // vector of passes rendered in order (any iterable of Pass is renderable)
 try renderer.render([pass, pass2], target)
 `}
-lang="swift"
+lang="swift" meta="collapse={2-3}"
 />
 
 </TabItem>
@@ -159,10 +160,10 @@ lang="swift"
 code={`
 
 import org.fragmentcolor.*
+val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
 
 val renderer = Renderer()
-// HEADLESS: canvas creation not needed on Android
-val target = renderer.createTextureTarget(800u, 600u)
+val target = renderer.createTarget(canvas)
 val shader = Shader.default()
 
 val pass = Pass("First Pass")
@@ -177,7 +178,7 @@ renderer.render(pass, target)
 // vector of passes rendered in order (any iterable of Pass is renderable)
 renderer.render(listOf(pass, pass2), target)
 `}
-lang="kotlin"
+lang="kotlin" meta="collapse={2-2}"
 />
 
 </TabItem>

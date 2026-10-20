@@ -35,16 +35,14 @@ description below for details.
 <Code
 code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let canvas = fragmentcolor::headless_window([800, 600]);
 
 use fragmentcolor::{Shader, Renderer, Target};
 
 let renderer = Renderer::new();
 
-// Use your platform's windowing system to create a window
-let window = fragmentcolor::headless_window([800, 600]);
-
-// Create a Target from it
-let target = renderer.create_target(window).await?;
+// The canvas comes from your platform's windowing system
+let target = renderer.create_target(canvas).await?;
 let texture_target = renderer.create_texture_target([16, 16]).await?;
 
 // RENDERING
@@ -60,7 +58,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 19-25}"
+lang="rust" meta="collapse={1-2, 17-23}"
 />
 
 </TabItem>
@@ -70,13 +68,11 @@ lang="rust" meta="collapse={1-1, 19-25}"
 code={`
 
 import { Shader, Renderer } from "fragmentcolor";
+const canvas = document.createElement("canvas");
 
 const renderer = new Renderer();
 
-// Use your platform's windowing system to create a window
-const canvas = document.createElement('canvas');
-
-// Create a Target from it
+// The canvas comes from your platform's windowing system
 const target = await renderer.createTarget(canvas);
 const texture_target = await renderer.createTextureTarget([16, 16]);
 
@@ -86,7 +82,7 @@ renderer.render(Shader.default(), texture_target);
 // That's it. Welcome to FragmentColor!
 
 `}
-lang="js"
+lang="js" meta="collapse={2-2}"
 />
 
 </TabItem>
@@ -94,16 +90,14 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from rendercanvas.auto import RenderCanvas, loop
 
 from fragmentcolor import Shader, Renderer
+from rendercanvas.auto import RenderCanvas
+canvas = RenderCanvas(size=(800, 600))
 
 renderer = Renderer()
 
-# Use your platform's windowing system to create a window
-canvas = RenderCanvas(size=(800, 600))
-
-# Create a Target from it
+# The canvas comes from your platform's windowing system
 target = renderer.create_target(canvas)
 texture_target = renderer.create_texture_target([16, 16])
 
@@ -113,7 +107,7 @@ renderer.render(Shader.default(), texture_target)
 # That's it. Welcome to FragmentColor!
 
 `}
-lang="python"
+lang="python" meta="collapse={2-3}"
 />
 
 </TabItem>
@@ -123,14 +117,13 @@ lang="python"
 code={`
 
 import FragmentColor
+import QuartzCore
+let canvas = CAMetalLayer()
 
 let renderer = Renderer()
 
-// Use your platform's windowing system to create a window
-// iOS: window/canvas provided by CAMetalLayer at runtime
-
-// Create a Target from it
-let target = try await renderer.createTextureTarget([800, 600])
+// The canvas comes from your platform's windowing system
+let target = try await renderer.createTarget(canvas)
 let texture_target = try await renderer.createTextureTarget([16, 16])
 
 // RENDERING
@@ -138,7 +131,7 @@ try renderer.render(Shader.default(), texture_target)
 
 // That's it. Welcome to FragmentColor!
 `}
-lang="swift"
+lang="swift" meta="collapse={2-3}"
 />
 
 </TabItem>
@@ -148,14 +141,12 @@ lang="swift"
 code={`
 
 import org.fragmentcolor.*
+val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
 
 val renderer = Renderer()
 
-// Use your platform's windowing system to create a window
-// HEADLESS: canvas creation not needed on Android
-
-// Create a Target from it
-val target = renderer.createTextureTarget(800u, 600u)
+// The canvas comes from your platform's windowing system
+val target = renderer.createTarget(canvas)
 val texture_target = renderer.createTextureTarget(16u, 16u)
 
 // RENDERING
@@ -163,7 +154,7 @@ renderer.render(Shader.default(), texture_target)
 
 // That's it. Welcome to FragmentColor!
 `}
-lang="kotlin"
+lang="kotlin" meta="collapse={2-2}"
 />
 
 </TabItem>
@@ -282,6 +273,8 @@ lang="kotlin"
 
 Creates a [Target](/api/core/target) attached to a platform-specific canvas or window.
 
+In Rust, we officially support Winit. Check the examples folder for details.
+
 #### Example
 
 <Tabs>
@@ -290,16 +283,14 @@ Creates a [Target](/api/core/target) attached to a platform-specific canvas or w
 <Code
 code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let canvas = fragmentcolor::headless_window([800, 600]);
 
 use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 
-// Use your platform's windowing system to create a window.
-// We officially support Winit. Check the examples folder for details.
-let window = fragmentcolor::headless_window([800, 600]);
-
-let target = renderer.create_target(window).await?;
+// The canvas comes from your platform's windowing system.
+let target = renderer.create_target(canvas).await?;
 
 let s = target.size();
 assert_eq!([s.width, s.height], [800, 600]);
@@ -307,7 +298,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 13-17}"
+lang="rust" meta="collapse={1-2, 11-15}"
 />
 
 </TabItem>
@@ -317,16 +308,15 @@ lang="rust" meta="collapse={1-1, 13-17}"
 code={`
 
 import { Renderer } from "fragmentcolor";
+const canvas = document.createElement("canvas");
 
 const renderer = new Renderer();
 
-// Use your platform's windowing system to create a window.
-const canvas = document.createElement('canvas');
-
+// The canvas comes from your platform's windowing system.
 const target = await renderer.createTarget(canvas);
 
 `}
-lang="js"
+lang="js" meta="collapse={2-2}"
 />
 
 </TabItem>
@@ -334,19 +324,18 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from rendercanvas.auto import RenderCanvas, loop
 
 from fragmentcolor import Renderer
+from rendercanvas.auto import RenderCanvas
+canvas = RenderCanvas(size=(800, 600))
 
 renderer = Renderer()
 
-# Use your platform's windowing system to create a window.
-canvas = RenderCanvas(size=(800, 600))
-
+# The canvas comes from your platform's windowing system.
 target = renderer.create_target(canvas)
 
 `}
-lang="python"
+lang="python" meta="collapse={2-3}"
 />
 
 </TabItem>
@@ -356,15 +345,15 @@ lang="python"
 code={`
 
 import FragmentColor
+import QuartzCore
+let canvas = CAMetalLayer()
 
 let renderer = Renderer()
 
-// Use your platform's windowing system to create a window.
-// iOS: window/canvas provided by CAMetalLayer at runtime
-
-let target = try await renderer.createTextureTarget([800, 600])
+// The canvas comes from your platform's windowing system.
+let target = try await renderer.createTarget(canvas)
 `}
-lang="swift"
+lang="swift" meta="collapse={2-3}"
 />
 
 </TabItem>
@@ -374,15 +363,14 @@ lang="swift"
 code={`
 
 import org.fragmentcolor.*
+val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
 
 val renderer = Renderer()
 
-// Use your platform's windowing system to create a window.
-// HEADLESS: canvas creation not needed on Android
-
-val target = renderer.createTextureTarget(800u, 600u)
+// The canvas comes from your platform's windowing system.
+val target = renderer.createTarget(canvas)
 `}
-lang="kotlin"
+lang="kotlin" meta="collapse={2-2}"
 />
 
 </TabItem>

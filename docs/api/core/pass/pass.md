@@ -17,12 +17,22 @@ it won't add the shader to its internal list and log a warning message in the co
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+# let canvas = fragmentcolor::headless_window([100, 100]);
+# /*[js]
+# const canvas = document.createElement("canvas");
+# */
+# /*[swift]
+# import QuartzCore
+# let canvas = CAMetalLayer()
+# */
+# /*[kotlin]
+# val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+# */
 
 use fragmentcolor::{ Shader, Pass, Renderer };
 
 let renderer = Renderer::new();
-let window = fragmentcolor::headless_window([100, 100]);
-let target = renderer.create_target(window).await?;
+let target = renderer.create_target(canvas).await?;
 let shader = Shader::default();
 
 let mut pass = Pass::new("First Pass");

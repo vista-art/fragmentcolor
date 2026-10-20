@@ -1,9 +1,9 @@
 
 import org.fragmentcolor.*
+val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
 
 val renderer = Renderer()
-// HEADLESS: canvas creation not needed on Android
-val target = renderer.createTextureTarget(800u, 600u)
+val target = renderer.createTarget(canvas)
 val shader = Shader.default()
 
 val pass = Pass("First Pass")
