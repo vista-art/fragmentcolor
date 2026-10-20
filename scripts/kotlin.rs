@@ -736,10 +736,6 @@ mod kotlin {
         // `List<Float>` of 16, not `Array<List<Float>>`.
         out = rewrite_settransform_mat4_flatten(&out);
         out = rewrite_float_args(&out);
-        // Every numeric `floatArrayOf(...)` arg becomes `f`-suffixed so the
-        // array binds to FloatArray rather than DoubleArray.
-        out = rewrite_floatarrayof_promote_doubles(&out);
-        out = rewrite_instance_new(&out);
         out = rewrite_arrayof_byte_literals(&out);
         out = rewrite_shader_new_to_compose(&out);
         out = rewrite_texture_region_name(&out);
@@ -1580,79 +1576,6 @@ mod kotlin {
         )
     }
 
-    /// Apply float-suffix promotion to every numeric arg of every `<prefix>(...)` call in `line`.
-    ///
-    /// Nested calls aren't touched. Handles multiple occurrences on the same line.
-    fn floatify_top_level_args(line: &str, prefix: &str) -> String {
-        let pat = format!("{}(", prefix);
-        let mut result = String::with_capacity(line.len());
-        let mut remaining = line;
-        loop {
-            let Some(idx) = remaining.find(&pat) else {
-                result.push_str(remaining);
-                break;
-            };
-            // Ensure the prefix isn't a substring of a larger identifier.
-            let before_ok = idx == 0 || {
-                let prev = remaining.as_bytes()[idx - 1];
-                !prev.is_ascii_alphanumeric() && prev != b'_'
-            };
-            // Push everything up through and including the `(`.
-            let head_end = idx + pat.len();
-            result.push_str(&remaining[..head_end]);
-            if !before_ok {
-                remaining = &remaining[head_end..];
-                continue;
-            }
-            let chars: Vec<char> = remaining[head_end..].chars().collect();
-            // Find the matching close paren.
-            let mut depth = 0i32;
-            let mut close: Option<usize> = None;
-            let mut j = 0usize;
-            while j < chars.len() {
-                match chars[j] {
-                    '(' => depth += 1,
-                    ')' => {
-                        if depth == 0 {
-                            close = Some(j);
-                            break;
-                        }
-                        depth -= 1;
-                    }
-                    _ => {}
-                }
-                j += 1;
-            }
-            let Some(close) = close else {
-                // Unbalanced — bail out cleanly.
-                result.push_str(&remaining[head_end..]);
-                break;
-            };
-            let inner: String = chars[..close].iter().collect();
-            let parts = split_args(&inner);
-            let mapped: Vec<String> = parts
-                .iter()
-                .map(|p| floatify_if_numeric(p.trim()))
-                .collect();
-            result.push_str(&mapped.join(", "));
-            result.push(')');
-            // Advance `remaining` past the close-paren.
-            let byte_close = remaining[head_end..]
-                .char_indices()
-                .nth(close + 1)
-                .map(|(b, _)| head_end + b)
-                .unwrap_or(remaining.len());
-            remaining = &remaining[byte_close..];
-        }
-        result
-    }
-
-    /// `floatArrayOf(0.0, 0.5, 0.0)` → `floatArrayOf(0.0f, 0.5f, 0.0f)`.
-    /// Top-level numeric args only. Repeated occurrences are handled.
-    fn rewrite_floatarrayof_promote_doubles(line: &str) -> String {
-        floatify_top_level_args(line, "floatArrayOf")
-    }
-
     /// Returns `s` with the `f` suffix appended if it's a bare numeric literal
     /// (integer or float, possibly negative). Otherwise returns `s` unchanged.
     fn floatify_if_numeric(s: &str) -> String {
@@ -1755,11 +1678,6 @@ mod kotlin {
             }
         }
         Some(result)
-    }
-
-    // `Instance.new()` → `Instance()` (drop `.new`)
-    fn rewrite_instance_new(line: &str) -> String {
-        line.replace("Instance.new()", "Instance()")
     }
 
     // Convert comma-separated float values to Kotlin `f`-suffixed floats
