@@ -47,14 +47,14 @@ Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb
 <Code
 code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Mipmap, Renderer, TextureFormat};
-
-// Imagine \`png\` came off your asset loader on a worker thread.
 // Hidden: synthesize a real 1x1 PNG so the doctest doesn't need a fixture.
 let img = image::DynamicImage::ImageRgba8(image::RgbaImage::from_vec(1, 1, vec![255, 0, 0, 255]).unwrap());
 let mut png_buf = Vec::new();
 img.write_to(&mut std::io::Cursor::new(&mut png_buf), image::ImageFormat::Png)?;
 let png: &[u8] = png_buf.as_slice();
+use fragmentcolor::{Mipmap, Renderer, TextureFormat};
+
+// Imagine \`png\` came off your asset loader on a worker thread.
 
 // Decode + mipmap generation. Pure CPU; run it wherever you like.
 let chain = Mipmap::build((png, TextureFormat::Rgba8UnormSrgb))?;
@@ -67,7 +67,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 5-9, 17-20}"
+lang="rust" meta="collapse={1-6, 17-20}"
 />
 
 </TabItem>
@@ -140,8 +140,8 @@ lang="swift"
 <Code
 code={`
 import org.fragmentcolor.*
-
 val png: ByteArray = byteArrayOf()
+
 // Imagine """png""" came off your asset loader on a worker thread.
 
 // Decode + mipmap generation. Pure CPU; run it wherever you like.
@@ -151,7 +151,7 @@ val chain = Mipmap.build(png, TextureFormat.RGBA8_UNORM_SRGB, null)
 val renderer = Renderer()
 val texture = renderer.createTexture(chain)
 `}
-lang="kotlin"
+lang="kotlin" meta="collapse={2-2}"
 />
 
 </TabItem>
@@ -191,19 +191,18 @@ Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb
 <Code
 code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Mipmap, Renderer, TextureFormat};
-
 // Hidden: synthesize a real 1x1 PNG so the doctest doesn't need a fixture.
 let img = image::DynamicImage::ImageRgba8(image::RgbaImage::from_vec(1, 1, vec![255, 0, 0, 255]).unwrap());
 let mut png_buf = Vec::new();
 img.write_to(&mut std::io::Cursor::new(&mut png_buf), image::ImageFormat::Png)?;
 let encoded_png_bytes = png_buf.as_slice();
+let raw_rgba = vec![200; 8 * 8 * 4];
+use fragmentcolor::{Mipmap, Renderer, TextureFormat};
 
 // Encoded path: bytes plus the format you want the chain to live in.
 // The dimensions come from the decoded image.
 let chain = Mipmap::build((encoded_png_bytes, TextureFormat::Rgba8UnormSrgb))?;
 
-let raw_rgba = vec![200; 8 * 8 * 4];
 // Raw path: include the size so build skips decoding.
 let chain_raw = Mipmap::build((
     raw_rgba.as_slice(),
@@ -220,7 +219,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 4-8, 14-14, 25-29}"
+lang="rust" meta="collapse={1-7, 24-28}"
 />
 
 </TabItem>
@@ -301,23 +300,21 @@ lang="swift"
 <Code
 code={`
 import org.fragmentcolor.*
+val encoded_png_bytes: ByteArray = byteArrayOf()
+val raw_rgba = ByteArray(8 * 8 * 4) { 200.toByte() }
 
-
-val bytes: ByteArray = byteArrayOf()
 // Encoded path: bytes plus the format you want the chain to live in.
 // The dimensions come from the decoded image.
-val encoded_png_bytes: ByteArray = byteArrayOf()
 val chain = Mipmap.build(encoded_png_bytes, TextureFormat.RGBA8_UNORM_SRGB, null)
 
 // Raw path: include the size so build skips decoding.
-val raw_rgba: ByteArray = ByteArray(8 * 8 * 4)
 val chain_raw = Mipmap.build(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
 
 // Either chain uploads the same way.
 val renderer = Renderer()
 val texture = renderer.createTexture(chain)
 `}
-lang="kotlin"
+lang="kotlin" meta="collapse={2-3}"
 />
 
 </TabItem>

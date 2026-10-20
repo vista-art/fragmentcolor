@@ -5,7 +5,6 @@ val target = renderer.createTextureTarget(64u, 64u)
 
 val mesh = Mesh()
 mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
-val bytes: ByteArray = byteArrayOf()
 // Raw 2×2 RGBA pixel bytes — uploaded lazily by """Renderer.load""" below.
  
 // vocabulary covers all of them.

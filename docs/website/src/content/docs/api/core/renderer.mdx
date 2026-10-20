@@ -723,7 +723,6 @@ val r = Renderer()
 // Empty storage texture.
 val tex = r.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
 
-val bytes: ByteArray = byteArrayOf()
 // Pre-seeded with bytes.
 val pixels = ByteArray(64 * 64 * 4)
 val tex2 = r.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, pixels, null)
@@ -1290,7 +1289,6 @@ val target = renderer.createTextureTarget(64u, 64u)
 
 val mesh = Mesh()
 mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
-val bytes: ByteArray = byteArrayOf()
 // Raw 2×2 RGBA pixel bytes — uploaded lazily by """Renderer.load""" below.
  
 // vocabulary covers all of them.

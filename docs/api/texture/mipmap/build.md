@@ -21,19 +21,22 @@ Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Mipmap, Renderer, TextureFormat};
-
 # // Hidden: synthesize a real 1x1 PNG so the doctest doesn't need a fixture.
 # let img = image::DynamicImage::ImageRgba8(image::RgbaImage::from_vec(1, 1, vec![255, 0, 0, 255]).unwrap());
 # let mut png_buf = Vec::new();
 # img.write_to(&mut std::io::Cursor::new(&mut png_buf), image::ImageFormat::Png)?;
 # let encoded_png_bytes = png_buf.as_slice();
+# let raw_rgba = vec![200; 8 * 8 * 4];
+# /*[kotlin]
+# val encoded_png_bytes: ByteArray = byteArrayOf()
+# val raw_rgba = ByteArray(8 * 8 * 4) { 200.toByte() }
+# */
+use fragmentcolor::{Mipmap, Renderer, TextureFormat};
 
 // Encoded path: bytes plus the format you want the chain to live in.
 // The dimensions come from the decoded image.
 let chain = Mipmap::build((encoded_png_bytes, TextureFormat::Rgba8UnormSrgb))?;
 
-# let raw_rgba = vec![200; 8 * 8 * 4];
 // Raw path: include the size so build skips decoding.
 let chain_raw = Mipmap::build((
     raw_rgba.as_slice(),

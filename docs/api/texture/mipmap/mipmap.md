@@ -30,14 +30,17 @@ Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Mipmap, Renderer, TextureFormat};
-
-// Imagine `png` came off your asset loader on a worker thread.
 # // Hidden: synthesize a real 1x1 PNG so the doctest doesn't need a fixture.
 # let img = image::DynamicImage::ImageRgba8(image::RgbaImage::from_vec(1, 1, vec![255, 0, 0, 255]).unwrap());
 # let mut png_buf = Vec::new();
 # img.write_to(&mut std::io::Cursor::new(&mut png_buf), image::ImageFormat::Png)?;
 # let png: &[u8] = png_buf.as_slice();
+# /*[kotlin]
+# val png: ByteArray = byteArrayOf()
+# */
+use fragmentcolor::{Mipmap, Renderer, TextureFormat};
+
+// Imagine `png` came off your asset loader on a worker thread.
 
 // Decode + mipmap generation. Pure CPU; run it wherever you like.
 let chain = Mipmap::build((png, TextureFormat::Rgba8UnormSrgb))?;

@@ -667,16 +667,6 @@ mod kotlin {
         let mut has_fragmentcolor_import = false;
         // Track declared val names to rename duplicates (Kotlin doesn't allow shadowing)
         let mut declared_vals: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
-        // Track which stub variables we've already emitted (from hidden Rust doc lines).
-        let mut emitted_stubs: std::collections::HashSet<String> = std::collections::HashSet::new();
-        // Known hidden-variable stubs: variables declared in `# ...` doc lines that are
-        // referenced in visible lines. We emit a placeholder declaration on first use.
-        let hidden_var_stubs: &[(&str, &str)] = &[
-            ("encoded_png_bytes", "val encoded_png_bytes: ByteArray = byteArrayOf()"),
-            ("raw_rgba", "val raw_rgba: ByteArray = ByteArray(8 * 8 * 4)"),
-            ("bytes", "val bytes: ByteArray = byteArrayOf()"),
-            ("png", "val png: ByteArray = byteArrayOf()"),
-        ];
 
         let mut in_string = false;
         for raw in js.lines() {
@@ -700,60 +690,6 @@ mod kotlin {
                     has_fragmentcolor_import = true;
                 }
                 continue;
-            }
-
-            // Before rewriting: check if this line references any known hidden-doc variables
-            // that were defined in `# ...` Rust lines (invisible to the transpiler). If so,
-            // emit a stub declaration before the first reference to each such variable.
-            //
-            // Skip the stub when the current line itself declares the same variable
-            // (`val <name>` or `val <name>:`): the visible line is the real definition,
-            // and emitting a stub on top of it produces a conflicting redeclaration.
-            let indent_len = line.len() - trimmed.len();
-            let indent = &line[..indent_len];
-            for (var_name, stub_decl) in hidden_var_stubs {
-                // Only emit a stub if this line uses the var as an identifier and we haven't
-                // already declared it (either via a stub or a real val statement).
-                let used = {
-                    let mut found = false;
-                    let mut pos = 0usize;
-                    while let Some(p) = trimmed[pos..].find(var_name) {
-                        let abs = pos + p;
-                        let before_ok = abs == 0 || !trimmed.as_bytes()[abs - 1].is_ascii_alphanumeric() && trimmed.as_bytes()[abs - 1] != b'_';
-                        let after_pos = abs + var_name.len();
-                        let after_ok = after_pos >= trimmed.len() || !trimmed.as_bytes()[after_pos].is_ascii_alphanumeric() && trimmed.as_bytes()[after_pos] != b'_';
-                        if before_ok && after_ok { found = true; break; }
-                        pos = abs + 1;
-                    }
-                    found
-                };
-                let declares_self = {
-                    // The IR coming from convert.rs uses JS-style `const` for
-                    // local bindings; kotlin::finalize then rewrites that to
-                    // `val`. Either form (plus a literal `let` / `var`) means
-                    // the visible line itself defines this variable, so the
-                    // stub would shadow a real declaration.
-                    let after_var = |rest: &str| {
-                        rest.starts_with(' ')
-                            || rest.starts_with('=')
-                            || rest.starts_with(':')
-                            || rest.starts_with('\t')
-                    };
-                    ["val ", "let ", "const ", "var "].iter().any(|kw| {
-                        let prefix = format!("{}{}", kw, var_name);
-                        trimmed.starts_with(&prefix)
-                            && after_var(&trimmed[prefix.len()..])
-                    })
-                };
-                let already_declared = emitted_stubs.contains(*var_name)
-                    || declared_vals.contains_key(*var_name);
-                if used && !already_declared && !declares_self {
-                    out.push(format!("{}{}", indent, stub_decl));
-                    emitted_stubs.insert(var_name.to_string());
-                    // Register the stub identifier so rename_duplicate_val sees later
-                    // declarations as duplicates and disambiguates them.
-                    declared_vals.insert(var_name.to_string(), 1);
-                }
             }
 
             let line = if starts_in_string { line } else { drop_semicolon_before_comment(&line) };

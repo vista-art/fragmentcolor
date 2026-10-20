@@ -273,7 +273,6 @@ class GeneratedExamples {
         // Empty storage texture.
         val tex = r.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
 
-        val bytes: ByteArray = byteArrayOf()
         // Pre-seeded with bytes.
         val pixels = ByteArray(64 * 64 * 4)
         val tex2 = r.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, pixels, null)
@@ -315,7 +314,6 @@ class GeneratedExamples {
 
         val mesh = Mesh()
         mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
-        val bytes: ByteArray = byteArrayOf()
         // Raw 2×2 RGBA pixel bytes — uploaded lazily by """Renderer.load""" below.
 
         // vocabulary covers all of them.
@@ -1321,7 +1319,6 @@ class GeneratedExamples {
         // A path — """.gltf""" JSON (with external buffers/images) or a """.glb""" container.
         val scene = Scene.load("path/to/model.gltf")
 
-        val bytes: ByteArray = byteArrayOf()
         // In-memory """.glb""" bytes — fetched from disk, the network, or another
         // asset pipeline before this point.
         val scene2 = Scene.load(glb_bytes)
@@ -1574,8 +1571,8 @@ class GeneratedExamples {
     }
 
     @Suppress("unused") private suspend fun _example_texture_mipmap_Mipmap() {
-
         val png: ByteArray = byteArrayOf()
+
         // Imagine """png""" came off your asset loader on a worker thread.
 
         // Decode + mipmap generation. Pure CPU; run it wherever you like.
@@ -1587,16 +1584,14 @@ class GeneratedExamples {
     }
 
     @Suppress("unused") private suspend fun _example_texture_mipmap_build() {
+        val encoded_png_bytes: ByteArray = byteArrayOf()
+        val raw_rgba = ByteArray(8 * 8 * 4) { 200.toByte() }
 
-
-        val bytes: ByteArray = byteArrayOf()
         // Encoded path: bytes plus the format you want the chain to live in.
         // The dimensions come from the decoded image.
-        val encoded_png_bytes: ByteArray = byteArrayOf()
         val chain = Mipmap.build(encoded_png_bytes, TextureFormat.RGBA8_UNORM_SRGB, null)
 
         // Raw path: include the size so build skips decoding.
-        val raw_rgba: ByteArray = ByteArray(8 * 8 * 4)
         val chain_raw = Mipmap.build(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
 
         // Either chain uploads the same way.
@@ -1646,7 +1641,6 @@ class GeneratedExamples {
 
         """)
 
-        val bytes: ByteArray = byteArrayOf()
         // 1x1 white pixel. Passing a size tells create_texture to read the bytes
         // as raw pixels; the default format is Rgba (sRGB-aware).
         val pixels = listOf(255, 255, 255, 255)
@@ -1660,7 +1654,6 @@ class GeneratedExamples {
 
 
         val renderer = Renderer()
-        val bytes: ByteArray = byteArrayOf()
         // 1x1 RGBA (white) raw pixel bytes
         val pixels = listOf(255, 255, 255, 255)
         val tex = renderer.createTexture(pixels, listOf(1, 1))
