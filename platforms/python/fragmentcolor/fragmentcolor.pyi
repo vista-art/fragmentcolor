@@ -553,7 +553,7 @@ class Shader:
         # (Skipping the actual fetch in this doctest)
         ```
         """
-    def set(self, key: str, value: bool | float | bytearray | bytes | memoryview | Texture | Sequence[float]) -> None:
+    def set(self, key: str, value: bool | float | bytearray | bytes | memoryview[Any] | Texture | Sequence[float]) -> None:
         """
         Sets the value of the uniform identified by the given key.
 
