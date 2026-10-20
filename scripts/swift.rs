@@ -236,8 +236,13 @@ mod swift {
         // Track if the previous non-empty line was a `document.createElement("canvas")` assignment.
         // We need to know the variable name so we can rewrite `createTarget(<varname>)`.
         let mut pending_canvas_var: Option<String> = None;
+        let mut in_string = false;
 
         for raw in js.lines() {
+            let starts_in_string = in_string;
+            if raw.matches("\"\"\"").count() % 2 == 1 {
+                in_string = !in_string;
+            }
             let mut line = raw.to_string();
             let trimmed: String = line.trim_start().to_string();
 
@@ -291,7 +296,7 @@ mod swift {
                 }
             }
 
-            out.push(rewrite_line(&line));
+            out.push(rewrite_line(&line, starts_in_string));
         }
 
         // Multi-line trailing comma strip. The convert layer emits
@@ -434,7 +439,9 @@ mod swift {
         js.replace('`', "\"\"\"")
     }
 
-    fn rewrite_line(src: &str) -> String {
+    /// Rewrite one line of the intermediate.
+    /// A line that starts inside a `"""` literal is string text and gets no `try` or `await`.
+    fn rewrite_line(src: &str, in_string: bool) -> String {
         let mut out = src.to_string();
 
         // Trailing `;` strip (preserve indentation).
@@ -472,7 +479,9 @@ mod swift {
         out = rewrite_dot_new(&out);
 
         // 14. `try` / `await` for calls the JS output makes synchronously.
-        out = insert_effects(&out);
+        if !in_string {
+            out = insert_effects(&out);
+        }
 
         // Strip Rust slice notation `identifier[...]` → `identifier` when `...`
         // is the only content inside brackets (a full-range slice).
