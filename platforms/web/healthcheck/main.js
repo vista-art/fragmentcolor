@@ -306,6 +306,69 @@ var<immediate> pc: PC;
     }
 });
 
+// Shader.set shapes plain JS values to each uniform's declared WGSL type.
+await withModule('platforms.web.healthcheck.shader.set.values', async () => {
+    const shader = new Shader(`
+struct Light { color: vec4<f32>, power: f32 };
+struct Particles { items: array<vec4<f32>, 2> };
+@group(0) @binding(0) var<uniform> count: u32;
+@group(0) @binding(1) var<uniform> cell: vec2<i32>;
+@group(0) @binding(2) var<uniform> rot: mat2x2<f32>;
+@group(0) @binding(3) var<uniform> light: Light;
+@group(0) @binding(4) var<uniform> offset: vec2<f32>;
+@group(0) @binding(5) var<storage, read> particles: Particles;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> {
+  let x = f32(count) + f32(cell.x) + rot[0].x + light.power + offset.x + particles.items[0].x;
+  return vec4f(x, 0., 0., 1.);
+}
+`);
+    const same = (label, got, want) => {
+      const a = Array.from(got), b = Array.from(want);
+      if (a.length !== b.length || a.some((v, i) => v !== b[i])) {
+        throw new Error(`${label}: got [${a}], want [${b}]`);
+      }
+    };
+    const rejects = (label, key, value) => {
+      try {
+        shader.set(key, value);
+      } catch (e) {
+        console.log(`shader.set rejected ${label}:`, e?.message ?? String(e));
+        return;
+      }
+      throw new Error(`shader.set("${key}", ${label}) should throw`);
+    };
+
+    shader.set("count", 3);
+    if (shader.get("count") !== 3) throw new Error(`u32 from a number: got ${shader.get("count")}`);
+    shader.set("cell", [2, -1]);
+    same("vec2<i32> from an array", shader.get("cell"), [2, -1]);
+    shader.set("rot", [1, 2, 3, 4]);
+    same("mat2x2 from four numbers", shader.get("rot"), [1, 2, 3, 4]);
+    shader.set("offset", new Int32Array([5, 6]));
+    same("vec2<f32> from an Int32Array", shader.get("offset"), [5, 6]);
+
+    rejects("three numbers for a vec2", "offset", [1, 2, 3]);
+    same("vec2 kept after a rejected set", shader.get("offset"), [5, 6]);
+    rejects("3.5 for a u32", "count", 3.5);
+    rejects("-1 for a u32", "count", -1);
+    rejects("bytes for a vec2", "offset", new Uint8Array(8));
+
+    const blob = Uint8Array.from({ length: 32 }, (_, i) => i);
+    shader.set("particles", blob);
+    same("storage root from a Uint8Array", shader.get("particles"), blob);
+
+    shader.set("light.power", 0.5);
+    const light = shader.get("light");
+    if (!(light instanceof Uint8Array) || light.length !== 32) {
+      throw new Error(`struct root should read as 32 bytes, got ${light}`);
+    }
+    same("struct root reads current bytes", new Float32Array(light.buffer, 16, 1), [0.5]);
+});
+
 // Auto-generated: run all extracted examples (after init)
 await withModule('platforms.web.healthcheck.generated_examples', async () => {
   const mod = await import('./generated_examples.mjs');

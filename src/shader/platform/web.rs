@@ -1,10 +1,16 @@
 #![cfg(wasm)]
 
+use js_sys::{
+    Array, Float32Array, Float64Array, Int8Array, Int16Array, Int32Array, Object, Reflect,
+    Uint8Array, Uint8ClampedArray, Uint16Array, Uint32Array,
+};
 use lsp_doc::lsp_doc;
 use std::convert::TryInto;
+use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use web_sys::console;
 
+use crate::shader::UniformInput;
 use crate::{Shader, ShaderError, UniformData};
 
 #[wasm_bindgen]
@@ -70,15 +76,13 @@ impl Shader {
     #[wasm_bindgen(js_name = "set")]
     #[lsp_doc("docs/api/core/shader/set.md")]
     pub fn set_js(&self, key: &str, value: &JsValue) -> Result<(), ShaderError> {
-        let uniform_data: UniformData = value.try_into()?;
-        self.object.set(key, uniform_data)
+        self.object.set_input(key, uniform_input(key, value)?)
     }
 
     #[wasm_bindgen(js_name = "get")]
     #[lsp_doc("docs/api/core/shader/get.md")]
     pub fn get_js(&self, key: &str) -> Result<JsValue, ShaderError> {
-        let uniform_data = self.object.get_uniform_data(key)?;
-        Ok(uniform_data.into())
+        Ok(uniform_value(self.object.get_uniform_data(key)?))
     }
 
     #[wasm_bindgen(js_name = "listUniforms")]
@@ -157,6 +161,89 @@ impl Shader {
     }
 }
 
+/// Sorts a JS value into a loose uniform input. The key's declared WGSL type does the rest.
+/// A `Uint8Array` is raw bytes, and any other typed array or plain array is numbers.
+fn uniform_input(key: &str, value: &JsValue) -> Result<UniformInput, ShaderError> {
+    if let Some(number) = value.as_f64() {
+        return Ok(UniformInput::Number(number));
+    }
+    if let Some(flag) = value.as_bool() {
+        return Ok(UniformInput::Bool(flag));
+    }
+    if let Some(bytes) = value.dyn_ref::<Uint8Array>() {
+        return Ok(UniformInput::Bytes(bytes.to_vec()));
+    }
+    if let Some(array) = value.dyn_ref::<Array>() {
+        let numbers = array.iter().map(|item| item.as_f64());
+        return match numbers.collect::<Option<Vec<f64>>>() {
+            Some(numbers) => Ok(UniformInput::Numbers(numbers)),
+            None => Err(ShaderError::TypeMismatch(format!(
+                "{key}: expected an array of numbers"
+            ))),
+        };
+    }
+    macro_rules! typed_arrays {
+        ($($kind:ty),*) => {$(
+            if let Some(array) = value.dyn_ref::<$kind>() {
+                let numbers = array.to_vec().into_iter().map(f64::from).collect();
+                return Ok(UniformInput::Numbers(numbers));
+            }
+        )*};
+    }
+    typed_arrays!(
+        Float32Array,
+        Float64Array,
+        Int32Array,
+        Uint32Array,
+        Int16Array,
+        Uint16Array,
+        Int8Array,
+        Uint8ClampedArray
+    );
+    // Exported classes carry `__wbg_ptr`. Texture is the only one a uniform
+    // accepts, and its bridge checks the brand before it reads the pointer.
+    if value.is_object() && Reflect::has(value, &"__wbg_ptr".into()).unwrap_or(false) {
+        if let Ok(texture) = crate::texture::Texture::try_from(value) {
+            return Ok(UniformInput::Texture(*texture.id()));
+        }
+        let kind = Reflect::get(value, &"__fc_kind".into())
+            .ok()
+            .and_then(|k| k.as_string())
+            .unwrap_or_else(|| "an unknown object".into());
+        return Err(ShaderError::TypeMismatch(format!(
+            "{key}: expected a Texture, got {kind}"
+        )));
+    }
+    let kind = value.js_typeof().as_string().unwrap_or_default();
+    Err(ShaderError::TypeMismatch(format!(
+        "{key}: expected a number, an array, a typed array, or a Texture, got {kind}"
+    )))
+}
+
+/// Turns the value `Shader.get` read into JS: numbers, typed arrays, a texture id, or bytes.
+fn uniform_value(data: UniformData) -> JsValue {
+    use UniformData as U;
+    match data {
+        U::Bool(flag) => JsValue::from_bool(flag),
+        U::Float(v) => JsValue::from_f64(v.into()),
+        U::Int(v) => JsValue::from_f64(v.into()),
+        U::UInt(v) => JsValue::from_f64(v.into()),
+        U::Vec2(v) | U::Vec3(v) | U::Vec4(v) | U::Mat2(v) | U::Mat3(v) | U::Mat4(v) => {
+            Float32Array::from(&v[..]).into()
+        }
+        U::IVec2(v) | U::IVec3(v) | U::IVec4(v) => Int32Array::from(&v[..]).into(),
+        U::UVec2(v) | U::UVec3(v) | U::UVec4(v) => Uint32Array::from(&v[..]).into(),
+        U::Texture(meta) => JsValue::from_f64(meta.id.id as f64),
+        U::Sampler(info) => {
+            let object = Object::new();
+            let comparison = JsValue::from_bool(info.comparison);
+            let _ = Reflect::set(&object, &"comparison".into(), &comparison);
+            object.into()
+        }
+        other => Uint8Array::from(&other.to_bytes()[..]).into(),
+    }
+}
+
 /// Accept either a single JS string or a JS array of strings, return Vec<String>.
 fn jsvalue_to_string_vec(input: &JsValue) -> Result<Vec<String>, String> {
     if let Some(s) = input.as_string() {
@@ -179,86 +266,24 @@ fn jsvalue_to_string_vec(input: &JsValue) -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shader::uniform::UniformData;
-    // use js_sys::{Array, Float32Array};
     use wasm_bindgen_test::*;
 
+    // Story: JS values sort into loose inputs without guessing a WGSL type.
     #[wasm_bindgen_test]
-    fn test_uniform_data_try_from_jsvalue() {
-        use std::convert::TryInto;
+    fn uniform_input_sorts_js_values() {
+        let input = |value: JsValue| uniform_input("key", &value).expect("supported value");
+        assert_eq!(input(JsValue::from_f64(42.0)), UniformInput::Number(42.0));
+        assert_eq!(input(JsValue::from_bool(true)), UniformInput::Bool(true));
 
-        // Test boolean
-        let js_bool = &JsValue::from_bool(true);
-        let data: UniformData = js_bool.try_into().unwrap();
-        match data {
-            UniformData::Bool(b) => assert_eq!(b, true),
-            _ => panic!("Expected Bool"),
-        }
+        let array = Array::of2(&JsValue::from_f64(1.0), &JsValue::from_f64(2.0));
+        assert_eq!(input(array.into()), UniformInput::Numbers(vec![1.0, 2.0]));
+        let ints = Int32Array::from(&[3, -4][..]);
+        assert_eq!(input(ints.into()), UniformInput::Numbers(vec![3.0, -4.0]));
+        let bytes = Uint8Array::from(&[1u8, 2, 3][..]);
+        assert_eq!(input(bytes.into()), UniformInput::Bytes(vec![1, 2, 3]));
 
-        // Test float
-        let js_float = &JsValue::from_f64(3.14);
-        let data: UniformData = js_float.try_into().unwrap();
-        match data {
-            UniformData::Float(f) => assert!((f - 3.14).abs() < 0.001),
-            _ => panic!("Expected Float"),
-        }
-
-        // Test integer
-        let js_int = &JsValue::from_f64(42.0);
-        let data: UniformData = js_int.try_into().unwrap();
-        match data {
-            UniformData::Int(i) => assert_eq!(i, 42),
-            _ => panic!("Expected Int"),
-        }
-
-        // @TODO uncomment and fix
-        //
-        // Test array as vec2
-        let array = &js_sys::Array::new();
-        array.push(&JsValue::from_f64(1.0));
-        array.push(&JsValue::from_f64(2.0));
-        let js_array: JsValue = array.into();
-        let data: UniformData = js_array.try_into().unwrap();
-        match data {
-            UniformData::Vec2(v) => assert_eq!(v, [1.0, 2.0]),
-            _ => panic!("Expected Vec2"),
-        }
-
-        // // Test array as vec3
-        // let array = Array::new();
-        // array.push(&JsValue::from_f64(1.0));
-        // array.push(&JsValue::from_f64(2.0));
-        // array.push(&JsValue::from_f64(3.0));
-        // let js_array: JsValue = array.into();
-        // let data: UniformData = js_array.try_into().unwrap();
-        // match data {
-        //     UniformData::Vec3(v) => assert_eq!(v, [1.0, 2.0, 3.0]),
-        //     _ => panic!("Expected Vec3"),
-        // }
-
-        // // Test array as vec4
-        // let array = Array::new();
-        // array.push(&JsValue::from_f64(1.0));
-        // array.push(&JsValue::from_f64(2.0));
-        // array.push(&JsValue::from_f64(3.0));
-        // array.push(&JsValue::from_f64(4.0));
-        // let js_array: JsValue = array.into();
-        // let data: UniformData = js_array.try_into().unwrap();
-        // match data {
-        //     UniformData::Vec4(v) => assert_eq!(v, [1.0, 2.0, 3.0, 4.0]),
-        //     _ => panic!("Expected Vec4"),
-        // }
-
-        // // Test typed array
-        // let f32_array = Float32Array::new_with_length(3);
-        // f32_array.set_index(0, 1.0);
-        // f32_array.set_index(1, 2.0);
-        // f32_array.set_index(2, 3.0);
-        // let js_array: JsValue = f32_array.into();
-        // let data: UniformData = js_array.try_into().unwrap();
-        // match data {
-        //     UniformData::Vec3(v) => assert_eq!(v, [1.0, 2.0, 3.0]),
-        //     _ => panic!("Expected Vec3 from Float32Array"),
-        // }
+        assert!(uniform_input("key", &JsValue::from_str("1.0")).is_err());
+        let mixed = Array::of2(&JsValue::from_f64(1.0), &JsValue::from_str("x"));
+        assert!(uniform_input("key", &mixed.into()).is_err());
     }
 }
