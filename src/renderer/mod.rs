@@ -585,6 +585,10 @@ struct RenderPipelineKey {
     /// `Material::double_sided` flips the `cull_mode` on the primitive
     /// state, so it also baked into the pipeline.
     double_sided: bool,
+    /// Vertex buffer layouts of the shader's mesh, if any.
+    /// Shaders that share a source can feed meshes with different strides,
+    /// attribute offsets, or step modes, and each layout bakes into the pipeline.
+    vertex_layouts: Option<VertexLayouts>,
 }
 
 // Key for caching compute pipelines
@@ -1234,6 +1238,7 @@ impl RenderContext {
                 sample_count,
                 alpha_mode,
                 double_sided,
+                vertex_layouts: layouts.clone(),
             };
             let cached_pipeline = self
                 .render_pipelines
@@ -1244,7 +1249,7 @@ impl RenderContext {
                         shader,
                         color_format,
                         sample_count,
-                        layouts,
+                        layouts.as_ref(),
                         depth_format,
                         alpha_mode,
                         double_sided,
@@ -1999,10 +2004,34 @@ impl RenderContext {
     }
 }
 
-type VertexLayouts = (
-    wgpu::VertexBufferLayout<'static>,
-    Option<wgpu::VertexBufferLayout<'static>>,
-);
+/// One vertex buffer slot of a render pipeline.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct VertexStream {
+    stride: u64,
+    step_mode: wgpu::VertexStepMode,
+    attributes: Vec<wgpu::VertexAttribute>,
+}
+
+/// Vertex buffer layouts a shader reads from its mesh:
+/// slot 0 steps per vertex, the optional slot 1 per instance.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct VertexLayouts {
+    vertex: VertexStream,
+    instance: Option<VertexStream>,
+}
+
+impl VertexLayouts {
+    fn buffers(&self) -> Vec<wgpu::VertexBufferLayout<'_>> {
+        std::iter::once(&self.vertex)
+            .chain(self.instance.as_ref())
+            .map(|stream| wgpu::VertexBufferLayout {
+                array_stride: stream.stride,
+                step_mode: stream.step_mode,
+                attributes: &stream.attributes,
+            })
+            .collect()
+    }
+}
 
 // @TODO the Shader should provide this
 //.      - heck if the logic in the Shader is the same
@@ -2146,32 +2175,26 @@ fn vertex_buffer_layouts(
         }
     }
 
-    // Build layouts; leak attributes to 'static for the pipeline builder
     vertex_attributes.sort_by_key(|attr| attr.shader_location);
-    let vertex_layout = wgpu::VertexBufferLayout {
-        array_stride: vertex_stride,
+    let vertex = VertexStream {
+        stride: vertex_stride,
         step_mode: wgpu::VertexStepMode::Vertex,
-        attributes: Box::leak(vertex_attributes.into_boxed_slice()),
+        attributes: vertex_attributes,
     };
 
-    let instance_attributes = match instance_attributes.is_empty() {
-        true => None,
-        false => Some(instance_attributes),
-    };
-    let instance_layout =
-        if let (Some(attrs), Some(stride)) = (instance_attributes, instance_stride) {
-            let mut instance_attributes = attrs;
-            instance_attributes.sort_by_key(|a| a.shader_location);
-            Some(wgpu::VertexBufferLayout {
-                array_stride: stride,
+    let instance = match (instance_attributes.is_empty(), instance_stride) {
+        (false, Some(stride)) => {
+            instance_attributes.sort_by_key(|attr| attr.shader_location);
+            Some(VertexStream {
+                stride,
                 step_mode: wgpu::VertexStepMode::Instance,
-                attributes: Box::leak(instance_attributes.into_boxed_slice()),
+                attributes: instance_attributes,
             })
-        } else {
-            None
-        };
+        }
+        _ => None,
+    };
 
-    Ok(Some((vertex_layout, instance_layout)))
+    Ok(Some(VertexLayouts { vertex, instance }))
 }
 
 fn bind_group_layouts(
@@ -2397,7 +2420,7 @@ fn create_render_pipeline(
     shader: &crate::ShaderObject,
     format: wgpu::TextureFormat,
     sample_count: u32,
-    vertex_layouts: Option<VertexLayouts>,
+    vertex_layouts: Option<&VertexLayouts>,
     depth_format: Option<wgpu::TextureFormat>,
     alpha_mode: crate::material::AlphaMode,
     double_sided: bool,
@@ -2575,23 +2598,20 @@ fn create_render_pipeline(
         immediate_size,
     });
 
+    let vertex_buffers: Vec<Option<wgpu::VertexBufferLayout>> = vertex_layouts
+        .map(VertexLayouts::buffers)
+        .unwrap_or_default()
+        .into_iter()
+        .map(Some)
+        .collect();
+
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("Default Render Pipeline"),
         layout: Some(&layout),
         vertex: wgpu::VertexState {
             module: &shader_module,
             entry_point: Some(vs_entry.as_deref().unwrap_or("vs_main")),
-            buffers: {
-                // Build a local Vec to keep the layouts alive for this call
-                let mut tmp: Vec<Option<wgpu::VertexBufferLayout>> = Vec::new();
-                if let Some((v, instance_buffer)) = vertex_layouts {
-                    tmp.push(Some(v.clone()));
-                    if let Some(i) = instance_buffer {
-                        tmp.push(Some(i.clone()));
-                    }
-                }
-                Box::leak(tmp.into_boxed_slice())
-            },
+            buffers: &vertex_buffers,
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {

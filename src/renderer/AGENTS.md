@@ -3,11 +3,11 @@
 Core invariants
 - Draw all meshes attached to a Shader under the same RenderPipeline (per-shader batching).
 - Pipeline cache keys are descriptive structs, not tuples:
-  - `RenderPipelineKey { shader_hash, color_format, depth_format, sample_count }`
-  - `ComputePipelineKey { shader_hash }`
+  - `RenderPipelineKey { shader_hash, color_format, depth_format, sample_count, alpha_mode, double_sided, vertex_layouts }`
+  - `ComputePipelineKey { shader_hash, layout_signature }`
   Do not rely on tuple ordering; extend these structs if new state starts to affect pipeline configuration.
 - If a shader has no `@location` vertex inputs, draw a single fullscreen triangle (three built-in verts).
-- Vertex layouts are derived once from an authoritative mesh; the renderer does not re-validate per-mesh at draw time.
+- Vertex layouts are derived from the shader's first mesh and are part of the pipeline key, since shaders with the same source can feed meshes with different layouts. The renderer does not re-validate per-mesh at draw time.
 
 Render targets & present
 - If no per-pass offscreen target is set, render to the provided final frame by default.
