@@ -2,7 +2,7 @@ mod convert {
     use std::collections::{BTreeMap, BTreeSet};
 
     use crate::reflect::{Build, Reflection, StrConst, inline_str_consts};
-    use crate::source_text::{Nesting, arg_spans, closing, is_ident_char, split_args};
+    use crate::source_text::{Nesting, arg_spans, closing, code_only, is_ident_char, split_args};
 
     /// API facts the converter reads, derived from the source model.
     struct Facts {
@@ -1479,26 +1479,27 @@ mod convert {
         if renames.is_empty() {
             return s.to_string();
         }
+        /// Replaces whole-word `from` with `to` in code,
+        /// leaving string literals and `//` or `# ` comments as written.
         fn replace_word(src: &str, from: &str, to: &str) -> String {
-            let bytes: Vec<char> = src.chars().collect();
-            let from_chars: Vec<char> = from.chars().collect();
+            let code = code_only(src);
+            let end = code.find("# ").unwrap_or(code.len());
+            let code = &code[..end];
             let mut out = String::with_capacity(src.len());
-            let mut i = 0usize;
-            while i < bytes.len() {
-                // Try to match `from` at position i with word boundaries
-                let end = i + from_chars.len();
-                if end <= bytes.len() && bytes[i..end] == from_chars[..] {
-                    let left_ok = i == 0 || !is_ident_char(bytes[i - 1]);
-                    let right_ok = end == bytes.len() || !is_ident_char(bytes[end]);
-                    if left_ok && right_ok {
-                        out.push_str(to);
-                        i = end;
-                        continue;
-                    }
+            let (mut copied, mut search) = (0, 0);
+            while let Some(found) = code[search..].find(from) {
+                let at = search + found;
+                let after = at + from.len();
+                let left_ok = code[..at].chars().next_back().is_none_or(|c| !is_ident_char(c));
+                let right_ok = code[after..].chars().next().is_none_or(|c| !is_ident_char(c));
+                if left_ok && right_ok {
+                    out.push_str(&src[copied..at]);
+                    out.push_str(to);
+                    copied = after;
                 }
-                out.push(bytes[i]);
-                i += 1;
+                search = after;
             }
+            out.push_str(&src[copied..]);
             out
         }
         let mut out = s.to_string();
