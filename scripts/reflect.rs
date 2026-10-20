@@ -9,12 +9,12 @@ mod reflect {
     //! implementors and conversions from here. The Rust sources stay the only
     //! place an API fact is written down.
 
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
     use std::path::{Path, PathBuf};
 
     use heck::ToLowerCamelCase;
-    use proc_macro2::{TokenStream, TokenTree};
+    use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
     use quote::ToTokens;
     use syn::punctuated::Punctuated;
     use syn::{Attribute, Fields, ImplItem, Item, Meta, Signature, Token, Type};
@@ -452,6 +452,13 @@ mod reflect {
                 }
                 for call in pending {
                     let Some(items) = model.expand(&call) else {
+                        if model.macros.iter().any(|m| m.name == call.name) {
+                            println!(
+                                "cargo::warning=reflect: could not expand {}! in {}",
+                                call.name,
+                                call.file.display()
+                            );
+                        }
                         continue;
                     };
                     walk_items(&items, &call.file, &call.child_dir, &call.cfg, &mut model);
@@ -769,8 +776,13 @@ mod reflect {
     enum Matcher {
         /// `$name:kind`
         Fragment(String, String),
-        /// A literal token such as `,`.
+        /// A literal token such as `,` or `match`.
         Token(String),
+        /// A delimited group, matched piece by piece.
+        Group(Delimiter, Vec<Matcher>),
+        /// `$( ... ) sep op`, where `sep` is an optional separator token and
+        /// `op` is `*`, `+` or `?`.
+        Repeat(Vec<Matcher>, Option<String>, char),
     }
 
     /// A macro call at item position, waiting for every definition to be read.
@@ -782,9 +794,17 @@ mod reflect {
         cfg: Cfg,
     }
 
+    /// What a call bound one fragment to: a token stream, or one capture per
+    /// round of each repetition the fragment sits in.
+    enum Capture {
+        One(TokenStream),
+        Rounds(Vec<Capture>),
+    }
+
+    type Bindings = BTreeMap<String, Capture>;
+
     impl MacroDef {
         /// Reads `(matcher) => { transcriber };` arms.
-        /// Arms with repetitions are kept but never match, so their calls contribute nothing.
         fn parse(name: String, body: &TokenStream) -> MacroDef {
             let tokens: Vec<TokenTree> = body.clone().into_iter().collect();
             let mut arms = Vec::new();
@@ -800,6 +820,25 @@ mod reflect {
                 i += 4;
             }
             MacroDef { name, arms }
+        }
+    }
+
+    fn repeat_op(token: Option<&TokenTree>) -> Option<char> {
+        match token {
+            Some(TokenTree::Punct(p)) if matches!(p.as_char(), '*' | '+' | '?') => {
+                Some(p.as_char())
+            }
+            _ => None,
+        }
+    }
+
+    /// The separator and operator after a `$( ... )` group, and how many
+    /// tokens they take.
+    fn repeat_tail(tokens: &[TokenTree], at: usize) -> Option<(Option<TokenTree>, char, usize)> {
+        match (repeat_op(tokens.get(at)), tokens.get(at)) {
+            (Some(op), _) => Some((None, op, 1)),
+            (None, Some(sep)) => repeat_op(tokens.get(at + 1)).map(|op| (Some(sep.clone()), op, 2)),
+            (None, None) => None,
         }
     }
 
@@ -823,9 +862,26 @@ mod reflect {
                     out.push(Matcher::Fragment(name.to_string(), kind.to_string()));
                     i += 4;
                 }
+                (TokenTree::Punct(dollar), Some(TokenTree::Group(group)), ..)
+                    if dollar.as_char() == '$' && group.delimiter() == Delimiter::Parenthesis =>
+                {
+                    match repeat_tail(&tokens, i + 2) {
+                        Some((sep, op, used)) => {
+                            let sep = sep.map(|t| t.to_string());
+                            out.push(Matcher::Repeat(matchers(&group.stream()), sep, op));
+                            i += 2 + used;
+                        }
+                        None => {
+                            out.push(Matcher::Token("$".into()));
+                            i += 1;
+                        }
+                    }
+                }
+                (TokenTree::Group(group), ..) => {
+                    out.push(Matcher::Group(group.delimiter(), matchers(&group.stream())));
+                    i += 1;
+                }
                 (other, ..) => {
-                    // `$( ... )*` repetitions are out of scope; the token
-                    // makes the arm unmatchable.
                     out.push(Matcher::Token(other.to_string()));
                     i += 1;
                 }
@@ -837,86 +893,208 @@ mod reflect {
     impl Reflection {
         /// Expand one call of a crate-local macro into the items it defines.
         fn expand(&self, call: &Invocation) -> Option<Vec<Item>> {
+            use syn::parse::Parser;
             let def = self.macros.iter().find(|m| m.name == call.name)?;
             def.arms.iter().find_map(|(pattern, transcriber)| {
-                let captures = bind(pattern, &call.tokens)?;
-                let text = substitute(transcriber, &captures);
-                syn::parse_file(&text).ok().map(|f| f.items)
+                let parser = |input: syn::parse::ParseStream| bind_all(input, pattern);
+                let bindings = parser.parse2(call.tokens.clone()).ok()?;
+                let tokens = transcribe(transcriber, &bindings, &[])?;
+                syn::parse2::<syn::File>(tokens).ok().map(|f| f.items)
             })
         }
     }
 
-    /// Match `tokens` against a matcher and return each fragment's text.
-    fn bind(pattern: &[Matcher], tokens: &TokenStream) -> Option<Vec<(String, String)>> {
-        use syn::parse::{ParseStream, Parser};
-        let parser = |input: ParseStream| -> syn::Result<Vec<(String, String)>> {
-            let mut captures = Vec::new();
-            for piece in pattern {
-                match piece {
-                    Matcher::Fragment(name, kind) => {
-                        let text = match kind.as_str() {
-                            "ty" => input.parse::<Type>()?.to_token_stream().to_string(),
-                            // Parenthesized so the expression keeps its precedence.
-                            "expr" => {
-                                format!("({})", input.parse::<syn::Expr>()?.to_token_stream())
-                            }
-                            "ident" => input.parse::<syn::Ident>()?.to_string(),
-                            "path" => input.parse::<syn::Path>()?.to_token_stream().to_string(),
-                            "literal" => input.parse::<syn::Lit>()?.to_token_stream().to_string(),
-                            "tt" => input.parse::<TokenTree>()?.to_string(),
-                            _ => return Err(input.error("unsupported fragment")),
-                        };
-                        captures.push((name.clone(), text));
-                    }
-                    Matcher::Token(expected) => {
-                        let found: TokenTree = input.parse()?;
-                        if found.to_string() != *expected {
-                            return Err(input.error("token mismatch"));
-                        }
-                    }
-                }
-            }
-            // A trailing comma is allowed after the last fragment.
-            if input.peek(Token![,]) {
-                input.parse::<Token![,]>()?;
-            }
-            if !input.is_empty() {
-                return Err(input.error("unmatched tokens"));
-            }
-            Ok(captures)
-        };
-        parser.parse2(tokens.clone()).ok()
+    /// Parse one fragment of the given kind from `input`.
+    fn fragment(input: syn::parse::ParseStream, kind: &str) -> syn::Result<TokenStream> {
+        Ok(match kind {
+            "ty" => input.parse::<Type>()?.to_token_stream(),
+            "expr" => input.parse::<syn::Expr>()?.to_token_stream(),
+            "ident" => input.parse::<syn::Ident>()?.to_token_stream(),
+            "path" => input.parse::<syn::Path>()?.to_token_stream(),
+            "literal" => input.parse::<syn::Lit>()?.to_token_stream(),
+            "lifetime" => input.parse::<syn::Lifetime>()?.to_token_stream(),
+            "pat" | "pat_param" => syn::Pat::parse_multi(input)?.to_token_stream(),
+            "block" => input.parse::<syn::Block>()?.to_token_stream(),
+            "item" => input.parse::<syn::Item>()?.to_token_stream(),
+            "vis" => input.parse::<syn::Visibility>()?.to_token_stream(),
+            "meta" => input.parse::<syn::Meta>()?.to_token_stream(),
+            "tt" => input.parse::<TokenTree>()?.into(),
+            _ => return Err(input.error("unsupported fragment")),
+        })
     }
 
-    /// The transcriber with every `$name` replaced by its capture.
-    fn substitute(transcriber: &TokenStream, captures: &[(String, String)]) -> String {
-        let text = transcriber.to_string();
-        let mut out = String::with_capacity(text.len());
-        let mut chars = text.char_indices().peekable();
-        while let Some((at, ch)) = chars.next() {
-            if ch != '$' {
-                out.push(ch);
-                continue;
-            }
-            let rest = text[at + 1..].trim_start();
-            let name: String = rest
-                .chars()
-                .take_while(|c| c.is_alphanumeric() || *c == '_')
-                .collect();
-            match captures.iter().find(|(n, _)| *n == name) {
-                Some((_, value)) => out.push_str(value),
-                None if name == "crate" => out.push_str("crate"),
-                None => {
-                    out.push(ch);
-                    continue;
+    /// Match the whole of `input` against `pattern`.
+    fn bind_all(input: syn::parse::ParseStream, pattern: &[Matcher]) -> syn::Result<Bindings> {
+        let bindings = bind_seq(input, pattern)?;
+        if !input.is_empty() {
+            return Err(input.error("unmatched tokens"));
+        }
+        Ok(bindings)
+    }
+
+    /// Match `pattern` against the front of `input`.
+    fn bind_seq(input: syn::parse::ParseStream, pattern: &[Matcher]) -> syn::Result<Bindings> {
+        use syn::parse::Parser;
+        use syn::parse::discouraged::Speculative;
+        let mut bindings = Bindings::new();
+        for piece in pattern {
+            match piece {
+                Matcher::Fragment(name, kind) => {
+                    bindings.insert(name.clone(), Capture::One(fragment(input, kind)?));
+                }
+                Matcher::Token(expected) => {
+                    let found: TokenTree = input.parse()?;
+                    if found.to_string() != *expected {
+                        return Err(input.error("token mismatch"));
+                    }
+                }
+                Matcher::Group(delimiter, inner) => {
+                    let group: Group = input.parse()?;
+                    if group.delimiter() != *delimiter {
+                        return Err(input.error("delimiter mismatch"));
+                    }
+                    let parser = |content: syn::parse::ParseStream| bind_all(content, inner);
+                    bindings.extend(parser.parse2(group.stream())?);
+                }
+                Matcher::Repeat(inner, sep, op) => {
+                    let mut rounds: Vec<Bindings> = Vec::new();
+                    loop {
+                        if *op == '?' && !rounds.is_empty() {
+                            break;
+                        }
+                        let fork = input.fork();
+                        // A separator belongs to the repetition only when another item follows it.
+                        if let (Some(sep), false) = (sep, rounds.is_empty()) {
+                            match fork.parse::<TokenTree>() {
+                                Ok(found) if found.to_string() == *sep => {}
+                                _ => break,
+                            }
+                        }
+                        if fork.is_empty() {
+                            break;
+                        }
+                        let Ok(round) = bind_seq(&fork, inner) else {
+                            break;
+                        };
+                        input.advance_to(&fork);
+                        rounds.push(round);
+                    }
+                    if *op == '+' && rounds.is_empty() {
+                        return Err(input.error("repetition needs one item"));
+                    }
+                    let mut names = BTreeSet::new();
+                    fragment_names(inner, &mut names);
+                    for name in names {
+                        let per_round = rounds
+                            .iter_mut()
+                            .map(|round| round.remove(&name).unwrap_or(Capture::Rounds(Vec::new())))
+                            .collect();
+                        bindings.insert(name, Capture::Rounds(per_round));
+                    }
                 }
             }
-            let skip = text[at + 1..].len() - rest.len() + name.len();
-            for _ in 0..skip {
-                chars.next();
+        }
+        Ok(bindings)
+    }
+
+    /// Every fragment name a matcher binds, at any depth.
+    fn fragment_names(pattern: &[Matcher], out: &mut BTreeSet<String>) {
+        for piece in pattern {
+            match piece {
+                Matcher::Fragment(name, _) => {
+                    out.insert(name.clone());
+                }
+                Matcher::Group(_, inner) | Matcher::Repeat(inner, ..) => fragment_names(inner, out),
+                Matcher::Token(_) => {}
             }
         }
-        out
+    }
+
+    /// Names a transcriber group refers to with `$name`.
+    fn referenced_names(stream: &TokenStream, out: &mut BTreeSet<String>) {
+        let tokens: Vec<TokenTree> = stream.clone().into_iter().collect();
+        for (i, token) in tokens.iter().enumerate() {
+            match (token, tokens.get(i + 1)) {
+                (TokenTree::Punct(p), Some(TokenTree::Ident(id))) if p.as_char() == '$' => {
+                    out.insert(id.to_string());
+                }
+                (TokenTree::Group(g), _) => referenced_names(&g.stream(), out),
+                _ => {}
+            }
+        }
+    }
+
+    /// The capture `name` selects in the repetition rounds `path`. A fragment
+    /// bound outside a repetition reads the same in every round.
+    fn capture_at<'a>(capture: &'a Capture, path: &[usize]) -> Option<&'a Capture> {
+        match (capture, path.split_first()) {
+            (Capture::Rounds(rounds), Some((k, rest))) => capture_at(rounds.get(*k)?, rest),
+            (capture, _) => Some(capture),
+        }
+    }
+
+    /// The transcriber with every `$name` replaced by its capture and every
+    /// `$( ... )` repeated once per bound round. `path` holds the round of
+    /// each enclosing repetition.
+    fn transcribe(
+        stream: &TokenStream,
+        bindings: &Bindings,
+        path: &[usize],
+    ) -> Option<TokenStream> {
+        let tokens: Vec<TokenTree> = stream.clone().into_iter().collect();
+        let mut out: Vec<TokenTree> = Vec::new();
+        let mut i = 0;
+        while i < tokens.len() {
+            match (&tokens[i], tokens.get(i + 1)) {
+                (TokenTree::Punct(p), Some(TokenTree::Ident(id))) if p.as_char() == '$' => {
+                    let name = id.to_string();
+                    if name == "crate" {
+                        out.push(TokenTree::Ident(id.clone()));
+                    } else {
+                        let Capture::One(value) = capture_at(bindings.get(&name)?, path)? else {
+                            return None;
+                        };
+                        // An invisible group keeps a captured expression's precedence.
+                        out.push(Group::new(Delimiter::None, value.clone()).into());
+                    }
+                    i += 2;
+                }
+                (TokenTree::Punct(p), Some(TokenTree::Group(group)))
+                    if p.as_char() == '$' && group.delimiter() == Delimiter::Parenthesis =>
+                {
+                    let (sep, _, used) = repeat_tail(&tokens, i + 2)?;
+                    let mut names = BTreeSet::new();
+                    referenced_names(&group.stream(), &mut names);
+                    let count = names
+                        .iter()
+                        .filter_map(|n| match capture_at(bindings.get(n)?, path)? {
+                            Capture::Rounds(rounds) => Some(rounds.len()),
+                            Capture::One(_) => None,
+                        })
+                        .max()?;
+                    for k in 0..count {
+                        if let (Some(sep), true) = (&sep, k > 0) {
+                            out.push(sep.clone());
+                        }
+                        let inner_path: Vec<usize> = path.iter().copied().chain([k]).collect();
+                        out.extend(transcribe(&group.stream(), bindings, &inner_path)?);
+                    }
+                    i += 2 + used;
+                }
+                (TokenTree::Group(group), _) => {
+                    let inner = transcribe(&group.stream(), bindings, path)?;
+                    let mut copy = Group::new(group.delimiter(), inner);
+                    copy.set_span(group.span());
+                    out.push(copy.into());
+                    i += 1;
+                }
+                (other, _) => {
+                    out.push(other.clone());
+                    i += 1;
+                }
+            }
+        }
+        Some(out.into_iter().collect())
     }
 
     /// The name a binding exports the type under in `build`:
