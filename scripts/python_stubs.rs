@@ -843,7 +843,12 @@ mod python_stubs {
                 .iter()
                 .filter(|v| v.cfg.holds(Build::Python))
                 .flat_map(|v| match v.fields.as_slice() {
-                    [only] => expand(only, mode, scope, self_name, ctx),
+                    [only] => annotated(
+                        expand(only, mode, scope, self_name, ctx),
+                        &v.attrs,
+                        mode,
+                        ctx,
+                    ),
                     [] => Vec::new(),
                     many => {
                         let items: Vec<Vec<Atom>> = many
@@ -873,6 +878,44 @@ mod python_stubs {
         };
         ctx.expanding.borrow_mut().pop();
         atoms
+    }
+
+    /// A variant's `#[pyo3(annotation = "...")]` when it narrows a container
+    /// its Rust type leaves untyped, such as `list[int]` for a `Bound<PyList>`.
+    /// Every name in it must be a builtin or a class Python can hold.
+    fn annotated(atoms: Vec<Atom>, attrs: &[Attribute], mode: Mode, ctx: &Ctx) -> Vec<Atom> {
+        const BUILTINS: &[&str] = &[
+            "int", "float", "str", "bytes", "bool", "None", "list", "dict", "tuple",
+        ];
+        let Some(annotation) = pyo3_args(attrs).and_then(|a| arg_value(&a, "annotation")) else {
+            return atoms;
+        };
+        let narrows = |generic: &str, kind: &str| {
+            atoms == [Atom::Name(generic.into())] && annotation.starts_with(kind)
+        };
+        if !(narrows("list[Any]", "list[") || narrows("dict[str, Any]", "dict[")) {
+            return atoms;
+        }
+        let mut text = annotation.clone();
+        let names: BTreeSet<&str> = annotation
+            .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .filter(|w| !w.is_empty())
+            .collect();
+        for word in names {
+            if BUILTINS.contains(&word) {
+                continue;
+            }
+            let rust = ctx
+                .faces
+                .get(word)
+                .cloned()
+                .or_else(|| ctx.stub_names.contains_key(word).then(|| word.to_string()));
+            let Some(Atom::Name(stub)) = rust.and_then(|r| class_hint(&r, mode, ctx).pop()) else {
+                return atoms;
+            };
+            text = reflect::replace_qualified(&text, word, &stub);
+        }
+        vec![Atom::Name(text)]
     }
 
     /// The stub name of the pyclass `rust`, unless it is a parameter Python

@@ -149,7 +149,7 @@ class Renderer:
         image = target.get_image()
         ```
         """
-    def create_texture(self, input: str | bytes | Mipmap | list[Any] | npt.NDArray[numpy.uint8], size: _PySize | None = ..., format: TextureFormat | None = ..., mipmaps: bool | None = ...) -> Texture:
+    def create_texture(self, input: str | bytes | Mipmap | list[int] | npt.NDArray[numpy.uint8], size: _PySize | None = ..., format: TextureFormat | None = ..., mipmaps: bool | None = ...) -> Texture:
         """
         Create a [Texture](https://fragmentcolor.org/api/texture/texture) from bytes, a file path, a URL, a KTX2 container, or a pre-built [Mipmap](https://fragmentcolor.org/api/texture/mipmap).
 
@@ -4318,7 +4318,7 @@ class Texture:
         texture.write(frame)
         ```
         """
-    def write_region(self, data: _PyTextureBytes, region: ScreenRegion | dict[str, Any] | Sequence[int] | None) -> None:
+    def write_region(self, data: _PyTextureBytes, region: ScreenRegion | dict[str, int | None] | Sequence[int] | None) -> None:
         """
         Same as `Texture::write`, but writes into a sub-region of the texture and/or with explicit source data layout.
 
