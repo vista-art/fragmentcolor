@@ -220,7 +220,7 @@ mod python_stubs {
         if !unmatched.is_empty() {
             let list: Vec<&str> = unmatched.iter().map(String::as_str).collect();
             println!(
-                "cargo::warning=python_stubs: no canonical parameter for {}; the stub uses Any",
+                "cargo::warning=python_stubs: no canonical value for {}; the stub uses Any",
                 list.join(", ")
             );
         }
