@@ -39,8 +39,8 @@ mod swift {
 
     use crate::reflect::{Build, CallKind, Reflection, StrConst};
     use crate::source_text::{
-        Nesting, arg_spans, closing, code_only, extension_files, read_ident, skip_space, split_args,
-        string_end, top_level_words,
+        Nesting, arg_spans, closing, code_only, extension_files, is_ident_char, read_ident,
+        skip_space, split_args, string_end, top_level_words,
     };
 
     /// The extension files that add Swift overloads on top of uniffi's.
@@ -1169,9 +1169,5 @@ mod swift {
             i += 1;
         }
         out
-    }
-
-    fn is_ident_char(c: char) -> bool {
-        c.is_ascii_alphanumeric() || c == '_'
     }
 }

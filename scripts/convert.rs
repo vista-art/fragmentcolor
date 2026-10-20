@@ -2,6 +2,7 @@ mod convert {
     use std::collections::BTreeSet;
 
     use crate::reflect::{Build, Reflection, StrConst, inline_str_consts};
+    use crate::source_text::is_ident_char;
     use crate::{js_objectize_sampleroptions_literal, js_region_new_to_array, simplify_js_size_from};
 
     /// API facts the converter reads, derived from the source model.
@@ -293,10 +294,6 @@ mod convert {
             out.push('\n');
         }
         out
-    }
-
-    fn is_ident_char(c: char) -> bool {
-        c.is_ascii_alphanumeric() || c == '_'
     }
 
     // Drop Rust integer / float type suffixes from numeric literals:
@@ -1491,8 +1488,8 @@ mod convert {
                 // Try to match `from` at position i with word boundaries
                 let end = i + from_chars.len();
                 if end <= bytes.len() && bytes[i..end] == from_chars[..] {
-                    let left_ok = i == 0 || !super::convert::is_ident_char(bytes[i - 1]);
-                    let right_ok = end == bytes.len() || !super::convert::is_ident_char(bytes[end]);
+                    let left_ok = i == 0 || !is_ident_char(bytes[i - 1]);
+                    let right_ok = end == bytes.len() || !is_ident_char(bytes[end]);
                     if left_ok && right_ok {
                         out.push_str(to);
                         i = end;
@@ -2288,7 +2285,7 @@ mod convert {
             if i + 5 <= bytes.len() && bytes[i..i + 5] == ['.', 'n', 'e', 'w', '('] {
                 // Backtrack to the start of the identifier
                 let mut j = i;
-                while j > 0 && super::convert::is_ident_char(bytes[j - 1]) {
+                while j > 0 && is_ident_char(bytes[j - 1]) {
                     j -= 1;
                 }
                 // Rewrite: keep the identifier, drop ".new"

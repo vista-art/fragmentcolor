@@ -1,5 +1,5 @@
 mod source_text {
-    //! Text scanners the Swift and Kotlin rewrites share.
+    //! Text scanners the example transpilers share.
     //!
     //! They read hand-written extension files
     //! and the call sites the shared emitter writes,
@@ -172,7 +172,8 @@ mod source_text {
             .collect()
     }
 
-    fn is_ident_char(c: char) -> bool {
+    /// Whether `c` is an ASCII letter, digit or `_`.
+    pub fn is_ident_char(c: char) -> bool {
         c.is_ascii_alphanumeric() || c == '_'
     }
 }

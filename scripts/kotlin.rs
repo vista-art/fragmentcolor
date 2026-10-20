@@ -28,8 +28,8 @@ mod kotlin {
 
     use crate::reflect::{Build, CallKind, Reflection, SliceGetter, StrConst};
     use crate::source_text::{
-        Nesting, arg_spans, closing, code_only, extension_files, read_ident, skip_space, split_args,
-        top_level_words,
+        Nesting, arg_spans, closing, code_only, extension_files, is_ident_char, read_ident,
+        skip_space, split_args, top_level_words,
     };
 
     /// The extension functions written by hand on top of uniffi's Kotlin.
@@ -2008,10 +2008,6 @@ mod kotlin {
         let new_name = format!("{}{}", name, count);
         let renamed_rest = &trimmed["val ".len() + name_end..];
         format!("{}val {}{}", indent, new_name, renamed_rest)
-    }
-
-    fn is_ident_char(c: char) -> bool {
-        c.is_ascii_alphanumeric() || c == '_'
     }
 
     /// Join continuation lines: when a line ends with more open parens than close parens
