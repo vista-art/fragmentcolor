@@ -22,12 +22,10 @@ extension Pass {
         return Pass.compute(name: name)
     }
 
-    // `Pass.fromShader(_:)` deliberately omitted: uniffi generates the
-    // factory as `Pass(fromShader: ...)` (a convenience init), not as a
-    // static method. Adding a static func with the same base name shadows
-    // the constructor and the compiler picks the static, then fails to
-    // find a matching label. Callers can write `Pass(fromShader: shader)`
-    // directly — it reads the same as the JS / Python spelling.
+    /// A render pass already holding `shader` (unlabeled overload).
+    public static func fromShader(_ name: String, _ shader: Shader) -> Pass {
+        return Pass.fromShader(name: name, shader: shader)
+    }
 
     // MARK: - Shader / Mesh (unlabeled overloads)
 

@@ -16,6 +16,6 @@ let shader = try Shader("""
 
 """)
 
-let pass = Pass("pass"); pass.addShader(shader)
+let pass = Pass.fromShader("pass", shader)
 
 try pass.addMesh(mesh)

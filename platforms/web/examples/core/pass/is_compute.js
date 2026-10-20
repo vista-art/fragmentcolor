@@ -6,7 +6,7 @@ const shader = new Shader(`
 fn cs_main() { }
 
 `);
-const pass = new Pass("p"); pass.addShader(shader);
+const pass = Pass.fromShader("p", shader);
 
 // Call the method
 const is_compute = pass.isCompute();

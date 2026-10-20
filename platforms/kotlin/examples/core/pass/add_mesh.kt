@@ -16,6 +16,6 @@ val shader = Shader("""
 
 """)
 
-val pass = Pass("pass"); pass.addShader(shader)
+val pass = Pass.fromShader("pass", shader)
 
 pass.addMesh(mesh)

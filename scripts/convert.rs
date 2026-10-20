@@ -1301,30 +1301,6 @@ mod convert {
                 }
             }
         }
-        // Pass::from_shader(name, shader) -> one-line construct+add
-        if rhs.starts_with("Pass::from_shader(")
-            || rhs.starts_with("fragmentcolor::Pass::from_shader(")
-        {
-            // Extract args inside (...)
-            if let Some(lp) = rhs.find('(')
-                && let Some(rp) = rhs.rfind(')')
-            {
-                let inside = &rhs[lp + 1..rp];
-                let mut parts = inside.splitn(2, ',');
-                let a1 = parts.next().unwrap_or("").trim();
-                let mut a2 = parts.next().unwrap_or("").trim().to_string();
-                a2 = strip_refs(&a2);
-                match lang {
-                    Lang::Js | Lang::Swift | Lang::Kotlin => {
-                        rhs = format!("new Pass({}); {}.addShader({})", a1, var, a2);
-                    }
-                    Lang::Py => {
-                        rhs = format!("Pass({}); {}.add_shader({})", a1, var, a2);
-                    }
-                }
-            }
-        }
-
         // UFCS associated calls remaining: Type::method( -> Type.method(
         rhs = replace_static_call_to_dot(&rhs);
         // Python-specific cleanups: simplify Type.new(args) -> Type(args); Size.from(x) -> x; strip unwrap()
@@ -1406,7 +1382,7 @@ mod convert {
             }
         };
 
-        // If RHS references the original var (e.g., Pass::from_shader expansion), adjust to var_out for Python
+        // If RHS references the variable itself, use its renamed form for Python
         if let Lang::Py = lang {
             let needle = format!("{}.", var);
             let replacement = format!("{}.", var_out);

@@ -17,6 +17,6 @@ const shader = new Shader(`
 
 `);
 
-const pass = new Pass("pass"); pass.addShader(shader);
+const pass = Pass.fromShader("pass", shader);
 
 pass.addMesh(mesh);

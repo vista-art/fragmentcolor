@@ -87,7 +87,7 @@ class GeneratedExamples {
 
         """)
 
-        val pass = Pass("pass"); pass.addShader(shader)
+        val pass = Pass.fromShader("pass", shader)
 
         pass.addMesh(mesh)
     }
@@ -102,13 +102,13 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_core_pass_compute() {
 
         val cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
-        val pass = Pass("compute"); pass.addShader(cs)
+        val pass = Pass.fromShader("compute", cs)
     }
 
     @Suppress("unused") private suspend fun _example_core_pass_from_shader() {
 
         val shader = Shader.default()
-        val pass = Pass("single"); pass.addShader(shader)
+        val pass = Pass.fromShader("single", shader)
     }
 
     @Suppress("unused") private suspend fun _example_core_pass_get_input() {
@@ -124,7 +124,7 @@ class GeneratedExamples {
         fn cs_main() { }
 
         """)
-        val pass = Pass("p"); pass.addShader(shader)
+        val pass = Pass.fromShader("p", shader)
 
         // Call the method
         val is_compute = pass.isCompute()
@@ -186,7 +186,7 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_core_pass_set_compute_dispatch() {
         val cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
-        val pass = Pass("compute"); pass.addShader(cs)
+        val pass = Pass.fromShader("compute", cs)
         pass.setComputeDispatch(64u, 64u, 1u)
     }
 
@@ -204,7 +204,7 @@ class GeneratedExamples {
         mesh.addVertex(Vertex(listOf(0.0f, 1.0f, 0.0f)))
         mesh.addVertex(Vertex(listOf(1.0f, 1.0f, 0.0f)))
         val shader = Shader.fromMesh(mesh)
-        val pass = Pass("blobs"); pass.addShader(shader)
+        val pass = Pass.fromShader("blobs", shader)
 
         // Depth-test on — closer fragments win, the pass writes to the depth
         // buffer so subsequent draws within the same pass see the depth.
@@ -660,7 +660,7 @@ class GeneratedExamples {
         @fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
         """)
-        val pass = Pass("p"); pass.addShader(shader)
+        val pass = Pass.fromShader("p", shader)
 
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f, 0.0f)), Vertex(listOf(0.5f, -0.5f, 0.0f)), Vertex(listOf(0.0f, 0.5f, 0.0f))))

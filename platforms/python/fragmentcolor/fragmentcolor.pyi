@@ -793,7 +793,7 @@ class Shader:
         @fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
         \"\"\")
-        rpass = Pass("p"); rpass.add_shader(shader)
+        rpass = Pass.from_shader("p", shader)
 
         mesh = Mesh()
         mesh.add_vertices([
@@ -977,7 +977,7 @@ class Pass:
         from fragmentcolor import Pass, Shader
 
         cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
-        rpass = Pass("compute"); rpass.add_shader(cs)
+        rpass = Pass.from_shader("compute", cs)
         ```
         """
     @staticmethod
@@ -993,7 +993,7 @@ class Pass:
         from fragmentcolor import Pass, Shader
 
         shader = Shader.default()
-        rpass = Pass("single"); rpass.add_shader(shader)
+        rpass = Pass.from_shader("single", shader)
         ```
         """
     def passes(self) -> _PyPassIterator: ...
@@ -1104,7 +1104,7 @@ class Pass:
 
         \"\"\")
 
-        rpass = Pass("rpass"); rpass.add_shader(shader)
+        rpass = Pass.from_shader("rpass", shader)
 
         rpass.add_mesh(mesh)
         ```
@@ -1215,7 +1215,7 @@ class Pass:
         ```python
         from fragmentcolor import Pass, Shader
         cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
-        rpass = Pass("compute"); rpass.add_shader(cs)
+        rpass = Pass.from_shader("compute", cs)
         rpass.set_compute_dispatch(64, 64, 1)
         ```
         """
@@ -1264,7 +1264,7 @@ class Pass:
         mesh.add_vertex([0.0, 1.0, 0.0])
         mesh.add_vertex([1.0, 1.0, 0.0])
         shader = Shader.from_mesh(mesh)
-        rpass = Pass("blobs"); rpass.add_shader(shader)
+        rpass = Pass.from_shader("blobs", shader)
 
         # Depth-test on — closer fragments win, the rpass writes to the depth
         # buffer so subsequent draws within the same rpass see the depth.
@@ -1287,7 +1287,7 @@ class Pass:
         fn cs_main() { }
 
         \"\"\")
-        rpass = Pass("p"); rpass.add_shader(shader)
+        rpass = Pass.from_shader("p", shader)
 
         # Call the method
         is_compute = rpass.is_compute()

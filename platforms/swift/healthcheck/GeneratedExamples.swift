@@ -85,7 +85,7 @@ private enum _GeneratedExamples {
 
             """)
 
-            let pass = Pass("pass"); pass.addShader(shader)
+            let pass = Pass.fromShader("pass", shader)
 
             try pass.addMesh(mesh)
         }
@@ -104,7 +104,7 @@ private enum _GeneratedExamples {
         do {
 
             let cs = try! Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
-            let pass = Pass("compute"); pass.addShader(cs)
+            let pass = Pass.fromShader("compute", cs)
         }
     }
 
@@ -112,7 +112,7 @@ private enum _GeneratedExamples {
         do {
 
             let shader = Shader.default()
-            let pass = Pass("single"); pass.addShader(shader)
+            let pass = Pass.fromShader("single", shader)
         }
     }
 
@@ -132,7 +132,7 @@ private enum _GeneratedExamples {
             fn cs_main() { }
 
             """)
-            let pass = Pass("p"); pass.addShader(shader)
+            let pass = Pass.fromShader("p", shader)
 
             // Call the method
             let is_compute = pass.isCompute()
@@ -206,7 +206,7 @@ private enum _GeneratedExamples {
     static func _example_core_pass_set_compute_dispatch() async throws {
         do {
             let cs = try! Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
-            let pass = Pass("compute"); pass.addShader(cs)
+            let pass = Pass.fromShader("compute", cs)
             pass.setComputeDispatch(64, 64, 1)
         }
     }
@@ -226,7 +226,7 @@ private enum _GeneratedExamples {
             try mesh.addVertex([0.0, 1.0, 0.0])
             try mesh.addVertex([1.0, 1.0, 0.0])
             let shader = Shader.fromMesh(mesh)
-            let pass = Pass("blobs"); pass.addShader(shader)
+            let pass = Pass.fromShader("blobs", shader)
 
             // Depth-test on — closer fragments win, the pass writes to the depth
             // buffer so subsequent draws within the same pass see the depth.
@@ -751,7 +751,7 @@ private enum _GeneratedExamples {
             @fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
             """)
-            let pass = Pass("p"); pass.addShader(shader)
+            let pass = Pass.fromShader("p", shader)
 
             let mesh = Mesh()
             try mesh.addVertices([

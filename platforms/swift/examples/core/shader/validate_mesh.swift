@@ -10,7 +10,7 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 @fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
 """)
-let pass = Pass("p"); pass.addShader(shader)
+let pass = Pass.fromShader("p", shader)
 
 let mesh = Mesh()
 try mesh.addVertices([

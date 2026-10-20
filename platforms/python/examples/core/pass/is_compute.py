@@ -5,7 +5,7 @@ shader = Shader("""
 fn cs_main() { }
 
 """)
-rpass = Pass("p"); rpass.add_shader(shader)
+rpass = Pass.from_shader("p", shader)
 
 # Call the method
 is_compute = rpass.is_compute()
