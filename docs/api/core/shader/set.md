@@ -4,6 +4,13 @@ Sets the value of the uniform identified by the given key.
 
 If the key does not exist or the value format is incorrect, the `set` method throws an exception. The shader remains valid, and if the exception is caught, the shader can still be used with the renderer.
 
+The uniform's declared WGSL type decides how the value is read, so a call behaves the same in every language:
+
+- A number fits an `f32`, `i32`, or `u32` uniform. Integer uniforms take whole numbers in range.
+- A vector takes exactly as many numbers as it has components. A `mat2x2`, `mat3x3`, or `mat4x4` takes 4, 9, or 16.
+- A `Texture` created by a `Renderer` binds to a texture uniform.
+- Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` in Python, `Data` in Swift, or a `ByteArray` in Kotlin.
+
 ## Example
 
 ```rust
