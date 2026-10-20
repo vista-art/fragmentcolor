@@ -357,8 +357,8 @@ mod reflect {
     pub struct ImplDef {
         /// The file that declares the block.
         pub file: PathBuf,
-        /// Last path segment of the self type. Empty for slices, references
-        /// and other types without a path.
+        /// Last path segment of the self type.
+        /// Empty for slices, references and other types without a path.
         pub self_ident: String,
         pub self_ty: Type,
         pub is_trait_impl: bool,
@@ -476,8 +476,8 @@ mod reflect {
             })
         }
 
-        /// Source types of the `conversion` (`From` or `TryFrom`) impls that
-        /// target the type named `target`, with the impl that declares each.
+        /// Source types of the `conversion` (`From` or `TryFrom`) impls
+        /// that target the type named `target`, with the impl that declares each.
         pub fn conversions_into(
             &self,
             target: &str,
@@ -490,8 +490,8 @@ mod reflect {
                 .collect()
         }
 
-        /// Methods of plain impl blocks (not bindings, not trait impls) that
-        /// compile in `build`, with their impl: the canonical Rust API.
+        /// Methods of plain impl blocks (not bindings, not trait impls)
+        /// that compile in `build`, with their impl: the canonical Rust API.
         pub fn plain_methods(&self, build: Build) -> impl Iterator<Item = (&ImplDef, &FnDef)> {
             self.impls
                 .iter()
@@ -783,8 +783,8 @@ mod reflect {
     }
 
     impl MacroDef {
-        /// Reads `(matcher) => { transcriber };` arms. Arms with repetitions
-        /// are kept but never match, so their calls contribute nothing.
+        /// Reads `(matcher) => { transcriber };` arms.
+        /// Arms with repetitions are kept but never match, so their calls contribute nothing.
         fn parse(name: String, body: &TokenStream) -> MacroDef {
             let tokens: Vec<TokenTree> = body.clone().into_iter().collect();
             let mut arms = Vec::new();
@@ -919,9 +919,9 @@ mod reflect {
         out
     }
 
-    /// The name a binding exports the type under in `build`: the
-    /// `#[pyclass(name)]`, the `js_name`, or the Rust name; `None` when that
-    /// build has no binding for it.
+    /// The name a binding exports the type under in `build`:
+    /// the `#[pyclass(name)]`, the `js_name`, or the Rust name.
+    /// It is `None` when that build has no binding for the type.
     pub fn exported_type_name(attrs: &[Attribute], ident: &str, build: Build) -> Option<String> {
         let metas = metas(attrs, build);
         let binding = metas.iter().find(|m| match build {
@@ -942,8 +942,7 @@ mod reflect {
         )
     }
 
-    /// What the `#[pymodule]` in `src/platforms/python.rs` registers, in
-    /// registration order.
+    /// What the `#[pymodule]` in `src/platforms/python.rs` registers, in registration order.
     pub struct PythonModule {
         /// Rust idents passed to `add_class`.
         pub classes: Vec<String>,
@@ -1113,8 +1112,8 @@ mod reflect {
         pub params: Vec<Type>,
     }
 
-    /// A uniffi enum whose variants carry no data. Kotlin renders it
-    /// as an `enum class` and every other uniffi enum as a sealed class.
+    /// A uniffi enum whose variants carry no data.
+    /// Kotlin renders it as an `enum class`, and every other uniffi enum as a sealed class.
     pub struct FlatEnum {
         pub ident: String,
         /// Variant names as Rust spells them.

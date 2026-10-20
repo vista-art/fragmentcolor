@@ -97,6 +97,7 @@ mod source_text {
         found
     }
 
+    /// The byte offset of the first non-whitespace character at or after `at`.
     pub fn skip_space(code: &str, at: usize) -> usize {
         code.len() - code[at..].trim_start().len()
     }

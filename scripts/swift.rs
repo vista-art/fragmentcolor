@@ -439,8 +439,9 @@ mod swift {
         js.replace('`', "\"\"\"")
     }
 
-    /// Rewrite one line of the intermediate.
-    /// A line that starts inside a `"""` literal is string text and gets no `try` or `await`.
+    /// Rewrite one line of the intermediate,
+    /// leaving `try` and `await` out of a line
+    /// that starts inside a `"""` string literal.
     fn rewrite_line(src: &str, in_string: bool) -> String {
         let mut out = src.to_string();
 
@@ -924,9 +925,9 @@ mod swift {
         (leads && !STATEMENT_KEYWORDS.contains(&word)).then(|| (String::new(), statement))
     }
 
-    /// The merged effects of every call in `code`. `T.name(` with a type name `T`
-    /// is a static call, `T(` an initializer, and any other `.name(`
-    /// an instance method known only by its name.
+    /// The merged effects of every call in `code`.
+    /// `T.name(` with a type name `T` is a static call and `T(` an initializer,
+    /// while any other `.name(` is an instance method known only by its name.
     fn call_effects(code: &str) -> Effects {
         let facts = facts();
         let mut effects = Effects::default();

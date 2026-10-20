@@ -77,8 +77,9 @@ mod kotlin {
     struct Slot {
         /// A number needs the `f` suffix.
         float: bool,
-        /// An integer needs the `u` suffix. Holds the Kotlin type
-        /// a value converts to when an array spreads into separate arguments.
+        /// An integer needs the `u` suffix.
+        /// Holds the Kotlin type a value converts to
+        /// when an array spreads into separate arguments.
         unsigned: Option<String>,
         /// How `arrayOf(...)` becomes a `List` here.
         list: Option<Elems>,
@@ -367,8 +368,8 @@ mod kotlin {
                 .collect()
         }
 
-        /// A conflict at `position`, for a rewrite that would change
-        /// the arguments `changes` accepts, explained by `reason`.
+        /// A conflict at `position`, explained by `reason`,
+        /// for a rewrite that would change the arguments `changes` accepts.
         fn conflict(&self, reason: String, changes: fn(&str) -> bool) -> Conflict {
             Conflict {
                 needle: self.needle.to_string(),
@@ -517,8 +518,8 @@ mod kotlin {
         })
     }
 
-    /// The one type, such as `Vertex`, an `arrayOf(numbers)` here builds
-    /// through its constructor, when no receiver takes a list or an array.
+    /// The one type an `arrayOf(numbers)` here builds through its constructor,
+    /// such as `Vertex`, when no receiver takes a list or an array.
     fn wrap_slot(receivers: &Receivers, wraps: &BTreeSet<&str>) -> Option<String> {
         if receivers.any(is_list) || receivers.any(is_array) {
             return None;
@@ -942,9 +943,8 @@ mod kotlin {
         })
     }
 
-    /// Give integer literals a `u` where the parameter is unsigned,
-    /// which Kotlin never converts a signed literal to. A lone `arrayOf(w, h)`
-    /// spreads into the separate unsigned parameters that stand for a Rust `Size` on mobile.
+    /// Give integer literals the `u` Kotlin needs where the parameter is unsigned.
+    /// A lone `arrayOf(w, h)` spreads into the separate parameters a Rust `Size` becomes on mobile.
     fn rewrite_unsigned_args(line: &str) -> String {
         map_calls(line, &|needle, args| {
             let plans = facts().calls.get(needle)?;
@@ -988,8 +988,8 @@ mod kotlin {
         }
     }
 
-    /// `chain.levels()[0]` → `chain.level(0)` where the binding
-    /// reads one element of a Rust slice getter by index.
+    /// `chain.levels()[0]` → `chain.level(0)`,
+    /// where the binding reads one element of a Rust slice getter by index.
     fn rewrite_index_accessors(line: &str) -> String {
         let getters: BTreeSet<&str> =
             facts().slice_getters.iter().map(|g| g.getter.as_str()).collect();
@@ -1052,8 +1052,8 @@ mod kotlin {
         }
     }
 
-    /// `AlphaMode.Mask` → `AlphaMode.MASK`. uniffi renders a flat enum
-    /// as an `enum class` whose entries are in SCREAMING_SNAKE_CASE.
+    /// `AlphaMode.Mask` → `AlphaMode.MASK`.
+    /// uniffi renders a flat enum as an `enum class` whose entries are in SCREAMING_SNAKE_CASE.
     fn rewrite_flat_enum_variants(line: &str) -> String {
         let mut out = line.to_string();
         for (ident, spellings) in &facts().enums {
