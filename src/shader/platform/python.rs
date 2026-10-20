@@ -3,7 +3,7 @@
 use crate::shader::{UniformInput, lsp_doc};
 use crate::{Shader, ShaderError, UniformData};
 use pyo3::prelude::*;
-use pyo3::types::{PyAnyMethods, PyBool, PyByteArray, PyBytes, PyMemoryView};
+use pyo3::types::{PyAnyMethods, PyByteArray, PyBytes, PyMemoryView};
 
 #[pymethods]
 impl Shader {
@@ -49,8 +49,8 @@ impl Shader {
 
     #[pyo3(name = "set")]
     #[lsp_doc("docs/api/core/shader/set.md")]
-    pub fn set_py(&self, key: &str, value: &Bound<'_, PyAny>) -> Result<(), PyErr> {
-        Ok(self.object.set_input(key, uniform_input(key, value)?)?)
+    pub fn set_py(&self, key: &str, value: PyUniformValue<'_>) -> Result<(), PyErr> {
+        Ok(self.object.set_input(key, value.into_input()?)?)
     }
 
     #[pyo3(name = "get")]
@@ -144,33 +144,39 @@ impl Shader {
     }
 }
 
-/// Sorts a Python value into a loose uniform input. The key's declared WGSL type does the rest.
-/// `bytes`, `bytearray` and `memoryview` are raw bytes, and any other sequence is numbers.
-fn uniform_input(key: &str, value: &Bound<'_, PyAny>) -> PyResult<UniformInput> {
-    if let Ok(texture) = value.cast::<crate::texture::Texture>() {
-        return Ok(UniformInput::Texture(texture.borrow().id));
+/// A `Shader.set` value from Python, tried in this order.
+/// The key's declared WGSL type does the rest. Vec extraction follows
+/// the sequence protocol, so a NumPy array counts as a sequence of numbers.
+#[derive(FromPyObject)]
+pub enum PyUniformValue<'py> {
+    #[pyo3(annotation = "Texture")]
+    Texture(PyRef<'py, crate::texture::Texture>),
+    #[pyo3(annotation = "bool")]
+    Bool(bool),
+    #[pyo3(annotation = "bytes")]
+    Bytes(Bound<'py, PyBytes>),
+    #[pyo3(annotation = "bytearray")]
+    ByteArray(Bound<'py, PyByteArray>),
+    #[pyo3(annotation = "memoryview")]
+    MemoryView(Bound<'py, PyMemoryView>),
+    #[pyo3(annotation = "Sequence[float]")]
+    Numbers(Vec<f64>),
+    #[pyo3(annotation = "float")]
+    Number(f64),
+}
+
+impl PyUniformValue<'_> {
+    /// The loose input this value stands for.
+    /// A memoryview is copied out with `tobytes`, whatever its item format.
+    fn into_input(self) -> PyResult<UniformInput> {
+        Ok(match self {
+            Self::Texture(texture) => UniformInput::Texture(texture.id),
+            Self::Bool(flag) => UniformInput::Bool(flag),
+            Self::Bytes(bytes) => UniformInput::Bytes(bytes.as_bytes().to_vec()),
+            Self::ByteArray(bytes) => UniformInput::Bytes(bytes.to_vec()),
+            Self::MemoryView(view) => UniformInput::Bytes(view.call_method0("tobytes")?.extract()?),
+            Self::Numbers(numbers) => UniformInput::Numbers(numbers),
+            Self::Number(number) => UniformInput::Number(number),
+        })
     }
-    if let Ok(flag) = value.cast::<PyBool>() {
-        return Ok(UniformInput::Bool(flag.is_true()));
-    }
-    if value.is_instance_of::<PyBytes>() || value.is_instance_of::<PyByteArray>() {
-        return Ok(UniformInput::Bytes(value.extract()?));
-    }
-    if value.is_instance_of::<PyMemoryView>() {
-        return Ok(UniformInput::Bytes(
-            value.call_method0("tobytes")?.extract()?,
-        ));
-    }
-    // Vec extraction follows the sequence protocol, so NumPy arrays count too.
-    if let Ok(numbers) = value.extract::<Vec<f64>>() {
-        return Ok(UniformInput::Numbers(numbers));
-    }
-    if let Ok(number) = value.extract::<f64>() {
-        return Ok(UniformInput::Number(number));
-    }
-    let kind = value.get_type().name()?;
-    Err(ShaderError::TypeMismatch(format!(
-        "{key}: expected a number, a sequence of numbers, bytes, or a Texture, got {kind}"
-    ))
-    .into())
 }
