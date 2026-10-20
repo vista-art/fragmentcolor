@@ -309,10 +309,9 @@ mod swift {
         //   )
         //
         // Swift parses the dangling `,\n)` as the empty-element tuple
-        // shape and bails with "unexpected ',' separator". The per-line
-        // strip in `rewrite_line` only sees single lines, so handle
-        // the cross-line case at the joined-text level: replace any
-        // `,<whitespace>)` (including newlines) with `<whitespace>)`.
+        // shape and bails with "unexpected ',' separator". Work on the
+        // joined text so a comma and its `)` may sit on different lines:
+        // replace any `,<whitespace>)` with `<whitespace>)`.
         let joined = out.join("\n");
         let joined = strip_trailing_comma_multiline(&joined);
         // Also handle two-pass duplicate `let <name>` declarations
@@ -491,25 +490,6 @@ mod swift {
         // e.g. `image[...]` → `image`, `pixels.asSlice()` → `pixels`.
         out = strip_rust_slice_notation(&out);
 
-        // Fix `.bytes(identifier)` → `.bytes(Data(identifier))` so `[UInt8]` arrays
-        // pass into `TextureInputMobile.bytes(Data)` correctly.
-        out = fix_texture_input_bytes(&out);
-
-        // Rewrite `let (width, height) = expr.baseSize()` → `let size = expr.baseSize()`.
-        // Swift's `baseSize()` returns a `Size` struct, not a tuple; the Rust doc
-        // example uses tuple destructuring which doesn't translate directly.
-        // Also rewrite the follow-up `let _ = (width, height)` → `let _ = size`.
-        out = rewrite_size_tuple(&out);
-
-        // Strip trailing commas inside parens: `foo(a, b,)` → `foo(a, b)`.
-        // The convert-layer emits these from multi-line Rust calls that
-        // had a trailing comma before the close paren. Swift parses
-        // `(...,)` as the malformed empty-element tuple, raising
-        // "unexpected ',' separator". The strip is safe because Swift
-        // does not have trailing-comma semantics outside arrays and
-        // tuples we already round-trip through JS array literals.
-        out = strip_trailing_comma_before_close_paren(&out);
-
         // Inline `Vertex.UV0` (and the rest of the SCREAMING_SNAKE
         // attribute-name constants) as the bare string literal value.
         // Uniffi has no equivalent of pyo3 classattr or Kotlin static const
@@ -519,61 +499,6 @@ mod swift {
         out = inline_vertex_attr_constants(&out);
 
         out
-    }
-
-    /// Strip a comma that immediately precedes a `)` at the top level of a
-    /// line, ignoring whitespace and contents of double-quoted / triple-
-    /// quoted strings. Common shape:
-    ///
-    ///   `try mesh.addVertex(try Vertex(...).set("uv0", [0.5, 1.0]),)`
-    ///
-    /// becomes
-    ///
-    ///   `try mesh.addVertex(try Vertex(...).set("uv0", [0.5, 1.0]))`
-    fn strip_trailing_comma_before_close_paren(line: &str) -> String {
-        let chars: Vec<char> = line.chars().collect();
-        let mut out: Vec<char> = Vec::with_capacity(chars.len());
-        let mut in_dq = false;
-        let mut in_tq = false;
-        let mut i = 0usize;
-        while i < chars.len() {
-            // Toggle triple-quote string.
-            if i + 2 < chars.len()
-                && chars[i] == '"'
-                && chars[i + 1] == '"'
-                && chars[i + 2] == '"'
-            {
-                in_tq = !in_tq;
-                out.push('"');
-                out.push('"');
-                out.push('"');
-                i += 3;
-                continue;
-            }
-            if !in_tq && chars[i] == '"' {
-                in_dq = !in_dq;
-                out.push('"');
-                i += 1;
-                continue;
-            }
-            if !in_dq && !in_tq && chars[i] == ',' {
-                // Peek over whitespace to find next non-space char.
-                let mut j = i + 1;
-                while j < chars.len() && chars[j].is_whitespace() {
-                    j += 1;
-                }
-                if j < chars.len() && chars[j] == ')' {
-                    // Drop the comma. Keep the intervening whitespace
-                    // (preserves source-shape on multi-line) and let the
-                    // close paren land naturally.
-                    i += 1;
-                    continue;
-                }
-            }
-            out.push(chars[i]);
-            i += 1;
-        }
-        out.iter().collect()
     }
 
     /// Inline associated string consts such as `Vertex.UV0`, which uniffi
@@ -746,109 +671,6 @@ mod swift {
         let throws = facts.inits.get(ty).is_some_and(|fx| fx.throws);
         let prefix = if throws { "try " } else { "" };
         fits.then(|| format!("{prefix}{ty}({})", rewrite_dot_new(inner)))
-    }
-
-    /// Rewrite `let (width, height) = expr.size()` → `let size = expr.size()`.
-    /// Swift's `Mipmap.size()` returns a `Size` struct, not a `(UInt32, UInt32)`
-    /// tuple, so the Rust-style tuple destructuring pattern doesn't compile.
-    /// Also rewrites `let _ = (width, height)` → `let _ = size` (follow-up guard line).
-    fn rewrite_size_tuple(line: &str) -> String {
-        let trimmed = line.trim_start();
-        let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
-
-        // Handle standalone `let _ = (ident, ident, ...)` → `let _ = size`
-        // This is the follow-up guard line after a size() tuple destructure.
-        if let Some(rest) = trimmed.strip_prefix("let _ = (")
-            && let Some(vars) = rest.strip_suffix(')') {
-                let all_idents = vars.split(',').all(|v| {
-                    let v = v.trim();
-                    !v.is_empty() && v.chars().all(|c: char| c.is_alphanumeric() || c == '_')
-                });
-                if all_idents && !vars.is_empty() {
-                    return format!("{}let _ = size", indent);
-                }
-            }
-
-        // Match `let (width, height) = <expr>.size()` or `const (width, height) = ...`
-        for prefix in &["let ", "const "] {
-            if let Some(rest) = trimmed.strip_prefix(prefix)
-                && let Some(inner) = rest.strip_prefix('(') {
-                    // Extract content up to matching `)`
-                    if let Some(close) = inner.find(')') {
-                        let after_paren = inner[close + 1..].trim_start();
-                        if let Some(eq_rest) = after_paren.strip_prefix('=') {
-                            let rhs = eq_rest.trim_start();
-                            if rhs.contains(".size()") {
-                                // Replace tuple destructuring with `let size = expr.size()`
-                                let expr = rhs.trim_end_matches(['\r', '\n']);
-                                return format!("{}let size = {}", indent, expr);
-                            }
-                        }
-                    }
-                }
-        }
-        line.to_string()
-    }
-
-    /// Rewrite `.bytes(ident)` → `.bytes(Data(ident))` when `ident` is a simple identifier.
-    /// `TextureInputMobile.bytes(Data)` requires `Data`, but transpiled code often passes
-    /// `[UInt8]` arrays directly. Only wraps simple identifiers (not already `Data(...)` calls).
-    fn fix_texture_input_bytes(line: &str) -> String {
-        const NEEDLE: &str = ".bytes(";
-        if !line.contains(NEEDLE) {
-            return line.to_string();
-        }
-        let mut out = String::with_capacity(line.len() + 8);
-        let chars: Vec<char> = line.chars().collect();
-        let needle_chars: Vec<char> = NEEDLE.chars().collect();
-        let mut i = 0usize;
-        while i < chars.len() {
-            // Look for `.bytes(`
-            let end = i + needle_chars.len();
-            if end <= chars.len() && chars[i..end] == needle_chars[..] {
-                out.push_str(NEEDLE);
-                i = end;
-                // Peek at the argument inside `.bytes(...)`.
-                // Collect the argument (up to matching `)`)
-                let arg_start = i;
-                let mut depth = 0i32;
-                let mut k = i;
-                while k < chars.len() {
-                    match chars[k] {
-                        '(' => depth += 1,
-                        ')' => {
-                            if depth == 0 {
-                                break;
-                            }
-                            depth -= 1;
-                        }
-                        _ => {}
-                    }
-                    k += 1;
-                }
-                let arg: String = chars[arg_start..k].iter().collect();
-                let arg_trimmed = arg.trim();
-                // Only wrap if arg is a plain identifier (no parens, no brackets, no spaces)
-                // or a `[...]` literal that isn't already `Data(...)`.
-                let is_plain_ident = arg_trimmed.chars().all(|c: char| c.is_alphanumeric() || c == '_');
-                let already_data = arg_trimmed.starts_with("Data(");
-                if !already_data && is_plain_ident && !arg_trimmed.is_empty() {
-                    out.push_str(&format!("Data({}", arg));
-                    if k < chars.len() && chars[k] == ')' {
-                        out.push_str("))");
-                        i = k + 1;
-                        continue;
-                    }
-                }
-                // Not a plain identifier — pass through unchanged
-                out.push_str(&arg);
-                i = k;
-                continue;
-            }
-            out.push(chars[i]);
-            i += 1;
-        }
-        out
     }
 
     /// Strip Rust slice / `as_slice()` notation that has no equivalent in Swift:
