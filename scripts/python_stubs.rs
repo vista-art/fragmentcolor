@@ -162,7 +162,7 @@ mod python_stubs {
         ),
         (
             "_UniformValue",
-            "float | int | bool | Sequence[float] | Sequence[int] | Sequence[Sequence[float]] | Texture",
+            "float | int | bool | Sequence[float] | Sequence[int] | bytes | bytearray | memoryview | Texture",
         ),
     ];
 

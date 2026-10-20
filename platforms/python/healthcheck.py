@@ -14,6 +14,68 @@ if os.environ.get("FC_HEALTHCHECK_VERBOSE") == "1":
     print(f"platform: {platform.platform()}")
 
 
+SET_VALUES_SHADER = """
+struct Light { color: vec4<f32>, power: f32 };
+struct Particles { items: array<vec4<f32>, 2> };
+@group(0) @binding(0) var<uniform> count: u32;
+@group(0) @binding(1) var<uniform> cell: vec2<i32>;
+@group(0) @binding(2) var<uniform> rot: mat2x2<f32>;
+@group(0) @binding(3) var<uniform> light: Light;
+@group(0) @binding(4) var<uniform> offset: vec2<f32>;
+@group(0) @binding(5) var<storage, read> particles: Particles;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> {
+  let x = f32(count) + f32(cell.x) + rot[0].x + light.power + offset.x + particles.items[0].x;
+  return vec4f(x, 0., 0., 1.);
+}
+"""
+
+
+def check_shader_set_values():
+    """Shader.set shapes plain Python values to each uniform's declared WGSL type."""
+    shader = Shader(SET_VALUES_SHADER)
+
+    def rejects(label, key, value):
+        try:
+            shader.set(key, value)
+        except Exception as e:
+            print(f"shader.set rejected {label}: {e}")
+            return
+        raise AssertionError(f"shader.set({key!r}, {label}) should raise")
+
+    shader.set("count", 3)
+    assert shader.get("count") == 3
+    shader.set("cell", [2, -1])
+    assert list(shader.get("cell")) == [2, -1]
+    shader.set("rot", [1.0, 2.0, 3.0, 4.0])
+    assert list(shader.get("rot")) == [1.0, 2.0, 3.0, 4.0]
+    shader.set("offset", np.array([5, 6], dtype=np.int32))
+    assert list(shader.get("offset")) == [5.0, 6.0]
+
+    rejects("three numbers for a vec2", "offset", [1.0, 2.0, 3.0])
+    assert list(shader.get("offset")) == [5.0, 6.0]
+    rejects("3.5 for a u32", "count", 3.5)
+    rejects("-1 for a u32", "count", -1)
+    rejects("bytes for a vec2", "offset", bytes(8))
+
+    blob = bytes(range(32))
+    shader.set("particles", blob)
+    assert shader.get("particles") == blob
+    shader.set("particles", bytearray(32))
+    assert shader.get("particles") == bytes(32)
+    shader.set("particles", memoryview(blob))
+    assert shader.get("particles") == blob
+
+    shader.set("light.power", 0.5)
+    light = shader.get("light")
+    assert isinstance(light, bytes) and len(light) == 32
+    assert np.frombuffer(light[16:20], dtype=np.float32)[0] == 0.5
+    print("Shader.set shaped every value to its declared type")
+
+
 def run():
     """Simple smoke tests before running full examples"""
 
@@ -181,6 +243,8 @@ var<immediate> pc: PC;
         pc_img[0, 0, 2]) == 255 and int(pc_img[0, 0, 3]) == 255
 
     print("Headless Python render completed successfully")
+
+    check_shader_set_values()
 
 
 if __name__ == "__main__":

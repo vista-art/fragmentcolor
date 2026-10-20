@@ -40,7 +40,7 @@ _NDArrayU8: TypeAlias = npt.NDArray[numpy.uint8]
 _PySize: TypeAlias = Sequence[float] | Mapping[str, float]
 _Renderable: TypeAlias = Shader | Pass | Scene | Sequence[Shader | Pass | Scene]
 _TextureSource: TypeAlias = str | bytes | bytearray | Sequence[int] | _NDArrayU8 | Mipmap
-_UniformValue: TypeAlias = float | int | bool | Sequence[float] | Sequence[int] | Sequence[Sequence[float]] | Texture
+_UniformValue: TypeAlias = float | int | bool | Sequence[float] | Sequence[int] | bytes | bytearray | memoryview | Texture
 
 class FragmentColorError(Exception): ...
 
