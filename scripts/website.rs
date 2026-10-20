@@ -1033,7 +1033,11 @@ mod website {
                         k += 1;
                     }
                     if let Some(end_gt) = found_gt {
-                        // Wrap from start..=end_gt in backticks
+                        // Wrap from start..=end_gt in backticks. The identifier
+                        // is already in `out`, so take it back first.
+                        for _ in start..i {
+                            out.pop();
+                        }
                         out.push('`');
                         for &ch in &chars[start..=end_gt] {
                             out.push(ch);
