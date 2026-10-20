@@ -14,6 +14,9 @@ import kotlinx.coroutines.withContext
 // when this file calls Shader.setRegistry(baseUrl) (the call resolves to the
 // shadowing extension, not the underlying companion method).
 
+/** Build a [Shader] from parts: WGSL sources, registry slugs, URLs or file paths. */
+operator fun Shader.Companion.invoke(parts: List<String>): Shader = Shader.compose(parts)
+
 // Each overload only says what kind of value it carries. Rust shapes it to
 // the uniform's declared WGSL type, so `3` fits an f32, i32 or u32 uniform
 // and four numbers fit a vec4 or a mat2x2. The generated member

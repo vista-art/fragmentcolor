@@ -263,6 +263,7 @@ mod kotlin {
 
     /// Every top-level `fun` in the `*Extensions.kt` files:
     /// `fun T.name(`, `fun T.Companion.name(` or `fun name(`.
+    /// An `operator fun T.Companion.invoke(` is a factory, which a call reaches as `T(` or `T.new(`.
     fn extension_callables() -> Vec<Callable> {
         let mut callables = Vec::new();
         for path in extension_files(EXTENSIONS_DIR, "Extensions.kt") {
@@ -278,20 +279,29 @@ mod kotlin {
                     continue;
                 };
                 let path: Vec<&str> = code[start..open].trim().split('.').collect();
-                let (owner, needle) = match path.as_slice() {
-                    [name] => (None, format!("{name}(")),
-                    [owner, name] | [owner, "Companion", name] => (Some(owner.to_string()), format!(".{name}(")),
+                let line = code[..at].rfind('\n').map_or(0, |p| p + 1);
+                let operator = code[line..at].split_whitespace().any(|w| w == "operator");
+                let (owner, needles) = match path.as_slice() {
+                    [owner, "Companion", "invoke"] if operator => {
+                        (Some(owner.to_string()), vec![format!("{owner}("), format!("{owner}.new(")])
+                    }
+                    [name] => (None, vec![format!("{name}(")]),
+                    [owner, name] | [owner, "Companion", name] => {
+                        (Some(owner.to_string()), vec![format!(".{name}(")])
+                    }
                     _ => continue,
                 };
                 let params = kotlin_params(&code[open + 1..close]);
-                callables.push(Callable {
-                    owner,
-                    needle,
-                    defaults: params.iter().filter(|(_, default)| *default).count(),
-                    params: params.into_iter().map(|(ty, _)| ty).collect(),
-                    nullable: 0,
-                    generated: false,
-                });
+                for needle in needles {
+                    callables.push(Callable {
+                        owner: owner.clone(),
+                        needle,
+                        defaults: params.iter().filter(|(_, default)| *default).count(),
+                        params: params.iter().map(|(ty, _)| ty.clone()).collect(),
+                        nullable: 0,
+                        generated: false,
+                    });
+                }
             }
         }
         callables
@@ -838,17 +848,13 @@ mod kotlin {
         out = rewrite_list_args(&out);
         out = rewrite_flat_enum_variants(&out);
         out = rewrite_float_args(&out);
-        out = rewrite_shader_new_to_compose(&out);
         out = rename_stand_ins(&out);
         out = rewrite_texture_region_builder(&out);
         out = rewrite_write_region_array_arg(&out);
         out = rewrite_arrayof_float_to_listof(&out);
         out = drop_underscore_val(&out);
-        // Generic fallback: strip `.new(` from any remaining
-        // `<UpperCamelCase>.new(...)` constructor call that the specific
-        // rewrites above didn't claim. Must run last so handlers like
-        // `rewrite_shader_new_to_compose` (which matches `Shader.new(`)
-        // get to fire first.
+        // `Shader.new(...)` → `Shader(...)`, after the argument rewrites,
+        // which find a constructor call by its `T.new(` needle.
         out = drop_dot_new(&out);
         // Kotlin requires `for (x in y) { ... }`; Rust uses `for x in y { ... }`.
         // Add the parens so the binding declaration parses correctly.
@@ -1983,17 +1989,6 @@ mod kotlin {
             i += 1;
         }
         out
-    }
-
-    // `Shader.new([...])` → `Shader.compose(listOf(...))`
-    // The Kotlin API exposes `Shader.compose(parts: List<String>)`.
-    fn rewrite_shader_new_to_compose(line: &str) -> String {
-        let needle = "Shader.new(";
-        if !line.contains(needle) { return line.to_string(); }
-        // Replace `Shader.new([` → `Shader.compose(listOf(` and the matching `])` → `))`
-        // After rewrite_bracket_array_to_arrayof, `[...]` becomes `arrayOf(...)`.
-        // So `Shader.new(arrayOf(...)` → `Shader.compose(listOf(...)`
-        line.replace("Shader.new(arrayOf(", "Shader.compose(listOf(")
     }
 
     /// `TextureRegion` → `TextureRegionMobile`, the mobile-only type that stands in for it.
