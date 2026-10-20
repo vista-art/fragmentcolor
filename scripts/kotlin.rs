@@ -1692,34 +1692,6 @@ mod kotlin {
         Some(result)
     }
 
-    // Convert comma-separated float values to Kotlin `f`-suffixed floats.
-    // Unlike `float_args`, a trailing comma adds a `.0f` element, which the generated examples carry.
-    fn convert_to_float_list(s: &str) -> String {
-        s.split(',')
-            .map(|v| {
-                let v = v.trim();
-                to_float_literal(v)
-            })
-            .collect::<Vec<_>>()
-            .join(", ")
-    }
-
-    // Convert a double literal `0.0` or `800.0` to a Kotlin float literal `0.0f`
-    fn to_float_literal(s: &str) -> String {
-        let s = s.trim();
-        if s.ends_with('f') || s.ends_with('F') {
-            return s.to_string();
-        }
-        if s.contains('.') {
-            return format!("{}f", s);
-        }
-        // Integer — add `.0f`
-        if s.chars().all(|c| c.is_ascii_digit() || c == '-') {
-            return format!("{}.0f", s);
-        }
-        s.to_string()
-    }
-
     /// `[a, b, c]` (JS / Swift array literal) → `arrayOf(a, b, c)` for
     /// Kotlin, since Kotlin only allows `[...]` syntax in annotation
     /// arguments. Bracket-balanced and string-aware so WGSL inside
@@ -2202,7 +2174,7 @@ mod kotlin {
                                 && !e.is_empty()
                         });
                         if all_numeric {
-                            let float_list = convert_to_float_list(&inner);
+                            let float_list = float_args(&elements);
                             out.push_str("listOf(");
                             out.push_str(&float_list);
                             out.push(')');
