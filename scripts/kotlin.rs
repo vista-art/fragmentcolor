@@ -15,7 +15,8 @@ mod kotlin {
     //!     entirely and run inside `runBlocking { ... }` or another
     //!     coroutine scope (the healthcheck wrapper handles this).
     //!   - Import becomes `import org.fragmentcolor.*`.
-    //!   - Trailing semicolons are optional and we strip them.
+    //!   - Trailing semicolons are optional and we strip them, except in
+    //!     the shader source inside triple-quoted strings.
     //!
     //! Literal suffixes (`0.5f`, `1u`) and `arrayOf` → `listOf` follow the parameter types
     //! of the uniffi exports for Android and of the hand-written `*Extensions.kt` files.
@@ -562,7 +563,18 @@ mod kotlin {
             ("png", "val png: ByteArray = byteArrayOf()"),
         ];
 
+        let mut in_string = false;
         for raw in js.lines() {
+            let starts_in_string = in_string;
+            let quotes = raw.matches("\"\"\"").count();
+            if quotes % 2 == 1 {
+                in_string = !in_string;
+            }
+            // A line wholly inside a triple-quoted literal is shader source: keep it as written.
+            if starts_in_string && quotes == 0 {
+                out.push(raw.to_string());
+                continue;
+            }
             let line = raw.to_string();
             let trimmed = line.trim_start();
 

@@ -75,12 +75,12 @@ class GeneratedExamples {
         mesh.addVertex(Vertex(listOf(0.0f, 0.0f)))
 
         val shader = Shader("""
-          struct VOut { @builtin(position) pos: vec4<f32> }
+          struct VOut { @builtin(position) pos: vec4<f32> };
           @vertex
           fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-            var out: VOut
-            out.pos = vec4<f32>(pos, 0.0, 1.0)
-            return out
+            var out: VOut;
+            out.pos = vec4<f32>(pos, 0.0, 1.0);
+            return out;
           }
           @fragment
           fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
@@ -349,13 +349,13 @@ class GeneratedExamples {
         val target = renderer.createTextureTarget(16u, 16u)
 
         val compute = Shader("""
-            struct Out { values: array<f32, 4> }
-            @group(0) @binding(0) var<storage, read_write> out: Out
+            struct Out { values: array<f32, 4> };
+            @group(0) @binding(0) var<storage, read_write> out: Out;
             @compute @workgroup_size(1) fn main() {
-                out.values[0] = 1.0
-                out.values[1] = 2.0
-                out.values[2] = 3.0
-                out.values[3] = 4.0
+                out.values[0] = 1.0;
+                out.values[1] = 2.0;
+                out.values[2] = 3.0;
+                out.values[3] = 4.0;
             }
 
         """)
@@ -404,12 +404,12 @@ class GeneratedExamples {
                     vec2<f32>(-1.0, -1.0),
                     vec2<f32>( 3.0, -1.0),
                     vec2<f32>(-1.0,  3.0)
-                )
-                return vec4<f32>(pos[index], 0.0, 1.0)
+                );
+                return vec4<f32>(pos[index], 0.0, 1.0);
             }
 
             @group(0) @binding(0)
-            var<uniform> resolution: vec2<f32>
+            var<uniform> resolution: vec2<f32>;
 
             @fragment
             fn fs_main() -> @location(0) vec4<f32> {
@@ -431,7 +431,7 @@ class GeneratedExamples {
 
         val shader = Shader("""
           @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
-            return vec4<f32>(pos, 1.0)
+            return vec4<f32>(pos, 1.0);
           }
           @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
@@ -452,12 +452,12 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_core_shader_clear_meshes() {
 
         val shader = Shader("""
-          struct VOut { @builtin(position) pos: vec4<f32> }
+          struct VOut { @builtin(position) pos: vec4<f32> };
           @vertex
           fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-            var out: VOut
-            out.pos = vec4<f32>(pos, 0.0, 1.0)
-            return out
+            var out: VOut;
+            out.pos = vec4<f32>(pos, 0.0, 1.0);
+            return out;
           }
           @fragment
           fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
@@ -537,12 +537,12 @@ class GeneratedExamples {
                     vec2<f32>(-1.0, -1.0),
                     vec2<f32>( 3.0, -1.0),
                     vec2<f32>(-1.0,  3.0)
-                )
-                return vec4<f32>(pos[index], 0.0, 1.0)
+                );
+                return vec4<f32>(pos[index], 0.0, 1.0);
             }
 
             @group(0) @binding(0)
-            var<uniform> resolution: vec2<f32>
+            var<uniform> resolution: vec2<f32>;
 
             @fragment
             fn fs_main() -> @location(0) vec4<f32> {
@@ -554,14 +554,14 @@ class GeneratedExamples {
 
         val main = """
             @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-                let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.))
-                return vec4<f32>(p[i], 0.0, 1.0)
+                let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+                return vec4<f32>(p[i], 0.0, 1.0);
             }
 
             @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
-                let d = circle(pos.xy - vec2<f32>(400.0, 300.0), 100.0)
-                let n = simplex2(pos.xy * 0.01)
-                return vec4<f32>(vec3<f32>(step(0.0, d) + n * 0.1), 1.0)
+                let d = circle(pos.xy - vec2<f32>(400.0, 300.0), 100.0);
+                let n = simplex2(pos.xy * 0.01);
+                return vec4<f32>(vec3<f32>(step(0.0, d) + n * 0.1), 1.0);
             }
 
         """
@@ -572,12 +572,12 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_core_shader_remove_mesh() {
 
         val shader = Shader("""
-          struct VOut { @builtin(position) pos: vec4<f32> }
+          struct VOut { @builtin(position) pos: vec4<f32> };
           @vertex
           fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-            var out: VOut
-            out.pos = vec4<f32>(pos, 0.0, 1.0)
-            return out
+            var out: VOut;
+            out.pos = vec4<f32>(pos, 0.0, 1.0);
+            return out;
           }
           @fragment
           fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
@@ -595,12 +595,12 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_core_shader_remove_meshes() {
 
         val shader = Shader("""
-          struct VOut { @builtin(position) pos: vec4<f32> }
+          struct VOut { @builtin(position) pos: vec4<f32> };
           @vertex
           fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-            var out: VOut
-            out.pos = vec4<f32>(pos, 0.0, 1.0)
-            return out
+            var out: VOut;
+            out.pos = vec4<f32>(pos, 0.0, 1.0);
+            return out;
           }
           @fragment
           fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
@@ -621,14 +621,14 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_core_shader_set() {
         val r = Renderer()
         val shader = Shader("""
-        @group(0) @binding(0) var<uniform> resolution: vec2<f32>
+        @group(0) @binding(0) var<uniform> resolution: vec2<f32>;
 
-        struct VOut { @builtin(position) pos: vec4<f32> }
+        struct VOut { @builtin(position) pos: vec4<f32> };
         @vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
-          var p = array<vec2<f32>, 3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.))
-          var out: VOut
-          out.pos = vec4<f32>(p[i], 0., 1.)
-          return out
+          var p = array<vec2<f32>, 3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.));
+          var out: VOut;
+          out.pos = vec4<f32>(p[i], 0., 1.);
+          return out;
         }
         @fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
@@ -651,11 +651,11 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_core_shader_validate_mesh() {
 
         val shader = Shader("""
-        struct VOut { @builtin(position) pos: vec4<f32> }
+        struct VOut { @builtin(position) pos: vec4<f32> };
         @vertex fn vs_main(@location(0) pos: vec3<f32>) -> VOut {
-          var out: VOut
-          out.pos = vec4<f32>(pos, 1.0)
-          return out
+          var out: VOut;
+          out.pos = vec4<f32>(pos, 1.0);
+          return out;
         }
         @fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
@@ -980,15 +980,15 @@ class GeneratedExamples {
         val wireframe = Shader("""
             struct MeshTransform { model: mat4x4<f32> }
             struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
-            @group(0) @binding(0) var<uniform> camera: Camera
-            @group(1) @binding(0) var<uniform> mesh: MeshTransform
+            @group(0) @binding(0) var<uniform> camera: Camera;
+            @group(1) @binding(0) var<uniform> mesh: MeshTransform;
 
             @vertex
             fn vs_main(@location(0) p: vec3<f32>) -> @builtin(position) vec4<f32> {
-                return camera.view_proj * mesh.model * vec4<f32>(p, 1.0)
+                return camera.view_proj * mesh.model * vec4<f32>(p, 1.0);
             }
             @fragment fn fs_main() -> @location(0) vec4<f32> {
-                return vec4<f32>(0.0, 1.0, 0.4, 1.0)
+                return vec4<f32>(0.0, 1.0, 0.4, 1.0);
             }
 
         """)
@@ -1486,15 +1486,15 @@ class GeneratedExamples {
         // Bind the offscreen target's contents as a uniform on a downstream
         // post-processing shader.
         val post = Shader("""
-            @group(0) @binding(0) var input_image : texture_2d<f32>
-            @group(0) @binding(1) var input_sampler : sampler
+            @group(0) @binding(0) var input_image : texture_2d<f32>;
+            @group(0) @binding(1) var input_sampler : sampler;
 
             @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-                let p = array<vec2<f32>, 3>(vec2f(-1.0,-1.0), vec2f(3.0,-1.0), vec2f(-1.0,3.0))
-                return vec4<f32>(p[i], 0.0, 1.0)
+                let p = array<vec2<f32>, 3>(vec2f(-1.0,-1.0), vec2f(3.0,-1.0), vec2f(-1.0,3.0));
+                return vec4<f32>(p[i], 0.0, 1.0);
             }
             @fragment fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
-                return textureSample(input_image, input_sampler, vec2<f32>(0.5, 0.5))
+                return textureSample(input_image, input_sampler, vec2<f32>(0.5, 0.5));
             }
 
         """)
@@ -1604,11 +1604,11 @@ class GeneratedExamples {
 
         val renderer = Renderer()
         val shader = Shader("""
-        @group(0) @binding(0) var my_texture: texture_2d<f32>
-        @group(0) @binding(1) var my_sampler: sampler
+        @group(0) @binding(0) var my_texture: texture_2d<f32>;
+        @group(0) @binding(1) var my_sampler: sampler;
         @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-          let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.))
-          return vec4f(p[i], 0., 1.)
+          let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+          return vec4f(p[i], 0., 1.);
         }
         @fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
 
