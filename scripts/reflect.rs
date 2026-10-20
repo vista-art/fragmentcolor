@@ -61,7 +61,7 @@ mod reflect {
                 Meta::Path(path) => Cfg::Name(path.to_token_stream().to_string()),
                 Meta::NameValue(nv) => {
                     let key = nv.path.to_token_stream().to_string();
-                    match &nv.value {
+                    match plain_expr(&nv.value) {
                         syn::Expr::Lit(syn::ExprLit {
                             lit: syn::Lit::Str(s),
                             ..
@@ -426,6 +426,8 @@ mod reflect {
         pub free_fns: Vec<FnDef>,
         /// Names of the crate's modules, at any depth.
         modules: BTreeSet<String>,
+        /// Names of the traits the crate declares.
+        traits: BTreeSet<String>,
         macros: Vec<MacroDef>,
         pending: Vec<Invocation>,
     }
@@ -468,6 +470,13 @@ mod reflect {
                     walk_items(&items, &call.file, &call.child_dir, &call.cfg, &mut model);
                 }
             }
+            for call in &model.pending {
+                println!(
+                    "cargo::warning=reflect: {}! in {} expands to more macro calls than the model follows",
+                    call.name,
+                    call.file.display()
+                );
+            }
             model
         }
 
@@ -476,18 +485,23 @@ mod reflect {
             self.types_in(build).find(|t| t.ident == ident)
         }
 
-        /// Impls of the trait named `trait_ident` for this crate's types that
-        /// compile in `build`. An impl for another crate's type, such as
-        /// `From<Color> for wgpu::Color`, says nothing about this crate's API.
+        /// Impls of the trait named `trait_ident` that compile in `build`.
+        ///
+        /// For a trait from another crate, such as `From`, an impl whose self
+        /// type is written as a path into another crate (`From<Color> for
+        /// wgpu::Color`) says nothing about this crate's API and is left out.
+        /// A foreign type brought in by `use` and written bare still counts.
+        /// Every impl of one of this crate's own traits counts.
         pub fn trait_impls(
             &self,
             trait_ident: &str,
             build: Build,
         ) -> impl Iterator<Item = &ImplDef> {
+            let own_trait = self.traits.contains(trait_ident);
             self.impls.iter().filter(move |imp| {
                 imp.cfg.holds(build)
                     && imp.trait_ident().as_deref() == Some(trait_ident)
-                    && !self.is_foreign(imp)
+                    && (own_trait || !self.is_foreign(imp))
             })
         }
 
@@ -710,7 +724,7 @@ mod reflect {
                         .items
                         .iter()
                         .filter_map(|it| match it {
-                            ImplItem::Const(c) => match &c.expr {
+                            ImplItem::Const(c) => match plain_expr(&c.expr) {
                                 syn::Expr::Lit(syn::ExprLit {
                                     lit: syn::Lit::Str(value),
                                     ..
@@ -738,6 +752,9 @@ mod reflect {
                         fns,
                         consts,
                     });
+                }
+                Item::Trait(t) => {
+                    model.traits.insert(t.ident.to_string());
                 }
                 Item::Fn(f) => model.free_fns.push(FnDef {
                     attrs: f.attrs.clone(),
@@ -771,6 +788,16 @@ mod reflect {
                 }
                 _ => {}
             }
+        }
+    }
+
+    /// An expression without the parenthesis and invisible-group wrappers a
+    /// macro expansion can leave around it.
+    fn plain_expr(expr: &syn::Expr) -> &syn::Expr {
+        match expr {
+            syn::Expr::Group(g) => plain_expr(&g.expr),
+            syn::Expr::Paren(p) => plain_expr(&p.expr),
+            _ => expr,
         }
     }
 
@@ -816,7 +843,10 @@ mod reflect {
     /// What a call bound one fragment to: a token stream, or one capture per
     /// round of each repetition the fragment sits in.
     enum Capture {
-        One(TokenStream),
+        /// The tokens, and whether they splice in bare. Token-like fragments
+        /// (`ident`, `lifetime`, `literal`, `tt`) do; the rest go in an
+        /// invisible group, so an expression keeps its precedence.
+        One(TokenStream, bool),
         Rounds(Vec<Capture>),
     }
 
@@ -959,7 +989,8 @@ mod reflect {
         for piece in pattern {
             match piece {
                 Matcher::Fragment(name, kind) => {
-                    bindings.insert(name.clone(), Capture::One(fragment(input, kind)?));
+                    let bare = matches!(kind.as_str(), "ident" | "lifetime" | "literal" | "tt");
+                    bindings.insert(name.clone(), Capture::One(fragment(input, kind)?, bare));
                 }
                 Matcher::Token(expected) => {
                     let found: TokenTree = input.parse()?;
@@ -1043,7 +1074,7 @@ mod reflect {
         }
     }
 
-    /// The capture `name` selects in the repetition rounds `path`. A fragment
+    /// The part of `capture` for the repetition rounds in `path`. A fragment
     /// bound outside a repetition reads the same in every round.
     fn capture_at<'a>(capture: &'a Capture, path: &[usize]) -> Option<&'a Capture> {
         match (capture, path.split_first()) {
@@ -1070,11 +1101,15 @@ mod reflect {
                     if name == "crate" {
                         out.push(TokenTree::Ident(id.clone()));
                     } else {
-                        let Capture::One(value) = capture_at(bindings.get(&name)?, path)? else {
+                        let Capture::One(value, bare) = capture_at(bindings.get(&name)?, path)?
+                        else {
                             return None;
                         };
-                        // An invisible group keeps a captured expression's precedence.
-                        out.push(Group::new(Delimiter::None, value.clone()).into());
+                        if *bare {
+                            out.extend(value.clone());
+                        } else {
+                            out.push(Group::new(Delimiter::None, value.clone()).into());
+                        }
                     }
                     i += 2;
                 }
@@ -1088,7 +1123,7 @@ mod reflect {
                         .iter()
                         .filter_map(|n| match capture_at(bindings.get(n)?, path)? {
                             Capture::Rounds(rounds) => Some(rounds.len()),
-                            Capture::One(_) => None,
+                            Capture::One(..) => None,
                         })
                         .max()?;
                     for k in 0..count {
