@@ -5,8 +5,9 @@ Lifecycle & creation
 - Prefer the `Renderer::create_texture*` helpers — they wire up the proper `wgpu::TextureUsages`, register the texture with the context, and hand back a typed `Texture` / `TextureId` handle.
 
 Binding & sampling
-- Texture views and samplers are (re)created on demand today; descriptor-keyed caches are planned but not required.
+- Texture views are created per bind. Each texture keeps one sampler built from its `SamplerOptions` and rebuilds it in `set_sampler_options`.
 - Bind texture + sampler pairs in consistent groups; fill missing groups with empty bind groups so group indices stay stable.
+- A `sampler` binding takes its options from a texture in the same group: the lowest binding between the previous sampler and itself, else the nearest one. `SamplerSources` in `src/renderer/sampler_pairs.rs` owns the rule; the binding's comparison flag wins over the texture's `compare`.
 - `UniformData::Texture` carries `TextureMeta` (dim, arrayed, class) so `shader.set("tex", &texture)` only updates the id while preserving the reflected metadata.
 
 Updates & readback

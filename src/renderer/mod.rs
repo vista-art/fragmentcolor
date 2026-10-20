@@ -8,6 +8,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
+use sampler_pairs::SamplerSources;
+
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
@@ -30,6 +32,7 @@ mod texture_pool;
 pub use texture_pool::*;
 pub(crate) mod background;
 mod external_texture;
+mod sampler_pairs;
 mod storage_read;
 mod unregister;
 
@@ -656,19 +659,19 @@ struct RenderScratch {
 
 #[derive(Debug)]
 pub(crate) struct PbrDefaults {
-    /// Five (view, sampler) pairs the renderer binds to the PBR-named slots
+    /// Five views the renderer binds to the PBR-named slots
     /// when a Material::pbr Shader doesn't have a user-supplied texture for
     /// the slot. The byte payload is chosen so `factor * sample = factor`
     /// (binding the default is equivalent to "no map").
-    pub(crate) base_color: (wgpu::TextureView, wgpu::Sampler),
-    pub(crate) metallic_roughness: (wgpu::TextureView, wgpu::Sampler),
-    pub(crate) normal: (wgpu::TextureView, wgpu::Sampler),
-    pub(crate) occlusion: (wgpu::TextureView, wgpu::Sampler),
-    pub(crate) emissive: (wgpu::TextureView, wgpu::Sampler),
+    pub(crate) base_color: wgpu::TextureView,
+    pub(crate) metallic_roughness: wgpu::TextureView,
+    pub(crate) normal: wgpu::TextureView,
+    pub(crate) occlusion: wgpu::TextureView,
+    pub(crate) emissive: wgpu::TextureView,
 }
 
 impl PbrDefaults {
-    fn slot(&self, uniform_name: &str) -> Option<&(wgpu::TextureView, wgpu::Sampler)> {
+    fn slot(&self, uniform_name: &str) -> Option<&wgpu::TextureView> {
         match uniform_name {
             "base_color_map" => Some(&self.base_color),
             "metallic_roughness_map" => Some(&self.metallic_roughness),
@@ -718,10 +721,6 @@ impl RenderContext {
         if let Some(existing) = self.pbr_defaults.read().clone() {
             return existing;
         }
-        let sampler = self.device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("PBR default sampler"),
-            ..Default::default()
-        });
         let make = |label: &'static str, rgba: [u8; 4]| -> wgpu::TextureView {
             let tex = self.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(label),
@@ -760,26 +759,14 @@ impl RenderContext {
         };
         // Defaults chosen so `factor * sample = factor` in the shader.
         let bundle = Arc::new(PbrDefaults {
-            base_color: (
-                make("PBR default base_color", [255, 255, 255, 255]),
-                sampler.clone(),
-            ),
+            base_color: make("PBR default base_color", [255, 255, 255, 255]),
             // glTF stores metallic in .b and roughness in .g; the shader's
             // .bgr swizzle puts metallic in .r (=1) and roughness in .g (=1).
-            metallic_roughness: (
-                make("PBR default metallic_roughness", [0, 255, 255, 255]),
-                sampler.clone(),
-            ),
+            metallic_roughness: make("PBR default metallic_roughness", [0, 255, 255, 255]),
             // Neutral tangent-space normal (0, 0, 1) after the * 2.0 - 1.0 decode.
-            normal: (
-                make("PBR default normal", [128, 128, 255, 255]),
-                sampler.clone(),
-            ),
-            occlusion: (
-                make("PBR default occlusion", [255, 255, 255, 255]),
-                sampler.clone(),
-            ),
-            emissive: (make("PBR default emissive", [255, 255, 255, 255]), sampler),
+            normal: make("PBR default normal", [128, 128, 255, 255]),
+            occlusion: make("PBR default occlusion", [255, 255, 255, 255]),
+            emissive: make("PBR default emissive", [255, 255, 255, 255]),
         });
         *self.pbr_defaults.write() = Some(bundle.clone());
         bundle
@@ -1274,8 +1261,7 @@ impl RenderContext {
                 storage_buffers: Vec<(u32, buffer_pool::BufferLocation)>,
                 // persistent storage buffers (buffer, span)
                 persistent_storage_buffers: Vec<(u32, wgpu::Buffer, u64)>,
-                last_texture_sampler: Option<wgpu::Sampler>,
-                samplers: Vec<(u32, wgpu::Sampler)>,
+                sampler_sources: SamplerSources,
                 views: Vec<(u32, wgpu::TextureView)>,
             }
 
@@ -1291,20 +1277,27 @@ impl RenderContext {
                                 &format!("texture view for binding '{}'", name),
                                 || tex.create_view(),
                             )?;
-                            let sampler = tex.sampler();
                             let group_entry = groups.entry(uniform.group).or_default();
                             group_entry.views.push((uniform.binding, view));
-                            group_entry.last_texture_sampler = Some(sampler);
+                            if meta.sampled {
+                                group_entry
+                                    .sampler_sources
+                                    .add_texture(uniform.binding, tex);
+                            }
                         } else {
                             // No user texture — fall back to the PBR default for
                             // the known glTF slot names so `Material::pbr` works
-                            // without the caller supplying every map.
+                            // without the caller supplying every map. The 1x1
+                            // defaults look the same under any sampler, so they
+                            // don't pair with one.
                             let defaults =
                                 pbr_defaults_handle.get_or_insert_with(|| self.pbr_defaults());
-                            if let Some((view, sampler)) = defaults.slot(name) {
-                                let group_entry = groups.entry(uniform.group).or_default();
-                                group_entry.views.push((uniform.binding, view.clone()));
-                                group_entry.last_texture_sampler = Some(sampler.clone());
+                            if let Some(view) = defaults.slot(name) {
+                                groups
+                                    .entry(uniform.group)
+                                    .or_default()
+                                    .views
+                                    .push((uniform.binding, view.clone()));
                             } else {
                                 log::warn!(
                                     "Texture handle {:?} not found for uniform {}",
@@ -1315,31 +1308,11 @@ impl RenderContext {
                         }
                     }
                     UniformData::Sampler(info) => {
-                        // Create the appropriate sampler type explicitly so it always matches the layout
-                        let sampler = if info.comparison {
-                            self.device.create_sampler(&wgpu::SamplerDescriptor {
-                                label: Some("Default Comparison Sampler"),
-                                address_mode_u: wgpu::AddressMode::ClampToEdge,
-                                address_mode_v: wgpu::AddressMode::ClampToEdge,
-                                address_mode_w: wgpu::AddressMode::ClampToEdge,
-                                mag_filter: wgpu::FilterMode::Linear,
-                                min_filter: wgpu::FilterMode::Linear,
-                                mipmap_filter: wgpu::MipmapFilterMode::Linear,
-                                lod_min_clamp: 0.0,
-                                lod_max_clamp: 100.0,
-                                compare: Some(wgpu::CompareFunction::LessEqual),
-                                anisotropy_clamp: 1,
-                                border_color: None,
-                            })
-                        } else {
-                            self.device
-                                .create_sampler(&wgpu::SamplerDescriptor::default())
-                        };
                         groups
                             .entry(uniform.group)
                             .or_default()
-                            .samplers
-                            .push((uniform.binding, sampler));
+                            .sampler_sources
+                            .add_sampler(uniform.binding, info.comparison);
                     }
                     UniformData::Storage(data) => {
                         if let Some(crate::shader::uniform::StorageEntry { span, .. }) =
@@ -1493,6 +1466,7 @@ impl RenderContext {
                 };
 
                 // Assemble entries borrowing from owned resources and buffer pool
+                let samplers = resources.sampler_sources.resolve(&self.device);
                 let buffer_pool = self.buffer_pool.read();
                 let storage_pool = self.storage_pool.read();
                 let mut entries: Vec<wgpu::BindGroupEntry> = Vec::new();
@@ -1529,7 +1503,7 @@ impl RenderContext {
                         resource: wgpu::BindingResource::TextureView(view),
                     });
                 }
-                for (binding, sampler) in resources.samplers.iter() {
+                for (binding, sampler) in samplers.iter() {
                     entries.push(wgpu::BindGroupEntry {
                         binding: *binding,
                         resource: wgpu::BindingResource::Sampler(sampler),
@@ -1767,7 +1741,7 @@ impl RenderContext {
                 buffers: Vec<(u32, buffer_pool::BufferLocation)>,
                 storage_buffers: Vec<(u32, wgpu::Buffer, u64)>,
                 views: Vec<(u32, wgpu::TextureView)>,
-                samplers: Vec<(u32, wgpu::Sampler)>,
+                sampler_sources: SamplerSources,
             }
             let mut groups: HashMap<u32, BindGroupResources> = HashMap::new();
             for name in &shader.list_uniforms() {
@@ -1779,38 +1753,21 @@ impl RenderContext {
                                 &format!("texture view for binding '{}'", name),
                                 || tex.create_view(),
                             )?;
-                            groups
-                                .entry(uniform.group)
-                                .or_default()
-                                .views
-                                .push((uniform.binding, view));
+                            let group_entry = groups.entry(uniform.group).or_default();
+                            group_entry.views.push((uniform.binding, view));
+                            if meta.sampled {
+                                group_entry
+                                    .sampler_sources
+                                    .add_texture(uniform.binding, tex);
+                            }
                         }
                     }
                     UniformData::Sampler(info) => {
-                        let sampler = if info.comparison {
-                            self.device.create_sampler(&wgpu::SamplerDescriptor {
-                                label: Some("Default Comparison Sampler"),
-                                address_mode_u: wgpu::AddressMode::ClampToEdge,
-                                address_mode_v: wgpu::AddressMode::ClampToEdge,
-                                address_mode_w: wgpu::AddressMode::ClampToEdge,
-                                mag_filter: wgpu::FilterMode::Linear,
-                                min_filter: wgpu::FilterMode::Linear,
-                                mipmap_filter: wgpu::MipmapFilterMode::Linear,
-                                lod_min_clamp: 0.0,
-                                lod_max_clamp: 100.0,
-                                compare: Some(wgpu::CompareFunction::LessEqual),
-                                anisotropy_clamp: 1,
-                                border_color: None,
-                            })
-                        } else {
-                            self.device
-                                .create_sampler(&wgpu::SamplerDescriptor::default())
-                        };
                         groups
                             .entry(uniform.group)
                             .or_default()
-                            .samplers
-                            .push((uniform.binding, sampler));
+                            .sampler_sources
+                            .add_sampler(uniform.binding, info.comparison);
                     }
                     UniformData::Storage(data) => {
                         if let Some(crate::shader::uniform::StorageEntry {
@@ -1922,6 +1879,7 @@ impl RenderContext {
                         group
                     )));
                 };
+                let samplers = owned.sampler_sources.resolve(&self.device);
                 let buffer_pool = self.buffer_pool.read();
                 let mut entries: Vec<wgpu::BindGroupEntry> = Vec::new();
                 for (binding, loc) in owned.buffers.iter() {
@@ -1950,7 +1908,7 @@ impl RenderContext {
                         resource: wgpu::BindingResource::TextureView(view),
                     });
                 }
-                for (binding, sampler) in owned.samplers.iter() {
+                for (binding, sampler) in samplers.iter() {
                     entries.push(wgpu::BindGroupEntry {
                         binding: *binding,
                         resource: wgpu::BindingResource::Sampler(sampler),

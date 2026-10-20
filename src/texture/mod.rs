@@ -991,34 +991,46 @@ impl TextureObject {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
         };
         let texture = context.device.create_texture(&descriptor);
-        let sampler = create_sampler(
-            &context.device,
-            SamplerOptions {
-                repeat_x: false,
-                repeat_y: false,
-                smooth: true,
-                compare: Some(CompareFunction::LessEqual),
-            },
-        );
+        let options = SamplerOptions {
+            compare: Some(CompareFunction::LessEqual),
+            ..Default::default()
+        };
+        let sampler = create_sampler(&context.device, options);
 
         Self {
             inner: texture,
             size,
             sampler: RwLock::new(sampler),
-            options: RwLock::new(SamplerOptions::default()),
+            options: RwLock::new(options),
             format,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
         }
     }
 
-    pub fn sampler(&self) -> wgpu::Sampler {
-        self.sampler.read().clone()
+    /// The sampler a `sampler` binding gets from this texture.
+    /// It is the texture's own sampler when the binding's `comparison` matches the options,
+    /// and otherwise a sampler built from the same options with the comparison switched on or off.
+    pub fn sampler_for(&self, device: &wgpu::Device, comparison: bool) -> wgpu::Sampler {
+        let options = self.options.read();
+        if options.compare.is_some() == comparison {
+            return self.sampler.read().clone();
+        }
+        let compare = comparison.then_some(CompareFunction::LessEqual);
+        create_sampler(
+            device,
+            SamplerOptions {
+                compare,
+                ..*options
+            },
+        )
     }
 
     pub fn set_sampler_options(&self, device: &wgpu::Device, options: SamplerOptions) {
         let sampler = create_sampler(device, options);
-        *self.options.write() = options;
+        // Hold the options lock across both writes so `sampler_for` never sees a mismatched pair.
+        let mut current = self.options.write();
         *self.sampler.write() = sampler;
+        *current = options;
     }
 
     pub fn size(&self) -> Size {

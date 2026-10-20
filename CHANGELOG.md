@@ -55,6 +55,8 @@ A render made only of compute passes leaves the target alone. `Renderer::render`
 
 Compute passes reuse their pipelines. The compute pipeline cache keyed on the memory addresses of bind group layouts that every render built from scratch, so the key never matched. Each compute pass compiled a new shader module and pipeline on every frame and kept all of them, which grew memory for as long as the app ran. The key now holds the layout entries themselves, and layouts are built only along with a new pipeline.
 
+`Texture.set_sampler_options` changes how the texture is sampled. The renderer kept each texture's sampler but never read it, and bound a new default sampler to every `sampler` binding, so wrapping and filtering options never reached the shader. A `sampler` now uses the options of the texture in its bind group. When a group holds several textures, each sampler takes the one with the lowest binding between the previous sampler and itself, so the PBR material's shared sampler follows its base color map. A `sampler_comparison` compares with `LessEqual` when the texture sets no `compare`, and a plain `sampler` next to a depth texture does not compare. A sampler with no texture in its group uses the default options, so it filters linearly where it used to pick the nearest texel.
+
 `mat3x3<f32>` values reach the GPU in the layout WGSL declares. WGSL pads each `vec3` column of a `mat3x3` to 16 bytes, so the matrix spans 48 bytes, but the renderer packed its 9 values into 36. The second and third columns landed at the wrong offsets in uniforms, struct fields, and storage buffers alike, so shaders read a shifted matrix. The renderer now writes the padding, and `Shader.get` still returns the 9 values.
 
 ## 0.12.5: WebGL2 fixes

@@ -474,7 +474,9 @@ Update the texture sampler options (filtering, wrapping, etc.).
 
 `smooth: true` (the default) uses linear filtering for both magnification and minification, including trilinear interpolation between mip levels when the texture has a mipmap chain (created automatically for source images). `smooth: false` uses nearest-neighbor for everything.
 
-Note: changes take effect on next bind; the renderer recreates the sampler as needed.
+The options apply from the next render to the `sampler` declared in the same bind group as the texture. When a group holds several textures, each sampler takes the options of the texture with the lowest `@binding` between the previous sampler and itself, or of the nearest texture if none sits in between. A single sampler after five textures uses the first texture's options.
+
+A plain `sampler` ignores `compare`. A `sampler_comparison` uses `compare`, or `LessEqual` when it is `None`.
 
 #### Example
 
