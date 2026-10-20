@@ -849,7 +849,6 @@ mod kotlin {
         out = rewrite_flat_enum_variants(&out);
         out = rewrite_float_args(&out);
         out = rename_stand_ins(&out);
-        out = rewrite_texture_region_builder(&out);
         out = rewrite_write_region_array_arg(&out);
         out = rewrite_arrayof_float_to_listof(&out);
         out = drop_underscore_val(&out);
@@ -1997,72 +1996,6 @@ mod kotlin {
             .stand_ins
             .iter()
             .fold(line.to_string(), |out, s| replace_qualified(&out, &s.ty, &s.stand_in))
-    }
-
-    // `TextureRegionMobile.from(arrayOf(x, y, w, h)).withStride(S).withRows(R)` →
-    // `TextureRegionMobile(xu, yu, 0u, wu, hu, 0u, Su, Ru)`
-    fn rewrite_texture_region_builder(line: &str) -> String {
-        build_texture_region(line).unwrap_or_else(|| line.to_string())
-    }
-
-    fn build_texture_region(line: &str) -> Option<String> {
-        let needle = "TextureRegionMobile.from(arrayOf(";
-        let start = line.find(needle)?;
-        let array_inner_start = start + needle.len();
-        let chars: Vec<char> = line.chars().collect();
-
-        // Find closing paren of arrayOf
-        let mut depth = 0i32;
-        let mut array_end = None;
-        let mut j = array_inner_start;
-        while j < chars.len() {
-            match chars[j] {
-                '(' => depth += 1,
-                ')' => {
-                    if depth == 0 { array_end = Some(j); break; }
-                    depth -= 1;
-                }
-                _ => {}
-            }
-            j += 1;
-        }
-        let array_end = array_end?;
-        // After arrayOf(...) should be `)` closing TextureRegionMobile, then optional builder chain
-        let after_array: String = chars[array_end + 1..].iter().collect();
-        let after_array = after_array.trim_start_matches(')');
-
-        let coords_str: String = chars[array_inner_start..array_end].iter().collect();
-        let coords = split_args(&coords_str);
-        if coords.len() < 4 { return None; }
-
-        let x = to_unsigned(coords[0].trim(), "UInt");
-        let y = to_unsigned(coords[1].trim(), "UInt");
-        let w = to_unsigned(coords[2].trim(), "UInt");
-        let h = to_unsigned(coords[3].trim(), "UInt");
-
-        // Parse optional .withStride(N).withRows(M) chain
-        let mut bytes_per_row = "null".to_string();
-        let mut rows_per_image = "null".to_string();
-        let mut remaining = after_array.trim_start();
-        while remaining.starts_with(".with") {
-            if let Some(r) = remaining.strip_prefix(".withStride(") {
-                let close = r.find(')')?;
-                bytes_per_row = to_unsigned(r[..close].trim(), "UInt");
-                remaining = r[close + 1..].trim_start();
-            } else if let Some(r) = remaining.strip_prefix(".withRows(") {
-                let close = r.find(')')?;
-                rows_per_image = to_unsigned(r[..close].trim(), "UInt");
-                remaining = r[close + 1..].trim_start();
-            } else {
-                break;
-            }
-        }
-
-        let before = &line[..start];
-        Some(format!(
-            "{}TextureRegionMobile({}, {}, 0u, {}, {}, 0u, {}, {}){}",
-            before, x, y, w, h, bytes_per_row, rows_per_image, remaining
-        ))
     }
 
     // `texture.writeRegion(bytes, arrayOf(x, y, w, h))` →
