@@ -15,8 +15,8 @@ val shader = Shader("""
 val bytes: ByteArray = byteArrayOf()
 // 1x1 white pixel. Passing a size tells create_texture to read the bytes
 // as raw pixels; the default format is Rgba (sRGB-aware).
-val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
-val texture = renderer.createTexture(TextureInputMobile.Bytes(pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+val pixels = listOf(255, 255, 255, 255)
+val texture = renderer.createTexture(pixels, listOf(1, 1))
 
 // Bind the texture to the uniform name declared in WGSL.
 shader.set("my_texture", texture)

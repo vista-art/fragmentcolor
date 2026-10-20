@@ -37,4 +37,4 @@ val main = """
 
 """
 
-val shader2 = Shader.compose(listOf("sdf2d/circle", "noise/simplex2", main,))
+val shader2 = Shader(listOf("sdf2d/circle", "noise/simplex2", main,))

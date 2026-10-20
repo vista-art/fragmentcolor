@@ -296,7 +296,7 @@ class GeneratedExamples {
         val renderer = Renderer()
         val png: ByteArray = byteArrayOf()
         val image = "/healthcheck/public/favicon.png"
-        val tex = renderer.createTexture(TextureInputMobile.Path(image), null)
+        val tex = renderer.createTexture(image)
     }
 
     @Suppress("unused") private suspend fun _example_core_renderer_create_texture_target() {
@@ -323,8 +323,8 @@ class GeneratedExamples {
         // Raw 2×2 RGBA pixel bytes — uploaded lazily by """Renderer.load""" below.
 
         // vocabulary covers all of them.
-        val red_pixels = listOf(255.0f, 0.0f, 0.0f, 255.0f, 0.0f, 255.0f, 0.0f, 255.0f, 0.0f, 0.0f, 255.0f, 255.0f, 255.0f, 255.0f, 255.0f, 255.0f)
-        val red_tex = renderer.createTexture(TextureInputMobile.Bytes(red_pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+        val red_pixels = listOf(255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255)
+        val red_tex = renderer.createTexture(red_pixels, listOf(2, 2))
         val material = Material.pbr().baseColorTexture(red_tex)
         val model = Model(mesh, material)
         val scene = Scene()
@@ -576,7 +576,7 @@ class GeneratedExamples {
 
         """
 
-        val shader2 = Shader.compose(listOf("sdf2d/circle", "noise/simplex2", main,))
+        val shader2 = Shader(listOf("sdf2d/circle", "noise/simplex2", main,))
     }
 
     @Suppress("unused") private suspend fun _example_core_shader_remove_mesh() {
@@ -976,8 +976,8 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_scene_material_base_color_texture() {
 
         val renderer = Renderer()
-        val albedo_bytes = listOf(255.0f, 200.0f, 120.0f, 255.0f, 255.0f, 240.0f, 180.0f, 255.0f, 230.0f, 180.0f, 100.0f, 255.0f, 255.0f, 220.0f, 150.0f, 255.0f)
-        val albedo = renderer.createTexture(TextureInputMobile.Bytes(albedo_bytes.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+        val albedo_bytes = listOf(255, 200, 120, 255, 255, 240, 180, 255, 230, 180, 100, 255, 255, 220, 150, 255)
+        val albedo = renderer.createTexture(albedo_bytes, listOf(2, 2))
 
         // Every Material that points at """albedo""" reuses the same uploaded GPU
         // texture; passing the same handle into N Material instances costs one
@@ -1025,8 +1025,8 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_scene_material_emissive_texture() {
 
         val renderer = Renderer()
-        val glow_bytes = listOf(255.0f, 0.0f, 0.0f, 255.0f, 255.0f, 0.0f, 0.0f, 255.0f, 255.0f, 0.0f, 0.0f, 255.0f, 255.0f, 0.0f, 0.0f, 255.0f)
-        val glow = renderer.createTexture(TextureInputMobile.Bytes(glow_bytes.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+        val glow_bytes = listOf(255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255)
+        val glow = renderer.createTexture(glow_bytes, listOf(2, 2))
         val mat = Material.pbr().emissive(listOf(0.8f, 0.0f, 0.0f)).emissiveTexture(glow)
     }
 
@@ -1038,8 +1038,8 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_scene_material_metallic_roughness_texture() {
 
         val renderer = Renderer()
-        val mr_map_bytes = listOf(0.0f, 200.0f, 50.0f, 255.0f, 0.0f, 240.0f, 80.0f, 255.0f, 0.0f, 180.0f, 30.0f, 255.0f, 0.0f, 220.0f, 60.0f, 255.0f)
-        val mr_map = renderer.createTexture(TextureInputMobile.Bytes(mr_map_bytes.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+        val mr_map_bytes = listOf(0, 200, 50, 255, 0, 240, 80, 255, 0, 180, 30, 255, 0, 220, 60, 255)
+        val mr_map = renderer.createTexture(mr_map_bytes, listOf(2, 2))
         val mat = Material.pbr().metallicRoughnessTexture(mr_map)
     }
 
@@ -1051,8 +1051,8 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_scene_material_normal_texture() {
 
         val renderer = Renderer()
-        val normal_map_bytes = listOf(128.0f, 128.0f, 255.0f, 255.0f, 128.0f, 128.0f, 255.0f, 255.0f, 128.0f, 128.0f, 255.0f, 255.0f, 128.0f, 128.0f, 255.0f, 255.0f)
-        val normal_map = renderer.createTexture(TextureInputMobile.Bytes(normal_map_bytes.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+        val normal_map_bytes = listOf(128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255)
+        val normal_map = renderer.createTexture(normal_map_bytes, listOf(2, 2))
         val mat = Material.pbr().normalTexture(normal_map).normalScale(1.2f)
     }
 
@@ -1064,8 +1064,8 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_scene_material_occlusion_texture() {
 
         val renderer = Renderer()
-        val ao_bytes = listOf(220.0f, 0.0f, 0.0f, 255.0f, 180.0f, 0.0f, 0.0f, 255.0f, 200.0f, 0.0f, 0.0f, 255.0f, 160.0f, 0.0f, 0.0f, 255.0f)
-        val ao = renderer.createTexture(TextureInputMobile.Bytes(ao_bytes.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+        val ao_bytes = listOf(220, 0, 0, 255, 180, 0, 0, 255, 200, 0, 0, 255, 160, 0, 0, 255)
+        val ao = renderer.createTexture(ao_bytes, listOf(2, 2))
         val mat = Material.pbr().occlusionTexture(ao)
     }
 
@@ -1589,7 +1589,7 @@ class GeneratedExamples {
 
         // Back on the renderer thread, the upload is just a GPU write.
         val renderer = Renderer()
-        val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)
+        val texture = renderer.createTexture(chain)
     }
 
     @Suppress("unused") private suspend fun _example_texture_mipmap_build() {
@@ -1607,7 +1607,7 @@ class GeneratedExamples {
 
         // Either chain uploads the same way.
         val renderer = Renderer()
-        val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)
+        val texture = renderer.createTexture(chain)
     }
 
     @Suppress("unused") private suspend fun _example_texture_mipmap_count() {
@@ -1655,8 +1655,8 @@ class GeneratedExamples {
         val bytes: ByteArray = byteArrayOf()
         // 1x1 white pixel. Passing a size tells create_texture to read the bytes
         // as raw pixels; the default format is Rgba (sRGB-aware).
-        val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
-        val texture = renderer.createTexture(TextureInputMobile.Bytes(pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+        val pixels = listOf(255, 255, 255, 255)
+        val texture = renderer.createTexture(pixels, listOf(1, 1))
 
         // Bind the texture to the uniform name declared in WGSL.
         shader.set("my_texture", texture)
@@ -1668,8 +1668,8 @@ class GeneratedExamples {
         val renderer = Renderer()
         val bytes: ByteArray = byteArrayOf()
         // 1x1 RGBA (white) raw pixel bytes
-        val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
-        val tex = renderer.createTexture(TextureInputMobile.Bytes(pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+        val pixels = listOf(255, 255, 255, 255)
+        val tex = renderer.createTexture(pixels, listOf(1, 1))
         val a = tex.aspect()
     }
 
@@ -1706,8 +1706,8 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_texture_texture_size() {
         val renderer = Renderer()
-        val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
-        val tex = renderer.createTexture(TextureInputMobile.Bytes(pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+        val pixels = listOf(255, 255, 255, 255)
+        val tex = renderer.createTexture(pixels, listOf(1, 1))
         val sz = tex.size()
         val width = sz.width
         val height = sz.height
@@ -1727,10 +1727,10 @@ class GeneratedExamples {
         val bytes = ByteArray(64 * 32 * 4)
 
         // Simple sub-rectangle update.
-        texture.writeRegion(bytes, TextureRegionMobile(0u, 0u, 0u, 64u, 32u, 0u, null, null))
+        texture.writeRegion(bytes, listOf(0, 0, 64, 32))
 
         // Explicit data layout (advanced — when source rows are padded).
-        val region = TextureRegionMobile(0u, 0u, 0u, 64u, 32u, 0u, 256u, 32u)
+        val region = TextureRegionMobile.from(listOf(0, 0, 64, 32)).withStride(256).withRows(32)
         texture.writeRegion(bytes, region)
     }
 

@@ -8,4 +8,4 @@ val chain = Mipmap.build(png, TextureFormat.RGBA8_UNORM_SRGB, null)
 
 // Back on the renderer thread, the upload is just a GPU write.
 val renderer = Renderer()
-val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)
+val texture = renderer.createTexture(chain)

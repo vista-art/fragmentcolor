@@ -13,4 +13,4 @@ val chain_raw = Mipmap.build(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, Size(widt
 
 // Either chain uploads the same way.
 val renderer = Renderer()
-val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)
+val texture = renderer.createTexture(chain)

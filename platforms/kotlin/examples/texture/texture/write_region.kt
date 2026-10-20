@@ -4,8 +4,8 @@ val texture = renderer.createStorageTexture(Size(width=64u, height=32u, depth=nu
 val bytes = ByteArray(64 * 32 * 4)
 
 // Simple sub-rectangle update.
-texture.writeRegion(bytes, TextureRegionMobile(0u, 0u, 0u, 64u, 32u, 0u, null, null))
+texture.writeRegion(bytes, listOf(0, 0, 64, 32))
 
 // Explicit data layout (advanced — when source rows are padded).
-val region = TextureRegionMobile(0u, 0u, 0u, 64u, 32u, 0u, 256u, 32u)
+val region = TextureRegionMobile.from(listOf(0, 0, 64, 32)).withStride(256).withRows(32)
 texture.writeRegion(bytes, region)
