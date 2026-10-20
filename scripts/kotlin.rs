@@ -828,7 +828,6 @@ mod kotlin {
         // API-specific rewrites (all now see arrayOf(...) for array literals)
         out = rewrite_create_target_canvas(&out);
         out = rewrite_createtexture_path(&out);
-        out = rewrite_createtexture_pixels_tuple(&out);
         out = rewrite_setviewport_tuple(&out);
         // After the rewrites above, which still read the tuple of their own call.
         out = spread_tuple_args(&out);
@@ -1349,7 +1348,7 @@ mod kotlin {
         if inner_trim.starts_with("TextureInputMobile") {
             return line.to_string();
         }
-        // If it's a tuple `(...)`, skip — handled by rewrite_createtexture_pixels_tuple
+        // A tuple `(...)` spreads over the parameters in `spread_tuple_args`.
         if inner_trim.starts_with('(') {
             return line.to_string();
         }
@@ -1365,55 +1364,6 @@ mod kotlin {
         }
 
         line.to_string()
-    }
-
-    // `createTexture((pixels, arrayOf(w, h)))` → `createTexture(TextureInputMobile.Bytes(pixels.toByteArray()), null)`
-    // where the tuple form signals raw pixels + size.
-    fn rewrite_createtexture_pixels_tuple(line: &str) -> String {
-        let needle = "createTexture(";
-        let Some(start) = line.find(needle) else { return line.to_string(); };
-        let call_start = start + needle.len();
-        let chars: Vec<char> = line.chars().collect();
-
-        if call_start >= chars.len() || chars[call_start] != '(' {
-            return line.to_string();
-        }
-
-        // Walk the outer tuple paren
-        let mut depth = 0i32;
-        let mut tuple_end = None;
-        let mut j = call_start;
-        while j < chars.len() {
-            match chars[j] {
-                '(' => depth += 1,
-                ')' => {
-                    depth -= 1;
-                    if depth == 0 { tuple_end = Some(j); break; }
-                }
-                _ => {}
-            }
-            j += 1;
-        }
-
-        let Some(tuple_end) = tuple_end else { return line.to_string(); };
-        if tuple_end <= call_start { return line.to_string(); }
-
-        let tuple_inner: String = chars[call_start + 1..tuple_end].iter().collect();
-        let after_tuple: String = chars[tuple_end + 1..].iter().collect();
-        let after_tuple = after_tuple.trim_start_matches(')');
-
-        let parts = split_args(&tuple_inner);
-        let before = &line[..start + needle.len() - 1];
-
-        match parts.as_slice() {
-            [pixels_expr, _size_expr] => {
-                // (pixels, [w, h]) — raw bytes with size
-                let px = pixels_expr.trim();
-                // We use TextureInputMobile.Bytes for raw pixel data
-                format!("{}(TextureInputMobile.Bytes({}.let {{ ba -> ByteArray(ba.size) {{ i -> ba[i].toInt().and(0xFF).toByte() }} }}), null){}", before, px, after_tuple)
-            }
-            _ => line.to_string(),
-        }
     }
 
     // `pass.setViewport(arrayOf((0, 0), (32, 32)))` →

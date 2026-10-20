@@ -39,6 +39,26 @@ fun Renderer.createTarget(surface: Surface): MobileWindowTarget {
 }
 
 /**
+ * Create a texture from raw RGBA pixels and their `[width, height]`.
+ * The options are Rust's defaults for that size, so the bytes are never decoded.
+ */
+suspend fun Renderer.createTexture(bytes: ByteArray, size: List<Int>): Texture {
+    require(size.size >= 2) { "createTexture: size must be [width, height]" }
+    val options = TextureOptions(
+        size = Size(width = size[0].toUInt(), height = size[1].toUInt(), depth = null),
+        format = TextureFormat.RGBA,
+        sampler = SamplerOptions(repeatX = false, repeatY = false, smooth = true, compare = null),
+        mipmaps = true,
+        usage = null,
+    )
+    return createTexture(TextureInputMobile.Bytes(bytes), options)
+}
+
+/** Create a texture from raw RGBA pixels, one [Int] per byte, and their `[width, height]`. */
+suspend fun Renderer.createTexture(bytes: List<Int>, size: List<Int>): Texture =
+    createTexture(ByteArray(bytes.size) { bytes[it].toByte() }, size)
+
+/**
  * Single overloaded `render(...)` family that matches the spelling used by
  * the JavaScript and Python bindings. The uniffi layer exports one concrete
  * `render(renderable, target)` method that takes `RenderableHandle` +
