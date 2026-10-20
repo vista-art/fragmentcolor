@@ -25,6 +25,9 @@ pub(crate) use uniform::*;
 pub mod composer;
 pub use composer::{ShaderInput, ShaderPart};
 
+mod coerce;
+pub(crate) use coerce::UniformInput;
+
 pub(crate) mod registry;
 
 pub(crate) mod embedded;
@@ -87,7 +90,10 @@ impl Shader {
 
     #[lsp_doc("docs/api/core/shader/set.md")]
     pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
-        self.object.set(key, value)
+        match UniformInput::try_from(value.into()) {
+            Ok(input) => self.object.set_input(key, input),
+            Err(data) => self.object.set(key, data),
+        }
     }
 
     #[lsp_doc("docs/api/core/shader/get.md")]
@@ -188,7 +194,7 @@ pub(crate) struct ShaderObject {
     padded: std::sync::OnceLock<Option<Module>>,
     pub(crate) storage: RwLock<UniformStorage>,
     pub(crate) total_bytes: u64,
-    pub(crate) pending: DashMap<String, UniformData>,
+    pub(crate) pending: DashMap<String, PendingUpdate>,
     pub(crate) meshes: RwLock<Vec<Arc<crate::mesh::MeshObject>>>,
     pub(crate) alpha_mode: RwLock<crate::material::AlphaMode>,
     pub(crate) double_sided: RwLock<bool>,
@@ -205,6 +211,15 @@ pub(crate) struct ShaderObject {
     /// surface; each entry becomes a real GPU texture + a
     /// `UniformData::Texture` write under the recorded key.
     pub(crate) pending_textures: RwLock<Vec<PendingTexture>>,
+}
+
+/// A `set` queued while the storage was busy, applied by `flush_pending`.
+#[derive(Debug, Clone)]
+pub(crate) enum PendingUpdate {
+    /// A value already shaped to the key's declared type.
+    Value(UniformData),
+    /// A loose value that could not see the key's type yet.
+    Input(UniformInput),
 }
 
 /// A texture upload waiting to be realized — slot key plus the TextureInput
@@ -243,9 +258,27 @@ impl ShaderObject {
             self.pending.remove(key);
             storage.update(key, &val)
         } else {
-            self.pending.insert(key.to_string(), val);
+            self.pending
+                .insert(key.to_string(), PendingUpdate::Value(val));
             Ok(())
         }
+    }
+
+    /// Sets a uniform from a loose value, shaped to the key's declared WGSL type.
+    /// Never blocks: when the storage is busy the update is queued, already shaped
+    /// when a read lock is free, so a type error still surfaces here in the common case.
+    pub(crate) fn set_input(&self, key: &str, input: UniformInput) -> Result<(), ShaderError> {
+        if let Some(mut storage) = self.storage.try_write() {
+            let value = input.resolve(key, storage.shape(key)?)?;
+            self.pending.remove(key);
+            return storage.update(key, &value);
+        }
+        let update = match self.storage.try_read() {
+            Some(storage) => PendingUpdate::Value(input.resolve(key, storage.shape(key)?)?),
+            None => PendingUpdate::Input(input),
+        };
+        self.pending.insert(key.to_string(), update);
+        Ok(())
     }
 
     // getters
@@ -330,22 +363,18 @@ impl ShaderObject {
         *self.double_sided.write() = value;
     }
 
-    /// Get a uniform value as UniformData enum.
+    /// Reads the current value of `key` from the CPU-side bytes, in the key's declared shape.
     ///
-    /// Blocking read: waits briefly (microseconds) for any in-flight `set`
-    /// to release the write lock. The previous `try_read` surfaced as
-    /// `Busy("storage read")` from `Shader::get` under contention with
-    /// concurrent setters — a defensible contract but uniformly
-    /// surprising for callers expecting the shader to be query-able at
-    /// any time. The clone-and-return body holds the lock only during
-    /// the lookup; no lock is held across the return, so re-entrance
-    /// from caller code (e.g. `let v = get(); set(v)`) is safe.
+    /// Takes a blocking read lock, which waits briefly for any in-flight `set`.
+    /// The lock is released before returning, so `let v = get(); set(v)` is safe.
+    /// Structs, arrays, and buffer roots read as raw bytes. See [`UniformData::decode`].
     pub fn get_uniform_data(&self, key: &str) -> Result<UniformData, ShaderError> {
         let storage = self.storage.read();
-        let uniform = storage
-            .get(key)
-            .ok_or(ShaderError::UniformNotFound(key.into()))?;
-        Ok(uniform.data.clone())
+        let slot = storage.shape(key)?;
+        let bytes = storage
+            .get_bytes(key)
+            .ok_or_else(|| ShaderError::InvalidKey(key.into()))?;
+        Ok(slot.decode(bytes))
     }
 
     /// True iff the shader declares a top-level storage binding named
@@ -703,13 +732,19 @@ impl ShaderObject {
             return;
         }
         if let Some(mut storage) = self.storage.try_write() {
-            let updates: Vec<(String, UniformData)> = self
+            let updates: Vec<(String, PendingUpdate)> = self
                 .pending
                 .iter()
                 .map(|e| (e.key().clone(), e.value().clone()))
                 .collect();
-            for (k, v) in updates.into_iter() {
-                if let Err(e) = storage.update(&k, &v) {
+            for (k, update) in updates.into_iter() {
+                let value = match update {
+                    PendingUpdate::Value(value) => Ok(value),
+                    PendingUpdate::Input(input) => {
+                        storage.shape(&k).and_then(|slot| input.resolve(&k, slot))
+                    }
+                };
+                if let Err(e) = value.and_then(|value| storage.update(&k, &value)) {
                     log::warn!("flush_pending: dropping update for '{}': {}", k, e);
                 }
                 self.pending.remove(&k);
@@ -1797,5 +1832,161 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
         // Expect the last value (9.0)
         let r: f32 = shader.get("circle.radius").expect("radius");
         assert!((r - 9.0).abs() < 1e-6);
+    }
+
+    const TYPED: &str = r#"
+struct Item { v: vec4<f32> };
+struct Buf { items: array<Item, 3> };
+struct Arr { arr: array<vec4<f32>, 2> };
+@group(0) @binding(0) var<uniform> count: u32;
+@group(0) @binding(1) var<uniform> cell: vec2<i32>;
+@group(0) @binding(2) var<uniform> rot: mat2x2<f32>;
+@group(0) @binding(3) var<uniform> u: Arr;
+@group(0) @binding(4) var<storage, read> buf: Buf;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> {
+  let x = f32(count) + f32(cell.x) + rot[0].x + u.arr[1].x + buf.items[0].v.x;
+  return vec4f(x, 0., 0., 1.);
+}
+    "#;
+
+    // Story: plain numbers reach integer uniforms, the way JS and Python send them.
+    #[test]
+    fn set_writes_whole_numbers_into_integer_uniforms() {
+        let shader = Shader::new(TYPED).expect("shader");
+        shader
+            .object
+            .set_input("count", UniformInput::Number(3.0))
+            .expect("u32 from a number");
+        shader
+            .object
+            .set_input("cell", UniformInput::Numbers(vec![2.0, -1.0]))
+            .expect("vec2<i32> from numbers");
+        assert_eq!(shader.get::<u32>("count").expect("count"), 3);
+        assert_eq!(shader.get::<[i32; 2]>("cell").expect("cell"), [2, -1]);
+
+        // Rust takes the same path: an i32 literal fits the u32 slot.
+        shader.set("count", 7).expect("u32 from an i32 literal");
+        assert_eq!(shader.get::<u32>("count").expect("count"), 7);
+
+        let err = shader.set("count", -1).expect_err("negative u32");
+        assert!(err.to_string().ends_with("count: expected u32, got -1"));
+    }
+
+    // Story: a mat2x2 uniform takes four numbers from any language.
+    #[test]
+    fn set_builds_a_mat2_from_four_numbers() {
+        let shader = Shader::new(TYPED).expect("shader");
+        let values = vec![1.0, 2.0, 3.0, 4.0];
+        shader
+            .object
+            .set_input("rot", UniformInput::Numbers(values))
+            .expect("mat2x2 from four numbers");
+        let rot: [[f32; 2]; 2] = shader.get("rot").expect("rot");
+        assert_eq!(rot, [[1.0, 2.0], [3.0, 4.0]]);
+        shader
+            .set("rot", [1.0, 0.0, 0.0, 1.0])
+            .expect("mat2x2 from a vec4");
+    }
+
+    // Story: a value with the wrong length is rejected and the uniform keeps its value.
+    #[test]
+    fn set_rejects_wrong_lengths_and_keeps_the_value() {
+        let shader = Shader::new(SHADER).expect("shader");
+        shader.set("resolution", [800.0, 600.0]).expect("vec2");
+        let three = UniformInput::Numbers(vec![1.0, 2.0, 3.0]);
+        let err = shader
+            .object
+            .set_input("resolution", three)
+            .expect_err("three numbers for a vec2");
+        assert!(matches!(err, ShaderError::TypeMismatch(_)));
+        assert!(
+            err.to_string()
+                .ends_with("resolution: expected vec2<f32>, got 3 number(s)")
+        );
+        let resolution: [f32; 2] = shader.get("resolution").expect("resolution");
+        assert_eq!(resolution, [800.0, 600.0]);
+    }
+
+    // Story: indexed keys check the declared type, not only the byte count.
+    #[test]
+    fn indexed_keys_check_the_declared_type() {
+        let shader = Shader::new(TYPED).expect("shader");
+        // A vec4<u32> has the 16 bytes of a vec4<f32> but the wrong type.
+        let uints = UniformData::UVec4(vec![1, 2, 3, 4]);
+        let err = shader
+            .object
+            .set("buf.items[1].v", uints.clone())
+            .expect_err("vec4<u32> into vec4<f32>");
+        assert!(matches!(err, ShaderError::TypeMismatch(_)));
+        assert!(shader.object.set("u.arr[1]", uints).is_err());
+
+        // Loose numbers resolve to the declared vec4<f32>.
+        shader.set("buf.items[1].v", [1, 2, 3, 4]).expect("numbers");
+        let v: [f32; 4] = shader.get("buf.items[1].v").expect("indexed get");
+        assert_eq!(v, [1.0, 2.0, 3.0, 4.0]);
+        shader
+            .set("u.arr[1]", [5.0, 6.0, 7.0, 8.0])
+            .expect("array element");
+        let e: [f32; 4] = shader.get("u.arr[1]").expect("indexed get");
+        assert_eq!(e, [5.0, 6.0, 7.0, 8.0]);
+
+        let storage = shader.object.storage.read();
+        let shape = storage.shape("buf.items[2].v").expect("shape");
+        assert!(matches!(shape, UniformData::Vec4(_)));
+    }
+
+    // Story: raw bytes fill a storage root, and are rejected anywhere else.
+    #[test]
+    fn set_takes_bytes_only_for_buffer_roots() {
+        let shader = Shader::new(TYPED).expect("shader");
+        let blob: Vec<u8> = (0..48).collect();
+        shader
+            .object
+            .set_input("buf", UniformInput::Bytes(blob.clone()))
+            .expect("bytes into a storage root");
+        let storage = shader.object.storage.read();
+        assert_eq!(storage.get_bytes("buf").expect("blob"), &blob[..]);
+        drop(storage);
+
+        let bytes = UniformInput::Bytes(vec![0; 8]);
+        assert!(shader.object.set_input("cell", bytes.clone()).is_err());
+        assert!(shader.object.set_input("buf.items[0].v", bytes).is_err());
+    }
+
+    // Story: get on a struct root reads the bytes as they are now, not the reflected defaults.
+    #[test]
+    fn get_reads_struct_roots_from_current_bytes() {
+        let shader = Shader::new(SHADER).expect("shader");
+        shader.set("circle.radius", 0.25).expect("radius");
+        let circle = shader.object.get_uniform_data("circle").expect("circle");
+        let UniformData::Bytes(bytes) = circle else {
+            panic!("struct roots read as bytes, got {circle:?}");
+        };
+        // `radius` sits at offset 8, after `position: vec2<f32>`.
+        assert_eq!(&bytes[8..12], &0.25f32.to_le_bytes());
+    }
+
+    // Story: a loose value queued while the storage is locked resolves when it flushes.
+    #[test]
+    fn set_queues_loose_values_while_locked() {
+        let shader = Shader::new(TYPED).expect("shader");
+        let guard = shader.object.storage.write();
+        let count = UniformInput::Number(5.0);
+        shader.object.set_input("count", count).expect("queued");
+        let cell = UniformInput::Numbers(vec![1.0, 2.0, 3.0]);
+        shader
+            .object
+            .set_input("cell", cell)
+            .expect("queued, checked at flush");
+        drop(guard);
+
+        shader.object.flush_pending();
+        assert!(shader.object.pending.is_empty());
+        assert_eq!(shader.get::<u32>("count").expect("count"), 5);
+        assert_eq!(shader.get::<[i32; 2]>("cell").expect("cell"), [0, 0]);
     }
 }

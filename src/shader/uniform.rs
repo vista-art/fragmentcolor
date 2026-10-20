@@ -250,6 +250,44 @@ impl UniformData {
         }
     }
 
+    /// Reads the value of a slot shaped like `self` out of its bytes.
+    /// Numbers decode into the same variant, and textures and samplers keep their binding.
+    /// Structs, arrays, and buffer roots read as raw bytes, since an array shape keeps one element.
+    pub(crate) fn decode(&self, bytes: &[u8]) -> UniformData {
+        fn words<T: bytemuck::Pod>(bytes: &[u8]) -> Vec<T> {
+            let chunks = bytes.chunks_exact(std::mem::size_of::<T>());
+            chunks.map(bytemuck::pod_read_unaligned).collect()
+        }
+        fn scalar<T: bytemuck::Pod + Default>(bytes: &[u8]) -> T {
+            let chunk = bytes.get(..std::mem::size_of::<T>());
+            chunk.map(bytemuck::pod_read_unaligned).unwrap_or_default()
+        }
+        match self {
+            Self::Bool(_) => Self::Bool(bytes.first().is_some_and(|&b| b != 0)),
+            Self::Float(_) => Self::Float(scalar(bytes)),
+            Self::Int(_) => Self::Int(scalar(bytes)),
+            Self::UInt(_) => Self::UInt(scalar(bytes)),
+            Self::Vec2(_) => Self::Vec2(words(bytes)),
+            Self::Vec3(_) => Self::Vec3(words(bytes)),
+            Self::Vec4(_) => Self::Vec4(words(bytes)),
+            Self::IVec2(_) => Self::IVec2(words(bytes)),
+            Self::IVec3(_) => Self::IVec3(words(bytes)),
+            Self::IVec4(_) => Self::IVec4(words(bytes)),
+            Self::UVec2(_) => Self::UVec2(words(bytes)),
+            Self::UVec3(_) => Self::UVec3(words(bytes)),
+            Self::UVec4(_) => Self::UVec4(words(bytes)),
+            Self::Mat2(_) => Self::Mat2(words(bytes)),
+            Self::Mat3(_) => Self::Mat3(words(bytes)),
+            Self::Mat4(_) => Self::Mat4(words(bytes)),
+            Self::Texture(_) | Self::Sampler(_) => self.clone(),
+            Self::Array(_)
+            | Self::Struct(_)
+            | Self::Storage(_)
+            | Self::PushConstant(_)
+            | Self::Bytes(_) => Self::Bytes(bytes.to_vec()),
+        }
+    }
+
     pub(crate) fn size(&self) -> u32 {
         match self {
             Self::Bool(_) => 1,
