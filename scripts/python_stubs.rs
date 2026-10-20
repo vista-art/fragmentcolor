@@ -295,21 +295,22 @@ mod python_stubs {
             let Some(args) = pyclass_args(&ty.attrs) else {
                 continue;
             };
+            let class_flags = split_top_level(&args);
+            let get_all = class_flags.iter().any(|a| a == "get_all");
+            let set_all = class_flags.iter().any(|a| a == "set_all");
             let mut class = Class {
                 py_name: reflect::exported_type_name(&ty.attrs, &ty.ident, Build::Python)
                     .unwrap_or_else(|| ty.ident.clone()),
-                subclass: split_top_level(&args).iter().any(|a| a == "subclass"),
+                subclass: class_flags.iter().any(|a| a == "subclass"),
                 lsp_doc: reflect::lsp_doc(&ty.attrs),
                 ..Default::default()
             };
             match ty.kind {
                 TypeKind::Struct => {
                     for field in &ty.fields {
-                        let Some(args) = pyo3_args(&field.attrs) else {
-                            continue;
-                        };
+                        let args = pyo3_args(&field.attrs).unwrap_or_default();
                         let flags = split_top_level(&args);
-                        if !flags.iter().any(|f| f == "get") {
+                        if !get_all && !flags.iter().any(|f| f == "get") {
                             continue;
                         }
                         let Some(ident) = &field.ident else {
@@ -318,7 +319,7 @@ mod python_stubs {
                         class.fields.push(Field {
                             name: arg_value(&args, "name").unwrap_or_else(|| ident.clone()),
                             ty: field.ty.clone(),
-                            settable: flags.iter().any(|f| f == "set"),
+                            settable: set_all || flags.iter().any(|f| f == "set"),
                         });
                     }
                 }
