@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.12.6: Binding fixes
+## 0.12.6: Binding and renderer fixes
 
-A patch release with fixes for the language bindings.
+A patch release with fixes for the language bindings and the renderer.
 
 `Pass.setDepthTarget(texture)` on Swift and Kotlin now passes the depth `Texture` to Rust as a `Texture`. The extensions handed over the texture's handle where a `TextureTarget` handle was expected, so Rust read the texture's memory as the wrong type, which is undefined behaviour. They now call a new `setDepthTexture` binding that takes the `Texture` directly.
 
@@ -46,6 +46,12 @@ The Python texture methods check their arguments by type. `Renderer.create_textu
 The generators that turn the API docs into JavaScript, Python, Swift, and Kotlin examples no longer keep hand-written lists of API facts. They read which methods throw or are async, which arguments are floats, unsigned ints, or lists, which enum entries Kotlin spells in capitals, which constants to inline, and what each binding exports from the Rust sources and the hand-written Swift and Kotlin extensions. Stale entries went with the lists. Generated Swift no longer puts `try` before `setIndices` or `removeMesh`, or `await` before `Scene.load`, and Python examples import `VertexValue` when the Rust example does. The `Pass.from_shader` examples call `from_shader` in every language instead of building the pass by hand. Swift adds an unlabeled `Pass.fromShader(name, shader)` overload for them, next to the generated `fromShader(name:shader:)`.
 
 The generated examples had two more defects. The Swift and Kotlin transpilers stripped the semicolons from the WGSL inside their shader strings, so the shaders in those examples compiled but could not parse as WGSL at run time. The Kotlin transpiler read a trailing comma in a pixel array as one more value, which gave the 2x2 textures in the renderer load example and the five material texture examples 17 bytes instead of 16. Both now match the Rust source.
+
+Passes rendered together keep their own uniforms. `Renderer::render` records every pass of one call into a single submission, and uniform uploads reach the GPU at submit. The renderer rewound its uniform pool at the start of each pass, so every pass got the same offsets and drew with the values of the last pass. In the `multipass_shadows` example the shadow pass drew the main circle, and a compute pass followed by a render pass read the render pass's uniforms. The pool now rewinds once per `render` call.
+
+Shaders that share a source get one pipeline per vertex layout. The pipeline cache keyed on the shader and the target state, but the vertex layout came from whichever mesh built the pipeline first. A second shader with the same source, drawing a mesh with a different stride, attribute offsets, or per-instance attributes, reused that pipeline and drew the wrong vertices or nothing at all. The layout is part of the key now, and building it no longer leaks memory on every frame.
+
+A render made only of compute passes leaves the target alone. `Renderer::render` acquired a frame even when no pass drew into it and presented that frame untouched, so compute work failed whenever the target had no frame to give, as with a minimized window. Compute-only calls now skip the frame.
 
 ## 0.12.5: WebGL2 fixes
 
