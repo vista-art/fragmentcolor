@@ -6,6 +6,8 @@ A patch release with fixes for the language bindings.
 
 `Pass.setDepthTarget(texture)` on Swift and Kotlin now passes the depth `Texture` to Rust as a `Texture`. The extensions handed over the texture's handle where a `TextureTarget` handle was expected, so Rust read the texture's memory as the wrong type, which is undefined behaviour. They now call a new `setDepthTexture` binding that takes the `Texture` directly.
 
+On Android, `renderer.createTarget(surface)` builds the target on the renderer you call it on. The JNI path created a new `Renderer` for every surface, so the target lived on a different GPU device than the renderer drawing into it, and `render` either failed with `NoContext` or mixed the two devices. The JNI helper now only turns the `Surface` into an `ANativeWindow` pointer, and the Kotlin extension passes that pointer to the calling renderer's `createTarget`.
+
 ## 0.12.5: WebGL2 fixes
 
 A patch release that makes the WebGL2 fallback work. There are no API changes.

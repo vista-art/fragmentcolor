@@ -6,7 +6,7 @@ import android.view.Surface
 // the method names used by the JavaScript and Python bindings so calling
 // code looks identical across every supported platform.
 
-// The raw JNI entry point lives in `libfragmentcolor.so` and is exposed
+// The raw JNI entry points live in `libfragmentcolor.so` and are exposed
 // via a private helper class so the shared library is loaded exactly once.
 private object RendererJni {
     init {
@@ -14,20 +14,28 @@ private object RendererJni {
     }
 
     @JvmStatic
-    external fun create_window_target_from_surface(surface: Surface): Long
+    external fun native_window_from_surface(surface: Surface): Long
+
+    @JvmStatic
+    external fun release_native_window(window: Long)
 }
 
 /**
- * Build a [MobileWindowTarget] from an [android.view.Surface]. Wraps the
- * raw JNI entry point that uniffi cannot expose directly because it needs
- * access to the `JNIEnv*` pointer. Pairs with the iOS
- * `Renderer.createTarget(layer:)` extension so the same call site compiles
- * on both platforms.
+ * Build a [MobileWindowTarget] from an [android.view.Surface] on this renderer.
+ *
+ * JNI reads the surface's `ANativeWindow*`, since uniffi cannot marshal the
+ * `JNIEnv*` that step needs. The uniffi `createTarget` then builds the target
+ * on this renderer's device. Pairs with the iOS `Renderer.createTarget(layer:)`
+ * extension so the same call site compiles on both platforms.
  */
 fun Renderer.createTarget(surface: Surface): MobileWindowTarget {
-    val ptr = RendererJni.create_window_target_from_surface(surface)
-    require(ptr != 0L) { "Failed to create WindowTarget from Surface" }
-    return MobileWindowTarget(UniffiWithHandle, ptr)
+    val window = RendererJni.native_window_from_surface(surface)
+    require(window != 0L) { "Failed to acquire an ANativeWindow from Surface" }
+    try {
+        return createTarget(window.toULong())
+    } finally {
+        RendererJni.release_native_window(window)
+    }
 }
 
 /**

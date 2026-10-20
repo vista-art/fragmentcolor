@@ -5,9 +5,9 @@
 //! live. This module adds the mobile-only constructor and helper methods.
 //!
 //! Android's `Surface` → `WindowTarget` constructor cannot go through uniffi
-//! (uniffi cannot marshal `JNIEnv*`). It is implemented in the `android`
-//! submodule as a raw `#[jni_fn]` entry point that returns an `Arc` pointer;
-//! the Kotlin side reconstructs the `WindowTarget` from that pointer.
+//! alone (uniffi cannot marshal `JNIEnv*`). The `android` submodule exposes a
+//! raw `#[jni_fn]` entry point that returns the surface's `ANativeWindow*`;
+//! Kotlin hands that pointer to the uniffi `createTarget` on the same `Renderer`.
 //!
 //! Naming convention mirrors the Web/Python platform modules: mobile-specific
 //! methods carry a `_mobile` / `_ios` / `_android` suffix on the Rust side
