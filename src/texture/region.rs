@@ -290,90 +290,72 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
 // Python conversion
 // -------------------------------------------
 
+/// A `Texture.write_region` region from Python, tried in this order.
 #[cfg(python)]
-pub(crate) fn py_to_texture_region<'py>(
-    any: &pyo3::Bound<'py, pyo3::PyAny>,
-) -> pyo3::PyResult<TextureRegion> {
-    use pyo3::prelude::*;
-    use pyo3::types::{PyDict, PyList, PySequence, PyTuple};
+#[derive(pyo3::FromPyObject)]
+pub(crate) enum PyTextureRegion {
+    #[pyo3(annotation = "[w, h]")]
+    Size([u32; 2]),
+    #[pyo3(annotation = "[x, y, w, h]")]
+    Rect([u32; 4]),
+    #[pyo3(annotation = "[x, y, z, w, h, d]")]
+    Volume([u32; 6]),
+    #[pyo3(annotation = "ScreenRegion")]
+    Screen(crate::ScreenRegion),
+    #[pyo3(annotation = "dict[str, int | None]")]
+    Layout(std::collections::HashMap<String, Option<u32>>),
+}
 
-    fn read_dict_u32<'py>(
-        dict: &pyo3::Bound<'py, PyDict>,
-        names: &[&str],
-    ) -> pyo3::PyResult<Option<u32>> {
-        for name in names {
-            if let Some(value) = dict.get_item(name)? {
-                if value.is_none() {
-                    return Ok(None);
-                }
-                return Ok(Some(value.extract::<u32>()?));
-            }
+#[cfg(python)]
+impl From<PyTextureRegion> for TextureRegion {
+    fn from(region: PyTextureRegion) -> Self {
+        match region {
+            PyTextureRegion::Size(size) => size.into(),
+            PyTextureRegion::Rect(rect) => rect.into(),
+            PyTextureRegion::Volume(volume) => volume.into(),
+            PyTextureRegion::Screen(screen) => screen.into(),
+            PyTextureRegion::Layout(layout) => layout_region(&layout),
         }
-        Ok(None)
     }
+}
 
-    // `None` → whole-texture default
-    if any.is_none() {
-        return Ok(TextureRegion::default());
-    }
+/// Reads the dict form: the `min_*` / `max_*` corners if an x corner is set,
+/// else `x`, `y`, `z`, `width`, `height` and `depth`. Keys also take camelCase.
+#[cfg(python)]
+fn layout_region(layout: &std::collections::HashMap<String, Option<u32>>) -> TextureRegion {
+    let read = |names: &[&str]| {
+        names
+            .iter()
+            .find_map(|name| layout.get(*name))
+            .copied()
+            .flatten()
+    };
 
-    // Sequence (list / tuple) of length 2, 4, or 6
-    if let Ok(seq) = any.cast::<PySequence>() {
-        let len = seq.len()?;
-        let read = |i: usize| -> pyo3::PyResult<u32> { seq.get_item(i)?.extract::<u32>() };
-        return match len {
-            2 => Ok([read(0)?, read(1)?].into()),
-            4 => Ok([read(0)?, read(1)?, read(2)?, read(3)?].into()),
-            6 => Ok([read(0)?, read(1)?, read(2)?, read(3)?, read(4)?, read(5)?].into()),
-            _ => Err(crate::error::PyFragmentColorError::new_err(
-                "TextureRegion sequence must have length 2, 4, or 6",
-            )),
-        };
-    }
-    // Explicit tuple/list paths in case downcast<PySequence> doesn't catch them on some types.
-    if any.cast::<PyTuple>().is_ok() || any.cast::<PyList>().is_ok() {
-        // delegated above
-    }
-
-    // Dict variant
-    if let Ok(dict) = any.cast::<PyDict>() {
-        // min/max variant
-        let has_minmax = read_dict_u32(dict, &["min_x", "minX"])?.is_some()
-            || read_dict_u32(dict, &["max_x", "maxX"])?.is_some();
-        if has_minmax {
-            let min_x = read_dict_u32(dict, &["min_x", "minX"])?.unwrap_or(0);
-            let min_y = read_dict_u32(dict, &["min_y", "minY"])?.unwrap_or(0);
-            let max_x = read_dict_u32(dict, &["max_x", "maxX"])?.unwrap_or(min_x);
-            let max_y = read_dict_u32(dict, &["max_y", "maxY"])?.unwrap_or(min_y);
-            let min_z = read_dict_u32(dict, &["min_z", "minZ"])?.unwrap_or(0);
-            let max_z = read_dict_u32(dict, &["max_z", "maxZ"])?.unwrap_or(min_z + 1);
-            let mut tr = TextureRegion::new(
-                [min_x, min_y, min_z],
-                [
-                    max_x.saturating_sub(min_x),
-                    max_y.saturating_sub(min_y),
-                    max_z.saturating_sub(min_z).max(1),
-                ],
-            );
-            tr.bytes_per_row = read_dict_u32(dict, &["bytes_per_row", "bytesPerRow"])?;
-            tr.rows_per_image = read_dict_u32(dict, &["rows_per_image", "rowsPerImage"])?;
-            return Ok(tr);
-        }
-
-        // x/y/z + width/height/depth variant
-        let x = read_dict_u32(dict, &["x"])?.unwrap_or(0);
-        let y = read_dict_u32(dict, &["y"])?.unwrap_or(0);
-        let z = read_dict_u32(dict, &["z"])?.unwrap_or(0);
-        let w = read_dict_u32(dict, &["width"])?.unwrap_or(0);
-        let h = read_dict_u32(dict, &["height"])?.unwrap_or(0);
-        let d = read_dict_u32(dict, &["depth"])?.unwrap_or(1);
-        let mut tr = TextureRegion::new([x, y, z], [w, h, d]);
-        tr.bytes_per_row = read_dict_u32(dict, &["bytes_per_row", "bytesPerRow"])?;
-        tr.rows_per_image = read_dict_u32(dict, &["rows_per_image", "rowsPerImage"])?;
-        return Ok(tr);
-    }
-
-    Err(crate::error::PyFragmentColorError::new_err(
-        "Expected a TextureRegion-shaped value (sequence of length 2/4/6 or dict)",
-    ))
+    let mut region = if read(&["min_x", "minX"]).is_some() || read(&["max_x", "maxX"]).is_some() {
+        let min_x = read(&["min_x", "minX"]).unwrap_or(0);
+        let min_y = read(&["min_y", "minY"]).unwrap_or(0);
+        let max_x = read(&["max_x", "maxX"]).unwrap_or(min_x);
+        let max_y = read(&["max_y", "maxY"]).unwrap_or(min_y);
+        let min_z = read(&["min_z", "minZ"]).unwrap_or(0);
+        let max_z = read(&["max_z", "maxZ"]).unwrap_or(min_z.saturating_add(1));
+        TextureRegion::new(
+            [min_x, min_y, min_z],
+            [
+                max_x.saturating_sub(min_x),
+                max_y.saturating_sub(min_y),
+                max_z.saturating_sub(min_z).max(1),
+            ],
+        )
+    } else {
+        let x = read(&["x"]).unwrap_or(0);
+        let y = read(&["y"]).unwrap_or(0);
+        let z = read(&["z"]).unwrap_or(0);
+        let w = read(&["width"]).unwrap_or(0);
+        let h = read(&["height"]).unwrap_or(0);
+        let d = read(&["depth"]).unwrap_or(1);
+        TextureRegion::new([x, y, z], [w, h, d])
+    };
+    region.bytes_per_row = read(&["bytes_per_row", "bytesPerRow"]);
+    region.rows_per_image = read(&["rows_per_image", "rowsPerImage"]);
+    region
 }

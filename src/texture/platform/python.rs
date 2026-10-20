@@ -2,7 +2,8 @@
 
 use crate::SamplerOptions;
 use crate::TextureFormat;
-use crate::texture::{Mipmap, PyTextureBytes, Texture, TextureId};
+use crate::texture::region::PyTextureRegion;
+use crate::texture::{Mipmap, PyTextureBytes, Texture, TextureId, TextureRegion};
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 
@@ -144,14 +145,12 @@ impl Texture {
     pub fn write_region_py(
         &self,
         data: PyTextureBytes<'_>,
-        region: pyo3::Py<pyo3::types::PyAny>,
+        region: Option<PyTextureRegion>,
     ) -> pyo3::PyResult<()> {
-        pyo3::Python::attach(|py| -> pyo3::PyResult<()> {
-            let bytes: Vec<u8> = data.try_into()?;
-            let r = crate::texture::region::py_to_texture_region(region.bind(py))?;
-            self.write_region(&bytes, r)?;
-            Ok(())
-        })
+        let bytes: Vec<u8> = data.try_into()?;
+        let region: TextureRegion = region.map(Into::into).unwrap_or_default();
+        self.write_region(&bytes, region)?;
+        Ok(())
     }
 
     /// Read back the mip-0 contents of this texture as tightly-packed bytes
