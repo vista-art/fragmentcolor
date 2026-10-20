@@ -2,7 +2,7 @@ import os
 import platform
 import importlib
 import numpy as np
-from fragmentcolor import CompareFunction, Pass, Renderer, SamplerOptions, Shader
+from fragmentcolor import CompareFunction, Pass, Renderer, SamplerOptions, Shader, Size
 
 # Debug diagnostics for CI
 if os.environ.get("FC_HEALTHCHECK_VERBOSE") == "1":
@@ -90,6 +90,19 @@ def check_sampler_options(texture):
     assert not opts.smooth and opts.compare is None
     texture.set_sampler_options(opts)
     print("SamplerOptions and CompareFunction build from Python")
+
+
+def check_size(renderer, texture):
+    """Size reads its fields, and every Size parameter takes a Size back."""
+    assert (texture.size.width, texture.size.height) == (2, 2)
+    target = renderer.create_texture_target([16, 8])
+    size = target.size
+    assert isinstance(size, Size)
+    assert (size.width, size.height, size.depth) == (16, 8, 1)
+    size.width = 32
+    target.resize(size)
+    assert (target.size.width, target.size.height) == (32, 8)
+    print("Size reads its fields and passes back in")
 
 
 def run():
@@ -239,6 +252,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     tex.set_sampler_options(
         {"repeat_x": True, "repeat_y": False, "smooth": True, "compare": None})
     check_sampler_options(tex)
+    check_size(renderer, tex)
 
     # Push constants smoke: solid color via var<immediate>
     pc_shader = Shader("""

@@ -11,7 +11,7 @@ use pyo3::prelude::*;
 pub mod error;
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass(from_py_object, get_all, module = "fragmentcolor"))]
+#[cfg_attr(python, pyclass(from_py_object, get_all, set_all, module = "fragmentcolor"))]
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, PartialOrd)]
 pub struct Size {
@@ -390,6 +390,10 @@ mod tests {
     #[cfg(python)]
     #[test]
     fn py_size_conversions_cover_variants() {
+        // A Size passes through unchanged
+        let s0: Size = PySize::Size(Size::new(5, 6, Some(2))).into();
+        assert_eq!(s0, Size::new(5, 6, Some(2)));
+
         // TupleF64 and TupleU32
         let s1: Size = PySize::TupleF64((10.5, 20.5)).into();
         assert_eq!((s1.width, s1.height, s1.depth), (10, 20, None));

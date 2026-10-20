@@ -1348,12 +1348,9 @@ class Pass:
 
 @final
 class Size:
-    @property
-    def width(self) -> int: ...
-    @property
-    def height(self) -> int: ...
-    @property
-    def depth(self) -> int | None: ...
+    width: int
+    height: int
+    depth: int | None
     def __new__(cls, width: int, height: int, depth: int | None = ...) -> Size: ...
 
 @final
