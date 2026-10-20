@@ -19,6 +19,8 @@ mod kotlin {
     //! of the uniffi exports for Android and of the hand-written `*Extensions.kt` files.
     //! So does a Rust tuple argument, which spreads over those parameters,
     //! and an array literal at a record parameter, which fills the record's fields in order.
+    //! An `operator fun T.Companion.invoke(...)` in an extension file is a factory
+    //! that a `T::new(...)` call reaches.
     //!
     //! Enum entries follow the flat uniffi enums.
 
