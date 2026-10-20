@@ -1,6 +1,7 @@
 use crate::{
     PySize, Renderer,
     target::{PyTextureTarget, RenderCanvasTarget},
+    texture::PyTextureId,
 };
 use lsp_doc::lsp_doc;
 use pyo3::exceptions::PyTypeError;
@@ -243,12 +244,10 @@ impl Renderer {
 
     #[pyo3(name = "unregister_texture")]
     #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
-    pub fn unregister_texture_py(&self, texture_id: Py<PyAny>) -> Result<(), PyErr> {
-        Python::attach(|py| -> Result<(), PyErr> {
-            let id = crate::texture::py_to_texture_id(texture_id.bind(py))?;
-            self.unregister_texture(id)?;
-            Ok(())
-        })
+    #[allow(private_interfaces)]
+    pub fn unregister_texture_py(&self, texture_id: PyTextureId) -> Result<(), PyErr> {
+        self.unregister_texture(texture_id.into())?;
+        Ok(())
     }
 
     /// Read back the mip-0 contents of a registered texture as tightly-packed
@@ -259,12 +258,10 @@ impl Renderer {
     /// device loop.
     #[pyo3(name = "read_texture")]
     #[lsp_doc("docs/api/core/renderer/read_texture.md")]
-    pub fn read_texture_py(&self, texture_id: Py<PyAny>) -> Result<Vec<u8>, PyErr> {
-        Python::attach(|py| -> Result<Vec<u8>, PyErr> {
-            let id = crate::texture::py_to_texture_id(texture_id.bind(py))?;
-            pollster::block_on(self.read_texture(id))
-                .map_err(|e| crate::error::PyFragmentColorError::new_err(e.to_string()))
-        })
+    #[allow(private_interfaces)]
+    pub fn read_texture_py(&self, texture_id: PyTextureId) -> Result<Vec<u8>, PyErr> {
+        pollster::block_on(self.read_texture(texture_id.into()))
+            .map_err(|e| crate::error::PyFragmentColorError::new_err(e.to_string()))
     }
 }
 

@@ -515,19 +515,24 @@ pub(crate) fn js_to_texture_bytes(
     }
 }
 
+/// A texture id from Python: the integer value or a `TextureId`.
 #[cfg(python)]
-pub(crate) fn py_to_texture_id<'py>(
-    any: &pyo3::Bound<'py, pyo3::PyAny>,
-) -> pyo3::PyResult<TextureId> {
-    if let Ok(number) = any.extract::<u64>() {
-        return Ok(TextureId { id: number });
+#[derive(FromPyObject)]
+pub(crate) enum PyTextureId {
+    #[pyo3(annotation = "int")]
+    Int(u64),
+    #[pyo3(annotation = "TextureId")]
+    Id(TextureId),
+}
+
+#[cfg(python)]
+impl From<PyTextureId> for TextureId {
+    fn from(value: PyTextureId) -> Self {
+        match value {
+            PyTextureId::Int(id) => id.into(),
+            PyTextureId::Id(id) => id,
+        }
     }
-    if let Ok(bound) = any.cast::<TextureId>() {
-        return Ok(*bound.borrow());
-    }
-    Err(crate::error::PyFragmentColorError::new_err(
-        "Expected a TextureId or integer id",
-    ))
 }
 
 #[cfg(python)]
