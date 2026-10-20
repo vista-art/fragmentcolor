@@ -2029,9 +2029,9 @@ mod kotlin {
         depth
     }
 
-    // `arrayOf(1.0, 0.0, 0.0, 1.0)` where all elements are float/int literals (no hex) →
-    // `listOf(1.0f, 0.0f, 0.0f, 1.0f)` for compatibility with Instance.set / Vertex.set / setClearColor.
-    // Does NOT apply if elements look like hex bytes.
+    /// `arrayOf(1.0, 0.0)` → `listOf(1.0f, 0.0f)` and `arrayOf(255, 0)` → `listOf(255, 0)`
+    /// where every element is a number literal. A Rust integer literal is never a float,
+    /// so a list of them stays `Int`. Hex bytes stay as written.
     fn rewrite_arrayof_float_to_listof(line: &str) -> String {
         let needle = "arrayOf(";
         if !line.contains(needle) { return line.to_string(); }
@@ -2075,9 +2075,10 @@ mod kotlin {
                                 && !e.is_empty()
                         });
                         if all_numeric {
-                            let float_list = float_args(&elements);
+                            let integers = elements.iter().all(|e| !e.contains('.'));
+                            let items = if integers { elements.join(", ") } else { float_args(&elements) };
                             out.push_str("listOf(");
-                            out.push_str(&float_list);
+                            out.push_str(&items);
                             out.push(')');
                             i = inner_end + 1;
                             continue;
