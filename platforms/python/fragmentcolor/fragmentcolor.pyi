@@ -37,7 +37,7 @@ __all__ = [
 ]
 
 _IntoVertexPositionFull: TypeAlias = float | Sequence[float] | Sequence[int]
-_PySize: TypeAlias = Sequence[float] | Sequence[int] | dict[str, float] | dict[str, int]
+_PySize: TypeAlias = Size | Sequence[float] | Sequence[int] | dict[str, float] | dict[str, int]
 _PyTextureBytes: TypeAlias = bytes | npt.NDArray[numpy.uint8] | Sequence[int]
 _Renderable: TypeAlias = Mesh | Pass | Scene | Shader | Sequence[Mesh | Pass | Scene | Shader]
 _SceneObject: TypeAlias = Camera | Light | Model
@@ -1341,6 +1341,7 @@ class Size:
     def height(self) -> int: ...
     @property
     def depth(self) -> int | None: ...
+    def __new__(cls, width: int, height: int, depth: int | None = ...) -> Size: ...
 
 @final
 class ScreenRegion:

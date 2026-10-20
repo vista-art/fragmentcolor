@@ -173,8 +173,22 @@ impl TryFrom<&wasm_bindgen::JsValue> for Size {
 crate::impl_tryfrom_owned_via_ref!(Size, wasm_bindgen::JsValue, crate::size::error::SizeError);
 
 #[cfg(python)]
+#[pymethods]
+impl Size {
+    // Size is a value type, like ScreenRegion. The parity audit tracks the
+    // methods that take and return it, so its constructor has no doc page.
+    #[doc(hidden)]
+    #[new]
+    #[pyo3(signature = (width, height, depth=None))]
+    pub fn new_py(width: u32, height: u32, depth: Option<u32>) -> Self {
+        Size::new(width, height, depth)
+    }
+}
+
+#[cfg(python)]
 #[derive(FromPyObject, IntoPyObject)]
 pub enum PySize {
+    Size(Size),
     ListF64(Vec<f64>),
     ListU32(Vec<u32>),
     ListI32(Vec<i32>),
@@ -193,6 +207,7 @@ pub enum PySize {
 impl From<PySize> for Size {
     fn from(value: PySize) -> Self {
         match value {
+            PySize::Size(size) => size,
             PySize::TupleF64((w, h)) => Size::new(w as u32, h as u32, None),
             PySize::TupleU32((w, h)) => Size::new(w, h, None),
             PySize::TupleI32((w, h)) => Size::new(w as u32, h as u32, None),
