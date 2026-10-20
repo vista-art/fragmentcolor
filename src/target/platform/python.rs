@@ -38,16 +38,6 @@ impl RenderCanvasTarget {
     }
 }
 
-#[pyclass(name = "Size")]
-pub struct PySize3 {
-    #[pyo3(get)]
-    pub width: u32,
-    #[pyo3(get)]
-    pub height: u32,
-    #[pyo3(get)]
-    pub depth: u32,
-}
-
 #[pymethods]
 impl RenderCanvasTarget {
     // Constructor for the RenderCanvas protocol object — not user-facing API;
@@ -69,13 +59,8 @@ impl RenderCanvasTarget {
     }
 
     #[lsp_doc("docs/api/targets/window_target/size.md")]
-    pub fn size(&self) -> PySize3 {
-        let size = <Self as Target>::size(self);
-        PySize3 {
-            width: size.width,
-            height: size.height,
-            depth: 1,
-        }
+    pub fn size(&self) -> Size {
+        <Self as Target>::size(self)
     }
 
     #[lsp_doc("docs/api/targets/window_target/resize.md")]
@@ -213,13 +198,8 @@ pub struct PyTextureTarget {
 impl PyTextureTarget {
     #[lsp_doc("docs/api/targets/texture_target/size.md")]
     #[getter]
-    pub fn size(&self) -> PySize3 {
-        let size = <Self as Target>::size(self);
-        PySize3 {
-            width: size.width,
-            height: size.height,
-            depth: 1,
-        }
+    pub fn size(&self) -> Size {
+        <Self as Target>::size(self)
     }
 
     #[lsp_doc("docs/api/targets/texture_target/resize.md")]

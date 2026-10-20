@@ -1334,7 +1334,13 @@ class Pass:
     def renderable_type(self) -> str: ...
 
 @final
-class Size: ...
+class Size:
+    @property
+    def width(self) -> int: ...
+    @property
+    def height(self) -> int: ...
+    @property
+    def depth(self) -> int | None: ...
 
 @final
 class ScreenRegion:
@@ -4541,7 +4547,7 @@ class TextureTarget:
     Use this when you need an offscreen render target to read back pixels or render without a window.
     """
     @property
-    def size(self) -> _Size:
+    def size(self) -> Size:
         """
         Returns the size of the [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) in pixels.
 
@@ -4643,7 +4649,7 @@ class RenderCanvasTarget:
     """
     def __new__(cls, canvas: Any, _present_methods: Any) -> RenderCanvasTarget: ...
     def is_ready(self) -> bool: ...
-    def size(self) -> _Size:
+    def size(self) -> Size:
         """
         Returns the size of the [Target](https://fragmentcolor.org/api/core/target) in pixels.
 
@@ -4704,15 +4710,6 @@ class _PyPassIterator: ...
 
 @final
 class _SamplerInfo: ...
-
-@final
-class _Size:
-    @property
-    def width(self) -> int: ...
-    @property
-    def height(self) -> int: ...
-    @property
-    def depth(self) -> int: ...
 
 @final
 class _TargetFrame:
