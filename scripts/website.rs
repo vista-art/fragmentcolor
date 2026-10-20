@@ -1274,7 +1274,7 @@ mod website {
         push_tab(&mut tabs, "Rust", "rust", &rust_processed, &ranges);
 
         // Each language's example is both a tab and a healthcheck file.
-        let outputs: [(Lang, &str, &str, &str, &str, &mut std::collections::HashSet<String>); 4] = [
+        let outputs = [
             (Lang::Js, "JavaScript", "js", "js", "platforms/web/examples", ex_js),
             (Lang::Python, "Python", "python", "py", "platforms/python/examples", ex_py),
             (Lang::Swift, "Swift", "swift", "swift", "platforms/swift/examples", ex_swift),
