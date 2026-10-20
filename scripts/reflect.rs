@@ -1363,7 +1363,55 @@ mod reflect {
         pub accessor: Option<String>,
     }
 
+    /// A crate type uniffi doesn't export, and the mobile-only type that converts into it.
+    /// Swift and Kotlin code names the second where Rust names the first.
+    pub struct StandIn {
+        /// The crate type, such as `TextureRegion`.
+        pub ty: String,
+        /// The mobile-only type, such as `TextureRegionMobile`.
+        pub stand_in: String,
+    }
+
     impl Reflection {
+        /// Each crate type uniffi doesn't export in `build`,
+        /// paired with the one exported type no Python or wasm build declares that converts into it,
+        /// the way `impl From<TextureRegionMobile> for TextureRegion` pairs those two.
+        pub fn stand_ins(&self, build: Build) -> Vec<StandIn> {
+            let declared: BTreeSet<&str> = self.types_in(build).map(|t| t.ident.as_str()).collect();
+            let exported: BTreeSet<&str> = self
+                .types_in(build)
+                .filter(|t| exported_type_name(&t.attrs, &t.ident, build).is_some())
+                .map(|t| t.ident.as_str())
+                .collect();
+            let mobile_only = |ident: &str| {
+                exported.contains(ident)
+                    && [Build::Python, Build::Wasm]
+                        .iter()
+                        .all(|b| self.type_named(ident, *b).is_none())
+            };
+            let mut sources: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
+            for imp in self.trait_impls("From", build) {
+                let target = imp.self_ident.as_str();
+                let source = imp.trait_arg().and_then(|t| last_ident(strip_type(t)));
+                if let Some(source) = source.filter(|s| mobile_only(s))
+                    && declared.contains(target)
+                    && !exported.contains(target)
+                {
+                    sources.entry(target).or_default().insert(source);
+                }
+            }
+            sources
+                .into_iter()
+                .filter_map(|(ty, sources)| match Vec::from_iter(sources).as_slice() {
+                    [only] => Some(StandIn {
+                        ty: ty.to_string(),
+                        stand_in: only.clone(),
+                    }),
+                    _ => None,
+                })
+                .collect()
+        }
+
         /// Functions the uniffi bindings export in `build`.
         pub fn uniffi_fns(&self, build: Build) -> Vec<UniffiFn> {
             self.uniffi_defs(build)

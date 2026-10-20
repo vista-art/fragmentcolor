@@ -24,7 +24,7 @@ mod kotlin {
 
     use heck::ToShoutySnakeCase;
 
-    use crate::reflect::{Build, CallKind, Reflection, SliceGetter, StrConst};
+    use crate::reflect::{Build, CallKind, Reflection, SliceGetter, StandIn, StrConst, replace_qualified};
     use crate::source_text::{
         Nesting, arg_spans, closing, code_only, extension_files, is_ident_char, read_ident,
         skip_space, split_args, top_level_words,
@@ -113,6 +113,8 @@ mod kotlin {
     struct Facts {
         /// String constants the Kotlin bindings don't expose.
         consts: Vec<StrConst>,
+        /// Crate types Kotlin names by the mobile-only type that converts into them.
+        stand_ins: Vec<StandIn>,
         calls: CallPlans,
         conflicts: Vec<Conflict>,
         /// Kotlin spelling of each flat enum entry,
@@ -147,6 +149,7 @@ mod kotlin {
         let calls = plan_calls(&callables, &mut conflicts);
         let _ = FACTS.set(Facts {
             consts: model.str_consts(Build::Android),
+            stand_ins: model.stand_ins(Build::Android),
             calls,
             conflicts,
             enums: flat_enum_spellings(model),
@@ -749,7 +752,8 @@ mod kotlin {
         out = rewrite_settransform_mat4_flatten(&out);
         out = rewrite_float_args(&out);
         out = rewrite_shader_new_to_compose(&out);
-        out = rewrite_texture_region_name(&out);
+        out = rename_stand_ins(&out);
+        out = rewrite_texture_region_builder(&out);
         out = rewrite_write_region_array_arg(&out);
         out = rewrite_instance_set_vertex_value(&out);
         out = rewrite_arrayof_float_to_listof(&out);
@@ -2187,24 +2191,22 @@ mod kotlin {
         line.replace("Shader.new(arrayOf(", "Shader.compose(listOf(")
     }
 
-    // `TextureRegion.from([x,y,w,h]).withStride(N).withRows(M)` →
-    // `TextureRegionMobile(xu, yu, 0u, wu, hu, 0u, Nu, Mu)`
-    // Also handles plain `TextureRegion` → `TextureRegionMobile` renames.
-    fn rewrite_texture_region_name(line: &str) -> String {
-        let line = line.replace("TextureRegion.from(", "TextureRegionMobile(")
-            .replace("TextureRegion(", "TextureRegionMobile(");
-
-        // Handle `TextureRegionMobile(arrayOf(x, y, w, h)).withStride(S).withRows(R)` →
-        // `TextureRegionMobile(xu, yu, 0u, wu, hu, 0u, Su, Ru)`
-        if line.contains("TextureRegionMobile(arrayOf(")
-            && let Some(result) = rewrite_texture_region_builder(&line) {
-                return result;
-            }
-        line
+    /// `TextureRegion` → `TextureRegionMobile`, the mobile-only type that stands in for it.
+    fn rename_stand_ins(line: &str) -> String {
+        facts()
+            .stand_ins
+            .iter()
+            .fold(line.to_string(), |out, s| replace_qualified(&out, &s.ty, &s.stand_in))
     }
 
-    fn rewrite_texture_region_builder(line: &str) -> Option<String> {
-        let needle = "TextureRegionMobile(arrayOf(";
+    // `TextureRegionMobile.from(arrayOf(x, y, w, h)).withStride(S).withRows(R)` →
+    // `TextureRegionMobile(xu, yu, 0u, wu, hu, 0u, Su, Ru)`
+    fn rewrite_texture_region_builder(line: &str) -> String {
+        build_texture_region(line).unwrap_or_else(|| line.to_string())
+    }
+
+    fn build_texture_region(line: &str) -> Option<String> {
+        let needle = "TextureRegionMobile.from(arrayOf(";
         let start = line.find(needle)?;
         let array_inner_start = start + needle.len();
         let chars: Vec<char> = line.chars().collect();

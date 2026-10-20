@@ -19,7 +19,7 @@ mod swift {
     //! 7. `null` → `nil`.
     //! 8. `document.createElement("canvas")` lines → dropped (iOS has no DOM).
     //!    The subsequent `createTarget(canvas)` → `createTextureTarget([800, 600])`.
-    //! 9. `TextureRegion` → `TextureRegionMobile` (uniffi-side rename).
+    //! 9. `TextureRegion` → `TextureRegionMobile`, the mobile-only type that converts into it.
     //! 10. `x..y` range operator → `x...y` (Swift uses `...` not `..`).
     //! 11. `.Rgba` / `.Rgba8UnormSrgb` enum case first-letter lowercasing.
     //! 12. `.unwrap()` on a throwing init → `try!` prefix.
@@ -27,13 +27,14 @@ mod swift {
     //!     when an unlabeled init takes those arguments.
     //! 14. `try` / `await` before a statement whose calls throw or suspend.
     //!
+    //! Rule 9 reads the `From` impls of the types uniffi exports for iOS.
     //! Rules 13 and 14 read the uniffi exports for iOS
     //! and the declarations in the hand-written `*+Extensions.swift` files.
 
     use std::collections::BTreeMap;
     use std::fs;
 
-    use crate::reflect::{Build, CallKind, Reflection, StrConst};
+    use crate::reflect::{Build, CallKind, Reflection, StandIn, StrConst};
     use crate::source_text::{
         Nesting, arg_spans, closing, code_only, extension_files, is_ident_char, read_ident,
         skip_space, split_args, string_end, top_level_words,
@@ -83,6 +84,8 @@ mod swift {
     struct Facts {
         /// String constants the Swift bindings don't expose.
         consts: Vec<StrConst>,
+        /// Crate types Swift names by the mobile-only type that converts into them.
+        stand_ins: Vec<StandIn>,
         /// Instance methods by name, merged over every type that has one.
         /// A line rewriter can't type a receiver variable.
         methods: BTreeMap<String, Effects>,
@@ -100,6 +103,7 @@ mod swift {
     pub fn install(model: &Reflection) {
         let mut facts = Facts {
             consts: model.str_consts(Build::Ios),
+            stand_ins: model.stand_ins(Build::Ios),
             methods: BTreeMap::new(),
             statics: BTreeMap::new(),
             inits: BTreeMap::new(),
@@ -462,8 +466,10 @@ mod swift {
 
         // Swift-specific rewrites beyond the JS baseline:
 
-        // 9. `TextureRegion` → `TextureRegionMobile` (uniffi-side rename for FFI compat).
-        out = replace_whole_word(&out, "TextureRegion", "TextureRegionMobile");
+        // 9. `TextureRegion` → `TextureRegionMobile`, the mobile-only type that stands in for it.
+        for s in &facts().stand_ins {
+            out = replace_whole_word(&out, &s.ty, &s.stand_in);
+        }
 
         // 10. `x..y` Rust exclusive-range operator → `x...y` (Swift closed range `...`).
         //     Only rewrite `..` when NOT preceded or followed by `.` (avoids `...`).
