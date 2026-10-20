@@ -827,7 +827,6 @@ mod kotlin {
         }
         // API-specific rewrites (all now see arrayOf(...) for array literals)
         out = rewrite_create_target_canvas(&out);
-        out = rewrite_createtexture_path(&out);
         out = rewrite_setviewport_tuple(&out);
         // After the rewrites above, which still read the tuple of their own call.
         out = spread_tuple_args(&out);
@@ -1307,62 +1306,6 @@ mod kotlin {
         if line.contains("createTarget(canvas)") {
             return line.replace("createTarget(canvas)", "createTextureTarget(800, 600)");
         }
-        line.to_string()
-    }
-
-    // `createTexture(image[..])` → `createTexture(TextureInputMobile.Path(image), null)`
-    // The `[..]` was already stripped by `drop_rust_slice_suffix`, so the
-    // variable name is already clean.
-    fn rewrite_createtexture_path(line: &str) -> String {
-        // Detect `createTexture(<string_var>)` where the arg is a val holding a path string,
-        // not already a TextureInputMobile call.
-        let needle = "createTexture(";
-        let Some(start) = line.find(needle) else { return line.to_string(); };
-        let call_start = start + needle.len();
-        let chars: Vec<char> = line.chars().collect();
-
-        if call_start >= chars.len() {
-            return line.to_string();
-        }
-
-        // Find matching closing paren
-        let mut depth = 0i32;
-        let mut end = call_start;
-        let mut j = call_start;
-        while j < chars.len() {
-            match chars[j] {
-                '(' => depth += 1,
-                ')' => {
-                    if depth == 0 { end = j; break; }
-                    depth -= 1;
-                }
-                _ => {}
-            }
-            j += 1;
-        }
-
-        let inner: String = chars[call_start..end].iter().collect();
-        let inner_trim = inner.trim();
-
-        // If already starts with TextureInputMobile, skip
-        if inner_trim.starts_with("TextureInputMobile") {
-            return line.to_string();
-        }
-        // A tuple `(...)` spreads over the parameters in `spread_tuple_args`.
-        if inner_trim.starts_with('(') {
-            return line.to_string();
-        }
-        // If the arg is a simple identifier or string (path case)
-        // Check it doesn't look like a bytes argument
-        if !inner_trim.contains("arrayOf") && !inner_trim.contains("Array(") && !inner_trim.contains(',') {
-            let before = &line[..start + needle.len() - 1];
-            let after = &line[end + 1..];
-            // Detect Mipmap variables by naming convention
-            let is_mip_chain = inner_trim.contains("chain") || inner_trim.contains("mip");
-            let variant = if is_mip_chain { "Prepared" } else { "Path" };
-            return format!("{}(TextureInputMobile.{}({}), null){}", before, variant, inner_trim, after);
-        }
-
         line.to_string()
     }
 

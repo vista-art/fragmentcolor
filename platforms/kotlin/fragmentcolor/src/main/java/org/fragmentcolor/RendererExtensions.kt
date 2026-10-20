@@ -58,6 +58,23 @@ suspend fun Renderer.createTexture(bytes: ByteArray, size: List<Int>): Texture {
 suspend fun Renderer.createTexture(bytes: List<Int>, size: List<Int>): Texture =
     createTexture(ByteArray(bytes.size) { bytes[it].toByte() }, size)
 
+/** Create a texture from an image file path or an `http(s)` URL. */
+suspend fun Renderer.createTexture(path: String): Texture {
+    val input = if (path.startsWith("http://") || path.startsWith("https://")) {
+        TextureInputMobile.Url(path)
+    } else {
+        TextureInputMobile.Path(path)
+    }
+    return createTexture(input, null)
+}
+
+/** Create a texture from a [Mipmap] chain, which uploads without decoding. */
+suspend fun Renderer.createTexture(chain: Mipmap): Texture =
+    createTexture(TextureInputMobile.Prepared(chain), null)
+
+/** Create a texture from any [TextureInputMobile] with the default options. */
+suspend fun Renderer.createTexture(input: TextureInputMobile): Texture = createTexture(input, null)
+
 /**
  * Single overloaded `render(...)` family that matches the spelling used by
  * the JavaScript and Python bindings. The uniffi layer exports one concrete
