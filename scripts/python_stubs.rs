@@ -107,6 +107,8 @@ mod python_stubs {
         /// that stands in for it (`TextureTarget` → `PyTextureTarget`).
         faces: &'a BTreeMap<String, String>,
         unknown: RefCell<BTreeSet<String>>,
+        /// Documented untyped values that found no canonical counterpart.
+        unmatched: RefCell<BTreeSet<String>>,
         referenced: RefCell<BTreeSet<String>>,
         /// Traits and types currently being expanded, to stop recursion.
         expanding: RefCell<Vec<String>>,
@@ -151,6 +153,7 @@ mod python_stubs {
             stub_names: &stub_names,
             faces: &faces,
             unknown: Default::default(),
+            unmatched: Default::default(),
             referenced: Default::default(),
             expanding: Default::default(),
             aliases: Default::default(),
@@ -176,6 +179,7 @@ mod python_stubs {
         obtainable.extend(module.classes.iter().cloned());
         *ctx.obtainable.borrow_mut() = Some(obtainable);
         ctx.unknown.borrow_mut().clear();
+        ctx.unmatched.borrow_mut().clear();
 
         let mut functions = String::new();
         for rust in &module.functions {
@@ -212,6 +216,14 @@ mod python_stubs {
         extra.sort_by_key(|rust| &stub_names[*rust]);
         order.extend(extra);
 
+        let unmatched = ctx.unmatched.borrow();
+        if !unmatched.is_empty() {
+            let list: Vec<&str> = unmatched.iter().map(String::as_str).collect();
+            println!(
+                "cargo::warning=python_stubs: no canonical parameter for {}; the stub uses Any",
+                list.join(", ")
+            );
+        }
         let unknown = ctx.unknown.borrow();
         if !unknown.is_empty() {
             let list: Vec<&str> = unknown.iter().map(String::as_str).collect();
@@ -1144,6 +1156,13 @@ mod python_stubs {
             return (atoms, source);
         }
         let Some((canonical, scope, owner)) = canonical_value(method, param, ctx) else {
+            if method.lsp_doc.is_some() {
+                let owner = ctx.stub_names.get(&method.owner).map_or("", String::as_str);
+                let value = param.map_or("return", |(name, _)| name);
+                ctx.unmatched
+                    .borrow_mut()
+                    .insert(format!("{owner}.{}({value})", method.py_name));
+            }
             return (Vec::new(), None);
         };
         let owner_name = ctx
