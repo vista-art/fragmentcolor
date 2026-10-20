@@ -220,7 +220,6 @@ impl From<&Vertex> for Instance {
     }
 }
 
-#[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
 #[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Clone, Debug, PartialEq)]
 pub enum VertexValue {

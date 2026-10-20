@@ -37,12 +37,12 @@ __all__ = [
     "rendercanvas_context_hook",
 ]
 
-_IntoVertexPositionFull: TypeAlias = float | Sequence[float] | Sequence[int]
+_PyAttributeValue: TypeAlias = float | VertexValue | Sequence[float]
 _PySize: TypeAlias = Size | Sequence[float] | Sequence[int] | dict[str, float] | dict[str, int]
 _PyTextureBytes: TypeAlias = bytes | npt.NDArray[numpy.uint8] | Sequence[int]
+_PyVertexPosition: TypeAlias = float | Vertex | Sequence[float]
 _Renderable: TypeAlias = Mesh | Pass | Scene | Shader | Sequence[Mesh | Pass | Scene | Shader]
 _SceneObject: TypeAlias = Camera | Light | Model
-_VertexValue: TypeAlias = int | float | Sequence[float] | Sequence[int]
 
 class FragmentColorError(Exception): ...
 
@@ -1405,7 +1405,7 @@ class Mesh:
         ```
         """
     @staticmethod
-    def from_vertices(vertices: Sequence[Vertex | Sequence[float] | tuple[Sequence[float], Sequence[float], Sequence[float]] | tuple[Sequence[float], Sequence[float]]]) -> Mesh:
+    def from_vertices(vertices: Sequence[float | Vertex | Sequence[float] | tuple[Sequence[float], Sequence[float], Sequence[float]] | tuple[Sequence[float], Sequence[float]]]) -> Mesh:
         """
         Create a mesh from an iterator of Vertex values.
 
@@ -1421,7 +1421,7 @@ class Mesh:
         ])
         ```
         """
-    def add_vertex(self, vertex: Vertex | Sequence[float] | tuple[Sequence[float], Sequence[float], Sequence[float]] | tuple[Sequence[float], Sequence[float]]) -> None:
+    def add_vertex(self, vertex: float | Vertex | Sequence[float] | tuple[Sequence[float], Sequence[float], Sequence[float]] | tuple[Sequence[float], Sequence[float]]) -> None:
         """
         Append a single vertex to the mesh. Pass an array literal for the
         position (`[x, y]` or `[x, y, z]`); for vertices that carry `uv`, `color`,
@@ -1436,7 +1436,7 @@ class Mesh:
         m.add_vertex([0.0, 0.0])
         ```
         """
-    def add_vertices(self, vertices: Sequence[Vertex | Sequence[float] | tuple[Sequence[float], Sequence[float], Sequence[float]] | tuple[Sequence[float], Sequence[float]]]) -> None:
+    def add_vertices(self, vertices: Sequence[float | Vertex | Sequence[float] | tuple[Sequence[float], Sequence[float], Sequence[float]] | tuple[Sequence[float], Sequence[float]]]) -> None:
         """
         Add many vertices to the mesh.
 
@@ -1451,7 +1451,7 @@ class Mesh:
         ])
         ```
         """
-    def add_instance(self, item: Instance | Vertex) -> None:
+    def add_instance(self, item: Instance | Vertex | dict[str, Any]) -> None:
         """
         Add a single per-instance attribute set to the mesh.
 
@@ -1473,7 +1473,7 @@ class Mesh:
         m.add_instance(Instance().set("offset", offset).set("tint", tint))
         ```
         """
-    def add_instances(self, items: Sequence[Instance | Vertex]) -> None:
+    def add_instances(self, items: Sequence[Instance | Vertex | dict[str, Any]]) -> None:
         """
         Add many per-instance attribute sets to the mesh in one call.
 
@@ -1645,7 +1645,7 @@ class Vertex:
     UV1: ClassVar[str]
     COLOR0: ClassVar[str]
     COLOR1: ClassVar[str]
-    def __new__(cls, position: _IntoVertexPositionFull) -> Vertex:
+    def __new__(cls, position: _PyVertexPosition) -> Vertex:
         """
         Construct a `Vertex` from a 2D or 3D position. Set additional attributes
         (`uv`, `color`, custom keys) with `set` to match the per-vertex inputs
@@ -1659,7 +1659,7 @@ class Vertex:
         ```
         """
     @staticmethod
-    def pbr(position: _IntoVertexPositionFull) -> Vertex:
+    def pbr(position: _PyVertexPosition) -> Vertex:
         """
         Construct a `Vertex` that matches the PBR shader's vertex input layout.
         Seeds every attribute [`Material::pbr`](https://fragmentcolor.org/api/scene/material/pbr)
@@ -1696,7 +1696,7 @@ class Vertex:
         mesh.add_vertex(Vertex.pbr([ 0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]))
         ```
         """
-    def set(self, key: str, value: _VertexValue) -> Vertex:
+    def set(self, key: str, value: _PyAttributeValue) -> Vertex:
         """
         Attach an arbitrary property to the vertex.
 
@@ -1739,7 +1739,7 @@ class Vertex:
 @final
 class Instance:
     def __new__(cls) -> Instance: ...
-    def set(self, key: str, value: _VertexValue) -> Instance: ...
+    def set(self, key: str, value: _PyAttributeValue) -> Instance: ...
 
 @final
 class VertexValue:

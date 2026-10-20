@@ -202,6 +202,53 @@ def check_vertex_values():
     print("VertexValue keeps integer attribute types")
 
 
+INSTANCED_SHADER = """
+struct VOut { @builtin(position) pos: vec4<f32>, @location(0) tint: vec4<f32> };
+@vertex fn vs_main(
+  @location(0) position: vec2<f32>,
+  @location(1) offset: vec2<f32>,
+  @location(2) tint: vec4<f32>,
+) -> VOut {
+  var out: VOut;
+  out.pos = vec4f(position + offset, 0., 1.);
+  out.tint = tint;
+  return out;
+}
+@fragment fn fs_main(v: VOut) -> @location(0) vec4<f32> { return v.tint; }
+"""
+
+
+def check_mesh_inputs():
+    """The Mesh, Vertex, and Instance methods take the forms their stub lists."""
+    mesh = Mesh.from_vertices([[0.0, 0.0], (1.0, 0.0), Vertex([1.0, 1.0])])
+    mesh.add_vertices([((0.0, 1.0, 0.0), (0.0, 1.0)), ((1.0, 1.0, 0.0), (1.0, 1.0), (1.0, 1.0, 1.0, 1.0))])
+    mesh.add_vertex(Vertex(Vertex([0.5, 0.5])))
+    mesh.set_indices(np.array([0, 1, 2], dtype=np.uint32))
+
+    def rejects(label, call):
+        try:
+            call()
+        except TypeError as e:
+            print(f"rejected {label}: {str(e).splitlines()[0]}")
+            return
+        raise AssertionError(f"{label} should raise TypeError")
+
+    rejects("a five-number position", lambda: Vertex([1, 2, 3, 4, 5]))
+    rejects("a string attribute", lambda: Vertex([0, 0]).set("w", "x"))
+    rejects("a number as an instance", lambda: Mesh().add_instance(3.0))
+    rejects("a string instance attribute", lambda: Mesh().add_instance({"offset": "x"}))
+
+    # A dict instance sets its attributes in insertion order, so locations follow it.
+    instanced = Mesh()
+    instanced.add_vertex([0.0, 0.0])
+    instanced.add_instances([
+        {"offset": [0.1, 0.2], "tint": [1.0, 0.0, 0.0, 1.0]},
+        Instance().set("offset", [0.3, 0.4]).set("tint", [0.0, 1.0, 0.0, 1.0]),
+    ])
+    Shader(INSTANCED_SHADER).add_mesh(instanced)
+    print("Mesh, Vertex, and Instance take their typed inputs")
+
+
 def run():
     """Simple smoke tests before running full examples"""
 
@@ -352,6 +399,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_size(renderer, tex)
     check_ndarray_layouts(renderer)
     check_vertex_values()
+    check_mesh_inputs()
 
     # Push constants smoke: solid color via var<immediate>
     pc_shader = Shader("""
