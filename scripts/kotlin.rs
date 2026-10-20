@@ -555,7 +555,6 @@ mod kotlin {
         let hidden_var_stubs: &[(&str, &str)] = &[
             ("encoded_png_bytes", "val encoded_png_bytes: ByteArray = byteArrayOf()"),
             ("raw_rgba", "val raw_rgba: ByteArray = ByteArray(8 * 8 * 4)"),
-            ("glb_bytes", "val glb_bytes: ByteArray = byteArrayOf()"),
             ("bytes", "val bytes: ByteArray = byteArrayOf()"),
             ("png", "val png: ByteArray = byteArrayOf()"),
         ];
@@ -650,11 +649,6 @@ mod kotlin {
             }
 
             let rewritten = rewrite_line(&line);
-            // Drop lines that are just `val _ = ...` (Kotlin reserves `_`)
-            let trimmed_rewritten = rewritten.trim_start();
-            if trimmed_rewritten.starts_with("val _ =") || trimmed_rewritten == "val _" {
-                continue;
-            }
             // Handle Kotlin destructuring: `val (a, b) = expr` is not supported for
             // non-data-class types. Expand to two separate val declarations.
             let rewritten = if let Some(expanded) = expand_destructuring_val(&rewritten) {
@@ -754,7 +748,6 @@ mod kotlin {
         // `List<Float>` of 16, not `Array<List<Float>>`.
         out = rewrite_settransform_mat4_flatten(&out);
         out = rewrite_float_args(&out);
-        out = rewrite_arrayof_byte_literals(&out);
         out = rewrite_shader_new_to_compose(&out);
         out = rewrite_texture_region_name(&out);
         out = rewrite_write_region_array_arg(&out);
@@ -2123,7 +2116,7 @@ mod kotlin {
 
     // `arrayOf(1.0, 0.0, 0.0, 1.0)` where all elements are float/int literals (no hex) →
     // `listOf(1.0f, 0.0f, 0.0f, 1.0f)` for compatibility with Instance.set / Vertex.set / setClearColor.
-    // Does NOT apply if elements look like hex bytes (handled by rewrite_arrayof_byte_literals).
+    // Does NOT apply if elements look like hex bytes.
     fn rewrite_arrayof_float_to_listof(line: &str) -> String {
         let needle = "arrayOf(";
         if !line.contains(needle) { return line.to_string(); }
@@ -2181,59 +2174,6 @@ mod kotlin {
             i += 1;
         }
         out
-    }
-
-    // `val name = arrayOf(0x89, 0x50, ...)` where all elements are hex/byte literals →
-    // `val name = byteArrayOf(0x89.toByte(), 0x50.toByte(), ...)` for ByteArray compatibility.
-    fn rewrite_arrayof_byte_literals(line: &str) -> String {
-        // Pattern: `= arrayOf(...)` where ALL elements are hex literals (0x...)
-        let needle = "arrayOf(";
-        if !line.contains(needle) { return line.to_string(); }
-        // Only apply if this looks like a bytes assignment (contains hex literals)
-        if !line.contains("0x") && !line.contains("0X") { return line.to_string(); }
-
-        // Find `arrayOf(`
-        let Some(start) = line.find(needle) else { return line.to_string(); };
-        let inner_start = start + needle.len();
-        let chars: Vec<char> = line.chars().collect();
-
-        let mut depth = 0i32;
-        let mut inner_end = None;
-        let mut j = inner_start;
-        while j < chars.len() {
-            match chars[j] {
-                '(' => depth += 1,
-                ')' => {
-                    if depth == 0 { inner_end = Some(j); break; }
-                    depth -= 1;
-                }
-                _ => {}
-            }
-            j += 1;
-        }
-        let Some(inner_end) = inner_end else { return line.to_string(); };
-        let inner: String = chars[inner_start..inner_end].iter().collect();
-        let elements = split_args(&inner);
-
-        // Check if all elements are hex literals (possibly with trailing comma)
-        let all_hex = elements.iter().all(|e| {
-            let e = e.trim().trim_end_matches(',').trim();
-            e.starts_with("0x") || e.starts_with("0X")
-        });
-        if !all_hex { return line.to_string(); }
-
-        // Convert to byteArrayOf(...toByte())
-        let byte_elements: Vec<String> = elements.iter()
-            .filter(|e| !e.trim().is_empty())
-            .map(|e| {
-                let e = e.trim().trim_end_matches(',').trim();
-                format!("{}.toByte()", e)
-            })
-            .collect();
-
-        let before = &line[..start];
-        let after: String = chars[inner_end + 1..].iter().collect();
-        format!("{}byteArrayOf({}){}", before, byte_elements.join(", "), after)
     }
 
     // `Shader.new([...])` → `Shader.compose(listOf(...))`
