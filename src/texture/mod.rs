@@ -21,6 +21,8 @@ pub use usage::TextureUsage;
 pub(crate) mod ktx2_loader;
 
 mod platform;
+#[cfg(python)]
+pub(crate) use platform::{PyTextureId, PyTextureSource};
 
 use crate::{RenderContext, Size};
 use image::{DynamicImage, GenericImageView};
@@ -512,51 +514,6 @@ pub(crate) fn js_to_texture_bytes(
         _ => Err(crate::texture::TextureError::Error(
             "Expected raw byte data".into(),
         )),
-    }
-}
-
-/// A texture id from Python: the integer value or a `TextureId`.
-#[cfg(python)]
-#[derive(FromPyObject)]
-pub(crate) enum PyTextureId {
-    #[pyo3(annotation = "int")]
-    Int(u64),
-    #[pyo3(annotation = "TextureId")]
-    Id(TextureId),
-}
-
-#[cfg(python)]
-impl From<PyTextureId> for TextureId {
-    fn from(value: PyTextureId) -> Self {
-        match value {
-            PyTextureId::Int(id) => id.into(),
-            PyTextureId::Id(id) => id,
-        }
-    }
-}
-
-/// Raw texture bytes from Python: `bytes` or a sequence of ints,
-/// or a contiguous `uint8` ndarray of any shape, tried in that order.
-#[cfg(python)]
-#[derive(FromPyObject)]
-pub(crate) enum PyTextureBytes<'py> {
-    #[pyo3(annotation = "bytes | Sequence[int]")]
-    Bytes(Vec<u8>),
-    #[pyo3(annotation = "ndarray[uint8]")]
-    Array(numpy::PyReadonlyArrayDyn<'py, u8>),
-}
-
-#[cfg(python)]
-impl TryFrom<PyTextureBytes<'_>> for Vec<u8> {
-    type Error = PyErr;
-
-    fn try_from(value: PyTextureBytes<'_>) -> Result<Self, Self::Error> {
-        match value {
-            PyTextureBytes::Bytes(bytes) => Ok(bytes),
-            PyTextureBytes::Array(array) => array.as_slice().map(<[u8]>::to_vec).map_err(|_| {
-                crate::error::PyFragmentColorError::new_err("ndarray must be contiguous")
-            }),
-        }
     }
 }
 

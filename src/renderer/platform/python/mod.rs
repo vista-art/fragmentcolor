@@ -1,12 +1,12 @@
 use crate::{
     PySize, Renderer,
     target::{PyTextureTarget, RenderCanvasTarget},
-    texture::PyTextureId,
+    texture::{PyTextureId, PyTextureSource},
 };
 use lsp_doc::lsp_doc;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict, PyList};
+use pyo3::types::PyDict;
 
 pub mod iterator;
 pub use iterator::*;
@@ -146,7 +146,6 @@ impl Renderer {
         signature = (input, size=None, format=None, mipmaps=None)
     )]
     #[lsp_doc("docs/api/core/renderer/create_texture.md")]
-    #[allow(private_interfaces)]
     pub fn create_texture_py(
         &self,
         input: PyTextureSource<'_>,
@@ -243,7 +242,6 @@ impl Renderer {
 
     #[pyo3(name = "unregister_texture")]
     #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
-    #[allow(private_interfaces)]
     pub fn unregister_texture_py(&self, texture_id: PyTextureId) -> Result<(), PyErr> {
         self.unregister_texture(texture_id.into())?;
         Ok(())
@@ -257,27 +255,10 @@ impl Renderer {
     /// device loop.
     #[pyo3(name = "read_texture")]
     #[lsp_doc("docs/api/core/renderer/read_texture.md")]
-    #[allow(private_interfaces)]
     pub fn read_texture_py(&self, texture_id: PyTextureId) -> Result<Vec<u8>, PyErr> {
         pollster::block_on(self.read_texture(texture_id.into()))
             .map_err(|e| crate::error::PyFragmentColorError::new_err(e.to_string()))
     }
-}
-
-/// A `create_texture` source from Python. Raw bytes come only as
-/// `bytes` or a `list` of ints, so an int ndarray never reads as bytes.
-#[derive(FromPyObject)]
-pub(crate) enum PyTextureSource<'py> {
-    #[pyo3(annotation = "bytes")]
-    Bytes(Bound<'py, PyBytes>),
-    #[pyo3(annotation = "list[int]")]
-    List(Bound<'py, PyList>),
-    #[pyo3(annotation = "str")]
-    Path(String),
-    #[pyo3(annotation = "ndarray[uint8]")]
-    Array(numpy::PyReadonlyArrayDyn<'py, u8>),
-    #[pyo3(annotation = "Mipmap")]
-    Mipmap(crate::texture::Mipmap),
 }
 
 /// Builds the `TextureInput` for `create_texture`. An ndarray fills in its

@@ -30,52 +30,6 @@ impl Default for SamplerOptions {
     }
 }
 
-/// `SamplerOptions` from Python: the class itself, or a dict of its fields.
-#[cfg(python)]
-#[derive(pyo3::FromPyObject)]
-pub(crate) enum PySamplerOptions<'py> {
-    #[pyo3(annotation = "SamplerOptions")]
-    Options(SamplerOptions),
-    #[pyo3(annotation = "dict[str, bool | CompareFunction | None]")]
-    Dict(pyo3::Bound<'py, pyo3::types::PyDict>),
-}
-
-#[cfg(python)]
-impl TryFrom<PySamplerOptions<'_>> for SamplerOptions {
-    type Error = pyo3::PyErr;
-
-    /// Missing keys keep the defaults, and unknown keys are ignored.
-    fn try_from(input: PySamplerOptions<'_>) -> Result<Self, Self::Error> {
-        use pyo3::exceptions::PyTypeError;
-        use pyo3::types::{PyAnyMethods, PyDictMethods};
-
-        let dict = match input {
-            PySamplerOptions::Options(options) => return Ok(options),
-            PySamplerOptions::Dict(dict) => dict,
-        };
-        let defaults = Self::default();
-        let flag = |key: &str, default: bool| -> pyo3::PyResult<bool> {
-            match dict.get_item(key)? {
-                None => Ok(default),
-                Some(value) => value
-                    .extract()
-                    .map_err(|_| PyTypeError::new_err(format!("'{key}' must be a bool"))),
-            }
-        };
-        Ok(Self {
-            repeat_x: flag("repeat_x", defaults.repeat_x)?,
-            repeat_y: flag("repeat_y", defaults.repeat_y)?,
-            smooth: flag("smooth", defaults.smooth)?,
-            compare: match dict.get_item("compare")? {
-                None => defaults.compare,
-                Some(value) => value.extract().map_err(|_| {
-                    PyTypeError::new_err("'compare' must be a CompareFunction or None")
-                })?,
-            },
-        })
-    }
-}
-
 pub fn create_default_sampler(device: &wgpu::Device) -> wgpu::Sampler {
     create_sampler(device, SamplerOptions::default())
 }
