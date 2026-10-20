@@ -85,6 +85,8 @@ Python `TextureTarget.get_image()` returns an array of shape `(height, width, 4)
 
 `Texture.write` and `Texture.write_region` take tightly packed rows at any width. Without an explicit `bytes_per_row`, the write path padded each row to a multiple of 256 bytes and asked for that much data, so a texture taller than one row failed with `Input data smaller than required for layout` whenever its row was not already a multiple of 256 bytes. A 2x2 RGBA texture asked for 264 bytes instead of 16. Only copies between a buffer and a texture need 256-byte rows, and `Queue::write_texture` takes any stride. A row now defaults to the region width times the bytes per pixel. Data padded the way the old default asked still uploads intact: when its length is exactly that of rows padded to 256 bytes, it reads at the padded stride. An explicit `bytes_per_row` only has to cover the row width, so a tight stride such as 16 is accepted too. The fix reaches every binding.
 
+Kotlin creates a texture from raw pixels and their size. The generated Kotlin for `renderer.create_texture((pixels, [w, h]))` dropped the size, so the bytes went to the image decoder and the call failed at run time. The Kotlin extensions now carry overloads Swift already has, and the generated examples call them as the Rust examples read: `renderer.createTexture(pixels, listOf(w, h))`, `createTexture(path)` and `createTexture(chain)`, `Shader(listOf(...))` for a shader built from parts, `TextureRegionMobile.from(listOf(...)).withStride(...).withRows(...)`, and `texture.writeRegion(bytes, listOf(x, y, w, h))`. Kotlin examples also keep an integer array as a list of `Int`, where they wrote floats.
+
 ## 0.12.5: WebGL2 fixes
 
 A patch release that makes the WebGL2 fallback work. There are no API changes.
