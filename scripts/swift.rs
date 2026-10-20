@@ -36,8 +36,8 @@ mod swift {
 
     use crate::reflect::{Build, CallKind, Reflection, StandIn, StrConst};
     use crate::source_text::{
-        Nesting, arg_spans, closing, code_only, extension_files, is_ident_char, read_ident,
-        skip_space, split_args, string_end, top_level_words,
+        Nesting, arg_spans, closing, code_only, drop_semicolon_before_comment, extension_files,
+        is_ident_char, read_ident, skip_space, split_args, string_end, top_level_words,
     };
 
     /// The extension files that add Swift overloads on top of uniffi's.
@@ -455,6 +455,9 @@ mod swift {
             let leading_len = out.len() - out.trim_start().len();
             let leading = &src[..leading_len];
             out = format!("{}{}", leading, stripped.trim_start());
+        }
+        if !in_string {
+            out = drop_semicolon_before_comment(&out);
         }
 
         out = drop_new_keyword(&out);

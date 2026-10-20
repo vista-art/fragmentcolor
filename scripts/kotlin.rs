@@ -30,8 +30,8 @@ mod kotlin {
 
     use crate::reflect::{Build, CallKind, Reflection, SliceGetter, StandIn, StrConst, replace_qualified};
     use crate::source_text::{
-        Nesting, arg_spans, closing, code_only, extension_files, is_ident_char, read_ident,
-        skip_space, split_args, top_level_words,
+        Nesting, arg_spans, closing, code_only, drop_semicolon_before_comment, extension_files,
+        is_ident_char, read_ident, skip_space, split_args, top_level_words,
     };
 
     /// The extension functions written by hand on top of uniffi's Kotlin.
@@ -767,6 +767,7 @@ mod kotlin {
                 }
             }
 
+            let line = if starts_in_string { line } else { drop_semicolon_before_comment(&line) };
             let rewritten = rewrite_line(&line);
             // Rename duplicate `val <name>` declarations to avoid conflicting declarations.
             let rewritten = rename_duplicate_val(&rewritten, &mut declared_vals);

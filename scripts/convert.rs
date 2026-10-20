@@ -1091,6 +1091,15 @@ mod convert {
         if t.is_empty() {
             return String::new();
         }
+        // A trailing comment keeps the semicolon on the code before it.
+        if let Some(idx) = find_comment_marker(t)
+            && !t[..idx].trim().is_empty()
+        {
+            let (code, comment) = t.split_at(idx);
+            let body = code.trim_end();
+            let gap = &code[body.len()..];
+            return format!("{}{}{}", ensure_js_semicolon(body), gap, comment);
+        }
         // If it already ends with a semicolon, keep as-is
         if t.ends_with(';') {
             return s.to_string();
@@ -1423,7 +1432,7 @@ mod convert {
             && let Some(idx) = find_comment_marker(&line_out)
         {
             let (mut head, tail) = line_out.split_at(idx);
-            head = head.trim_end_matches(';').trim_end();
+            head = head.trim_end().trim_end_matches(';').trim_end();
             if head.is_empty() {
                 line_out = format!("#{}", &tail[2..]);
             } else {
@@ -1923,7 +1932,7 @@ mod convert {
                 if let Some(idx) = find_comment_marker(&line) {
                     let (mut head, tail) = line.split_at(idx);
                     // Strip any trailing semicolon immediately before comment
-                    head = head.trim_end_matches(';').trim_end();
+                    head = head.trim_end().trim_end_matches(';').trim_end();
                     if head.is_empty() {
                         // Pure comment line: no leading space before '#'
                         line = format!("#{}", &tail[2..]);

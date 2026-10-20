@@ -73,6 +73,33 @@ mod source_text {
         text.len()
     }
 
+    /// Byte offset of the `//` that opens a line comment, outside string literals.
+    pub fn comment_start(text: &str) -> Option<usize> {
+        let mut at = 0;
+        while at < text.len() {
+            let rest = &text[at..];
+            if rest.starts_with("//") {
+                return Some(at);
+            }
+            let c = rest.chars().next()?;
+            at += if c == '"' { string_end(rest) } else { c.len_utf8() };
+        }
+        None
+    }
+
+    /// `line` without the `;` that ends its code before a trailing comment:
+    /// `call(); // note` becomes `call() // note`.
+    pub fn drop_semicolon_before_comment(line: &str) -> String {
+        let Some(at) = comment_start(line) else {
+            return line.to_string();
+        };
+        let (code, comment) = line.split_at(at);
+        match code.trim_end().strip_suffix(';') {
+            Some(code) if !code.trim().is_empty() => format!("{code} {comment}"),
+            _ => line.to_string(),
+        }
+    }
+
     /// Each of `words` that stands as a whole word at brace depth 0, with its byte offset.
     pub fn top_level_words<'a>(code: &str, words: &[&'a str]) -> Vec<(&'a str, usize)> {
         let mut found = Vec::new();
