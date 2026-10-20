@@ -391,6 +391,7 @@ mod reflect {
     pub struct FnDef {
         pub attrs: Vec<Attribute>,
         pub sig: Signature,
+        pub is_pub: bool,
         pub cfg: Cfg,
     }
 
@@ -674,6 +675,7 @@ mod reflect {
                             ImplItem::Fn(f) => Some(FnDef {
                                 attrs: f.attrs.clone(),
                                 sig: f.sig.clone(),
+                                is_pub: matches!(f.vis, syn::Visibility::Public(_)),
                                 cfg: impl_cfg.and(&f.attrs),
                             }),
                             _ => None,
@@ -714,6 +716,7 @@ mod reflect {
                 Item::Fn(f) => model.free_fns.push(FnDef {
                     attrs: f.attrs.clone(),
                     sig: f.sig.clone(),
+                    is_pub: matches!(f.vis, syn::Visibility::Public(_)),
                     cfg: cfg.and(&f.attrs),
                 }),
                 Item::Macro(m) => {
@@ -1171,7 +1174,7 @@ mod reflect {
                 .collect()
         }
 
-        /// The slice getters of the types uniffi exports in `build`
+        /// The `pub` slice getters of the types uniffi exports in `build`
         /// that no uniffi export of the same type shares a name with.
         pub fn slice_getters(&self, build: Build) -> Vec<SliceGetter> {
             let mut out = Vec::new();
@@ -1187,7 +1190,7 @@ mod reflect {
                     .collect();
                 let names: BTreeSet<String> =
                     exported.iter().map(|f| uniffi_name(f, build)).collect();
-                for getter in self.plain_fns(owner, build) {
+                for getter in self.plain_fns(owner, build).filter(|f| f.is_pub) {
                     let name = getter.sig.ident.to_string().to_lower_camel_case();
                     let Some(element) = slice_element(&getter.sig) else {
                         continue;
