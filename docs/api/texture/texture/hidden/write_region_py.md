@@ -6,6 +6,7 @@ The `region` argument accepts:
 - `(w, h)` / `[w, h]`: size only, origin `(0, 0, 0)`
 - `(x, y, w, h)` / `[x, y, w, h]`: 2D rectangle
 - `(x, y, z, w, h, d)` / `[x, y, z, w, h, d]`: 3D box
+- A `ScreenRegion`: its pixel rectangle at `z = 0`, one layer deep
 - `{"x": ..., "y": ..., "z"?: ..., "width": ..., "height": ..., "depth"?: ..., "bytes_per_row"?: ..., "rows_per_image"?: ...}`
 - `{"min_x": ..., "min_y": ..., "max_x": ..., "max_y": ..., "min_z"?: ..., "max_z"?: ..., "bytes_per_row"?: ..., "rows_per_image"?: ...}`
 
