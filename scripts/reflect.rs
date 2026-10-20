@@ -13,6 +13,7 @@ mod reflect {
     use std::fs;
     use std::path::{Path, PathBuf};
 
+    use proc_macro2::{TokenStream, TokenTree};
     use quote::ToTokens;
     use syn::punctuated::Punctuated;
     use syn::{Attribute, Fields, ImplItem, Item, Meta, Signature, Token, Type};
@@ -347,14 +348,22 @@ mod reflect {
         pub attrs: Vec<Attribute>,
         pub cfg: Cfg,
         pub is_unit: bool,
+        /// Field types, named or positional.
+        pub fields: Vec<Type>,
     }
 
     /// An `impl` block, inherent or for a trait.
     pub struct ImplDef {
         /// The file that declares the block.
         pub file: PathBuf,
+        /// Last path segment of the self type. Empty for slices, references
+        /// and other types without a path.
         pub self_ident: String,
+        pub self_ty: Type,
         pub is_trait_impl: bool,
+        /// The implemented trait with its generic arguments, such as `From<f32>`.
+        pub trait_path: Option<syn::Path>,
+        pub generics: syn::Generics,
         pub attrs: Vec<Attribute>,
         pub cfg: Cfg,
         pub fns: Vec<FnDef>,
@@ -384,11 +393,35 @@ mod reflect {
         pub cfg: Cfg,
     }
 
+    impl ImplDef {
+        /// Last segment of the implemented trait, such as `From`.
+        pub fn trait_ident(&self) -> Option<String> {
+            self.trait_path
+                .as_ref()
+                .and_then(|p| p.segments.last())
+                .map(|s| s.ident.to_string())
+        }
+
+        /// First type argument of the implemented trait: `X` in `From<X>`.
+        pub fn trait_arg(&self) -> Option<&Type> {
+            let segment = self.trait_path.as_ref()?.segments.last()?;
+            let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
+                return None;
+            };
+            args.args.iter().find_map(|a| match a {
+                syn::GenericArgument::Type(t) => Some(t),
+                _ => None,
+            })
+        }
+    }
+
     #[derive(Default)]
     pub struct Reflection {
         pub types: Vec<TypeDef>,
         pub impls: Vec<ImplDef>,
         pub free_fns: Vec<FnDef>,
+        macros: Vec<MacroDef>,
+        pending: Vec<Invocation>,
     }
 
     // syn types only implement Debug behind its `extra-traits` feature, so
@@ -409,7 +442,69 @@ mod reflect {
             let mut model = Reflection::default();
             let lib = root.join("src/lib.rs");
             walk_file(&lib, &root.join("src"), Cfg::All(Vec::new()), &mut model);
+            // Expanded items may invoke further macros; a few rounds settle it.
+            for _ in 0..4 {
+                let pending = std::mem::take(&mut model.pending);
+                if pending.is_empty() {
+                    break;
+                }
+                for call in pending {
+                    let Some(items) = model.expand(&call) else {
+                        continue;
+                    };
+                    walk_items(&items, &call.file, &call.child_dir, &call.cfg, &mut model);
+                }
+            }
             model
+        }
+
+        /// Types named `ident` that compile in `build`.
+        pub fn type_named(&self, ident: &str, build: Build) -> Option<&TypeDef> {
+            self.types_in(build).find(|t| t.ident == ident)
+        }
+
+        /// Impls of the trait named `trait_ident` that compile in `build`.
+        pub fn trait_impls(
+            &self,
+            trait_ident: &str,
+            build: Build,
+        ) -> impl Iterator<Item = &ImplDef> {
+            self.impls.iter().filter(move |imp| {
+                imp.cfg.holds(build) && imp.trait_ident().as_deref() == Some(trait_ident)
+            })
+        }
+
+        /// Source types of the `conversion` (`From` or `TryFrom`) impls that
+        /// target the type named `target`, with the impl that declares each.
+        pub fn conversions_into(
+            &self,
+            target: &str,
+            conversion: &str,
+            build: Build,
+        ) -> Vec<(&ImplDef, &Type)> {
+            self.trait_impls(conversion, build)
+                .filter(|imp| imp.self_ident == target)
+                .filter_map(|imp| imp.trait_arg().map(|arg| (imp, arg)))
+                .collect()
+        }
+
+        /// Methods of plain impl blocks (not bindings, not trait impls) that
+        /// compile in `build`, with their impl: the canonical Rust API.
+        pub fn plain_methods(&self, build: Build) -> impl Iterator<Item = (&ImplDef, &FnDef)> {
+            self.impls
+                .iter()
+                .filter(move |imp| {
+                    imp.cfg.holds(build)
+                        && !imp.is_trait_impl
+                        && !metas(&imp.attrs, build).iter().any(|m| {
+                            matches!(
+                                meta_ident(m).as_str(),
+                                "pymethods" | "wasm_bindgen" | "export"
+                            )
+                        })
+                })
+                .flat_map(|imp| imp.fns.iter().map(move |f| (imp, f)))
+                .filter(move |(_, f)| f.cfg.holds(build))
         }
 
         /// Types that compile in `build`.
@@ -427,7 +522,9 @@ mod reflect {
             self.impls.iter().filter(move |imp| {
                 imp.cfg.holds(build)
                     && !imp.is_trait_impl
-                    && metas(&imp.attrs, build).iter().any(|m| meta_ident(m) == binding)
+                    && metas(&imp.attrs, build)
+                        .iter()
+                        .any(|m| meta_ident(m) == binding)
             })
         }
 
@@ -479,7 +576,10 @@ mod reflect {
             binding: &'static str,
         ) -> impl Iterator<Item = &FnDef> {
             self.free_fns.iter().filter(move |f| {
-                f.cfg.holds(build) && metas(&f.attrs, build).iter().any(|m| meta_ident(m) == binding)
+                f.cfg.holds(build)
+                    && metas(&f.attrs, build)
+                        .iter()
+                        .any(|m| meta_ident(m) == binding)
             })
         }
     }
@@ -543,6 +643,7 @@ mod reflect {
                             attrs: v.attrs.clone(),
                             cfg: Cfg::All(cfgs_of(&v.attrs)),
                             is_unit: matches!(v.fields, Fields::Unit),
+                            fields: v.fields.iter().map(|f| f.ty.clone()).collect(),
                         })
                         .collect();
                     model.types.push(TypeDef {
@@ -555,15 +656,15 @@ mod reflect {
                     });
                 }
                 Item::Impl(imp) => {
-                    let Type::Path(self_ty) = imp.self_ty.as_ref() else {
-                        continue;
+                    let self_ident = match strip_type(&imp.self_ty) {
+                        Type::Path(p) => p
+                            .path
+                            .segments
+                            .last()
+                            .map(|s| s.ident.to_string())
+                            .unwrap_or_default(),
+                        _ => String::new(),
                     };
-                    let self_ident = self_ty
-                        .path
-                        .segments
-                        .last()
-                        .map(|s| s.ident.to_string())
-                        .unwrap_or_default();
                     let impl_cfg = cfg.and(&imp.attrs);
                     let fns = imp
                         .items
@@ -599,7 +700,10 @@ mod reflect {
                     model.impls.push(ImplDef {
                         file: file.to_path_buf(),
                         self_ident,
+                        self_ty: (*imp.self_ty).clone(),
                         is_trait_impl: imp.trait_.is_some(),
+                        trait_path: imp.trait_.as_ref().map(|(_, path, _)| path.clone()),
+                        generics: imp.generics.clone(),
                         attrs: imp.attrs.clone(),
                         cfg: impl_cfg,
                         fns,
@@ -611,9 +715,204 @@ mod reflect {
                     sig: f.sig.clone(),
                     cfg: cfg.and(&f.attrs),
                 }),
+                Item::Macro(m) => {
+                    let name = m
+                        .mac
+                        .path
+                        .segments
+                        .last()
+                        .map(|s| s.ident.to_string())
+                        .unwrap_or_default();
+                    if name == "macro_rules" {
+                        if let Some(ident) = &m.ident {
+                            model
+                                .macros
+                                .push(MacroDef::parse(ident.to_string(), &m.mac.tokens));
+                        }
+                    } else {
+                        model.pending.push(Invocation {
+                            name,
+                            tokens: m.mac.tokens.clone(),
+                            file: file.to_path_buf(),
+                            child_dir: child_dir.to_path_buf(),
+                            cfg: cfg.and(&m.attrs),
+                        });
+                    }
+                }
                 _ => {}
             }
         }
+    }
+
+    /// A type without the reference, parenthesis and invisible-group wrappers
+    /// that macro expansion and `&T` sources add.
+    pub fn strip_type(ty: &Type) -> &Type {
+        match ty {
+            Type::Reference(r) => strip_type(&r.elem),
+            Type::Paren(p) => strip_type(&p.elem),
+            Type::Group(g) => strip_type(&g.elem),
+            _ => ty,
+        }
+    }
+
+    /// One `macro_rules!` definition from the crate.
+    struct MacroDef {
+        name: String,
+        arms: Vec<(Vec<Matcher>, TokenStream)>,
+    }
+
+    /// A piece of a macro arm's matcher.
+    enum Matcher {
+        /// `$name:kind`
+        Fragment(String, String),
+        /// A literal token such as `,`.
+        Token(String),
+    }
+
+    /// A macro call at item position, waiting for every definition to be read.
+    struct Invocation {
+        name: String,
+        tokens: TokenStream,
+        file: PathBuf,
+        child_dir: PathBuf,
+        cfg: Cfg,
+    }
+
+    impl MacroDef {
+        /// Reads `(matcher) => { transcriber };` arms. Arms with repetitions
+        /// are kept but never match, so their calls contribute nothing.
+        fn parse(name: String, body: &TokenStream) -> MacroDef {
+            let tokens: Vec<TokenTree> = body.clone().into_iter().collect();
+            let mut arms = Vec::new();
+            let mut i = 0;
+            while i < tokens.len() {
+                let (TokenTree::Group(matcher), Some(TokenTree::Group(transcriber))) =
+                    (&tokens[i], tokens.get(i + 3))
+                else {
+                    i += 1;
+                    continue;
+                };
+                arms.push((matchers(&matcher.stream()), transcriber.stream()));
+                i += 4;
+            }
+            MacroDef { name, arms }
+        }
+    }
+
+    fn matchers(stream: &TokenStream) -> Vec<Matcher> {
+        let tokens: Vec<TokenTree> = stream.clone().into_iter().collect();
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < tokens.len() {
+            match (
+                &tokens[i],
+                tokens.get(i + 1),
+                tokens.get(i + 2),
+                tokens.get(i + 3),
+            ) {
+                (
+                    TokenTree::Punct(dollar),
+                    Some(TokenTree::Ident(name)),
+                    Some(TokenTree::Punct(colon)),
+                    Some(TokenTree::Ident(kind)),
+                ) if dollar.as_char() == '$' && colon.as_char() == ':' => {
+                    out.push(Matcher::Fragment(name.to_string(), kind.to_string()));
+                    i += 4;
+                }
+                (other, ..) => {
+                    // `$( ... )*` repetitions are out of scope; the token
+                    // makes the arm unmatchable.
+                    out.push(Matcher::Token(other.to_string()));
+                    i += 1;
+                }
+            }
+        }
+        out
+    }
+
+    impl Reflection {
+        /// Expand one call of a crate-local macro into the items it defines.
+        fn expand(&self, call: &Invocation) -> Option<Vec<Item>> {
+            let def = self.macros.iter().find(|m| m.name == call.name)?;
+            def.arms.iter().find_map(|(pattern, transcriber)| {
+                let captures = bind(pattern, &call.tokens)?;
+                let text = substitute(transcriber, &captures);
+                syn::parse_file(&text).ok().map(|f| f.items)
+            })
+        }
+    }
+
+    /// Match `tokens` against a matcher and return each fragment's text.
+    fn bind(pattern: &[Matcher], tokens: &TokenStream) -> Option<Vec<(String, String)>> {
+        use syn::parse::{ParseStream, Parser};
+        let parser = |input: ParseStream| -> syn::Result<Vec<(String, String)>> {
+            let mut captures = Vec::new();
+            for piece in pattern {
+                match piece {
+                    Matcher::Fragment(name, kind) => {
+                        let text = match kind.as_str() {
+                            "ty" => input.parse::<Type>()?.to_token_stream().to_string(),
+                            // Parenthesized so the expression keeps its precedence.
+                            "expr" => {
+                                format!("({})", input.parse::<syn::Expr>()?.to_token_stream())
+                            }
+                            "ident" => input.parse::<syn::Ident>()?.to_string(),
+                            "path" => input.parse::<syn::Path>()?.to_token_stream().to_string(),
+                            "literal" => input.parse::<syn::Lit>()?.to_token_stream().to_string(),
+                            "tt" => input.parse::<TokenTree>()?.to_string(),
+                            _ => return Err(input.error("unsupported fragment")),
+                        };
+                        captures.push((name.clone(), text));
+                    }
+                    Matcher::Token(expected) => {
+                        let found: TokenTree = input.parse()?;
+                        if found.to_string() != *expected {
+                            return Err(input.error("token mismatch"));
+                        }
+                    }
+                }
+            }
+            // A trailing comma is allowed after the last fragment.
+            if input.peek(Token![,]) {
+                input.parse::<Token![,]>()?;
+            }
+            if !input.is_empty() {
+                return Err(input.error("unmatched tokens"));
+            }
+            Ok(captures)
+        };
+        parser.parse2(tokens.clone()).ok()
+    }
+
+    /// The transcriber with every `$name` replaced by its capture.
+    fn substitute(transcriber: &TokenStream, captures: &[(String, String)]) -> String {
+        let text = transcriber.to_string();
+        let mut out = String::with_capacity(text.len());
+        let mut chars = text.char_indices().peekable();
+        while let Some((at, ch)) = chars.next() {
+            if ch != '$' {
+                out.push(ch);
+                continue;
+            }
+            let rest = text[at + 1..].trim_start();
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            match captures.iter().find(|(n, _)| *n == name) {
+                Some((_, value)) => out.push_str(value),
+                None if name == "crate" => out.push_str("crate"),
+                None => {
+                    out.push(ch);
+                    continue;
+                }
+            }
+            let skip = text[at + 1..].len() - rest.len() + name.len();
+            for _ in 0..skip {
+                chars.next();
+            }
+        }
+        out
     }
 
     /// Whether the type carries the binding attribute that exports it in `build`.
@@ -636,7 +935,12 @@ mod reflect {
         };
         metas(&f.attrs, build)
             .iter()
-            .filter(|m| matches!(meta_ident(m).as_str(), "wasm_bindgen" | "pyo3" | "method" | "constructor"))
+            .filter(|m| {
+                matches!(
+                    meta_ident(m).as_str(),
+                    "wasm_bindgen" | "pyo3" | "method" | "constructor"
+                )
+            })
             .find_map(|m| arg_value(&meta_args(m), key))
             .unwrap_or_else(|| f.sig.ident.to_string())
     }
@@ -651,8 +955,8 @@ mod reflect {
         while let Some(at) = rest.find(needle) {
             let before = rest[..at].chars().next_back();
             let after = rest[at + needle.len()..].chars().next();
-            let bounded = !before.is_some_and(|c| is_ident(c) || c == '.')
-                && !after.is_some_and(is_ident);
+            let bounded =
+                !before.is_some_and(|c| is_ident(c) || c == '.') && !after.is_some_and(is_ident);
             out.push_str(&rest[..at]);
             out.push_str(if bounded { replacement } else { needle });
             rest = &rest[at + needle.len()..];
@@ -681,5 +985,4 @@ mod reflect {
             attrs: field.attrs.clone(),
         }
     }
-
 }

@@ -1155,6 +1155,7 @@ dependencies = [
  "phf 0.14.0",
  "phf_codegen",
  "pollster",
+ "proc-macro2",
  "proptest",
  "pyo3",
  "quote",

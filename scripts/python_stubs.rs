@@ -17,10 +17,16 @@ mod python_stubs {
     //!   its prose. The example is the Python file the website export writes
     //!   under `platforms/python/examples/`, the same code the healthcheck runs.
     //!
-    //! `Py<PyAny>` parameters carry no type information, so `HINT_OVERRIDES`
-    //! names the accepted types for them. An override that no longer matches a
-    //! binding fails the build, which keeps the table honest.
+    //! A binding's own Rust type gives each hint. Parameters that pyo3 takes as
+    //! an untyped `Py<PyAny>` inherit the type of the canonical method the
+    //! binding documents (same `lsp_doc` page), expanded through the crate's
+    //! conversions: `Into<X>` reads every `From` impl for `X`, `TryInto<X>`
+    //! every `TryFrom`, a trait bound every implementor, and a
+    //! `derive(FromPyObject)` enum its variants. Only types Python can see make
+    //! it into a hint. A union of three or more types that two parameters share
+    //! becomes a private alias named after its Rust source.
 
+    use std::cell::RefCell;
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
     use std::path::Path;
@@ -33,137 +39,6 @@ mod python_stubs {
     const STUB_PATH: &str = "platforms/python/fragmentcolor/fragmentcolor.pyi";
     const MODULE_INIT: &str = "src/platforms/python.rs";
     const EXAMPLES_DIR: &str = "platforms/python/examples";
-
-    /// Hints for parameters (or `return`) whose Rust type says nothing useful.
-    /// Keyed by Python class (empty for module functions), Python method, and
-    /// parameter name.
-    const HINT_OVERRIDES: &[(&str, &str, &str, &str)] = &[
-        ("Renderer", "render", "renderable", "_Renderable"),
-        (
-            "Renderer",
-            "render",
-            "target",
-            "RenderCanvasTarget | TextureTarget",
-        ),
-        ("Renderer", "load", "renderable", "_Renderable"),
-        ("Renderer", "create_target", "rendercanvas", "Any"),
-        ("Renderer", "create_texture", "input", "_TextureSource"),
-        ("Renderer", "read_texture", "texture_id", "TextureId | int"),
-        (
-            "Renderer",
-            "unregister_texture",
-            "texture_id",
-            "TextureId | int",
-        ),
-        ("Pass", "add", "object", "Model | Camera | Light"),
-        ("Pass", "require", "deps", "_Renderable"),
-        ("Pass", "set_target", "target", "TextureTarget | Texture"),
-        (
-            "Pass",
-            "set_depth_target",
-            "target",
-            "TextureTarget | Texture",
-        ),
-        ("Scene", "load", "source", "str | bytes"),
-        ("Scene", "add", "object", "Model | Camera | Light"),
-        ("Scene", "add_to", "target", "int | str"),
-        ("Scene", "add_to", "object", "Model | Camera | Light"),
-        ("Shader", "new", "input", "str | Sequence[str]"),
-        ("Shader", "fetch", "input", "str | Sequence[str]"),
-        ("Shader", "set", "value", "_UniformValue"),
-        ("Shader", "get", "return", "_UniformValue"),
-        ("Vertex", "new", "position", "Sequence[float]"),
-        ("Vertex", "pbr", "position", "Sequence[float]"),
-        (
-            "Vertex",
-            "set",
-            "value",
-            "float | int | Sequence[float] | Sequence[int]",
-        ),
-        (
-            "Instance",
-            "set",
-            "value",
-            "float | int | Sequence[float] | Sequence[int]",
-        ),
-        (
-            "Mesh",
-            "from_vertices",
-            "vertices",
-            "Sequence[Vertex | Sequence[float]]",
-        ),
-        ("Mesh", "add_vertex", "vertex", "Vertex | Sequence[float]"),
-        (
-            "Mesh",
-            "add_vertices",
-            "vertices",
-            "Sequence[Vertex | Sequence[float]]",
-        ),
-        ("Mesh", "add_instance", "item", "Instance | Vertex"),
-        (
-            "Mesh",
-            "add_instances",
-            "items",
-            "Sequence[Instance | Vertex]",
-        ),
-        ("Mesh", "set_indices", "indices", "Sequence[int]"),
-        (
-            "Texture",
-            "set_sampler_options",
-            "options",
-            "SamplerOptions | Mapping[str, Any]",
-        ),
-        (
-            "Texture",
-            "write",
-            "data",
-            "bytes | Sequence[int] | _NDArrayU8",
-        ),
-        (
-            "Texture",
-            "write_region",
-            "data",
-            "bytes | Sequence[int] | _NDArrayU8",
-        ),
-        (
-            "Texture",
-            "write_region",
-            "region",
-            "Sequence[int] | Mapping[str, int] | None",
-        ),
-        (
-            "Mipmap",
-            "build",
-            "bytes",
-            "bytes | Sequence[int] | _NDArrayU8",
-        ),
-    ];
-
-    /// Rust types that derive `FromPyObject` / `IntoPyObject` as an untagged
-    /// union, with the hint each one takes as a parameter and as a return value.
-    const DERIVED_HINTS: &[(&str, &str, &str)] = &[(
-        "VertexValue",
-        "float | int | Sequence[float] | Sequence[int]",
-        "float | int | list[float] | list[int]",
-    )];
-
-    /// Aliases written at the top of the stub, used by mapped types and overrides.
-    const ALIASES: &[(&str, &str)] = &[
-        ("_NDArrayU8", "npt.NDArray[numpy.uint8]"),
-        ("_PySize", "Sequence[float] | Mapping[str, float]"),
-        (
-            "_Renderable",
-            "Shader | Pass | Scene | Sequence[Shader | Pass | Scene]",
-        ),
-        (
-            "_TextureSource",
-            "str | bytes | bytearray | Sequence[int] | _NDArrayU8 | Mipmap",
-        ),
-        (
-            "_UniformValue",
-            "float | int | bool | Sequence[float] | Sequence[int] | bytes | bytearray | memoryview | Texture",
-        ),
-    ];
 
     const PY_KEYWORDS: &[&str] = &[
         "False", "None", "True", "and", "as", "assert", "async", "await", "break", "class",
@@ -200,6 +75,9 @@ mod python_stubs {
     }
 
     struct Method {
+        /// Rust ident of the impl's self type; empty for module functions.
+        owner: String,
+        rust_name: String,
         py_name: String,
         kind: Kind,
         params: Vec<(String, Type)>,
@@ -224,11 +102,24 @@ mod python_stubs {
         exceptions: Vec<String>,
     }
 
-    /// Context shared by the renderers: maps Rust class idents to stub names.
+    /// Context shared by the renderers.
     struct Ctx<'a> {
+        root: &'a Path,
+        model: &'a Reflection,
+        /// Rust ident of each pyclass → its name in the stub.
         stub_names: &'a BTreeMap<String, String>,
-        unknown: std::cell::RefCell<BTreeSet<String>>,
-        referenced: std::cell::RefCell<BTreeSet<String>>,
+        /// Python class name → Rust ident, so a core type finds the pyclass
+        /// that stands in for it (`TextureTarget` → `PyTextureTarget`).
+        faces: &'a BTreeMap<String, String>,
+        unknown: RefCell<BTreeSet<String>>,
+        referenced: RefCell<BTreeSet<String>>,
+        /// Traits and types currently being expanded, to stop recursion.
+        expanding: RefCell<Vec<String>>,
+        /// Alias candidates: Rust source name → rendered union.
+        aliases: RefCell<BTreeMap<String, String>>,
+        /// Classes Python code can hold: registered ones and any a binding
+        /// returns. `None` while that set is being worked out.
+        obtainable: RefCell<Option<BTreeSet<String>>>,
     }
 
     pub fn generate(root: &Path, model: &Reflection) {
@@ -253,13 +144,42 @@ mod python_stubs {
                 .entry(rust.clone())
                 .or_insert_with(|| format!("_{}", class.py_name));
         }
+        let faces: BTreeMap<String, String> = bindings
+            .classes
+            .iter()
+            .map(|(rust, class)| (class.py_name.clone(), rust.clone()))
+            .collect();
         let ctx = Ctx {
+            root,
+            model,
             stub_names: &stub_names,
+            faces: &faces,
             unknown: Default::default(),
             referenced: Default::default(),
+            expanding: Default::default(),
+            aliases: Default::default(),
+            obtainable: Default::default(),
         };
 
-        let mut overrides_used: BTreeSet<(String, String, String)> = BTreeSet::new();
+        // Python holds only classes it can construct or receive; an internal
+        // pyclass never appears in a parameter hint.
+        for method in bindings
+            .methods
+            .values()
+            .flatten()
+            .chain(bindings.functions.values())
+        {
+            value_hint(method, None, Mode::Return, "", &ctx);
+        }
+        for class in bindings.classes.values() {
+            for field in &class.fields {
+                expand(&field.ty, Mode::Return, &Scope::default(), "", &ctx);
+            }
+        }
+        let mut obtainable = std::mem::take(&mut *ctx.referenced.borrow_mut());
+        obtainable.extend(module.classes.iter().cloned());
+        *ctx.obtainable.borrow_mut() = Some(obtainable);
+        ctx.unknown.borrow_mut().clear();
 
         let mut functions = String::new();
         for rust in &module.functions {
@@ -268,14 +188,7 @@ mod python_stubs {
                     "python_stubs: `{rust}` is registered in {MODULE_INIT} but has no #[pyfunction]"
                 );
             };
-            functions.push_str(&render_method(
-                root,
-                ("", ""),
-                method,
-                &ctx,
-                &mut overrides_used,
-                0,
-            ));
+            functions.push_str(&render_method(root, "", method, &ctx, 0));
         }
 
         // Registered classes first, then any class their signatures return.
@@ -289,7 +202,7 @@ mod python_stubs {
             let Some(class) = bindings.classes.get(&rust) else {
                 continue;
             };
-            let body = render_class(root, &bindings, &rust, class, &ctx, &mut overrides_used);
+            let body = render_class(root, &bindings, &rust, class, &ctx);
             rendered.insert(rust.clone(), body);
             let referenced = std::mem::take(&mut *ctx.referenced.borrow_mut());
             pending.extend(referenced.into_iter().filter(|r| !rendered.contains_key(r)));
@@ -302,19 +215,6 @@ mod python_stubs {
         extra.sort_by_key(|rust| &stub_names[*rust]);
         order.extend(extra);
 
-        let stale: Vec<String> = HINT_OVERRIDES
-            .iter()
-            .filter(|(c, m, p, _)| {
-                !overrides_used.contains(&(c.to_string(), m.to_string(), p.to_string()))
-            })
-            .map(|(c, m, p, _)| format!("{c}.{m}({p})"))
-            .collect();
-        if !stale.is_empty() {
-            panic!(
-                "python_stubs: HINT_OVERRIDES entries match no Python binding: {}",
-                stale.join(", ")
-            );
-        }
         let unknown = ctx.unknown.borrow();
         if !unknown.is_empty() {
             let list: Vec<&str> = unknown.iter().map(String::as_str).collect();
@@ -329,7 +229,7 @@ mod python_stubs {
             "# Generated by build.rs (scripts/python_stubs.rs) from the pyo3 bindings in src/\n",
         );
         out.push_str("# and the docs in docs/api. Do not edit by hand.\n");
-        out.push_str("from typing import Any, ClassVar, Mapping, Sequence, final\n\n");
+        out.push_str("from typing import Any, ClassVar, Sequence, final\n\n");
         out.push_str("import numpy\n");
         out.push_str("import numpy.typing as npt\n");
         out.push_str("from typing_extensions import TypeAlias\n\n");
@@ -343,18 +243,30 @@ mod python_stubs {
             out.push_str(&format!("    \"{name}\",\n"));
         }
         out.push_str("]\n\n");
-        for (name, value) in ALIASES {
-            out.push_str(&format!("{name}: TypeAlias = {value}\n"));
-        }
-        out.push('\n');
+        let mut body = String::new();
         for exception in &module.exceptions {
-            out.push_str(&format!("class {exception}(Exception): ...\n\n"));
+            body.push_str(&format!("class {exception}(Exception): ...\n\n"));
         }
         for rust in order {
-            out.push_str(&rendered[rust]);
-            out.push('\n');
+            body.push_str(&rendered[rust]);
+            body.push('\n');
         }
-        out.push_str(&functions);
+        body.push_str(&functions);
+
+        // A shared union becomes an alias; one used once stays inline.
+        for (name, union) in ctx.aliases.borrow().iter() {
+            let token = placeholder(name);
+            let alias = format!("_{name}");
+            let shared = body.matches(&token).count() >= 2;
+            if shared && !stub_names.values().any(|v| *v == alias) {
+                out.push_str(&format!("{alias}: TypeAlias = {union}\n"));
+                body = body.replace(&token, &alias);
+            } else {
+                body = body.replace(&token, union);
+            }
+        }
+        out.push('\n');
+        out.push_str(&body);
         let out = format!("{}\n", out.trim_end());
 
         let path = root.join(STUB_PATH);
@@ -424,18 +336,24 @@ mod python_stubs {
                     .methods
                     .entry(imp.self_ident.clone())
                     .or_default()
-                    .push(read_method(&f.attrs, &f.sig, false));
+                    .push(read_method(&imp.self_ident, &f.attrs, &f.sig, false));
             }
         }
         for f in model.binding_fns(build, "pyfunction") {
-            bindings
-                .functions
-                .insert(f.sig.ident.to_string(), read_method(&f.attrs, &f.sig, true));
+            bindings.functions.insert(
+                f.sig.ident.to_string(),
+                read_method("", &f.attrs, &f.sig, true),
+            );
         }
         bindings
     }
 
-    fn read_method(attrs: &[Attribute], sig: &syn::Signature, function: bool) -> Method {
+    fn read_method(
+        owner: &str,
+        attrs: &[Attribute],
+        sig: &syn::Signature,
+        function: bool,
+    ) -> Method {
         let rust_name = sig.ident.to_string();
         let pyo3 = pyo3_args(attrs).unwrap_or_default();
         let mut kind = if function {
@@ -502,6 +420,8 @@ mod python_stubs {
             ReturnType::Type(_, ty) => Some((**ty).clone()),
         };
         Method {
+            owner: owner.to_string(),
+            rust_name,
             py_name,
             kind,
             params,
@@ -640,130 +560,745 @@ mod python_stubs {
         type_ident(ty) == "u8"
     }
 
-    /// Python hint for a Rust type. `param` selects the accepting form
-    /// (`Sequence`) over the returned form (`list`).
-    fn py_type(ty: &Type, param: bool, self_name: &str, ctx: &Ctx) -> String {
+    /// Untyped pyo3 values such as `Py<PyAny>` or `&Bound<'_, PyAny>`, also
+    /// inside `PyResult` or `Option`.
+    fn is_untyped(ty: &Type) -> bool {
         let ty = strip_refs(ty);
-        match ty {
-            Type::Tuple(t) if t.elems.is_empty() => "None".into(),
-            Type::Tuple(t) => {
-                let items: Vec<String> = t
-                    .elems
-                    .iter()
-                    .map(|e| py_type(e, param, self_name, ctx))
-                    .collect();
-                format!("tuple[{}]", items.join(", "))
+        let Type::Path(p) = ty else {
+            return false;
+        };
+        match last_ident(&p.path).as_str() {
+            "PyAny" | "PyObject" => true,
+            "Py" | "Bound" | "Borrowed" | "Result" | "PyResult" | "Option" => {
+                type_args(ty).first().is_some_and(|inner| is_untyped(inner))
             }
-            Type::Array(a) => sequence_of(&a.elem, param, self_name, ctx),
-            Type::Slice(s) => sequence_of(&s.elem, param, self_name, ctx),
-            Type::Path(p) => {
-                let ident = last_ident(&p.path);
-                let args = type_args(ty);
-                let first = || args.first().copied();
-                match ident.as_str() {
-                    "Self" => self_name.to_string(),
-                    "bool" => "bool".into(),
-                    "f32" | "f64" => "float".into(),
-                    "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "i8" | "i16" | "i32"
-                    | "i64" | "i128" | "isize" => "int".into(),
-                    "String" | "str" | "char" | "Cow" => "str".into(),
-                    "PathBuf" | "Path" => "str".into(),
-                    "Option" => match first() {
-                        Some(inner) => format!("{} | None", py_type(inner, param, self_name, ctx)),
-                        None => "Any".into(),
-                    },
-                    "Vec" => match first() {
-                        Some(inner) => sequence_of(inner, param, self_name, ctx),
-                        None => "Any".into(),
-                    },
-                    "HashMap" | "BTreeMap" => {
-                        let k = args
-                            .first()
-                            .map(|t| py_type(t, param, self_name, ctx))
-                            .unwrap_or("Any".into());
-                        let v = args
-                            .get(1)
-                            .map(|t| py_type(t, param, self_name, ctx))
-                            .unwrap_or("Any".into());
-                        if param {
-                            format!("Mapping[{k}, {v}]")
-                        } else {
-                            format!("dict[{k}, {v}]")
-                        }
-                    }
-                    "Result" | "PyResult" | "Py" | "Bound" | "Borrowed" | "PyRef" | "PyRefMut"
-                    | "Box" | "Arc" | "Rc" => match first() {
-                        Some(inner) => py_type(inner, param, self_name, ctx),
-                        None => "Any".into(),
-                    },
-                    "PyAny" | "PyObject" => "Any".into(),
-                    "PyDict" => "dict[str, Any]".into(),
-                    "PyList" => "list[Any]".into(),
-                    "PyTuple" => "tuple[Any, ...]".into(),
-                    "PyBytes" => "bytes".into(),
-                    "PyString" => "str".into(),
-                    "PyType" => "type".into(),
-                    "PyFloat" => "float".into(),
-                    "PyInt" | "PyLong" => "int".into(),
-                    "PyBool" => "bool".into(),
-                    "PyArray1" | "PyArray2" | "PyArray3" | "PyArrayDyn" | "PyReadonlyArray1"
-                    | "PyReadonlyArray2" | "PyReadonlyArray3" | "PyReadonlyArrayDyn" => {
-                        match first().map(type_ident).as_deref() {
-                            Some("u8") => "_NDArrayU8".into(),
-                            Some("f32") => "npt.NDArray[numpy.float32]".into(),
-                            Some("f64") => "npt.NDArray[numpy.float64]".into(),
-                            Some("u32") => "npt.NDArray[numpy.uint32]".into(),
-                            Some("i32") => "npt.NDArray[numpy.int32]".into(),
-                            _ => "npt.NDArray[Any]".into(),
-                        }
-                    }
-                    _ if ALIASES
-                        .iter()
-                        .any(|(name, _)| name.strip_prefix('_') == Some(&ident)) =>
-                    {
-                        format!("_{ident}")
-                    }
-                    _ if DERIVED_HINTS.iter().any(|(name, _, _)| *name == ident) => DERIVED_HINTS
-                        .iter()
-                        .find(|(name, _, _)| *name == ident)
-                        .map(|(_, p, r)| if param { p.to_string() } else { r.to_string() })
-                        .unwrap_or_default(),
-                    _ => match ctx.stub_names.get(&ident) {
-                        Some(stub_name) => {
-                            ctx.referenced.borrow_mut().insert(ident.clone());
-                            stub_name.clone()
-                        }
-                        None => {
-                            ctx.unknown.borrow_mut().insert(ident);
-                            "Any".into()
-                        }
-                    },
+            _ => false,
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Hints
+    // ---------------------------------------------------------------------
+
+    /// Which side of a call a hint describes. Parameters accept any sequence
+    /// or mapping; return values are concrete lists and dicts.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Mode {
+        Param,
+        Return,
+    }
+
+    /// One member of a Python union.
+    #[derive(Clone, PartialEq, Eq)]
+    enum Atom {
+        Name(String),
+        Seq(Vec<Atom>),
+        Tuple(Vec<Vec<Atom>>),
+        Map(Vec<Atom>, Vec<Atom>),
+        Null,
+    }
+
+    /// Generic parameters in scope and the trait bounds each one carries.
+    #[derive(Default)]
+    struct Scope {
+        bounds: BTreeMap<String, Vec<syn::TypeParamBound>>,
+    }
+
+    fn scope_of(generics: &[&syn::Generics]) -> Scope {
+        let mut scope = Scope::default();
+        for g in generics {
+            for param in &g.params {
+                if let syn::GenericParam::Type(tp) = param {
+                    scope
+                        .bounds
+                        .entry(tp.ident.to_string())
+                        .or_default()
+                        .extend(tp.bounds.iter().cloned());
                 }
             }
-            _ => {
-                ctx.unknown
-                    .borrow_mut()
-                    .insert(ty.to_token_stream().to_string());
-                "Any".into()
+            for pred in g.where_clause.iter().flat_map(|w| w.predicates.iter()) {
+                let syn::WherePredicate::Type(pt) = pred else {
+                    continue;
+                };
+                let Type::Path(bounded) = &pt.bounded_ty else {
+                    continue;
+                };
+                if let Some(ident) = bounded.path.get_ident() {
+                    scope
+                        .bounds
+                        .entry(ident.to_string())
+                        .or_default()
+                        .extend(pt.bounds.iter().cloned());
+                }
             }
         }
+        scope
+    }
+
+    /// Bounds that say nothing about which types fit.
+    const MARKER_TRAITS: &[&str] = &[
+        "Sized",
+        "Clone",
+        "Copy",
+        "Send",
+        "Sync",
+        "Debug",
+        "Default",
+        "PartialEq",
+        "Eq",
+        "Hash",
+        "Unpin",
+        "Display",
+        "ToString",
+    ];
+
+    fn rank(atom: &Atom) -> u8 {
+        match atom {
+            Atom::Name(n) => match n.as_str() {
+                "bool" => 0,
+                "int" => 1,
+                "float" => 2,
+                "str" => 3,
+                "bytes" | "bytearray" | "memoryview" => 4,
+                _ => 5,
+            },
+            Atom::Seq(_) => 6,
+            Atom::Tuple(_) => 7,
+            Atom::Map(..) => 8,
+            Atom::Null => 9,
+        }
+    }
+
+    fn covers(big: &Atom, small: &Atom) -> bool {
+        match (big, small) {
+            _ if big == small => true,
+            (Atom::Seq(b), Atom::Seq(s)) => subset(s, b),
+            (Atom::Seq(b), Atom::Tuple(items)) => items.iter().all(|i| subset(i, b)),
+            (Atom::Map(bk, bv), Atom::Map(sk, sv)) => subset(sk, bk) && subset(sv, bv),
+            _ => false,
+        }
+    }
+
+    fn subset(small: &[Atom], big: &[Atom]) -> bool {
+        small.iter().all(|s| big.iter().any(|b| covers(b, s)))
+    }
+
+    /// Dedupe, drop members another member already covers, and sort.
+    fn normalize(atoms: Vec<Atom>) -> Vec<Atom> {
+        let mut unique: Vec<Atom> = Vec::new();
+        for atom in atoms {
+            if !unique.contains(&atom) {
+                unique.push(atom);
+            }
+        }
+        let kept: Vec<Atom> = unique
+            .iter()
+            .filter(|a| !unique.iter().any(|b| b != *a && covers(b, a)))
+            .cloned()
+            .collect();
+        let mut keyed: Vec<(u8, String, Atom)> = kept
+            .into_iter()
+            .map(|a| (rank(&a), render_atom(&a, Mode::Param), a))
+            .collect();
+        keyed.sort_by(|x, y| (x.0, &x.1).cmp(&(y.0, &y.1)));
+        keyed.into_iter().map(|(_, _, a)| a).collect()
+    }
+
+    fn render(union: &[Atom], mode: Mode) -> String {
+        let any = union.iter().any(|a| *a == Atom::Name("Any".into()));
+        if union.is_empty() || any {
+            return "Any".into();
+        }
+        union
+            .iter()
+            .map(|a| render_atom(a, mode))
+            .collect::<Vec<_>>()
+            .join(" | ")
+    }
+
+    fn render_atom(atom: &Atom, mode: Mode) -> String {
+        match (atom, mode) {
+            (Atom::Name(n), _) => n.clone(),
+            (Atom::Seq(inner), Mode::Param) => format!("Sequence[{}]", render(inner, mode)),
+            (Atom::Seq(inner), Mode::Return) => format!("list[{}]", render(inner, mode)),
+            (Atom::Tuple(items), _) => format!(
+                "tuple[{}]",
+                items
+                    .iter()
+                    .map(|i| render(i, mode))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            // pyo3 extracts a HashMap only from a dict, so parameters say dict too.
+            (Atom::Map(k, v), _) => format!("dict[{}, {}]", render(k, mode), render(v, mode)),
+            (Atom::Null, _) => "None".into(),
+        }
+    }
+
+    fn name(n: &str) -> Vec<Atom> {
+        vec![Atom::Name(n.to_string())]
+    }
+
+    /// Python types a value of the Rust type `ty` can be, in this build.
+    fn expand(ty: &Type, mode: Mode, scope: &Scope, self_name: &str, ctx: &Ctx) -> Vec<Atom> {
+        let ty = strip_refs(ty);
+        let atoms = match ty {
+            Type::ImplTrait(it) => {
+                let bounds: Vec<syn::TypeParamBound> = it.bounds.iter().cloned().collect();
+                expand_bounds(&bounds, mode, scope, self_name, ctx)
+            }
+            Type::TraitObject(to) => {
+                let bounds: Vec<syn::TypeParamBound> = to.bounds.iter().cloned().collect();
+                expand_bounds(&bounds, mode, scope, self_name, ctx)
+            }
+            Type::Tuple(t) if t.elems.is_empty() => vec![Atom::Null],
+            Type::Tuple(t) => {
+                let items: Vec<Vec<Atom>> = t
+                    .elems
+                    .iter()
+                    .map(|e| expand(e, mode, scope, self_name, ctx))
+                    .collect();
+                if items.iter().any(Vec::is_empty) {
+                    Vec::new()
+                } else {
+                    vec![Atom::Tuple(items)]
+                }
+            }
+            Type::Array(a) => sequence_of(&a.elem, mode, scope, self_name, ctx),
+            Type::Slice(s) => sequence_of(&s.elem, mode, scope, self_name, ctx),
+            Type::Path(p) => expand_path(ty, p, mode, scope, self_name, ctx),
+            _ => Vec::new(),
+        };
+        normalize(atoms)
+    }
+
+    fn expand_path(
+        ty: &Type,
+        p: &syn::TypePath,
+        mode: Mode,
+        scope: &Scope,
+        self_name: &str,
+        ctx: &Ctx,
+    ) -> Vec<Atom> {
+        let ident = last_ident(&p.path);
+        if p.qself.is_none()
+            && p.path.segments.len() == 1
+            && let Some(bounds) = scope.bounds.get(&ident)
+        {
+            return expand_bounds(bounds, mode, scope, self_name, ctx);
+        }
+        let args = type_args(ty);
+        let inner = |i: usize| -> Vec<Atom> {
+            args.get(i)
+                .map(|t| expand(t, mode, scope, self_name, ctx))
+                .unwrap_or_default()
+        };
+        match ident.as_str() {
+            "Self" => name(self_name),
+            "bool" => name("bool"),
+            "f32" | "f64" => name("float"),
+            "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "i8" | "i16" | "i32" | "i64"
+            | "i128" | "isize" => name("int"),
+            "String" | "str" | "char" | "Cow" | "PathBuf" | "Path" | "OsStr" | "OsString" => {
+                name("str")
+            }
+            "Option" => {
+                let mut atoms = inner(0);
+                if atoms.is_empty() {
+                    atoms = name("Any");
+                }
+                atoms.push(Atom::Null);
+                atoms
+            }
+            "Vec" | "VecDeque" | "HashSet" | "BTreeSet" => match args.first() {
+                Some(elem) => sequence_of(elem, mode, scope, self_name, ctx),
+                None => Vec::new(),
+            },
+            "HashMap" | "BTreeMap" => {
+                let (k, v) = (inner(0), inner(1));
+                let k = if k.is_empty() { name("Any") } else { k };
+                let v = if v.is_empty() { name("Any") } else { v };
+                vec![Atom::Map(k, v)]
+            }
+            "Result" | "PyResult" | "Py" | "Bound" | "Borrowed" | "PyRef" | "PyRefMut" | "Box"
+            | "Arc" | "Rc" => inner(0),
+            "PyAny" | "PyObject" => name("Any"),
+            "PyDict" => name("dict[str, Any]"),
+            "PyList" => name("list[Any]"),
+            "PyTuple" => name("tuple[Any, ...]"),
+            "PyBytes" => name("bytes"),
+            "PyByteArray" => name("bytearray"),
+            "PyMemoryView" => name("memoryview"),
+            "PyString" => name("str"),
+            "PyType" => name("type"),
+            "PyFloat" => name("float"),
+            "PyInt" | "PyLong" => name("int"),
+            "PyBool" => name("bool"),
+            "PyArray1" | "PyArray2" | "PyArray3" | "PyArrayDyn" | "PyReadonlyArray1"
+            | "PyReadonlyArray2" | "PyReadonlyArray3" | "PyReadonlyArrayDyn" => {
+                let dtype = match args.first().map(|t| type_ident(t)).as_deref() {
+                    Some("u8") => "numpy.uint8",
+                    Some("f32") => "numpy.float32",
+                    Some("f64") => "numpy.float64",
+                    Some("u32") => "numpy.uint32",
+                    Some("i32") => "numpy.int32",
+                    _ => "Any",
+                };
+                name(&format!("npt.NDArray[{dtype}]"))
+            }
+            _ => expand_named(&ident, mode, scope, self_name, ctx),
+        }
+    }
+
+    /// A crate type: its pyclass, the pyclass that stands in for it, or the
+    /// variants of a `derive(FromPyObject)` / `derive(IntoPyObject)` type.
+    fn expand_named(
+        ident: &str,
+        mode: Mode,
+        scope: &Scope,
+        self_name: &str,
+        ctx: &Ctx,
+    ) -> Vec<Atom> {
+        if ctx.stub_names.contains_key(ident) {
+            return class_hint(ident, mode, ctx);
+        }
+        let def = ctx.model.type_named(ident, Build::Python);
+        let derive = match mode {
+            Mode::Param => "FromPyObject",
+            Mode::Return => "IntoPyObject",
+        };
+        let derives = def.is_some_and(|def| {
+            reflect::metas(&def.attrs, Build::Python).iter().any(|m| {
+                reflect::meta_ident(m) == "derive" && reflect::meta_args(m).contains(derive)
+            })
+        });
+        let Some(def) = def.filter(|_| derives) else {
+            // A core type Python sees through a pyclass of the same name.
+            return match ctx.faces.get(ident) {
+                Some(rust) => class_hint(rust, mode, ctx),
+                None => Vec::new(),
+            };
+        };
+        if ctx.expanding.borrow().iter().any(|e| e == ident) {
+            return Vec::new();
+        }
+        ctx.expanding.borrow_mut().push(ident.to_string());
+        let atoms = match def.kind {
+            TypeKind::Enum => def
+                .variants
+                .iter()
+                .filter(|v| v.cfg.holds(Build::Python))
+                .flat_map(|v| match v.fields.as_slice() {
+                    [only] => expand(only, mode, scope, self_name, ctx),
+                    [] => Vec::new(),
+                    many => {
+                        let items: Vec<Vec<Atom>> = many
+                            .iter()
+                            .map(|f| expand(f, mode, scope, self_name, ctx))
+                            .collect();
+                        if items.iter().any(Vec::is_empty) {
+                            Vec::new()
+                        } else {
+                            vec![Atom::Tuple(items)]
+                        }
+                    }
+                })
+                .collect(),
+            // A struct with named fields reads from a mapping when it asks
+            // for items and from attributes otherwise, which no hint states.
+            TypeKind::Struct => {
+                let from_items = reflect::metas(&def.attrs, Build::Python)
+                    .iter()
+                    .any(|m| reflect::meta_args(m).contains("from_item_all"));
+                if mode == Mode::Return || from_items {
+                    vec![Atom::Map(name("str"), name("Any"))]
+                } else {
+                    Vec::new()
+                }
+            }
+        };
+        ctx.expanding.borrow_mut().pop();
+        atoms
+    }
+
+    /// The stub name of the pyclass `rust`, unless it is a parameter Python
+    /// could never pass.
+    fn class_hint(rust: &str, mode: Mode, ctx: &Ctx) -> Vec<Atom> {
+        let hidden = mode == Mode::Param
+            && ctx
+                .obtainable
+                .borrow()
+                .as_ref()
+                .is_some_and(|known| !known.contains(rust));
+        if hidden {
+            return Vec::new();
+        }
+        ctx.referenced.borrow_mut().insert(rust.to_string());
+        name(&ctx.stub_names[rust])
     }
 
     /// pyo3 returns `Vec<u8>` and `[u8; N]` as `bytes`, and accepts them from
     /// `bytes` or any sequence of ints. Other element types round-trip as lists.
-    fn sequence_of(elem: &Type, param: bool, self_name: &str, ctx: &Ctx) -> String {
+    fn sequence_of(
+        elem: &Type,
+        mode: Mode,
+        scope: &Scope,
+        self_name: &str,
+        ctx: &Ctx,
+    ) -> Vec<Atom> {
         if is_u8(elem) {
-            return if param {
-                "bytes | Sequence[int]".into()
-            } else {
-                "bytes".into()
+            return match mode {
+                Mode::Param => vec![Atom::Name("bytes".into()), Atom::Seq(name("int"))],
+                Mode::Return => name("bytes"),
             };
         }
-        let inner = py_type(elem, param, self_name, ctx);
-        if param {
-            format!("Sequence[{inner}]")
+        let inner = expand(elem, mode, scope, self_name, ctx);
+        if inner.is_empty() {
+            Vec::new()
         } else {
-            format!("list[{inner}]")
+            vec![Atom::Seq(inner)]
+        }
+    }
+
+    /// Types that satisfy every non-marker bound.
+    fn expand_bounds(
+        bounds: &[syn::TypeParamBound],
+        mode: Mode,
+        scope: &Scope,
+        self_name: &str,
+        ctx: &Ctx,
+    ) -> Vec<Atom> {
+        let mut sets: Vec<Vec<Atom>> = Vec::new();
+        for bound in bounds {
+            let syn::TypeParamBound::Trait(tb) = bound else {
+                continue;
+            };
+            let Some(segment) = tb.path.segments.last() else {
+                continue;
+            };
+            let trait_name = segment.ident.to_string();
+            if MARKER_TRAITS.contains(&trait_name.as_str()) {
+                continue;
+            }
+            let (arg, assoc) = bound_args(segment);
+            let set = match (trait_name.as_str(), arg) {
+                ("Into", Some(target)) => into_sources(target, mode, scope, self_name, ctx),
+                ("TryInto", Some(target)) => {
+                    let infallible_too = !assoc.iter().any(|(k, _)| k == "Error");
+                    try_sources(target, infallible_too, mode, scope, self_name, ctx)
+                }
+                ("IntoIterator" | "Iterator", _) => match assoc.iter().find(|(k, _)| k == "Item") {
+                    Some((_, item)) => sequence_of(item, mode, scope, self_name, ctx),
+                    None => Vec::new(),
+                },
+                ("AsRef", Some(target)) => expand(target, mode, scope, self_name, ctx),
+                ("From", Some(source)) => from_targets(source, mode, self_name, ctx),
+                _ => implementors(&trait_name, mode, self_name, ctx),
+            };
+            sets.push(set);
+        }
+        let mut sets = sets.into_iter();
+        let Some(first) = sets.next() else {
+            return Vec::new();
+        };
+        sets.fold(first, |acc, set| {
+            acc.into_iter().filter(|a| set.contains(a)).collect()
+        })
+    }
+
+    /// The first type argument of a bound and its associated type bindings.
+    fn bound_args(segment: &syn::PathSegment) -> (Option<&Type>, Vec<(String, &Type)>) {
+        let PathArguments::AngleBracketed(args) = &segment.arguments else {
+            return (None, Vec::new());
+        };
+        let first = args.args.iter().find_map(|a| match a {
+            GenericArgument::Type(t) => Some(t),
+            _ => None,
+        });
+        let assoc = args
+            .args
+            .iter()
+            .filter_map(|a| match a {
+                GenericArgument::AssocType(at) => Some((at.ident.to_string(), &at.ty)),
+                _ => None,
+            })
+            .collect();
+        (first, assoc)
+    }
+
+    /// `T: Into<X>`: `X` itself and every `From` source of `X`.
+    fn into_sources(
+        target: &Type,
+        mode: Mode,
+        scope: &Scope,
+        self_name: &str,
+        ctx: &Ctx,
+    ) -> Vec<Atom> {
+        let mut atoms = expand(target, mode, scope, self_name, ctx);
+        for (imp, source) in ctx
+            .model
+            .conversions_into(&type_ident(target), "From", Build::Python)
+        {
+            let impl_scope = scope_of(&[&imp.generics]);
+            atoms.extend(expand(source, mode, &impl_scope, self_name, ctx));
+        }
+        atoms
+    }
+
+    /// `T: TryInto<X>`: every `TryFrom` source of `X`, plus the `From`
+    /// sources when the bound accepts the infallible conversion too.
+    fn try_sources(
+        target: &Type,
+        infallible_too: bool,
+        mode: Mode,
+        scope: &Scope,
+        self_name: &str,
+        ctx: &Ctx,
+    ) -> Vec<Atom> {
+        let mut atoms = Vec::new();
+        for (imp, source) in
+            ctx.model
+                .conversions_into(&type_ident(target), "TryFrom", Build::Python)
+        {
+            let impl_scope = scope_of(&[&imp.generics]);
+            atoms.extend(expand(source, mode, &impl_scope, self_name, ctx));
+        }
+        if infallible_too {
+            atoms.extend(into_sources(target, mode, scope, self_name, ctx));
+        }
+        atoms
+    }
+
+    /// `T: From<S>`: every type with an `impl From<S>`.
+    fn from_targets(source: &Type, mode: Mode, self_name: &str, ctx: &Ctx) -> Vec<Atom> {
+        let source = type_ident(source);
+        ctx.model
+            .trait_impls("From", Build::Python)
+            .filter(|imp| imp.trait_arg().map(type_ident).as_deref() == Some(source.as_str()))
+            .flat_map(|imp| {
+                expand(
+                    &imp.self_ty,
+                    mode,
+                    &scope_of(&[&imp.generics]),
+                    self_name,
+                    ctx,
+                )
+            })
+            .collect()
+    }
+
+    /// Every implementor of `trait_name`. A trait implemented for collections
+    /// of itself (`Vec<Box<dyn Renderable>>`) is expanded one level deep, so
+    /// a list of renderables is a hint and a list of lists is not.
+    fn implementors(trait_name: &str, mode: Mode, self_name: &str, ctx: &Ctx) -> Vec<Atom> {
+        let depth = ctx
+            .expanding
+            .borrow()
+            .iter()
+            .filter(|e| *e == trait_name)
+            .count();
+        if depth >= 2 {
+            return Vec::new();
+        }
+        ctx.expanding.borrow_mut().push(trait_name.to_string());
+        let mut atoms = Vec::new();
+        for imp in ctx.model.trait_impls(trait_name, Build::Python) {
+            if depth == 1 && is_collection(&imp.self_ty) {
+                continue;
+            }
+            let scope = scope_of(&[&imp.generics]);
+            atoms.extend(expand(&imp.self_ty, mode, &scope, self_name, ctx));
+        }
+        ctx.expanding.borrow_mut().pop();
+        atoms
+    }
+
+    fn is_collection(ty: &Type) -> bool {
+        match strip_refs(ty) {
+            Type::Slice(_) | Type::Array(_) => true,
+            other => matches!(type_ident(other).as_str(), "Vec" | "VecDeque"),
+        }
+    }
+
+    /// Hint for a binding value, and the Rust source a shared alias would be
+    /// named after. Untyped values take the canonical method's type.
+    fn value_hint(
+        method: &Method,
+        param: Option<(&str, &Type)>,
+        mode: Mode,
+        self_name: &str,
+        ctx: &Ctx,
+    ) -> (Vec<Atom>, Option<String>) {
+        let binding_ty = match param {
+            Some((_, ty)) => Some(ty),
+            None => method.ret.as_ref(),
+        };
+        let Some(binding_ty) = binding_ty else {
+            return (vec![Atom::Null], None);
+        };
+        if !is_untyped(binding_ty) {
+            let atoms = expand(binding_ty, mode, &Scope::default(), self_name, ctx);
+            if atoms.is_empty() {
+                ctx.unknown
+                    .borrow_mut()
+                    .insert(binding_ty.to_token_stream().to_string());
+            }
+            let source = source_name(binding_ty, &Scope::default(), ctx);
+            return (atoms, source);
+        }
+        let Some((canonical, scope, owner)) = canonical_value(method, param, ctx) else {
+            return (Vec::new(), None);
+        };
+        let owner_name = ctx
+            .stub_names
+            .get(&owner)
+            .or_else(|| ctx.faces.get(&owner).map(|rust| &ctx.stub_names[rust]))
+            .map(String::as_str)
+            .unwrap_or(self_name);
+        let atoms = expand(&canonical, mode, &scope, owner_name, ctx);
+        let source = source_name(&canonical, &scope, ctx);
+        (atoms, source)
+    }
+
+    /// The canonical method's type for a binding parameter (or its return
+    /// type when `param` is `None`), with the generics in scope and the
+    /// canonical owner's Rust name.
+    fn canonical_value(
+        method: &Method,
+        param: Option<(&str, &Type)>,
+        ctx: &Ctx,
+    ) -> Option<(Type, Scope, String)> {
+        // The method documented on the same page, else the method with the
+        // same name on the type this binding wraps.
+        let page = method
+            .lsp_doc
+            .as_deref()
+            .map(|p| canonical_page(ctx.root, p));
+        let wrapped: Vec<&str> = std::iter::once(method.owner.as_str())
+            .chain(
+                ctx.faces
+                    .iter()
+                    .filter(|(_, rust)| **rust == method.owner)
+                    .map(|(py, _)| py.as_str()),
+            )
+            .collect();
+        let rust_name = method
+            .rust_name
+            .strip_suffix("_py")
+            .unwrap_or(&method.rust_name);
+        let documented = ctx
+            .model
+            .plain_methods(Build::Python)
+            .find(|(_, f)| page.is_some() && reflect::lsp_doc(&f.attrs) == page);
+        let (imp, f) = documented.or_else(|| {
+            ctx.model.plain_methods(Build::Python).find(|(imp, f)| {
+                wrapped.contains(&imp.self_ident.as_str()) && f.sig.ident == rust_name
+            })
+        })?;
+        let scope = scope_of(&[&imp.generics, &f.sig.generics]);
+        let owner = imp.self_ident.clone();
+        let Some((param_name, _)) = param else {
+            return match &f.sig.output {
+                ReturnType::Type(_, ty) => Some(((**ty).clone(), scope, owner)),
+                ReturnType::Default => None,
+            };
+        };
+        let typed: Vec<(String, &Type)> = f
+            .sig
+            .inputs
+            .iter()
+            .filter_map(|input| match input {
+                FnArg::Typed(t) => match t.pat.as_ref() {
+                    Pat::Ident(p) => Some((p.ident.to_string(), t.ty.as_ref())),
+                    _ => None,
+                },
+                FnArg::Receiver(_) => None,
+            })
+            .collect();
+        // Match by name; parameters renamed for Python match by position.
+        let by_name = typed.iter().find(|(n, _)| n == param_name);
+        let by_position = (typed.len() == method.params.len())
+            .then(|| method.params.iter().position(|(n, _)| n == param_name))
+            .flatten()
+            .map(|i| &typed[i]);
+        let (_, ty) = by_name.or(by_position)?;
+        Some(((*ty).clone(), scope, owner))
+    }
+
+    /// The Rust name a union is known by: the trait of `impl Trait`, the `X`
+    /// of `Into<X>`, or a `derive(FromPyObject)` type.
+    fn source_name(ty: &Type, scope: &Scope, ctx: &Ctx) -> Option<String> {
+        let bounds: Vec<syn::TypeParamBound> = match strip_refs(ty) {
+            Type::ImplTrait(it) => it.bounds.iter().cloned().collect(),
+            Type::TraitObject(to) => to.bounds.iter().cloned().collect(),
+            Type::Path(p) => {
+                let ident = last_ident(&p.path);
+                let generic = p.path.segments.len() == 1 && scope.bounds.contains_key(&ident);
+                match ident.as_str() {
+                    "Option" => {
+                        return type_args(strip_refs(ty))
+                            .first()
+                            .and_then(|t| source_name(t, scope, ctx));
+                    }
+                    _ if generic => scope.bounds[&ident].clone(),
+                    _ if !ctx.stub_names.contains_key(&ident)
+                        && ctx.model.type_named(&ident, Build::Python).is_some() =>
+                    {
+                        return Some(ident);
+                    }
+                    _ => return None,
+                }
+            }
+            _ => return None,
+        };
+        let named: Vec<String> = bounds
+            .iter()
+            .filter_map(|b| match b {
+                syn::TypeParamBound::Trait(tb) => tb.path.segments.last(),
+                _ => None,
+            })
+            .filter(|s| !MARKER_TRAITS.contains(&s.ident.to_string().as_str()))
+            .map(|s| match (s.ident.to_string().as_str(), bound_args(s).0) {
+                ("Into" | "TryInto", Some(target)) => type_ident(target),
+                (other, _) => other.to_string(),
+            })
+            .collect();
+        match named.as_slice() {
+            [only] => Some(only.clone()),
+            _ => None,
+        }
+    }
+
+    fn placeholder(name: &str) -> String {
+        format!("\u{ab}{name}\u{bb}")
+    }
+
+    /// The text a parameter hint renders as: a placeholder when the union is
+    /// big enough to share, else the union itself.
+    fn param_text(atoms: &[Atom], source: Option<String>, ctx: &Ctx) -> String {
+        let optional = atoms.contains(&Atom::Null);
+        let core: Vec<Atom> = atoms
+            .iter()
+            .filter(|a| **a != Atom::Null)
+            .cloned()
+            .collect();
+        let Some(source) = source.filter(|_| core.len() >= 3) else {
+            return render(atoms, Mode::Param);
+        };
+        let text = render(&core, Mode::Param);
+        let mut aliases = ctx.aliases.borrow_mut();
+        if aliases
+            .get(&source)
+            .is_some_and(|existing| *existing != text)
+        {
+            return render(atoms, Mode::Param);
+        }
+        aliases.insert(source.clone(), text);
+        let token = placeholder(&source);
+        if optional {
+            format!("{token} | None")
+        } else {
+            token
         }
     }
 
@@ -777,10 +1312,8 @@ mod python_stubs {
         rust: &str,
         class: &Class,
         ctx: &Ctx,
-        used: &mut BTreeSet<(String, String, String)>,
     ) -> String {
         let stub_name = ctx.stub_names[rust].as_str();
-        let names = (class.py_name.as_str(), stub_name);
         // pyo3 classes reject subclassing unless they opt in with `subclass`.
         let mut out = if class.subclass {
             String::new()
@@ -796,7 +1329,10 @@ mod python_stubs {
             body.push_str(&format!("    {variant}: ClassVar[{stub_name}]\n"));
         }
         for field in &class.fields {
-            let hint = py_type(&field.ty, false, stub_name, ctx);
+            let hint = render(
+                &expand(&field.ty, Mode::Return, &Scope::default(), stub_name, ctx),
+                Mode::Return,
+            );
             if field.settable {
                 body.push_str(&format!("    {}: {hint}\n", field.name));
             } else {
@@ -814,7 +1350,7 @@ mod python_stubs {
             if method.kind == Kind::Setter && !getters.contains(method.py_name.as_str()) {
                 continue;
             }
-            body.push_str(&render_method(root, names, method, ctx, used, 4));
+            body.push_str(&render_method(root, stub_name, method, ctx, 4));
         }
         if body.is_empty() {
             out.truncate(out.len() - 1);
@@ -825,33 +1361,16 @@ mod python_stubs {
         out
     }
 
-    /// `names` is the owner's Python name (for `HINT_OVERRIDES`) and its stub
-    /// name (for `Self`). Module functions pass two empty strings.
+    /// `self_name` is the owner's stub name, for `Self`. Module functions pass
+    /// an empty string.
     fn render_method(
         root: &Path,
-        names: (&str, &str),
+        self_name: &str,
         method: &Method,
         ctx: &Ctx,
-        used: &mut BTreeSet<(String, String, String)>,
         indent: usize,
     ) -> String {
         let pad = " ".repeat(indent);
-        let (class, self_name) = names;
-        // Overrides name the method as the docs do: the constructor is `new`.
-        let lookup_name = if method.kind == Kind::Init {
-            "new"
-        } else {
-            method.py_name.as_str()
-        };
-        let mut hint_for = |param: &str| -> Option<String> {
-            HINT_OVERRIDES
-                .iter()
-                .find(|(c, m, p, _)| *c == class && *m == lookup_name && *p == param)
-                .map(|(c, m, p, hint)| {
-                    used.insert((c.to_string(), m.to_string(), p.to_string()));
-                    hint.to_string()
-                })
-        };
 
         let mut params: Vec<String> = Vec::new();
         match method.kind {
@@ -863,8 +1382,14 @@ mod python_stubs {
             .params
             .iter()
             .map(|(name, ty)| {
-                let hint = hint_for(name).unwrap_or_else(|| py_type(ty, true, self_name, ctx));
-                (py_param_name(name), hint)
+                let (atoms, source) = value_hint(
+                    method,
+                    Some((name.as_str(), ty)),
+                    Mode::Param,
+                    self_name,
+                    ctx,
+                );
+                (py_param_name(name), param_text(&atoms, source, ctx))
             })
             .collect();
         match &method.signature {
@@ -904,10 +1429,10 @@ mod python_stubs {
         } else if method.kind == Kind::Setter {
             "None".to_string()
         } else {
-            hint_for("return").unwrap_or_else(|| match &method.ret {
-                Some(ty) => py_type(ty, false, self_name, ctx),
-                None => "None".into(),
-            })
+            render(
+                &value_hint(method, None, Mode::Return, self_name, ctx).0,
+                Mode::Return,
+            )
         };
 
         let mut out = String::new();
