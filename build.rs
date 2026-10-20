@@ -154,7 +154,7 @@ fn generate_docs() {
     println!("✅ Website export done!\n");
 
     println!("🐍 Generating Python type stubs...");
-    python_stubs::generate(&workspace);
+    python_stubs::generate(&workspace, &catalog.reflection);
     println!("✅ Python stubs written.\n");
 
     println!("📚 Building tutorials manifest...");
@@ -163,6 +163,7 @@ fn generate_docs() {
 }
 
 include!("scripts/no_panics.rs");
+include!("scripts/reflect.rs");
 include!("scripts/codegen.rs");
 include!("scripts/convert.rs");
 include!("scripts/swift.rs");

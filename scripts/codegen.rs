@@ -574,6 +574,9 @@ struct ObjectProperty {
     pub struct ApiCatalog {
         pub structs: Vec<StructEntry>,
         pub methods: Vec<MethodEntry>,
+        /// Every item in the crate with the `cfg` that gates it, binding
+        /// impls included. Generators read their API facts from here.
+        pub reflection: super::reflect::Reflection,
     }
 
     impl ApiCatalog {
@@ -644,7 +647,10 @@ struct ObjectProperty {
     pub fn build_catalog() -> ApiCatalog {
         let crate_root = super::meta::workspace_root();
         let (entry_path, parsed) = parse_lib_entry_point(&crate_root);
-        let mut catalog = ApiCatalog::default();
+        let mut catalog = ApiCatalog {
+            reflection: super::reflect::Reflection::build(&crate_root),
+            ..Default::default()
+        };
         walk_catalog(&entry_path, parsed.items, &mut catalog, NameFilter::Global);
         catalog
     }

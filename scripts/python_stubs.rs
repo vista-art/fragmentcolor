@@ -3,9 +3,10 @@ mod python_stubs {
     //!
     //! Writes `platforms/python/fragmentcolor/fragmentcolor.pyi` from two sources:
     //!
-    //! - **Signatures** come from the pyo3 bindings in `src/`. The walker reads
-    //!   every `#[pyclass]`, `#[pymethods]` and `#[pyfunction]` (also through
-    //!   `#[cfg_attr(python, ...)]`) and maps each Rust type to a Python hint.
+    //! - **Signatures** come from the pyo3 bindings in the shared source model
+    //!   ([`super::reflect`]), seen as the Python build compiles them: every
+    //!   `#[pyclass]`, `#[pymethods]` and `#[pyfunction]` (also through
+    //!   `#[cfg_attr(python, ...)]`), with each Rust type mapped to a Python hint.
     //!   `#[doc(hidden)]` methods stay in: Python can still call them, and some,
     //!   like the `ScreenRegion` constructors, are how users build arguments.
     //!   The classes and functions registered in `src/platforms/python.rs` are
@@ -22,14 +23,12 @@ mod python_stubs {
 
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
     use quote::ToTokens;
-    use syn::punctuated::Punctuated;
-    use syn::{
-        Attribute, Fields, FnArg, GenericArgument, ImplItem, Item, Meta, Pat, PathArguments,
-        ReturnType, Token, Type,
-    };
+    use syn::{Attribute, FnArg, GenericArgument, Meta, Pat, PathArguments, ReturnType, Type};
+
+    use super::reflect::{self, Build, Reflection, TypeKind};
 
     const STUB_PATH: &str = "platforms/python/fragmentcolor/fragmentcolor.pyi";
     const MODULE_INIT: &str = "src/platforms/python.rs";
@@ -232,10 +231,10 @@ mod python_stubs {
         referenced: std::cell::RefCell<BTreeSet<String>>,
     }
 
-    pub fn generate(root: &Path) {
+    pub fn generate(root: &Path, model: &Reflection) {
         println!("cargo::rerun-if-changed={}", EXAMPLES_DIR);
 
-        let bindings = scan(root);
+        let bindings = scan(model);
         let module = read_module(root);
 
         // Registered classes keep their Python name. A class that is only
@@ -368,136 +367,72 @@ mod python_stubs {
     // Scanning
     // ---------------------------------------------------------------------
 
-    fn scan(root: &Path) -> Bindings {
-        let mut files = Vec::new();
-        collect_rs_files(&root.join("src"), &mut files);
-        files.sort();
-
+    fn scan(model: &Reflection) -> Bindings {
+        let build = Build::Python;
         let mut bindings = Bindings::default();
-        for file in files {
-            let Ok(text) = fs::read_to_string(&file) else {
+        for ty in model.types_in(build) {
+            let Some(args) = pyclass_args(&ty.attrs) else {
                 continue;
             };
-            let Ok(parsed) = syn::parse_file(&text) else {
-                continue;
+            let mut class = Class {
+                py_name: arg_value(&args, "name").unwrap_or_else(|| ty.ident.clone()),
+                subclass: split_top_level(&args).iter().any(|a| a == "subclass"),
+                lsp_doc: reflect::lsp_doc(&ty.attrs),
+                ..Default::default()
             };
-            scan_items(&parsed.items, &mut bindings);
-        }
-        bindings
-    }
-
-    fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
-        let Ok(entries) = fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                collect_rs_files(&path, out);
-            } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-                out.push(path);
-            }
-        }
-    }
-
-    fn scan_items(items: &[Item], bindings: &mut Bindings) {
-        for item in items {
-            match item {
-                Item::Struct(s) => {
-                    let Some(args) = pyclass_args(&s.attrs) else {
-                        continue;
-                    };
-                    let rust = s.ident.to_string();
-                    let mut class = Class {
-                        py_name: arg_value(&args, "name").unwrap_or_else(|| rust.clone()),
-                        subclass: split_top_level(&args).iter().any(|a| a == "subclass"),
-                        lsp_doc: lsp_doc(&s.attrs),
-                        ..Default::default()
-                    };
-                    if let Fields::Named(named) = &s.fields {
-                        for field in &named.named {
-                            let Some(args) = pyo3_args(&field.attrs) else {
-                                continue;
-                            };
-                            let flags = split_top_level(&args);
-                            if !flags.iter().any(|f| f == "get") {
-                                continue;
-                            }
-                            let Some(ident) = &field.ident else {
-                                continue;
-                            };
-                            class.fields.push(Field {
-                                name: arg_value(&args, "name").unwrap_or_else(|| ident.to_string()),
-                                ty: field.ty.clone(),
-                                settable: flags.iter().any(|f| f == "set"),
-                            });
+            match ty.kind {
+                TypeKind::Struct => {
+                    for field in &ty.fields {
+                        let Some(args) = pyo3_args(&field.attrs) else {
+                            continue;
+                        };
+                        let flags = split_top_level(&args);
+                        if !flags.iter().any(|f| f == "get") {
+                            continue;
                         }
+                        let Some(ident) = &field.ident else {
+                            continue;
+                        };
+                        class.fields.push(Field {
+                            name: arg_value(&args, "name").unwrap_or_else(|| ident.clone()),
+                            ty: field.ty.clone(),
+                            settable: flags.iter().any(|f| f == "set"),
+                        });
                     }
-                    bindings.classes.insert(rust, class);
                 }
-                Item::Enum(e) => {
-                    let Some(args) = pyclass_args(&e.attrs) else {
-                        continue;
-                    };
-                    let rust = e.ident.to_string();
-                    let mut class = Class {
-                        py_name: arg_value(&args, "name").unwrap_or_else(|| rust.clone()),
-                        subclass: split_top_level(&args).iter().any(|a| a == "subclass"),
-                        lsp_doc: lsp_doc(&e.attrs),
-                        ..Default::default()
-                    };
-                    for variant in &e.variants {
-                        if !matches!(variant.fields, Fields::Unit) {
+                TypeKind::Enum => {
+                    for variant in &ty.variants {
+                        if !variant.is_unit || !variant.cfg.holds(build) {
                             continue;
                         }
                         let name = pyo3_args(&variant.attrs)
                             .and_then(|a| arg_value(&a, "name"))
-                            .unwrap_or_else(|| variant.ident.to_string());
+                            .unwrap_or_else(|| variant.ident.clone());
                         class.variants.push(name);
                     }
-                    bindings.classes.insert(rust, class);
                 }
-                Item::Impl(imp) => {
-                    if imp.trait_.is_some() || !has_python_meta(&imp.attrs, "pymethods") {
-                        continue;
-                    }
-                    let Type::Path(self_ty) = imp.self_ty.as_ref() else {
-                        continue;
-                    };
-                    let rust = last_ident(&self_ty.path);
-                    for impl_item in &imp.items {
-                        let ImplItem::Fn(f) = impl_item else {
-                            continue;
-                        };
-                        if is_cfg_test(&f.attrs) {
-                            continue;
-                        }
-                        let method = read_method(&f.attrs, &f.sig, false);
-                        bindings
-                            .methods
-                            .entry(rust.clone())
-                            .or_default()
-                            .push(method);
-                    }
-                }
-                Item::Fn(f) => {
-                    if !has_python_meta(&f.attrs, "pyfunction") {
-                        continue;
-                    }
-                    let method = read_method(&f.attrs, &f.sig, true);
-                    bindings.functions.insert(f.sig.ident.to_string(), method);
-                }
-                Item::Mod(m) => {
-                    if is_cfg_test(&m.attrs) {
-                        continue;
-                    }
-                    if let Some((_, items)) = &m.content {
-                        scan_items(items, bindings);
-                    }
-                }
-                _ => {}
+            }
+            bindings.classes.insert(ty.ident.clone(), class);
+        }
+
+        // Methods keep source order within a file, and files keep path order.
+        let mut impls: Vec<_> = model.binding_impls(build, "pymethods").collect();
+        impls.sort_by(|a, b| a.file.cmp(&b.file));
+        for imp in impls {
+            for f in imp.fns.iter().filter(|f| f.cfg.holds(build)) {
+                bindings
+                    .methods
+                    .entry(imp.self_ident.clone())
+                    .or_default()
+                    .push(read_method(&f.attrs, &f.sig, false));
             }
         }
+        for f in model.binding_fns(build, "pyfunction") {
+            bindings
+                .functions
+                .insert(f.sig.ident.to_string(), read_method(&f.attrs, &f.sig, true));
+        }
+        bindings
     }
 
     fn read_method(attrs: &[Attribute], sig: &syn::Signature, function: bool) -> Method {
@@ -509,13 +444,8 @@ mod python_stubs {
             Kind::Instance
         };
         let mut explicit_name = arg_value(&pyo3, "name");
-        for attr in attrs {
-            let ident = attr
-                .path()
-                .segments
-                .last()
-                .map(|s| s.ident.to_string())
-                .unwrap_or_default();
+        for meta in reflect::metas(attrs, Build::Python) {
+            let ident = reflect::meta_ident(&meta);
             match ident.as_str() {
                 "new" => kind = Kind::Init,
                 "staticmethod" => kind = Kind::Static,
@@ -527,7 +457,7 @@ mod python_stubs {
                     } else {
                         Kind::Setter
                     };
-                    if let Meta::List(list) = &attr.meta {
+                    if let Meta::List(list) = &meta {
                         explicit_name = Some(list.tokens.to_string().trim().to_string());
                     }
                 }
@@ -577,7 +507,7 @@ mod python_stubs {
             params,
             signature: arg_value(&pyo3, "signature"),
             ret,
-            lsp_doc: lsp_doc(attrs),
+            lsp_doc: reflect::lsp_doc(attrs),
         }
     }
 
@@ -629,80 +559,21 @@ mod python_stubs {
     // Attributes
     // ---------------------------------------------------------------------
 
-    /// Every attribute meta that applies on the Python build, with
-    /// `cfg_attr(<python predicate>, a, b)` expanded into `a` and `b`.
-    fn python_metas(attrs: &[Attribute]) -> Vec<Meta> {
-        let mut out = Vec::new();
-        for attr in attrs {
-            if attr.path().is_ident("cfg_attr") {
-                let Ok(list) =
-                    attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
-                else {
-                    continue;
-                };
-                let mut iter = list.into_iter();
-                let Some(pred) = iter.next() else {
-                    continue;
-                };
-                if pred.to_token_stream().to_string().contains("python") {
-                    out.extend(iter);
-                }
-            } else {
-                out.push(attr.meta.clone());
-            }
-        }
-        out
-    }
-
-    fn meta_ident(meta: &Meta) -> String {
-        meta.path()
-            .segments
-            .last()
-            .map(|s| s.ident.to_string())
-            .unwrap_or_default()
-    }
-
-    fn meta_args(meta: &Meta) -> String {
-        match meta {
-            Meta::List(list) => list.tokens.to_string(),
-            _ => String::new(),
-        }
-    }
-
-    fn has_python_meta(attrs: &[Attribute], name: &str) -> bool {
-        python_metas(attrs).iter().any(|m| meta_ident(m) == name)
-    }
-
     fn pyclass_args(attrs: &[Attribute]) -> Option<String> {
-        python_metas(attrs)
+        reflect::metas(attrs, Build::Python)
             .iter()
-            .find(|m| meta_ident(m) == "pyclass")
-            .map(meta_args)
+            .find(|m| reflect::meta_ident(m) == "pyclass")
+            .map(reflect::meta_args)
     }
 
     /// Merged arguments of every `#[pyo3(...)]` on the item.
     fn pyo3_args(attrs: &[Attribute]) -> Option<String> {
-        let parts: Vec<String> = python_metas(attrs)
+        let parts: Vec<String> = reflect::metas(attrs, Build::Python)
             .iter()
-            .filter(|m| meta_ident(m) == "pyo3")
-            .map(meta_args)
+            .filter(|m| reflect::meta_ident(m) == "pyo3")
+            .map(reflect::meta_args)
             .collect();
         (!parts.is_empty()).then(|| parts.join(" , "))
-    }
-
-    fn lsp_doc(attrs: &[Attribute]) -> Option<String> {
-        attrs
-            .iter()
-            .find(|a| a.path().is_ident("lsp_doc"))
-            .and_then(|a| a.parse_args::<syn::LitStr>().ok())
-            .map(|s| s.value())
-    }
-
-    fn is_cfg_test(attrs: &[Attribute]) -> bool {
-        attrs.iter().any(|a| {
-            a.path().is_ident("cfg")
-                && matches!(&a.meta, Meta::List(l) if l.tokens.to_string() == "test")
-        })
     }
 
     /// Splits `a , b = "x" , c = (1 , 2)` on commas outside brackets and strings.
