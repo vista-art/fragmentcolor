@@ -16,6 +16,14 @@ It contains a GPU surface texture attached to a platform-specific window or an o
 # /*[js]
 # const canvas = document.createElement("canvas");
 # */
+# /*[python]
+# import os, sys
+# # Skip this example in headless/CI environments that have no display surface.
+# if os.environ.get('DISPLAY') is None and sys.platform != 'win32' and os.environ.get('FC_ALLOW_WINDOW') != '1':
+#     raise SystemExit(0)
+# from rendercanvas.auto import RenderCanvas
+# canvas = RenderCanvas(size=(800, 600))
+# */
 # /*[swift]
 # import QuartzCore
 # let canvas = CAMetalLayer()
