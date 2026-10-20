@@ -17,6 +17,27 @@ mod kotlin {
     //!   - Import becomes `import org.fragmentcolor.*`.
     //!   - Trailing semicolons are optional and we strip them.
 
+    /// API facts the Kotlin rewrites read, derived from the source model.
+    struct Facts {
+        /// String constants the Kotlin bindings don't expose.
+        consts: Vec<crate::reflect::StrConst>,
+    }
+
+    static FACTS: std::sync::OnceLock<Facts> = std::sync::OnceLock::new();
+
+    /// Derive the Kotlin rewrites' API facts. Runs once before any example converts.
+    pub fn install(model: &crate::reflect::Reflection) {
+        let _ = FACTS.set(Facts {
+            consts: model.str_consts(crate::reflect::Build::Android),
+        });
+    }
+
+    fn facts() -> &'static Facts {
+        FACTS
+            .get()
+            .unwrap_or_else(|| panic!("kotlin::install must run before examples convert"))
+    }
+
     /// Finalize the Kotlin output emitted by `convert(_, Lang::Kotlin, _)`.
     /// Takes the JS-shaped intermediate and applies the bulk-text swaps
     /// documented above to land on idiomatic Kotlin.
@@ -245,24 +266,15 @@ mod kotlin {
         out
     }
 
-    /// Replace `Vertex.UV0` etc. with the bare string literal value. Matches
-    /// the Rust-side `pub const UV0: &str = "uv0"` declarations in
-    /// `src/mesh/vertex.rs` so example code that writes `Vertex::UV0` keeps
-    /// resolving on platforms where uniffi can't surface the constant.
+    /// Inline associated string consts such as `Vertex.UV0`, which uniffi
+    /// can't surface on Kotlin.
     fn inline_vertex_attr_constants(line: &str) -> String {
-        const ATTRS: &[(&str, &str)] = &[
-            ("Vertex.UV0", "\"uv0\""),
-            ("Vertex.UV1", "\"uv1\""),
-            ("Vertex.NORMAL", "\"normal\""),
-            ("Vertex.TANGENT", "\"tangent\""),
-            ("Vertex.COLOR0", "\"color0\""),
-            ("Vertex.COLOR1", "\"color1\""),
-        ];
-        let mut out = line.to_string();
-        for (needle, repl) in ATTRS {
-            out = out.replace(needle, repl);
-        }
-        out
+        crate::reflect::inline_str_consts(line, &facts().consts, kotlin_quoted)
+    }
+
+    /// A Kotlin string literal holding `value`; `$` would start a template.
+    fn kotlin_quoted(value: &str) -> String {
+        crate::convert::quoted(value).replace('$', "\\$")
     }
 
     /// Kotlin's `for` loop requires parens around the in-pattern, unlike

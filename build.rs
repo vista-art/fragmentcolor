@@ -136,6 +136,9 @@ fn generate_docs() {
     );
 
     println!("🌎 Exporting website (examples + pages)...");
+    convert::install(&catalog.reflection);
+    swift::install(&catalog.reflection);
+    kotlin::install(&catalog.reflection);
 
     println!("==> website::export_examples_and_pages()");
     let outcome = website::export_examples_and_pages(&catalog, &api_map);

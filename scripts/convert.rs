@@ -1,5 +1,32 @@
 mod convert {
+    use crate::reflect::{Build, Reflection, StrConst, inline_str_consts};
     use crate::{js_objectize_sampleroptions_literal, js_region_new_to_array, simplify_js_size_from};
+
+    /// API facts the converter reads, derived from the source model.
+    struct Facts {
+        /// String constants the JS bindings don't expose.
+        js_consts: Vec<StrConst>,
+    }
+
+    static FACTS: std::sync::OnceLock<Facts> = std::sync::OnceLock::new();
+
+    /// Derive the converter's API facts. Runs once before any example converts.
+    pub fn install(model: &Reflection) {
+        let _ = FACTS.set(Facts {
+            js_consts: model.str_consts(Build::Wasm),
+        });
+    }
+
+    fn facts() -> &'static Facts {
+        FACTS
+            .get()
+            .unwrap_or_else(|| panic!("convert::install must run before examples convert"))
+    }
+
+    /// A JS, Swift or Kotlin string literal holding `value`.
+    pub fn quoted(value: &str) -> String {
+        format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+    }
 
     /// Target languages for the Rust→FFI example transpiler.
     ///
@@ -45,12 +72,9 @@ mod convert {
             .collect::<Vec<_>>()
             .join("\n")
             + if out.ends_with('\n') { "\n" } else { "" };
-        // wasm-bindgen doesn't expose the Rust-side `pub const UV0: &str = "uv0"`
-        // declarations on the JS class — `Vertex.UV0` resolves to `undefined`
-        // at runtime, which then trips `set(undefined, ...)` with
-        // "expected a string argument, found undefined". Mirror the inline
-        // rewrite that scripts/swift.rs and scripts/kotlin.rs already do.
-        inline_vertex_attr_constants_js(&out)
+        // wasm-bindgen doesn't expose associated consts such as `Vertex::UV0`
+        // on the JS class, where they would read as `undefined`.
+        inline_str_consts(&out, &facts().js_consts, quoted)
     }
 
     /// Rewrite a Rust `for <ident> in <expr> {` loop header into JavaScript's
@@ -212,22 +236,6 @@ mod convert {
             }
         }
         None
-    }
-
-    fn inline_vertex_attr_constants_js(src: &str) -> String {
-        const ATTRS: &[(&str, &str)] = &[
-            ("Vertex.UV0", "\"uv0\""),
-            ("Vertex.UV1", "\"uv1\""),
-            ("Vertex.NORMAL", "\"normal\""),
-            ("Vertex.TANGENT", "\"tangent\""),
-            ("Vertex.COLOR0", "\"color0\""),
-            ("Vertex.COLOR1", "\"color1\""),
-        ];
-        let mut out = src.to_string();
-        for (needle, repl) in ATTRS {
-            out = out.replace(needle, repl);
-        }
-        out
     }
 
     pub fn to_py(items: &[(String, bool)]) -> String {

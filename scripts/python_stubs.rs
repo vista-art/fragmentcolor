@@ -28,7 +28,7 @@ mod python_stubs {
     use quote::ToTokens;
     use syn::{Attribute, FnArg, GenericArgument, Meta, Pat, PathArguments, ReturnType, Type};
 
-    use super::reflect::{self, Build, Reflection, TypeKind};
+    use super::reflect::{self, Build, Reflection, TypeKind, arg_value, split_top_level};
 
     const STUB_PATH: &str = "platforms/python/fragmentcolor/fragmentcolor.pyi";
     const MODULE_INIT: &str = "src/platforms/python.rs";
@@ -574,57 +574,6 @@ mod python_stubs {
             .map(reflect::meta_args)
             .collect();
         (!parts.is_empty()).then(|| parts.join(" , "))
-    }
-
-    /// Splits `a , b = "x" , c = (1 , 2)` on commas outside brackets and strings.
-    fn split_top_level(args: &str) -> Vec<String> {
-        let mut parts = Vec::new();
-        let mut depth = 0i32;
-        let mut in_str = false;
-        let mut current = String::new();
-        let mut prev = '\0';
-        for ch in args.chars() {
-            match ch {
-                '"' if prev != '\\' => in_str = !in_str,
-                '(' | '[' | '{' if !in_str => depth += 1,
-                ')' | ']' | '}' if !in_str => depth -= 1,
-                ',' if !in_str && depth == 0 => {
-                    parts.push(current.trim().to_string());
-                    current.clear();
-                    prev = ch;
-                    continue;
-                }
-                _ => {}
-            }
-            current.push(ch);
-            prev = ch;
-        }
-        if !current.trim().is_empty() {
-            parts.push(current.trim().to_string());
-        }
-        parts
-    }
-
-    /// Value of `key = value` in an attribute argument list. String values
-    /// lose their quotes, parenthesized values their outer parentheses.
-    fn arg_value(args: &str, key: &str) -> Option<String> {
-        for part in split_top_level(args) {
-            let Some((k, v)) = part.split_once('=') else {
-                continue;
-            };
-            if k.trim() != key {
-                continue;
-            }
-            let v = v.trim();
-            if let Some(s) = v.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
-                return Some(s.to_string());
-            }
-            if let Some(s) = v.strip_prefix('(').and_then(|s| s.strip_suffix(')')) {
-                return Some(s.trim().to_string());
-            }
-            return Some(v.to_string());
-        }
-        None
     }
 
     // ---------------------------------------------------------------------

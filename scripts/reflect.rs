@@ -9,6 +9,7 @@ mod reflect {
     //! implementors and conversions from here. The Rust sources stay the only
     //! place an API fact is written down.
 
+    use std::collections::BTreeSet;
     use std::fs;
     use std::path::{Path, PathBuf};
 
@@ -21,6 +22,23 @@ mod reflect {
     pub enum Build {
         /// The desktop wheel built with the `python` feature.
         Python,
+        /// The npm package, built for `wasm32` without default features.
+        Wasm,
+        /// The xcframework the Swift package links.
+        Ios,
+        /// The `.so` libraries the Kotlin package links.
+        Android,
+    }
+
+    impl Build {
+        /// The attribute that marks a binding impl block in this build.
+        fn binding_attr(self) -> &'static str {
+            match self {
+                Build::Python => "pymethods",
+                Build::Wasm => "wasm_bindgen",
+                Build::Ios | Build::Android => "export",
+            }
+        }
     }
 
     /// A parsed `cfg(...)` predicate.
@@ -117,28 +135,63 @@ mod reflect {
 
     /// The `cfg_aliases!` block in `build.rs` and the cfg names rustc sets.
     fn name_holds(name: &str, build: Build) -> Option<bool> {
-        match (name, build) {
-            ("python" | "desktop", Build::Python) => Some(true),
-            ("wasm" | "mobile" | "ios" | "android" | "dev", Build::Python) => Some(false),
-            ("test" | "doc" | "doctest" | "miri", _) => Some(false),
+        use Build::*;
+        match name {
+            "python" | "desktop" => Some(build == Python),
+            "wasm" => Some(build == Wasm),
+            "ios" => Some(build == Ios),
+            "android" => Some(build == Android),
+            "mobile" => Some(matches!(build, Ios | Android)),
+            "dev" | "test" | "doc" | "doctest" | "miri" => Some(false),
+            // The wheel builds for every desktop OS, so these stay open there.
+            "apple" => match build {
+                Ios => Some(true),
+                Python => None,
+                Wasm | Android => Some(false),
+            },
+            "macos" | "windows" => match build {
+                Python => None,
+                Wasm | Ios | Android => Some(false),
+            },
+            "unix" => match build {
+                Ios | Android => Some(true),
+                Python => None,
+                Wasm => Some(false),
+            },
             _ => None,
         }
     }
 
     fn pair_holds(key: &str, value: &str, build: Build) -> Option<bool> {
-        match (key, build) {
-            // maturin builds the wheel with the default features plus `python`.
-            ("feature", Build::Python) => match value {
-                "python" | "default" => Some(true),
-                v if v.starts_with("shaders") => Some(true),
+        use Build::*;
+        match key {
+            // maturin and the mobile scripts build with the default features
+            // (plus `python` for the wheel); build_web disables them.
+            "feature" => match value {
+                "python" => Some(build == Python),
+                "default" => Some(build != Wasm),
+                v if v.starts_with("shaders") => Some(build != Wasm),
                 "winit" | "network" | "uniffi/cli" => Some(false),
                 _ => None,
             },
-            ("target_arch", Build::Python) if value == "wasm32" => Some(false),
-            ("target_family", Build::Python) if value == "wasm" => Some(false),
-            ("target_os", Build::Python) if matches!(value, "ios" | "android" | "unknown") => {
-                Some(false)
-            }
+            "target_arch" => match build {
+                Wasm => Some(value == "wasm32"),
+                Python | Android if value == "wasm32" => Some(false),
+                Python | Android => None,
+                Ios => Some(value == "aarch64"),
+            },
+            "target_family" => match value {
+                "wasm" => Some(build == Wasm),
+                "unix" | "windows" => name_holds(value, build),
+                _ => None,
+            },
+            "target_os" => match build {
+                Ios => Some(value == "ios"),
+                Android => Some(value == "android"),
+                Wasm => Some(value == "unknown"),
+                Python if matches!(value, "ios" | "android" | "unknown") => Some(false),
+                Python => None,
+            },
             _ => None,
         }
     }
@@ -205,6 +258,57 @@ mod reflect {
         }
     }
 
+    /// Splits `a , b = "x" , c = (1 , 2)` on commas outside brackets and strings.
+    pub fn split_top_level(args: &str) -> Vec<String> {
+        let mut parts = Vec::new();
+        let mut depth = 0i32;
+        let mut in_str = false;
+        let mut current = String::new();
+        let mut prev = '\0';
+        for ch in args.chars() {
+            match ch {
+                '"' if prev != '\\' => in_str = !in_str,
+                '(' | '[' | '{' if !in_str => depth += 1,
+                ')' | ']' | '}' if !in_str => depth -= 1,
+                ',' if !in_str && depth == 0 => {
+                    parts.push(current.trim().to_string());
+                    current.clear();
+                    prev = ch;
+                    continue;
+                }
+                _ => {}
+            }
+            current.push(ch);
+            prev = ch;
+        }
+        if !current.trim().is_empty() {
+            parts.push(current.trim().to_string());
+        }
+        parts
+    }
+
+    /// Value of `key = value` in an attribute argument list. String values
+    /// lose their quotes, parenthesized values their outer parentheses.
+    pub fn arg_value(args: &str, key: &str) -> Option<String> {
+        for part in split_top_level(args) {
+            let Some((k, v)) = part.split_once('=') else {
+                continue;
+            };
+            if k.trim() != key {
+                continue;
+            }
+            let v = v.trim();
+            if let Some(s) = v.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
+                return Some(s.to_string());
+            }
+            if let Some(s) = v.strip_prefix('(').and_then(|s| s.strip_suffix(')')) {
+                return Some(s.trim().to_string());
+            }
+            return Some(v.to_string());
+        }
+        None
+    }
+
     /// The page an item's `#[lsp_doc("...")]` names.
     pub fn lsp_doc(attrs: &[Attribute]) -> Option<String> {
         attrs
@@ -254,6 +358,23 @@ mod reflect {
         pub attrs: Vec<Attribute>,
         pub cfg: Cfg,
         pub fns: Vec<FnDef>,
+        pub consts: Vec<ConstDef>,
+    }
+
+    /// An associated `const` with a string literal value.
+    pub struct ConstDef {
+        pub ident: String,
+        pub value: String,
+        pub is_pub: bool,
+        pub cfg: Cfg,
+    }
+
+    /// A `pub const NAME: &str` on a type a binding exports, keyed the way
+    /// examples spell it: `Owner.NAME`.
+    pub struct StrConst {
+        pub owner: String,
+        pub name: String,
+        pub value: String,
     }
 
     /// A function in an `impl` block or at module level.
@@ -308,6 +429,47 @@ mod reflect {
                     && !imp.is_trait_impl
                     && metas(&imp.attrs, build).iter().any(|m| meta_ident(m) == binding)
             })
+        }
+
+        /// String constants that a type exported in `build` declares, minus the
+        /// ones its binding already exposes under the same name. Examples that
+        /// write `Vertex::UV0` need the literal on platforms that lack it.
+        pub fn str_consts(&self, build: Build) -> Vec<StrConst> {
+            let exported: BTreeSet<&str> = self
+                .types_in(build)
+                .filter(|t| is_exported(&t.attrs, build))
+                .map(|t| t.ident.as_str())
+                .collect();
+            let exposed: BTreeSet<(&str, String)> = self
+                .binding_impls(build, build.binding_attr())
+                .flat_map(|imp| {
+                    imp.fns
+                        .iter()
+                        .map(move |f| (imp.self_ident.as_str(), exported_name(f, build)))
+                })
+                .collect();
+            let mut out: Vec<StrConst> = self
+                .impls
+                .iter()
+                .filter(|imp| {
+                    !imp.is_trait_impl
+                        && imp.cfg.holds(build)
+                        && exported.contains(imp.self_ident.as_str())
+                })
+                .flat_map(|imp| {
+                    imp.consts
+                        .iter()
+                        .filter(|c| c.is_pub && c.cfg.holds(build))
+                        .map(move |c| StrConst {
+                            owner: imp.self_ident.clone(),
+                            name: c.ident.clone(),
+                            value: c.value.clone(),
+                        })
+                })
+                .filter(|c| !exposed.contains(&(c.owner.as_str(), c.name.clone())))
+                .collect();
+            out.sort_by(|a, b| (&a.owner, &a.name).cmp(&(&b.owner, &b.name)));
+            out
         }
 
         /// Module-level functions that compile in `build` and carry `binding`.
@@ -415,6 +577,25 @@ mod reflect {
                             _ => None,
                         })
                         .collect();
+                    let consts = imp
+                        .items
+                        .iter()
+                        .filter_map(|it| match it {
+                            ImplItem::Const(c) => match &c.expr {
+                                syn::Expr::Lit(syn::ExprLit {
+                                    lit: syn::Lit::Str(value),
+                                    ..
+                                }) => Some(ConstDef {
+                                    ident: c.ident.to_string(),
+                                    value: value.value(),
+                                    is_pub: matches!(c.vis, syn::Visibility::Public(_)),
+                                    cfg: impl_cfg.and(&c.attrs),
+                                }),
+                                _ => None,
+                            },
+                            _ => None,
+                        })
+                        .collect();
                     model.impls.push(ImplDef {
                         file: file.to_path_buf(),
                         self_ident,
@@ -422,6 +603,7 @@ mod reflect {
                         attrs: imp.attrs.clone(),
                         cfg: impl_cfg,
                         fns,
+                        consts,
                     });
                 }
                 Item::Fn(f) => model.free_fns.push(FnDef {
@@ -432,6 +614,64 @@ mod reflect {
                 _ => {}
             }
         }
+    }
+
+    /// Whether the type carries the binding attribute that exports it in `build`.
+    fn is_exported(attrs: &[Attribute], build: Build) -> bool {
+        metas(attrs, build).iter().any(|m| match build {
+            Build::Python => meta_ident(m) == "pyclass",
+            Build::Wasm => meta_ident(m) == "wasm_bindgen",
+            Build::Ios | Build::Android => {
+                meta_ident(m) == "derive" && meta_args(m).contains("uniffi")
+            }
+        })
+    }
+
+    /// The name a binding exports a function under: `js_name` on the web,
+    /// `name` in `#[pyo3]` or `#[uniffi::method]`, else the Rust name.
+    fn exported_name(f: &FnDef, build: Build) -> String {
+        let key = match build {
+            Build::Wasm => "js_name",
+            Build::Python | Build::Ios | Build::Android => "name",
+        };
+        metas(&f.attrs, build)
+            .iter()
+            .filter(|m| matches!(meta_ident(m).as_str(), "wasm_bindgen" | "pyo3" | "method" | "constructor"))
+            .find_map(|m| arg_value(&meta_args(m), key))
+            .unwrap_or_else(|| f.sig.ident.to_string())
+    }
+
+    /// Replace `needle` (such as `Vertex.UV0`) where it stands as a whole
+    /// qualified name: not preceded by an identifier or `.`, not followed by
+    /// an identifier character.
+    pub fn replace_qualified(text: &str, needle: &str, replacement: &str) -> String {
+        let is_ident = |c: char| c.is_alphanumeric() || c == '_';
+        let mut out = String::with_capacity(text.len());
+        let mut rest = text;
+        while let Some(at) = rest.find(needle) {
+            let before = rest[..at].chars().next_back();
+            let after = rest[at + needle.len()..].chars().next();
+            let bounded = !before.is_some_and(|c| is_ident(c) || c == '.')
+                && !after.is_some_and(is_ident);
+            out.push_str(&rest[..at]);
+            out.push_str(if bounded { replacement } else { needle });
+            rest = &rest[at + needle.len()..];
+        }
+        out.push_str(rest);
+        out
+    }
+
+    /// Inline each `Owner.NAME` in `text` as its constant's literal, written
+    /// by `quote`. Longer names go first so `UV10` is never read as `UV1`.
+    pub fn inline_str_consts(text: &str, consts: &[StrConst], quote: fn(&str) -> String) -> String {
+        let mut ordered: Vec<&StrConst> = consts.iter().collect();
+        ordered.sort_by_key(|c| std::cmp::Reverse(c.owner.len() + c.name.len()));
+        let mut out = text.to_string();
+        for c in ordered {
+            let needle = format!("{}.{}", c.owner, c.name);
+            out = replace_qualified(&out, &needle, &quote(&c.value));
+        }
+        out
     }
 
     fn field_def(field: &syn::Field) -> FieldDef {

@@ -31,6 +31,27 @@ mod swift {
     //! 14. `try` insertion for known throwing methods called without `await`
     //!     (uniffi marks most methods `throws`; JS equivalents are synchronous).
 
+    /// API facts the Swift rewrites read, derived from the source model.
+    struct Facts {
+        /// String constants the Swift bindings don't expose.
+        consts: Vec<crate::reflect::StrConst>,
+    }
+
+    static FACTS: std::sync::OnceLock<Facts> = std::sync::OnceLock::new();
+
+    /// Derive the Swift rewrites' API facts. Runs once before any example converts.
+    pub fn install(model: &crate::reflect::Reflection) {
+        let _ = FACTS.set(Facts {
+            consts: model.str_consts(crate::reflect::Build::Ios),
+        });
+    }
+
+    fn facts() -> &'static Facts {
+        FACTS
+            .get()
+            .unwrap_or_else(|| panic!("swift::install must run before examples convert"))
+    }
+
     /// Finalize the Swift output emitted by `convert(_, Lang::Swift, _)`.
     /// Takes the JS-shaped intermediate produced by the per-line emitter
     /// and applies the bulk-text swaps documented at the top of this
@@ -379,24 +400,10 @@ mod swift {
         out.iter().collect()
     }
 
-    /// Replace `Vertex.UV0` etc. with the bare string literal value. Matches
-    /// the Rust-side `pub const UV0: &str = "uv0"` declarations in
-    /// `src/mesh/vertex.rs` so example code that writes `Vertex::UV0` keeps
-    /// resolving on Swift, where uniffi can't surface the constant.
+    /// Inline associated string consts such as `Vertex.UV0`, which uniffi
+    /// can't surface on Swift.
     fn inline_vertex_attr_constants(line: &str) -> String {
-        const ATTRS: &[(&str, &str)] = &[
-            ("Vertex.UV0", "\"uv0\""),
-            ("Vertex.UV1", "\"uv1\""),
-            ("Vertex.NORMAL", "\"normal\""),
-            ("Vertex.TANGENT", "\"tangent\""),
-            ("Vertex.COLOR0", "\"color0\""),
-            ("Vertex.COLOR1", "\"color1\""),
-        ];
-        let mut out = line.to_string();
-        for (needle, repl) in ATTRS {
-            out = out.replace(needle, repl);
-        }
-        out
+        crate::reflect::inline_str_consts(line, &facts().consts, crate::convert::quoted)
     }
 
     /// Fix Rust `x..y` exclusive-range into Swift `x...y` (closed range).
