@@ -12,6 +12,8 @@ On Android, `renderer.createTarget(surface)` builds the target on the renderer y
 
 The committed Swift wrapper in `platforms/swift/Sources/FragmentColor/generated/` is regenerated. Swift Package Manager compiles it from the release tag, and it predated 0.12.0, so it lacked `Scene`, `Model`, `Material`, `Camera`, `Light`, and the rest of the 0.12 surface that the Swift extensions build on. The iOS healthcheck now fails when the committed wrapper differs from what `./fc build_ios` generates.
 
+`Shader.set` on the web checks what it receives before binding a texture. Any object exported by the library used to pass as a `Texture`, so handing it a `Shader`, `Pass`, or `Mesh`, or a plain object with a copied `__wbg_ptr` field, read that object's memory as a texture. A `Texture` binds as before. Anything else throws a type mismatch error, as it does in Python.
+
 ## 0.12.5: WebGL2 fixes
 
 A patch release that makes the WebGL2 fallback work. There are no API changes.

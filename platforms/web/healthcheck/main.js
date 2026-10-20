@@ -188,6 +188,30 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     renderer.render(shader, target);
     const img = await target.getImage();
     console.log('Rendered textured shader:', img);
+
+    // Other exported classes, and plain objects that copy their pointer, are
+    // rejected instead of being read as a Texture. The bound texture survives.
+    const pass = new Pass('not a texture');
+    const notTextures = [
+      ['a Shader', shader],
+      ['a Pass', pass],
+      ['a Mesh', new Mesh()],
+      ['a plain object with a pointer', { __wbg_ptr: pass.__wbg_ptr }],
+    ];
+    for (const [label, value] of notTextures) {
+      let threw = false;
+      try {
+        shader.set("tex", value);
+      } catch (e) {
+        threw = true;
+        console.log(`shader.set rejected ${label}:`, e?.message ?? String(e));
+      }
+      if (!threw) {
+        throw new Error(`shader.set("tex", ${label}) should throw`);
+      }
+    }
+    renderer.render(shader, target);
+    console.log('Texture binding intact after rejected sets');
 });
 
 // Mesh smoke: positions-only triangle

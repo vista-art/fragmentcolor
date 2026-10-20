@@ -741,23 +741,22 @@ impl TryFrom<&wasm_bindgen::JsValue> for UniformData {
     type Error = crate::shader::error::ShaderError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
-        use js_sys::{Array, Float32Array, Int32Array, Uint32Array};
+        use js_sys::{Array, Float32Array, Int32Array, Reflect, Uint32Array};
         use wasm_bindgen::JsCast;
 
-        {
-            use js_sys::Reflect;
-            use wasm_bindgen::convert::RefFromWasmAbi;
-            let key = wasm_bindgen::JsValue::from_str("__wbg_ptr");
-            if let Ok(ptr) = Reflect::get(value, &key) {
-                if let Some(id) = ptr.as_f64() {
-                    let anchor: <crate::texture::Texture as RefFromWasmAbi>::Anchor = unsafe {
-                        <crate::texture::Texture as RefFromWasmAbi>::ref_from_abi(id as u32)
-                    };
-                    let tex = anchor.clone();
-                    let meta = crate::texture::TextureMeta::with_id_only(tex.id.clone());
-                    return Ok(UniformData::Texture(meta));
-                }
+        // Exported classes carry `__wbg_ptr`. Texture is the only one a uniform
+        // accepts, and its bridge checks the brand before it reads the pointer.
+        if value.is_object() && Reflect::has(value, &"__wbg_ptr".into()).unwrap_or(false) {
+            if let Ok(texture) = crate::texture::Texture::try_from(value) {
+                return Ok(UniformData::from(&texture));
             }
+            let kind = Reflect::get(value, &"__fc_kind".into())
+                .ok()
+                .and_then(|k| k.as_string())
+                .unwrap_or_else(|| "an unknown object".into());
+            return Err(crate::shader::error::ShaderError::TypeMismatch(format!(
+                "value: expected a Texture, got {kind}"
+            )));
         }
 
         if let Some(arr) = value.dyn_ref::<Float32Array>() {
