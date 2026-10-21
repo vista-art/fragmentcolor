@@ -58,13 +58,14 @@ docs/api/core/pass/hidden/set_depth_texture_mobile.md=>docs/api/core/pass/set_de
 
 # ---- Trait-level docs (no platform binding required) ----
 #
-# `Target` is a Rust trait; uniffi/wasm_bindgen/pyo3 cannot expose traits over
-# the FFI boundary. The trait's methods are conceptually available on every
-# concrete target type (WindowTarget, TextureTarget, RenderCanvasTarget,
-# CAMetalLayer-backed targets, etc.) — parity is enforced via the concrete
-# `targets/window_target/*.md` and `targets/texture_target/*.md` entries.
-# These trait docs are kept for human reference but do not require their own
-# bindings.
+# `Target` is a sealed Rust trait. uniffi 0.32 can export a trait and lets Swift
+# and Kotlin implement one, but wasm_bindgen and pyo3 can't, and the crate-private
+# `FrameSource` supertrait keeps every implementation inside the crate anyway.
+# Its methods exist on every concrete target type (WindowTarget, TextureTarget,
+# RenderCanvasTarget, CAMetalLayer-backed targets and so on), so the concrete
+# `targets/window_target/*.md` and `targets/texture_target/*.md` entries enforce
+# parity. These trait docs are kept for human reference and need no bindings
+# of their own.
 docs/api/targets/target/size.md::Trait method; parity enforced via concrete WindowTarget/TextureTarget docs.
 docs/api/targets/target/resize.md::Trait method; parity enforced via concrete WindowTarget/TextureTarget docs.
 docs/api/targets/target/get_image.md::Trait method; parity enforced via concrete WindowTarget/TextureTarget docs.
