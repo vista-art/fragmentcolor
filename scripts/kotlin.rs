@@ -538,7 +538,7 @@ mod kotlin {
     ) -> Option<Elems> {
         let wants = receivers.owners(|ts| has(ts, is_list) && !has(ts, is_object_array));
         let rejects = receivers.owners(|ts| has(ts, is_array) && !has(ts, is_list));
-        let changes = |arg: &str| array_inner(arg).is_some();
+        let changes = |arg: &str| strip_array(arg).is_some();
         if !wants.is_empty() && !rejects.is_empty() {
             conflicts.push(receivers.disagreement("a List", &wants, &rejects, changes));
             return None;
@@ -965,7 +965,7 @@ mod kotlin {
 
     /// `arg` as a `listOf(...)`, or `None` when it isn't one `arrayOf(...)`.
     fn array_to_list(arg: &str, elems: &Elems) -> Option<String> {
-        let inner = array_inner(arg)?;
+        let inner = strip_array(arg)?;
         let items: Vec<String> = match elems {
             Elems::AsIs => return Some(format!("listOf({inner})")),
             Elems::Float => row_items(arg).or_else(|| scalar_items(arg))?.iter().map(|i| floatify_if_numeric(i)).collect(),
@@ -990,7 +990,7 @@ mod kotlin {
     }
 
     /// The text inside `arg` when it is exactly one `arrayOf(...)`.
-    fn array_inner(arg: &str) -> Option<&str> {
+    fn strip_array(arg: &str) -> Option<&str> {
         let open = "arrayOf".len();
         (arg.starts_with("arrayOf(") && closing(arg, open) == Some(arg.len() - 1))
             .then(|| &arg[open + 1..arg.len() - 1])
@@ -999,7 +999,7 @@ mod kotlin {
     /// The numbers of an `arrayOf(...)` of number rows, row after row,
     /// the order a flat list such as the matrix of `Model.setTransform` takes them in.
     fn row_items(arg: &str) -> Option<Vec<String>> {
-        let rows = split_args(array_inner(arg)?);
+        let rows = split_args(strip_array(arg)?);
         let mut items = Vec::new();
         for row in &rows {
             items.extend(scalar_items(row)?);
@@ -1009,7 +1009,7 @@ mod kotlin {
 
     /// The elements of an `arrayOf(...)` that holds no nested lists.
     fn scalar_items(arg: &str) -> Option<Vec<String>> {
-        let items = split_args(array_inner(arg)?);
+        let items = split_args(strip_array(arg)?);
         let nested = items.iter().any(|i| i.starts_with("arrayOf(") || i.starts_with("listOf("));
         (!nested).then_some(items)
     }
@@ -1304,7 +1304,7 @@ mod kotlin {
     /// (integer or float, possibly negative). Otherwise returns `s` unchanged.
     fn floatify_if_numeric(s: &str) -> String {
         let t = s.trim();
-        floatify_if_numeric_inner(t)
+        try_floatify(t)
             .unwrap_or_else(|| {
                 // Not a bare number — try simple binary-op shapes like `a / b` or
                 // `current * 0.5`. Walk operators outside of parens and floatify
@@ -1318,7 +1318,7 @@ mod kotlin {
             })
     }
 
-    fn floatify_if_numeric_inner(t: &str) -> Option<String> {
+    fn try_floatify(t: &str) -> Option<String> {
         if t.is_empty() {
             return None;
         }
@@ -1393,7 +1393,7 @@ mod kotlin {
         // Floatify each operand if it's a bare number; otherwise pass through.
         let mut result = String::new();
         for (i, part) in parts.iter().enumerate() {
-            let mapped = floatify_if_numeric_inner(part).unwrap_or_else(|| part.clone());
+            let mapped = try_floatify(part).unwrap_or_else(|| part.clone());
             result.push_str(&mapped);
             if let Some(&op) = ops.get(i) {
                 result.push(' ');
