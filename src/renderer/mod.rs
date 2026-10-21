@@ -339,9 +339,8 @@ impl Renderer {
     /// loader-built Scenes, and so on. After `load` returns, `render` against
     /// the same renderable is GPU-only.
     ///
-    /// `render` runs `load` automatically the first time it sees a renderable
-    /// with pending uploads, so calling `load` is optional; reach for it when
-    /// you want to amortize the decode + upload cost outside the render loop.
+    /// On native targets `render` runs `load` first, so calling it is optional
+    /// there. On wasm `render` can't block, so await `load` before the first frame.
     #[lsp_doc("docs/api/core/renderer/load.md")]
     pub async fn load(&self, renderable: &impl Renderable) -> Result<(), RendererError> {
         for pass in renderable.passes().iter() {
@@ -402,11 +401,9 @@ impl Renderer {
         target: &impl Target,
     ) -> Result<(), RendererError> {
         // Drain any pending texture uploads from lazy Material setters before
-        // we touch the GPU. Cheap when nothing is pending — the load future
-        // doesn't await anything in that case. On native we block via
-        // `futures::executor`; on wasm there's no blocking executor, so the
-        // wasm async wrapper (`render_js`) is responsible for awaiting
-        // `load` explicitly.
+        // we touch the GPU. Cheap when nothing is pending, since the load future
+        // then awaits nothing. Wasm has no blocking executor, so pending uploads
+        // wait there until the caller awaits `load`.
         #[cfg(not(wasm))]
         futures::executor::block_on(self.load(renderable))?;
         if let Some(context) = self.context.read().as_ref() {

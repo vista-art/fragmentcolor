@@ -10,12 +10,15 @@ visits, drains its pending list, calls
 [`Renderer::create_texture`](https://fragmentcolor.org/api/core/renderer/create_texture)
 for each, and writes the resulting `Texture` into the matching uniform.
 
-[`Renderer::render`](https://fragmentcolor.org/api/core/renderer/render)
-calls `load` automatically the first time it sees a renderable with
-pending uploads, so explicit `load` is optional. Reach for it when you
-want to amortize the decode + upload cost outside the render loop, for
-example in a loading screen that prepares the scene before the first
-frame goes out.
+On native targets, [`Renderer::render`](https://fragmentcolor.org/api/core/renderer)
+runs `load` first whenever the renderable has pending uploads, so an
+explicit `load` is optional there. Reach for it when you want to pay the
+decode and upload cost outside the render loop, for example in a loading
+screen that prepares the scene before the first frame goes out.
+
+On the web, `render` can't wait for an upload, so it leaves pending uploads
+alone. Await `load` before the first `render`. Until then, a PBR Material
+draws with its 1×1 default maps.
 
 ## Example
 

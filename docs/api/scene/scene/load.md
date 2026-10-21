@@ -5,9 +5,10 @@ or in-memory **`.glb` bytes** straight to `Scene::load`. The format is
 inferred from the input, so there's nothing extra to name.
 
 `Scene::load` is synchronous and takes no `Renderer`. Any textures the parser
-encounters are queued as pending uploads on the resulting Materials; the
-renderer drains them on first render, or earlier if you call
-[`Renderer::load`](https://fragmentcolor.org/api/core/renderer/load).
+encounters are queued as pending uploads on the resulting Materials.
+[`Renderer::load`](https://fragmentcolor.org/api/core/renderer) uploads
+them. On native targets the first render runs it for you; on the web, await
+it before the first render.
 
 Today's coverage: static glTF, meaning mesh primitives (POSITION + NORMAL + UV0 +
 indices), PBR-MR materials with all five texture slots, per-node transforms
