@@ -102,6 +102,7 @@ Conventions you’ll see enforced in code
 - Docs live in docs/api; update there first, then build to validate and to regenerate language examples/site.
 - **Struct names match across every binding.** `Renderer`, `Shader`, `Pass`, `WindowTarget`, `TextureTarget`, `Size`, `ScreenRegion`, `Texture`, etc. are identical in Rust, JS, Python, Swift, and Kotlin. Achieved via `#[pyclass(name = "...")]` on Python, `wasm_bindgen(js_name = ...)` on Web, `#[cfg_attr(mobile, derive(uniffi::Object))]` (uniffi uses the Rust type name verbatim — no renaming needed).
 - Method naming follows each language's idiom (snake_case in Rust / Python, camelCase in JS / Swift / Kotlin) — the transpilers in `scripts/convert.rs` translate names automatically.
+- **Qualifiers go first in names**, platform words included: `MobileTextureRegion`, never `TextureRegionMobile`. The one exception is the `_js`, `_py`, `_mobile`, `_ios` and `_android` suffix on a binding wrapper method.
 - Mobile-specific methods (e.g. `Renderer.from_metal_layer` on iOS) live behind `#[cfg(ios)]` / `#[cfg(android)]` in `src/platforms/mobile/` and still require a `docs/api/core/renderer/from_metal_layer.md` page with `## Example` blocks in Rust, Swift, and Kotlin.
 
 Notes and tiny suggestions
