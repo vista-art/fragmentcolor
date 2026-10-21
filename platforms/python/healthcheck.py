@@ -4,6 +4,7 @@ import importlib
 import numpy as np
 from fragmentcolor import (
     CompareFunction,
+    FragmentColorError,
     Instance,
     Mesh,
     Mipmap,
@@ -207,6 +208,22 @@ def check_tight_writes(renderer):
     assert image[16:24] == patch, "write_region read rows at the wrong stride"
     assert image[:16] == pixels[:16], "write_region wrote outside its region"
     print("Texture.write and write_region take tightly packed rows")
+
+
+def check_error_types(renderer):
+    """Renderer and texture errors raise FragmentColorError, as shader errors do."""
+    def raises(label, call):
+        try:
+            call()
+        except FragmentColorError as e:
+            print(f"{label} raised FragmentColorError: {e}")
+            return
+        raise AssertionError(f"{label} should raise FragmentColorError")
+
+    texture = renderer.create_texture([255] * 16, size=[2, 2])
+    raises("Texture.write with 4 of 16 bytes", lambda: texture.write(bytes(4)))
+    renderer.unregister_texture(texture.id())
+    raises("a second unregister_texture", lambda: renderer.unregister_texture(texture.id()))
 
 
 INTEGER_ATTRIBUTES_SHADER = """
@@ -453,6 +470,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_ndarray_layouts(renderer)
     check_image_layout(renderer)
     check_tight_writes(renderer)
+    check_error_types(renderer)
     check_vertex_values()
     check_mesh_inputs()
 
