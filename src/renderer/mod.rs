@@ -376,8 +376,7 @@ impl Renderer {
     /// This is intentionally explicit and async because the underlying
     /// `map_async` is async on every platform — keeping it visible at the
     /// call site so callers don't accidentally pay a GPU sync per frame.
-    /// The cheap CPU-mirror accessors ([`Shader::get`], [`Shader::get_bytes`])
-    /// remain available for "what did I last set on the CPU side" reads.
+    /// [`Shader::get`] stays the cheap read of what was last set on the CPU side.
     #[lsp_doc("docs/api/core/renderer/read_storage.md")]
     pub async fn read_storage(
         &self,
