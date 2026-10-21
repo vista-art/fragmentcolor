@@ -8,7 +8,7 @@ import android.view.Surface
 
 // The raw JNI entry points live in `libfragmentcolor.so` and are exposed
 // via a private helper class so the shared library is loaded exactly once.
-private object RendererJni {
+private object SurfaceBridge {
     init {
         System.loadLibrary("fragmentcolor")
     }
@@ -29,12 +29,12 @@ private object RendererJni {
  * extension so the same call site compiles on both platforms.
  */
 fun Renderer.createTarget(surface: Surface): MobileWindowTarget {
-    val window = RendererJni.native_window_from_surface(surface)
+    val window = SurfaceBridge.native_window_from_surface(surface)
     require(window != 0L) { "Failed to acquire an ANativeWindow from Surface" }
     try {
         return createTarget(window.toULong())
     } finally {
-        RendererJni.release_native_window(window)
+        SurfaceBridge.release_native_window(window)
     }
 }
 

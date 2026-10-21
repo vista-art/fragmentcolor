@@ -16,12 +16,12 @@ across `await` in a `Send` future.
 ```kotlin
 // In RendererExtensions.kt:
 fun Renderer.createTarget(surface: Surface): MobileWindowTarget {
-    val window = RendererJni.native_window_from_surface(surface)
+    val window = SurfaceBridge.native_window_from_surface(surface)
     require(window != 0L) { "Failed to acquire an ANativeWindow from Surface" }
     try {
         return createTarget(window.toULong())
     } finally {
-        RendererJni.release_native_window(window)
+        SurfaceBridge.release_native_window(window)
     }
 }
 ```

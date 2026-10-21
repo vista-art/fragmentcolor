@@ -91,14 +91,14 @@ impl HasDisplayHandle for AndroidNativeWindow {
 /// Returns the pointer as a `jlong`, or 0 when the surface has no window.
 /// The caller owns one reference and must pass it to `release_native_window`.
 #[unsafe(no_mangle)]
-#[jni_fn("org.fragmentcolor.RendererJni")]
+#[jni_fn("org.fragmentcolor.SurfaceBridge")]
 pub fn native_window_from_surface(env: *mut JNIEnv, _class: JClass, surface: jobject) -> jlong {
     AndroidNativeWindow::acquire(env, surface) as jlong
 }
 
 /// Release a window reference from `native_window_from_surface`. Ignores 0.
 #[unsafe(no_mangle)]
-#[jni_fn("org.fragmentcolor.RendererJni")]
+#[jni_fn("org.fragmentcolor.SurfaceBridge")]
 pub fn release_native_window(_env: *mut JNIEnv, _class: JClass, window: jlong) {
     let window = window as *mut ndk_sys::ANativeWindow;
     if !window.is_null() {
