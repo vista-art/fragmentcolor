@@ -57,9 +57,10 @@ the explicit-fresh-Material path is the escape hatch.
   shader. Unset slots resolve to the renderer's 1×1 defaults so the shader's
   bind group is always complete.
 - **Per-Model transform** rides the **per-instance vertex attribute** stream
-  at locations 3..6 (four `vec4<f32>` columns of `mat4x4<f32>`), populated by
-  `Model::sync_transform`. It's *not* a Material uniform, so Models
-  sharing one Material don't collide on a `mesh.model` slot.
+  as `model_0` to `model_3` (four `vec4<f32>` columns of a `mat4x4<f32>`, at
+  locations 3 to 6 in the PBR shader). The renderer fills it from each
+  Model's transform at draw time. It's *not* a Material uniform, so Models
+  that share one Material each draw with their own transform.
 
 ## Pipeline state
 

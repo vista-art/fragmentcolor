@@ -2,15 +2,15 @@
 
 Construct a `Model` from a `Mesh` and a `Material`. Both arguments are taken
 by value; the Model owns them. The transform starts at the 4×4 identity
-matrix; `Model::sync_transform` writes it as a single instance into the
-Mesh's per-instance attribute stream (four `vec4<f32>` columns at locations
-3..6).
+matrix. The renderer reads it at draw time and passes it to the vertex stage
+as the `model_0` to `model_3` instance attributes, the four columns of a
+`mat4x4<f32>`.
 
 If you want several Models that share a look, clone the Material before each
-`Model::new`. `Material::clone` is a cheap Arc-clone (handle share, not a
-deep duplicate), so the Models share one pipeline + one bind-group setup.
-Per-Model transforms don't collide because each Model owns its own Mesh, and
-the transform lives on the Mesh's instance buffer, not the Material's Shader.
+`Model::new`. `Material::clone` shares the handle and copies nothing, so the
+Models share one pipeline and one bind-group setup. The transform belongs to
+the Model, not to the Material's Shader or the Mesh, so Models can share
+both. Models with the same Material and Mesh draw in one instanced call.
 
 `Material::pbr` requires the Mesh's first vertex to declare position
 (`vec3`), normal (`vec3`), and uv0 (`vec2`) in that exact insertion order,
