@@ -302,16 +302,15 @@ impl From<Mipmap> for TextureData {
     }
 }
 
-/// Uniffi-marshallable mirror of [`TextureInput`]. Drops the `DynamicImage`
-/// variant (the `image` crate's `DynamicImage` isn't an FFI-friendly type;
-/// callers on every non-Rust platform reach the same outcome by passing
-/// `Bytes` and letting the library decode internally) and uses owned types
-/// uniffi can lower across the FFI (`String` for paths, `Arc<Object>` for
-/// handles).
+/// Uniffi mirror of [`TextureData`], which it converts into.
 ///
-/// The Rust core stays on `TextureInput`; this enum exists only so mobile
-/// bindings can carry a concrete variant. Web and Python use their own
-/// dispatch (`TryFrom<JsValue>` / Python kwargs) and never see this type.
+/// It leaves out `Empty` and `DynamicImage`. uniffi can't lower the
+/// `image` crate's `DynamicImage`, and `Bytes` reaches the same result,
+/// since the library decodes them. Paths travel as `String`, handles as `Arc`.
+///
+/// The Rust core stays on `TextureData`. This enum exists only so the mobile
+/// bindings can carry a concrete variant. Web and Python use their own dispatch
+/// (`TryFrom<JsValue>` and Python kwargs) and never see this type.
 #[cfg(mobile)]
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum TextureInputMobile {
