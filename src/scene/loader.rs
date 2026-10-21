@@ -224,7 +224,7 @@ fn load_gltf(source: GltfSource) -> Result<Scene, SceneLoadError> {
         #[cfg(wasm)]
         GltfPayload::Path(_) => {
             return Err(SceneLoadError::Invalid(
-                "Scene::load(path) is not supported on wasm32 — fetch the bytes from JS and pass them to Scene::load(bytes)".into(),
+                "Scene::load(path) is not supported on wasm32. Fetch the bytes from JS and pass them to Scene::load(bytes)".into(),
             ));
         }
         GltfPayload::Bytes(b) => gltf::import_slice(&b)?,

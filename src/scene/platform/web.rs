@@ -297,8 +297,8 @@ impl Scene {
         Scene::new()
     }
 
-    /// Load a scene file. Pass a string for a path / URL-like locator, or a
-    /// `Uint8Array` for an in-memory `.glb` payload.
+    /// Load a scene from the bytes of a `.glb` file, as a `Uint8Array`.
+    /// The web build can't read a path, so fetch the file first.
     #[wasm_bindgen(js_name = "load")]
     #[lsp_doc("docs/api/scene/scene/load.md")]
     pub fn load_js(source: &JsValue) -> Result<Scene, JsError> {
