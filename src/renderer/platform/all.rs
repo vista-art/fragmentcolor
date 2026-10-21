@@ -105,9 +105,14 @@ pub fn configure_surface(
     adapter: &wgpu::Adapter,
     surface: &wgpu::Surface,
     size: &wgpu::Extent3d,
-) -> wgpu::SurfaceConfiguration {
+) -> Result<wgpu::SurfaceConfiguration, InitializationError> {
     let capabilities = surface.get_capabilities(adapter);
-    let format = choose_surface_format(&capabilities);
+    let format = choose_surface_format(&capabilities)?;
+    let alpha_mode = capabilities
+        .alpha_modes
+        .first()
+        .copied()
+        .unwrap_or(wgpu::CompositeAlphaMode::Auto);
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         format,
@@ -115,17 +120,17 @@ pub fn configure_surface(
         width: u32::max(size.width, 1),
         height: u32::max(size.height, 1),
         present_mode: wgpu::PresentMode::AutoVsync,
-        alpha_mode: capabilities.alpha_modes[0],
+        alpha_mode,
         desired_maximum_frame_latency: 2,
         view_formats: vec![format],
     };
     surface.configure(device, &config);
 
-    config
+    Ok(config)
 }
 
 // Extracted so it can be tested without constructing a full SurfaceCapabilities
-fn choose_surface_format_from(formats: &[wgpu::TextureFormat]) -> wgpu::TextureFormat {
+fn choose_surface_format_from(formats: &[wgpu::TextureFormat]) -> Option<wgpu::TextureFormat> {
     // Try preferred linear formats first.
     if let Some(&fmt) = formats.iter().find(|&&f| {
         matches!(
@@ -133,7 +138,7 @@ fn choose_surface_format_from(formats: &[wgpu::TextureFormat]) -> wgpu::TextureF
             wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Bgra8Unorm
         )
     }) {
-        return fmt;
+        return Some(fmt);
     }
 
     // If no linear 8-bit format is available, accept sRGB variants if present.
@@ -143,14 +148,11 @@ fn choose_surface_format_from(formats: &[wgpu::TextureFormat]) -> wgpu::TextureF
             wgpu::TextureFormat::Rgba8UnormSrgb | wgpu::TextureFormat::Bgra8UnormSrgb
         )
     }) {
-        return fmt;
+        return Some(fmt);
     }
 
     // Otherwise, fall back to the first advertised format.
-    formats
-        .first()
-        .copied()
-        .unwrap_or(wgpu::TextureFormat::Rgba8Unorm)
+    formats.first().copied()
 }
 
 // The previous `features()` and `format_features()` helpers folded into
@@ -163,10 +165,18 @@ fn memory_hints() -> wgpu::MemoryHints {
     wgpu::MemoryHints::Performance
 }
 
+/// Why a surface that lists no format, such as a second WebGL2 canvas, cannot present.
+const NO_SURFACE_FORMATS: &str =
+    "the surface lists no formats for this adapter. On WebGL2, each canvas needs its own Renderer";
+
 /// Prefer a linear (non-sRGB) 8-bit RGBA/BGRA format if available; otherwise, fall back to the
 /// first supported format. We must choose a format that is actually advertised by the surface.
-fn choose_surface_format(capabilities: &wgpu::SurfaceCapabilities) -> wgpu::TextureFormat {
+/// A surface that lists no format cannot present for this adapter, such as a second WebGL2 canvas.
+fn choose_surface_format(
+    capabilities: &wgpu::SurfaceCapabilities,
+) -> Result<wgpu::TextureFormat, InitializationError> {
     choose_surface_format_from(&capabilities.formats)
+        .ok_or_else(|| InitializationError::Error(NO_SURFACE_FORMATS.into()))
 }
 
 #[cfg(test)]

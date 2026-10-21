@@ -473,7 +473,7 @@ impl Renderer {
 
         let adapter = self.adapter.read();
         let adapter_ref = adapter.as_ref().ok_or(InitializationError::AdapterNotSet)?;
-        let config = configure_surface(&context.device, adapter_ref, &surface, &size);
+        let config = configure_surface(&context.device, adapter_ref, &surface, &size)?;
 
         // Negotiate and store effective sample count (currently default wanted=1; configurable later)
         if let Some(adapter_ref) = adapter.as_ref() {
