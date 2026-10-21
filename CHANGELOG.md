@@ -87,6 +87,8 @@ Python `TextureTarget.get_image()` returns an array of shape `(height, width, 4)
 
 Kotlin creates a texture from raw pixels and their size. The generated Kotlin for `renderer.create_texture((pixels, [w, h]))` dropped the size, so the bytes went to the image decoder and the call failed at run time. The Kotlin extensions now carry overloads Swift already has, and the generated examples call them as the Rust examples read: `renderer.createTexture(pixels, listOf(w, h))`, `createTexture(path)` and `createTexture(chain)`, `Shader(listOf(...))` for a shader built from parts, `TextureRegionMobile.from(listOf(...)).withStride(...).withRows(...)`, and `texture.writeRegion(bytes, listOf(x, y, w, h))`. Kotlin examples also keep an integer array as a list of `Int`, where they wrote floats.
 
+FragmentColor builds from read-only sources, so docs.rs can document it again. Every build ran the docs pipeline, which writes the generated examples, the website pages, the Python stub, and the embedded shader lookup into the crate's own folder. docs.rs mounts that folder read-only, so the build script panicked on its first write, and no release from 0.10.7 to 0.12.5 has documentation there. A build from crates.io or from a vendored copy wrote into that copy too. The pipeline now runs only in a repository checkout, where `.git` sits next to `Cargo.toml` and `DOCS_RS` is unset, and the embedded shader lookup goes to `OUT_DIR`. The published crate carries only the files a build reads, which shrinks it from 6.9 MB to 0.56 MB and the Python source distribution from 7.1 MB to 0.63 MB.
+
 ## 0.12.5: WebGL2 fixes
 
 A patch release that makes the WebGL2 fallback work. There are no API changes.
