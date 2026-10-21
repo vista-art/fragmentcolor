@@ -5,6 +5,8 @@ and might be shared between multiple crates in the workspace.
 
 Currently, it is used to build:
 - api_map.rs: a public API map used by the docs export pipeline and bindings
-- embedded_shaders.rs: the shader registry lookup, with each category behind its `shaders-<category>` feature
+
+The crate never reads this folder at compile time. Files the crate compiles,
+such as the embedded shader registry, are written to `OUT_DIR` instead.
 
 Do not edit files in this folder manually.
