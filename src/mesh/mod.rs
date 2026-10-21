@@ -255,7 +255,7 @@ struct GpuStreams {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     instance_buffer_len: u32,
-    instance_buffer: Option<(wgpu::Buffer, u32)>, // (buffer, count)
+    instance_buffer: Option<wgpu::Buffer>,
     instance_buffer_capacity: u64,
 }
 
@@ -484,6 +484,16 @@ impl MeshObject {
         let idx = self.indices.read();
         let si = self.instance_schema.read();
 
+        // Count rows on every upload, so a list that shrinks into the old buffer draws its own length.
+        let instance_rows = if pi.is_empty() {
+            None
+        } else {
+            let Some(schema) = si.as_ref() else {
+                return Err(MeshError::NoInstanceSchema);
+            };
+            Some((pi.len() as u64 / schema.stride) as u32)
+        };
+
         // Create or grow buffers
         let mut gpu = self.gpu.write();
 
@@ -533,15 +543,7 @@ impl MeshObject {
                     mapped_at_creation: false,
                 });
                 queue.write_buffer(&buf, 0, &pi);
-                (
-                    Some((buf, {
-                        let Some(schema_ref) = si.as_ref() else {
-                            return Err(MeshError::NoInstanceSchema);
-                        };
-                        (pi.len() as u32) / (schema_ref.stride as u32)
-                    })),
-                    needed,
-                )
+                (Some(buf), needed)
             } else {
                 (None, 0)
             };
@@ -561,7 +563,7 @@ impl MeshObject {
                     *self.dirty_vertices.write() = false;
                 }
                 if was_dirty_i {
-                    if let Some((ref buf, _)) = g.instance_buffer {
+                    if let Some(buf) = &g.instance_buffer {
                         // Safe to write since capacity check passed above
                         queue.write_buffer(buf, 0, &pi);
                     }
@@ -576,14 +578,13 @@ impl MeshObject {
         let vertex_buffers = VertexBuffers {
             vertex_buffer: g.vertex_buffer.clone(),
             index_buffer: g.index_buffer.clone(),
-            instance_buffer: g.instance_buffer.as_ref().map(|(b, _)| b.clone()),
+            instance_buffer: g.instance_buffer.clone(),
         };
 
         let override_count = *self.override_instances.read();
         let draw_counts = DrawCounts {
             index_count: g.instance_buffer_len,
-            instance_count: override_count
-                .unwrap_or_else(|| g.instance_buffer.as_ref().map(|(_, c)| *c).unwrap_or(1)),
+            instance_count: override_count.or(instance_rows).unwrap_or(1),
         };
 
         Ok((vertex_buffers, draw_counts))
