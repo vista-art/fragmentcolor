@@ -1711,14 +1711,9 @@ impl RenderContext {
                                 source: wgpu::ShaderSource::Naga(module),
                             });
 
-                    // Find compute entry point name
-                    let mut cs_entry = None;
-                    for ep in shader.module.entry_points.iter() {
-                        if ep.stage == naga::ShaderStage::Compute {
-                            cs_entry = ep.function.name.clone();
-                            break;
-                        }
-                    }
+                    let cs_entry = shader
+                        .find_entry_point(naga::ShaderStage::Compute)
+                        .map(|entry_point| entry_point.name.as_str());
 
                     let pipeline =
                         self.device
@@ -1726,7 +1721,7 @@ impl RenderContext {
                                 label: Some("Compute Pipeline"),
                                 layout: Some(&layout),
                                 module: &shader_module,
-                                entry_point: Some(cs_entry.as_deref().unwrap_or("cs_main")),
+                                entry_point: Some(cs_entry.unwrap_or("cs_main")),
                                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                                 cache: None,
                             });
@@ -2384,16 +2379,12 @@ fn create_render_pipeline(
 ) -> RenderPipeline {
     let mut layouts = create_bind_group_layouts(device, &bind_group_entries(shader));
 
-    let mut vs_entry = None;
-    let mut fs_entry = None;
-    for entry_point in shader.module.entry_points.iter() {
-        if entry_point.stage == naga::ShaderStage::Vertex {
-            vs_entry = entry_point.function.name.clone();
-        }
-        if entry_point.stage == naga::ShaderStage::Fragment {
-            fs_entry = entry_point.function.name.clone();
-        }
-    }
+    let vs_entry = shader
+        .find_entry_point(naga::ShaderStage::Vertex)
+        .map(|entry_point| entry_point.name.as_str());
+    let fs_entry = shader
+        .find_entry_point(naga::ShaderStage::Fragment)
+        .map(|entry_point| entry_point.name.as_str());
 
     // Determine push-constant roots
     let storage = shader.storage.read();
@@ -2566,13 +2557,13 @@ fn create_render_pipeline(
         layout: Some(&layout),
         vertex: wgpu::VertexState {
             module: &shader_module,
-            entry_point: Some(vs_entry.as_deref().unwrap_or("vs_main")),
+            entry_point: Some(vs_entry.unwrap_or("vs_main")),
             buffers: &vertex_buffers,
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
             module: &shader_module,
-            entry_point: Some(fs_entry.as_deref().unwrap_or("fs_main")),
+            entry_point: Some(fs_entry.unwrap_or("fs_main")),
             targets: &[Some(wgpu::ColorTargetState {
                 format,
                 // Blend state baked from Material::alpha_mode:

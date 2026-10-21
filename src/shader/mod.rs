@@ -387,6 +387,14 @@ impl ShaderObject {
         self.storage.read().has_storage(root)
     }
 
+    /// The entry point a pipeline runs for `stage`: the first one declared.
+    pub(crate) fn find_entry_point(&self, stage: naga::ShaderStage) -> Option<&naga::EntryPoint> {
+        self.module
+            .entry_points
+            .iter()
+            .find(|entry_point| entry_point.stage == stage)
+    }
+
     /// Tells weather the shader is a compute shader.
     pub fn is_compute(&self) -> bool {
         self.module
@@ -688,15 +696,10 @@ impl ShaderObject {
     /// Reflect the vertex entry-point inputs as (name, location, format).
     /// Returns only parameters with @location decorations; builtins are ignored.
     pub(crate) fn reflect_vertex_inputs(&self) -> Result<Vec<VertexInputDesc>, ShaderError> {
-        // Find the vertex entry point (assume first if multiple; consistent with create_render_pipeline).
         let mut inputs: Vec<VertexInputDesc> = Vec::new();
 
-        // Iterate entry points and collect from the vertex stage only once (first hit wins)
-        for entry_point in self.module.entry_points.iter() {
-            if entry_point.stage != naga::ShaderStage::Vertex {
-                continue;
-            }
-
+        // The same entry point create_render_pipeline runs.
+        if let Some(entry_point) = self.find_entry_point(naga::ShaderStage::Vertex) {
             for argument in entry_point.function.arguments.iter() {
                 // Only consider @location bindings
                 let Some(binding) = argument.binding.as_ref() else {
@@ -717,7 +720,6 @@ impl ShaderObject {
                     format,
                 });
             }
-            break;
         }
         // Sort by location to keep a stable order
         inputs.sort_by_key(|vertex_input| vertex_input.location);
