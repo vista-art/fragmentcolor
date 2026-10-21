@@ -337,7 +337,6 @@ impl Texture {
     #[pyo3(name = "get_image")]
     #[lsp_doc("docs/api/texture/texture/get_image.md")]
     pub fn get_image_py(&self) -> pyo3::PyResult<Vec<u8>> {
-        pollster::block_on(self.get_image())
-            .map_err(|e| crate::error::PyFragmentColorError::new_err(e.to_string()))
+        Ok(pollster::block_on(self.get_image())?)
     }
 }

@@ -171,8 +171,7 @@ impl Renderer {
     #[pyo3(name = "read_storage")]
     #[lsp_doc("docs/api/core/renderer/read_storage.md")]
     pub fn read_storage_py(&self, shader: &crate::Shader, binding: &str) -> Result<Vec<u8>, PyErr> {
-        pollster::block_on(self.read_storage(shader, binding))
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+        Ok(pollster::block_on(self.read_storage(shader, binding))?)
     }
 
     #[pyo3(name = "render")]
@@ -256,8 +255,7 @@ impl Renderer {
     #[pyo3(name = "read_texture")]
     #[lsp_doc("docs/api/core/renderer/read_texture.md")]
     pub fn read_texture_py(&self, texture_id: PyTextureId) -> Result<Vec<u8>, PyErr> {
-        pollster::block_on(self.read_texture(texture_id.into()))
-            .map_err(|e| crate::error::PyFragmentColorError::new_err(e.to_string()))
+        Ok(pollster::block_on(self.read_texture(texture_id.into()))?)
     }
 }
 

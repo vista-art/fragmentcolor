@@ -64,9 +64,6 @@ pub enum TextureError {
 // Python-specific conversions
 
 #[cfg(python)]
-use pyo3::exceptions::PyException as PyFragmentColorError;
-
-#[cfg(python)]
 impl From<pyo3::PyErr> for TextureError {
     fn from(e: pyo3::PyErr) -> Self {
         TextureError::Error(e.to_string())
@@ -76,7 +73,7 @@ impl From<pyo3::PyErr> for TextureError {
 #[cfg(python)]
 impl From<TextureError> for pyo3::PyErr {
     fn from(e: TextureError) -> Self {
-        PyFragmentColorError::new_err(e.to_string())
+        crate::PyFragmentColorError::new_err(e.to_string())
     }
 }
 

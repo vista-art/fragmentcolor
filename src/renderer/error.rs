@@ -56,9 +56,6 @@ pub enum InitializationError {
 // Python-specific conversions
 
 #[cfg(python)]
-use pyo3::exceptions::PyException as PyFragmentColorError;
-
-#[cfg(python)]
 impl From<pyo3::PyErr> for RendererError {
     fn from(e: pyo3::PyErr) -> Self {
         RendererError::Error(e.to_string())
@@ -68,7 +65,7 @@ impl From<pyo3::PyErr> for RendererError {
 #[cfg(python)]
 impl From<RendererError> for pyo3::PyErr {
     fn from(e: RendererError) -> Self {
-        PyFragmentColorError::new_err(e.to_string())
+        crate::PyFragmentColorError::new_err(e.to_string())
     }
 }
 
@@ -82,7 +79,7 @@ impl From<pyo3::PyErr> for InitializationError {
 #[cfg(python)]
 impl From<InitializationError> for pyo3::PyErr {
     fn from(e: InitializationError) -> Self {
-        PyFragmentColorError::new_err(e.to_string())
+        crate::PyFragmentColorError::new_err(e.to_string())
     }
 }
 
