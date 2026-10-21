@@ -25,7 +25,7 @@ impl WindowTarget {
     }
 }
 
-impl crate::target::TargetInternal for WindowTarget {
+impl crate::target::FrameSource for WindowTarget {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
         let frame = self.acquire_frame()?;
         Ok(Box::new(frame))

@@ -36,7 +36,7 @@ impl TextureTarget {
     }
 }
 
-impl crate::target::TargetInternal for TextureTarget {
+impl crate::target::FrameSource for TextureTarget {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
         let view = self.texture.create_view();
         let format = self.texture.format();

@@ -74,7 +74,7 @@ impl MobileWindowTarget {
     }
 }
 
-impl crate::target::TargetInternal for MobileWindowTarget {
+impl crate::target::FrameSource for MobileWindowTarget {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
         self.inner.lock().get_current_frame()
     }
@@ -168,7 +168,7 @@ impl MobileTextureTarget {
     }
 }
 
-impl crate::target::TargetInternal for MobileTextureTarget {
+impl crate::target::FrameSource for MobileTextureTarget {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
         self.inner.read().get_current_frame()
     }

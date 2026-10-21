@@ -2782,7 +2782,7 @@ mod tests {
     /// A target that never has a frame, like a minimized window.
     struct FramelessTarget;
 
-    impl crate::target::TargetInternal for FramelessTarget {
+    impl crate::target::FrameSource for FramelessTarget {
         fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
             Err(crate::SurfaceError::Occluded)
         }
@@ -3660,7 +3660,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
             }
         }
 
-        impl crate::target::TargetInternal for DummyTarget {
+        impl crate::target::FrameSource for DummyTarget {
             fn get_current_frame(
                 &self,
             ) -> Result<Box<dyn crate::TargetFrame>, crate::SurfaceError> {
