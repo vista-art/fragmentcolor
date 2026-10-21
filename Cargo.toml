@@ -10,6 +10,20 @@ license = "MIT"
 keywords = ["graphics", "rendering", "wgpu", "cross-platform", "art"]
 categories = ["rendering", "rendering::engine", "parsing"]
 edition = "2024"
+# The published crate carries what a build reads and nothing else: the sources,
+# build.rs and its scripts, the docs/api pages `#[lsp_doc]` embeds, the guides
+# `src/guides.rs` includes, and the registry shaders the embedded lookup reads.
+include = [
+    "/src",
+    "/build.rs",
+    "/scripts/*.rs",
+    "/docs/api/**/*.md",
+    "/docs/guides/*.md",
+    "/docs/website/public/shaders/*/*.wgsl",
+    "/uniffi.toml",
+    "/README.md",
+    "/LICENSE.md",
+]
 
 [lib]
 name = "fragmentcolor"
