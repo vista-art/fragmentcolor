@@ -89,6 +89,14 @@ Kotlin creates a texture from raw pixels and their size. The generated Kotlin fo
 
 FragmentColor builds from read-only sources, so docs.rs can document it again. Every build ran the docs pipeline, which writes the generated examples, the website pages, the Python stub, and the embedded shader lookup into the crate's own folder. docs.rs mounts that folder read-only, so the build script panicked on its first write, and no release from 0.10.7 to 0.12.5 has documentation there. A build from crates.io or from a vendored copy wrote into that copy too. The pipeline now runs only in a repository checkout, where `.git` sits next to `Cargo.toml` and `DOCS_RS` is unset, and the embedded shader lookup goes to `OUT_DIR`. The published crate carries only the files a build reads, which shrinks it from 6.9 MB to 0.56 MB and the Python source distribution from 7.1 MB to 0.63 MB.
 
+A shader with two `@vertex` or two `@fragment` functions draws with the first of each. Render pipelines took the last entry point of each stage, while vertex input reflection and compute pipelines took the first, so a module with two vertex entry points matched its meshes against one and drew with the other. All three now pick the same entry point.
+
+A mesh whose instance list shrinks draws only the instances it holds. The renderer counted instances when it created the instance buffer and kept that buffer for any list that fit. After `clear_instances` and a shorter `add_instances`, the mesh kept drawing the old count, and the extra instances read stale rows past the new end. The count now follows every upload.
+
+`Renderer.create_target` returns an `InitializationError` when the GPU adapter cannot present to the surface. Such a surface lists no formats. That happens with a second canvas on WebGL2, where each canvas needs its own `Renderer`. `create_target` configured the surface anyway with a fallback format, so the call succeeded and wgpu's `UnsupportedQueueFamily` error only reached the log. Every binding reports it as an error the caller can catch, and its message names the cause.
+
+`Scene.load` reads glTF files whose meshes carry application attributes such as `_ID`. glTF lets an application name its own vertex attributes with a leading underscore, but the parser rejected them unless the `gltf` crate's `extras` feature was on, so these valid files failed to load. The feature is on now and adds no dependency. The loader still skips application attributes and `extras` objects.
+
 ## 0.12.5: WebGL2 fixes
 
 A patch release that makes the WebGL2 fallback work. There are no API changes.
