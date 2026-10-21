@@ -47,11 +47,11 @@ use crate::{Pass, PassError, PassObject, Renderable};
 #[derive(Debug, Clone)]
 #[lsp_doc("docs/api/scene/scene/scene.md")]
 pub struct Scene {
-    pub(crate) inner: Arc<SceneInner>,
+    pub(crate) inner: Arc<SceneState>,
 }
 
 #[derive(Debug)]
-pub(crate) struct SceneInner {
+pub(crate) struct SceneState {
     /// The Scene's ordered pass graph. Loaders, builders, `add_pass`, and
     /// the lazily-created default Pass all push into this one vec;
     /// `Renderable for Scene` iterates it in order. Empty until the first
@@ -143,7 +143,7 @@ impl Scene {
     #[lsp_doc("docs/api/scene/scene/new.md")]
     pub fn new() -> Self {
         Self {
-            inner: Arc::new(SceneInner {
+            inner: Arc::new(SceneState {
                 passes: RwLock::new(Vec::new()),
                 default_pass: RwLock::new(None),
                 has_camera: RwLock::new(false),
