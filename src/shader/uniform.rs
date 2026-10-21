@@ -44,11 +44,11 @@ pub enum UniformData {
     IVec3(Vec<i32>),
     /// IVec4: exactly 4 elements
     IVec4(Vec<i32>),
-    /// Mat2: 4 elements (flattened 2x2, row-major)
+    /// Mat2: 4 elements (flattened 2x2, column-major)
     Mat2(Vec<f32>),
-    /// Mat3: 9 elements (flattened 3x3, row-major)
+    /// Mat3: 9 elements (flattened 3x3, column-major)
     Mat3(Vec<f32>),
-    /// Mat4: 16 elements (flattened 4x4, row-major)
+    /// Mat4: 16 elements (flattened 4x4, column-major)
     Mat4(Vec<f32>),
     Texture(crate::texture::TextureMeta),
     Sampler(crate::texture::SamplerInfo),
