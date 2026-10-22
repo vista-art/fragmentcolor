@@ -340,53 +340,60 @@ impl From<TextureInputMobile> for TextureData {
     }
 }
 
+/// A texture source decoded from JS.
+/// `ImageData` and canvases carry their pixel size in `options.size`,
+/// so their raw RGBA bytes upload without a size argument.
 #[cfg(wasm)]
-impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
+impl TryFrom<&wasm_bindgen::JsValue> for TextureInput {
     type Error = crate::texture::error::TextureError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
         use js_sys::{Array, ArrayBuffer, Uint8Array, Uint8ClampedArray};
         use wasm_bindgen::JsCast;
 
+        let pixels = |bytes: Vec<u8>, width: u32, height: u32| TextureInput {
+            data: TextureData::Bytes(bytes),
+            options: TextureOptions::from(Size::from([width, height])),
+        };
+
         // Case: Mipmap handle (built off-thread via Mipmap.build).
         // Detected through the branded __fc_kind + __wbg_ptr anchor so it
         // survives bundler renaming. Must come before the Uint8Array / object
         // cases because wasm-bindgen handles also satisfy `is_object()`.
         if let Ok(chain) = Mipmap::try_from(value) {
-            return Ok(TextureData::Prepared(chain));
+            return Ok(TextureData::Prepared(chain).into());
         }
 
         // Case: Uint8Array (fast path)
         if let Some(u8a) = value.dyn_ref::<Uint8Array>() {
             let mut bytes = vec![0u8; u8a.length() as usize];
             u8a.copy_to(&mut bytes[..]);
-            return Ok(TextureData::Bytes(bytes));
+            return Ok(TextureData::Bytes(bytes).into());
         }
 
         // Case: Uint8ClampedArray (ImageData.data)
         if let Some(u8c) = value.dyn_ref::<Uint8ClampedArray>() {
             let mut bytes = vec![0u8; u8c.length() as usize];
             u8c.copy_to(&mut bytes[..]);
-            return Ok(TextureData::Bytes(bytes));
+            return Ok(TextureData::Bytes(bytes).into());
         }
 
         // Case: ArrayBuffer
         if let Some(buf) = value.dyn_ref::<ArrayBuffer>() {
             // Guard against detached buffers via byte_length() == 0; safe fallback for empty too.
             if buf.byte_length() == 0 {
-                return Ok(TextureData::Bytes(Vec::new()));
+                return Ok(TextureData::Bytes(Vec::new()).into());
             }
             let u8a = Uint8Array::new(buf);
             let mut bytes = vec![0u8; u8a.length() as usize];
             u8a.copy_to(&mut bytes[..]);
-            return Ok(TextureData::Bytes(bytes));
+            return Ok(TextureData::Bytes(bytes).into());
         }
 
-        // Case: ImageData -> use its backing data (Clamped<Vec<u8>> on wasm)
+        // Case: ImageData -> its RGBA pixels and size
         if let Some(image_data) = value.dyn_ref::<web_sys::ImageData>() {
-            let data = image_data.data();
-            let bytes = data.0;
-            return Ok(TextureData::Bytes(bytes));
+            let bytes = image_data.data().0;
+            return Ok(pixels(bytes, image_data.width(), image_data.height()));
         }
 
         // Case: HTMLCanvasElement -> raw pixel bytes via 2D context
@@ -394,12 +401,9 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
             && let Ok(Some(ctx_js)) = canvas.get_context("2d")
             && let Ok(ctx) = ctx_js.dyn_into::<web_sys::CanvasRenderingContext2d>()
         {
-            let width = canvas.width() as f64;
-            let height = canvas.height() as f64;
-            let img = ctx.get_image_data(0.0, 0.0, width, height)?;
-            let data = img.data();
-            let bytes = data.0;
-            return Ok(TextureData::Bytes(bytes));
+            let (width, height) = (canvas.width(), canvas.height());
+            let image = ctx.get_image_data(0.0, 0.0, width as f64, height as f64)?;
+            return Ok(pixels(image.data().0, width, height));
         }
 
         // Case: OffscreenCanvas -> raw pixel bytes via 2D context
@@ -407,17 +411,14 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
             && let Ok(Some(ctx_js)) = canvas.get_context("2d")
             && let Ok(ctx) = ctx_js.dyn_into::<web_sys::OffscreenCanvasRenderingContext2d>()
         {
-            let width = canvas.width() as f64;
-            let height = canvas.height() as f64;
-            let img = ctx.get_image_data(0.0, 0.0, width, height)?;
-            let data = img.data();
-            let bytes = data.0;
-            return Ok(TextureData::Bytes(bytes));
+            let (width, height) = (canvas.width(), canvas.height());
+            let image = ctx.get_image_data(0.0, 0.0, width as f64, height as f64)?;
+            return Ok(pixels(image.data().0, width, height));
         }
 
         // Case: HTMLImageElement -> pass through as URL
         if let Some(img) = value.dyn_ref::<web_sys::HtmlImageElement>() {
-            return Ok(TextureData::Url(img.src()));
+            return Ok(TextureData::Url(img.src()).into());
         }
 
         // Case: Plain JS Array of numbers
@@ -431,7 +432,7 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
                 let b = n.max(0.0).min(255.0) as u8;
                 bytes.push(b);
             }
-            return Ok(TextureData::Bytes(bytes));
+            return Ok(TextureData::Bytes(bytes).into());
         }
 
         // Case: String -> selector or URL
@@ -455,12 +456,21 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
             } else {
                 s.clone()
             };
-            return Ok(TextureData::Url(url));
+            return Ok(TextureData::Url(url).into());
         }
 
         Err(crate::texture::error::TextureError::Error(
             "Unsupported input for TextureInput".into(),
         ))
+    }
+}
+
+#[cfg(wasm)]
+impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
+    type Error = crate::texture::error::TextureError;
+
+    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+        TextureInput::try_from(value).map(|input| input.data)
     }
 }
 
