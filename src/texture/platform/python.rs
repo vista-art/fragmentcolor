@@ -364,17 +364,15 @@ impl Mipmap {
     /// the valid range.
     #[pyo3(name = "level")]
     #[lsp_doc("docs/api/texture/mipmap/levels.md")]
-    pub fn level_py(&self, index: u32) -> pyo3::PyResult<Vec<u8>> {
-        let levels = self.levels();
-        let idx = index as usize;
-        if idx >= levels.len() {
-            return Err(crate::error::PyFragmentColorError::new_err(format!(
-                "level {} out of range; chain has {} levels",
-                idx,
-                levels.len()
-            )));
-        }
-        Ok(levels[idx].clone())
+    pub fn level_py(&self, index: usize) -> pyo3::PyResult<Vec<u8>> {
+        Ok(self.level(index)?.to_vec())
+    }
+
+    /// Every mip level's bytes as a list, level 0 first.
+    #[pyo3(name = "levels")]
+    #[lsp_doc("docs/api/texture/mipmap/levels.md")]
+    pub fn levels_py(&self) -> Vec<Vec<u8>> {
+        self.levels().to_vec()
     }
 }
 
