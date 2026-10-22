@@ -1,4 +1,8 @@
-import init, { Renderer, Shader, Pass, Mesh, Vertex, Instance, set_log_level } from "fragmentcolor";
+import init, {
+  Renderer, Shader, Pass, Mesh, Vertex, Instance, Scene, Model, Material, Camera, Mipmap,
+  TextureFormat, TextureUsage, VertexValue, set_log_level,
+} from "fragmentcolor";
+import * as fc from "fragmentcolor";
 
 // import { installInstrumentation } from './instrument.mjs';
 // Install JS-level instrumentation before running any examples or docs coverage.
@@ -367,6 +371,138 @@ struct Particles { items: array<vec4<f32>, 2> };
       throw new Error(`struct root should read as 32 bytes, got ${light}`);
     }
     same("struct root reads current bytes", new Float32Array(light.buffer, 16, 1), [0.5]);
+});
+
+// The JS shapes 0.12.6 brings in line with Rust, Python, Swift and Kotlin.
+await withModule('platforms.web.healthcheck.parity', async () => {
+    const renderer = new Renderer();
+    const fail = (message) => { throw new Error(message); };
+    const caught = (label, error) => {
+      if (!(error instanceof Error)) fail(`${label} threw a ${typeof error}, not an Error`);
+      console.log(`${label} threw:`, error.message);
+    };
+    const throws = (label, run) => {
+      try { run(); } catch (e) { return caught(label, e); }
+      fail(`${label} should throw`);
+    };
+    const rejects = async (label, run) => {
+      try { await run(); } catch (e) { return caught(label, e); }
+      fail(`${label} should reject`);
+    };
+    const same = (label, got, want) => {
+      const a = Array.from(got), b = Array.from(want);
+      if (a.length !== b.length || a.some((v, i) => v !== b[i])) fail(`${label}: got [${a}], want [${b}]`);
+    };
+
+    // Failures are Error objects, and a bad shader throws instead of falling back.
+    throws('new Shader with invalid WGSL', () => new Shader('not wgsl'));
+    await rejects('Shader.fetch with a number', () => Shader.fetch(42));
+    throws('Shader.set on a missing key', () => Shader.default().set('missing', 1.0));
+
+    // Scene.setPasses leaves the caller's passes usable.
+    const first = new Pass('first');
+    const second = new Pass('second');
+    const scene = new Scene();
+    scene.setPasses([first, second]);
+    if (first.name() !== 'first' || second.name() !== 'second') fail('setPasses consumed its passes');
+    if (scene.listPasses().length !== 2) fail('setPasses did not keep two passes');
+    throws('Scene.setPasses with a number item', () => scene.setPasses([first, 1]));
+
+    // Builder methods return the receiver.
+    const mesh = new Mesh();
+    mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]));
+    const model = new Model(mesh, Material.pbr());
+    const camera = Camera.perspective(1.047, 1.0, 0.1, 100.0);
+    const built = new Scene().add(model).add(camera).ambient([0.1, 0.1, 0.1]).noDefaultLight();
+    if (built.models().length !== 1) fail('chained Scene.add lost the model');
+    if (!(new Pass('chain').add(model) instanceof Pass)) fail('Pass.add should return the pass');
+
+    // Indices, counts and dispatch sizes are whole numbers.
+    throws('Scene.addTo(-1)', () => built.addTo(-1, model));
+    throws('Scene.getPass(1.5)', () => built.getPass(1.5));
+    throws('Mesh.setInstanceCount(-1)', () => mesh.setInstanceCount(-1));
+    throws('Mesh.setIndices([0.5])', () => mesh.setIndices([0.5]));
+    throws('Pass.setComputeDispatch(-1, 1, 1)', () => first.setComputeDispatch(-1, 1, 1));
+
+    // Pass.require takes a Scene, and throws on anything it can't render.
+    const compose = new Pass('compose');
+    compose.require(built);
+    throws('Pass.require with a string', () => compose.require('nope'));
+    throws('Pass.require with a string item', () => compose.require([first, 'nope']));
+
+    // An array renders as one frame, and load takes an array.
+    const target = await renderer.createTextureTarget([8, 8]);
+    await renderer.load([Shader.default(), built]);
+    renderer.render([Shader.default(), Shader.default()], target);
+    throws('render with a string item', () => renderer.render([Shader.default(), 'x'], target));
+
+    // The window target is WindowTarget, and CanvasTarget names the same class.
+    const canvas = document.createElement('canvas');
+    canvas.width = 8; canvas.height = 8;
+    const windowTarget = await renderer.createTarget(canvas);
+    if (!(windowTarget instanceof fc.WindowTarget)) fail('createTarget should return a WindowTarget');
+    if (fc.CanvasTarget !== fc.WindowTarget) fail('CanvasTarget should alias WindowTarget');
+    const empty = await windowTarget.getImage();
+    if (!(empty instanceof Uint8Array) || empty.length !== 0) fail('WindowTarget.getImage should resolve empty');
+
+    // createTexture takes an ImageData's size, and reads sampler and usage.
+    const image = new ImageData(new Uint8ClampedArray([255, 0, 0, 255, 0, 255, 0, 255]), 2, 1);
+    const fromImage = await renderer.createTexture(image);
+    const size = fromImage.size();
+    if (size.width !== 2 || size.height !== 1) fail(`ImageData texture is ${size.width}x${size.height}`);
+    await renderer.createTexture(new Uint8Array([255, 255, 255, 255]), {
+      size: [1, 1], sampler: { repeatX: true, smooth: false },
+    });
+    await rejects('createTexture with mipmaps: "yes"', () =>
+      renderer.createTexture(new Uint8Array(4), { size: [1, 1], mipmaps: 'yes' }));
+    const readable = await renderer.createTexture(new Uint8Array([1, 2, 3, 255]), {
+      size: [1, 1], format: TextureFormat.Rgba8Unorm, mipmaps: false, usage: TextureUsage.COPY_SRC,
+    });
+    same('readTexture after usage: COPY_SRC', (await renderer.readTexture(readable.id())).slice(0, 4), [1, 2, 3, 255]);
+
+    // Material texture setters take any texture source.
+    Material.pbr().baseColorTexture(new Uint8Array([255, 0, 0, 255]), { size: [1, 1] });
+    Material.pbr().baseColorTexture(fromImage);
+
+    // Scene.load takes an ArrayBuffer or a view, and can skip the file's cameras and lights.
+    const glb = await (await fetch('/healthcheck/public/model.glb')).arrayBuffer();
+    const loaded = Scene.load(glb);
+    const bare = Scene.load(new DataView(glb), { cameras: false, lights: false });
+    if (bare.cameras().length !== 0 || bare.lights().length !== 0) fail('Scene.load kept filtered nodes');
+    if (bare.models().length !== loaded.models().length) fail('Scene.load options dropped models');
+    throws('Scene.load with cameras: "no"', () => Scene.load(glb, { cameras: 'no' }));
+
+    // Matrices as columns, and bytes from an ArrayBuffer.
+    const columns = [[2, 0, 0, 0], [0, 2, 0, 0], [0, 0, 2, 0], [3, 0, 0, 1]];
+    model.setTransform(columns);
+    same('Model.transform after columns', model.transform(), columns.flat());
+    const shader = new Shader(`
+struct Data { items: array<vec4<f32>, 2> };
+@group(0) @binding(0) var<storage, read> data: Data;
+@group(0) @binding(1) var<uniform> m: mat2x2<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  return vec4f(0., 0., 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> { return data.items[0] + vec4f(m[0], 0., 0.); }
+`);
+    shader.set('m', [[1, 2], [3, 4]]);
+    same('mat2x2 from columns', shader.get('m'), [1, 2, 3, 4]);
+    const blob = Uint8Array.from({ length: 32 }, (_, i) => i);
+    shader.set('data', blob.buffer);
+    same('storage root from an ArrayBuffer', shader.get('data'), blob);
+
+    // Vertex constants, VertexValue, and vertices given in parts.
+    if (Vertex.UV0 !== 'uv0' || Vertex.NORMAL !== 'normal') fail('Vertex constants are missing');
+    new Vertex([0.0, 0.0]).set('id', VertexValue.u32(7));
+    throws('VertexValue.u32(-1)', () => VertexValue.u32(-1));
+    throws('Vertex.set with a string item', () => new Vertex([0.0, 0.0]).set('uv', [1, 'x']));
+    new Mesh().addVertex([[0.0, 0.0, 0.0], [0.0, 1.0]]);
+    new Mesh().addVertices([[[1.0, 0.0, 0.0], [1.0, 1.0], [1.0, 1.0, 1.0, 1.0]]]);
+
+    // Mipmap.levels returns every level.
+    const chain = Mipmap.build(new Uint8Array(4 * 4 * 4), TextureFormat.Rgba8Unorm, [4, 4]);
+    const levels = chain.levels();
+    if (levels.length !== chain.count() || !(levels[0] instanceof Uint8Array)) fail('Mipmap.levels is wrong');
 });
 
 // Auto-generated: run all extracted examples (after init)
