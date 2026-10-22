@@ -315,29 +315,32 @@ impl Scene {
         Scene::load(scene_source).map_err(|e| JsError::new(&e.to_string()))
     }
 
-    /// Unified `Scene.add` — branches on the runtime JS type. Adding a new
-    /// `SceneObject` Rust-side means adding one extra try-cast arm here.
+    /// Unified `Scene.add`, which branches on the runtime JS type. Adding a new
+    /// `SceneObject` on the Rust side means adding one try-cast arm here.
     #[wasm_bindgen(js_name = "add")]
     #[lsp_doc("docs/api/scene/scene/add.md")]
-    pub fn add_js(&self, object: &JsValue) -> Result<(), JsError> {
+    pub fn add_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Model | Camera | Light")] object: &JsValue,
+    ) -> Result<Scene, JsError> {
         if let Ok(model) = Model::try_from(object) {
-            return self.add(&model).map(|_| ()).map_err(|e| e.into());
+            self.add(&model)?;
+        } else if let Ok(camera) = Camera::try_from(object) {
+            self.add(&camera)?;
+        } else if let Ok(light) = Light::try_from(object) {
+            self.add(&light)?;
+        } else {
+            return Err(JsError::new(
+                "Scene.add: expected a Model, Camera, or Light",
+            ));
         }
-        if let Ok(camera) = Camera::try_from(object) {
-            return self.add(&camera).map(|_| ()).map_err(|e| e.into());
-        }
-        if let Ok(light) = Light::try_from(object) {
-            return self.add(&light).map(|_| ()).map_err(|e| e.into());
-        }
-        Err(JsError::new(
-            "Scene.add: expected a Model, Camera, or Light",
-        ))
+        Ok(self.clone())
     }
 
     #[wasm_bindgen(js_name = "addPass")]
     #[lsp_doc("docs/api/scene/scene/add_pass.md")]
-    pub fn add_pass_js(&self, pass: &Pass) {
-        self.add_pass(pass);
+    pub fn add_pass_js(&self, pass: &Pass) -> Scene {
+        self.add_pass(pass).clone()
     }
 
     #[wasm_bindgen(js_name = "removePass")]
@@ -368,7 +371,11 @@ impl Scene {
     /// a string name. Branches on the runtime JS type like `Scene.add`.
     #[wasm_bindgen(js_name = "addTo")]
     #[lsp_doc("docs/api/scene/scene/add_to.md")]
-    pub fn add_to_js(&self, target: &JsValue, object: &JsValue) -> Result<(), JsError> {
+    pub fn add_to_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "number | string")] target: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "Model | Camera | Light")] object: &JsValue,
+    ) -> Result<Scene, JsError> {
         let target = if let Some(index) = target.as_f64() {
             crate::scene::PassRef::Index(index as usize)
         } else if let Some(name) = target.as_string() {
@@ -379,26 +386,17 @@ impl Scene {
             ));
         };
         if let Ok(model) = Model::try_from(object) {
-            return self
-                .add_to(target, &model)
-                .map(|_| ())
-                .map_err(|e| e.into());
+            self.add_to(target, &model)?;
+        } else if let Ok(camera) = Camera::try_from(object) {
+            self.add_to(target, &camera)?;
+        } else if let Ok(light) = Light::try_from(object) {
+            self.add_to(target, &light)?;
+        } else {
+            return Err(JsError::new(
+                "Scene.addTo: expected a Model, Camera, or Light",
+            ));
         }
-        if let Ok(camera) = Camera::try_from(object) {
-            return self
-                .add_to(target, &camera)
-                .map(|_| ())
-                .map_err(|e| e.into());
-        }
-        if let Ok(light) = Light::try_from(object) {
-            return self
-                .add_to(target, &light)
-                .map(|_| ())
-                .map_err(|e| e.into());
-        }
-        Err(JsError::new(
-            "Scene.addTo: expected a Model, Camera, or Light",
-        ))
+        Ok(self.clone())
     }
 
     #[wasm_bindgen(js_name = "setPasses")]
@@ -413,40 +411,39 @@ impl Scene {
 
     #[wasm_bindgen(js_name = "noDefaults")]
     #[lsp_doc("docs/api/scene/scene/no_defaults.md")]
-    pub fn no_defaults_js(&self) {
-        self.no_defaults();
+    pub fn no_defaults_js(&self) -> Scene {
+        self.no_defaults().clone()
     }
 
     #[wasm_bindgen(js_name = "noDefaultCamera")]
     #[lsp_doc("docs/api/scene/scene/no_default_camera.md")]
-    pub fn no_default_camera_js(&self) {
-        self.no_default_camera();
+    pub fn no_default_camera_js(&self) -> Scene {
+        self.no_default_camera().clone()
     }
 
     #[wasm_bindgen(js_name = "noDefaultLight")]
     #[lsp_doc("docs/api/scene/scene/no_default_light.md")]
-    pub fn no_default_light_js(&self) {
-        self.no_default_light();
+    pub fn no_default_light_js(&self) -> Scene {
+        self.no_default_light().clone()
     }
 
     #[wasm_bindgen(js_name = "setDefaultCamera")]
     #[lsp_doc("docs/api/scene/scene/set_default_camera.md")]
-    pub fn set_default_camera_js(&self, camera: &Camera) {
-        self.set_default_camera(camera);
+    pub fn set_default_camera_js(&self, camera: &Camera) -> Scene {
+        self.set_default_camera(camera).clone()
     }
 
     #[wasm_bindgen(js_name = "setDefaultLight")]
     #[lsp_doc("docs/api/scene/scene/set_default_light.md")]
-    pub fn set_default_light_js(&self, light: &Light) {
-        self.set_default_light(light);
+    pub fn set_default_light_js(&self, light: &Light) -> Scene {
+        self.set_default_light(light).clone()
     }
 
     #[wasm_bindgen(js_name = "ambient")]
     #[lsp_doc("docs/api/scene/scene/ambient.md")]
-    pub fn ambient_js(&self, color: Vec<f32>) -> Result<(), JsError> {
-        let c = vec3(&color, "Scene.ambient")?;
-        self.ambient(c);
-        Ok(())
+    pub fn ambient_js(&self, color: Vec<f32>) -> Result<Scene, JsError> {
+        let color = vec3(&color, "Scene.ambient")?;
+        Ok(self.ambient(color).clone())
     }
 
     #[wasm_bindgen(js_name = "models")]

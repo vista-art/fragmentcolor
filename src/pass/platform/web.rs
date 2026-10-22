@@ -70,21 +70,24 @@ impl Pass {
         Ok(self.add_mesh(mesh)?)
     }
 
-    /// Unified `Pass.add` — branches on the runtime JS type. Adding a new
-    /// `SceneObject` Rust-side means adding one extra try-cast arm here.
+    /// Unified `Pass.add`, which branches on the runtime JS type. Adding a new
+    /// `SceneObject` on the Rust side means adding one try-cast arm here.
     #[wasm_bindgen(js_name = "add")]
     #[lsp_doc("docs/api/core/pass/add.md")]
-    pub fn add_js(&self, object: &JsValue) -> Result<(), JsError> {
+    pub fn add_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Model | Camera | Light")] object: &JsValue,
+    ) -> Result<Pass, JsError> {
         if let Ok(model) = crate::Model::try_from(object) {
-            return self.add(&model).map(|_| ()).map_err(|e| e.into());
+            self.add(&model)?;
+        } else if let Ok(camera) = crate::scene::Camera::try_from(object) {
+            self.add(&camera)?;
+        } else if let Ok(light) = crate::scene::Light::try_from(object) {
+            self.add(&light)?;
+        } else {
+            return Err(JsError::new("Pass.add: expected a Model, Camera, or Light"));
         }
-        if let Ok(camera) = crate::scene::Camera::try_from(object) {
-            return self.add(&camera).map(|_| ()).map_err(|e| e.into());
-        }
-        if let Ok(light) = crate::scene::Light::try_from(object) {
-            return self.add(&light).map(|_| ()).map_err(|e| e.into());
-        }
-        Err(JsError::new("Pass.add: expected a Model, Camera, or Light"))
+        Ok(self.clone())
     }
 
     #[wasm_bindgen(js_name = "setClearColor")]
