@@ -5,6 +5,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::mesh::{Instance, Mesh, Quad, Vertex, VertexValue};
+use crate::platforms::web::{read_numbers, read_unsigned};
 
 // -----------------------------
 // JS helpers
@@ -383,38 +384,29 @@ impl Mesh {
 
     #[wasm_bindgen(js_name = "setInstanceCount")]
     #[lsp_doc("docs/api/geometry/mesh/set_instance_count.md")]
-    pub fn set_instance_count_js(&mut self, n: u32) {
-        self.set_instance_count(n);
+    pub fn set_instance_count_js(&mut self, count: f64) -> Result<(), JsError> {
+        self.set_instance_count(read_unsigned(count, "Mesh.setInstanceCount: count")?);
+        Ok(())
     }
 
     #[wasm_bindgen(js_name = "setIndices")]
     #[lsp_doc("docs/api/geometry/mesh/set_indices.md")]
-    pub fn set_indices_js(&mut self, indices: &JsValue) -> Result<(), JsError> {
-        use js_sys::{Array, Uint32Array};
-        let out: Vec<u32> = if let Some(arr) = indices.dyn_ref::<Uint32Array>() {
-            let mut buf = vec![0u32; arr.length() as usize];
-            arr.copy_to(&mut buf[..]);
-            buf
-        } else if let Some(arr) = indices.dyn_ref::<Array>() {
-            let len = arr.length();
-            let mut buf = Vec::with_capacity(len as usize);
-            for i in 0..len {
-                let n = arr
-                    .get(i)
-                    .as_f64()
-                    .ok_or_else(|| JsError::new("Indices must be numbers"))?;
-                if n < 0.0 || n > u32::MAX as f64 {
-                    return Err(JsError::new("Indices must fit in a u32"));
-                }
-                buf.push(n as u32);
-            }
-            buf
-        } else {
-            return Err(JsError::new(
-                "Expected Uint32Array or an array of numbers for indices",
-            ));
+    pub fn set_indices_js(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] indices: &JsValue,
+    ) -> Result<(), JsError> {
+        if let Some(array) = indices.dyn_ref::<js_sys::Uint32Array>() {
+            self.set_indices(array.to_vec());
+            return Ok(());
+        }
+        let numbers = read_numbers(indices).ok_or_else(|| {
+            JsError::new("Mesh.setIndices: expected an array or typed array of numbers")
+        })?;
+        let read = |(index, number): (usize, f64)| {
+            read_unsigned(number, &format!("Mesh.setIndices: item {index}"))
         };
-        self.set_indices(out);
+        let indices = numbers.into_iter().enumerate().map(read);
+        self.set_indices(indices.collect::<Result<Vec<u32>, JsError>>()?);
         Ok(())
     }
 

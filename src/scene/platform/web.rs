@@ -4,6 +4,7 @@ use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
+use crate::platforms::web::read_unsigned;
 use crate::scene::{Camera, Light, LightKind, Model, Scene};
 use crate::{Material, Mesh, Pass};
 
@@ -351,8 +352,9 @@ impl Scene {
 
     #[wasm_bindgen(js_name = "getPass")]
     #[lsp_doc("docs/api/scene/scene/get_pass.md")]
-    pub fn get_pass_js(&self, index: usize) -> Option<Pass> {
-        self.get_pass(index)
+    pub fn get_pass_js(&self, index: f64) -> Result<Option<Pass>, JsError> {
+        let index = read_unsigned(index, "Scene.getPass: index")?;
+        Ok(self.get_pass(index as usize))
     }
 
     #[wasm_bindgen(js_name = "findPass")]
@@ -377,7 +379,7 @@ impl Scene {
         #[wasm_bindgen(unchecked_param_type = "Model | Camera | Light")] object: &JsValue,
     ) -> Result<Scene, JsError> {
         let target = if let Some(index) = target.as_f64() {
-            crate::scene::PassRef::Index(index as usize)
+            crate::scene::PassRef::Index(read_unsigned(index, "Scene.addTo: index")? as usize)
         } else if let Some(name) = target.as_string() {
             crate::scene::PassRef::Name(name)
         } else {

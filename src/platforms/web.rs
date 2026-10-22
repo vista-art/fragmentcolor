@@ -60,3 +60,18 @@ pub(crate) fn read_unsigned(value: f64, what: &str) -> Result<u32, wasm_bindgen:
         u32::MAX
     )))
 }
+
+/// Reads a plain array of numbers or a numeric typed array.
+/// Returns `None` for any other value, or when an item is not a number.
+pub(crate) fn read_numbers(value: &wasm_bindgen::JsValue) -> Option<Vec<f64>> {
+    use wasm_bindgen::JsCast;
+    let is_list = js_sys::Array::is_array(value)
+        || (js_sys::ArrayBuffer::is_view(value) && !value.is_instance_of::<js_sys::DataView>());
+    if !is_list {
+        return None;
+    }
+    js_sys::Array::from(value)
+        .iter()
+        .map(|item| item.as_f64())
+        .collect()
+}
