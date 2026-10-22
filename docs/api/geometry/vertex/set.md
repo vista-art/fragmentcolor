@@ -1,6 +1,7 @@
 # Vertex::set
 
-Attach an arbitrary property to the vertex.
+Attach an arbitrary property to the vertex. `set` returns a new `Vertex`
+with the property added, so chain the calls and keep the result.
 
 Locations and mapping:
 
@@ -10,14 +11,9 @@ Locations and mapping:
   2) name (instance first, then vertex).
 - There is no special-case for location(0) in the mapping; position is just another vertex attribute exposed as `position` with a 2- or 3-component format depending on how you constructed the Vertex.
 
-Planned explicit control:
-
-- You will be able to pin a property to a specific location using a fluent API: `vertex.set(key, value).at(index)`.
-- Vertex construction may also support `Vertex::from_shader(&Shader)` to derive an initial layout directly from the shader AST.
-
 ## Example
 
 ```rust
-use fragmentcolor::mesh::{Vertex, VertexValue};
+use fragmentcolor::mesh::Vertex;
 let v = Vertex::new([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0]);
 ```

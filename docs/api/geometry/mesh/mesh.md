@@ -19,7 +19,7 @@ indicating the missing attribute or mismatch.
 ## Example
 
 ```rust
-use fragmentcolor::mesh::{Mesh, Vertex, VertexValue};
+use fragmentcolor::mesh::{Mesh, Vertex};
 
 let mut mesh = Mesh::new();
 mesh.add_vertex([0.0, 0.5, 0.0]);
