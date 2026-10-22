@@ -94,24 +94,124 @@ extension Material {
     }
 
     // MARK: - Texture setters — drop the `texture:` label.
+    //
+    // Each setter takes what `Renderer.createTexture` takes: a `Texture`, or
+    // encoded bytes, a file path or `http(s)` URL, or a `Mipmap`. Inputs other
+    // than a `Texture` upload when the scene loads, as in Rust.
 
     public func baseColorTexture(_ texture: Texture) -> Material {
         return baseColorTexture(texture: texture)
+    }
+
+    public func baseColorTexture(_ bytes: Data) -> Material {
+        return baseColorSource(input: .bytes(bytes))
+    }
+
+    public func baseColorTexture(_ bytes: Data, _ format: TextureFormat) -> Material {
+        return baseColorSource(input: .bytes(bytes), options: formatOptions(format))
+    }
+
+    public func baseColorTexture(_ path: String) -> Material {
+        return baseColorSource(input: textureSource(path))
+    }
+
+    public func baseColorTexture(_ chain: Mipmap) -> Material {
+        return baseColorSource(input: .prepared(chain))
     }
 
     public func metallicRoughnessTexture(_ texture: Texture) -> Material {
         return metallicRoughnessTexture(texture: texture)
     }
 
+    public func metallicRoughnessTexture(_ bytes: Data) -> Material {
+        return metallicRoughnessSource(input: .bytes(bytes))
+    }
+
+    public func metallicRoughnessTexture(_ bytes: Data, _ format: TextureFormat) -> Material {
+        return metallicRoughnessSource(input: .bytes(bytes), options: formatOptions(format))
+    }
+
+    public func metallicRoughnessTexture(_ path: String) -> Material {
+        return metallicRoughnessSource(input: textureSource(path))
+    }
+
+    public func metallicRoughnessTexture(_ chain: Mipmap) -> Material {
+        return metallicRoughnessSource(input: .prepared(chain))
+    }
+
     public func normalTexture(_ texture: Texture) -> Material {
         return normalTexture(texture: texture)
+    }
+
+    public func normalTexture(_ bytes: Data) -> Material {
+        return normalSource(input: .bytes(bytes))
+    }
+
+    public func normalTexture(_ bytes: Data, _ format: TextureFormat) -> Material {
+        return normalSource(input: .bytes(bytes), options: formatOptions(format))
+    }
+
+    public func normalTexture(_ path: String) -> Material {
+        return normalSource(input: textureSource(path))
+    }
+
+    public func normalTexture(_ chain: Mipmap) -> Material {
+        return normalSource(input: .prepared(chain))
     }
 
     public func occlusionTexture(_ texture: Texture) -> Material {
         return occlusionTexture(texture: texture)
     }
 
+    public func occlusionTexture(_ bytes: Data) -> Material {
+        return occlusionSource(input: .bytes(bytes))
+    }
+
+    public func occlusionTexture(_ bytes: Data, _ format: TextureFormat) -> Material {
+        return occlusionSource(input: .bytes(bytes), options: formatOptions(format))
+    }
+
+    public func occlusionTexture(_ path: String) -> Material {
+        return occlusionSource(input: textureSource(path))
+    }
+
+    public func occlusionTexture(_ chain: Mipmap) -> Material {
+        return occlusionSource(input: .prepared(chain))
+    }
+
     public func emissiveTexture(_ texture: Texture) -> Material {
         return emissiveTexture(texture: texture)
     }
+
+    public func emissiveTexture(_ bytes: Data) -> Material {
+        return emissiveSource(input: .bytes(bytes))
+    }
+
+    public func emissiveTexture(_ bytes: Data, _ format: TextureFormat) -> Material {
+        return emissiveSource(input: .bytes(bytes), options: formatOptions(format))
+    }
+
+    public func emissiveTexture(_ path: String) -> Material {
+        return emissiveSource(input: textureSource(path))
+    }
+
+    public func emissiveTexture(_ chain: Mipmap) -> Material {
+        return emissiveSource(input: .prepared(chain))
+    }
+}
+
+/// A URL input for `http(s)`, otherwise a file path.
+private func textureSource(_ path: String) -> TextureInputMobile {
+    path.hasPrefix("http://") || path.hasPrefix("https://") ? .url(path) : .path(path)
+}
+
+/// Rust's default `TextureOptions` with `format`.
+private func formatOptions(_ format: TextureFormat) -> TextureOptions {
+    TextureOptions(
+        size: nil,
+        format: format,
+        sampler: SamplerOptions(repeatX: false, repeatY: false, smooth: true, compare: nil),
+        mipmaps: true,
+        usage: nil
+    )
 }
