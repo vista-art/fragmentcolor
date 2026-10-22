@@ -1,10 +1,10 @@
 # Pass::getInput (mobile)
 
-Mobile binding for `Pass::get_input`. Returns a `MobilePassInput` record
-instead of `PassInput` because `PassInput` contains a `Color(u32)` tuple
+Mobile binding for `Pass::get_input`. Returns a `PassInput` record built from
+the Rust `MobilePassInput`, because the Rust `PassInput` holds a `Color(u32)` tuple
 newtype that uniffi's `Record` derive does not support.
 
-`MobilePassInput` has the same semantics:
+The record has the same semantics:
 - `load: Bool`: `true` means "load previous frame contents"; `false` means "clear".
 - `colorRgba: UInt32`: packed clear colour as `0xRRGGBBAA`.
 
