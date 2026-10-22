@@ -86,5 +86,5 @@ let shader = Shader::new([
 In WASM the constructor cannot perform network requests, because
 constructors cannot be async. Pass raw source strings to `new Shader([...])`,
 or use the async
-[Shader::fetch](https://fragmentcolor.org/api/core/shader#shaderfetch)
+[Shader::fetch](https://fragmentcolor.org/api/core/shader#shaderfetchinput)
 builder to resolve URLs and slugs over the browser's `fetch()`.

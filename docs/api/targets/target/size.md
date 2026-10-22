@@ -1,6 +1,6 @@
 # Target::size() -> Size { width, height }
 
-Returns the size of the [Target](https://fragmentcolor.org/api/core/target) in pixels.
+Returns the size of the [Target](https://fragmentcolor.org/api/targets/target) in pixels.
 
 ## Example
 

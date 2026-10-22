@@ -6,10 +6,10 @@ The [Renderer](https://fragmentcolor.org/api/core/renderer) is the main entry po
 It is used to render
 [Shaders](https://fragmentcolor.org/api/core/shader) and
 [Passes](https://fragmentcolor.org/api/core/pass) (single passes or any iterable of them)
-to a [Target](https://fragmentcolor.org/api/core/target) (canvas, window, or texture).
+to a [Target](https://fragmentcolor.org/api/targets/target) (canvas, window, or texture).
 
 The [Renderer](https://fragmentcolor.org/api/core/renderer) internals are lazily initialized
-when the user creates a [Target](https://fragmentcolor.org/api/core/target).
+when the user creates a [Target](https://fragmentcolor.org/api/targets/target).
 
 See the constructor [Renderer::new()](https://fragmentcolor.org/api/core/renderer/#renderernew)
 description below for details.

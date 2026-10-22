@@ -4,7 +4,7 @@ Read the world-space direction the light travels along. Returns
 `Some([x, y, z])` for a directional or spot light, `None` for a point
 light (point sources radiate omnidirectionally, so there's no direction to report).
 Call
-[`set_direction`](https://fragmentcolor.org/api/scene/light/set_direction)
+[`set_direction`](https://fragmentcolor.org/api/scene/light#lightset_direction)
 to update it.
 
 ## Example

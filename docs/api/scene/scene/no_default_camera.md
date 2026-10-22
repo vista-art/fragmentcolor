@@ -6,9 +6,9 @@ camera at first render. Call this when the host supplies the view projection
 and the stock camera would only fight for the same uniform.
 
 To turn off both kinds at once, use
-[`no_defaults`](https://fragmentcolor.org/api/scene/scene/no_defaults). To
+[`no_defaults`](https://fragmentcolor.org/api/scene/scene#sceneno_defaults). To
 keep injection on but supply your own camera, use
-[`set_default_camera`](https://fragmentcolor.org/api/scene/scene/set_default_camera).
+[`set_default_camera`](https://fragmentcolor.org/api/scene/scene#sceneset_default_camera).
 
 ## Example
 

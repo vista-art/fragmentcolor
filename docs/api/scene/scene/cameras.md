@@ -1,10 +1,10 @@
 # Scene::cameras
 
 Return a snapshot of every [`Camera`](https://fragmentcolor.org/api/scene/camera)
-added to this Scene via [`Scene::add`](https://fragmentcolor.org/api/scene/scene/add),
+added to this Scene via [`Scene::add`](https://fragmentcolor.org/api/scene/scene#sceneadd),
 including Cameras the loader instantiated from glTF `camera` nodes
 (unless you skipped them via the camera filter on
-[`Scene::load`](https://fragmentcolor.org/api/scene/scene/load)).
+[`Scene::load`](https://fragmentcolor.org/api/scene/scene#sceneload)).
 
 Each entry is an Arc-shared clone of the original handle.
 `camera.look_at(...)` / `camera.set_aspect(...)` on a returned handle

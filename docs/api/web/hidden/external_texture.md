@@ -2,7 +2,7 @@
 
 Bind an `HTMLVideoElement` as an external texture so shaders can sample decoded video frames directly via `texture_external` and `textureSampleBaseClampToEdge`, without copying pixels through the CPU.
 
-> **Status:** the API surface is in place on every binding so portable code can be written against it today, but every entry point currently returns `"not implemented yet"`. Track [Renderer::create_external_texture](https://fragmentcolor.org/api/core/renderer/create_external_texture) for progress.
+> **Status:** the API surface is in place on every binding so portable code can be written against it today, but every entry point currently returns `"not implemented yet"`. Track [Renderer::create_external_texture](https://fragmentcolor.org/api/core/renderer#renderercreate_external_texturesource) for progress.
 
 WGSL
 ```wgsl

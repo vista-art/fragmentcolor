@@ -5,9 +5,9 @@ spot light, `None` for directional and point lights. The outer cone is
 where the light's contribution reaches zero. Beyond this angle the
 fragment receives nothing from this light. Between the inner and outer
 cones the contribution smoothly rolls off; see
-[`inner_cone_angle`](https://fragmentcolor.org/api/scene/light/inner_cone_angle).
+[`inner_cone_angle`](https://fragmentcolor.org/api/scene/light#lightinner_cone_angle).
 Call
-[`set_cone_angles`](https://fragmentcolor.org/api/scene/light/set_cone_angles)
+[`set_cone_angles`](https://fragmentcolor.org/api/scene/light#lightset_cone_angles)
 to update both at once.
 
 ## Example

@@ -2,7 +2,7 @@
 
 A GPU texture resource. Public API wrapper that holds a shareable reference to the internal TextureObject and a numeric handle used by uniforms.
 
-- Construct via [Renderer::create_texture(input)](https://fragmentcolor.org/api/core/renderer/create_texture). `input` accepts bytes, `(bytes, [w, h])`, `(bytes, format)`, a path, a URL, a KTX2 container, or a prepared chain.
+- Construct via [Renderer::create_texture(input)](https://fragmentcolor.org/api/core/renderer#renderercreate_texture). `input` accepts bytes, `(bytes, [w, h])`, `(bytes, format)`, a path, a URL, a KTX2 container, or a prepared chain.
 - Bind to a shader with `shader.set("key", &texture)`.
 - The texture owns its sampler; tweak filtering and wrapping via `set_sampler_options`.
 

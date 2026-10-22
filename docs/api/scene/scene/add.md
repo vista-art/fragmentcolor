@@ -1,6 +1,6 @@
 # Scene::add
 
-Absorb any [`SceneObject`](https://fragmentcolor.org/api/scene) (a
+Absorb any `SceneObject` (a
 [Model](https://fragmentcolor.org/api/scene/model),
 [Camera](https://fragmentcolor.org/api/scene/camera),
 [Light](https://fragmentcolor.org/api/scene/light), or a user-defined

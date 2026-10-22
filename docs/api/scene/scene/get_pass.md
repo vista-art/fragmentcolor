@@ -6,7 +6,7 @@ index, in render order. Returns `None` when the index is out of range.
 The returned `Pass` is an Arc-shared clone of the one the Scene renders.
 Configuring it (`load_previous`, `set_clear_color`, `set_target`) drives the
 live pass, no re-insert needed. To borrow the whole graph at once, use
-[`Scene::list_passes`](https://fragmentcolor.org/api/scene/scene/list_passes).
+[`Scene::list_passes`](https://fragmentcolor.org/api/scene/scene#scenelist_passes).
 
 ## Example
 

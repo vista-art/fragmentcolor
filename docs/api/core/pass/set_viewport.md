@@ -2,7 +2,7 @@
 
 Sets the viewport region for this [Pass](https://fragmentcolor.org/api/core/pass).
 
-The viewport restricts drawing to a rectangular area of the [Target](https://fragmentcolor.org/api/core/target).
+The viewport restricts drawing to a rectangular area of the [Target](https://fragmentcolor.org/api/targets/target).
 
 The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly.
 

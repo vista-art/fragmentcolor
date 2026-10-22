@@ -9,10 +9,10 @@ ordinary member of that list, slotted in at the point of your first `add`.
 That makes `add_pass` the hook for shadow maps, depth pre-passes, screen-space
 backdrops, and post-effects alike. Insert before your geometry for a backdrop,
 after it for an overlay. To inspect or reorder the result, reach for
-[`list_passes`](https://fragmentcolor.org/api/scene/scene/list_passes),
-[`get_pass`](https://fragmentcolor.org/api/scene/scene/get_pass),
-[`remove_pass`](https://fragmentcolor.org/api/scene/scene/remove_pass), and
-[`set_passes`](https://fragmentcolor.org/api/scene/scene/set_passes).
+[`list_passes`](https://fragmentcolor.org/api/scene/scene#scenelist_passes),
+[`get_pass`](https://fragmentcolor.org/api/scene/scene#sceneget_pass),
+[`remove_pass`](https://fragmentcolor.org/api/scene/scene#sceneremove_pass), and
+[`set_passes`](https://fragmentcolor.org/api/scene/scene#sceneset_passes).
 
 The Pass is cloned (shallow Arc-share) when stored, so further changes you
 make to the original handle reach the Scene's copy too.

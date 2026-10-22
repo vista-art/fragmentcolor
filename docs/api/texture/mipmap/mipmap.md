@@ -10,7 +10,7 @@ Typical reasons to build one explicitly:
 - You stream tiles into a paint-canvas or terrain renderer and need each tile's GPU upload to be a single write, not a decode-plus-resize per upload.
 - You want to share one chain across many textures without rebuilding it.
 
-Build with [Mipmap::build(input)](https://fragmentcolor.org/api/texture/mipmap/build); the input shapes match what [Renderer::create_texture](https://fragmentcolor.org/api/core/renderer/create_texture) accepts. Whether the bytes get decoded depends on whether you pass a `size`:
+Build with [Mipmap::build(input)](https://fragmentcolor.org/api/texture/mipmap#mipmapbuild); the input shapes match what [Renderer::create_texture](https://fragmentcolor.org/api/core/renderer#renderercreate_texture) accepts. Whether the bytes get decoded depends on whether you pass a `size`:
 
 - `build((bytes, format))`: encoded image (PNG, JPEG, BMP, HDR, ...). FC decodes and infers the dimensions.
 - `build((bytes, format, size))`: raw pixel bytes already laid out for `format` at `size`. No decode.

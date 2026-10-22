@@ -7,7 +7,7 @@ configuring one (`load_previous`, `set_clear_color`, `set_viewport`,
 snapshot at call time; appending passes afterward doesn't grow it.
 
 This is the composition hook. After
-[`Scene::load`](https://fragmentcolor.org/api/scene/scene/load) the whole
+[`Scene::load`](https://fragmentcolor.org/api/scene/scene#sceneload) the whole
 pass graph is in your hands: walk it and call `load_previous` so the scene
 composes onto a previous draw instead of clearing it, then hand the Scene to
 the renderer alongside whatever else the frame needs.

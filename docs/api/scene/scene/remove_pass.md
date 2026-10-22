@@ -6,7 +6,7 @@ handle you pass in is matched against the graph by pointer, not by name.
 Returns `true` when a pass left the graph, `false` when the handle wasn't
 there.
 
-If the removed pass was the default pass that [`Scene::add`](https://fragmentcolor.org/api/scene/scene/add)
+If the removed pass was the default pass that [`Scene::add`](https://fragmentcolor.org/api/scene/scene#sceneadd)
 routes objects into, the Scene forgets it. The next `add` builds a fresh
 default pass at the end of the graph.
 

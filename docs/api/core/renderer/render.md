@@ -1,6 +1,6 @@
 # Renderer::render(renderable, target)
 
-Renders the given object to the given [Target](https://fragmentcolor.org/api/core/target).
+Renders the given object to the given [Target](https://fragmentcolor.org/api/targets/target).
 
 `renderable` can be a `Shader`, a `Pass`, a `Mesh`, a `Scene`, or any iterable of `Pass` (`Vec<Pass>`, `&[Pass]`, `&[&Pass]`). Passes in an iterable are rendered in order.
 

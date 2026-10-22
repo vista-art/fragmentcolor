@@ -1,6 +1,6 @@
 # Pass
 
-The [Pass](https://fragmentcolor.org/api/core/pass) object is a collection of [Shader](https://fragmentcolor.org/api/core/shader) objects that are rendered to a [Target](https://fragmentcolor.org/api/core/target) by the [Renderer](https://fragmentcolor.org/api/core/renderer).
+The [Pass](https://fragmentcolor.org/api/core/pass) object is a collection of [Shader](https://fragmentcolor.org/api/core/shader) objects that are rendered to a [Target](https://fragmentcolor.org/api/targets/target) by the [Renderer](https://fragmentcolor.org/api/core/renderer).
 
 While the [Shader](https://fragmentcolor.org/api/core/shader) represents a single **Render Pipeline** or a **Compute Pipeline**,
 the [Pass](https://fragmentcolor.org/api/core/pass) can be used to draw multiple Shaders in sequence,

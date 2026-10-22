@@ -8,7 +8,7 @@ to apply it directly without composing through `translate` / `rotate` /
 The renderer reads the new matrix on the next render, so a Model already
 added to a Pass or Scene moves without being added again. To read the
 current transform, see
-[Model::transform](https://fragmentcolor.org/api/scene/model#transform).
+[Model::transform](https://fragmentcolor.org/api/scene/model#modeltransform).
 
 ## Example
 

@@ -7,7 +7,7 @@ already-uploaded [`Texture`](https://fragmentcolor.org/api/texture/texture)
 handles; the path / bytes / URL variants are stored on the Material's
 Shader as *pending* uploads. `load` walks every Shader the renderable
 visits, drains its pending list, calls
-[`Renderer::create_texture`](https://fragmentcolor.org/api/core/renderer/create_texture)
+[`Renderer::create_texture`](https://fragmentcolor.org/api/core/renderer#renderercreate_texture)
 for each, and writes the resulting `Texture` into the matching uniform.
 
 On native targets, [`Renderer::render`](https://fragmentcolor.org/api/core/renderer)
