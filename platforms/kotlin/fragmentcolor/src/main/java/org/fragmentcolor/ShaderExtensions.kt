@@ -1,18 +1,13 @@
 package org.fragmentcolor
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-
 // Idiomatic Kotlin wrappers on top of the uniffi-generated Shader API.
 // Matches the call shapes used by the JavaScript and Python bindings so
 // cross-platform examples read the same on every platform.
 
-// Shader.setRegistry(baseUrl) is provided directly by the uniffi-generated
-// companion object — calling it returns a Shader that the caller may discard.
-// We deliberately do NOT define a Void-returning extension here because such
-// an extension would shadow the generated method and cause infinite recursion
-// when this file calls Shader.setRegistry(baseUrl) (the call resolves to the
-// shadowing extension, not the underlying companion method).
+/** Point registry slugs at [baseUrl], for every Shader in the process. */
+fun Shader.Companion.setRegistry(baseUrl: String) {
+    useRegistry(baseUrl).destroy()
+}
 
 /** Build a [Shader] from parts: WGSL sources, registry slugs, URLs or file paths. */
 operator fun Shader.Companion.invoke(parts: List<String>): Shader = Shader.compose(parts)
