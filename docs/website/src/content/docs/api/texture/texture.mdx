@@ -45,7 +45,7 @@ let shader = Shader::new(r#"
 "#)?;
 
 // 1x1 white pixel. Passing a size tells create_texture to read the bytes
-// as raw pixels; the default format is Rgba (sRGB-aware).
+// as raw pixels; the default format, Rgba, uploads them as linear Rgba8Unorm.
 let pixels: &[u8] = &[255, 255, 255, 255];
 let texture = renderer.create_texture((pixels, [1, 1])).await?;
 
@@ -135,7 +135,7 @@ let shader = try Shader("""
 """)
 
 // 1x1 white pixel. Passing a size tells create_texture to read the bytes
-// as raw pixels; the default format is Rgba (sRGB-aware).
+// as raw pixels; the default format, Rgba, uploads them as linear Rgba8Unorm.
 let pixels = [255, 255, 255, 255]
 let texture = try await renderer.createTexture(pixels, [1, 1])
 
@@ -165,7 +165,7 @@ val shader = Shader("""
 """)
 
 // 1x1 white pixel. Passing a size tells create_texture to read the bytes
-// as raw pixels; the default format is Rgba (sRGB-aware).
+// as raw pixels; the default format, Rgba, uploads them as linear Rgba8Unorm.
 val pixels = listOf(255, 255, 255, 255)
 val texture = renderer.createTexture(pixels, listOf(1, 1))
 
@@ -219,7 +219,7 @@ code={`
 import { Renderer, TextureFormat } from "fragmentcolor";
 
 const renderer = new Renderer();
-const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null);
+const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba);
 const id = texture.id();
 `}
 lang="js"
@@ -274,8 +274,9 @@ lang="kotlin"
 
 ### Texture::size
 
-Return the texture's dimensions as a `Size` (`width`, `height`, and an
-optional `depth` for 3D or array textures). The size reflects the
+Return the texture's dimensions as a `Size` (`width`, `height`, and
+`depth`, which is 1 for a 2D texture and the layer count for 3D or array
+textures). The size reflects the
 allocated GPU resource and is constant for the lifetime of the texture.
 
 #### Example
@@ -550,22 +551,14 @@ lang="python"
 <Code
 code={`
 import FragmentColor
-import Foundation
 
 let renderer = Renderer()
+// 1x1 RGBA (white) raw pixel bytes
 let pixels: [UInt8] = [255, 255, 255, 255]
-let options = TextureOptions(
-    size: Size(width: 1, height: 1, depth: nil),
-    format: .rgba8UnormSrgb,
-    sampler: SamplerOptions(repeatX: false, repeatY: false, smooth: true, compare: nil),
-    mipmaps: false,
-    usage: nil
-)
-// \`.bytes(_:)\` carries \`Data\`, not \`[UInt8]\`, so wrap the array explicitly.
-let texture = try await renderer.createTexture(input: .bytes(Data(pixels)), options: options)
 
+let texture = try await renderer.createTexture(pixels, [1, 1])
 let opts = SamplerOptions(repeatX: true, repeatY: true, smooth: true, compare: nil)
-texture.setSamplerOptions(opts: opts)
+texture.setSamplerOptions(opts)
 `}
 lang="swift"
 />
@@ -578,16 +571,10 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val pixels: ByteArray = byteArrayOf(255.toByte(), 255.toByte(), 255.toByte(), 255.toByte())
-val options = TextureOptions(
-    size = Size(width = 1u, height = 1u, depth = null),
-    format = TextureFormat.RGBA8_UNORM_SRGB,
-    sampler = SamplerOptions(repeatX = false, repeatY = false, smooth = true, compare = null),
-    mipmaps = false,
-    usage = null,
-)
-val texture = renderer.createTexture(TextureInputMobile.Bytes(pixels), options)
+// 1x1 RGBA (white) raw pixel bytes
+val pixels = listOf(255, 255, 255, 255)
 
+val texture = renderer.createTexture(pixels, listOf(1, 1))
 val opts = SamplerOptions(repeatX = true, repeatY = true, smooth = true, compare = null)
 texture.setSamplerOptions(opts)
 `}
@@ -610,7 +597,7 @@ Efficiently upload raw pixel data into an existing texture. Ideal for video play
 - `bytes` holds tightly packed rows: each row is the texture width times the bytes per pixel, with no padding. Data sized exactly for rows padded to 256 bytes reads at that padded stride. For any other padding, pass the stride to `Texture.write_region`.
 
 #### Notes
-- Supported formats initially: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, and other 4-bytes-per-pixel formats. Unsupported formats return an error.
+- Any format with a fixed size per pixel works, from 1-byte `R8Unorm` to 16-byte `Rgba32Float`.
 - The texture must have COPY_DST usage.
 
 #### Example
@@ -642,7 +629,7 @@ code={`
 import { Renderer, TextureFormat } from "fragmentcolor";
 
 const renderer = new Renderer();
-const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null);
+const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba);
 const frame = new Uint8Array(64 * 64 * 4);
 
 texture.write(frame);
@@ -707,8 +694,8 @@ lang="kotlin"
 
 Same as `Texture::write`, but writes into a sub-region of the texture and/or with explicit source data layout.
 
-The `region` argument accepts anything convertible into a `TextureRegion`:
-- `[w, h]` / `(w, h)`: full size, origin `(0, 0, 0)`
+The `region` argument is required; use `Texture::write` to replace the whole texture. It accepts anything convertible into a `TextureRegion`:
+- `[w, h]` / `(w, h)`: a `w` by `h` rectangle at origin `(0, 0, 0)`
 - `[x, y, w, h]` / `(x, y, w, h)`: 2D rectangle
 - `[x, y, z, w, h, d]`: 3D box (for layered or 3D textures)
 - A `ScreenRegion`: its pixel rectangle at `z = 0`, one layer deep
@@ -755,7 +742,7 @@ code={`
 import { Renderer, TextureFormat } from "fragmentcolor";
 
 const renderer = new Renderer();
-const texture = await renderer.createStorageTexture([64, 32], TextureFormat.Rgba, null);
+const texture = await renderer.createStorageTexture([64, 32], TextureFormat.Rgba);
 const bytes = new Uint8Array(64 * 32 * 4);
 
 // Simple sub-rectangle update.

@@ -349,6 +349,21 @@ uniforms are initialized to zero.
 GLSL is supported only as a single part (a `.vert`, `.frag`, or `.glsl`
 file). Mixing GLSL with other parts is rejected.
 
+An empty string, or an empty array, gives the default shader.
+
+#### Where each input resolves
+
+| Platform | Registry slugs and registry URLs | Other `https://` URLs | File paths |
+|----------|----------------------------------|-----------------------|------------|
+| Rust (desktop) | Bundled shader library, offline | Fetched with the `network` feature, an error without it | Read from disk |
+| Python | Bundled shader library, offline | Fetched by a wheel built with the `network` feature, an error otherwise | Read from disk |
+| Swift / Kotlin | Bundled shader library, offline | Not fetched; a network error | Read from disk |
+| Web, `Shader.fetch` | The browser's `fetch()` | The browser's `fetch()` | Fetched relative to the page's origin |
+| Web, `new Shader` | Not fetched; an error that points at `Shader.fetch` | Not fetched; an error | Not fetched; an error |
+
+A registry set with `Shader::set_registry` is fetched first on every
+platform, and the bundled copy stands in when it can't be reached.
+
 #### Example
 
 <Tabs>
@@ -434,6 +449,21 @@ const shader = new Shader(\`
         return vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
     }
 \`);
+
+// Compose pure helpers from the registry with your own source.
+const main = \`
+    @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+        let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+        return vec4<f32>(p[i], 0.0, 1.0);
+    }
+
+    @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+        let d = circle(pos.xy - vec2<f32>(400.0, 300.0), 100.0);
+        let n = simplex2(pos.xy * 0.01);
+        return vec4<f32>(vec3<f32>(step(0.0, d) + n * 0.1), 1.0);
+    }
+\`;
+const composed = await Shader.fetch(["sdf2d/circle", "noise/simplex2", main]);
 `}
 lang="js"
 />
@@ -453,6 +483,20 @@ shader = Shader("""
 }
 @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4f(1., 0., 0., 1.); }
 """)
+
+# Compose pure helpers from the registry with your own source.
+main = """
+@vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4<f32>(p[i], 0.0, 1.0);
+}
+@fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+  let d = circle(pos.xy - vec2<f32>(400.0, 300.0), 100.0);
+  let n = simplex2(pos.xy * 0.01);
+  return vec4<f32>(vec3<f32>(step(0.0, d) + n * 0.1), 1.0);
+}
+"""
+composed = Shader(["sdf2d/circle", "noise/simplex2", main])
 `}
 lang="python"
 />
@@ -575,7 +619,6 @@ Each part can be:
 - a registry slug like `"sdf2d/circle"`
 - an `https://` URL pointing at a `.wgsl` file
 - a local file path ending in `.wgsl`, `.glsl`, `.frag`, or `.vert`
-  (native platforms only)
 
 Parts are deduplicated by source hash and concatenated in order before
 compilation. `fetch` is the async path used when any part needs network or
@@ -589,12 +632,24 @@ synchronous constructor.
 | Web (JS) | `await Shader.fetch(input)` | `Promise` via `wasm_bindgen` async |
 | Python   | `Shader.fetch(input)` | Blocks the calling thread via `pollster::block_on` |
 | Swift    | `try await Shader.fetch(input)` | `async throws` via uniffi async method |
-| Kotlin   | `ShaderFetch(input)` | `suspend fun` via uniffi async method |
+| Kotlin   | `Shader.fetch(input)` | `suspend fun` via uniffi async method |
 
-> **Note (Swift / Kotlin):** uniffi 0.31 does not support async constructors.
-> The underlying uniffi binding is an `async` instance method; the Swift
-> `Shader.fetch(_:)` and Kotlin `ShaderFetch(...)` wrappers handle the
-> throw-away receiver internally so callers see a clean static factory.
+> **Note (Swift / Kotlin):** the underlying uniffi binding is an `async`
+> instance method. The Swift and Kotlin `Shader.fetch(...)` extensions call
+> it on a throwaway default shader, so callers see a static factory.
+
+#### Where each input resolves
+
+| Platform | Registry slugs and registry URLs | Other `https://` URLs | File paths |
+|----------|----------------------------------|-----------------------|------------|
+| Rust (desktop) | Bundled shader library, offline | Fetched with the `network` feature, an error without it | Read from disk |
+| Python | Bundled shader library, offline | Fetched by a wheel built with the `network` feature, an error otherwise | Read from disk |
+| Swift / Kotlin | Bundled shader library, offline | Not fetched; a network error | Read from disk |
+| Web, `Shader.fetch` | The browser's `fetch()` | The browser's `fetch()` | Fetched relative to the page's origin |
+| Web, `new Shader` | Not fetched; an error that points at `Shader.fetch` | Not fetched; an error | Not fetched; an error |
+
+A registry set with `Shader::set_registry` is fetched first on every
+platform, and the bundled copy stands in when it can't be reached.
 
 #### Example
 
@@ -701,6 +756,8 @@ lang="kotlin"
 Sets the value of the uniform identified by the given key.
 
 If the key does not exist or the value format is incorrect, the `set` method throws an exception. The shader remains valid, and if the exception is caught, the shader can still be used with the renderer.
+
+`set` never blocks. When another thread holds the shader's storage, the value is queued and applied before the next draw. A bad value that can't be checked right away is dropped later with a logged warning instead of throwing.
 
 The uniform's declared WGSL type decides how the value is read, so a call behaves the same in every language:
 
@@ -859,6 +916,11 @@ lang="kotlin"
 ### Shader::get(key: string) -&gt; any
 
 Returns the current value of the uniform identified by the given key.
+
+A struct or array root reads back as its bytes, and `set` doesn't take
+those bytes back for that root. Set a struct one field at a time
+(`"light.color"`) and an array one element at a time (`"weights[0]"`).
+Only a storage-buffer or push-constant root takes its whole bytes.
 
 #### Example
 
@@ -1034,6 +1096,8 @@ lang="kotlin"
 ### Shader::list_keys() -&gt; [string]
 
 Returns a list of all keys in the [Shader](/api/core/shader), including uniform names and struct fields using the dot notation.
+
+`list_keys` never blocks. When another thread holds the shader's storage, it returns an empty list and logs a warning.
 
 #### Example
 
@@ -1222,8 +1286,8 @@ It generates a minimal vertex shader that consumes `@location(0)` position and a
 
 #### Empty Mesh Handling
 
-If the Mesh has no vertices, a default shader is returned and a warning is logged.
-Because the default shader does not take any vertex inputs, it is compatible with any Mesh.
+If the Mesh has no vertices, `from_mesh` returns the default shader and logs a warning.
+The default shader takes no vertex inputs, so it rejects the mesh and the empty mesh is not attached.
 
 #### Example
 

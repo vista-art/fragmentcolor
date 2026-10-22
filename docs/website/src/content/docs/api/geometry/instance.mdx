@@ -1,0 +1,276 @@
+---
+title: Instance
+description: "An `Instance` holds the per-instance attributes of one copy of a [Mesh](/api/geometry/mesh): an offset, a tint, an id. The renderer draws the mesh once per instance and feeds each copy its own values."
+category: geometry
+categoryLabel: Geometry
+sidebar:
+  order: 3
+---
+
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Description
+
+An `Instance` holds the per-instance attributes of one copy of a
+[Mesh](/api/geometry/mesh): an offset, a tint, an
+id. The renderer draws the mesh once per instance and feeds each copy its
+own values.
+
+Instance attributes have their own `@location` numbering, separate from the
+vertex attributes, and the shader matches them the same way: by location
+first, then by name. On a name clash, the instance attribute wins over the
+vertex attribute.
+
+Most code doesn't build one by hand.
+[`Vertex::create_instance`](/api/geometry/vertex#vertexcreate_instance)
+copies a vertex's properties, and `Mesh::add_instance` takes a `Vertex` too.
+Build an `Instance` when the per-instance data doesn't come from a vertex.
+
+
+
+## Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::mesh::{Instance, Mesh};
+
+let mesh = Mesh::new();
+mesh.add_vertex([0.0, 0.0]);
+
+let instance = Instance::new().set("offset", [0.5, 0.0]);
+mesh.add_instance(instance);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Instance, Mesh } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex([0.0, 0.0]);
+
+const instance = new Instance().set("offset", [0.5, 0.0]);
+mesh.addInstance(instance);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Instance, Mesh
+
+mesh = Mesh()
+mesh.add_vertex([0.0, 0.0])
+
+instance = Instance().set("offset", [0.5, 0.0])
+mesh.add_instance(instance)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex([0.0, 0.0])
+
+let instance = try Instance().set("offset", [0.5, 0.0])
+mesh.addInstance(instance)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex(listOf(0.0f, 0.0f))
+
+val instance = Instance().set("offset", listOf(0.5f, 0.0f))
+mesh.addInstance(instance)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+## Methods
+
+
+---
+
+### Instance::new
+
+Create an empty `Instance`. Chain `set` calls to give it per-instance
+attributes.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::mesh::Instance;
+
+let instance = Instance::new();
+_ = instance;
+`}
+lang="rust" meta="collapse={4-4}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Instance } from "fragmentcolor";
+
+const instance = new Instance();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Instance
+
+instance = Instance()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let instance = Instance()
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val instance = Instance()
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Instance::set
+
+Set a per-instance attribute. `set` returns a new `Instance` with the
+attribute added, so chain the calls and keep the result.
+
+The first `set` for a key gives it the next free instance `@location`,
+in call order; setting the same key again keeps its location. Plain
+numbers and number lists are floats in every language. Pass a
+[VertexValue](/api/geometry/vertexvalue) for an
+integer attribute.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::mesh::Instance;
+
+let instance = Instance::new()
+    .set("offset", [0.5, 0.0])
+    .set("tint", [1.0, 0.0, 0.0, 1.0]);
+_ = instance;
+`}
+lang="rust" meta="collapse={6-6}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Instance } from "fragmentcolor";
+
+const instance = new Instance().set("offset", [0.5, 0.0]).set("tint", [1.0, 0.0, 0.0, 1.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Instance
+
+instance = Instance().set("offset", [0.5, 0.0]).set("tint", [1.0, 0.0, 0.0, 1.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let instance = try Instance().set("offset", [0.5, 0.0]).set("tint", [1.0, 0.0, 0.0, 1.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val instance = Instance().set("offset", listOf(0.5f, 0.0f)).set("tint", listOf(1.0f, 0.0f, 0.0f, 1.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>

@@ -105,6 +105,9 @@ Construct a `Vertex` from a 2D or 3D position. Set additional attributes
 (`uv`, `color`, custom keys) with `set` to match the per-vertex inputs
 your shader declares.
 
+A 1-component position becomes 2D with `y` at 0. A 4-component position
+uploads as 3D: the mesh drops the 4th component.
+
 #### Example
 
 <Tabs>
@@ -292,7 +295,8 @@ lang="kotlin"
 
 ### Vertex::set
 
-Attach an arbitrary property to the vertex.
+Attach an arbitrary property to the vertex. `set` returns a new `Vertex`
+with the property added, so chain the calls and keep the result.
 
 Locations and mapping:
 
@@ -302,11 +306,6 @@ Locations and mapping:
   2) name (instance first, then vertex).
 - There is no special-case for location(0) in the mapping; position is just another vertex attribute exposed as `position` with a 2- or 3-component format depending on how you constructed the Vertex.
 
-Planned explicit control:
-
-- You will be able to pin a property to a specific location using a fluent API: `vertex.set(key, value).at(index)`.
-- Vertex construction may also support `Vertex::from_shader(&Shader)` to derive an initial layout directly from the shader AST.
-
 #### Example
 
 <Tabs>
@@ -314,7 +313,7 @@ Planned explicit control:
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::{Vertex, VertexValue};
+use fragmentcolor::mesh::Vertex;
 let v = Vertex::new([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0]);
 `}
 lang="rust"
@@ -325,7 +324,7 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Vertex, VertexValue } from "fragmentcolor";
+import { Vertex } from "fragmentcolor";
 const v = new Vertex([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0]);
 `}
 lang="js"
@@ -336,7 +335,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Vertex, VertexValue
+from fragmentcolor import Vertex
 v = Vertex([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0])
 `}
 lang="python"

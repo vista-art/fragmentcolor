@@ -1,12 +1,11 @@
-import { Renderer, TextureFormat, Mipmap } from "fragmentcolor";
+import { Mipmap, Renderer, TextureFormat } from "fragmentcolor";
+const png = new Uint8Array(await (await fetch("/healthcheck/public/favicon.png")).arrayBuffer());
 
+// Imagine `png` came off your asset loader on a worker thread.
+
+// Decode + mipmap generation. Pure CPU; run it wherever you like.
+const chain = Mipmap.build(png, TextureFormat.Rgba8UnormSrgb);
+
+// Back on the renderer thread, the upload is just a GPU write.
 const renderer = new Renderer();
-// Real encoded PNG bytes: served by the healthcheck server so the example
-// runs end-to-end without packaging its own fixture.
-const pngResp = await fetch("/healthcheck/public/favicon.png");
-const pngBytes = new Uint8Array(await pngResp.arrayBuffer());
-const chain = Mipmap.build(pngBytes, TextureFormat.Rgba8UnormSrgb);
-
-// Upload the chain through the regular createTexture entry point.
 const texture = await renderer.createTexture(chain);
-const _ = texture.size();

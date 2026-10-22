@@ -1,9 +1,11 @@
-from fragmentcolor import Renderer, TextureFormat, Mipmap
+from fragmentcolor import Mipmap, Renderer, TextureFormat
+png = open("examples/assets/logo.png", "rb").read()
 
+# Imagine `png` came off your asset loader on a worker thread.
+
+# Decode + mipmap generation. Pure CPU; run it wherever you like.
+chain = Mipmap.build(png, TextureFormat.Rgba8UnormSrgb)
+
+# Back on the renderer thread, the upload is just a GPU write.
 renderer = Renderer()
-# Minimal 1x1 RGBA raw pixel bytes.
-pixels = [255, 0, 0, 255]
-chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, [1, 1])
-
-# Hand the chain to the unified create_texture entry.
 texture = renderer.create_texture(chain)

@@ -1,6 +1,6 @@
 ---
 title: Scene
-description: "A `Scene` is the top-level container for the real-world things you render: [Models](/api/scene/model), [Cameras](/api/scene/camera), [Lights](/api/scene/light) (directional, point, and spot are all one type), and any custom `SceneObject`. It owns one or more [Passes](/api/core/pass) underneath and implements `Renderable`, so you hand the whole scene to the [Renderer](/api/core/renderer) in a single call."
+description: "A `Scene` is the top-level container for the real-world things you render: [Models](/api/scene/model), [Cameras](/api/scene/camera), [Lights](/api/scene/light) (directional, point, and spot are all one type), and, in Rust, any custom `SceneObject`. It owns one or more [Passes](/api/core/pass) underneath and implements `Renderable`, so you hand the whole scene to the [Renderer](/api/core/renderer) in a single call."
 category: scene
 categoryLabel: Scene
 sidebar:
@@ -15,7 +15,7 @@ A `Scene` is the top-level container for the real-world things you render:
 [Models](/api/scene/model),
 [Cameras](/api/scene/camera),
 [Lights](/api/scene/light) (directional, point, and
-spot are all one type), and any custom
+spot are all one type), and, in Rust, any custom
 `SceneObject`. It owns one or more
 [Passes](/api/core/pass) underneath and implements
 `Renderable`, so you hand
@@ -123,6 +123,14 @@ scene.add(&camera)?;
 Ok(())
 }
 ```
+
+The other bindings take the same two switches with `Scene.load`. Both
+default to `true`:
+
+- **JS:** `Scene.load(bytes, { cameras: false, lights: false })`
+- **Python:** `Scene.load(source, cameras=False, lights=False)`
+- **Swift:** `try Scene.load(source, cameras: false, lights: false)`
+- **Kotlin:** `Scene.load(source, cameras = false, lights = false)`
 
 #### Threading and WASM
 
@@ -331,8 +339,9 @@ lang="kotlin"
 Absorb any `SceneObject` (a
 [Model](/api/scene/model),
 [Camera](/api/scene/camera),
-[Light](/api/scene/light), or a user-defined
-node that implements the trait) into the scene. The Scene routes it
+[Light](/api/scene/light), or, in Rust, a
+user-defined node that implements the trait) into the scene. The other
+bindings take the built-in kinds. The Scene routes it
 onto its default [Pass](/api/core/pass), which
 is created lazily on the first call.
 
@@ -344,8 +353,11 @@ mutations (`camera.look_at(...)`, `light.set_color(...)`) propagate to
 every shader on the pass with no further `add` call.
 
 Returns `Result<&Scene, PassError>` so Models can fail at attach time when
-the Mesh layout doesn't match the Material's shader; Cameras and Lights
-always succeed. Chain with `?` between calls.
+the Mesh layout doesn't match the Material's shader. Cameras always
+succeed. A Light fails with `PassError::LightCapReached` when a shader on
+the default pass already holds 32 lights. Lights added before the Models
+whose shaders they light don't fail: a shader past the cap drops the extra
+ones with a logged warning instead. Chain with `?` between calls.
 
 If you add Models without adding a Camera or any Light, the Scene injects
 sensible defaults at render time (`Camera::perspective` looking from
@@ -516,7 +528,7 @@ lang="kotlin"
 ### Scene::add_to
 
 Add a `SceneObject` (Model / Camera /
-Light / custom) to a specific Pass in the graph, addressed by index or by
+Light, or a custom one in Rust) to a specific Pass in the graph, addressed by index or by
 name. It's the targeted form of
 [`add`](/api/scene/scene#sceneadd): where `add` routes
 into the scene's default pass, `add_to` lets you pick the pass yourself, which
@@ -1548,7 +1560,7 @@ scene.addPass(new Pass("backdrop"));
 scene.addPass(new Pass("geometry"));
 
 // Fetch the second pass (index 1) to reconfigure it. An out-of-range
-// index returns null instead.
+// index returns undefined instead.
 const geometry = scene.getPass(1);
 `}
 lang="js"
@@ -1666,7 +1678,7 @@ scene.addPass(new Pass("backdrop"));
 scene.addPass(new Pass("geometry"));
 
 // Look the geometry pass up by name to reconfigure it. A name with no
-// match returns null instead.
+// match returns undefined instead.
 const geometry = scene.findPass("geometry");
 `}
 lang="js"

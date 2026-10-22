@@ -1,3 +1,4 @@
 from fragmentcolor import Renderer
-# Python binding: renderer.create_texture(input)
-# See main create_texture docs for examples.
+image = open("examples/assets/logo.png", "rb").read()
+renderer = Renderer()
+tex = renderer.create_texture(image)

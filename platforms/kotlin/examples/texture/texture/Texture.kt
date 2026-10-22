@@ -13,7 +13,7 @@ val shader = Shader("""
 """)
 
 // 1x1 white pixel. Passing a size tells create_texture to read the bytes
-// as raw pixels; the default format is Rgba (sRGB-aware).
+// as raw pixels; the default format, Rgba, uploads them as linear Rgba8Unorm.
 val pixels = listOf(255, 255, 255, 255)
 val texture = renderer.createTexture(pixels, listOf(1, 1))
 

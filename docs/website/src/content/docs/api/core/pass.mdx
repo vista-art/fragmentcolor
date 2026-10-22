@@ -193,9 +193,13 @@ lang="kotlin" meta="collapse={2-2}"
 
 ### Pass::new(name: &str) -&gt; Self
 
-#### Creates a new Pass
+Creates a new render Pass.
 
-The name property is optional and is used for debugging purposes.
+The name is required. Graphics debuggers show it as the pass label,
+[`Scene::find_pass`](/api/scene/scene#scenefind_pass)
+looks passes up by it, and
+[`require`](/api/core/pass#passrequiredeps) tells
+dependencies apart by it.
 
 #### Example
 
@@ -276,6 +280,9 @@ Creates a new [Pass](/api/core/pass) configured for compute workloads.
 
 Only [Shader](/api/core/shader) objects that compile to compute pipelines can be added.
 
+The first shader added decides the pass kind, whichever constructor made the
+pass. After that, a shader of the other kind is dropped with a logged warning.
+
 #### Example
 
 <Tabs>
@@ -283,12 +290,17 @@ Only [Shader](/api/core/shader) objects that compile to compute pipelines can be
 <TabItem label="Rust">
 <Code
 code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Pass, Shader};
 
-let cs = Shader::new("@compute @workgroup_size(8,8,1) fn cs_main() {}").unwrap();
-let pass = Pass::from_shader("compute", &cs);
+let cs = Shader::new("@compute @workgroup_size(8,8,1) fn cs_main() {}")?;
+let pass = Pass::compute("compute");
+pass.add_shader(&cs);
+assert!(pass.is_compute());
+Ok(())
+}
 `}
-lang="rust"
+lang="rust" meta="collapse={1-1, 7-9}"
 />
 
 </TabItem>
@@ -299,7 +311,8 @@ code={`
 import { Pass, Shader } from "fragmentcolor";
 
 const cs = new Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}");
-const pass = Pass.fromShader("compute", cs);
+const pass = Pass.compute("compute");
+pass.addShader(cs);
 `}
 lang="js"
 />
@@ -312,7 +325,8 @@ code={`
 from fragmentcolor import Pass, Shader
 
 cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
-rpass = Pass.from_shader("compute", cs)
+rpass = Pass.compute("compute")
+rpass.add_shader(cs)
 `}
 lang="python"
 />
@@ -324,8 +338,9 @@ lang="python"
 code={`
 import FragmentColor
 
-let cs = try! Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
-let pass = Pass.fromShader("compute", cs)
+let cs = try Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
+let pass = Pass.compute("compute")
+pass.addShader(cs)
 `}
 lang="swift"
 />
@@ -338,7 +353,8 @@ code={`
 import org.fragmentcolor.*
 
 val cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
-val pass = Pass.fromShader("compute", cs)
+val pass = Pass.compute("compute")
+pass.addShader(cs)
 `}
 lang="kotlin"
 />
@@ -441,7 +457,10 @@ locate a pass in a scene's graph, and it's the label graphics debuggers
 (RenderDoc, Xcode GPU capture) show for the pass.
 
 Names aren't required to be unique. If two passes share a name, name lookup
-returns the first one.
+returns the first one. `require` tells dependencies apart by name, though: a
+pass can't require two passes with the same name
+(`PassError::DuplicateDependency`), or a pass with its own name
+(`PassError::SelfDependency`).
 
 #### Example
 
@@ -822,11 +841,13 @@ lang="kotlin"
 
 Attach a Mesh to this Pass.
 
-- The mesh is attached to the last shader previously added to this Pass.
-- Validates compatibility with that shader’s vertex inputs.
-- Returns `Result<(), ShaderError>`; on error, the mesh is not attached.
+- The mesh is attached to the last shader in this Pass that accepts it.
+- Each shader checks the mesh against its vertex inputs.
+- Returns `Result<(), PassError>`. When no shader accepts the mesh, the error is
+  `PassError::NoCompatibleShader` and the mesh is not attached.
 
-If a Shader wasn't provided earlier, FragmentColor will create a default one.
+A Pass with no shaders has nothing to attach the mesh to, so it returns the same
+error. No default shader is created.
 
 #### Example
 
@@ -998,8 +1019,9 @@ lang="kotlin"
 Absorb any `SceneObject` (a
 [Model](/api/scene/model),
 [Camera](/api/scene/camera),
-[Light](/api/scene/light), or a user-defined
-node that implements the trait) into the pass. Each kind brings its
+[Light](/api/scene/light), or, in Rust, a
+user-defined node that implements the trait) into the pass. The other
+bindings take the built-in kinds. Each kind brings its
 own attach behaviour: a Model queues a draw with its own per-instance
 transform; a Camera or Light wires its uniforms into every shader the
 pass renders, both the ones already there and the ones added afterwards.
@@ -1009,8 +1031,11 @@ same value (`camera.look_at(...)`, `light.set_color(...)`) propagate to
 every shader on the pass with no further `add` call.
 
 Returns `Result<&Pass, PassError>`. Models can fail at attach time when
-the Mesh layout doesn't match the Material's shader; Cameras and Lights
-always succeed. Chain with `?` between calls.
+the Mesh layout doesn't match the Material's shader, and Cameras always
+succeed. A Light fails with `PassError::LightCapReached` when a shader
+on the pass already holds 32 lights. Lights added before their shaders
+join the pass don't fail: a shader past the cap drops the extra ones
+with a logged warning instead. Chain with `?` between calls.
 
 #### Example
 
@@ -1181,6 +1206,8 @@ The viewport restricts drawing to a rectangular area of the [Target](/api/target
 
 The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly.
 
+The renderer doesn't apply the viewport yet, so the pass still draws to the whole target.
+
 #### Example
 
 <Tabs>
@@ -1225,7 +1252,7 @@ const shader = Shader.default();
 const pass = new Pass("clipped");
 pass.addShader(shader);
 
-pass.setViewport([0, 0, 32, 32]);
+pass.setViewport(new ScreenRegion([0, 0], [32, 32]));
 
 renderer.render(pass, target);
 
@@ -1445,7 +1472,7 @@ Set the workgroup-grid size for a compute pass. The three numbers are the
 number of workgroups to dispatch in each dimension; total invocations are
 `x * y * z * workgroup_size_x * workgroup_size_y * workgroup_size_z`,
 where the per-workgroup size comes from the WGSL `@workgroup_size`
-attribute. Has no effect on render passes.
+attribute. A 0 in any dimension becomes 1. Has no effect on render passes.
 
 #### Example
 
@@ -1629,7 +1656,7 @@ Attach a depth texture to this pass. Once attached, the renderer builds the pipe
 
 A Pass has at most one depth attachment. Call `set_depth_target` again to swap it.
 
-The target must be a depth texture (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](/api/core/renderer#renderercreate_depth_texture). The depth attachment's sample count must match the color attachments'. Mixing 1× and 4× MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
+The target must be a depth `Texture` (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](/api/core/renderer#renderercreate_depth_texture). A `TextureTarget` always has a color format, so passing one returns an error. The depth attachment's sample count must match the color attachments'. Mixing 1× and 4× MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
 
 To **opt out** of depth testing, simply don't call `set_depth_target`. The pass then renders without depth-state, painter's-algorithm style (later draws win).
 

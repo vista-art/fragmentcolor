@@ -1,6 +1,5 @@
-from fragmentcolor import TextureFormat, Mipmap
+from fragmentcolor import Mipmap, TextureFormat
+pixels = bytes(8 * 8 * 4)
 
-pixels = [0] * (8 * 8 * 4)
-chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, [8, 8])
-level_zero_bytes = chain.level(0)
-_ = level_zero_bytes
+chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, size=[8, 8])
+level_zero_bytes = chain.levels()[0]

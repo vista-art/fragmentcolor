@@ -23,10 +23,8 @@ sampling on top of the factor uniforms), pre-populated with sensible
 defaults. The five glTF texture slots start unbound; the renderer resolves
 each one to a 1×1 default from its lazy texture cache the first time a Pass
 renders the Material, so the Material's shader has every binding it needs
-without any further setup. `Material::pbr` returns `Result` because the
-helper snippets it composes (`mesh/transform`, `material/pbr`) must be
-available at build time. They ship in the default `shaders-all` feature,
-so this is only an error path for slim opt-out builds. You can also call
+without any further setup. `Material::pbr` can't fail: the shader parts it
+composes are compiled into the library. You can also call
 `Material::custom(shader)` to wrap your own shader; the same setters apply
 best-effort, no-op-ing for uniform paths the shader doesn't declare.
 
@@ -675,7 +673,7 @@ volumetric or post-process effects that you want to attach to a `Mesh`.
 
 Optional but recommended:
 
-- `struct PbrMaterial { base_color: vec4<f32>, … }` at `@group(1) @binding(1)`
+- `struct PbrMaterial { base_color: vec4<f32>, … }` at `@group(1) @binding(0)`
   bound as `material`. This lets the PBR factor setters work as-is.
 - Four `vec4<f32>` vertex inputs named `model_0` to `model_3`, the columns of
   the Model's transform. The renderer fills them at draw time from each
@@ -1805,8 +1803,9 @@ The shader uses:
   and Schlick Fresnel.
 - **Lambertian diffuse** with energy conservation against the specular
   Fresnel and metalness.
-- **One directional light** (uniform `light`), one camera (uniform `camera`),
-  per-Model transform via the instance-attribute stream.
+- **Up to 32 lights** in the `lights.lights[N]` array (uniform `lights`, with
+  `lights.count` active), one camera (uniform `camera`), and the per-Model
+  transform via the instance-attribute stream.
 - **glTF 2.0 PBR-MR texture sampling**: five sampled maps (`base_color_map`,
   `metallic_roughness_map`, `normal_map`, `occlusion_map`, `emissive_map`)
   combined with their matching factors per the spec.

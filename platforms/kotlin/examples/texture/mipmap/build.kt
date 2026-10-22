@@ -1,5 +1,5 @@
 import org.fragmentcolor.*
-val encoded_png_bytes: ByteArray = byteArrayOf()
+val encoded_png_bytes = java.io.File("examples/assets/logo.png").readBytes()
 val raw_rgba = ByteArray(8 * 8 * 4) { 200.toByte() }
 
 // Encoded path: bytes plus the format you want the chain to live in.

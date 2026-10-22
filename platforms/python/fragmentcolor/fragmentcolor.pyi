@@ -172,17 +172,17 @@ class Renderer:
 
         ## Per-language shapes
 
-        - **Rust:** `create_texture(input)`. `input` accepts bare bytes, `(bytes, [w, h])`, `(bytes, format)`, `(bytes, options)`, a path, a URL, a `Mipmap`, or a KTX2 input.
-        - **JS:** `await renderer.createTexture(input, options?)`. `input` is `Uint8Array` / `ArrayBuffer` / URL string / CSS selector / `HTMLImageElement` / `HTMLCanvasElement` / `OffscreenCanvas` / `ImageData` / a `Mipmap` handle. `options` is `{ size?, format?, mipmaps? }`; when `size` is set, `input` is read as raw pixel bytes.
-        - **Python:** `renderer.create_texture(input, size=None, format=None, mipmaps=None)`. `input` is `bytes` / `list[int]` / `str` (path) / numpy `ndarray[H, W, C]` / `Mipmap`. Numpy arrays fill in `size` for you.
-        - **Swift / Kotlin:** `try await renderer.createTexture(bytes)` or `renderer.createTexture(chain)`. Overloads in the binding wrap the underlying enum, so you write the natural call.
+        - **Rust:** `create_texture(input)`. `input` accepts bare bytes, `(bytes, [w, h])`, `(bytes, format)`, `(bytes, options)`, a path, a URL string, a `Texture`, a `Mipmap`, or a KTX2 input. A string that starts with `http://` or `https://` is a URL; any other string is a path.
+        - **JS:** `await renderer.createTexture(input, options?)`. `input` is `Uint8Array` / `ArrayBuffer` / URL string / CSS selector / `HTMLImageElement` / `HTMLCanvasElement` / `OffscreenCanvas` / `ImageData` / a `Texture` / a `Mipmap`. `options` is `{ size?, format?, mipmaps?, sampler?, usage? }`; when `size` is set, `input` is read as raw pixel bytes. `ImageData` and canvases bring their own size.
+        - **Python:** `renderer.create_texture(input, size=None, format=None, mipmaps=None, sampler=None, usage=None)`. `input` is `bytes` / `bytearray` / `memoryview` / a list or tuple of ints / a path or URL `str` / `os.PathLike` / uint8 numpy `ndarray[H, W, C]` / `Texture` / `Mipmap`. Numpy arrays fill in `size` for you.
+        - **Swift / Kotlin:** `try await renderer.createTexture(bytes)`, `createTexture(bytes, format)`, `createTexture(bytes, [w, h])`, `createTexture(bytes, options)`, `createTexture(path)` or `createTexture(chain)`. Bytes are `Data` or `[UInt8]` in Swift and `ByteArray` in Kotlin. Every bytes form also takes an optional `usage`.
 
         ## How the discriminator works
 
         | Form | Treatment |
         |------|-----------|
         | `bytes` (no size) | Encoded image; decoded internally (PNG, JPEG, BMP, HDR, etc.). |
-        | `(bytes, size)` / options with `size` set | Raw pixel bytes; `bpp(format) * width * height` long, no decode. |
+        | `(bytes, size)` / options with `size` set | Raw pixel bytes; `bpp(format) * width * height` long, no decode. The default `Rgba` format uploads them as linear `Rgba8Unorm`. |
         | `(bytes, format)` / options with `format` set | Encoded image reinterpreted as `format` (e.g. `Rgba8Unorm` for normal-map data, `R16Unorm` for 16-bit grayscale). |
         | `path` / `URL` | File or HTTP fetch, then decoded. |
         | `Mipmap` | Pre-built CPU mip chain; GPU-only upload. Build via [Mipmap::build](https://fragmentcolor.org/api/texture/mipmap#mipmapbuild) on a worker thread. |
@@ -194,8 +194,9 @@ class Renderer:
 
         ```python
         from fragmentcolor import Renderer
-        # Python binding: renderer.create_texture(input)
-        # See main create_texture docs for examples.
+        image = open("examples/assets/logo.png", "rb").read()
+        renderer = Renderer()
+        tex = renderer.create_texture(image)
         ```
         """
     def load(self, renderable: _Renderable) -> None:
@@ -263,11 +264,12 @@ class Renderer:
         binding. [`Shader::get`](https://fragmentcolor.org/api/core/shader) returns
         what was last set on the CPU side, so GPU writes don't show up through it.
 
-        `read_storage` is `async` on every platform because the underlying
-        `map_async` requires an awaited callback. On native the implementation
-        drives the device forward (`device.poll(Wait)`) before awaiting, so callers
-        don't have to spin their own poll loop. On Web the browser schedules the
-        callback; the helper just awaits.
+        `read_storage` is `async` because the underlying `map_async` requires an
+        awaited callback. It returns a Promise in JS, is `async` in Swift and
+        `suspend` in Kotlin, and blocks until the bytes arrive in Python. On native
+        the implementation drives the device forward (`device.poll(Wait)`) before
+        awaiting, so callers don't have to spin their own poll loop. On Web the
+        browser schedules the callback; the helper just awaits.
 
         Returns `RendererError::StorageBindingNotFound` when the shader does not
         declare a storage binding called `binding`, or when no render pass has yet
@@ -325,11 +327,11 @@ class Renderer:
         Create a depth texture using `Depth32Float`.
 
         The created depth texture inherits the renderer's current sample count:
-        - If you called create_target(window) (surface-backed), it matches the negotiated MSAA (e.g., 2×/4×) for that surface.
-        - If you are rendering offscreen via create_texture_target, it defaults to 1.
+        - If you called `create_target(window)` (surface-backed), it matches the negotiated MSAA (e.g., 2×/4×) for that surface.
+        - If you are rendering offscreen via `create_texture_target`, it defaults to 1.
 
-        This ensures the depth attachment sample_count matches the pass sample_count.
-        If you attach a depth texture with a different sample_count than the pass,
+        This ensures the depth attachment `sample_count` matches the pass sample count.
+        If you attach a depth texture with a different `sample_count` than the pass,
         rendering will return a descriptive validation error.
 
         Example:
@@ -342,7 +344,7 @@ class Renderer:
         """
     def create_storage_texture(self, size: _PySize, format: TextureFormat, data: bytes | Sequence[int] | None = ..., usage: int | TextureUsage | None = ..., usage_bits: int | None = ...) -> Texture:
         """
-        Create a storage-class texture for compute shaders, image store/load, or as a render target. The input shapes mirror `Renderer::create_texture` and `Mipmap::build`.
+        Create a storage-class texture for compute shaders, image store/load, or as a render target.
 
         Common forms:
 
@@ -350,9 +352,9 @@ class Renderer:
         - `(size, format, bytes)`: storage texture pre-seeded with `bytes`.
         - A full `TextureInput { data, options }` literal: pass `options.usage` (via `TextureOptions::with_usage(...)`) for non-default usage flags.
 
-        `size` is required; storage textures have no source to infer dimensions from. Missing it returns `TextureError::InvalidInput`.
+        `size` is required; storage textures have no source to infer dimensions from. Missing it returns `RendererError::CreateTextureError`.
 
-        `options.usage` overrides the default mask of `STORAGE | TEXTURE | COPY_SRC | COPY_DST`. The bindings expose it as a `u32` bitmask, so the same flag values work in every language.
+        `options.usage` overrides the default mask of `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`. Every binding has the same named `TextureUsage` flags, combined with `|` (`or` in Kotlin). The other bindings take the size, format, optional bytes and optional usage as separate arguments.
 
         Example:
 
@@ -478,6 +480,21 @@ class Shader:
         GLSL is supported only as a single part (a `.vert`, `.frag`, or `.glsl`
         file). Mixing GLSL with other parts is rejected.
 
+        An empty string, or an empty array, gives the default shader.
+
+        ## Where each input resolves
+
+        | Platform | Registry slugs and registry URLs | Other `https://` URLs | File paths |
+        |----------|----------------------------------|-----------------------|------------|
+        | Rust (desktop) | Bundled shader library, offline | Fetched with the `network` feature, an error without it | Read from disk |
+        | Python | Bundled shader library, offline | Fetched by a wheel built with the `network` feature, an error otherwise | Read from disk |
+        | Swift / Kotlin | Bundled shader library, offline | Not fetched; a network error | Read from disk |
+        | Web, `Shader.fetch` | The browser's `fetch()` | The browser's `fetch()` | Fetched relative to the page's origin |
+        | Web, `new Shader` | Not fetched; an error that points at `Shader.fetch` | Not fetched; an error | Not fetched; an error |
+
+        A registry set with `Shader::set_registry` is fetched first on every
+        platform, and the bundled copy stands in when it can't be reached.
+
         Example:
 
         ```python
@@ -491,6 +508,20 @@ class Shader:
         }
         @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4f(1., 0., 0., 1.); }
         \"\"\")
+
+        # Compose pure helpers from the registry with your own source.
+        main = \"\"\"
+        @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+          let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+          return vec4<f32>(p[i], 0.0, 1.0);
+        }
+        @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+          let d = circle(pos.xy - vec2<f32>(400.0, 300.0), 100.0);
+          let n = simplex2(pos.xy * 0.01);
+          return vec4<f32>(vec3<f32>(step(0.0, d) + n * 0.1), 1.0);
+        }
+        \"\"\"
+        composed = Shader(["sdf2d/circle", "noise/simplex2", main])
         ```
         """
     @staticmethod
@@ -503,7 +534,6 @@ class Shader:
         - a registry slug like `"sdf2d/circle"`
         - an `https://` URL pointing at a `.wgsl` file
         - a local file path ending in `.wgsl`, `.glsl`, `.frag`, or `.vert`
-          (native platforms only)
 
         Parts are deduplicated by source hash and concatenated in order before
         compilation. `fetch` is the async path used when any part needs network or
@@ -517,12 +547,24 @@ class Shader:
         | Web (JS) | `await Shader.fetch(input)` | `Promise` via `wasm_bindgen` async |
         | Python   | `Shader.fetch(input)` | Blocks the calling thread via `pollster::block_on` |
         | Swift    | `try await Shader.fetch(input)` | `async throws` via uniffi async method |
-        | Kotlin   | `ShaderFetch(input)` | `suspend fun` via uniffi async method |
+        | Kotlin   | `Shader.fetch(input)` | `suspend fun` via uniffi async method |
 
-        > **Note (Swift / Kotlin):** uniffi 0.31 does not support async constructors.
-        > The underlying uniffi binding is an `async` instance method; the Swift
-        > `Shader.fetch(_:)` and Kotlin `ShaderFetch(...)` wrappers handle the
-        > throw-away receiver internally so callers see a clean static factory.
+        > **Note (Swift / Kotlin):** the underlying uniffi binding is an `async`
+        > instance method. The Swift and Kotlin `Shader.fetch(...)` extensions call
+        > it on a throwaway default shader, so callers see a static factory.
+
+        ## Where each input resolves
+
+        | Platform | Registry slugs and registry URLs | Other `https://` URLs | File paths |
+        |----------|----------------------------------|-----------------------|------------|
+        | Rust (desktop) | Bundled shader library, offline | Fetched with the `network` feature, an error without it | Read from disk |
+        | Python | Bundled shader library, offline | Fetched by a wheel built with the `network` feature, an error otherwise | Read from disk |
+        | Swift / Kotlin | Bundled shader library, offline | Not fetched; a network error | Read from disk |
+        | Web, `Shader.fetch` | The browser's `fetch()` | The browser's `fetch()` | Fetched relative to the page's origin |
+        | Web, `new Shader` | Not fetched; an error that points at `Shader.fetch` | Not fetched; an error | Not fetched; an error |
+
+        A registry set with `Shader::set_registry` is fetched first on every
+        platform, and the bundled copy stands in when it can't be reached.
 
         Example:
 
@@ -571,6 +613,8 @@ class Shader:
 
         If the key does not exist or the value format is incorrect, the `set` method throws an exception. The shader remains valid, and if the exception is caught, the shader can still be used with the renderer.
 
+        `set` never blocks. When another thread holds the shader's storage, the value is queued and applied before the next draw. A bad value that can't be checked right away is dropped later with a logged warning instead of throwing.
+
         The uniform's declared WGSL type decides how the value is read, so a call behaves the same in every language:
 
         - A number fits an `f32`, `i32`, or `u32` uniform. Integer uniforms take whole numbers in range.
@@ -605,6 +649,11 @@ class Shader:
         """
         Returns the current value of the uniform identified by the given key.
 
+        A struct or array root reads back as its bytes, and `set` doesn't take
+        those bytes back for that root. Set a struct one field at a time
+        (`"light.color"`) and an array one element at a time (`"weights[0]"`).
+        Only a storage-buffer or push-constant root takes its whole bytes.
+
         Example:
 
         ```python
@@ -631,6 +680,8 @@ class Shader:
     def list_keys(self) -> list[str]:
         """
         Returns a list of all keys in the [Shader](https://fragmentcolor.org/api/core/shader), including uniform names and struct fields using the dot notation.
+
+        `list_keys` never blocks. When another thread holds the shader's storage, it returns an empty list and logs a warning.
 
         Example:
 
@@ -912,8 +963,8 @@ class Shader:
 
         ## Empty Mesh Handling
 
-        If the Mesh has no vertices, a default shader is returned and a warning is logged.
-        Because the default shader does not take any vertex inputs, it is compatible with any Mesh.
+        If the Mesh has no vertices, `from_mesh` returns the default shader and logs a warning.
+        The default shader takes no vertex inputs, so it rejects the mesh and the empty mesh is not attached.
 
         Example:
 
@@ -972,9 +1023,13 @@ class Pass:
     """
     def __new__(cls, name: str) -> Pass:
         """
-        ## Creates a new Pass
+        Creates a new render Pass.
 
-        The name property is optional and is used for debugging purposes.
+        The name is required. Graphics debuggers show it as the pass label,
+        [`Scene::find_pass`](https://fragmentcolor.org/api/scene/scene#scenefind_pass)
+        looks passes up by it, and
+        [`require`](https://fragmentcolor.org/api/core/pass#passrequiredeps) tells
+        dependencies apart by it.
 
         Example:
 
@@ -991,13 +1046,17 @@ class Pass:
 
         Only [Shader](https://fragmentcolor.org/api/core/shader) objects that compile to compute pipelines can be added.
 
+        The first shader added decides the pass kind, whichever constructor made the
+        pass. After that, a shader of the other kind is dropped with a logged warning.
+
         Example:
 
         ```python
         from fragmentcolor import Pass, Shader
 
         cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
-        rpass = Pass.from_shader("compute", cs)
+        rpass = Pass.compute("compute")
+        rpass.add_shader(cs)
         ```
         """
     @staticmethod
@@ -1027,7 +1086,10 @@ class Pass:
         (RenderDoc, Xcode GPU capture) show for the pass.
 
         Names aren't required to be unique. If two passes share a name, name lookup
-        returns the first one.
+        returns the first one. `require` tells dependencies apart by name, though: a
+        pass can't require two passes with the same name
+        (`PassError::DuplicateDependency`), or a pass with its own name
+        (`PassError::SelfDependency`).
 
         Example:
 
@@ -1096,11 +1158,13 @@ class Pass:
         """
         Attach a Mesh to this Pass.
 
-        - The mesh is attached to the last shader previously added to this Pass.
-        - Validates compatibility with that shader’s vertex inputs.
-        - Returns Result<(), ShaderError>; on error, the mesh is not attached.
+        - The mesh is attached to the last shader in this Pass that accepts it.
+        - Each shader checks the mesh against its vertex inputs.
+        - Returns `Result<(), PassError>`. When no shader accepts the mesh, the error is
+          `PassError::NoCompatibleShader` and the mesh is not attached.
 
-        If a Shader wasn't provided earlier, FragmentColor will create a default one.
+        A Pass with no shaders has nothing to attach the mesh to, so it returns the same
+        error. No default shader is created.
 
         Example:
 
@@ -1133,8 +1197,9 @@ class Pass:
         Absorb any `SceneObject` (a
         [Model](https://fragmentcolor.org/api/scene/model),
         [Camera](https://fragmentcolor.org/api/scene/camera),
-        [Light](https://fragmentcolor.org/api/scene/light), or a user-defined
-        node that implements the trait) into the pass. Each kind brings its
+        [Light](https://fragmentcolor.org/api/scene/light), or, in Rust, a
+        user-defined node that implements the trait) into the pass. The other
+        bindings take the built-in kinds. Each kind brings its
         own attach behaviour: a Model queues a draw with its own per-instance
         transform; a Camera or Light wires its uniforms into every shader the
         pass renders, both the ones already there and the ones added afterwards.
@@ -1144,8 +1209,11 @@ class Pass:
         every shader on the pass with no further `add` call.
 
         Returns `Result<&Pass, PassError>`. Models can fail at attach time when
-        the Mesh layout doesn't match the Material's shader; Cameras and Lights
-        always succeed. Chain with `?` between calls.
+        the Mesh layout doesn't match the Material's shader, and Cameras always
+        succeed. A Light fails with `PassError::LightCapReached` when a shader
+        on the pass already holds 32 lights. Lights added before their shaders
+        join the pass don't fail: a shader past the cap drops the extra ones
+        with a logged warning instead. Chain with `?` between calls.
 
         Example:
 
@@ -1204,6 +1272,8 @@ class Pass:
 
         The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly.
 
+        The renderer doesn't apply the viewport yet, so the pass still draws to the whole target.
+
         Example:
 
         ```python
@@ -1227,7 +1297,7 @@ class Pass:
         number of workgroups to dispatch in each dimension; total invocations are
         `x * y * z * workgroup_size_x * workgroup_size_y * workgroup_size_z`,
         where the per-workgroup size comes from the WGSL `@workgroup_size`
-        attribute. Has no effect on render passes.
+        attribute. A 0 in any dimension becomes 1. Has no effect on render passes.
 
         Example:
 
@@ -1262,7 +1332,7 @@ class Pass:
 
         A Pass has at most one depth attachment. Call `set_depth_target` again to swap it.
 
-        The target must be a depth texture (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](https://fragmentcolor.org/api/core/renderer#renderercreate_depth_texture). The depth attachment's sample count must match the color attachments'. Mixing 1× and 4× MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
+        The target must be a depth `Texture` (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](https://fragmentcolor.org/api/core/renderer#renderercreate_depth_texture). A `TextureTarget` always has a color format, so passing one returns an error. The depth attachment's sample count must match the color attachments'. Mixing 1× and 4× MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
 
         To **opt out** of depth testing, simply don't call `set_depth_target`. The pass then renders without depth-state, painter's-algorithm style (later draws win).
 
@@ -1400,7 +1470,7 @@ class Mesh:
     Example:
 
     ```python
-    from fragmentcolor import Mesh, Vertex, VertexValue
+    from fragmentcolor import Mesh, Vertex
 
     mesh = Mesh()
     mesh.add_vertex([0.0, 0.5, 0.0])
@@ -1666,6 +1736,9 @@ class Vertex:
         (`uv`, `color`, custom keys) with `set` to match the per-vertex inputs
         your shader declares.
 
+        A 1-component position becomes 2D with `y` at 0. A 4-component position
+        uploads as 3D: the mesh drops the 4th component.
+
         Example:
 
         ```python
@@ -1713,7 +1786,8 @@ class Vertex:
         """
     def set(self, key: str, value: _PyAttributeValue) -> Vertex:
         """
-        Attach an arbitrary property to the vertex.
+        Attach an arbitrary property to the vertex. `set` returns a new `Vertex`
+        with the property added, so chain the calls and keep the result.
 
         Locations and mapping:
 
@@ -1723,15 +1797,10 @@ class Vertex:
           2) name (instance first, then vertex).
         - There is no special-case for location(0) in the mapping; position is just another vertex attribute exposed as `position` with a 2- or 3-component format depending on how you constructed the Vertex.
 
-        Planned explicit control:
-
-        - You will be able to pin a property to a specific location using a fluent API: `vertex.set(key, value).at(index)`.
-        - Vertex construction may also support `Vertex::from_shader(&Shader)` to derive an initial layout directly from the shader AST.
-
         Example:
 
         ```python
-        from fragmentcolor import Vertex, VertexValue
+        from fragmentcolor import Vertex
         v = Vertex([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0])
         ```
         """
@@ -1753,11 +1822,93 @@ class Vertex:
 
 @final
 class Instance:
-    def __new__(cls) -> Instance: ...
-    def set(self, key: str, value: _PyAttributeValue) -> Instance: ...
+    """
+    An `Instance` holds the per-instance attributes of one copy of a
+    [Mesh](https://fragmentcolor.org/api/geometry/mesh): an offset, a tint, an
+    id. The renderer draws the mesh once per instance and feeds each copy its
+    own values.
+
+    Instance attributes have their own `@location` numbering, separate from the
+    vertex attributes, and the shader matches them the same way: by location
+    first, then by name. On a name clash, the instance attribute wins over the
+    vertex attribute.
+
+    Most code doesn't build one by hand.
+    [`Vertex::create_instance`](https://fragmentcolor.org/api/geometry/vertex#vertexcreate_instance)
+    copies a vertex's properties, and `Mesh::add_instance` takes a `Vertex` too.
+    Build an `Instance` when the per-instance data doesn't come from a vertex.
+
+    Example:
+
+    ```python
+    from fragmentcolor import Instance, Mesh
+
+    mesh = Mesh()
+    mesh.add_vertex([0.0, 0.0])
+
+    instance = Instance().set("offset", [0.5, 0.0])
+    mesh.add_instance(instance)
+    ```
+    """
+    def __new__(cls) -> Instance:
+        """
+        Create an empty `Instance`. Chain `set` calls to give it per-instance
+        attributes.
+
+        Example:
+
+        ```python
+        from fragmentcolor import Instance
+
+        instance = Instance()
+        ```
+        """
+    def set(self, key: str, value: _PyAttributeValue) -> Instance:
+        """
+        Set a per-instance attribute. `set` returns a new `Instance` with the
+        attribute added, so chain the calls and keep the result.
+
+        The first `set` for a key gives it the next free instance `@location`,
+        in call order; setting the same key again keeps its location. Plain
+        numbers and number lists are floats in every language. Pass a
+        [VertexValue](https://fragmentcolor.org/api/geometry/vertexvalue) for an
+        integer attribute.
+
+        Example:
+
+        ```python
+        from fragmentcolor import Instance
+
+        instance = Instance().set("offset", [0.5, 0.0]).set("tint", [1.0, 0.0, 0.0, 1.0])
+        ```
+        """
 
 @final
 class VertexValue:
+    """
+    A vertex or instance attribute value of an exact type. Plain numbers and
+    number lists are floats (`f32`) in every language, so use a `VertexValue`
+    when a shader input is an integer, such as `@location(1) id: u32`.
+
+    There is one variant per type and size: `F32`, `U32` and `I32` hold one
+    number, and `F32x2` to `F32x4`, `U32x2` to `U32x4` and `I32x2` to `I32x4` hold
+    two to four. Rust and Kotlin name the variants in upper case
+    (`VertexValue::U32(7)`, `VertexValue.U32(7u)`). JS, Python and Swift build
+    them with lower-case factories (`VertexValue.u32(7)`). An integer that doesn't
+    fit its type is an error.
+
+    Pass a `VertexValue` to
+    [`Vertex::set`](https://fragmentcolor.org/api/geometry/vertex#vertexset) or
+    [`Instance::set`](https://fragmentcolor.org/api/geometry/instance#instanceset).
+
+    Example:
+
+    ```python
+    from fragmentcolor import Vertex, VertexValue
+
+    vertex = Vertex([0.0, 0.0]).set("id", VertexValue.u32(7))
+    ```
+    """
     @staticmethod
     def f32(x: float) -> VertexValue: ...
     @staticmethod
@@ -1833,7 +1984,7 @@ class Scene:
     [Models](https://fragmentcolor.org/api/scene/model),
     [Cameras](https://fragmentcolor.org/api/scene/camera),
     [Lights](https://fragmentcolor.org/api/scene/light) (directional, point, and
-    spot are all one type), and any custom
+    spot are all one type), and, in Rust, any custom
     `SceneObject`. It owns one or more
     [Passes](https://fragmentcolor.org/api/core/pass) underneath and implements
     `Renderable`, so you hand
@@ -1897,8 +2048,11 @@ class Scene:
     | -------------------- | ---------------------------------------------------------- |
     | `new`                | construct an empty Scene                                   |
     | `load`               | construct a Scene from a 3D file (glTF `.gltf` / `.glb` path or in-memory `.glb` bytes) |
-    | `add`                | add a `SceneObject` (Model / Camera / Light / custom) to the default pass |
+    | `add`                | add a `SceneObject` (Model / Camera / Light, or a custom one in Rust) to the default pass |
     | `add_to`             | add a `SceneObject` to a specific Pass, by index or name   |
+    | `models`             | list the Models added to the scene                         |
+    | `cameras`            | list the Cameras added to the scene                        |
+    | `lights`             | list the Lights added to the scene                         |
     | `add_pass`           | append a user-built [Pass](https://fragmentcolor.org/api/core/pass) to the graph |
     | `remove_pass`        | remove a Pass from the graph by handle                     |
     | `get_pass`           | read one Pass by index, in render order                    |
@@ -1983,6 +2137,14 @@ class Scene:
         # }
         ```
 
+        The other bindings take the same two switches with `Scene.load`. Both
+        default to `true`:
+
+        - **JS:** `Scene.load(bytes, { cameras: false, lights: false })`
+        - **Python:** `Scene.load(source, cameras=False, lights=False)`
+        - **Swift:** `try Scene.load(source, cameras: false, lights: false)`
+        - **Kotlin:** `Scene.load(source, cameras = false, lights = false)`
+
         ## Threading and WASM
 
         `Scene::load` is fully synchronous: the underlying importer decodes embedded
@@ -2014,8 +2176,9 @@ class Scene:
         Absorb any `SceneObject` (a
         [Model](https://fragmentcolor.org/api/scene/model),
         [Camera](https://fragmentcolor.org/api/scene/camera),
-        [Light](https://fragmentcolor.org/api/scene/light), or a user-defined
-        node that implements the trait) into the scene. The Scene routes it
+        [Light](https://fragmentcolor.org/api/scene/light), or, in Rust, a
+        user-defined node that implements the trait) into the scene. The other
+        bindings take the built-in kinds. The Scene routes it
         onto its default [Pass](https://fragmentcolor.org/api/core/pass), which
         is created lazily on the first call.
 
@@ -2027,8 +2190,11 @@ class Scene:
         every shader on the pass with no further `add` call.
 
         Returns `Result<&Scene, PassError>` so Models can fail at attach time when
-        the Mesh layout doesn't match the Material's shader; Cameras and Lights
-        always succeed. Chain with `?` between calls.
+        the Mesh layout doesn't match the Material's shader. Cameras always
+        succeed. A Light fails with `PassError::LightCapReached` when a shader on
+        the default pass already holds 32 lights. Lights added before the Models
+        whose shaders they light don't fail: a shader past the cap drops the extra
+        ones with a logged warning instead. Chain with `?` between calls.
 
         If you add Models without adding a Camera or any Light, the Scene injects
         sensible defaults at render time (`Camera::perspective` looking from
@@ -2231,7 +2397,7 @@ class Scene:
     def add_to(self, target: int | str, object: _SceneObject) -> Scene:
         """
         Add a `SceneObject` (Model / Camera /
-        Light / custom) to a specific Pass in the graph, addressed by index or by
+        Light, or a custom one in Rust) to a specific Pass in the graph, addressed by index or by
         name. It's the targeted form of
         [`add`](https://fragmentcolor.org/api/scene/scene#sceneadd): where `add` routes
         into the scene's default pass, `add_to` lets you pick the pass yourself, which
@@ -2626,6 +2792,8 @@ class Model:
     | `translate`    | pre-multiply by a world-space translation         |
     | `rotate`       | post-multiply by a local-space axis-angle rotation |
     | `scale`        | post-multiply by a local-space per-axis scale     |
+    | `visible`      | read whether the Model draws                       |
+    | `set_visible`  | show or hide the Model without removing it         |
     """
     def __new__(cls, mesh: Mesh, material: Material) -> Model:
         """
@@ -2795,7 +2963,7 @@ class Model:
         the current transform by an axis-angle rotation, so a rotated-then-translated
         Model spins in place around its own origin rather than orbiting the world
         origin. The axis is normalised internally; a zero-length axis is rejected
-        with a debug log and no change.
+        with a logged warning and no change.
 
         For pure world-space rotations (e.g. tumbling around a fixed pivot), compose
         the matrix yourself and call [set_transform](https://fragmentcolor.org/api/scene/model#modelset_transform).
@@ -2935,6 +3103,7 @@ class Camera:
     | `look_at`      | position the eye and aim at a target (chainable, live)    |
     | `view_proj`    | read `proj * view` as a column-major 4x4                  |
     | `position`     | read the world-space eye position                         |
+    | `set_aspect`   | update the aspect ratio after a resize (live)             |
     """
     @staticmethod
     def perspective(fovy_radians: float, aspect: float, near: float, far: float) -> Camera:
@@ -3159,8 +3328,11 @@ class Light:
       to one. That's surprising if you think of a Pass as an isolated
       scene; it's the right answer if you think of a Material as the
       lighting model and the Passes as views into the same lit world.
-    - The cap exceeds at 32 *distinct* Lights on one shader. The 33rd
-      returns `Err(PassError::LightCapReached { cap: 32 })`.
+    - The cap exceeds at 32 *distinct* Lights on one shader. Whether the
+      33rd fails depends on the order. Added to a pass whose shader already
+      holds 32, it returns `Err(PassError::LightCapReached { cap: 32 })`.
+      Added before that shader joins the pass, it doesn't fail: the shader
+      drops it with a logged warning when it joins.
 
     For genuinely independent lighting setups, build a separate Material
     per scene (each `Material::pbr()` allocates a fresh shader, so its 32
@@ -3580,10 +3752,8 @@ class Material:
     defaults. The five glTF texture slots start unbound; the renderer resolves
     each one to a 1×1 default from its lazy texture cache the first time a Pass
     renders the Material, so the Material's shader has every binding it needs
-    without any further setup. `Material::pbr` returns `Result` because the
-    helper snippets it composes (`mesh/transform`, `material/pbr`) must be
-    available at build time. They ship in the default `shaders-all` feature,
-    so this is only an error path for slim opt-out builds. You can also call
+    without any further setup. `Material::pbr` can't fail: the shader parts it
+    composes are compiled into the library. You can also call
     `Material::custom(shader)` to wrap your own shader; the same setters apply
     best-effort, no-op-ing for uniform paths the shader doesn't declare.
 
@@ -3682,8 +3852,9 @@ class Material:
           and Schlick Fresnel.
         - **Lambertian diffuse** with energy conservation against the specular
           Fresnel and metalness.
-        - **One directional light** (uniform `light`), one camera (uniform `camera`),
-          per-Model transform via the instance-attribute stream.
+        - **Up to 32 lights** in the `lights.lights[N]` array (uniform `lights`, with
+          `lights.count` active), one camera (uniform `camera`), and the per-Model
+          transform via the instance-attribute stream.
         - **glTF 2.0 PBR-MR texture sampling**: five sampled maps (`base_color_map`,
           `metallic_roughness_map`, `normal_map`, `occlusion_map`, `emissive_map`)
           combined with their matching factors per the spec.
@@ -3753,7 +3924,7 @@ class Material:
 
         Optional but recommended:
 
-        - `struct PbrMaterial { base_color: vec4<f32>, … }` at `@group(1) @binding(1)`
+        - `struct PbrMaterial { base_color: vec4<f32>, … }` at `@group(1) @binding(0)`
           bound as `material`. This lets the PBR factor setters work as-is.
         - Four `vec4<f32>` vertex inputs named `model_0` to `model_3`, the columns of
           the Model's transform. The renderer fills them at draw time from each
@@ -4278,8 +4449,9 @@ class Texture:
     @property
     def size(self) -> Size:
         """
-        Return the texture's dimensions as a `Size` (`width`, `height`, and an
-        optional `depth` for 3D or array textures). The size reflects the
+        Return the texture's dimensions as a `Size` (`width`, `height`, and
+        `depth`, which is 1 for a 2D texture and the layer count for 3D or array
+        textures). The size reflects the
         allocated GPU resource and is constant for the lifetime of the texture.
 
         Example:
@@ -4344,7 +4516,7 @@ class Texture:
         - `bytes` holds tightly packed rows: each row is the texture width times the bytes per pixel, with no padding. Data sized exactly for rows padded to 256 bytes reads at that padded stride. For any other padding, pass the stride to `Texture.write_region`.
 
         ## Notes
-        - Supported formats initially: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, and other 4-bytes-per-pixel formats. Unsupported formats return an error.
+        - Any format with a fixed size per pixel works, from 1-byte `R8Unorm` to 16-byte `Rgba32Float`.
         - The texture must have COPY_DST usage.
 
         Example:
@@ -4363,8 +4535,8 @@ class Texture:
         """
         Same as `Texture::write`, but writes into a sub-region of the texture and/or with explicit source data layout.
 
-        The `region` argument accepts anything convertible into a `TextureRegion`:
-        - `[w, h]` / `(w, h)`: full size, origin `(0, 0, 0)`
+        The `region` argument is required; use `Texture::write` to replace the whole texture. It accepts anything convertible into a `TextureRegion`:
+        - `[w, h]` / `(w, h)`: a `w` by `h` rectangle at origin `(0, 0, 0)`
         - `[x, y, w, h]` / `(x, y, w, h)`: 2D rectangle
         - `[x, y, z, w, h, d]`: 3D box (for layered or 3D textures)
         - A `ScreenRegion`: its pixel rectangle at `z = 0`, one layer deep
@@ -4456,26 +4628,28 @@ class Mipmap:
 
     Then hand the chain to `Renderer::create_texture(chain)` for the upload. The cross-language bindings expose `build(bytes, format, size?)` with `size` optional.
 
-    Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`. Anything else returns `TextureError::UnsupportedMipmapFormat`.
+    Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`, and the `Rgba`, `Bgra`, `L8` and `Lab` aliases. Anything else returns `TextureError::UnsupportedMipmapFormat`.
 
     ## Per-language shapes
 
-    - **Rust:** `Mipmap::build(input)` where `input` is `(bytes, format)`, `(bytes, format, size)`, a `DynamicImage`, or a file path.
+    - **Rust:** `Mipmap::build(input)` where `input` is `(bytes, format)`, `(bytes, format, size)`, or a file path.
     - **JS:** `Mipmap.build(bytes, format, size?)` with `bytes` as `Uint8Array` / `ArrayBuffer`.
     - **Python:** `Mipmap.build(bytes, format, size=None)` with `bytes` as `bytes`, `list[int]`, or numpy `ndarray`.
-    - **Swift / Kotlin:** `Mipmap.build(bytes: ..., format: ..., size: ...?)` with `size` optional.
+    - **Swift / Kotlin:** `Mipmap.build(bytes, format)` or `Mipmap.build(bytes, format, size)`, with `bytes` as `Data` or `[UInt8]` in Swift and a `ByteArray` in Kotlin.
 
     Example:
 
     ```python
-    from fragmentcolor import Renderer, TextureFormat, Mipmap
+    from fragmentcolor import Mipmap, Renderer, TextureFormat
+    png = open("examples/assets/logo.png", "rb").read()
 
+    # Imagine `png` came off your asset loader on a worker thread.
+
+    # Decode + mipmap generation. Pure CPU; run it wherever you like.
+    chain = Mipmap.build(png, TextureFormat.Rgba8UnormSrgb)
+
+    # Back on the renderer thread, the upload is just a GPU write.
     renderer = Renderer()
-    # Minimal 1x1 RGBA raw pixel bytes.
-    pixels = [255, 0, 0, 255]
-    chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, [1, 1])
-
-    # Hand the chain to the unified create_texture entry.
     texture = renderer.create_texture(chain)
     ```
     """
@@ -4489,42 +4663,47 @@ class Mipmap:
         - **Encoded path, `size` absent.** The bytes get decoded as PNG / JPEG / BMP / HDR / etc., and the chain inherits the image's dimensions. Use this when you have an encoded blob from disk, the network, or a decoder that emits encoded data.
         - **Raw path, `size` present.** The bytes are treated as already laid out for `format` at `size`. Use this when your decoder already produced pixel-format-matching bytes (typical for tile-cache pipelines that fold mip generation into the same step that produced the tile).
 
-        `build` runs synchronously and accepts only sync-friendly inputs: bytes, a `DynamicImage`, or a file path. URL inputs (which need an async fetch), KTX2 inputs (already pre-baked), an existing chain, an existing texture, and empty inputs all return `TextureError::InvalidInput` with a message pointing at the right entry point.
+        `build` runs synchronously and accepts only sync-friendly inputs: bytes or a file path. URL inputs (which need an async fetch), KTX2 inputs (already pre-baked), an existing chain, an existing texture, and empty inputs all return `TextureError::InvalidInput` with a message pointing at the right entry point.
 
-        Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`. Anything else returns `TextureError::UnsupportedMipmapFormat`. Decode failures surface as `MalformedImageError`; size and byte-count mismatches as `InvalidInput`.
+        Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`, and the `Rgba`, `Bgra`, `L8` and `Lab` aliases. Anything else returns `TextureError::UnsupportedMipmapFormat`. Decode failures surface as `MalformedImageError`; size and byte-count mismatches as `InvalidInput`.
 
         ## Per-language shapes
 
         - **Rust:** `Mipmap::build((bytes, format))` for the encoded path, `Mipmap::build((bytes, format, size))` for the raw path. Tuples implement `Into<TextureInput>` via the `From<T>` impls.
         - **JS / Python:** `Mipmap.build(bytes, format, size?)` with `size` optional.
-        - **Swift / Kotlin:** `Mipmap.build(bytes: ..., format: ...)` for the encoded path, `Mipmap.build(bytes: ..., format: ..., size: ...)` for the raw path. The bindings add overloads so you stick to native positional syntax; wrapping the call in a Rust-style tuple crashes the Swift type checker.
+        - **Swift / Kotlin:** `Mipmap.build(bytes, format)` for the encoded path, `Mipmap.build(bytes, format, size)` for the raw path. Bytes are `Data` or `[UInt8]` in Swift and a `ByteArray` in Kotlin; `size` is `[w, h]` or a `Size`.
 
         Example:
 
         ```python
-        from fragmentcolor import Renderer, TextureFormat, Mipmap
+        from fragmentcolor import Mipmap, Renderer, TextureFormat
+        encoded_png_bytes = open("examples/assets/logo.png", "rb").read()
+        raw_rgba = bytes([200] * (8 * 8 * 4))
 
-        # Raw pixel path -- positional args: build(bytes, format, size).
-        raw_rgba = [200] * (8 * 8 * 4)
-        chain = Mipmap.build(raw_rgba, TextureFormat.Rgba8UnormSrgb, [8, 8])
+        # Encoded path: bytes plus the format you want the chain to live in.
+        # The dimensions come from the decoded image.
+        chain = Mipmap.build(encoded_png_bytes, TextureFormat.Rgba8UnormSrgb)
 
-        # Hand the chain to the unified create_texture entry.
+        # Raw path: include the size so build skips decoding.
+        chain_raw = Mipmap.build(raw_rgba, TextureFormat.Rgba8UnormSrgb, size=[8, 8])
+
+        # Either chain uploads the same way.
         renderer = Renderer()
         texture = renderer.create_texture(chain)
         ```
         """
     def format(self) -> TextureFormat:
         """
-        Return the wgpu texture format the chain was built for: the same `format` you passed to `build(...)`. Useful when you receive a chain you didn't build yourself (passed in from another thread or stored in a cache) and need to confirm it matches the format your shader expects before uploading.
+        Return the texture format the chain was built for: the `format` you passed to `build(...)`, with an alias such as `Rgba` returned as the concrete format it stands for, `Rgba8Unorm`. Useful when you receive a chain you didn't build yourself (passed in from another thread or stored in a cache) and need to confirm it matches the format your shader expects before uploading.
 
         Example:
 
         ```python
-        from fragmentcolor import TextureFormat, Mipmap
+        from fragmentcolor import Mipmap, TextureFormat
+        pixels = bytes([200] * (4 * 4 * 4))
 
-        pixels = [200] * (4 * 4 * 4)
-        chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, [4, 4])
-        _ = chain.format()
+        chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, size=[4, 4])
+        format = chain.format()
         ```
         """
     def size(self) -> tuple[int, int]:
@@ -4549,27 +4728,25 @@ class Mipmap:
         Example:
 
         ```python
-        from fragmentcolor import TextureFormat, Mipmap
+        from fragmentcolor import Mipmap, TextureFormat
+        pixels = bytes(8 * 8 * 4)
 
-        pixels = [0] * (8 * 8 * 4)
-        chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, [8, 8])
+        chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, size=[8, 8])
         count = chain.count()
-        _ = count
         ```
         """
     def level(self, index: int) -> bytes:
         """
-        Return the tightly-packed bytes for each mip level, level 0 first. Each level holds `bytes_per_pixel(format) * max(1, base_w >> level) * max(1, base_h >> level)` bytes. Reach for this when you want to inspect a level, dump the chain to disk, or feed the bytes into a tool that isn't FragmentColor. When you upload via `Renderer::create_texture(chain)`, the renderer reads the bytes directly and you don't need to touch them yourself.
+        Return the bytes of one mip level, with level 0 the full-size image. An index past the last level returns `TextureError::InvalidInput`.
 
         Example:
 
         ```python
-        from fragmentcolor import TextureFormat, Mipmap
+        from fragmentcolor import Mipmap, TextureFormat
+        pixels = bytes(8 * 8 * 4)
 
-        pixels = [0] * (8 * 8 * 4)
-        chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, [8, 8])
+        chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, size=[8, 8])
         level_zero_bytes = chain.level(0)
-        _ = level_zero_bytes
         ```
         """
     def levels(self) -> list[bytes]:
@@ -4579,12 +4756,11 @@ class Mipmap:
         Example:
 
         ```python
-        from fragmentcolor import TextureFormat, Mipmap
+        from fragmentcolor import Mipmap, TextureFormat
+        pixels = bytes(8 * 8 * 4)
 
-        pixels = [0] * (8 * 8 * 4)
-        chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, [8, 8])
-        level_zero_bytes = chain.level(0)
-        _ = level_zero_bytes
+        chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, size=[8, 8])
+        level_zero_bytes = chain.levels()[0]
         ```
         """
 
@@ -4731,30 +4907,46 @@ class WindowTarget:
     """
     def size(self) -> Size:
         """
-        Returns the size of the [Target](https://fragmentcolor.org/api/targets/target) in pixels.
+        Returns the size of the [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget) in pixels.
+        `depth` is absent for a window target in every language: `None` in Rust and
+        Python, `undefined` in JS, `nil` in Swift and `null` in Kotlin.
 
         Example:
 
         ```python
-        from fragmentcolor import Renderer, Shader
+        import os, sys
+        # Skip this example in headless/CI environments that have no display surface.
+        if os.environ.get('DISPLAY') is None and sys.platform != 'win32' and os.environ.get('FC_ALLOW_WINDOW') != '1':
+            raise SystemExit(0)
+        from rendercanvas.auto import RenderCanvas
+        from fragmentcolor import Renderer
 
+        canvas = RenderCanvas(size=(800, 600))
         renderer = Renderer()
-        target = renderer.create_texture_target([64, 32])
+        target = renderer.create_target(canvas)
+        size = target.size()
         ```
         """
     def resize(self, size: _PySize) -> None:
         """
-        Resizes the [Target](https://fragmentcolor.org/docs/api/target) to the given width and height.
+        Resizes the [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget) to the given width and height.
+        Call it when the window or canvas changes size.
 
         Example:
 
         ```python
         from fragmentcolor import Renderer
+        import os, sys
+        # Skip this example in headless/CI environments that have no display surface.
+        if os.environ.get('DISPLAY') is None and sys.platform != 'win32' and os.environ.get('FC_ALLOW_WINDOW') != '1':
+            raise SystemExit(0)
+        from rendercanvas.auto import RenderCanvas
+        canvas = RenderCanvas(size=(800, 600))
 
         renderer = Renderer()
-        target = renderer.create_texture_target([64, 32])
+        target = renderer.create_target(canvas)
 
-        target.resize([128, 64])
+        target.resize([1024, 768])
         ```
         """
     def get_image(self) -> bytes:
@@ -4767,9 +4959,15 @@ class WindowTarget:
 
         ```python
         from fragmentcolor import Renderer, Shader
+        import os, sys
+        # Skip this example in headless/CI environments that have no display surface.
+        if os.environ.get('DISPLAY') is None and sys.platform != 'win32' and os.environ.get('FC_ALLOW_WINDOW') != '1':
+            raise SystemExit(0)
+        from rendercanvas.auto import RenderCanvas
+        canvas = RenderCanvas(size=(800, 600))
 
         renderer = Renderer()
-        target = renderer.create_texture_target([16, 16])
+        target = renderer.create_target(canvas)
         renderer.render(Shader.default(), target)
 
         image = target.get_image()
@@ -4781,8 +4979,57 @@ class RenderCanvasFrame: ...
 
 @final
 class _PassInput:
-    def loads_previous(self) -> bool: ...
-    def color(self) -> list[float]: ...
+    """
+    What a [Pass](https://fragmentcolor.org/api/core/pass) does with its target
+    before it draws: keep the previous contents, or clear them to a color.
+
+    Read it with `Pass::get_input`. Change it on the Pass with `load_previous`
+    or `set_clear_color`; a `PassInput` is a copy, so it doesn't change when
+    the Pass does.
+
+    Example:
+
+    ```python
+    from fragmentcolor import Pass
+
+    rpass = Pass("overlay")
+    rpass.load_previous()
+
+    input = rpass.get_input()
+    keeps = input.loads_previous()
+    ```
+    """
+    def loads_previous(self) -> bool:
+        """
+        True when the pass keeps the previous contents of its target, and false
+        when it clears them to its clear color first.
+
+        Example:
+
+        ```python
+        from fragmentcolor import Pass
+
+        rpass = Pass("overlay")
+        rpass.load_previous()
+        keeps = rpass.get_input().loads_previous()
+        ```
+        """
+    def color(self) -> list[float]:
+        """
+        The RGBA color the pass clears its target to, as four numbers from 0 to 1.
+        The pass stores its clear color at 8 bits per channel, so a value reads
+        back rounded to the nearest 1/255.
+
+        Example:
+
+        ```python
+        from fragmentcolor import Pass
+
+        rpass = Pass("background")
+        rpass.set_clear_color([1.0, 0.0, 0.0, 1.0])
+        color = rpass.get_input().color()
+        ```
+        """
 
 @final
 class _SamplerInfo: ...

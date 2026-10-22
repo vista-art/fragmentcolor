@@ -1,5 +1,6 @@
-
-import { Renderer, Shader } from "fragmentcolor";
+import { Renderer } from "fragmentcolor";
+const canvas = document.createElement("canvas");
 
 const renderer = new Renderer();
-const target = await renderer.createTextureTarget([64, 32]);
+const target = await renderer.createTarget(canvas);
+const size = target.size();

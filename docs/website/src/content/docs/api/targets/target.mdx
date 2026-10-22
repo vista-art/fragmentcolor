@@ -253,7 +253,7 @@ lang="kotlin"
 
 ---
 
-### Target::resize(size: Size &#123; width, heigth &#125; | (u32, u32) | [u32; 2])
+### Target::resize(size: Size &#123; width, height &#125; | (u32, u32) | [u32; 2])
 
 Resizes the [Target](/api/targets/target) to the given width and height.
 
@@ -358,6 +358,10 @@ lang="kotlin"
 ### Target::size() -&gt; Size &#123; width, height &#125;
 
 Returns the size of the [Target](/api/targets/target) in pixels.
+
+`depth` is the same in every language: 1 for a `TextureTarget`, as for a
+`Texture`, and absent for a `WindowTarget` (`None` in Rust and Python,
+`undefined` in JS, `nil` in Swift and `null` in Kotlin).
 
 #### Example
 

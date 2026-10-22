@@ -1,6 +1,5 @@
-from fragmentcolor import TextureFormat, Mipmap
+from fragmentcolor import Mipmap, TextureFormat
+pixels = bytes(8 * 8 * 4)
 
-pixels = [0] * (8 * 8 * 4)
-chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, [8, 8])
+chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, size=[8, 8])
 count = chain.count()
-_ = count

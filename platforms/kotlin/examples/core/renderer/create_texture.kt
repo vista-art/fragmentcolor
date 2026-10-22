@@ -1,4 +1,4 @@
 import org.fragmentcolor.*
-val image = "examples/assets/logo.png"
+val image = java.io.File("examples/assets/logo.png").readBytes()
 val renderer = Renderer()
 val tex = renderer.createTexture(image)

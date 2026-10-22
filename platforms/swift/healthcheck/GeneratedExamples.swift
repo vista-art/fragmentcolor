@@ -104,8 +104,9 @@ private enum _GeneratedExamples {
     static func _example_core_pass_compute() async throws {
         do {
 
-            let cs = try! Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
-            let pass = Pass.fromShader("compute", cs)
+            let cs = try Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
+            let pass = Pass.compute("compute")
+            pass.addShader(cs)
         }
     }
 
@@ -265,6 +266,35 @@ private enum _GeneratedExamples {
         }
     }
 
+    static func _example_core_pass_input_PassInput() async throws {
+        do {
+
+            let pass = Pass("overlay")
+            pass.loadPrevious()
+
+            let input = pass.getInput()
+            let keeps = input.loadsPrevious()
+        }
+    }
+
+    static func _example_core_pass_input_color() async throws {
+        do {
+
+            let pass = Pass("background")
+            try pass.setClearColor([1.0, 0.0, 0.0, 1.0])
+            let color = pass.getInput().color()
+        }
+    }
+
+    static func _example_core_pass_input_loads_previous() async throws {
+        do {
+
+            let pass = Pass("overlay")
+            pass.loadPrevious()
+            let keeps = pass.getInput().loadsPrevious()
+        }
+    }
+
     static func _example_core_renderer_Renderer() async throws {
         do {
 
@@ -328,7 +358,7 @@ private enum _GeneratedExamples {
 
     static func _example_core_renderer_create_texture() async throws {
         do {
-            let image = "examples/assets/logo.png"
+            let image = try Data(contentsOf: URL(fileURLWithPath: "examples/assets/logo.png"))
             let renderer = Renderer()
             let tex = try await renderer.createTexture(image)
         }
@@ -775,6 +805,31 @@ private enum _GeneratedExamples {
         }
     }
 
+    static func _example_geometry_instance_Instance() async throws {
+        do {
+
+            let mesh = Mesh()
+            try mesh.addVertex([0.0, 0.0])
+
+            let instance = try Instance().set("offset", [0.5, 0.0])
+            mesh.addInstance(instance)
+        }
+    }
+
+    static func _example_geometry_instance_new() async throws {
+        do {
+
+            let instance = Instance()
+        }
+    }
+
+    static func _example_geometry_instance_set() async throws {
+        do {
+
+            let instance = try Instance().set("offset", [0.5, 0.0]).set("tint", [1.0, 0.0, 0.0, 1.0])
+        }
+    }
+
     static func _example_geometry_mesh_Mesh() async throws {
         do {
 
@@ -958,6 +1013,13 @@ private enum _GeneratedExamples {
     static func _example_geometry_vertex_set() async throws {
         do {
             let v = try Vertex([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0])
+        }
+    }
+
+    static func _example_geometry_vertex_value_VertexValue() async throws {
+        do {
+
+            let vertex = try Vertex([0.0, 0.0]).set("id", VertexValue.u32(7))
         }
     }
 
@@ -1952,10 +2014,10 @@ private enum _GeneratedExamples {
 
     static func _example_targets_window_target_get_image() async throws {
         do {
-
+            let canvas = CAMetalLayer()
 
             let renderer = Renderer()
-            let target = try await renderer.createTextureTarget([16, 16])
+            let target = try await renderer.createTarget(canvas)
             try renderer.render(Shader.default(), target)
 
             let image = try await target.getImage()
@@ -1964,100 +2026,91 @@ private enum _GeneratedExamples {
 
     static func _example_targets_window_target_resize() async throws {
         do {
-
+            let canvas = CAMetalLayer()
 
             let renderer = Renderer()
-            let target = try await renderer.createTextureTarget([64, 32])
+            let target = try await renderer.createTarget(canvas)
 
-            target.resize([128, 64])
+            target.resize([1024, 768])
         }
     }
 
     static func _example_targets_window_target_size() async throws {
         do {
-
+            let canvas = CAMetalLayer()
 
             let renderer = Renderer()
-            let target = try await renderer.createTextureTarget([64, 32])
+            let target = try await renderer.createTarget(canvas)
+            let size = target.size()
         }
     }
 
     static func _example_texture_mipmap_Mipmap() async throws {
         do {
+            let png = try Data(contentsOf: URL(fileURLWithPath: "examples/assets/logo.png"))
 
+            // Imagine `png` came off your asset loader on a worker thread.
+
+            // Decode + mipmap generation. Pure CPU; run it wherever you like.
+            let chain = try Mipmap.build(png, TextureFormat.rgba8UnormSrgb)
+
+            // Back on the renderer thread, the upload is just a GPU write.
             let renderer = Renderer()
-
-            // Minimal 1×1 RGBA raw pixel bytes.
-            let pixels = Data([255, 0, 0, 255])
-            let chain = try Mipmap.build(
-                bytes: pixels,
-                format: .rgba8UnormSrgb,
-                size: Size(width: 1, height: 1, depth: nil)
-            )
-
-            // Hand the chain to the unified create_texture entry.
-            let texture = try await renderer.createTexture(input: .prepared(chain))
-            let _ = texture.size()
+            let texture = try await renderer.createTexture(chain)
         }
     }
 
     static func _example_texture_mipmap_build() async throws {
         do {
+            let encoded_png_bytes = try Data(contentsOf: URL(fileURLWithPath: "examples/assets/logo.png"))
+            let raw_rgba = Data(repeating: 200, count: 8 * 8 * 4)
 
-            // Raw RGBA path: include the size so build skips decoding.
-            let rawRgba = Data(repeating: 200, count: 8 * 8 * 4)
-            let chainRaw = try Mipmap.build(
-                bytes: rawRgba,
-                format: .rgba8UnormSrgb,
-                size: Size(width: 8, height: 8, depth: nil)
-            )
+            // Encoded path: bytes plus the format you want the chain to live in.
+            // The dimensions come from the decoded image.
+            let chain = try Mipmap.build(encoded_png_bytes, TextureFormat.rgba8UnormSrgb)
 
-            // Upload the chain through the regular createTexture entry point.
+            // Raw path: include the size so build skips decoding.
+            let chain_raw = try Mipmap.build(raw_rgba, TextureFormat.rgba8UnormSrgb, [8, 8])
+
+            // Either chain uploads the same way.
             let renderer = Renderer()
-            let texture = try await renderer.createTexture(input: .prepared(chainRaw))
-            let _ = chainRaw.count()
-            let __ = texture.size()
+            let texture = try await renderer.createTexture(chain)
         }
     }
 
     static func _example_texture_mipmap_count() async throws {
         do {
-
             let pixels = Data(repeating: 0, count: 8 * 8 * 4)
-            let chain = try Mipmap.build(
-                bytes: pixels,
-                format: .rgba8UnormSrgb,
-                size: Size(width: 8, height: 8, depth: nil)
-            )
+
+            let chain = try Mipmap.build(pixels, TextureFormat.rgba8UnormSrgb, [8, 8])
             let count = chain.count()
-            let _ = count
         }
     }
 
     static func _example_texture_mipmap_format() async throws {
         do {
-
             let pixels = Data(repeating: 200, count: 4 * 4 * 4)
-            let chain = try Mipmap.build(
-                bytes: pixels,
-                format: .rgba8UnormSrgb,
-                size: Size(width: 4, height: 4, depth: nil)
-            )
-            let _ = chain.format()
+
+            let chain = try Mipmap.build(pixels, TextureFormat.rgba8UnormSrgb, [4, 4])
+            let format = chain.format()
+        }
+    }
+
+    static func _example_texture_mipmap_level() async throws {
+        do {
+            let pixels = Data(repeating: 0, count: 8 * 8 * 4)
+
+            let chain = try Mipmap.build(pixels, TextureFormat.rgba8UnormSrgb, [8, 8])
+            let level_zero_bytes = try chain.level(0)
         }
     }
 
     static func _example_texture_mipmap_levels() async throws {
         do {
-
             let pixels = Data(repeating: 0, count: 8 * 8 * 4)
-            let chain = try Mipmap.build(
-                bytes: pixels,
-                format: .rgba8UnormSrgb,
-                size: Size(width: 8, height: 8, depth: nil)
-            )
-            let levelZeroBytes = try chain.level(index: 0)
-            let _ = levelZeroBytes
+
+            let chain = try Mipmap.build(pixels, TextureFormat.rgba8UnormSrgb, [8, 8])
+            let level_zero_bytes = chain.levels()[0]
         }
     }
 
@@ -2093,7 +2146,7 @@ private enum _GeneratedExamples {
             """)
 
             // 1x1 white pixel. Passing a size tells create_texture to read the bytes
-            // as raw pixels; the default format is Rgba (sRGB-aware).
+            // as raw pixels; the default format, Rgba, uploads them as linear Rgba8Unorm.
             let pixels = [255, 255, 255, 255]
             let texture = try await renderer.createTexture(pixels, [1, 1])
 
@@ -2136,19 +2189,12 @@ private enum _GeneratedExamples {
         do {
 
             let renderer = Renderer()
+            // 1x1 RGBA (white) raw pixel bytes
             let pixels: [UInt8] = [255, 255, 255, 255]
-            let options = TextureOptions(
-                size: Size(width: 1, height: 1, depth: nil),
-                format: .rgba8UnormSrgb,
-                sampler: SamplerOptions(repeatX: false, repeatY: false, smooth: true, compare: nil),
-                mipmaps: false,
-                usage: nil
-            )
-            // `.bytes(_:)` carries `Data`, not `[UInt8]`, so wrap the array explicitly.
-            let texture = try await renderer.createTexture(input: .bytes(Data(pixels)), options: options)
 
+            let texture = try await renderer.createTexture(pixels, [1, 1])
             let opts = SamplerOptions(repeatX: true, repeatY: true, smooth: true, compare: nil)
-            texture.setSamplerOptions(opts: opts)
+            texture.setSamplerOptions(opts)
         }
     }
 

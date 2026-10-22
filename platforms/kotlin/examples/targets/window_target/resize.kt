@@ -1,7 +1,7 @@
-
 import org.fragmentcolor.*
+val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(listOf(64, 32))
+val target = renderer.createTarget(canvas)
 
-target.resize(listOf(128, 64))
+target.resize(listOf(1024, 768))

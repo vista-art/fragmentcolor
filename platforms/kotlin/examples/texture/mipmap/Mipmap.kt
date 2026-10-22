@@ -1,5 +1,5 @@
 import org.fragmentcolor.*
-val png: ByteArray = byteArrayOf()
+val png = java.io.File("examples/assets/logo.png").readBytes()
 
 // Imagine `png` came off your asset loader on a worker thread.
 
