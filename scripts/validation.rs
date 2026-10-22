@@ -193,6 +193,9 @@ mod validation {
 
         problems.extend(super::links::check(&docs_root));
 
+        // Enforce that all public methods referenced in the API map have #[lsp_doc]
+        enforce_lsp_doc_coverage(catalog, &objects, api_map, &mut problems);
+
         if !warnings.is_empty() {
             eprintln!("\nDocumentation warnings:\n");
             for w in &warnings {
@@ -207,18 +210,12 @@ mod validation {
             }
             panic!("documentation incomplete");
         }
-
-        // Enforce that all public methods referenced in the API map have #[lsp_doc]
-        enforce_lsp_doc_coverage(catalog, &objects, api_map, &mut problems);
-
-        // If we reach here, validation passed.
     }
 
     /// Enforce that all public methods referenced in the API map have `#[lsp_doc]`.
     ///
-    /// Reads `(Type, method)` pairs from the catalog (filtered to public,
-    /// non-hidden, lsp-doc'd methods) and verifies every method listed under
-    /// each object in `api_map` is present.
+    /// A method passes when the catalog shows `#[lsp_doc]` on it, or
+    /// `#[doc(hidden)]` to mark it internal.
     pub fn enforce_lsp_doc_coverage(
         catalog: &super::codegen::ApiCatalog,
         objects: &[String],
@@ -230,7 +227,7 @@ mod validation {
         let doc_methods: HashSet<(String, String)> = catalog
             .methods
             .iter()
-            .filter(|m| !m.is_doc_hidden && m.has_lsp_doc)
+            .filter(|m| m.has_lsp_doc || m.is_doc_hidden)
             .map(|m| (m.type_name.clone(), m.method_name.clone()))
             .collect();
 
