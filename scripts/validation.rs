@@ -191,6 +191,8 @@ mod validation {
             }
         }
 
+        problems.extend(super::links::check(&docs_root));
+
         if !warnings.is_empty() {
             eprintln!("\nDocumentation warnings:\n");
             for w in &warnings {
