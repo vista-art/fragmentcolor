@@ -28,9 +28,8 @@ use crate::{Size, SurfaceError, Target, TargetFrame, TextureTarget, WindowTarget
 /// Mobile-facing wrapper around [`WindowTarget`].
 ///
 /// Exposes `size()`, `resize(width, height)`, and `get_image()` to Swift and
-/// Kotlin. `WindowTarget::get_image()` always returns an empty byte array —
-/// window-backed surfaces are not readable; use a
-/// [`MobileTextureTarget`] for pixel-readback.
+/// Kotlin. `get_image()` returns an empty byte array, because a window surface
+/// can't be read back. Render to a `TextureTarget` to read pixels.
 #[derive(Debug, uniffi::Object)]
 #[uniffi(name = "WindowTarget")]
 pub struct MobileWindowTarget {

@@ -4905,9 +4905,8 @@ public func FfiConverterTypeVertex_lower(_ value: Vertex) -> UInt64 {
  * Mobile-facing wrapper around [`WindowTarget`].
  *
  * Exposes `size()`, `resize(width, height)`, and `get_image()` to Swift and
- * Kotlin. `WindowTarget::get_image()` always returns an empty byte array —
- * window-backed surfaces are not readable; use a
- * [`MobileTextureTarget`] for pixel-readback.
+ * Kotlin. `get_image()` returns an empty byte array, because a window surface
+ * can't be read back. Render to a `TextureTarget` to read pixels.
  */
 public protocol WindowTargetProtocol: AnyObject, Sendable {
     
@@ -4937,9 +4936,8 @@ public protocol WindowTargetProtocol: AnyObject, Sendable {
  * Mobile-facing wrapper around [`WindowTarget`].
  *
  * Exposes `size()`, `resize(width, height)`, and `get_image()` to Swift and
- * Kotlin. `WindowTarget::get_image()` always returns an empty byte array —
- * window-backed surfaces are not readable; use a
- * [`MobileTextureTarget`] for pixel-readback.
+ * Kotlin. `get_image()` returns an empty byte array, because a window surface
+ * can't be read back. Render to a `TextureTarget` to read pixels.
  */
 open class WindowTarget: WindowTargetProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
