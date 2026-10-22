@@ -61,11 +61,11 @@ pub enum TextureData {
     CloneOf(Texture),
     Url(String),
     DynamicImage(DynamicImage),
-    /// In-memory KTX2 container bytes (decoded by the `ktx2` crate). Distinct
-    /// from `Bytes`/`Path`/`Url` because the KTX2 path trusts the file's own
-    /// declared format and skips the JPEG/PNG sRGB-inference + CPU mipmap
-    /// chain. Use this for pre-baked compressed textures (BC7, ASTC, ETC2)
-    /// from your asset pipeline.
+    /// In-memory KTX2 container bytes (decoded by the `ktx2` crate). The KTX2
+    /// path trusts the file's own declared format and skips the JPEG/PNG
+    /// sRGB-inference + CPU mipmap chain. Use this for pre-baked compressed
+    /// textures (BC7, ASTC, ETC2) from your asset pipeline. `Bytes`, `Path`
+    /// and `Url` take the same path when the data starts with the KTX2 identifier.
     Ktx2Bytes(Vec<u8>),
     /// Path to a `.ktx2` file on disk.
     Ktx2Path(std::path::PathBuf),
@@ -720,6 +720,12 @@ impl TextureObject {
 
         crate::renderer::background::run(move || -> Result<Self, TextureError> {
             let object = match data {
+                TextureData::Bytes(bytes) if ktx2_loader::is_ktx2(&bytes) => {
+                    ktx2_loader::from_ktx2_bytes(context.as_ref(), &bytes, usage)
+                }
+                TextureData::Path(path) if ktx2_loader::is_ktx2_file(&path) => {
+                    read_ktx2_file(context.as_ref(), &path, usage)
+                }
                 TextureData::Bytes(bytes) => {
                     if let Some(sz) = opt_size {
                         let wfmt = format_override
@@ -748,16 +754,7 @@ impl TextureObject {
                 TextureData::Ktx2Bytes(bytes) => {
                     ktx2_loader::from_ktx2_bytes(context.as_ref(), &bytes, usage)
                 }
-                TextureData::Ktx2Path(path) => {
-                    let bytes = std::fs::read(&path).map_err(|e| {
-                        TextureError::CreateTextureError(format!(
-                            "Failed to read KTX2 file {}: {}",
-                            path.display(),
-                            e
-                        ))
-                    })?;
-                    ktx2_loader::from_ktx2_bytes(context.as_ref(), &bytes, usage)
-                }
+                TextureData::Ktx2Path(path) => read_ktx2_file(context.as_ref(), &path, usage),
                 TextureData::Url(_) | TextureData::Ktx2Url(_) => Err(
                     TextureError::InvalidInput(
                         "from_input: URL variant should have been pre-fetched on the calling thread".into(),
@@ -1116,6 +1113,21 @@ impl TextureObject {
             usage,
         }
     }
+}
+
+fn read_ktx2_file(
+    context: &RenderContext,
+    path: &std::path::Path,
+    usage: wgpu::TextureUsages,
+) -> Result<TextureObject, TextureError> {
+    let bytes = std::fs::read(path).map_err(|e| {
+        TextureError::CreateTextureError(format!(
+            "Failed to read KTX2 file {}: {}",
+            path.display(),
+            e
+        ))
+    })?;
+    ktx2_loader::from_ktx2_bytes(context, &bytes, usage)
 }
 
 /// Usage of a texture made from source data.

@@ -20,6 +20,24 @@ use crate::texture::{
 };
 use parking_lot::RwLock;
 
+/// The identifier every KTX2 file starts with: `«KTX 20»\r\n\x1A\n`.
+const IDENTIFIER: [u8; 12] = [
+    0xAB, b'K', b'T', b'X', b' ', b'2', b'0', 0xBB, b'\r', b'\n', 0x1A, b'\n',
+];
+
+/// True when `bytes` start with the KTX2 identifier.
+pub(crate) fn is_ktx2(bytes: &[u8]) -> bool {
+    bytes.starts_with(&IDENTIFIER)
+}
+
+/// True when the file at `path` starts with the KTX2 identifier.
+pub(crate) fn is_ktx2_file(path: &std::path::Path) -> bool {
+    use std::io::Read;
+    let mut head = [0u8; IDENTIFIER.len()];
+    let read = std::fs::File::open(path).and_then(|mut file| file.read_exact(&mut head));
+    read.is_ok() && is_ktx2(&head)
+}
+
 /// Map a KTX2 (Vulkan) format code to the equivalent `wgpu::TextureFormat`.
 ///
 /// Returns `None` for formats FragmentColor doesn't decode today; callers turn
@@ -395,6 +413,39 @@ mod tests {
             assert_eq!(tex.object.inner.mip_level_count(), 1);
             assert_eq!(tex.size().width, 4);
             assert_eq!(tex.size().height, 4);
+        });
+    }
+
+    // Story: plain bytes and a plain path holding a KTX2 file load through the KTX2
+    // path, found by the identifier at the start of the data.
+    #[test]
+    fn detects_ktx2_by_content() {
+        pollster::block_on(async move {
+            let bytes = Ktx2Test {
+                format: VkFormat::R8G8B8A8_UNORM,
+                width: 2,
+                height: 2,
+                levels: vec![vec![7u8; 2 * 2 * 4]],
+            }
+            .build();
+            assert!(super::is_ktx2(&bytes));
+            assert!(!super::is_ktx2(b"\x89PNG\r\n\x1a\n"));
+
+            let renderer = crate::Renderer::new();
+            let tex = renderer
+                .create_texture(bytes.clone())
+                .await
+                .expect("KTX2 as plain bytes");
+            assert_eq!(tex.object.format, wgpu::TextureFormat::Rgba8Unorm);
+
+            let path = std::env::temp_dir().join("fc_detects_ktx2_by_content.bin");
+            std::fs::write(&path, &bytes).expect("write temp KTX2");
+            let tex = renderer
+                .create_texture(path.as_path())
+                .await
+                .expect("KTX2 as a plain path");
+            let _ = std::fs::remove_file(&path);
+            assert_eq!(tex.size().width, 2);
         });
     }
 
