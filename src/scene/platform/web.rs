@@ -1,6 +1,7 @@
 #![cfg(wasm)]
 
 use lsp_doc::lsp_doc;
+use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::scene::{Camera, Light, LightKind, Model, Scene};
@@ -402,8 +403,12 @@ impl Scene {
 
     #[wasm_bindgen(js_name = "setPasses")]
     #[lsp_doc("docs/api/scene/scene/set_passes.md")]
-    pub fn set_passes_js(&self, passes: Vec<Pass>) {
-        self.set_passes(passes);
+    pub fn set_passes_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Pass[]")] passes: &JsValue,
+    ) -> Result<(), JsError> {
+        self.set_passes(read_passes(passes)?);
+        Ok(())
     }
 
     #[wasm_bindgen(js_name = "noDefaults")]
@@ -468,6 +473,19 @@ impl Scene {
 crate::impl_js_bridge!(Scene, crate::PassError);
 crate::impl_js_bridge!(Model, crate::PassError);
 crate::impl_js_bridge!(Camera, crate::PassError);
+
+/// Reads an array of passes. Each item is cloned through its handle,
+/// so the caller's `Pass` objects stay usable afterwards.
+fn read_passes(value: &JsValue) -> Result<Vec<Pass>, JsError> {
+    let Some(array) = value.dyn_ref::<js_sys::Array>() else {
+        return Err(JsError::new("Scene.setPasses: expected an array of Pass"));
+    };
+    let read = |(index, item): (usize, JsValue)| {
+        Pass::try_from(&item)
+            .map_err(|_| JsError::new(&format!("Scene.setPasses: item {index} is not a Pass")))
+    };
+    array.iter().enumerate().map(read).collect()
+}
 
 fn vec3(v: &[f32], field: &str) -> Result<[f32; 3], JsError> {
     if v.len() != 3 {
