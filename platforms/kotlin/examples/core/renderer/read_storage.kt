@@ -16,7 +16,7 @@ val compute = Shader("""
 """)
 
 val pass = Pass.compute("seed")
-pass.setComputeDispatch(1, 1, 1)
+pass.setComputeDispatch(1u, 1u, 1u)
 pass.addShader(compute)
 renderer.render(pass, target)
 
