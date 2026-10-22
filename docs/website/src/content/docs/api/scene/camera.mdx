@@ -250,14 +250,14 @@ renders without distortion.
 
 Returns a handle to the same Camera (Arc-shared backing) for chaining.
 
-Behaviour by projection kind:
+Behavior by projection kind:
 
 - **Perspective**: rebuilds from `fovy_radians / near / far` with the
   new aspect. The vertical FOV is preserved, horizontal grows or
   shrinks.
 - **Orthographic**: keeps the current vertical extent and rescales the
   horizontal extents so `(right - left) / (top - bottom)` matches the
-  new aspect, centred on the existing horizontal midpoint. The frustum
+  new aspect, centered on the existing horizontal midpoint. The frustum
   height stays put; the width tracks the window.
 
 #### Example

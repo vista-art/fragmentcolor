@@ -1,6 +1,6 @@
 ---
 title: Light
-description: "`Light` is the unified type covering the three glTF `KHR_lights_punctual` kinds: **directional** (parallel rays for sun, sky, fill), **point** (radiates from a position with inverse-square falloff: lamps, candles, fireballs), and **spot** (point light constrained to a cone: flashlights, headlamps, theatre lighting). The kind is set once at construction via [`Light::directional`](/api/scene/light#lightdirectional), [`Light::point`](/api/scene/light#lightpoint), or [`Light::spot`](/api/scene/light#lightspot)."
+description: "`Light` is the unified type covering the three glTF `KHR_lights_punctual` kinds: **directional** (parallel rays for sun, sky, fill), **point** (radiates from a position with inverse-square falloff: lamps, candles, fireballs), and **spot** (point light constrained to a cone: flashlights, headlamps, theater lighting). The kind is set once at construction via [`Light::directional`](/api/scene/light#lightdirectional), [`Light::point`](/api/scene/light#lightpoint), or [`Light::spot`](/api/scene/light#lightspot)."
 category: scene
 categoryLabel: Scene
 sidebar:
@@ -15,7 +15,7 @@ import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 kinds: **directional** (parallel rays for sun, sky, fill), **point**
 (radiates from a position with inverse-square falloff: lamps, candles,
 fireballs), and **spot** (point light constrained to a cone: flashlights,
-headlamps, theatre lighting). The kind is set once at construction via
+headlamps, theater lighting). The kind is set once at construction via
 [`Light::directional`](/api/scene/light#lightdirectional),
 [`Light::point`](/api/scene/light#lightpoint), or
 [`Light::spot`](/api/scene/light#lightspot).
@@ -304,7 +304,7 @@ cap the influence with
 scale the radiance with
 [`set_intensity`](/api/scene/light#lightset_intensity).
 
-Use this for flashlights, headlamps, theatre lighting, mood key-lights:
+Use this for flashlights, headlamps, theater lighting, mood key-lights:
 anything where the lit volume is a cone aimed at a target. For an
 unconstrained point source see
 [`Light::point`](/api/scene/light#lightpoint);

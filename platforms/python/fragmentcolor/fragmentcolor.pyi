@@ -273,7 +273,7 @@ class Renderer:
 
         Returns `RendererError::StorageBindingNotFound` when the shader does not
         declare a storage binding called `binding`, or when no render pass has yet
-        materialised the GPU-side buffer (storage buffers are allocated lazily on
+        materialized the GPU-side buffer (storage buffers are allocated lazily on
         first bind).
 
         Example:
@@ -591,7 +591,7 @@ class Shader:
 
         The default base URL is `https://fragmentcolor.org/shaders/`, which serves the public shader registry. Override it to point at your own collection (a CDN, a local dev server, or a mirror) without changing the rest of your code.
 
-        The base may end with or without a trailing slash; both are normalised at lookup time.
+        The base may end with or without a trailing slash; both are normalized at lookup time.
 
         This setting is **process-wide**. It applies to every subsequent call to `Shader::new(...)` until overridden again.
 
@@ -1200,7 +1200,7 @@ class Pass:
         [Light](https://fragmentcolor.org/api/scene/light), or, in Rust, a
         user-defined node that implements the trait) into the pass. The other
         bindings take the built-in kinds. Each kind brings its
-        own attach behaviour: a Model queues a draw with its own per-instance
+        own attach behavior: a Model queues a draw with its own per-instance
         transform; a Camera or Light wires its uniforms into every shader the
         pass renders, both the ones already there and the ones added afterwards.
 
@@ -1713,7 +1713,7 @@ class Vertex:
     | `Vertex::NORMAL` | `"normal"` | Per-vertex normal. |
     | `Vertex::TANGENT` | `"tangent"` | Per-vertex tangent (for normal-mapped shading). |
     | `Vertex::UV0` / `UV1` | `"uv0"` / `"uv1"` | Texture coordinates. Use the numbered form when a mesh carries multiple UV sets (typical for glTF). |
-    | `Vertex::COLOR0` / `COLOR1` | `"color0"` / `"color1"` | Vertex colours. |
+    | `Vertex::COLOR0` / `COLOR1` | `"color0"` / `"color1"` | Vertex colors. |
 
     The constants are plain `&'static str` literals: `vertex.set(Vertex::UV0, [...])` and `vertex.set("uv0", [...])` do the same thing. Mix the two styles freely; the constants exist to prevent typos and to give the glTF loader a stable vocabulary.
 
@@ -2002,7 +2002,7 @@ class Scene:
     `Scene::new()` is synchronous and takes no `Renderer`. The first time a
     `SceneObject` is added, the Scene
     creates a default Pass to hold it. The first time the Scene is rendered, the
-    underlying GPU resources initialise on demand. This is the lazy-init pattern
+    underlying GPU resources initialize on demand. This is the lazy-init pattern
     the rest of FragmentColor follows.
 
     ## An open, composable pass graph
@@ -2026,7 +2026,7 @@ class Scene:
 
     A Scene that only carries Models would normally render black: shaders need a
     camera projection and at least one light for the lighting term to be
-    non-zero. To make the "hello world" path render something recognisable, the
+    non-zero. To make the "hello world" path render something recognizable, the
     Scene injects sensible defaults when the user hasn't supplied them:
 
     - **Default Camera**: `Camera::perspective(60°, 1.0, 0.1, 100.0)` looking
@@ -2069,7 +2069,7 @@ class Scene:
     def __new__(cls) -> Scene:
         """
         Build an empty `Scene`. No `Renderer` argument, no async, nothing to await.
-        The Scene's GPU resources initialise lazily when it's first rendered.
+        The Scene's GPU resources initialize lazily when it's first rendered.
 
         The first call to [`Scene::add`](https://fragmentcolor.org/api/scene/scene#sceneadd)
         creates a default [Pass](https://fragmentcolor.org/api/core/pass) under the
@@ -2182,7 +2182,7 @@ class Scene:
         onto its default [Pass](https://fragmentcolor.org/api/core/pass), which
         is created lazily on the first call.
 
-        Each kind brings its own attach behaviour: a Model queues a draw with its
+        Each kind brings its own attach behavior: a Model queues a draw with its
         own per-instance transform; a Camera or Light wires its uniforms into
         every shader the pass renders, both the ones already there and the ones
         added afterwards. Camera and Light hold Arc-shared state, so subsequent
@@ -2199,7 +2199,7 @@ class Scene:
         If you add Models without adding a Camera or any Light, the Scene injects
         sensible defaults at render time (`Camera::perspective` looking from
         `[0, 0, 5]`, a white `Light::directional` pointing slightly off-axis) so
-        the first frame renders something recognisable. Add your own to take over.
+        the first frame renders something recognizable. Add your own to take over.
 
         Example:
 
@@ -2249,14 +2249,14 @@ class Scene:
         ### Each new Pass clears by default
 
         Every `Pass::new(name)` starts with a clear-to-transparent input. The first
-        render of the frame for that Pass wipes its colour attachment to
+        render of the frame for that Pass wipes its color attachment to
         `[0, 0, 0, 0]`. When you chain passes that read each other's output, the
         downstream Pass clears the upstream Pass's output unless you opt out:
 
         - Call `pass.load_previous()` on the downstream Pass to keep the previous
           contents around (the wgpu `LoadOp::Load` equivalent).
         - Or call `pass.set_clear_color([r, g, b, a])` to choose a specific clear
-          value (still a clear, just a different colour).
+          value (still a clear, just a different color).
 
         `Scene::add_pass` stores each pass independently. There's no automatic
         chaining of their attachments. To share a target between two passes, route
@@ -2462,7 +2462,7 @@ class Scene:
         Turn off both default-Camera and default-Light injection. By default a Scene
         carrying Models but no Camera or Light injects a stock perspective camera and
         a white directional light at first render, so the hello-world path shows
-        something recognisable. A composition caller that drives `view_proj` and the
+        something recognizable. A composition caller that drives `view_proj` and the
         light slots from the host doesn't want those stock values layered on top.
         `no_defaults` leaves the pass graph exactly as built.
 
@@ -2612,7 +2612,7 @@ class Scene:
         subtle warm/cool fill on top of direct lighting.
 
         Defaults: every Material seeded by `Material::pbr()` starts with
-        `ambient = [0.03, 0.03, 0.03]` (the dim grey the PBR shader had
+        `ambient = [0.03, 0.03, 0.03]` (the dim gray the PBR shader had
         hardcoded before this knob existed). Calling `Scene::ambient` overrides
         that for every shader the scene visits today *and* for any Models added
         afterwards: the value is stashed on the Scene and re-stamped onto
@@ -2962,7 +2962,7 @@ class Model:
         Rotate the Model around `axis` (in local space) by `radians`. Post-multiplies
         the current transform by an axis-angle rotation, so a rotated-then-translated
         Model spins in place around its own origin rather than orbiting the world
-        origin. The axis is normalised internally; a zero-length axis is rejected
+        origin. The axis is normalized internally; a zero-length axis is rejected
         with a logged warning and no change.
 
         For pure world-space rotations (e.g. tumbling around a fixed pivot), compose
@@ -3199,14 +3199,14 @@ class Camera:
 
         Returns a handle to the same Camera (Arc-shared backing) for chaining.
 
-        Behaviour by projection kind:
+        Behavior by projection kind:
 
         - **Perspective**: rebuilds from `fovy_radians / near / far` with the
           new aspect. The vertical FOV is preserved, horizontal grows or
           shrinks.
         - **Orthographic**: keeps the current vertical extent and rescales the
           horizontal extents so `(right - left) / (top - bottom)` matches the
-          new aspect, centred on the existing horizontal midpoint. The frustum
+          new aspect, centered on the existing horizontal midpoint. The frustum
           height stays put; the width tracks the window.
 
         Example:
@@ -3272,7 +3272,7 @@ class Light:
     kinds: **directional** (parallel rays for sun, sky, fill), **point**
     (radiates from a position with inverse-square falloff: lamps, candles,
     fireballs), and **spot** (point light constrained to a cone: flashlights,
-    headlamps, theatre lighting). The kind is set once at construction via
+    headlamps, theater lighting). The kind is set once at construction via
     [`Light::directional`](https://fragmentcolor.org/api/scene/light#lightdirectional),
     [`Light::point`](https://fragmentcolor.org/api/scene/light#lightpoint), or
     [`Light::spot`](https://fragmentcolor.org/api/scene/light#lightspot).
@@ -3440,7 +3440,7 @@ class Light:
         scale the radiance with
         [`set_intensity`](https://fragmentcolor.org/api/scene/light#lightset_intensity).
 
-        Use this for flashlights, headlamps, theatre lighting, mood key-lights:
+        Use this for flashlights, headlamps, theater lighting, mood key-lights:
         anything where the lit volume is a cone aimed at a target. For an
         unconstrained point source see
         [`Light::point`](https://fragmentcolor.org/api/scene/light#lightpoint);
