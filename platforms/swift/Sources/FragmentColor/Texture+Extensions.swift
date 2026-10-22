@@ -9,6 +9,12 @@
 
 import Foundation
 
+@available(*, deprecated, renamed: "TextureTarget")
+public typealias MobileTextureTarget = TextureTarget
+
+@available(*, deprecated, renamed: "WindowTarget")
+public typealias MobileWindowTarget = WindowTarget
+
 extension Texture {
     // MARK: - write convenience
 
@@ -22,21 +28,19 @@ extension Texture {
         try write(bytes: Data(bytes))
     }
 
-    /// Upload a `[Int]` byte array into the whole texture (values clamped to UInt8).
+    /// Upload one `Int` per byte into the whole texture. Throws for a value outside 0...255.
     public func write(_ bytes: [Int]) throws {
-        try write(Data(bytes.map { UInt8(clamping: $0) }))
+        try write(try byteData(bytes, "write"))
     }
 
     // MARK: - writeRegion convenience
 
-    /// Upload pixel data into a sub-region using a `[x, y, width, height]` array.
+    /// Upload pixel data into a region given as `[w, h]`, `[x, y, w, h]` or `[x, y, z, w, h, d]`.
+    /// Throws for any other length or a negative number.
     public func writeRegion(_ bytes: Data, _ rect: [Int]) throws {
-        guard rect.count == 4 else { return }
-        let region = TextureRegionMobile(
-            originX: UInt32(rect[0]), originY: UInt32(rect[1]), originZ: 0,
-            sizeWidth: UInt32(rect[2]), sizeHeight: UInt32(rect[3]), sizeDepth: 1,
-            bytesPerRow: nil, rowsPerImage: nil
-        )
+        guard let region = textureRegion(rect) else {
+            throw FragmentColorError.Render("writeRegion: expected 2, 4 or 6 non-negative numbers, got \(rect)")
+        }
         try writeRegion(bytes: bytes, region: region)
     }
 
@@ -45,25 +49,37 @@ extension Texture {
     }
 
     public func writeRegion(_ bytes: [Int], _ rect: [Int]) throws {
-        try writeRegion(bytes.map { UInt8(clamping: $0) }, rect)
+        try writeRegion(try byteData(bytes, "writeRegion"), rect)
     }
 
-    // Pre-built `TextureRegionMobile` overload — used by the
-    // `TextureRegionMobile.from(_:).withStride(_:).withRows(_:)` builder
-    // chain in `write_region.md`. Without this the Swift overload resolver
-    // picks the `[Int]` overload above and complains that a
-    // `TextureRegionMobile` can't be passed where `[Int]` is expected.
+    // Pre-built `TextureRegion` overloads, for the
+    // `TextureRegion.from(_:).withStride(_:).withRows(_:)` builder chain
+    // in `write_region.md`. Without them the Swift overload resolver picks
+    // the `[Int]` overload above and rejects a `TextureRegion` argument.
 
-    public func writeRegion(_ bytes: Data, _ region: TextureRegionMobile) throws {
+    public func writeRegion(_ bytes: Data, _ region: TextureRegion) throws {
         try writeRegion(bytes: bytes, region: region)
     }
 
-    public func writeRegion(_ bytes: [UInt8], _ region: TextureRegionMobile) throws {
+    public func writeRegion(_ bytes: [UInt8], _ region: TextureRegion) throws {
         try writeRegion(Data(bytes), region)
     }
 
-    public func writeRegion(_ bytes: [Int], _ region: TextureRegionMobile) throws {
-        try writeRegion(bytes.map { UInt8(clamping: $0) }, region)
+    public func writeRegion(_ bytes: [Int], _ region: TextureRegion) throws {
+        try writeRegion(try byteData(bytes, "writeRegion"), region)
+    }
+
+    /// Upload pixel data into the pixels a `ScreenRegion` covers.
+    public func writeRegion(_ bytes: Data, _ region: ScreenRegion) throws {
+        try writeRegion(bytes, TextureRegion.from(region))
+    }
+
+    public func writeRegion(_ bytes: [UInt8], _ region: ScreenRegion) throws {
+        try writeRegion(Data(bytes), region)
+    }
+
+    public func writeRegion(_ bytes: [Int], _ region: ScreenRegion) throws {
+        try writeRegion(try byteData(bytes, "writeRegion"), region)
     }
 
     // MARK: - setSamplerOptions convenience
@@ -80,32 +96,102 @@ extension Texture {
     }
 }
 
-extension MobileTextureTarget {
+extension TextureTarget {
     // MARK: - resize convenience
 
     /// Resize the target from a `[width, height]` array.
+    /// A length other than 2 or 3, or a negative number, stops the program.
     public func resize(_ size: [Int]) {
-        guard size.count >= 2 else { return }
-        resize(width: UInt32(size[0]), height: UInt32(size[1]))
+        resize(targetSize(size))
     }
 
     public func resize(_ size: [UInt32]) {
-        guard size.count >= 2 else { return }
-        resize(width: size[0], height: size[1])
+        resize(targetSize(size))
+    }
+
+    /// Resize the target to `size`, such as another target's `size()`.
+    public func resize(_ size: Size) {
+        resize(width: size.width, height: size.height)
     }
 }
 
-extension MobileWindowTarget {
+extension WindowTarget {
     // MARK: - resize convenience
 
     /// Resize the target from a `[width, height]` array.
+    /// A length other than 2 or 3, or a negative number, stops the program.
     public func resize(_ size: [Int]) {
-        guard size.count >= 2 else { return }
-        resize(width: UInt32(size[0]), height: UInt32(size[1]))
+        resize(targetSize(size))
     }
 
     public func resize(_ size: [UInt32]) {
-        guard size.count >= 2 else { return }
-        resize(width: size[0], height: size[1])
+        resize(targetSize(size))
+    }
+
+    /// Resize the target to `size`, such as another target's `size()`.
+    public func resize(_ size: Size) {
+        resize(width: size.width, height: size.height)
+    }
+}
+
+extension Mipmap {
+    /// Decode encoded image bytes (PNG, JPEG and the other formats FragmentColor reads)
+    /// into a chain of `format`.
+    public static func build(_ bytes: Data, _ format: TextureFormat) throws -> Mipmap {
+        try Mipmap.build(bytes: bytes, format: format, size: nil)
+    }
+
+    public static func build(_ bytes: [UInt8], _ format: TextureFormat) throws -> Mipmap {
+        try Mipmap.build(Data(bytes), format)
+    }
+
+    /// Build a chain from raw pixels of `format` and their `Size`.
+    public static func build(_ bytes: Data, _ format: TextureFormat, _ size: Size) throws -> Mipmap {
+        try Mipmap.build(bytes: bytes, format: format, size: size)
+    }
+
+    /// Build a chain from raw pixels of `format` and their `[width, height]`.
+    public static func build(_ bytes: Data, _ format: TextureFormat, _ size: [Int]) throws -> Mipmap {
+        try Mipmap.build(bytes, format, try sizeRecord(size, "Mipmap.build"))
+    }
+
+    public static func build(_ bytes: [UInt8], _ format: TextureFormat, _ size: [Int]) throws -> Mipmap {
+        try Mipmap.build(Data(bytes), format, size)
+    }
+
+    /// The bytes of one mip level (unlabeled overload). Throws for an index out of range.
+    public func level(_ index: Int) throws -> Data {
+        guard let index = UInt32(exactly: index) else {
+            throw FragmentColorError.Render("level: \(index) is not a level index")
+        }
+        return try level(index: index)
+    }
+}
+
+extension TextureUsage {
+    /// The texture can be the source of a copy, such as `Renderer.readTexture`.
+    public static let COPY_SRC = TextureUsage(bits: 1 << 0)
+    /// The texture can be the destination of a copy, such as `Texture.write`.
+    public static let COPY_DST = TextureUsage(bits: 1 << 1)
+    /// A shader can sample the texture or load from it.
+    public static let TEXTURE_BINDING = TextureUsage(bits: 1 << 2)
+    /// A shader can write the texture as a storage texture.
+    public static let STORAGE_BINDING = TextureUsage(bits: 1 << 3)
+    /// A pass can render into the texture.
+    public static let RENDER_ATTACHMENT = TextureUsage(bits: 1 << 4)
+
+    /// Both sets of flags, as Rust's `|` combines them.
+    public static func | (lhs: TextureUsage, rhs: TextureUsage) -> TextureUsage {
+        TextureUsage(bits: lhs.bits | rhs.bits)
+    }
+}
+
+/// The `Size` a resize array names. A bad array stops the program,
+/// since the resize methods return nothing to throw through.
+private func targetSize<T: BinaryInteger>(_ size: [T]) -> Size {
+    do {
+        return try sizeRecord(size, "resize")
+    } catch {
+        preconditionFailure("\(error)")
     }
 }
