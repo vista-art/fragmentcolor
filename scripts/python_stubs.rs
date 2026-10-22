@@ -7,8 +7,10 @@ mod python_stubs {
     //!   ([`super::reflect`]), seen as the Python build compiles them: every
     //!   `#[pyclass]`, `#[pymethods]` and `#[pyfunction]` (also through
     //!   `#[cfg_attr(python, ...)]`), with each Rust type mapped to a Python hint.
-    //!   `#[doc(hidden)]` methods stay in: Python can still call them, and some,
-    //!   like the `ScreenRegion` constructors, are how users build arguments.
+    //!   A documented class (one with `#[lsp_doc]`) leaves out its
+    //!   `#[doc(hidden)]` methods, which are binding plumbing. A value type
+    //!   with no doc page, such as `Size` or `ScreenRegion`, keeps them,
+    //!   since its constructors are how users build arguments.
     //!   The classes and functions registered in `src/platforms/python.rs` are
     //!   the module surface. A class that a method only returns is not
     //!   importable, so it appears under a private `_Name`.
@@ -347,7 +349,12 @@ mod python_stubs {
         let mut impls: Vec<_> = model.binding_impls(build, "pymethods").collect();
         impls.sort_by(|a, b| a.file.cmp(&b.file));
         for imp in impls {
-            for f in imp.fns.iter().filter(|f| f.cfg.holds(build)) {
+            let documented = bindings
+                .classes
+                .get(&imp.self_ident)
+                .is_some_and(|class| class.lsp_doc.is_some());
+            let shown = |f: &&reflect::FnDef| !(documented && hides_docs(&f.attrs));
+            for f in imp.fns.iter().filter(|f| f.cfg.holds(build)).filter(shown) {
                 bindings
                     .methods
                     .entry(imp.self_ident.clone())
@@ -362,6 +369,13 @@ mod python_stubs {
             );
         }
         bindings
+    }
+
+    /// Whether `#[doc(hidden)]` marks the item as internal.
+    fn hides_docs(attrs: &[Attribute]) -> bool {
+        reflect::metas(attrs, Build::Python)
+            .iter()
+            .any(|m| reflect::meta_ident(m) == "doc" && reflect::meta_args(m).contains("hidden"))
     }
 
     fn read_method(
