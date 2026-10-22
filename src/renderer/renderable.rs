@@ -162,6 +162,8 @@ mod tests {
 
         let fan_in = Pass::new("fan_in");
         let both: Vec<Box<dyn Renderable>> = vec![Box::new(color), Box::new(blur_y)];
-        fan_in.require(&both).expect("fan_in requires color and blur_y");
+        fan_in
+            .require(&both)
+            .expect("fan_in requires color and blur_y");
     }
 }

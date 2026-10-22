@@ -796,7 +796,10 @@ mod tests {
         // Assert
         assert!(!after_clear.loads_previous());
         assert_eq!(after_clear.color, Color::from([0.1, 0.2, 0.3, 0.4]));
-        assert_eq!(after_clear.color(), Color::from([0.1, 0.2, 0.3, 0.4]).to_f32_array());
+        assert_eq!(
+            after_clear.color(),
+            Color::from([0.1, 0.2, 0.3, 0.4]).to_f32_array()
+        );
         assert!(after_load.loads_previous());
 
         // Any Color form works: three channels are opaque, and a Color passes through.

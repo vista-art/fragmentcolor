@@ -238,7 +238,9 @@ impl From<HashMap<String, VertexValue>> for Instance {
         entries.sort_by(|a, b| a.0.cmp(&b.0));
         entries
             .into_iter()
-            .fold(Instance::new(), |instance, (key, value)| instance.set(&key, value))
+            .fold(Instance::new(), |instance, (key, value)| {
+                instance.set(&key, value)
+            })
     }
 }
 

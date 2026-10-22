@@ -1097,7 +1097,9 @@ mod tests {
         let shader = Shader::new(wgsl).expect("shader");
 
         shader.set("m4", [0.0; 16]).expect("flat mat4");
-        let identity: Vec<f32> = (0..16).map(|i| if i % 5 == 0 { 1.0 } else { 0.0 }).collect();
+        let identity: Vec<f32> = (0..16)
+            .map(|i| if i % 5 == 0 { 1.0 } else { 0.0 })
+            .collect();
         shader.set("m4", identity.clone()).expect("mat4 from a Vec");
         assert_eq!(shader.get::<[f32; 16]>("m4").expect("get"), identity[..]);
         assert_eq!(shader.get::<Vec<f32>>("m4").expect("get"), identity);
@@ -1106,8 +1108,13 @@ mod tests {
         shader.set("m3", three).expect("flat mat3");
         assert_eq!(shader.get::<[f32; 9]>("m3").expect("get"), three);
 
-        shader.set("m2", [1.0, 2.0, 3.0, 4.0]).expect("mat2 from four numbers");
-        assert_eq!(shader.get::<[f32; 4]>("m2").expect("get"), [1.0, 2.0, 3.0, 4.0]);
+        shader
+            .set("m2", [1.0, 2.0, 3.0, 4.0])
+            .expect("mat2 from four numbers");
+        assert_eq!(
+            shader.get::<[f32; 4]>("m2").expect("get"),
+            [1.0, 2.0, 3.0, 4.0]
+        );
         assert_eq!(shader.get::<Vec<u8>>("m2").expect("get").len(), 16);
 
         assert!(shader.set("m4", [0.0; 9]).is_err());

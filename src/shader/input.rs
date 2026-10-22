@@ -506,13 +506,16 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
                 RegistrySource::Embedded(_)
             ));
         });
-        with_registry("https://cdn.example.com/shaders/", || match RegistrySource::locate(&part) {
-            RegistrySource::Fetch { url, fallback } => {
-                assert_eq!(url, "https://cdn.example.com/shaders/postfx/vignette.wgsl");
-                assert!(fallback.is_some());
-            }
-            RegistrySource::Embedded(_) => panic!("an override must be fetched first"),
-        });
+        with_registry(
+            "https://cdn.example.com/shaders/",
+            || match RegistrySource::locate(&part) {
+                RegistrySource::Fetch { url, fallback } => {
+                    assert_eq!(url, "https://cdn.example.com/shaders/postfx/vignette.wgsl");
+                    assert!(fallback.is_some());
+                }
+                RegistrySource::Embedded(_) => panic!("an override must be fetched first"),
+            },
+        );
     }
 
     // Story: A slug whose category feature is NOT enabled still falls through

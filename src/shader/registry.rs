@@ -142,8 +142,12 @@ mod tests {
 
     #[test]
     fn has_override_ignores_a_trailing_slash() {
-        with_registry("https://fragmentcolor.org/shaders", || assert!(!has_override()));
-        with_registry("https://cdn.example.com/shaders/", || assert!(has_override()));
+        with_registry("https://fragmentcolor.org/shaders", || {
+            assert!(!has_override())
+        });
+        with_registry("https://cdn.example.com/shaders/", || {
+            assert!(has_override())
+        });
     }
 
     #[test]

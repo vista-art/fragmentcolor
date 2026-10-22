@@ -2685,10 +2685,7 @@ mod more_error_path_tests {
                 .create_texture((bytes.clone(), options))
                 .await
                 .expect("texture with COPY_SRC");
-            let read = renderer
-                .read_texture(texture.id())
-                .await
-                .expect("readback");
+            let read = renderer.read_texture(texture.id()).await.expect("readback");
             assert_eq!(read, bytes);
 
             let plain = renderer

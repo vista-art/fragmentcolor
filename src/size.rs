@@ -384,16 +384,25 @@ mod tests {
         let size = |value: PySize| Size::try_from(value).expect("valid size");
 
         // A Size passes through unchanged
-        assert_eq!(size(PySize::Size(Size::new(5, 6, Some(2)))), Size::new(5, 6, Some(2)));
+        assert_eq!(
+            size(PySize::Size(Size::new(5, 6, Some(2)))),
+            Size::new(5, 6, Some(2))
+        );
 
         // Tuples, with fractions rounded down
-        assert_eq!(size(PySize::TupleF64((10.5, 20.5))), Size::new(10, 20, None));
+        assert_eq!(
+            size(PySize::TupleF64((10.5, 20.5))),
+            Size::new(10, 20, None)
+        );
         assert_eq!(size(PySize::TupleU32((7, 9))), Size::new(7, 9, None));
         assert_eq!(size(PySize::Tuple3I32((3, 4, 5))), Size::new(3, 4, Some(5)));
 
         // Lists
         assert_eq!(size(PySize::ListU32(vec![1, 2])), Size::new(1, 2, None));
-        assert_eq!(size(PySize::ListF64(vec![2.0, 3.0, 4.0])), Size::new(2, 3, Some(4)));
+        assert_eq!(
+            size(PySize::ListF64(vec![2.0, 3.0, 4.0])),
+            Size::new(2, 3, Some(4))
+        );
 
         // Dicts
         let mut d_f: HashMap<String, f64> = HashMap::new();
@@ -425,8 +434,14 @@ mod tests {
     #[cfg(python)]
     #[test]
     fn from_numbers_applies_one_rule() {
-        assert_eq!(Size::from_numbers(&[4.0, 2.0]).ok(), Some(Size::new(4, 2, None)));
-        assert_eq!(Size::from_numbers(&[4.9, 2.0, 1.0]).ok(), Some(Size::new(4, 2, Some(1))));
+        assert_eq!(
+            Size::from_numbers(&[4.0, 2.0]).ok(),
+            Some(Size::new(4, 2, None))
+        );
+        assert_eq!(
+            Size::from_numbers(&[4.9, 2.0, 1.0]).ok(),
+            Some(Size::new(4, 2, Some(1)))
+        );
         assert!(Size::from_numbers(&[4.0]).is_err());
         assert!(Size::from_numbers(&[-1.0, 2.0]).is_err());
         assert!(Size::from_numbers(&[f64::INFINITY, 2.0]).is_err());

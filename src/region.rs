@@ -812,8 +812,14 @@ mod tests {
     fn size_forms_cover_exact_pixels() {
         assert_eq!(ScreenRegion::from([32, 32]).width(), 32);
         assert_eq!(ScreenRegion::from((64, 32)).height(), 32);
-        assert_eq!(ScreenRegion::from_tuple((64, 32)), ScreenRegion::from_size(64, 32));
-        assert_eq!(ScreenRegion::from([2, 4, 8, 6]), ScreenRegion::from_region(2, 4, 8, 6));
+        assert_eq!(
+            ScreenRegion::from_tuple((64, 32)),
+            ScreenRegion::from_size(64, 32)
+        );
+        assert_eq!(
+            ScreenRegion::from([2, 4, 8, 6]),
+            ScreenRegion::from_region(2, 4, 8, 6)
+        );
         assert_eq!(ScreenRegion::from_tuples((0, 0), (31, 31)).width(), 32);
     }
 
