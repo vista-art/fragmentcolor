@@ -1,6 +1,6 @@
 # FragmentColor for Python
 
-[FragmentColor](https://fragmentcolor.org) is a cross‑platform GPU programming library implemented in Rust and wgpu, with Python bindings via PyO3.
+[FragmentColor](https://fragmentcolor.org) is a universal GPU abstraction for Rust, JavaScript, Python, Swift, and Kotlin. This package is the Python binding, built with PyO3.
 
 This README is specific to the PyPI package. For Rust usage, see the repository README.md. For JavaScript, see `platforms/web/README.md` in the repository.
 

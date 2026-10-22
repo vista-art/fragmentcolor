@@ -1,6 +1,6 @@
 # FragmentColor for JavaScript (WASM)
 
-[FragmentColor](https://fragmentcolor.org) is a cross‑platform GPU programming library implemented in Rust and wgpu, compiled to WebAssembly for JavaScript.
+[FragmentColor](https://fragmentcolor.org) is a universal GPU abstraction for Rust, JavaScript, Python, Swift, and Kotlin. This package is the JavaScript binding, compiled to WebAssembly.
 
 This README is specific to the npm package. For Rust usage, see the repository README.md. For Python, see `platforms/python/README.md` in the repository.
 
