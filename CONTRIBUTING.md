@@ -91,12 +91,58 @@ Contributions are welcome! This document outlines the current workflow for devel
 
 ## Running locally
 
-```bash
-# rust
-cargo fmt --all && cargo clippy --all-targets --all-features -- -D warnings
-cargo test
+Repository scripts live in `tools/`. `./fc` lists them, and `./fc <tool> [args]` runs one.
 
-# website
-yarn --cwd docs/website || pnpm --dir docs/website install
+### Rust core
+
+```bash
+cargo build
+./fc test               # clippy, every Rust test, and the crate doctests
+./fc clippy             # formats first; ./fc clippy fix applies the fixes
+./fc healthcheck        # every platform; or ./fc healthcheck web | py | ios | android
+```
+
+### Examples
+
+`./fc example` lists the examples in `examples/rust` and runs the one you pick. To run one directly:
+
+```bash
+cargo run -p fce --example triangle
+```
+
+### Web (WASM)
+
+```bash
+./fc build_web          # wasm-pack build, synced into the JS examples; --debug for a debug build
+./fc run_web repl       # Vite dev server; or ./fc run_web gallery | ./fc run_web visual
+
+# or by hand
+pnpm --dir examples/javascript install
+pnpm --dir examples/javascript dev
+```
+
+### Python
+
+```bash
+./fc run_py main        # builds the wheel into dist/, creates a venv, runs an example
+                        # or: ./fc run_py multiobject | ./fc run_py headless
+
+# or by hand
+pipx install maturin
+maturin develop
+pip install glfw rendercanvas
+python examples/python/main.py
+```
+
+### Docs site (Astro/Starlight)
+
+The site's API pages come from `docs/api`, and their JavaScript, Python, Swift, and Kotlin examples come from the healthcheck scripts, so edit those sources rather than the generated pages.
+
+```bash
+./fc run_docs           # dev server from the repository root
+
+# or by hand
+pnpm --dir docs/website install
+pnpm --dir docs/website dev
 pnpm --dir docs/website build
 ```
