@@ -54,8 +54,9 @@ fn fs_main(v: VOut) -> @location(0) vec4<f32> { return v.col; }
 
 let shader = Shader::new(wgsl)?;
 
-// 3) Provide a storage blob. Each Particle packs 24 bytes: pos(vec2)=8 + col(vec4)=16.
-const STRIDE: usize = 24;
+// 3) Provide a storage blob. WGSL aligns col (a vec4) to 16 bytes, so each Particle
+//    takes 32: pos at 0, 8 bytes of padding, col at 16.
+const STRIDE: usize = 32;
 let bytes_len = (STRIDE as u64 * 1_000_000u64) as usize; // full span for the shader’s N
 let mut blob = vec![0u8; bytes_len];
 // Optional: seed a few visible points near center in red/green/blue (kept minimal for speed)
@@ -64,10 +65,10 @@ let mut blob = vec![0u8; bytes_len];
         let b = &mut blob[idx * STRIDE..idx * STRIDE + STRIDE];
         b[0..4].copy_from_slice(&x.to_le_bytes());
         b[4..8].copy_from_slice(&y.to_le_bytes());
-        b[8..12].copy_from_slice(&c[0].to_le_bytes());
-        b[12..16].copy_from_slice(&c[1].to_le_bytes());
-        b[16..20].copy_from_slice(&c[2].to_le_bytes());
-        b[20..24].copy_from_slice(&c[3].to_le_bytes());
+        b[16..20].copy_from_slice(&c[0].to_le_bytes());
+        b[20..24].copy_from_slice(&c[1].to_le_bytes());
+        b[24..28].copy_from_slice(&c[2].to_le_bytes());
+        b[28..32].copy_from_slice(&c[3].to_le_bytes());
     };
     write_particle(0,  0.00,  0.00, [1.0, 0.2, 0.2, 1.0]);
     write_particle(1, -0.35, -0.20, [0.2, 1.0, 0.2, 1.0]);
@@ -104,7 +105,7 @@ What's happening under the hood
 
 Pitfalls / gotchas
 
-- Keep your struct layout stable: vec2 (8 bytes) + vec4 (16 bytes) = 24 bytes per particle.
+- Pack bytes the way WGSL lays the struct out. A `vec4` aligns to 16 bytes, so `Particle { pos: vec2<f32>, col: vec4<f32> }` is 32 bytes with `col` at offset 16, though its fields add up to 24.
 - The WGSL array length is fixed at compile time. For interactive stress tests, set FC_PARTICLES to override the runtime instance count.
 
 Next steps
