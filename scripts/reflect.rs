@@ -1212,15 +1212,15 @@ mod reflect {
                 meta_ident(m) == "derive" && meta_args(m).contains("uniffi")
             }
         })?;
-        let key = match build {
-            Build::Python => Some("name"),
-            Build::Wasm => Some("js_name"),
-            Build::Ios | Build::Android => None,
+        let renamed = match build {
+            Build::Python => arg_value(&meta_args(binding), "name"),
+            Build::Wasm => arg_value(&meta_args(binding), "js_name"),
+            Build::Ios | Build::Android => metas
+                .iter()
+                .filter(|m| meta_ident(m) == "uniffi")
+                .find_map(|m| arg_value(&meta_args(m), "name")),
         };
-        Some(
-            key.and_then(|k| arg_value(&meta_args(binding), k))
-                .unwrap_or_else(|| ident.to_string()),
-        )
+        Some(renamed.unwrap_or_else(|| ident.to_string()))
     }
 
     /// What the `#[pymodule]` in `src/platforms/python.rs` registers, in registration order.
@@ -1455,7 +1455,7 @@ mod reflect {
 
     /// A function an `#[uniffi::export]` impl block exposes.
     pub struct UniffiFn {
-        /// The exported type. uniffi keeps its Rust name.
+        /// The exported type, by the name Swift and Kotlin know it.
         pub owner: String,
         /// The camelCase name callers use.
         pub name: String,
@@ -1465,6 +1465,8 @@ mod reflect {
         pub throws: bool,
         /// Parameter types, receiver excluded.
         pub params: Vec<Type>,
+        /// How many trailing parameters a `default(...)` argument covers.
+        pub defaults: usize,
     }
 
     /// A uniffi enum whose variants carry no data.
@@ -1499,9 +1501,9 @@ mod reflect {
     /// A crate type uniffi doesn't export, and the mobile-only type that converts into it.
     /// Swift and Kotlin code names the second where Rust names the first.
     pub struct StandIn {
-        /// The crate type, such as `TextureRegion`.
+        /// The crate type, such as `Color`.
         pub ty: String,
-        /// The mobile-only type, such as `TextureRegionMobile`.
+        /// The name Swift and Kotlin give the mobile-only type.
         pub stand_in: String,
     }
 
@@ -1509,6 +1511,7 @@ mod reflect {
         /// Each crate type uniffi doesn't export in `build`,
         /// paired with the one exported type no Python or wasm build declares that converts into it,
         /// the way `impl From<TextureRegionMobile> for TextureRegion` pairs those two.
+        /// A pair whose mobile type exports under the crate type's own name needs no rename.
         pub fn stand_ins(&self, build: Build) -> Vec<StandIn> {
             let declared: BTreeSet<&str> = self.types_in(build).map(|t| t.ident.as_str()).collect();
             let exported: BTreeSet<&str> = self
@@ -1538,11 +1541,19 @@ mod reflect {
                 .filter_map(|(ty, sources)| match Vec::from_iter(sources).as_slice() {
                     [only] => Some(StandIn {
                         ty: ty.to_string(),
-                        stand_in: only.clone(),
+                        stand_in: self.uniffi_type_name(only, build),
                     }),
                     _ => None,
                 })
+                .filter(|s| s.ty != s.stand_in)
                 .collect()
+        }
+
+        /// The name Swift and Kotlin give the crate type `ident`.
+        fn uniffi_type_name(&self, ident: &str, build: Build) -> String {
+            self.type_named(ident, build)
+                .and_then(|t| exported_type_name(&t.attrs, &t.ident, build))
+                .unwrap_or_else(|| ident.to_string())
         }
 
         /// Functions the uniffi bindings export in `build`.
@@ -1559,12 +1570,13 @@ mod reflect {
                         (false, _) => CallKind::Method,
                     };
                     UniffiFn {
-                        owner: owner.to_string(),
+                        owner: self.uniffi_type_name(owner, build),
                         name,
                         kind,
                         is_async: f.sig.asyncness.is_some(),
                         throws: returns_result(&f.sig),
                         params: typed_params(&f.sig),
+                        defaults: uniffi_defaults(f, build),
                     }
                 })
                 .collect()
@@ -1684,6 +1696,26 @@ mod reflect {
                 })
                 .flat_map(move |imp| imp.fns.iter().filter(move |f| f.cfg.holds(build)))
         }
+    }
+
+    /// How many trailing parameters of `f` the `default(...)` argument of its uniffi attribute names.
+    fn uniffi_defaults(f: &FnDef, build: Build) -> usize {
+        let named: BTreeSet<String> = metas(&f.attrs, build)
+            .iter()
+            .filter(|m| matches!(meta_ident(m).as_str(), "method" | "constructor"))
+            .flat_map(|m| split_top_level(&meta_args(m)))
+            .filter_map(|part| {
+                let inner = part.strip_prefix("default")?.trim();
+                Some(inner.strip_prefix('(')?.strip_suffix(')')?.to_string())
+            })
+            .flat_map(|inner| split_top_level(&inner))
+            .filter_map(|pair| Some(pair.split_once('=')?.0.trim().to_string()))
+            .collect();
+        param_names(&f.sig)
+            .iter()
+            .rev()
+            .take_while(|name| named.contains(*name))
+            .count()
     }
 
     /// The name uniffi gives a function: its `name` argument or Rust name, in lowerCamelCase.
