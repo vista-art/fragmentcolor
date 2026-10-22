@@ -12,131 +12,196 @@ import QuartzCore
 extension Renderer {
     // MARK: - createTarget
 
-    /// Build a `MobileWindowTarget` from a `CAMetalLayer`. The uniffi-generated
+    /// Build a `WindowTarget` from a `CAMetalLayer`. The uniffi-generated
     /// `createTarget(metalLayerPtr:)` only accepts a raw pointer because
     /// uniffi cannot marshal `CAMetalLayer` directly; this overload does
     /// the pointer extraction so call sites read naturally.
-    public func createTarget(layer: CAMetalLayer) throws -> MobileWindowTarget {
+    public func createTarget(layer: CAMetalLayer) throws -> WindowTarget {
         let ptr = UInt64(UInt(bitPattern: Unmanaged.passUnretained(layer).toOpaque()))
         return try self.createTarget(metalLayerPtr: ptr)
     }
 
-    /// Build a `MobileWindowTarget` from a `CAMetalLayer`, unlabeled like every other platform's call.
-    public func createTarget(_ layer: CAMetalLayer) throws -> MobileWindowTarget {
+    /// Build a `WindowTarget` from a `CAMetalLayer`, unlabeled like every other platform's call.
+    public func createTarget(_ layer: CAMetalLayer) throws -> WindowTarget {
         try createTarget(layer: layer)
     }
 
-    // MARK: - createTextureTarget convenience
+    // MARK: - createTextureTarget
 
     /// Create a headless texture target from a `[width, height]` array.
-    public func createTextureTarget(_ size: [UInt32]) async throws -> MobileTextureTarget {
-        guard size.count >= 2 else {
-            throw FragmentColorError.Render("createTextureTarget: size array must have at least 2 elements")
-        }
-        return try await createTextureTarget(width: size[0], height: size[1])
+    public func createTextureTarget(_ size: [UInt32]) async throws -> TextureTarget {
+        try await createTextureTarget(try sizeRecord(size, "createTextureTarget"))
     }
 
-    /// Create a headless texture target from a `[Int]` array (convenient for literals).
-    public func createTextureTarget(_ size: [Int]) async throws -> MobileTextureTarget {
-        try await createTextureTarget(size.map { UInt32($0) })
+    /// Create a headless texture target from a `[width, height]` array of `Int`.
+    public func createTextureTarget(_ size: [Int]) async throws -> TextureTarget {
+        try await createTextureTarget(try sizeRecord(size, "createTextureTarget"))
     }
 
-    // MARK: - createDepthTexture convenience
+    /// Create a headless texture target from a `Size`.
+    public func createTextureTarget(_ size: Size) async throws -> TextureTarget {
+        try await createTextureTarget(width: size.width, height: size.height)
+    }
+
+    // MARK: - createDepthTexture
 
     /// Create a depth texture from a `[width, height]` array.
     public func createDepthTexture(_ size: [UInt32]) async throws -> Texture {
-        guard size.count >= 2 else {
-            throw FragmentColorError.Render("createDepthTexture: size array must have at least 2 elements")
-        }
-        return try await createDepthTexture(width: size[0], height: size[1])
+        try await createDepthTexture(try sizeRecord(size, "createDepthTexture"))
     }
 
-    /// Create a depth texture from a `[Int]` array.
+    /// Create a depth texture from a `[width, height]` array of `Int`.
     public func createDepthTexture(_ size: [Int]) async throws -> Texture {
-        try await createDepthTexture(size.map { UInt32($0) })
+        try await createDepthTexture(try sizeRecord(size, "createDepthTexture"))
     }
 
-    // MARK: - createStorageTexture convenience
+    /// Create a depth texture from a `Size`.
+    public func createDepthTexture(_ size: Size) async throws -> Texture {
+        try await createDepthTexture(width: size.width, height: size.height)
+    }
 
-    /// Create a storage texture from a `([width, height], format)` tuple.
+    // MARK: - createStorageTexture
+
+    /// Create a storage texture of `size` and `format`, optionally seeded with `data`.
+    /// `usage` replaces the default `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`.
+    public func createStorageTexture(
+        _ size: Size,
+        _ format: TextureFormat,
+        _ data: Data? = nil,
+        _ usage: TextureUsage? = nil
+    ) async throws -> Texture {
+        try await createStorageTexture(size: size, format: format, data: data, usageBits: usage?.bits)
+    }
+
+    /// Create a storage texture from a `[width, height]` or `[width, height, depth]` array.
+    public func createStorageTexture(
+        _ size: [Int],
+        _ format: TextureFormat,
+        _ data: Data? = nil,
+        _ usage: TextureUsage? = nil
+    ) async throws -> Texture {
+        let size = try sizeRecord(size, "createStorageTexture")
+        return try await createStorageTexture(size, format, data, usage)
+    }
+
+    /// Create a storage texture seeded with `[UInt8]` bytes.
+    public func createStorageTexture(
+        _ size: [Int],
+        _ format: TextureFormat,
+        _ data: [UInt8],
+        _ usage: TextureUsage? = nil
+    ) async throws -> Texture {
+        try await createStorageTexture(size, format, Data(data), usage)
+    }
+
+    /// Create a storage texture seeded with one `Int` per byte.
+    public func createStorageTexture(
+        _ size: [Int],
+        _ format: TextureFormat,
+        _ data: [Int],
+        _ usage: TextureUsage? = nil
+    ) async throws -> Texture {
+        try await createStorageTexture(size, format, try byteData(data, "createStorageTexture"), usage)
+    }
+
+    @available(*, deprecated, message: "Pass the size and format as separate arguments: createStorageTexture(size, format)")
     public func createStorageTexture(_ sizeAndFormat: ([Int], TextureFormat)) async throws -> Texture {
-        let sz = sizeAndFormat.0
-        guard sz.count >= 2 else {
-            throw FragmentColorError.Render("createStorageTexture: size array must have at least 2 elements")
-        }
-        return try await createStorageTexture(
-            size: Size(width: UInt32(sz[0]), height: UInt32(sz[1]), depth: nil),
-            format: sizeAndFormat.1,
-            data: nil,
-            usageBits: nil
-        )
+        try await createStorageTexture(sizeAndFormat.0, sizeAndFormat.1)
     }
 
-    /// Create a storage texture from a `([width, height], format, bytes)` tuple
-    /// where bytes are `[Int]` (convenient for `Array(repeating: 0, count: N)`).
+    @available(*, deprecated, message: "Pass the size, format and bytes as separate arguments: createStorageTexture(size, format, bytes)")
     public func createStorageTexture(_ sizeFormatData: ([Int], TextureFormat, [Int])) async throws -> Texture {
-        try await createStorageTexture((sizeFormatData.0, sizeFormatData.1, sizeFormatData.2.map { UInt8($0) }))
+        try await createStorageTexture(sizeFormatData.0, sizeFormatData.1, sizeFormatData.2)
     }
 
-    /// Create a storage texture from a `([width, height], format, bytes)` tuple.
+    @available(*, deprecated, message: "Pass the size, format and bytes as separate arguments: createStorageTexture(size, format, bytes)")
     public func createStorageTexture(_ sizeFormatData: ([Int], TextureFormat, [UInt8])) async throws -> Texture {
-        let sz = sizeFormatData.0
-        guard sz.count >= 2 else {
-            throw FragmentColorError.Render("createStorageTexture: size array must have at least 2 elements")
-        }
-        let data = Data(sizeFormatData.2)
-        return try await createStorageTexture(
-            size: Size(width: UInt32(sz[0]), height: UInt32(sz[1]), depth: nil),
-            format: sizeFormatData.1,
-            data: data,
-            usageBits: nil
-        )
+        try await createStorageTexture(sizeFormatData.0, sizeFormatData.1, sizeFormatData.2)
     }
 
-    // MARK: - createTexture convenience
+    // MARK: - createTexture
 
-    /// Create a texture from raw bytes + size: `([UInt8], [Int])` tuple.
-    public func createTexture(_ bytesAndSize: ([UInt8], [Int])) async throws -> Texture {
-        let data = Data(bytesAndSize.0)
-        let sz = bytesAndSize.1
-        let options: TextureOptions?
-        if sz.count >= 2 {
-            options = TextureOptions(
-                size: Size(width: UInt32(sz[0]), height: UInt32(sz[1]), depth: nil),
-                format: .rgba,
-                sampler: SamplerOptions(repeatX: false, repeatY: false, smooth: true, compare: nil),
-                mipmaps: false,
-                usage: nil
-            )
-        } else {
-            options = nil
-        }
-        return try await createTexture(input: .bytes(data), options: options)
+    /// Create a texture from encoded image bytes (PNG, JPEG and the other formats FragmentColor decodes).
+    /// `usage` adds to the `TEXTURE_BINDING | COPY_DST` every texture gets.
+    public func createTexture(_ bytes: Data, usage: TextureUsage? = nil) async throws -> Texture {
+        try await createTexture(input: .bytes(bytes), options: textureOptions(usage: usage))
     }
 
-    /// Create a texture from a `[Int]` byte array + `[Int]` size tuple.
-    public func createTexture(_ bytesAndSize: ([Int], [Int])) async throws -> Texture {
-        try await createTexture((bytesAndSize.0.map { UInt8($0) }, bytesAndSize.1))
+    /// Create a texture from encoded image bytes given as `[UInt8]`.
+    public func createTexture(_ bytes: [UInt8], usage: TextureUsage? = nil) async throws -> Texture {
+        try await createTexture(Data(bytes), usage: usage)
     }
 
-    /// Create a texture from a path string (URL or file path).
+    /// Create a texture from encoded image bytes, decoded into `format`.
+    public func createTexture(_ bytes: Data, _ format: TextureFormat, usage: TextureUsage? = nil) async throws -> Texture {
+        try await createTexture(input: .bytes(bytes), options: textureOptions(format: format, usage: usage))
+    }
+
+    /// Create a texture from encoded image bytes given as `[UInt8]`, decoded into `format`.
+    public func createTexture(_ bytes: [UInt8], _ format: TextureFormat, usage: TextureUsage? = nil) async throws -> Texture {
+        try await createTexture(Data(bytes), format, usage: usage)
+    }
+
+    /// Create a texture from raw RGBA pixels and their `Size`, so the bytes are never decoded.
+    public func createTexture(_ bytes: Data, _ size: Size, usage: TextureUsage? = nil) async throws -> Texture {
+        try await createTexture(input: .bytes(bytes), options: textureOptions(size: size, usage: usage))
+    }
+
+    /// Create a texture from raw RGBA pixels and their `[width, height]`.
+    public func createTexture(_ bytes: Data, _ size: [Int], usage: TextureUsage? = nil) async throws -> Texture {
+        try await createTexture(bytes, try sizeRecord(size, "createTexture"), usage: usage)
+    }
+
+    /// Create a texture from raw RGBA pixels given as `[UInt8]`, and their `[width, height]`.
+    public func createTexture(_ bytes: [UInt8], _ size: [Int], usage: TextureUsage? = nil) async throws -> Texture {
+        try await createTexture(Data(bytes), size, usage: usage)
+    }
+
+    /// Create a texture from raw RGBA pixels, one `Int` per byte, and their `[width, height]`.
+    public func createTexture(_ bytes: [Int], _ size: [Int], usage: TextureUsage? = nil) async throws -> Texture {
+        try await createTexture(try byteData(bytes, "createTexture"), size, usage: usage)
+    }
+
+    /// Create a texture from bytes with every option spelled out.
+    public func createTexture(_ bytes: Data, _ options: TextureOptions) async throws -> Texture {
+        try await createTexture(input: .bytes(bytes), options: options)
+    }
+
+    /// Create a texture from `[UInt8]` bytes with every option spelled out.
+    public func createTexture(_ bytes: [UInt8], _ options: TextureOptions) async throws -> Texture {
+        try await createTexture(Data(bytes), options)
+    }
+
+    /// Create a texture from an image file path or an `http(s)` URL.
     public func createTexture(_ path: String) async throws -> Texture {
-        if path.hasPrefix("http://") || path.hasPrefix("https://") {
-            return try await createTexture(input: .url(path), options: nil)
-        }
-        return try await createTexture(input: .path(path), options: nil)
+        try await createTexture(input: pathInput(path), options: nil)
+    }
+
+    /// Create a texture from an image file path or an `http(s)` URL, with every option spelled out.
+    public func createTexture(_ path: String, _ options: TextureOptions) async throws -> Texture {
+        try await createTexture(input: pathInput(path), options: options)
     }
 
     /// Create a texture from a `Mipmap`.
     public func createTexture(_ chain: Mipmap) async throws -> Texture {
-        return try await createTexture(input: .prepared(chain), options: nil)
+        try await createTexture(input: .prepared(chain), options: nil)
     }
 
     /// Default-options overload: drop the trailing `options: nil` from
     /// idiomatic call sites. Mirrors the JS / Python bindings where
     /// `create_texture(input)` is fine without an explicit options arg.
     public func createTexture(input: TextureInputMobile) async throws -> Texture {
-        return try await createTexture(input: input, options: nil)
+        try await createTexture(input: input, options: nil)
+    }
+
+    @available(*, deprecated, message: "Pass the bytes and size as separate arguments: createTexture(bytes, size)")
+    public func createTexture(_ bytesAndSize: ([UInt8], [Int])) async throws -> Texture {
+        try await createTexture(bytesAndSize.0, bytesAndSize.1)
+    }
+
+    @available(*, deprecated, message: "Pass the bytes and size as separate arguments: createTexture(bytes, size)")
+    public func createTexture(_ bytesAndSize: ([Int], [Int])) async throws -> Texture {
+        try await createTexture(bytesAndSize.0, bytesAndSize.1)
     }
 
     // MARK: - unregisterTexture convenience
@@ -169,43 +234,43 @@ extension Renderer {
     /// native types into the matching variants invisibly so callers just
     /// write `try renderer.render(shader, target)` (or `pass`, `mesh`,
     /// `passList`).
-    public func render(_ shader: Shader, _ target: MobileWindowTarget) throws {
+    public func render(_ shader: Shader, _ target: WindowTarget) throws {
         try self.render(renderable: .shader(shader), target: .window(target))
     }
 
-    public func render(_ shader: Shader, _ target: MobileTextureTarget) throws {
+    public func render(_ shader: Shader, _ target: TextureTarget) throws {
         try self.render(renderable: .shader(shader), target: .texture(target))
     }
 
-    public func render(_ pass: Pass, _ target: MobileWindowTarget) throws {
+    public func render(_ pass: Pass, _ target: WindowTarget) throws {
         try self.render(renderable: .pass(pass), target: .window(target))
     }
 
-    public func render(_ pass: Pass, _ target: MobileTextureTarget) throws {
+    public func render(_ pass: Pass, _ target: TextureTarget) throws {
         try self.render(renderable: .pass(pass), target: .texture(target))
     }
 
-    public func render(_ mesh: Mesh, _ target: MobileWindowTarget) throws {
+    public func render(_ mesh: Mesh, _ target: WindowTarget) throws {
         try self.render(renderable: .mesh(mesh), target: .window(target))
     }
 
-    public func render(_ mesh: Mesh, _ target: MobileTextureTarget) throws {
+    public func render(_ mesh: Mesh, _ target: TextureTarget) throws {
         try self.render(renderable: .mesh(mesh), target: .texture(target))
     }
 
-    public func render(_ passes: [Pass], _ target: MobileWindowTarget) throws {
+    public func render(_ passes: [Pass], _ target: WindowTarget) throws {
         try self.render(renderable: .passes(passes), target: .window(target))
     }
 
-    public func render(_ passes: [Pass], _ target: MobileTextureTarget) throws {
+    public func render(_ passes: [Pass], _ target: TextureTarget) throws {
         try self.render(renderable: .passes(passes), target: .texture(target))
     }
 
-    public func render(_ scene: Scene, _ target: MobileWindowTarget) throws {
+    public func render(_ scene: Scene, _ target: WindowTarget) throws {
         try self.render(renderable: .scene(scene), target: .window(target))
     }
 
-    public func render(_ scene: Scene, _ target: MobileTextureTarget) throws {
+    public func render(_ scene: Scene, _ target: TextureTarget) throws {
         try self.render(renderable: .scene(scene), target: .texture(target))
     }
 
@@ -236,4 +301,53 @@ extension Renderer {
     public func load(_ scene: Scene) async throws {
         try await self.load(renderable: .scene(scene))
     }
+}
+
+/// A `Size` from `[width, height]` or `[width, height, depth]`.
+/// Throws for any other length and for a value `UInt32` can't hold.
+func sizeRecord<T: BinaryInteger>(_ size: [T], _ method: String) throws -> Size {
+    guard size.count == 2 || size.count == 3 else {
+        throw FragmentColorError.Render("\(method): a size holds 2 or 3 numbers, got \(size.count)")
+    }
+    let dims = try size.map { value -> UInt32 in
+        guard let dim = UInt32(exactly: value) else {
+            throw FragmentColorError.Render("\(method): \(value) is not a valid size")
+        }
+        return dim
+    }
+    return Size(width: dims[0], height: dims[1], depth: dims.count == 3 ? dims[2] : nil)
+}
+
+/// Bytes from one `Int` per byte. Throws for a value outside 0...255.
+func byteData(_ bytes: [Int], _ method: String) throws -> Data {
+    Data(try bytes.map { value -> UInt8 in
+        guard let byte = UInt8(exactly: value) else {
+            throw FragmentColorError.Render("\(method): \(value) is not a byte")
+        }
+        return byte
+    })
+}
+
+/// A URL input for `http(s)`, otherwise a file path.
+private func pathInput(_ path: String) -> TextureInputMobile {
+    path.hasPrefix("http://") || path.hasPrefix("https://") ? .url(path) : .path(path)
+}
+
+/// Rust's default `TextureOptions` with an optional size, format and usage,
+/// or `nil` when nothing differs, so the renderer applies its own defaults.
+private func textureOptions(
+    size: Size? = nil,
+    format: TextureFormat? = nil,
+    usage: TextureUsage? = nil
+) -> TextureOptions? {
+    if size == nil && format == nil && usage == nil {
+        return nil
+    }
+    return TextureOptions(
+        size: size,
+        format: format ?? .rgba,
+        sampler: SamplerOptions(repeatX: false, repeatY: false, smooth: true, compare: nil),
+        mipmaps: true,
+        usage: usage?.bits
+    )
 }
