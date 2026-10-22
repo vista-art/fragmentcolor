@@ -2,11 +2,13 @@
 
 Attach a Mesh to this Pass.
 
-- The mesh is attached to the last shader previously added to this Pass.
-- Validates compatibility with that shader’s vertex inputs.
-- Returns Result<(), ShaderError>; on error, the mesh is not attached.
+- The mesh is attached to the last shader in this Pass that accepts it.
+- Each shader checks the mesh against its vertex inputs.
+- Returns `Result<(), PassError>`. When no shader accepts the mesh, the error is
+  `PassError::NoCompatibleShader` and the mesh is not attached.
 
-If a Shader wasn't provided earlier, FragmentColor will create a default one.
+A Pass with no shaders has nothing to attach the mesh to, so it returns the same
+error. No default shader is created.
 
 ## Example
 

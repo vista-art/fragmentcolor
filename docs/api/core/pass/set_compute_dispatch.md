@@ -4,7 +4,7 @@ Set the workgroup-grid size for a compute pass. The three numbers are the
 number of workgroups to dispatch in each dimension; total invocations are
 `x * y * z * workgroup_size_x * workgroup_size_y * workgroup_size_z`,
 where the per-workgroup size comes from the WGSL `@workgroup_size`
-attribute. Has no effect on render passes.
+attribute. A 0 in any dimension becomes 1. Has no effect on render passes.
 
 ## Example
 

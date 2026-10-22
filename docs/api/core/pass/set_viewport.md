@@ -6,6 +6,8 @@ The viewport restricts drawing to a rectangular area of the [Target](https://fra
 
 The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly.
 
+The renderer doesn't apply the viewport yet, so the pass still draws to the whole target.
+
 ## Example
 
 ```rust

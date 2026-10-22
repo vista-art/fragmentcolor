@@ -3,8 +3,9 @@
 Absorb any `SceneObject` (a
 [Model](https://fragmentcolor.org/api/scene/model),
 [Camera](https://fragmentcolor.org/api/scene/camera),
-[Light](https://fragmentcolor.org/api/scene/light), or a user-defined
-node that implements the trait) into the pass. Each kind brings its
+[Light](https://fragmentcolor.org/api/scene/light), or, in Rust, a
+user-defined node that implements the trait) into the pass. The other
+bindings take the built-in kinds. Each kind brings its
 own attach behaviour: a Model queues a draw with its own per-instance
 transform; a Camera or Light wires its uniforms into every shader the
 pass renders, both the ones already there and the ones added afterwards.
@@ -14,8 +15,11 @@ same value (`camera.look_at(...)`, `light.set_color(...)`) propagate to
 every shader on the pass with no further `add` call.
 
 Returns `Result<&Pass, PassError>`. Models can fail at attach time when
-the Mesh layout doesn't match the Material's shader; Cameras and Lights
-always succeed. Chain with `?` between calls.
+the Mesh layout doesn't match the Material's shader, and Cameras always
+succeed. A Light fails with `PassError::LightCapReached` when a shader
+on the pass already holds 32 lights. Lights added before their shaders
+join the pass don't fail: a shader past the cap drops the extra ones
+with a logged warning instead. Chain with `?` between calls.
 
 ## Example
 
