@@ -211,6 +211,8 @@ The Python stub leaves out binding plumbing. `passes`, `renderable_type`, and th
 
 Rust-only internals leave the docs. The device setup functions, the texture and buffer pool types, the default and Shadertoy shader constants, `headless_window`, the glam and wgpu conversions of `UniformData`, and `TextureData::DynamicImage` are hidden from rustdoc and turn crate-private in 0.13.
 
+Python `Texture.get_image` returns a uint8 NumPy array shaped `(height, width, bytes per pixel)`, with a leading layer axis for array textures, the same layout `TextureTarget.get_image` returns. It returned flat `bytes` before. `bytes(image)` still gives the flat bytes, and a float format reads as floats through `image.view(numpy.float32)`. Every other language keeps returning flat bytes in the same row order.
+
 ## 0.12.5: WebGL2 fixes
 
 A patch release that makes the WebGL2 fallback work. There are no API changes.
