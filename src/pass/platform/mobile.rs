@@ -40,6 +40,23 @@ pub struct MobilePassInput {
     pub color_rgba: u32,
 }
 
+// The accessors JavaScript and Python read a `PassInput` with. Like theirs,
+// they have no doc pages of their own.
+#[uniffi::export(name = "PassInput")]
+impl MobilePassInput {
+    #[doc(hidden)]
+    #[uniffi::method(name = "loadsPrevious")]
+    pub fn loads_previous_mobile(&self) -> bool {
+        self.load
+    }
+
+    #[doc(hidden)]
+    #[uniffi::method(name = "color")]
+    pub fn color_mobile(&self) -> Vec<f32> {
+        crate::Color(self.color_rgba).to_f32_array().to_vec()
+    }
+}
+
 impl From<PassInput> for MobilePassInput {
     fn from(pi: PassInput) -> Self {
         Self {
