@@ -301,6 +301,26 @@ impl From<&std::path::PathBuf> for TextureData {
         TextureData::Path(p.clone())
     }
 }
+/// A string is a URL when it starts with `http://` or `https://`, and a file path otherwise.
+impl From<&str> for TextureData {
+    fn from(source: &str) -> Self {
+        if source.starts_with("http://") || source.starts_with("https://") {
+            TextureData::Url(source.to_string())
+        } else {
+            TextureData::Path(std::path::PathBuf::from(source))
+        }
+    }
+}
+impl From<String> for TextureData {
+    fn from(source: String) -> Self {
+        TextureData::from(source.as_str())
+    }
+}
+impl From<&String> for TextureData {
+    fn from(source: &String) -> Self {
+        TextureData::from(source.as_str())
+    }
+}
 impl From<&Texture> for TextureData {
     fn from(t: &Texture) -> Self {
         TextureData::CloneOf(t.clone())
@@ -1737,6 +1757,37 @@ mod tests {
             TextureData::Path(pb) => assert_eq!(pb, p),
             _ => panic!("expected Path"),
         }
+    }
+
+    // Story: a string is a URL with an http(s) scheme and a file path otherwise.
+    #[test]
+    fn texture_input_from_strings() {
+        assert!(matches!(
+            TextureData::from("https://example.com/logo.png"),
+            TextureData::Url(url) if url == "https://example.com/logo.png"
+        ));
+        assert!(matches!(
+            TextureData::from(String::from("assets/logo.png")),
+            TextureData::Path(path) if path == std::path::Path::new("assets/logo.png")
+        ));
+        let input = TextureInput::from(("logo.png", [2u32, 2]));
+        assert!(matches!(input.data, TextureData::Path(_)));
+        assert_eq!(input.options.size, Some(Size::from([2u32, 2])));
+    }
+
+    // Story: Mipmap::level returns one level and errors past the end.
+    #[test]
+    fn mipmap_level_indexes_the_chain() {
+        let pixels = vec![9u8; 4 * 4 * 4];
+        let chain = Mipmap::build((
+            pixels.as_slice(),
+            crate::TextureFormat::Rgba8Unorm,
+            [4u32, 4],
+        ))
+        .expect("chain");
+        assert_eq!(chain.level(0).expect("level 0").len(), 4 * 4 * 4);
+        assert_eq!(chain.level(2).expect("level 2").len(), 4);
+        assert!(matches!(chain.level(3), Err(TextureError::InvalidInput(_))));
     }
 
     // Story: Create a texture from a dynamic image and verify aspect.

@@ -44,6 +44,9 @@ macro_rules! spec_from_input {
 
 spec_from_input!(
     &[u8],
+    &str,
+    String,
+    &String,
     Vec<u8>,
     &Vec<u8>,
     &std::path::Path,
@@ -79,6 +82,9 @@ macro_rules! spec_from_input_with_options {
 
 spec_from_input_with_options!(
     &[u8],
+    &str,
+    String,
+    &String,
     Vec<u8>,
     &Vec<u8>,
     &std::path::Path,
