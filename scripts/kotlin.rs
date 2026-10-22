@@ -28,7 +28,7 @@ mod kotlin {
 
     use heck::{ToLowerCamelCase, ToShoutySnakeCase};
 
-    use crate::reflect::{Build, CallKind, Reflection, SliceGetter, StandIn, StrConst, replace_qualified};
+    use crate::reflect::{Build, CallKind, Reflection, SliceGetter, StandIn, replace_qualified};
     use crate::source_text::{
         Nesting, arg_spans, closing, code_only, drop_semicolon_before_comment, extension_files,
         is_ident_char, read_ident, skip_space, split_args, top_level_words,
@@ -44,7 +44,9 @@ mod kotlin {
         Float,
         /// `UInt`, `ULong`, `UShort` or `UByte`, by name.
         Unsigned(String),
-        /// Any other number: `Double`, `Int`, `Long`, `Short` or `Byte`.
+        /// `Int`, which an integer literal fits as written.
+        Int,
+        /// Any other number: `Double`, `Long`, `Short` or `Byte`.
         Number,
         List(Box<KType>),
         /// `Array<T>`, which `arrayOf(...)` already builds.
@@ -82,6 +84,8 @@ mod kotlin {
     struct Slot {
         /// A number needs the `f` suffix.
         float: bool,
+        /// Every receiver takes an `Int` here, so an integer literal stays as written.
+        int: bool,
         /// An integer needs the `u` suffix.
         /// Holds the Kotlin type a value converts to
         /// when an array spreads into separate arguments.
@@ -97,13 +101,30 @@ mod kotlin {
     }
 
     /// How a list's elements change when `arrayOf` becomes `listOf`.
-    #[derive(PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
     enum Elems {
         AsIs,
         Float,
+        /// Each element is itself a list of `Float`s, such as a vertex position.
+        Rows,
         Unsigned,
         /// Each `arrayOf(numbers)` element builds this type.
         Wrap(String),
+    }
+
+    impl Elems {
+        /// Which of several shapes every receiver takes is written:
+        /// floats first, then plain numbers, which need no `u` suffix,
+        /// and a constructor around each element last.
+        fn preference(&self) -> u8 {
+            match self {
+                Elems::Float => 0,
+                Elems::Rows => 1,
+                Elems::AsIs => 2,
+                Elems::Unsigned => 3,
+                Elems::Wrap(_) => 4,
+            }
+        }
     }
 
     /// Slots by needle, then by argument count.
@@ -133,8 +154,6 @@ mod kotlin {
 
     /// API facts the Kotlin rewrites read, derived from the source model.
     struct Facts {
-        /// String constants the Kotlin bindings don't expose.
-        consts: Vec<StrConst>,
         /// Crate types Kotlin names by the mobile-only type that converts into them.
         stand_ins: Vec<StandIn>,
         calls: CallPlans,
@@ -155,7 +174,8 @@ mod kotlin {
         let mut callables = Vec::new();
         for f in model.uniffi_fns(Build::Android) {
             let params: Vec<KType> = f.params.iter().map(uniffi_type).collect();
-            let nullable = f.params.iter().rev().take_while(|t| is_option(t)).count();
+            let required = &f.params[..f.params.len() - f.defaults];
+            let nullable = required.iter().rev().take_while(|t| is_option(t)).count();
             let needles = match f.kind {
                 CallKind::Init => vec![format!("{}(", f.owner), format!("{}.new(", f.owner)],
                 CallKind::Static | CallKind::Method => vec![format!(".{}(", f.name)],
@@ -165,7 +185,7 @@ mod kotlin {
                     owner: Some(f.owner.clone()),
                     needle,
                     params: params.clone(),
-                    defaults: 0,
+                    defaults: f.defaults,
                     nullable,
                     generated: true,
                 });
@@ -176,7 +196,6 @@ mod kotlin {
         let mut conflicts = Vec::new();
         let calls = plan_calls(&callables, &records, &mut conflicts);
         let _ = FACTS.set(Facts {
-            consts: model.str_consts(Build::Android),
             stand_ins: model.stand_ins(Build::Android),
             calls,
             conflicts,
@@ -236,7 +255,8 @@ mod kotlin {
             ("u16", _) => KType::Unsigned("UShort".into()),
             ("u32", _) => KType::Unsigned("UInt".into()),
             ("u64", _) => KType::Unsigned("ULong".into()),
-            ("f64" | "i8" | "i16" | "i32" | "i64", _) => KType::Number,
+            ("i32", _) => KType::Int,
+            ("f64" | "i8" | "i16" | "i64", _) => KType::Number,
             ("Option" | "Arc" | "Box", Some(t)) => uniffi_type(t),
             // uniffi passes bytes as a `ByteArray`.
             ("Vec", Some(t)) if uniffi_type(t) == KType::Unsigned("UByte".into()) => {
@@ -256,7 +276,8 @@ mod kotlin {
         match text {
             "Float" => KType::Float,
             "UInt" | "ULong" | "UShort" | "UByte" => KType::Unsigned(text.to_string()),
-            "Double" | "Int" | "Long" | "Short" | "Byte" => KType::Number,
+            "Int" => KType::Int,
+            "Double" | "Long" | "Short" | "Byte" => KType::Number,
             _ if text.starts_with("Array<") => KType::Array,
             _ if text.ends_with("Array") => KType::PrimitiveArray(text.to_string()),
             _ => KType::Named(text.to_string()),
@@ -282,7 +303,11 @@ mod kotlin {
                 };
                 let path: Vec<&str> = code[start..open].trim().split('.').collect();
                 let line = code[..at].rfind('\n').map_or(0, |p| p + 1);
-                let operator = code[line..at].split_whitespace().any(|w| w == "operator");
+                let modifiers: Vec<&str> = code[line..at].split_whitespace().collect();
+                if modifiers.iter().any(|w| matches!(*w, "private" | "internal")) {
+                    continue;
+                }
+                let operator = modifiers.contains(&"operator");
                 let (owner, needles) = match path.as_slice() {
                     [owner, "Companion", "invoke"] if operator => {
                         (Some(owner.to_string()), vec![format!("{owner}("), format!("{owner}.new(")])
@@ -453,12 +478,16 @@ mod kotlin {
 
     /// `Double`, `Int` and the other numbers a `Float` literal doesn't fit.
     fn is_other_number(t: &KType) -> bool {
-        matches!(t, KType::Number | KType::Unsigned(_))
+        matches!(t, KType::Int | KType::Number | KType::Unsigned(_))
     }
 
     /// `Float`, `Double`, `Int` and the other numbers an unsigned literal doesn't fit.
     fn is_signed(t: &KType) -> bool {
-        matches!(t, KType::Float | KType::Number)
+        matches!(t, KType::Float | KType::Int | KType::Number)
+    }
+
+    fn is_int(t: &KType) -> bool {
+        *t == KType::Int
     }
 
     fn is_list(t: &KType) -> bool {
@@ -487,6 +516,7 @@ mod kotlin {
     ) -> Slot {
         Slot {
             float: float_slot(receivers, conflicts),
+            int: !receivers.by_owner.is_empty() && receivers.owners(|ts| !has(ts, is_int)).is_empty(),
             unsigned: unsigned_slot(receivers, conflicts),
             list: list_slot(receivers, wraps, conflicts),
             wrap: wrap_slot(receivers, wraps),
@@ -497,15 +527,19 @@ mod kotlin {
     }
 
     /// Whether a number here needs the `f` suffix.
+    /// A receiver that also takes a `Double` here gets a `Float` too,
+    /// the type a list here becomes, so one overload takes every argument.
     fn float_slot(receivers: &Receivers, conflicts: &mut Vec<Conflict>) -> bool {
         let wants = receivers.owners(|ts| has(ts, is_float) && !has(ts, is_other_number));
         let rejects = receivers.owners(|ts| has(ts, is_other_number) && !has(ts, is_float));
-        if !wants.is_empty() && !rejects.is_empty() {
-            let changes = |arg: &str| floatify_if_numeric(arg) != arg;
-            conflicts.push(receivers.disagreement("a Float", &wants, &rejects, changes));
+        if !rejects.is_empty() {
+            if !wants.is_empty() {
+                let changes = |arg: &str| floatify_if_numeric(arg) != arg;
+                conflicts.push(receivers.disagreement("a Float", &wants, &rejects, changes));
+            }
             return false;
         }
-        receivers.any(is_float) && !receivers.any(is_other_number)
+        receivers.any(is_float)
     }
 
     /// The unsigned type an integer here converts to,
@@ -519,6 +553,10 @@ mod kotlin {
                 KType::Unsigned(name) => Some(name.clone()),
                 _ => None,
             })?;
+        // An `Int` overload next to every unsigned one reads a plain literal.
+        if receivers.owners(|ts| has(ts, is_unsigned) && !has(ts, is_int)).is_empty() {
+            return None;
+        }
         let rejects = receivers.owners(|ts| has(ts, is_signed) && !has(ts, is_unsigned));
         if !rejects.is_empty() {
             let wants = receivers.owners(|ts| has(ts, is_unsigned));
@@ -543,18 +581,25 @@ mod kotlin {
             conflicts.push(receivers.disagreement("a List", &wants, &rejects, changes));
             return None;
         }
-        let elems: BTreeSet<Elems> =
-            receivers.types().filter_map(|t| list_elems(t, wraps)).collect();
-        if elems.len() > 1 {
-            let n = receivers.position + 1;
-            let reason = format!("it takes lists of different element types at argument {n}");
-            conflicts.push(receivers.conflict(reason, changes));
-            return None;
-        }
         if wants.is_empty() || receivers.any(is_object_array) {
             return None;
         }
-        elems.into_iter().next()
+        // The shapes each receiver takes here, and the most preferred one all of them take.
+        let taken: Vec<BTreeSet<Elems>> = receivers
+            .by_owner
+            .values()
+            .map(|types| types.iter().filter_map(|t| list_elems(t, wraps)).collect())
+            .filter(|shapes: &BTreeSet<Elems>| !shapes.is_empty())
+            .collect();
+        let mut candidates: Vec<&Elems> = taken.iter().flatten().collect();
+        candidates.sort_by_key(|e| e.preference());
+        let shared = candidates.into_iter().find(|e| taken.iter().all(|shapes| shapes.contains(*e)));
+        if shared.is_none() {
+            let n = receivers.position + 1;
+            let reason = format!("it takes lists of different element types at argument {n}");
+            conflicts.push(receivers.conflict(reason, changes));
+        }
+        shared.cloned()
     }
 
     /// How the elements of a `List` parameter type change.
@@ -564,6 +609,7 @@ mod kotlin {
         };
         Some(match &**element {
             KType::Float => Elems::Float,
+            KType::List(row) if **row == KType::Float => Elems::Rows,
             KType::Unsigned(_) => Elems::Unsigned,
             KType::Named(name) if wraps.contains(name.as_str()) => Elems::Wrap(name.clone()),
             _ => Elems::AsIs,
@@ -763,9 +809,6 @@ mod kotlin {
             if next == out { break; }
             out = next;
         }
-        // API-specific rewrites (all now see arrayOf(...) for array literals)
-        out = rewrite_setviewport_tuple(&out);
-        // After the rewrites above, which still read the tuple of their own call.
         out = spread_tuple_args(&out);
         // Before the unsigned pass, which suffixes the index it moves into the call.
         out = rewrite_index_accessors(&out);
@@ -783,26 +826,7 @@ mod kotlin {
         out = drop_dot_new(&out);
         // Kotlin requires `for (x in y) { ... }`; Rust uses `for x in y { ... }`.
         // Add the parens so the binding declaration parses correctly.
-        out = wrap_for_in_parens(&out);
-        // Inline `Vertex.<UV0|UV1|NORMAL|TANGENT|COLOR0|COLOR1>` as the bare
-        // string literal. Uniffi has no equivalent of pyo3 classattr or Swift
-        // static let to surface the Rust-side `pub const UV0: &str = "uv0"`
-        // declarations on the binding; the transpiler resolves the lookup
-        // here so example code keeps reading `Vertex.UV0` on the Rust side.
-        out = inline_vertex_attr_constants(&out);
-
-        out
-    }
-
-    /// Inline associated string consts such as `Vertex.UV0`, which uniffi
-    /// can't surface on Kotlin.
-    fn inline_vertex_attr_constants(line: &str) -> String {
-        crate::reflect::inline_str_consts(line, &facts().consts, kotlin_quoted)
-    }
-
-    /// A Kotlin string literal holding `value`; `$` would start a template.
-    fn kotlin_quoted(value: &str) -> String {
-        crate::convert::quoted(value).replace('$', "\\$")
+        wrap_for_in_parens(&out)
     }
 
     /// Rewrites the trimmed arguments of one call, given its needle. `None` keeps them.
@@ -903,7 +927,7 @@ mod kotlin {
                 .zip(slots)
                 .map(|(arg, slot)| {
                     let rewritten = match (&slot.list, &slot.wrap, &slot.record) {
-                        (Some(elems), _, _) => array_to_list(arg, elems),
+                        (Some(elems), _, _) => array_to_list(&tuple_as_array(arg), elems),
                         (None, Some(ty), _) => scalar_items(arg).map(|items| float_list_of(ty, &items)),
                         (None, None, Some(record)) => scalar_items(arg).and_then(|items| record_of(record, &items)),
                         (None, None, None) if slot.float_array => {
@@ -916,6 +940,15 @@ mod kotlin {
                 .collect();
             (new != args).then_some(new)
         })
+    }
+
+    /// `(a, b)` → `arrayOf(a, b)`, where a Rust tuple such as the origin of
+    /// `ScreenRegion::new((0, 0), (32, 32))` stands for a list. Anything else passes through.
+    fn tuple_as_array(arg: &str) -> String {
+        let is_tuple = arg.starts_with('(')
+            && closing(arg, 0) == Some(arg.len() - 1)
+            && split_args(&arg[1..arg.len() - 1]).len() > 1;
+        if is_tuple { format!("arrayOf{arg}") } else { arg.to_string() }
     }
 
     /// `f((a, b))` → `f(a, b, null)`.
@@ -970,6 +1003,10 @@ mod kotlin {
             Elems::AsIs => return Some(format!("listOf({inner})")),
             Elems::Float => row_items(arg).or_else(|| scalar_items(arg))?.iter().map(|i| floatify_if_numeric(i)).collect(),
             Elems::Unsigned => scalar_items(arg)?.iter().map(|i| unsigned_literal(i)).collect(),
+            Elems::Rows => split_args(inner)
+                .iter()
+                .map(|row| scalar_items(row).map_or_else(|| row.clone(), |nums| format!("listOf({})", float_args(&nums))))
+                .collect(),
             Elems::Wrap(ty) => split_args(inner)
                 .iter()
                 .map(|item| scalar_items(item).map_or_else(|| item.clone(), |nums| float_list_of(ty, &nums)))
@@ -1021,7 +1058,14 @@ mod kotlin {
             let new: Vec<String> = args
                 .iter()
                 .zip(slots)
-                .map(|(arg, slot)| if slot.float { floatify_if_numeric(arg) } else { arg.clone() })
+                .map(|(arg, slot)| {
+                    let int_literal = !arg.is_empty() && arg.chars().all(|c| c.is_ascii_digit() || c == '_');
+                    if slot.float && !(slot.int && int_literal) {
+                        floatify_if_numeric(arg)
+                    } else {
+                        arg.clone()
+                    }
+                })
                 .collect();
             (new != args).then_some(new)
         })
@@ -1225,79 +1269,6 @@ mod kotlin {
         // `.asSlice()` is a Rust-specific method — drop it entirely
         out = out.replace(".asSlice()", "");
         out
-    }
-
-    // `pass.setViewport(arrayOf((0, 0), (32, 32)))` →
-    // `pass.setViewport(ScreenRegion(minX=0u, minY=0u, maxX=32u, maxY=32u))`
-    //
-    // The JS source `[region]` = `[[x1,y1],[x2,y2]]` representing top-left/bottom-right.
-    // ScreenRegion takes (minX, minY, maxX, maxY).
-    fn rewrite_setviewport_tuple(line: &str) -> String {
-        let needle = "setViewport(";
-        let Some(start) = line.find(needle) else { return line.to_string(); };
-        let call_start = start + needle.len();
-        let chars: Vec<char> = line.chars().collect();
-
-        let mut depth = 0i32;
-        let mut end = call_start;
-        let mut j = call_start;
-        while j < chars.len() {
-            match chars[j] {
-                '(' => depth += 1,
-                ')' => {
-                    if depth == 0 { end = j; break; }
-                    depth -= 1;
-                }
-                _ => {}
-            }
-            j += 1;
-        }
-
-        let inner: String = chars[call_start..end].iter().collect();
-        let inner_trim = inner.trim();
-
-        // Already a ScreenRegion?
-        if inner_trim.starts_with("ScreenRegion") {
-            return line.to_string();
-        }
-
-        // `arrayOf((x1, y1), (x2, y2))` or plain `arrayOf(0, 0, w, h)` form
-        // Also handle `arrayOf((x, y), (x2, y2))` — the tuple-of-tuples from JS conversion
-        if inner_trim.starts_with("arrayOf(") && inner_trim.ends_with(')') {
-            let args_str = &inner_trim["arrayOf(".len()..inner_trim.len() - 1];
-            // Try to extract 4 integers from potentially nested parens
-            let nums = extract_all_integers(args_str);
-            if nums.len() == 4 {
-                let before = &line[..start + needle.len() - 1];
-                let after = &line[end + 1..];
-                return format!(
-                    "{}(ScreenRegion(minX={}u, minY={}u, maxX={}u, maxY={}u)){}",
-                    before, nums[0], nums[1], nums[2], nums[3], after
-                );
-            }
-        }
-
-        line.to_string()
-    }
-
-    // Extract all integer literals from a string (for parsing viewport tuples)
-    fn extract_all_integers(s: &str) -> Vec<String> {
-        let mut result = Vec::new();
-        let mut current = String::new();
-        for c in s.chars() {
-            if c.is_ascii_digit() {
-                current.push(c);
-            } else {
-                if !current.is_empty() {
-                    result.push(current.clone());
-                    current.clear();
-                }
-            }
-        }
-        if !current.is_empty() {
-            result.push(current);
-        }
-        result
     }
 
     /// Returns `s` with the `f` suffix appended if it's a bare numeric literal
@@ -1902,7 +1873,7 @@ mod kotlin {
         out
     }
 
-    /// `TextureRegion` → `TextureRegionMobile`, the mobile-only type that stands in for it.
+    /// A crate type uniffi doesn't export → the mobile type that stands in for it.
     fn rename_stand_ins(line: &str) -> String {
         facts()
             .stand_ins
