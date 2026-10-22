@@ -1,111 +1,91 @@
-use crate::{Mesh, Pass, PassObject, PyPassIterator, Renderable, Scene, Shader};
+use crate::{Mesh, Pass, PassObject, Renderable, Scene, Shader};
+use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PySequence};
+use pyo3::types::{PyAny, PySequence, PyString};
 use std::sync::Arc;
 
-#[pyclass]
+const EXPECTED: &str = "Expected a Scene, Pass, Shader, Mesh, or a sequence of them";
+
+/// A renderable built from Python: one object, or a sequence of them.
+///
+/// It keeps the passes to render and the roots that `Pass.require` links.
+/// One object renders as Rust renders it, so a Pass brings the passes it requires.
+/// A sequence renders its passes in order, and a Pass in it renders on its own, as in a Rust list.
 pub struct PyRenderable {
-    iterator: PyPassIterator,
-}
-
-impl<'py> TryFrom<&'py Bound<'py, Shader>> for PyRenderable {
-    type Error = PyErr;
-    fn try_from(shader: &Bound<'py, Shader>) -> PyResult<Self> {
-        Python::attach(|_| -> PyResult<Self> {
-            let iterator = shader.call_method0("passes")?.extract::<PyPassIterator>()?;
-            Ok(Self { iterator })
-        })
-    }
-}
-
-impl<'py> TryFrom<&'py Bound<'py, Pass>> for PyRenderable {
-    type Error = PyErr;
-    fn try_from(pass: &Bound<'py, Pass>) -> PyResult<Self> {
-        Python::attach(|_| -> PyResult<Self> {
-            let iterator = pass.call_method0("passes")?.extract::<PyPassIterator>()?;
-            Ok(Self { iterator })
-        })
-    }
-}
-
-impl<'py> TryFrom<&'py Bound<'py, Scene>> for PyRenderable {
-    type Error = PyErr;
-    fn try_from(scene: &Bound<'py, Scene>) -> PyResult<Self> {
-        Python::attach(|_| -> PyResult<Self> {
-            let iterator = scene.call_method0("passes")?.extract::<PyPassIterator>()?;
-            Ok(Self { iterator })
-        })
-    }
-}
-
-impl<'py> TryFrom<&'py Bound<'py, Mesh>> for PyRenderable {
-    type Error = PyErr;
-    fn try_from(mesh: &Bound<'py, Mesh>) -> PyResult<Self> {
-        Python::attach(|_| -> PyResult<Self> {
-            let iterator = mesh.call_method0("passes")?.extract::<PyPassIterator>()?;
-            Ok(Self { iterator })
-        })
-    }
+    passes: Vec<Arc<PassObject>>,
+    roots: Vec<Arc<PassObject>>,
 }
 
 impl PyRenderable {
-    /// Build a renderable from a Python object:
-    /// - Scene, Pass, Shader, Mesh
-    /// - Or a Python sequence (list/tuple) of these; collects all passes across items
-    pub fn from_any<'py>(obj: &Bound<'py, PyAny>) -> PyResult<Self> {
-        // Try object with renderable_type()
-        if let Ok(rtype) = obj
-            .call_method0("renderable_type")
-            .and_then(|v| v.extract::<String>())
-        {
-            return match rtype.as_str() {
-                "Pass" => {
-                    let pass = obj.cast::<Pass>()?;
-                    Ok(PyRenderable::try_from(pass)?)
-                }
-                "Shader" => {
-                    let shader = obj.cast::<Shader>()?;
-                    Ok(PyRenderable::try_from(shader)?)
-                }
-                "Scene" => {
-                    let scene = obj.cast::<Scene>()?;
-                    Ok(PyRenderable::try_from(scene)?)
-                }
-                "Mesh" => {
-                    let mesh = obj.cast::<Mesh>()?;
-                    Ok(PyRenderable::try_from(mesh)?)
-                }
-                _ => Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-                    "Expected Scene, Pass, Shader, or Mesh",
-                )),
+    pub fn from_any(obj: &Bound<'_, PyAny>) -> PyResult<Self> {
+        if let Some(renderable) = Self::from_object(obj) {
+            return Ok(renderable);
+        }
+        // A str is a sequence of one-letter strs, never of renderables.
+        if obj.is_instance_of::<PyString>() {
+            return Err(PyTypeError::new_err(EXPECTED));
+        }
+        let Ok(sequence) = obj.cast::<PySequence>() else {
+            return Err(PyTypeError::new_err(EXPECTED));
+        };
+        let mut list = Self {
+            passes: Vec::new(),
+            roots: Vec::new(),
+        };
+        for index in 0..sequence.len()? {
+            let item = sequence.get_item(index)?;
+            let part = match item.cast::<Pass>() {
+                Ok(pass) => Self::from_pass(&pass.borrow()),
+                Err(_) => Self::from_object(&item).ok_or_else(|| {
+                    PyTypeError::new_err(format!(
+                        "item {index}: expected a Scene, Pass, Shader, or Mesh"
+                    ))
+                })?,
             };
+            list.passes.extend(part.passes);
+            list.roots.extend(part.roots);
         }
+        Ok(list)
+    }
 
-        // Try a Python sequence (list/tuple) of renderables
-        if let Ok(seq) = obj.cast::<PySequence>() {
-            let len = seq.len()?;
-            let mut all: Vec<Arc<PassObject>> = Vec::with_capacity(len);
-            for i in 0..len {
-                let item = seq.get_item(i)?;
-                // Each item must expose passes()
-                let iter = item.call_method0("passes")?.extract::<PyPassIterator>()?;
-                for p in iter.0.into_iter() {
-                    all.push(p);
-                }
-            }
-            return Ok(Self {
-                iterator: PyPassIterator(all),
-            });
+    fn from_object(obj: &Bound<'_, PyAny>) -> Option<Self> {
+        if let Ok(pass) = obj.cast::<Pass>() {
+            return Some(Self::from_renderable(&*pass.borrow()));
         }
+        if let Ok(shader) = obj.cast::<Shader>() {
+            return Some(Self::from_renderable(&*shader.borrow()));
+        }
+        if let Ok(mesh) = obj.cast::<Mesh>() {
+            return Some(Self::from_renderable(&*mesh.borrow()));
+        }
+        if let Ok(scene) = obj.cast::<Scene>() {
+            return Some(Self::from_renderable(&*scene.borrow()));
+        }
+        None
+    }
 
-        Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-            "Expected a Scene, Pass, Shader, Mesh, or a sequence of them",
-        ))
+    fn from_renderable(renderable: &impl Renderable) -> Self {
+        Self {
+            passes: renderable.passes().to_vec(),
+            roots: renderable.roots().to_vec(),
+        }
+    }
+
+    /// A Pass in a sequence: the pass itself, without the passes it requires.
+    fn from_pass(pass: &Pass) -> Self {
+        Self {
+            passes: vec![pass.object.clone()],
+            roots: vec![pass.object.clone()],
+        }
     }
 }
 
 impl Renderable for PyRenderable {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        self.iterator.0.clone().into()
+        self.passes.clone().into()
+    }
+
+    fn roots(&self) -> Arc<[Arc<PassObject>]> {
+        self.roots.clone().into()
     }
 }
