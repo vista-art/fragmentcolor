@@ -33,6 +33,34 @@ On Swift and Kotlin, the generated `set(key:value:)` takes a `UniformValue` (a b
 
 The npm package no longer ships the test harness. `wasm-bindgen-test` was a runtime dependency of the web build, so the package exported a `WasmBindgenTestContext` class and the `__wbgtest_*` helpers next to the real API. It is a development dependency now, and the bundle carries only the library's own exports.
 
+JavaScript methods throw `Error` objects. Most failures reached JavaScript as a bare string, so `e.message` was `undefined`, `e instanceof Error` was false, and the error carried no stack. Every method now throws an `Error` whose `message` holds the old text, as the methods built on `JsError` already did. This is a breaking change for code that compares a caught value to a string or calls string methods on it. Read `e.message` instead.
+
+`new Shader(source)` throws, and `Shader.fetch` rejects, when the source is invalid. On the web both logged the error and returned the default red shader, so a typo in the WGSL or a failed download looked like a working shader. They now fail with the `ShaderError`, as in Rust, Python, Swift, and Kotlin. This is a breaking change. A live editor that should keep drawing keeps the last `Shader` that built, and `Shader.default()` still returns the fallback on request. A path or a registry slug passed to `new Shader` throws on the web as well, since the constructor can't fetch. Use `await Shader.fetch(...)` for those.
+
+`scene.setPasses([a, b])` on the web leaves `a` and `b` usable. The binding took the passes by value, so wasm-bindgen moved each one out of its JavaScript handle, and any later call on `a` threw `Attempt to use a moved value`. It now copies each handle, as Python, Swift, and Kotlin do.
+
+`renderer.render([a, b], target)` on the web records one frame. It rendered each item as a frame of its own, so on a canvas the last item's frame replaced the others. It now collects every item's passes in order and records them once, as Rust and Python do. Each item still brings its own pass graph, and which dependencies a list should pull in is open for a later release. `renderer.load([a, b])` loads every item, where it threw before.
+
+`Pass.require` on the web accepts a `Scene` and throws on anything else. It returned without doing anything for a value it didn't recognise, a `Scene` included, and skipped unrecognised items in an array. `Pass.setComputeDispatch` throws on a negative, fractional, or missing size, which the wasm ABI used to wrap or truncate.
+
+`Pass.add` and the `Scene` builders return the receiver on the web, so `scene.add(model).add(camera)` chains as it does in Rust. That covers `Scene.add`, `addTo`, `addPass`, `ambient`, `noDefaults`, `noDefaultCamera`, `noDefaultLight`, `setDefaultCamera`, and `setDefaultLight`. Each returns a second handle on the same object.
+
+JavaScript indices and counts must be whole numbers. `scene.addTo(-1, model)` added the model to pass 0, because the index went through a saturating float cast, and `getPass` and `Mesh.setInstanceCount` let the wasm ABI turn -1 into 4294967295. `Scene.addTo`, `Scene.getPass`, `Mesh.setInstanceCount`, and `Mesh.setIndices` now throw on a negative, fractional, or NaN value. `setIndices` also takes any numeric typed array, such as a `Uint16Array`.
+
+`Scene.load` on the web takes an `ArrayBuffer` or any view of one, such as a `DataView`, so `Scene.load(await response.arrayBuffer())` works without wrapping the buffer. A second argument, `{ cameras, lights }`, skips the file's own cameras or lights, as `SceneSource::gltf(..).cameras(false)` does in Rust. Both flags default to `true`.
+
+`renderer.createTexture` on the web reads every option it documents. It ignored the `sampler` option its own doc listed, dropped an option of the wrong type, and had no `usage` option. It now reads `{ size, format, mipmaps, sampler, usage }`. `sampler` takes a `SamplerOptions` or a plain `{ repeatX, repeatY, smooth, compare }` object, `usage` takes a `TextureUsage` or its bits, and an option of the wrong type throws. An `ImageData`, `HTMLCanvasElement`, or `OffscreenCanvas` source brings its own width and height, so `createTexture(imageData)` needs no size. A `Texture` is accepted as a source. `createStorageTexture` takes a `TextureUsage` as well as a number, and its seed data as a `Uint8Array`, an `ArrayBuffer`, or an array of numbers.
+
+The five `Material` texture setters on the web take any source `createTexture` takes, with the same options, as Rust's `impl Into<TextureInput>` does. A `Texture` binds at once. Bytes, a URL, or an image upload when `renderer.load` runs.
+
+The web window target is called `WindowTarget`, as in Rust and the docs. `renderer.createTarget(canvas)` returned a class named `CanvasTarget`. That name still works, because the package exports the same class under both names, in the JavaScript and in the typings. `WindowTarget.getImage()` returns a Promise that resolves to an empty `Uint8Array`, as it does in every other binding, where it threw.
+
+`Model.setTransform` on the web takes four columns of four as well as a flat list of 16, so the Rust and Python shape works. `Shader.set` flattens one level of nesting, so a `mat3x3` written as three columns sets. It also reads an `ArrayBuffer` or a `DataView` as raw bytes, as it already read a `Uint8Array`.
+
+TypeScript accepts plain arrays for the vector parameters of `Model`, `Camera`, `Light`, `Material`, and `Scene`. The typings declared them as `Float32Array`, so a strict project rejected `Light.directional([0, -1, 0], [1, 1, 1])`, which the docs show and the runtime accepts. They are `ArrayLike<number>` now, and `render`, `load`, `require`, `setPasses`, and `Scene.load` declare the types they take.
+
+The web build has the `Vertex.NORMAL`, `TANGENT`, `UV0`, `UV1`, `COLOR0`, and `COLOR1` constants, so the JavaScript examples read `Vertex.UV0` like the Rust and Python ones, where they spelled out `"uv0"`. A `VertexValue` class gives JavaScript the exact-type factories Python has, `VertexValue.f32` through `VertexValue.i32x4`, for integer shader inputs. An integer that doesn't fit its type throws. The `Mesh` vertex methods take `[position, uv]` and `[position, uv, color]`, as Rust's `Into<Vertex>` does. `Vertex.set` and `Instance.set` throw on a non-numeric item, where they wrote 0.
+
 Unused build inputs are gone. The web build no longer declares `serde-wasm-bindgen` or `gloo-utils`, which no code called, and the stale `generated/wasm_exports.txt` list, which nothing read, is deleted. The build stops writing `generated/api_objects.txt` too. Its only reader was a step that branded the JavaScript classes, and `impl_fc_kind!` replaced that step. The Python extension builds without pyo3's `experimental-async` feature, since no Python method is async.
 
 The Python package declares NumPy as a dependency. `TextureTarget.get_image()` returns a NumPy array, but the wheel did not require NumPy, so on an environment without it the call failed with a panic from the NumPy bridge instead of returning pixels. `pip install fragmentcolor` now pulls in `numpy>=1.16`.
@@ -127,7 +155,7 @@ Python value types compare by value. `chain.format() == TextureFormat.Rgba8Unorm
 
 `TextureUsage` has named flags in JavaScript and Python. JavaScript exposes `TextureUsage.COPY_SRC`, `COPY_DST`, `TEXTURE_BINDING`, `STORAGE_BINDING`, and `RENDER_ATTACHMENT` as numbers, as WebGPU's `GPUTextureUsage` does, so `TextureUsage.COPY_SRC | TextureUsage.TEXTURE_BINDING` works. Python exposes them as `TextureUsage` values that combine with `|`, and the module exports `TextureUsage`.
 
-`Mipmap` reads one level or all of them in Rust and Python. Rust gains `Mipmap::level(index)`, which every binding had, and Python gains `Mipmap.levels()`, which Rust had. An index past the last level raises `InvalidInputError` in Python.
+`Mipmap` reads one level or all of them in Rust, Python, and JavaScript. Rust gains `Mipmap::level(index)`, which every binding had, and Python and JavaScript gain `Mipmap.levels()`, which Rust had. On the web it returns one `Uint8Array` per level, level 0 first. An index past the last level raises `InvalidInputError` in Python.
 
 `Shader::set` takes a flat matrix in Rust: 9 numbers for a `mat3x3` and 16 for a `mat4x4`, as an array or a `Vec<f32>`, column after column, as the bindings take them. `Shader::get` reads them back, reads a `mat2x2` as `[f32; 4]`, and reads `Vec<f32>`, `Vec<u8>`, and the `TextureId` bound to a texture key. Python `Shader.set` takes a nested list or a 2-D array, one column per inner list, so `shader.set("view_proj", camera.view_proj())` works. Python `Model.set_transform` takes 16 numbers next to the nested form.
 
