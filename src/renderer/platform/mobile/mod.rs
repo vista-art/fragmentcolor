@@ -136,7 +136,8 @@ impl Renderer {
     /// — uniffi can't marshal `impl Into`, so the mobile shim takes the
     /// fields directly and the body builds a `TextureInput` from them.
     /// `usage_bits = None` defaults to STORAGE | TEXTURE | COPY_SRC | COPY_DST.
-    #[uniffi::method(name = "createStorageTexture")]
+    /// Both trailing arguments default to `None`, so Swift and Kotlin may leave them out.
+    #[uniffi::method(name = "createStorageTexture", default(data = None, usage_bits = None))]
     #[lsp_doc("docs/api/core/renderer/create_storage_texture.md")]
     pub async fn create_storage_texture_mobile(
         self: Arc<Self>,
