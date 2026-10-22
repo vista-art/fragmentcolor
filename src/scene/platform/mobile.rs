@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::renderer::platform::mobile::FragmentColorError;
 use crate::renderer::renderable::SceneObjectHandle;
-use crate::scene::{Camera, Light, LightKind, Model, Scene};
+use crate::scene::{Camera, Light, LightKind, Model, Scene, SceneSource};
 use crate::{Material, Mesh, Pass};
 
 /// Mobile-marshallable target for [`Scene::add_to`]: a pass index or a pass
@@ -334,48 +334,54 @@ impl Scene {
     }
 
     /// Load a scene from a `.gltf` or `.glb` file on disk.
-    #[uniffi::constructor(name = "load")]
+    /// `cameras` and `lights` decide whether the file's own cameras and lights load.
+    #[uniffi::constructor(name = "load", default(cameras = true, lights = true))]
     #[lsp_doc("docs/api/scene/scene/load.md")]
-    pub fn load_mobile(path: String) -> Result<Arc<Self>, FragmentColorError> {
-        Ok(Arc::new(Scene::load(path)?))
+    pub fn load_mobile(
+        path: String,
+        cameras: bool,
+        lights: bool,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        let source = SceneSource::gltf(path).cameras(cameras).lights(lights);
+        Ok(Arc::new(Scene::load(source)?))
     }
 
     /// Load a scene from the bytes of a `.glb` file.
-    #[uniffi::constructor(name = "loadBytes")]
+    /// `cameras` and `lights` decide whether the file's own cameras and lights load.
+    #[uniffi::constructor(name = "loadBytes", default(cameras = true, lights = true))]
     #[lsp_doc("docs/api/scene/scene/hidden/load_bytes_mobile.md")]
-    pub fn load_bytes_mobile(bytes: Vec<u8>) -> Result<Arc<Self>, FragmentColorError> {
-        Ok(Arc::new(Scene::load(bytes)?))
+    pub fn load_bytes_mobile(
+        bytes: Vec<u8>,
+        cameras: bool,
+        lights: bool,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        let source = SceneSource::gltf(bytes).cameras(cameras).lights(lights);
+        Ok(Arc::new(Scene::load(source)?))
     }
 
     /// Unified `Scene.add` — branches on the runtime mobile handle. Adding
     /// a new `SceneObject` Rust-side means adding one extra variant to
     /// [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
+    /// Every Scene mutator returns the scene, as in Rust, so calls chain.
     #[uniffi::method(name = "add")]
     #[lsp_doc("docs/api/scene/scene/add.md")]
     pub fn add_mobile(
         self: Arc<Self>,
         object: SceneObjectHandle,
-    ) -> Result<(), FragmentColorError> {
-        match object {
-            SceneObjectHandle::Model(m) => self
-                .add(m.as_ref())
-                .map(|_| ())
-                .map_err(|e| FragmentColorError::Render(e.to_string())),
-            SceneObjectHandle::Camera(c) => self
-                .add(c.as_ref())
-                .map(|_| ())
-                .map_err(|e| FragmentColorError::Render(e.to_string())),
-            SceneObjectHandle::Light(l) => self
-                .add(l.as_ref())
-                .map(|_| ())
-                .map_err(|e| FragmentColorError::Render(e.to_string())),
-        }
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        match &object {
+            SceneObjectHandle::Model(model) => self.add(model.as_ref())?,
+            SceneObjectHandle::Camera(camera) => self.add(camera.as_ref())?,
+            SceneObjectHandle::Light(light) => self.add(light.as_ref())?,
+        };
+        Ok(self)
     }
 
     #[uniffi::method(name = "addPass")]
     #[lsp_doc("docs/api/scene/scene/add_pass.md")]
-    pub fn add_pass_mobile(self: Arc<Self>, pass: Arc<Pass>) {
+    pub fn add_pass_mobile(self: Arc<Self>, pass: Arc<Pass>) -> Arc<Self> {
         self.add_pass(pass.as_ref());
+        self
     }
 
     #[uniffi::method(name = "removePass")]
@@ -411,17 +417,17 @@ impl Scene {
         self: Arc<Self>,
         target: PassTarget,
         object: SceneObjectHandle,
-    ) -> Result<(), FragmentColorError> {
+    ) -> Result<Arc<Self>, FragmentColorError> {
         let target = match target {
             PassTarget::Index(index) => crate::scene::PassRef::Index(index as usize),
             PassTarget::Name(name) => crate::scene::PassRef::Name(name),
         };
-        let result = match object {
-            SceneObjectHandle::Model(m) => self.add_to(target, m.as_ref()).map(|_| ()),
-            SceneObjectHandle::Camera(c) => self.add_to(target, c.as_ref()).map(|_| ()),
-            SceneObjectHandle::Light(l) => self.add_to(target, l.as_ref()).map(|_| ()),
+        match &object {
+            SceneObjectHandle::Model(model) => self.add_to(target, model.as_ref())?,
+            SceneObjectHandle::Camera(camera) => self.add_to(target, camera.as_ref())?,
+            SceneObjectHandle::Light(light) => self.add_to(target, light.as_ref())?,
         };
-        result.map_err(|e| FragmentColorError::Render(e.to_string()))
+        Ok(self)
     }
 
     #[uniffi::method(name = "setPasses")]
@@ -432,40 +438,48 @@ impl Scene {
 
     #[uniffi::method(name = "noDefaults")]
     #[lsp_doc("docs/api/scene/scene/no_defaults.md")]
-    pub fn no_defaults_mobile(self: Arc<Self>) {
+    pub fn no_defaults_mobile(self: Arc<Self>) -> Arc<Self> {
         self.no_defaults();
+        self
     }
 
     #[uniffi::method(name = "noDefaultCamera")]
     #[lsp_doc("docs/api/scene/scene/no_default_camera.md")]
-    pub fn no_default_camera_mobile(self: Arc<Self>) {
+    pub fn no_default_camera_mobile(self: Arc<Self>) -> Arc<Self> {
         self.no_default_camera();
+        self
     }
 
     #[uniffi::method(name = "noDefaultLight")]
     #[lsp_doc("docs/api/scene/scene/no_default_light.md")]
-    pub fn no_default_light_mobile(self: Arc<Self>) {
+    pub fn no_default_light_mobile(self: Arc<Self>) -> Arc<Self> {
         self.no_default_light();
+        self
     }
 
     #[uniffi::method(name = "setDefaultCamera")]
     #[lsp_doc("docs/api/scene/scene/set_default_camera.md")]
-    pub fn set_default_camera_mobile(self: Arc<Self>, camera: Arc<Camera>) {
+    pub fn set_default_camera_mobile(self: Arc<Self>, camera: Arc<Camera>) -> Arc<Self> {
         self.set_default_camera(camera.as_ref());
+        self
     }
 
     #[uniffi::method(name = "setDefaultLight")]
     #[lsp_doc("docs/api/scene/scene/set_default_light.md")]
-    pub fn set_default_light_mobile(self: Arc<Self>, light: Arc<Light>) {
+    pub fn set_default_light_mobile(self: Arc<Self>, light: Arc<Light>) -> Arc<Self> {
         self.set_default_light(light.as_ref());
+        self
     }
 
     #[uniffi::method(name = "ambient")]
     #[lsp_doc("docs/api/scene/scene/ambient.md")]
-    pub fn ambient_mobile(self: Arc<Self>, color: Vec<f32>) -> Result<(), FragmentColorError> {
+    pub fn ambient_mobile(
+        self: Arc<Self>,
+        color: Vec<f32>,
+    ) -> Result<Arc<Self>, FragmentColorError> {
         let c = take_vec3(&color, "Scene.ambient")?;
         self.ambient(c);
-        Ok(())
+        Ok(self)
     }
 
     #[uniffi::method(name = "models")]
