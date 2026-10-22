@@ -255,6 +255,16 @@ impl Mipmap {
         &self.levels
     }
 
+    #[lsp_doc("docs/api/texture/mipmap/hidden/level.md")]
+    pub fn level(&self, index: usize) -> Result<&[u8], TextureError> {
+        self.levels.get(index).map(Vec::as_slice).ok_or_else(|| {
+            TextureError::InvalidInput(format!(
+                "level {index} out of range; the chain has {} levels",
+                self.levels.len()
+            ))
+        })
+    }
+
     #[lsp_doc("docs/api/texture/mipmap/count.md")]
     pub fn count(&self) -> usize {
         self.levels.len()
