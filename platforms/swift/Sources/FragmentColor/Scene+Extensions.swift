@@ -4,6 +4,8 @@
 // types directly so example code reads scene.add(model) instead of
 // scene.add(.model(model)).
 
+import Foundation
+
 extension Scene {
     /// Add a [Model] to the scene.
     public func add(_ model: Model) throws {
@@ -37,6 +39,11 @@ extension Scene {
     /// the JS / Python spelling.
     public static func load(_ path: String) throws -> Scene {
         return try Scene.load(path: path)
+    }
+
+    /// Load a scene from the bytes of a `.glb` file, as JS and Python do.
+    public static func load(_ bytes: Data) throws -> Scene {
+        return try Scene.loadBytes(bytes: bytes)
     }
 
     // Pass-graph CRUD + injection: unlabeled overloads so example code reads

@@ -6,6 +6,9 @@ package org.fragmentcolor
 // types directly so example code reads scene.add(model) instead of
 // scene.add(SceneObjectHandle.Model(model)).
 
+/** Load a scene from the bytes of a `.glb` file, as JS and Python do. */
+fun Scene.Companion.load(bytes: ByteArray): Scene = loadBytes(bytes)
+
 /** Add a [Model] to the scene. */
 fun Scene.add(model: Model) {
     add(SceneObjectHandle.Model(model))
