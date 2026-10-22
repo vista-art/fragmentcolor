@@ -69,6 +69,13 @@ impl Mipmap {
         self.count() as u32
     }
 
+    #[wasm_bindgen(js_name = "levels", unchecked_return_type = "Uint8Array[]")]
+    #[lsp_doc("docs/api/texture/mipmap/levels.md")]
+    pub fn levels_js(&self) -> js_sys::Array {
+        let level = |bytes: &Vec<u8>| js_sys::Uint8Array::from(bytes.as_slice());
+        self.levels().iter().map(level).collect()
+    }
+
     /// Return the bytes for a single mip level as a `Uint8Array`. Use
     /// `count()` to discover the valid range. Returns an error if the
     /// requested level is out of range.
