@@ -242,7 +242,7 @@ impl Renderer {
     #[pyo3(name = "unregister_texture")]
     #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
     pub fn unregister_texture_py(&self, texture_id: PyTextureId) -> Result<(), PyErr> {
-        self.unregister_texture(texture_id.into())?;
+        self.unregister_texture(crate::texture::TextureId::from(texture_id))?;
         Ok(())
     }
 
@@ -255,7 +255,9 @@ impl Renderer {
     #[pyo3(name = "read_texture")]
     #[lsp_doc("docs/api/core/renderer/read_texture.md")]
     pub fn read_texture_py(&self, texture_id: PyTextureId) -> Result<Vec<u8>, PyErr> {
-        Ok(pollster::block_on(self.read_texture(texture_id.into()))?)
+        Ok(pollster::block_on(
+            self.read_texture(crate::texture::TextureId::from(texture_id)),
+        )?)
     }
 }
 

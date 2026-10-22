@@ -534,6 +534,12 @@ impl From<u64> for TextureId {
     }
 }
 
+impl From<&TextureId> for TextureId {
+    fn from(value: &TextureId) -> Self {
+        *value
+    }
+}
+
 impl From<TextureId> for u64 {
     fn from(value: TextureId) -> Self {
         value.id

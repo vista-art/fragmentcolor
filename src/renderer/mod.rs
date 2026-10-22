@@ -303,16 +303,17 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
     pub fn unregister_texture(
         &self,
-        texture_id: crate::texture::TextureId,
+        texture_id: impl Into<crate::texture::TextureId>,
     ) -> Result<(), RendererError> {
-        unregister::unregister_texture(self, texture_id)
+        unregister::unregister_texture(self, texture_id.into())
     }
 
     #[lsp_doc("docs/api/core/renderer/read_texture.md")]
     pub async fn read_texture(
         &self,
-        texture_id: crate::texture::TextureId,
+        texture_id: impl Into<crate::texture::TextureId>,
     ) -> Result<Vec<u8>, RendererError> {
+        let texture_id = texture_id.into();
         let context = self
             .context
             .read()
@@ -2685,7 +2686,7 @@ mod more_error_path_tests {
                 .await
                 .expect("texture with COPY_SRC");
             let read = renderer
-                .read_texture(*texture.id())
+                .read_texture(texture.id())
                 .await
                 .expect("readback");
             assert_eq!(read, bytes);
