@@ -65,10 +65,11 @@ for the duration. Two implications:
 # glb_bytes = open("path/to/model.glb", "rb").read()
 # */
 # /*[swift]
-# let glb_bytes = "path/to/model.glb"
+# import Foundation
+# let glb_bytes = try Data(contentsOf: URL(fileURLWithPath: "path/to/model.glb"))
 # */
 # /*[kotlin]
-# val glb_bytes = "path/to/model.glb"
+# val glb_bytes = java.io.File("path/to/model.glb").readBytes()
 # */
 use fragmentcolor::Scene;
 
