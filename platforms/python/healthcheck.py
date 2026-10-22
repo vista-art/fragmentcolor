@@ -1,21 +1,29 @@
 import os
 import platform
 import importlib
+from pathlib import Path
 import numpy as np
 from fragmentcolor import (
     CompareFunction,
     FragmentColorError,
     Instance,
+    MalformedImageError,
     Mesh,
     Mipmap,
     Pass,
+    RenderCanvasTarget,
     Renderer,
     SamplerOptions,
+    Scene,
+    SceneLoadError,
+    ScreenRegion,
     Shader,
     Size,
     TextureFormat,
+    TextureUsage,
     Vertex,
     VertexValue,
+    WindowTarget,
 )
 
 # Debug diagnostics for CI
@@ -224,6 +232,98 @@ def check_error_types(renderer):
     raises("Texture.write with 4 of 16 bytes", lambda: texture.write(bytes(4)))
     renderer.unregister_texture(texture.id())
     raises("a second unregister_texture", lambda: renderer.unregister_texture(texture.id()))
+
+
+SOLID_SHADER = """
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4f(1., 0., 0., 1.); }
+"""
+
+def check_require_graph(renderer):
+    """Rendering a Pass runs the passes it requires, as in every other binding."""
+    side = renderer.create_texture_target([4, 4])
+    color = Pass("color")
+    color.add_shader(Shader(SOLID_SHADER))
+    color.set_target(side)
+    compose = Pass("compose")
+    compose.add_shader(Shader(SOLID_SHADER))
+    compose.require(color)
+
+    renderer.render(compose, renderer.create_texture_target([4, 4]))
+    pixel = side.get_image()[0, 0]
+    assert list(pixel) == [255, 0, 0, 255], f"the required pass did not run, got {pixel}"
+
+    fan_in = Pass("fan_in")
+    fan_in.require([color, compose])
+    for bad in ("color", [color, 3]):
+        try:
+            fan_in.require(bad)
+        except TypeError:
+            continue
+        raise AssertionError(f"require({bad!r}) should raise TypeError")
+    print("Pass.require runs the required passes")
+
+
+def check_value_types():
+    """Value types compare by value, and their fields read back."""
+    chain = Mipmap.build(bytes(4 * 4 * 4), TextureFormat.Rgba8UnormSrgb, [4, 4])
+    assert chain.format() == TextureFormat.Rgba8UnormSrgb
+    assert len(chain.levels()) == chain.count() == 3
+    assert chain.levels()[0] == chain.level(0)
+    assert Size(4, 2) == Size(4, 2) and Size(4, 2) != Size(2, 4)
+    region = ScreenRegion((1, 2), (32, 16))
+    assert region == ScreenRegion.from_region(1, 2, 32, 16)
+    assert (region.min_x, region.max_y, region.width(), region.height()) == (1, 18, 32, 16)
+    assert ScreenRegion.from_tuple((64, 32)).width() == 64
+    assert SamplerOptions(smooth=False) == SamplerOptions(smooth=False)
+    assert RenderCanvasTarget is WindowTarget
+    print("Value types compare by value")
+
+
+def check_texture_inputs(renderer):
+    """create_texture takes usage, bytearray, memoryview, tuples and Textures."""
+    pixels = bytes(range(16))
+    texture = renderer.create_texture(pixels, size=[2, 2], usage=TextureUsage.COPY_SRC)
+    assert bytes(renderer.read_texture(texture.id())) == pixels
+    assert texture.id() == texture.id() and isinstance(texture.id().id, int)
+    for source in (bytearray(pixels), memoryview(pixels), tuple(pixels)):
+        renderer.create_texture(source, size=[2, 2])
+    assert renderer.create_texture(texture).id() == texture.id()
+    try:
+        Mipmap.build(bytes(32), TextureFormat.Rgba8UnormSrgb)
+    except MalformedImageError as e:
+        assert isinstance(e, FragmentColorError)
+    else:
+        raise AssertionError("undecodable bytes should raise MalformedImageError")
+    print("create_texture takes every byte form, a Texture, and usage")
+
+
+def check_scene_errors():
+    """A failed Scene.load raises a FragmentColorError that is also a RuntimeError."""
+    for kind in (FragmentColorError, RuntimeError, SceneLoadError):
+        try:
+            Scene.load("no/such/file.glb", cameras=False, lights=False)
+        except kind:
+            continue
+        raise AssertionError(f"a missing scene file should raise {kind.__name__}")
+    for bad in (42, None):
+        try:
+            Shader(bad)
+        except TypeError:
+            continue
+        raise AssertionError(f"Shader({bad!r}) should raise TypeError")
+    print("Scene.load and Shader raise the documented errors")
+
+
+def check_stub():
+    """The stub leaves out the binding plumbing that dispatch no longer calls."""
+    stub = (Path(__file__).parent / "fragmentcolor" / "fragmentcolor.pyi").read_text()
+    for plumbing in ("def passes(", "def renderable_type("):
+        assert plumbing not in stub, f"the stub still lists {plumbing}"
+    print("The stub has no passes or renderable_type")
 
 
 INTEGER_ATTRIBUTES_SHADER = """
@@ -473,6 +573,11 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_error_types(renderer)
     check_vertex_values()
     check_mesh_inputs()
+    check_require_graph(renderer)
+    check_value_types()
+    check_texture_inputs(renderer)
+    check_scene_errors()
+    check_stub()
 
     # Push constants smoke: solid color via var<immediate>
     pc_shader = Shader("""
