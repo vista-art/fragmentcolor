@@ -29,9 +29,10 @@
 docs/api/core/renderer/hidden/render_mobile.md=>docs/api/core/renderer/render.md: uniffi cannot marshal &impl Renderable/Target; the single mobile render entry takes RenderableHandle + TargetHandle uniffi::Enums and Swift/Kotlin extensions overload the natural shapes back on top.
 
 # Shader::new accepts both `String` and `Vec<String>` via `impl Into<ShaderInput>`.
-# Uniffi cannot marshal `impl Into`, so mobile splits this into Shader.new(source)
-# and Shader.compose(parts). Both forms credit the canonical Shader::new docs.
-docs/api/core/shader/hidden/compose_mobile.md=>docs/api/core/shader/new.md: Mobile splits Shader::new's impl-Into-based overload into a separate Shader.compose constructor.
+# Uniffi cannot marshal `impl Into`, so mobile splits this into Shader(source)
+# and the raw Shader.compose(parts) constructor. The Swift and Kotlin extensions
+# spell the array form Shader([parts]). Both forms credit the canonical Shader::new docs.
+docs/api/core/shader/hidden/compose_mobile.md=>docs/api/core/shader/new.md: Mobile splits Shader::new's impl-Into-based overload into a separate Shader.compose constructor; Swift/Kotlin extensions spell it Shader([parts]).
 
 # Scene::load accepts a path or bytes via `impl Into<SceneSource>`. Mobile keeps
 # Scene.load(path) and adds Scene.loadBytes(bytes); both credit the Scene::load docs.
@@ -42,12 +43,12 @@ docs/api/scene/scene/hidden/load_bytes_mobile.md=>docs/api/scene/scene/load.md: 
 # Swift/Kotlin extensions spell it Shader.setRegistry(baseUrl).
 docs/api/core/shader/hidden/use_registry_mobile.md=>docs/api/core/shader/set_registry.md: Mobile sets the registry through a useRegistry constructor; Swift/Kotlin extensions expose Shader.setRegistry with no return value.
 
-# Shader::fetch is async; uniffi 0.31 does not support async constructors, so
-# both the single-part (fetch_mobile) and multi-part (fetch_compose_mobile)
-# bindings are expressed as async instance methods. Extension shims provide
-# static-factory spellings on Swift and Kotlin.
-docs/api/core/shader/hidden/fetch_mobile.md=>docs/api/core/shader/fetch.md: Mobile exposes fetch as an async instance method (uniffi 0.31 lacks async constructors); Swift/Kotlin shims wrap it as a static factory.
-docs/api/core/shader/hidden/fetch_compose_mobile.md=>docs/api/core/shader/fetch.md: Mobile multi-part fetch variant; same async-method workaround as fetch_mobile.
+# Shader::fetch is async, and uniffi 0.32 can't make a primary constructor async,
+# so both the single-part (fetch_mobile) and multi-part (fetch_compose_mobile)
+# bindings are async instance methods. The Swift and Kotlin extensions spell
+# both as the static Shader.fetch(...).
+docs/api/core/shader/hidden/fetch_mobile.md=>docs/api/core/shader/fetch.md: Mobile exposes fetch as an async instance method (uniffi 0.32 has no async primary constructor); Swift/Kotlin extensions spell it Shader.fetch(input).
+docs/api/core/shader/hidden/fetch_compose_mobile.md=>docs/api/core/shader/fetch.md: Mobile multi-part fetch variant, the raw fetchCompose method; Swift/Kotlin extensions spell it Shader.fetch(parts).
 
 # Pass::set_depth_target accepts a TextureTarget or a depth Texture via
 # `impl TryInto<DepthTarget>`. Mobile takes the TextureTarget through
@@ -70,23 +71,35 @@ docs/api/scene/material/hidden/normal_source_mobile.md=>docs/api/scene/material/
 docs/api/scene/material/hidden/occlusion_source_mobile.md=>docs/api/scene/material/occlusion_texture.md: Mobile splits the texture input form of Material::occlusion_texture into a separate occlusionSource method.
 docs/api/scene/material/hidden/emissive_source_mobile.md=>docs/api/scene/material/emissive_texture.md: Mobile splits the texture input form of Material::emissive_texture into a separate emissiveSource method.
 
-# TextureTarget::texture() — the canonical doc lives at
-# docs/api/targets/texture_target/texture.md and the Web binding is the
-# `_js` shim under hidden/, so the suffix-strip rule already credits Web
-# without an explicit alias entry.
+# ---- Types documented through their methods (no page of their own) ----
 #
-# Native platforms (Python / Swift / Kotlin) currently lack the binding —
-# the offscreen TextureTarget is passed directly to renderer.render() and
-# the texture binding is implicit there — so the gap is acknowledged in
-# PARITY_BASELINE rather than waived here.
+# `AlphaMode` exists in every binding. Its three values are documented on
+# docs/api/scene/material/alpha_mode.md, the one method that takes it, like the
+# other value enums (`TextureFormat`, `CompareFunction`).
+#
+# `LightKind` is what Rust's `Light::kind` returns. JS and Python also export
+# the enum, Swift and Kotlin don't, and `Light.kind()` returns the kind's name
+# as a string ("directional", "point", "spot") in every binding. The values
+# are documented on docs/api/scene/light/kind.md. Returning `LightKind` from
+# every binding is a breaking change, so it waits for 0.13.
+
+# ---- Old type names kept as deprecated aliases ----
+#
+# Each binding's window and texture targets, `PassInput` and `TextureRegion`
+# carry the Rust name. The old names stay as aliases so existing code keeps
+# working, and no doc shows them:
+#   JS:     CanvasTarget -> WindowTarget
+#   Python: RenderCanvasTarget -> WindowTarget
+#   Swift/Kotlin: MobileWindowTarget -> WindowTarget, MobileTextureTarget -> TextureTarget,
+#           MobilePassInput -> PassInput, TextureRegionMobile -> TextureRegion
 
 # ---- Trait-level docs (no platform binding required) ----
 #
 # `Target` is a sealed Rust trait. uniffi 0.32 can export a trait and lets Swift
 # and Kotlin implement one, but wasm_bindgen and pyo3 can't, and the crate-private
 # `FrameSource` supertrait keeps every implementation inside the crate anyway.
-# Its methods exist on every concrete target type (WindowTarget, TextureTarget,
-# RenderCanvasTarget, CAMetalLayer-backed targets and so on), so the concrete
+# Its methods exist on every concrete target type (WindowTarget and TextureTarget
+# in every binding), so the concrete
 # `targets/window_target/*.md` and `targets/texture_target/*.md` entries enforce
 # parity. These trait docs are kept for human reference and need no bindings
 # of their own.
