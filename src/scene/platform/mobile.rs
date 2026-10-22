@@ -333,15 +333,18 @@ impl Scene {
         Arc::new(Scene::new())
     }
 
-    /// Load a scene from a file on disk. Pass a path for `.gltf` / `.glb`
-    /// files. In-memory `.glb` bytes are not exposed on mobile yet — call
-    /// from Rust if you need that shape.
+    /// Load a scene from a `.gltf` or `.glb` file on disk.
     #[uniffi::constructor(name = "load")]
     #[lsp_doc("docs/api/scene/scene/load.md")]
     pub fn load_mobile(path: String) -> Result<Arc<Self>, FragmentColorError> {
-        Scene::load(crate::scene::SceneSource::gltf(path))
-            .map(Arc::new)
-            .map_err(|e| FragmentColorError::Render(e.to_string()))
+        Ok(Arc::new(Scene::load(path)?))
+    }
+
+    /// Load a scene from the bytes of a `.glb` file.
+    #[uniffi::constructor(name = "loadBytes")]
+    #[lsp_doc("docs/api/scene/scene/hidden/load_bytes_mobile.md")]
+    pub fn load_bytes_mobile(bytes: Vec<u8>) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(Scene::load(bytes)?))
     }
 
     /// Unified `Scene.add` — branches on the runtime mobile handle. Adding
