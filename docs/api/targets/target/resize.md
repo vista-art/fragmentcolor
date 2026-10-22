@@ -1,4 +1,4 @@
-# Target::resize(size: Size { width, heigth } | (u32, u32) | [u32; 2])
+# Target::resize(size: Size { width, height } | (u32, u32) | [u32; 2])
 
 Resizes the [Target](https://fragmentcolor.org/api/targets/target) to the given width and height.
 

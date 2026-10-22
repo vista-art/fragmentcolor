@@ -2,6 +2,10 @@
 
 Returns the size of the [Target](https://fragmentcolor.org/api/targets/target) in pixels.
 
+`depth` is the same in every language: 1 for a `TextureTarget`, as for a
+`Texture`, and absent for a `WindowTarget` (`None` in Rust and Python,
+`undefined` in JS, `nil` in Swift and `null` in Kotlin).
+
 ## Example
 
 ```rust
