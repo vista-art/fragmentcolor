@@ -1,6 +1,7 @@
 use crate::renderer::error::InitializationError;
 use std::sync::Arc;
 
+#[doc(hidden)]
 pub async fn create_instance() -> wgpu::Instance {
     #[cfg(wasm)]
     use wgpu::util::new_instance_with_webgpu_detection;
@@ -17,6 +18,7 @@ pub async fn create_instance() -> wgpu::Instance {
     instance
 }
 
+#[doc(hidden)]
 pub async fn request_adapter(
     instance: &wgpu::Instance,
     surface: Option<&wgpu::Surface<'_>>,
@@ -33,6 +35,7 @@ pub async fn request_adapter(
     Ok(adapter)
 }
 
+#[doc(hidden)]
 pub async fn request_device(
     adapter: &wgpu::Adapter,
 ) -> Result<(wgpu::Device, wgpu::Queue), InitializationError> {
@@ -100,6 +103,7 @@ pub async fn request_device(
     Ok((device, queue))
 }
 
+#[doc(hidden)]
 pub fn configure_surface(
     device: &wgpu::Device,
     adapter: &wgpu::Adapter,
@@ -184,6 +188,7 @@ mod platform_tests;
 
 /// Negotiate a supported MSAA sample count for a given format on this adapter.
 /// Halves `wanted` until `features.sample_count_supported(n)` or returns 1.
+#[doc(hidden)]
 pub fn pick_sample_count(
     adapter: &wgpu::Adapter,
     mut wanted: u32,

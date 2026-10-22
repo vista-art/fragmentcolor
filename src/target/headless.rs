@@ -1,6 +1,7 @@
 use crate::{Size, renderer::HasDisplaySize};
 use wgpu::rwh::{DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle};
 
+#[doc(hidden)]
 pub struct HeadlessWindow {
     // Desired size for the fallback TextureTarget
     size: Size,
@@ -12,6 +13,7 @@ impl HasDisplaySize for HeadlessWindow {
     }
 }
 
+#[doc(hidden)]
 /// Construct a headless window that can be passed to Renderer::create_target.
 /// This will render using an offscreen Texture under the hood via the renderer's
 /// own fallback path (no surface creation is attempted from here).

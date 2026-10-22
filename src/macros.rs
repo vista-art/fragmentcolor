@@ -56,22 +56,26 @@ macro_rules! impl_tryfrom_owned_via_ref {
 
 #[macro_export]
 macro_rules! impl_from_into_with_refs {
-    ($a:ty, $b:ty, $a_to_b:expr, $b_to_a:expr) => {
+    ($(#[$meta:meta])* $a:ty, $b:ty, $a_to_b:expr, $b_to_a:expr) => {
+        $(#[$meta])*
         impl From<$a> for $b {
             fn from(v: $a) -> $b {
                 ($a_to_b)(v)
             }
         }
+        $(#[$meta])*
         impl From<&$a> for $b {
             fn from(v: &$a) -> $b {
                 ($a_to_b)(v.clone())
             }
         }
+        $(#[$meta])*
         impl From<$b> for $a {
             fn from(v: $b) -> $a {
                 ($b_to_a)(v)
             }
         }
+        $(#[$meta])*
         impl From<&$b> for $a {
             fn from(v: &$b) -> $a {
                 ($b_to_a)(v.clone())

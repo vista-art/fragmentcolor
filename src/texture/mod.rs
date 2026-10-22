@@ -60,6 +60,7 @@ pub enum TextureData {
     Path(std::path::PathBuf),
     CloneOf(Texture),
     Url(String),
+    #[doc(hidden)]
     DynamicImage(DynamicImage),
     /// In-memory KTX2 container bytes (decoded by the `ktx2` crate). The KTX2
     /// path trusts the file's own declared format and skips the JPEG/PNG

@@ -560,6 +560,7 @@ crate::impl_from_into_with_refs!(
 );
 
 crate::impl_from_into_with_refs!(
+    #[doc(hidden)]
     UniformData,
     glam::Vec2,
     |d: UniformData| match d {
@@ -612,6 +613,7 @@ crate::impl_from_into_with_refs!(
 );
 
 crate::impl_from_into_with_refs!(
+    #[doc(hidden)]
     UniformData,
     glam::Vec3,
     |d: UniformData| match d {
@@ -664,6 +666,7 @@ crate::impl_from_into_with_refs!(
 );
 
 crate::impl_from_into_with_refs!(
+    #[doc(hidden)]
     UniformData,
     glam::Vec4,
     |d: UniformData| match d {
@@ -717,6 +720,7 @@ crate::impl_from_into_with_refs!(
 );
 
 crate::impl_from_into_with_refs!(
+    #[doc(hidden)]
     UniformData,
     wgpu::Extent3d,
     |data: UniformData| match data {

@@ -1,3 +1,4 @@
+#[doc(hidden)]
 pub const DEFAULT_VERTEX_SHADER: &str = r#"
     #version 450
 
@@ -8,6 +9,7 @@ pub const DEFAULT_VERTEX_SHADER: &str = r#"
     }
 "#;
 
+#[doc(hidden)]
 pub const DEFAULT_FRAGMENT_SHADER: &str = r#"
     #version 450
 
@@ -18,6 +20,7 @@ pub const DEFAULT_FRAGMENT_SHADER: &str = r#"
     }
 "#;
 
+#[doc(hidden)]
 pub const SHADERTOY_WRAPPER: &str = r#"
     uniform vec3      iResolution;           // viewport resolution (in pixels)
     uniform float     iTime;                 // shader playback time (in seconds)
@@ -37,6 +40,7 @@ pub const SHADERTOY_WRAPPER: &str = r#"
     {{shader}}
 "#;
 
+#[doc(hidden)]
 pub const DEFAULT_SHADER: &str = r#"
     struct VertexOutput {
         @builtin(position) coords: vec4<f32>,

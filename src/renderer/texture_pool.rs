@@ -10,6 +10,7 @@
 use std::collections::VecDeque;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[doc(hidden)]
 pub struct TextureKey {
     pub width: u32,
     pub height: u32,
@@ -51,6 +52,7 @@ impl TextureKey {
 }
 
 #[derive(Debug)]
+#[doc(hidden)]
 pub struct TexturePool {
     entry_limit: usize,
     entries: VecDeque<(TextureKey, wgpu::Texture)>, // front = LRU, back = MRU

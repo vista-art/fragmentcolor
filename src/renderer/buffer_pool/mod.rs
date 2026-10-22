@@ -11,6 +11,7 @@
 //! Both implement a minimal BufferPool trait (reset). Additional diagnostics can be layered uniformly.
 
 #[derive(Debug, Clone, Copy, Default)]
+#[doc(hidden)]
 pub struct PoolStats {
     pub hits: u64,
     pub misses: u64,
@@ -19,6 +20,7 @@ pub struct PoolStats {
     pub bytes_allocated: u64,
 }
 
+#[doc(hidden)]
 pub trait BufferPool {
     /// Reset pool state for the next frame (no-op for pools that do not track per-frame cursors).
     fn reset(&mut self) {}
