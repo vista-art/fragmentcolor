@@ -85,12 +85,12 @@ impl Shader {
     /// Override the slug registry base URL (process-wide).
     /// Uniffi has no static-method form on `uniffi::Object`, so this is
     /// expressed as a constructor that performs the side effect and returns
-    /// a default `Shader`. The Swift / Kotlin extension shims discard the
-    /// returned instance so callers see `Shader.setRegistry(baseUrl:)` with
-    /// `Void` return — matching the JS / Python static-method spelling.
-    #[uniffi::constructor(name = "setRegistry")]
-    #[lsp_doc("docs/api/core/shader/set_registry.md")]
-    pub fn set_registry_mobile(base_url: String) -> Arc<Self> {
+    /// a default `Shader`. It carries its own name so the Swift and Kotlin
+    /// extensions can define `Shader.setRegistry(baseUrl)` without a return
+    /// value, matching the JS / Python static-method spelling.
+    #[uniffi::constructor(name = "useRegistry")]
+    #[lsp_doc("docs/api/core/shader/hidden/use_registry_mobile.md")]
+    pub fn use_registry_mobile(base_url: String) -> Arc<Self> {
         Shader::set_registry(&base_url);
         Arc::new(Shader::default())
     }
@@ -98,10 +98,9 @@ impl Shader {
     /// Async fetch constructor: resolve each part of `input` (URL, slug, file
     /// path, or raw source) over the network, then compile the merged WGSL.
     ///
-    /// Uniffi 0.31 does not support async constructors, so this is expressed
-    /// as an async method rather than a constructor. Swift / Kotlin extension
-    /// shims provide `Shader.fetch(input:)` as a static async factory so
-    /// callers never need to hold a dummy instance.
+    /// Expressed as an async method rather than a constructor. Swift / Kotlin
+    /// extension shims provide `Shader.fetch(input:)` as a static async factory
+    /// so callers never need to hold a dummy instance.
     ///
     /// Swift callers: `let shader = try await Shader.fetch("https://...")`
     /// Kotlin callers: `val shader = Shader.fetch("https://...")`

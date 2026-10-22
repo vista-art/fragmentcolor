@@ -37,6 +37,11 @@ docs/api/core/shader/hidden/compose_mobile.md=>docs/api/core/shader/new.md: Mobi
 # Scene.load(path) and adds Scene.loadBytes(bytes); both credit the Scene::load docs.
 docs/api/scene/scene/hidden/load_bytes_mobile.md=>docs/api/scene/scene/load.md: Mobile splits Scene::load's impl-Into-based overload into a separate Scene.loadBytes constructor.
 
+# Shader::set_registry is a static method returning nothing. uniffi has no static
+# methods, so mobile sets the registry through a useRegistry constructor and the
+# Swift/Kotlin extensions spell it Shader.setRegistry(baseUrl).
+docs/api/core/shader/hidden/use_registry_mobile.md=>docs/api/core/shader/set_registry.md: Mobile sets the registry through a useRegistry constructor; Swift/Kotlin extensions expose Shader.setRegistry with no return value.
+
 # Shader::fetch is async; uniffi 0.31 does not support async constructors, so
 # both the single-part (fetch_mobile) and multi-part (fetch_compose_mobile)
 # bindings are expressed as async instance methods. Extension shims provide
