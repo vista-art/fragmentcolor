@@ -55,9 +55,11 @@ mod parity {
     //!
     //! ## Mode
     //!
-    //! The audit currently runs in **warn mode** — gaps are printed but do
-    //! NOT fail the build. The intent is to converge to zero gaps via Phase 3
-    //! (uniffi exports for Mesh/Vertex/Pass/etc.) and then flip to fail mode.
+    //! The audit runs in strict mode by default and fails the build
+    //! on any gap, unresolved binding, or unlabeled export missing from
+    //! `docs/api/PARITY_BASELINE`. `FC_PARITY_LENIENT=1` prints the report
+    //! without failing, and `FC_PARITY_REWRITE_BASELINE=1` writes the current
+    //! findings into the baseline, as the build does when the file is missing.
 
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
