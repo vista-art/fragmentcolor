@@ -484,28 +484,6 @@ mod website {
                 }
             }
 
-            // Then every other page in the folder. The API map skips trait
-            // methods, such as `Target::size` on TextureTarget or `Default::default`.
-            if obj_dir.is_dir()
-                && let Ok(read_dir) = std::fs::read_dir(&obj_dir)
-            {
-                let mut files: Vec<String> = read_dir
-                    .filter_map(|e| e.ok())
-                    .filter_map(|e| {
-                        let p = e.path();
-                        if p.extension()?.to_str()? == "md" {
-                            let stem = p.file_stem()?.to_str()?.to_string();
-                            if stem != dir_name { Some(stem) } else { None }
-                        } else {
-                            None
-                        }
-                    })
-                    .filter(|stem| !method_files.contains(stem))
-                    .collect();
-                files.sort();
-                method_files.extend(files);
-            }
-
             if is_hidden_category(&cat_rel) {
                 processed.insert(object.to_string());
                 continue;
