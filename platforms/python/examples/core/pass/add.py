@@ -16,6 +16,6 @@ rpass.add(model)
 rpass.add(camera)
 rpass.add(sun)
 
-# Updating the camera later is enough — every Model already on the pass
-# picks the new view_proj up at the next render.
+# Updating the camera later is enough. Every Model already on the pass
+# picks up the new view_proj at the next render.
 camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])

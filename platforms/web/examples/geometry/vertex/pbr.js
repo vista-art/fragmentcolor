@@ -1,7 +1,7 @@
 import { Mesh, Vertex } from "fragmentcolor";
 
-// Build a triangle; override only what the mesh actually carries — NORMAL
-// / COLOR0 / UV1 / TANGENT use their identity defaults from Vertex.pbr.
+// Build a triangle and set only what the mesh carries. NORMAL, COLOR0,
+// UV1 and TANGENT keep their identity defaults from Vertex.pbr.
 const mesh = new Mesh();
 mesh.addVertex(Vertex.pbr([ 0.0,  0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]));
 mesh.addVertex(Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]));

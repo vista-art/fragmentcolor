@@ -61,8 +61,8 @@ private enum _GeneratedExamples {
             try pass.add(camera)
             try pass.add(sun)
 
-            // Updating the camera later is enough — every Model already on the pass
-            // picks the new view_proj up at the next render.
+            // Updating the camera later is enough. Every Model already on the pass
+            // picks up the new view_proj at the next render.
             try camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
         }
     }
@@ -230,8 +230,8 @@ private enum _GeneratedExamples {
             let shader = Shader.fromMesh(mesh)
             let pass = Pass.fromShader("blobs", shader)
 
-            // Depth-test on — closer fragments win, the pass writes to the depth
-            // buffer so subsequent draws within the same pass see the depth.
+            // Depth test on: closer fragments win, and the pass writes the depth
+            // buffer, so later draws in the same pass see it.
             try pass.setDepthTarget(depth)
 
             try renderer.render(pass, target)
@@ -389,7 +389,7 @@ private enum _GeneratedExamples {
             try mesh.addVertex(
                 try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
             )
-            // Raw 2×2 RGBA pixel bytes — uploaded lazily by `Renderer.load` below.
+            // Raw 2×2 RGBA pixel bytes, uploaded lazily by `Renderer.load` below.
             // In practice the loader hands the setter encoded PNG/JPEG bytes (from a
             // BIN chunk) or a file path (from a URI); the same `Into<TextureInput>`
             // vocabulary covers all of them.
@@ -403,8 +403,8 @@ private enum _GeneratedExamples {
             let scene = Scene()
             try scene.add(model)
 
-            // Eager prewarm — uploads the pending texture(s) so the next render is
-            // GPU-only.
+            // Eager prewarm: upload the pending textures now, so the next render
+            // is GPU-only.
             try await renderer.load(scene)
             try renderer.render(scene, target)
         }
@@ -1001,8 +1001,8 @@ private enum _GeneratedExamples {
     static func _example_geometry_vertex_pbr() async throws {
         do {
 
-            // Build a triangle; override only what the mesh actually carries — NORMAL
-            // / COLOR0 / UV1 / TANGENT use their identity defaults from Vertex.pbr.
+            // Build a triangle and set only what the mesh carries. NORMAL, COLOR0,
+            // UV1 and TANGENT keep their identity defaults from Vertex.pbr.
             let mesh = Mesh()
             try mesh.addVertex(Vertex.pbr([ 0.0,  0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]))
             try mesh.addVertex(Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]))
@@ -1155,7 +1155,7 @@ private enum _GeneratedExamples {
 
             let lamp = try Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
 
-            // Warm-tint the lamp later — every Pass that absorbed `lamp` sees the
+            // Warm-tint the lamp later. Every Pass that absorbed `lamp` sees the
             // new color on the next render.
             try lamp.setColor([1.0, 0.7, 0.4])
         }
@@ -1303,7 +1303,7 @@ private enum _GeneratedExamples {
             // Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
             let leaf = Material.pbr().doubleSided(true).alphaMode(AlphaMode.mask).alphaCutoff(0.5)
 
-            // Default is single-sided — back-face culling on.
+            // The default is single-sided, with back-face culling on.
             let solid_mesh = Material.pbr().doubleSided(false)
         }
     }
@@ -1524,9 +1524,9 @@ private enum _GeneratedExamples {
             try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]))
             let blob = Model(mesh, Material.pbr())
 
-            // Wide zoom level — skip the detail blobs.
+            // At a wide zoom level, skip the detail blobs.
             blob.setVisible(false)
-            // Zoom back in — turn them on again.
+            // Zoomed back in, turn them on again.
             blob.setVisible(true)
         }
     }
@@ -1590,8 +1590,8 @@ private enum _GeneratedExamples {
             try scene.add(camera)
             try scene.add(sun)
 
-            // Updating the camera later is enough — every shader on the scene picks
-            // the new view_proj up at the next render.
+            // Updating the camera later is enough. Every shader on the scene picks
+            // up the new view_proj at the next render.
             try camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
         }
     }
@@ -1646,7 +1646,7 @@ private enum _GeneratedExamples {
             )
 
             let scene = Scene()
-            // Warm dusk ambient — applies to every Material added below.
+            // A warm dusk ambient. It applies to every Material added below.
             try scene.ambient([0.06, 0.04, 0.03])
             try scene.add(Model(mesh, Material.pbr()))
             try scene.add(Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]))
@@ -2228,7 +2228,7 @@ private enum _GeneratedExamples {
             // Simple sub-rectangle update.
             try texture.writeRegion(bytes, [0, 0, 64, 32])
 
-            // Explicit data layout (advanced — when source rows are padded).
+            // Explicit data layout, for when the source rows are padded.
             let region = TextureRegion.from([0, 0, 64, 32]).withStride(256).withRows(32)
             try texture.writeRegion(bytes, region)
         }

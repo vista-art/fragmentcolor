@@ -64,8 +64,8 @@ class GeneratedExamples {
         pass.add(camera)
         pass.add(sun)
 
-        // Updating the camera later is enough — every Model already on the pass
-        // picks the new view_proj up at the next render.
+        // Updating the camera later is enough. Every Model already on the pass
+        // picks up the new view_proj at the next render.
         camera.lookAt(listOf(3.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
     }
 
@@ -207,8 +207,8 @@ class GeneratedExamples {
         val shader = Shader.fromMesh(mesh)
         val pass = Pass.fromShader("blobs", shader)
 
-        // Depth-test on — closer fragments win, the pass writes to the depth
-        // buffer so subsequent draws within the same pass see the depth.
+        // Depth test on: closer fragments win, and the pass writes the depth
+        // buffer, so later draws in the same pass see it.
         pass.setDepthTarget(depth)
 
         renderer.render(pass, target)
@@ -338,7 +338,7 @@ class GeneratedExamples {
 
         val mesh = Mesh()
         mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
-        // Raw 2×2 RGBA pixel bytes — uploaded lazily by `Renderer.load` below.
+        // Raw 2×2 RGBA pixel bytes, uploaded lazily by `Renderer.load` below.
 
         // vocabulary covers all of them.
         val red_pixels = listOf(255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255)
@@ -348,8 +348,8 @@ class GeneratedExamples {
         val scene = Scene()
         scene.add(model)
 
-        // Eager prewarm — uploads the pending texture(s) so the next render is
-        // GPU-only.
+        // Eager prewarm: upload the pending textures now, so the next render
+        // is GPU-only.
         renderer.load(scene)
         renderer.render(scene, target)
     }
@@ -828,8 +828,8 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_geometry_vertex_pbr() {
 
-        // Build a triangle; override only what the mesh actually carries — NORMAL
-        // / COLOR0 / UV1 / TANGENT use their identity defaults from Vertex.pbr.
+        // Build a triangle and set only what the mesh carries. NORMAL, COLOR0,
+        // UV1 and TANGENT keep their identity defaults from Vertex.pbr.
         val mesh = Mesh()
         mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)))
         mesh.addVertex(Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)))
@@ -944,7 +944,7 @@ class GeneratedExamples {
 
         val lamp = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
 
-        // Warm-tint the lamp later — every Pass that absorbed `lamp` sees the
+        // Warm-tint the lamp later. Every Pass that absorbed `lamp` sees the
         // new color on the next render.
         lamp.setColor(listOf(1.0f, 0.7f, 0.4f))
     }
@@ -1059,7 +1059,7 @@ class GeneratedExamples {
         // Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
         val leaf = Material.pbr().doubleSided(true).alphaMode(AlphaMode.MASK).alphaCutoff(0.5f)
 
-        // Default is single-sided — back-face culling on.
+        // The default is single-sided, with back-face culling on.
         val solid_mesh = Material.pbr().doubleSided(false)
     }
 
@@ -1203,9 +1203,9 @@ class GeneratedExamples {
         mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)))
         val blob = Model(mesh, Material.pbr())
 
-        // Wide zoom level — skip the detail blobs.
+        // At a wide zoom level, skip the detail blobs.
         blob.setVisible(false)
-        // Zoom back in — turn them on again.
+        // Zoomed back in, turn them on again.
         blob.setVisible(true)
     }
 
@@ -1255,8 +1255,8 @@ class GeneratedExamples {
         scene.add(camera)
         scene.add(sun)
 
-        // Updating the camera later is enough — every shader on the scene picks
-        // the new view_proj up at the next render.
+        // Updating the camera later is enough. Every shader on the scene picks
+        // up the new view_proj at the next render.
         camera.lookAt(listOf(3.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
     }
 
@@ -1299,7 +1299,7 @@ class GeneratedExamples {
         mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 
         val scene = Scene()
-        // Warm dusk ambient — applies to every Material added below.
+        // A warm dusk ambient. It applies to every Material added below.
         scene.ambient(listOf(0.06f, 0.04f, 0.03f))
         scene.add(Model(mesh, Material.pbr()))
         scene.add(Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f)))
@@ -1770,7 +1770,7 @@ class GeneratedExamples {
         // Simple sub-rectangle update.
         texture.writeRegion(bytes, listOf(0, 0, 64, 32))
 
-        // Explicit data layout (advanced — when source rows are padded).
+        // Explicit data layout, for when the source rows are padded.
         val region = TextureRegion.from(listOf(0, 0, 64, 32)).withStride(256).withRows(32)
         texture.writeRegion(bytes, region)
     }

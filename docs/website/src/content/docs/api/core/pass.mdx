@@ -448,7 +448,7 @@ lang="kotlin"
 
 ### Pass::name
 
-Read the pass's name — the string passed to
+Read the pass's name, the string passed to
 [`Pass::new`](/api/core/pass#passnewname-str---self) (or the label a
 loader gave it). Names are how you address a pass by something other than its
 index: pair this with
@@ -1064,8 +1064,8 @@ pass.add(&model)?;
 pass.add(&camera)?;
 pass.add(&sun)?;
 
-// Updating the camera later is enough — every Model already on the pass
-// picks the new view_proj up at the next render.
+// Updating the camera later is enough. Every Model already on the pass
+// picks up the new view_proj at the next render.
 camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 let _ = renderer;
 Ok(())
@@ -1096,8 +1096,8 @@ pass.add(model);
 pass.add(camera);
 pass.add(sun);
 
-// Updating the camera later is enough — every Model already on the pass
-// picks the new view_proj up at the next render.
+// Updating the camera later is enough. Every Model already on the pass
+// picks up the new view_proj at the next render.
 camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 `}
 lang="js"
@@ -1126,8 +1126,8 @@ rpass.add(model)
 rpass.add(camera)
 rpass.add(sun)
 
-# Updating the camera later is enough — every Model already on the pass
-# picks the new view_proj up at the next render.
+# Updating the camera later is enough. Every Model already on the pass
+# picks up the new view_proj at the next render.
 camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 `}
 lang="python"
@@ -1156,8 +1156,8 @@ try pass.add(model)
 try pass.add(camera)
 try pass.add(sun)
 
-// Updating the camera later is enough — every Model already on the pass
-// picks the new view_proj up at the next render.
+// Updating the camera later is enough. Every Model already on the pass
+// picks up the new view_proj at the next render.
 try camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 `}
 lang="swift"
@@ -1184,8 +1184,8 @@ pass.add(model)
 pass.add(camera)
 pass.add(sun)
 
-// Updating the camera later is enough — every Model already on the pass
-// picks the new view_proj up at the next render.
+// Updating the camera later is enough. Every Model already on the pass
+// picks up the new view_proj at the next render.
 camera.lookAt(listOf(3.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
 `}
 lang="kotlin"
@@ -1684,8 +1684,8 @@ mesh.add_vertex([1.0, 1.0, 0.0]);
 let shader = Shader::from_mesh(&mesh);
 let pass = Pass::from_shader("blobs", &shader);
 
-// Depth-test on — closer fragments win, the pass writes to the depth
-// buffer so subsequent draws within the same pass see the depth.
+// Depth test on: closer fragments win, and the pass writes the depth
+// buffer, so later draws in the same pass see it.
 pass.set_depth_target(&depth)?;
 
 renderer.render(&pass, &target)?;
@@ -1717,8 +1717,8 @@ mesh.addVertex([1.0, 1.0, 0.0]);
 const shader = Shader.fromMesh(mesh);
 const pass = Pass.fromShader("blobs", shader);
 
-// Depth-test on — closer fragments win, the pass writes to the depth
-// buffer so subsequent draws within the same pass see the depth.
+// Depth test on: closer fragments win, and the pass writes the depth
+// buffer, so later draws in the same pass see it.
 pass.setDepthTarget(depth);
 
 renderer.render(pass, target);
@@ -1747,8 +1747,8 @@ mesh.add_vertex([1.0, 1.0, 0.0])
 shader = Shader.from_mesh(mesh)
 rpass = Pass.from_shader("blobs", shader)
 
-# Depth-test on — closer fragments win, the pass writes to the depth
-# buffer so subsequent draws within the same pass see the depth.
+# Depth test on: closer fragments win, and the pass writes the depth
+# buffer, so later draws in the same pass see it.
 rpass.set_depth_target(depth)
 
 renderer.render(rpass, target)
@@ -1777,8 +1777,8 @@ try mesh.addVertex([1.0, 1.0, 0.0])
 let shader = Shader.fromMesh(mesh)
 let pass = Pass.fromShader("blobs", shader)
 
-// Depth-test on — closer fragments win, the pass writes to the depth
-// buffer so subsequent draws within the same pass see the depth.
+// Depth test on: closer fragments win, and the pass writes the depth
+// buffer, so later draws in the same pass see it.
 try pass.setDepthTarget(depth)
 
 try renderer.render(pass, target)
@@ -1807,8 +1807,8 @@ mesh.addVertex(listOf(1.0f, 1.0f, 0.0f))
 val shader = Shader.fromMesh(mesh)
 val pass = Pass.fromShader("blobs", shader)
 
-// Depth-test on — closer fragments win, the pass writes to the depth
-// buffer so subsequent draws within the same pass see the depth.
+// Depth test on: closer fragments win, and the pass writes the depth
+// buffer, so later draws in the same pass see it.
 pass.setDepthTarget(depth)
 
 renderer.render(pass, target)

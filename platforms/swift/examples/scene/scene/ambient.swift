@@ -9,7 +9,7 @@ try mesh.addVertex(
 )
 
 let scene = Scene()
-// Warm dusk ambient — applies to every Material added below.
+// A warm dusk ambient. It applies to every Material added below.
 try scene.ambient([0.06, 0.04, 0.03])
 try scene.add(Model(mesh, Material.pbr()))
 try scene.add(Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]))

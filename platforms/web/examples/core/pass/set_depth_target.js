@@ -14,8 +14,8 @@ mesh.addVertex([1.0, 1.0, 0.0]);
 const shader = Shader.fromMesh(mesh);
 const pass = Pass.fromShader("blobs", shader);
 
-// Depth-test on — closer fragments win, the pass writes to the depth
-// buffer so subsequent draws within the same pass see the depth.
+// Depth test on: closer fragments win, and the pass writes the depth
+// buffer, so later draws in the same pass see it.
 pass.setDepthTarget(depth);
 
 renderer.render(pass, target);

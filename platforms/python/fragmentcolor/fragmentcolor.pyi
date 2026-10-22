@@ -233,7 +233,7 @@ class Renderer:
         mesh.add_vertex(
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
         )
-        # Raw 2×2 RGBA pixel bytes — uploaded lazily by `Renderer.load` below.
+        # Raw 2×2 RGBA pixel bytes, uploaded lazily by `Renderer.load` below.
         # In practice the loader hands the setter encoded PNG/JPEG bytes (from a
         # BIN chunk) or a file path (from a URI); the same `Into<TextureInput>`
         # vocabulary covers all of them.
@@ -247,8 +247,8 @@ class Renderer:
         scene = Scene()
         scene.add(model)
 
-        # Eager prewarm — uploads the pending texture(s) so the next render is
-        # GPU-only.
+        # Eager prewarm: upload the pending textures now, so the next render
+        # is GPU-only.
         renderer.load(scene)
         renderer.render(scene, target)
         ```
@@ -1077,7 +1077,7 @@ class Pass:
         """
     def name(self) -> str:
         """
-        Read the pass's name — the string passed to
+        Read the pass's name, the string passed to
         [`Pass::new`](https://fragmentcolor.org/api/core/pass#passnewname-str---self) (or the label a
         loader gave it). Names are how you address a pass by something other than its
         index: pair this with
@@ -1236,8 +1236,8 @@ class Pass:
         rpass.add(camera)
         rpass.add(sun)
 
-        # Updating the camera later is enough — every Model already on the pass
-        # picks the new view_proj up at the next render.
+        # Updating the camera later is enough. Every Model already on the pass
+        # picks up the new view_proj at the next render.
         camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
         ```
         """
@@ -1355,8 +1355,8 @@ class Pass:
         shader = Shader.from_mesh(mesh)
         rpass = Pass.from_shader("blobs", shader)
 
-        # Depth-test on — closer fragments win, the pass writes to the depth
-        # buffer so subsequent draws within the same pass see the depth.
+        # Depth test on: closer fragments win, and the pass writes the depth
+        # buffer, so later draws in the same pass see it.
         rpass.set_depth_target(depth)
 
         renderer.render(rpass, target)
@@ -1776,8 +1776,8 @@ class Vertex:
         ```python
         from fragmentcolor import Mesh, Vertex
 
-        # Build a triangle; override only what the mesh actually carries — NORMAL
-        # / COLOR0 / UV1 / TANGENT use their identity defaults from Vertex.pbr.
+        # Build a triangle and set only what the mesh carries. NORMAL, COLOR0,
+        # UV1 and TANGENT keep their identity defaults from Vertex.pbr.
         mesh = Mesh()
         mesh.add_vertex(Vertex.pbr([ 0.0,  0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]))
         mesh.add_vertex(Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]))
@@ -2222,8 +2222,8 @@ class Scene:
         scene.add(camera)
         scene.add(sun)
 
-        # Updating the camera later is enough — every shader on the scene picks
-        # the new view_proj up at the next render.
+        # Updating the camera later is enough. Every shader on the scene picks
+        # up the new view_proj at the next render.
         camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
         ```
         """
@@ -2634,7 +2634,7 @@ class Scene:
         )
 
         scene = Scene()
-        # Warm dusk ambient — applies to every Material added below.
+        # A warm dusk ambient. It applies to every Material added below.
         scene.ambient([0.06, 0.04, 0.03])
         scene.add(Model(mesh, Material.pbr()))
         scene.add(Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]))
@@ -3058,9 +3058,9 @@ class Model:
         mesh.add_vertex(Vertex.pbr([0.0, 0.5, 0.0]))
         blob = Model(mesh, Material.pbr())
 
-        # Wide zoom level — skip the detail blobs.
+        # At a wide zoom level, skip the detail blobs.
         blob.set_visible(False)
-        # Zoom back in — turn them on again.
+        # Zoomed back in, turn them on again.
         blob.set_visible(True)
         ```
         """
@@ -3622,7 +3622,7 @@ class Light:
 
         lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
 
-        # Warm-tint the lamp later — every Pass that absorbed `lamp` sees the
+        # Warm-tint the lamp later. Every Pass that absorbed `lamp` sees the
         # new color on the next render.
         lamp.set_color([1.0, 0.7, 0.4])
         ```
@@ -4225,7 +4225,7 @@ class Material:
         # Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
         leaf = Material.pbr().double_sided(True).alpha_mode(AlphaMode.Mask).alpha_cutoff(0.5)
 
-        # Default is single-sided — back-face culling on.
+        # The default is single-sided, with back-face culling on.
         solid_mesh = Material.pbr().double_sided(False)
         ```
         """

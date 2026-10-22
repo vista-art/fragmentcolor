@@ -391,8 +391,8 @@ scene.add(&model)?;
 scene.add(&camera)?;
 scene.add(&sun)?;
 
-// Updating the camera later is enough — every shader on the scene picks
-// the new view_proj up at the next render.
+// Updating the camera later is enough. Every shader on the scene picks
+// up the new view_proj at the next render.
 camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 let _ = renderer;
 Ok(())
@@ -423,8 +423,8 @@ scene.add(model);
 scene.add(camera);
 scene.add(sun);
 
-// Updating the camera later is enough — every shader on the scene picks
-// the new view_proj up at the next render.
+// Updating the camera later is enough. Every shader on the scene picks
+// up the new view_proj at the next render.
 camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 `}
 lang="js"
@@ -453,8 +453,8 @@ scene.add(model)
 scene.add(camera)
 scene.add(sun)
 
-# Updating the camera later is enough — every shader on the scene picks
-# the new view_proj up at the next render.
+# Updating the camera later is enough. Every shader on the scene picks
+# up the new view_proj at the next render.
 camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 `}
 lang="python"
@@ -483,8 +483,8 @@ try scene.add(model)
 try scene.add(camera)
 try scene.add(sun)
 
-// Updating the camera later is enough — every shader on the scene picks
-// the new view_proj up at the next render.
+// Updating the camera later is enough. Every shader on the scene picks
+// up the new view_proj at the next render.
 try camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 `}
 lang="swift"
@@ -511,8 +511,8 @@ scene.add(model)
 scene.add(camera)
 scene.add(sun)
 
-// Updating the camera later is enough — every shader on the scene picks
-// the new view_proj up at the next render.
+// Updating the camera later is enough. Every shader on the scene picks
+// up the new view_proj at the next render.
 camera.lookAt(listOf(3.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
 `}
 lang="kotlin"
@@ -1091,7 +1091,7 @@ mesh.add_vertex(
 );
 
 let scene = Scene::new();
-// Warm dusk ambient — applies to every Material added below.
+// A warm dusk ambient. It applies to every Material added below.
 scene.ambient([0.06, 0.04, 0.03]);
 scene.add(&Model::new(mesh, Material::pbr()))?;
 scene.add(&Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]))?;
@@ -1118,7 +1118,7 @@ const mesh = new Mesh();
 mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 
 const scene = new Scene();
-// Warm dusk ambient — applies to every Material added below.
+// A warm dusk ambient. It applies to every Material added below.
 scene.ambient([0.06, 0.04, 0.03]);
 scene.add(new Model(mesh, Material.pbr()));
 scene.add(Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]));
@@ -1144,7 +1144,7 @@ mesh.add_vertex(
 )
 
 scene = Scene()
-# Warm dusk ambient — applies to every Material added below.
+# A warm dusk ambient. It applies to every Material added below.
 scene.ambient([0.06, 0.04, 0.03])
 scene.add(Model(mesh, Material.pbr()))
 scene.add(Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]))
@@ -1170,7 +1170,7 @@ try mesh.addVertex(
 )
 
 let scene = Scene()
-// Warm dusk ambient — applies to every Material added below.
+// A warm dusk ambient. It applies to every Material added below.
 try scene.ambient([0.06, 0.04, 0.03])
 try scene.add(Model(mesh, Material.pbr()))
 try scene.add(Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]))
@@ -1194,7 +1194,7 @@ val mesh = Mesh()
 mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 
 val scene = Scene()
-// Warm dusk ambient — applies to every Material added below.
+// A warm dusk ambient. It applies to every Material added below.
 scene.ambient(listOf(0.06f, 0.04f, 0.03f))
 scene.add(Model(mesh, Material.pbr()))
 scene.add(Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f)))
