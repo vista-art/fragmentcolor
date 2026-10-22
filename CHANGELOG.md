@@ -53,6 +53,8 @@ Passes rendered together keep their own uniforms. `Renderer::render` records eve
 
 Shaders that share a source get one pipeline per vertex layout. The pipeline cache keyed on the shader and the target state, but the vertex layout came from whichever mesh built the pipeline first. A second shader with the same source, drawing a mesh with a different stride, attribute offsets, or per-instance attributes, reused that pipeline and drew the wrong vertices or nothing at all. The layout is part of the key now, and building it no longer leaks memory on every frame.
 
+Storage buffers upload only when they change. Every render copied the bytes of each storage buffer into a new allocation and threw them away unless the GPU buffer was new, which came to about 256 MB per frame at eight million particles. The renderer now reads them only to create or resize the buffer, or after `set` changes them, and the `particles` example went from 43 fps to the display's 60 at that size.
+
 A render made only of compute passes leaves the target alone. `Renderer::render` acquired a frame even when no pass drew into it and presented that frame untouched, so compute work failed whenever the target had no frame to give, as with a minimized window. Compute-only calls now skip the frame.
 
 Compute passes reuse their pipelines. The compute pipeline cache keyed on the memory addresses of bind group layouts that every render built from scratch, so the key never matched. Each compute pass compiled a new shader module and pipeline on every frame and kept all of them, which grew memory for as long as the app ran. The key now holds the layout entries themselves, and layouts are built only along with a new pipeline.
