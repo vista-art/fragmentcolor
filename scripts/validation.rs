@@ -156,6 +156,23 @@ mod validation {
                     }
                 }
             }
+
+            for page in method_pages(&obj_dir) {
+                let Some(stem) = page.file_stem().and_then(|s| s.to_str()) else {
+                    continue;
+                };
+                let known = methods_vec
+                    .iter()
+                    .any(|m| m.function.as_ref().is_some_and(|f| f.name == stem));
+                if !known {
+                    problems.push(format!(
+                        "Method page with no method: {}.{} ({})",
+                        object,
+                        stem,
+                        page.display()
+                    ));
+                }
+            }
         }
 
         // Also validate any docs-only objects under docs/api not present in allowed (recursively)
@@ -170,23 +187,9 @@ mod validation {
 
         // NEW: Validate method titles across all docs recursively (non-hidden), independent of API map
         for (object, obj_dir, _cat) in super::docs::scan_docs_objects(&docs_root) {
-            let dir_name = obj_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
-            if let Ok(read_dir) = std::fs::read_dir(&obj_dir) {
-                for e in read_dir.flatten() {
-                    let p = e.path();
-                    if p.is_dir() {
-                        // Skip hidden subfolders
-                        if p.file_name().and_then(|s| s.to_str()) == Some("hidden") {
-                            continue;
-                        }
-                        continue;
-                    }
-                    if p.extension().and_then(|s| s.to_str()) == Some("md")
-                        && let Some(stem) = p.file_stem().and_then(|s| s.to_str())
-                        && stem != dir_name
-                    {
-                        ensure_method_md_ok(&object, stem, &p, &mut problems);
-                    }
+            for page in method_pages(&obj_dir) {
+                if let Some(stem) = page.file_stem().and_then(|s| s.to_str()) {
+                    ensure_method_md_ok(&object, stem, &page, &mut problems);
                 }
             }
         }
@@ -210,6 +213,28 @@ mod validation {
             }
             panic!("documentation incomplete");
         }
+    }
+
+    /// The method pages in an object's docs folder: every `.md` file
+    /// but the object's own page, leaving out the `hidden/` subfolder.
+    fn method_pages(obj_dir: &Path) -> Vec<PathBuf> {
+        let Some(dir_name) = obj_dir.file_name().and_then(|s| s.to_str()) else {
+            return Vec::new();
+        };
+        let Ok(read_dir) = std::fs::read_dir(obj_dir) else {
+            return Vec::new();
+        };
+        let mut pages: Vec<PathBuf> = read_dir
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| {
+                p.is_file()
+                    && p.extension().and_then(|s| s.to_str()) == Some("md")
+                    && p.file_stem().and_then(|s| s.to_str()) != Some(dir_name)
+            })
+            .collect();
+        pages.sort();
+        pages
     }
 
     /// Enforce that all public methods referenced in the API map have `#[lsp_doc]`.
