@@ -9388,7 +9388,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_pass_require() != 26754) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_setclearcolor() != 50724) {
+    if (uniffi_fragmentcolor_checksum_method_pass_setclearcolor() != 35533) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_pass_setcomputedispatch() != 59690) {
@@ -9400,7 +9400,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_pass_setdepthtexture() != 62254) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_settarget() != 40001) {
+    if (uniffi_fragmentcolor_checksum_method_pass_settarget() != 44915) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_pass_settargettexture() != 11684) {
