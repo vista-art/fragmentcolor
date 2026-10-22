@@ -370,23 +370,6 @@ mod reflect {
         pub attrs: Vec<Attribute>,
         pub cfg: Cfg,
         pub fns: Vec<FnDef>,
-        pub consts: Vec<ConstDef>,
-    }
-
-    /// An associated `const` with a string literal value.
-    pub struct ConstDef {
-        pub ident: String,
-        pub value: String,
-        pub is_pub: bool,
-        pub cfg: Cfg,
-    }
-
-    /// A `pub const NAME: &str` on a type a binding exports, keyed the way
-    /// examples spell it: `Owner.NAME`.
-    pub struct StrConst {
-        pub owner: String,
-        pub name: String,
-        pub value: String,
     }
 
     /// A function in an `impl` block or at module level.
@@ -611,47 +594,6 @@ mod reflect {
             })
         }
 
-        /// String constants that a type exported in `build` declares, minus the
-        /// ones its binding already exposes under the same name. Examples that
-        /// write `Vertex::UV0` need the literal on platforms that lack it.
-        pub fn str_consts(&self, build: Build) -> Vec<StrConst> {
-            let exported: BTreeSet<&str> = self
-                .types_in(build)
-                .filter(|t| exported_type_name(&t.attrs, &t.ident, build).is_some())
-                .map(|t| t.ident.as_str())
-                .collect();
-            let exposed: BTreeSet<(&str, String)> = self
-                .binding_impls(build, build.binding_attr())
-                .flat_map(|imp| {
-                    imp.fns
-                        .iter()
-                        .map(move |f| (imp.self_ident.as_str(), exported_name(f, build)))
-                })
-                .collect();
-            let mut out: Vec<StrConst> = self
-                .impls
-                .iter()
-                .filter(|imp| {
-                    !imp.is_trait_impl
-                        && imp.cfg.holds(build)
-                        && exported.contains(imp.self_ident.as_str())
-                })
-                .flat_map(|imp| {
-                    imp.consts
-                        .iter()
-                        .filter(|c| c.is_pub && c.cfg.holds(build))
-                        .map(move |c| StrConst {
-                            owner: imp.self_ident.clone(),
-                            name: c.ident.clone(),
-                            value: c.value.clone(),
-                        })
-                })
-                .filter(|c| !exposed.contains(&(c.owner.as_str(), c.name.clone())))
-                .collect();
-            out.sort_by(|a, b| (&a.owner, &a.name).cmp(&(&b.owner, &b.name)));
-            out
-        }
-
         /// Module-level functions that compile in `build` and carry `binding`.
         pub fn binding_fns(
             &self,
@@ -765,25 +707,6 @@ mod reflect {
                             _ => None,
                         })
                         .collect();
-                    let consts = imp
-                        .items
-                        .iter()
-                        .filter_map(|it| match it {
-                            ImplItem::Const(c) => match plain_expr(&c.expr) {
-                                syn::Expr::Lit(syn::ExprLit {
-                                    lit: syn::Lit::Str(value),
-                                    ..
-                                }) => Some(ConstDef {
-                                    ident: c.ident.to_string(),
-                                    value: value.value(),
-                                    is_pub: matches!(c.vis, syn::Visibility::Public(_)),
-                                    cfg: impl_cfg.and(&c.attrs),
-                                }),
-                                _ => None,
-                            },
-                            _ => None,
-                        })
-                        .collect();
                     model.impls.push(ImplDef {
                         file: file.to_path_buf(),
                         self_ident,
@@ -795,7 +718,6 @@ mod reflect {
                         attrs: imp.attrs.clone(),
                         cfg: impl_cfg,
                         fns,
-                        consts,
                     });
                 }
                 Item::Trait(t) => {
@@ -1303,16 +1225,6 @@ mod reflect {
             types.chain(fns).collect()
         }
 
-        /// The methods of the `#[wasm_bindgen]` impl blocks: the name JS calls each by,
-        /// and its parameter types after the receiver.
-        pub fn wasm_methods(&self) -> Vec<(String, Vec<Type>)> {
-            self.binding_impls(Build::Wasm, "wasm_bindgen")
-                .flat_map(|imp| imp.fns.iter())
-                .filter(|f| f.cfg.holds(Build::Wasm) && f.sig.receiver().is_some())
-                .map(|f| (exported_name(f, Build::Wasm), typed_params(&f.sig)))
-                .collect()
-        }
-
         /// The methods of the `#[pymethods]` blocks, with the parameters Python passes.
         pub fn python_methods(&self) -> Vec<PyMethod> {
             self.binding_impls(Build::Python, "pymethods")
@@ -1414,19 +1326,6 @@ mod reflect {
             rest = &rest[at + needle.len()..];
         }
         out.push_str(rest);
-        out
-    }
-
-    /// Inline each `Owner.NAME` in `text` as its constant's literal, written
-    /// by `quote`. Longer names go first so `UV10` is never read as `UV1`.
-    pub fn inline_str_consts(text: &str, consts: &[StrConst], quote: fn(&str) -> String) -> String {
-        let mut ordered: Vec<&StrConst> = consts.iter().collect();
-        ordered.sort_by_key(|c| std::cmp::Reverse(c.owner.len() + c.name.len()));
-        let mut out = text.to_string();
-        for c in ordered {
-            let needle = format!("{}.{}", c.owner, c.name);
-            out = replace_qualified(&out, &needle, &quote(&c.value));
-        }
         out
     }
 

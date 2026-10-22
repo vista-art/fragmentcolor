@@ -1,17 +1,13 @@
 mod convert {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use crate::reflect::{Build, Reflection, StrConst, inline_str_consts};
-    use crate::source_text::{Nesting, arg_spans, closing, code_only, is_ident_char, split_args};
+    use crate::reflect::Reflection;
+    use crate::source_text::{closing, code_only, is_ident_char, split_args};
 
     /// API facts the converter reads, derived from the source model.
     struct Facts {
-        /// String constants the JS bindings don't expose.
-        js_consts: Vec<StrConst>,
         /// Names an example can import from `fragmentcolor` in JS.
         js_exports: BTreeSet<String>,
-        /// The argument positions where every JS method of a name takes a flat list of numbers.
-        js_flat_lists: BTreeMap<String, BTreeSet<usize>>,
         /// Names an example can import from `fragmentcolor` in Python.
         py_exports: BTreeSet<String>,
         /// The parameters of each Python method, by name, one list per method of that name.
@@ -23,9 +19,7 @@ mod convert {
     /// Derive the converter's API facts. Runs once before any example converts.
     pub fn install(model: &Reflection) {
         let _ = FACTS.set(Facts {
-            js_consts: model.str_consts(Build::Wasm),
             js_exports: model.wasm_exports(),
-            js_flat_lists: flat_list_positions(model.wasm_methods()),
             py_exports: model.python_exports(&crate::meta::workspace_root()),
             py_methods: model.python_methods().into_iter().fold(BTreeMap::new(), |mut by_name, m| {
                 by_name.entry(m.name).or_insert_with(Vec::new).push(m.params);
@@ -38,11 +32,6 @@ mod convert {
         FACTS
             .get()
             .unwrap_or_else(|| panic!("convert::install must run before examples convert"))
-    }
-
-    /// A JS, Swift or Kotlin string literal holding `value`.
-    pub fn quoted(value: &str) -> String {
-        format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
     }
 
     /// Target languages for the Rust→FFI example transpiler.
@@ -79,17 +68,12 @@ mod convert {
         // Nested `Type::new(...)` constructors become `Type.new(...)` via the
         // generic `::` → `.` pass; the top-level handler only rewrites
         // `let x = Type::new(...)`. Promote any leftover `Type.new(` (e.g.
-        // `scene.add(Model.new(...))`) to the JS `new Type(...)` form. And
-        // flatten rows of numbers where the binding takes a flat list.
-        let out = out
-            .lines()
-            .map(|l| flatten_rows_js(&rewrite_dotnew_to_new_js(l)))
+        // `scene.add(Model.new(...))`) to the JS `new Type(...)` form.
+        out.lines()
+            .map(rewrite_dotnew_to_new_js)
             .collect::<Vec<_>>()
             .join("\n")
-            + if out.ends_with('\n') { "\n" } else { "" };
-        // wasm-bindgen doesn't expose associated consts such as `Vertex::UV0`
-        // on the JS class, where they would read as `undefined`.
-        inline_str_consts(&out, &facts().js_consts, quoted)
+            + if out.ends_with('\n') { "\n" } else { "" }
     }
 
     /// Rewrite a Rust `for <ident> in <expr> {` loop header into JavaScript's
@@ -187,111 +171,6 @@ mod convert {
             i += 1;
         }
         out
-    }
-
-    /// `model.setTransform([[1, 0], [0, 1]])` → `model.setTransform([1, 0, 0, 1])`
-    /// where every JS method of that name takes a flat list of numbers at that position.
-    fn flatten_rows_js(line: &str) -> String {
-        let mut out = line.to_string();
-        for (name, positions) in &facts().js_flat_lists {
-            let needle = format!(".{name}(");
-            let mut done = String::with_capacity(out.len());
-            let mut rest = out.as_str();
-            while let Some(at) = rest.find(&needle) {
-                let open = at + needle.len() - 1;
-                let Some(close) = closing(rest, open) else {
-                    break;
-                };
-                let inner = &rest[open + 1..close];
-                done.push_str(&rest[..=open]);
-                let mut last = 0;
-                for (k, span) in arg_spans(inner, Nesting::Call).into_iter().enumerate() {
-                    done.push_str(&inner[last..span.start]);
-                    let arg = &inner[span.clone()];
-                    let flat = positions.contains(&k).then(|| flat_numbers(arg.trim())).flatten();
-                    match flat {
-                        Some(flat) => {
-                            let lead = arg.len() - arg.trim_start().len();
-                            done.push_str(&arg[..lead]);
-                            done.push_str(&flat);
-                            done.push_str(&arg[lead + arg.trim().len()..]);
-                        }
-                        None => done.push_str(arg),
-                    }
-                    last = span.end;
-                }
-                done.push_str(&inner[last..]);
-                done.push(')');
-                rest = &rest[close + 1..];
-            }
-            done.push_str(rest);
-            out = done;
-        }
-        out
-    }
-
-    /// `[[1, 0], [0, 1]]` → `[1, 0, 0, 1]`: the numbers of an array literal of rows, in order.
-    /// `None` for a literal without rows, or with anything but numbers in them.
-    fn flat_numbers(arg: &str) -> Option<String> {
-        let inner = arg.strip_prefix('[')?.strip_suffix(']')?;
-        if !inner.trim_start().starts_with('[') {
-            return None;
-        }
-        let nums: Vec<&str> = inner
-            .split(['[', ']', ','])
-            .map(str::trim)
-            .filter(|n| !n.is_empty())
-            .collect();
-        nums.iter()
-            .all(|n| n.parse::<f64>().is_ok())
-            .then(|| format!("[{}]", nums.join(", ")))
-    }
-
-    /// The positions where every method of a name takes a flat list of numbers,
-    /// such as the `Vec<f32>` of `Model.setTransform`, by method name.
-    fn flat_list_positions(methods: Vec<(String, Vec<syn::Type>)>) -> BTreeMap<String, BTreeSet<usize>> {
-        let mut by_name: BTreeMap<String, Vec<Vec<syn::Type>>> = BTreeMap::new();
-        for (name, params) in methods {
-            by_name.entry(name).or_default().push(params);
-        }
-        by_name
-            .into_iter()
-            .map(|(name, overloads)| {
-                let widest = overloads.iter().map(Vec::len).max().unwrap_or(0);
-                let positions = (0..widest)
-                    .filter(|&k| overloads.iter().all(|params| params.get(k).is_some_and(is_number_list)))
-                    .collect();
-                (name, positions)
-            })
-            .filter(|(_, positions): &(String, BTreeSet<usize>)| !positions.is_empty())
-            .collect()
-    }
-
-    /// Whether `ty` is a `Vec` or slice of a primitive number type.
-    fn is_number_list(ty: &syn::Type) -> bool {
-        let element = match crate::reflect::strip_type(ty) {
-            syn::Type::Slice(slice) => &*slice.elem,
-            syn::Type::Path(p) => match p.path.segments.last() {
-                Some(segment) if segment.ident == "Vec" => match &segment.arguments {
-                    syn::PathArguments::AngleBracketed(args) => match args.args.first() {
-                        Some(syn::GenericArgument::Type(t)) => t,
-                        _ => return false,
-                    },
-                    _ => return false,
-                },
-                _ => return false,
-            },
-            _ => return false,
-        };
-        let syn::Type::Path(p) = element else {
-            return false;
-        };
-        p.path.get_ident().is_some_and(|ident| {
-            matches!(
-                ident.to_string().as_str(),
-                "f32" | "f64" | "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64"
-            )
-        })
     }
 
     pub fn to_py(items: &[(String, bool)]) -> String {
@@ -1072,6 +951,14 @@ mod convert {
         out
     }
 
+    /// What Rust's `None` reads as in `lang`.
+    fn none_literal(lang: Lang) -> &'static str {
+        match lang {
+            Lang::Js => "undefined",
+            _ => "null",
+        }
+    }
+
     fn strip_refs(s: &str) -> String {
         s.replace('&', "")
     }
@@ -1317,10 +1204,11 @@ mod convert {
         if matches!(lang, Lang::Js | Lang::Swift | Lang::Kotlin) {
             rhs = camelize_method_calls_js(&rhs);
             // JS fixups:
-            // 1) None -> null
-            rhs = rhs.replace("None", "null");
-            // 2) ScreenRegion.new((x, y), (w, h)) -> an array literal
-            rhs = region_new_to_array(&rhs, lang);
+            // 1) None -> undefined in JS, which wasm-bindgen returns for None;
+            //    null in Swift (nil later) and Kotlin
+            rhs = rhs.replace("None", none_literal(lang));
+            // 2) ScreenRegion.new((x, y), (w, h)) -> array arguments in JS
+            rhs = region_tuples_to_arrays(&rhs, lang);
         }
         // Python: convert `.size()` calls on RHS into `.size` property
         if let Lang::Py = lang {
@@ -1802,10 +1690,10 @@ mod convert {
             line = replace_static_call_to_dot(&line);
             // JS-specific early fixups on raw line
             if matches!(lang, Lang::Js | Lang::Swift | Lang::Kotlin) {
-                // None -> null
-                line = line.replace("None", "null");
-                // ScreenRegion.new((x, y), (w, h)) -> an array literal
-                line = region_new_to_array(&line, lang);
+                // None -> undefined in JS, null in Swift (nil later) and Kotlin
+                line = line.replace("None", none_literal(lang));
+                // ScreenRegion.new((x, y), (w, h)) -> array arguments in JS
+                line = region_tuples_to_arrays(&line, lang);
             }
 
             // 1.1) Python: simplify Type.new(args) -> Type(args)
@@ -2167,11 +2055,12 @@ mod convert {
         out
     }
 
-    /// `ScreenRegion.new((x, y), (w, h))` → an array literal.
-    /// JS reads `[x, y, w, h]` as the origin and size `ScreenRegion::new` takes.
+    /// `ScreenRegion.new((x, y), (w, h))` → `ScreenRegion.new([x, y], [w, h])`,
+    /// which `to_js` then writes as `new ScreenRegion(...)`. JS has no tuples,
+    /// and its constructor takes the origin and the size as arrays.
     /// Swift and Kotlin keep the call, which their `ScreenRegion(origin, size)` factories take.
-    fn region_new_to_array(line: &str, lang: Lang) -> String {
-        if matches!(lang, Lang::Swift | Lang::Kotlin) {
+    fn region_tuples_to_arrays(line: &str, lang: Lang) -> String {
+        if !matches!(lang, Lang::Js) {
             return line.to_string();
         }
         let needle = "ScreenRegion.new(";
@@ -2182,18 +2071,14 @@ mod convert {
         let Some(close) = closing(line, open) else {
             return line.to_string();
         };
-        let args = line[open + 1..close].trim();
-        let items = match lang {
-            Lang::Js => split_args(args)
-                .into_iter()
-                .map(|arg| match closing(&arg, 0) {
-                    Some(end) if arg.starts_with('(') && end == arg.len() - 1 => arg[1..end].trim().to_string(),
-                    _ => arg,
-                })
-                .collect::<Vec<_>>()
-                .join(", "),
-            Lang::Py | Lang::Swift | Lang::Kotlin => args.to_string(),
-        };
-        format!("{}[{items}]{}", &line[..start], &line[close + 1..])
+        let items = split_args(line[open + 1..close].trim())
+            .into_iter()
+            .map(|arg| match closing(&arg, 0) {
+                Some(end) if arg.starts_with('(') && end == arg.len() - 1 => format!("[{}]", arg[1..end].trim()),
+                _ => arg,
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("{}({items}){}", &line[..open], &line[close + 1..])
     }
 }
