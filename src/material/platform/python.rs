@@ -5,6 +5,7 @@ use pyo3::prelude::*;
 
 use crate::Shader;
 use crate::material::{AlphaMode, Material};
+use crate::texture::PyTextureSource;
 
 #[pymethods]
 impl Material {
@@ -94,31 +95,31 @@ impl Material {
 
     #[pyo3(name = "base_color_texture")]
     #[lsp_doc("docs/api/scene/material/base_color_texture.md")]
-    pub fn base_color_texture_py(&self, texture: &crate::texture::Texture) -> Self {
-        self.base_color_texture(texture)
+    pub fn base_color_texture_py(&self, texture: PyTextureSource<'_>) -> PyResult<Self> {
+        Ok(self.base_color_texture(crate::TextureInput::try_from(texture)?))
     }
 
     #[pyo3(name = "metallic_roughness_texture")]
     #[lsp_doc("docs/api/scene/material/metallic_roughness_texture.md")]
-    pub fn metallic_roughness_texture_py(&self, texture: &crate::texture::Texture) -> Self {
-        self.metallic_roughness_texture(texture)
+    pub fn metallic_roughness_texture_py(&self, texture: PyTextureSource<'_>) -> PyResult<Self> {
+        Ok(self.metallic_roughness_texture(crate::TextureInput::try_from(texture)?))
     }
 
     #[pyo3(name = "normal_texture")]
     #[lsp_doc("docs/api/scene/material/normal_texture.md")]
-    pub fn normal_texture_py(&self, texture: &crate::texture::Texture) -> Self {
-        self.normal_texture(texture)
+    pub fn normal_texture_py(&self, texture: PyTextureSource<'_>) -> PyResult<Self> {
+        Ok(self.normal_texture(crate::TextureInput::try_from(texture)?))
     }
 
     #[pyo3(name = "occlusion_texture")]
     #[lsp_doc("docs/api/scene/material/occlusion_texture.md")]
-    pub fn occlusion_texture_py(&self, texture: &crate::texture::Texture) -> Self {
-        self.occlusion_texture(texture)
+    pub fn occlusion_texture_py(&self, texture: PyTextureSource<'_>) -> PyResult<Self> {
+        Ok(self.occlusion_texture(crate::TextureInput::try_from(texture)?))
     }
 
     #[pyo3(name = "emissive_texture")]
     #[lsp_doc("docs/api/scene/material/emissive_texture.md")]
-    pub fn emissive_texture_py(&self, texture: &crate::texture::Texture) -> Self {
-        self.emissive_texture(texture)
+    pub fn emissive_texture_py(&self, texture: PyTextureSource<'_>) -> PyResult<Self> {
+        Ok(self.emissive_texture(crate::TextureInput::try_from(texture)?))
     }
 }
