@@ -433,15 +433,7 @@ impl TryFrom<&wasm_bindgen::JsValue> for ScreenRegion {
                 }
                 Ok(None)
             };
-            let rect = (
-                field(&["x"])?,
-                field(&["y"])?,
-                field(&["width"])?,
-                field(&["height"])?,
-            );
-            if let (Some(x), Some(y), Some(width), Some(height)) = rect {
-                return Ok(ScreenRegion::from_region(x, y, width, height));
-            }
+            // Bounds first: on a `ScreenRegion`, `width` and `height` are methods.
             let bounds = (
                 field(&["minX", "min_x"])?,
                 field(&["minY", "min_y"])?,
@@ -455,6 +447,15 @@ impl TryFrom<&wasm_bindgen::JsValue> for ScreenRegion {
                     max_x: max_x.max(min_x),
                     max_y: max_y.max(min_y),
                 });
+            }
+            let rect = (
+                field(&["x"])?,
+                field(&["y"])?,
+                field(&["width"])?,
+                field(&["height"])?,
+            );
+            if let (Some(x), Some(y), Some(width), Some(height)) = rect {
+                return Ok(ScreenRegion::from_region(x, y, width, height));
             }
         }
 
