@@ -63,6 +63,8 @@ The generators that turn the API docs into JavaScript, Python, Swift, and Kotlin
 
 Links to API methods open the method on its object's page. The docs linked a method as `fragmentcolor.org/api/<object>/<method>`, a path the site doesn't serve, so about 120 links in the website, the Rust hover docs, and the Python stub led to a 404. They now point at the object's page and the method's heading, such as `/api/core/renderer#rendererload`. The build fails on a link that names a page or heading the site doesn't build, and its error gives the link to use.
 
+Swift and Kotlin examples keep the code spans in their comments. The transpilers turned every backtick into `"""`, so a comment such as "uploaded lazily by `Renderer.load`" read `"""Renderer.load"""` on the Swift and Kotlin tabs. Only the backticks that open and close a string become `"""` now.
+
 The generated examples had two more defects. The Swift and Kotlin transpilers stripped the semicolons from the WGSL inside their shader strings, so the shaders in those examples compiled but could not parse as WGSL at run time. The Kotlin transpiler read a trailing comma in a pixel array as one more value, which gave the 2x2 textures in the renderer load example and the five material texture examples 17 bytes instead of 16. Both now match the Rust source.
 
 The build deletes generated examples whose API page is gone. It writes a JavaScript, Python, Swift, and Kotlin example for each page in `docs/api`, but a deleted or renamed page left its examples behind under `platforms/`, and two of the Python ones did not even parse. Each build now removes the example files it did not write, the way it already pruned the website pages. That cleared out 84 files from pages such as `Pass.add_target` and `Shader.duplicate`.
