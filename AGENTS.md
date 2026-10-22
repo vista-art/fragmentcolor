@@ -36,12 +36,12 @@ Common commands
   - Build xcframework + regenerate Swift bindings: `./fc build_ios`
   - Produces `build/ios/FragmentColorFFI.xcframework` and Swift sources under `platforms/swift/Sources/FragmentColor/generated/`
   - Commit the regenerated `generated/FragmentColor.swift` whenever the uniffi surface changes. SPM consumers compile it from the release tag, and the iOS healthcheck fails when it differs from `build_ios` output.
-  - Example app: `platforms/swift/examples/` (opened via Xcode)
+  - `platforms/swift/examples/` holds the Swift examples transpiled from docs/api. There is no runnable Swift app yet.
 - Android (Kotlin)
   - Build `.so` per ABI + regenerate Kotlin bindings: `./fc build_android [TARGET]`
   - Requires: `cargo install cargo-ndk` and `ANDROID_NDK_HOME` pointing at a valid NDK
   - Produces `jniLibs/<abi>/libfragmentcolor.so` plus Kotlin sources under `platforms/kotlin/fragmentcolor/src/main/java/org/fragmentcolor/generated/`
-  - Example app: `platforms/kotlin/examples/`
+  - `platforms/kotlin/examples/` holds the Kotlin examples transpiled from docs/api. There is no runnable Android app yet.
 - Docs site (Astro/Starlight)
   - Dev: `./fc run_docs` (port via `--port` or `DOCS_PORT`)
   - Preview (built): `./fc run_docs preview`
