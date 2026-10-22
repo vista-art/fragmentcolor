@@ -6,7 +6,7 @@ A patch release with fixes for the language bindings and the renderer, and the c
 
 ### Fixes
 
-`Pass.setDepthTarget(texture)` on Swift and Kotlin now passes the depth `Texture` to Rust as a `Texture`. The extensions handed over the texture's handle where a `TextureTarget` handle was expected, so Rust read the texture's memory as the wrong type, which is undefined behaviour. They now call a new `setDepthTexture` binding that takes the `Texture` directly.
+`Pass.setDepthTarget(texture)` on Swift and Kotlin now passes the depth `Texture` to Rust as a `Texture`. The extensions handed over the texture's handle where a `TextureTarget` handle was expected, so Rust read the texture's memory as the wrong type, which is undefined behavior. They now call a new `setDepthTexture` binding that takes the `Texture` directly.
 
 On Android, `renderer.createTarget(surface)` builds the target on the renderer you call it on. The JNI path created a new `Renderer` for every surface, so the target lived on a different GPU device than the renderer drawing into it, and `render` either failed with `NoContext` or mixed the two devices. The JNI helper now only turns the `Surface` into an `ANativeWindow` pointer, and the Kotlin extension passes that pointer to the calling renderer's `createTarget`.
 
@@ -71,7 +71,7 @@ A mesh whose instance list shrinks draws only the instances it holds. The render
 
 `Renderer.create_target` returns an `InitializationError` when the GPU adapter cannot present to the surface. Such a surface lists no formats. That happens with a second canvas on WebGL2, where each canvas needs its own `Renderer`. `create_target` configured the surface anyway with a fallback format, so the call succeeded and wgpu's `UnsupportedQueueFamily` error only reached the log. Every binding reports it as an error the caller can catch, and its message names the cause.
 
-`Renderer.create_texture` honours `TextureOptions.usage`. Both upload paths set `TEXTURE_BINDING | COPY_DST` and ignored the option, so no texture made by `create_texture` could be read back, and `read_texture` failed on it in every language. The usage bits now join the two the upload needs, so `TextureUsage::COPY_SRC` makes the texture readable. Python takes `usage=` and the keyword `sampler=` on `create_texture`, and `usage=` on `create_storage_texture`, where `usage_bits=` still works with a `DeprecationWarning`.
+`Renderer.create_texture` honors `TextureOptions.usage`. Both upload paths set `TEXTURE_BINDING | COPY_DST` and ignored the option, so no texture made by `create_texture` could be read back, and `read_texture` failed on it in every language. The usage bits now join the two the upload needs, so `TextureUsage::COPY_SRC` makes the texture readable. Python takes `usage=` and the keyword `sampler=` on `create_texture`, and `usage=` on `create_storage_texture`, where `usage_bits=` still works with a `DeprecationWarning`.
 
 A mesh whose vertices or instances disagree on an attribute fails to draw with an error. The mesh layout comes from its first vertex and first instance, and packing wrote each later value as it was. A key with another format or length, such as a three-number `uv` after a two-number one, shifted every attribute that followed it, and a position of another dimension was zero-filled. Rendering now raises `MeshError::InvalidVertex`, `InvalidInstance`, or `LayoutMismatch`, the binding's error in other languages.
 
@@ -119,7 +119,7 @@ Swift and Kotlin render a pass into a `Texture`. `pass.setTarget(texture)` took 
 
 Texture and window targets resize to a `Size` on Swift and Kotlin, so `target.resize(other.size())` works, and Kotlin takes a `[w, h]` list.
 
-`Pass.require` takes a `Scene` in every binding. On the web it returned without doing anything for a value it didn't recognise, a `Scene` included, and skipped unrecognised items in an array. It now throws on anything else. Swift and Kotlin accepted a `Scene` only as a raw `RenderableHandle`. On the web, `Pass.setComputeDispatch` throws on a negative, fractional, or missing size, which the wasm ABI used to wrap or truncate.
+`Pass.require` takes a `Scene` in every binding. On the web it returned without doing anything for a value it didn't recognize, a `Scene` included, and skipped unrecognized items in an array. It now throws on anything else. Swift and Kotlin accepted a `Scene` only as a raw `RenderableHandle`. On the web, `Pass.setComputeDispatch` throws on a negative, fractional, or missing size, which the wasm ABI used to wrap or truncate.
 
 `Pass.add` and the `Scene` builders return their receiver in every binding, as in Rust, so `scene.add(model).add(camera)` and `pass.add(model).add(camera)` chain. That covers `Scene.add`, `addTo`, `addPass`, `ambient`, `noDefaults`, `noDefaultCamera`, `noDefaultLight`, `setDefaultCamera`, and `setDefaultLight`, in snake_case in Python. They returned nothing in JavaScript, Python, Swift, and Kotlin. On the web each returns a second handle on the same object. Code that ignores the result works as before, and Swift warns about an unused result only for the generated methods with no extension overload, such as `noDefaults()`.
 
@@ -163,7 +163,7 @@ Rust takes the vertex and instance forms the bindings take. `Mesh::add_vertex` a
 
 Kotlin passes positions straight to a mesh, as the other bindings do. A new `MeshExtensions.kt` mirrors the Swift extensions. `addVertex`, `addVertices`, and `Mesh.fromVertices` take positions as `List<Float>`, `List<Double>`, `FloatArray`, or `DoubleArray`. `setIndices` and `setInstanceCount` take `Int`, and `Vertex`, `Vertex.pbr`, and `Quad` take every float list type. `Vertex.set` and `Instance.set` take `DoubleArray` and `List<Double>`. The generated Kotlin examples drop the `Vertex(...)` around each position and the `u` suffixes on sizes, indices, and counts.
 
-Swift's vertex API fills its gaps. It gains `Mesh.fromVertices([vertex])`, scalar `Instance.set`, `Double` and `Int` scalars for `Vertex.set`, and an unlabelled `set(key, VertexValue)`. An `Int` stays an `f32`, as untyped numbers are everywhere. `addVertex(vertex)` and `addVertices([vertex])` no longer throw, and `Instance.set` warns when its result goes unused, since it returns a copy. `Vertex.set` and `Instance.set` stop with a message on a `[Float]` of 0 or more than 4 numbers, which wrote a misaligned value, and `setIndices([Int])` and `setInstanceCount(Int)` do the same for a negative number.
+Swift's vertex API fills its gaps. It gains `Mesh.fromVertices([vertex])`, scalar `Instance.set`, `Double` and `Int` scalars for `Vertex.set`, and an unlabeled `set(key, VertexValue)`. An `Int` stays an `f32`, as untyped numbers are everywhere. `addVertex(vertex)` and `addVertices([vertex])` no longer throw, and `Instance.set` warns when its result goes unused, since it returns a copy. `Vertex.set` and `Instance.set` stop with a message on a `[Float]` of 0 or more than 4 numbers, which wrote a misaligned value, and `setIndices([Int])` and `setInstanceCount(Int)` do the same for a negative number.
 
 Python takes a `Mesh` wherever the other bindings do. `Renderer.render`, `Renderer.load`, and `Pass.require` accept a `Mesh` on its own or inside a list, as Rust, JavaScript, Swift, and Kotlin already did. A lone `Mesh` used to raise `TypeError`, and a list holding one raised `AttributeError`. `Mesh.add_vertex`, `Mesh.add_vertices`, and `Mesh.from_vertices` also take the `(position, uv)` and `(position, uv, color)` tuples that Rust's `Into<Vertex>` accepts, next to every shape they took before.
 
@@ -177,7 +177,7 @@ Kotlin's `Camera`, `Light`, `Material`, and `Model` take `Double`, `FloatArray`,
 
 TypeScript accepts plain arrays for the vector parameters of `Model`, `Camera`, `Light`, `Material`, and `Scene`. The typings declared them as `Float32Array`, so a strict project rejected `Light.directional([0, -1, 0], [1, 1, 1])`, which the docs show and the runtime accepts. They are `ArrayLike<number>` now, and `render`, `load`, `require`, `setPasses`, and `Scene.load` declare the types they take.
 
-### Behaviour changes
+### Behavior changes
 
 JavaScript methods throw `Error` objects. Most failures reached JavaScript as a bare string, so `e.message` was `undefined`, `e instanceof Error` was false, and the error carried no stack. Every method now throws an `Error` whose `message` holds the old text, as the methods built on `JsError` already did. This is a breaking change for code that compares a caught value to a string or calls string methods on it. Read `e.message` instead.
 
@@ -203,9 +203,9 @@ A `ScreenRegion` built from a size alone covers exactly that size. `ScreenRegion
 
 Swift and Kotlin report a GPU that fails to start as `FragmentColorError.Init` from every renderer method. `createTexture`, `createStorageTexture`, `load`, `readStorage`, `readTexture`, and `render` reported it as `Render`. The iOS `createTarget` throws `Init` for a null `CAMetalLayer` pointer, as Android does for a null window, where it read through the pointer.
 
-Kotlin argument errors throw `FragmentColorException`, like every other Kotlin error. This is a behaviour change. The extensions checked arguments with `require`, which throws `IllegalArgumentException`, so `catch (e: FragmentColorException)` missed a bad size or a vertex value of the wrong length. Negative sizes, indices, counts, and dispatch sizes throw too, where `toUInt()` wrapped them to huge values, and lists of `Int` bytes throw for values outside 0 to 255, which `toByte()` wrapped.
+Kotlin argument errors throw `FragmentColorException`, like every other Kotlin error. This is a behavior change. The extensions checked arguments with `require`, which throws `IllegalArgumentException`, so `catch (e: FragmentColorException)` missed a bad size or a vertex value of the wrong length. Negative sizes, indices, counts, and dispatch sizes throw too, where `toUInt()` wrapped them to huge values, and lists of `Int` bytes throw for values outside 0 to 255, which `toByte()` wrapped.
 
-Kotlin `Shader.setRegistry(baseUrl)` returns nothing, as in Rust, JavaScript, Python, and Swift. This is a behaviour change. It returned a default `Shader` built only to be thrown away. Calls that ignore the result compile as before, but the JVM signature changes, so a library compiled against 0.12.5 needs a rebuild. uniffi has no static methods, so both platforms reach the setter through a new generated `Shader.useRegistry`. Swift's labelled `Shader.setRegistry(baseUrl:)` is deprecated in favour of `Shader.setRegistry(_:)`.
+Kotlin `Shader.setRegistry(baseUrl)` returns nothing, as in Rust, JavaScript, Python, and Swift. This is a behavior change. It returned a default `Shader` built only to be thrown away. Calls that ignore the result compile as before, but the JVM signature changes, so a library compiled against 0.12.5 needs a rebuild. uniffi has no static methods, so both platforms reach the setter through a new generated `Shader.useRegistry`. Swift's labeled `Shader.setRegistry(baseUrl:)` is deprecated in favor of `Shader.setRegistry(_:)`.
 
 The Python stub leaves out binding plumbing. `passes`, `renderable_type`, and the `WindowTarget` protocol methods are gone from `fragmentcolor.pyi`, since dispatch no longer calls them. They still exist until 0.13.
 
@@ -252,7 +252,7 @@ What's new:
 - Decide whether the stock Camera and Light inject at first render with `no_defaults`, `no_default_camera`, `no_default_light`, `set_default_camera`, and `set_default_light`.
 - Read a pass's label with `Pass::name`.
 
-One behaviour change: passes render in list order, so a pass added after the geometry now renders after it. A pass added before it (the common backdrop case) is unaffected.
+One behavior change: passes render in list order, so a pass added after the geometry now renders after it. A pass added before it (the common backdrop case) is unaffected.
 
 Every method ships on Rust, Python, JavaScript, Swift, and Kotlin.
 
@@ -294,7 +294,7 @@ A large release that adds a 3D layer on top of the core: a `Scene` container, a 
 
 - `Material::alpha_mode` takes `AlphaMode::Opaque`, `AlphaMode::Mask` (fragments below `alpha_cutoff` are discarded), or `AlphaMode::Blend` (alpha blending with depth writes off). `Material::double_sided` turns back-face culling off; materials are single-sided by default.
 - Blended models in a pass draw back to front from the camera, whatever order they were added in. Opaque and masked models keep the instanced path.
-- Behaviour change for shaders rendered without a material: blending is off, where every pipeline used premultiplied alpha blending before, and both faces render. To blend again, wrap the shader in `Material::custom(shader).alpha_mode(AlphaMode::Blend)`.
+- Behavior change for shaders rendered without a material: blending is off, where every pipeline used premultiplied alpha blending before, and both faces render. To blend again, wrap the shader in `Material::custom(shader).alpha_mode(AlphaMode::Blend)`.
 
 ### Meshes and vertices
 
@@ -374,7 +374,7 @@ The first release with Swift and Kotlin bindings, built with [uniffi](https://gi
 - `Shader::set_registry(base_url)` changes where slugs resolve. The default is `https://fragmentcolor.org/shaders/`.
 - GLSL works only as a single part.
 - JavaScript: `new Shader(input)` takes a string or a list, and `await Shader.fetch(input)` resolves URLs and slugs. Python: `Shader(input)` takes a string or a list. Swift and Kotlin: `Shader.new(source)` and `Shader.compose(parts)`.
-- Behaviour change: a single-line string shaped like `category/name` resolves as a registry slug instead of parsing as WGSL.
+- Behavior change: a single-line string shaped like `category/name` resolves as a registry slug instead of parsing as WGSL.
 
 ### Textures
 

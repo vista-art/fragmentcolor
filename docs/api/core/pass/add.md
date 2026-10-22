@@ -6,7 +6,7 @@ Absorb any `SceneObject` (a
 [Light](https://fragmentcolor.org/api/scene/light), or, in Rust, a
 user-defined node that implements the trait) into the pass. The other
 bindings take the built-in kinds. Each kind brings its
-own attach behaviour: a Model queues a draw with its own per-instance
+own attach behavior: a Model queues a draw with its own per-instance
 transform; a Camera or Light wires its uniforms into every shader the
 pass renders, both the ones already there and the ones added afterwards.
 

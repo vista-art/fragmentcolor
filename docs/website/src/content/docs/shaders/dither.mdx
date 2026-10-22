@@ -4,7 +4,7 @@ description: Ordered and noise-based dithering patterns from the FragmentColor s
 ---
 
 Dithering trades smooth tonal range for spatial noise so an image can survive
-quantization (8-bit output, low-bit colour palettes, alpha cut-outs) without
+quantization (8-bit output, low-bit color palettes, alpha cut-outs) without
 visible banding. Each function below returns a per-pixel threshold in
 `[0, 1)` that you compare against your value before snapping it.
 
@@ -54,7 +54,7 @@ fn bayer8x8(p: vec2<i32>) -> f32
 
 ## interleaved_gradient_noise
 
-Jorge Jimenez's IGN — a fast, blue-noise-flavoured dither that breaks up
+Jorge Jimenez's IGN — a fast, blue-noise-flavored dither that breaks up
 banding without the regular grid look of Bayer matrices.
 
 ```wgsl

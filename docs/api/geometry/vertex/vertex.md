@@ -13,7 +13,7 @@ Position is set via `Vertex::new(...)` and is not part of the constants table; t
 | `Vertex::NORMAL` | `"normal"` | Per-vertex normal. |
 | `Vertex::TANGENT` | `"tangent"` | Per-vertex tangent (for normal-mapped shading). |
 | `Vertex::UV0` / `UV1` | `"uv0"` / `"uv1"` | Texture coordinates. Use the numbered form when a mesh carries multiple UV sets (typical for glTF). |
-| `Vertex::COLOR0` / `COLOR1` | `"color0"` / `"color1"` | Vertex colours. |
+| `Vertex::COLOR0` / `COLOR1` | `"color0"` / `"color1"` | Vertex colors. |
 
 The constants are plain `&'static str` literals: `vertex.set(Vertex::UV0, [...])` and `vertex.set("uv0", [...])` do the same thing. Mix the two styles freely; the constants exist to prevent typos and to give the glTF loader a stable vocabulary.
 

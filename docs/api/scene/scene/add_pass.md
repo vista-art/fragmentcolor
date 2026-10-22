@@ -20,14 +20,14 @@ make to the original handle reach the Scene's copy too.
 ### Each new Pass clears by default
 
 Every `Pass::new(name)` starts with a clear-to-transparent input. The first
-render of the frame for that Pass wipes its colour attachment to
+render of the frame for that Pass wipes its color attachment to
 `[0, 0, 0, 0]`. When you chain passes that read each other's output, the
 downstream Pass clears the upstream Pass's output unless you opt out:
 
 - Call `pass.load_previous()` on the downstream Pass to keep the previous
   contents around (the wgpu `LoadOp::Load` equivalent).
 - Or call `pass.set_clear_color([r, g, b, a])` to choose a specific clear
-  value (still a clear, just a different colour).
+  value (still a clear, just a different color).
 
 `Scene::add_pass` stores each pass independently. There's no automatic
 chaining of their attachments. To share a target between two passes, route

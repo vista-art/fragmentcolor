@@ -4,7 +4,7 @@
 kinds: **directional** (parallel rays for sun, sky, fill), **point**
 (radiates from a position with inverse-square falloff: lamps, candles,
 fireballs), and **spot** (point light constrained to a cone: flashlights,
-headlamps, theatre lighting). The kind is set once at construction via
+headlamps, theater lighting). The kind is set once at construction via
 [`Light::directional`](https://fragmentcolor.org/api/scene/light#lightdirectional),
 [`Light::point`](https://fragmentcolor.org/api/scene/light#lightpoint), or
 [`Light::spot`](https://fragmentcolor.org/api/scene/light#lightspot).

@@ -3,7 +3,7 @@
 Turn off both default-Camera and default-Light injection. By default a Scene
 carrying Models but no Camera or Light injects a stock perspective camera and
 a white directional light at first render, so the hello-world path shows
-something recognisable. A composition caller that drives `view_proj` and the
+something recognizable. A composition caller that drives `view_proj` and the
 light slots from the host doesn't want those stock values layered on top.
 `no_defaults` leaves the pass graph exactly as built.
 

@@ -60,7 +60,7 @@ without a per-language transpiler map. `std::f32::consts::FRAC_PI_4`
 similarly has no clean cross-language translation. A bare numeric
 literal works in every language unchanged.
 
-Reference values worth memorising:
+Reference values worth memorizing:
 
 | degrees | radians  | constant   |
 | ------- | -------- | ---------- |

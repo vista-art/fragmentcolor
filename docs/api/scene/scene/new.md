@@ -1,7 +1,7 @@
 # Scene::new
 
 Build an empty `Scene`. No `Renderer` argument, no async, nothing to await.
-The Scene's GPU resources initialise lazily when it's first rendered.
+The Scene's GPU resources initialize lazily when it's first rendered.
 
 The first call to [`Scene::add`](https://fragmentcolor.org/api/scene/scene#sceneadd)
 creates a default [Pass](https://fragmentcolor.org/api/core/pass) under the

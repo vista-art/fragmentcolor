@@ -22,7 +22,7 @@ underneath and don't leak into the call site.
 `Scene::new()` is synchronous and takes no `Renderer`. The first time a
 `SceneObject` is added, the Scene
 creates a default Pass to hold it. The first time the Scene is rendered, the
-underlying GPU resources initialise on demand. This is the lazy-init pattern
+underlying GPU resources initialize on demand. This is the lazy-init pattern
 the rest of FragmentColor follows.
 
 ## An open, composable pass graph
@@ -46,7 +46,7 @@ other Pass in a frame, instead of clearing whatever it lands on.
 
 A Scene that only carries Models would normally render black: shaders need a
 camera projection and at least one light for the lighting term to be
-non-zero. To make the "hello world" path render something recognisable, the
+non-zero. To make the "hello world" path render something recognizable, the
 Scene injects sensible defaults when the user hasn't supplied them:
 
 - **Default Camera**: `Camera::perspective(60°, 1.0, 0.1, 100.0)` looking

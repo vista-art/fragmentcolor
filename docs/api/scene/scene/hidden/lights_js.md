@@ -2,7 +2,7 @@
 
 Web-specific example for [`Scene::lights`](https://fragmentcolor.org/api/scene/scene#scenelights).
 
-Same behaviour as every other binding; the only difference is how the Scene
+Same behavior as every other binding; the only difference is how the Scene
 is loaded. On the web there's no filesystem, so the `.glb` bytes are fetched
 and passed to `Scene.load` (see
 [`Scene::load`](https://fragmentcolor.org/api/scene/scene#sceneload)).

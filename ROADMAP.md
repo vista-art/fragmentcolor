@@ -64,7 +64,7 @@ Open decisions, further down, lists the choices still open, each with a recommen
 
 ### Binding parity
 
-These landed in 0.12.6. JavaScript errors and the JavaScript `Shader` constructor change behaviour, and the rest keep today's signatures. 0.13.0 finishes the ones that need a break, and removes the aliases they keep.
+These landed in 0.12.6. JavaScript errors and the JavaScript `Shader` constructor change behavior, and the rest keep today's signatures. 0.13.0 finishes the ones that need a break, and removes the aliases they keep.
 
 - [x] A `ScreenRegion` built from one size, such as `[w, h]`, covers exactly that size (0.12.6). Two pairs still read as inclusive corners until 0.13.0
 - [x] Python exports its window target as `WindowTarget` (0.12.6). `RenderCanvasTarget` stays as an alias until 0.13.0
@@ -99,7 +99,7 @@ Every public call ships in all five languages in this release, and every platfor
 
 Every heavy item stays in this release: the 3D and scene layers, plugins, freeing on drop, non-blocking `render`, storage roots owned by their shader and the dependency features. Plugins only add calls, so they may slip to 0.13.1 if they are the last item left. Any other item that slipped would wait for 0.14.
 
-The breaks, detailed below: `add_mesh` on `Pass` takes a shader and an instance range; instances live only on `Mesh`, `add_instance` returns an index, `resize_instances` replaces `add_instances`, `clear_instances` and `set_instance_count`, and `Instance` goes; a mesh lays out its instance slots from the shader in location order, and `set_source` lays them out again; `list_keys` and `list_uniforms` go; `set` takes exact byte lengths and one key grammar; `ScreenRegion` reads two pairs as origin and size; `Compare` replaces `CompareFunction`; `SamplerOptions` and `TextureOptions` gain fields and `TextureFormat` gains cases; `create_external_texture` goes; the pool types turn internal; the aliases and deprecated forms that 0.12.6 keeps for old names go in every language, and `TextureInputMobile` becomes `TextureData` on Swift and Kotlin; sizes, regions and colors become arrays, JavaScript records plain objects, and `TextureId` and `TextureUsage` plain numbers; three free functions become methods; parse errors gain fields, and every public error enum and every record FC returns turns `#[non_exhaustive]`; `Shader::new` rejects ambiguous entry points; core fills five magic uniforms; storage roots belong to their shader; GPU objects are freed on last drop; `render` stops blocking, `Renderer::load` becomes optional warm-up and the `Material` texture setters take a `Texture`; neighbouring entries merge, so a hand-ordered list can cost more draws than in 0.12; `Pass::add` keeps its objects in that pass only; `Scene` keeps one pass and `Scene::load` turns async; the glTF loader builds a `SceneNode` per glTF node with a `Model` per primitive over meshes the nodes share, and `scene.nodes()` returns the root nodes; `Model::new` takes references and returns a `Result`, and each instance draws at the model's transform times its `model` slot; `Camera` and `Light` stop writing into shaders; `SceneObject` is sealed and moves into core; `SceneLoadError` and `TextureError` stop wrapping decoder errors; `App` moves to the examples; and the glTF, image and KTX2 decoders move behind default features.
+The breaks, detailed below: `add_mesh` on `Pass` takes a shader and an instance range; instances live only on `Mesh`, `add_instance` returns an index, `resize_instances` replaces `add_instances`, `clear_instances` and `set_instance_count`, and `Instance` goes; a mesh lays out its instance slots from the shader in location order, and `set_source` lays them out again; `list_keys` and `list_uniforms` go; `set` takes exact byte lengths and one key grammar; `ScreenRegion` reads two pairs as origin and size; `Compare` replaces `CompareFunction`; `SamplerOptions` and `TextureOptions` gain fields and `TextureFormat` gains cases; `create_external_texture` goes; the pool types turn internal; the aliases and deprecated forms that 0.12.6 keeps for old names go in every language, and `TextureInputMobile` becomes `TextureData` on Swift and Kotlin; sizes, regions and colors become arrays, JavaScript records plain objects, and `TextureId` and `TextureUsage` plain numbers; three free functions become methods; parse errors gain fields, and every public error enum and every record FC returns turns `#[non_exhaustive]`; `Shader::new` rejects ambiguous entry points; core fills five magic uniforms; storage roots belong to their shader; GPU objects are freed on last drop; `render` stops blocking, `Renderer::load` becomes optional warm-up and the `Material` texture setters take a `Texture`; neighboring entries merge, so a hand-ordered list can cost more draws than in 0.12; `Pass::add` keeps its objects in that pass only; `Scene` keeps one pass and `Scene::load` turns async; the glTF loader builds a `SceneNode` per glTF node with a `Model` per primitive over meshes the nodes share, and `scene.nodes()` returns the root nodes; `Model::new` takes references and returns a `Result`, and each instance draws at the model's transform times its `model` slot; `Camera` and `Light` stop writing into shaders; `SceneObject` is sealed and moves into core; `SceneLoadError` and `TextureError` stop wrapping decoder errors; `App` moves to the examples; and the glTF, image and KTX2 decoders move behind default features.
 
 ### Before coding starts
 
@@ -117,7 +117,7 @@ The breaks, detailed below: `add_mesh` on `Pass` takes a shader and an instance 
 6. **`ScreenRegion` and viewports.** The magic `resolution` reads the viewport
 7. **`Buffer`.** Needs 3 and 4. Storage ownership and freeing on drop share its registry code
 8. **Instances on `Mesh`.** Needs 3 and 4. `VertexInput.docs` waits for struct inputs
-9. **Draw list on `Pass`, with neighbour merging.** Needs 5 and 8
+9. **Draw list on `Pass`, with neighbor merging.** Needs 5 and 8
 10. **`submit` and `initialize`.** `render` stops blocking, and `Renderer::load` becomes warm-up
 11. **Identity and live editing.** Needs 7 and 9. Magic uniforms need 4, 6 and the clock from 10
 12. **Plugins.** Need 2 and 11
@@ -281,9 +281,9 @@ On `Pass`, `add_mesh` and `add_shader` add a draw, and `add` keeps a `SceneObjec
 - [ ] The shader's mesh list stays. `pass.add_shader` draws the shader's own meshes, every instance of each, where the shader sits
 - [ ] `remove_mesh`, `remove_shader`, `clear_meshes` and `clear_shaders` on `Pass`. There is no `add_range`
 - [ ] Entries run in the order they were added, and FC never reorders them. A group of models that a pass keeps through `pass.add` is the one place FC sorts
-- [ ] Neighbouring entries that share a mesh and a shader merge into one instanced draw, and touching ranges merge with no copy. Entries that draw nothing are skipped first
+- [ ] Neighboring entries that share a mesh and a shader merge into one instanced draw, and touching ranges merge with no copy. Entries that draw nothing are skipped first
 - [ ] Kept models that share vertices, a shader and a layout pack into one instance buffer per pass, kept across frames and rewritten only where a model, its transform or its mesh's instances changed. Packing and sorting apply only when the vertex stage never reads `instance_index`. Today every frame creates a buffer per opaque group and per blended model
-- [ ] Blended neighbours merge on backends that pass a pixel test of blend order within one draw, and draw one at a time elsewhere
+- [ ] Blended neighbors merge on backends that pass a pixel test of blend order within one draw, and draw one at a time elsewhere
 - [ ] A mesh without indices draws without them. Today every draw is indexed
 - [ ] Pipelines keyed per entry layout, a validation cache per shader and mesh layout, and uniform pools sized from the distinct shaders in a pass
 - [ ] Tests on every backend for a non-zero first instance, blend order within one draw, and merged runs that drop or shift no instance
@@ -332,7 +332,7 @@ Today the app fills these names and core fills nothing.
 - [ ] Models on one mesh share its instances and keep their own transforms, in one pass or several. `mesh.share()` gives one of them instances of its own over the same vertices
 - [ ] `set_transform`, `translate`, `rotate`, `scale` and `transform()` place the model. Tinted models share one `Material` and keep the tint in a slot of their mesh, so `Model` gains no uniform
 - [ ] `model.add_to(&pass)` adds the model's entry now, over every instance of its mesh
-- [ ] `set_visible(false)` leaves the model out of the draw and keeps every value, so its neighbours merge around it, and `set_visible(true)` puts it back
+- [ ] `set_visible(false)` leaves the model out of the draw and keeps every value, so its neighbors merge around it, and `set_visible(true)` puts it back
 - [ ] `model.name()` returns the glTF mesh name, or an empty string
 - [ ] `model.share()` returns a model over the same mesh and material with its own transform, flag and name. `SceneNode::share` copies models through it
 - [ ] A model's transform, a camera's pose and a light's position and direction are relative to their holder: the world when a pass keeps them, or the `SceneNode` they sit in. The `Model`, `Camera` and `Light` pages say so first
@@ -424,7 +424,7 @@ Skinning splits across the layers, and every call is an addition. The host keeps
 
 ### The 2D layer
 
-A sibling of the 3D layer in every package, built on core only and checked by the same layer rule. A sprite is one instance of a shared quad `Mesh`, with `rect`, `source`, `tint` and `angle` slots that the `sprite/quad` shader declares. Neighbour merging draws sprites that share a sheet in one call, in the host's order. The layer adds no `Sprite` handle, 2D camera or batch type. The host keeps entity order, y-sorting, input and UI layout.
+A sibling of the 3D layer in every package, built on core only and checked by the same layer rule. A sprite is one instance of a shared quad `Mesh`, with `rect`, `source`, `tint` and `angle` slots that the `sprite/quad` shader declares. Neighbor merging draws sprites that share a sheet in one call, in the host's order. The layer adds no `Sprite` handle, 2D camera or batch type. The host keeps entity order, y-sorting, input and UI layout.
 
 - [ ] `sprite/quad` with a `view` uniform (`offset`, `zoom`, `angle`), as a registry pass shader. It needs the composition track's pass shader entry kind. The categories are `sprite/` and `text/`, because `2d/` fails the slug grammar
 - [ ] `Atlas` (2D) as data: TexturePacker and Aseprite JSON, grids, `get` and `sample(tag, seconds)`. It parses through a `json` dependency feature that is on by default and removes no type
@@ -616,7 +616,7 @@ Moves before that:
 
 - **Kept in 0.13.0:** `Scene`, `SceneObject` (now sealed and in core), `Pass::add`, `Renderer::load` (now warm-up), `Scene::load` (now async) and `Model::set_visible`.
 - **Picked on packaging:** the full package on every platform, the layers with a `build.rs` check, and Cargo features for dependencies only, on by default.
-- **New in 0.13.0:** neighbour merging with one lasting instance buffer per pass, `Pass::remove`, `scene.pass()`, `skip_defaults`, `set_ambient`, `model.name()`, OBJ loading, URLs and bytes in every language, the scene's depth target, the layer check, `SceneObject` and `Renderable` as the core traits the higher layers implement, the `gltf` and `obj` features, `network` in the defaults, decoder errors that carry a message, reflect's new feature list, and the per-feature CI jobs. Custom data support brought slot layouts, `[i].slot` keys, `VertexInput.docs`, `ModelError`, `scene.nodes()` and the Custom components guide.
+- **New in 0.13.0:** neighbor merging with one lasting instance buffer per pass, `Pass::remove`, `scene.pass()`, `skip_defaults`, `set_ambient`, `model.name()`, OBJ loading, URLs and bytes in every language, the scene's depth target, the layer check, `SceneObject` and `Renderable` as the core traits the higher layers implement, the `gltf` and `obj` features, `network` in the defaults, decoder errors that carry a message, reflect's new feature list, and the per-feature CI jobs. Custom data support brought slot layouts, `[i].slot` keys, `VertexInput.docs`, `ModelError`, `scene.nodes()` and the Custom components guide.
 - **New in 0.12.x:** the stray instance fix, the duplicate scene pass fix, the primitive mode check, the `SceneInner` rename, and the `Model`, `Material`, `Renderer::load` and `Scene.load` doc fixes. Custom data support brought the glTF `extras` feature, the `Material::custom` page and `Mat4` comment fixes, the PBR normal matrix, and the `AGENTS.md` rule that FC never calls host code during `render` or `submit`.
 - **New in 0.13.x:** USD loading.
 - **Dropped:** the scene removal, `Asset`, value records for `Camera` and `Light`, separate draws for models that share a mesh and a material, the backlog's type aliases, a `Material` per tinted object, and "extra bytes per model wait for a request". `Batch` stays dropped as a public type.
@@ -817,7 +817,7 @@ Basis Universal encodes once and transcodes at load time into the device's nativ
 ### Stability and performance
 
 - [ ] A central device-lost handler that requests a new device, rebuilds the render context, reconfigures surfaces and targets, and resets caches and pools; docs on what survives; a simulated device-lost test where the backend allows it
-- [ ] Staging-belt uploads for uniforms (`wgpu::util::StagingBelt`, or a per-frame flush in the buffer pool), honouring alignment rules
+- [ ] Staging-belt uploads for uniforms (`wgpu::util::StagingBelt`, or a per-frame flush in the buffer pool), honoring alignment rules
 - [ ] Sampler and texture-view caches keyed by descriptor, with LRU caps
 - [ ] Pipeline warming per shader, format and sample count, so a warm-up that knows its target builds pipelines the way `renderer.load` uploads data. An optional `wgpu::PipelineCache` owned by `Renderer` on Vulkan, the only backend that supports it
 - [ ] Throttled counters and one-time warnings for frame-acquire retries on `Lost` and `Outdated`

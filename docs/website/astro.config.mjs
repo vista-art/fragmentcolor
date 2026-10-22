@@ -158,7 +158,7 @@ export default defineConfig({
         // <Lang /> wiring — keeps inline tab-synced text up to date
         // without rendering DOM siblings next to the substitution span.
         // Lives here (page-level head) so the component itself only
-        // emits the <span>, avoiding inline-context whitespace artefacts.
+        // emits the <span>, avoiding inline-context whitespace artifacts.
         {
           tag: "style",
           content: ".lang-text{display:inline;margin:0;padding:0;white-space:normal;}",

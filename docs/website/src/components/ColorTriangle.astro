@@ -6,7 +6,7 @@
 // keyword colors — matches every other Snippet block on the article.
 // A unique per-language identifier placeholder (`__CLR_RUST__` etc.) is
 // what each code sample contains where the `[r, g, b, a]` literal would
-// be; Shiki tokenises it as an identifier (single span). Right after
+// be; Shiki tokenizes it as an identifier (single span). Right after
 // mount, a small client script walks each rendered code block, finds
 // the placeholder span, and replaces it with a `<button class="lit">`
 // containing the live literal. Click that button and the browser's
@@ -43,7 +43,7 @@ const {
 } = Astro.props;
 
 // Per-language identifier placeholders. Each is a valid identifier in
-// the language so Shiki tokenises it as one span; the client script
+// the language so Shiki tokenizes it as one span; the client script
 // then swaps that span for the interactive button.
 const PLACEHOLDER = {
   rust: "__CLR_RUST__",

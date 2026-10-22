@@ -6,7 +6,7 @@ newtype that uniffi's `Record` derive does not support.
 
 The record has the same semantics:
 - `load: Bool`: `true` means "load previous frame contents"; `false` means "clear".
-- `colorRgba: UInt32`: packed clear colour as `0xRRGGBBAA`.
+- `colorRgba: UInt32`: packed clear color as `0xRRGGBBAA`.
 
 ## Example
 

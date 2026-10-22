@@ -28,7 +28,7 @@ import { fileURLToPath } from "url";
 /**
  * Astro and Vite disagree on the type of the project root: Astro's
  * `config.root` is a `URL`, Vite's `server.config.root` is an absolute
- * path string. Normalise to a string.
+ * path string. Normalize to a string.
  */
 function rootToPath(root: URL | string): string {
   if (typeof root === "string") {
