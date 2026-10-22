@@ -29,7 +29,10 @@ impl Material {
 
     #[wasm_bindgen(js_name = "baseColor")]
     #[lsp_doc("docs/api/scene/material/base_color.md")]
-    pub fn base_color_js(&self, color: Vec<f32>) -> Result<Material, JsError> {
+    pub fn base_color_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] color: Vec<f32>,
+    ) -> Result<Material, JsError> {
         let arr = vec4_from_vec(&color, "base_color")?;
         Ok(self.base_color(arr))
     }
@@ -60,7 +63,10 @@ impl Material {
 
     #[wasm_bindgen(js_name = "emissive")]
     #[lsp_doc("docs/api/scene/material/emissive.md")]
-    pub fn emissive_js(&self, factor: Vec<f32>) -> Result<Material, JsError> {
+    pub fn emissive_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] factor: Vec<f32>,
+    ) -> Result<Material, JsError> {
         let arr = vec3_from_vec(&factor, "emissive")?;
         Ok(self.emissive(arr))
     }
@@ -75,8 +81,8 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/uv_transform.md")]
     pub fn uv_transform_js(
         &self,
-        offset: Vec<f32>,
-        scale: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] offset: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] scale: Vec<f32>,
         rotation: f32,
     ) -> Result<Material, JsError> {
         let o = vec2_from_vec(&offset, "Material.uvTransform offset")?;
