@@ -1,7 +1,7 @@
-use crate::texture::{read_texture_input, read_usage};
+use crate::texture::{js_to_texture_bytes, read_texture_input, read_usage};
 use crate::{
     Mesh, Pass, PassObject, Renderable, Renderer, RendererError, Scene, Shader, Size, Texture,
-    TextureTarget, target::CanvasTarget,
+    TextureData, TextureTarget, target::CanvasTarget,
 };
 use js_sys::Array;
 use lsp_doc::lsp_doc;
@@ -117,27 +117,28 @@ impl Renderer {
         &self,
         size: &JsValue,
         format: crate::TextureFormat,
-        data: Option<js_sys::Uint8Array>,
+        #[wasm_bindgen(
+            unchecked_optional_param_type = "Uint8Array | ArrayBuffer | ArrayLike<number> | null"
+        )]
+        data: Option<JsValue>,
         #[wasm_bindgen(unchecked_optional_param_type = "TextureUsage | number")] usage: Option<
             JsValue,
         >,
     ) -> Result<crate::texture::Texture, JsError> {
+        let given = |value: &JsValue| !value.is_undefined() && !value.is_null();
         let size: Size = size.try_into()?;
-        let usage = usage.filter(|usage| !usage.is_undefined() && !usage.is_null());
-        let usage = usage.as_ref().map(read_usage).transpose()?;
-        let data_vec = data.map(|arr| arr.to_vec());
-        let input = crate::TextureInput {
-            data: match data_vec {
-                Some(bytes) => crate::TextureData::Bytes(bytes),
-                None => crate::TextureData::Empty,
-            },
-            options: crate::TextureOptions {
-                size: Some(size),
-                format,
-                usage,
-                ..Default::default()
-            },
+        let usage = usage.filter(given).as_ref().map(read_usage).transpose()?;
+        let data = match data.filter(given) {
+            Some(bytes) => TextureData::Bytes(js_to_texture_bytes(&bytes)?),
+            None => TextureData::Empty,
         };
+        let options = crate::TextureOptions {
+            size: Some(size),
+            format,
+            usage,
+            ..Default::default()
+        };
+        let input = crate::TextureInput { data, options };
         Ok(self.create_storage_texture(input).await?)
     }
 

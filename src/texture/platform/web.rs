@@ -30,14 +30,13 @@ impl Mipmap {
     pub fn build_js(
         bytes: &JsValue,
         format: TextureFormat,
-        size: &JsValue,
+        #[wasm_bindgen(unchecked_optional_param_type = "ArrayLike<number> | Size")] size: Option<
+            JsValue,
+        >,
     ) -> Result<Mipmap, JsError> {
         let bytes = crate::texture::js_to_texture_bytes(bytes)?;
-        let size: Option<Size> = if size.is_undefined() || size.is_null() {
-            None
-        } else {
-            Some(size.try_into()?)
-        };
+        let size = size.filter(|size| !size.is_undefined() && !size.is_null());
+        let size: Option<Size> = size.as_ref().map(Size::try_from).transpose()?;
         let input = crate::TextureInput {
             data: crate::TextureData::Bytes(bytes),
             options: crate::TextureOptions {
