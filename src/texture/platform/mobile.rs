@@ -98,11 +98,10 @@ impl Mipmap {
     /// to `renderer.createTexture(chain:)` for the GPU upload.
     ///
     /// Mobile shim takes the fields directly because uniffi can't marshal
-    /// `impl Into<TextureInput>`. Swift / Kotlin extensions wrap this
-    /// constructor so end users call `Mipmap.build(bytes:format:)`
-    /// (encoded) or `Mipmap.build(bytes:format:size:)` (raw)
-    /// without seeing the underlying `TextureInput` plumbing.
-    #[uniffi::constructor(name = "build")]
+    /// `impl Into<TextureInput>`. `size` defaults to `None`, and the Swift
+    /// extensions add unlabeled `Mipmap.build(bytes, format)` (encoded) and
+    /// `Mipmap.build(bytes, format, size)` (raw) overloads on top.
+    #[uniffi::constructor(name = "build", default(size = None))]
     #[lsp_doc("docs/api/texture/mipmap/build.md")]
     pub fn build_mobile(
         bytes: Vec<u8>,
@@ -139,6 +138,13 @@ impl Mipmap {
     #[lsp_doc("docs/api/texture/mipmap/count.md")]
     pub fn count_mobile(&self) -> u32 {
         self.count() as u32
+    }
+
+    /// Every mip level's bytes, the base level first.
+    #[uniffi::method(name = "levels")]
+    #[lsp_doc("docs/api/texture/mipmap/levels.md")]
+    pub fn levels_mobile(&self) -> Vec<Vec<u8>> {
+        self.levels().to_vec()
     }
 
     /// Return the bytes for a single mip level. Use `count()` to discover
