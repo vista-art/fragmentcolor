@@ -188,7 +188,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_core_pass_set_compute_dispatch() {
         val cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
         val pass = Pass.fromShader("compute", cs)
-        pass.setComputeDispatch(64u, 64u, 1u)
+        pass.setComputeDispatch(64, 64, 1)
     }
 
     @Suppress("unused") private suspend fun _example_core_pass_set_depth_target() {
@@ -379,7 +379,7 @@ class GeneratedExamples {
         """)
 
         val pass = Pass.compute("seed")
-        pass.setComputeDispatch(1u, 1u, 1u)
+        pass.setComputeDispatch(1, 1, 1)
         pass.addShader(compute)
         renderer.render(pass, target)
 
@@ -794,7 +794,7 @@ class GeneratedExamples {
         val m = Mesh()
         m.addVertices(listOf(listOf(-0.01f, -0.01f), listOf(0.01f, -0.01f), listOf(0.00f, 0.01f)))
         // Draw one million instances, fetching per-particle data from a storage buffer.
-        m.setInstanceCount(1_000_000u)
+        m.setInstanceCount(1_000_000)
     }
 
     @Suppress("unused") private suspend fun _example_geometry_quad_Quad() {
@@ -1339,7 +1339,7 @@ class GeneratedExamples {
 
         // Fetch the second pass (index 1) to reconfigure it. An out-of-range
         // index returns null instead.
-        val geometry = scene.getPass(1u)
+        val geometry = scene.getPass(1)
     }
 
     @Suppress("unused") private suspend fun _example_scene_scene_lights() {
@@ -1670,7 +1670,7 @@ class GeneratedExamples {
         val pixels = ByteArray(8 * 8 * 4)
 
         val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(8, 8))
-        val level_zero_bytes = chain.level(0u)
+        val level_zero_bytes = chain.level(0)
     }
 
     @Suppress("unused") private suspend fun _example_texture_mipmap_levels() {
