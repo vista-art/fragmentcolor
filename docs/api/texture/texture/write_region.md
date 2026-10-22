@@ -2,8 +2,8 @@
 
 Same as `Texture::write`, but writes into a sub-region of the texture and/or with explicit source data layout.
 
-The `region` argument accepts anything convertible into a `TextureRegion`:
-- `[w, h]` / `(w, h)`: full size, origin `(0, 0, 0)`
+The `region` argument is required; use `Texture::write` to replace the whole texture. It accepts anything convertible into a `TextureRegion`:
+- `[w, h]` / `(w, h)`: a `w` by `h` rectangle at origin `(0, 0, 0)`
 - `[x, y, w, h]` / `(x, y, w, h)`: 2D rectangle
 - `[x, y, z, w, h, d]`: 3D box (for layered or 3D textures)
 - A `ScreenRegion`: its pixel rectangle at `z = 0`, one layer deep

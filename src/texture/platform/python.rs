@@ -363,7 +363,7 @@ impl Mipmap {
     /// Return the bytes for a single mip level. Use `count()` to discover
     /// the valid range.
     #[pyo3(name = "level")]
-    #[lsp_doc("docs/api/texture/mipmap/levels.md")]
+    #[lsp_doc("docs/api/texture/mipmap/level.md")]
     pub fn level_py(&self, index: usize) -> pyo3::PyResult<Vec<u8>> {
         Ok(self.level(index)?.to_vec())
     }

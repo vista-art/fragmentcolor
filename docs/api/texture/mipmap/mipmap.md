@@ -17,33 +17,39 @@ Build with [Mipmap::build(input)](https://fragmentcolor.org/api/texture/mipmap#m
 
 Then hand the chain to `Renderer::create_texture(chain)` for the upload. The cross-language bindings expose `build(bytes, format, size?)` with `size` optional.
 
-Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`. Anything else returns `TextureError::UnsupportedMipmapFormat`.
+Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`, and the `Rgba`, `Bgra`, `L8` and `Lab` aliases. Anything else returns `TextureError::UnsupportedMipmapFormat`.
 
 ## Per-language shapes
 
-- **Rust:** `Mipmap::build(input)` where `input` is `(bytes, format)`, `(bytes, format, size)`, a `DynamicImage`, or a file path.
+- **Rust:** `Mipmap::build(input)` where `input` is `(bytes, format)`, `(bytes, format, size)`, or a file path.
 - **JS:** `Mipmap.build(bytes, format, size?)` with `bytes` as `Uint8Array` / `ArrayBuffer`.
 - **Python:** `Mipmap.build(bytes, format, size=None)` with `bytes` as `bytes`, `list[int]`, or numpy `ndarray`.
-- **Swift / Kotlin:** `Mipmap.build(bytes: ..., format: ..., size: ...?)` with `size` optional.
+- **Swift / Kotlin:** `Mipmap.build(bytes, format)` or `Mipmap.build(bytes, format, size)`, with `bytes` as `Data` or `[UInt8]` in Swift and a `ByteArray` in Kotlin.
 
 ## Example
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-# // Hidden: synthesize a real 1x1 PNG so the doctest doesn't need a fixture.
-# let img = image::DynamicImage::ImageRgba8(image::RgbaImage::from_vec(1, 1, vec![255, 0, 0, 255]).unwrap());
-# let mut png_buf = Vec::new();
-# img.write_to(&mut std::io::Cursor::new(&mut png_buf), image::ImageFormat::Png)?;
-# let png: &[u8] = png_buf.as_slice();
+# let png = std::fs::read("examples/assets/logo.png")?;
+# /*[js]
+# const png = new Uint8Array(await (await fetch("/healthcheck/public/favicon.png")).arrayBuffer());
+# */
+# /*[python]
+# png = open("examples/assets/logo.png", "rb").read()
+# */
+# /*[swift]
+# import Foundation
+# let png = try Data(contentsOf: URL(fileURLWithPath: "examples/assets/logo.png"))
+# */
 # /*[kotlin]
-# val png: ByteArray = byteArrayOf()
+# val png = java.io.File("examples/assets/logo.png").readBytes()
 # */
 use fragmentcolor::{Mipmap, Renderer, TextureFormat};
 
 // Imagine `png` came off your asset loader on a worker thread.
 
 // Decode + mipmap generation. Pure CPU; run it wherever you like.
-let chain = Mipmap::build((png, TextureFormat::Rgba8UnormSrgb))?;
+let chain = Mipmap::build((png.as_slice(), TextureFormat::Rgba8UnormSrgb))?;
 
 // Back on the renderer thread, the upload is just a GPU write.
 let renderer = Renderer::new();

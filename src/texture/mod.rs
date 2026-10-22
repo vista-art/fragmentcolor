@@ -138,8 +138,8 @@ impl Mipmap {
     /// return [`TextureError::InvalidInput`].
     ///
     /// Supported formats for the mipmap chain: `Rgba8Unorm`,
-    /// `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, `R8Unorm`,
-    /// `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`. Other formats
+    /// `Rgba8UnormSrgb`, `Bgra8Unorm`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`,
+    /// `Rg16Unorm`, `Rgba16Unorm`, and the aliases for them. Other formats
     /// return [`TextureError::UnsupportedMipmapFormat`].
     #[lsp_doc("docs/api/texture/mipmap/build.md")]
     pub fn build(input: impl Into<crate::TextureInput>) -> Result<Mipmap, TextureError> {
@@ -258,7 +258,7 @@ impl Mipmap {
         &self.levels
     }
 
-    #[lsp_doc("docs/api/texture/mipmap/hidden/level.md")]
+    #[lsp_doc("docs/api/texture/mipmap/level.md")]
     pub fn level(&self, index: usize) -> Result<&[u8], TextureError> {
         self.levels.get(index).map(Vec::as_slice).ok_or_else(|| {
             TextureError::InvalidInput(format!(

@@ -5,14 +5,23 @@ Return how many mip levels the chain holds (always at least 1). For a base size 
 ## Example
 
 ```rust
+# let pixels: Vec<u8> = vec![0; 8 * 8 * 4];
+# /*[js]
+# const pixels = new Uint8Array(8 * 8 * 4);
+# */
+# /*[python]
+# pixels = bytes(8 * 8 * 4)
+# */
+# /*[swift]
+# import Foundation
+# let pixels = Data(repeating: 0, count: 8 * 8 * 4)
+# */
+# /*[kotlin]
+# val pixels = ByteArray(8 * 8 * 4)
+# */
 use fragmentcolor::{Mipmap, TextureFormat};
 
-let pixels: Vec<u8> = vec![0; 8 * 8 * 4];
-let chain = Mipmap::build((
-    pixels.as_slice(),
-    TextureFormat::Rgba8UnormSrgb,
-    [8, 8],
-))?;
+let chain = Mipmap::build((pixels.as_slice(), TextureFormat::Rgba8UnormSrgb, [8, 8]))?;
 let count = chain.count();
 # assert_eq!(count, 4); // 8, 4, 2, 1
 # let _count = count;

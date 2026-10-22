@@ -1,7 +1,8 @@
-# Texture.setSamplerOptions(opts)
+# Texture::set_sampler_options (Kotlin)
 
-Kotlin wrapper for `Texture::set_sampler_options`. `SamplerOptions` and
-`CompareFunction` are uniffi-exported records / enums.
+Kotlin override for `Texture::set_sampler_options`. The generic conversion
+can't turn Rust's `SamplerOptions { .. }` struct literal into Kotlin, so this
+page builds the options with the record's constructor.
 
 ## Example
 
@@ -9,16 +10,10 @@ Kotlin wrapper for `Texture::set_sampler_options`. `SamplerOptions` and
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val pixels: ByteArray = byteArrayOf(255.toByte(), 255.toByte(), 255.toByte(), 255.toByte())
-val options = TextureOptions(
-    size = Size(width = 1u, height = 1u, depth = null),
-    format = TextureFormat.RGBA8_UNORM_SRGB,
-    sampler = SamplerOptions(repeatX = false, repeatY = false, smooth = true, compare = null),
-    mipmaps = false,
-    usage = null,
-)
-val texture = renderer.createTexture(TextureInputMobile.Bytes(pixels), options)
+// 1x1 RGBA (white) raw pixel bytes
+val pixels = listOf(255, 255, 255, 255)
 
+val texture = renderer.createTexture(pixels, listOf(1, 1))
 val opts = SamplerOptions(repeatX = true, repeatY = true, smooth = true, compare = null)
 texture.setSamplerOptions(opts)
 ```

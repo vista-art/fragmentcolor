@@ -15,8 +15,8 @@ pub enum TextureError {
     MalformedImageError(#[from] image::ImageError),
     /// The requested target format isn't supported by the CPU mipmap
     /// dispatcher. Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`,
-    /// `Bgra8Unorm`, `Bgra8UnormSrgb`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`,
-    /// `Rg16Unorm`, `Rgba16Unorm`. For other formats, ship a pre-baked KTX2
+    /// `Bgra8Unorm`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`,
+    /// `Rgba16Unorm`, and the aliases for them. For other formats, ship a pre-baked KTX2
     /// chain (`TextureInput::Ktx2*`) or set `TextureOptions { mipmaps: false, .. }`.
     #[error(
         "Unsupported format for CPU mipmap generation: {format:?}. Supported formats: Rgba8/Bgra8 (Unorm + Srgb), R8Unorm, Rg8Unorm, R16Unorm, Rg16Unorm, Rgba16Unorm. Use TextureInput::Ktx2* for other formats, or set mipmaps=false."

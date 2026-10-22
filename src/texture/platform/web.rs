@@ -78,7 +78,7 @@ impl Mipmap {
     /// `count()` to discover the valid range. Returns an error if the
     /// requested level is out of range.
     #[wasm_bindgen(js_name = "level")]
-    #[lsp_doc("docs/api/texture/mipmap/levels.md")]
+    #[lsp_doc("docs/api/texture/mipmap/level.md")]
     pub fn level_js(&self, index: u32) -> Result<js_sys::Uint8Array, JsError> {
         let levels = self.levels();
         let idx = index as usize;

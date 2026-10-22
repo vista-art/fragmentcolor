@@ -150,7 +150,7 @@ impl Mipmap {
     /// Return the bytes for a single mip level. Use `count()` to discover
     /// the valid range.
     #[uniffi::method(name = "level")]
-    #[lsp_doc("docs/api/texture/mipmap/levels.md")]
+    #[lsp_doc("docs/api/texture/mipmap/level.md")]
     pub fn level_mobile(&self, index: u32) -> Result<Vec<u8>, FragmentColorError> {
         let levels = self.levels();
         let idx = index as usize;

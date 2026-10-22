@@ -7,7 +7,7 @@ Efficiently upload raw pixel data into an existing texture. Ideal for video play
 - `bytes` holds tightly packed rows: each row is the texture width times the bytes per pixel, with no padding. Data sized exactly for rows padded to 256 bytes reads at that padded stride. For any other padding, pass the stride to `Texture.write_region`.
 
 ## Notes
-- Supported formats initially: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, and other 4-bytes-per-pixel formats. Unsupported formats return an error.
+- Any format with a fixed size per pixel works, from 1-byte `R8Unorm` to 16-byte `Rgba32Float`.
 - The texture must have COPY_DST usage.
 
 ## Example
