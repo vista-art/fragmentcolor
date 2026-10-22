@@ -2,7 +2,6 @@ use crate::{RenderContext, Size, SurfaceError, Target, TargetFrame};
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
-#[cfg_attr(mobile, derive(uniffi::Object))]
 #[derive(Debug)]
 #[lsp_doc("docs/api/targets/window_target/window_target.md")]
 pub struct WindowTarget {

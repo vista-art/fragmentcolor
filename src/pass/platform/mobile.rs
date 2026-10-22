@@ -29,8 +29,9 @@ use crate::{Mesh, ScreenRegion, Shader, Texture};
 ///
 /// `PassInput` stores a `Color(u32)` tuple-newtype which uniffi's `Record`
 /// derive does not support. `MobilePassInput` exposes the same information
-/// as named fields that uniffi can marshal.
+/// as named fields that uniffi can marshal. Swift and Kotlin see it as `PassInput`.
 #[derive(Debug, Clone, uniffi::Record)]
+#[uniffi(name = "PassInput")]
 pub struct MobilePassInput {
     /// If `true`, the previous frame's contents are loaded (no clear).
     /// If `false`, the `color_rgba` value is used to clear the attachment.

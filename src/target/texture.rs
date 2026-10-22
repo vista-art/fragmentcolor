@@ -7,7 +7,6 @@ use wasm_bindgen::prelude::*;
 
 #[derive(Clone, Debug)]
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(mobile, derive(uniffi::Object))]
 #[lsp_doc("docs/api/targets/texture_target/texture_target.md")]
 pub struct TextureTarget {
     pub(crate) context: Arc<RenderContext>,
