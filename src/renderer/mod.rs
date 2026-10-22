@@ -2,7 +2,7 @@ use crate::{PassObject, ShaderHash, Target, TargetFrame, TextureData, TextureTar
 use crate::{Size, WindowTarget};
 use dashmap::DashMap;
 use lsp_doc::lsp_doc;
-use parking_lot::RwLock;
+use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -854,6 +854,46 @@ impl RenderContext {
 }
 
 impl RenderContext {
+    /// The persistent buffer behind the storage root `name`.
+    /// It is created, or recreated at a new `span`, with the shader's bytes,
+    /// and takes a fresh upload only when `set` has changed them since the last frame.
+    fn storage_buffer(&self, shader: &crate::ShaderObject, name: &str, span: u64) -> wgpu::Buffer {
+        let existing = self
+            .storage_registry
+            .get(name)
+            .filter(|entry| entry.value().1 == span)
+            .map(|entry| entry.value().0.clone());
+        let created = existing.is_none();
+        let buffer = existing.unwrap_or_else(|| {
+            let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(&format!("Persistent Storage Buffer: {name}")),
+                size: span,
+                usage: wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::COPY_DST
+                    | wgpu::BufferUsages::COPY_SRC,
+                mapped_at_creation: false,
+            });
+            self.storage_registry
+                .insert(name.to_string(), (buffer.clone(), span));
+            buffer
+        });
+        // An upgradable read blocks a `set` until the dirty flag is cleared, so no update is lost.
+        let storage = shader.storage.upgradable_read();
+        let dirty = storage.is_storage_dirty(name);
+        if created || dirty {
+            match storage.get_bytes(name) {
+                Some(bytes) => self.queue.write_buffer(&buffer, 0, bytes),
+                None => self
+                    .queue
+                    .write_buffer(&buffer, 0, &vec![0u8; span as usize]),
+            }
+        }
+        if dirty {
+            RwLockUpgradableReadGuard::upgrade(storage).clear_storage_dirty(name);
+        }
+        buffer
+    }
+
     pub(crate) fn register_texture(
         &self,
         texture: Arc<crate::TextureObject>,
@@ -1315,87 +1355,8 @@ impl RenderContext {
                         if let Some(crate::shader::uniform::StorageEntry { span, .. }) =
                             data.first()
                         {
-                            // Acquire persistent storage buffer and upload only if necessary
                             let span_u64 = *span as u64;
-                            // Obtain initial bytes for creation or update.
-                            // Blocking read: waits briefly (microseconds) if a `set` is
-                            // mid-write. `try_read` here would surface as `Busy`
-                            // mid-render under stress (writer thread holds the
-                            // write lock for the duration of one `update` call).
-                            // No deadlock risk — render doesn't re-enter `set` on
-                            // the same thread.
-                            let init_bytes: Vec<u8> = {
-                                let s = shader.storage.read();
-                                s.get_bytes(name)
-                                    .map(|b| b.to_vec())
-                                    .unwrap_or_else(|| vec![0u8; span_u64 as usize])
-                            };
-                            // Create or get persistent buffer
-                            let buf = {
-                                // Check existing
-                                if let Some(entry) = self.storage_registry.get(name) {
-                                    let (existing, existing_span) = entry.value();
-                                    if *existing_span != span_u64 {
-                                        drop(entry);
-                                        // Recreate with new span
-                                        let buffer =
-                                            self.device.create_buffer(&wgpu::BufferDescriptor {
-                                                label: Some(&format!(
-                                                    "Persistent Storage Buffer: {}",
-                                                    name
-                                                )),
-                                                size: span_u64,
-                                                usage: wgpu::BufferUsages::STORAGE
-                                                    | wgpu::BufferUsages::COPY_DST
-                                                    | wgpu::BufferUsages::COPY_SRC,
-                                                mapped_at_creation: false,
-                                            });
-                                        self.queue.write_buffer(&buffer, 0, &init_bytes);
-                                        self.storage_registry
-                                            .insert(name.to_string(), (buffer.clone(), span_u64));
-                                        buffer
-                                    } else {
-                                        existing.clone()
-                                    }
-                                } else {
-                                    // Create
-                                    let buffer =
-                                        self.device.create_buffer(&wgpu::BufferDescriptor {
-                                            label: Some(&format!(
-                                                "Persistent Storage Buffer: {}",
-                                                name
-                                            )),
-                                            size: span_u64,
-                                            usage: wgpu::BufferUsages::STORAGE
-                                                | wgpu::BufferUsages::COPY_DST
-                                                | wgpu::BufferUsages::COPY_SRC,
-                                            mapped_at_creation: false,
-                                        });
-                                    self.queue.write_buffer(&buffer, 0, &init_bytes);
-                                    self.storage_registry
-                                        .insert(name.to_string(), (buffer.clone(), span_u64));
-                                    buffer
-                                }
-                            };
-                            // If CPU blob is marked dirty, upload and clear flag.
-                            // Blocking acquisitions (read for the snapshot, write
-                            // for the dirty-flag clear) — see comment on the
-                            // earlier `init_bytes` block for the rationale.
-                            let need_upload = {
-                                let s = shader.storage.read();
-                                s.is_storage_dirty(name)
-                            };
-                            if need_upload {
-                                let bytes: Vec<u8> = {
-                                    let s = shader.storage.read();
-                                    s.get_bytes(name)
-                                        .map(|b| b.to_vec())
-                                        .unwrap_or_else(|| vec![0u8; span_u64 as usize])
-                                };
-                                self.queue.write_buffer(&buf, 0, &bytes);
-                                let mut s = shader.storage.write();
-                                s.clear_storage_dirty(name);
-                            }
+                            let buf = self.storage_buffer(shader, name, span_u64);
 
                             groups
                                 .entry(uniform.group)
@@ -1767,75 +1728,7 @@ impl RenderContext {
                         }) = data.first()
                         {
                             let span = *span_u32 as u64;
-                            // Obtain bytes. Blocking read — see comment on the
-                            // first storage-buffer init block above.
-                            let init_bytes: Vec<u8> = {
-                                let s = shader.storage.read();
-                                s.get_bytes(name)
-                                    .map(|b| b.to_vec())
-                                    .unwrap_or_else(|| vec![0u8; span as usize])
-                            };
-                            // Create or get buffer
-                            let buf = {
-                                if let Some(entry) = self.storage_registry.get(name) {
-                                    let (existing, existing_span) = entry.value();
-                                    if *existing_span != span {
-                                        drop(entry);
-                                        let buffer =
-                                            self.device.create_buffer(&wgpu::BufferDescriptor {
-                                                label: Some(&format!(
-                                                    "Persistent Storage Buffer: {}",
-                                                    name
-                                                )),
-                                                size: span,
-                                                usage: wgpu::BufferUsages::STORAGE
-                                                    | wgpu::BufferUsages::COPY_DST
-                                                    | wgpu::BufferUsages::COPY_SRC,
-                                                mapped_at_creation: false,
-                                            });
-                                        self.queue.write_buffer(&buffer, 0, &init_bytes);
-                                        self.storage_registry
-                                            .insert(name.to_string(), (buffer.clone(), span));
-                                        buffer
-                                    } else {
-                                        existing.clone()
-                                    }
-                                } else {
-                                    let buffer =
-                                        self.device.create_buffer(&wgpu::BufferDescriptor {
-                                            label: Some(&format!(
-                                                "Persistent Storage Buffer: {}",
-                                                name
-                                            )),
-                                            size: span,
-                                            usage: wgpu::BufferUsages::STORAGE
-                                                | wgpu::BufferUsages::COPY_DST
-                                                | wgpu::BufferUsages::COPY_SRC,
-                                            mapped_at_creation: false,
-                                        });
-                                    self.queue.write_buffer(&buffer, 0, &init_bytes);
-                                    self.storage_registry
-                                        .insert(name.to_string(), (buffer.clone(), span));
-                                    buffer
-                                }
-                            };
-                            // Upload if dirty. Blocking acquisitions — see
-                            // comment on the earlier dirty-flag block above.
-                            let need_upload = {
-                                let s = shader.storage.read();
-                                s.is_storage_dirty(name)
-                            };
-                            if need_upload {
-                                let bytes: Vec<u8> = {
-                                    let s = shader.storage.read();
-                                    s.get_bytes(name)
-                                        .map(|b| b.to_vec())
-                                        .unwrap_or_else(|| vec![0u8; span as usize])
-                                };
-                                self.queue.write_buffer(&buf, 0, &bytes);
-                                let mut s = shader.storage.write();
-                                s.clear_storage_dirty(name);
-                            }
+                            let buf = self.storage_buffer(shader, name, span);
                             groups
                                 .entry(uniform.group)
                                 .or_default()
