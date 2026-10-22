@@ -32,6 +32,82 @@ pub enum FragmentColorError {
 use pyo3::{create_exception, exceptions::PyException, prelude::*};
 #[cfg(python)]
 create_exception!(fragment_color, PyFragmentColorError, PyException);
+#[cfg(python)]
+create_exception!(
+    fragment_color,
+    InvalidInputError,
+    PyFragmentColorError,
+    "Texture bytes that don't match the size or format they were declared with."
+);
+#[cfg(python)]
+create_exception!(
+    fragment_color,
+    UnsupportedMipmapFormatError,
+    PyFragmentColorError,
+    "A texture format the CPU mipmap builder can't fill."
+);
+#[cfg(python)]
+create_exception!(
+    fragment_color,
+    MalformedImageError,
+    PyFragmentColorError,
+    "Image bytes that can't be decoded."
+);
+
+/// Python exceptions with two bases, `FragmentColorError` and a builtin,
+/// so an `except` clause for either one catches them.
+/// pyo3's `create_exception!` takes one base, so these classes are built at run time.
+#[cfg(python)]
+#[derive(Clone, Copy)]
+pub(crate) enum PythonError {
+    /// A scene file that fails to load, also a `RuntimeError`.
+    SceneLoad,
+    /// A light setter that doesn't fit the light's kind, also a `ValueError`.
+    Light,
+}
+
+#[cfg(python)]
+impl PythonError {
+    /// The class name, the same one `src/platforms/python.rs` registers it under.
+    fn name(self) -> &'static str {
+        match self {
+            PythonError::SceneLoad => "SceneLoadError",
+            PythonError::Light => "LightError",
+        }
+    }
+
+    /// The class, built on first use.
+    pub(crate) fn class(self, py: Python<'_>) -> PyResult<Bound<'_, pyo3::types::PyType>> {
+        use pyo3::exceptions::{PyRuntimeError, PyValueError};
+        use pyo3::sync::PyOnceLock;
+        use pyo3::types::{PyDict, PyTuple, PyType};
+
+        static SCENE_LOAD: PyOnceLock<Py<PyType>> = PyOnceLock::new();
+        static LIGHT: PyOnceLock<Py<PyType>> = PyOnceLock::new();
+        let (cell, builtin) = match self {
+            PythonError::SceneLoad => (&SCENE_LOAD, py.get_type::<PyRuntimeError>()),
+            PythonError::Light => (&LIGHT, py.get_type::<PyValueError>()),
+        };
+        let class = cell.get_or_try_init(py, || -> PyResult<Py<PyType>> {
+            let bases = PyTuple::new(py, [py.get_type::<PyFragmentColorError>(), builtin])?;
+            let namespace = PyDict::new(py);
+            namespace.set_item("__module__", "fragmentcolor")?;
+            let class = py
+                .get_type::<PyType>()
+                .call1((self.name(), bases, namespace))?;
+            Ok(class.cast_into::<PyType>()?.unbind())
+        })?;
+        Ok(class.bind(py).clone())
+    }
+
+    /// An error of this class, or the error that building the class raised.
+    pub(crate) fn new_err(self, message: String) -> PyErr {
+        Python::attach(|py| match self.class(py) {
+            Ok(class) => PyErr::from_type(class, message),
+            Err(error) => error,
+        })
+    }
+}
 
 #[cfg(python)]
 impl From<PyErr> for crate::target::error::DisplayError {

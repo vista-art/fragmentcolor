@@ -1,6 +1,8 @@
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 
+use crate::error::PythonError;
+
 use crate::{
     Pass, Renderer, ScreenRegion, Shader, Size,
     target::{PyTextureTarget, RenderCanvasFrame, RenderCanvasTarget, rendercanvas_context_hook},
@@ -56,11 +58,26 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<RenderCanvasTarget>()?;
     m.add_class::<RenderCanvasFrame>()?;
 
-    // Custom error type
+    // Custom error types: FragmentColorError and its subclasses
+    let py = m.py();
     m.add(
         "FragmentColorError",
-        m.py().get_type::<crate::error::PyFragmentColorError>(),
+        py.get_type::<crate::error::PyFragmentColorError>(),
     )?;
+    m.add(
+        "InvalidInputError",
+        py.get_type::<crate::error::InvalidInputError>(),
+    )?;
+    m.add(
+        "UnsupportedMipmapFormatError",
+        py.get_type::<crate::error::UnsupportedMipmapFormatError>(),
+    )?;
+    m.add(
+        "MalformedImageError",
+        py.get_type::<crate::error::MalformedImageError>(),
+    )?;
+    m.add("SceneLoadError", PythonError::SceneLoad.class(py)?)?;
+    m.add("LightError", PythonError::Light.class(py)?)?;
 
     Ok(())
 }

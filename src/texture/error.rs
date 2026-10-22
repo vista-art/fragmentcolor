@@ -70,10 +70,20 @@ impl From<pyo3::PyErr> for TextureError {
     }
 }
 
+/// Three texture errors raise their own subclass of `FragmentColorError`, so Python can tell them apart.
 #[cfg(python)]
 impl From<TextureError> for pyo3::PyErr {
     fn from(e: TextureError) -> Self {
-        crate::PyFragmentColorError::new_err(e.to_string())
+        use crate::error::{InvalidInputError, MalformedImageError, UnsupportedMipmapFormatError};
+        let message = e.to_string();
+        match e {
+            TextureError::InvalidInput(_) => InvalidInputError::new_err(message),
+            TextureError::UnsupportedMipmapFormat { .. } => {
+                UnsupportedMipmapFormatError::new_err(message)
+            }
+            TextureError::MalformedImageError(_) => MalformedImageError::new_err(message),
+            _ => crate::PyFragmentColorError::new_err(message),
+        }
     }
 }
 

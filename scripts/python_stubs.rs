@@ -253,8 +253,13 @@ mod python_stubs {
         }
         out.push_str("]\n\n");
         let mut body = String::new();
+        // FragmentColorError is the root, and every other exception the module adds subclasses it.
         for exception in &module.exceptions {
-            body.push_str(&format!("class {exception}(Exception): ...\n\n"));
+            let base = match exception.as_str() {
+                "FragmentColorError" => "Exception",
+                _ => "FragmentColorError",
+            };
+            body.push_str(&format!("class {exception}({base}): ...\n\n"));
         }
         for rust in order {
             body.push_str(&rendered[rust]);

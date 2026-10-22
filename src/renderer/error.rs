@@ -65,7 +65,10 @@ impl From<pyo3::PyErr> for RendererError {
 #[cfg(python)]
 impl From<RendererError> for pyo3::PyErr {
     fn from(e: RendererError) -> Self {
-        crate::PyFragmentColorError::new_err(e.to_string())
+        match e {
+            RendererError::TextureError(texture) => texture.into(),
+            other => crate::PyFragmentColorError::new_err(other.to_string()),
+        }
     }
 }
 
