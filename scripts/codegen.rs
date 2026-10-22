@@ -588,10 +588,12 @@ struct ObjectProperty {
         }
     }
 
+    /// Whether `attrs` hold exactly `#[doc(hidden)]`. A doc page under a
+    /// `hidden/` folder, as in `#[lsp_doc(".../hidden/...")]`, does not count.
     pub fn is_doc_hidden(attrs: &[syn::Attribute]) -> bool {
-        attrs.iter().any(|a| {
-            let s = a.to_token_stream().to_string();
-            s.contains("doc") && s.contains("hidden")
+        attrs.iter().any(|a| match &a.meta {
+            syn::Meta::List(list) => list.path.is_ident("doc") && list.tokens.to_string() == "hidden",
+            _ => false,
         })
     }
 

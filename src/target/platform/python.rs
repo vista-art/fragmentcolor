@@ -22,6 +22,7 @@ pub fn rendercanvas_context_hook(
 /// The window target Python gets from `Renderer.create_target`.
 /// Python names it `WindowTarget`, as every other binding does, and
 /// `fragmentcolor.RenderCanvasTarget` stays as an alias.
+#[doc(hidden)]
 #[pyclass(dict, name = "WindowTarget")]
 #[lsp_doc("docs/api/hidden/platforms/python/render_canvas_target/render_canvas_target.md")]
 pub struct RenderCanvasTarget {
@@ -196,6 +197,7 @@ impl TargetFrame for RenderCanvasFrame {
 }
 
 // Headless texture target for Python
+#[doc(hidden)]
 #[lsp_doc("docs/api/hidden/platforms/python/py_texture_target/py_texture_target.md")]
 #[pyclass(name = "TextureTarget")]
 pub struct PyTextureTarget {
