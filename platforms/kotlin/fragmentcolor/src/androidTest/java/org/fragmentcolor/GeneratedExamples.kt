@@ -842,7 +842,7 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_geometry_vertex_value_VertexValue() {
 
-        val vertex = Vertex(listOf(0.0f, 0.0f)).set("id", VertexValue.U32(7u))
+        val vertex = Vertex(listOf(0.0f, 0.0f)).set("id", VertexValue.u32(7))
     }
 
     @Suppress("unused") private suspend fun _example_scene_camera_look_at() {
