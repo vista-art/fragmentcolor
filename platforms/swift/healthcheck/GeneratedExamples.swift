@@ -359,9 +359,9 @@ private enum _GeneratedExamples {
             try mesh.addVertex(
                 try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
             )
-            // Raw 2×2 RGBA pixel bytes — uploaded lazily by """Renderer.load""" below.
+            // Raw 2×2 RGBA pixel bytes — uploaded lazily by `Renderer.load` below.
             // In practice the loader hands the setter encoded PNG/JPEG bytes (from a
-            // BIN chunk) or a file path (from a URI); the same """Into<TextureInput>"""
+            // BIN chunk) or a file path (from a URI); the same `Into<TextureInput>`
             // vocabulary covers all of them.
             let red_pixels = [
                 255,   0,   0, 255,    0, 255,   0, 255,
@@ -1093,7 +1093,7 @@ private enum _GeneratedExamples {
 
             let lamp = try Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
 
-            // Warm-tint the lamp later — every Pass that absorbed """lamp""" sees the
+            // Warm-tint the lamp later — every Pass that absorbed `lamp` sees the
             // new color on the next render.
             try lamp.setColor([1.0, 0.7, 0.4])
         }
@@ -1199,7 +1199,7 @@ private enum _GeneratedExamples {
             ]
             let albedo = try await renderer.createTexture((albedo_bytes, [2, 2]))
 
-            // Every Material that points at """albedo""" reuses the same uploaded GPU
+            // Every Material that points at `albedo` reuses the same uploaded GPU
             // texture; passing the same handle into N Material instances costs one
             // upload and N shader-uniform references.
             let blob = Material.pbr().baseColorTexture(albedo)
@@ -1504,7 +1504,7 @@ private enum _GeneratedExamples {
             try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]))
             let model = Model(mesh, Material.pbr())
 
-            // Models start visible; toggle with """set_visible""".
+            // Models start visible; toggle with `set_visible`.
             let visible_now = model.visible()
         }
     }
@@ -1668,10 +1668,10 @@ private enum _GeneratedExamples {
         do {
             let glb_bytes = try Data(contentsOf: URL(fileURLWithPath: "path/to/model.glb"))
 
-            // A path to a """.gltf""" file with its buffers and images, or to a """.glb""" file.
+            // A path to a `.gltf` file with its buffers and images, or to a `.glb` file.
             let scene = try Scene.load("path/to/model.gltf")
 
-            // The bytes of a """.glb""" file, read from disk or the network.
+            // The bytes of a `.glb` file, read from disk or the network.
             let scene2 = try Scene.load(glb_bytes)
         }
     }
@@ -1700,7 +1700,7 @@ private enum _GeneratedExamples {
         do {
 
             let scene = Scene()
-            // scene is empty; add Models / Cameras / Lights with """scene.add(...)""".
+            // scene is empty; add Models / Cameras / Lights with `scene.add(...)`.
         }
     }
 

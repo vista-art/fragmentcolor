@@ -202,10 +202,10 @@ import FragmentColor
 import Foundation
 let glb_bytes = try Data(contentsOf: URL(fileURLWithPath: "path/to/model.glb"))
 
-// A path to a """.gltf""" file with its buffers and images, or to a """.glb""" file.
+// A path to a \`.gltf\` file with its buffers and images, or to a \`.glb\` file.
 let scene = try Scene.load("path/to/model.gltf")
 
-// The bytes of a """.glb""" file, read from disk or the network.
+// The bytes of a \`.glb\` file, read from disk or the network.
 let scene2 = try Scene.load(glb_bytes)
 `}
 lang="swift" meta="collapse={2-3}"
@@ -219,10 +219,10 @@ code={`
 import org.fragmentcolor.*
 val glb_bytes = java.io.File("path/to/model.glb").readBytes()
 
-// A path to a """.gltf""" file with its buffers and images, or to a """.glb""" file.
+// A path to a \`.gltf\` file with its buffers and images, or to a \`.glb\` file.
 val scene = Scene.load("path/to/model.gltf")
 
-// The bytes of a """.glb""" file, read from disk or the network.
+// The bytes of a \`.glb\` file, read from disk or the network.
 val scene2 = Scene.load(glb_bytes)
 `}
 lang="kotlin" meta="collapse={2-2}"
@@ -301,7 +301,7 @@ code={`
 import FragmentColor
 
 let scene = Scene()
-// scene is empty; add Models / Cameras / Lights with """scene.add(...)""".
+// scene is empty; add Models / Cameras / Lights with \`scene.add(...)\`.
 `}
 lang="swift"
 />
@@ -314,7 +314,7 @@ code={`
 import org.fragmentcolor.*
 
 val scene = Scene()
-// scene is empty; add Models / Cameras / Lights with """scene.add(...)""".
+// scene is empty; add Models / Cameras / Lights with \`scene.add(...)\`.
 `}
 lang="kotlin"
 />

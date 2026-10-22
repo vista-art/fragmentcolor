@@ -314,7 +314,7 @@ class GeneratedExamples {
 
         val mesh = Mesh()
         mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
-        // Raw 2×2 RGBA pixel bytes — uploaded lazily by """Renderer.load""" below.
+        // Raw 2×2 RGBA pixel bytes — uploaded lazily by `Renderer.load` below.
 
         // vocabulary covers all of them.
         val red_pixels = listOf(255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255)
@@ -896,7 +896,7 @@ class GeneratedExamples {
 
         val lamp = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
 
-        // Warm-tint the lamp later — every Pass that absorbed """lamp""" sees the
+        // Warm-tint the lamp later — every Pass that absorbed `lamp` sees the
         // new color on the next render.
         lamp.setColor(listOf(1.0f, 0.7f, 0.4f))
     }
@@ -973,7 +973,7 @@ class GeneratedExamples {
         val albedo_bytes = listOf(255, 200, 120, 255, 255, 240, 180, 255, 230, 180, 100, 255, 255, 220, 150, 255)
         val albedo = renderer.createTexture(albedo_bytes, listOf(2, 2))
 
-        // Every Material that points at """albedo""" reuses the same uploaded GPU
+        // Every Material that points at `albedo` reuses the same uploaded GPU
         // texture; passing the same handle into N Material instances costs one
         // upload and N shader-uniform references.
         val blob = Material.pbr().baseColorTexture(albedo)
@@ -1187,7 +1187,7 @@ class GeneratedExamples {
         mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)))
         val model = Model(mesh, Material.pbr())
 
-        // Models start visible; toggle with """set_visible""".
+        // Models start visible; toggle with `set_visible`.
         val visible_now = model.visible()
     }
 
@@ -1321,10 +1321,10 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_scene_scene_load() {
         val glb_bytes = java.io.File("path/to/model.glb").readBytes()
 
-        // A path to a """.gltf""" file with its buffers and images, or to a """.glb""" file.
+        // A path to a `.gltf` file with its buffers and images, or to a `.glb` file.
         val scene = Scene.load("path/to/model.gltf")
 
-        // The bytes of a """.glb""" file, read from disk or the network.
+        // The bytes of a `.glb` file, read from disk or the network.
         val scene2 = Scene.load(glb_bytes)
     }
 
@@ -1347,7 +1347,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_scene_scene_new() {
 
         val scene = Scene()
-        // scene is empty; add Models / Cameras / Lights with """scene.add(...)""".
+        // scene is empty; add Models / Cameras / Lights with `scene.add(...)`.
     }
 
     @Suppress("unused") private suspend fun _example_scene_scene_no_default_camera() {
@@ -1577,7 +1577,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_texture_mipmap_Mipmap() {
         val png: ByteArray = byteArrayOf()
 
-        // Imagine """png""" came off your asset loader on a worker thread.
+        // Imagine `png` came off your asset loader on a worker thread.
 
         // Decode + mipmap generation. Pure CPU; run it wherever you like.
         val chain = Mipmap.build(png, TextureFormat.RGBA8_UNORM_SRGB, null)
