@@ -951,10 +951,8 @@ mod convert {
         out
     }
 
-    /// `VertexValue.U32(7)` as each binding spells it: the lower-case factory
-    /// `VertexValue.u32(7)` in JS, Python and Swift, and `VertexValue.U32(7u)`
-    /// in Kotlin, whose unsigned variants take `UInt` literals.
-    fn vertex_value_variants(line: &str, lang: Lang) -> String {
+    /// `VertexValue.U32(7)` as every binding spells it: the lower-case factory `VertexValue.u32(7)`.
+    fn vertex_value_variants(line: &str) -> String {
         let needle = "VertexValue.";
         let mut out = String::with_capacity(line.len() + 4);
         let mut rest = line;
@@ -973,43 +971,11 @@ mod convert {
             let Some(close) = closing(rest, open) else {
                 continue;
             };
-            match lang {
-                Lang::Kotlin if name.starts_with("U32") => {
-                    out.push_str(&name);
-                    out.push_str(&unsigned_literals(&rest[open..=close]));
-                }
-                Lang::Kotlin => out.push_str(&rest[..=close]),
-                _ => {
-                    out.push_str(&name.to_lowercase());
-                    out.push_str(&rest[open..=close]);
-                }
-            }
+            out.push_str(&name.to_lowercase());
+            out.push_str(&rest[open..=close]);
             rest = &rest[close + 1..];
         }
         out.push_str(rest);
-        out
-    }
-
-    /// `(7)` → `(7u)` and `([1, 2])` → `([1u, 2u])`: every whole-number literal as an unsigned one.
-    fn unsigned_literals(args: &str) -> String {
-        let chars: Vec<char> = args.chars().collect();
-        let mut out = String::with_capacity(args.len() + 4);
-        let mut i = 0;
-        while i < chars.len() {
-            let starts = chars[i].is_ascii_digit() && (i == 0 || !is_ident_char(chars[i - 1]) && chars[i - 1] != '.');
-            if !starts {
-                out.push(chars[i]);
-                i += 1;
-                continue;
-            }
-            let end = (i..chars.len()).find(|&j| !chars[j].is_ascii_digit()).unwrap_or(chars.len());
-            out.extend(&chars[i..end]);
-            let fraction = chars.get(end).is_some_and(|&c| c == '.' || is_ident_char(c));
-            if !fraction {
-                out.push('u');
-            }
-            i = end;
-        }
         out
     }
 
@@ -1249,7 +1215,7 @@ mod convert {
         }
         // UFCS associated calls remaining: Type::method( -> Type.method(
         rhs = replace_static_call_to_dot(&rhs);
-        rhs = vertex_value_variants(&rhs, lang);
+        rhs = vertex_value_variants(&rhs);
         // Python simplifies Type.new(args) -> Type(args). Python and JS throw on
         // errors, so neither keeps Rust's unwrap().
         if let Lang::Py = lang {
@@ -1751,7 +1717,7 @@ mod convert {
 
             // 1) UFCS static call -> dot first
             line = replace_static_call_to_dot(&line);
-            line = vertex_value_variants(&line, lang);
+            line = vertex_value_variants(&line);
             // JS-specific early fixups on raw line
             if matches!(lang, Lang::Js | Lang::Swift | Lang::Kotlin) {
                 // None -> undefined in JS, null in Swift (nil later) and Kotlin
