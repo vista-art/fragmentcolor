@@ -1,0 +1,70 @@
+package org.fragmentcolor
+
+// Idiomatic Kotlin wrappers on top of the uniffi-generated Model API,
+// matching Model+Extensions.swift. The generated calls take Float and
+// List<Float>; these take Double, FloatArray and DoubleArray as well,
+// and a 4x4 matrix as its four columns.
+
+/** Replace the model's transform with a column-major 4x4 matrix of 16 numbers. */
+fun Model.setTransform(matrix: FloatArray) {
+    setTransform(matrix.toList())
+}
+
+@JvmName("setTransformDoubles")
+fun Model.setTransform(matrix: List<Double>) {
+    setTransform(matrix.map { it.toFloat() })
+}
+
+fun Model.setTransform(matrix: DoubleArray) {
+    setTransform(matrix.map { it.toFloat() })
+}
+
+/** Replace the model's transform with a 4x4 matrix given as its four columns, as Rust's `[[f32; 4]; 4]` holds it. */
+@JvmName("setTransformColumns")
+fun Model.setTransform(columns: List<List<Float>>) {
+    setTransform(columns.flatten())
+}
+
+@JvmName("setTransformDoubleColumns")
+fun Model.setTransform(columns: List<List<Double>>) {
+    setTransform(columns.flatten())
+}
+
+fun Model.translate(offset: FloatArray) {
+    translate(offset.toList())
+}
+
+@JvmName("translateDoubles")
+fun Model.translate(offset: List<Double>) {
+    translate(offset.map { it.toFloat() })
+}
+
+fun Model.translate(offset: DoubleArray) {
+    translate(offset.map { it.toFloat() })
+}
+
+fun Model.rotate(axis: FloatArray, radians: Float) {
+    rotate(axis.toList(), radians)
+}
+
+@JvmName("rotateDoubles")
+fun Model.rotate(axis: List<Double>, radians: Double) {
+    rotate(axis.map { it.toFloat() }, radians.toFloat())
+}
+
+fun Model.rotate(axis: DoubleArray, radians: Double) {
+    rotate(axis.map { it.toFloat() }, radians.toFloat())
+}
+
+fun Model.scale(factor: FloatArray) {
+    scale(factor.toList())
+}
+
+@JvmName("scaleDoubles")
+fun Model.scale(factor: List<Double>) {
+    scale(factor.map { it.toFloat() })
+}
+
+fun Model.scale(factor: DoubleArray) {
+    scale(factor.map { it.toFloat() })
+}
