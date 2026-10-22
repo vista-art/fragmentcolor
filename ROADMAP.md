@@ -104,7 +104,7 @@ The breaks, detailed below: `add_mesh` on `Pass` takes a shader and an instance 
 ### Before coding starts
 
 - The four 0.12.x items under "First" are done, and the `#[api]` trial has its go or no-go
-- Every open question that fixes a 0.13.0 signature or rule is settled: `Texture::write_region` and the slot rule (Open decisions), and the remaining questions on `Pipeline`, shared data and the bindings
+- Every open question that fixes a 0.13.0 signature or rule is settled: where the parts of a model live (Open decisions), and the remaining questions on `Pipeline`, shared data and the bindings
 - `v0.13.0-dev` is cut again from the 0.12 line after 0.12.6 publishes, since it lacks 378 commits of `v0.12.6-dev`. Its HDR commit carries over, and the 16-bit integer and parse message commits go to the 0.12 line
 
 ### Build order
@@ -568,19 +568,15 @@ Sources, read 2026-10-22: github.com/mmp/pbrt-v4-scenes, github.com/mmp/pbrt-v4,
 
 The plan follows each recommended answer until the question is settled.
 
-Settled: the earlier open questions, each on its recommendation, except the per-object API. `Camera` and `Light` stay handles that push nothing into shaders, `Renderer::load` is warm-up for any renderable, `Scene` is one pass through `scene.pass()`, USD lands in a 0.13.x patch after a license review and a wasm and mobile trial, and the custom data rules hold. Instancing lives on `Mesh`, with index views as documented sugar, a plain range on `pass.add_mesh` beside the shader's own mesh list, and a `Model` with no instance calls. `write_vertices`, `write_instances`, `set` and `layout()` are the verbs. Also settled: the 0.13.0 additions, the 0.13.x tracks, 0.14 as light and surfaces, and the Reference scenes goal.
+Settled: the earlier open questions, each on its recommendation, except the per-object API. `Camera` and `Light` stay handles that push nothing into shaders, `Renderer::load` is warm-up for any renderable, `Scene` is one pass through `scene.pass()`, USD lands in a 0.13.x patch after a license review and a wasm and mobile trial, and the custom data rules hold. Instancing lives on `Mesh`, with index views as documented sugar, a plain range on `pass.add_mesh` beside the shader's own mesh list, and a `Model` with no instance calls. `write_vertices`, `write_instances`, `set` and `layout()` are the verbs. A later shader never widens a mesh's instance slots: adding it fails with an error that names both shaders, unless a compelling case turns up. `Texture::write_region` stays beside `write`, which writes the whole texture through the same path. Also settled: the 0.13.0 additions, the 0.13.x tracks, 0.14 as light and surfaces, and the Reference scenes goal.
 
 Settled before that: one 0.13.0 with every item; `Scene`, `SceneObject`, `Pass::add`, `Renderer::load` and `Model` kept; no public `Batch`; `set_pipeline` with `pipeline()`; override constants through `set`; `add_plugin`; a sync `submit` with `initialize`; the JavaScript throw with `set_source`; magic uniforms; the mobile renames; HDR; the restart of `v0.13.0-dev`; the full package on every platform; the layers with a `build.rs` check; Cargo features for dependencies only, on by default; and loaders that return `Scene`, with no `Asset`. Settled earlier still: `Pipeline` and `Compare`, `Buffer` with write-through `set`, runtime-sized arrays first, core names in Swift and Kotlin with no aliases, plain JavaScript objects when possible, and integrations as platform-specific examples.
 
-A few more questions on `Pipeline`, shared data and the bindings are still open, and the Reference scenes goal raises the three under its heading below.
+A few more questions on `Pipeline`, shared data and the bindings are still open. The one under Models with many parts must be settled before the scene work starts, and the Reference scenes goal raises the three under its heading below.
 
-### Instances
+### Models with many parts
 
-- **A later shader reads a slot the mesh's layout lacks: fail or widen?** Recommended: fail at add time, with an error that names both shaders. Why: widening changes the stride under bytes the host packed for `write_instances`, so the host checks the widest shader first with `validate_mesh`. A host shader over a loaded mesh reads `model` and reaches its other values through a storage table indexed by `instance_index`.
-
-### Texture writes
-
-- **`Texture::write_region`: keep it, or fold the region into `write`?** Recommended: keep. Why: `set` addresses by key and `write` by position, so a region breaks no rule, and Rust has no optional arguments, so every whole write would read `write(bytes, ..)`.
+- **Where do the parts of a car or a building live: in `Model`, or one level up?** Recommended: one level up. A `Model` stays one mesh and one material, the unit that merging, blend sorting and the `model` slot work on. A group holds a transform, models and child groups. A pass takes it like a model and composes each part's transform, and a `Scene` is a tree of groups. Four wheels in one car are one model whose mesh has four instances, and a group placed many times shares its meshes, so its draws merge. Hosts with their own hierarchy, such as an ECS, never use it. Why: a model with several materials still draws once per material, and per-part transforms and visibility would build a second scene graph inside `Model`. glTF splits the same way: a node holds a mesh whose primitives each carry one material. A design pass picks the name, the layer, and whether groups replace the `SceneNode` record. It has to land before 0.13.0, because turning a returned record into a handle later breaks callers.
 
 ### Reference scenes
 
@@ -592,7 +588,8 @@ A few more questions on `Pipeline`, shared data and the bindings are still open,
 
 Latest moves:
 
-- **Settled:** every earlier open question on its recommendation, except the per-object API, which the instancing design replaced.
+- **Settled:** every earlier open question on its recommendation, except the per-object API, which the instancing design replaced. Then the slot rule and `Texture::write_region`, both on their recommendations.
+- **Opened:** where the parts of a model live, before the 0.13.0 scene work.
 - **Instancing, new in 0.13.0:** instances live only on `Mesh`, with `add_instance()` returning the index, `remove_instance`, `resize_instances`, `instance_count`, `write_instances`, `set` and `get` through the key grammar, `layout()`, `share()` and the index views `mesh.instance(N)` and `mesh.instances()`. `write_vertices` replaces a mesh's vertices. `pass.add_mesh` takes a plain instance range, the shader's mesh list stays, and the loader builds one `Model` per mesh and material with an instance per node.
 - **Dropped with it:** per-object rows are gone, and with them `model.row()`, the one-instance `Model`, `shader.validate_rows`, instance `Buffer`s with their layouts, the `Buffer` form of the `add_mesh` argument, `mesh.set_instances`, `buffer.fields()`, which `layout()` replaces, `Instance` with `Vertex::create_instance`, `add_instances`, `clear_instances`, `set_instance_count`, and the backlog's partial writes, which span keys cover.
 - **New in 0.13.0:** `depth_bias`, `color_write`, `front_face` and `alpha_to_coverage` on `Pipeline` (the middle two from the backlog), `anisotropy` and mirror wrap on `SamplerOptions`, `dimension`, the layer count and the compressed format cases (from the KTX2 track), `#[non_exhaustive]` on returned records, the `joints0` and `weights0` keys, the two glTF loader fixes, the `exr` feature, and the removal of `create_external_texture` (from the Live media track).
