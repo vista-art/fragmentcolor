@@ -170,14 +170,15 @@ pub struct TextureOptions {
     /// so textured surfaces stay smooth at any zoom or rotation. Set to false
     /// to skip the CPU work for textures that won't be sampled at distance.
     pub mipmaps: bool,
-    /// Optional [`crate::TextureUsage`] override, stored as the underlying
-    /// `u32` bit mask so it crosses every FFI cleanly. `None` lets the
-    /// renderer pick per-method defaults:
+    /// Optional [`crate::TextureUsage`] bits, stored as the underlying
+    /// `u32` bit mask so it crosses every FFI cleanly.
     ///
-    /// - `create_texture` → `TEXTURE_BINDING | COPY_DST`
-    /// - `create_storage_texture` → `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`
+    /// - `create_texture` adds them to the `TEXTURE_BINDING | COPY_DST` it always sets.
+    ///   Add `COPY_SRC` to read the texture back with `read_texture`.
+    /// - `create_storage_texture` uses them in place of its default,
+    ///   `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`.
     ///
-    /// Set with `.with_usage(TextureUsage::STORAGE_BINDING | ...)` for
+    /// Set with `.with_usage(TextureUsage::COPY_SRC | ...)` for
     /// readability on the Rust side.
     pub usage: Option<u32>,
 }

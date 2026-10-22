@@ -2663,6 +2663,41 @@ mod more_error_path_tests {
         });
     }
 
+    // Story: TextureOptions.usage adds COPY_SRC, so read_texture returns the uploaded pixels.
+    #[test]
+    fn create_texture_honours_usage_for_readback() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            #[rustfmt::skip]
+            let bytes: Vec<u8> = vec![
+                255, 0, 0, 255,   0, 255, 0, 255,
+                0, 0, 255, 255,   255, 255, 255, 255,
+            ];
+            let options = TextureOptions {
+                size: Some([2u32, 2].into()),
+                format: crate::TextureFormat::Rgba8Unorm,
+                mipmaps: false,
+                ..Default::default()
+            }
+            .with_usage(crate::TextureUsage::COPY_SRC);
+            let texture = renderer
+                .create_texture((bytes.clone(), options))
+                .await
+                .expect("texture with COPY_SRC");
+            let read = renderer
+                .read_texture(*texture.id())
+                .await
+                .expect("readback");
+            assert_eq!(read, bytes);
+
+            let plain = renderer
+                .create_texture((bytes.clone(), [2u32, 2]))
+                .await
+                .expect("texture without COPY_SRC");
+            assert!(renderer.read_texture(*plain.id()).await.is_err());
+        });
+    }
+
     // Story: Creating a texture from invalid raw bytes with explicit format/size returns an error.
     #[test]
     fn create_texture_with_invalid_raw_bytes_errors() {

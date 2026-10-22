@@ -107,6 +107,7 @@ pub(crate) fn vk_format_to_wgpu(format: VkFormat) -> Option<wgpu::TextureFormat>
 pub(crate) fn from_ktx2_bytes(
     context: &RenderContext,
     bytes: &[u8],
+    usage: wgpu::TextureUsages,
 ) -> Result<TextureObject, TextureError> {
     let reader = ktx2::Reader::new(bytes)
         .map_err(|e| TextureError::CreateTextureError(format!("Invalid KTX2 file: {:?}", e)))?;
@@ -184,7 +185,6 @@ pub(crate) fn from_ktx2_bytes(
         height,
         depth_or_array_layers: 1,
     };
-    let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
     crate::texture::check_format(context.device.features(), wgpu_format, usage)?;
     let descriptor = wgpu::TextureDescriptor {
         label: Some("KTX2 Source Texture"),

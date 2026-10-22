@@ -692,6 +692,7 @@ impl TextureObject {
         let opt_size = options.size;
         let opt_format = options.format;
         let sampler = options.sampler;
+        let usage = source_usage(options.usage);
 
         // URL variants need an async fetch on the calling thread; everything
         // else runs on the background worker. Pre-fetch and forward the
@@ -713,22 +714,29 @@ impl TextureObject {
                     if let Some(sz) = opt_size {
                         let wfmt = format_override
                             .unwrap_or_else(|| wgpu::TextureFormat::from(opt_format));
-                        Self::from_raw_bytes(context.as_ref(), sz.into(), wfmt, &bytes, mipmaps)
+                        Self::from_raw_bytes(
+                            context.as_ref(),
+                            sz.into(),
+                            wfmt,
+                            &bytes,
+                            mipmaps,
+                            usage,
+                        )
                     } else {
                         let image = image::load_from_memory(&bytes)?;
-                        Self::from_image(context.as_ref(), &image, format_override, mipmaps)
+                        Self::from_image(context.as_ref(), &image, format_override, mipmaps, usage)
                     }
                 }
                 TextureData::Path(path) => {
                     let image = image::open(&path)?;
-                    Self::from_image(context.as_ref(), &image, format_override, mipmaps)
+                    Self::from_image(context.as_ref(), &image, format_override, mipmaps, usage)
                 }
                 TextureData::DynamicImage(image) => {
-                    Self::from_image(context.as_ref(), &image, format_override, mipmaps)
+                    Self::from_image(context.as_ref(), &image, format_override, mipmaps, usage)
                 }
-                TextureData::Prepared(chain) => Self::from_chain(context.as_ref(), chain),
+                TextureData::Prepared(chain) => Self::from_chain(context.as_ref(), chain, usage),
                 TextureData::Ktx2Bytes(bytes) => {
-                    ktx2_loader::from_ktx2_bytes(context.as_ref(), &bytes)
+                    ktx2_loader::from_ktx2_bytes(context.as_ref(), &bytes, usage)
                 }
                 TextureData::Ktx2Path(path) => {
                     let bytes = std::fs::read(&path).map_err(|e| {
@@ -738,7 +746,7 @@ impl TextureObject {
                             e
                         ))
                     })?;
-                    ktx2_loader::from_ktx2_bytes(context.as_ref(), &bytes)
+                    ktx2_loader::from_ktx2_bytes(context.as_ref(), &bytes, usage)
                 }
                 TextureData::Url(_) | TextureData::Ktx2Url(_) => Err(
                     TextureError::InvalidInput(
@@ -768,8 +776,8 @@ impl TextureObject {
         format: wgpu::TextureFormat,
         data: &[u8],
         generate_mipmaps: bool,
+        usage: wgpu::TextureUsages,
     ) -> Result<Self, TextureError> {
-        let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
         check_format(context.device.features(), format, usage)?;
         let bpp = bytes_per_pixel(format);
 
@@ -820,6 +828,7 @@ impl TextureObject {
         image: &DynamicImage,
         format_override: Option<wgpu::TextureFormat>,
         generate_mipmaps: bool,
+        usage: wgpu::TextureUsages,
     ) -> Result<Self, TextureError> {
         let label = "Source Texture from Loaded Image";
         let (width, height) = image.dimensions();
@@ -829,7 +838,6 @@ impl TextureObject {
             depth_or_array_layers: 1,
         };
         let format = format_override.unwrap_or_else(|| infer_format(image.color()));
-        let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
         check_format(context.device.features(), format, usage)?;
 
         let want_mips = generate_mipmaps && supports_cpu_mipmaps(format);
@@ -857,7 +865,11 @@ impl TextureObject {
 
     /// Create a TextureObject from a pre-built CPU mip chain. Pure GPU writes —
     /// no decode, no resize. Used by the `TextureInput::Prepared` path.
-    fn from_chain(context: &RenderContext, chain: Mipmap) -> Result<Self, TextureError> {
+    fn from_chain(
+        context: &RenderContext,
+        chain: Mipmap,
+        usage: wgpu::TextureUsages,
+    ) -> Result<Self, TextureError> {
         let (w, h) = chain.base_size;
         if w == 0 || h == 0 {
             return Err(TextureError::CreateTextureError(
@@ -871,7 +883,6 @@ impl TextureObject {
         }
         let levels = chain.levels.as_slice();
         let format = chain.format;
-        let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
         check_format(context.device.features(), format, usage)?;
         let bpp = bytes_per_pixel(format);
         if bpp == 0 {
@@ -1095,6 +1106,14 @@ impl TextureObject {
             usage,
         }
     }
+}
+
+/// Usage of a texture made from source data.
+/// It always holds `TEXTURE_BINDING | COPY_DST`, since the upload and sampling need them,
+/// plus any bits from `TextureOptions::usage`, such as `COPY_SRC` for `read_texture`.
+pub(crate) fn source_usage(extra: Option<u32>) -> wgpu::TextureUsages {
+    let required = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
+    required | extra.map_or(wgpu::TextureUsages::empty(), wgpu::TextureUsages::from_bits_truncate)
 }
 
 /// Number of mip levels in a full chain that goes down to 1×1 for the given dimensions.
