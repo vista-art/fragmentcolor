@@ -8,7 +8,6 @@ use lsp_doc::lsp_doc;
 use std::convert::TryInto;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
-use web_sys::console;
 
 use crate::shader::UniformInput;
 use crate::{Shader, ShaderError, UniformData};
@@ -17,21 +16,8 @@ use crate::{Shader, ShaderError, UniformData};
 impl Shader {
     #[wasm_bindgen(constructor)]
     #[lsp_doc("docs/api/core/shader/new.md")]
-    pub fn new_js(input: &JsValue) -> Self {
-        let parts = match jsvalue_to_string_vec(input) {
-            Ok(v) => v,
-            Err(msg) => {
-                console::error_1(&msg.into());
-                return Shader::default();
-            }
-        };
-        match Shader::new(parts) {
-            Ok(shader) => shader,
-            Err(_) => {
-                console::error_1(&"failed to create shader, returning default".into());
-                Shader::default()
-            }
-        }
+    pub fn new_js(input: &JsValue) -> Result<Shader, ShaderError> {
+        Shader::new(source_parts(input)?)
     }
 
     #[wasm_bindgen(js_name = "setRegistry")]
@@ -42,22 +28,8 @@ impl Shader {
 
     #[wasm_bindgen(js_name = "fetch")]
     #[lsp_doc("docs/api/core/shader/fetch.md")]
-    pub async fn fetch_js(input: &JsValue) -> Self {
-        let parts = match jsvalue_to_string_vec(input) {
-            Ok(v) => v,
-            Err(msg) => {
-                console::error_1(&msg.into());
-                return Shader::default();
-            }
-        };
-
-        match Shader::fetch(parts).await {
-            Ok(shader) => shader,
-            Err(e) => {
-                console::error_1(&e.to_string().into());
-                Shader::default()
-            }
-        }
+    pub async fn fetch_js(input: &JsValue) -> Result<Shader, ShaderError> {
+        Shader::fetch(source_parts(input)?).await
     }
 
     // Static helpers that mirror Rust API for the JS side
@@ -244,23 +216,23 @@ fn uniform_value(data: UniformData) -> JsValue {
     }
 }
 
-/// Accept either a single JS string or a JS array of strings, return Vec<String>.
-fn jsvalue_to_string_vec(input: &JsValue) -> Result<Vec<String>, String> {
-    if let Some(s) = input.as_string() {
-        return Ok(vec![s]);
+/// Reads a shader source: one string, or an array of strings to compose.
+fn source_parts(input: &JsValue) -> Result<Vec<String>, ShaderError> {
+    if let Some(source) = input.as_string() {
+        return Ok(vec![source]);
     }
-    if js_sys::Array::is_array(input) {
-        let arr = js_sys::Array::from(input);
-        let mut out = Vec::with_capacity(arr.length() as usize);
-        for v in arr.iter() {
-            match v.as_string() {
-                Some(s) => out.push(s),
-                None => return Err("Shader input array contains a non-string element".into()),
-            }
-        }
-        return Ok(out);
-    }
-    Err("Shader input must be a string or an array of strings".into())
+    let Some(array) = input.dyn_ref::<Array>() else {
+        return Err(ShaderError::TypeMismatch(
+            "Shader input must be a string or an array of strings".into(),
+        ));
+    };
+    array
+        .iter()
+        .map(|item| item.as_string())
+        .collect::<Option<Vec<String>>>()
+        .ok_or_else(|| {
+            ShaderError::TypeMismatch("Shader input array contains a non-string element".into())
+        })
 }
 
 #[cfg(test)]
