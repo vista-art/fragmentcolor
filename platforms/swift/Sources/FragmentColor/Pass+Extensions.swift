@@ -9,6 +9,9 @@
 
 import Foundation
 
+@available(*, deprecated, renamed: "PassInput")
+public typealias MobilePassInput = PassInput
+
 extension Pass {
     // MARK: - Convenience initializer
 
@@ -50,20 +53,23 @@ extension Pass {
     // The mobile binding takes a SceneObjectHandle enum (Model / Camera /
     // Light) and dispatches internally; these overloads let callers pass the
     // concrete types directly so example code reads pass.add(model) instead
-    // of pass.add(object: .model(model)).
+    // of pass.add(object: .model(model)). Each returns the pass, so calls chain.
 
     /// Attach a `Model` to the pass.
-    public func add(_ model: Model) throws {
+    @discardableResult
+    public func add(_ model: Model) throws -> Pass {
         try self.add(object: .model(model))
     }
 
     /// Attach a `Camera` to the pass.
-    public func add(_ camera: Camera) throws {
+    @discardableResult
+    public func add(_ camera: Camera) throws -> Pass {
         try self.add(object: .camera(camera))
     }
 
     /// Attach a `Light` to the pass.
-    public func add(_ light: Light) throws {
+    @discardableResult
+    public func add(_ light: Light) throws -> Pass {
         try self.add(object: .light(light))
     }
 
@@ -84,13 +90,18 @@ extension Pass {
         try self.require(deps: [.mesh(mesh)])
     }
 
+    /// Declare a `Scene`'s passes as dependencies of this pass.
+    public func require(_ scene: Scene) throws {
+        try self.require(deps: [.scene(scene)])
+    }
+
     /// Declare multiple `Pass` objects as dependencies (in order).
     public func require(_ passes: [Pass]) throws {
         try self.require(deps: passes.map { .pass($0) })
     }
 
     /// Declare a heterogeneous list of renderables as dependencies.
-    /// Each element is a `RenderableHandle` variant (`.shader`, `.pass`, `.mesh`, or `.passes`).
+    /// Each element is a `RenderableHandle` variant (`.shader`, `.pass`, `.mesh`, `.scene` or `.passes`).
     public func require(_ deps: [RenderableHandle]) throws {
         try self.require(deps: deps)
     }
@@ -98,12 +109,17 @@ extension Pass {
     // MARK: - Targets
 
     /// Set the colour attachment target for this pass.
-    public func setTarget(_ target: MobileTextureTarget) throws {
+    public func setTarget(_ target: TextureTarget) throws {
         try self.setTarget(target: .texture(target))
     }
 
+    /// Render into a `Texture`, such as one from `Renderer.createTexture`.
+    public func setTarget(_ texture: Texture) throws {
+        try self.setTargetTexture(texture: texture)
+    }
+
     /// Set the depth attachment target for this pass.
-    public func setDepthTarget(_ target: MobileTextureTarget) throws {
+    public func setDepthTarget(_ target: TextureTarget) throws {
         try self.setDepthTarget(target: .texture(target))
     }
 
@@ -128,23 +144,25 @@ extension Pass {
 
     // MARK: - Viewport
 
-    /// Set the viewport from a `[(x, y), (width, height)]`-style tuple array.
-    /// Accepts `[(minX, minY), (maxX, maxY)]` as two-element tuple array.
-    public func setViewport(_ corners: [(UInt32, UInt32)]) {
-        guard corners.count == 2 else { return }
-        setViewport(region: ScreenRegion(
-            minX: corners[0].0, minY: corners[0].1,
-            maxX: corners[1].0, maxY: corners[1].1
-        ))
+    /// Set the viewport (unlabeled overload).
+    public func setViewport(_ region: ScreenRegion) {
+        setViewport(region: region)
     }
 
-    /// Set the viewport from a 4-element Int array `[minX, minY, maxX, maxY]`.
+    /// Set the viewport from `[(x, y), (width, height)]`, an origin and a size,
+    /// as `ScreenRegion(origin, size)` reads them.
+    public func setViewport(_ originAndSize: [(UInt32, UInt32)]) {
+        precondition(originAndSize.count == 2, "setViewport: expected [(x, y), (width, height)]")
+        setViewport(region: ScreenRegion(originAndSize[0], originAndSize[1]))
+    }
+
+    /// Set the viewport from `[x, y, width, height]`, or `[width, height]` at the origin.
     public func setViewport(_ rect: [Int]) {
-        guard rect.count == 4 else { return }
-        setViewport(region: ScreenRegion(
-            minX: UInt32(rect[0]), minY: UInt32(rect[1]),
-            maxX: UInt32(rect[2]), maxY: UInt32(rect[3])
-        ))
+        switch rect.count {
+        case 2: setViewport(region: ScreenRegion([0, 0], rect))
+        case 4: setViewport(region: ScreenRegion(Array(rect[0..<2]), Array(rect[2..<4])))
+        default: preconditionFailure("setViewport: expected [width, height] or [x, y, width, height], got \(rect.count) numbers")
+        }
     }
 
     // MARK: - Compute dispatch
@@ -152,5 +170,29 @@ extension Pass {
     /// Set the compute dispatch grid size.
     public func setComputeDispatch(_ x: UInt32, _ y: UInt32, _ z: UInt32) {
         setComputeDispatch(x: x, y: y, z: z)
+    }
+}
+
+extension ScreenRegion {
+    /// A region at `origin` (x, y) that is `size` (width, height) large,
+    /// as Rust's `ScreenRegion::new(origin, size)` reads them.
+    public init(_ origin: (UInt32, UInt32), _ size: (UInt32, UInt32)) {
+        self.init(
+            minX: origin.0,
+            minY: origin.1,
+            maxX: UInt32(clamping: UInt64(origin.0) + UInt64(size.0)),
+            maxY: UInt32(clamping: UInt64(origin.1) + UInt64(size.1))
+        )
+    }
+
+    /// A region at `origin` `[x, y]` that is `size` `[width, height]` large.
+    public init(_ origin: [Int], _ size: [Int]) {
+        precondition(origin.count == 2 && size.count == 2, "ScreenRegion: origin and size hold 2 numbers each")
+        guard let x = UInt32(exactly: origin[0]), let y = UInt32(exactly: origin[1]),
+              let width = UInt32(exactly: size[0]), let height = UInt32(exactly: size[1])
+        else {
+            preconditionFailure("ScreenRegion: \(origin) and \(size) must be non-negative 32-bit values")
+        }
+        self.init((x, y), (width, height))
     }
 }
