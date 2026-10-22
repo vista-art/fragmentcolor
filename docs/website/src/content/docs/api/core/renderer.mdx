@@ -17,10 +17,10 @@ The [Renderer](/api/core/renderer) is the main entry point for
 It is used to render
 [Shaders](/api/core/shader) and
 [Passes](/api/core/pass) (single passes or any iterable of them)
-to a [Target](/api/core/target) (canvas, window, or texture).
+to a [Target](/api/targets/target) (canvas, window, or texture).
 
 The [Renderer](/api/core/renderer) internals are lazily initialized
-when the user creates a [Target](/api/core/target).
+when the user creates a [Target](/api/targets/target).
 
 See the constructor [Renderer::new()](/api/core/renderer/#renderernew)
 description below for details.
@@ -175,7 +175,7 @@ The renderer's GPU adapter and device are initialized lazily on the first
 target you create, so the same `Renderer` works whether you end up
 rendering offscreen or attaching it to a window. By the time `render()`
 is called the GPU resources are already in place. `render` requires a
-[Target](/api/core/target), and the only way to
+[Target](/api/targets/target), and the only way to
 build one is through this renderer:
 
 - `renderer.create_target(Window)` for an on-screen target, or
@@ -271,7 +271,7 @@ lang="kotlin"
 
 ### Renderer::create_target(target: Canvas | Window)
 
-Creates a [Target](/api/core/target) attached to a platform-specific canvas or window.
+Creates a [Target](/api/targets/target) attached to a platform-specific canvas or window.
 
 In Rust, we officially support Winit. Check the examples folder for details.
 
@@ -527,7 +527,7 @@ Decode and mipmap generation run on a background worker on native platforms. On 
 | `(bytes, size)` / options with `size` set | Raw pixel bytes; `bpp(format) * width * height` long, no decode. |
 | `(bytes, format)` / options with `format` set | Encoded image reinterpreted as `format` (e.g. `Rgba8Unorm` for normal-map data, `R16Unorm` for 16-bit grayscale). |
 | `path` / `URL` | File or HTTP fetch, then decoded. |
-| `Mipmap` | Pre-built CPU mip chain; GPU-only upload. Build via [Mipmap::build](/api/texture/mipmap/build) on a worker thread. |
+| `Mipmap` | Pre-built CPU mip chain; GPU-only upload. Build via [Mipmap::build](/api/texture/mipmap#mipmapbuild) on a worker thread. |
 | `Ktx2Bytes` / `Ktx2Path` / `Ktx2Url` | KTX2 container (BC / ETC2 / ASTC / uncompressed); the file's declared format and pre-baked mip chain win. |
 
 A full mipmap chain is generated for source images by default (`options.mipmaps = true`). Set to `false` to skip the CPU work for textures that won't be sampled at distance.
@@ -1122,7 +1122,7 @@ already-uploaded [`Texture`](/api/texture/texture)
 handles; the path / bytes / URL variants are stored on the Material's
 Shader as *pending* uploads. `load` walks every Shader the renderable
 visits, drains its pending list, calls
-[`Renderer::create_texture`](/api/core/renderer/create_texture)
+[`Renderer::create_texture`](/api/core/renderer#renderercreate_texture)
 for each, and writes the resulting `Texture` into the matching uniform.
 
 On native targets, [`Renderer::render`](/api/core/renderer)
@@ -1519,7 +1519,7 @@ lang="kotlin"
 
 ### Renderer::render(renderable, target)
 
-Renders the given object to the given [Target](/api/core/target).
+Renders the given object to the given [Target](/api/targets/target).
 
 `renderable` can be a `Shader`, a `Pass`, a `Mesh`, a `Scene`, or any iterable of `Pass` (`Vec<Pass>`, `&[Pass]`, `&[&Pass]`). Passes in an iterable are rendered in order.
 

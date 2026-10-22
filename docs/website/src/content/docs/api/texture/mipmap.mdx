@@ -21,7 +21,7 @@ Typical reasons to build one explicitly:
 - You stream tiles into a paint-canvas or terrain renderer and need each tile's GPU upload to be a single write, not a decode-plus-resize per upload.
 - You want to share one chain across many textures without rebuilding it.
 
-Build with [Mipmap::build(input)](/api/texture/mipmap/build); the input shapes match what [Renderer::create_texture](/api/core/renderer/create_texture) accepts. Whether the bytes get decoded depends on whether you pass a `size`:
+Build with [Mipmap::build(input)](/api/texture/mipmap#mipmapbuild); the input shapes match what [Renderer::create_texture](/api/core/renderer#renderercreate_texture) accepts. Whether the bytes get decoded depends on whether you pass a `size`:
 
 - `build((bytes, format))`: encoded image (PNG, JPEG, BMP, HDR, ...). FC decodes and infers the dimensions.
 - `build((bytes, format, size))`: raw pixel bytes already laid out for `format` at `size`. No decode.
@@ -166,7 +166,7 @@ lang="kotlin" meta="collapse={2-2}"
 
 ### Mipmap::build
 
-Build a mip chain on the calling thread, then hand it to [Renderer::create_texture](/api/core/renderer/create_texture) for a GPU-only upload. The work is pure CPU (decode if needed, then downsample to 1x1), so call it from wherever you already do heavy work: a worker thread, a thread pool, an async task, a Web Worker. The renderer thread sees only the finished chain.
+Build a mip chain on the calling thread, then hand it to [Renderer::create_texture](/api/core/renderer#renderercreate_texture) for a GPU-only upload. The work is pure CPU (decode if needed, then downsample to 1x1), so call it from wherever you already do heavy work: a worker thread, a thread pool, an async task, a Web Worker. The renderer thread sees only the finished chain.
 
 `build(input)` takes the same input shapes as `Renderer::create_texture` and `Renderer::create_storage_texture`, so you write the call the same way regardless of which entry point you target. Whether `build` decodes the bytes depends on whether you pass a `size`:
 

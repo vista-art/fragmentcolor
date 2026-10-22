@@ -1,6 +1,6 @@
 ---
 title: Target
-description: "The [Target](/api/core/target) interface (trait in Rust) is a rendering destination for the [Renderer](/api/core/renderer) implemented by both [WindowTarget](/api/targets/windowtarget) and [TextureTarget](/api/targets/texturetarget)."
+description: "The [Target](/api/targets/target) interface (trait in Rust) is a rendering destination for the [Renderer](/api/core/renderer) implemented by both [WindowTarget](/api/targets/windowtarget) and [TextureTarget](/api/targets/texturetarget)."
 category: targets
 categoryLabel: Targets
 ---
@@ -9,11 +9,11 @@ import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
 ## Description
 
-The [Target](/api/core/target) interface (trait in Rust) is a rendering destination for the [Renderer](/api/core/renderer) implemented by both [WindowTarget](/api/targets/windowtarget) and [TextureTarget](/api/targets/texturetarget).
+The [Target](/api/targets/target) interface (trait in Rust) is a rendering destination for the [Renderer](/api/core/renderer) implemented by both [WindowTarget](/api/targets/windowtarget) and [TextureTarget](/api/targets/texturetarget).
 
 It contains a GPU surface texture attached to a platform-specific window or an offscreen texture for headless rendering (see [TextureTarget](/api/targets/texturetarget)).
 
-[Target](/api/core/target) constructors are private and can only be created via the [Renderer](/api/core/renderer) using either `Renderer.create_target(window)` for on-screen rendering, or `Renderer.create_texture_target()` for offscreen rendering.
+[Target](/api/targets/target) constructors are private and can only be created via the [Renderer](/api/core/renderer) using either `Renderer.create_target(window)` for on-screen rendering, or `Renderer.create_texture_target()` for offscreen rendering.
 
 
 
@@ -255,7 +255,7 @@ lang="kotlin"
 
 ### Target::resize(size: Size &#123; width, heigth &#125; | (u32, u32) | [u32; 2])
 
-Resizes the [Target](/api/core/target) to the given width and height.
+Resizes the [Target](/api/targets/target) to the given width and height.
 
 #### Example
 
@@ -357,7 +357,7 @@ lang="kotlin"
 
 ### Target::size() -&gt; Size &#123; width, height &#125;
 
-Returns the size of the [Target](/api/core/target) in pixels.
+Returns the size of the [Target](/api/targets/target) in pixels.
 
 #### Example
 

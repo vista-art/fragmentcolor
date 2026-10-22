@@ -15,13 +15,13 @@ The [Shader](/api/core/shader) object is the main building block in [FragmentCol
 
 It takes a WGSL or GLSL shader source as input, parses it, validates it, and exposes the uniforms as keys.
 
-`Shader::new` accepts a source string, a registry slug like `"sdf2d/circle"`, an `https://` URL, a local file path, or an array mixing any of those. Array parts are deduplicated by hash and concatenated in order, so you can pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](/api/core/shader#shaderset_registry).
+`Shader::new` accepts a source string, a registry slug like `"sdf2d/circle"`, an `https://` URL, a local file path, or an array mixing any of those. Array parts are deduplicated by hash and concatenated in order, so you can pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](/api/core/shader#shaderset_registrybase_url-string).
 
 To draw your shader, you must use your [Shader](/api/core/shader) instance as input to a [Renderer](/api/core/renderer).
 
 You can compose [Shader](/api/core/shader) instances into a [Pass](/api/core/pass) object to create more complex rendering pipelines.
 
-You can also create renderings with multiple Render Passes by passing an array of [Pass](/api/core/pass) instances to [Renderer::render](/api/core/renderer#renderrender).
+You can also create renderings with multiple Render Passes by passing an array of [Pass](/api/core/pass) instances to [Renderer::render](/api/core/renderer#rendererrenderrenderable-target).
 
 ## Uniforms
 
@@ -2299,7 +2299,7 @@ lang="kotlin"
 
 Override the base URL used to resolve shader **slugs** (e.g. `"sdf2d/circle"`).
 
-When a slug is passed to [Shader::new](/api/core/shader#shadernew), it is expanded to:
+When a slug is passed to [Shader::new](/api/core/shader#shadernewinput-string--string), it is expanded to:
 
 ```text
 <base_url>/<slug>.wgsl

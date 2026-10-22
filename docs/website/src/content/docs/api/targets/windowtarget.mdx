@@ -1,6 +1,6 @@
 ---
 title: WindowTarget
-description: "[WindowTarget](/api/targets/windowtarget) is an implementation of [Target](/api/core/target) that represents a rendering destination attached to a platform-specific window."
+description: "[WindowTarget](/api/targets/windowtarget) is an implementation of [Target](/api/targets/target) that represents a rendering destination attached to a platform-specific window."
 category: targets
 categoryLabel: Targets
 ---
@@ -9,9 +9,9 @@ import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
 ## Description
 
-[WindowTarget](/api/targets/windowtarget) is an implementation of [Target](/api/core/target) that represents a rendering destination attached to a platform-specific window.
+[WindowTarget](/api/targets/windowtarget) is an implementation of [Target](/api/targets/target) that represents a rendering destination attached to a platform-specific window.
 
-The [Target](/api/core/target) object is a rendering destination for the [Renderer](/api/core/renderer).
+The [Target](/api/targets/target) object is a rendering destination for the [Renderer](/api/core/renderer).
 
 It contains a GPU surface texture attached to a platform-specific window or an offscreen texture for headless rendering (see [TextureTarget](/api/targets/texturetarget)).
 
@@ -352,7 +352,7 @@ lang="kotlin"
 
 ### WindowTarget::size() -&gt; [u32; 2]
 
-Returns the size of the [Target](/api/core/target) in pixels.
+Returns the size of the [Target](/api/targets/target) in pixels.
 
 #### Example
 
