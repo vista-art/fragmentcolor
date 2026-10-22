@@ -13,7 +13,7 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 val pass = Pass.fromShader("p", shader)
 
 val mesh = Mesh()
-mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f, 0.0f)), Vertex(listOf(0.5f, -0.5f, 0.0f)), Vertex(listOf(0.0f, 0.5f, 0.0f))))
+mesh.addVertices(listOf(listOf(-0.5f, -0.5f, 0.0f), listOf(0.5f, -0.5f, 0.0f), listOf(0.0f, 0.5f, 0.0f)))
 
 shader.validateMesh(mesh) // Ok
 pass.addMesh(mesh)

@@ -14,9 +14,9 @@ val shader = Shader("""
 """)
 
 val m1 = Mesh()
-m1.addVertex(Vertex(listOf(0.0f, 0.0f)))
+m1.addVertex(listOf(0.0f, 0.0f))
 val m2 = Mesh()
-m2.addVertex(Vertex(listOf(0.5f, 0.0f)))
+m2.addVertex(listOf(0.5f, 0.0f))
 
 shader.addMesh(m1)
 shader.addMesh(m2)

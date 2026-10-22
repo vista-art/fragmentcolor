@@ -308,11 +308,11 @@ val shader = Shader("""
 """)
 
 // Set the "resolution" uniform
-shader.set("resolution", floatArrayOf(800.0f, 600.0f))
+shader.set("resolution", listOf(800.0f, 600.0f))
 val res = shader.get("resolution")
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(16u, 16u)
+val target = renderer.createTextureTarget(listOf(16, 16))
 renderer.render(shader, target)
 `}
 lang="kotlin"
@@ -501,7 +501,7 @@ let main = """
 
 """
 
-let shader2 = try Shader.new([
+let shader2 = try Shader([
     "sdf2d/circle",      // pure function: fn circle(p: vec2<f32>, r: f32) -> f32
     "noise/simplex2",    // pure function: fn simplex2(v: vec2<f32>) -> f32
     main,
@@ -844,7 +844,7 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 """)
 
 // Set scalars/vectors on declared uniforms
-shader.set("resolution", floatArrayOf(800.0f, 600.0f))
+shader.set("resolution", listOf(800.0f, 600.0f))
 `}
 lang="kotlin"
 />
@@ -933,7 +933,7 @@ code={`
 import org.fragmentcolor.*
 
 val shader = Shader.default()
-shader.set("resolution", floatArrayOf(800.0f, 600.0f))
+shader.set("resolution", listOf(800.0f, 600.0f))
 val res = shader.get("resolution")
 `}
 lang="kotlin"
@@ -1295,7 +1295,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex(Vertex(listOf(0.0f, 0.0f, 0.0f)))
+mesh.addVertex(listOf(0.0f, 0.0f, 0.0f))
 val shader = Shader.fromMesh(mesh)
 `}
 lang="kotlin"
@@ -1461,7 +1461,7 @@ val shader = Shader("""
 """)
 
 val mesh = Mesh()
-mesh.addVertex(Vertex(listOf(0.0f, 0.0f, 0.0f)))
+mesh.addVertex(listOf(0.0f, 0.0f, 0.0f))
 
 // Attach mesh to this shader (errors if incompatible)
 shader.addMesh(mesh)
@@ -1632,7 +1632,7 @@ val shader = Shader("""
 """)
 
 val mesh = Mesh()
-mesh.addVertex(Vertex(listOf(0.0f, 0.0f)))
+mesh.addVertex(listOf(0.0f, 0.0f))
 shader.addMesh(mesh)
 
 // Detach the mesh
@@ -1810,9 +1810,9 @@ val shader = Shader("""
 """)
 
 val m1 = Mesh()
-m1.addVertex(Vertex(listOf(0.0f, 0.0f)))
+m1.addVertex(listOf(0.0f, 0.0f))
 val m2 = Mesh()
-m2.addVertex(Vertex(listOf(0.5f, 0.0f)))
+m2.addVertex(listOf(0.5f, 0.0f))
 
 shader.addMesh(m1)
 shader.addMesh(m2)
@@ -1979,7 +1979,7 @@ val shader = Shader("""
 """)
 
 val mesh = Mesh()
-mesh.addVertex(Vertex(listOf(0.0f, 0.0f)))
+mesh.addVertex(listOf(0.0f, 0.0f))
 shader.addMesh(mesh)
 
 // Clear all
@@ -2164,7 +2164,7 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 val pass = Pass.fromShader("p", shader)
 
 val mesh = Mesh()
-mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f, 0.0f)), Vertex(listOf(0.5f, -0.5f, 0.0f)), Vertex(listOf(0.0f, 0.5f, 0.0f))))
+mesh.addVertices(listOf(listOf(-0.5f, -0.5f, 0.0f), listOf(0.5f, -0.5f, 0.0f), listOf(0.0f, 0.5f, 0.0f)))
 
 shader.validateMesh(mesh) // Ok
 pass.addMesh(mesh)
@@ -2526,7 +2526,7 @@ import org.fragmentcolor.*
 val shader = Shader.default()
 
 // The default shader includes a "resolution" uniform
-shader.set("resolution", floatArrayOf(800.0f, 600.0f))
+shader.set("resolution", listOf(800.0f, 600.0f))
 val res = shader.get("resolution")
 `}
 lang="kotlin"

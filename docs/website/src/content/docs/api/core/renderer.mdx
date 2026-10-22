@@ -147,7 +147,7 @@ val renderer = Renderer()
 
 // The canvas comes from your platform's windowing system
 val target = renderer.createTarget(canvas)
-val texture_target = renderer.createTextureTarget(16u, 16u)
+val texture_target = renderer.createTextureTarget(listOf(16, 16))
 
 // RENDERING
 renderer.render(Shader.default(), texture_target)
@@ -257,7 +257,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val texture_target = renderer.createTextureTarget(16u, 16u)
+val texture_target = renderer.createTextureTarget(listOf(16, 16))
 `}
 lang="kotlin"
 />
@@ -487,7 +487,7 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 
 // Create an offscreen texture target with a size of 64x64 pixels.
-val target = renderer.createTextureTarget(64u, 64u)
+val target = renderer.createTextureTarget(listOf(64, 64))
 
 renderer.render(Shader.default(), target)
 
@@ -702,11 +702,11 @@ import FragmentColor
 let r = Renderer()
 
 // Empty storage texture.
-let tex = try await r.createStorageTexture(([64, 64], TextureFormat.rgba))
+let tex = try await r.createStorageTexture([64, 64], TextureFormat.rgba)
 
 // Pre-seeded with bytes.
 let pixels = Array(repeating: 0, count: 64 * 64 * 4)
-let tex2 = try await r.createStorageTexture(([64, 64], TextureFormat.rgba, pixels))
+let tex2 = try await r.createStorageTexture([64, 64], TextureFormat.rgba, pixels)
 `}
 lang="swift"
 />
@@ -721,11 +721,11 @@ import org.fragmentcolor.*
 val r = Renderer()
 
 // Empty storage texture.
-val tex = r.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
+val tex = r.createStorageTexture(listOf(64, 64), TextureFormat.RGBA)
 
 // Pre-seeded with bytes.
 val pixels = ByteArray(64 * 64 * 4)
-val tex2 = r.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, pixels, null)
+val tex2 = r.createStorageTexture(listOf(64, 64), TextureFormat.RGBA, pixels)
 `}
 lang="kotlin"
 />
@@ -806,7 +806,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val r = Renderer()
-val depth = r.createDepthTexture(800u, 600u)
+val depth = r.createDepthTexture(listOf(800, 600))
 `}
 lang="kotlin"
 />
@@ -885,7 +885,7 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture(([16, 16], TextureFormat.rgba))
+let texture = try await renderer.createStorageTexture([16, 16], TextureFormat.rgba)
 let id = texture.id()
 
 try renderer.unregisterTexture(id)
@@ -900,7 +900,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture(Size(width=16u, height=16u, depth=null), TextureFormat.RGBA, null, null)
+val texture = renderer.createStorageTexture(listOf(16, 16), TextureFormat.RGBA)
 val id = texture.id()
 
 renderer.unregisterTexture(id)
@@ -982,7 +982,7 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
+let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.rgba)
 try texture.write(Array(repeating: 0, count: 64 * 64 * 4))
 
 let bytes = try await renderer.readTexture(texture.id())
@@ -997,7 +997,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
+val texture = renderer.createStorageTexture(listOf(64, 64), TextureFormat.RGBA)
 texture.write(ByteArray(64 * 64 * 4))
 
 val bytes = renderer.readTexture(texture.id())
@@ -1256,7 +1256,7 @@ let target = try await renderer.createTextureTarget([64, 64])
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
 )
 // Raw 2×2 RGBA pixel bytes — uploaded lazily by \`Renderer.load\` below.
 // In practice the loader hands the setter encoded PNG/JPEG bytes (from a
@@ -1266,7 +1266,7 @@ let red_pixels = [
     255,   0,   0, 255,    0, 255,   0, 255,
       0,   0, 255, 255,  255, 255, 255, 255,
 ]
-let red_tex = try await renderer.createTexture((red_pixels, [2, 2]))
+let red_tex = try await renderer.createTexture(red_pixels, [2, 2])
 let material = Material.pbr().baseColorTexture(red_tex)
 let model = Model(mesh, material)
 let scene = Scene()
@@ -1288,10 +1288,10 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(64u, 64u)
+val target = renderer.createTextureTarget(listOf(64, 64))
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 // Raw 2×2 RGBA pixel bytes — uploaded lazily by \`Renderer.load\` below.
  
 // vocabulary covers all of them.
@@ -1486,7 +1486,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(16u, 16u)
+val target = renderer.createTextureTarget(listOf(16, 16))
 
 val compute = Shader("""
     struct Out { values: array<f32, 4> };
@@ -1501,7 +1501,7 @@ val compute = Shader("""
 """)
 
 val pass = Pass.compute("seed")
-pass.setComputeDispatch(1u, 1u, 1u)
+pass.setComputeDispatch(1, 1, 1)
 pass.addShader(compute)
 renderer.render(pass, target)
 
@@ -1609,7 +1609,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(10u, 10u)
+val target = renderer.createTextureTarget(listOf(10, 10))
 val shader = Shader.default()
 
 renderer.render(shader, target)

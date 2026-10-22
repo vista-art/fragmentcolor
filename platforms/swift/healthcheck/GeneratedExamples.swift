@@ -49,7 +49,7 @@ private enum _GeneratedExamples {
 
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+                try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
             )
             let model = Model(mesh, Material.pbr())
 
@@ -259,7 +259,7 @@ private enum _GeneratedExamples {
             let pass = Pass("clipped")
             pass.addShader(shader)
 
-            pass.setViewport([(0, 0), (32, 32)])
+            pass.setViewport(ScreenRegion((0, 0), (32, 32)))
 
             try renderer.render(pass, target)
         }
@@ -306,11 +306,11 @@ private enum _GeneratedExamples {
             let r = Renderer()
 
             // Empty storage texture.
-            let tex = try await r.createStorageTexture(([64, 64], TextureFormat.rgba))
+            let tex = try await r.createStorageTexture([64, 64], TextureFormat.rgba)
 
             // Pre-seeded with bytes.
             let pixels = Array(repeating: 0, count: 64 * 64 * 4)
-            let tex2 = try await r.createStorageTexture(([64, 64], TextureFormat.rgba, pixels))
+            let tex2 = try await r.createStorageTexture([64, 64], TextureFormat.rgba, pixels)
         }
     }
 
@@ -357,7 +357,7 @@ private enum _GeneratedExamples {
 
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+                try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
             )
             // Raw 2×2 RGBA pixel bytes — uploaded lazily by `Renderer.load` below.
             // In practice the loader hands the setter encoded PNG/JPEG bytes (from a
@@ -367,7 +367,7 @@ private enum _GeneratedExamples {
                 255,   0,   0, 255,    0, 255,   0, 255,
                   0,   0, 255, 255,  255, 255, 255, 255,
             ]
-            let red_tex = try await renderer.createTexture((red_pixels, [2, 2]))
+            let red_tex = try await renderer.createTexture(red_pixels, [2, 2])
             let material = Material.pbr().baseColorTexture(red_tex)
             let model = Model(mesh, material)
             let scene = Scene()
@@ -419,7 +419,7 @@ private enum _GeneratedExamples {
     static func _example_core_renderer_read_texture() async throws {
         do {
             let renderer = Renderer()
-            let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
+            let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.rgba)
             try texture.write(Array(repeating: 0, count: 64 * 64 * 4))
 
             let bytes = try await renderer.readTexture(texture.id())
@@ -441,7 +441,7 @@ private enum _GeneratedExamples {
     static func _example_core_renderer_unregister_texture() async throws {
         do {
             let renderer = Renderer()
-            let texture = try await renderer.createStorageTexture(([16, 16], TextureFormat.rgba))
+            let texture = try await renderer.createStorageTexture([16, 16], TextureFormat.rgba)
             let id = texture.id()
 
             try renderer.unregisterTexture(id)
@@ -653,7 +653,7 @@ private enum _GeneratedExamples {
 
             """
 
-            let shader2 = try Shader.new([
+            let shader2 = try Shader([
                 "sdf2d/circle",      // pure function: fn circle(p: vec2<f32>, r: f32) -> f32
                 "noise/simplex2",    // pure function: fn simplex2(v: vec2<f32>) -> f32
                 main,
@@ -926,7 +926,7 @@ private enum _GeneratedExamples {
 
     static func _example_geometry_vertex_Vertex() async throws {
         do {
-            let v = try Vertex([0.0, 0.0, 0.0]).set("uv0", [0.5, 0.5]).set("normal", [0.0, 1.0, 0.0])
+            let v = try Vertex([0.0, 0.0, 0.0]).set(Vertex.UV0, [0.5, 0.5]).set(Vertex.NORMAL, [0.0, 1.0, 0.0])
         }
     }
 
@@ -949,9 +949,9 @@ private enum _GeneratedExamples {
             // Build a triangle; override only what the mesh actually carries — NORMAL
             // / COLOR0 / UV1 / TANGENT use their identity defaults from Vertex.pbr.
             let mesh = Mesh()
-            try mesh.addVertex(Vertex.pbr([ 0.0,  0.5, 0.0]).set("uv0", [0.5, 1.0]))
-            try mesh.addVertex(Vertex.pbr([-0.5, -0.5, 0.0]).set("uv0", [0.0, 0.0]))
-            try mesh.addVertex(Vertex.pbr([ 0.5, -0.5, 0.0]).set("uv0", [1.0, 0.0]))
+            try mesh.addVertex(Vertex.pbr([ 0.0,  0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]))
+            try mesh.addVertex(Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]))
+            try mesh.addVertex(Vertex.pbr([ 0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]))
         }
     }
 
@@ -1152,7 +1152,7 @@ private enum _GeneratedExamples {
 
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+                try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
             )
 
             let material = try Material.pbr().baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
@@ -1197,7 +1197,7 @@ private enum _GeneratedExamples {
                 230, 180, 100, 255,
                 255, 220, 150, 255,
             ]
-            let albedo = try await renderer.createTexture((albedo_bytes, [2, 2]))
+            let albedo = try await renderer.createTexture(albedo_bytes, [2, 2])
 
             // Every Material that points at `albedo` reuses the same uploaded GPU
             // texture; passing the same handle into N Material instances costs one
@@ -1264,7 +1264,7 @@ private enum _GeneratedExamples {
                 255,   0, 0, 255,
                 255,   0, 0, 255,
             ]
-            let glow = try await renderer.createTexture((glow_bytes, [2, 2]))
+            let glow = try await renderer.createTexture(glow_bytes, [2, 2])
             let mat = try Material.pbr().emissive([0.8, 0.0, 0.0]).emissiveTexture(glow)
         }
     }
@@ -1286,7 +1286,7 @@ private enum _GeneratedExamples {
                 0,   180, 30, 255,
                 0,   220, 60, 255,
             ]
-            let mr_map = try await renderer.createTexture((mr_map_bytes, [2, 2]))
+            let mr_map = try await renderer.createTexture(mr_map_bytes, [2, 2])
             let mat = Material.pbr().metallicRoughnessTexture(mr_map)
         }
     }
@@ -1308,7 +1308,7 @@ private enum _GeneratedExamples {
                 128,   128, 255, 255,
                 128,   128, 255, 255,
             ]
-            let normal_map = try await renderer.createTexture((normal_map_bytes, [2, 2]))
+            let normal_map = try await renderer.createTexture(normal_map_bytes, [2, 2])
             let mat = Material.pbr().normalTexture(normal_map).normalScale(1.2)
         }
     }
@@ -1330,7 +1330,7 @@ private enum _GeneratedExamples {
                 200,   0, 0, 255,
                 160,   0, 0, 255,
             ]
-            let ao = try await renderer.createTexture((ao_bytes, [2, 2]))
+            let ao = try await renderer.createTexture(ao_bytes, [2, 2])
             let mat = Material.pbr().occlusionTexture(ao)
         }
     }
@@ -1373,7 +1373,7 @@ private enum _GeneratedExamples {
 
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+                try Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0])
             )
 
             let model = Model(mesh, Material.pbr())
@@ -1386,12 +1386,12 @@ private enum _GeneratedExamples {
 
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+                try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
             )
 
             let model = Model(mesh, Material.pbr())
             try model.mesh().addVertex(
-                try Vertex([-0.5, -0.5, 0.0]).set("normal", [0.0, 0.0, 1.0]).set("uv0", [0.0, 0.0])
+                try Vertex([-0.5, -0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.0, 0.0])
             )
         }
     }
@@ -1401,7 +1401,7 @@ private enum _GeneratedExamples {
 
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+                try Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0])
             )
 
             let model = Model(mesh, Material.pbr())
@@ -1414,7 +1414,7 @@ private enum _GeneratedExamples {
             let renderer = Renderer()
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+                try Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0])
             )
 
             let model = Model(mesh, Material.pbr())
@@ -1428,7 +1428,7 @@ private enum _GeneratedExamples {
             let renderer = Renderer()
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+                try Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0])
             )
 
             let model = Model(mesh, Material.pbr())
@@ -1442,7 +1442,7 @@ private enum _GeneratedExamples {
             let renderer = Renderer()
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+                try Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0])
             )
 
             let model = Model(mesh, Material.pbr())
@@ -1475,7 +1475,7 @@ private enum _GeneratedExamples {
             let renderer = Renderer()
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+                try Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0])
             )
 
             let model = Model(mesh, Material.pbr())
@@ -1489,7 +1489,7 @@ private enum _GeneratedExamples {
             let renderer = Renderer()
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+                try Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0])
             )
 
             let model = Model(mesh, Material.pbr())
@@ -1516,7 +1516,7 @@ private enum _GeneratedExamples {
 
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+                try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
             )
             let model = Model(mesh, Material.pbr())
 
@@ -1541,7 +1541,7 @@ private enum _GeneratedExamples {
 
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+                try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
             )
             let model = Model(mesh, Material.pbr())
 
@@ -1560,7 +1560,7 @@ private enum _GeneratedExamples {
 
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+                try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
             )
             let model = Model(mesh, Material.pbr())
 
@@ -1580,7 +1580,7 @@ private enum _GeneratedExamples {
 
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+                try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
             )
 
             let scene = Scene()
@@ -1652,7 +1652,7 @@ private enum _GeneratedExamples {
 
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+                try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
             )
             let scene = Scene()
             try scene.add(Model(mesh, Material.pbr()))
@@ -1681,7 +1681,7 @@ private enum _GeneratedExamples {
 
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+                try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
             )
             let model = Model(mesh, Material.pbr())
 
@@ -1709,7 +1709,7 @@ private enum _GeneratedExamples {
 
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+                try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
             )
             let scene = Scene()
             try scene.add(Model(mesh, Material.pbr()))
@@ -1723,7 +1723,7 @@ private enum _GeneratedExamples {
 
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+                try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
             )
             let scene = Scene()
             try scene.add(Model(mesh, Material.pbr()))
@@ -1737,7 +1737,7 @@ private enum _GeneratedExamples {
 
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+                try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
             )
             let scene = Scene()
             try scene.add(Model(mesh, Material.pbr()))
@@ -1769,7 +1769,7 @@ private enum _GeneratedExamples {
 
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+                try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
             )
             let scene = Scene()
             try scene.add(Model(mesh, Material.pbr()))
@@ -1784,7 +1784,7 @@ private enum _GeneratedExamples {
 
             let mesh = Mesh()
             try mesh.addVertex(
-                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+                try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
             )
             let scene = Scene()
             try scene.add(Model(mesh, Material.pbr()))
@@ -2095,7 +2095,7 @@ private enum _GeneratedExamples {
             // 1x1 white pixel. Passing a size tells create_texture to read the bytes
             // as raw pixels; the default format is Rgba (sRGB-aware).
             let pixels = [255, 255, 255, 255]
-            let texture = try await renderer.createTexture((pixels, [1, 1]))
+            let texture = try await renderer.createTexture(pixels, [1, 1])
 
             // Bind the texture to the uniform name declared in WGSL.
             try shader.set("my_texture", texture)
@@ -2109,7 +2109,7 @@ private enum _GeneratedExamples {
             let renderer = Renderer()
             // 1x1 RGBA (white) raw pixel bytes
             let pixels = [255,255,255,255]
-            let tex = try await renderer.createTexture((pixels, [1, 1]))
+            let tex = try await renderer.createTexture(pixels, [1, 1])
             let a = tex.aspect()
         }
     }
@@ -2117,7 +2117,7 @@ private enum _GeneratedExamples {
     static func _example_texture_texture_get_image() async throws {
         do {
             let renderer = Renderer()
-            let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
+            let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.rgba)
             try texture.write(Array(repeating: 0, count: 64 * 64 * 4))
 
             let bytes = try await texture.getImage()
@@ -2127,7 +2127,7 @@ private enum _GeneratedExamples {
     static func _example_texture_texture_id() async throws {
         do {
             let renderer = Renderer()
-            let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
+            let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.rgba)
             let id = texture.id()
         }
     }
@@ -2156,7 +2156,7 @@ private enum _GeneratedExamples {
         do {
             let renderer = Renderer()
             let pixels = [255,255,255,255]
-            let tex = try await renderer.createTexture((pixels, [1, 1]))
+            let tex = try await renderer.createTexture(pixels, [1, 1])
             let sz = tex.size()
             let width = sz.width
             let height = sz.height
@@ -2166,7 +2166,7 @@ private enum _GeneratedExamples {
     static func _example_texture_texture_write() async throws {
         do {
             let renderer = Renderer()
-            let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
+            let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.rgba)
             let frame_bytes = Array(repeating: 0, count: 64 * 64 * 4)
 
             try texture.write(frame_bytes)
@@ -2176,14 +2176,14 @@ private enum _GeneratedExamples {
     static func _example_texture_texture_write_region() async throws {
         do {
             let renderer = Renderer()
-            let texture = try await renderer.createStorageTexture(([64, 32], TextureFormat.rgba))
+            let texture = try await renderer.createStorageTexture([64, 32], TextureFormat.rgba)
             let bytes = Array(repeating: 0, count: 64 * 32 * 4)
 
             // Simple sub-rectangle update.
             try texture.writeRegion(bytes, [0, 0, 64, 32])
 
             // Explicit data layout (advanced — when source rows are padded).
-            let region = TextureRegionMobile.from([0, 0, 64, 32]).withStride(256).withRows(32)
+            let region = TextureRegion.from([0, 0, 64, 32]).withStride(256).withRows(32)
             try texture.writeRegion(bytes, region)
         }
     }

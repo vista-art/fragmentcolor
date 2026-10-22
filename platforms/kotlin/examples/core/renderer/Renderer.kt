@@ -6,7 +6,7 @@ val renderer = Renderer()
 
 // The canvas comes from your platform's windowing system
 val target = renderer.createTarget(canvas)
-val texture_target = renderer.createTextureTarget(16u, 16u)
+val texture_target = renderer.createTextureTarget(listOf(16, 16))
 
 // RENDERING
 renderer.render(Shader.default(), texture_target)

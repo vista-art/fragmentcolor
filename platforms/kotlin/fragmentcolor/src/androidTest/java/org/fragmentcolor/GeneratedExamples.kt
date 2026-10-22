@@ -53,7 +53,7 @@ class GeneratedExamples {
         val renderer = Renderer()
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
         val model = Model(mesh, Material.pbr())
 
         val camera = Camera.perspective(1.047f, 1.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 0.0f, 2.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
@@ -72,7 +72,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_core_pass_add_mesh() {
 
         val mesh = Mesh()
-        mesh.addVertex(Vertex(listOf(0.0f, 0.0f)))
+        mesh.addVertex(listOf(0.0f, 0.0f))
 
         val shader = Shader("""
           struct VOut { @builtin(position) pos: vec4<f32> };
@@ -134,7 +134,7 @@ class GeneratedExamples {
 
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(64u, 64u)
+        val target = renderer.createTextureTarget(listOf(64, 64))
 
         val shader = Shader.default()
         val pass = Pass("blend with previous")
@@ -157,7 +157,7 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_core_pass_require() {
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(100u, 100u)
+        val target = renderer.createTextureTarget(listOf(100,100))
         val color = Pass("color")
         val blurx = Pass("blur_x")
         blurx.require(color) // color before blur_x
@@ -173,7 +173,7 @@ class GeneratedExamples {
 
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(64u, 64u)
+        val target = renderer.createTextureTarget(listOf(64, 64))
 
         val shader = Shader.default()
         val pass = Pass("solid background")
@@ -187,22 +187,22 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_core_pass_set_compute_dispatch() {
         val cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
         val pass = Pass.fromShader("compute", cs)
-        pass.setComputeDispatch(64u, 64u, 1u)
+        pass.setComputeDispatch(64, 64, 1)
     }
 
     @Suppress("unused") private suspend fun _example_core_pass_set_depth_target() {
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(64u, 64u)
+        val target = renderer.createTextureTarget(listOf(64, 64))
 
         // One depth attachment shared across the 3D-content pass.
-        val depth = renderer.createDepthTexture(64u, 64u)
+        val depth = renderer.createDepthTexture(listOf(64, 64))
 
         val mesh = Mesh()
-        mesh.addVertex(Vertex(listOf(0.0f, 0.0f, 0.0f)))
-        mesh.addVertex(Vertex(listOf(1.0f, 0.0f, 0.0f)))
-        mesh.addVertex(Vertex(listOf(0.0f, 1.0f, 0.0f)))
-        mesh.addVertex(Vertex(listOf(1.0f, 1.0f, 0.0f)))
+        mesh.addVertex(listOf(0.0f, 0.0f, 0.0f))
+        mesh.addVertex(listOf(1.0f, 0.0f, 0.0f))
+        mesh.addVertex(listOf(0.0f, 1.0f, 0.0f))
+        mesh.addVertex(listOf(1.0f, 1.0f, 0.0f))
         val shader = Shader.fromMesh(mesh)
         val pass = Pass.fromShader("blobs", shader)
 
@@ -216,7 +216,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_core_pass_set_target() {
 
         val r = Renderer()
-        val tex_target = r.createTextureTarget(512u, 512u)
+        val tex_target = r.createTextureTarget(listOf(512, 512))
 
         val p = Pass("shadow")
         p.setTarget(tex_target)
@@ -226,13 +226,13 @@ class GeneratedExamples {
 
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(64u, 64u)
+        val target = renderer.createTextureTarget(listOf(64, 64))
 
         val shader = Shader.default()
         val pass = Pass("clipped")
         pass.addShader(shader)
 
-        pass.setViewport(ScreenRegion(minX=0u, minY=0u, maxX=32u, maxY=32u))
+        pass.setViewport(ScreenRegion(listOf(0, 0), listOf(32, 32)))
 
         renderer.render(pass, target)
     }
@@ -245,7 +245,7 @@ class GeneratedExamples {
 
         // The canvas comes from your platform's windowing system
         val target = renderer.createTarget(canvas)
-        val texture_target = renderer.createTextureTarget(16u, 16u)
+        val texture_target = renderer.createTextureTarget(listOf(16, 16))
 
         // RENDERING
         renderer.render(Shader.default(), texture_target)
@@ -255,7 +255,7 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_core_renderer_create_depth_texture() {
         val r = Renderer()
-        val depth = r.createDepthTexture(800u, 600u)
+        val depth = r.createDepthTexture(listOf(800, 600))
     }
 
     @Suppress("unused") private suspend fun _example_core_renderer_create_external_texture() {
@@ -271,11 +271,11 @@ class GeneratedExamples {
         val r = Renderer()
 
         // Empty storage texture.
-        val tex = r.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
+        val tex = r.createStorageTexture(listOf(64, 64), TextureFormat.RGBA)
 
         // Pre-seeded with bytes.
         val pixels = ByteArray(64 * 64 * 4)
-        val tex2 = r.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, pixels, null)
+        val tex2 = r.createStorageTexture(listOf(64, 64), TextureFormat.RGBA, pixels)
     }
 
     @Suppress("unused") private suspend fun _example_core_renderer_create_target() {
@@ -299,7 +299,7 @@ class GeneratedExamples {
         val renderer = Renderer()
 
         // Create an offscreen texture target with a size of 64x64 pixels.
-        val target = renderer.createTextureTarget(64u, 64u)
+        val target = renderer.createTextureTarget(listOf(64, 64))
 
         renderer.render(Shader.default(), target)
 
@@ -310,10 +310,10 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_core_renderer_load() {
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(64u, 64u)
+        val target = renderer.createTextureTarget(listOf(64, 64))
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
         // Raw 2×2 RGBA pixel bytes — uploaded lazily by `Renderer.load` below.
 
         // vocabulary covers all of them.
@@ -334,13 +334,13 @@ class GeneratedExamples {
 
 
         val renderer = Renderer()
-        val texture_target = renderer.createTextureTarget(16u, 16u)
+        val texture_target = renderer.createTextureTarget(listOf(16, 16))
     }
 
     @Suppress("unused") private suspend fun _example_core_renderer_read_storage() {
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(16u, 16u)
+        val target = renderer.createTextureTarget(listOf(16, 16))
 
         val compute = Shader("""
             struct Out { values: array<f32, 4> };
@@ -355,7 +355,7 @@ class GeneratedExamples {
         """)
 
         val pass = Pass.compute("seed")
-        pass.setComputeDispatch(1u, 1u, 1u)
+        pass.setComputeDispatch(1, 1, 1)
         pass.addShader(compute)
         renderer.render(pass, target)
 
@@ -364,7 +364,7 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_core_renderer_read_texture() {
         val renderer = Renderer()
-        val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
+        val texture = renderer.createStorageTexture(listOf(64, 64), TextureFormat.RGBA)
         texture.write(ByteArray(64 * 64 * 4))
 
         val bytes = renderer.readTexture(texture.id())
@@ -374,7 +374,7 @@ class GeneratedExamples {
 
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(10u, 10u)
+        val target = renderer.createTextureTarget(listOf(10, 10))
         val shader = Shader.default()
 
         renderer.render(shader, target)
@@ -382,7 +382,7 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_core_renderer_unregister_texture() {
         val renderer = Renderer()
-        val texture = renderer.createStorageTexture(Size(width=16u, height=16u, depth=null), TextureFormat.RGBA, null, null)
+        val texture = renderer.createStorageTexture(listOf(16, 16), TextureFormat.RGBA)
         val id = texture.id()
 
         renderer.unregisterTexture(id)
@@ -413,11 +413,11 @@ class GeneratedExamples {
         """)
 
         // Set the "resolution" uniform
-        shader.set("resolution", floatArrayOf(800.0f, 600.0f))
+        shader.set("resolution", listOf(800.0f, 600.0f))
         val res = shader.get("resolution")
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(16u, 16u)
+        val target = renderer.createTextureTarget(listOf(16, 16))
         renderer.render(shader, target)
     }
 
@@ -432,7 +432,7 @@ class GeneratedExamples {
         """)
 
         val mesh = Mesh()
-        mesh.addVertex(Vertex(listOf(0.0f, 0.0f, 0.0f)))
+        mesh.addVertex(listOf(0.0f, 0.0f, 0.0f))
 
         // Attach mesh to this shader (errors if incompatible)
         shader.addMesh(mesh)
@@ -459,7 +459,7 @@ class GeneratedExamples {
         """)
 
         val mesh = Mesh()
-        mesh.addVertex(Vertex(listOf(0.0f, 0.0f)))
+        mesh.addVertex(listOf(0.0f, 0.0f))
         shader.addMesh(mesh)
 
         // Clear all
@@ -472,7 +472,7 @@ class GeneratedExamples {
         val shader = Shader.default()
 
         // The default shader includes a "resolution" uniform
-        shader.set("resolution", floatArrayOf(800.0f, 600.0f))
+        shader.set("resolution", listOf(800.0f, 600.0f))
         val res = shader.get("resolution")
     }
 
@@ -489,7 +489,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_core_shader_from_mesh() {
 
         val mesh = Mesh()
-        mesh.addVertex(Vertex(listOf(0.0f, 0.0f, 0.0f)))
+        mesh.addVertex(listOf(0.0f, 0.0f, 0.0f))
         val shader = Shader.fromMesh(mesh)
     }
 
@@ -502,7 +502,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_core_shader_get() {
 
         val shader = Shader.default()
-        shader.set("resolution", floatArrayOf(800.0f, 600.0f))
+        shader.set("resolution", listOf(800.0f, 600.0f))
         val res = shader.get("resolution")
     }
 
@@ -589,7 +589,7 @@ class GeneratedExamples {
         """)
 
         val mesh = Mesh()
-        mesh.addVertex(Vertex(listOf(0.0f, 0.0f)))
+        mesh.addVertex(listOf(0.0f, 0.0f))
         shader.addMesh(mesh)
 
         // Detach the mesh
@@ -612,9 +612,9 @@ class GeneratedExamples {
         """)
 
         val m1 = Mesh()
-        m1.addVertex(Vertex(listOf(0.0f, 0.0f)))
+        m1.addVertex(listOf(0.0f, 0.0f))
         val m2 = Mesh()
-        m2.addVertex(Vertex(listOf(0.5f, 0.0f)))
+        m2.addVertex(listOf(0.5f, 0.0f))
 
         shader.addMesh(m1)
         shader.addMesh(m2)
@@ -639,7 +639,7 @@ class GeneratedExamples {
         """)
 
         // Set scalars/vectors on declared uniforms
-        shader.set("resolution", floatArrayOf(800.0f, 600.0f))
+        shader.set("resolution", listOf(800.0f, 600.0f))
     }
 
     @Suppress("unused") private suspend fun _example_core_shader_set_registry() {
@@ -667,7 +667,7 @@ class GeneratedExamples {
         val pass = Pass.fromShader("p", shader)
 
         val mesh = Mesh()
-        mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f, 0.0f)), Vertex(listOf(0.5f, -0.5f, 0.0f)), Vertex(listOf(0.0f, 0.5f, 0.0f))))
+        mesh.addVertices(listOf(listOf(-0.5f, -0.5f, 0.0f), listOf(0.5f, -0.5f, 0.0f), listOf(0.0f, 0.5f, 0.0f)))
 
         shader.validateMesh(mesh) // Ok
         pass.addMesh(mesh)
@@ -676,9 +676,9 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_geometry_mesh_Mesh() {
 
         val mesh = Mesh()
-        mesh.addVertex(Vertex(listOf(0.0f, 0.5f, 0.0f)))
-        mesh.addVertex(Vertex(listOf(-0.5f, -0.5f, 0.0f)))
-        mesh.addVertex(Vertex(listOf(0.5f, -0.5f, 0.0f)))
+        mesh.addVertex(listOf(0.0f, 0.5f, 0.0f))
+        mesh.addVertex(listOf(-0.5f, -0.5f, 0.0f))
+        mesh.addVertex(listOf(0.5f, -0.5f, 0.0f))
     }
 
     @Suppress("unused") private suspend fun _example_geometry_mesh_add_instance() {
@@ -700,19 +700,19 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_geometry_mesh_add_vertex() {
         val m = Mesh()
-        m.addVertex(Vertex(listOf(0.0f, 0.0f)))
+        m.addVertex(listOf(0.0f, 0.0f))
     }
 
     @Suppress("unused") private suspend fun _example_geometry_mesh_add_vertices() {
         val m = Mesh()
-        m.addVertices(listOf(Vertex(listOf(0.0f, 0.0f)), Vertex(listOf(1.0f, 0.0f))))
+        m.addVertices(listOf(listOf(0.0f, 0.0f), listOf(1.0f, 0.0f)))
     }
 
     @Suppress("unused") private suspend fun _example_geometry_mesh_clear_indices() {
 
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f)), Vertex(listOf(0.5f, -0.5f)), Vertex(listOf(0.0f, 0.5f))))
-        mesh.setIndices(listOf(0u, 1u, 2u))
+        mesh.setIndices(listOf(0, 1, 2))
         mesh.clearIndices() // back to auto-derived dedup
     }
 
@@ -726,7 +726,7 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_geometry_mesh_from_vertices() {
 
-        val mesh = Mesh.fromVertices(listOf(Vertex(listOf(0.0f, 0.0f)), Vertex(listOf(1.0f, 0.0f)), Vertex(listOf(0.0f, 1.0f))))
+        val mesh = Mesh.fromVertices(listOf(listOf(0.0f, 0.0f), listOf(1.0f, 0.0f), listOf(0.0f, 1.0f)))
     }
 
     @Suppress("unused") private suspend fun _example_geometry_mesh_new() {
@@ -744,14 +744,14 @@ class GeneratedExamples {
         val uv11 = listOf(1.0f, 1.0f)
         val uv01 = listOf(0.0f, 1.0f)
         mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f)).set("uv", uv00), Vertex(listOf(0.5f, -0.5f)).set("uv", uv10), Vertex(listOf(0.5f, 0.5f)).set("uv", uv11), Vertex(listOf(-0.5f, 0.5f)).set("uv", uv01)))
-        mesh.setIndices(listOf(0u, 1u, 2u, 0u, 2u, 3u))
+        mesh.setIndices(listOf(0, 1, 2, 0, 2, 3))
     }
 
     @Suppress("unused") private suspend fun _example_geometry_mesh_set_instance_count() {
         val m = Mesh()
-        m.addVertices(listOf(Vertex(listOf(-0.01f, -0.01f)), Vertex(listOf(0.01f, -0.01f)), Vertex(listOf(0.00f, 0.01f))))
+        m.addVertices(listOf(listOf(-0.01f, -0.01f), listOf(0.01f, -0.01f), listOf(0.00f, 0.01f)))
         // Draw one million instances, fetching per-particle data from a storage buffer.
-        m.setInstanceCount(1_000_000u)
+        m.setInstanceCount(1_000_000)
     }
 
     @Suppress("unused") private suspend fun _example_geometry_quad_Quad() {
@@ -771,7 +771,7 @@ class GeneratedExamples {
     }
 
     @Suppress("unused") private suspend fun _example_geometry_vertex_Vertex() {
-        val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("uv0", floatArrayOf(0.5f, 0.5f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f))
+        val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 0.5f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f))
     }
 
     @Suppress("unused") private suspend fun _example_geometry_vertex_create_instance() {
@@ -788,13 +788,13 @@ class GeneratedExamples {
         // Build a triangle; override only what the mesh actually carries — NORMAL
         // / COLOR0 / UV1 / TANGENT use their identity defaults from Vertex.pbr.
         val mesh = Mesh()
-        mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)))
-        mesh.addVertex(Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)))
-        mesh.addVertex(Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set("uv0", floatArrayOf(1.0f, 0.0f)))
+        mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)))
+        mesh.addVertex(Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)))
+        mesh.addVertex(Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f)))
     }
 
     @Suppress("unused") private suspend fun _example_geometry_vertex_set() {
-        val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("weight", 1.0).set("color",floatArrayOf(1.0f, 0.0f, 0.0f))
+        val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("weight", 1.0f).set("color",listOf(1.0f, 0.0f, 0.0f))
     }
 
     @Suppress("unused") private suspend fun _example_scene_camera_look_at() {
@@ -940,7 +940,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_scene_material_Material() {
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 
         val material = Material.pbr().baseColor(listOf(0.85f, 0.2f, 0.2f, 1.0f)).metallic(0.0f).roughness(0.4f).emissive(listOf(0.0f, 0.0f, 0.05f))
 
@@ -1084,7 +1084,7 @@ class GeneratedExamples {
         // Direct uniform access for a custom field that isn't covered by the
         // Material setters or by Camera / Light.
         val material = Material.pbr()
-        material.shader().set("material.alpha_cutoff", 0.25)
+        material.shader().set("material.alpha_cutoff", 0.25f)
     }
 
     @Suppress("unused") private suspend fun _example_scene_material_uv_transform() {
@@ -1096,25 +1096,25 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_scene_model_material() {
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
+        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
         val model = Model(mesh, Material.pbr())
-        model.material().shader().set("camera.position", floatArrayOf(0.0f, 0.0f, 5.0f))
+        model.material().shader().set("camera.position", listOf(0.0f, 0.0f, 5.0f))
     }
 
     @Suppress("unused") private suspend fun _example_scene_model_mesh() {
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 
         val model = Model(mesh, Material.pbr())
-        model.mesh().addVertex( Vertex(listOf(-0.5f, -0.5f, 0.0f)).set("normal", floatArrayOf(0.0f, 0.0f, 1.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
+        model.mesh().addVertex( Vertex(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
     }
 
     @Suppress("unused") private suspend fun _example_scene_model_new() {
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
+        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
         val model = Model(mesh, Material.pbr())
     }
@@ -1123,7 +1123,7 @@ class GeneratedExamples {
 
         val renderer = Renderer()
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
+        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
         val model = Model(mesh, Material.pbr())
         model.rotate(listOf(0.0f, 1.0f, 0.0f), 1.571f) // 90° around Y
@@ -1133,7 +1133,7 @@ class GeneratedExamples {
 
         val renderer = Renderer()
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
+        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
         val model = Model(mesh, Material.pbr())
         model.scale(listOf(2.0f, 2.0f, 2.0f))
@@ -1143,7 +1143,7 @@ class GeneratedExamples {
 
         val renderer = Renderer()
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
+        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
         val model = Model(mesh, Material.pbr())
         model.setTransform(listOf(2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 3.0f, 0.0f, 0.0f, 1.0f))
@@ -1165,7 +1165,7 @@ class GeneratedExamples {
 
         val renderer = Renderer()
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
+        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
         val model = Model(mesh, Material.pbr())
         val identity = model.transform()
@@ -1175,7 +1175,7 @@ class GeneratedExamples {
 
         val renderer = Renderer()
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
+        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
         val model = Model(mesh, Material.pbr())
         model.translate(listOf(5.0f, 0.0f, -2.0f))
@@ -1196,7 +1196,7 @@ class GeneratedExamples {
         val renderer = Renderer()
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
         val model = Model(mesh, Material.pbr())
 
         val camera = Camera.perspective(1.047f, 1.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 0.0f, 3.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
@@ -1217,7 +1217,7 @@ class GeneratedExamples {
         val renderer = Renderer()
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
         val model = Model(mesh, Material.pbr())
 
         // A backdrop pass that clears to a soft blue before the scene's main draw.
@@ -1232,7 +1232,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_scene_scene_add_to() {
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
         val model = Model(mesh, Material.pbr())
 
         val scene = Scene()
@@ -1245,10 +1245,10 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_scene_scene_ambient() {
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(64u, 64u)
+        val target = renderer.createTextureTarget(listOf(64, 64))
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 
         val scene = Scene()
         // Warm dusk ambient — applies to every Material added below.
@@ -1291,7 +1291,7 @@ class GeneratedExamples {
 
         // Fetch the second pass (index 1) to reconfigure it. An out-of-range
         // index returns null instead.
-        val geometry = scene.getPass(1u)
+        val geometry = scene.getPass(1)
     }
 
     @Suppress("unused") private suspend fun _example_scene_scene_lights() {
@@ -1308,7 +1308,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_scene_scene_list_passes() {
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
         val scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -1331,7 +1331,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_scene_scene_models() {
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
         val model = Model(mesh, Material.pbr())
 
         val scene = Scene()
@@ -1353,7 +1353,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_scene_scene_no_default_camera() {
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
         val scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -1363,7 +1363,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_scene_scene_no_default_light() {
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
         val scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -1373,7 +1373,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_scene_scene_no_defaults() {
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
         val scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -1399,7 +1399,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_scene_scene_set_default_camera() {
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
         val scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -1410,7 +1410,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_scene_scene_set_default_light() {
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
         val scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -1445,7 +1445,7 @@ class GeneratedExamples {
 
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(16u, 16u)
+        val target = renderer.createTextureTarget(listOf(16, 16))
         renderer.render(Shader.default(), target)
 
         val image = target.getImage()
@@ -1455,16 +1455,16 @@ class GeneratedExamples {
 
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(64u, 32u)
+        val target = renderer.createTextureTarget(listOf(64, 32))
 
-        target.resize(128u, 64u)
+        target.resize(listOf(128, 64))
     }
 
     @Suppress("unused") private suspend fun _example_targets_target_size() {
 
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(64u, 32u)
+        val target = renderer.createTextureTarget(listOf(64, 32))
         val size = target.size()
         val width = size.width
         val height = size.height
@@ -1475,7 +1475,7 @@ class GeneratedExamples {
 
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(64u, 64u)
+        val target = renderer.createTextureTarget(listOf(64, 64))
 
         val shader = Shader.default()
         renderer.render(shader, target)
@@ -1487,7 +1487,7 @@ class GeneratedExamples {
 
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(16u, 16u)
+        val target = renderer.createTextureTarget(listOf(16, 16))
         renderer.render(Shader.default(), target)
 
         val image = target.getImage()
@@ -1497,16 +1497,16 @@ class GeneratedExamples {
 
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(64u, 64u)
+        val target = renderer.createTextureTarget(listOf(64, 64))
 
-        target.resize(128u, 32u)
+        target.resize(listOf(128, 32))
     }
 
     @Suppress("unused") private suspend fun _example_targets_texture_target_size() {
 
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(64u, 64u)
+        val target = renderer.createTextureTarget(listOf(64, 64))
         val size = target.size()
         val width = size.width
         val height = size.height
@@ -1516,7 +1516,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_targets_texture_target_texture() {
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(256u, 256u)
+        val target = renderer.createTextureTarget(listOf(256, 256))
 
         // Bind the offscreen target's contents as a uniform on a downstream
         // post-processing shader.
@@ -1552,7 +1552,7 @@ class GeneratedExamples {
 
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(16u, 16u)
+        val target = renderer.createTextureTarget(listOf(16, 16))
         renderer.render(Shader.default(), target)
 
         val image = target.getImage()
@@ -1562,16 +1562,16 @@ class GeneratedExamples {
 
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(64u, 32u)
+        val target = renderer.createTextureTarget(listOf(64, 32))
 
-        target.resize(128u, 64u)
+        target.resize(listOf(128, 64))
     }
 
     @Suppress("unused") private suspend fun _example_targets_window_target_size() {
 
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(64u, 32u)
+        val target = renderer.createTextureTarget(listOf(64, 32))
     }
 
     @Suppress("unused") private suspend fun _example_texture_mipmap_Mipmap() {
@@ -1580,7 +1580,7 @@ class GeneratedExamples {
         // Imagine `png` came off your asset loader on a worker thread.
 
         // Decode + mipmap generation. Pure CPU; run it wherever you like.
-        val chain = Mipmap.build(png, TextureFormat.RGBA8_UNORM_SRGB, null)
+        val chain = Mipmap.build(png, TextureFormat.RGBA8_UNORM_SRGB)
 
         // Back on the renderer thread, the upload is just a GPU write.
         val renderer = Renderer()
@@ -1593,10 +1593,10 @@ class GeneratedExamples {
 
         // Encoded path: bytes plus the format you want the chain to live in.
         // The dimensions come from the decoded image.
-        val chain = Mipmap.build(encoded_png_bytes, TextureFormat.RGBA8_UNORM_SRGB, null)
+        val chain = Mipmap.build(encoded_png_bytes, TextureFormat.RGBA8_UNORM_SRGB)
 
         // Raw path: include the size so build skips decoding.
-        val chain_raw = Mipmap.build(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
+        val chain_raw = Mipmap.build(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, listOf(8, 8))
 
         // Either chain uploads the same way.
         val renderer = Renderer()
@@ -1606,28 +1606,28 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_texture_mipmap_count() {
 
         val pixels = ByteArray(8 * 8 * 4)
-        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
+        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(8, 8))
         val count = chain.count()
     }
 
     @Suppress("unused") private suspend fun _example_texture_mipmap_format() {
 
         val pixels = ByteArray(4 * 4 * 4)
-        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=4u, height=4u, depth=null))
+        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(4, 4))
         val format = chain.format()
     }
 
     @Suppress("unused") private suspend fun _example_texture_mipmap_levels() {
 
         val pixels = ByteArray(8 * 8 * 4)
-        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
-        val level_zero_bytes = chain.level(0u)
+        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(8, 8))
+        val level_zero_bytes = chain.levels()[0]
     }
 
     @Suppress("unused") private suspend fun _example_texture_mipmap_size() {
 
         val pixels = ByteArray(16 * 16 * 4)
-        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=16u, height=16u, depth=null))
+        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(16, 16))
         val (width, height) = chain.size()
     }
 
@@ -1666,7 +1666,7 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_texture_texture_get_image() {
         val renderer = Renderer()
-        val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
+        val texture = renderer.createStorageTexture(listOf(64, 64), TextureFormat.RGBA)
         texture.write(ByteArray(64 * 64 * 4))
 
         val bytes = texture.getImage()
@@ -1674,7 +1674,7 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_texture_texture_id() {
         val renderer = Renderer()
-        val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
+        val texture = renderer.createStorageTexture(listOf(64, 64), TextureFormat.RGBA)
         val id = texture.id()
     }
 
@@ -1706,7 +1706,7 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_texture_texture_write() {
         val renderer = Renderer()
-        val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
+        val texture = renderer.createStorageTexture(listOf(64, 64), TextureFormat.RGBA)
         val frame_bytes = ByteArray(64 * 64 * 4)
 
         texture.write(frame_bytes)
@@ -1714,14 +1714,14 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_texture_texture_write_region() {
         val renderer = Renderer()
-        val texture = renderer.createStorageTexture(Size(width=64u, height=32u, depth=null), TextureFormat.RGBA, null, null)
+        val texture = renderer.createStorageTexture(listOf(64, 32), TextureFormat.RGBA)
         val bytes = ByteArray(64 * 32 * 4)
 
         // Simple sub-rectangle update.
         texture.writeRegion(bytes, listOf(0, 0, 64, 32))
 
         // Explicit data layout (advanced — when source rows are padded).
-        val region = TextureRegionMobile.from(listOf(0, 0, 64, 32)).withStride(256).withRows(32)
+        val region = TextureRegion.from(listOf(0, 0, 64, 32)).withStride(256).withRows(32)
         texture.writeRegion(bytes, region)
     }
 

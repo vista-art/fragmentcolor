@@ -15,7 +15,7 @@ let shader = try Shader("""
 // 1x1 white pixel. Passing a size tells create_texture to read the bytes
 // as raw pixels; the default format is Rgba (sRGB-aware).
 let pixels = [255, 255, 255, 255]
-let texture = try await renderer.createTexture((pixels, [1, 1]))
+let texture = try await renderer.createTexture(pixels, [1, 1])
 
 // Bind the texture to the uniform name declared in WGSL.
 try shader.set("my_texture", texture)

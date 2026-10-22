@@ -164,7 +164,7 @@ import FragmentColor
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
 )
 
 let material = try Material.pbr().baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
@@ -182,7 +182,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 
 val material = Material.pbr().baseColor(listOf(0.85f, 0.2f, 0.2f, 1.0f)).metallic(0.0f).roughness(0.4f).emissive(listOf(0.0f, 0.0f, 0.05f))
 
@@ -622,7 +622,7 @@ let albedo_bytes = [
     230, 180, 100, 255,
     255, 220, 150, 255,
 ]
-let albedo = try await renderer.createTexture((albedo_bytes, [2, 2]))
+let albedo = try await renderer.createTexture(albedo_bytes, [2, 2])
 
 // Every Material that points at \`albedo\` reuses the same uploaded GPU
 // texture; passing the same handle into N Material instances costs one
@@ -1160,7 +1160,7 @@ let glow_bytes = [
     255,   0, 0, 255,
     255,   0, 0, 255,
 ]
-let glow = try await renderer.createTexture((glow_bytes, [2, 2]))
+let glow = try await renderer.createTexture(glow_bytes, [2, 2])
 let mat = try Material.pbr().emissive([0.8, 0.0, 0.0]).emissiveTexture(glow)
 `}
 lang="swift"
@@ -1359,7 +1359,7 @@ let mr_map_bytes = [
     0,   180, 30, 255,
     0,   220, 60, 255,
 ]
-let mr_map = try await renderer.createTexture((mr_map_bytes, [2, 2]))
+let mr_map = try await renderer.createTexture(mr_map_bytes, [2, 2])
 let mat = Material.pbr().metallicRoughnessTexture(mr_map)
 `}
 lang="swift"
@@ -1559,7 +1559,7 @@ let normal_map_bytes = [
     128,   128, 255, 255,
     128,   128, 255, 255,
 ]
-let normal_map = try await renderer.createTexture((normal_map_bytes, [2, 2]))
+let normal_map = try await renderer.createTexture(normal_map_bytes, [2, 2])
 let mat = Material.pbr().normalTexture(normal_map).normalScale(1.2)
 `}
 lang="swift"
@@ -1756,7 +1756,7 @@ let ao_bytes = [
     200,   0, 0, 255,
     160,   0, 0, 255,
 ]
-let ao = try await renderer.createTexture((ao_bytes, [2, 2]))
+let ao = try await renderer.createTexture(ao_bytes, [2, 2])
 let mat = Material.pbr().occlusionTexture(ao)
 `}
 lang="swift"
@@ -2114,7 +2114,7 @@ import org.fragmentcolor.*
 // Direct uniform access for a custom field that isn't covered by the
 // Material setters or by Camera / Light.
 val material = Material.pbr()
-material.shader().set("material.alpha_cutoff", 0.25)
+material.shader().set("material.alpha_cutoff", 0.25f)
 `}
 lang="kotlin"
 />

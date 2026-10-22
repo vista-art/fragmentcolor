@@ -459,7 +459,7 @@ let renderer = Renderer()
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
 )
 let model = Model(mesh, Material.pbr())
 
@@ -488,7 +488,7 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 val model = Model(mesh, Material.pbr())
 
 val camera = Camera.perspective(1.047f, 1.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 0.0f, 3.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
@@ -608,7 +608,7 @@ import FragmentColor
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
 )
 let model = Model(mesh, Material.pbr())
 
@@ -629,7 +629,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 val model = Model(mesh, Material.pbr())
 
 val scene = Scene()
@@ -748,7 +748,7 @@ import FragmentColor
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
 )
 let model = Model(mesh, Material.pbr())
 
@@ -772,7 +772,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 val model = Model(mesh, Material.pbr())
 
 val scene = Scene()
@@ -1154,7 +1154,7 @@ let target = try await renderer.createTextureTarget([64, 64])
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
 )
 
 let scene = Scene()
@@ -1176,10 +1176,10 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(64u, 64u)
+val target = renderer.createTextureTarget(listOf(64, 64))
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 
 val scene = Scene()
 // Warm dusk ambient — applies to every Material added below.
@@ -1331,7 +1331,7 @@ let renderer = Renderer()
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
 )
 let model = Model(mesh, Material.pbr())
 
@@ -1356,7 +1356,7 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 val model = Model(mesh, Material.pbr())
 
 // A backdrop pass that clears to a soft blue before the scene's main draw.
@@ -1603,7 +1603,7 @@ scene.addPass(Pass("geometry"))
 
 // Fetch the second pass (index 1) to reconfigure it. An out-of-range
 // index returns null instead.
-val geometry = scene.getPass(1u)
+val geometry = scene.getPass(1)
 `}
 lang="kotlin"
 />
@@ -1822,7 +1822,7 @@ import FragmentColor
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
 )
 let scene = Scene()
 try scene.add(Model(mesh, Material.pbr()))
@@ -1843,7 +1843,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 val scene = Scene()
 scene.add(Model(mesh, Material.pbr()))
 
@@ -2074,7 +2074,7 @@ import FragmentColor
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
 )
 let scene = Scene()
 try scene.add(Model(mesh, Material.pbr()))
@@ -2096,7 +2096,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 val scene = Scene()
 scene.add(Model(mesh, Material.pbr()))
 
@@ -2197,7 +2197,7 @@ import FragmentColor
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
 )
 let scene = Scene()
 try scene.add(Model(mesh, Material.pbr()))
@@ -2215,7 +2215,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 val scene = Scene()
 scene.add(Model(mesh, Material.pbr()))
 
@@ -2313,7 +2313,7 @@ import FragmentColor
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
 )
 let scene = Scene()
 try scene.add(Model(mesh, Material.pbr()))
@@ -2331,7 +2331,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 val scene = Scene()
 scene.add(Model(mesh, Material.pbr()))
 
@@ -2433,7 +2433,7 @@ import FragmentColor
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
 )
 let scene = Scene()
 try scene.add(Model(mesh, Material.pbr()))
@@ -2452,7 +2452,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 val scene = Scene()
 scene.add(Model(mesh, Material.pbr()))
 
@@ -2554,7 +2554,7 @@ import FragmentColor
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
 )
 let scene = Scene()
 try scene.add(Model(mesh, Material.pbr()))
@@ -2573,7 +2573,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 val scene = Scene()
 scene.add(Model(mesh, Material.pbr()))
 

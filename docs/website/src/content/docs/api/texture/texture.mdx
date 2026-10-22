@@ -137,7 +137,7 @@ let shader = try Shader("""
 // 1x1 white pixel. Passing a size tells create_texture to read the bytes
 // as raw pixels; the default format is Rgba (sRGB-aware).
 let pixels = [255, 255, 255, 255]
-let texture = try await renderer.createTexture((pixels, [1, 1]))
+let texture = try await renderer.createTexture(pixels, [1, 1])
 
 // Bind the texture to the uniform name declared in WGSL.
 try shader.set("my_texture", texture)
@@ -246,7 +246,7 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
+let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.rgba)
 let id = texture.id()
 `}
 lang="swift"
@@ -259,7 +259,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
+val texture = renderer.createStorageTexture(listOf(64, 64), TextureFormat.RGBA)
 val id = texture.id()
 `}
 lang="kotlin"
@@ -341,7 +341,7 @@ code={`
 import FragmentColor
 let renderer = Renderer()
 let pixels = [255,255,255,255]
-let tex = try await renderer.createTexture((pixels, [1, 1]))
+let tex = try await renderer.createTexture(pixels, [1, 1])
 let sz = tex.size()
 let width = sz.width
 let height = sz.height
@@ -446,7 +446,7 @@ import FragmentColor
 let renderer = Renderer()
 // 1x1 RGBA (white) raw pixel bytes
 let pixels = [255,255,255,255]
-let tex = try await renderer.createTexture((pixels, [1, 1]))
+let tex = try await renderer.createTexture(pixels, [1, 1])
 let a = tex.aspect()
 `}
 lang="swift"
@@ -673,7 +673,7 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
+let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.rgba)
 let frame_bytes = Array(repeating: 0, count: 64 * 64 * 4)
 
 try texture.write(frame_bytes)
@@ -688,7 +688,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
+val texture = renderer.createStorageTexture(listOf(64, 64), TextureFormat.RGBA)
 val frame_bytes = ByteArray(64 * 64 * 4)
 
 texture.write(frame_bytes)
@@ -794,14 +794,14 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture(([64, 32], TextureFormat.rgba))
+let texture = try await renderer.createStorageTexture([64, 32], TextureFormat.rgba)
 let bytes = Array(repeating: 0, count: 64 * 32 * 4)
 
 // Simple sub-rectangle update.
 try texture.writeRegion(bytes, [0, 0, 64, 32])
 
 // Explicit data layout (advanced — when source rows are padded).
-let region = TextureRegionMobile.from([0, 0, 64, 32]).withStride(256).withRows(32)
+let region = TextureRegion.from([0, 0, 64, 32]).withStride(256).withRows(32)
 try texture.writeRegion(bytes, region)
 `}
 lang="swift"
@@ -814,14 +814,14 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture(Size(width=64u, height=32u, depth=null), TextureFormat.RGBA, null, null)
+val texture = renderer.createStorageTexture(listOf(64, 32), TextureFormat.RGBA)
 val bytes = ByteArray(64 * 32 * 4)
 
 // Simple sub-rectangle update.
 texture.writeRegion(bytes, listOf(0, 0, 64, 32))
 
 // Explicit data layout (advanced — when source rows are padded).
-val region = TextureRegionMobile.from(listOf(0, 0, 64, 32)).withStride(256).withRows(32)
+val region = TextureRegion.from(listOf(0, 0, 64, 32)).withStride(256).withRows(32)
 texture.writeRegion(bytes, region)
 `}
 lang="kotlin"
@@ -901,7 +901,7 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
+let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.rgba)
 try texture.write(Array(repeating: 0, count: 64 * 64 * 4))
 
 let bytes = try await texture.getImage()
@@ -916,7 +916,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
+val texture = renderer.createStorageTexture(listOf(64, 64), TextureFormat.RGBA)
 texture.write(ByteArray(64 * 64 * 4))
 
 val bytes = texture.getImage()

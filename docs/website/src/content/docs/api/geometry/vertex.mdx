@@ -73,7 +73,7 @@ lang="python"
 <Code
 code={`
 import FragmentColor
-let v = try Vertex([0.0, 0.0, 0.0]).set("uv0", [0.5, 0.5]).set("normal", [0.0, 1.0, 0.0])
+let v = try Vertex([0.0, 0.0, 0.0]).set(Vertex.UV0, [0.5, 0.5]).set(Vertex.NORMAL, [0.0, 1.0, 0.0])
 `}
 lang="swift"
 />
@@ -84,7 +84,7 @@ lang="swift"
 <Code
 code={`
 import org.fragmentcolor.*
-val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("uv0", floatArrayOf(0.5f, 0.5f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f))
+val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 0.5f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f))
 `}
 lang="kotlin"
 />
@@ -259,9 +259,9 @@ import FragmentColor
 // Build a triangle; override only what the mesh actually carries — NORMAL
 // / COLOR0 / UV1 / TANGENT use their identity defaults from Vertex.pbr.
 let mesh = Mesh()
-try mesh.addVertex(Vertex.pbr([ 0.0,  0.5, 0.0]).set("uv0", [0.5, 1.0]))
-try mesh.addVertex(Vertex.pbr([-0.5, -0.5, 0.0]).set("uv0", [0.0, 0.0]))
-try mesh.addVertex(Vertex.pbr([ 0.5, -0.5, 0.0]).set("uv0", [1.0, 0.0]))
+try mesh.addVertex(Vertex.pbr([ 0.0,  0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]))
+try mesh.addVertex(Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]))
+try mesh.addVertex(Vertex.pbr([ 0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]))
 `}
 lang="swift"
 />
@@ -276,9 +276,9 @@ import org.fragmentcolor.*
 // Build a triangle; override only what the mesh actually carries — NORMAL
 // / COLOR0 / UV1 / TANGENT use their identity defaults from Vertex.pbr.
 val mesh = Mesh()
-mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)))
-mesh.addVertex(Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)))
-mesh.addVertex(Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set("uv0", floatArrayOf(1.0f, 0.0f)))
+mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)))
+mesh.addVertex(Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)))
+mesh.addVertex(Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f)))
 `}
 lang="kotlin"
 />
@@ -359,7 +359,7 @@ lang="swift"
 <Code
 code={`
 import org.fragmentcolor.*
-val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("weight", 1.0).set("color",floatArrayOf(1.0f, 0.0f, 0.0f))
+val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("weight", 1.0f).set("color",listOf(1.0f, 0.0f, 0.0f))
 `}
 lang="kotlin"
 />

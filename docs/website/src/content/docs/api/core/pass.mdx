@@ -629,7 +629,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(64u, 64u)
+val target = renderer.createTextureTarget(listOf(64, 64))
 
 val shader = Shader.default()
 val pass = Pass("blend with previous")
@@ -964,7 +964,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex(Vertex(listOf(0.0f, 0.0f)))
+mesh.addVertex(listOf(0.0f, 0.0f))
 
 val shader = Shader("""
   struct VOut { @builtin(position) pos: vec4<f32> };
@@ -1119,7 +1119,7 @@ let renderer = Renderer()
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
 )
 let model = Model(mesh, Material.pbr())
 
@@ -1148,7 +1148,7 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 val model = Model(mesh, Material.pbr())
 
 val camera = Camera.perspective(1.047f, 1.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 0.0f, 2.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
@@ -1271,7 +1271,7 @@ let shader = Shader.default()
 let pass = Pass("clipped")
 pass.addShader(shader)
 
-pass.setViewport([(0, 0), (32, 32)])
+pass.setViewport(ScreenRegion((0, 0), (32, 32)))
 
 try renderer.render(pass, target)
 `}
@@ -1287,13 +1287,13 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(64u, 64u)
+val target = renderer.createTextureTarget(listOf(64, 64))
 
 val shader = Shader.default()
 val pass = Pass("clipped")
 pass.addShader(shader)
 
-pass.setViewport(ScreenRegion(minX=0u, minY=0u, maxX=32u, maxY=32u))
+pass.setViewport(ScreenRegion(listOf(0, 0), listOf(32, 32)))
 
 renderer.render(pass, target)
 `}
@@ -1419,7 +1419,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(64u, 64u)
+val target = renderer.createTextureTarget(listOf(64, 64))
 
 val shader = Shader.default()
 val pass = Pass("solid background")
@@ -1509,7 +1509,7 @@ code={`
 import org.fragmentcolor.*
 val cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
 val pass = Pass.fromShader("compute", cs)
-pass.setComputeDispatch(64u, 64u, 1u)
+pass.setComputeDispatch(64, 64, 1)
 `}
 lang="kotlin"
 />
@@ -1608,7 +1608,7 @@ code={`
 import org.fragmentcolor.*
 
 val r = Renderer()
-val tex_target = r.createTextureTarget(512u, 512u)
+val tex_target = r.createTextureTarget(listOf(512, 512))
 
 val p = Pass("shadow")
 p.setTarget(tex_target)
@@ -1767,16 +1767,16 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(64u, 64u)
+val target = renderer.createTextureTarget(listOf(64, 64))
 
 // One depth attachment shared across the 3D-content pass.
-val depth = renderer.createDepthTexture(64u, 64u)
+val depth = renderer.createDepthTexture(listOf(64, 64))
 
 val mesh = Mesh()
-mesh.addVertex(Vertex(listOf(0.0f, 0.0f, 0.0f)))
-mesh.addVertex(Vertex(listOf(1.0f, 0.0f, 0.0f)))
-mesh.addVertex(Vertex(listOf(0.0f, 1.0f, 0.0f)))
-mesh.addVertex(Vertex(listOf(1.0f, 1.0f, 0.0f)))
+mesh.addVertex(listOf(0.0f, 0.0f, 0.0f))
+mesh.addVertex(listOf(1.0f, 0.0f, 0.0f))
+mesh.addVertex(listOf(0.0f, 1.0f, 0.0f))
+mesh.addVertex(listOf(1.0f, 1.0f, 0.0f))
 val shader = Shader.fromMesh(mesh)
 val pass = Pass.fromShader("blobs", shader)
 
@@ -2037,7 +2037,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val target = renderer.createTextureTarget(100u, 100u)
+val target = renderer.createTextureTarget(listOf(100,100))
 val color = Pass("color")
 val blurx = Pass("blur_x")
 blurx.require(color) // color before blur_x

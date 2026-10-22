@@ -1,7 +1,7 @@
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(16u, 16u)
+val target = renderer.createTextureTarget(listOf(16, 16))
 
 val compute = Shader("""
     struct Out { values: array<f32, 4> };
@@ -16,7 +16,7 @@ val compute = Shader("""
 """)
 
 val pass = Pass.compute("seed")
-pass.setComputeDispatch(1u, 1u, 1u)
+pass.setComputeDispatch(1, 1, 1)
 pass.addShader(compute)
 renderer.render(pass, target)
 

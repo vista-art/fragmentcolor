@@ -99,9 +99,9 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex(Vertex(listOf(0.0f, 0.5f, 0.0f)))
-mesh.addVertex(Vertex(listOf(-0.5f, -0.5f, 0.0f)))
-mesh.addVertex(Vertex(listOf(0.5f, -0.5f, 0.0f)))
+mesh.addVertex(listOf(0.0f, 0.5f, 0.0f))
+mesh.addVertex(listOf(-0.5f, -0.5f, 0.0f))
+mesh.addVertex(listOf(0.5f, -0.5f, 0.0f))
 `}
 lang="kotlin"
 />
@@ -260,7 +260,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val mesh = Mesh.fromVertices(listOf(Vertex(listOf(0.0f, 0.0f)), Vertex(listOf(1.0f, 0.0f)), Vertex(listOf(0.0f, 1.0f))))
+val mesh = Mesh.fromVertices(listOf(listOf(0.0f, 0.0f), listOf(1.0f, 0.0f), listOf(0.0f, 1.0f)))
 `}
 lang="kotlin"
 />
@@ -336,7 +336,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val m = Mesh()
-m.addVertex(Vertex(listOf(0.0f, 0.0f)))
+m.addVertex(listOf(0.0f, 0.0f))
 `}
 lang="kotlin"
 />
@@ -418,7 +418,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val m = Mesh()
-m.addVertices(listOf(Vertex(listOf(0.0f, 0.0f)), Vertex(listOf(1.0f, 0.0f))))
+m.addVertices(listOf(listOf(0.0f, 0.0f), listOf(1.0f, 0.0f)))
 `}
 lang="kotlin"
 />
@@ -820,9 +820,9 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val m = Mesh()
-m.addVertices(listOf(Vertex(listOf(-0.01f, -0.01f)), Vertex(listOf(0.01f, -0.01f)), Vertex(listOf(0.00f, 0.01f))))
+m.addVertices(listOf(listOf(-0.01f, -0.01f), listOf(0.01f, -0.01f), listOf(0.00f, 0.01f)))
 // Draw one million instances, fetching per-particle data from a storage buffer.
-m.setInstanceCount(1_000_000u)
+m.setInstanceCount(1_000_000)
 `}
 lang="kotlin"
 />
@@ -967,7 +967,7 @@ val uv10 = listOf(1.0f, 0.0f)
 val uv11 = listOf(1.0f, 1.0f)
 val uv01 = listOf(0.0f, 1.0f)
 mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f)).set("uv", uv00), Vertex(listOf(0.5f, -0.5f)).set("uv", uv10), Vertex(listOf(0.5f, 0.5f)).set("uv", uv11), Vertex(listOf(-0.5f, 0.5f)).set("uv", uv01)))
-mesh.setIndices(listOf(0u, 1u, 2u, 0u, 2u, 3u))
+mesh.setIndices(listOf(0, 1, 2, 0, 2, 3))
 `}
 lang="kotlin"
 />
@@ -1071,7 +1071,7 @@ import org.fragmentcolor.*
 
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f)), Vertex(listOf(0.5f, -0.5f)), Vertex(listOf(0.0f, 0.5f))))
-mesh.setIndices(listOf(0u, 1u, 2u))
+mesh.setIndices(listOf(0, 1, 2))
 mesh.clearIndices() // back to auto-derived dedup
 `}
 lang="kotlin"

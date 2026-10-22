@@ -7,5 +7,5 @@ let ao_bytes = [
     200,   0, 0, 255,
     160,   0, 0, 255,
 ]
-let ao = try await renderer.createTexture((ao_bytes, [2, 2]))
+let ao = try await renderer.createTexture(ao_bytes, [2, 2])
 let mat = Material.pbr().occlusionTexture(ao)

@@ -1,16 +1,16 @@
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(64u, 64u)
+val target = renderer.createTextureTarget(listOf(64, 64))
 
 // One depth attachment shared across the 3D-content pass.
-val depth = renderer.createDepthTexture(64u, 64u)
+val depth = renderer.createDepthTexture(listOf(64, 64))
 
 val mesh = Mesh()
-mesh.addVertex(Vertex(listOf(0.0f, 0.0f, 0.0f)))
-mesh.addVertex(Vertex(listOf(1.0f, 0.0f, 0.0f)))
-mesh.addVertex(Vertex(listOf(0.0f, 1.0f, 0.0f)))
-mesh.addVertex(Vertex(listOf(1.0f, 1.0f, 0.0f)))
+mesh.addVertex(listOf(0.0f, 0.0f, 0.0f))
+mesh.addVertex(listOf(1.0f, 0.0f, 0.0f))
+mesh.addVertex(listOf(0.0f, 1.0f, 0.0f))
+mesh.addVertex(listOf(1.0f, 1.0f, 0.0f))
 val shader = Shader.fromMesh(mesh)
 val pass = Pass.fromShader("blobs", shader)
 

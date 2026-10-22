@@ -238,7 +238,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(16u, 16u)
+val target = renderer.createTextureTarget(listOf(16, 16))
 renderer.render(Shader.default(), target)
 
 val image = target.getImage()
@@ -341,9 +341,9 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(64u, 32u)
+val target = renderer.createTextureTarget(listOf(64, 32))
 
-target.resize(128u, 64u)
+target.resize(listOf(128, 64))
 `}
 lang="kotlin"
 />
@@ -456,7 +456,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(64u, 32u)
+val target = renderer.createTextureTarget(listOf(64, 32))
 val size = target.size()
 val width = size.width
 val height = size.height
