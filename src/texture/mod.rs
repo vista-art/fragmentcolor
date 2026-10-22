@@ -22,7 +22,7 @@ pub(crate) mod ktx2_loader;
 
 mod platform;
 #[cfg(python)]
-pub(crate) use platform::{PyTextureId, PyTextureSource, ndarray_bytes};
+pub(crate) use platform::{PySamplerOptions, PyTextureId, PyTextureSource, PyTextureUsage};
 
 use crate::{RenderContext, Size};
 use image::{DynamicImage, GenericImageView};
@@ -1189,7 +1189,11 @@ fn read_ktx2_file(
 /// plus any bits from `TextureOptions::usage`, such as `COPY_SRC` for `read_texture`.
 pub(crate) fn source_usage(extra: Option<u32>) -> wgpu::TextureUsages {
     let required = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
-    required | extra.map_or(wgpu::TextureUsages::empty(), wgpu::TextureUsages::from_bits_truncate)
+    required
+        | extra.map_or(
+            wgpu::TextureUsages::empty(),
+            wgpu::TextureUsages::from_bits_truncate,
+        )
 }
 
 /// Number of mip levels in a full chain that goes down to 1×1 for the given dimensions.

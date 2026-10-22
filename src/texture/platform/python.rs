@@ -5,7 +5,7 @@ use crate::{CompareFunction, SamplerOptions, TextureFormat};
 use lsp_doc::lsp_doc;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict, PyList};
+use pyo3::types::{PyByteArray, PyBytes, PyDict, PyList, PyMemoryView, PyTuple};
 
 // The argument types below are `pub` inside this private module,
 // so the bindings can take them while they stay out of the crate API.
@@ -57,20 +57,124 @@ pub(crate) fn ndarray_bytes(array: &numpy::PyReadonlyArrayDyn<'_, u8>) -> Vec<u8
     }
 }
 
-/// A `create_texture` source from Python. Raw bytes come only as
-/// `bytes` or a `list` of ints, so an int ndarray never reads as bytes.
+/// A `create_texture` source from Python. Raw bytes come only as `bytes`,
+/// `bytearray`, `memoryview`, or a `list` or `tuple` of ints, so an int ndarray
+/// never reads as bytes. A `str` is a URL with an http(s) scheme and a path otherwise.
 #[derive(FromPyObject)]
 pub enum PyTextureSource<'py> {
+    #[pyo3(annotation = "Texture")]
+    Texture(Texture),
     #[pyo3(annotation = "bytes")]
     Bytes(Bound<'py, PyBytes>),
+    #[pyo3(annotation = "bytearray")]
+    ByteArray(Bound<'py, PyByteArray>),
+    #[pyo3(annotation = "memoryview")]
+    MemoryView(Bound<'py, PyMemoryView>),
     #[pyo3(annotation = "list[int]")]
     List(Bound<'py, PyList>),
+    #[pyo3(annotation = "tuple[int, ...]")]
+    Tuple(Bound<'py, PyTuple>),
     #[pyo3(annotation = "str")]
-    Path(String),
+    Source(String),
+    #[pyo3(annotation = "os.PathLike[str]")]
+    Path(std::path::PathBuf),
     #[pyo3(annotation = "ndarray[uint8]")]
     Array(numpy::PyReadonlyArrayDyn<'py, u8>),
     #[pyo3(annotation = "Mipmap")]
     Mipmap(Mipmap),
+}
+
+/// The texture input a Python source stands for. An ndarray brings its own size.
+impl TryFrom<PyTextureSource<'_>> for crate::TextureInput {
+    type Error = PyErr;
+
+    fn try_from(source: PyTextureSource<'_>) -> PyResult<Self> {
+        use crate::TextureData;
+        let data = match source {
+            PyTextureSource::Texture(texture) => TextureData::CloneOf(texture),
+            PyTextureSource::Bytes(bytes) => TextureData::Bytes(bytes.as_bytes().to_vec()),
+            PyTextureSource::ByteArray(bytes) => TextureData::Bytes(bytes.to_vec()),
+            PyTextureSource::MemoryView(view) => {
+                TextureData::Bytes(view.call_method0("tobytes")?.extract()?)
+            }
+            PyTextureSource::List(list) => TextureData::Bytes(list.extract()?),
+            PyTextureSource::Tuple(tuple) => TextureData::Bytes(tuple.extract()?),
+            PyTextureSource::Source(source) => TextureData::from(source.as_str()),
+            PyTextureSource::Path(path) => TextureData::Path(path),
+            PyTextureSource::Array(array) => {
+                let (rgba, size) = ndarray_to_rgba(&array)?;
+                return Ok((rgba, size).into());
+            }
+            PyTextureSource::Mipmap(chain) => TextureData::Prepared(chain),
+        };
+        Ok(data.into())
+    }
+}
+
+/// Expands an `(h, w)` or `(h, w, 1 | 3 | 4)` uint8 array to RGBA8 bytes.
+fn ndarray_to_rgba(
+    array: &numpy::PyReadonlyArrayDyn<'_, u8>,
+) -> Result<(Vec<u8>, crate::Size), PyErr> {
+    use numpy::PyUntypedArrayMethods;
+
+    let shape = array.shape();
+    if shape.len() != 2 && shape.len() != 3 {
+        return Err(crate::error::PyFragmentColorError::new_err(format!(
+            "ndarray must have 2 or 3 dimensions, got {}",
+            shape.len()
+        )));
+    }
+    let h = shape[0] as u32;
+    let w = shape[1] as u32;
+    let c = if shape.len() == 3 { shape[2] } else { 1 };
+    let mut rgba = vec![0u8; (w as usize) * (h as usize) * 4];
+    let data = ndarray_bytes(array);
+    for y in 0..(h as usize) {
+        for x in 0..(w as usize) {
+            let src_idx = (y * (w as usize) + x) * c;
+            let dst_idx = (y * (w as usize) + x) * 4;
+            match c {
+                1 => {
+                    let v = data[src_idx];
+                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&[v, v, v, 255]);
+                }
+                3 => {
+                    let r = data[src_idx];
+                    let g = data[src_idx + 1];
+                    let b = data[src_idx + 2];
+                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&[r, g, b, 255]);
+                }
+                4 => {
+                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&data[src_idx..src_idx + 4]);
+                }
+                _ => {
+                    return Err(crate::error::PyFragmentColorError::new_err(
+                        "ndarray last dimension must be 1, 3, or 4",
+                    ));
+                }
+            }
+        }
+    }
+    Ok((rgba, crate::Size::new(w, h, None)))
+}
+
+/// A texture usage from Python: a `TextureUsage`, such as
+/// `TextureUsage.COPY_SRC | TextureUsage.TEXTURE_BINDING`, or its bits as an int.
+#[derive(FromPyObject)]
+pub enum PyTextureUsage {
+    #[pyo3(annotation = "TextureUsage")]
+    Usage(crate::TextureUsage),
+    #[pyo3(annotation = "int")]
+    Bits(u32),
+}
+
+impl From<PyTextureUsage> for u32 {
+    fn from(usage: PyTextureUsage) -> Self {
+        match usage {
+            PyTextureUsage::Usage(usage) => usage.bits,
+            PyTextureUsage::Bits(bits) => bits,
+        }
+    }
 }
 
 /// A `Texture.write_region` region from Python, tried in this order.

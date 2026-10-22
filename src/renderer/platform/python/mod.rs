@@ -137,25 +137,35 @@ impl Renderer {
         })
     }
 
-    /// Single Python entry point. Accepts bytes or a list of ints, a path
-    /// string, a uint8 numpy ndarray, or a Mipmap handle. Optional kwargs:
+    /// Single Python entry point. Accepts a Texture, bytes, a bytearray, a
+    /// memoryview, a list or tuple of ints, a path or URL string, an
+    /// os.PathLike, a uint8 numpy ndarray, or a Mipmap. Optional kwargs:
     /// `size=(w, h)` (forces raw-pixel interpretation of bytes),
-    /// `format=TextureFormat.X`, `mipmaps=True/False`.
+    /// `format=TextureFormat.X`, `mipmaps=True/False`, `sampler=SamplerOptions(...)`
+    /// and `usage=TextureUsage.COPY_SRC`.
     #[pyo3(
         name = "create_texture",
-        signature = (input, size=None, format=None, mipmaps=None)
+        signature = (input, size=None, format=None, mipmaps=None, sampler=None, usage=None)
     )]
     #[lsp_doc("docs/api/core/renderer/create_texture.md")]
-    pub fn create_texture_py(
+    pub fn create_texture_py<'py>(
         &self,
-        input: PyTextureSource<'_>,
+        input: PyTextureSource<'py>,
         size: Option<PySize>,
         format: Option<crate::TextureFormat>,
         mipmaps: Option<bool>,
+        sampler: Option<crate::texture::PySamplerOptions<'py>>,
+        usage: Option<crate::texture::PyTextureUsage>,
     ) -> Result<crate::texture::Texture, PyErr> {
-        let spec = py_to_texture_spec(input, size, format, mipmaps)?;
-        let tex = pollster::block_on(self.create_texture(spec))?;
-        Ok(tex)
+        let options = TextureKeywords {
+            size,
+            format,
+            mipmaps,
+            sampler,
+            usage,
+        };
+        let spec = py_to_texture_spec(input, options)?;
+        Ok(pollster::block_on(self.create_texture(spec))?)
     }
 
     #[pyo3(name = "load")]
@@ -209,34 +219,38 @@ impl Renderer {
     }
 
     // Storage texture — single entry, optional data + usage kwargs.
+    // `usage_bits` is the old name of `usage` and warns when used.
     #[pyo3(
         name = "create_storage_texture",
-        signature = (size, format, data=None, usage_bits=None)
+        signature = (size, format, data=None, usage=None, usage_bits=None)
     )]
     #[lsp_doc("docs/api/core/renderer/hidden/create_storage_texture_py.md")]
     pub fn create_storage_texture_py(
         &self,
+        py: Python<'_>,
         size: PySize,
         format: crate::TextureFormat,
         data: Option<Vec<u8>>,
+        usage: Option<crate::texture::PyTextureUsage>,
         usage_bits: Option<u32>,
     ) -> Result<crate::texture::Texture, PyErr> {
-        Python::attach(|_py| -> Result<crate::texture::Texture, PyErr> {
-            let input = crate::TextureInput {
-                data: match data {
-                    Some(bytes) => crate::TextureData::Bytes(bytes),
-                    None => crate::TextureData::Empty,
-                },
-                options: crate::TextureOptions {
-                    size: Some(Size::try_from(size)?),
-                    format,
-                    usage: usage_bits,
-                    ..Default::default()
-                },
-            };
-            let tex = pollster::block_on(self.create_storage_texture(input))?;
-            Ok(tex)
-        })
+        if usage_bits.is_some() {
+            let warning = py.get_type::<pyo3::exceptions::PyDeprecationWarning>();
+            PyErr::warn(py, &warning, c"usage_bits is deprecated, pass usage", 1)?;
+        }
+        let input = crate::TextureInput {
+            data: match data {
+                Some(bytes) => crate::TextureData::Bytes(bytes),
+                None => crate::TextureData::Empty,
+            },
+            options: crate::TextureOptions {
+                size: Some(Size::try_from(size)?),
+                format,
+                usage: usage.map(u32::from).or(usage_bits),
+                ..Default::default()
+            },
+        };
+        Ok(pollster::block_on(self.create_storage_texture(input))?)
     }
 
     #[pyo3(name = "unregister_texture")]
@@ -255,9 +269,9 @@ impl Renderer {
     #[pyo3(name = "read_texture")]
     #[lsp_doc("docs/api/core/renderer/read_texture.md")]
     pub fn read_texture_py(&self, texture_id: PyTextureId) -> Result<Vec<u8>, PyErr> {
-        Ok(pollster::block_on(
-            self.read_texture(crate::texture::TextureId::from(texture_id)),
-        )?)
+        Ok(pollster::block_on(self.read_texture(
+            crate::texture::TextureId::from(texture_id),
+        ))?)
     }
 }
 
@@ -265,80 +279,32 @@ impl Renderer {
 /// own size unless `size` is given; the other kwargs apply to every source.
 fn py_to_texture_spec(
     input: PyTextureSource<'_>,
-    explicit_size: Option<PySize>,
-    explicit_format: Option<crate::TextureFormat>,
-    explicit_mipmaps: Option<bool>,
+    options: TextureKeywords<'_>,
 ) -> Result<crate::texture::TextureInput, PyErr> {
-    use crate::texture::{TextureData, TextureInput, TextureOptions};
-
-    let mut options = TextureOptions::default();
-    if let Some(size) = explicit_size {
-        options.size = Some(Size::try_from(size)?);
+    let mut spec = crate::texture::TextureInput::try_from(input)?;
+    if let Some(size) = options.size {
+        spec.options.size = Some(Size::try_from(size)?);
     }
-    if let Some(f) = explicit_format {
-        options.format = f;
+    if let Some(format) = options.format {
+        spec.options.format = format;
     }
-    if let Some(m) = explicit_mipmaps {
-        options.mipmaps = m;
+    if let Some(mipmaps) = options.mipmaps {
+        spec.options.mipmaps = mipmaps;
     }
-
-    let data = match input {
-        PyTextureSource::Bytes(bytes) => TextureData::Bytes(bytes.as_bytes().to_vec()),
-        PyTextureSource::List(list) => TextureData::Bytes(list.extract()?),
-        PyTextureSource::Path(path) => TextureData::Path(path.into()),
-        PyTextureSource::Array(array) => {
-            let (rgba, size) = ndarray_to_rgba(&array)?;
-            options.size.get_or_insert(size);
-            TextureData::Bytes(rgba)
-        }
-        PyTextureSource::Mipmap(chain) => TextureData::Prepared(chain),
-    };
-    Ok(TextureInput { data, options })
+    if let Some(sampler) = options.sampler {
+        spec.options.sampler = crate::SamplerOptions::try_from(sampler)?;
+    }
+    if let Some(usage) = options.usage {
+        spec.options.usage = Some(usage.into());
+    }
+    Ok(spec)
 }
 
-/// Expands an `(h, w)` or `(h, w, 1 | 3 | 4)` uint8 array to RGBA8 bytes.
-fn ndarray_to_rgba(
-    array: &numpy::PyReadonlyArrayDyn<'_, u8>,
-) -> Result<(Vec<u8>, crate::Size), PyErr> {
-    use numpy::PyUntypedArrayMethods;
-
-    let shape = array.shape();
-    if shape.len() != 2 && shape.len() != 3 {
-        return Err(crate::error::PyFragmentColorError::new_err(format!(
-            "ndarray must have 2 or 3 dimensions, got {}",
-            shape.len()
-        )));
-    }
-    let h = shape[0] as u32;
-    let w = shape[1] as u32;
-    let c = if shape.len() == 3 { shape[2] } else { 1 };
-    let mut rgba = vec![0u8; (w as usize) * (h as usize) * 4];
-    let data = crate::texture::ndarray_bytes(array);
-    for y in 0..(h as usize) {
-        for x in 0..(w as usize) {
-            let src_idx = (y * (w as usize) + x) * c;
-            let dst_idx = (y * (w as usize) + x) * 4;
-            match c {
-                1 => {
-                    let v = data[src_idx];
-                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&[v, v, v, 255]);
-                }
-                3 => {
-                    let r = data[src_idx];
-                    let g = data[src_idx + 1];
-                    let b = data[src_idx + 2];
-                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&[r, g, b, 255]);
-                }
-                4 => {
-                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&data[src_idx..src_idx + 4]);
-                }
-                _ => {
-                    return Err(crate::error::PyFragmentColorError::new_err(
-                        "ndarray last dimension must be 1, 3, or 4",
-                    ));
-                }
-            }
-        }
-    }
-    Ok((rgba, crate::Size::new(w, h, None)))
+/// The keyword arguments of `create_texture`, each optional.
+struct TextureKeywords<'py> {
+    size: Option<PySize>,
+    format: Option<crate::TextureFormat>,
+    mipmaps: Option<bool>,
+    sampler: Option<crate::texture::PySamplerOptions<'py>>,
+    usage: Option<crate::texture::PyTextureUsage>,
 }
