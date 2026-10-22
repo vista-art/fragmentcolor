@@ -128,8 +128,11 @@ fun Mesh.setIndices(indices: IntArray) {
 
 /** Set the instance draw count. Throws [FragmentColorException] for a negative count. */
 fun Mesh.setInstanceCount(n: Int) {
-    setInstanceCount(unsigned(n, "setInstanceCount", "count"))
+    setInstanceCountUInt(unsigned(n, "setInstanceCount", "count"))
 }
+
+/** Set the instance draw count from a [UInt]. */
+fun Mesh.setInstanceCount(n: UInt) = setInstanceCountUInt(n)
 
 /** Append the per-instance attributes of a vertex, as Rust's `Instance::from(vertex)` does. */
 fun Mesh.addInstance(vertex: Vertex) {

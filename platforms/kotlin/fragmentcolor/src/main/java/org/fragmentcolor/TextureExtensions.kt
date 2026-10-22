@@ -74,7 +74,10 @@ fun Mipmap.Companion.build(bytes: ByteArray, format: TextureFormat, size: List<I
     build(bytes, format, sizeRecord(size, "Mipmap.build"))
 
 /** The bytes of one mip level. Throws [FragmentColorException] for an index out of range. */
-fun Mipmap.level(index: Int): ByteArray = level(unsigned(index, "level", "level index"))
+fun Mipmap.level(index: Int): ByteArray = levelUInt(unsigned(index, "level", "level index"))
+
+/** The bytes of one mip level. Throws [FragmentColorException] for an index out of range. */
+fun Mipmap.level(index: UInt): ByteArray = levelUInt(index)
 
 // ── TextureUsage ─────────────────────────────────────────────────────────────
 

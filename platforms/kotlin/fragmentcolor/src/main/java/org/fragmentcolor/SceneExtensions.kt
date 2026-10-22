@@ -59,7 +59,10 @@ fun Scene.addTo(name: String, light: Light): Scene = addTo(PassTarget.Name(name)
 // index and an array literal without converting to UInt / List by hand.
 
 /** Read a Pass by [index], or `null` when there is none, a negative index included. */
-fun Scene.getPass(index: Int): Pass? = if (index < 0) null else getPass(index.toUInt())
+fun Scene.getPass(index: Int): Pass? = if (index < 0) null else getPassUInt(index.toUInt())
+
+/** Read a Pass by [index], or `null` when there is none. */
+fun Scene.getPass(index: UInt): Pass? = getPassUInt(index)
 
 /** Replace the whole pass graph from an array of passes. */
 fun Scene.setPasses(passes: Array<Pass>) {

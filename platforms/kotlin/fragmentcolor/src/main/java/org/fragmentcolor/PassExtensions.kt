@@ -130,5 +130,8 @@ private fun saturatingAdd(a: UInt, b: UInt): UInt = if (a > UInt.MAX_VALUE - b) 
  */
 fun Pass.setComputeDispatch(x: Int, y: Int, z: Int) {
     val method = "setComputeDispatch"
-    setComputeDispatch(unsigned(x, method, "size"), unsigned(y, method, "size"), unsigned(z, method, "size"))
+    setComputeDispatchUInt(unsigned(x, method, "size"), unsigned(y, method, "size"), unsigned(z, method, "size"))
 }
+
+/** Set the compute dispatch sizes from [UInt] arguments. */
+fun Pass.setComputeDispatch(x: UInt, y: UInt, z: UInt) = setComputeDispatchUInt(x, y, z)
