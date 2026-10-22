@@ -3848,15 +3848,25 @@ public convenience init() {
 
     
     /**
-     * Load a scene from a file on disk. Pass a path for `.gltf` / `.glb`
-     * files. In-memory `.glb` bytes are not exposed on mobile yet — call
-     * from Rust if you need that shape.
+     * Load a scene from a `.gltf` or `.glb` file on disk.
      */
 public static func load(path: String)throws  -> Scene  {
     return try  FfiConverterTypeScene_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_constructor_scene_load(
         FfiConverterString.lower(path),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Load a scene from the bytes of a `.glb` file.
+     */
+public static func loadBytes(bytes: Data)throws  -> Scene  {
+    return try  FfiConverterTypeScene_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_scene_loadbytes(
+        FfiConverterData.lower(bytes),uniffiCallStatus
     )
 })
 }
@@ -9700,7 +9710,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_constructor_light_spot() != 35903) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_scene_load() != 45203) {
+    if (uniffi_fragmentcolor_checksum_constructor_scene_load() != 9763) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_scene_loadbytes() != 38579) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_scene_new() != 58352) {
