@@ -165,6 +165,8 @@ pub enum PyUniformValue<'py> {
     MemoryView(Bound<'py, PyMemoryView>),
     #[pyo3(annotation = "Sequence[float]")]
     Numbers(Vec<f64>),
+    #[pyo3(annotation = "Sequence[Sequence[float]]")]
+    Matrix(Vec<Vec<f64>>),
     #[pyo3(annotation = "float")]
     Number(f64),
 }
@@ -180,6 +182,8 @@ impl PyUniformValue<'_> {
             Self::ByteArray(bytes) => UniformInput::Bytes(bytes.to_vec()),
             Self::MemoryView(view) => UniformInput::Bytes(view.call_method0("tobytes")?.extract()?),
             Self::Numbers(numbers) => UniformInput::Numbers(numbers),
+            // Each inner list is one column, as in Rust's [[f32; 4]; 4].
+            Self::Matrix(columns) => UniformInput::Numbers(columns.concat()),
             Self::Number(number) => UniformInput::Number(number),
         })
     }
