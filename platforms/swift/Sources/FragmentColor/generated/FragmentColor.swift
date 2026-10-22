@@ -2527,10 +2527,10 @@ public protocol PassProtocol: AnyObject, Sendable {
     func require(deps: [RenderableHandle]) throws 
     
     /**
-     * Set the clear colour for this pass (as `[r, g, b, a]` in linear 0..1 space).
+     * Set the clear color for this pass (as `[r, g, b, a]` in linear 0..1 space).
      *
      * Switching from load to clear mode: after calling this the pass will
-     * clear its colour attachment to `color` at the start of each frame.
+     * clear its color attachment to `color` at the start of each frame.
      */
     func setClearColor(color: [Float]) throws 
     
@@ -2558,7 +2558,7 @@ public protocol PassProtocol: AnyObject, Sendable {
      * Set the render target (color attachment) for this pass.
      *
      * The `target` must be a `TargetHandle::Texture` variant; window targets
-     * cannot be used as a render-to-texture colour target.
+     * cannot be used as a render-to-texture color target.
      */
     func setTarget(target: TargetHandle) throws 
     
@@ -2771,10 +2771,10 @@ open func require(deps: [RenderableHandle])throws   {try rustCallWithError(FfiCo
 }
     
     /**
-     * Set the clear colour for this pass (as `[r, g, b, a]` in linear 0..1 space).
+     * Set the clear color for this pass (as `[r, g, b, a]` in linear 0..1 space).
      *
      * Switching from load to clear mode: after calling this the pass will
-     * clear its colour attachment to `color` at the start of each frame.
+     * clear its color attachment to `color` at the start of each frame.
      */
 open func setClearColor(color: [Float])throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
@@ -2832,7 +2832,7 @@ open func setDepthTexture(texture: Texture)throws   {try rustCallWithError(FfiCo
      * Set the render target (color attachment) for this pass.
      *
      * The `target` must be a `TargetHandle::Texture` variant; window targets
-     * cannot be used as a render-to-texture colour target.
+     * cannot be used as a render-to-texture color target.
      */
 open func setTarget(target: TargetHandle)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
@@ -5160,7 +5160,7 @@ public struct PassInput: Equatable, Hashable {
      */
     public var load: Bool
     /**
-     * Clear colour packed as 0xRRGGBBAA (same bit layout as `Color(u32)`).
+     * Clear color packed as 0xRRGGBBAA (same bit layout as `Color(u32)`).
      */
     public var colorRgba: UInt32
 
@@ -5172,7 +5172,7 @@ public struct PassInput: Equatable, Hashable {
          * If `false`, the `color_rgba` value is used to clear the attachment.
          */load: Bool, 
         /**
-         * Clear colour packed as 0xRRGGBBAA (same bit layout as `Color(u32)`).
+         * Clear color packed as 0xRRGGBBAA (same bit layout as `Color(u32)`).
          */colorRgba: UInt32) {
         self.load = load
         self.colorRgba = colorRgba

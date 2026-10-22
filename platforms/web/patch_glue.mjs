@@ -25,7 +25,7 @@ let src = readFileSync(path, 'utf8');
 //       return ret;
 //   },
 //
-// We match both. The replacement keeps the same wrapping syntax so neighbouring
+// We match both. The replacement keeps the same wrapping syntax so neighboring
 // commas / semicolons don't drift.
 
 const bodyAssignment = /imports\.wbg\.(__wbg_new_[a-z0-9]+)\s*=\s*function\(arg0\)\s*\{\s*const\s+ret\s*=\s*new\s+Uint8Array\(arg0\);\s*return\s+ret;\s*\};/g;

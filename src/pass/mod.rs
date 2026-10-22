@@ -168,7 +168,7 @@ impl Pass {
 
     /// Absorb a [`SceneObject`](crate::scene::SceneObject) — Model, Camera,
     /// Light, or any custom node — into this pass. Each implementation owns
-    /// its own attach behaviour: Model queues a draw, Camera and Light wire
+    /// its own attach behavior: Model queues a draw, Camera and Light wire
     /// their uniforms into every shader the pass renders (current and
     /// future). Chainable; errors short-circuit the chain.
     #[lsp_doc("docs/api/core/pass/add.md")]

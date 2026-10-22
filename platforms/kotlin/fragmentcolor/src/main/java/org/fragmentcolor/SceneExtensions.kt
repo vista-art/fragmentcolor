@@ -23,14 +23,14 @@ fun Scene.add(camera: Camera): Scene = add(SceneObjectHandle.Camera(camera))
 /** Add a [Light] to the scene. */
 fun Scene.add(light: Light): Scene = add(SceneObjectHandle.Light(light))
 
-/** Set the scene ambient colour from `[r, g, b]`. */
+/** Set the scene ambient color from `[r, g, b]`. */
 fun Scene.ambient(color: FloatArray): Scene = ambient(color.toList())
 
-/** Set the scene ambient colour from `[r, g, b]`. */
+/** Set the scene ambient color from `[r, g, b]`. */
 @JvmName("ambientDoubles")
 fun Scene.ambient(color: List<Double>): Scene = ambient(color.map { it.toFloat() })
 
-/** Set the scene ambient colour from `[r, g, b]`. */
+/** Set the scene ambient color from `[r, g, b]`. */
 fun Scene.ambient(color: DoubleArray): Scene = ambient(color.map { it.toFloat() })
 
 // add_to overloads: target a Pass by index or name, passing the concrete

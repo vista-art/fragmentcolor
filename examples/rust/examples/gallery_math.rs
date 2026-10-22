@@ -76,7 +76,7 @@ fn compositions() -> Vec<Composition> {
         },
         Composition {
             name: "ndc_to_uv",
-            description: "Visualises the NDC->UV remap as the y-flipped UV gradient.",
+            description: "Visualizes the NDC->UV remap as the y-flipped UV gradient.",
             slugs: &["math/ndc_to_uv"],
             fragment: r#"
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {

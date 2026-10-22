@@ -125,7 +125,7 @@ fn storage_creation_options_wrap_past_the_edge() {
 
 // Story: Turning smooth off makes the bound sampler pick one texel instead of blending two.
 #[test]
-fn smooth_blends_neighbouring_texels() {
+fn smooth_blends_neighboring_texels() {
     pollster::block_on(async move {
         // Arrange
         let renderer = Renderer::new();

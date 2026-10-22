@@ -586,7 +586,7 @@ fn build_material(
 fn warn_unused_uv_transform(info: &gltf::texture::Info<'_>, slot: &str) {
     if info.texture_transform().is_some() {
         log::warn!(
-            "Scene::load ignoring KHR_texture_transform on `{slot}` slot — only `base_color` honours per-map transforms today"
+            "Scene::load ignoring KHR_texture_transform on `{slot}` slot — only `base_color` honors per-map transforms today"
         );
     }
 }
@@ -595,7 +595,7 @@ fn warn_unused_uv_transform(info: &gltf::texture::Info<'_>, slot: &str) {
 /// setter will queue. Returns `Ok(None)` for unsupported pixel formats so
 /// the caller can skip that slot and the Material falls back to its 1×1
 /// default — losing the whole `Scene::load` to one stray 16-bit-per-channel
-/// PNG was the prior behaviour and it's worse than silently degraded
+/// PNG was the prior behavior and it's worse than silently degraded
 /// shading on a single map. Hard errors (missing image, mismatched byte
 /// counts) still bubble up.
 fn try_image_to_texture_input(

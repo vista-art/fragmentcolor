@@ -110,7 +110,7 @@ assemble_framework() {
   find "$target_dir" -maxdepth 1 -name "*.h" -exec cp {} "$framework_dir/Headers/" \;
 
   # xcodebuild rejects a framework without an Info.plist. Generate a
-  # minimal one parameterised by the SDK platform so the device + sim
+  # minimal one parameterized by the SDK platform so the device + sim
   # variants advertise the right `CFBundleSupportedPlatforms`.
   cat > "$framework_dir/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

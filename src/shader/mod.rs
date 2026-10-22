@@ -432,7 +432,7 @@ impl ShaderObject {
             meshes: RwLock::new(Vec::new()),
             alpha_mode: RwLock::new(crate::material::AlphaMode::default()),
             // Default `double_sided=true` for shaders used directly: this
-            // preserves the pre-Material renderer behaviour (no back-face
+            // preserves the pre-Material renderer behavior (no back-face
             // cull) for callers who build a Shader without going through
             // Material. `Material::pbr()` flips it back to `false` so that
             // path follows the glTF 2.0 default (single-sided = back-face

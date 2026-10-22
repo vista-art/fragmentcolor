@@ -648,7 +648,7 @@ mod convert {
         out
     }
 
-    // Strip Rust slice-cast method calls that have no JS / Python analogue:
+    // Strip Rust slice-cast method calls that have no JS / Python analog:
     // `bytes.as_slice()`, `vec.as_ref()`, `s.to_vec()`. These coerce types
     // in Rust but the receiver in JS / Python already has the right shape.
     // Only matches an empty argument list (`(...)` with whitespace only).
@@ -694,7 +694,7 @@ mod convert {
     // `f((a, b, c))` becomes `f(a, b, c)`. Rust uses tuples to dispatch
     // through `From<(A, B, ...)>` impls; JS exposes the same shapes as
     // plain positional args. Only fires when the entire argument list of
-    // the call is a single parenthesised tuple — `f([a, b])`, `f((a))`
+    // the call is a single parenthesized tuple — `f([a, b])`, `f((a))`
     // (parens around one expr, not a tuple), and `f(x, (a, b))` are left
     // alone.
     fn flatten_tuple_call_args_js(line: &str) -> String {
@@ -1390,7 +1390,7 @@ mod convert {
     }
 
     // Detect and convert a multi-line Rust raw string assignment into a
-    // single emitted line. Two shapes are recognised:
+    // single emitted line. Two shapes are recognized:
     //   - `let var = Type::new(r#"..."#)` — constructor call (JS: `new Type`,
     //     Py: bare `Type`).
     //   - `let var = r#"..."#`             — bare string assignment (no
@@ -1601,7 +1601,7 @@ mod convert {
             }
         }
         // Pre-pass: strip Rust idioms with no JS / Python / Swift / Kotlin
-        // analogue. These transformations are language-agnostic — they
+        // analog. These transformations are language-agnostic — they
         // make the line "look like" idiomatic non-Rust code so the
         // downstream branches don't have to special-case Rust integer
         // literal suffixes (`0u8`, `64u32`) or unary deref (`*var.id()`).
@@ -1609,7 +1609,7 @@ mod convert {
             *line = strip_rust_numeric_suffixes(line);
             *line = strip_rust_deref_star(line);
             // Rust slice-cast no-ops (`bytes.as_slice()`, `vec.as_ref()`,
-            // `s.to_vec()`) have no JS / Python / Swift / Kotlin analogue —
+            // `s.to_vec()`) have no JS / Python / Swift / Kotlin analog —
             // the receiver already has the right shape.
             *line = strip_rust_coercion_calls(line);
             // `vec![...]` → `[...]`. Strip BEFORE the array-repeat pass
@@ -1941,7 +1941,7 @@ mod convert {
         out
     }
 
-    /// Recognise a Rust-style block header line and return the header text
+    /// Recognize a Rust-style block header line and return the header text
     /// without the trailing `{`. Supports `for x in y`, `if expr`,
     /// `while expr`, `loop`. Body must be on subsequent lines (header ends
     /// with `{`).

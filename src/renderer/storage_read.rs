@@ -15,7 +15,7 @@ use crate::renderer::{RenderContext, RendererError};
 ///
 /// Caller has already validated:
 ///   - the shader declares the storage binding,
-///   - the renderer's `storage_registry` has materialised the GPU buffer
+///   - the renderer's `storage_registry` has materialized the GPU buffer
 ///     (i.e. at least one render pass with this binding has fired).
 pub(crate) async fn read_buffer_bytes(
     context: &RenderContext,

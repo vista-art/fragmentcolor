@@ -36,7 +36,7 @@ pub struct MobilePassInput {
     /// If `true`, the previous frame's contents are loaded (no clear).
     /// If `false`, the `color_rgba` value is used to clear the attachment.
     pub load: bool,
-    /// Clear colour packed as 0xRRGGBBAA (same bit layout as `Color(u32)`).
+    /// Clear color packed as 0xRRGGBBAA (same bit layout as `Color(u32)`).
     pub color_rgba: u32,
 }
 
@@ -128,7 +128,7 @@ impl Pass {
     /// Set the render target (color attachment) for this pass.
     ///
     /// The `target` must be a `TargetHandle::Texture` variant; window targets
-    /// cannot be used as a render-to-texture colour target.
+    /// cannot be used as a render-to-texture color target.
     #[uniffi::method(name = "setTarget")]
     #[lsp_doc("docs/api/core/pass/hidden/set_target_mobile.md")]
     pub fn set_target_mobile(&self, target: TargetHandle) -> Result<(), FragmentColorError> {
@@ -139,7 +139,7 @@ impl Pass {
                     .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
             }
             TargetHandle::Window(_) => Err(FragmentColorError::Render(
-                "setTarget: WindowTarget cannot be used as a Pass colour target; use TextureTarget instead".into(),
+                "setTarget: WindowTarget cannot be used as a Pass color target; use TextureTarget instead".into(),
             )),
         }
     }
@@ -186,10 +186,10 @@ impl Pass {
             .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
     }
 
-    /// Set the clear colour for this pass (as `[r, g, b, a]` in linear 0..1 space).
+    /// Set the clear color for this pass (as `[r, g, b, a]` in linear 0..1 space).
     ///
     /// Switching from load to clear mode: after calling this the pass will
-    /// clear its colour attachment to `color` at the start of each frame.
+    /// clear its color attachment to `color` at the start of each frame.
     #[uniffi::method(name = "setClearColor")]
     #[lsp_doc("docs/api/core/pass/hidden/set_clear_color_mobile.md")]
     pub fn set_clear_color_mobile(&self, color: Vec<f32>) -> Result<(), FragmentColorError> {

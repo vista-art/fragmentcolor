@@ -246,7 +246,7 @@ impl Light {
 
     /// Build a spot light — point light constrained to a cone. `position`
     /// is the apex, `direction` is the cone axis, cone half-angles default
-    /// to `(0, π/4)` (full centre, 45° outer); tune via `set_cone_angles`.
+    /// to `(0, π/4)` (full center, 45° outer); tune via `set_cone_angles`.
     #[lsp_doc("docs/api/scene/light/spot.md")]
     pub fn spot(position: [f32; 3], direction: [f32; 3], color: [f32; 3]) -> Self {
         Self {
@@ -674,7 +674,7 @@ mod tests {
     }
 
     #[test]
-    fn ambient_default_seeds_to_dim_grey() {
+    fn ambient_default_seeds_to_dim_gray() {
         // Material::apply_defaults seeds `lights.ambient = [0.03; 3]` so
         // a fresh material's shader has a sensible non-zero ambient.
         let material = Material::pbr();

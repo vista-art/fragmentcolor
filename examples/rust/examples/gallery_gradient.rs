@@ -82,7 +82,7 @@ fn compositions() -> Vec<Composition> {
         },
         Composition {
             name: "jet",
-            description: "Classic MATLAB jet, swept radially from the centre to highlight all bands.",
+            description: "Classic MATLAB jet, swept radially from the center to highlight all bands.",
             slugs: &["gradient/jet"],
             fragment: r#"
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {

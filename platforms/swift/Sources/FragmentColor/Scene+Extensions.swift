@@ -31,7 +31,7 @@ extension Scene {
         addPass(pass: pass)
     }
 
-    /// Set the scene ambient colour from a `[r, g, b]` array (unlabeled overload).
+    /// Set the scene ambient color from a `[r, g, b]` array (unlabeled overload).
     @discardableResult
     public func ambient(_ color: [Float]) throws -> Scene {
         try ambient(color: color)

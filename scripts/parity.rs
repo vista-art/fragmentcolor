@@ -1129,7 +1129,7 @@ mod parity {
         out
     }
 
-    /// Recognise platform identifiers inside a cfg/cfg_attr token stream.
+    /// Recognize platform identifiers inside a cfg/cfg_attr token stream.
     /// `wasm`, `python`, `mobile`, `ios`, `android`, `apple` all expand to
     /// one or more platforms in this codebase's cfg_aliases.rs setup.
     fn apply_platform_tokens(toks: &str, out: &mut Vec<Platform>) {
@@ -1197,7 +1197,7 @@ mod parity {
     /// `<obj>/hidden/<method>_<platform>.md`, return the candidate
     /// canonical sibling `<obj>/<method>.md`. Returns `None` if the path
     /// does not match the hidden-override shape, or the suffix isn't one
-    /// of the recognised platform tokens. Pure string transform — no
+    /// of the recognized platform tokens. Pure string transform — no
     /// filesystem check; the caller (`resolve_canonical`) decides whether
     /// the candidate is real.
     fn canonicalize_via_strip(p: &str) -> Option<String> {
@@ -1217,7 +1217,7 @@ mod parity {
     /// Map a hidden-override platform suffix to the platforms it credits.
     /// `_ios` and `_macos` count for Swift only (those are the Apple
     /// targets the Swift binding ships against); `_android` counts for
-    /// Kotlin only; `_mobile` covers both. Returns `None` for unrecognised
+    /// Kotlin only; `_mobile` covers both. Returns `None` for unrecognized
     /// suffixes — those become unresolved bindings reported in the audit.
     fn platforms_for_suffix(suffix: &str) -> Option<Vec<Platform>> {
         match suffix {

@@ -16,7 +16,7 @@ impl Shader {
     /// Async-shaped constructor: fetches each part of `input` from the network
     /// (URL or slug) or reads file paths, then compiles the merged source.
     /// Blocks the Python thread synchronously via `pollster::block_on` —
-    /// call from a thread-pool worker if you want non-blocking behaviour.
+    /// call from a thread-pool worker if you want non-blocking behavior.
     #[staticmethod]
     #[pyo3(name = "fetch")]
     #[lsp_doc("docs/api/core/shader/fetch.md")]

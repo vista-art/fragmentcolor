@@ -1313,7 +1313,7 @@ mod kotlin {
 
     /// Walk a flat arithmetic expression and floatify every numeric operand at
     /// depth 0. Operators handled: `+ - * /`. Identifiers, function calls,
-    /// parenthesised sub-expressions pass through unchanged. Returns `None` if
+    /// parenthesized sub-expressions pass through unchanged. Returns `None` if
     /// the expression doesn't contain any top-level operator (so the bare-
     /// literal path handles it on its own).
     fn floatify_binary_op_operands(s: &str) -> Option<String> {

@@ -370,7 +370,7 @@ impl Renderer {
     /// to recover the typed view.
     ///
     /// Returns [`RendererError::StorageBindingNotFound`] when the shader does
-    /// not declare `binding`, or when no render pass has yet materialised the
+    /// not declare `binding`, or when no render pass has yet materialized the
     /// GPU-side buffer (the registry is populated lazily on first bind).
     ///
     /// This is intentionally explicit and async because the underlying
@@ -960,7 +960,7 @@ impl RenderContext {
         // non-deterministic. The linear-scan over a `Vec` is fine for
         // typical pass sizes — most passes have a single-digit number of
         // `(shader, mesh)` groups. The Vec lives on `self.scratch` so the
-        // allocation amortises across frames.
+        // allocation amortizes across frames.
         let mut scratch = self.scratch.write();
         let opaque_groups = &mut scratch.opaque_groups;
         for (_, bytes) in opaque_groups.iter_mut() {
@@ -2585,7 +2585,7 @@ fn create_render_pipeline(
         primitive: wgpu::PrimitiveState {
             // `double_sided=true` (the ShaderObject default) leaves
             // `cull_mode: None`, matching the renderer's pre-Material
-            // behaviour. `Material::pbr` (and `Material::custom`) flip
+            // behavior. `Material::pbr` (and `Material::custom`) flip
             // it to `false`, which engages standard back-face culling —
             // the glTF 2.0 default for single-sided materials.
             cull_mode: if double_sided {
@@ -2666,7 +2666,7 @@ mod more_error_path_tests {
 
     // Story: TextureOptions.usage adds COPY_SRC, so read_texture returns the uploaded pixels.
     #[test]
-    fn create_texture_honours_usage_for_readback() {
+    fn create_texture_honors_usage_for_readback() {
         pollster::block_on(async move {
             let renderer = Renderer::new();
             #[rustfmt::skip]

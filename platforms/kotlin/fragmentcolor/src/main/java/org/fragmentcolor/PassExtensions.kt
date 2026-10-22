@@ -53,7 +53,7 @@ fun Pass.add(light: Light): Pass = add(SceneObjectHandle.Light(light))
 
 // ── Targets ───────────────────────────────────────────────────────────────────
 
-/** Set the colour attachment target for this pass. */
+/** Set the color attachment target for this pass. */
 fun Pass.setTarget(target: TextureTarget) {
     setTarget(TargetHandle.Texture(target))
 }
@@ -76,9 +76,9 @@ fun Pass.setDepthTarget(texture: Texture) {
     setDepthTexture(texture)
 }
 
-// ── Clear colour ──────────────────────────────────────────────────────────────
+// ── Clear color ──────────────────────────────────────────────────────────────
 
-/** Set the clear colour as separate RGBA components (0..1 linear space). */
+/** Set the clear color as separate RGBA components (0..1 linear space). */
 fun Pass.setClearColor(r: Float, g: Float, b: Float, a: Float = 1.0f) {
     setClearColor(listOf(r, g, b, a))
 }

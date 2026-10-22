@@ -19,7 +19,7 @@ thread_local! {
 
 /// Override the registry base URL used to resolve slugs (e.g. `sdf2d/circle`).
 ///
-/// The base may end with or without a trailing slash; both are normalised at lookup time.
+/// The base may end with or without a trailing slash; both are normalized at lookup time.
 /// This setting is process-wide; tests should use `with_registry` for isolation.
 pub(crate) fn set_registry(base_url: &str) {
     *REGISTRY.write() = base_url.to_string();

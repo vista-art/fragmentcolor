@@ -93,8 +93,8 @@ impl Vertex {
     ///
     /// Use the numbered forms (`UV0`, `UV1`, `COLOR0`, `COLOR1`) when a mesh
     /// carries multiple sets — typical for glTF imports with secondary UV
-    /// layers or vertex colour palettes. For meshes with a single texcoord
-    /// and a single colour, plain string `"uv"` / `"color"` literals remain
+    /// layers or vertex color palettes. For meshes with a single texcoord
+    /// and a single color, plain string `"uv"` / `"color"` literals remain
     /// valid (FC matches by string).
     pub const NORMAL: &'static str = "normal";
     pub const TANGENT: &'static str = "tangent";

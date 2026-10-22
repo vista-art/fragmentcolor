@@ -371,7 +371,7 @@ mod tests {
 
     #[test]
     fn hidden_model_does_not_render() {
-        // Sanity check that the renderer's draw-queue build honours the
+        // Sanity check that the renderer's draw-queue build honors the
         // visibility flag. We can't directly observe the queue (PassDraws
         // is private to the renderer module), but a hidden Model + a
         // visible Model on the same Pass should produce the same image as

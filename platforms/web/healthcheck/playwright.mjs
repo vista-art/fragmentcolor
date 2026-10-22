@@ -295,7 +295,7 @@ WATCHDOG.unref?.();
   process.exit(0);
 })().catch((err) => {
   // Promote a top-level rejection into an explicit error so the watchdog
-  // isn't the only line of defence.
+  // isn't the only line of defense.
   console.error('[playwright] top-level rejection:', err?.message || String(err));
   if (err?.stack) console.error(err.stack);
   process.exit(3);

@@ -3,7 +3,7 @@
 //! Renders one 256x256 PNG per encode/decode helper in
 //! `docs/website/public/shaders/encode/`. Each entry pulls a single registry
 //! slug into a fullscreen fragment that exercises the helper on a synthetic
-//! test signal and visualises the result.
+//! test signal and visualizes the result.
 //!
 //! Run with:
 //!   cargo run --release -p fce --example gallery_encode
@@ -37,7 +37,7 @@ fn compositions() -> Vec<Composition> {
     vec![
         Composition {
             name: "f32_to_half_bits",
-            description: "Convert a varying f32 value (UV-driven smooth field) to half-precision bits and visualise the low/high bytes as red/green channels.",
+            description: "Convert a varying f32 value (UV-driven smooth field) to half-precision bits and visualize the low/high bytes as red/green channels.",
             slugs: &["encode/f32_to_half_bits"],
             fragment: r#"
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
@@ -52,7 +52,7 @@ fn compositions() -> Vec<Composition> {
         },
         Composition {
             name: "morton2d",
-            description: "Morton (Z-order) interleave on a 256x256 grid; the resulting u32 is normalised and shown as a hue/value pair so adjacent indices stay close on screen.",
+            description: "Morton (Z-order) interleave on a 256x256 grid; the resulting u32 is normalized and shown as a hue/value pair so adjacent indices stay close on screen.",
             slugs: &["encode/morton2d"],
             fragment: r#"
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
@@ -87,7 +87,7 @@ fn compositions() -> Vec<Composition> {
         },
         Composition {
             name: "pack_rgb8",
-            description: "Round-trip: build a vec3 from UV (R = uv.x, G = uv.y, B = a smooth fold), pack to u32, unpack, and display. Visualises the lossy 8-bit quantisation banding.",
+            description: "Round-trip: build a vec3 from UV (R = uv.x, G = uv.y, B = a smooth fold), pack to u32, unpack, and display. Visualizes the lossy 8-bit quantization banding.",
             slugs: &["encode/pack_rgb8", "encode/unpack_rgb8"],
             fragment: r#"
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
@@ -100,7 +100,7 @@ fn compositions() -> Vec<Composition> {
         },
         Composition {
             name: "pack_unorm_4x8",
-            description: "Round-trip a vec4 colour (UV gradient + radial alpha) through pack_unorm_4x8 / unpack_unorm_4x8; the result should match the source up to 8-bit quantisation.",
+            description: "Round-trip a vec4 color (UV gradient + radial alpha) through pack_unorm_4x8 / unpack_unorm_4x8; the result should match the source up to 8-bit quantization.",
             slugs: &["encode/pack_unorm_4x8", "encode/unpack_unorm_4x8"],
             fragment: r#"
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
@@ -111,7 +111,7 @@ fn compositions() -> Vec<Composition> {
     let src = vec4<f32>(r, g, b, clamp(a, 0.0, 1.0));
     let p = pack_unorm_4x8(src);
     let c = unpack_unorm_4x8(p);
-    // Composite the unpacked alpha against a dark grey to make it visible.
+    // Composite the unpacked alpha against a dark gray to make it visible.
     let bg = vec3<f32>(0.08);
     return vec4<f32>(mix(bg, c.rgb, c.a), 1.0);
 }
@@ -119,7 +119,7 @@ fn compositions() -> Vec<Composition> {
         },
         Composition {
             name: "unpack_normal_octahedron",
-            description: "Synthesise an octahedron-encoded vec2 directly from UV, decode it to a unit normal, and display the normal mapped to RGB ((n + 1) / 2). Top-down view of a sphere.",
+            description: "Synthesize an octahedron-encoded vec2 directly from UV, decode it to a unit normal, and display the normal mapped to RGB ((n + 1) / 2). Top-down view of a sphere.",
             slugs: &["encode/unpack_normal_octahedron"],
             fragment: r#"
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
@@ -131,7 +131,7 @@ fn compositions() -> Vec<Composition> {
         },
         Composition {
             name: "unpack_rgb8",
-            description: "Pack a synthetic byte triple per pixel into a u32 directly, then decode with unpack_rgb8 to display the resulting colour wheel.",
+            description: "Pack a synthetic byte triple per pixel into a u32 directly, then decode with unpack_rgb8 to display the resulting color wheel.",
             slugs: &["encode/unpack_rgb8"],
             fragment: r#"
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {

@@ -108,7 +108,7 @@ extension Pass {
 
     // MARK: - Targets
 
-    /// Set the colour attachment target for this pass.
+    /// Set the color attachment target for this pass.
     public func setTarget(_ target: TextureTarget) throws {
         try self.setTarget(target: .texture(target))
     }
@@ -130,14 +130,14 @@ extension Pass {
         try self.setDepthTexture(texture: texture)
     }
 
-    // MARK: - Clear colour
+    // MARK: - Clear color
 
-    /// Set the clear colour as separate RGBA components (0..1 linear space).
+    /// Set the clear color as separate RGBA components (0..1 linear space).
     public func setClearColor(r: Float, g: Float, b: Float, a: Float = 1.0) throws {
         try self.setClearColor(color: [r, g, b, a])
     }
 
-    /// Set the clear colour from a 3- or 4-element float array (`[r, g, b]` or `[r, g, b, a]`).
+    /// Set the clear color from a 3- or 4-element float array (`[r, g, b]` or `[r, g, b, a]`).
     public func setClearColor(_ rgba: [Float]) throws {
         try self.setClearColor(color: rgba)
     }
