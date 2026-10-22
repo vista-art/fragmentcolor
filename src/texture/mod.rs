@@ -394,6 +394,11 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureInput {
             return Ok(TextureData::Prepared(chain).into());
         }
 
+        // Case: an existing Texture handle, shared as is
+        if let Ok(texture) = Texture::try_from(value) {
+            return Ok(TextureData::CloneOf(texture).into());
+        }
+
         // Case: Uint8Array (fast path)
         if let Some(u8a) = value.dyn_ref::<Uint8Array>() {
             let mut bytes = vec![0u8; u8a.length() as usize];
@@ -453,15 +458,10 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureInput {
 
         // Case: Plain JS Array of numbers
         if Array::is_array(value) {
-            let arr = Array::from(value);
-            let len = arr.length();
-            let mut bytes = Vec::with_capacity(len as usize);
-            for i in 0..len {
-                let n = arr.get(i).as_f64().unwrap_or(0.0);
-                let n = if n.is_nan() { 0.0 } else { n };
-                let b = n.max(0.0).min(255.0) as u8;
-                bytes.push(b);
-            }
+            let bytes = Array::from(value)
+                .iter()
+                .map(|item| js_to_byte(&item))
+                .collect::<Result<Vec<u8>, TextureError>>()?;
             return Ok(TextureData::Bytes(bytes).into());
         }
 
@@ -492,6 +492,19 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureInput {
         Err(crate::texture::error::TextureError::Error(
             "Unsupported input for TextureInput".into(),
         ))
+    }
+}
+
+/// One item of a JS byte list: a whole number from 0 to 255.
+#[cfg(wasm)]
+fn js_to_byte(value: &wasm_bindgen::JsValue) -> Result<u8, TextureError> {
+    match value.as_f64() {
+        Some(number) if number.fract() == 0.0 && (0.0..=255.0).contains(&number) => {
+            Ok(number as u8)
+        }
+        _ => Err(TextureError::InvalidInput(format!(
+            "a byte list takes whole numbers from 0 to 255, got {value:?}"
+        ))),
     }
 }
 
@@ -533,13 +546,17 @@ crate::impl_js_bridge!(TextureId, crate::texture::TextureError);
 pub(crate) fn js_to_texture_id(
     value: &wasm_bindgen::JsValue,
 ) -> Result<TextureId, crate::texture::TextureError> {
+    let invalid = || TextureError::InvalidInput(format!("not a texture id: {value:?}"));
     if let Some(number) = value.as_f64() {
-        if number.is_sign_negative() {
-            return Err(crate::texture::TextureError::Error(
-                "TextureId must be a non-negative number".into(),
-            ));
+        if number.fract() != 0.0 || !(0.0..=u64::MAX as f64).contains(&number) {
+            return Err(invalid());
         }
         return Ok(TextureId { id: number as u64 });
+    }
+    if value.is_bigint() {
+        return u64::try_from(value.clone())
+            .map(TextureId::from)
+            .map_err(|_| invalid());
     }
     TextureId::try_from(value)
 }
