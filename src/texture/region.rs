@@ -187,77 +187,64 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
     type Error = TextureError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
-        use js_sys::{Array, Reflect, Uint32Array};
-        use wasm_bindgen::JsCast;
+        use js_sys::{Array, ArrayBuffer, Reflect};
 
         // undefined / null → whole-texture default
         if value.is_undefined() || value.is_null() {
             return Ok(Self::default());
         }
 
-        // Typed arrays (Uint32Array): support length 2, 4, 6
-        if let Some(arr) = value.dyn_ref::<Uint32Array>() {
-            let len = arr.length();
-            return match len {
-                2 => {
-                    let mut buf = [0u32; 2];
-                    arr.copy_to(&mut buf);
-                    Ok(buf.into())
-                }
-                4 => {
-                    let mut buf = [0u32; 4];
-                    arr.copy_to(&mut buf);
-                    Ok(buf.into())
-                }
-                6 => {
-                    let mut buf = [0u32; 6];
-                    arr.copy_to(&mut buf);
-                    Ok(buf.into())
-                }
-                _ => Err(TextureError::Error(
-                    "TextureRegion typed array must have length 2, 4, or 6".into(),
-                )),
-            };
-        }
+        let dimension = |item: &wasm_bindgen::JsValue| {
+            item.as_f64()
+                .and_then(crate::size::read_dimension)
+                .ok_or_else(|| {
+                    TextureError::InvalidInput(format!(
+                        "a region takes numbers from 0 up, got {item:?}"
+                    ))
+                })
+        };
 
-        // Plain Array: [w,h] | [x,y,w,h] | [x,y,z,w,h,d]
-        if let Some(arr) = value.dyn_ref::<Array>() {
-            let len = arr.length();
-            let num = |i: u32| arr.get(i).as_f64().unwrap_or(0.0).max(0.0) as u32;
-            return match len {
-                2 => Ok([num(0), num(1)].into()),
-                4 => Ok([num(0), num(1), num(2), num(3)].into()),
-                6 => Ok([num(0), num(1), num(2), num(3), num(4), num(5)].into()),
-                _ => Err(TextureError::Error(
-                    "TextureRegion array must have length 2, 4, or 6".into(),
-                )),
+        // Plain or typed array: [w,h] | [x,y,w,h] | [x,y,z,w,h,d]
+        if Array::is_array(value) || ArrayBuffer::is_view(value) {
+            let numbers = Array::from(value)
+                .iter()
+                .map(|item| dimension(&item))
+                .collect::<Result<Vec<u32>, TextureError>>()?;
+            return match numbers[..] {
+                [w, h] => Ok([w, h].into()),
+                [x, y, w, h] => Ok([x, y, w, h].into()),
+                [x, y, z, w, h, d] => Ok([x, y, z, w, h, d].into()),
+                _ => Err(TextureError::InvalidInput(format!(
+                    "TextureRegion array must have length 2, 4, or 6, got {}",
+                    numbers.len()
+                ))),
             };
         }
 
         // Object: { x?, y?, z?, width?, height?, depth?, bytesPerRow?, rowsPerImage? }
         // or       { minX, minY, maxX, maxY, minZ?, maxZ?, bytesPerRow?, rowsPerImage? }
         if value.is_object() {
-            let read = |names: &[&str]| -> Option<u32> {
+            let read = |names: &[&str]| -> Result<Option<u32>, TextureError> {
                 for name in names {
-                    if let Ok(field) = Reflect::get(value, &wasm_bindgen::JsValue::from_str(name))
-                        && let Some(n) = field.as_f64()
-                    {
-                        return Some(n.max(0.0) as u32);
+                    let field = Reflect::get(value, &wasm_bindgen::JsValue::from_str(name))
+                        .unwrap_or(wasm_bindgen::JsValue::UNDEFINED);
+                    if !field.is_undefined() && !field.is_null() {
+                        return dimension(&field).map(Some);
                     }
                 }
-                None
+                Ok(None)
             };
 
             // min/max variant
-            let has_minmax =
-                read(&["minX", "min_x"]).is_some() || read(&["maxX", "max_x"]).is_some();
-            if has_minmax {
-                let min_x = read(&["minX", "min_x"]).unwrap_or(0);
-                let min_y = read(&["minY", "min_y"]).unwrap_or(0);
-                let max_x = read(&["maxX", "max_x"]).unwrap_or(min_x);
-                let max_y = read(&["maxY", "max_y"]).unwrap_or(min_y);
-                let min_z = read(&["minZ", "min_z"]).unwrap_or(0);
-                let max_z = read(&["maxZ", "max_z"]).unwrap_or(min_z + 1);
+            let min_x = read(&["minX", "min_x"])?;
+            let max_x = read(&["maxX", "max_x"])?;
+            if min_x.is_some() || max_x.is_some() {
+                let min_x = min_x.unwrap_or(0);
+                let min_y = read(&["minY", "min_y"])?.unwrap_or(0);
+                let max_x = max_x.unwrap_or(min_x);
+                let max_y = read(&["maxY", "max_y"])?.unwrap_or(min_y);
+                let min_z = read(&["minZ", "min_z"])?.unwrap_or(0);
+                let max_z = read(&["maxZ", "max_z"])?.unwrap_or(min_z + 1);
                 let mut tr = Self::new(
                     [min_x, min_y, min_z],
                     [
@@ -266,21 +253,21 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
                         max_z.saturating_sub(min_z).max(1),
                     ],
                 );
-                tr.bytes_per_row = read(&["bytesPerRow", "bytes_per_row"]);
-                tr.rows_per_image = read(&["rowsPerImage", "rows_per_image"]);
+                tr.bytes_per_row = read(&["bytesPerRow", "bytes_per_row"])?;
+                tr.rows_per_image = read(&["rowsPerImage", "rows_per_image"])?;
                 return Ok(tr);
             }
 
             // x/y/z + width/height/depth variant
-            let x = read(&["x"]).unwrap_or(0);
-            let y = read(&["y"]).unwrap_or(0);
-            let z = read(&["z"]).unwrap_or(0);
-            let w = read(&["width"]).unwrap_or(0);
-            let h = read(&["height"]).unwrap_or(0);
-            let d = read(&["depth"]).unwrap_or(1);
+            let x = read(&["x"])?.unwrap_or(0);
+            let y = read(&["y"])?.unwrap_or(0);
+            let z = read(&["z"])?.unwrap_or(0);
+            let w = read(&["width"])?.unwrap_or(0);
+            let h = read(&["height"])?.unwrap_or(0);
+            let d = read(&["depth"])?.unwrap_or(1);
             let mut tr = Self::new([x, y, z], [w, h, d]);
-            tr.bytes_per_row = read(&["bytesPerRow", "bytes_per_row"]);
-            tr.rows_per_image = read(&["rowsPerImage", "rows_per_image"]);
+            tr.bytes_per_row = read(&["bytesPerRow", "bytes_per_row"])?;
+            tr.rows_per_image = read(&["rowsPerImage", "rows_per_image"])?;
             return Ok(tr);
         }
 

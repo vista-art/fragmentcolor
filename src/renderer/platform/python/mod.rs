@@ -1,5 +1,5 @@
 use crate::{
-    PySize, Renderer,
+    PySize, Renderer, Size,
     target::{PyTextureTarget, RenderCanvasTarget},
     texture::{PyTextureId, PyTextureSource},
 };
@@ -131,7 +131,7 @@ impl Renderer {
     #[pyo3(name = "create_texture_target")]
     pub fn create_texture_target_py(&self, size: PySize) -> Result<Py<PyTextureTarget>, PyErr> {
         Python::attach(|py| -> Result<Py<PyTextureTarget>, PyErr> {
-            let target = pollster::block_on(self.create_texture_target(size))?;
+            let target = pollster::block_on(self.create_texture_target(Size::try_from(size)?))?;
             let py_target: PyTextureTarget = target.into();
             Ok(py_target.into_pyobject(py)?.unbind())
         })
@@ -203,7 +203,7 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/hidden/create_depth_texture_py.md")]
     pub fn create_depth_texture_py(&self, size: PySize) -> Result<crate::texture::Texture, PyErr> {
         Python::attach(|_py| -> Result<crate::texture::Texture, PyErr> {
-            let tex = pollster::block_on(self.create_depth_texture(size))?;
+            let tex = pollster::block_on(self.create_depth_texture(Size::try_from(size)?))?;
             Ok(tex)
         })
     }
@@ -228,7 +228,7 @@ impl Renderer {
                     None => crate::TextureData::Empty,
                 },
                 options: crate::TextureOptions {
-                    size: Some(size.into()),
+                    size: Some(Size::try_from(size)?),
                     format,
                     usage: usage_bits,
                     ..Default::default()
@@ -270,8 +270,8 @@ fn py_to_texture_spec(
     use crate::texture::{TextureData, TextureInput, TextureOptions};
 
     let mut options = TextureOptions::default();
-    if let Some(s) = explicit_size {
-        options.size = Some(s.into());
+    if let Some(size) = explicit_size {
+        options.size = Some(Size::try_from(size)?);
     }
     if let Some(f) = explicit_format {
         options.format = f;

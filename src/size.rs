@@ -1,6 +1,4 @@
 #[cfg(wasm)]
-use wasm_bindgen::JsCast;
-#[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
 #[cfg(python)]
@@ -9,17 +7,20 @@ use pyo3::FromPyObject;
 use pyo3::prelude::*;
 
 pub mod error;
+#[cfg(any(wasm, python))]
+use error::SizeError;
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(
     python,
-    pyclass(from_py_object, get_all, set_all, module = "fragmentcolor")
+    pyclass(from_py_object, get_all, set_all, eq, module = "fragmentcolor")
 )]
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, PartialOrd)]
 pub struct Size {
     pub width: u32,
     pub height: u32,
+    #[cfg_attr(mobile, uniffi(default = None))]
     pub depth: Option<u32>,
 }
 
@@ -31,6 +32,35 @@ impl Size {
             depth,
         }
     }
+
+    /// A size from the 2 or 3 numbers a binding received, each checked by [`read_dimension`].
+    #[cfg(any(wasm, python))]
+    pub(crate) fn from_numbers(numbers: &[f64]) -> Result<Size, SizeError> {
+        let dimension = |number: f64| {
+            read_dimension(number).ok_or_else(|| {
+                SizeError::TypeMismatch(format!("a size takes numbers from 0 up, got {number}"))
+            })
+        };
+        match *numbers {
+            [width, height] => Ok(Size::new(dimension(width)?, dimension(height)?, None)),
+            [width, height, depth] => Ok(Size::new(
+                dimension(width)?,
+                dimension(height)?,
+                Some(dimension(depth)?),
+            )),
+            _ => Err(SizeError::TypeMismatch(format!(
+                "a size takes 2 or 3 numbers, got {}",
+                numbers.len()
+            ))),
+        }
+    }
+}
+
+/// One size or region dimension from a binding.
+/// It must be a finite number from 0 to `u32::MAX`, and a fraction rounds down.
+#[cfg(any(wasm, python))]
+pub(crate) fn read_dimension(number: f64) -> Option<u32> {
+    (number.is_finite() && (0.0..=u32::MAX as f64).contains(&number)).then_some(number as u32)
 }
 
 crate::impl_from_into_with_refs!(
@@ -72,108 +102,72 @@ crate::impl_from_into_with_refs!(
     |a: [u32; 3]| Size::new(a[0], a[1], Some(a[2]))
 );
 
+/// Reads `[w, h]` or `[w, h, d]` from a plain or typed array, or a `{ width, height, depth? }` object.
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for Size {
-    type Error = crate::size::error::SizeError;
+    type Error = SizeError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
-        use js_sys::{Array, Float32Array, Int32Array, Reflect, Uint32Array};
+        use js_sys::{Array, ArrayBuffer, Reflect};
 
-        if let Some(arr) = value.dyn_ref::<Uint32Array>() {
-            let len = arr.length();
-            if len == 2 {
-                let mut buf = [0u32; 2];
-                arr.copy_to(&mut buf);
-                return Ok(Size::new(buf[0], buf[1], None));
-            }
-            if len == 3 {
-                let mut buf = [0u32; 3];
-                arr.copy_to(&mut buf);
-                return Ok(Size::new(buf[0], buf[1], Some(buf[2])));
-            }
-        }
-        if let Some(arr) = value.dyn_ref::<Int32Array>() {
-            let len = arr.length();
-            if len == 2 {
-                let mut buf = [0i32; 2];
-                arr.copy_to(&mut buf);
-                return Ok(Size::new(buf[0].max(0) as u32, buf[1].max(0) as u32, None));
-            }
-            if len == 3 {
-                let mut buf = [0i32; 3];
-                arr.copy_to(&mut buf);
-                return Ok(Size::new(
-                    buf[0].max(0) as u32,
-                    buf[1].max(0) as u32,
-                    Some(buf[2].max(0) as u32),
-                ));
-            }
-        }
-        if let Some(arr) = value.dyn_ref::<Float32Array>() {
-            let len = arr.length();
-            if len == 2 {
-                let mut buf = [0.0f32; 2];
-                arr.copy_to(&mut buf);
-                return Ok(Size::new(
-                    buf[0].max(0.0) as u32,
-                    buf[1].max(0.0) as u32,
-                    None,
-                ));
-            }
-            if len == 3 {
-                let mut buf = [0.0f32; 3];
-                arr.copy_to(&mut buf);
-                return Ok(Size::new(
-                    buf[0].max(0.0) as u32,
-                    buf[1].max(0.0) as u32,
-                    Some(buf[2].max(0.0) as u32),
-                ));
-            }
-        }
+        let number = |item: JsValue| {
+            item.as_f64().ok_or_else(|| {
+                SizeError::TypeMismatch(format!("a size takes numbers, got {item:?}"))
+            })
+        };
 
-        if let Some(arr) = value.dyn_ref::<Array>() {
-            let len = arr.length();
-            let num_at = |i: u32| arr.get(i).as_f64().unwrap_or(0.0);
-            if len == 2 {
-                let w = num_at(0).max(0.0) as u32;
-                let h = num_at(1).max(0.0) as u32;
-                return Ok(Size::new(w, h, None));
-            }
-            if len == 3 {
-                let w = num_at(0).max(0.0) as u32;
-                let h = num_at(1).max(0.0) as u32;
-                let d = num_at(2).max(0.0) as u32;
-                return Ok(Size::new(w, h, Some(d)));
-            }
+        if Array::is_array(value) || ArrayBuffer::is_view(value) {
+            let numbers = Array::from(value)
+                .iter()
+                .map(number)
+                .collect::<Result<Vec<f64>, SizeError>>()?;
+            return Size::from_numbers(&numbers);
         }
 
         if value.is_object() {
-            let width = Reflect::get(&value, &JsValue::from_str("width"))
-                .ok()
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.0) as u32;
-            let height = Reflect::get(&value, &JsValue::from_str("height"))
-                .ok()
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.0) as u32;
-            let depth = Reflect::get(&value, &JsValue::from_str("depth"))
-                .ok()
-                .and_then(|v| v.as_f64())
-                .map(|v| v as u32);
-
-            if width != 0 && height != 0 {
-                return Ok(Size::new(width, height, depth));
-            }
+            let field = |name: &str| {
+                Reflect::get(value, &JsValue::from_str(name))
+                    .ok()
+                    .filter(|item| !item.is_undefined() && !item.is_null())
+                    .map(number)
+                    .transpose()
+            };
+            let (Some(width), Some(height)) = (field("width")?, field("height")?) else {
+                return Err(SizeError::TypeMismatch(
+                    "a size object needs a width and a height".into(),
+                ));
+            };
+            let numbers = match field("depth")? {
+                Some(depth) => vec![width, height, depth],
+                None => vec![width, height],
+            };
+            return Size::from_numbers(&numbers);
         }
 
-        Err(crate::size::error::SizeError::TypeMismatch(
+        Err(SizeError::TypeMismatch(
             "Cannot convert JavaScript value to Size (expected [w,h] or [w,h,d])".into(),
         ))
     }
 }
 
 #[cfg(wasm)]
-crate::impl_tryfrom_owned_via_ref!(Size, wasm_bindgen::JsValue, crate::size::error::SizeError);
+#[wasm_bindgen]
+impl Size {
+    // Size is a value type, like ScreenRegion. The parity audit tracks the
+    // methods that take and return it, so its constructor has no doc page.
+    #[doc(hidden)]
+    #[wasm_bindgen(constructor)]
+    pub fn new_js(width: f64, height: f64, depth: Option<f64>) -> Result<Size, JsError> {
+        let numbers = match depth {
+            Some(depth) => vec![width, height, depth],
+            None => vec![width, height],
+        };
+        Ok(Size::from_numbers(&numbers)?)
+    }
+}
+
+#[cfg(wasm)]
+crate::impl_tryfrom_owned_via_ref!(Size, wasm_bindgen::JsValue, SizeError);
 
 #[cfg(python)]
 #[pymethods]
@@ -206,50 +200,44 @@ pub enum PySize {
     DictI32(std::collections::HashMap<String, i32>),
 }
 
+/// Checks a size from Python with the same rule as every other binding.
 #[cfg(python)]
-impl From<PySize> for Size {
-    fn from(value: PySize) -> Self {
+impl TryFrom<PySize> for Size {
+    type Error = SizeError;
+
+    fn try_from(value: PySize) -> Result<Self, Self::Error> {
+        fn from_map<N: Copy + Into<f64>>(
+            map: &std::collections::HashMap<String, N>,
+        ) -> Result<Size, SizeError> {
+            let field = |name: &str| map.get(name).map(|&number| number.into());
+            let (Some(width), Some(height)) = (field("width"), field("height")) else {
+                return Err(SizeError::TypeMismatch(
+                    "a size dict needs a width and a height".into(),
+                ));
+            };
+            match field("depth") {
+                Some(depth) => Size::from_numbers(&[width, height, depth]),
+                None => Size::from_numbers(&[width, height]),
+            }
+        }
+        fn from_list<N: Copy + Into<f64>>(list: &[N]) -> Result<Size, SizeError> {
+            let numbers: Vec<f64> = list.iter().map(|&number| number.into()).collect();
+            Size::from_numbers(&numbers)
+        }
         match value {
-            PySize::Size(size) => size,
-            PySize::TupleF64((w, h)) => Size::new(w as u32, h as u32, None),
-            PySize::TupleU32((w, h)) => Size::new(w, h, None),
-            PySize::TupleI32((w, h)) => Size::new(w as u32, h as u32, None),
-            PySize::Tuple3F64((w, h, d)) => Size::new(w as u32, h as u32, Some(d as u32)),
-            PySize::Tuple3U32((w, h, d)) => Size::new(w, h, Some(d)),
-            PySize::Tuple3I32((w, h, d)) => Size::new(w as u32, h as u32, Some(d as u32)),
-            PySize::ListF64(vals) => match vals.as_slice() {
-                [w, h] => Size::new(*w as u32, *h as u32, None),
-                [w, h, d] => Size::new(*w as u32, *h as u32, Some(*d as u32)),
-                _ => Size::default(),
-            },
-            PySize::ListU32(vals) => match vals.as_slice() {
-                [w, h] => Size::new(*w, *h, None),
-                [w, h, d] => Size::new(*w, *h, Some(*d)),
-                _ => Size::default(),
-            },
-            PySize::ListI32(vals) => match vals.as_slice() {
-                [w, h] => Size::new(*w as u32, *h as u32, None),
-                [w, h, d] => Size::new(*w as u32, *h as u32, Some(*d as u32)),
-                _ => Size::default(),
-            },
-            PySize::DictF64(map) => {
-                let w = map.get("width").copied().unwrap_or(0.0) as u32;
-                let h = map.get("height").copied().unwrap_or(0.0) as u32;
-                let d = map.get("depth").copied().map(|v| v as u32);
-                Size::new(w, h, d)
-            }
-            PySize::DictU32(map) => {
-                let w = map.get("width").copied().unwrap_or(0);
-                let h = map.get("height").copied().unwrap_or(0);
-                let d = map.get("depth").copied();
-                Size::new(w, h, d)
-            }
-            PySize::DictI32(map) => {
-                let w = map.get("width").copied().unwrap_or(0) as u32;
-                let h = map.get("height").copied().unwrap_or(0) as u32;
-                let d = map.get("depth").copied().map(|v| v as u32);
-                Size::new(w, h, d)
-            }
+            PySize::Size(size) => Ok(size),
+            PySize::ListF64(list) => from_list(&list),
+            PySize::ListU32(list) => from_list(&list),
+            PySize::ListI32(list) => from_list(&list),
+            PySize::TupleF64((w, h)) => from_list(&[w, h]),
+            PySize::TupleU32((w, h)) => from_list(&[w, h]),
+            PySize::TupleI32((w, h)) => from_list(&[w, h]),
+            PySize::Tuple3F64((w, h, d)) => from_list(&[w, h, d]),
+            PySize::Tuple3U32((w, h, d)) => from_list(&[w, h, d]),
+            PySize::Tuple3I32((w, h, d)) => from_list(&[w, h, d]),
+            PySize::DictF64(map) => from_map(&map),
+            PySize::DictU32(map) => from_map(&map),
+            PySize::DictI32(map) => from_map(&map),
         }
     }
 }
@@ -393,38 +381,54 @@ mod tests {
     #[cfg(python)]
     #[test]
     fn py_size_conversions_cover_variants() {
+        let size = |value: PySize| Size::try_from(value).expect("valid size");
+
         // A Size passes through unchanged
-        let s0: Size = PySize::Size(Size::new(5, 6, Some(2))).into();
-        assert_eq!(s0, Size::new(5, 6, Some(2)));
+        assert_eq!(size(PySize::Size(Size::new(5, 6, Some(2)))), Size::new(5, 6, Some(2)));
 
-        // TupleF64 and TupleU32
-        let s1: Size = PySize::TupleF64((10.5, 20.5)).into();
-        assert_eq!((s1.width, s1.height, s1.depth), (10, 20, None));
-        let s2: Size = PySize::TupleU32((7, 9)).into();
-        assert_eq!((s2.width, s2.height, s2.depth), (7, 9, None));
-
-        // Tuple3I32 with negative depth coerced via cast
-        let s3: Size = PySize::Tuple3I32((3, 4, 5)).into();
-        assert_eq!((s3.width, s3.height, s3.depth), (3, 4, Some(5)));
+        // Tuples, with fractions rounded down
+        assert_eq!(size(PySize::TupleF64((10.5, 20.5))), Size::new(10, 20, None));
+        assert_eq!(size(PySize::TupleU32((7, 9))), Size::new(7, 9, None));
+        assert_eq!(size(PySize::Tuple3I32((3, 4, 5))), Size::new(3, 4, Some(5)));
 
         // Lists
-        let s4: Size = PySize::ListU32(vec![1, 2]).into();
-        assert_eq!((s4.width, s4.height, s4.depth), (1, 2, None));
-        let s5: Size = PySize::ListF64(vec![2.0, 3.0, 4.0]).into();
-        assert_eq!((s5.width, s5.height, s5.depth), (2, 3, Some(4)));
+        assert_eq!(size(PySize::ListU32(vec![1, 2])), Size::new(1, 2, None));
+        assert_eq!(size(PySize::ListF64(vec![2.0, 3.0, 4.0])), Size::new(2, 3, Some(4)));
 
         // Dicts
         let mut d_f: HashMap<String, f64> = HashMap::new();
         d_f.insert("width".into(), 11.0);
         d_f.insert("height".into(), 12.0);
         d_f.insert("depth".into(), 13.0);
-        let s6: Size = PySize::DictF64(d_f).into();
-        assert_eq!((s6.width, s6.height, s6.depth), (11, 12, Some(13)));
+        assert_eq!(size(PySize::DictF64(d_f)), Size::new(11, 12, Some(13)));
 
         let mut d_u: HashMap<String, u32> = HashMap::new();
         d_u.insert("width".into(), 21);
         d_u.insert("height".into(), 22);
-        let s7: Size = PySize::DictU32(d_u).into();
-        assert_eq!((s7.width, s7.height, s7.depth), (21, 22, None));
+        assert_eq!(size(PySize::DictU32(d_u)), Size::new(21, 22, None));
+    }
+
+    // Story: a Python size of the wrong length, a negative or NaN dimension,
+    // or a dict without a width raises instead of turning into 0 x 0.
+    #[cfg(python)]
+    #[test]
+    fn py_size_rejects_invalid_input() {
+        assert!(Size::try_from(PySize::ListU32(vec![1, 2, 3, 4])).is_err());
+        assert!(Size::try_from(PySize::ListI32(vec![-1, 2])).is_err());
+        assert!(Size::try_from(PySize::TupleF64((f64::NAN, 2.0))).is_err());
+        let mut no_width: HashMap<String, u32> = HashMap::new();
+        no_width.insert("height".into(), 2);
+        assert!(Size::try_from(PySize::DictU32(no_width)).is_err());
+    }
+
+    // Story: the shared rule takes 2 or 3 finite numbers from 0 up.
+    #[cfg(python)]
+    #[test]
+    fn from_numbers_applies_one_rule() {
+        assert_eq!(Size::from_numbers(&[4.0, 2.0]).ok(), Some(Size::new(4, 2, None)));
+        assert_eq!(Size::from_numbers(&[4.9, 2.0, 1.0]).ok(), Some(Size::new(4, 2, Some(1))));
+        assert!(Size::from_numbers(&[4.0]).is_err());
+        assert!(Size::from_numbers(&[-1.0, 2.0]).is_err());
+        assert!(Size::from_numbers(&[f64::INFINITY, 2.0]).is_err());
     }
 }

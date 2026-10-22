@@ -230,7 +230,7 @@ impl Mipmap {
         let input = crate::TextureInput {
             data: crate::TextureData::Bytes(bytes.into()),
             options: crate::TextureOptions {
-                size: size.map(Into::into),
+                size: size.map(crate::Size::try_from).transpose()?,
                 format,
                 ..Default::default()
             },
