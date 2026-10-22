@@ -969,7 +969,7 @@ open class Instance: InstanceProtocol, @unchecked Sendable {
         return try! rustCall { uniffi_fragmentcolor_fn_clone_instance(self.handle, $0) }
     }
     /**
-     * Create an empty `Instance`. Chain `.set(key:value:)` calls to populate
+     * Create an empty `Instance`. Chain `.set(key, value)` calls to populate
      * per-instance attributes.
      */
 public convenience init() {
@@ -3071,9 +3071,9 @@ public protocol RendererProtocol: AnyObject, Sendable {
      * The Web binding accepts an `HTMLVideoElement`; the mobile bindings
      * take a raw pointer (`u64`) to a `CVPixelBuffer` (iOS) or
      * `SurfaceTexture` (Android) because uniffi cannot marshal those
-     * types directly. Currently returns `FragmentColorError::Render`
-     * — the per-platform plumbing to convert the native source into a
-     * `wgpu::ExternalTexture` is a follow-up.
+     * types directly. Returns `FragmentColorError::Render` until the
+     * per-platform plumbing converts the native source into a
+     * `wgpu::ExternalTexture`.
      */
     func createExternalTexture(sourcePtr: UInt64) throws  -> ExternalTextureHandle
     
@@ -3134,10 +3134,8 @@ public protocol RendererProtocol: AnyObject, Sendable {
     
     /**
      * Remove a texture from the renderer's registry by its raw numeric ID.
-     *
-     * TextureId wraps a `u64`; passing the raw value here avoids the need for
-     * a separate uniffi::Object binding for TextureId while the texture agent
-     * lands that binding on a parallel branch.
+     * The Swift and Kotlin extensions take the `TextureId` record and pass
+     * its `id` here.
      */
     func unregisterTexture(textureId: UInt64) throws 
     
@@ -3184,10 +3182,8 @@ open class Renderer: RendererProtocol, @unchecked Sendable {
         return try! rustCall { uniffi_fragmentcolor_fn_clone_renderer(self.handle, $0) }
     }
     /**
-     * Foreign bindings see this as `Renderer.new()`. On Swift, uniffi
-     * generates a `convenience init` when the name is `new`, so callers
-     * write `let r = Renderer()`. Kotlin gets a companion `Renderer.new()`
-     * factory that the extension in `RendererExtensions.kt` wraps.
+     * uniffi makes a constructor named `new` the primary constructor,
+     * so Swift and Kotlin both call `Renderer()`.
      */
 public convenience init() {
     let handle =
@@ -3238,9 +3234,9 @@ open func createDepthTexture(width: UInt32, height: UInt32)async throws  -> Text
      * The Web binding accepts an `HTMLVideoElement`; the mobile bindings
      * take a raw pointer (`u64`) to a `CVPixelBuffer` (iOS) or
      * `SurfaceTexture` (Android) because uniffi cannot marshal those
-     * types directly. Currently returns `FragmentColorError::Render`
-     * — the per-platform plumbing to convert the native source into a
-     * `wgpu::ExternalTexture` is a follow-up.
+     * types directly. Returns `FragmentColorError::Render` until the
+     * per-platform plumbing converts the native source into a
+     * `wgpu::ExternalTexture`.
      */
 open func createExternalTexture(sourcePtr: UInt64)throws  -> ExternalTextureHandle  {
     return try  FfiConverterTypeExternalTextureHandle_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
@@ -3401,10 +3397,8 @@ open func render(renderable: RenderableHandle, target: TargetHandle)throws   {tr
     
     /**
      * Remove a texture from the renderer's registry by its raw numeric ID.
-     *
-     * TextureId wraps a `u64`; passing the raw value here avoids the need for
-     * a separate uniffi::Object binding for TextureId while the texture agent
-     * lands that binding on a parallel branch.
+     * The Swift and Kotlin extensions take the `TextureId` record and pass
+     * its `id` here.
      */
 open func unregisterTexture(textureId: UInt64)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
@@ -9418,7 +9412,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_renderer_createdepthtexture() != 48149) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createexternaltexture() != 35385) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_createexternaltexture() != 14702) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_renderer_createstoragetexture() != 5214) {
@@ -9442,7 +9436,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_renderer_render() != 24508) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_unregistertexture() != 17338) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_unregistertexture() != 64082) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_renderer_createtarget() != 51357) {
@@ -9688,7 +9682,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_constructor_quad_new() != 40775) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_instance_new() != 33447) {
+    if (uniffi_fragmentcolor_checksum_constructor_instance_new() != 41358) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_vertex_new() != 62704) {
@@ -9706,7 +9700,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_constructor_pass_new() != 53820) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_renderer_new() != 30775) {
+    if (uniffi_fragmentcolor_checksum_constructor_renderer_new() != 32881) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_model_new() != 51565) {
