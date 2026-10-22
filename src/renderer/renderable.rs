@@ -18,6 +18,14 @@ impl Renderable for Vec<Box<dyn Renderable>> {
         }
         all_passes.into()
     }
+
+    fn roots(&self) -> Arc<[Arc<PassObject>]> {
+        let mut roots: Vec<Arc<PassObject>> = Vec::new();
+        for item in self {
+            roots.extend_from_slice(&item.roots());
+        }
+        roots.into()
+    }
 }
 
 /// Uniffi-marshallable union of every type that implements [`Renderable`].
@@ -54,6 +62,24 @@ impl Renderable for RenderableHandle {
                     all.extend_from_slice(&p.passes());
                 }
                 all.into()
+            }
+        }
+    }
+
+    /// The handle's own passes, without the passes they require,
+    /// so `require` links each dependency once.
+    fn roots(&self) -> Arc<[Arc<PassObject>]> {
+        match self {
+            Self::Shader(s) => s.roots(),
+            Self::Pass(p) => p.roots(),
+            Self::Mesh(m) => m.roots(),
+            Self::Scene(s) => s.roots(),
+            Self::Passes(ps) => {
+                let mut roots: Vec<Arc<PassObject>> = Vec::new();
+                for p in ps {
+                    roots.extend_from_slice(&p.roots());
+                }
+                roots.into()
             }
         }
     }
@@ -116,5 +142,26 @@ mod tests {
         let v = vec![&pass_one, &pass_two];
         let n = v.passes().len();
         assert_eq!(n, 2);
+    }
+
+    // Story: the require.md graph builds through a list of renderables, because a
+    // list links each item's own pass and not the passes that item requires.
+    #[test]
+    fn require_links_roots_of_a_list() {
+        let color = Pass::new("color");
+        let blur_x = Pass::new("blur_x");
+        blur_x.require(&color).expect("blur_x requires color");
+        let blur_y = Pass::new("blur_y");
+        blur_y.require(&blur_x).expect("blur_y requires blur_x");
+
+        let compose = Pass::new("compose");
+        compose.require(&color).expect("compose requires color");
+        let list: Vec<Box<dyn Renderable>> = vec![Box::new(blur_y.clone())];
+        assert_eq!(list.roots().len(), 1);
+        compose.require(&list).expect("compose requires blur_y");
+
+        let fan_in = Pass::new("fan_in");
+        let both: Vec<Box<dyn Renderable>> = vec![Box::new(color), Box::new(blur_y)];
+        fan_in.require(&both).expect("fan_in requires color and blur_y");
     }
 }
