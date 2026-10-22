@@ -396,7 +396,7 @@ impl MeshObject {
                     let Some(schema_ref) = schema.as_ref() else {
                         return Err(MeshError::NoVertexSchema);
                     };
-                    pack_vertex(&mut bytes, v, schema_ref);
+                    pack_vertex(&mut bytes, v, schema_ref)?;
                 }
             } else {
                 // Dedup by full equality and derive indices.
@@ -418,7 +418,7 @@ impl MeshObject {
                     let Some(schema_ref) = schema.as_ref() else {
                         return Err(MeshError::NoVertexSchema);
                     };
-                    pack_vertex(&mut bytes, v, schema_ref);
+                    pack_vertex(&mut bytes, v, schema_ref)?;
                 }
                 *self.indices.write() = idx;
             }
@@ -697,42 +697,63 @@ fn derive_instance_schema(i: &Instance) -> Result<VertexSchema, MeshError> {
     Ok(VertexSchema { stride, fields })
 }
 
-fn pack_vertex(out: &mut Vec<u8>, v: &Vertex, schema: &VertexSchema) {
+fn pack_vertex(out: &mut Vec<u8>, v: &Vertex, schema: &VertexSchema) -> Result<(), MeshError> {
     for f in schema.fields.iter() {
         match f.name.as_str() {
             "position" => {
-                if matches!(v.dimensions, 0..=2) && f.fmt == wgpu::VertexFormat::Float32x2 {
-                    let p = [v.position.0.x, v.position.0.y];
-                    out.extend_from_slice(bytemuck::cast_slice(&p));
-                } else if v.dimensions >= 3 && f.fmt == wgpu::VertexFormat::Float32x3 {
-                    let p = [v.position.0.x, v.position.0.y, v.position.0.z];
-                    out.extend_from_slice(bytemuck::cast_slice(&p));
-                } else {
-                    // format mismatch or missing comps; zero-fill
-                    out.extend(std::iter::repeat_n(0u8, f.size as usize));
+                let [x, y, z, _] = v.position.0.to_array();
+                match (v.dimensions, f.fmt) {
+                    (0..=2, wgpu::VertexFormat::Float32x2) => {
+                        out.extend_from_slice(bytemuck::cast_slice(&[x, y]));
+                    }
+                    (3.., wgpu::VertexFormat::Float32x3) => {
+                        out.extend_from_slice(bytemuck::cast_slice(&[x, y, z]));
+                    }
+                    (dimensions, format) => {
+                        return Err(MeshError::LayoutMismatch(format!(
+                            "a vertex has a {dimensions}D position, but the mesh layout has {format:?}"
+                        )));
+                    }
                 }
             }
-            name => {
-                if let Some(val) = v.properties.get(name) {
-                    out.extend_from_slice(&val.to_bytes());
-                } else {
-                    // zero-fill absent optional properties
-                    out.extend(std::iter::repeat_n(0u8, f.size as usize));
-                }
-            }
+            name => match v.properties.get(name) {
+                Some(value) => out.extend(check_value(value, f, MeshError::InvalidVertex)?),
+                // zero-fill absent optional properties
+                None => out.extend(std::iter::repeat_n(0u8, f.size as usize)),
+            },
         }
     }
+    Ok(())
 }
 
 fn pack_instance(out: &mut Vec<u8>, i: &Instance, schema: &VertexSchema) -> Result<(), MeshError> {
     for f in schema.fields.iter() {
-        if let Some(val) = i.properties.get(&f.name) {
-            out.extend_from_slice(&val.to_bytes());
-        } else {
-            out.extend(std::iter::repeat_n(0u8, f.size as usize));
+        match i.properties.get(&f.name) {
+            Some(value) => out.extend(check_value(value, f, MeshError::InvalidInstance)?),
+            None => out.extend(std::iter::repeat_n(0u8, f.size as usize)),
         }
     }
     Ok(())
+}
+
+/// The bytes of a value, if its format and length match its field in the mesh layout.
+fn check_value(
+    value: &VertexValue,
+    field: &Field,
+    invalid: fn(String) -> MeshError,
+) -> Result<Vec<u8>, MeshError> {
+    let bytes = value.to_bytes();
+    if value.format() != field.fmt || bytes.len() as u64 != field.size {
+        return Err(invalid(format!(
+            "\"{}\" is {:?} in {} bytes, but the mesh layout has {:?} in {} bytes",
+            field.name,
+            value.format(),
+            bytes.len(),
+            field.fmt,
+            field.size
+        )));
+    }
+    Ok(bytes)
 }
 
 #[cfg(test)]
@@ -754,6 +775,39 @@ mod tests {
         assert_eq!(schema.fields[2].name, "uv");
         assert_eq!(schema.fields[2].fmt, wgpu::VertexFormat::Float32x2);
         assert_eq!(schema.stride, 8 + 16 + 8);
+    }
+
+    // Story: one key with two shapes would misalign every later vertex, so packing
+    // rejects it instead, and the same goes for a position of the wrong dimension.
+    #[test]
+    fn ensure_packed_rejects_values_that_differ_from_the_layout() {
+        let mesh = Mesh::new();
+        mesh.add_vertices([
+            Vertex::new([0.0f32, 0.0, 0.0]).set("uv", [0.0f32, 0.0, 0.0]),
+            Vertex::new([1.0f32, 0.0, 0.0]).set("uv", [1.0f32, 0.0]),
+        ]);
+        assert!(matches!(
+            mesh.object.ensure_packed(),
+            Err(MeshError::InvalidVertex(_))
+        ));
+
+        let mesh = Mesh::new();
+        mesh.add_vertices([Vertex::new([0.0f32, 0.0, 0.0]), Vertex::new([1.0f32, 0.0])]);
+        assert!(matches!(
+            mesh.object.ensure_packed(),
+            Err(MeshError::LayoutMismatch(_))
+        ));
+
+        let mesh = Mesh::new();
+        mesh.add_vertex([0.0f32, 0.0]);
+        mesh.add_instances([
+            Instance::new().set("offset", [0.0f32, 0.0]),
+            Instance::new().set("offset", 1.0f32),
+        ]);
+        assert!(matches!(
+            mesh.object.ensure_packed(),
+            Err(MeshError::InvalidInstance(_))
+        ));
     }
 
     #[test]
