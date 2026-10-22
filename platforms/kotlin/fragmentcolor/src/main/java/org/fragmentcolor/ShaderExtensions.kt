@@ -23,6 +23,8 @@ fun Shader.set(key: String, value: Double) = set(key, UniformValue.Number(value)
 
 fun Shader.set(key: String, value: Int) = set(key, UniformValue.Number(value.toDouble()))
 
+fun Shader.set(key: String, value: Long) = set(key, UniformValue.Number(value.toDouble()))
+
 fun Shader.set(key: String, value: UInt) = set(key, UniformValue.Number(value.toDouble()))
 
 fun Shader.set(key: String, value: Boolean) = set(key, UniformValue.Bool(value))
@@ -35,8 +37,35 @@ fun Shader.set(key: String, value: DoubleArray) = set(key, UniformValue.Numbers(
 fun Shader.set(key: String, value: IntArray) =
     set(key, UniformValue.Numbers(value.map { it.toDouble() }))
 
+fun Shader.set(key: String, value: LongArray) =
+    set(key, UniformValue.Numbers(value.map { it.toDouble() }))
+
 fun Shader.set(key: String, value: UIntArray) =
     set(key, UniformValue.Numbers(value.map { it.toDouble() }))
+
+/** A vector or matrix, such as the matrix `Camera.viewProj()` returns. */
+@JvmName("setFloats")
+fun Shader.set(key: String, value: List<Float>) =
+    set(key, UniformValue.Numbers(value.map { it.toDouble() }))
+
+@JvmName("setDoubles")
+fun Shader.set(key: String, value: List<Double>) = set(key, UniformValue.Numbers(value))
+
+@JvmName("setInts")
+fun Shader.set(key: String, value: List<Int>) =
+    set(key, UniformValue.Numbers(value.map { it.toDouble() }))
+
+/** A matrix as its columns, as Rust's `[[f32; 4]; 4]` holds it. */
+@JvmName("setFloatColumns")
+fun Shader.set(key: String, columns: List<List<Float>>) = set(key, columns.flatten())
+
+/** A matrix as its columns. */
+@JvmName("setDoubleColumns")
+fun Shader.set(key: String, columns: List<List<Double>>) = set(key, columns.flatten())
+
+/** A matrix as its columns. */
+@JvmName("setFloatArrayColumns")
+fun Shader.set(key: String, columns: List<FloatArray>) = set(key, columns.flatMap { it.toList() })
 
 /** Raw bytes for a storage-buffer or push-constant root. */
 fun Shader.set(key: String, bytes: ByteArray) = set(key, UniformValue.Bytes(bytes))
@@ -44,43 +73,61 @@ fun Shader.set(key: String, bytes: ByteArray) = set(key, UniformValue.Bytes(byte
 /** Bind a [Texture] created by a [Renderer] to a texture uniform. */
 fun Shader.set(key: String, texture: Texture) = set(key, UniformValue.Texture(texture.id()))
 
+// `Shader.get` returns a [UniformData]. These accessors read it.
+
+/**
+ * The number a scalar uniform holds, as a [Float].
+ * `null` for anything but a bool, float, int or uint.
+ */
+val UniformData.float: Float?
+    get() = when (this) {
+        is UniformData.Float -> v1
+        is UniformData.Int -> v1.toFloat()
+        is UniformData.UInt -> v1.toFloat()
+        is UniformData.Bool -> if (v1) 1f else 0f
+        else -> null
+    }
+
+/**
+ * The numbers a scalar, vector or matrix uniform holds, as [Float]s.
+ * Matrices come column by column. `null` for textures, samplers and bytes.
+ */
+val UniformData.floats: List<Float>?
+    get() = when (this) {
+        is UniformData.Vec2 -> v1
+        is UniformData.Vec3 -> v1
+        is UniformData.Vec4 -> v1
+        is UniformData.Mat2 -> v1
+        is UniformData.Mat3 -> v1
+        is UniformData.Mat4 -> v1
+        is UniformData.UVec2 -> v1.map { it.toFloat() }
+        is UniformData.UVec3 -> v1.map { it.toFloat() }
+        is UniformData.UVec4 -> v1.map { it.toFloat() }
+        is UniformData.IVec2 -> v1.map { it.toFloat() }
+        is UniformData.IVec3 -> v1.map { it.toFloat() }
+        is UniformData.IVec4 -> v1.map { it.toFloat() }
+        else -> float?.let { listOf(it) }
+    }
+
+/** The bytes of a storage-buffer or push-constant root. `null` for anything else. */
+val UniformData.bytes: ByteArray?
+    get() = (this as? UniformData.Bytes)?.v1
+
 // ---------------------------------------------------------------------------
 // Async fetch factory helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Resolve a single URL, slug, file path, or raw WGSL source asynchronously
- * and return a compiled [Shader]. Mirrors `Shader.fetch(...)` on Web and Python.
- *
- * The underlying uniffi binding exposes `fetch` as a `suspend` instance method
- * (uniffi 0.31 does not support async constructors); this companion-style
- * top-level function creates a throw-away default instance to call through.
- *
- * Usage:
- * ```kotlin
- * val shader = ShaderFetch("https://example.com/shader.wgsl")
- * ```
- */
-suspend fun ShaderFetch(input: String): Shader =
-    Shader.default().fetch(input)
+@Deprecated("Use Shader.fetch(input)", ReplaceWith("Shader.fetch(input)"))
+suspend fun ShaderFetch(input: String): Shader = Shader.fetch(input)
 
-/**
- * Resolve an array of parts (URLs, slugs, paths, raw WGSL) asynchronously,
- * merge them, and return a compiled [Shader].
- *
- * Usage:
- * ```kotlin
- * val shader = ShaderFetch(listOf("sdf2d/circle", mySource))
- * ```
- */
-suspend fun ShaderFetch(parts: List<String>): Shader =
-    Shader.default().fetchCompose(parts)
+@Deprecated("Use Shader.fetch(parts)", ReplaceWith("Shader.fetch(parts)"))
+suspend fun ShaderFetch(parts: List<String>): Shader = Shader.fetch(parts)
 
 // Companion-object extensions that mirror the static-factory spelling used by
 // the JavaScript, Python, and Swift bindings: `Shader.fetch(input)` /
-// `Shader.fetch(parts)`. uniffi 0.31 cannot generate async constructors, so
-// the underlying binding is an instance method on `Shader`; these wrappers
-// create a throw-away default instance and discard it after the fetch.
+// `Shader.fetch(parts)`. The underlying binding is an instance method on
+// `Shader`; these wrappers create a throw-away default instance and discard
+// it after the fetch.
 
 /**
  * Static-factory async fetch: resolve a single URL, slug, file path, or raw
