@@ -73,7 +73,7 @@ Big‑picture architecture (how things fit together)
   - **The website is only updated after all healthchecks pass.** The post-build website export writes MDX pages under `docs/website/src/content/docs/api/` by combining the canonical Rust docs with language-specific examples sliced from annotated healthcheck scripts. If JS/Python/Swift/Kotlin examples fail to run, the site is not regenerated.
   - These guarantees apply equally to iOS and Android — the same build-time validation that blocks a release when a JS example is missing also blocks a release when the corresponding Swift or Kotlin example is missing.
 - CI gates (what must pass on PR)
-  - Clippy with warnings denied; rustfmt check; `cargo test` for Rust; build several example binaries; Web healthcheck (Playwright); Python wheel healthcheck; iOS healthcheck (xcodebuild on macos-14); Android healthcheck (gradle + emulator on ubuntu-latest KVM); dependency license audit (cargo-deny).
+  - Clippy over the whole workspace with warnings denied; rustfmt check; `cargo test` for Rust; build several example binaries; Web healthcheck (Playwright); Python wheel healthcheck; iOS healthcheck (xcodebuild on macos-15); Android healthcheck (gradle + emulator on ubuntu-latest KVM); dependency license audit (cargo-deny).
   - Each platform has its own workflow so a broken runner doesn't block the others: `.github/workflows/{pull_request,healthcheck_python,healthcheck_web,healthcheck_ios,healthcheck_android}.yml`.
 - Branch naming for releases
   - In-flight version branches are named `vMAJOR.MINOR.PATCH-dev` (e.g. `v0.12.0-dev`); the GitHub Release tag drops the `-dev` suffix (e.g. `v0.12.0`). Without the suffix the branch name collides with the tag and one of them has to be renamed at release time. See `CONTRIBUTING.md` ("Starting a new version" / "Release process") for the full flow.
@@ -130,6 +130,15 @@ The API must look the same in Rust, JavaScript, Python, Swift, and Kotlin in eve
 12. **Return values.** If Rust returns `&Self` or `Self` from a mutator, every binding returns the receiver. `Option<T>` maps to `undefined`, `None`, `nil`, and `null`. Getters return the same shape everywhere: matrices in Rust's shape and sizes as `Size`, never a tagged enum.
 13. **Value types** (`Size`, `ScreenRegion`, `TextureFormat`, `TextureId`, `SamplerOptions`) compare by value in Python, Swift, and Kotlin. Identity comparison in JS is accepted.
 14. **Rust-only items.** Trait implementations (`SceneObject`, `Target`, `Renderable`) and the generic `get::<T>` are Rust idioms. Third-party types (glam, wgpu, image) never appear in the public API, Rust included.
+
+### How the build checks it
+
+- **Class names match the Rust root.** `scripts/binding_checks.rs` fails the build when the uniffi Swift wrapper, the Python stub or the wasm exports declare a class the crate root doesn't export in a plain Rust build. Name a binding class after its Rust type (`#[pyclass(name = "...")]`, `js_name`, `#[uniffi(name = "...")]`). A class that has to stay binding-only needs a `type <Name>:<platforms>:<reason>` line in the type names section at the end of `docs/api/PARITY`.
+- **JS throws Error objects.** A `#[wasm_bindgen]` function that returns `Result<_, E>` uses `JsError`, or an `E` whose `From<E> for JsValue` builds a `js_sys::Error`. The build fails otherwise.
+- **Shapes match the Rust method.** `scripts/parity.rs` fingerprints each credited binding (arity, parameter classes, `Result`, `async`, return class) against the Rust method its doc page documents. A difference missing from `docs/api/PARITY_SHAPES` prints a cargo warning; the check isn't strict yet. `FC_PARITY_REWRITE_BASELINE=1 cargo build --lib` rewrites the file together with `PARITY_BASELINE`.
+- **`#[doc(hidden)]` is matched exactly.** An `lsp_doc` page under `hidden/` doesn't hide a type. Mark a binding wrapper struct, such as `PyTextureTarget`, with `#[doc(hidden)]`.
+- **The web healthcheck fails on any `console.error`.**
+- **CI lints the whole workspace** with `cargo clippy --workspace`, so every `fce` example has to build.
 
 ## Lock blocks (MDX) — content the user has hand-tuned
 
