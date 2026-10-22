@@ -80,7 +80,7 @@ export function installInstrumentation(api) {
 
   // Wrap frequently exercised API methods
   try {
-    const { Renderer, Shader, Pass, TextureTarget, CanvasTarget } = api || {};
+    const { Renderer, Shader, Pass, TextureTarget, WindowTarget } = api || {};
 
     // Renderer
     wrap(Renderer?.prototype, 'createTarget', 'Renderer');
@@ -101,9 +101,9 @@ export function installInstrumentation(api) {
     wrap(TextureTarget?.prototype, 'resize', 'TextureTarget');
     wrap(TextureTarget?.prototype, 'size', 'TextureTarget');
     wrap(TextureTarget?.prototype, 'getImage', 'TextureTarget');
-    wrap(CanvasTarget?.prototype, 'resize', 'CanvasTarget');
-    wrap(CanvasTarget?.prototype, 'size', 'CanvasTarget');
-    wrap(CanvasTarget?.prototype, 'getImage', 'CanvasTarget');
+    wrap(WindowTarget?.prototype, 'resize', 'WindowTarget');
+    wrap(WindowTarget?.prototype, 'size', 'WindowTarget');
+    wrap(WindowTarget?.prototype, 'getImage', 'WindowTarget');
   } catch (e) {
     console.warn('[instrument] failed to install wrappers', e);
   }

@@ -2,7 +2,7 @@ import init, { Renderer, Shader, Pass, Mesh, Vertex, Instance, set_log_level } f
 
 // import { installInstrumentation } from './instrument.mjs';
 // Install JS-level instrumentation before running any examples or docs coverage.
-// installInstrumentation({ Renderer, Shader, Pass, TextureTarget, CanvasTarget });
+// installInstrumentation({ Renderer, Shader, Pass, TextureTarget, WindowTarget });
 
 const wasmUrl = new URL("./pkg/fragmentcolor_bg.wasm", import.meta.url);
 await init({ module_or_path: wasmUrl.href });
