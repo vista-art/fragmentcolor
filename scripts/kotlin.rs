@@ -542,8 +542,9 @@ mod kotlin {
         receivers.any(is_float)
     }
 
-    /// The unsigned type an integer here converts to,
-    /// taken from the overloads uniffi generates.
+    /// The unsigned type an integer here converts to.
+    /// It comes from the overloads uniffi generates, and
+    /// a plain literal resolves to that member over an `Int` extension.
     fn unsigned_slot(receivers: &Receivers, conflicts: &mut Vec<Conflict>) -> Option<String> {
         let unsigned = receivers
             .overloads
@@ -553,10 +554,6 @@ mod kotlin {
                 KType::Unsigned(name) => Some(name.clone()),
                 _ => None,
             })?;
-        // An `Int` overload next to every unsigned one reads a plain literal.
-        if receivers.owners(|ts| has(ts, is_unsigned) && !has(ts, is_int)).is_empty() {
-            return None;
-        }
         let rejects = receivers.owners(|ts| has(ts, is_signed) && !has(ts, is_unsigned));
         if !rejects.is_empty() {
             let wants = receivers.owners(|ts| has(ts, is_unsigned));
