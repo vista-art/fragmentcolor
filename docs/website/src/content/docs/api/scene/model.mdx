@@ -100,7 +100,7 @@ code={`
 import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
 const model = new Model(mesh, Material.pbr());
 model.material().shader().set("camera.position", [0.0, 0.0, 5.0]);
@@ -208,10 +208,10 @@ code={`
 import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 
 const model = new Model(mesh, Material.pbr());
-model.mesh().addVertex( new Vertex([-0.5, -0.5, 0.0]) .set("normal", [0.0, 0.0, 1.0]) .set("uv0", [0.0, 0.0]), );
+model.mesh().addVertex( new Vertex([-0.5, -0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 `}
 lang="js"
 />
@@ -332,7 +332,7 @@ code={`
 import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
 const model = new Model(mesh, Material.pbr());
 
@@ -444,7 +444,7 @@ import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
-mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
 const model = new Model(mesh, Material.pbr());
 model.rotate([0.0, 1.0, 0.0], 1.571); // 90° around Y
@@ -561,7 +561,7 @@ import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
-mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
 const model = new Model(mesh, Material.pbr());
 model.scale([2.0, 2.0, 2.0]);
@@ -684,10 +684,10 @@ import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
-mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
 const model = new Model(mesh, Material.pbr());
-model.setTransform([2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 3.0, 0.0, 0.0, 1.0]);
+model.setTransform([ [2.0, 0.0, 0.0, 0.0], [0.0, 2.0, 0.0, 0.0], [0.0, 0.0, 2.0, 0.0], [3.0, 0.0, 0.0, 1.0], ]);
 `}
 lang="js"
 />
@@ -939,7 +939,7 @@ import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
-mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
 const model = new Model(mesh, Material.pbr());
 const identity = model.transform();
@@ -1056,7 +1056,7 @@ import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
-mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
 const model = new Model(mesh, Material.pbr());
 model.translate([5.0, 0.0, -2.0]);

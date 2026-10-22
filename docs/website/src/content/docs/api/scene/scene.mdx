@@ -400,7 +400,7 @@ import { Camera, Light, Material, Mesh, Model, Renderer, Scene, Vertex } from "f
 const renderer = new Renderer();
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 const model = new Model(mesh, Material.pbr());
 
 const camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
@@ -565,7 +565,7 @@ code={`
 import { Material, Mesh, Model, Pass, Scene, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 const model = new Model(mesh, Material.pbr());
 
 const scene = new Scene();
@@ -702,7 +702,7 @@ code={`
 import { Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 const model = new Model(mesh, Material.pbr());
 
 const scene = new Scene();
@@ -1103,7 +1103,7 @@ const renderer = new Renderer();
 const target = await renderer.createTextureTarget([64, 64]);
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 
 const scene = new Scene();
 // Warm dusk ambient — applies to every Material added below.
@@ -1278,7 +1278,7 @@ import { Material, Mesh, Model, Pass, Renderer, Scene, Vertex } from "fragmentco
 const renderer = new Renderer();
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 const model = new Model(mesh, Material.pbr());
 
 // A backdrop pass that clears to a soft blue before the scene's main draw.
@@ -1782,7 +1782,7 @@ code={`
 import { Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 const scene = new Scene();
 scene.add(new Model(mesh, Material.pbr()));
 
@@ -2032,7 +2032,7 @@ code={`
 import { Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 const scene = new Scene();
 scene.add(new Model(mesh, Material.pbr()));
 
@@ -2160,7 +2160,7 @@ code={`
 import { Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 const scene = new Scene();
 scene.add(new Model(mesh, Material.pbr()));
 
@@ -2276,7 +2276,7 @@ code={`
 import { Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 const scene = new Scene();
 scene.add(new Model(mesh, Material.pbr()));
 
@@ -2394,7 +2394,7 @@ code={`
 import { Camera, Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 const scene = new Scene();
 scene.add(new Model(mesh, Material.pbr()));
 
@@ -2515,7 +2515,7 @@ code={`
 import { Light, Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 const scene = new Scene();
 scene.add(new Model(mesh, Material.pbr()));
 

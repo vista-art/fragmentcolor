@@ -3,7 +3,7 @@ import { Camera, Light, Material, Mesh, Model, Pass, Renderer, Vertex } from "fr
 const renderer = new Renderer();
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 const model = new Model(mesh, Material.pbr());
 
 const camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
