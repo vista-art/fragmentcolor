@@ -24,22 +24,18 @@ use crate::renderer::platform::mobile::FragmentColorError;
 
 #[uniffi::export]
 impl Vertex {
-    /// Create a new `Vertex` from a position vector. Accepts 2, 3, or 4
-    /// components; any other length returns an error. Mobile shim because
-    /// uniffi cannot marshal the generic `impl IntoVertexPositionFull`.
+    /// Create a new `Vertex` from a position vector of 1 to 4 components.
+    /// Any other length returns an error. Mobile shim because uniffi cannot
+    /// marshal the generic `impl IntoVertexPositionFull`.
     #[uniffi::constructor(name = "new")]
     #[lsp_doc("docs/api/geometry/vertex/hidden/new_mobile.md")]
     pub fn new_mobile(position: Vec<f32>) -> Result<Arc<Self>, FragmentColorError> {
-        let v = match position.len() {
-            2 => Vertex::new([position[0], position[1]]),
-            3 => Vertex::new([position[0], position[1], position[2]]),
-            4 => Vertex::new([position[0], position[1], position[2], position[3]]),
-            n => {
-                return Err(FragmentColorError::Render(format!(
-                    "Vertex position must have 2, 3, or 4 components; got {}",
-                    n
-                )));
-            }
+        let v = match position.as_slice() {
+            [x] => Vertex::new(*x),
+            [x, y] => Vertex::new([*x, *y]),
+            [x, y, z] => Vertex::new([*x, *y, *z]),
+            [x, y, z, w] => Vertex::new([*x, *y, *z, *w]),
+            other => return Err(position_error(other.len())),
         };
         Ok(Arc::new(v))
     }
@@ -51,16 +47,12 @@ impl Vertex {
     #[uniffi::constructor(name = "pbr")]
     #[lsp_doc("docs/api/geometry/vertex/pbr.md")]
     pub fn pbr_mobile(position: Vec<f32>) -> Result<Arc<Self>, FragmentColorError> {
-        let v = match position.len() {
-            2 => Vertex::pbr([position[0], position[1]]),
-            3 => Vertex::pbr([position[0], position[1], position[2]]),
-            4 => Vertex::pbr([position[0], position[1], position[2], position[3]]),
-            n => {
-                return Err(FragmentColorError::Render(format!(
-                    "Vertex position must have 2, 3, or 4 components; got {}",
-                    n
-                )));
-            }
+        let v = match position.as_slice() {
+            [x] => Vertex::pbr(*x),
+            [x, y] => Vertex::pbr([*x, *y]),
+            [x, y, z] => Vertex::pbr([*x, *y, *z]),
+            [x, y, z, w] => Vertex::pbr([*x, *y, *z, *w]),
+            other => return Err(position_error(other.len())),
         };
         Ok(Arc::new(v))
     }
@@ -231,4 +223,11 @@ impl Quad {
     pub fn get_mesh_mobile(self: Arc<Self>) -> Arc<Mesh> {
         Arc::new(self.get_mesh())
     }
+}
+
+/// The error for a vertex position that isn't 1 to 4 numbers long.
+fn position_error(len: usize) -> FragmentColorError {
+    FragmentColorError::Render(format!(
+        "Vertex position must have 1 to 4 components; got {len}"
+    ))
 }
