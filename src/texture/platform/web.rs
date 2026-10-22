@@ -1,9 +1,15 @@
 #![cfg(wasm)]
 
+use js_sys::Reflect;
 use lsp_doc::lsp_doc;
+use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
-use crate::{CompareFunction, Mipmap, SamplerOptions, Size, Texture, TextureFormat, TextureId};
+use crate::platforms::web::read_unsigned;
+use crate::{
+    CompareFunction, Mipmap, SamplerOptions, Size, Texture, TextureData, TextureFormat, TextureId,
+    TextureInput, TextureOptions,
+};
 
 #[wasm_bindgen]
 impl Mipmap {
@@ -237,4 +243,123 @@ pub(crate) fn js_to_sampler_options(value: &JsValue) -> Result<SamplerOptions, J
     Err(JsError::new(
         "setSamplerOptions expects an object { repeatX?, repeatY?, smooth?, compare? }",
     ))
+}
+
+/// Reads a texture source and its options, as `createTexture` and the Material
+/// texture setters take them. An `ImageData` or canvas source carries its own
+/// size, which applies when the options don't set one.
+pub(crate) fn read_texture_input(
+    source: &JsValue,
+    options: Option<&JsValue>,
+) -> Result<TextureInput, JsError> {
+    let data = match Texture::try_from(source) {
+        Ok(texture) => TextureData::CloneOf(texture),
+        Err(_) => TextureData::try_from(source)?,
+    };
+    let mut options = match options {
+        Some(options) if !options.is_undefined() && !options.is_null() => {
+            read_texture_options(options)?
+        }
+        _ => TextureOptions::default(),
+    };
+    if options.size.is_none() {
+        options.size = read_source_size(source);
+    }
+    Ok(TextureInput { data, options })
+}
+
+/// The pixel size of an `ImageData` or canvas source. Its raw bytes don't carry one.
+fn read_source_size(source: &JsValue) -> Option<Size> {
+    let (width, height) = if let Some(image) = source.dyn_ref::<web_sys::ImageData>() {
+        (image.width(), image.height())
+    } else if let Some(canvas) = source.dyn_ref::<web_sys::HtmlCanvasElement>() {
+        (canvas.width(), canvas.height())
+    } else if let Some(canvas) = source.dyn_ref::<web_sys::OffscreenCanvas>() {
+        (canvas.width(), canvas.height())
+    } else {
+        return None;
+    };
+    Some(Size::from([width, height]))
+}
+
+/// Reads texture options: a bare `TextureFormat`, a bare size such as `[w, h]`,
+/// or an object `{ size?, format?, mipmaps?, sampler?, usage? }`.
+fn read_texture_options(value: &JsValue) -> Result<TextureOptions, JsError> {
+    if let Some(code) = value.as_f64() {
+        return Ok(TextureOptions::from(read_format(code)?));
+    }
+    if let Ok(size) = Size::try_from(value) {
+        return Ok(TextureOptions::from(size));
+    }
+    if !value.is_object() {
+        return Err(JsError::new(
+            "texture options must be a size, a TextureFormat, or an options object",
+        ));
+    }
+    let mut options = TextureOptions::default();
+    if let Some(size) = read_field(value, "size") {
+        options.size = Some(Size::try_from(&size)?);
+    }
+    if let Some(format) = read_field(value, "format") {
+        let code = format
+            .as_f64()
+            .ok_or_else(|| JsError::new("options.format must be a TextureFormat"))?;
+        options.format = read_format(code)?;
+    }
+    if let Some(mipmaps) = read_field(value, "mipmaps") {
+        options.mipmaps = mipmaps
+            .as_bool()
+            .ok_or_else(|| JsError::new("options.mipmaps must be a boolean"))?;
+    }
+    if let Some(sampler) = read_field(value, "sampler") {
+        options.sampler = js_to_sampler_options(&sampler)?;
+    }
+    if let Some(usage) = read_field(value, "usage") {
+        options.usage = Some(read_usage(&usage)?);
+    }
+    Ok(options)
+}
+
+/// Reads a `TextureUsage` or its bits as a number.
+pub(crate) fn read_usage(value: &JsValue) -> Result<u32, JsError> {
+    let bits = match value.as_f64() {
+        Some(bits) => bits,
+        None => read_field(value, "bits")
+            .and_then(|bits| bits.as_f64())
+            .ok_or_else(|| JsError::new("usage must be a TextureUsage or a number"))?,
+    };
+    read_unsigned(bits, "usage")
+}
+
+/// A property of a JS object, or `None` when it is missing, `undefined` or `null`.
+fn read_field(object: &JsValue, name: &str) -> Option<JsValue> {
+    Reflect::get(object, &name.into())
+        .ok()
+        .filter(|value| !value.is_undefined() && !value.is_null())
+}
+
+/// Maps a `TextureFormat` code from JS to the format. The codes follow the
+/// variant order in `src/texture/format.rs`.
+fn read_format(code: f64) -> Result<TextureFormat, JsError> {
+    let format = match read_unsigned(code, "format")? {
+        0 => TextureFormat::R8Unorm,
+        1 => TextureFormat::Rg8Unorm,
+        2 => TextureFormat::R16Unorm,
+        3 => TextureFormat::Rg16Unorm,
+        4 => TextureFormat::Rgba8Unorm,
+        5 => TextureFormat::Rgba8UnormSrgb,
+        6 => TextureFormat::Bgra8Unorm,
+        7 => TextureFormat::Rgba16Unorm,
+        8 => TextureFormat::Rgba16Float,
+        9 => TextureFormat::Rgba32Float,
+        10 => TextureFormat::Rgba32Uint,
+        11 => TextureFormat::Rgba32Sint,
+        12 => TextureFormat::Depth32Float,
+        13 => TextureFormat::Rgba,
+        14 => TextureFormat::Bgra,
+        15 => TextureFormat::Lab,
+        16 => TextureFormat::L8,
+        _ => return Err(JsError::new(&format!("{code} is not a TextureFormat"))),
+    };
+    Ok(format)
 }

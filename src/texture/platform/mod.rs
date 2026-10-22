@@ -6,3 +6,5 @@ mod python;
 pub(crate) use python::{PySamplerOptions, PyTextureId, PyTextureSource, PyTextureUsage};
 #[cfg(wasm)]
 mod web;
+#[cfg(wasm)]
+pub(crate) use web::{read_texture_input, read_usage};

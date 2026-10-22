@@ -23,6 +23,8 @@ pub(crate) mod ktx2_loader;
 mod platform;
 #[cfg(python)]
 pub(crate) use platform::{PySamplerOptions, PyTextureId, PyTextureSource, PyTextureUsage};
+#[cfg(wasm)]
+pub(crate) use platform::{read_texture_input, read_usage};
 
 use crate::{RenderContext, Size};
 use image::{DynamicImage, GenericImageView};
