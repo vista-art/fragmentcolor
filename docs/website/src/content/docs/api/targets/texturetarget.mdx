@@ -325,13 +325,9 @@ lang="kotlin"
 
 ---
 
-### TextureTarget::get_image()
+### TextureTarget::size() -&gt; Size &#123; width: u32, height: u32, depth: `Option<u32>` &#125;
 
-Returns the current contents of the target as a byte array in RGBA8 format.
-
-Rows run from top to bottom with no padding, so the pixel at `(x, y)` starts at byte `(y * width + x) * 4`.
-
-Python returns a NumPy array of shape `(height, width, 4)`, indexed `image[y, x]`. That is the layout `Renderer.create_texture` reads, so `renderer.create_texture(target.get_image())` uploads the same image.
+Returns the size of the [TextureTarget](/api/targets/texturetarget) in pixels.
 
 #### Example
 
@@ -340,21 +336,25 @@ Python returns a NumPy array of shape `(height, width, 4)`, indexed `image[y, x]
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Renderer, Target, Shader};
-
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
+use fragmentcolor::{Renderer, Target};
+
 let renderer = Renderer::new();
-let target = renderer.create_texture_target([16, 16]).await?;
-renderer.render(&Shader::default(), &target)?;
+let target = renderer.create_texture_target([64, 64]).await?;
+let size = target.size();
+let width = size.width;
+let height = size.height;
+let depth = size.depth;
 
-let image = target.get_image().await;
-
+assert_eq!(width, 64);
+assert_eq!(height, 64);
+assert_eq!(depth, Some(1));
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={3-3, 11-13}"
+lang="rust" meta="collapse={1-1, 12-17}"
 />
 
 </TabItem>
@@ -362,14 +362,15 @@ lang="rust" meta="collapse={3-3, 11-13}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Renderer, Shader } from "fragmentcolor";
 
+import { Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
-const target = await renderer.createTextureTarget([16, 16]);
-renderer.render(Shader.default(), target);
-
-const image = await target.getImage();
+const target = await renderer.createTextureTarget([64, 64]);
+const size = target.size();
+const width = size.width;
+const height = size.height;
+const depth = size.depth;
 
 `}
 lang="js"
@@ -380,14 +381,15 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Renderer, Shader
 
+from fragmentcolor import Renderer
 
 renderer = Renderer()
-target = renderer.create_texture_target([16, 16])
-renderer.render(Shader.default(), target)
-
-image = target.get_image()
+target = renderer.create_texture_target([64, 64])
+size = target.size
+width = size.width
+height = size.height
+depth = size.depth
 
 `}
 lang="python"
@@ -398,14 +400,15 @@ lang="python"
 <TabItem label="Swift">
 <Code
 code={`
+
 import FragmentColor
 
-
 let renderer = Renderer()
-let target = try await renderer.createTextureTarget([16, 16])
-try renderer.render(Shader.default(), target)
-
-let image = try await target.getImage()
+let target = try await renderer.createTextureTarget([64, 64])
+let size = target.size()
+let width = size.width
+let height = size.height
+let depth = size.depth
 `}
 lang="swift"
 />
@@ -415,14 +418,15 @@ lang="swift"
 <TabItem label="Kotlin">
 <Code
 code={`
+
 import org.fragmentcolor.*
 
-
 val renderer = Renderer()
-val target = renderer.createTextureTarget(16u, 16u)
-renderer.render(Shader.default(), target)
-
-val image = target.getImage()
+val target = renderer.createTextureTarget(64u, 64u)
+val size = target.size()
+val width = size.width
+val height = size.height
+val depth = size.depth
 `}
 lang="kotlin"
 />
@@ -536,9 +540,13 @@ lang="kotlin"
 
 ---
 
-### TextureTarget::size() -&gt; Size &#123; width: u32, height: u32, depth: `Option<u32>` &#125;
+### TextureTarget::get_image()
 
-Returns the size of the [TextureTarget](/api/targets/texturetarget) in pixels.
+Returns the current contents of the target as a byte array in RGBA8 format.
+
+Rows run from top to bottom with no padding, so the pixel at `(x, y)` starts at byte `(y * width + x) * 4`.
+
+Python returns a NumPy array of shape `(height, width, 4)`, indexed `image[y, x]`. That is the layout `Renderer.create_texture` reads, so `renderer.create_texture(target.get_image())` uploads the same image.
 
 #### Example
 
@@ -547,25 +555,21 @@ Returns the size of the [TextureTarget](/api/targets/texturetarget) in pixels.
 <TabItem label="Rust">
 <Code
 code={`
+use fragmentcolor::{Renderer, Target, Shader};
+
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{Renderer, Target};
-
 let renderer = Renderer::new();
-let target = renderer.create_texture_target([64, 64]).await?;
-let size = target.size();
-let width = size.width;
-let height = size.height;
-let depth = size.depth;
+let target = renderer.create_texture_target([16, 16]).await?;
+renderer.render(&Shader::default(), &target)?;
 
-assert_eq!(width, 64);
-assert_eq!(height, 64);
-assert_eq!(depth, Some(1));
+let image = target.get_image().await;
+
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 12-17}"
+lang="rust" meta="collapse={3-3, 11-13}"
 />
 
 </TabItem>
@@ -573,15 +577,14 @@ lang="rust" meta="collapse={1-1, 12-17}"
 <TabItem label="JavaScript">
 <Code
 code={`
+import { Renderer, Shader } from "fragmentcolor";
 
-import { Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
-const target = await renderer.createTextureTarget([64, 64]);
-const size = target.size();
-const width = size.width;
-const height = size.height;
-const depth = size.depth;
+const target = await renderer.createTextureTarget([16, 16]);
+renderer.render(Shader.default(), target);
+
+const image = await target.getImage();
 
 `}
 lang="js"
@@ -592,15 +595,14 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+from fragmentcolor import Renderer, Shader
 
-from fragmentcolor import Renderer
 
 renderer = Renderer()
-target = renderer.create_texture_target([64, 64])
-size = target.size
-width = size.width
-height = size.height
-depth = size.depth
+target = renderer.create_texture_target([16, 16])
+renderer.render(Shader.default(), target)
+
+image = target.get_image()
 
 `}
 lang="python"
@@ -611,15 +613,14 @@ lang="python"
 <TabItem label="Swift">
 <Code
 code={`
-
 import FragmentColor
 
+
 let renderer = Renderer()
-let target = try await renderer.createTextureTarget([64, 64])
-let size = target.size()
-let width = size.width
-let height = size.height
-let depth = size.depth
+let target = try await renderer.createTextureTarget([16, 16])
+try renderer.render(Shader.default(), target)
+
+let image = try await target.getImage()
 `}
 lang="swift"
 />
@@ -629,15 +630,14 @@ lang="swift"
 <TabItem label="Kotlin">
 <Code
 code={`
-
 import org.fragmentcolor.*
 
+
 val renderer = Renderer()
-val target = renderer.createTextureTarget(64u, 64u)
-val size = target.size()
-val width = size.width
-val height = size.height
-val depth = size.depth
+val target = renderer.createTextureTarget(16u, 16u)
+renderer.render(Shader.default(), target)
+
+val image = target.getImage()
 `}
 lang="kotlin"
 />

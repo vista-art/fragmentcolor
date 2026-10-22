@@ -141,11 +141,9 @@ lang="kotlin" meta="collapse={2-2}"
 
 ---
 
-### WindowTarget::get_image()
+### WindowTarget::size() -&gt; [u32; 2]
 
-This operation returns an empty array for [WindowTarget](/api/targets/windowtarget).
-
-Use a [TextureTarget](/api/targets/texturetarget) instead.
+Returns the size of the [Target](/api/targets/target) in pixels.
 
 #### Example
 
@@ -156,20 +154,17 @@ Use a [TextureTarget](/api/targets/texturetarget) instead.
 code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{Renderer, Target, Shader};
+use fragmentcolor::{Renderer, Shader};
 
 let renderer = Renderer::new();
-let target = renderer.create_texture_target([16, 16]).await?;
-renderer.render(&Shader::default(), &target)?;
+let target = renderer.create_texture_target([64, 32]).await?;
 
-let image = target.get_image().await;
-
-assert_eq!(image.len(), 16 * 16 * 4); // RGBA8
+assert_eq!(target.size(), [64, 32]);
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 11-14}"
+lang="rust" meta="collapse={1-1, 8-11}"
 />
 
 </TabItem>
@@ -181,10 +176,7 @@ code={`
 import { Renderer, Shader } from "fragmentcolor";
 
 const renderer = new Renderer();
-const target = await renderer.createTextureTarget([16, 16]);
-renderer.render(Shader.default(), target);
-
-const image = await target.getImage();
+const target = await renderer.createTextureTarget([64, 32]);
 
 `}
 lang="js"
@@ -199,10 +191,7 @@ code={`
 from fragmentcolor import Renderer, Shader
 
 renderer = Renderer()
-target = renderer.create_texture_target([16, 16])
-renderer.render(Shader.default(), target)
-
-image = target.get_image()
+target = renderer.create_texture_target([64, 32])
 
 `}
 lang="python"
@@ -217,10 +206,7 @@ code={`
 import FragmentColor
 
 let renderer = Renderer()
-let target = try await renderer.createTextureTarget([16, 16])
-try renderer.render(Shader.default(), target)
-
-let image = try await target.getImage()
+let target = try await renderer.createTextureTarget([64, 32])
 `}
 lang="swift"
 />
@@ -234,10 +220,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(16u, 16u)
-renderer.render(Shader.default(), target)
-
-val image = target.getImage()
+val target = renderer.createTextureTarget(64u, 32u)
 `}
 lang="kotlin"
 />
@@ -350,9 +333,11 @@ lang="kotlin"
 
 ---
 
-### WindowTarget::size() -&gt; [u32; 2]
+### WindowTarget::get_image()
 
-Returns the size of the [Target](/api/targets/target) in pixels.
+This operation returns an empty array for [WindowTarget](/api/targets/windowtarget).
+
+Use a [TextureTarget](/api/targets/texturetarget) instead.
 
 #### Example
 
@@ -363,17 +348,20 @@ Returns the size of the [Target](/api/targets/target) in pixels.
 code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{Renderer, Shader};
+use fragmentcolor::{Renderer, Target, Shader};
 
 let renderer = Renderer::new();
-let target = renderer.create_texture_target([64, 32]).await?;
+let target = renderer.create_texture_target([16, 16]).await?;
+renderer.render(&Shader::default(), &target)?;
 
-assert_eq!(target.size(), [64, 32]);
+let image = target.get_image().await;
+
+assert_eq!(image.len(), 16 * 16 * 4); // RGBA8
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 8-11}"
+lang="rust" meta="collapse={1-1, 11-14}"
 />
 
 </TabItem>
@@ -385,7 +373,10 @@ code={`
 import { Renderer, Shader } from "fragmentcolor";
 
 const renderer = new Renderer();
-const target = await renderer.createTextureTarget([64, 32]);
+const target = await renderer.createTextureTarget([16, 16]);
+renderer.render(Shader.default(), target);
+
+const image = await target.getImage();
 
 `}
 lang="js"
@@ -400,7 +391,10 @@ code={`
 from fragmentcolor import Renderer, Shader
 
 renderer = Renderer()
-target = renderer.create_texture_target([64, 32])
+target = renderer.create_texture_target([16, 16])
+renderer.render(Shader.default(), target)
+
+image = target.get_image()
 
 `}
 lang="python"
@@ -415,7 +409,10 @@ code={`
 import FragmentColor
 
 let renderer = Renderer()
-let target = try await renderer.createTextureTarget([64, 32])
+let target = try await renderer.createTextureTarget([16, 16])
+try renderer.render(Shader.default(), target)
+
+let image = try await target.getImage()
 `}
 lang="swift"
 />
@@ -429,7 +426,10 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(64u, 32u)
+val target = renderer.createTextureTarget(16u, 16u)
+renderer.render(Shader.default(), target)
+
+val image = target.getImage()
 `}
 lang="kotlin"
 />
