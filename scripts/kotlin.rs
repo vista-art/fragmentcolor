@@ -37,6 +37,9 @@ mod kotlin {
     /// The extension functions written by hand on top of uniffi's Kotlin.
     const EXTENSIONS_DIR: &str = "platforms/kotlin/fragmentcolor/src/main/java/org/fragmentcolor";
 
+    /// The uniffi config, whose `[bindings.kotlin.rename]` table renames methods on Kotlin.
+    const UNIFFI_CONFIG: &str = "uniffi.toml";
+
     /// A Kotlin parameter type, reduced to what the call-site rewrites need.
     #[derive(Clone, PartialEq, Eq)]
     enum KType {
@@ -171,6 +174,7 @@ mod kotlin {
 
     /// Derive the Kotlin rewrites' API facts. Runs once before any example converts.
     pub fn install(model: &Reflection) {
+        let renames = read_renames();
         let mut callables = Vec::new();
         for f in model.uniffi_fns(Build::Android) {
             let params: Vec<KType> = f.params.iter().map(uniffi_type).collect();
@@ -178,7 +182,11 @@ mod kotlin {
             let nullable = required.iter().rev().take_while(|t| is_option(t)).count();
             let needles = match f.kind {
                 CallKind::Init => vec![format!("{}(", f.owner), format!("{}.new(", f.owner)],
-                CallKind::Static | CallKind::Method => vec![format!(".{}(", f.name)],
+                CallKind::Static | CallKind::Method => {
+                    let key = format!("{}.{}", f.owner, f.name);
+                    let name = renames.get(&key).unwrap_or(&f.name);
+                    vec![format!(".{name}(")]
+                }
             };
             for needle in needles {
                 callables.push(Callable {
@@ -192,6 +200,7 @@ mod kotlin {
             }
         }
         callables.extend(extension_callables());
+        check_shadowed(&callables);
         let records = positional_records(model);
         let mut conflicts = Vec::new();
         let calls = plan_calls(&callables, &records, &mut conflicts);
@@ -204,6 +213,30 @@ mod kotlin {
             enums: flat_enum_spellings(model),
             slice_getters: model.slice_getters(Build::Android),
         });
+    }
+
+    /// The Kotlin name of each uniffi method that `[bindings.kotlin.rename]`
+    /// in `uniffi.toml` renames, keyed by `Owner.method` in camelCase.
+    fn read_renames() -> BTreeMap<String, String> {
+        let text = std::fs::read_to_string(UNIFFI_CONFIG)
+            .unwrap_or_else(|e| panic!("kotlin: cannot read {UNIFFI_CONFIG}: {e}"));
+        let config: toml::Table = text
+            .parse()
+            .unwrap_or_else(|e| panic!("kotlin: cannot parse {UNIFFI_CONFIG}: {e}"));
+        let table = ["bindings", "kotlin", "rename"]
+            .iter()
+            .try_fold(&config, |table, key| table.get(*key)?.as_table());
+        let Some(table) = table else {
+            return BTreeMap::new();
+        };
+        table
+            .iter()
+            .filter_map(|(key, name)| {
+                let (owner, method) = key.split_once('.')?;
+                let name = name.as_str()?.to_lower_camel_case();
+                Some((format!("{owner}.{}", method.to_lower_camel_case()), name))
+            })
+            .collect()
     }
 
     fn facts() -> &'static Facts {
@@ -332,6 +365,43 @@ mod kotlin {
             }
         }
         callables
+    }
+
+    /// Fail the build where a uniffi method takes an unsigned integer
+    /// and an extension with its name and arity takes an `Int` in that place.
+    /// Kotlin resolves a plain literal to the member, then rejects the literal.
+    fn check_shadowed(callables: &[Callable]) {
+        let members = callables.iter().filter(|c| c.generated && c.needle.starts_with('.'));
+        let mut shadowed: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
+        for member in members {
+            let extensions = callables
+                .iter()
+                .filter(|c| !c.generated && c.owner == member.owner && c.needle == member.needle);
+            for extension in extensions {
+                for argc in (0..=member.params.len()).filter(|n| member.takes(*n) && extension.takes(*n)) {
+                    for position in 0..argc {
+                        if is_unsigned(&member.params[position]) && is_int(&extension.params[position]) {
+                            let owner = member.owner.as_deref().unwrap_or_default();
+                            let name = member.needle.trim_matches(['.', '(']);
+                            shadowed.entry(format!("{owner}.{name}")).or_default().insert(position + 1);
+                        }
+                    }
+                }
+            }
+        }
+        if shadowed.is_empty() {
+            return;
+        }
+        eprintln!("\nuniffi methods that take an unsigned integer where an `Int` extension takes an `Int`:\n");
+        for (method, positions) in &shadowed {
+            let positions: Vec<String> = positions.iter().map(|p| p.to_string()).collect();
+            eprintln!("- {method}, argument {}", positions.join(", "));
+        }
+        panic!(
+            "kotlin: {} uniffi method(s) hide an `Int` extension from plain literals. \
+             Rename each one for Kotlin under [bindings.kotlin.rename] in uniffi.toml.",
+            shadowed.len()
+        );
     }
 
     /// The type of each `name: Type [= default]` parameter, and whether it has a default.

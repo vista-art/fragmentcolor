@@ -1165,6 +1165,7 @@ dependencies = [
  "syn",
  "tempfile",
  "thiserror 2.0.18",
+ "toml",
  "uniffi",
  "ureq",
  "wasm-bindgen",
