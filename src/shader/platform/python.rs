@@ -9,16 +9,8 @@ use pyo3::types::{PyAnyMethods, PyByteArray, PyBytes, PyMemoryView};
 impl Shader {
     #[new]
     #[lsp_doc("docs/api/core/shader/new.md")]
-    pub fn new_py(input: &Bound<PyAny>) -> Result<Self, ShaderError> {
-        if let Ok(s) = input.extract::<String>() {
-            return Shader::new(s);
-        }
-        if let Ok(v) = input.extract::<Vec<String>>() {
-            return Shader::new(v);
-        }
-        Err(ShaderError::ParseError(
-            "Shader(input): expected str or list[str]".into(),
-        ))
+    pub fn new_py(input: PyShaderInput) -> Result<Self, ShaderError> {
+        Shader::new(input)
     }
 
     /// Async-shaped constructor: fetches each part of `input` from the network
@@ -28,16 +20,8 @@ impl Shader {
     #[staticmethod]
     #[pyo3(name = "fetch")]
     #[lsp_doc("docs/api/core/shader/fetch.md")]
-    pub fn fetch_py(input: &Bound<PyAny>) -> Result<Self, ShaderError> {
-        if let Ok(s) = input.extract::<String>() {
-            return pollster::block_on(Shader::fetch(s));
-        }
-        if let Ok(v) = input.extract::<Vec<String>>() {
-            return pollster::block_on(Shader::fetch(v));
-        }
-        Err(ShaderError::ParseError(
-            "Shader.fetch(input): expected str or list[str]".into(),
-        ))
+    pub fn fetch_py(input: PyShaderInput) -> Result<Self, ShaderError> {
+        pollster::block_on(Shader::fetch(input))
     }
 
     #[staticmethod]
@@ -144,9 +128,29 @@ impl Shader {
     }
 }
 
+/// A `Shader(...)` or `Shader.fetch(...)` input from Python: one source, or a list of parts.
+/// Any other type raises `TypeError`.
+#[derive(FromPyObject)]
+pub enum PyShaderInput {
+    #[pyo3(annotation = "str")]
+    Source(String),
+    #[pyo3(annotation = "list[str]")]
+    Parts(Vec<String>),
+}
+
+impl From<PyShaderInput> for crate::shader::ShaderInput {
+    fn from(input: PyShaderInput) -> Self {
+        match input {
+            PyShaderInput::Source(source) => source.into(),
+            PyShaderInput::Parts(parts) => parts.into(),
+        }
+    }
+}
+
 /// A `Shader.set` value from Python, tried in this order.
 /// The key's declared WGSL type does the rest. Vec extraction follows
-/// the sequence protocol, so a NumPy array counts as a sequence of numbers.
+/// the sequence protocol, so a NumPy array counts as a sequence of numbers,
+/// and a nested list or a 2-D array as a matrix, one column per inner list.
 #[derive(FromPyObject)]
 pub enum PyUniformValue<'py> {
     #[pyo3(annotation = "Texture")]
