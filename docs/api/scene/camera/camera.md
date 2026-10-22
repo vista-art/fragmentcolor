@@ -57,7 +57,7 @@ let pass = Pass::new("scene");
 pass.add(&model)?;
 pass.add(&camera);
 
-// Move later — every shader on the pass picks up the new view at the next render.
+// Move it later. Every shader on the pass picks up the new view at the next render.
 camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 # Ok(())
 # }

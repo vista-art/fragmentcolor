@@ -8,5 +8,5 @@ independently (URL, slug, path, or raw source) and returns a new compiled
 ## Example
 
 ```rust
-// hidden file; no public example — see docs/api/core/shader/fetch.md
+// hidden file with no public example; see docs/api/core/shader/fetch.md
 ```

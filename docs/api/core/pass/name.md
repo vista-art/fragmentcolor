@@ -1,6 +1,6 @@
 # Pass::name
 
-Read the pass's name — the string passed to
+Read the pass's name, the string passed to
 [`Pass::new`](https://fragmentcolor.org/api/core/pass#passnewname-str---self) (or the label a
 loader gave it). Names are how you address a pass by something other than its
 index: pair this with

@@ -25,7 +25,7 @@ let bytes = vec![0; 64 * 32 * 4];
 // Simple sub-rectangle update.
 texture.write_region(&bytes, [0, 0, 64, 32])?;
 
-// Explicit data layout (advanced — when source rows are padded).
+// Explicit data layout, for when the source rows are padded.
 let region = TextureRegion::from([0, 0, 64, 32])
     .with_stride(256)
     .with_rows(32);
