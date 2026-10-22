@@ -4,8 +4,8 @@ use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
-use crate::platforms::web::read_unsigned;
-use crate::scene::{Camera, Light, LightKind, Model, Scene};
+use crate::platforms::web::{read_bytes, read_unsigned};
+use crate::scene::{Camera, Light, LightKind, Model, Scene, SceneSource};
 use crate::{Material, Mesh, Pass};
 
 #[wasm_bindgen]
@@ -299,21 +299,28 @@ impl Scene {
         Scene::new()
     }
 
-    /// Load a scene from the bytes of a `.glb` file, as a `Uint8Array`.
-    /// The web build can't read a path, so fetch the file first.
+    /// Load a scene from the bytes of a `.glb` file, as an `ArrayBuffer`, a
+    /// `Uint8Array` or any other view. The web build can't read a path, so
+    /// fetch the file first. `options` can skip the file's cameras and lights.
     #[wasm_bindgen(js_name = "load")]
     #[lsp_doc("docs/api/scene/scene/load.md")]
-    pub fn load_js(source: &JsValue) -> Result<Scene, JsError> {
-        let scene_source = if let Some(s) = source.as_string() {
-            crate::scene::SceneSource::gltf(s)
-        } else if let Ok(arr) = source.dyn_ref::<js_sys::Uint8Array>().ok_or(()) {
-            crate::scene::SceneSource::gltf(arr.to_vec())
+    pub fn load_js(
+        #[wasm_bindgen(unchecked_param_type = "ArrayBuffer | ArrayBufferView")] source: &JsValue,
+        #[wasm_bindgen(unchecked_optional_param_type = "{ cameras?: boolean; lights?: boolean }")]
+        options: Option<JsValue>,
+    ) -> Result<Scene, JsError> {
+        let source = if let Some(bytes) = read_bytes(source) {
+            SceneSource::gltf(bytes)
+        } else if let Some(path) = source.as_string() {
+            SceneSource::gltf(path)
         } else {
             return Err(JsError::new(
-                "Scene.load: expected a path string or a Uint8Array",
+                "Scene.load: expected the bytes of a .glb file, as an ArrayBuffer or a typed array",
             ));
         };
-        Scene::load(scene_source).map_err(|e| JsError::new(&e.to_string()))
+        let cameras = read_flag(options.as_ref(), "cameras")?;
+        let lights = read_flag(options.as_ref(), "lights")?;
+        Ok(Scene::load(source.cameras(cameras).lights(lights))?)
     }
 
     /// Unified `Scene.add`, which branches on the runtime JS type. Adding a new
@@ -472,6 +479,24 @@ impl Scene {
 crate::impl_js_bridge!(Scene, crate::PassError);
 crate::impl_js_bridge!(Model, crate::PassError);
 crate::impl_js_bridge!(Camera, crate::PassError);
+
+/// Reads one boolean flag of the `Scene.load` options. A missing flag is `true`.
+fn read_flag(options: Option<&JsValue>, name: &str) -> Result<bool, JsError> {
+    let Some(options) = options.filter(|options| !options.is_undefined() && !options.is_null())
+    else {
+        return Ok(true);
+    };
+    if !options.is_object() {
+        return Err(JsError::new("Scene.load: options must be an object"));
+    }
+    match js_sys::Reflect::get(options, &name.into()) {
+        Ok(value) if value.is_undefined() => Ok(true),
+        Ok(value) => value
+            .as_bool()
+            .ok_or_else(|| JsError::new(&format!("Scene.load: options.{name} must be a boolean"))),
+        Err(_) => Ok(true),
+    }
+}
 
 /// Reads an array of passes. Each item is cloned through its handle,
 /// so the caller's `Pass` objects stay usable afterwards.

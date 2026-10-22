@@ -75,3 +75,21 @@ pub(crate) fn read_numbers(value: &wasm_bindgen::JsValue) -> Option<Vec<f64>> {
         .map(|item| item.as_f64())
         .collect()
 }
+
+/// Reads the bytes of an `ArrayBuffer`, or the bytes a view such as a `DataView` or
+/// a typed array covers. Returns `None` for any other value.
+pub(crate) fn read_bytes(value: &wasm_bindgen::JsValue) -> Option<Vec<u8>> {
+    use js_sys::{ArrayBuffer, Reflect, Uint8Array};
+    use wasm_bindgen::JsCast;
+    if let Some(buffer) = value.dyn_ref::<ArrayBuffer>() {
+        return Some(Uint8Array::new(buffer).to_vec());
+    }
+    if !ArrayBuffer::is_view(value) {
+        return None;
+    }
+    let field = |name: &str| Reflect::get(value, &name.into()).ok();
+    let buffer = field("buffer")?;
+    let offset = field("byteOffset")?.as_f64()? as u32;
+    let length = field("byteLength")?.as_f64()? as u32;
+    Some(Uint8Array::new_with_byte_offset_and_length(&buffer, offset, length).to_vec())
+}
