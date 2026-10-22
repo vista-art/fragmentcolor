@@ -4563,13 +4563,14 @@ class Texture:
         texture.write_region(bytes_data, {"x": 0, "y": 0, "width": 64, "height": 32, "bytes_per_row": 256, "rows_per_image": 32})
         ```
         """
-    def get_image(self) -> bytes:
+    def get_image(self) -> npt.NDArray[numpy.uint8]:
         """
         Read back the mip-0 contents of this texture as tightly-packed bytes in the texture's native format.
 
         - Works on native and on the web; the call awaits the GPU readback mapping.
         - For multi-layer textures, layers come first in the byte layout (layer-major).
         - The texture must have `COPY_SRC` usage. Creation helpers like `create_storage_texture` enable it by default.
+        - Python returns the same bytes as a uint8 NumPy array shaped `(height, width, bytes per pixel)`, with a leading layer axis for array textures. A float format reads as floats through `image.view(numpy.float32)`.
 
         Example:
 
