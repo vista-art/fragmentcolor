@@ -17,21 +17,17 @@ pub use renderable::*;
 pub(crate) mod handle;
 pub(crate) use handle::*;
 
-fn get_render_canvas_target(
-    py: Python<'_>,
-    canvas: &Py<PyAny>,
-) -> Result<Py<RenderCanvasTarget>, PyErr> {
-    let bound = canvas.bind(py);
-    if let Ok(existing) = bound.getattr("_fragmentcolor_target")
-        && let Ok(target) = existing.cast::<RenderCanvasTarget>()
-    {
-        return Ok(target.clone().unbind());
-    }
-
-    let none = py.None();
-    let target = Py::new(py, RenderCanvasTarget::new(canvas.clone_ref(py), none))?;
-    bound.setattr("_fragmentcolor_target", &target)?;
-    Ok(target)
+/// The target cached on the canvas, if `renderer` made it.
+/// A target made by another renderer holds a surface for another device.
+fn cached_target(canvas: &Bound<'_, PyAny>, renderer: &Renderer) -> Option<Py<RenderCanvasTarget>> {
+    let existing = canvas.getattr("_fragmentcolor_target").ok()?;
+    let target = existing.cast::<RenderCanvasTarget>().ok()?;
+    let context = renderer.context.read().clone()?;
+    let same = target
+        .borrow()
+        .context()
+        .is_some_and(|own| std::sync::Arc::ptr_eq(own, &context));
+    same.then(|| target.clone().unbind())
 }
 
 fn get_screen_info<'py>(
@@ -99,13 +95,17 @@ impl Renderer {
         rendercanvas: Py<PyAny>,
     ) -> Result<Py<RenderCanvasTarget>, PyErr> {
         Python::attach(|py| -> Result<Py<RenderCanvasTarget>, PyErr> {
-            let target = get_render_canvas_target(py, &rendercanvas)?;
-            if target.bind(py).borrow().is_ready() {
+            let canvas = rendercanvas.bind(py);
+            if let Some(target) = cached_target(canvas, self) {
                 return Ok(target);
             }
+            let none = py.None();
+            let target = Py::new(
+                py,
+                RenderCanvasTarget::new(rendercanvas.clone_ref(py), none),
+            )?;
             {
                 let mut target_ref = target.bind(py).borrow_mut();
-                let canvas = rendercanvas.bind(py);
                 let screen_info = get_screen_info(canvas)?;
                 let window = get_required_u64(&screen_info, "window")?;
                 let platform = get_optional_string(&screen_info, "platform")?;
@@ -122,7 +122,7 @@ impl Renderer {
                     pollster::block_on(self.create_surface(handles, size))?;
                 target_ref.init(context, surface, config);
             }
-
+            canvas.setattr("_fragmentcolor_target", &target)?;
             Ok(target)
         })
     }
@@ -190,7 +190,7 @@ impl Renderer {
                 Ok(())
             } else {
                 Err(PyErr::new::<PyTypeError, _>(
-                    "Unsupported target type. Expected RenderCanvasTarget or TextureTarget",
+                    "Unsupported target type. Expected WindowTarget or TextureTarget",
                 ))
             }
         })?;

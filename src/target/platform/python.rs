@@ -19,7 +19,10 @@ pub fn rendercanvas_context_hook(
     RenderCanvasTarget::new(canvas, present_methods)
 }
 
-#[pyclass(dict)]
+/// The window target Python gets from `Renderer.create_target`.
+/// Python names it `WindowTarget`, as every other binding does, and
+/// `fragmentcolor.RenderCanvasTarget` stays as an alias.
+#[pyclass(dict, name = "WindowTarget")]
 #[lsp_doc("docs/api/hidden/platforms/python/render_canvas_target/render_canvas_target.md")]
 pub struct RenderCanvasTarget {
     canvas: Py<PyAny>,
@@ -35,6 +38,11 @@ impl RenderCanvasTarget {
         config: wgpu::SurfaceConfiguration,
     ) {
         self.target = Some(WindowTarget::new(context, surface, config))
+    }
+
+    /// The render context of the surface, once the target has one.
+    pub(crate) fn context(&self) -> Option<&Arc<RenderContext>> {
+        self.target.as_ref().map(|target| &target.context)
     }
 }
 
