@@ -2,8 +2,8 @@
 
 Uniffi-friendly constructor exposed to Swift (iOS) and Kotlin (Android).
 Returns `Arc<Renderer>` because every uniffi object is reference-counted
-across the FFI boundary. Swift/Kotlin extension files re-expose this as
-the natural `Renderer()` default initializer.
+across the FFI boundary. uniffi makes a constructor named `new` the primary
+constructor, so Swift and Kotlin both call `Renderer()`.
 
 Hidden from public website; Rust users continue to call `Renderer::new()`.
 

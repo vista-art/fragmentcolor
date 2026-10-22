@@ -78,10 +78,8 @@ impl From<crate::scene::SceneLoadError> for FragmentColorError {
 
 #[uniffi::export]
 impl Renderer {
-    /// Foreign bindings see this as `Renderer.new()`. On Swift, uniffi
-    /// generates a `convenience init` when the name is `new`, so callers
-    /// write `let r = Renderer()`. Kotlin gets a companion `Renderer.new()`
-    /// factory that the extension in `RendererExtensions.kt` wraps.
+    /// uniffi makes a constructor named `new` the primary constructor,
+    /// so Swift and Kotlin both call `Renderer()`.
     #[uniffi::constructor(name = "new")]
     #[lsp_doc("docs/api/core/renderer/hidden/new_mobile.md")]
     pub fn new_mobile() -> Arc<Self> {
@@ -249,10 +247,8 @@ impl Renderer {
     }
 
     /// Remove a texture from the renderer's registry by its raw numeric ID.
-    ///
-    /// TextureId wraps a `u64`; passing the raw value here avoids the need for
-    /// a separate uniffi::Object binding for TextureId while the texture agent
-    /// lands that binding on a parallel branch.
+    /// The Swift and Kotlin extensions take the `TextureId` record and pass
+    /// its `id` here.
     #[uniffi::method(name = "unregisterTexture")]
     #[lsp_doc("docs/api/core/renderer/hidden/unregister_texture_mobile.md")]
     pub fn unregister_texture_mobile(
@@ -267,9 +263,9 @@ impl Renderer {
     /// The Web binding accepts an `HTMLVideoElement`; the mobile bindings
     /// take a raw pointer (`u64`) to a `CVPixelBuffer` (iOS) or
     /// `SurfaceTexture` (Android) because uniffi cannot marshal those
-    /// types directly. Currently returns `FragmentColorError::Render`
-    /// — the per-platform plumbing to convert the native source into a
-    /// `wgpu::ExternalTexture` is a follow-up.
+    /// types directly. Returns `FragmentColorError::Render` until the
+    /// per-platform plumbing converts the native source into a
+    /// `wgpu::ExternalTexture`.
     #[uniffi::method(name = "createExternalTexture")]
     #[lsp_doc("docs/api/core/renderer/hidden/create_external_texture_mobile.md")]
     pub fn create_external_texture_mobile(

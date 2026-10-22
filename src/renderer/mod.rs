@@ -176,9 +176,9 @@ impl Renderer {
         Ok(crate::texture::Texture::new(context, object, id))
     }
 
-    /// Create a storage-class texture from a [`crate::TextureInput`]. Same
-    /// transport as `create_texture` — one vocabulary across the API. The
-    /// `From<T>` impls cover the common shapes:
+    /// Create a storage-class texture from a [`crate::TextureInput`], the
+    /// same input type `create_texture` takes. The `From<T>` impls cover
+    /// the common shapes:
     ///
     /// - `(size, format)` → empty storage texture, no initial data.
     /// - `(size, format, bytes)` → storage texture pre-seeded with `bytes`.
@@ -186,8 +186,8 @@ impl Renderer {
     /// `options.usage` overrides the default storage usage mask
     /// (`STORAGE | TEXTURE | COPY_SRC | COPY_DST`); use
     /// `TextureOptions::with_usage(...)` for the typed builder. `options.size`
-    /// is **required** for this entry — there's no source to infer dimensions
-    /// from. Returns [`crate::texture::TextureError::InvalidInput`] when
+    /// is **required** for this entry, since there's no source to infer
+    /// dimensions from. Returns [`RendererError::CreateTextureError`] when
     /// missing.
     #[lsp_doc("docs/api/core/renderer/create_storage_texture.md")]
     pub async fn create_storage_texture(

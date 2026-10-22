@@ -9,11 +9,12 @@ This is the only way to observe what a compute pass *wrote* into a storage
 binding. [`Shader::get`](https://fragmentcolor.org/api/core/shader) returns
 what was last set on the CPU side, so GPU writes don't show up through it.
 
-`read_storage` is `async` on every platform because the underlying
-`map_async` requires an awaited callback. On native the implementation
-drives the device forward (`device.poll(Wait)`) before awaiting, so callers
-don't have to spin their own poll loop. On Web the browser schedules the
-callback; the helper just awaits.
+`read_storage` is `async` because the underlying `map_async` requires an
+awaited callback. It returns a Promise in JS, is `async` in Swift and
+`suspend` in Kotlin, and blocks until the bytes arrive in Python. On native
+the implementation drives the device forward (`device.poll(Wait)`) before
+awaiting, so callers don't have to spin their own poll loop. On Web the
+browser schedules the callback; the helper just awaits.
 
 Returns `RendererError::StorageBindingNotFound` when the shader does not
 declare a storage binding called `binding`, or when no render pass has yet

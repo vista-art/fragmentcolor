@@ -11,7 +11,7 @@ Explicitly remove a texture from the renderer’s registry.
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([16, 16], TextureFormat::Rgba)).await?;
-let id = *texture.id();
+let id = texture.id();
 
 renderer.unregister_texture(id)?;
 # Ok(())

@@ -8,10 +8,10 @@ Decode and mipmap generation run on a background worker on native platforms. On 
 
 ## Per-language shapes
 
-- **Rust:** `create_texture(input)`. `input` accepts bare bytes, `(bytes, [w, h])`, `(bytes, format)`, `(bytes, options)`, a path, a URL, a `Mipmap`, or a KTX2 input.
-- **JS:** `await renderer.createTexture(input, options?)`. `input` is `Uint8Array` / `ArrayBuffer` / URL string / CSS selector / `HTMLImageElement` / `HTMLCanvasElement` / `OffscreenCanvas` / `ImageData` / a `Mipmap` handle. `options` is `{ size?, format?, mipmaps? }`; when `size` is set, `input` is read as raw pixel bytes.
-- **Python:** `renderer.create_texture(input, size=None, format=None, mipmaps=None)`. `input` is `bytes` / `list[int]` / `str` (path) / numpy `ndarray[H, W, C]` / `Mipmap`. Numpy arrays fill in `size` for you.
-- **Swift / Kotlin:** `try await renderer.createTexture(bytes)` or `renderer.createTexture(chain)`. Overloads in the binding wrap the underlying enum, so you write the natural call.
+- **Rust:** `create_texture(input)`. `input` accepts bare bytes, `(bytes, [w, h])`, `(bytes, format)`, `(bytes, options)`, a path, a URL string, a `Texture`, a `Mipmap`, or a KTX2 input. A string that starts with `http://` or `https://` is a URL; any other string is a path.
+- **JS:** `await renderer.createTexture(input, options?)`. `input` is `Uint8Array` / `ArrayBuffer` / URL string / CSS selector / `HTMLImageElement` / `HTMLCanvasElement` / `OffscreenCanvas` / `ImageData` / a `Texture` / a `Mipmap`. `options` is `{ size?, format?, mipmaps?, sampler?, usage? }`; when `size` is set, `input` is read as raw pixel bytes. `ImageData` and canvases bring their own size.
+- **Python:** `renderer.create_texture(input, size=None, format=None, mipmaps=None, sampler=None, usage=None)`. `input` is `bytes` / `bytearray` / `memoryview` / a list or tuple of ints / a path or URL `str` / `os.PathLike` / uint8 numpy `ndarray[H, W, C]` / `Texture` / `Mipmap`. Numpy arrays fill in `size` for you.
+- **Swift / Kotlin:** `try await renderer.createTexture(bytes)`, `createTexture(bytes, format)`, `createTexture(bytes, [w, h])`, `createTexture(bytes, options)`, `createTexture(path)` or `createTexture(chain)`. Bytes are `Data` or `[UInt8]` in Swift and `ByteArray` in Kotlin. Every bytes form also takes an optional `usage`.
 
 ## How the discriminator works
 
@@ -31,15 +31,22 @@ A full mipmap chain is generated for source images by default (`options.mipmaps 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 # let image = std::fs::read("examples/assets/logo.png")?;
+# /*[js]
+# const image = new Uint8Array(await (await fetch("/healthcheck/public/favicon.png")).arrayBuffer());
+# */
+# /*[python]
+# image = open("examples/assets/logo.png", "rb").read()
+# */
 # /*[swift]
-# let image = "examples/assets/logo.png"
+# import Foundation
+# let image = try Data(contentsOf: URL(fileURLWithPath: "examples/assets/logo.png"))
 # */
 # /*[kotlin]
-# val image = "examples/assets/logo.png"
+# val image = java.io.File("examples/assets/logo.png").readBytes()
 # */
 use fragmentcolor::Renderer;
 let renderer = Renderer::new();
-let tex = renderer.create_texture(&image[..]).await?;
+let tex = renderer.create_texture(&image).await?;
 # _ = tex.size();
 # Ok(())
 # }

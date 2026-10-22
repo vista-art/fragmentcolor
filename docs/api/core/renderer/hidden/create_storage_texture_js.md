@@ -1,6 +1,6 @@
-# Renderer.create_depth_texture_js
+# Renderer.create_storage_texture_js
 
-JavaScript wrapper for Renderer::create_depth_texture.
+JavaScript wrapper for Renderer::create_storage_texture.
 Hidden from public website; used for IDE hover with lsp_doc.
 
 ## Example

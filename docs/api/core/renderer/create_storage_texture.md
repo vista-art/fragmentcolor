@@ -1,6 +1,6 @@
 # Renderer::create_storage_texture
 
-Create a storage-class texture for compute shaders, image store/load, or as a render target. The input shapes mirror `Renderer::create_texture` and `Mipmap::build`.
+Create a storage-class texture for compute shaders, image store/load, or as a render target.
 
 Common forms:
 
@@ -8,9 +8,9 @@ Common forms:
 - `(size, format, bytes)`: storage texture pre-seeded with `bytes`.
 - A full `TextureInput { data, options }` literal: pass `options.usage` (via `TextureOptions::with_usage(...)`) for non-default usage flags.
 
-`size` is required; storage textures have no source to infer dimensions from. Missing it returns `TextureError::InvalidInput`.
+`size` is required; storage textures have no source to infer dimensions from. Missing it returns `RendererError::CreateTextureError`.
 
-`options.usage` overrides the default mask of `STORAGE | TEXTURE | COPY_SRC | COPY_DST`. The bindings expose it as a `u32` bitmask, so the same flag values work in every language.
+`options.usage` overrides the default mask of `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`. Every binding has the same named `TextureUsage` flags, combined with `|` (`or` in Kotlin). The other bindings take the size, format, optional bytes and optional usage as separate arguments.
 
 ## Example
 
