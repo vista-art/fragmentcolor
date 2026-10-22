@@ -105,6 +105,8 @@ A mesh whose instance list shrinks draws only the instances it holds. The render
 
 `Scene.load` reads glTF files whose meshes carry application attributes such as `_ID`. glTF lets an application name its own vertex attributes with a leading underscore, but the parser rejected them unless the `gltf` crate's `extras` feature was on, so these valid files failed to load. The feature is on now and adds no dependency. The loader still skips application attributes and `extras` objects.
 
+`Shader::default` shows its documentation in Rust editors, as `Shader.default` already did in the other bindings. The build only checked the methods marked `pub`, which leaves out trait methods, so the page never reached the Rust method. The build now checks `Default::default` and the `Target` methods too. The `TextureTarget` and `WindowTarget` pages list `size`, `resize`, and `get_image` in the order the `Target` trait declares them.
+
 ## 0.12.5: WebGL2 fixes
 
 A patch release that makes the WebGL2 fallback work. There are no API changes.
