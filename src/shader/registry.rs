@@ -32,6 +32,11 @@ pub(crate) fn registry_base() -> String {
         .unwrap_or_else(|| REGISTRY.read().clone())
 }
 
+/// True when the active registry is not the default one, set by `Shader::set_registry` or a test override.
+pub(crate) fn has_override() -> bool {
+    registry_base().trim_end_matches('/') != DEFAULT_REGISTRY.trim_end_matches('/')
+}
+
 /// Convert a slug like `sdf2d/circle` into a URL `<base>/sdf2d/circle.wgsl`.
 pub(crate) fn slug_to_url(slug: &str) -> String {
     let base = registry_base();
@@ -133,6 +138,12 @@ mod tests {
                 "https://example.com/shaders/sdf2d/circle.wgsl"
             );
         });
+    }
+
+    #[test]
+    fn has_override_ignores_a_trailing_slash() {
+        with_registry("https://fragmentcolor.org/shaders", || assert!(!has_override()));
+        with_registry("https://cdn.example.com/shaders/", || assert!(has_override()));
     }
 
     #[test]

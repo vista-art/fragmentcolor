@@ -42,32 +42,42 @@ async fn resolve_part(part: &ShaderPart) -> Result<Resolved, ShaderError> {
         ShaderPart::Path(p) => fetch_url(&p.to_string_lossy()).await,
         #[cfg(not(wasm))]
         ShaderPart::Path(p) => read_path(p),
-        ShaderPart::Url(u) => {
-            // Registry-URL short-circuit: if the URL is `<base>/<category>/<name>.wgsl`
-            // for the active registry base AND that slug is in the embedded
-            // library, resolve from the binary instead of hitting the network.
-            // Lets doc snippets that write the full URL work offline on
-            // native (no `network` feature needed) when the matching
-            // `shaders-<category>` feature is on.
-            if let Some(slug) = crate::shader::registry::url_to_slug(u)
-                && let Some(body) = crate::shader::embedded::lookup(&slug)
-            {
-                return Ok(Resolved {
-                    body: body.to_string(),
-                    glsl: None,
-                });
-            }
-            fetch_url(u).await
-        }
-        ShaderPart::Slug(slug) => {
-            if let Some(body) = crate::shader::embedded::lookup(slug) {
-                return Ok(Resolved {
-                    body: body.to_string(),
-                    glsl: None,
-                });
-            }
-            let url = crate::shader::registry::slug_to_url(slug);
-            fetch_url(&url).await
+        ShaderPart::Url(_) | ShaderPart::Slug(_) => match RegistrySource::locate(part) {
+            RegistrySource::Embedded(body) => Ok(Resolved::embedded(body)),
+            RegistrySource::Fetch { url, fallback } => match fetch_url(&url).await {
+                Ok(resolved) => Ok(resolved),
+                Err(error) => fallback.map(Resolved::embedded).ok_or(error),
+            },
+        },
+    }
+}
+
+/// Where a slug or a URL that may name a registry shader comes from.
+enum RegistrySource {
+    /// The shader compiled into the binary.
+    Embedded(&'static str),
+    /// A fetch, with the embedded copy to fall back on when the fetch fails.
+    Fetch {
+        url: String,
+        fallback: Option<&'static str>,
+    },
+}
+
+impl RegistrySource {
+    /// The embedded library serves the default registry, offline and without the `network` feature.
+    /// A registry set with `Shader::set_registry` is fetched first,
+    /// and the embedded copy stands in when it can't be reached.
+    fn locate(part: &ShaderPart) -> RegistrySource {
+        use crate::shader::registry;
+        let (url, slug) = match part {
+            ShaderPart::Slug(slug) => (registry::slug_to_url(slug), Some(slug.clone())),
+            ShaderPart::Url(url) => (url.clone(), registry::url_to_slug(url)),
+            ShaderPart::Source(_) | ShaderPart::Path(_) => (String::new(), None),
+        };
+        let embedded = slug.as_deref().and_then(crate::shader::embedded::lookup);
+        match embedded {
+            Some(body) if !registry::has_override() => RegistrySource::Embedded(body),
+            fallback => RegistrySource::Fetch { url, fallback },
         }
     }
 }
@@ -134,29 +144,11 @@ pub(crate) mod blocking {
             )),
             #[cfg(not(wasm))]
             ShaderPart::Path(p) => read_path(p),
-            ShaderPart::Url(u) => {
-                // Registry-URL short-circuit (sync variant). See the async
-                // `resolve_part` for the rationale.
-                if let Some(slug) = crate::shader::registry::url_to_slug(u)
-                    && let Some(body) = crate::shader::embedded::lookup(&slug)
-                {
-                    return Ok(Resolved {
-                        body: body.to_string(),
-                        glsl: None,
-                    });
-                }
-                fetch_url(u)
-            }
-            ShaderPart::Slug(slug) => {
-                if let Some(body) = crate::shader::embedded::lookup(slug) {
-                    return Ok(Resolved {
-                        body: body.to_string(),
-                        glsl: None,
-                    });
-                }
-                let url = crate::shader::registry::slug_to_url(slug);
-                fetch_url(&url)
-            }
+            ShaderPart::Url(_) | ShaderPart::Slug(_) => match RegistrySource::locate(part) {
+                RegistrySource::Embedded(body) => Ok(Resolved::embedded(body)),
+                RegistrySource::Fetch { url, fallback } => fetch_url(&url)
+                    .or_else(|error| fallback.map(Resolved::embedded).ok_or(error)),
+            },
         }
     }
 
@@ -258,6 +250,15 @@ enum GlslKind {
 struct Resolved {
     body: String,
     glsl: Option<GlslKind>,
+}
+
+impl Resolved {
+    fn embedded(body: &'static str) -> Self {
+        Resolved {
+            body: body.to_string(),
+            glsl: None,
+        }
+    }
 }
 
 #[cfg(not(wasm))]
@@ -490,6 +491,27 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
             let input = ShaderInput::from(["postfx/vignette", main].as_slice());
             let res = blocking::resolve(input);
             assert!(res.is_ok(), "expected embedded short-circuit, got {res:?}");
+        });
+    }
+
+    // Story: the default registry resolves an embedded slug from the binary, while a
+    // registry set by the caller is fetched first, with the embedded copy as the fallback.
+    #[cfg(feature = "shaders-postfx")]
+    #[test]
+    fn registry_override_fetches_before_the_embedded_copy() {
+        let part = ShaderPart::Slug("postfx/vignette".into());
+        with_registry("https://fragmentcolor.org/shaders/", || {
+            assert!(matches!(
+                RegistrySource::locate(&part),
+                RegistrySource::Embedded(_)
+            ));
+        });
+        with_registry("https://cdn.example.com/shaders/", || match RegistrySource::locate(&part) {
+            RegistrySource::Fetch { url, fallback } => {
+                assert_eq!(url, "https://cdn.example.com/shaders/postfx/vignette.wgsl");
+                assert!(fallback.is_some());
+            }
+            RegistrySource::Embedded(_) => panic!("an override must be fetched first"),
         });
     }
 
