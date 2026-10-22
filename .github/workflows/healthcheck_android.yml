@@ -138,10 +138,35 @@ jobs:
           path: platforms/kotlin/fragmentcolor/src/main/java/org/fragmentcolor/generated/
           if-no-files-found: warn
 
-      - name: Upload test reports (on failure)
-        if: failure()
+      # One line per test that did not pass, with its reason, so the log
+      # shows skips and failures without downloading the reports.
+      - name: Summarize Android test results
+        if: ${{ !cancelled() }}
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          counts = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
+          for path in glob.glob("platforms/kotlin/fragmentcolor/build/outputs/androidTest-results/connected/**/*.xml", recursive=True):
+              suite = ET.parse(path).getroot()
+              for key in counts:
+                  counts[key] += int(suite.get(key, 0))
+              for case in suite.iter("testcase"):
+                  for kind in ("failure", "error", "skipped"):
+                      node = case.find(kind)
+                      if node is not None:
+                          reason = (node.get("message") or node.text or "").strip().splitlines()
+                          print(f"{kind}: {case.get('classname')}.{case.get('name')}: {reason[0] if reason else ''}")
+          print(", ".join(f"{value} {key}" for key, value in counts.items()))
+          PY
+
+      - name: Upload test reports
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: android-test-reports
-          path: platforms/kotlin/fragmentcolor/build/reports/
+          path: |
+            platforms/kotlin/fragmentcolor/build/reports/
+            platforms/kotlin/fragmentcolor/build/outputs/androidTest-results/
           if-no-files-found: ignore
