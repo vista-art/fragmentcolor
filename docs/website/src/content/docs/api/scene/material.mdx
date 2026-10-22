@@ -68,9 +68,10 @@ the explicit-fresh-Material path is the escape hatch.
   shader. Unset slots resolve to the renderer's 1×1 defaults so the shader's
   bind group is always complete.
 - **Per-Model transform** rides the **per-instance vertex attribute** stream
-  at locations 3..6 (four `vec4<f32>` columns of `mat4x4<f32>`), populated by
-  `Model::sync_transform`. It's *not* a Material uniform, so Models
-  sharing one Material don't collide on a `mesh.model` slot.
+  as `model_0` to `model_3` (four `vec4<f32>` columns of a `mat4x4<f32>`, at
+  locations 3 to 6 in the PBR shader). The renderer fills it from each
+  Model's transform at draw time. It's *not* a Material uniform, so Models
+  that share one Material each draw with their own transform.
 
 ## Pipeline state
 
@@ -510,7 +511,7 @@ Bind a texture to the `base_color_map` slot. The default PBR shader samples it i
 Accepts any `Into<TextureInput>`:
 
 - A pre-built [`&Texture`](/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations.
-- Bytes / path / URL / `DynamicImage`. The setter queues the input on the Material's Shader, and the renderer drains queued uploads on the first [`Renderer::render`](/api/core/renderer/render) (or earlier via the explicit [`Renderer::load`](/api/core/renderer/load)).
+- Bytes / path / URL / `DynamicImage`. The setter queues the input on the Material's Shader. [`Renderer::load`](/api/core/renderer) uploads it, and on native targets the first [`Renderer::render`](/api/core/renderer) runs `load` for you.
 
 Unset, this slot resolves to a 1×1 white default the renderer hands out
 lazily, so calling `Material::pbr()` without binding a
@@ -521,8 +522,9 @@ texture renders correctly under the factor alone.
 The setter itself is infallible: it queues the upload (lazy path) or
 takes an Arc-clone (eager path) and returns. Failures from the lazy
 path (file not found, decode error, unsupported format) surface when
-the renderer actually drains the queue: either at first render or when
-you call [`Renderer::load(&material).await`](/api/core/renderer/load).
+the queue drains: when you call
+[`Renderer::load(&material).await`](/api/core/renderer),
+or at the first render on native targets.
 Until then the Material renders against its 1×1 default and a
 `log::warn!` line names the slot.
 
@@ -675,12 +677,14 @@ Optional but recommended:
 
 - `struct PbrMaterial { base_color: vec4<f32>, … }` at `@group(1) @binding(1)`
   bound as `material`. This lets the PBR factor setters work as-is.
-- `struct MeshTransform { model: mat4x4<f32>, … }` at `@group(1) @binding(0)`
-  bound as `mesh`. This lets `Model::transform` / `translate` / `rotate` /
-  `scale` work as-is.
+- Four `vec4<f32>` vertex inputs named `model_0` to `model_3`, the columns of
+  the Model's transform. The renderer fills them at draw time from each
+  Model's `set_transform`, `translate`, `rotate` and `scale`. The PBR shader
+  reads them at locations 3 to 6. Any free locations work, since the renderer
+  matches these inputs by name.
 
-Without these the Material is still functional; only the high-level setters
-become no-ops.
+Without these the Material still draws. The factor setters do nothing, and
+every Model draws at its Mesh's own coordinates, whatever its transform.
 
 #### Example
 
@@ -693,14 +697,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Shader};
 
 let wireframe = Shader::new(r#"
-    struct MeshTransform { model: mat4x4<f32> }
     struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
     @group(0) @binding(0) var<uniform> camera: Camera;
-    @group(1) @binding(0) var<uniform> mesh: MeshTransform;
 
     @vertex
-    fn vs_main(@location(0) p: vec3<f32>) -> @builtin(position) vec4<f32> {
-        return camera.view_proj * mesh.model * vec4<f32>(p, 1.0);
+    fn vs_main(
+        @location(0) p: vec3<f32>,
+        @location(3) model_0: vec4<f32>,
+        @location(4) model_1: vec4<f32>,
+        @location(5) model_2: vec4<f32>,
+        @location(6) model_3: vec4<f32>,
+    ) -> @builtin(position) vec4<f32> {
+        let model = mat4x4<f32>(model_0, model_1, model_2, model_3);
+        return camera.view_proj * model * vec4<f32>(p, 1.0);
     }
     @fragment fn fs_main() -> @location(0) vec4<f32> {
         return vec4<f32>(0.0, 1.0, 0.4, 1.0);
@@ -712,7 +721,7 @@ let _ = wire_mat;
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 20-22}"
+lang="rust" meta="collapse={1-1, 25-27}"
 />
 
 </TabItem>
@@ -724,14 +733,19 @@ import { Material, Shader } from "fragmentcolor";
 
 const wireframe = new Shader(\`
 
-    struct MeshTransform { model: mat4x4<f32> }
     struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
     @group(0) @binding(0) var<uniform> camera: Camera;
-    @group(1) @binding(0) var<uniform> mesh: MeshTransform;
 
     @vertex
-    fn vs_main(@location(0) p: vec3<f32>) -> @builtin(position) vec4<f32> {
-        return camera.view_proj * mesh.model * vec4<f32>(p, 1.0);
+    fn vs_main(
+        @location(0) p: vec3<f32>,
+        @location(3) model_0: vec4<f32>,
+        @location(4) model_1: vec4<f32>,
+        @location(5) model_2: vec4<f32>,
+        @location(6) model_3: vec4<f32>,
+    ) -> @builtin(position) vec4<f32> {
+        let model = mat4x4<f32>(model_0, model_1, model_2, model_3);
+        return camera.view_proj * model * vec4<f32>(p, 1.0);
     }
     @fragment fn fs_main() -> @location(0) vec4<f32> {
         return vec4<f32>(0.0, 1.0, 0.4, 1.0);
@@ -752,14 +766,19 @@ code={`
 from fragmentcolor import Material, Shader
 
 wireframe = Shader("""
-    struct MeshTransform { model: mat4x4<f32> }
     struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
     @group(0) @binding(0) var<uniform> camera: Camera;
-    @group(1) @binding(0) var<uniform> mesh: MeshTransform;
 
     @vertex
-    fn vs_main(@location(0) p: vec3<f32>) -> @builtin(position) vec4<f32> {
-        return camera.view_proj * mesh.model * vec4<f32>(p, 1.0);
+    fn vs_main(
+        @location(0) p: vec3<f32>,
+        @location(3) model_0: vec4<f32>,
+        @location(4) model_1: vec4<f32>,
+        @location(5) model_2: vec4<f32>,
+        @location(6) model_3: vec4<f32>,
+    ) -> @builtin(position) vec4<f32> {
+        let model = mat4x4<f32>(model_0, model_1, model_2, model_3);
+        return camera.view_proj * model * vec4<f32>(p, 1.0);
     }
     @fragment fn fs_main() -> @location(0) vec4<f32> {
         return vec4<f32>(0.0, 1.0, 0.4, 1.0);
@@ -780,14 +799,19 @@ code={`
 import FragmentColor
 
 let wireframe = try Shader("""
-    struct MeshTransform { model: mat4x4<f32> }
     struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
     @group(0) @binding(0) var<uniform> camera: Camera;
-    @group(1) @binding(0) var<uniform> mesh: MeshTransform;
 
     @vertex
-    fn vs_main(@location(0) p: vec3<f32>) -> @builtin(position) vec4<f32> {
-        return camera.view_proj * mesh.model * vec4<f32>(p, 1.0);
+    fn vs_main(
+        @location(0) p: vec3<f32>,
+        @location(3) model_0: vec4<f32>,
+        @location(4) model_1: vec4<f32>,
+        @location(5) model_2: vec4<f32>,
+        @location(6) model_3: vec4<f32>,
+    ) -> @builtin(position) vec4<f32> {
+        let model = mat4x4<f32>(model_0, model_1, model_2, model_3);
+        return camera.view_proj * model * vec4<f32>(p, 1.0);
     }
     @fragment fn fs_main() -> @location(0) vec4<f32> {
         return vec4<f32>(0.0, 1.0, 0.4, 1.0);
@@ -808,14 +832,19 @@ code={`
 import org.fragmentcolor.*
 
 val wireframe = Shader("""
-    struct MeshTransform { model: mat4x4<f32> }
     struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
     @group(0) @binding(0) var<uniform> camera: Camera;
-    @group(1) @binding(0) var<uniform> mesh: MeshTransform;
 
     @vertex
-    fn vs_main(@location(0) p: vec3<f32>) -> @builtin(position) vec4<f32> {
-        return camera.view_proj * mesh.model * vec4<f32>(p, 1.0);
+    fn vs_main(
+        @location(0) p: vec3<f32>,
+        @location(3) model_0: vec4<f32>,
+        @location(4) model_1: vec4<f32>,
+        @location(5) model_2: vec4<f32>,
+        @location(6) model_3: vec4<f32>,
+    ) -> @builtin(position) vec4<f32> {
+        let model = mat4x4<f32>(model_0, model_1, model_2, model_3);
+        return camera.view_proj * model * vec4<f32>(p, 1.0);
     }
     @fragment fn fs_main() -> @location(0) vec4<f32> {
         return vec4<f32>(0.0, 1.0, 0.4, 1.0);

@@ -193,12 +193,15 @@ class Renderer:
         [`Renderer::create_texture`](https://fragmentcolor.org/api/core/renderer/create_texture)
         for each, and writes the resulting `Texture` into the matching uniform.
 
-        [`Renderer::render`](https://fragmentcolor.org/api/core/renderer/render)
-        calls `load` automatically the first time it sees a renderable with
-        pending uploads, so explicit `load` is optional. Reach for it when you
-        want to amortize the decode + upload cost outside the render loop, for
-        example in a loading screen that prepares the scene before the first
-        frame goes out.
+        On native targets, [`Renderer::render`](https://fragmentcolor.org/api/core/renderer)
+        runs `load` first whenever the renderable has pending uploads, so an
+        explicit `load` is optional there. Reach for it when you want to pay the
+        decode and upload cost outside the render loop, for example in a loading
+        screen that prepares the scene before the first frame goes out.
+
+        On the web, `render` can't wait for an upload, so it leaves pending uploads
+        alone. Await `load` before the first `render`. Until then, a PBR Material
+        draws with its 1×1 default maps.
 
         Example:
 
@@ -234,17 +237,14 @@ class Renderer:
         """
     def read_storage(self, shader: Shader, binding: str) -> bytes:
         """
-        Round-trip the GPU-side bytes of a [`Shader`](https://fragmentcolor.org/api/shaders/shader)'s
+        Round-trip the GPU-side bytes of a [`Shader`](https://fragmentcolor.org/api/core/shader)'s
         storage binding back to the CPU. Submits any pending uploads, copies the
         storage buffer into a pooled readback staging buffer, maps it, and returns
         the bytes.
 
         This is the only way to observe what a compute pass *wrote* into a storage
-        binding. The cheap CPU-mirror accessors
-        ([`Shader::get`](https://fragmentcolor.org/api/shaders/shader/get) and
-        [`Shader::get_bytes`](https://fragmentcolor.org/api/shaders/shader/get_bytes))
-        reflect what was last set on the CPU side; GPU writes are not visible
-        through them.
+        binding. [`Shader::get`](https://fragmentcolor.org/api/core/shader) returns
+        what was last set on the CPU side, so GPU writes don't show up through it.
 
         `read_storage` is `async` on every platform because the underlying
         `map_async` requires an awaited callback. On native the implementation
@@ -252,11 +252,10 @@ class Renderer:
         don't have to spin their own poll loop. On Web the browser schedules the
         callback; the helper just awaits.
 
-        Returns
-        [`RendererError::StorageBindingNotFound`](https://fragmentcolor.org/api/core/renderer/error)
-        when the shader does not declare a storage binding called `binding`, or
-        when no render pass has yet materialised the GPU-side buffer (storage
-        buffers are allocated lazily on first bind).
+        Returns `RendererError::StorageBindingNotFound` when the shader does not
+        declare a storage binding called `binding`, or when no render pass has yet
+        materialised the GPU-side buffer (storage buffers are allocated lazily on
+        first bind).
 
         Example:
 
@@ -1925,9 +1924,10 @@ class Scene:
         inferred from the input, so there's nothing extra to name.
 
         `Scene::load` is synchronous and takes no `Renderer`. Any textures the parser
-        encounters are queued as pending uploads on the resulting Materials; the
-        renderer drains them on first render, or earlier if you call
-        [`Renderer::load`](https://fragmentcolor.org/api/core/renderer/load).
+        encounters are queued as pending uploads on the resulting Materials.
+        [`Renderer::load`](https://fragmentcolor.org/api/core/renderer) uploads
+        them. On native targets the first render runs it for you; on the web, await
+        it before the first render.
 
         Today's coverage: static glTF, meaning mesh primitives (POSITION + NORMAL + UV0 +
         indices), PBR-MR materials with all five texture slots, per-node transforms
@@ -1981,11 +1981,10 @@ class Scene:
         from fragmentcolor import Scene
         glb_bytes = open("path/to/model.glb", "rb").read()
 
-        # A path — `.gltf` JSON (with external buffers/images) or a `.glb` container.
+        # A path to a `.gltf` file with its buffers and images, or to a `.glb` file.
         scene = Scene.load("path/to/model.gltf")
 
-        # In-memory `.glb` bytes — fetched from disk, the network, or another
-        # asset pipeline before this point.
+        # The bytes of a `.glb` file, read from disk or the network.
         scene2 = Scene.load(glb_bytes)
         ```
         """
@@ -2567,15 +2566,19 @@ class Model:
     handles "where in the world".
 
     Each `Model::new` takes ownership of the Material it's given. Cloning the
-    Material before passing it in is cheap: `Material::clone` is an Arc-clone
-    (handle share), not a deep duplicate. The per-Model transform is *not* a
-    Material uniform: it's written as four `vec4<f32>` columns into the Mesh's
-    per-instance attribute stream at locations 3..6. Many Models can share one
-    Material's Shader without colliding because each Model writes its transform
-    to **its own** Mesh's instance buffer.
+    Material before passing it in is cheap: `Material::clone` shares the handle
+    and copies nothing. The per-Model transform is *not* a Material uniform. The
+    renderer reads it at draw time and feeds it to the vertex stage as four
+    `vec4<f32>` instance attributes, `model_0` to `model_3`, the columns of a
+    `mat4x4<f32>`. The PBR shader reads them at locations 3 to 6.
 
-    For the fan-out case (one Material, many positioned instances on
-    unique geometries), the pattern is:
+    Models that share a Material and a Mesh draw together. On every render, the
+    renderer packs the transforms of the visible `Opaque` and `Mask` Models with
+    the same Shader and Mesh into one instance buffer and draws them in one
+    instanced call. `Blend` Models draw one at a time, back to front, since
+    their order matters.
+
+    For the fan-out case (one Material, many positioned items), the pattern is:
 
     ```text
     template = Material::pbr().base_color(...)
@@ -2585,17 +2588,12 @@ class Model:
       pass.add(&model)
     ```
 
-    Pipeline cached once by shader hash; one bind-group setup per pass; N draws
-    (one per unique Mesh). For *batched* instancing (one shared Mesh, many
-    transforms in one draw) drop down to `Mesh::add_instance(...)` directly
-    with a `Material::custom(shader_that_reads_instance_attrs)`. The Model API
-    is for one logical thing per draw, not for managing your own per-instance
-    buffers.
-
-    **Caveat:** the Mesh's instance buffer is Arc-shared via `Mesh::clone`. Two
-    Models that share a Mesh handle (`mesh.clone()`) collide on the same instance
-    buffer; the most recent transform-mutating call wins. Give each Model its
-    own Mesh.
+    The pipeline is cached once per shader, the bind groups are set once per
+    pass, and the pass issues one draw per Mesh. Give every Model the same
+    `mesh.clone()` to draw them all in one call: `Mesh::clone` shares the
+    handle, so the Models share one Mesh. A transform changed after
+    `pass.add(&model)` shows up on the next render, without adding the Model
+    again.
 
     ## Methods
 
@@ -2614,15 +2612,15 @@ class Model:
         """
         Construct a `Model` from a `Mesh` and a `Material`. Both arguments are taken
         by value; the Model owns them. The transform starts at the 4×4 identity
-        matrix; `Model::sync_transform` writes it as a single instance into the
-        Mesh's per-instance attribute stream (four `vec4<f32>` columns at locations
-        3..6).
+        matrix. The renderer reads it at draw time and passes it to the vertex stage
+        as the `model_0` to `model_3` instance attributes, the four columns of a
+        `mat4x4<f32>`.
 
         If you want several Models that share a look, clone the Material before each
-        `Model::new`. `Material::clone` is a cheap Arc-clone (handle share, not a
-        deep duplicate), so the Models share one pipeline + one bind-group setup.
-        Per-Model transforms don't collide because each Model owns its own Mesh, and
-        the transform lives on the Mesh's instance buffer, not the Material's Shader.
+        `Model::new`. `Material::clone` shares the handle and copies nothing, so the
+        Models share one pipeline and one bind-group setup. The transform belongs to
+        the Model, not to the Material's Shader or the Mesh, so Models can share
+        both. Models with the same Material and Mesh draw in one instanced call.
 
         `Material::pbr` requires the Mesh's first vertex to declare position
         (`vec3`), normal (`vec3`), and uv0 (`vec2`) in that exact insertion order,
@@ -2725,8 +2723,9 @@ class Model:
         to apply it directly without composing through `translate` / `rotate` /
         `scale`.
 
-        Writes the four columns into the Mesh's per-instance attribute stream
-        immediately (locations 3..6). To read the current transform, see
+        The renderer reads the new matrix on the next render, so a Model already
+        added to a Pass or Scene moves without being added again. To read the
+        current transform, see
         [Model::transform](https://fragmentcolor.org/api/scene/model#transform).
 
         Example:
@@ -3607,9 +3606,10 @@ class Material:
       shader. Unset slots resolve to the renderer's 1×1 defaults so the shader's
       bind group is always complete.
     - **Per-Model transform** rides the **per-instance vertex attribute** stream
-      at locations 3..6 (four `vec4<f32>` columns of `mat4x4<f32>`), populated by
-      `Model::sync_transform`. It's *not* a Material uniform, so Models
-      sharing one Material don't collide on a `mesh.model` slot.
+      as `model_0` to `model_3` (four `vec4<f32>` columns of a `mat4x4<f32>`, at
+      locations 3 to 6 in the PBR shader). The renderer fills it from each
+      Model's transform at draw time. It's *not* a Material uniform, so Models
+      that share one Material each draw with their own transform.
 
     ## Pipeline state
 
@@ -3736,12 +3736,14 @@ class Material:
 
         - `struct PbrMaterial { base_color: vec4<f32>, … }` at `@group(1) @binding(1)`
           bound as `material`. This lets the PBR factor setters work as-is.
-        - `struct MeshTransform { model: mat4x4<f32>, … }` at `@group(1) @binding(0)`
-          bound as `mesh`. This lets `Model::transform` / `translate` / `rotate` /
-          `scale` work as-is.
+        - Four `vec4<f32>` vertex inputs named `model_0` to `model_3`, the columns of
+          the Model's transform. The renderer fills them at draw time from each
+          Model's `set_transform`, `translate`, `rotate` and `scale`. The PBR shader
+          reads them at locations 3 to 6. Any free locations work, since the renderer
+          matches these inputs by name.
 
-        Without these the Material is still functional; only the high-level setters
-        become no-ops.
+        Without these the Material still draws. The factor setters do nothing, and
+        every Model draws at its Mesh's own coordinates, whatever its transform.
 
         Example:
 
@@ -3749,14 +3751,19 @@ class Material:
         from fragmentcolor import Material, Shader
 
         wireframe = Shader(\"\"\"
-            struct MeshTransform { model: mat4x4<f32> }
             struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
             @group(0) @binding(0) var<uniform> camera: Camera;
-            @group(1) @binding(0) var<uniform> mesh: MeshTransform;
 
             @vertex
-            fn vs_main(@location(0) p: vec3<f32>) -> @builtin(position) vec4<f32> {
-                return camera.view_proj * mesh.model * vec4<f32>(p, 1.0);
+            fn vs_main(
+                @location(0) p: vec3<f32>,
+                @location(3) model_0: vec4<f32>,
+                @location(4) model_1: vec4<f32>,
+                @location(5) model_2: vec4<f32>,
+                @location(6) model_3: vec4<f32>,
+            ) -> @builtin(position) vec4<f32> {
+                let model = mat4x4<f32>(model_0, model_1, model_2, model_3);
+                return camera.view_proj * model * vec4<f32>(p, 1.0);
             }
             @fragment fn fs_main() -> @location(0) vec4<f32> {
                 return vec4<f32>(0.0, 1.0, 0.4, 1.0);
@@ -4039,7 +4046,7 @@ class Material:
         Accepts any `Into<TextureInput>`:
 
         - A pre-built [`&Texture`](https://fragmentcolor.org/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations.
-        - Bytes / path / URL / `DynamicImage`. The setter queues the input on the Material's Shader, and the renderer drains queued uploads on the first [`Renderer::render`](https://fragmentcolor.org/api/core/renderer/render) (or earlier via the explicit [`Renderer::load`](https://fragmentcolor.org/api/core/renderer/load)).
+        - Bytes / path / URL / `DynamicImage`. The setter queues the input on the Material's Shader. [`Renderer::load`](https://fragmentcolor.org/api/core/renderer) uploads it, and on native targets the first [`Renderer::render`](https://fragmentcolor.org/api/core/renderer) runs `load` for you.
 
         Unset, this slot resolves to a 1×1 white default the renderer hands out
         lazily, so calling `Material::pbr()` without binding a
@@ -4050,8 +4057,9 @@ class Material:
         The setter itself is infallible: it queues the upload (lazy path) or
         takes an Arc-clone (eager path) and returns. Failures from the lazy
         path (file not found, decode error, unsupported format) surface when
-        the renderer actually drains the queue: either at first render or when
-        you call [`Renderer::load(&material).await`](https://fragmentcolor.org/api/core/renderer/load).
+        the queue drains: when you call
+        [`Renderer::load(&material).await`](https://fragmentcolor.org/api/core/renderer),
+        or at the first render on native targets.
         Until then the Material renders against its 1×1 default and a
         `log::warn!` line names the slot.
 
