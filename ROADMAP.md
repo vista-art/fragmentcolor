@@ -833,7 +833,7 @@ Basis Universal encodes once and transcodes at load time into the device's nativ
 - [ ] Build a simple image editor
 - [ ] Hello Shader Organ: a post-process stack edited every frame (an FBM base with keyboard-toggled warp, chromatic, blur, pixelate, invert, vignette and feedback passes), exercising per-frame pass lists and `TextureTarget` reuse
 - [ ] Step-by-step tutorials in `docs/api`, in the multi-block format
-- [x] Big particle system (`particles_1m`)
+- [x] Big particle system (`particles`)
 - [x] Simple multi-pass projected shadows (`multipass_shadows`)
 
 #### Snapshot tests
@@ -841,7 +841,7 @@ Basis Universal encodes once and transcodes at load time into the device's nativ
 - [ ] `Renderer::render_to_hash(&shader) -> Sha256`
 - [ ] PNG diffs with a tolerance for differences between GPUs
 - [ ] CI uploads the diff as an artifact
-- [ ] Coverage: the circle shader, `compute_texture`, `particles_splat` with a seeded RNG, storage texture pipelines, meshes with vertex and instance attributes, MSAA with resolve, immediates both native and through the uniform fallback
+- [ ] Coverage: the circle shader, `compute_texture`, `particles` with a seeded RNG, storage texture pipelines, meshes with vertex and instance attributes, MSAA with resolve, immediates both native and through the uniform fallback
 - [ ] A helper that snapshots a multi-pass render
 - [ ] An `UPDATE_EXPECT=1` flag that rebaselines the snapshots, documented in CONTRIBUTING, and a macOS CI step
 - [ ] Optional headless flags on the examples for snapshot tests

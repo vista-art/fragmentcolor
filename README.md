@@ -188,11 +188,11 @@ The [JavaScript](./platforms/web/README.md) and [Python](./platforms/python/READ
 
 ## Try the examples
 
-The `examples/rust` crate holds runnable examples, from a single triangle to a compute shader that moves a million particles:
+The `examples/rust` crate holds runnable examples, from a single triangle to a million particles that compute shaders move and draw:
 
 ```bash
 cargo run -p fce --example triangle
-cargo run -p fce --example particles_compute
+cargo run -p fce --example particles
 ./fc example    # pick one from the list
 ```
 
