@@ -17,22 +17,25 @@ mod swift {
     //! 5. `const x = ...` → `let x = ...`.
     //! 6. `await foo(...)` → `try await foo(...)` (Swift requires `try` on async throws).
     //! 7. `null` → `nil`.
-    //! 8. `TextureRegion` → `TextureRegionMobile`, the mobile-only type that converts into it.
+    //! 8. A crate type uniffi doesn't export → the mobile type that stands in for it.
     //! 9. `x..y` range → `x..<y`, and `x..=y` → `x...y`.
     //! 10. `.Rgba` / `.Rgba8UnormSrgb` enum case first-letter lowercasing.
     //! 11. `.unwrap()` on a throwing init → `try!` prefix.
     //! 12. `Vertex.new([...])` → `Vertex([...])`
     //!     when an unlabeled init takes those arguments.
-    //! 13. `try` / `await` before a statement whose calls throw or suspend.
+    //! 13. `f((a, b))` → `f(a, b)`, a Rust tuple argument spread
+    //!     where an unlabeled overload takes its items.
+    //! 14. `try` / `await` before a statement whose calls throw or suspend.
     //!
     //! Rule 8 reads the `From` impls of the types uniffi exports for iOS.
-    //! Rules 12 and 13 read the uniffi exports for iOS
+    //! It renames nothing today, since every stand-in exports under its crate type's name.
+    //! Rules 12 to 14 read the uniffi exports for iOS
     //! and the declarations in the hand-written `*+Extensions.swift` files.
 
     use std::collections::BTreeMap;
     use std::fs;
 
-    use crate::reflect::{Build, CallKind, Reflection, StandIn, StrConst};
+    use crate::reflect::{Build, CallKind, Reflection, StandIn};
     use crate::source_text::{
         Nesting, arg_spans, closing, code_only, drop_semicolon_before_comment, extension_files,
         is_ident_char, read_ident, skip_space, split_args, string_end, top_level_words,
@@ -76,12 +79,12 @@ mod swift {
         effects: Effects,
         /// Parameter types when every parameter is unlabeled.
         unlabeled: Option<Vec<String>>,
+        /// How many of those parameters a call must pass, and how many it may.
+        arity: Option<(usize, usize)>,
     }
 
     /// API facts the Swift rewrites read, derived from the source model.
     struct Facts {
-        /// String constants the Swift bindings don't expose.
-        consts: Vec<StrConst>,
         /// Crate types Swift names by the mobile-only type that converts into them.
         stand_ins: Vec<StandIn>,
         /// Instance methods by name, merged over every type that has one.
@@ -93,6 +96,9 @@ mod swift {
         inits: BTreeMap<String, Effects>,
         /// Parameter types of each unlabeled initializer, by type.
         unlabeled_inits: BTreeMap<String, Vec<Vec<String>>>,
+        /// The argument counts unlabeled overloads take, by method name
+        /// and by `Type.name` for a static function.
+        arities: BTreeMap<String, Vec<(usize, usize)>>,
     }
 
     static FACTS: std::sync::OnceLock<Facts> = std::sync::OnceLock::new();
@@ -100,12 +106,12 @@ mod swift {
     /// Derive the Swift rewrites' API facts. Runs once before any example converts.
     pub fn install(model: &Reflection) {
         let mut facts = Facts {
-            consts: model.str_consts(Build::Ios),
             stand_ins: model.stand_ins(Build::Ios),
             methods: BTreeMap::new(),
             statics: BTreeMap::new(),
             inits: BTreeMap::new(),
             unlabeled_inits: BTreeMap::new(),
+            arities: BTreeMap::new(),
         };
         let exported = model.uniffi_fns(Build::Ios).into_iter().map(|f| Decl {
             effects: Effects {
@@ -114,11 +120,19 @@ mod swift {
             },
             // uniffi labels every parameter it generates.
             unlabeled: f.params.is_empty().then(Vec::new),
+            arity: None,
             owner: f.owner,
             name: f.name,
             kind: f.kind,
         });
         for decl in exported.chain(extension_decls()) {
+            if let Some(arity) = decl.arity {
+                let key = match decl.kind {
+                    CallKind::Static => format!("{}.{}", decl.owner, decl.name),
+                    CallKind::Method | CallKind::Init => decl.name.clone(),
+                };
+                facts.arities.entry(key).or_default().push(arity);
+            }
             match decl.kind {
                 CallKind::Method => facts.methods.entry(decl.name).or_default().merge(decl.effects),
                 CallKind::Static => facts
@@ -189,6 +203,7 @@ mod swift {
                     throws: has_word(signature_tail, "throws"),
                 },
                 unlabeled: unlabeled_params(&body[open + 1..close]),
+                arity: unlabeled_arity(&body[open + 1..close]),
             });
         }
     }
@@ -203,6 +218,21 @@ mod swift {
                     .then(|| ty.split('=').next().unwrap_or(ty).trim().to_string())
             })
             .collect()
+    }
+
+    /// How many `_ name: Type` parameters a call must pass and may pass,
+    /// or `None` when one is labeled.
+    fn unlabeled_arity(params: &str) -> Option<(usize, usize)> {
+        let spans = arg_spans(params, Nesting::Types);
+        let mut required = 0;
+        for span in &spans {
+            let (names, ty) = params[span.clone()].split_once(':')?;
+            if names.split_whitespace().next() != Some("_") {
+                return None;
+            }
+            required += usize::from(!ty.contains('='));
+        }
+        Some((required, spans.len()))
     }
 
     /// `(name, body)` for each `keyword name ... { body }` at brace depth 0.
@@ -451,7 +481,7 @@ mod swift {
 
         // Swift-specific rewrites beyond the JS baseline:
 
-        // 9. `TextureRegion` → `TextureRegionMobile`, the mobile-only type that stands in for it.
+        // 9. A crate type uniffi doesn't export → the mobile type that stands in for it.
         for s in &facts().stand_ins {
             out = replace_whole_word(&out, &s.ty, &s.stand_in);
         }
@@ -470,7 +500,12 @@ mod swift {
         //     becomes a Swift init call.
         out = rewrite_dot_new(&out);
 
-        // 14. `try` / `await` for calls the JS output makes synchronously.
+        // 14. `f((a, b))` → `f(a, b)` where an unlabeled overload takes the items.
+        if !in_string {
+            out = spread_tuple_args(&out);
+        }
+
+        // 15. `try` / `await` for calls the JS output makes synchronously.
         if !in_string {
             out = insert_effects(&out);
         }
@@ -478,23 +513,7 @@ mod swift {
         // Strip Rust slice notation `identifier[...]` → `identifier` when `...`
         // is the only content inside brackets (a full-range slice).
         // e.g. `image[...]` → `image`, `pixels.asSlice()` → `pixels`.
-        out = strip_rust_slice_notation(&out);
-
-        // Inline `Vertex.UV0` (and the rest of the SCREAMING_SNAKE
-        // attribute-name constants) as the bare string literal value.
-        // Uniffi has no equivalent of pyo3 classattr or Kotlin static const
-        // to surface the Rust-side `pub const UV0: &str = "uv0"` on the
-        // Swift binding; the transpiler resolves the lookup here so
-        // example code keeps reading `Vertex::UV0` on the Rust side.
-        out = inline_vertex_attr_constants(&out);
-
-        out
-    }
-
-    /// Inline associated string consts such as `Vertex.UV0`, which uniffi
-    /// can't surface on Swift.
-    fn inline_vertex_attr_constants(line: &str) -> String {
-        crate::reflect::inline_str_consts(line, &facts().consts, crate::convert::quoted)
+        strip_rust_slice_notation(&out)
     }
 
     /// Rust ranges in Swift: `a..b` → `a..<b` and `a..=b` → `a...b`.
@@ -628,11 +647,23 @@ mod swift {
             let call = closing(rest, open)
                 .filter(|_| !before.ends_with('.'))
                 .and_then(|close| Some((init_call(ty, &rest[open + 1..close])?, close)));
+            let opens_array = closing(rest, open).is_none()
+                && !before.ends_with('.')
+                && rest[open + 1..].trim_start().starts_with('[');
             match call {
                 Some((call, close)) => {
                     out.push_str(before);
                     out.push_str(&call);
                     rest = &rest[close + 1..];
+                }
+                // `Shader.new([` whose array closes on a later line.
+                None if opens_array && takes_one_array(ty) => {
+                    let throws = facts().inits.get(ty).is_some_and(|fx| fx.throws);
+                    out.push_str(before);
+                    out.push_str(if throws { "try " } else { "" });
+                    out.push_str(ty);
+                    out.push('(');
+                    rest = &rest[open + 1..];
                 }
                 None => {
                     out.push_str(&rest[..open]);
@@ -642,6 +673,62 @@ mod swift {
         }
         out.push_str(rest);
         out
+    }
+
+    /// Whether an unlabeled initializer of `ty` takes one array.
+    fn takes_one_array(ty: &str) -> bool {
+        facts()
+            .unlabeled_inits
+            .get(ty)
+            .is_some_and(|inits| inits.iter().any(|params| matches!(params.as_slice(), [one] if one.starts_with('['))))
+    }
+
+    /// `f((a, b))` → `f(a, b)`: a Rust tuple argument spreads into separate arguments
+    /// where an unlabeled overload of `f` takes that many.
+    fn spread_tuple_args(line: &str) -> String {
+        let code = code_only(line);
+        let mut out = String::with_capacity(line.len());
+        let (mut copied, mut at) = (0, 0);
+        while let Some(found) = code[at..].find("((").map(|p| at + p) {
+            at = found + 2;
+            let head = &code[..found];
+            let receiver_end = head.trim_end_matches(is_ident_char).len();
+            let name = &head[receiver_end..];
+            let (Some(inner), Some(outer)) = (closing(&code, found + 1), closing(&code, found)) else {
+                continue;
+            };
+            let items = split_args(&code[found + 2..inner]).len();
+            let fits = |arities: &Vec<(usize, usize)>| {
+                arities.iter().any(|(required, total)| (*required..=*total).contains(&items))
+            };
+            let spreads = !name.is_empty()
+                && outer == inner + 1
+                && items > 1
+                && facts().arities.get(&spread_key(&head[..receiver_end], name)).is_some_and(fits);
+            if spreads {
+                out.push_str(&line[copied..=found]);
+                out.push_str(&line[found + 2..inner]);
+                out.push(')');
+                copied = outer + 1;
+                at = copied;
+            }
+        }
+        out.push_str(&line[copied..]);
+        out
+    }
+
+    /// `Type.name` for a static call on a type, otherwise the method `name`.
+    fn spread_key(head: &str, name: &str) -> String {
+        let Some(before) = head.strip_suffix('.') else {
+            return name.to_string();
+        };
+        let receiver = &before[before.trim_end_matches(is_ident_char).len()..];
+        let bare = !before[..before.len() - receiver.len()].ends_with('.');
+        if bare && is_type_name(receiver) {
+            format!("{receiver}.{name}")
+        } else {
+            name.to_string()
+        }
     }
 
     /// `T(args)` for `T.new(args)`, with `try` when an initializer of `T` throws.
