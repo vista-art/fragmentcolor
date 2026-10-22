@@ -5,6 +5,7 @@ Read back the mip-0 contents of this texture as tightly-packed bytes in the text
 - Works on native and on the web; the call awaits the GPU readback mapping.
 - For multi-layer textures, layers come first in the byte layout (layer-major).
 - The texture must have `COPY_SRC` usage. Creation helpers like `create_storage_texture` enable it by default.
+- Python returns the same bytes as a uint8 NumPy array shaped `(height, width, bytes per pixel)`, with a leading layer axis for array textures. A float format reads as floats through `image.view(numpy.float32)`.
 
 ## Example
 ```rust

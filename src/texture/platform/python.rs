@@ -431,14 +431,33 @@ impl Texture {
         Ok(())
     }
 
-    /// Read back the mip-0 contents of this texture as tightly-packed bytes
-    /// in the texture's native format. Blocks the Python thread synchronously
-    /// (via `pollster::block_on`) — the async readback is the canonical
-    /// implementation; the blocking wrapper exists because Python does not
-    /// have a native async runtime that integrates with the GPU device loop.
+    /// Read back mip 0 as a uint8 ndarray shaped (height, width, bytes per pixel),
+    /// with a leading layer axis for array textures. The bytes keep the native
+    /// format, so a float texture reads as floats through `image.view(numpy.float32)`.
     #[pyo3(name = "get_image")]
     #[lsp_doc("docs/api/texture/texture/get_image.md")]
-    pub fn get_image_py(&self) -> pyo3::PyResult<Vec<u8>> {
-        Ok(pollster::block_on(self.get_image())?)
+    pub fn get_image_py(&self) -> pyo3::PyResult<Py<numpy::PyArrayDyn<u8>>> {
+        use numpy::PyArrayMethods;
+        let data = pollster::block_on(self.get_image())?;
+        let extent = self.object.size;
+        let bpp = crate::texture::bytes_per_pixel(self.object.format) as usize;
+        let (width, height) = (extent.width as usize, extent.height as usize);
+        let layers = extent.depth_or_array_layers.max(1) as usize;
+        let shape = match layers {
+            1 => vec![height, width, bpp],
+            _ => vec![layers, height, width, bpp],
+        };
+        let expected: usize = shape.iter().product();
+        if data.len() != expected {
+            return Err(crate::error::PyFragmentColorError::new_err(format!(
+                "Unexpected image data length: expected {expected}, got {}",
+                data.len()
+            )));
+        }
+        Python::attach(|py| {
+            // The readback is row-major, so it takes the image shape without a copy.
+            let image = numpy::PyArray1::from_vec(py, data).reshape(shape)?;
+            Ok(image.unbind())
+        })
     }
 }

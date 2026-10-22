@@ -185,7 +185,9 @@ def check_image_layout(renderer):
     assert image.flags["C_CONTIGUOUS"]
     assert (image[:, 0, 0] == 255).all() and (image[:, 1:, 0] == 0).all(), "red is not the left column"
     assert (image[0, :, 1] == 255).all() and (image[1:, :, 1] == 0).all(), "green is not the top row"
-    assert image.tobytes() == bytes(target.texture().get_image())
+    texels = target.texture().get_image()
+    assert texels.shape == (2, 3, 4), f"Texture.get_image shape {texels.shape}, expected (height, width, 4)"
+    assert np.array_equal(texels, image), "Texture.get_image differs from TextureTarget.get_image"
 
     texture = renderer.create_texture(image, format=TextureFormat.Rgba)
     assert (texture.size.width, texture.size.height) == (3, 2)
