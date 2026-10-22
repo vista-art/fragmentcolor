@@ -28,8 +28,11 @@ pub struct TextureRegion {
 /// Use `origin_x/y/z = 0` and `size_width/height/depth = 0` (the defaults)
 /// to target the whole texture; the write path interprets zeros as
 /// "infer the full extent from the texture dimensions".
+///
+/// Swift and Kotlin see it as `TextureRegion`, the name every other binding uses.
 #[cfg(mobile)]
 #[derive(Debug, Clone, uniffi::Record)]
+#[uniffi(name = "TextureRegion")]
 pub struct TextureRegionMobile {
     pub origin_x: u32,
     pub origin_y: u32,
