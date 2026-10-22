@@ -1231,7 +1231,7 @@ mod reflect {
                 .flat_map(|imp| {
                     imp.fns
                         .iter()
-                        .filter(|f| f.cfg.holds(Build::Python) && f.sig.receiver().is_some())
+                        .filter(|f| f.cfg.holds(Build::Python) && (f.sig.receiver().is_some() || is_static_py(f)))
                         .map(|f| PyMethod {
                             name: exported_name(f, Build::Python),
                             params: python_params(f),
@@ -1239,6 +1239,11 @@ mod reflect {
                 })
                 .collect()
         }
+    }
+
+    /// Whether `f` is a `#[staticmethod]`, called on the class like `Mipmap.build(...)`.
+    fn is_static_py(f: &FnDef) -> bool {
+        metas(&f.attrs, Build::Python).iter().any(|m| meta_ident(m) == "staticmethod")
     }
 
     /// A method a `#[pymethods]` block exposes.
