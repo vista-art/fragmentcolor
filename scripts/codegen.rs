@@ -82,6 +82,15 @@ struct ObjectProperty {
 
         let mut api_map = extract_public_functions(crate_root.as_ref());
 
+        // Trait methods carry no `pub`, so the walk above leaves them out.
+        for (imp, f) in catalog.reflection.api_trait_methods() {
+            let methods = api_map.entry(imp.self_ident.clone()).or_default();
+            let method = extract_signature(&f.sig);
+            if !methods.contains(&method) {
+                methods.push(method);
+            }
+        }
+
         // Keep only documented public objects; drop file-key entries (free
         // functions) and any hidden/internal types.
         let objects = catalog.public_structs_excluding_hidden();
@@ -602,6 +611,18 @@ struct ObjectProperty {
             ..Default::default()
         };
         walk_catalog(&entry_path, parsed.items, &mut catalog, NameFilter::Global);
+        let trait_methods: Vec<MethodEntry> = catalog
+            .reflection
+            .api_trait_methods()
+            .into_iter()
+            .map(|(imp, f)| MethodEntry {
+                type_name: imp.self_ident.clone(),
+                method_name: f.sig.ident.to_string(),
+                has_lsp_doc: has_lsp_doc(&f.attrs),
+                is_doc_hidden: is_doc_hidden(&f.attrs),
+            })
+            .collect();
+        catalog.methods.extend(trait_methods);
         catalog
     }
 

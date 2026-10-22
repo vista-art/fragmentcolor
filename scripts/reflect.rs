@@ -428,6 +428,8 @@ mod reflect {
         modules: BTreeSet<String>,
         /// Names of the traits the crate declares.
         traits: BTreeSet<String>,
+        /// Names of the public traits that carry `#[lsp_doc]`, such as `Target`.
+        documented_traits: BTreeSet<String>,
         macros: Vec<MacroDef>,
         pending: Vec<Invocation>,
     }
@@ -543,6 +545,49 @@ mod reflect {
                 })
                 .flat_map(|imp| imp.fns.iter().map(move |f| (imp, f)))
                 .filter(move |(_, f)| f.cfg.holds(build))
+        }
+
+        /// Trait methods that belong to their self type's API.
+        ///
+        /// That is every method of an impl of a documented trait, such as
+        /// `Target::size`, and a method of any other trait, such as
+        /// `Default::default`, that a binding exports on the same type
+        /// without `#[doc(hidden)]`.
+        pub fn api_trait_methods(&self) -> Vec<(&ImplDef, &FnDef)> {
+            let exported: BTreeSet<(&str, String)> =
+                [Build::Python, Build::Wasm, Build::Ios, Build::Android]
+                    .into_iter()
+                    .flat_map(|build| {
+                        self.binding_impls(build, build.binding_attr())
+                            .flat_map(move |imp| {
+                                imp.fns
+                                    .iter()
+                                    .filter(move |f| f.cfg.holds(build) && !is_hidden(f, build))
+                                    .map(move |f| (imp, fold_name(&exported_name(f, build))))
+                            })
+                    })
+                    .map(|(imp, name)| (imp.self_ident.as_str(), name))
+                    .collect();
+            self.impls
+                .iter()
+                .filter(|imp| imp.is_trait_impl && !self.is_foreign(imp))
+                .flat_map(|imp| {
+                    let documented = imp
+                        .trait_ident()
+                        .is_some_and(|t| self.documented_traits.contains(&t));
+                    let exported = &exported;
+                    imp.fns
+                        .iter()
+                        .filter(move |f| {
+                            documented
+                                || exported.contains(&(
+                                    imp.self_ident.as_str(),
+                                    fold_name(&f.sig.ident.to_string()),
+                                ))
+                        })
+                        .map(move |f| (imp, f))
+                })
+                .collect()
         }
 
         /// Types that compile in `build`.
@@ -754,7 +799,11 @@ mod reflect {
                     });
                 }
                 Item::Trait(t) => {
-                    model.traits.insert(t.ident.to_string());
+                    let name = t.ident.to_string();
+                    if matches!(t.vis, syn::Visibility::Public(_)) && lsp_doc(&t.attrs).is_some() {
+                        model.documented_traits.insert(name.clone());
+                    }
+                    model.traits.insert(name);
                 }
                 Item::Fn(f) => model.free_fns.push(FnDef {
                     attrs: f.attrs.clone(),
@@ -1334,6 +1383,18 @@ mod reflect {
             })
             .find_map(|m| arg_value(&meta_args(m), key))
             .unwrap_or_else(|| f.sig.ident.to_string())
+    }
+
+    /// Whether `#[doc(hidden)]` marks the binding method as internal in `build`.
+    fn is_hidden(f: &FnDef, build: Build) -> bool {
+        metas(&f.attrs, build)
+            .iter()
+            .any(|m| meta_ident(m) == "doc" && meta_args(m).contains("hidden"))
+    }
+
+    /// A name in lower case without underscores, so `get_image` matches `getImage`.
+    fn fold_name(name: &str) -> String {
+        name.replace('_', "").to_lowercase()
     }
 
     /// Replace `needle` (such as `Vertex.UV0`) where it stands as a whole
