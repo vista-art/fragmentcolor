@@ -2,13 +2,12 @@
 
 use js_sys::Reflect;
 use lsp_doc::lsp_doc;
-use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::platforms::web::read_unsigned;
 use crate::{
-    CompareFunction, Mipmap, SamplerOptions, Size, Texture, TextureData, TextureFormat, TextureId,
-    TextureInput, TextureOptions,
+    CompareFunction, Mipmap, SamplerOptions, Size, Texture, TextureFormat, TextureId, TextureInput,
+    TextureOptions,
 };
 
 #[wasm_bindgen]
@@ -198,58 +197,30 @@ fn parse_compare(value: &JsValue) -> Result<Option<CompareFunction>, JsError> {
 }
 
 pub(crate) fn js_to_sampler_options(value: &JsValue) -> Result<SamplerOptions, JsError> {
-    use js_sys::Reflect;
-
-    if value.is_object() {
-        let mut opts = SamplerOptions::default();
-        // repeatX / repeat_x
-        if let Ok(v) = Reflect::get(value, &JsValue::from_str("repeatX")) {
-            if !v.is_undefined() && !v.is_null() {
-                opts.repeat_x = v
-                    .as_bool()
-                    .ok_or_else(|| JsError::new("repeatX must be a boolean"))?;
-            }
-        }
-        if let Ok(v) = Reflect::get(value, &JsValue::from_str("repeat_x")) {
-            if !v.is_undefined() && !v.is_null() {
-                opts.repeat_x = v
-                    .as_bool()
-                    .ok_or_else(|| JsError::new("repeat_x must be a boolean"))?;
-            }
-        }
-        // repeatY / repeat_y
-        if let Ok(v) = Reflect::get(value, &JsValue::from_str("repeatY")) {
-            if !v.is_undefined() && !v.is_null() {
-                opts.repeat_y = v
-                    .as_bool()
-                    .ok_or_else(|| JsError::new("repeatY must be a boolean"))?;
-            }
-        }
-        if let Ok(v) = Reflect::get(value, &JsValue::from_str("repeat_y")) {
-            if !v.is_undefined() && !v.is_null() {
-                opts.repeat_y = v
-                    .as_bool()
-                    .ok_or_else(|| JsError::new("repeat_y must be a boolean"))?;
-            }
-        }
-        // smooth
-        if let Ok(v) = Reflect::get(value, &JsValue::from_str("smooth")) {
-            if !v.is_undefined() && !v.is_null() {
-                opts.smooth = v
-                    .as_bool()
-                    .ok_or_else(|| JsError::new("smooth must be a boolean"))?;
-            }
-        }
-        // compare (string or number or null/undefined)
-        if let Ok(v) = Reflect::get(value, &JsValue::from_str("compare")) {
-            opts.compare = parse_compare(&v)?;
-        }
-        return Ok(opts);
+    if !value.is_object() {
+        return Err(JsError::new(
+            "sampler options must be an object { repeatX?, repeatY?, smooth?, compare? }",
+        ));
     }
-
-    Err(JsError::new(
-        "setSamplerOptions expects an object { repeatX?, repeatY?, smooth?, compare? }",
-    ))
+    // Each flag reads its camelCase key, then its snake_case key, which wins.
+    let flag = |names: &[&str], default: bool| -> Result<bool, JsError> {
+        let mut flag = default;
+        for name in names {
+            if let Some(field) = read_field(value, name) {
+                let message = format!("{name} must be a boolean");
+                flag = field.as_bool().ok_or_else(|| JsError::new(&message))?;
+            }
+        }
+        Ok(flag)
+    };
+    let defaults = SamplerOptions::default();
+    let compare = read_field(value, "compare").unwrap_or(JsValue::UNDEFINED);
+    Ok(SamplerOptions {
+        repeat_x: flag(&["repeatX", "repeat_x"], defaults.repeat_x)?,
+        repeat_y: flag(&["repeatY", "repeat_y"], defaults.repeat_y)?,
+        smooth: flag(&["smooth"], defaults.smooth)?,
+        compare: parse_compare(&compare)?,
+    })
 }
 
 /// Reads a texture source and its options, as `createTexture` and the Material
@@ -259,34 +230,13 @@ pub(crate) fn read_texture_input(
     source: &JsValue,
     options: Option<&JsValue>,
 ) -> Result<TextureInput, JsError> {
-    let data = match Texture::try_from(source) {
-        Ok(texture) => TextureData::CloneOf(texture),
-        Err(_) => TextureData::try_from(source)?,
-    };
-    let mut options = match options {
-        Some(options) if !options.is_undefined() && !options.is_null() => {
-            read_texture_options(options)?
-        }
-        _ => TextureOptions::default(),
-    };
-    if options.size.is_none() {
-        options.size = read_source_size(source);
+    let mut input = TextureInput::try_from(source)?;
+    if let Some(options) = options.filter(|options| !options.is_undefined() && !options.is_null()) {
+        let source_size = input.options.size;
+        input.options = read_texture_options(options)?;
+        input.options.size = input.options.size.or(source_size);
     }
-    Ok(TextureInput { data, options })
-}
-
-/// The pixel size of an `ImageData` or canvas source. Its raw bytes don't carry one.
-fn read_source_size(source: &JsValue) -> Option<Size> {
-    let (width, height) = if let Some(image) = source.dyn_ref::<web_sys::ImageData>() {
-        (image.width(), image.height())
-    } else if let Some(canvas) = source.dyn_ref::<web_sys::HtmlCanvasElement>() {
-        (canvas.width(), canvas.height())
-    } else if let Some(canvas) = source.dyn_ref::<web_sys::OffscreenCanvas>() {
-        (canvas.width(), canvas.height())
-    } else {
-        return None;
-    };
-    Some(Size::from([width, height]))
+    Ok(input)
 }
 
 /// Reads texture options: a bare `TextureFormat`, a bare size such as `[w, h]`,
