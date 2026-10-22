@@ -76,6 +76,18 @@ pub(crate) fn read_numbers(value: &wasm_bindgen::JsValue) -> Option<Vec<f64>> {
         .collect()
 }
 
+/// Reads an array whose items are each an array or typed array of numbers,
+/// such as the columns of a matrix. Returns `None` for any other value.
+pub(crate) fn read_rows(value: &wasm_bindgen::JsValue) -> Option<Vec<Vec<f64>>> {
+    if !js_sys::Array::is_array(value) {
+        return None;
+    }
+    js_sys::Array::from(value)
+        .iter()
+        .map(|row| read_numbers(&row))
+        .collect()
+}
+
 /// Reads the bytes of an `ArrayBuffer`, or the bytes a view such as a `DataView` or
 /// a typed array covers. Returns `None` for any other value.
 pub(crate) fn read_bytes(value: &wasm_bindgen::JsValue) -> Option<Vec<u8>> {

@@ -4,7 +4,7 @@ use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
-use crate::platforms::web::{read_bytes, read_unsigned};
+use crate::platforms::web::{read_bytes, read_numbers, read_rows, read_unsigned};
 use crate::scene::{Camera, Light, LightKind, Model, Scene, SceneSource};
 use crate::{Material, Mesh, Pass};
 
@@ -44,19 +44,12 @@ impl Model {
 
     #[wasm_bindgen(js_name = "setTransform")]
     #[lsp_doc("docs/api/scene/model/set_transform.md")]
-    pub fn set_transform_js(&self, matrix: Vec<f32>) -> Result<(), JsError> {
-        if matrix.len() != 16 {
-            return Err(JsError::new(
-                "Model.setTransform: expected 16 floats (column-major mat4)",
-            ));
-        }
-        let m = [
-            [matrix[0], matrix[1], matrix[2], matrix[3]],
-            [matrix[4], matrix[5], matrix[6], matrix[7]],
-            [matrix[8], matrix[9], matrix[10], matrix[11]],
-            [matrix[12], matrix[13], matrix[14], matrix[15]],
-        ];
-        self.set_transform(m);
+    pub fn set_transform_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number> | ArrayLike<ArrayLike<number>>")]
+        matrix: &JsValue,
+    ) -> Result<(), JsError> {
+        self.set_transform(read_matrix(matrix)?);
         Ok(())
     }
 
@@ -479,6 +472,27 @@ impl Scene {
 crate::impl_js_bridge!(Scene, crate::PassError);
 crate::impl_js_bridge!(Model, crate::PassError);
 crate::impl_js_bridge!(Camera, crate::PassError);
+
+/// Reads a column-major 4x4 matrix, as 16 numbers or as four columns of four.
+fn read_matrix(value: &JsValue) -> Result<[[f32; 4]; 4], JsError> {
+    let columns = match read_numbers(value) {
+        Some(flat) if flat.len() == 16 => flat.chunks(4).map(<[f64]>::to_vec).collect(),
+        Some(_) => Vec::new(),
+        None => read_rows(value).unwrap_or_default(),
+    };
+    if columns.len() != 4 || columns.iter().any(|column| column.len() != 4) {
+        return Err(JsError::new(
+            "Model.setTransform: expected 16 numbers or 4 columns of 4 (column-major)",
+        ));
+    }
+    let mut matrix = [[0.0; 4]; 4];
+    for (target, column) in matrix.iter_mut().zip(&columns) {
+        for (cell, value) in target.iter_mut().zip(column) {
+            *cell = *value as f32;
+        }
+    }
+    Ok(matrix)
+}
 
 /// Reads one boolean flag of the `Scene.load` options. A missing flag is `true`.
 fn read_flag(options: Option<&JsValue>, name: &str) -> Result<bool, JsError> {

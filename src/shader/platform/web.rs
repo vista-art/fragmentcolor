@@ -1,14 +1,15 @@
 #![cfg(wasm)]
 
 use js_sys::{
-    Array, Float32Array, Float64Array, Int8Array, Int16Array, Int32Array, Object, Reflect,
-    Uint8Array, Uint8ClampedArray, Uint16Array, Uint32Array,
+    Array, ArrayBuffer, DataView, Float32Array, Int32Array, Object, Reflect, Uint8Array,
+    Uint32Array,
 };
 use lsp_doc::lsp_doc;
 use std::convert::TryInto;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
+use crate::platforms::web::{read_bytes, read_numbers, read_rows};
 use crate::shader::UniformInput;
 use crate::{Shader, ShaderError, UniformData};
 
@@ -134,7 +135,8 @@ impl Shader {
 }
 
 /// Sorts a JS value into a loose uniform input. The key's declared WGSL type does the rest.
-/// A `Uint8Array` is raw bytes, and any other typed array or plain array is numbers.
+/// A `Uint8Array`, `ArrayBuffer` or `DataView` is raw bytes. Any other typed array or plain
+/// array is numbers, and an array of number arrays, such as matrix columns, is flattened.
 fn uniform_input(key: &str, value: &JsValue) -> Result<UniformInput, ShaderError> {
     if let Some(number) = value.as_f64() {
         return Ok(UniformInput::Number(number));
@@ -142,36 +144,23 @@ fn uniform_input(key: &str, value: &JsValue) -> Result<UniformInput, ShaderError
     if let Some(flag) = value.as_bool() {
         return Ok(UniformInput::Bool(flag));
     }
-    if let Some(bytes) = value.dyn_ref::<Uint8Array>() {
-        return Ok(UniformInput::Bytes(bytes.to_vec()));
+    let raw = value.is_instance_of::<Uint8Array>()
+        || value.is_instance_of::<ArrayBuffer>()
+        || value.is_instance_of::<DataView>();
+    if raw && let Some(bytes) = read_bytes(value) {
+        return Ok(UniformInput::Bytes(bytes));
     }
-    if let Some(array) = value.dyn_ref::<Array>() {
-        let numbers = array.iter().map(|item| item.as_f64());
-        return match numbers.collect::<Option<Vec<f64>>>() {
-            Some(numbers) => Ok(UniformInput::Numbers(numbers)),
-            None => Err(ShaderError::TypeMismatch(format!(
-                "{key}: expected an array of numbers"
-            ))),
-        };
+    if let Some(numbers) = read_numbers(value) {
+        return Ok(UniformInput::Numbers(numbers));
     }
-    macro_rules! typed_arrays {
-        ($($kind:ty),*) => {$(
-            if let Some(array) = value.dyn_ref::<$kind>() {
-                let numbers = array.to_vec().into_iter().map(f64::from).collect();
-                return Ok(UniformInput::Numbers(numbers));
-            }
-        )*};
+    if let Some(rows) = read_rows(value) {
+        return Ok(UniformInput::Numbers(rows.concat()));
     }
-    typed_arrays!(
-        Float32Array,
-        Float64Array,
-        Int32Array,
-        Uint32Array,
-        Int16Array,
-        Uint16Array,
-        Int8Array,
-        Uint8ClampedArray
-    );
+    if Array::is_array(value) {
+        return Err(ShaderError::TypeMismatch(format!(
+            "{key}: expected an array of numbers, or an array of number arrays"
+        )));
+    }
     // Exported classes carry `__wbg_ptr`. Texture is the only one a uniform
     // accepts, and its bridge checks the brand before it reads the pointer.
     if value.is_object() && Reflect::has(value, &"__wbg_ptr".into()).unwrap_or(false) {
@@ -188,7 +177,7 @@ fn uniform_input(key: &str, value: &JsValue) -> Result<UniformInput, ShaderError
     }
     let kind = value.js_typeof().as_string().unwrap_or_default();
     Err(ShaderError::TypeMismatch(format!(
-        "{key}: expected a number, an array, a typed array, or a Texture, got {kind}"
+        "{key}: expected a number, an array, a typed array, bytes, or a Texture, got {kind}"
     )))
 }
 
@@ -253,6 +242,15 @@ mod tests {
         assert_eq!(input(ints.into()), UniformInput::Numbers(vec![3.0, -4.0]));
         let bytes = Uint8Array::from(&[1u8, 2, 3][..]);
         assert_eq!(input(bytes.into()), UniformInput::Bytes(vec![1, 2, 3]));
+
+        let columns = Array::of2(
+            &Array::of2(&JsValue::from_f64(1.0), &JsValue::from_f64(0.0)),
+            &Float32Array::from(&[0.0f32, 1.0][..]),
+        );
+        let identity = UniformInput::Numbers(vec![1.0, 0.0, 0.0, 1.0]);
+        assert_eq!(input(columns.into()), identity);
+        let buffer = Uint8Array::from(&[4u8, 5][..]).buffer();
+        assert_eq!(input(buffer.into()), UniformInput::Bytes(vec![4, 5]));
 
         assert!(uniform_input("key", &JsValue::from_str("1.0")).is_err());
         let mixed = Array::of2(&JsValue::from_f64(1.0), &JsValue::from_str("x"));
