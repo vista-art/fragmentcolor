@@ -7,8 +7,8 @@ across the FFI boundary, so the mobile shim accepts the ref-counted form.
 Automatically attaches the mesh to the new shader; callers do not need a
 separate `addMesh` call.
 
-Swift / Kotlin extensions re-expose this as `Shader(mesh:)` for idiomatic
-construction that matches Rust, JS and Python.
+Swift and Kotlin call it as `Shader.fromMesh(mesh)`, the same static
+constructor as Rust, JS and Python.
 
 ## Example
 

@@ -11,8 +11,8 @@ It generates a minimal vertex shader that consumes `@location(0)` position and a
 
 ## Empty Mesh Handling
 
-If the Mesh has no vertices, a default shader is returned and a warning is logged.
-Because the default shader does not take any vertex inputs, it is compatible with any Mesh.
+If the Mesh has no vertices, `from_mesh` returns the default shader and logs a warning.
+The default shader takes no vertex inputs, so it rejects the mesh and the empty mesh is not attached.
 
 ## Example
 

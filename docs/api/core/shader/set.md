@@ -4,6 +4,8 @@ Sets the value of the uniform identified by the given key.
 
 If the key does not exist or the value format is incorrect, the `set` method throws an exception. The shader remains valid, and if the exception is caught, the shader can still be used with the renderer.
 
+`set` never blocks. When another thread holds the shader's storage, the value is queued and applied before the next draw. A bad value that can't be checked right away is dropped later with a logged warning instead of throwing.
+
 The uniform's declared WGSL type decides how the value is read, so a call behaves the same in every language:
 
 - A number fits an `f32`, `i32`, or `u32` uniform. Integer uniforms take whole numbers in range.

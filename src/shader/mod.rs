@@ -81,9 +81,9 @@ impl Shader {
     ///
     /// Use this method when one or more parts of the shader must be fetched
     /// from the network. On WASM this is the *only* way to compose shaders
-    /// from remote URLs because constructors cannot be async. On Python, Swift,
-    /// and Kotlin the network I/O blocks the calling thread
-    /// (via `pollster::block_on` on Python; uniffi async on Swift/Kotlin).
+    /// from remote URLs because constructors cannot be async. Python blocks
+    /// the calling thread (via `pollster::block_on`); Swift and Kotlin
+    /// await it as a uniffi async method.
     #[lsp_doc("docs/api/core/shader/fetch.md")]
     pub async fn fetch(input: impl Into<ShaderInput>) -> Result<Self, ShaderError> {
         Ok(Self::from(input::resolve(input.into()).await?))

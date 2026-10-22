@@ -8,8 +8,8 @@ Inspects the vertex position dimensionality and optional properties to
 generate a minimal WGSL shader. Intended as a fallback and for quick
 debugging.
 
-Swift / Kotlin extensions re-expose this as `Shader(vertex:)` for idiomatic
-construction that matches Rust, JS and Python.
+Swift and Kotlin call it as `Shader.fromVertex(vertex)`, the same static
+constructor as Rust, JS and Python.
 
 ## Example
 
