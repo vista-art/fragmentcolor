@@ -45,7 +45,10 @@ impl From<crate::InitializationError> for FragmentColorError {
 
 impl From<crate::RendererError> for FragmentColorError {
     fn from(e: crate::RendererError) -> Self {
-        FragmentColorError::Render(e.to_string())
+        match e {
+            crate::RendererError::InitializationError(e) => e.into(),
+            e => FragmentColorError::Render(e.to_string()),
+        }
     }
 }
 
