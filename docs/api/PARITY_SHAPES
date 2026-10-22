@@ -34,7 +34,7 @@ docs/api/scene/model/set_transform.md swift Model.setTransform: (floats) -> unit
 docs/api/scene/model/transform.md kotlin Model.transform: () -> floats | rust () -> matrix
 docs/api/scene/model/transform.md swift Model.transform: () -> floats | rust () -> matrix
 docs/api/scene/model/transform.md web Model.transform: () -> floats | rust () -> matrix
-docs/api/targets/texture_target/get_image.md python TextureTarget.get_image: () -> PyArray3 throws | rust () -> bytes async
+docs/api/targets/texture_target/get_image.md python TextureTarget.get_image: () -> bytes throws | rust () -> bytes async
 docs/api/targets/texture_target/resize.md kotlin TextureTarget.resize: (int, int) -> unit | rust (into Size) -> unit
 docs/api/targets/texture_target/resize.md swift TextureTarget.resize: (int, int) -> unit | rust (into Size) -> unit
 docs/api/targets/window_target/resize.md kotlin WindowTarget.resize: (int, int) -> unit | rust (into Size) -> unit
@@ -43,10 +43,6 @@ docs/api/texture/mipmap/build.md kotlin Mipmap.build: (bytes, TextureFormat, Siz
 docs/api/texture/mipmap/build.md python Mipmap.build: (PyTextureBytes, TextureFormat, PySize?) -> self throws | rust (into TextureInput) -> self throws
 docs/api/texture/mipmap/build.md swift Mipmap.build: (bytes, TextureFormat, Size?) -> self throws | rust (into TextureInput) -> self throws
 docs/api/texture/mipmap/build.md web Mipmap.build: (any, TextureFormat, any?) -> self throws | rust (into TextureInput) -> self throws
-docs/api/texture/mipmap/levels.md kotlin Mipmap.level: (int) -> bytes throws | rust () -> list(bytes)
-docs/api/texture/mipmap/levels.md python Mipmap.level: (int) -> bytes throws | rust () -> list(bytes)
-docs/api/texture/mipmap/levels.md swift Mipmap.level: (int) -> bytes throws | rust () -> list(bytes)
-docs/api/texture/mipmap/levels.md web Mipmap.level: (int) -> bytes throws | rust () -> list(bytes)
 docs/api/texture/mipmap/size.md kotlin Mipmap.size: () -> Size | rust () -> ints(2)
 docs/api/texture/mipmap/size.md swift Mipmap.size: () -> Size | rust () -> ints(2)
 docs/api/texture/mipmap/size.md web Mipmap.size: () -> Size | rust () -> ints(2)

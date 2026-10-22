@@ -2062,6 +2062,12 @@ mod parity {
                 "Uint8Array" | "Uint8ClampedArray" | "PyBytes" | "PyByteArray" | "Bytes" => {
                     Class::Bytes
                 }
+                // A uint8 ndarray is Python's container for image bytes.
+                "PyArray1" | "PyArray2" | "PyArray3" | "PyArrayDyn"
+                    if read_arg(ty).and_then(read_ident).as_deref() == Some("u8") =>
+                {
+                    Class::Bytes
+                }
                 "Float32Array" | "Float64Array" => Class::Floats(None),
                 "Uint32Array" | "Int32Array" => Class::Ints(None),
                 "JsValue" | "PyAny" | "PyObject" | "Object" | "PyTuple" => Class::Any,
