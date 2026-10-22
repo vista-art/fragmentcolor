@@ -47,3 +47,16 @@ pub(crate) async fn yield_to_event_loop() {
     });
     let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
 }
+
+/// Reads a JS number as an unsigned 32-bit integer, such as an index or a count.
+/// Negative, fractional, NaN and out-of-range values fail with an error that names `what`.
+pub(crate) fn read_unsigned(value: f64, what: &str) -> Result<u32, wasm_bindgen::JsError> {
+    let whole = value.is_finite() && value.fract() == 0.0;
+    if whole && (0.0..=u32::MAX as f64).contains(&value) {
+        return Ok(value as u32);
+    }
+    Err(wasm_bindgen::JsError::new(&format!(
+        "{what} must be a whole number from 0 to {}, got {value}",
+        u32::MAX
+    )))
+}

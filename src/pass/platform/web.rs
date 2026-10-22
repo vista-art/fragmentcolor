@@ -1,7 +1,8 @@
 #![cfg(wasm)]
 
-use crate::{Color, Mesh, Pass, PassError, PassInput, Renderable, Shader, Texture, TextureTarget};
-use js_sys::Array;
+use crate::platforms::web::read_unsigned;
+use crate::renderer::platform::web::RenderableList;
+use crate::{Color, Pass, PassInput, Shader, Texture, TextureTarget};
 use lsp_doc::lsp_doc;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::*;
@@ -28,33 +29,15 @@ impl Pass {
 
     #[wasm_bindgen(js_name = "require")]
     #[lsp_doc("docs/api/core/pass/require.md")]
-    pub fn require_js(&self, dependencies: &JsValue) -> Result<(), PassError> {
-        if let Ok(shader) = Shader::try_from(dependencies) {
-            return self.require(&shader);
-        } else if let Ok(pass) = Pass::try_from(dependencies) {
-            return self.require(&pass);
-        } else if let Ok(mesh) = Mesh::try_from(dependencies) {
-            return self.require(&mesh);
-        } else if Array::is_array(dependencies) {
-            let deps: Vec<Box<dyn Renderable>> = Array::from(dependencies)
-                .into_iter()
-                .filter_map(|v| {
-                    if let Ok(shader) = Shader::try_from(&v) {
-                        Some(Box::new(shader) as Box<dyn Renderable>)
-                    } else if let Ok(pass) = Pass::try_from(&v) {
-                        Some(Box::new(pass) as Box<dyn Renderable>)
-                    } else if let Ok(mesh) = Mesh::try_from(&v) {
-                        Some(Box::new(mesh) as Box<dyn Renderable>)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            return self.require(&deps);
-        } else {
-            return Ok(());
-        }
+    pub fn require_js(
+        &self,
+        #[wasm_bindgen(
+            unchecked_param_type = "Shader | Pass | Mesh | Scene | Array<Shader | Pass | Mesh | Scene>"
+        )]
+        dependencies: &JsValue,
+    ) -> Result<(), JsError> {
+        let dependencies = RenderableList::read(dependencies, "Pass.require")?;
+        Ok(self.require(&dependencies)?)
     }
 
     #[wasm_bindgen(js_name = "name")]
@@ -114,8 +97,12 @@ impl Pass {
 
     #[wasm_bindgen(js_name = "setComputeDispatch")]
     #[lsp_doc("docs/api/core/pass/set_compute_dispatch.md")]
-    pub fn set_compute_dispatch_js(&self, x: u32, y: u32, z: u32) {
+    pub fn set_compute_dispatch_js(&self, x: f64, y: f64, z: f64) -> Result<(), JsError> {
+        let x = read_unsigned(x, "Pass.setComputeDispatch: x")?;
+        let y = read_unsigned(y, "Pass.setComputeDispatch: y")?;
+        let z = read_unsigned(z, "Pass.setComputeDispatch: z")?;
         self.object.set_compute_dispatch(x, y, z);
+        Ok(())
     }
 
     #[wasm_bindgen(js_name = "setViewport")]
