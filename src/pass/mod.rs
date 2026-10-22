@@ -21,12 +21,14 @@ pub use error::*;
 #[cfg_attr(python, pyclass(from_py_object))]
 // Resource Definitions
 #[derive(Debug, Clone)]
+#[lsp_doc("docs/api/core/pass_input/pass_input.md")]
 pub struct PassInput {
     pub(crate) load: bool,
     pub(crate) color: Color,
 }
 
 impl PassInput {
+    #[lsp_doc("docs/api/core/pass_input/hidden/load.md")]
     pub fn load() -> Self {
         Self {
             load: true,
@@ -34,34 +36,33 @@ impl PassInput {
         }
     }
 
+    #[lsp_doc("docs/api/core/pass_input/hidden/clear.md")]
     pub fn clear(color: Color) -> Self {
         Self { load: false, color }
     }
 
-    /// True when the pass keeps the previous contents of its target instead of clearing it.
+    #[lsp_doc("docs/api/core/pass_input/loads_previous.md")]
     pub fn loads_previous(&self) -> bool {
         self.load
     }
 
-    /// The RGBA color the pass clears its target to, each channel from 0 to 1.
+    #[lsp_doc("docs/api/core/pass_input/color.md")]
     pub fn color(&self) -> [f32; 4] {
         self.color.to_f32_array()
     }
 }
 
-// PassInput is a value type returned by Pass::get_input, so its accessors
-// have no doc pages of their own.
 #[cfg(wasm)]
 #[wasm_bindgen]
 impl PassInput {
-    #[doc(hidden)]
     #[wasm_bindgen(js_name = loadsPrevious)]
+    #[lsp_doc("docs/api/core/pass_input/loads_previous.md")]
     pub fn loads_previous_js(&self) -> bool {
         self.loads_previous()
     }
 
-    #[doc(hidden)]
     #[wasm_bindgen(js_name = color)]
+    #[lsp_doc("docs/api/core/pass_input/color.md")]
     pub fn color_js(&self) -> Vec<f32> {
         self.color().to_vec()
     }
@@ -70,14 +71,14 @@ impl PassInput {
 #[cfg(python)]
 #[pymethods]
 impl PassInput {
-    #[doc(hidden)]
     #[pyo3(name = "loads_previous")]
+    #[lsp_doc("docs/api/core/pass_input/loads_previous.md")]
     pub fn loads_previous_py(&self) -> bool {
         self.loads_previous()
     }
 
-    #[doc(hidden)]
     #[pyo3(name = "color")]
+    #[lsp_doc("docs/api/core/pass_input/color.md")]
     pub fn color_py(&self) -> [f32; 4] {
         self.color()
     }
