@@ -8,6 +8,11 @@ from typing_extensions import TypeAlias
 
 __all__ = [
     "FragmentColorError",
+    "InvalidInputError",
+    "UnsupportedMipmapFormatError",
+    "MalformedImageError",
+    "SceneLoadError",
+    "LightError",
     "Renderer",
     "Shader",
     "Pass",
@@ -31,8 +36,9 @@ __all__ = [
     "Mipmap",
     "SamplerOptions",
     "CompareFunction",
+    "TextureUsage",
     "TextureTarget",
-    "RenderCanvasTarget",
+    "WindowTarget",
     "RenderCanvasFrame",
     "rendercanvas_context_hook",
 ]
@@ -40,11 +46,22 @@ __all__ = [
 _PyAttributeValue: TypeAlias = float | VertexValue | Sequence[float]
 _PySize: TypeAlias = Size | Sequence[float] | Sequence[int] | dict[str, float] | dict[str, int]
 _PyTextureBytes: TypeAlias = bytes | npt.NDArray[numpy.uint8] | Sequence[int]
+_PyTextureSource: TypeAlias = str | bytearray | bytes | memoryview[Any] | Mipmap | Texture | list[int] | npt.NDArray[numpy.uint8] | tuple[Any, ...]
 _PyVertexPosition: TypeAlias = float | Vertex | Sequence[float]
 _Renderable: TypeAlias = Mesh | Pass | Scene | Shader | Sequence[Mesh | Pass | Scene | Shader]
 _SceneObject: TypeAlias = Camera | Light | Model
 
 class FragmentColorError(Exception): ...
+
+class InvalidInputError(FragmentColorError): ...
+
+class UnsupportedMipmapFormatError(FragmentColorError): ...
+
+class MalformedImageError(FragmentColorError): ...
+
+class SceneLoadError(FragmentColorError): ...
+
+class LightError(FragmentColorError): ...
 
 @final
 class Renderer:
@@ -105,7 +122,7 @@ class Renderer:
         texture_target = renderer.create_texture_target([16, 16])
         ```
         """
-    def create_target(self, rendercanvas: Any) -> RenderCanvasTarget:
+    def create_target(self, rendercanvas: Any) -> WindowTarget:
         """
         Creates a [Target](https://fragmentcolor.org/api/targets/target) attached to a platform-specific canvas or window.
 
@@ -145,7 +162,7 @@ class Renderer:
         image = target.get_image()
         ```
         """
-    def create_texture(self, input: str | bytes | Mipmap | list[int] | npt.NDArray[numpy.uint8], size: _PySize | None = ..., format: TextureFormat | None = ..., mipmaps: bool | None = ...) -> Texture:
+    def create_texture(self, input: _PyTextureSource, size: _PySize | None = ..., format: TextureFormat | None = ..., mipmaps: bool | None = ..., sampler: SamplerOptions | dict[str, Any] | None = ..., usage: int | TextureUsage | None = ...) -> Texture:
         """
         Create a [Texture](https://fragmentcolor.org/api/texture/texture) from bytes, a file path, a URL, a KTX2 container, or a pre-built [Mipmap](https://fragmentcolor.org/api/texture/mipmap).
 
@@ -285,7 +302,7 @@ class Renderer:
         bytes = renderer.read_storage(compute, "out")
         ```
         """
-    def render(self, renderable: _Renderable, target: RenderCanvasTarget | TextureTarget) -> None:
+    def render(self, renderable: _Renderable, target: TextureTarget | WindowTarget) -> None:
         """
         Renders the given object to the given [Target](https://fragmentcolor.org/api/targets/target).
 
@@ -323,7 +340,7 @@ class Renderer:
         depth = r.create_depth_texture([800, 600])
         ```
         """
-    def create_storage_texture(self, size: _PySize, format: TextureFormat, data: bytes | Sequence[int] | None = ..., usage_bits: int | None = ...) -> Texture:
+    def create_storage_texture(self, size: _PySize, format: TextureFormat, data: bytes | Sequence[int] | None = ..., usage: int | TextureUsage | None = ..., usage_bits: int | None = ...) -> Texture:
         """
         Create a storage-class texture for compute shaders, image store/load, or as a render target. The input shapes mirror `Renderer::create_texture` and `Mipmap::build`.
 
@@ -548,7 +565,7 @@ class Shader:
         # (Skipping the actual fetch in this doctest)
         ```
         """
-    def set(self, key: str, value: bool | float | bytearray | bytes | memoryview[Any] | Texture | Sequence[float]) -> None:
+    def set(self, key: str, value: bool | float | bytearray | bytes | memoryview[Any] | Texture | Sequence[Sequence[float]] | Sequence[float]) -> None:
         """
         Sets the value of the uniform identified by the given key.
 
@@ -820,8 +837,6 @@ class Shader:
         is_compute = shader.is_compute()
         ```
         """
-    def renderable_type(self) -> str: ...
-    def passes(self) -> _PyPassIterator: ...
     @staticmethod
     def default() -> Shader:
         """
@@ -1001,7 +1016,6 @@ class Pass:
         rpass = Pass.from_shader("single", shader)
         ```
         """
-    def passes(self) -> _PyPassIterator: ...
     def name(self) -> str:
         """
         Read the pass's name — the string passed to
@@ -1114,7 +1128,7 @@ class Pass:
         rpass.add_mesh(mesh)
         ```
         """
-    def add(self, object: _SceneObject) -> None:
+    def add(self, object: _SceneObject) -> Pass:
         """
         Absorb any `SceneObject` (a
         [Model](https://fragmentcolor.org/api/scene/model),
@@ -1182,7 +1196,7 @@ class Pass:
         renderer.render(rpass, target)
         ```
         """
-    def set_viewport(self, viewport: ScreenRegion) -> None:
+    def set_viewport(self, viewport: ScreenRegion | Sequence[int]) -> None:
         """
         Sets the viewport region for this [Pass](https://fragmentcolor.org/api/core/pass).
 
@@ -1338,7 +1352,6 @@ class Pass:
         renderer.render(compose, target) # compose renders last
         ```
         """
-    def renderable_type(self) -> str: ...
 
 @final
 class Size:
@@ -1613,8 +1626,6 @@ class Mesh:
         mesh.clear_indices() # back to auto-derived dedup
         ```
         """
-    def renderable_type(self) -> str: ...
-    def passes(self) -> _PyPassIterator: ...
 
 @final
 class Vertex:
@@ -1927,7 +1938,7 @@ class Scene:
         ```
         """
     @staticmethod
-    def load(source: str | bytes | Sequence[int]) -> Scene:
+    def load(source: str | bytearray | bytes, cameras: bool = ..., lights: bool = ...) -> Scene:
         """
         Build a `Scene` from a serialized 3D file. Pass a **path** (`.gltf` or `.glb`)
         or in-memory **`.glb` bytes** straight to `Scene::load`. The format is
@@ -1998,7 +2009,7 @@ class Scene:
         scene2 = Scene.load(glb_bytes)
         ```
         """
-    def add(self, object: _SceneObject) -> None:
+    def add(self, object: _SceneObject) -> Scene:
         """
         Absorb any `SceneObject` (a
         [Model](https://fragmentcolor.org/api/scene/model),
@@ -2050,7 +2061,7 @@ class Scene:
         camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
         ```
         """
-    def add_pass(self, pass_: Pass) -> None:
+    def add_pass(self, pass_: Pass) -> Scene:
         """
         Append a user-built [Pass](https://fragmentcolor.org/api/core/pass) to the
         scene's pass graph. A `Scene` owns one ordered list of passes, and `add_pass`
@@ -2217,7 +2228,7 @@ class Scene:
             p.load_previous()
         ```
         """
-    def add_to(self, target: int | str, object: _SceneObject) -> None:
+    def add_to(self, target: int | str, object: _SceneObject) -> Scene:
         """
         Add a `SceneObject` (Model / Camera /
         Light / custom) to a specific Pass in the graph, addressed by index or by
@@ -2280,7 +2291,7 @@ class Scene:
         ])
         ```
         """
-    def no_defaults(self) -> None:
+    def no_defaults(self) -> Scene:
         """
         Turn off both default-Camera and default-Light injection. By default a Scene
         carrying Models but no Camera or Light injects a stock perspective camera and
@@ -2314,7 +2325,7 @@ class Scene:
             p.load_previous()
         ```
         """
-    def no_default_camera(self) -> None:
+    def no_default_camera(self) -> Scene:
         """
         Turn off default-Camera injection while leaving the default Light in place.
         By default a Scene with Models but no Camera injects a stock perspective
@@ -2341,7 +2352,7 @@ class Scene:
         scene.no_default_camera()
         ```
         """
-    def no_default_light(self) -> None:
+    def no_default_light(self) -> Scene:
         """
         Turn off default-Light injection while leaving the default Camera in place.
         By default a Scene with Models but no Light injects a white directional light
@@ -2369,7 +2380,7 @@ class Scene:
         scene.no_default_light()
         ```
         """
-    def set_default_camera(self, camera: Camera) -> None:
+    def set_default_camera(self, camera: Camera) -> Scene:
         """
         Supply your own default [`Camera`](https://fragmentcolor.org/api/scene/camera)
         for the Scene to inject at first render in place of FC's stock perspective
@@ -2398,7 +2409,7 @@ class Scene:
         scene.set_default_camera(camera)
         ```
         """
-    def set_default_light(self, light: Light) -> None:
+    def set_default_light(self, light: Light) -> Scene:
         """
         Supply your own default [`Light`](https://fragmentcolor.org/api/scene/light)
         for the Scene to inject at first render in place of FC's stock white
@@ -2427,7 +2438,7 @@ class Scene:
         scene.set_default_light(key)
         ```
         """
-    def ambient(self, color: Sequence[float]) -> None:
+    def ambient(self, color: Sequence[float]) -> Scene:
         """
         Set the scene-wide ambient color. The PBR shader adds
         `albedo * ambient` to every fragment regardless of which lights are
@@ -2563,8 +2574,6 @@ class Scene:
             light.set_intensity(current * 0.5)
         ```
         """
-    def passes(self) -> _PyPassIterator: ...
-    def renderable_type(self) -> str: ...
 
 @final
 class Model:
@@ -2726,7 +2735,7 @@ class Model:
         identity = model.transform()
         ```
         """
-    def set_transform(self, matrix: Sequence[Sequence[float]]) -> None:
+    def set_transform(self, matrix: Sequence[Sequence[float]] | Sequence[float]) -> None:
         """
         Replace the Model's 4×4 transform wholesale, in column-major order. Useful
         when you already have a matrix from a math library or a glTF node and want
@@ -4049,7 +4058,7 @@ class Material:
         solid_mesh = Material.pbr().double_sided(False)
         ```
         """
-    def base_color_texture(self, texture: Texture) -> Material:
+    def base_color_texture(self, texture: _PyTextureSource) -> Material:
         """
         Bind a texture to the `base_color_map` slot. The default PBR shader samples it in `fs_main` and multiplies by the factor. The albedo for each fragment is `material.base_color * textureSample(base_color_map, sampler, in.uv)`.
 
@@ -4099,7 +4108,7 @@ class Material:
         blob = Material.pbr().base_color_texture(albedo)
         ```
         """
-    def metallic_roughness_texture(self, texture: Texture) -> Material:
+    def metallic_roughness_texture(self, texture: _PyTextureSource) -> Material:
         """
         Bind a texture to the canonical `metallic_roughness_map` slot. Following
         glTF 2.0, the green channel encodes per-fragment roughness, the blue channel
@@ -4126,7 +4135,7 @@ class Material:
         mat = Material.pbr().metallic_roughness_texture(mr_map)
         ```
         """
-    def normal_texture(self, texture: Texture) -> Material:
+    def normal_texture(self, texture: _PyTextureSource) -> Material:
         """
         Bind a tangent-space normal map to the canonical `normal_map` slot. The
         default PBR shader samples the map in `fs_main`, decodes the stored
@@ -4155,7 +4164,7 @@ class Material:
         mat = Material.pbr().normal_texture(normal_map).normal_scale(1.2)
         ```
         """
-    def occlusion_texture(self, texture: Texture) -> Material:
+    def occlusion_texture(self, texture: _PyTextureSource) -> Material:
         """
         Bind an ambient-occlusion map to the canonical `occlusion_map` slot.
         Following glTF 2.0, only the red channel is read; the sampled value is
@@ -4181,7 +4190,7 @@ class Material:
         mat = Material.pbr().occlusion_texture(ao)
         ```
         """
-    def emissive_texture(self, texture: Texture) -> Material:
+    def emissive_texture(self, texture: _PyTextureSource) -> Material:
         """
         Bind an emissive map to the canonical `emissive_map` slot. The default PBR
         shader samples it in `fs_main` and multiplies by the factor: per-fragment
@@ -4563,6 +4572,21 @@ class Mipmap:
         _ = level_zero_bytes
         ```
         """
+    def levels(self) -> list[bytes]:
+        """
+        Return the tightly-packed bytes for each mip level, level 0 first. Each level holds `bytes_per_pixel(format) * max(1, base_w >> level) * max(1, base_h >> level)` bytes. Reach for this when you want to inspect a level, dump the chain to disk, or feed the bytes into a tool that isn't FragmentColor. When you upload via `Renderer::create_texture(chain)`, the renderer reads the bytes directly and you don't need to touch them yourself.
+
+        Example:
+
+        ```python
+        from fragmentcolor import TextureFormat, Mipmap
+
+        pixels = [0] * (8 * 8 * 4)
+        chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, [8, 8])
+        level_zero_bytes = chain.level(0)
+        _ = level_zero_bytes
+        ```
+        """
 
 @final
 class SamplerOptions:
@@ -4582,6 +4606,18 @@ class CompareFunction:
     NotEqual: ClassVar[CompareFunction]
     GreaterEqual: ClassVar[CompareFunction]
     Always: ClassVar[CompareFunction]
+
+@final
+class TextureUsage:
+    @property
+    def bits(self) -> int: ...
+    COPY_SRC: ClassVar[TextureUsage]
+    COPY_DST: ClassVar[TextureUsage]
+    TEXTURE_BINDING: ClassVar[TextureUsage]
+    STORAGE_BINDING: ClassVar[TextureUsage]
+    RENDER_ATTACHMENT: ClassVar[TextureUsage]
+    def __or__(self, other: TextureUsage) -> TextureUsage: ...
+    def __int__(self) -> int: ...
 
 @final
 class TextureTarget:
@@ -4623,7 +4659,6 @@ class TextureTarget:
         target.resize([128, 32])
         ```
         """
-    def get_current_frame(self) -> _TargetFrame: ...
     def get_image(self) -> npt.NDArray[numpy.uint8]:
         """
         Returns the current contents of the target as a byte array in RGBA8 format.
@@ -4685,7 +4720,7 @@ class TextureTarget:
         """
 
 @final
-class RenderCanvasTarget:
+class WindowTarget:
     """
     `RenderCanvasTarget` is a Python-specific wrapper around [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget).
 
@@ -4694,8 +4729,6 @@ class RenderCanvasTarget:
     - Canonical object: [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget)
     - [Target](https://fragmentcolor.org/api/targets/target) trait docs: [Target](https://fragmentcolor.org/api/targets/target)
     """
-    def __new__(cls, canvas: Any, _present_methods: Any) -> RenderCanvasTarget: ...
-    def is_ready(self) -> bool: ...
     def size(self) -> Size:
         """
         Returns the size of the [Target](https://fragmentcolor.org/api/targets/target) in pixels.
@@ -4742,9 +4775,6 @@ class RenderCanvasTarget:
         image = target.get_image()
         ```
         """
-    @property
-    def canvas(self) -> Any: ...
-    def present(self) -> dict[str, Any]: ...
 
 @final
 class RenderCanvasFrame: ...
@@ -4755,17 +4785,9 @@ class _PassInput:
     def color(self) -> list[float]: ...
 
 @final
-class _PyPassIterator: ...
-
-@final
 class _SamplerInfo: ...
-
-@final
-class _TargetFrame:
-    def format(self) -> str: ...
-    def present(self) -> None: ...
 
 @final
 class _TextureMeta: ...
 
-def rendercanvas_context_hook(canvas: Any, present_methods: Any) -> RenderCanvasTarget: ...
+def rendercanvas_context_hook(canvas: Any, present_methods: Any) -> WindowTarget: ...
