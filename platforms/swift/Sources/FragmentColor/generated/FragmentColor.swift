@@ -7358,16 +7358,15 @@ public func FfiConverterTypeTextureFormat_lower(_ value: TextureFormat) -> RustB
 
 
 /**
- * Uniffi-marshallable mirror of [`TextureInput`]. Drops the `DynamicImage`
- * variant (the `image` crate's `DynamicImage` isn't an FFI-friendly type;
- * callers on every non-Rust platform reach the same outcome by passing
- * `Bytes` and letting the library decode internally) and uses owned types
- * uniffi can lower across the FFI (`String` for paths, `Arc<Object>` for
- * handles).
+ * Uniffi mirror of [`TextureData`], which it converts into.
  *
- * The Rust core stays on `TextureInput`; this enum exists only so mobile
- * bindings can carry a concrete variant. Web and Python use their own
- * dispatch (`TryFrom<JsValue>` / Python kwargs) and never see this type.
+ * It leaves out `Empty` and `DynamicImage`. uniffi can't lower the
+ * `image` crate's `DynamicImage`, and `Bytes` reaches the same result,
+ * since the library decodes them. Paths travel as `String`, handles as `Arc`.
+ *
+ * The Rust core stays on `TextureData`. This enum exists only so the mobile
+ * bindings can carry a concrete variant. Web and Python use their own dispatch
+ * (`TryFrom<JsValue>` and Python kwargs) and never see this type.
  */
 
 public enum TextureInputMobile {
@@ -7991,17 +7990,17 @@ public indirect enum UniformData: Equatable, Hashable {
     case iVec4([Int32]
     )
     /**
-     * Mat2: 4 elements (flattened 2x2, row-major)
+     * Mat2: 4 elements (flattened 2x2, column-major)
      */
     case mat2([Float]
     )
     /**
-     * Mat3: 9 elements (flattened 3x3, row-major)
+     * Mat3: 9 elements (flattened 3x3, column-major)
      */
     case mat3([Float]
     )
     /**
-     * Mat4: 16 elements (flattened 4x4, row-major)
+     * Mat4: 16 elements (flattened 4x4, column-major)
      */
     case mat4([Float]
     )
