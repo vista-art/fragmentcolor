@@ -2,14 +2,42 @@
 use wasm_bindgen::prelude::*;
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyo3::pyclass(from_py_object, get_all, set_all))]
+#[cfg_attr(python, pyo3::pyclass(from_py_object, get_all, set_all, eq))]
 #[cfg_attr(mobile, derive(uniffi::Record))]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct SamplerOptions {
+    #[cfg_attr(mobile, uniffi(default = false))]
     pub repeat_x: bool,
+    #[cfg_attr(mobile, uniffi(default = false))]
     pub repeat_y: bool,
+    #[cfg_attr(mobile, uniffi(default = true))]
     pub smooth: bool,
+    #[cfg_attr(mobile, uniffi(default = None))]
     pub compare: Option<CompareFunction>,
+}
+
+// SamplerOptions is a value type. The parity audit tracks the methods that take
+// it, so its constructor has no doc page.
+#[cfg(wasm)]
+#[wasm_bindgen]
+impl SamplerOptions {
+    /// Each option left out keeps its default: no repeat, smooth, no compare.
+    #[doc(hidden)]
+    #[wasm_bindgen(constructor)]
+    pub fn new_js(
+        repeat_x: Option<bool>,
+        repeat_y: Option<bool>,
+        smooth: Option<bool>,
+        compare: Option<CompareFunction>,
+    ) -> SamplerOptions {
+        let defaults = SamplerOptions::default();
+        SamplerOptions {
+            repeat_x: repeat_x.unwrap_or(defaults.repeat_x),
+            repeat_y: repeat_y.unwrap_or(defaults.repeat_y),
+            smooth: smooth.unwrap_or(defaults.smooth),
+            compare: compare.or(defaults.compare),
+        }
+    }
 }
 
 #[cfg_attr(python, pyo3::pyclass(from_py_object))]

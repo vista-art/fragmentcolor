@@ -518,7 +518,7 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
 }
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass(from_py_object))]
+#[cfg_attr(python, pyclass(from_py_object, get_all, eq, hash, frozen))]
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct TextureId {

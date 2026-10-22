@@ -168,13 +168,16 @@ impl<S: Into<Size>, F: Into<TextureFormat>> From<(S, F, &[u8])> for TextureInput
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Clone)]
 pub struct TextureOptions {
+    #[cfg_attr(mobile, uniffi(default = None))]
     pub size: Option<Size>,
     pub format: TextureFormat,
+    #[cfg_attr(mobile, uniffi(default))]
     pub sampler: SamplerOptions,
     /// Generate a full mipmap chain at upload for source images. Default: true.
     /// Combined with the default linear sampler, this enables trilinear filtering
     /// so textured surfaces stay smooth at any zoom or rotation. Set to false
     /// to skip the CPU work for textures that won't be sampled at distance.
+    #[cfg_attr(mobile, uniffi(default = true))]
     pub mipmaps: bool,
     /// Optional [`crate::TextureUsage`] bits, stored as the underlying
     /// `u32` bit mask so it crosses every FFI cleanly.
@@ -186,6 +189,7 @@ pub struct TextureOptions {
     ///
     /// Set with `.with_usage(TextureUsage::COPY_SRC | ...)` for
     /// readability on the Rust side.
+    #[cfg_attr(mobile, uniffi(default = None))]
     pub usage: Option<u32>,
 }
 
