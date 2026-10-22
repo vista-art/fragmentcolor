@@ -95,7 +95,7 @@ fn main() {
         // produce a self-documenting line in the build log.
         let mut blended = 0usize;
         let mut nonempty = 0usize;
-        for px in image.chunks_exact(4) {
+        for px in image.as_chunks::<4>().0 {
             if px[0] > 0 || px[1] > 0 || px[2] > 0 {
                 nonempty += 1;
                 if px[0] < 240 && px[1] < 240 && px[2] < 240 {
