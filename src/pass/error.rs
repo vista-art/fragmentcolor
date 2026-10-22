@@ -67,7 +67,7 @@ impl From<wasm_bindgen::JsValue> for PassError {
 #[cfg(wasm)]
 impl From<PassError> for wasm_bindgen::JsValue {
     fn from(error: PassError) -> Self {
-        wasm_bindgen::JsValue::from_str(&error.to_string())
+        js_sys::Error::new(&error.to_string()).into()
     }
 }
 

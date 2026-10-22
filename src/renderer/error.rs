@@ -103,7 +103,7 @@ impl From<wasm_bindgen::JsValue> for RendererError {
 #[cfg(wasm)]
 impl From<RendererError> for wasm_bindgen::JsValue {
     fn from(error: RendererError) -> Self {
-        wasm_bindgen::JsValue::from_str(&error.to_string())
+        js_sys::Error::new(&error.to_string()).into()
     }
 }
 
@@ -122,7 +122,7 @@ impl From<wasm_bindgen::JsValue> for InitializationError {
 #[cfg(wasm)]
 impl From<InitializationError> for wasm_bindgen::JsValue {
     fn from(error: InitializationError) -> Self {
-        wasm_bindgen::JsValue::from_str(&error.to_string())
+        js_sys::Error::new(&error.to_string()).into()
     }
 }
 

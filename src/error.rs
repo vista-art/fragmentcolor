@@ -140,7 +140,7 @@ impl From<wasm_bindgen::JsValue> for FragmentColorError {
 #[cfg(wasm)]
 impl From<FragmentColorError> for wasm_bindgen::JsValue {
     fn from(error: FragmentColorError) -> Self {
-        wasm_bindgen::JsValue::from_str(&error.to_string())
+        js_sys::Error::new(&error.to_string()).into()
     }
 }
 
