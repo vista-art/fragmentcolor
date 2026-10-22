@@ -55,6 +55,7 @@ pub struct Shader {
 crate::impl_fc_kind!(Shader, "Shader");
 
 impl Default for Shader {
+    #[lsp_doc("docs/api/core/shader/default.md")]
     fn default() -> Self {
         Self::new(DEFAULT_SHADER).expect("SAFETY: DEFAULT_SHADER is built-in")
     }
