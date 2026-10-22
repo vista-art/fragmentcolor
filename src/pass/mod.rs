@@ -37,6 +37,50 @@ impl PassInput {
     pub fn clear(color: Color) -> Self {
         Self { load: false, color }
     }
+
+    /// True when the pass keeps the previous contents of its target instead of clearing it.
+    pub fn loads_previous(&self) -> bool {
+        self.load
+    }
+
+    /// The RGBA color the pass clears its target to, each channel from 0 to 1.
+    pub fn color(&self) -> [f32; 4] {
+        self.color.to_f32_array()
+    }
+}
+
+// PassInput is a value type returned by Pass::get_input, so its accessors
+// have no doc pages of their own.
+#[cfg(wasm)]
+#[wasm_bindgen]
+impl PassInput {
+    #[doc(hidden)]
+    #[wasm_bindgen(js_name = loadsPrevious)]
+    pub fn loads_previous_js(&self) -> bool {
+        self.loads_previous()
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(js_name = color)]
+    pub fn color_js(&self) -> Vec<f32> {
+        self.color().to_vec()
+    }
+}
+
+#[cfg(python)]
+#[pymethods]
+impl PassInput {
+    #[doc(hidden)]
+    #[pyo3(name = "loads_previous")]
+    pub fn loads_previous_py(&self) -> bool {
+        self.loads_previous()
+    }
+
+    #[doc(hidden)]
+    #[pyo3(name = "color")]
+    pub fn color_py(&self) -> [f32; 4] {
+        self.color()
+    }
 }
 
 #[derive(Debug)]
@@ -148,7 +192,7 @@ impl Pass {
     }
 
     #[lsp_doc("docs/api/core/pass/set_clear_color.md")]
-    pub fn set_clear_color(&self, color: [f32; 4]) {
+    pub fn set_clear_color(&self, color: impl Into<Color>) {
         self.object.set_clear_color(color);
     }
 
@@ -750,9 +794,16 @@ mod tests {
         let after_load = pass.get_input();
 
         // Assert
-        assert!(!after_clear.load);
+        assert!(!after_clear.loads_previous());
         assert_eq!(after_clear.color, Color::from([0.1, 0.2, 0.3, 0.4]));
-        assert!(after_load.load);
+        assert_eq!(after_clear.color(), Color::from([0.1, 0.2, 0.3, 0.4]).to_f32_array());
+        assert!(after_load.loads_previous());
+
+        // Any Color form works: three channels are opaque, and a Color passes through.
+        pass.set_clear_color([1.0, 0.0, 0.0]);
+        assert_eq!(pass.get_input().color(), [1.0, 0.0, 0.0, 1.0]);
+        pass.set_clear_color(Color::white());
+        assert_eq!(pass.get_input().color(), [1.0, 1.0, 1.0, 1.0]);
     }
 
     // Story: setting a viewport is stored and can be read back.
