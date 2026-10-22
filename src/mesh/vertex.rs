@@ -130,6 +130,7 @@ impl Vertex {
     }
 
     #[lsp_doc("docs/api/geometry/vertex/set.md")]
+    #[must_use = "set returns the updated Vertex"]
     pub fn set<V: Into<VertexValue>>(mut self, key: &str, v: V) -> Self {
         let k = key.to_string();
         if !self.prop_locations.contains_key(&k) {
@@ -198,6 +199,7 @@ impl Instance {
 
     /// Set a per-instance attribute. Locations auto-increment in insertion order
     /// (instance attributes have their own location namespace, separate from vertex).
+    #[must_use = "set returns the updated Instance"]
     pub fn set<V: Into<VertexValue>>(mut self, key: &str, v: V) -> Self {
         let k = key.to_string();
         if !self.prop_locations.contains_key(&k) {
