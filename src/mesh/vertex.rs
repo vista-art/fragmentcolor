@@ -204,6 +204,7 @@ impl Eq for Vertex {}
 #[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Object))]
 #[derive(Clone, Debug, Default)]
+#[lsp_doc("docs/api/geometry/instance/instance.md")]
 pub struct Instance {
     pub(crate) properties: HashMap<String, VertexValue>,
     pub(crate) prop_locations: HashMap<String, u32>,
@@ -211,14 +212,12 @@ pub struct Instance {
 }
 
 impl Instance {
-    /// Create an empty `Instance`. Chain `.set("key", value)` calls to populate
-    /// per-instance attributes.
+    #[lsp_doc("docs/api/geometry/instance/new.md")]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Set a per-instance attribute. Locations auto-increment in insertion order
-    /// (instance attributes have their own location namespace, separate from vertex).
+    #[lsp_doc("docs/api/geometry/instance/set.md")]
     #[must_use = "set returns the updated Instance"]
     pub fn set<V: Into<VertexValue>>(mut self, key: &str, v: V) -> Self {
         let k = key.to_string();
@@ -257,6 +256,7 @@ impl From<&Vertex> for Instance {
 
 #[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Clone, Debug, PartialEq)]
+#[lsp_doc("docs/api/geometry/vertex_value/vertex_value.md")]
 pub enum VertexValue {
     F32(f32),
     #[cfg(not(mobile))]

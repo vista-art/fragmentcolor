@@ -238,17 +238,13 @@ impl Vertex {
 }
 
 // -----------------------------
-// Instance (WASM bindings) — `new Instance()` + `.set(key, value)` builder.
-// JS users typically pass a plain `{ key: value, ... }` object to `mesh.addInstance`,
-// but explicit construction is supported for symmetry with the Rust API.
+// Instance (WASM bindings): `new Instance()` + `.set(key, value)` builder.
+// `mesh.addInstance` also takes a plain `{ key: value, ... }` object.
 // -----------------------------
 #[wasm_bindgen]
 impl Instance {
-    // Instance is a helper value type; its constructors are not separately
-    // documented as user API — callers use Vertex.createInstance() or plain
-    // object literals passed to Mesh.addInstance().
-    #[doc(hidden)]
     #[wasm_bindgen(constructor)]
+    #[lsp_doc("docs/api/geometry/instance/new.md")]
     pub fn new_js() -> Instance {
         Instance::new()
     }
@@ -259,8 +255,8 @@ impl Instance {
         Instance::new()
     }
 
-    #[doc(hidden)]
     #[wasm_bindgen(js_name = "set")]
+    #[lsp_doc("docs/api/geometry/instance/set.md")]
     pub fn set_js(&self, key: &str, value: &JsValue) -> Result<Instance, JsError> {
         let vv = js_to_vertex_value(value)?;
         Ok(self.clone().set(key, vv))

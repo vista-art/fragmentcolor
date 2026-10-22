@@ -210,17 +210,14 @@ impl Vertex {
 
 #[pymethods]
 impl Instance {
-    // Instance is a helper value type; its constructors/methods are not
-    // separately documented as user API. Mark as doc(hidden) to satisfy
-    // the parity audit's unlabeled-export check.
-    #[doc(hidden)]
     #[new]
+    #[lsp_doc("docs/api/geometry/instance/new.md")]
     pub fn new_py() -> Self {
         Self::default()
     }
 
-    #[doc(hidden)]
     #[pyo3(name = "set")]
+    #[lsp_doc("docs/api/geometry/instance/set.md")]
     pub fn set_py(&self, key: &str, value: PyAttributeValue) -> Self {
         self.clone().set(key, VertexValue::from(value))
     }
