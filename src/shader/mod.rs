@@ -1081,6 +1081,38 @@ mod tests {
         let _ = from_slice_str.list_uniforms();
     }
 
+    // Story: Rust sets and reads matrices as flat column-major lists, as every
+    // binding does, next to the nested arrays.
+    #[test]
+    fn set_and_get_flat_matrices() {
+        let wgsl = r#"
+@group(0) @binding(0) var<uniform> m4: mat4x4<f32>;
+@group(0) @binding(1) var<uniform> m3: mat3x3<f32>;
+@group(0) @binding(2) var<uniform> m2: mat2x2<f32>;
+@vertex fn vs_main() -> @builtin(position) vec4<f32> {
+    return m4[0] + vec4<f32>(m3[0], 0.0) + vec4<f32>(m2[0], 0.0, 0.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+        "#;
+        let shader = Shader::new(wgsl).expect("shader");
+
+        shader.set("m4", [0.0; 16]).expect("flat mat4");
+        let identity: Vec<f32> = (0..16).map(|i| if i % 5 == 0 { 1.0 } else { 0.0 }).collect();
+        shader.set("m4", identity.clone()).expect("mat4 from a Vec");
+        assert_eq!(shader.get::<[f32; 16]>("m4").expect("get"), identity[..]);
+        assert_eq!(shader.get::<Vec<f32>>("m4").expect("get"), identity);
+
+        let three: [f32; 9] = std::array::from_fn(|i| i as f32);
+        shader.set("m3", three).expect("flat mat3");
+        assert_eq!(shader.get::<[f32; 9]>("m3").expect("get"), three);
+
+        shader.set("m2", [1.0, 2.0, 3.0, 4.0]).expect("mat2 from four numbers");
+        assert_eq!(shader.get::<[f32; 4]>("m2").expect("get"), [1.0, 2.0, 3.0, 4.0]);
+        assert_eq!(shader.get::<Vec<u8>>("m2").expect("get").len(), 16);
+
+        assert!(shader.set("m4", [0.0; 9]).is_err());
+    }
+
     #[test]
     fn shader_new_accepts_owned_string() {
         let owned: String = DEFAULT_SHADER.to_string();

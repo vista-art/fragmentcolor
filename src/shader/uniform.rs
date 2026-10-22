@@ -629,7 +629,7 @@ crate::impl_from_into_with_refs!(
     UniformData,
     [f32; 4],
     |d: UniformData| match d {
-        UniformData::Vec4(v) if v.len() >= 4 => [v[0], v[1], v[2], v[3]],
+        UniformData::Vec4(v) | UniformData::Mat2(v) if v.len() >= 4 => [v[0], v[1], v[2], v[3]],
         _ => [0.0; 4],
     },
     |a: [f32; 4]| UniformData::Vec4(a.to_vec())
@@ -719,6 +719,27 @@ crate::impl_from_into_with_refs!(
     |m: [[f32; 4]; 4]| UniformData::Mat4(m.iter().flatten().copied().collect())
 );
 
+// Flat matrices, column after column, as the bindings pass them.
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [f32; 9],
+    |d: UniformData| match d {
+        UniformData::Mat3(m) if m.len() >= 9 => std::array::from_fn(|i| m[i]),
+        _ => [0.0; 9],
+    },
+    |m: [f32; 9]| UniformData::Mat3(m.to_vec())
+);
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [f32; 16],
+    |d: UniformData| match d {
+        UniformData::Mat4(m) if m.len() >= 16 => std::array::from_fn(|i| m[i]),
+        _ => [0.0; 16],
+    },
+    |m: [f32; 16]| UniformData::Mat4(m.to_vec())
+);
+
 crate::impl_from_into_with_refs!(
     #[doc(hidden)]
     UniformData,
@@ -791,6 +812,49 @@ impl From<&[u8]> for UniformData {
 impl From<Vec<u8>> for UniformData {
     fn from(v: Vec<u8>) -> Self {
         UniformData::Bytes(v)
+    }
+}
+
+/// Any number of floats, such as a flat matrix built at run time.
+/// `Shader::set` shapes them to the type the shader declares for the key.
+impl From<Vec<f32>> for UniformData {
+    fn from(values: Vec<f32>) -> Self {
+        match values.len() {
+            1 => UniformData::Float(values[0]),
+            2 => UniformData::Vec2(values),
+            3 => UniformData::Vec3(values),
+            4 => UniformData::Vec4(values),
+            9 => UniformData::Mat3(values),
+            _ => UniformData::Mat4(values),
+        }
+    }
+}
+/// The floats of a float scalar, vector or matrix, and an empty list for any other value.
+impl From<UniformData> for Vec<f32> {
+    fn from(data: UniformData) -> Self {
+        use UniformData as U;
+        match data {
+            U::Float(value) => vec![value],
+            U::Vec2(v) | U::Vec3(v) | U::Vec4(v) | U::Mat2(v) | U::Mat3(v) | U::Mat4(v) => v,
+            _ => Vec::new(),
+        }
+    }
+}
+
+/// The value's bytes as the shader reads them.
+impl From<UniformData> for Vec<u8> {
+    fn from(data: UniformData) -> Self {
+        data.to_bytes()
+    }
+}
+
+/// The id of the texture bound to a texture key, and id 0 for any other value.
+impl From<UniformData> for crate::texture::TextureId {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::Texture(meta) => meta.id,
+            _ => crate::texture::TextureId { id: 0 },
+        }
     }
 }
 
