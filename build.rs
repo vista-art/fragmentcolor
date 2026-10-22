@@ -161,6 +161,18 @@ fn generate_docs() {
     println!("cargo::rerun-if-changed=src");
     println!("cargo::rerun-if-changed=docs/api");
     parity::print_report(&parity_report, mode, &baseline_path);
+
+    // Shape fingerprints warn in this release. FC_PARITY_REWRITE_BASELINE=1
+    // rewrites docs/api/PARITY_SHAPES too, and a missing file is bootstrapped.
+    let shapes_path = workspace.join("docs/api/PARITY_SHAPES");
+    let shapes_mode = if matches!(mode, parity::Mode::RewriteBaseline) || !shapes_path.exists() {
+        parity::Mode::RewriteBaseline
+    } else {
+        parity::Mode::Warn
+    };
+    println!("cargo::rerun-if-changed=docs/api/PARITY_SHAPES");
+    let shapes = parity::shapes::audit(&workspace, &catalog.reflection);
+    parity::shapes::report(&shapes, shapes_mode, &shapes_path);
     println!(
         "==> docs/api/PARITY drives intentional divergence; PARITY_BASELINE tracks Phase-3 backlog.\n"
     );

@@ -1363,4 +1363,1008 @@ mod parity {
         }
         w
     }
+
+    // -- shapes ------------------------------------------------------------
+
+    pub mod shapes {
+        //! Shape fingerprints.
+        //!
+        //! For every binding the audit credits to a doc page, this records a
+        //! fingerprint of its signature and compares it with the Rust method
+        //! that page documents:
+        //!
+        //! - the arity, with the parameters a default covers;
+        //! - each parameter's class, such as `size`, `floats(4)`, `bytes`,
+        //!   `renderable`, `matrix`, `text` or a crate type by name;
+        //! - whether it returns a `Result` and whether it is `async`;
+        //! - the class of what it returns.
+        //!
+        //! Classes are normalized before they are compared. A binding type
+        //! counts under the name its binding exports it as, a parameter that
+        //! takes any value (`JsValue`, `Py<PyAny>`) matches every class, and a
+        //! type that converts into the Rust parameter's `impl Into<X>` matches
+        //! it. Idioms each language forces don't count: JS has one number type
+        //! and no fixed-length arrays, uniffi has no fixed-length arrays, and
+        //! Python calls block instead of returning futures.
+        //!
+        //! Known differences live in `docs/api/PARITY_SHAPES`. A difference
+        //! missing from it, or one that changed, prints a cargo warning.
+
+        use std::collections::{BTreeMap, BTreeSet};
+        use std::fs;
+        use std::path::Path;
+
+        use quote::ToTokens;
+        use syn::{FnArg, GenericArgument, PathArguments, ReturnType, Type, TypeParamBound};
+
+        use super::{
+            Mode, Platform, load_waivers, override_platforms, resolve_canonical, scan_docs,
+        };
+        use crate::binding_checks::rust;
+        use crate::reflect::{self, Build, FnDef, ImplDef, Reflection};
+
+        /// What a parameter or a return value holds, after normalization.
+        #[derive(Clone, Debug, PartialEq, Eq)]
+        enum Class {
+            Unit,
+            Bool,
+            Int,
+            Float,
+            Text,
+            Bytes,
+            /// Floats: `[f32; N]` with a length, `Vec<f32>` without one.
+            Floats(Option<usize>),
+            Ints(Option<usize>),
+            /// Nested float arrays, such as `[[f32; 4]; 4]`.
+            Matrix,
+            List(Box<Class>),
+            Optional(Box<Class>),
+            Map,
+            /// The type that declares the method.
+            This,
+            /// A crate type, by the name its binding exports it as.
+            Named(String),
+            /// `impl Into<X>`, `impl TryInto<X>`, or a generic bound by either.
+            Into(String),
+            /// `&impl X`, `&dyn X`, or a generic bound by the trait `X`.
+            Trait(String),
+            /// A value any class fits: `JsValue`, `Py<PyAny>` and the like.
+            Any,
+            Other(String),
+        }
+
+        impl Class {
+            fn label(&self) -> String {
+                match self {
+                    Class::Unit => "unit".into(),
+                    Class::Bool => "bool".into(),
+                    Class::Int => "int".into(),
+                    Class::Float => "float".into(),
+                    Class::Text => "text".into(),
+                    Class::Bytes => "bytes".into(),
+                    Class::Floats(Some(n)) => format!("floats({n})"),
+                    Class::Floats(None) => "floats".into(),
+                    Class::Ints(Some(n)) => format!("ints({n})"),
+                    Class::Ints(None) => "ints".into(),
+                    Class::Matrix => "matrix".into(),
+                    Class::List(inner) => format!("list({})", inner.label()),
+                    Class::Optional(inner) => format!("option({})", inner.label()),
+                    Class::Map => "map".into(),
+                    Class::This => "self".into(),
+                    Class::Named(name) => name.clone(),
+                    Class::Into(name) => format!("into {name}"),
+                    Class::Trait(name) => format!("impl {name}"),
+                    Class::Any => "any".into(),
+                    Class::Other(text) => format!("`{text}`"),
+                }
+            }
+        }
+
+        /// A signature reduced to what the comparison reads.
+        #[derive(Clone, Debug)]
+        struct Shape {
+            /// Each parameter's class and the raw type it came from.
+            params: Vec<(Class, Option<String>)>,
+            /// How many leading parameters a caller must pass.
+            required: usize,
+            /// Whether more arguments than `params` are accepted, as `**kwargs` allows.
+            open: bool,
+            throws: bool,
+            is_async: bool,
+            returns: Class,
+            /// The type the return value names under its wrappers.
+            returns_raw: Option<String>,
+        }
+
+        impl Shape {
+            fn render(&self) -> String {
+                let params: Vec<String> = self
+                    .params
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (class, _))| {
+                        let optional = if i >= self.required { "?" } else { "" };
+                        format!("{}{optional}", class.label())
+                    })
+                    .collect();
+                let mut out = format!("({}) -> {}", params.join(", "), self.returns.label());
+                if self.throws {
+                    out.push_str(" throws");
+                }
+                if self.is_async {
+                    out.push_str(" async");
+                }
+                out
+            }
+        }
+
+        /// A function and the context its types read in.
+        struct Site<'model> {
+            imp: &'model ImplDef,
+            f: &'model FnDef,
+            /// `None` for the Rust API.
+            build: Option<Build>,
+        }
+
+        /// One binding whose shape differs from the Rust method its page documents.
+        #[derive(Debug, Clone)]
+        pub struct Mismatch {
+            pub doc: String,
+            pub platform: Platform,
+            /// The function as the binding exports it, such as `Pass.add`.
+            pub name: String,
+            pub binding: String,
+            pub rust: String,
+        }
+
+        impl Mismatch {
+            fn key(&self) -> String {
+                format!("{} {} {}", self.doc, self.platform.label(), self.name)
+            }
+
+            fn value(&self) -> String {
+                format!("{} | rust {}", self.binding, self.rust)
+            }
+        }
+
+        const BINDINGS: [(Build, Platform, &str); 4] = [
+            (Build::Wasm, Platform::Web, "wasm_bindgen"),
+            (Build::Python, Platform::Python, "pymethods"),
+            (Build::Ios, Platform::Swift, "export"),
+            (Build::Android, Platform::Kotlin, "export"),
+        ];
+
+        /// What [`audit`] found.
+        pub struct Shapes {
+            pub mismatches: Vec<Mismatch>,
+            /// How many credited bindings had a Rust method to compare with.
+            pub compared: usize,
+            /// Doc pages with bindings but no Rust method to compare them with.
+            pub unmatched: BTreeSet<String>,
+        }
+
+        /// Compare every credited binding with its Rust method.
+        pub fn audit(root: &Path, model: &Reflection) -> Shapes {
+            let docs = scan_docs(&root.join("docs/api"));
+            let docs: BTreeSet<&str> = docs.iter().map(String::as_str).collect();
+            let aliases = load_waivers(&root.join("docs/api/PARITY")).aliases;
+
+            let mut canonical: BTreeMap<String, Vec<Site>> = BTreeMap::new();
+            let mut by_name: BTreeMap<(String, String), Vec<Site>> = BTreeMap::new();
+            for imp in model.impls.iter().filter(|imp| is_rust_api(imp)) {
+                for f in imp.fns.iter().filter(|f| rust::holds(&f.cfg)) {
+                    let site = || Site {
+                        imp,
+                        f,
+                        build: None,
+                    };
+                    if let Some(doc) = reflect::lsp_doc(&f.attrs) {
+                        canonical.entry(doc).or_default().push(site());
+                    }
+                    if f.is_pub || imp.is_trait_impl {
+                        by_name
+                            .entry((imp.self_ident.clone(), f.sig.ident.to_string()))
+                            .or_default()
+                            .push(site());
+                    }
+                }
+            }
+
+            let mut out = Vec::new();
+            let mut compared = 0;
+            let mut unmatched = BTreeSet::new();
+            for (build, platform, attr) in BINDINGS {
+                for imp in model.binding_impls(build, attr) {
+                    let owner = name_owner(model, imp, build);
+                    for f in imp
+                        .fns
+                        .iter()
+                        .filter(|f| f.cfg.holds(build) && !is_hidden(f, build))
+                    {
+                        let Some(lsp_doc) = reflect::lsp_doc(&f.attrs) else {
+                            continue;
+                        };
+                        if override_platforms(&lsp_doc).is_some_and(|ps| !ps.contains(&platform)) {
+                            continue;
+                        }
+                        let Some(doc) = resolve_canonical(&lsp_doc, &docs, &aliases) else {
+                            continue;
+                        };
+                        let stem = Path::new(&doc)
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or_default()
+                            .to_string();
+                        let rust = match canonical.get(&doc) {
+                            Some(sites) => sites,
+                            None => match by_name.get(&(owner.clone(), stem)) {
+                                Some(sites) => sites,
+                                None => {
+                                    unmatched.insert(doc);
+                                    continue;
+                                }
+                            },
+                        };
+                        compared += 1;
+                        let site = Site {
+                            imp,
+                            f,
+                            build: Some(build),
+                        };
+                        let binding = fingerprint(model, &site);
+                        let candidates: Vec<Shape> =
+                            rust.iter().map(|s| fingerprint(model, s)).collect();
+                        if candidates
+                            .iter()
+                            .any(|r| conforms(model, &binding, r, &site, platform))
+                        {
+                            continue;
+                        }
+                        out.push(Mismatch {
+                            doc: doc.clone(),
+                            platform,
+                            name: format!("{owner}.{}", export_fn_name(f, build)),
+                            binding: binding.render(),
+                            rust: candidates[0].render(),
+                        });
+                    }
+                }
+            }
+            out.sort_by_key(Mismatch::key);
+            out.dedup_by(|a, b| a.key() == b.key() && a.value() == b.value());
+            Shapes {
+                mismatches: out,
+                compared,
+                unmatched,
+            }
+        }
+
+        /// Print what changed against `docs/api/PARITY_SHAPES`, or rewrite it.
+        /// Only [`Mode::Strict`] fails the build.
+        pub fn report(shapes: &Shapes, mode: Mode, baseline_path: &Path) {
+            let live = &shapes.mismatches;
+            println!(
+                "    compared {} binding(s) with their Rust method; {} page(s) have no Rust method: {}",
+                shapes.compared,
+                shapes.unmatched.len(),
+                shapes
+                    .unmatched
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            if matches!(mode, Mode::RewriteBaseline) {
+                match write_baseline(baseline_path, live) {
+                    Ok(()) => println!(
+                        "✅ Shape baseline rewritten: {} acknowledged difference(s) → {}",
+                        live.len(),
+                        baseline_path.display()
+                    ),
+                    Err(e) => panic!("Failed to write {}: {e}", baseline_path.display()),
+                }
+                return;
+            }
+            let baseline = load_baseline(baseline_path);
+            let mut drift = Vec::new();
+            for m in live {
+                match baseline.get(&m.key()) {
+                    Some(known) if *known == m.value() => {}
+                    Some(known) => drift.push(format!(
+                        "{} changed: {} (baseline: {known})",
+                        m.key(),
+                        m.value()
+                    )),
+                    None => drift.push(format!("{} is new: {}", m.key(), m.value())),
+                }
+            }
+            let live_keys: BTreeSet<String> = live.iter().map(Mismatch::key).collect();
+            let closed = baseline.keys().filter(|k| !live_keys.contains(*k)).count();
+            println!(
+                "{} API shapes: {} known difference(s), {} new or changed, {} closed since the baseline.",
+                if drift.is_empty() { "✅" } else { "⚠️" },
+                live.len() - drift.len(),
+                drift.len(),
+                closed
+            );
+            for line in &drift {
+                println!("cargo::warning=parity shape: {line}");
+            }
+            if closed > 0 {
+                println!(
+                    "    Run `FC_PARITY_REWRITE_BASELINE=1 cargo build --lib` to drop the closed entries."
+                );
+            }
+            if matches!(mode, Mode::Strict) && !drift.is_empty() {
+                panic!(
+                    "{} binding shape(s) differ from the Rust API outside docs/api/PARITY_SHAPES",
+                    drift.len()
+                );
+            }
+        }
+
+        fn load_baseline(file: &Path) -> BTreeMap<String, String> {
+            let Ok(text) = fs::read_to_string(file) else {
+                return BTreeMap::new();
+            };
+            text.lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty() && !line.starts_with('#'))
+                .filter_map(|line| {
+                    let (key, value) = line.split_once(": ")?;
+                    Some((key.to_string(), value.to_string()))
+                })
+                .collect()
+        }
+
+        fn write_baseline(file: &Path, live: &[Mismatch]) -> std::io::Result<()> {
+            let mut out = String::from(
+                "# Auto-generated by build.rs (scripts/parity.rs).\n\
+                 # Bindings whose signature shape differs from the Rust method their doc page\n\
+                 # documents. The build warns on a difference missing here or changed.\n\
+                 # Regenerate with:\n\
+                 #   FC_PARITY_REWRITE_BASELINE=1 cargo build --lib\n\
+                 #\n\
+                 # Line format:\n\
+                 #   <doc> <platform> <Type.method>: <binding shape> | rust <rust shape>\n\
+                 # A `?` marks a parameter a caller may leave out.\n\n",
+            );
+            for m in live {
+                out.push_str(&format!("{}: {}\n", m.key(), m.value()));
+            }
+            fs::write(file, out)
+        }
+
+        // -- which functions ------------------------------------------------
+
+        /// A block of the Rust API: no binding attribute of its own, and a
+        /// `cfg` that holds in a plain Rust build.
+        fn is_rust_api(imp: &ImplDef) -> bool {
+            let binding = imp.attrs.iter().any(|a| {
+                let path = a.path();
+                path.is_ident("pymethods")
+                    || path.is_ident("wasm_bindgen")
+                    || path.segments.last().is_some_and(|s| s.ident == "export")
+            });
+            !binding && rust::holds(&imp.cfg)
+        }
+
+        fn is_hidden(f: &FnDef, build: Build) -> bool {
+            reflect::metas(&f.attrs, build)
+                .iter()
+                .any(|m| reflect::meta_ident(m) == "doc" && reflect::meta_args(m) == "hidden")
+        }
+
+        /// The name the binding exports the impl's type as.
+        fn name_owner(model: &Reflection, imp: &ImplDef, build: Build) -> String {
+            export_name(model, &imp.self_ident, build)
+        }
+
+        fn export_name(model: &Reflection, ident: &str, build: Build) -> String {
+            model
+                .type_named(ident, build)
+                .and_then(|t| reflect::exported_type_name(&t.attrs, &t.ident, build))
+                .unwrap_or_else(|| ident.to_string())
+        }
+
+        fn export_fn_name(f: &FnDef, build: Build) -> String {
+            let key = if build == Build::Wasm {
+                "js_name"
+            } else {
+                "name"
+            };
+            reflect::metas(&f.attrs, build)
+                .iter()
+                .filter(|m| {
+                    matches!(
+                        reflect::meta_ident(m).as_str(),
+                        "wasm_bindgen" | "pyo3" | "method" | "constructor"
+                    )
+                })
+                .find_map(|m| reflect::arg_value(&reflect::meta_args(m), key))
+                .unwrap_or_else(|| f.sig.ident.to_string())
+        }
+
+        // -- fingerprints ---------------------------------------------------
+
+        fn fingerprint(model: &Reflection, site: &Site) -> Shape {
+            let sig = &site.f.sig;
+            let inputs: Vec<&syn::PatType> = sig
+                .inputs
+                .iter()
+                .filter_map(|arg| match arg {
+                    FnArg::Typed(t) => Some(t),
+                    FnArg::Receiver(_) => None,
+                })
+                .filter(|t| !is_receiver(t))
+                .collect();
+            let params: Vec<(Class, Option<String>)> = inputs
+                .iter()
+                .map(|t| (classify(model, &t.ty, site), read_core(&t.ty)))
+                .collect();
+            let names: Vec<String> = inputs.iter().map(|t| read_name(&t.pat)).collect();
+            let (required, open) = match site.build {
+                None => (params.len(), false),
+                Some(Build::Python) => read_signature(site.f, &names),
+                Some(Build::Wasm) => {
+                    let trailing = inputs.iter().rev().take_while(|t| is_option(&t.ty)).count();
+                    (params.len() - trailing, false)
+                }
+                Some(build) => (params.len() - count_defaults(site.f, build, &names), false),
+            };
+            let (returns, returns_raw, throws) = match &sig.output {
+                ReturnType::Default => (Class::Unit, None, false),
+                ReturnType::Type(_, ty) => match unwrap_result(ty) {
+                    Some(ok) => (classify(model, ok, site), read_core(ok), true),
+                    None => (classify(model, ty, site), read_core(ty), false),
+                },
+            };
+            let params = params
+                .into_iter()
+                .map(|(class, raw)| match class {
+                    Class::Optional(inner) => (*inner, raw),
+                    other => (other, raw),
+                })
+                .collect();
+            Shape {
+                params,
+                required,
+                open,
+                throws,
+                is_async: sig.asyncness.is_some(),
+                returns,
+                returns_raw,
+            }
+        }
+
+        /// `slf: PyRef<Self>`, `self: Arc<Self>` and `py: Python` stand in for the receiver.
+        fn is_receiver(arg: &syn::PatType) -> bool {
+            let name = read_name(&arg.pat);
+            let ident = read_ident(&arg.ty).unwrap_or_default();
+            name == "self" || name == "slf" || ident == "Python"
+        }
+
+        fn read_name(pat: &syn::Pat) -> String {
+            match pat {
+                syn::Pat::Ident(p) => p.ident.to_string(),
+                _ => "_".to_string(),
+            }
+        }
+
+        /// Required parameter count from `#[pyo3(signature = ...)]`, and
+        /// whether it takes `**kwargs`.
+        fn read_signature(f: &FnDef, names: &[String]) -> (usize, bool) {
+            let signature = reflect::metas(&f.attrs, Build::Python)
+                .iter()
+                .filter(|m| reflect::meta_ident(m) == "pyo3")
+                .find_map(|m| reflect::arg_value(&reflect::meta_args(m), "signature"));
+            let Some(signature) = signature else {
+                return (names.len(), false);
+            };
+            let parts = reflect::split_top_level(&signature);
+            let open = parts.iter().any(|p| p.starts_with("**"));
+            let defaulted: BTreeSet<String> = parts
+                .iter()
+                .filter_map(|p| p.split_once('=').map(|(name, _)| name.trim().to_string()))
+                .collect();
+            let required = names.iter().take_while(|n| !defaulted.contains(*n)).count();
+            (required, open)
+        }
+
+        /// Trailing parameters a uniffi `default(...)` argument covers.
+        fn count_defaults(f: &FnDef, build: Build, names: &[String]) -> usize {
+            let named: BTreeSet<String> = reflect::metas(&f.attrs, build)
+                .iter()
+                .filter(|m| matches!(reflect::meta_ident(m).as_str(), "method" | "constructor"))
+                .flat_map(|m| reflect::split_top_level(&reflect::meta_args(m)))
+                .filter_map(|part| {
+                    let inner = part.strip_prefix("default")?.trim();
+                    Some(inner.strip_prefix('(')?.strip_suffix(')')?.to_string())
+                })
+                .flat_map(|inner| reflect::split_top_level(&inner))
+                .filter_map(|pair| Some(pair.split_once('=')?.0.trim().to_string()))
+                .collect();
+            names
+                .iter()
+                .rev()
+                .take_while(|n| named.contains(*n))
+                .count()
+        }
+
+        fn is_option(ty: &Type) -> bool {
+            read_ident(ty).as_deref() == Some("Option")
+        }
+
+        /// `T` of `Result<T, E>` or `PyResult<T>`.
+        fn unwrap_result(ty: &Type) -> Option<&Type> {
+            let ident = read_ident(ty)?;
+            matches!(ident.as_str(), "Result" | "PyResult")
+                .then(|| read_arg(ty))
+                .flatten()
+        }
+
+        fn read_segment(ty: &Type) -> Option<&syn::PathSegment> {
+            match reflect::strip_type(ty) {
+                Type::Path(p) => p.path.segments.last(),
+                _ => None,
+            }
+        }
+
+        /// The type a value names under its `&`, `Option`, `Arc`, `Py` and `Vec` wrappers.
+        fn read_core(ty: &Type) -> Option<String> {
+            match reflect::strip_type(ty) {
+                Type::Slice(slice) => return read_core(&slice.elem),
+                Type::Array(array) => return read_core(&array.elem),
+                _ => {}
+            }
+            let ident = read_ident(ty)?;
+            match ident.as_str() {
+                "Option" | "Arc" | "Rc" | "Box" | "Py" | "PyRef" | "PyRefMut" | "Bound" | "Vec" => {
+                    read_arg(ty).and_then(read_core)
+                }
+                _ => Some(ident),
+            }
+        }
+
+        fn read_ident(ty: &Type) -> Option<String> {
+            read_segment(ty).map(|s| s.ident.to_string())
+        }
+
+        fn read_args(ty: &Type) -> Vec<&Type> {
+            let Some(segment) = read_segment(ty) else {
+                return Vec::new();
+            };
+            let PathArguments::AngleBracketed(args) = &segment.arguments else {
+                return Vec::new();
+            };
+            args.args
+                .iter()
+                .filter_map(|a| match a {
+                    GenericArgument::Type(t) => Some(t),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        fn read_arg(ty: &Type) -> Option<&Type> {
+            read_args(ty).into_iter().next()
+        }
+
+        /// The class of `ty` as `site` declares it.
+        fn classify(model: &Reflection, ty: &Type, site: &Site) -> Class {
+            match reflect::strip_type(ty) {
+                Type::Array(array) => {
+                    classify_array(model, &array.elem, site, read_len(&array.len))
+                }
+                Type::Slice(slice) => classify_array(model, &slice.elem, site, None),
+                Type::Tuple(tuple) if tuple.elems.is_empty() => Class::Unit,
+                Type::Tuple(tuple) => {
+                    let classes: Vec<Class> = tuple
+                        .elems
+                        .iter()
+                        .map(|t| classify(model, t, site))
+                        .collect();
+                    let n = Some(classes.len());
+                    if classes.iter().all(|c| *c == Class::Float) {
+                        Class::Floats(n)
+                    } else if classes.iter().all(|c| *c == Class::Int) {
+                        Class::Ints(n)
+                    } else {
+                        Class::Other(ty.to_token_stream().to_string())
+                    }
+                }
+                Type::ImplTrait(it) => classify_bounds(model, it.bounds.iter(), site),
+                Type::TraitObject(to) => classify_bounds(model, to.bounds.iter(), site),
+                Type::Path(_) => classify_path(model, ty, site),
+                other => Class::Other(other.to_token_stream().to_string()),
+            }
+        }
+
+        fn read_len(len: &syn::Expr) -> Option<usize> {
+            match len {
+                syn::Expr::Lit(syn::ExprLit {
+                    lit: syn::Lit::Int(n),
+                    ..
+                }) => n.base10_parse().ok(),
+                _ => None,
+            }
+        }
+
+        fn classify_array(
+            model: &Reflection,
+            elem: &Type,
+            site: &Site,
+            len: Option<usize>,
+        ) -> Class {
+            match classify(model, elem, site) {
+                Class::Float => Class::Floats(len),
+                Class::Int if read_ident(elem).as_deref() == Some("u8") => Class::Bytes,
+                Class::Int => Class::Ints(len),
+                Class::Floats(_) => Class::Matrix,
+                other => Class::List(Box::new(other)),
+            }
+        }
+
+        fn classify_bounds<'bounds>(
+            model: &Reflection,
+            mut bounds: impl Iterator<Item = &'bounds TypeParamBound>,
+            site: &Site,
+        ) -> Class {
+            let trait_path = bounds.find_map(|b| match b {
+                TypeParamBound::Trait(t) => Some(&t.path),
+                _ => None,
+            });
+            let Some(path) = trait_path else {
+                return Class::Any;
+            };
+            let Some(segment) = path.segments.last() else {
+                return Class::Any;
+            };
+            let name = segment.ident.to_string();
+            let arg = match &segment.arguments {
+                PathArguments::AngleBracketed(args) => args.args.iter().find_map(|a| match a {
+                    GenericArgument::Type(t) => Some(t),
+                    GenericArgument::AssocType(assoc) => Some(&assoc.ty),
+                    _ => None,
+                }),
+                _ => None,
+            };
+            match (name.as_str(), arg) {
+                ("Into" | "TryInto" | "From" | "TryFrom", Some(target)) => {
+                    match classify(model, target, site) {
+                        Class::Named(name) => Class::Into(name),
+                        other => other,
+                    }
+                }
+                ("AsRef", Some(target)) => classify(model, target, site),
+                ("IntoIterator", Some(item)) => match classify(model, item, site) {
+                    Class::Float => Class::Floats(None),
+                    Class::Int if read_ident(item).as_deref() == Some("u8") => Class::Bytes,
+                    Class::Int => Class::Ints(None),
+                    other => Class::List(Box::new(other)),
+                },
+                _ => Class::Trait(name),
+            }
+        }
+
+        fn classify_path(model: &Reflection, ty: &Type, site: &Site) -> Class {
+            let Some(ident) = read_ident(ty) else {
+                return Class::Other(ty.to_token_stream().to_string());
+            };
+            let inner = || read_arg(ty).map(|t| classify(model, t, site));
+            match ident.as_str() {
+                "bool" => Class::Bool,
+                "f32" | "f64" => Class::Float,
+                "u8" | "u16" | "u32" | "u64" | "usize" | "i8" | "i16" | "i32" | "i64" | "isize" => {
+                    Class::Int
+                }
+                "String" | "str" | "Cow" | "Path" | "PathBuf" | "PyString" => Class::Text,
+                "Uint8Array" | "Uint8ClampedArray" | "PyBytes" | "PyByteArray" | "Bytes" => {
+                    Class::Bytes
+                }
+                "Float32Array" | "Float64Array" => Class::Floats(None),
+                "Uint32Array" | "Int32Array" => Class::Ints(None),
+                "JsValue" | "PyAny" | "PyObject" | "Object" | "PyTuple" => Class::Any,
+                "PyList" | "Array" => Class::List(Box::new(Class::Any)),
+                "PyDict" | "HashMap" | "BTreeMap" => Class::Map,
+                "Self" => Class::This,
+                "Vec" | "VecDeque" | "Box" if inner().is_some() => {
+                    let elem = read_arg(ty).map_or(Class::Any, |t| classify(model, t, site));
+                    let len = None;
+                    match elem {
+                        Class::Float => Class::Floats(len),
+                        Class::Int
+                            if read_arg(ty).and_then(read_ident).as_deref() == Some("u8") =>
+                        {
+                            Class::Bytes
+                        }
+                        Class::Int => Class::Ints(len),
+                        Class::Floats(_) if ident != "Box" => Class::Matrix,
+                        other if ident == "Box" => other,
+                        other => Class::List(Box::new(other)),
+                    }
+                }
+                "Option" => Class::Optional(Box::new(inner().unwrap_or(Class::Any))),
+                "Arc" | "Rc" | "Py" | "PyRef" | "PyRefMut" | "Bound" | "RwLock" | "Mutex" => {
+                    inner().unwrap_or(Class::Any)
+                }
+                "Result" | "PyResult" => inner().unwrap_or(Class::Unit),
+                _ => classify_named(model, &ident, site),
+            }
+        }
+
+        /// A crate type, a generic parameter, or a handle that stands in for a trait.
+        fn classify_named(model: &Reflection, ident: &str, site: &Site) -> Class {
+            if let Some(bound) = find_bound(model, site, ident) {
+                return bound;
+            }
+            let name = match site.build {
+                Some(build) => export_name(model, ident, build),
+                None => ident.to_string(),
+            };
+            let owner = match site.build {
+                Some(build) => name_owner(model, site.imp, build),
+                None => site.imp.self_ident.clone(),
+            };
+            if name == owner {
+                return Class::This;
+            }
+            for (prefix, suffix) in [("", "Handle"), ("Py", "")] {
+                if let Some(stand_in) = name
+                    .strip_prefix(prefix)
+                    .and_then(|n| n.strip_suffix(suffix))
+                    .filter(|n| !n.is_empty() && *n != name)
+                    && matches!(stand_in, "Renderable" | "Target" | "SceneObject")
+                {
+                    return Class::Trait(stand_in.to_string());
+                }
+            }
+            Class::Named(name)
+        }
+
+        /// The class a generic parameter of the function or its impl stands for.
+        fn find_bound(model: &Reflection, site: &Site, ident: &str) -> Option<Class> {
+            let params = site
+                .f
+                .sig
+                .generics
+                .params
+                .iter()
+                .chain(site.imp.generics.params.iter());
+            let mut bounds: Vec<TypeParamBound> = Vec::new();
+            for param in params {
+                if let syn::GenericParam::Type(tp) = param
+                    && tp.ident == ident
+                {
+                    bounds.extend(tp.bounds.iter().cloned());
+                }
+            }
+            let clauses = site
+                .f
+                .sig
+                .generics
+                .where_clause
+                .iter()
+                .chain(site.imp.generics.where_clause.iter());
+            for clause in clauses {
+                for predicate in &clause.predicates {
+                    if let syn::WherePredicate::Type(pt) = predicate
+                        && read_ident(&pt.bounded_ty).as_deref() == Some(ident)
+                    {
+                        bounds.extend(pt.bounds.iter().cloned());
+                    }
+                }
+            }
+            if bounds.is_empty() {
+                return None;
+            }
+            Some(classify_bounds(model, bounds.iter(), site))
+        }
+
+        // -- comparison -----------------------------------------------------
+
+        /// What a comparison reads besides the two classes.
+        struct Check<'model> {
+            model: &'model Reflection,
+            site: &'model Site<'model>,
+            platform: Platform,
+        }
+
+        /// How deep a comparison follows conversions and enum variants.
+        const DEPTH: usize = 3;
+
+        fn conforms(
+            model: &Reflection,
+            binding: &Shape,
+            rust: &Shape,
+            site: &Site,
+            platform: Platform,
+        ) -> bool {
+            let check = Check {
+                model,
+                site,
+                platform,
+            };
+            let total = rust.params.len();
+            let arity =
+                binding.required <= total && (binding.open || total <= binding.params.len());
+            if !arity {
+                return false;
+            }
+            let pairs: Vec<_> = binding.params.iter().zip(&rust.params).collect();
+            let params = pairs
+                .iter()
+                .all(|((b, raw), (r, _))| check.fits(b, raw.as_deref(), r, DEPTH));
+            if !params {
+                return false;
+            }
+            let returns = check.returns(
+                &binding.returns,
+                binding.returns_raw.as_deref(),
+                &rust.returns,
+            );
+            // A binding that reads a looser value than Rust takes may reject it.
+            let loosened = pairs.iter().any(|((b, _), (r, _))| b != r);
+            let throws = binding.throws == rust.throws || (binding.throws && loosened);
+            let is_async = platform == Platform::Python || binding.is_async == rust.is_async;
+            returns && throws && is_async
+        }
+
+        impl Check<'_> {
+            fn build(&self) -> Option<Build> {
+                self.site.build
+            }
+
+            /// Whether a binding argument of class `b` takes the place of a Rust parameter of class `r`.
+            fn fits(&self, b: &Class, raw: Option<&str>, r: &Class, depth: usize) -> bool {
+                if b == r || *b == Class::Any || self.loosely(b, r) {
+                    return true;
+                }
+                if depth == 0 {
+                    return false;
+                }
+                let fits = match (b, r) {
+                    (Class::Optional(b), Class::Optional(r)) | (Class::List(b), Class::List(r)) => {
+                        self.fits(b, raw, r, depth - 1)
+                    }
+                    (_, Class::Trait(name)) => self.implements(b, raw, name, depth - 1),
+                    (_, Class::Into(target) | Class::Named(target)) => {
+                        self.converts(b, raw, target, depth - 1)
+                    }
+                    _ => false,
+                };
+                fits || self
+                    .variants(raw)
+                    .iter()
+                    .any(|v| self.fits(v, None, r, depth - 1))
+            }
+
+            /// Whether a binding return value of class `b` stands for a Rust return value of class `r`.
+            fn returns(&self, b: &Class, raw: Option<&str>, r: &Class) -> bool {
+                if b == r || *b == Class::Any || self.loosely(b, r) {
+                    return true;
+                }
+                match (b, r) {
+                    (Class::Optional(b), Class::Optional(r)) | (Class::List(b), Class::List(r)) => {
+                        self.returns(b, raw, r)
+                    }
+                    (Class::Named(name), Class::Into(target) | Class::Named(target)) => {
+                        let Some(build) = self.build() else {
+                            return false;
+                        };
+                        let binding = raw.unwrap_or(name);
+                        let from_rust = self
+                            .model
+                            .conversions_into(binding, "From", build)
+                            .iter()
+                            .any(|(_, source)| read_core(source).as_deref() == Some(target));
+                        from_rust || self.converts(b, raw, target, DEPTH)
+                    }
+                    _ => false,
+                }
+            }
+
+            /// Classes that differ only by an idiom of the binding's language.
+            fn loosely(&self, b: &Class, r: &Class) -> bool {
+                let web = self.platform == Platform::Web;
+                let no_fixed_arrays = matches!(
+                    self.platform,
+                    Platform::Web | Platform::Swift | Platform::Kotlin
+                );
+                match (b, r) {
+                    (Class::Int, Class::Float) | (Class::Float, Class::Int) => web,
+                    (Class::Floats(_), Class::Floats(_)) | (Class::Ints(_), Class::Ints(_)) => {
+                        no_fixed_arrays
+                    }
+                    (Class::Floats(_), Class::Ints(_)) | (Class::Ints(_), Class::Floats(_)) => web,
+                    _ => false,
+                }
+            }
+
+            /// Whether a binding value meets a Rust `impl Trait` parameter: it names a type that
+            /// implements the trait, or a list of them where lists implement it, or has the
+            /// class of one of its implementors.
+            fn implements(&self, b: &Class, raw: Option<&str>, name: &str, depth: usize) -> bool {
+                let build = self.build().unwrap_or(Build::Python);
+                let impls: Vec<&ImplDef> = self.model.trait_impls(name, build).collect();
+                let names = |ident: Option<&str>| {
+                    ident.is_some_and(|ident| {
+                        impls.iter().any(|imp| {
+                            imp.self_ident == ident
+                                || export_name(self.model, &imp.self_ident, build) == ident
+                        })
+                    })
+                };
+                if let Class::Named(named) = b
+                    && (names(raw) || names(Some(named)))
+                {
+                    return true;
+                }
+                if let Class::List(item) = b {
+                    let lists = impls.iter().any(|imp| {
+                        matches!(read_ident(&imp.self_ty).as_deref(), Some("Vec"))
+                            || matches!(
+                                reflect::strip_type(&imp.self_ty),
+                                Type::Slice(_) | Type::Array(_)
+                            )
+                    });
+                    return lists && self.fits(item, None, &Class::Trait(name.to_string()), depth);
+                }
+                let rust_site = Site {
+                    imp: self.site.imp,
+                    f: self.site.f,
+                    build: None,
+                };
+                impls.iter().any(|imp| {
+                    let class = classify(self.model, &imp.self_ty, &rust_site);
+                    !matches!(class, Class::Trait(_) | Class::Named(_) | Class::This)
+                        && self.fits(b, raw, &class, depth)
+                })
+            }
+
+            /// Whether a `From` or `TryFrom` impl turns the binding's value into `target`.
+            fn converts(&self, b: &Class, raw: Option<&str>, target: &str, depth: usize) -> bool {
+                if *b == Class::Named(target.to_string()) {
+                    return true;
+                }
+                let Some(build) = self.build() else {
+                    return false;
+                };
+                ["From", "TryFrom"].iter().any(|conversion| {
+                    self.model
+                        .conversions_into(target, conversion, build)
+                        .iter()
+                        .any(|(_, source)| {
+                            let source_raw = read_core(source);
+                            if raw.is_some() && source_raw.as_deref() == raw {
+                                return true;
+                            }
+                            let class = classify(self.model, source, self.site);
+                            class == *b
+                                || (!matches!(class, Class::Named(_) | Class::Into(_))
+                                    && self.fits(b, raw, &class, depth))
+                        })
+                })
+            }
+
+            /// The classes of the one-field variants of the binding enum `raw`,
+            /// which a binding reads as a union, such as a `derive(FromPyObject)` enum.
+            fn variants(&self, raw: Option<&str>) -> Vec<Class> {
+                let (Some(raw), Some(build)) = (raw, self.build()) else {
+                    return Vec::new();
+                };
+                let Some(ty) = self.model.type_named(raw, build) else {
+                    return Vec::new();
+                };
+                ty.variants
+                    .iter()
+                    .filter(|v| v.cfg.holds(build))
+                    .filter_map(|v| match v.fields.as_slice() {
+                        [only] => Some(classify(self.model, only, self.site)),
+                        _ => None,
+                    })
+                    .collect()
+            }
+        }
+    }
 }

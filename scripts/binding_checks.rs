@@ -54,6 +54,13 @@ mod binding_checks {
         use syn::punctuated::Punctuated;
         use syn::{Attribute, Meta, Token};
 
+        use crate::reflect::Cfg;
+
+        /// Whether `cfg` can hold.
+        pub fn holds(cfg: &Cfg) -> bool {
+            eval_cfg(cfg) != Some(false)
+        }
+
         /// Whether every `#[cfg]` in `attrs` can hold.
         pub fn allows(attrs: &[Attribute]) -> bool {
             attrs.iter().filter(|a| a.path().is_ident("cfg")).all(|a| {
@@ -62,6 +69,17 @@ mod binding_checks {
                     Err(_) => true,
                 }
             })
+        }
+
+        fn eval_cfg(cfg: &Cfg) -> Option<bool> {
+            match cfg {
+                Cfg::Name(name) => eval_name(name),
+                Cfg::Pair(key, value) => eval_pair(key, value),
+                Cfg::All(parts) => all_of(parts.iter().map(eval_cfg)),
+                Cfg::Any(parts) => any_of(parts.iter().map(eval_cfg)),
+                Cfg::Not(inner) => eval_cfg(inner).map(|b| !b),
+                Cfg::Unknown => None,
+            }
         }
 
         fn eval_meta(meta: &Meta) -> Option<bool> {
