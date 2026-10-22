@@ -122,6 +122,7 @@ The API must look the same in Rust, JavaScript, Python, Swift, and Kotlin in eve
     - Bytes: `Uint8Array` and `ArrayBuffer` in JS; `bytes`, `bytearray`, `memoryview`, and a uint8 ndarray in Python; `Data` and `[UInt8]` in Swift; `ByteArray` in Kotlin.
     - Float vectors: `number[]` and `Float32Array` in JS; any number sequence in Python; `[Float]` and `[Double]` in Swift; `List<Float>`, `FloatArray`, and `DoubleArray` in Kotlin.
     - Sizes: `[w, h]` in every native list type, plus a `Size` object.
+    - Images: `get_image` returns the same bytes in the same row order everywhere. Rust, JS, Swift, and Kotlin return them flat; Python returns them as a uint8 ndarray shaped `(height, width, bytes per pixel)`, with a leading layer axis for array textures, because that is what NumPy, OpenCV, and pygfx read.
 7. **Scalars.** A one-element list is a scalar everywhere. A bare number fills a float slot unless the shader declares an integer type.
 8. **Integers.** Every unsigned parameter also takes the language's default integer (Swift `Int`, Kotlin `Int`). Negative values raise. Examples never need a `u` suffix.
 9. **Paths.** A path string is the portable form. Rust also takes `Path` and `PathBuf`. Native path types (`pathlib.Path`, `URL`, `File`) are optional, and one that gets added goes into every binding at once.
