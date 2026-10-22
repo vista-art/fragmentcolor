@@ -26,6 +26,25 @@ android {
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_17.toString()
     }
+    // The examples read fixtures relative to the repository root, as the Rust
+    // doctests do. The test APK carries a copy that ExampleCase runs them from.
+    sourceSets {
+        androidTest {
+            assets.srcDir layout.buildDirectory.dir('fixtures')
+        }
+    }
+}
+
+def syncFixtures = tasks.register('syncFixtures', Sync) {
+    from(rootProject.file('../..')) {
+        include 'examples/assets/**', 'path/to/**'
+    }
+    into layout.buildDirectory.dir('fixtures')
+}
+
+// Every task that packs the test APK's assets reads the fixtures.
+tasks.matching { it.name.endsWith('AndroidTestAssets') }.configureEach {
+    dependsOn syncFixtures
 }
 
 dependencies {

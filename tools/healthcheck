@@ -191,8 +191,9 @@ run_android() {
 
   # Build the native libs + regenerate Kotlin bindings, then run the
   # androidTest suite on a connected device or emulator (gradle picks it up).
+  # Gradle's output stays visible, since it names each failing example.
   if bash "$ROOT_DIR/tools/build_android" >/dev/null 2>&1 \
-     && (cd "$ROOT_DIR/platforms/kotlin" && ./gradlew fragmentcolor:connectedAndroidTest >/dev/null 2>&1); then
+     && (cd "$ROOT_DIR/platforms/kotlin" && ./gradlew fragmentcolor:connectedAndroidTest); then
     log_test_ok "$name"
     return 0
   else
