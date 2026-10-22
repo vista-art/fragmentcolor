@@ -3,8 +3,9 @@
 Absorb any `SceneObject` (a
 [Model](https://fragmentcolor.org/api/scene/model),
 [Camera](https://fragmentcolor.org/api/scene/camera),
-[Light](https://fragmentcolor.org/api/scene/light), or a user-defined
-node that implements the trait) into the scene. The Scene routes it
+[Light](https://fragmentcolor.org/api/scene/light), or, in Rust, a
+user-defined node that implements the trait) into the scene. The other
+bindings take the built-in kinds. The Scene routes it
 onto its default [Pass](https://fragmentcolor.org/api/core/pass), which
 is created lazily on the first call.
 
@@ -16,8 +17,11 @@ mutations (`camera.look_at(...)`, `light.set_color(...)`) propagate to
 every shader on the pass with no further `add` call.
 
 Returns `Result<&Scene, PassError>` so Models can fail at attach time when
-the Mesh layout doesn't match the Material's shader; Cameras and Lights
-always succeed. Chain with `?` between calls.
+the Mesh layout doesn't match the Material's shader. Cameras always
+succeed. A Light fails with `PassError::LightCapReached` when a shader on
+the default pass already holds 32 lights. Lights added before the Models
+whose shaders they light don't fail: a shader past the cap drops the extra
+ones with a logged warning instead. Chain with `?` between calls.
 
 If you add Models without adding a Camera or any Light, the Scene injects
 sensible defaults at render time (`Camera::perspective` looking from

@@ -15,7 +15,7 @@ volumetric or post-process effects that you want to attach to a `Mesh`.
 
 Optional but recommended:
 
-- `struct PbrMaterial { base_color: vec4<f32>, … }` at `@group(1) @binding(1)`
+- `struct PbrMaterial { base_color: vec4<f32>, … }` at `@group(1) @binding(0)`
   bound as `material`. This lets the PBR factor setters work as-is.
 - Four `vec4<f32>` vertex inputs named `model_0` to `model_3`, the columns of
   the Model's transform. The renderer fills them at draw time from each

@@ -60,8 +60,11 @@ share its light slots:
   to one. That's surprising if you think of a Pass as an isolated
   scene; it's the right answer if you think of a Material as the
   lighting model and the Passes as views into the same lit world.
-- The cap exceeds at 32 *distinct* Lights on one shader. The 33rd
-  returns `Err(PassError::LightCapReached { cap: 32 })`.
+- The cap exceeds at 32 *distinct* Lights on one shader. Whether the
+  33rd fails depends on the order. Added to a pass whose shader already
+  holds 32, it returns `Err(PassError::LightCapReached { cap: 32 })`.
+  Added before that shader joins the pass, it doesn't fail: the shader
+  drops it with a logged warning when it joins.
 
 For genuinely independent lighting setups, build a separate Material
 per scene (each `Material::pbr()` allocates a fresh shader, so its 32

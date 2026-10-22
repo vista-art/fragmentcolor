@@ -4,7 +4,7 @@ A `Scene` is the top-level container for the real-world things you render:
 [Models](https://fragmentcolor.org/api/scene/model),
 [Cameras](https://fragmentcolor.org/api/scene/camera),
 [Lights](https://fragmentcolor.org/api/scene/light) (directional, point, and
-spot are all one type), and any custom
+spot are all one type), and, in Rust, any custom
 `SceneObject`. It owns one or more
 [Passes](https://fragmentcolor.org/api/core/pass) underneath and implements
 `Renderable`, so you hand
@@ -68,8 +68,11 @@ out with `set_default_camera` / `set_default_light`.
 | -------------------- | ---------------------------------------------------------- |
 | `new`                | construct an empty Scene                                   |
 | `load`               | construct a Scene from a 3D file (glTF `.gltf` / `.glb` path or in-memory `.glb` bytes) |
-| `add`                | add a `SceneObject` (Model / Camera / Light / custom) to the default pass |
+| `add`                | add a `SceneObject` (Model / Camera / Light, or a custom one in Rust) to the default pass |
 | `add_to`             | add a `SceneObject` to a specific Pass, by index or name   |
+| `models`             | list the Models added to the scene                         |
+| `cameras`            | list the Cameras added to the scene                        |
+| `lights`             | list the Lights added to the scene                         |
 | `add_pass`           | append a user-built [Pass](https://fragmentcolor.org/api/core/pass) to the graph |
 | `remove_pass`        | remove a Pass from the graph by handle                     |
 | `get_pass`           | read one Pass by index, in render order                    |

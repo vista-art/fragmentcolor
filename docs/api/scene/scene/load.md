@@ -43,6 +43,14 @@ scene.add(&camera)?;
 # }
 ```
 
+The other bindings take the same two switches with `Scene.load`. Both
+default to `true`:
+
+- **JS:** `Scene.load(bytes, { cameras: false, lights: false })`
+- **Python:** `Scene.load(source, cameras=False, lights=False)`
+- **Swift:** `try Scene.load(source, cameras: false, lights: false)`
+- **Kotlin:** `Scene.load(source, cameras = false, lights = false)`
+
 ## Threading and WASM
 
 `Scene::load` is fully synchronous: the underlying importer decodes embedded

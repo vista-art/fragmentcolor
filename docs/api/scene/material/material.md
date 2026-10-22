@@ -12,10 +12,8 @@ sampling on top of the factor uniforms), pre-populated with sensible
 defaults. The five glTF texture slots start unbound; the renderer resolves
 each one to a 1×1 default from its lazy texture cache the first time a Pass
 renders the Material, so the Material's shader has every binding it needs
-without any further setup. `Material::pbr` returns `Result` because the
-helper snippets it composes (`mesh/transform`, `material/pbr`) must be
-available at build time. They ship in the default `shaders-all` feature,
-so this is only an error path for slim opt-out builds. You can also call
+without any further setup. `Material::pbr` can't fail: the shader parts it
+composes are compiled into the library. You can also call
 `Material::custom(shader)` to wrap your own shader; the same setters apply
 best-effort, no-op-ing for uniform paths the shader doesn't declare.
 

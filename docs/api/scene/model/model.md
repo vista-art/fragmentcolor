@@ -48,6 +48,8 @@ again.
 | `translate`    | pre-multiply by a world-space translation         |
 | `rotate`       | post-multiply by a local-space axis-angle rotation |
 | `scale`        | post-multiply by a local-space per-axis scale     |
+| `visible`      | read whether the Model draws                       |
+| `set_visible`  | show or hide the Model without removing it         |
 
 ## Example
 

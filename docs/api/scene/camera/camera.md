@@ -35,6 +35,7 @@ viewpoint we're using right now".
 | `look_at`      | position the eye and aim at a target (chainable, live)    |
 | `view_proj`    | read `proj * view` as a column-major 4x4                  |
 | `position`     | read the world-space eye position                         |
+| `set_aspect`   | update the aspect ratio after a resize (live)             |
 
 ## Example
 

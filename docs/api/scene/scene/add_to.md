@@ -1,7 +1,7 @@
 # Scene::add_to
 
 Add a `SceneObject` (Model / Camera /
-Light / custom) to a specific Pass in the graph, addressed by index or by
+Light, or a custom one in Rust) to a specific Pass in the graph, addressed by index or by
 name. It's the targeted form of
 [`add`](https://fragmentcolor.org/api/scene/scene#sceneadd): where `add` routes
 into the scene's default pass, `add_to` lets you pick the pass yourself, which
