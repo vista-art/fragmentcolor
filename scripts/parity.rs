@@ -1284,7 +1284,8 @@ mod parity {
         };
         for (lineno, raw) in text.lines().enumerate() {
             let line = raw.trim();
-            if line.is_empty() || line.starts_with('#') {
+            // `type` entries waive a binding-only class name (scripts/binding_checks.rs).
+            if line.is_empty() || line.starts_with('#') || line.starts_with("type ") {
                 continue;
             }
             if let Some(arrow) = line.find("=>") {

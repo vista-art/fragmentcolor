@@ -193,6 +193,11 @@ fn generate_docs() {
     python_stubs::generate(&workspace, &catalog.reflection);
     println!("✅ Python stubs written.\n");
 
+    println!("🔤 Checking binding type names and JS errors...");
+    println!("cargo::rerun-if-changed=platforms/swift/Sources/FragmentColor/generated");
+    binding_checks::check(&workspace, &catalog.reflection);
+    println!();
+
     println!("📚 Building tutorials manifest...");
     tutorials::build();
     println!("✅ Tutorials manifest written.\n");
@@ -216,3 +221,4 @@ include!("scripts/meta.rs");
 include!("scripts/readme.rs");
 include!("scripts/embedded_shaders.rs");
 include!("scripts/python_stubs.rs");
+include!("scripts/binding_checks.rs");
