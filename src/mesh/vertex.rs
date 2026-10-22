@@ -54,6 +54,11 @@ impl IntoVertexPositionFull for (f32, f32, f32, f32) {
         ([self.0, self.1, self.2, self.3], 4)
     }
 }
+impl IntoVertexPositionFull for [f32; 1] {
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self[0], 0.0, 0.0, 1.0], 1)
+    }
+}
 impl IntoVertexPositionFull for f32 {
     fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
         ([self, 0.0, 0.0, 1.0], 1)
@@ -152,6 +157,16 @@ impl Vertex {
     }
 }
 
+impl From<f32> for Vertex {
+    fn from(v: f32) -> Self {
+        Vertex::new(v)
+    }
+}
+impl From<[f32; 1]> for Vertex {
+    fn from(v: [f32; 1]) -> Self {
+        Vertex::new(v)
+    }
+}
 impl From<[f32; 2]> for Vertex {
     fn from(v: [f32; 2]) -> Self {
         Vertex::new(v)
@@ -159,6 +174,11 @@ impl From<[f32; 2]> for Vertex {
 }
 impl From<[f32; 3]> for Vertex {
     fn from(v: [f32; 3]) -> Self {
+        Vertex::new(v)
+    }
+}
+impl From<[f32; 4]> for Vertex {
+    fn from(v: [f32; 4]) -> Self {
         Vertex::new(v)
     }
 }
@@ -208,6 +228,17 @@ impl Instance {
         }
         self.properties.insert(k, v.into());
         self
+    }
+}
+
+/// An instance from named values, set in key order so attribute locations stay stable.
+impl From<HashMap<String, VertexValue>> for Instance {
+    fn from(values: HashMap<String, VertexValue>) -> Self {
+        let mut entries: Vec<(String, VertexValue)> = values.into_iter().collect();
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        entries
+            .into_iter()
+            .fold(Instance::new(), |instance, (key, value)| instance.set(&key, value))
     }
 }
 
@@ -415,6 +446,22 @@ mod tests {
         let v4 = Vertex::new([1.0f32, 2.0, 3.0, 4.0]);
         assert_eq!(v4.dimensions, 4);
         assert_eq!(v4.position.0, glam::Vec4::new(1.0, 2.0, 3.0, 4.0));
+    }
+
+    // Story: Rust takes every position form the bindings take, and a map of
+    // named values builds an instance.
+    #[test]
+    fn vertex_and_instance_forms() {
+        assert_eq!(Vertex::from(2.0f32).dimensions, 1);
+        assert_eq!(Vertex::from([2.0f32]).dimensions, 1);
+        assert_eq!(Vertex::from([1.0f32, 2.0, 3.0, 4.0]).dimensions, 4);
+
+        let mut values = HashMap::new();
+        values.insert("scale".to_string(), VertexValue::from(2.0f32));
+        values.insert("offset".to_string(), VertexValue::from([1.0f32, 0.0]));
+        let instance = Instance::from(values);
+        assert_eq!(instance.prop_locations.get("offset"), Some(&0));
+        assert_eq!(instance.prop_locations.get("scale"), Some(&1));
     }
 
     #[test]
