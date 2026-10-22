@@ -57,3 +57,106 @@ fun Vertex.set(key: String, value: Float): Vertex = set(key, VertexValue.F32(val
 
 /** Set a vertex attribute from a scalar [Double] (convenience; converts to Float). */
 fun Vertex.set(key: String, value: Double): Vertex = set(key, VertexValue.F32(value.toFloat()))
+
+// ── VertexValue ───────────────────────────────────────────────────────────────
+
+// Lower-case factories that take plain Kotlin numbers, as JavaScript, Python and Swift spell them.
+
+/** [values] when it holds [size] numbers. Throws [FragmentColorException] otherwise. */
+private fun <T> sized(values: List<T>, size: Int, method: String): List<T> {
+    if (values.size != size) {
+        throw FragmentColorException.Render("$method: expected $size numbers, got ${values.size}")
+    }
+    return values
+}
+
+/** Unsigned numbers from [Int]s. Throws [FragmentColorException] for a negative one. */
+private fun unsignedList(values: List<Int>, size: Int, method: String): List<UInt> =
+    sized(values, size, method).map { unsigned(it, method, "unsigned value") }
+
+/** An `f32` value. */
+fun VertexValue.Companion.f32(value: Float): VertexValue = VertexValue.F32(value)
+
+/** An `f32` value from a [Double]. */
+fun VertexValue.Companion.f32(value: Double): VertexValue = VertexValue.F32(value.toFloat())
+
+/** An `f32` value from an [Int]. */
+fun VertexValue.Companion.f32(value: Int): VertexValue = VertexValue.F32(value.toFloat())
+
+/** A `vec2<f32>` value. Throws [FragmentColorException] for another length. */
+fun VertexValue.Companion.f32x2(values: List<Float>): VertexValue = VertexValue.F32x2(sized(values, 2, "VertexValue.f32x2"))
+
+/** A `vec2<f32>` value from [Double]s. */
+@JvmName("f32x2Doubles")
+fun VertexValue.Companion.f32x2(values: List<Double>): VertexValue = f32x2(values.map { it.toFloat() })
+
+/** A `vec2<f32>` value from a [FloatArray]. */
+fun VertexValue.Companion.f32x2(values: FloatArray): VertexValue = f32x2(values.toList())
+
+/** A `vec2<f32>` value from a [DoubleArray]. */
+fun VertexValue.Companion.f32x2(values: DoubleArray): VertexValue = f32x2(values.map { it.toFloat() })
+
+/** A `vec3<f32>` value. Throws [FragmentColorException] for another length. */
+fun VertexValue.Companion.f32x3(values: List<Float>): VertexValue = VertexValue.F32x3(sized(values, 3, "VertexValue.f32x3"))
+
+/** A `vec3<f32>` value from [Double]s. */
+@JvmName("f32x3Doubles")
+fun VertexValue.Companion.f32x3(values: List<Double>): VertexValue = f32x3(values.map { it.toFloat() })
+
+/** A `vec3<f32>` value from a [FloatArray]. */
+fun VertexValue.Companion.f32x3(values: FloatArray): VertexValue = f32x3(values.toList())
+
+/** A `vec3<f32>` value from a [DoubleArray]. */
+fun VertexValue.Companion.f32x3(values: DoubleArray): VertexValue = f32x3(values.map { it.toFloat() })
+
+/** A `vec4<f32>` value. Throws [FragmentColorException] for another length. */
+fun VertexValue.Companion.f32x4(values: List<Float>): VertexValue = VertexValue.F32x4(sized(values, 4, "VertexValue.f32x4"))
+
+/** A `vec4<f32>` value from [Double]s. */
+@JvmName("f32x4Doubles")
+fun VertexValue.Companion.f32x4(values: List<Double>): VertexValue = f32x4(values.map { it.toFloat() })
+
+/** A `vec4<f32>` value from a [FloatArray]. */
+fun VertexValue.Companion.f32x4(values: FloatArray): VertexValue = f32x4(values.toList())
+
+/** A `vec4<f32>` value from a [DoubleArray]. */
+fun VertexValue.Companion.f32x4(values: DoubleArray): VertexValue = f32x4(values.map { it.toFloat() })
+
+/** A `u32` value. Throws [FragmentColorException] for a negative number. */
+fun VertexValue.Companion.u32(value: Int): VertexValue = VertexValue.U32(unsigned(value, "VertexValue.u32", "unsigned value"))
+
+/** A `u32` value from a [UInt]. */
+fun VertexValue.Companion.u32(value: UInt): VertexValue = VertexValue.U32(value)
+
+/** A `vec2<u32>` value. Throws [FragmentColorException] for another length or a negative number. */
+fun VertexValue.Companion.u32x2(values: List<Int>): VertexValue = VertexValue.U32x2(unsignedList(values, 2, "VertexValue.u32x2"))
+
+/** A `vec2<u32>` value from [UInt]s. */
+@JvmName("u32x2Unsigned")
+fun VertexValue.Companion.u32x2(values: List<UInt>): VertexValue = VertexValue.U32x2(sized(values, 2, "VertexValue.u32x2"))
+
+/** A `vec3<u32>` value. Throws [FragmentColorException] for another length or a negative number. */
+fun VertexValue.Companion.u32x3(values: List<Int>): VertexValue = VertexValue.U32x3(unsignedList(values, 3, "VertexValue.u32x3"))
+
+/** A `vec3<u32>` value from [UInt]s. */
+@JvmName("u32x3Unsigned")
+fun VertexValue.Companion.u32x3(values: List<UInt>): VertexValue = VertexValue.U32x3(sized(values, 3, "VertexValue.u32x3"))
+
+/** A `vec4<u32>` value. Throws [FragmentColorException] for another length or a negative number. */
+fun VertexValue.Companion.u32x4(values: List<Int>): VertexValue = VertexValue.U32x4(unsignedList(values, 4, "VertexValue.u32x4"))
+
+/** A `vec4<u32>` value from [UInt]s. */
+@JvmName("u32x4Unsigned")
+fun VertexValue.Companion.u32x4(values: List<UInt>): VertexValue = VertexValue.U32x4(sized(values, 4, "VertexValue.u32x4"))
+
+/** An `i32` value. */
+fun VertexValue.Companion.i32(value: Int): VertexValue = VertexValue.I32(value)
+
+/** A `vec2<i32>` value. Throws [FragmentColorException] for another length. */
+fun VertexValue.Companion.i32x2(values: List<Int>): VertexValue = VertexValue.I32x2(sized(values, 2, "VertexValue.i32x2"))
+
+/** A `vec3<i32>` value. Throws [FragmentColorException] for another length. */
+fun VertexValue.Companion.i32x3(values: List<Int>): VertexValue = VertexValue.I32x3(sized(values, 3, "VertexValue.i32x3"))
+
+/** A `vec4<i32>` value. Throws [FragmentColorException] for another length. */
+fun VertexValue.Companion.i32x4(values: List<Int>): VertexValue = VertexValue.I32x4(sized(values, 4, "VertexValue.i32x4"))
