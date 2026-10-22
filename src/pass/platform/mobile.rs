@@ -94,23 +94,19 @@ impl Pass {
     /// Unified `Pass.add` — branches on the runtime mobile handle. Adding
     /// a new `SceneObject` Rust-side means adding one extra variant to
     /// [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
+    /// Returns the pass, as Rust's `add` does, so calls chain.
     #[uniffi::method(name = "add")]
     #[lsp_doc("docs/api/core/pass/add.md")]
-    pub fn add_mobile(&self, object: SceneObjectHandle) -> Result<(), FragmentColorError> {
-        match object {
-            SceneObjectHandle::Model(m) => self
-                .add(m.as_ref())
-                .map(|_| ())
-                .map_err(|e: PassError| FragmentColorError::Render(e.to_string())),
-            SceneObjectHandle::Camera(c) => self
-                .add(c.as_ref())
-                .map(|_| ())
-                .map_err(|e: PassError| FragmentColorError::Render(e.to_string())),
-            SceneObjectHandle::Light(l) => self
-                .add(l.as_ref())
-                .map(|_| ())
-                .map_err(|e: PassError| FragmentColorError::Render(e.to_string())),
-        }
+    pub fn add_mobile(
+        self: Arc<Self>,
+        object: SceneObjectHandle,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        match &object {
+            SceneObjectHandle::Model(model) => self.add(model.as_ref())?,
+            SceneObjectHandle::Camera(camera) => self.add(camera.as_ref())?,
+            SceneObjectHandle::Light(light) => self.add(light.as_ref())?,
+        };
+        Ok(self)
     }
 
     /// Set the render target (color attachment) for this pass.
@@ -130,6 +126,17 @@ impl Pass {
                 "setTarget: WindowTarget cannot be used as a Pass colour target; use TextureTarget instead".into(),
             )),
         }
+    }
+
+    /// Set a `Texture` as the color attachment.
+    /// Swift and Kotlin expose it as `setTarget(texture)`.
+    #[uniffi::method(name = "setTargetTexture")]
+    #[lsp_doc("docs/api/core/pass/hidden/set_target_texture_mobile.md")]
+    pub fn set_target_texture_mobile(
+        &self,
+        texture: Arc<Texture>,
+    ) -> Result<(), FragmentColorError> {
+        Ok(self.set_target(texture.as_ref())?)
     }
 
     /// Set the depth attachment for this pass.

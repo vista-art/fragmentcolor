@@ -50,6 +50,11 @@ docs/api/core/shader/hidden/fetch_compose_mobile.md=>docs/api/core/shader/fetch.
 # Swift/Kotlin extensions spell both as setDepthTarget(...).
 docs/api/core/pass/hidden/set_depth_texture_mobile.md=>docs/api/core/pass/set_depth_target.md: Mobile splits the Texture form of Pass::set_depth_target into a separate setDepthTexture method.
 
+# Pass::set_target takes a TextureTarget or a Texture in the same way. Mobile takes the
+# TextureTarget through setTarget(TargetHandle) and the Texture through setTargetTexture;
+# Swift/Kotlin extensions spell both as setTarget(...).
+docs/api/core/pass/hidden/set_target_texture_mobile.md=>docs/api/core/pass/set_target.md: Mobile splits the Texture form of Pass::set_target into a separate setTargetTexture method.
+
 # TextureTarget::texture() — the canonical doc lives at
 # docs/api/targets/texture_target/texture.md and the Web binding is the
 # `_js` shim under hidden/, so the suffix-strip rule already credits Web
