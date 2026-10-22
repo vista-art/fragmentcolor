@@ -1319,7 +1319,7 @@ class GeneratedExamples {
     }
 
     @Suppress("unused") private suspend fun _example_scene_scene_load() {
-        val glb_bytes = "path/to/model.glb"
+        val glb_bytes = java.io.File("path/to/model.glb").readBytes()
 
         // A path to a """.gltf""" file with its buffers and images, or to a """.glb""" file.
         val scene = Scene.load("path/to/model.gltf")

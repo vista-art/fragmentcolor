@@ -1,5 +1,6 @@
 import FragmentColor
-let glb_bytes = "path/to/model.glb"
+import Foundation
+let glb_bytes = try Data(contentsOf: URL(fileURLWithPath: "path/to/model.glb"))
 
 // A path to a """.gltf""" file with its buffers and images, or to a """.glb""" file.
 let scene = try Scene.load("path/to/model.gltf")
