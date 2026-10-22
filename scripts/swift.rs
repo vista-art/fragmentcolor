@@ -392,9 +392,38 @@ mod swift {
     /// Swift and Kotlin both use `"""..."""` for multi-line strings, whereas
     /// the JS output uses backticks. The two formats are otherwise
     /// interchangeable for our examples (no JS template-literal interpolation
-    /// is emitted by `convert.rs`).
+    /// is emitted by `convert.rs`). A backtick in a comment or a string is a
+    /// code span, so it stays as written.
     pub(crate) fn swap_backticks_for_triple_quotes(js: &str) -> String {
-        js.replace('`', "\"\"\"")
+        let mut out = String::with_capacity(js.len());
+        let mut rest = js;
+        while let Some(c) = rest.chars().next() {
+            if c == '`' {
+                let body = &rest[1..];
+                let end = body.find('`').unwrap_or(body.len());
+                out.push_str("\"\"\"");
+                out.push_str(&body[..end]);
+                if end < body.len() {
+                    out.push_str("\"\"\"");
+                    rest = &body[end + 1..];
+                } else {
+                    rest = "";
+                }
+                continue;
+            }
+            let len = if rest.starts_with("//") {
+                rest.find('\n').unwrap_or(rest.len())
+            } else if rest.starts_with("/*") {
+                rest.find("*/").map_or(rest.len(), |p| p + 2)
+            } else if c == '"' {
+                string_end(rest)
+            } else {
+                c.len_utf8()
+            };
+            out.push_str(&rest[..len]);
+            rest = &rest[len..];
+        }
+        out
     }
 
     /// Rewrite one line of the intermediate,
