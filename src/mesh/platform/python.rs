@@ -8,13 +8,16 @@ use crate::mesh::{Instance, Mesh, Vertex, VertexValue};
 use lsp_doc::lsp_doc;
 
 /// A vertex or instance attribute value from Python. A `VertexValue`
-/// keeps its type, and a number or 2 to 4 numbers read as floats.
+/// keeps its type, and a number or 1 to 4 numbers read as floats.
+/// A one-item list is the scalar it holds, as in every binding.
 #[derive(FromPyObject)]
 pub enum PyAttributeValue {
     #[pyo3(annotation = "VertexValue")]
     Typed(PyVertexValue),
     #[pyo3(annotation = "float")]
     X(f32),
+    #[pyo3(annotation = "[x]")]
+    Single([f32; 1]),
     #[pyo3(annotation = "[x, y]")]
     Xy([f32; 2]),
     #[pyo3(annotation = "[x, y, z]")]
@@ -28,6 +31,7 @@ impl From<PyAttributeValue> for VertexValue {
         match value {
             PyAttributeValue::Typed(typed) => typed.0,
             PyAttributeValue::X(x) => x.into(),
+            PyAttributeValue::Single([x]) => x.into(),
             PyAttributeValue::Xy(xy) => xy.into(),
             PyAttributeValue::Xyz(xyz) => xyz.into(),
             PyAttributeValue::Xyzw(xyzw) => xyzw.into(),
@@ -36,13 +40,15 @@ impl From<PyAttributeValue> for VertexValue {
 }
 
 /// A `Vertex` position from Python: a `Vertex` to copy,
-/// a number, or 2 to 4 numbers, tried in that order.
+/// a number, or 1 to 4 numbers, tried in that order.
 #[derive(FromPyObject)]
 pub enum PyVertexPosition {
     #[pyo3(annotation = "Vertex")]
     Vertex(Vertex),
     #[pyo3(annotation = "float")]
     X(f32),
+    #[pyo3(annotation = "[x]")]
+    Single([f32; 1]),
     #[pyo3(annotation = "[x, y]")]
     Xy([f32; 2]),
     #[pyo3(annotation = "[x, y, z]")]
@@ -56,6 +62,7 @@ impl From<PyVertexPosition> for Vertex {
         match position {
             PyVertexPosition::Vertex(vertex) => vertex,
             PyVertexPosition::X(x) => Vertex::new(x),
+            PyVertexPosition::Single(x) => Vertex::new(x),
             PyVertexPosition::Xy(xy) => Vertex::new(xy),
             PyVertexPosition::Xyz(xyz) => Vertex::new(xyz),
             PyVertexPosition::Xyzw(xyzw) => Vertex::new(xyzw),
@@ -114,7 +121,7 @@ impl TryFrom<PyIntoInstance<'_>> for Instance {
                 .map_err(|_| PyTypeError::new_err("instance attribute names must be str"))?;
             let value: PyAttributeValue = value.extract().map_err(|cause| {
                 let err = PyTypeError::new_err(format!(
-                    "instance attribute '{key}' must be a VertexValue, a number, or 2 to 4 numbers"
+                    "instance attribute '{key}' must be a VertexValue, a number, or 1 to 4 numbers"
                 ));
                 err.set_cause(dict.py(), Some(cause));
                 err
