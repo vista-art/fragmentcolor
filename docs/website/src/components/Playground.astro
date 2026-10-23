@@ -17,6 +17,13 @@ const { mode = "full", demos, demo } = Astro.props;
 const list = demos ? demos.flatMap((id) => DEMOS.filter((d) => d.id === id)) : DEMOS;
 const first = list.find((d) => d.id === demo) ?? list[0];
 if (!first) throw new Error(`<Playground>: no demo matches ${JSON.stringify(demos)}.`);
+const groups: [string, typeof list][] = [];
+for (const d of list) {
+  const group = ("group" in d && d.group) || "";
+  const last = groups.at(-1);
+  if (last && last[0] === group) last[1].push(d);
+  else groups.push([group, [d]]);
+}
 ---
 
 <fc-playground
@@ -28,13 +35,31 @@ if (!first) throw new Error(`<Playground>: no demo matches ${JSON.stringify(demo
   <div class="fcp-toolbar">
     <div class="fcp-demos" role="group" aria-label="Demos">
       {
-        list.map((d) => (
-          <button type="button" data-demo={d.id} aria-pressed={d.id === first.id ? "true" : "false"}>
-            {d.title}
-          </button>
+        list.map((d, i) => (
+          <>
+            {"group" in d && d.group !== (list[i - 1] as { group?: string } | undefined)?.group && (
+              <span class="fcp-group">{d.group}</span>
+            )}
+            <button type="button" data-demo={d.id} aria-pressed={d.id === first.id ? "true" : "false"}>
+              {d.title}
+            </button>
+          </>
         ))
       }
     </div>
+    <select class="fcp-demo-select" aria-label="Demo">
+      {
+        groups.map(([group, items]) =>
+          group ? (
+            <optgroup label={group}>
+              {items.map((d) => <option value={d.id} selected={d.id === first.id}>{d.title}</option>)}
+            </optgroup>
+          ) : (
+            items.map((d) => <option value={d.id} selected={d.id === first.id}>{d.title}</option>)
+          ),
+        )
+      }
+    </select>
     <span class="fcp-status">Loading</span>
   </div>
   <p class="fcp-summary">{first.summary}</p>
@@ -152,6 +177,15 @@ if (!first) throw new Error(`<Playground>: no demo matches ${JSON.stringify(demo
     color: var(--fcp-dim);
   }
 
+  .fcp-group {
+    align-self: center;
+    margin-left: 8px;
+    padding-left: 12px;
+    border-left: 1px solid var(--fcp-line);
+    color: var(--fcp-dim);
+    font-size: 12px;
+  }
+
   .fcp-demos button:hover {
     color: var(--fcp-ink);
   }
@@ -160,6 +194,18 @@ if (!first) throw new Error(`<Playground>: no demo matches ${JSON.stringify(demo
     color: var(--fcp-ink);
     background: var(--fcp-accent-bg);
     border-color: var(--fcp-accent);
+  }
+
+  .fcp-demo-select {
+    display: none;
+    flex: 1;
+    min-width: 0;
+    padding: 6px 10px;
+    border: 1px solid var(--fcp-line);
+    border-radius: 8px;
+    background: var(--fcp-panel);
+    color: var(--fcp-ink);
+    font: inherit;
   }
 
   .fcp-status {
@@ -493,8 +539,13 @@ if (!first) throw new Error(`<Playground>: no demo matches ${JSON.stringify(demo
       height: min(440px, 70vh);
     }
 
-    .fcp-status {
+    .fcp-status,
+    .fcp-demos {
       display: none;
+    }
+
+    .fcp-demo-select {
+      display: block;
     }
   }
 </style>
@@ -526,6 +577,10 @@ if (!first) throw new Error(`<Playground>: no demo matches ${JSON.stringify(demo
                 const target = e.target instanceof Element ? e.target : null;
                 const button = target?.closest<HTMLElement>(".fcp-demos button");
                 if (button) history.replaceState(null, "", `#${button.dataset.demo}`);
+              });
+              this.querySelector<HTMLSelectElement>(".fcp-demo-select")?.addEventListener("change", (e) => {
+                const select = e.currentTarget as HTMLSelectElement;
+                history.replaceState(null, "", `#${select.value}`);
               });
             }
             return playground.start(first);

@@ -139,7 +139,8 @@ export class Gallery {
   setGlobals(shader, time, w, h) {
     const input = this.input;
     shader.set("u.resolution", [w, h]);
-    shader.set("u.mouse", input.smooth);
+    // the prelude takes the pointer in canvas pixels, y down, as the playground does
+    shader.set("u.mouse", [input.smooth[0] * w, (1 - input.smooth[1]) * h]);
     shader.set("u.drag", input.drag);
     shader.set("u.time", time);
     shader.set("u.zoom", input.zoom);

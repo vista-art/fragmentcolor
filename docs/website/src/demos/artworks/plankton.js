@@ -9,7 +9,7 @@ export const plankton = {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   let st = centered(in.uv);
-  let m = centered(u.mouse);
+  let m = centered(pointer_uv());
   let t = u.time;
 
   // the cursor bulges space outward, shouldering the cells aside

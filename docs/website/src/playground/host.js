@@ -91,6 +91,7 @@ export class Playground {
     this.canvas = root.querySelector("canvas");
     this.ui = {
       demos: root.querySelector(".fcp-demos"),
+      picker: root.querySelector(".fcp-demo-select"),
       summary: root.querySelector(".fcp-summary"),
       status: root.querySelector(".fcp-status"),
       library: root.querySelector(".fcp-library-list"),
@@ -153,6 +154,7 @@ export class Playground {
     for (const button of this.ui.demos?.querySelectorAll("button") ?? []) {
       button.setAttribute("aria-pressed", String(button.dataset.demo === demo.id));
     }
+    if (this.ui.picker) this.ui.picker.value = demo.id;
     if (this.ui.summary) this.ui.summary.textContent = demo.summary;
     this.root.dataset.active = demo.id;
     this.loadTabs(this.edits.get(demo.id) ?? this.original(demo));
@@ -547,6 +549,7 @@ export class Playground {
     for (const button of ui.demos?.querySelectorAll("button") ?? []) {
       this.on(button, "click", () => this.select(button.dataset.demo));
     }
+    if (ui.picker) this.on(ui.picker, "change", () => this.select(ui.picker.value));
     this.on(ui.add, "click", () => this.picker.open(parseLibrary(this.text("js")) ?? []));
     this.on(ui.reset, "click", () => {
       this.edits.delete(this.demo.id);

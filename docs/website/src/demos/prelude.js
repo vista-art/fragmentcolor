@@ -1,6 +1,6 @@
 // Shared WGSL prelude for every artwork: a fullscreen triangle vertex stage
-// and one uniform block the engine feeds each frame. Catalog helpers from
-// fragmentcolor.org/shaders are prepended by slug in each artwork's `parts`.
+// and one uniform block fed each frame. Library functions are prepended by
+// slug from each artwork's `slugs`.
 
 export const PRELUDE = /* wgsl */ `
 struct VertexOutput {
@@ -10,15 +10,12 @@ struct VertexOutput {
 
 struct Globals {
   resolution: vec2<f32>,
-  mouse: vec2<f32>,
-  drag: vec2<f32>,
+  mouse: vec2<f32>, // pointer in canvas pixels, y down
+  drag: vec2<f32>, // -3..3
   time: f32,
-  zoom: f32,
-  press: f32,
-  pulse: f32,
-  // pads the block to 48 bytes; WebGL2 rejects uniform blocks that are not a multiple of 16
-  pad0: f32,
-  pad1: f32,
+  zoom: f32, // 0.5..2.4
+  press: f32, // 0..1
+  pulse: f32, // 0..1.4
 }
 
 @group(0) @binding(0) var<uniform> u: Globals;
@@ -34,6 +31,11 @@ fn vs_main(@builtin(vertex_index) i: u32) -> VertexOutput {
   out.position = vec4<f32>(corners[i], 0.0, 1.0);
   out.uv = corners[i] * 0.5 + vec2<f32>(0.5);
   return out;
+}
+
+// The pointer in UV space: 0 to 1 across, y up.
+fn pointer_uv() -> vec2<f32> {
+  return vec2<f32>(u.mouse.x, u.resolution.y - u.mouse.y) / max(u.resolution, vec2<f32>(1.0));
 }
 
 // Centered coordinates, aspect corrected, y up, zoom applied.

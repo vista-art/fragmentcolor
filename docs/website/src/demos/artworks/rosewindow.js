@@ -19,9 +19,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   let t = u.time * 0.1;
 
   // fold count follows the cursor's x, always an even count
-  let seg = max(6.0 + floor(clamp(u.mouse.x, 0.0, 1.0) * 7.0) * 2.0, 2.0);
+  let m = pointer_uv();
+  let seg = max(6.0 + floor(clamp(m.x, 0.0, 1.0) * 7.0) * 2.0, 2.0);
   var k = kaleidoscope(c + vec2<f32>(0.5), u32(seg));
-  let twist = (u.mouse.y - 0.5) * 3.2 + 0.35 * sin(t * 0.9);
+  let twist = (m.y - 0.5) * 3.2 + 0.35 * sin(t * 0.9);
   k = twirl(k, vec2<f32>(0.5), twist);
 
   let p = (k - vec2<f32>(0.5)) * 2.0;

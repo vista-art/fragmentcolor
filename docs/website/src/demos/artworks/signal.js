@@ -33,7 +33,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   let aspect = u.resolution.x / max(u.resolution.y, 1.0);
   let p = (suv * 2.0 - vec2<f32>(1.0)) * vec2<f32>(aspect, 1.0) / u.zoom;
   // warp the cursor through the same lens so ripples ring its apparent spot
-  let mw = crt_curvature(u.mouse, 0.18).xy;
+  let mw = crt_curvature(pointer_uv(), 0.18).xy;
   let m = (mw * 2.0 - vec2<f32>(1.0)) * vec2<f32>(aspect, 1.0) / u.zoom;
 
   // plasma carrier plus interference rippling out from the cursor

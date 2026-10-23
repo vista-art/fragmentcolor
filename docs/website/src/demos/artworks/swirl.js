@@ -15,7 +15,7 @@ fn pal(t: f32, brightness: vec3<f32>, contrast: vec3<f32>, oscillation: vec3<f32
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   // the eye of the swirl drifts toward the cursor
-  let m = centered(u.mouse);
+  let m = centered(pointer_uv());
   let uv = centered(in.uv) - m * 0.6;
   let t = u.time;
   let slow = t * (0.25 + 0.35 * u.press);
