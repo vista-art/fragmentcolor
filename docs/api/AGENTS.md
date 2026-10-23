@@ -29,14 +29,14 @@ Forbidden suffix patterns (both underscore-prefixed and bare):
 `u32`, `u64`, `usize`, `i8`, `i16`, `i32`, `i64`, `isize`, `u128`,
 `i128` when attached to a numeric literal.
 
-Why: every FragmentColor API that takes a numeric type accepts bare
-literals — Rust's type inference picks the right f32 / u32 / etc. from
-the function signature. The suffix is implementation detail that leaks
-into the website, JS, Python, Swift, and Kotlin tabs. Stripping it from
-the source removes a class of transpiler bugs at the root.
+Why: Rust's type inference picks `f32`, `u32` and the rest from the
+function signature, so every FragmentColor API takes a bare literal.
+A suffix is implementation detail that leaks into every language tab.
+The Kotlin transpiler writes the `u` an unsigned parameter needs, as in
+`64u`, from the parameter's type, so the source never carries it either.
 
-Verification: `cargo test --doc` still passes; the language tabs in the
-generated website show the same clean literal.
+Verification: `cargo test --doc` still passes, and the generated website
+tabs show the same literal, with a `u` on Kotlin's unsigned arguments.
 
 ## Angles
 

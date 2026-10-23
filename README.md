@@ -133,7 +133,7 @@ try renderer.render(shader, target)
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(listOf(800, 600))
+val target = renderer.createTextureTarget(listOf(800u, 600u))
 
 val shader = Shader(source)
 shader.set("color", listOf(1.0f, 0.2f, 0.4f, 1.0f))

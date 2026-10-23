@@ -154,7 +154,7 @@ Core holds `Renderer`, the targets, `Shader` with `Pipeline`, `Pass`, `Mesh`, `T
 - [ ] On a go, every public type moves to `#[api]`, which carries the `docs/api` text into each binding and generates the Swift and Kotlin overloads. `fragmentcolor-macros` and the rules crate publish with 0.13.0, with a dry-run publish job on pull requests. The `_js`, `_py` and `_mobile` shims and their hidden pages go
 - [ ] On a no-go, `create_target_ios` and `create_target_android` become `wrap_layer` and `wrap_window`, and hidden pages move to `hidden/<platform>/`
 - [ ] Each flexible parameter names an input enum (`#[api(input)]`), so `Shader::new([...])`, `set(key, value)` and `render([...])` read the same in every language
-- [ ] Sizes, regions and colors are arrays in every language, in the generated bindings as well as the extensions. Since 0.12.6 the Swift and Kotlin extensions take `[64, 64]` and `listOf(64, 64)` for a size
+- [ ] Sizes, regions and colors are arrays in every language, in the generated bindings as well as the extensions. Since 0.12.6 the Swift and Kotlin extensions take `[64, 64]` and `listOf(64u, 64u)` for a size
 - [ ] JavaScript records are plain objects when possible, with TypeScript interfaces generated from the Rust structs. Records FC returns are frozen, and readers also accept today's class instances:
   - Plain objects: `Pipeline`, the `layout()` family that `Shader`, `Mesh` and `Buffer` return, `Size`, `ScreenRegion`, `Color`, `SamplerOptions`, `TextureOptions` and `HdrInfo`, plus `PassInput`, which `pass.getInput()` returns as a class with `loadsPrevious()` and `color()` today
   - Plain numbers: `TextureId`, whose class reads its `u64` as a `BigInt` today, and `TextureUsage`, whose flags are already numbers on its class
