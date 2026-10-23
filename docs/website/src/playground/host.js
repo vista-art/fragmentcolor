@@ -260,8 +260,10 @@ export class Playground {
     this.view.setState(tab.state);
     try {
       if (tab.scroll) this.view.dispatch({ effects: tab.scroll });
+      else this.view.scrollDOM.scrollTop = 0;
     } catch {
-      // a regenerated tab can be shorter than the snapshot; it opens at the top
+      // a regenerated tab can be shorter than the snapshot
+      this.view.scrollDOM.scrollTop = 0;
     }
     for (const button of this.ui.tabs.querySelectorAll("button")) {
       const active = button.dataset.tab === tab.id;
