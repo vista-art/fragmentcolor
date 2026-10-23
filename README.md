@@ -30,7 +30,9 @@ shader.set("my_uniform", 0.5)?; // reflected from source
 renderer.render(&shader, &target)?;
 ```
 
-And that's it. The library builds on top of [wgpu](https://wgpu.rs), so it directly targets each platform's native graphics API: **Vulkan**, **Metal**, **DirectX 12**, **OpenGL**, **WebGL2**, or **WebGPU**.
+And that's it.
+
+It runs on Vulkan, Metal, DirectX 12, OpenGL, WebGL2, and WebGPU through [wgpu](https://wgpu.rs).
 
 ## Why FragmentColor
 
@@ -173,7 +175,7 @@ let shader = Shader::new([
 ])?;
 ```
 
-Native builds carry the library in the binary, so this works offline. On the web, `await Shader.fetch([...])` loads the parts from fragmentcolor.org.
+Native builds carry the library in the binary and work offline. On the web, `await Shader.fetch([...])` loads the parts from fragmentcolor.org.
 
 | <img src="docs/website/public/shaders/noise/worley2.png" width="110" alt="noise/worley2"> | <img src="docs/website/public/shaders/sdf2d/heart.png" width="110" alt="sdf2d/heart"> | <img src="docs/website/public/shaders/pattern/truchet.png" width="110" alt="pattern/truchet"> | <img src="docs/website/public/shaders/gradient/palette_iq.png" width="110" alt="gradient/palette_iq"> | <img src="docs/website/public/shaders/lighting/cook_torrance.png" width="110" alt="lighting/cook_torrance"> | <img src="docs/website/public/shaders/postfx/crt_curvature.png" width="110" alt="postfx/crt_curvature"> |
 | :-: | :-: | :-: | :-: | :-: | :-: |

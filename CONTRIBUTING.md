@@ -54,7 +54,7 @@ Contributions are welcome! This document outlines the current workflow for devel
    - Creates a draft GitHub Release `vMAJOR.MINOR.PATCH` that targets the pinned commit, with `FragmentColorFFI.xcframework.zip` attached. The notes are the `CHANGELOG.md` entry followed by GitHub's generated list of changes.
 
    Running it again replaces the binary, the pin commit, and the draft's target, and keeps the draft's notes.
-6. Review the draft and publish it. Publishing creates the `vMAJOR.MINOR.PATCH` tag on the pinned commit, one commit ahead of the merge commit on `main`. Swift Package Manager resolves `from: "X.Y.Z"` to that tag, so consumers get the xcframework built from the tag's own sources. Don't create the release by hand: a tag without the pin ships the previous release's binary next to the new Swift wrapper.
+6. Review the draft and publish it. Publishing creates the `vMAJOR.MINOR.PATCH` tag on the pinned commit, one commit ahead of the merge commit on `main`. Swift Package Manager resolves `from: "X.Y.Z"` to that tag. Consumers get the xcframework built from the tag's own sources. Don't create the release by hand: a tag without the pin ships the previous release's binary next to the new Swift wrapper.
 7. On release published, CI will (in parallel):
    - Build & publish the Web package to npm (skip if already published).
    - Build & publish Python wheels to PyPI (skip existing). This workflow runs on the tag push.
@@ -64,7 +64,7 @@ Contributions are welcome! This document outlines the current workflow for devel
 8. The `post_publish_update` workflow waits for npm and PyPI to land, then:
    - Bumps `fragmentcolor` dependency in `docs/website/package.json` and `examples/javascript/package.json` to the released version and refreshes lockfiles.
    - Updates `docs/website/src/components/VersionBadge.astro`.
-   - Copies the `Package.swift` pin from the tag, so `main` points at the latest release's xcframework.
+   - Copies the tag's `Package.swift` pin to `main`, which then points at the latest release's xcframework.
    - Deletes the `release/vMAJOR.MINOR.PATCH` branch. The tag keeps the pinned commit.
    - Opens a pull request with those consumer updates.
 9. Vercel auto-deploys `docs/website` (subfolder). Its Ignored Build Step skips build when neither `docs/website` nor `docs/api` changed.
@@ -136,7 +136,7 @@ python examples/python/main.py
 
 ### Docs site (Astro/Starlight)
 
-The site's API pages come from `docs/api`, and their JavaScript, Python, Swift, and Kotlin examples come from the healthcheck scripts, so edit those sources rather than the generated pages.
+The site's API pages come from `docs/api`, and their JavaScript, Python, Swift, and Kotlin examples come from the healthcheck scripts. Edit those sources rather than the generated pages.
 
 ```bash
 ./fc run_docs           # dev server from the repository root
