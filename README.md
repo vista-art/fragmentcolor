@@ -22,9 +22,15 @@
   <a href="https://fragmentcolor.org/demos">Demos</a>
 </p>
 
-Write a shader in WGSL or GLSL, set its uniforms by name, and render it. FragmentColor reads the shader to build the pipeline, bind groups, and buffers, so you write no setup code.
+FragmentColor is a universal GPU abstraction library where you can simply write some WGSL or GLSL code, **forget about manual pipeline setup**, set uniforms by key-value, and it will render on every device in existence:
 
-It runs on Vulkan, Metal, DirectX 12, OpenGL, WebGL2, and WebGPU through [wgpu](https://wgpu.rs).
+```rust
+let shader = Shader::new(wgsl)?;
+shader.set("my_uniform", 0.5)?; // reflected from source
+renderer.render(&shader, &target)?;
+```
+
+And that's it. The library builds on top of [wgpu](https://wgpu.rs), so it directly targets each platform's native graphics API: **Vulkan**, **Metal**, **DirectX 12**, **OpenGL**, **WebGL2**, or **WebGPU**.
 
 ## Why FragmentColor
 
