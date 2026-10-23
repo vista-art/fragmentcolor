@@ -11,6 +11,9 @@ import vercel from "@astrojs/vercel";
 // production build. Owner of `.claude/locks/locks.json`. See the
 // integration source for full docs.
 import locks from "./integrations/locks";
+// Sets a heading's id from a trailing `{#id}`, which the API pages use
+// to give each method heading its name as an anchor.
+import headingIds from "./integrations/heading-ids";
 
 // https://astro.build/config
 export default defineConfig({
@@ -21,6 +24,7 @@ export default defineConfig({
   },
   integrations: [
     locks(),
+    headingIds(),
     starlight({
       title: "Fragment Color",
       logo: {
