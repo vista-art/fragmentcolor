@@ -52,6 +52,7 @@ Open decisions, further down, lists the choices still open, each with a recommen
 - [ ] The transient MSAA texture survives into a following pass that loads it
 - [ ] Extend the Apple split from `compute → compute` to `compute (storage write) → render (sampled read)` in one command buffer
 - [x] Render pipelines take the first `@vertex` and `@fragment` entry points, as vertex input reflection and compute do (0.12.6)
+- [x] `pass.set_viewport` takes effect: the pass draws inside the region, clipped to its target (0.12.6)
 - [ ] FC resolves override defaults with naga's `process_overrides` before the module reaches wgpu. Today naga's WGSL writer prints the placeholder 1 for a `@workgroup_size` that names an override, so the browser runs one thread per workgroup where native runs the default
 - [x] A mesh recounts its instances on every upload, so a mesh whose instance list shrinks stops drawing stale trailing instances (0.12.6)
 - [x] Python raises `FragmentColorError` for renderer and texture errors, as it does for shader errors (0.12.6)
@@ -291,7 +292,6 @@ On `Pass`, `add_mesh` and `add_shader` add a draw, and `add` keeps a `SceneObjec
 ### `ScreenRegion` and viewports
 
 - [ ] Two pairs mean origin and size everywhere, and a single pair is the exact size, as it is since 0.12.6. Today two pairs read as inclusive corners. The inclusive +1 stays only in `from_pixel` and `encompass`
-- [ ] `pass.set_viewport` takes effect when the pass renders. Today the renderer never reads it
 
 ### Identity and live editing
 
@@ -610,7 +610,7 @@ Latest moves:
 - **New in 0.13.x:** the Characters track, with skinned animation and glTF node animation from Later, the 2D layer, `scene.export_triangles`, the Mario walk-through, `integrations/pbrt`, the path tracer integration, unlit and toon presets and frustum culling from Later, depth-only passes, picking, debug lines, GPU timings and the workers fix.
 - **New in 0.14:** PBR lighting with shadow mapping and the glass preset from Later and the area cases of `LightKind`, targets with options with the cube-map `Camera` from Later, texture shapes and formats, stencil from the All bindings list, and `Blend::Custom` from Later.
 - **New goal:** Reference scenes, with M1 to M3.
-- **Landed in 0.12.6:** the exact `[w, h]` `ScreenRegion`, `WindowTarget` in JavaScript and Python, `WindowTarget`, `TextureTarget`, `PassInput` and `TextureRegion` in Swift and Kotlin, with aliases for the old names until 0.13.0, uniffi names in reflect, `TextureUsage` flags as JavaScript numbers, a readable `PassInput`, KTX2 detection by identifier, the `#[lsp_doc]` check on methods, the one-frame JavaScript list render, and, from 0.13.0, JavaScript `Error` objects and the throwing JavaScript `Shader` constructor.
+- **Landed in 0.12.6:** the exact `[w, h]` `ScreenRegion`, `WindowTarget` in JavaScript and Python, `WindowTarget`, `TextureTarget`, `PassInput` and `TextureRegion` in Swift and Kotlin, with aliases for the old names until 0.13.0, uniffi names in reflect, `TextureUsage` flags as JavaScript numbers, a readable `PassInput`, KTX2 detection by identifier, the `#[lsp_doc]` check on methods, the one-frame JavaScript list render, and, from 0.13.0, JavaScript `Error` objects, the throwing JavaScript `Shader` constructor and the applied viewport.
 
 Moves before that:
 
