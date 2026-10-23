@@ -1,0 +1,548 @@
+---
+// <Playground /> runs the developer demos: editable WGSL and JS that rebuild as
+// you type, uniform controls generated from the shader, and the same program in
+// Rust, Python, Swift, and Kotlin. mode="compact" sizes it to fill the screen
+// under the landing hero and ignores the URL hash.
+import { DEMOS } from "../playground/demos/index.js";
+
+interface Props {
+  mode?: "full" | "compact";
+  /** Demo ids to offer, in order. Defaults to every demo. */
+  demos?: string[];
+  /** The demo to open first. A matching URL hash wins in full mode. */
+  demo?: string;
+}
+
+const { mode = "full", demos, demo } = Astro.props;
+const list = demos ? demos.flatMap((id) => DEMOS.filter((d) => d.id === id)) : DEMOS;
+const first = list.find((d) => d.id === demo) ?? list[0];
+if (!first) throw new Error(`<Playground>: no demo matches ${JSON.stringify(demos)}.`);
+---
+
+<fc-playground
+  class={`not-content ${mode}`}
+  data-mode={mode}
+  data-demo={first.id}
+  data-demos={list.map((d) => d.id).join(",")}
+>
+  <div class="fcp-toolbar">
+    <div class="fcp-demos" role="group" aria-label="Demos">
+      {
+        list.map((d) => (
+          <button type="button" data-demo={d.id} aria-pressed={d.id === first.id ? "true" : "false"}>
+            {d.title}
+          </button>
+        ))
+      }
+    </div>
+    <span class="fcp-status">Loading</span>
+  </div>
+  <p class="fcp-summary">{first.summary}</p>
+  <div class="fcp-body">
+    <section class="fcp-stage" aria-label="Output">
+      <div class="fcp-canvas">
+        <canvas></canvas>
+        <div class="fcp-poster" hidden>
+          <img alt="" />
+          <p>This demo runs compute shaders, which need WebGPU. This browser is drawing with WebGL2, so it shows a recording. The code is still yours to read and edit.</p>
+        </div>
+        <div class="fcp-fallback" hidden>
+          <p>The playground draws with WebGPU or WebGL2, and this browser could not start either. A recent Chrome, Edge, Safari, or Firefox runs it.</p>
+        </div>
+      </div>
+      <div class="fcp-controls" role="group" aria-label="Uniforms" hidden></div>
+    </section>
+    <section class="fcp-code" aria-label="Code">
+      <div class="fcp-library">
+        <span class="fcp-library-label">Library</span>
+        <div class="fcp-library-list"></div>
+        <button type="button" class="fcp-add" aria-haspopup="dialog">+ Add</button>
+      </div>
+      <div class="fcp-tabbar">
+        <div class="fcp-tabs" role="tablist" aria-label="Files"></div>
+        <div class="fcp-actions">
+          <button type="button" class="fcp-copy">Copy</button>
+          <button type="button" class="fcp-reset" title="Restore this demo's original code">Reset</button>
+        </div>
+      </div>
+      <div class="fcp-editor" role="tabpanel"></div>
+      <pre class="fcp-error" aria-live="polite" hidden></pre>
+    </section>
+  </div>
+</fc-playground>
+
+<style is:global>
+  fc-playground {
+    --fcp-bg: #0d0f14;
+    --fcp-panel: #151821;
+    --fcp-line: rgba(255, 255, 255, 0.09);
+    --fcp-ink: #e6e8ee;
+    --fcp-dim: rgba(230, 232, 238, 0.6);
+    --fcp-accent: #a5b4fc;
+    --fcp-accent-bg: rgba(165, 180, 252, 0.14);
+    --fcp-height: clamp(460px, 72vh, 760px);
+    display: block;
+    margin: 1.5rem 0;
+    border: 1px solid var(--fcp-line);
+    border-radius: 12px;
+    background: var(--fcp-bg);
+    color: var(--fcp-ink);
+    font-family: var(--sl-font, system-ui, sans-serif);
+    font-size: 14px;
+    overflow: hidden;
+  }
+
+  fc-playground.compact {
+    --fcp-height: clamp(460px, calc(100svh - 210px), 900px);
+    margin-top: 0.5rem;
+  }
+
+  /* the playground is dark in both site themes, and so is its library picker */
+  fc-playground .fcp-picker {
+    --fcp-picker-bg: #181b25;
+    --fcp-picker-field: #0d0f14;
+    --fcp-picker-line: rgba(255, 255, 255, 0.1);
+    --fcp-picker-text: #c9ccd6;
+    --fcp-picker-strong: #ffffff;
+    --fcp-picker-muted: rgba(230, 232, 238, 0.55);
+    --fcp-picker-accent: #a5b4fc;
+    --fcp-picker-accent-low: rgba(165, 180, 252, 0.16);
+    --fcp-picker-accent-high: #c7d2fe;
+  }
+
+  fc-playground button {
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  fc-playground button:focus-visible,
+  fc-playground a:focus-visible {
+    outline: 2px solid var(--fcp-accent);
+    outline-offset: 1px;
+  }
+
+  fc-playground .fcp-tabs button:focus-visible,
+  fc-playground .fcp-actions button:focus-visible {
+    outline-offset: -2px;
+  }
+
+  .fcp-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--fcp-line);
+  }
+
+  .fcp-demos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .fcp-demos button {
+    flex: none;
+    padding: 5px 12px;
+    border: 1px solid var(--fcp-line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--fcp-dim);
+  }
+
+  .fcp-demos button:hover {
+    color: var(--fcp-ink);
+  }
+
+  .fcp-demos button[aria-pressed="true"] {
+    color: var(--fcp-ink);
+    background: var(--fcp-accent-bg);
+    border-color: var(--fcp-accent);
+  }
+
+  .fcp-status {
+    flex: none;
+    color: var(--fcp-dim);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .fcp-summary {
+    margin: 0;
+    padding: 8px 14px;
+    color: var(--fcp-dim);
+    font-size: 13px;
+    border-bottom: 1px solid var(--fcp-line);
+  }
+
+  .fcp-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+    height: var(--fcp-height);
+  }
+
+  .fcp-code {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-left: 1px solid var(--fcp-line);
+    background: #282a36;
+  }
+
+  .fcp-stage {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .fcp-canvas {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    background: #000;
+  }
+
+  .fcp-canvas canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: pan-y;
+    cursor: crosshair;
+  }
+
+  .fcp-poster,
+  .fcp-fallback {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    background: #050608;
+  }
+
+  .fcp-poster[hidden],
+  .fcp-fallback[hidden] {
+    display: none;
+  }
+
+  .fcp-poster img {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    object-fit: contain;
+  }
+
+  .fcp-poster p,
+  .fcp-fallback p {
+    position: relative;
+    margin: 0;
+    padding: 12px 14px;
+    width: 100%;
+    font-size: 13px;
+    color: var(--fcp-ink);
+    background: #0b0d12;
+    border-top: 1px solid var(--fcp-line);
+  }
+
+  .fcp-controls {
+    flex: none;
+    max-height: 42%;
+    overflow-y: auto;
+    padding: 10px 14px 12px;
+    border-top: 1px solid var(--fcp-line);
+    background: var(--fcp-panel);
+    display: grid;
+    gap: 8px;
+  }
+
+  .fcp-controls[hidden] {
+    display: none;
+  }
+
+  .fcp-control {
+    display: grid;
+    grid-template-columns: minmax(84px, 9.5em) minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+  }
+
+  .fcp-control-key {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    color: var(--fcp-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .fcp-control-sliders {
+    display: grid;
+    gap: 4px;
+  }
+
+  .fcp-control-slider {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) 4.5em;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--fcp-dim);
+  }
+
+  .fcp-control-slider input {
+    width: 100%;
+    accent-color: var(--fcp-accent);
+  }
+
+  .fcp-control-slider output {
+    text-align: right;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+    color: var(--fcp-ink);
+  }
+
+  .fcp-control input[type="color"] {
+    width: 44px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid var(--fcp-line);
+    border-radius: 6px;
+    background: none;
+    cursor: pointer;
+  }
+
+  .fcp-library {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 10px;
+    background: var(--fcp-panel);
+    border-bottom: 1px solid var(--fcp-line);
+  }
+
+  .fcp-library-label {
+    font-size: 12px;
+    color: var(--fcp-dim);
+    margin-right: 2px;
+  }
+
+  .fcp-library-list {
+    display: contents;
+  }
+
+  .fcp-chip {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--fcp-line);
+    border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+  }
+
+  .fcp-chip a {
+    padding: 2px 4px 2px 8px;
+    color: var(--fcp-ink);
+    text-decoration: none;
+  }
+
+  .fcp-chip a:hover {
+    text-decoration: underline;
+  }
+
+  .fcp-chip button {
+    padding: 2px 7px 2px 4px;
+    border: 0;
+    background: none;
+    color: var(--fcp-dim);
+  }
+
+  .fcp-chip button:hover {
+    color: var(--fcp-ink);
+  }
+
+  .fcp-add {
+    padding: 2px 9px;
+    border: 1px dashed var(--fcp-accent);
+    border-radius: 6px;
+    background: none;
+    color: var(--fcp-accent) !important;
+    font-size: 12px !important;
+  }
+
+  .fcp-add:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .fcp-tabbar {
+    display: flex;
+    align-items: stretch;
+    border-bottom: 1px solid var(--fcp-line);
+    background: var(--fcp-panel);
+  }
+
+  .fcp-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .fcp-tabs button {
+    flex: none;
+    padding: 7px 9px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--fcp-dim);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+  }
+
+  .fcp-tabs button.generated {
+    font-style: italic;
+  }
+
+  .fcp-tabs button:not(.generated) + button.generated {
+    margin-left: 6px;
+    border-left: 1px solid var(--fcp-line);
+  }
+
+  .fcp-tabs button[aria-selected="true"] {
+    color: var(--fcp-ink);
+    border-bottom-color: var(--fcp-accent);
+  }
+
+  .fcp-actions {
+    display: flex;
+    flex: none;
+  }
+
+  .fcp-actions button {
+    padding: 0 8px;
+    border: 0;
+    background: none;
+    color: var(--fcp-dim);
+    font-size: 12px;
+  }
+
+  .fcp-actions button:hover {
+    color: var(--fcp-ink);
+  }
+
+  .fcp-editor {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .fcp-editor .cm-editor {
+    height: 100%;
+  }
+
+  fc-playground[data-tab="generated"] .fcp-editor .cm-content {
+    opacity: 0.92;
+  }
+
+  .fcp-error {
+    flex: none;
+    max-height: 34%;
+    overflow: auto;
+    margin: 0;
+    padding: 10px 12px;
+    border-top: 1px solid rgba(239, 68, 68, 0.45);
+    background: #2a1416;
+    color: #fca5a5;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    border-radius: 0;
+  }
+
+  .fcp-error[hidden] {
+    display: none;
+  }
+
+  @media (max-width: 860px) {
+    .fcp-body {
+      grid-template-columns: minmax(0, 1fr);
+      height: auto;
+    }
+
+    .fcp-canvas {
+      flex: none;
+      aspect-ratio: 4 / 3;
+    }
+
+    .fcp-controls {
+      max-height: none;
+    }
+
+    .fcp-code {
+      border-left: 0;
+      border-top: 1px solid var(--fcp-line);
+    }
+
+    .fcp-editor {
+      flex: none;
+      height: min(440px, 70vh);
+    }
+
+    .fcp-status {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  import { DEMOS } from "../playground/demos/index.js";
+
+  if (!customElements.get("fc-playground")) {
+    class PlaygroundElement extends HTMLElement {
+      #playground: { start(id?: string): Promise<void>; destroy(): void } | undefined;
+
+      connectedCallback() {
+        const ids = (this.dataset.demos ?? "").split(",");
+        const demos = ids.flatMap((id) => DEMOS.filter((d) => d.id === id));
+        let hash = location.hash.slice(1);
+        try {
+          hash = decodeURIComponent(hash);
+        } catch {
+          // a malformed escape just matches no demo
+        }
+        const first = this.dataset.mode === "full" && ids.includes(hash) ? hash : this.dataset.demo;
+
+        import("../playground/host.js")
+          .then(({ Playground }) => {
+            const playground = new Playground(this, demos);
+            this.#playground = playground;
+            if (this.dataset.mode === "full") {
+              this.addEventListener("click", (e) => {
+                const target = e.target instanceof Element ? e.target : null;
+                const button = target?.closest<HTMLElement>(".fcp-demos button");
+                if (button) history.replaceState(null, "", `#${button.dataset.demo}`);
+              });
+            }
+            return playground.start(first);
+          })
+          .catch((err) => {
+            console.error("[playground] start failed", err);
+            const fallback = this.querySelector<HTMLElement>(".fcp-fallback");
+            if (fallback) fallback.hidden = false;
+            const status = this.querySelector(".fcp-status");
+            if (status) status.textContent = "";
+          });
+      }
+
+      disconnectedCallback() {
+        this.#playground?.destroy();
+      }
+    }
+    customElements.define("fc-playground", PlaygroundElement);
+  }
+</script>
