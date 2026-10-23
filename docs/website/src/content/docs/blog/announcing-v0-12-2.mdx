@@ -1,0 +1,26 @@
+---
+title: "v0.12.2: Composable Scene"
+excerpt: "A scene owns one ordered list of render passes that you can read, append, remove, reorder, and replace, on every binding."
+authors: ["rafaelbeckel"]
+date: 2026-06-10
+tags: ["release", "rust", "python", "javascript", "swift", "kotlin"]
+---
+
+In v0.12.2, [`Scene`](/api/scene/scene/) exposes its render passes the way `Pass` and `Renderer` already do. A scene owns one ordered list of passes that you can read, append, remove, reorder, and replace, so a scene loaded from glTF composes on top of another pass in a frame instead of clearing it. [`Scene::load(...)`](/api/scene/scene/#load) is unchanged and still returns a renderable scene with sensible defaults. Scenes and the glTF loader arrived in [v0.12.0](/blog/announcing-v0-12-0/).
+
+### What's new
+
+- Read and edit the pass graph with [`add_pass`](/api/scene/scene/#add_pass), [`remove_pass`](/api/scene/scene/#remove_pass), [`get_pass`](/api/scene/scene/#get_pass), [`find_pass`](/api/scene/scene/#find_pass), [`list_passes`](/api/scene/scene/#list_passes), and [`set_passes`](/api/scene/scene/#set_passes).
+- Add a `Model`, `Camera`, or `Light` to a chosen pass by index or name with [`add_to`](/api/scene/scene/#add_to).
+- Decide whether the stock `Camera` and `Light` inject at first render with [`no_defaults`](/api/scene/scene/#no_defaults), [`no_default_camera`](/api/scene/scene/#no_default_camera), [`no_default_light`](/api/scene/scene/#no_default_light), [`set_default_camera`](/api/scene/scene/#set_default_camera), and [`set_default_light`](/api/scene/scene/#set_default_light).
+- Read a pass's label with [`Pass::name`](/api/core/pass/#name).
+
+Every method ships on Rust, Python, JavaScript, Swift, and Kotlin.
+
+### One behavior change
+
+Passes render in list order, so a pass added after the geometry now renders after it. A pass added before it (the common backdrop case) is unaffected.
+
+Release notes: [GitHub v0.12.2](https://github.com/vista-art/fragmentcolor/releases/tag/v0.12.2).
+
+Rafael

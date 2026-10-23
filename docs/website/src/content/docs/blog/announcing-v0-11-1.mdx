@@ -1,0 +1,44 @@
+---
+title: "v0.11.1: Embedded shader registry by default"
+excerpt: "A patch release that embeds the shader library in every native build and moves network fetches behind a Cargo feature, which unblocks the Linux PyPI wheels."
+authors: ["rafaelbeckel"]
+date: 2026-05-05
+tags: ["release", "rust", "python", "bugfix"]
+---
+
+v0.11.1 is a patch release that unblocks the Linux PyPI publish path. [v0.11.0](/blog/announcing-v0-11-0/) shipped to crates.io, npm, the Swift xcframework, and the Android AAR, but the PyPI wheels never landed. The release also reframes the underlying decision: a graphics library should not drag a TLS stack into every consumer's dep tree.
+
+### Defaults
+
+- **Every native build now embeds the whole public [shader library](/shaders/) by default** (about 86 KB of WGSL across 233 files). `Shader::new("sdf2d/circle")` resolves from the binary, no network needed. Slim down with `default-features = false` if size matters.
+- **Registry URLs short-circuit to the embedded library.** FragmentColor detects a URL of the form `<registry-base>/<category>/<name>.wgsl` (default base `https://fragmentcolor.org/shaders/`) as a registry URL and resolves it locally on native, with no network round-trip. So `Shader::new("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl")` and `Shader::new("sdf2d/circle")` produce the same result, and the verbose URL form keeps working in docs and quickstart examples on every platform.
+- **The web build (`build_web`) skips the embedded library** via `--no-default-features`. Slugs and registry URLs resolve over the browser's `fetch()` against the live registry instead, keeping the wasm bundle small.
+- **`network` is a new Cargo feature, off by default on every native target.** When on, `ureq` compiles with `native-tls`, so off-registry URLs (`https://example.com/foo.wgsl`, etc.) and arbitrary `Renderer::create_texture(url)` calls fetch over the platform's system TLS stack (OpenSSL on Linux, Schannel on Windows, Secure Transport on macOS). When off, those non-registry URL paths return a typed `NetworkError::feature_disabled()` with a clear "rebuild with `--features network`" message.
+- **No API drift.** `Shader::fetch` and `Renderer::create_texture` accept the same input shapes on every binding. Slugs, registry URLs, file paths, and raw source work everywhere; only off-registry URL fetches change behavior based on how you compile the binary.
+
+### Internal
+
+- A new `crate::net::NetworkError` replaces direct `ureq::Error` references in `FragmentColorError::NetworkRequest`, `RendererError::NetworkRequestError`, and `ShaderError::RequestError`. With the feature on, the crate provides `From<ureq::Error>`, and call sites keep using `?` unchanged.
+- `ureq` is now an optional dep gated on the `network` feature. Without the feature, `ring`, `rustls`, and `openssl-sys` are out of the default dep tree entirely; PyPI wheels build cleanly across every Linux arch.
+
+### CI
+
+- The release regenerates `.github/workflows/publish_py.yml` with maturin 1.13.1. It picks up newer action versions (`actions/checkout@v6`, `setup-python@v6`, `upload-artifact@v6`, `download-artifact@v7`, `attest-build-provenance@v3`), drops the Node.js 20 deprecation warnings, switches to `uv publish`, builds wheels on every PR (so CI catches cross-compile breakage before a release), and adds a Windows ARM64 target.
+
+### Metadata
+
+- The PyPI development status moves from `2 - Pre-Alpha` to `3 - Alpha`. Five language bindings ship; the API is settling but pre-1.0 churn continues.
+
+### Migration
+
+Most call sites need no changes. Registry URLs (`https://fragmentcolor.org/shaders/<category>/<name>.wgsl`) now resolve from the embedded library on native, with no network needed and no code changes required.
+
+Off-registry URLs (anything that doesn't match `<registry-base>/<category>/<name>.wgsl`) on native:
+
+- **If you can use a registry slug or registry URL,** that's the easiest path. It works offline on every platform.
+- **If you need an arbitrary URL on native,** add `--features network` to your build (`cargo add fragmentcolor --features network`, or rebuild the Python wheel with `maturin build --features network`).
+- **The web binding is unchanged.** `Shader.fetch(url)` keeps working through `fetch()` in the browser for any URL.
+
+Release notes: [GitHub v0.11.1](https://github.com/vista-art/fragmentcolor/releases/tag/v0.11.1).
+
+Rafael
