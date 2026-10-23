@@ -7,5 +7,5 @@ val model = Model(mesh, Material.pbr())
 val scene = Scene()
 scene.addPass(Pass("geometry"))
 
-// Target the pass by name (or pass its index: scene.addTo(0, model)).
+// Target the pass by name (or pass its index: scene.addTo(0u, model)).
 scene.addTo("geometry", model)

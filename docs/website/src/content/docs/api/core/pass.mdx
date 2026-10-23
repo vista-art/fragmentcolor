@@ -648,7 +648,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(listOf(64, 64))
+val target = renderer.createTextureTarget(listOf(64u, 64u))
 
 val shader = Shader.default()
 val pass = Pass("blend with previous")
@@ -1314,13 +1314,13 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(listOf(64, 64))
+val target = renderer.createTextureTarget(listOf(64u, 64u))
 
 val shader = Shader.default()
 val pass = Pass("clipped")
 pass.addShader(shader)
 
-pass.setViewport(ScreenRegion(listOf(0, 0), listOf(32, 32)))
+pass.setViewport(ScreenRegion(listOf(0u, 0u), listOf(32u, 32u)))
 
 renderer.render(pass, target)
 `}
@@ -1446,7 +1446,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(listOf(64, 64))
+val target = renderer.createTextureTarget(listOf(64u, 64u))
 
 val shader = Shader.default()
 val pass = Pass("solid background")
@@ -1536,7 +1536,7 @@ code={`
 import org.fragmentcolor.*
 val cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
 val pass = Pass.fromShader("compute", cs)
-pass.setComputeDispatch(64, 64, 1)
+pass.setComputeDispatch(64u, 64u, 1u)
 `}
 lang="kotlin"
 />
@@ -1635,7 +1635,7 @@ code={`
 import org.fragmentcolor.*
 
 val r = Renderer()
-val tex_target = r.createTextureTarget(listOf(512, 512))
+val tex_target = r.createTextureTarget(listOf(512u, 512u))
 
 val p = Pass("shadow")
 p.setTarget(tex_target)
@@ -1794,10 +1794,10 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(listOf(64, 64))
+val target = renderer.createTextureTarget(listOf(64u, 64u))
 
 // One depth attachment shared across the 3D-content pass.
-val depth = renderer.createDepthTexture(listOf(64, 64))
+val depth = renderer.createDepthTexture(listOf(64u, 64u))
 
 val mesh = Mesh()
 mesh.addVertex(listOf(0.0f, 0.0f, 0.0f))
@@ -2064,7 +2064,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val target = renderer.createTextureTarget(listOf(100,100))
+val target = renderer.createTextureTarget(listOf(100u, 100u))
 val color = Pass("color")
 val blurx = Pass("blur_x")
 blurx.require(color) // color before blur_x

@@ -1,7 +1,7 @@
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(listOf(256, 256))
+val target = renderer.createTextureTarget(listOf(256u, 256u))
 
 // Bind the offscreen target's contents as a uniform on a downstream
 // post-processing shader.

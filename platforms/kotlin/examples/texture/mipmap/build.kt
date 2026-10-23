@@ -7,7 +7,7 @@ val raw_rgba = ByteArray(8 * 8 * 4) { 200.toByte() }
 val chain = Mipmap.build(encoded_png_bytes, TextureFormat.RGBA8_UNORM_SRGB)
 
 // Raw path: include the size so build skips decoding.
-val chain_raw = Mipmap.build(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, listOf(8, 8))
+val chain_raw = Mipmap.build(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, listOf(8u, 8u))
 
 // Either chain uploads the same way.
 val renderer = Renderer()

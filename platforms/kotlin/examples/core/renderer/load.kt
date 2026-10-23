@@ -1,7 +1,7 @@
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(listOf(64, 64))
+val target = renderer.createTextureTarget(listOf(64u, 64u))
 
 val mesh = Mesh()
 mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
@@ -9,7 +9,7 @@ mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f
  
 // vocabulary covers all of them.
 val red_pixels = listOf(255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255)
-val red_tex = renderer.createTexture(red_pixels, listOf(2, 2))
+val red_tex = renderer.createTexture(red_pixels, listOf(2u, 2u))
 val material = Material.pbr().baseColorTexture(red_tex)
 val model = Model(mesh, material)
 val scene = Scene()

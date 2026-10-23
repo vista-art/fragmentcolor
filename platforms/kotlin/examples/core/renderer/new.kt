@@ -2,4 +2,4 @@
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val texture_target = renderer.createTextureTarget(listOf(16, 16))
+val texture_target = renderer.createTextureTarget(listOf(16u, 16u))

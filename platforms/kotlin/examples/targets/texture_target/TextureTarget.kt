@@ -2,7 +2,7 @@
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(listOf(64, 64))
+val target = renderer.createTextureTarget(listOf(64u, 64u))
 
 val shader = Shader.default()
 renderer.render(shader, target)
