@@ -17,8 +17,8 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-pub mod constants;
-pub use constants::*;
+mod constants;
+use constants::*;
 pub(crate) mod uniform;
 pub(crate) use uniform::*;
 
@@ -243,10 +243,6 @@ impl ShaderObject {
     ///
     /// GLSL is also supported, but you need to provide both vertex and fragment shaders:
     /// `Shader::glsl(vertex_source, fragment_source)`.
-    ///
-    /// Shadertoy-flavored GLSL is supported in the toy() constructor.
-    /// In this case, a default vertex shader is provided automatically:
-    /// `Shader::toy(shadertoy_source)`.
     pub fn new(source: &str) -> Result<Self, ShaderError> {
         Self::wgsl(source)
     }
