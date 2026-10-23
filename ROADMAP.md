@@ -21,11 +21,25 @@ Open decisions, further down, lists the choices still open, each with a recommen
 
 0.12.6 brings the binding and renderer fixes listed in the CHANGELOG.
 
+### 0.12.7
+
+Items found while reviewing 0.12.6.
+
+- [ ] Lift the `wasm-bindgen` pin (`=0.2.118`): `impl_js_bridge!` hands `RefFromWasmAbi` a raw `u32`, and 0.2.126 changed that ABI to `WasmPtr`. Update the macro, or move it to wasm-bindgen's public `TryFromJsValue`
+- [ ] `headless_window` is a free function that only the window-target doctests use. Make it a method on an object, or let those doctests compile without running
+- [ ] Remove `Renderer::create_external_texture` until it works. Every binding returns "not implemented yet", and an API that does nothing doesn't belong in the public surface
+- [ ] Doc comments that describe planned behavior state what the code does: `SceneSource` in `src/scene/loader.rs` and `set_sampler_options` in `src/texture/platform/mobile.rs`
+- [ ] Swift extensions throw where they stop the app with `preconditionFailure` on input they can't read (`TextureRegion.from`, `Vertex.set`, `Instance.set`, `setViewport`), as rule 5 asks
+- [ ] The public `From` conversions between `wgpu::Extent3d` and `ScreenRegion` or `Size` go, as rule 14 asks
+- [ ] The website's Rust tabs hide a doctest's `#` lines
+- [ ] `UniformData` can be named outside the crate, so a helper can forward one value to `Shader::set` on several shaders
+- [ ] uniffi warns that `uniffi.toml` looks like an old-style config file; move it to the current layout
+
 ### First, because 0.13.0 needs them
 
 - [x] Per-language hidden blocks in `docs/api` examples, so each language's platform setup moves from the transpilers into the docs page (0.12.6)
 - [ ] Runtime-sized storage arrays (`array<T>`), so one compute shader serves every length through `arrayLength`. `Buffer` needs them, and `convert_type` rejects them today. They ship with the 0.13.0 length rule, a whole number of elements
-- [ ] Atomics in storage buffers, which `convert_type` rejects as an "Unsupported type" today. Landing them first lets `layout()` and `set` cover every type from the start
+- [x] Atomics in storage buffers reflect as their scalar, so `layout()` and `set` cover every type from the start (0.12.6)
 - [ ] The `#[api]` trial, on a side branch: one attribute on `Shader` that writes the four binding layers, their docs and the Swift and Kotlin overloads. It lives in a `fragmentcolor-macros` crate plus a small rules crate that `build.rs` also reads. On a no-go, 0.13.0 gets hand-written binding code
 
 ### Builds and docs
@@ -249,7 +263,7 @@ A `Buffer` holds uniform and storage roots. Instance data lives on `Mesh`, so a 
 - [ ] One GPU copy per device for `Buffer` and `Mesh`
 - [ ] GPU objects are freed when their last handle drops, and `unregister_texture` becomes an early release
 - [ ] A pass error when one buffer is read-write storage and also has another role in the same pass
-- [ ] `BufferPool`, `PoolStats` and `TexturePool` become internal. 0.12.6 already hides them from rustdoc
+- [x] `BufferPool` and `PoolStats` are gone, and `TexturePool` and `RenderContext` are internal (0.12.6)
 
 ### `Mesh`: vertices and instances
 
