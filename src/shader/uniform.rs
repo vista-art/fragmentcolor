@@ -565,17 +565,6 @@ crate::impl_from_into_with_refs!(
     |t: (f32, f32)| UniformData::Vec2(vec![t.0, t.1])
 );
 
-crate::impl_from_into_with_refs!(
-    #[doc(hidden)]
-    UniformData,
-    glam::Vec2,
-    |d: UniformData| match d {
-        UniformData::Vec2(v) if v.len() >= 2 => glam::Vec2::new(v[0], v[1]),
-        _ => glam::Vec2::ZERO,
-    },
-    |v: glam::Vec2| UniformData::Vec2(v.to_array().to_vec())
-);
-
 // 3 elements
 
 crate::impl_from_into_with_refs!(
@@ -618,17 +607,6 @@ crate::impl_from_into_with_refs!(
     |t: (f32, f32, f32)| UniformData::Vec3(vec![t.0, t.1, t.2])
 );
 
-crate::impl_from_into_with_refs!(
-    #[doc(hidden)]
-    UniformData,
-    glam::Vec3,
-    |d: UniformData| match d {
-        UniformData::Vec3(v) if v.len() >= 3 => glam::Vec3::new(v[0], v[1], v[2]),
-        _ => glam::Vec3::ZERO,
-    },
-    |v: glam::Vec3| UniformData::Vec3(v.to_array().to_vec())
-);
-
 // 4 elements
 
 crate::impl_from_into_with_refs!(
@@ -669,17 +647,6 @@ crate::impl_from_into_with_refs!(
         _ => (0.0, 0.0, 0.0, 0.0),
     },
     |t: (f32, f32, f32, f32)| UniformData::Vec4(vec![t.0, t.1, t.2, t.3])
-);
-
-crate::impl_from_into_with_refs!(
-    #[doc(hidden)]
-    UniformData,
-    glam::Vec4,
-    |d: UniformData| match d {
-        UniformData::Vec4(v) if v.len() >= 4 => glam::Vec4::new(v[0], v[1], v[2], v[3]),
-        _ => glam::Vec4::ZERO,
-    },
-    |v: glam::Vec4| UniformData::Vec4(v.to_array().to_vec())
 );
 
 // 2 elements
@@ -744,69 +711,6 @@ crate::impl_from_into_with_refs!(
         _ => [0.0; 16],
     },
     |m: [f32; 16]| UniformData::Mat4(m.to_vec())
-);
-
-crate::impl_from_into_with_refs!(
-    #[doc(hidden)]
-    UniformData,
-    wgpu::Extent3d,
-    |data: UniformData| match data {
-        UniformData::Vec2(v) if v.len() >= 2 => wgpu::Extent3d {
-            width: v[0] as u32,
-            height: v[1] as u32,
-            depth_or_array_layers: 1,
-        },
-        UniformData::Vec3(v) if v.len() >= 3 => wgpu::Extent3d {
-            width: v[0] as u32,
-            height: v[1] as u32,
-            depth_or_array_layers: v[2] as u32,
-        },
-        UniformData::Vec4(v) if v.len() >= 4 => wgpu::Extent3d {
-            width: v[0] as u32,
-            height: v[1] as u32,
-            depth_or_array_layers: v[2] as u32,
-        },
-        UniformData::UVec2(v) if v.len() >= 2 => wgpu::Extent3d {
-            width: v[0],
-            height: v[1],
-            depth_or_array_layers: 1,
-        },
-        UniformData::UVec3(v) if v.len() >= 3 => wgpu::Extent3d {
-            width: v[0],
-            height: v[1],
-            depth_or_array_layers: v[2],
-        },
-        UniformData::UVec4(v) if v.len() >= 4 => wgpu::Extent3d {
-            width: v[0],
-            height: v[1],
-            depth_or_array_layers: v[2],
-        },
-        UniformData::IVec2(v) if v.len() >= 2 => wgpu::Extent3d {
-            width: v[0] as u32,
-            height: v[1] as u32,
-            depth_or_array_layers: 1,
-        },
-        UniformData::IVec3(v) if v.len() >= 3 => wgpu::Extent3d {
-            width: v[0] as u32,
-            height: v[1] as u32,
-            depth_or_array_layers: v[2] as u32,
-        },
-        UniformData::IVec4(v) if v.len() >= 4 => wgpu::Extent3d {
-            width: v[0] as u32,
-            height: v[1] as u32,
-            depth_or_array_layers: v[2] as u32,
-        },
-        _ => wgpu::Extent3d {
-            width: 0,
-            height: 0,
-            depth_or_array_layers: 0,
-        },
-    },
-    |value: wgpu::Extent3d| UniformData::UVec3(vec![
-        value.width,
-        value.height,
-        value.depth_or_array_layers,
-    ])
 );
 
 // Simple conversions for byte slices
@@ -978,18 +882,6 @@ mod tests {
         assert!(bytes[8..16].iter().all(|&b| b == 0));
     }
 
-    // Story: Extent3d conversions from various uniform shapes behave consistently.
-    #[test]
-    fn extent3d_conversions_from_uniforms() {
-        use wgpu::Extent3d;
-        let e: Extent3d = UniformData::UVec3(vec![10, 20, 3]).into();
-        assert_eq!((e.width, e.height, e.depth_or_array_layers), (10, 20, 3));
-        let e2: Extent3d = UniformData::Vec4(vec![9.0, 8.0, 7.0, 6.0]).into();
-        assert_eq!((e2.width, e2.height, e2.depth_or_array_layers), (9, 8, 7));
-        let e3: Extent3d = UniformData::Bool(true).into();
-        assert_eq!((e3.width, e3.height, e3.depth_or_array_layers), (0, 0, 0));
-    }
-
     // Story: Round-trips for scalar wrappers (f32/i32/u32 and single-element arrays)
     #[test]
     fn scalar_round_trips() {
@@ -1007,7 +899,7 @@ mod tests {
         assert_eq!(a1u, [6]);
     }
 
-    // Story: Vector conversions cover arrays, tuples, and glam types for f32 vectors.
+    // Story: Vector conversions cover arrays and tuples for f32 vectors.
     #[test]
     fn vector_conversions_roundtrip_vec2_vec3_vec4() {
         // Vec2
@@ -1016,8 +908,6 @@ mod tests {
         assert_eq!(a, [1.0, 2.0]);
         let t: (f32, f32) = u.clone().into();
         assert_eq!(t, (1.0, 2.0));
-        let gv: glam::Vec2 = u.clone().into();
-        assert_eq!(gv, glam::vec2(1.0, 2.0));
 
         // Vec3
         let u = UniformData::from([3.0f32, 4.0, 5.0]);
@@ -1025,8 +915,6 @@ mod tests {
         assert_eq!(a, [3.0, 4.0, 5.0]);
         let t: (f32, f32, f32) = u.clone().into();
         assert_eq!(t, (3.0, 4.0, 5.0));
-        let gv: glam::Vec3 = u.clone().into();
-        assert_eq!(gv, glam::vec3(3.0, 4.0, 5.0));
 
         // Vec4
         let u = UniformData::from([6.0f32, 7.0, 8.0, 9.0]);
@@ -1034,8 +922,6 @@ mod tests {
         assert_eq!(a, [6.0, 7.0, 8.0, 9.0]);
         let t: (f32, f32, f32, f32) = u.clone().into();
         assert_eq!(t, (6.0, 7.0, 8.0, 9.0));
-        let gv: glam::Vec4 = u.clone().into();
-        assert_eq!(gv, glam::vec4(6.0, 7.0, 8.0, 9.0));
     }
 
     // Story: Integer vector conversions for IVecN and UVecN arrays work round-trip.
@@ -1076,23 +962,6 @@ mod tests {
         let um4: UniformData = m4_src.into();
         let m4: [[f32; 4]; 4] = um4.into();
         assert_eq!(m4, m4_src);
-    }
-
-    // Story: Additional Extent3d conversions from Vec2/IVec2/IVec3/UVec4.
-    #[test]
-    fn extent3d_more_conversions() {
-        use wgpu::Extent3d;
-        let e: Extent3d = UniformData::Vec2(vec![100.0, 200.0]).into();
-        assert_eq!((e.width, e.height, e.depth_or_array_layers), (100, 200, 1));
-
-        let e: Extent3d = UniformData::IVec2(vec![3, 4]).into();
-        assert_eq!((e.width, e.height, e.depth_or_array_layers), (3, 4, 1));
-
-        let e: Extent3d = UniformData::IVec3(vec![5, 6, 7]).into();
-        assert_eq!((e.width, e.height, e.depth_or_array_layers), (5, 6, 7));
-
-        let e: Extent3d = UniformData::UVec4(vec![9, 8, 7, 6]).into();
-        assert_eq!((e.width, e.height, e.depth_or_array_layers), (9, 8, 7));
     }
 
     // Story: StorageAccess::is_readonly correctly classifies read-only variants.
