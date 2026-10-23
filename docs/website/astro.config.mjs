@@ -37,6 +37,7 @@ export default defineConfig({
         Examples: "./src/components/Examples.mdx",
         SiteTitle: "./src/components/SiteTitle.astro",
         Footer: "./src/components/Footer.astro",
+        SocialIcons: "./src/components/SocialIcons.astro",
       },
       customCss: ["./src/assets/styles/override.css"],
       // @TODO set up a system for automatic translation

@@ -325,6 +325,13 @@ const installs = [
     gap: 16px;
   }
 
+  /* The header carries the Docs link where it shows its links. */
+  @media (min-width: 50rem) {
+    .fcp-links {
+      display: none;
+    }
+  }
+
   /* the playground is dark in both site themes, and so is its library picker */
   fc-playground .fcp-picker {
     --fcp-picker-bg: #181b25;
