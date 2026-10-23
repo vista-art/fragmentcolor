@@ -34,7 +34,8 @@ it won't add the shader to its internal list and log a warning message in the co
 # let canvas = CAMetalLayer()
 # */
 # /*[kotlin]
-# val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+# val surfaceTexture = android.graphics.SurfaceTexture(0)
+# val canvas = android.view.Surface(surfaceTexture)
 # */
 
 use fragmentcolor::{ Shader, Pass, Renderer };
@@ -54,6 +55,9 @@ renderer.render(&pass, &target)?;
 
 // vector of passes rendered in order (any iterable of Pass is renderable)
 renderer.render(&vec![pass, pass2], &target)?;
+# /*[kotlin]
+# surfaceTexture.release()
+# */
 
 # Ok(())
 # }

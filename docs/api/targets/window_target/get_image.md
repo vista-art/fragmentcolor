@@ -25,7 +25,8 @@ Use a [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) inste
 # let canvas = CAMetalLayer()
 # */
 # /*[kotlin]
-# val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+# val surfaceTexture = android.graphics.SurfaceTexture(0)
+# val canvas = android.view.Surface(surfaceTexture)
 # */
 use fragmentcolor::{Renderer, Shader, Target};
 
@@ -34,6 +35,9 @@ let target = renderer.create_target(canvas).await?;
 renderer.render(&Shader::default(), &target)?;
 
 let image = target.get_image().await;
+# /*[kotlin]
+# surfaceTexture.release()
+# */
 # _ = image;
 # Ok(())
 # }

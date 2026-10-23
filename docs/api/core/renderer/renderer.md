@@ -31,7 +31,8 @@ description below for details.
 # let canvas = CAMetalLayer()
 # */
 # /*[kotlin]
-# val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+# val surfaceTexture = android.graphics.SurfaceTexture(0)
+# val canvas = android.view.Surface(surfaceTexture)
 # */
 
 use fragmentcolor::{Shader, Renderer, Target};
@@ -46,6 +47,9 @@ let texture_target = renderer.create_texture_target([16, 16]).await?;
 renderer.render(&Shader::default(), &texture_target)?;
 
 // That's it. Welcome to FragmentColor!
+# /*[kotlin]
+# surfaceTexture.release()
+# */
 
 # let s = target.size();
 # assert_eq!([s.width, s.height], [800, 600]);

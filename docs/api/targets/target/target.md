@@ -29,7 +29,8 @@ It contains a GPU surface texture attached to a platform-specific window or an o
 # let canvas = CAMetalLayer()
 # */
 # /*[kotlin]
-# val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+# val surfaceTexture = android.graphics.SurfaceTexture(0)
+# val canvas = android.view.Surface(surfaceTexture)
 # */
 
 use fragmentcolor::{Renderer, Shader};
@@ -42,6 +43,9 @@ let target = renderer.create_target(canvas).await?;
 // To animate, render again in your event loop...
 renderer.render(&Shader::default(), &target)?;
 renderer.render(&Shader::default(), &target)?;
+# /*[kotlin]
+# surfaceTexture.release()
+# */
 
 # Ok(())
 # }

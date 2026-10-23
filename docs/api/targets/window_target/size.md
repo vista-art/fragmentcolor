@@ -25,13 +25,17 @@ Python, `undefined` in JS, `nil` in Swift and `null` in Kotlin.
 # let canvas = CAMetalLayer()
 # */
 # /*[kotlin]
-# val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+# val surfaceTexture = android.graphics.SurfaceTexture(0)
+# val canvas = android.view.Surface(surfaceTexture)
 # */
 use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 let target = renderer.create_target(canvas).await?;
 let size = target.size();
+# /*[kotlin]
+# surfaceTexture.release()
+# */
 
 # assert_eq!([size.width, size.height], [800, 600]);
 # Ok(())

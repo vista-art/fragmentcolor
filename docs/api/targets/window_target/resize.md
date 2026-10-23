@@ -24,7 +24,8 @@ Call it when the window or canvas changes size.
 # let canvas = CAMetalLayer()
 # */
 # /*[kotlin]
-# val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+# val surfaceTexture = android.graphics.SurfaceTexture(0)
+# val canvas = android.view.Surface(surfaceTexture)
 # */
 use fragmentcolor::{Renderer, Target};
 
@@ -32,6 +33,9 @@ let renderer = Renderer::new();
 let mut target = renderer.create_target(canvas).await?;
 
 target.resize([1024, 768]);
+# /*[kotlin]
+# surfaceTexture.release()
+# */
 
 # let size = target.size();
 # assert_eq!([size.width, size.height], [1024, 768]);

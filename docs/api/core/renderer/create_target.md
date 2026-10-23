@@ -21,7 +21,8 @@ In Rust, we officially support Winit. Check the examples folder for details.
 # let canvas = CAMetalLayer()
 # */
 # /*[kotlin]
-# val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+# val surfaceTexture = android.graphics.SurfaceTexture(0)
+# val canvas = android.view.Surface(surfaceTexture)
 # */
 
 use fragmentcolor::{Renderer, Target};
@@ -30,6 +31,9 @@ let renderer = Renderer::new();
 
 // The canvas comes from your platform's windowing system.
 let target = renderer.create_target(canvas).await?;
+# /*[kotlin]
+# surfaceTexture.release()
+# */
 
 # let s = target.size();
 # assert_eq!([s.width, s.height], [800, 600]);
