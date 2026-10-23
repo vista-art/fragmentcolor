@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use crate::RenderContext;
 use crate::texture::{Texture, TextureError, TextureObject};
+use crate::{PendingReadback, RenderContext};
 
 struct ReadbackPlan {
     buffer: Arc<wgpu::Buffer>,
@@ -120,6 +120,7 @@ pub(crate) async fn read_pixels(
     texture: &TextureObject,
 ) -> Result<Vec<u8>, TextureError> {
     let plan = prepare_readback(context, texture, "Texture readback encoder")?;
+    let readback = PendingReadback::new(&context.readback_pool, plan.buffer.clone());
 
     let slice = plan.buffer.slice(..);
     let (tx, rx) = futures::channel::oneshot::channel();
@@ -150,7 +151,9 @@ pub(crate) async fn read_pixels(
         ));
     }
 
-    extract_pixels(&plan)
+    let pixels = extract_pixels(&plan)?;
+    readback.finish();
+    Ok(pixels)
 }
 
 pub(super) async fn get_image(texture: &Texture) -> Result<Vec<u8>, TextureError> {

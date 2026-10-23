@@ -57,6 +57,10 @@ Shaders that share a source get one pipeline per vertex layout. The pipeline cac
 
 Storage buffers upload only when they change. Every render copied the bytes of each storage buffer into a new allocation and threw them away unless the GPU buffer was new, which came to about 256 MB per frame at eight million particles. The renderer now reads them only to create or resize the buffer, or after `set` changes them, and the `particles` example went from 43 fps to the display's 60 at that size.
 
+Shaders can use atomics in storage buffers. Reflection rejected `atomic<u32>` and `atomic<i32>` with "Unsupported type", so a shader that counts with `atomicAdd` failed to build. An atomic reflects as its scalar, and another shader can read the same buffer by name through a plain `array<u32, N>` view.
+
+A readback that times out or fails no longer breaks the ones after it. `get_image` and `read_storage` wait up to five seconds for the GPU. On a timeout they left their pooled buffer mapped, and every later readback of the same size failed with `BufferStillMapped`. The failed buffer now leaves the pool, and the next readback gets a fresh one.
+
 A render made only of compute passes leaves the target alone. `Renderer::render` acquired a frame even when no pass drew into it and presented that frame untouched, so compute work failed whenever the target had no frame to give, as with a minimized window. Compute-only calls now skip the frame.
 
 Compute passes reuse their pipelines. The compute pipeline cache keyed on the memory addresses of bind group layouts that every render built from scratch, so the key never matched. Each compute pass compiled a new shader module and pipeline on every frame and kept all of them, which grew memory for as long as the app ran. The key now holds the layout entries themselves, and layouts are built only along with a new pipeline.
