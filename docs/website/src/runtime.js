@@ -5,6 +5,11 @@
 // Registry slugs resolve against the site's own /shaders/ tree, so dev works
 // offline.
 
+import { version } from "fragmentcolor/package.json";
+
+// The FragmentColor release this site loads.
+export const RELEASE = version;
+
 let ready;
 
 export function loadFragmentColor() {

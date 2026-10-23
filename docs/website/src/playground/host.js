@@ -9,7 +9,7 @@ import { loadProgram } from "./program.js";
 import { describeControls, renderControls } from "./controls.js";
 import { LANGUAGES, generateCode, parseLibrary, replaceLibrary } from "./codegen.js";
 import { LibraryPicker } from "./picker.js";
-import { loadFragmentColor } from "../runtime.js";
+import { loadFragmentColor, RELEASE } from "../runtime.js";
 
 const BUILD_DELAY = 250;
 const SCRUB_DELAY = 40;
@@ -107,6 +107,16 @@ function message(err) {
   return String(err?.message ?? err).trim();
 }
 
+// Whether release `version` is `needed` or a later one. 0.12.6-dev passes for 0.12.6.
+function atLeast(version, needed) {
+  const have = version.split(/[.-]/).map(Number);
+  const want = needed.split(".").map(Number);
+  for (const [i, part] of want.entries()) {
+    if (have[i] !== part) return have[i] > part;
+  }
+  return true;
+}
+
 export class Playground {
   /**
    * @param {HTMLElement} root the <fc-playground> element
@@ -132,6 +142,7 @@ export class Playground {
       copy: root.querySelector(".fcp-copy"),
       fullscreen: root.querySelector(".fcp-fullscreen"),
     };
+    this.webgpuNote = this.ui.poster.querySelector("p").textContent;
     this.edits = new Map();
     this.overrides = new Map();
     this.pointer = null;
@@ -188,17 +199,35 @@ export class Playground {
     this.loadTabs(this.edits.get(demo.id) ?? this.original(demo));
     this.showError(null);
 
-    const blocked = demo.requires === "webgpu" && this.backend !== "WebGPU";
-    this.blocked = blocked;
-    this.ui.poster.hidden = !blocked;
-    if (blocked) {
+    const blocker = this.blocker(demo);
+    this.blocked = Boolean(blocker);
+    this.ui.poster.hidden = !blocker;
+    if (blocker) {
       const img = this.ui.poster.querySelector("img");
       img.hidden = !demo.poster;
       if (demo.poster) img.src = demo.poster;
-      this.setStatus(`${this.backend} · this demo needs WebGPU`);
+      this.ui.poster.querySelector("p").textContent = blocker.note;
+      this.setStatus(blocker.status);
       return;
     }
+    this.setStatus(`${this.backend} · building`);
     this.build();
+  }
+
+  // Why this page can't run `demo`, or null when it can. A blocked demo shows its poster.
+  blocker(demo) {
+    if (demo.requires === "webgpu" && this.backend !== "WebGPU") {
+      return { status: `${this.backend} · this demo needs WebGPU`, note: this.webgpuNote };
+    }
+    if (demo.needs && !atLeast(RELEASE, demo.needs)) {
+      const note = [
+        `This demo needs FragmentColor ${demo.needs} or later.`,
+        `This page loads ${RELEASE}, so it shows a recording.`,
+        "The code is still yours to read and edit.",
+      ].join(" ");
+      return { status: `${this.backend} · this demo needs FragmentColor ${demo.needs}`, note };
+    }
+    return null;
   }
 
   original(demo) {
@@ -227,8 +256,8 @@ export class Playground {
 
   // Editor tabs: the WGSL files and main.js are editable; the other languages are generated.
   loadTabs({ files, js }) {
-    // A demo opens on the language the reader is on, main.js at first, and never on a shader file.
-    const language = this.tabs?.find((t) => t.id === this.activeTab && t.kind !== "wgsl")?.id ?? "js";
+    // A demo opens on the last language tab the reader picked, main.js at first, never on a shader file.
+    const language = this.language ?? "js";
     const tabs = [];
     for (const [name, text] of Object.entries(files)) {
       tabs.push({ id: name, label: name, kind: "wgsl", state: this.editorState(text, "wgsl", true) });
@@ -350,6 +379,7 @@ export class Playground {
     }
     const tab = this.tabs.find((t) => t.id === id) ?? this.tabs[0];
     this.activeTab = tab.id;
+    if (tab.kind !== "wgsl") this.language = tab.id;
     if (tab.generated && (this.codeStale || !tab.state)) this.refreshCode();
     this.view.setState(tab.state);
     try {
@@ -446,7 +476,7 @@ export class Playground {
       recorder = note(setupKeys);
       state = await capturing(() => module.setup(this.renderer, this.target));
     } catch (err) {
-      if (token === this.buildToken && demo === this.demo) this.showError(err);
+      if (token === this.buildToken && demo === this.demo) this.fail(err);
       return;
     } finally {
       recorder = null;
@@ -472,13 +502,14 @@ export class Playground {
       recorder = note(frameKeys);
       await capturing(() => this.draw(program, performance.now()));
     } catch (err) {
-      if (token === this.buildToken && demo === this.demo) this.showError(err);
+      if (token === this.buildToken && demo === this.demo) this.fail(err);
       return;
     } finally {
       recorder = null;
     }
 
     this.program = program;
+    this.canvas.style.visibility = "";
     this.showError(null);
     this.setStatus(`${this.backend} · built in ${Math.round(performance.now() - started)} ms`);
     this.controls = describeControls(
@@ -597,6 +628,14 @@ export class Playground {
     this.setText("js", replaceLibrary(js, next));
     this.renderLibrary();
     this.scheduleBuild();
+  }
+
+  // A failed build leaves the last good one drawing. With none, the canvas goes blank.
+  fail(err) {
+    if (this.program) return this.showError(err);
+    this.showError(err, "The canvas stays empty until the code builds.");
+    this.canvas.style.visibility = "hidden";
+    this.setStatus(`${this.backend} · build failed`);
   }
 
   showError(err, note = this.program ? "Still showing the last version that built." : "") {
