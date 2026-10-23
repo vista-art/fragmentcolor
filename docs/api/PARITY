@@ -71,16 +71,6 @@ docs/api/scene/material/hidden/normal_source_mobile.md=>docs/api/scene/material/
 docs/api/scene/material/hidden/occlusion_source_mobile.md=>docs/api/scene/material/occlusion_texture.md: Mobile splits the texture input form of Material::occlusion_texture into a separate occlusionSource method.
 docs/api/scene/material/hidden/emissive_source_mobile.md=>docs/api/scene/material/emissive_texture.md: Mobile splits the texture input form of Material::emissive_texture into a separate emissiveSource method.
 
-# Kotlin resolves a plain integer literal to a uniffi method before an extension
-# of the same name, and rejects the literal when the method takes a UInt. These raw
-# methods take a Kotlin-only name under [bindings.kotlin.rename] in uniffi.toml, and
-# the Kotlin extensions spell each one by its documented name for Int and UInt:
-#   Pass.setComputeDispatchUInt => Pass.setComputeDispatch
-#   Mesh.setInstanceCountUInt   => Mesh.setInstanceCount
-#   Scene.getPassUInt           => Scene.getPass
-#   Mipmap.levelUInt            => Mipmap.level
-# They share the Rust method and its doc page, so no alias line credits them.
-
 # ---- Types documented through their methods (no page of their own) ----
 #
 # `AlphaMode` exists in every binding. Its three values are documented on

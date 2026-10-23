@@ -43,7 +43,7 @@ fun Renderer.createTarget(surface: Surface): WindowTarget {
 // ── createTextureTarget / createDepthTexture ─────────────────────────────────
 
 /** Create a headless texture target from a `[width, height]` list. */
-suspend fun Renderer.createTextureTarget(size: List<Int>): TextureTarget =
+suspend fun Renderer.createTextureTarget(size: List<UInt>): TextureTarget =
     createTextureTarget(sizeRecord(size, "createTextureTarget"))
 
 /** Create a headless texture target from a [Size]. */
@@ -51,7 +51,7 @@ suspend fun Renderer.createTextureTarget(size: Size): TextureTarget =
     createTextureTarget(size.width, size.height)
 
 /** Create a depth texture from a `[width, height]` list. */
-suspend fun Renderer.createDepthTexture(size: List<Int>): Texture =
+suspend fun Renderer.createDepthTexture(size: List<UInt>): Texture =
     createDepthTexture(sizeRecord(size, "createDepthTexture"))
 
 /** Create a depth texture from a [Size]. */
@@ -72,7 +72,7 @@ suspend fun Renderer.createStorageTexture(
 
 /** Create a storage texture from a `[width, height]` or `[width, height, depth]` list. */
 suspend fun Renderer.createStorageTexture(
-    size: List<Int>,
+    size: List<UInt>,
     format: TextureFormat,
     data: ByteArray? = null,
     usage: TextureUsage? = null,
@@ -81,7 +81,7 @@ suspend fun Renderer.createStorageTexture(
 /** Create a storage texture seeded with one [Int] per byte. */
 @JvmName("createStorageTextureInts")
 suspend fun Renderer.createStorageTexture(
-    size: List<Int>,
+    size: List<UInt>,
     format: TextureFormat,
     data: List<Int>,
     usage: TextureUsage? = null,
@@ -105,11 +105,11 @@ suspend fun Renderer.createTexture(bytes: ByteArray, size: Size, usage: TextureU
     createTexture(TextureInputMobile.Bytes(bytes), textureOptions(size = size, usage = usage))
 
 /** Create a texture from raw RGBA pixels and their `[width, height]`. */
-suspend fun Renderer.createTexture(bytes: ByteArray, size: List<Int>, usage: TextureUsage? = null): Texture =
+suspend fun Renderer.createTexture(bytes: ByteArray, size: List<UInt>, usage: TextureUsage? = null): Texture =
     createTexture(bytes, sizeRecord(size, "createTexture"), usage)
 
 /** Create a texture from raw RGBA pixels, one [Int] per byte, and their `[width, height]`. */
-suspend fun Renderer.createTexture(bytes: List<Int>, size: List<Int>, usage: TextureUsage? = null): Texture =
+suspend fun Renderer.createTexture(bytes: List<Int>, size: List<UInt>, usage: TextureUsage? = null): Texture =
     createTexture(byteArray(bytes, "createTexture"), size, usage)
 
 /** Create a texture from bytes with every option spelled out. */
@@ -227,22 +227,13 @@ suspend fun Renderer.readTexture(textureId: TextureId): ByteArray {
 
 /**
  * A [Size] from `[width, height]` or `[width, height, depth]`.
- * Throws [FragmentColorException] for any other length or a negative number.
+ * Throws [FragmentColorException] for any other length.
  */
-internal fun sizeRecord(size: List<Int>, method: String): Size {
+internal fun sizeRecord(size: List<UInt>, method: String): Size {
     if (size.size != 2 && size.size != 3) {
         throw FragmentColorException.Render("$method: a size holds 2 or 3 numbers, got ${size.size}")
     }
-    val dims = size.map { unsigned(it, method, "size") }
-    return Size(width = dims[0], height = dims[1], depth = dims.getOrNull(2))
-}
-
-/** [value] as a [UInt]. Throws [FragmentColorException] for a negative number. */
-internal fun unsigned(value: Int, method: String, what: String): UInt {
-    if (value < 0) {
-        throw FragmentColorException.Render("$method: $value is not a valid $what")
-    }
-    return value.toUInt()
+    return Size(width = size[0], height = size[1], depth = size.getOrNull(2))
 }
 
 /** Bytes from one [Int] per byte. Throws [FragmentColorException] for a value outside 0..255. */

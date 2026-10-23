@@ -6,13 +6,3 @@ package_name = "org.fragmentcolor"
 android = true
 android_cleaner = true
 generate_immutable_records = true
-
-# Kotlin resolves a plain integer literal to a uniffi method before an extension
-# of the same name, then rejects the literal when the method takes a `UInt`.
-# These methods take another name on Kotlin, so `pass.setComputeDispatch(64, 64, 1)`
-# reaches the `Int` extension. The extensions keep the documented name for `UInt` too.
-[bindings.kotlin.rename]
-"Pass.setComputeDispatch" = "setComputeDispatchUInt"
-"Mesh.setInstanceCount" = "setInstanceCountUInt"
-"Scene.getPass" = "getPassUInt"
-"Mipmap.level" = "levelUInt"

@@ -37,9 +37,6 @@ mod kotlin {
     /// The extension functions written by hand on top of uniffi's Kotlin.
     const EXTENSIONS_DIR: &str = "platforms/kotlin/fragmentcolor/src/main/java/org/fragmentcolor";
 
-    /// The uniffi config, whose `[bindings.kotlin.rename]` table renames methods on Kotlin.
-    const UNIFFI_CONFIG: &str = "uniffi.toml";
-
     /// A Kotlin parameter type, reduced to what the call-site rewrites need.
     #[derive(Clone, PartialEq, Eq)]
     enum KType {
@@ -117,7 +114,7 @@ mod kotlin {
 
     impl Elems {
         /// Which of several shapes every receiver takes is written:
-        /// floats first, then plain numbers, which need no `u` suffix,
+        /// floats first, then elements as written, then unsigned ones,
         /// and a constructor around each element last.
         fn preference(&self) -> u8 {
             match self {
@@ -174,7 +171,6 @@ mod kotlin {
 
     /// Derive the Kotlin rewrites' API facts. Runs once before any example converts.
     pub fn install(model: &Reflection) {
-        let renames = read_renames();
         let mut callables = Vec::new();
         for f in model.uniffi_fns(Build::Android) {
             let params: Vec<KType> = f.params.iter().map(uniffi_type).collect();
@@ -182,11 +178,7 @@ mod kotlin {
             let nullable = required.iter().rev().take_while(|t| is_option(t)).count();
             let needles = match f.kind {
                 CallKind::Init => vec![format!("{}(", f.owner), format!("{}.new(", f.owner)],
-                CallKind::Static | CallKind::Method => {
-                    let key = format!("{}.{}", f.owner, f.name);
-                    let name = renames.get(&key).unwrap_or(&f.name);
-                    vec![format!(".{name}(")]
-                }
+                CallKind::Static | CallKind::Method => vec![format!(".{}(", f.name)],
             };
             for needle in needles {
                 callables.push(Callable {
@@ -213,30 +205,6 @@ mod kotlin {
             enums: flat_enum_spellings(model),
             slice_getters: model.slice_getters(Build::Android),
         });
-    }
-
-    /// The Kotlin name of each uniffi method that `[bindings.kotlin.rename]`
-    /// in `uniffi.toml` renames, keyed by `Owner.method` in camelCase.
-    fn read_renames() -> BTreeMap<String, String> {
-        let text = std::fs::read_to_string(UNIFFI_CONFIG)
-            .unwrap_or_else(|e| panic!("kotlin: cannot read {UNIFFI_CONFIG}: {e}"));
-        let config: toml::Table = text
-            .parse()
-            .unwrap_or_else(|e| panic!("kotlin: cannot parse {UNIFFI_CONFIG}: {e}"));
-        let table = ["bindings", "kotlin", "rename"]
-            .iter()
-            .try_fold(&config, |table, key| table.get(*key)?.as_table());
-        let Some(table) = table else {
-            return BTreeMap::new();
-        };
-        table
-            .iter()
-            .filter_map(|(key, name)| {
-                let (owner, method) = key.split_once('.')?;
-                let name = name.as_str()?.to_lower_camel_case();
-                Some((format!("{owner}.{}", method.to_lower_camel_case()), name))
-            })
-            .collect()
     }
 
     fn facts() -> &'static Facts {
@@ -367,9 +335,8 @@ mod kotlin {
         callables
     }
 
-    /// Fail the build where a uniffi method takes an unsigned integer
-    /// and an extension with its name and arity takes an `Int` in that place.
-    /// Kotlin resolves a plain literal to the member, then rejects the literal.
+    /// Fail the build where an extension takes an `Int` or a `List<Int>`
+    /// and the uniffi method of its name and arity takes unsigned integers there.
     fn check_shadowed(callables: &[Callable]) {
         let members = callables.iter().filter(|c| c.generated && c.needle.starts_with('.'));
         let mut shadowed: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
@@ -380,7 +347,7 @@ mod kotlin {
             for extension in extensions {
                 for argc in (0..=member.params.len()).filter(|n| member.takes(*n) && extension.takes(*n)) {
                     for position in 0..argc {
-                        if is_unsigned(&member.params[position]) && is_int(&extension.params[position]) {
+                        if takes_unsigned(&member.params[position]) && takes_int(&extension.params[position]) {
                             let owner = member.owner.as_deref().unwrap_or_default();
                             let name = member.needle.trim_matches(['.', '(']);
                             shadowed.entry(format!("{owner}.{name}")).or_default().insert(position + 1);
@@ -392,14 +359,15 @@ mod kotlin {
         if shadowed.is_empty() {
             return;
         }
-        eprintln!("\nuniffi methods that take an unsigned integer where an `Int` extension takes an `Int`:\n");
+        eprintln!("\nKotlin extensions that take an `Int` where the uniffi method takes an unsigned integer:\n");
         for (method, positions) in &shadowed {
             let positions: Vec<String> = positions.iter().map(|p| p.to_string()).collect();
             eprintln!("- {method}, argument {}", positions.join(", "));
         }
         panic!(
-            "kotlin: {} uniffi method(s) hide an `Int` extension from plain literals. \
-             Rename each one for Kotlin under [bindings.kotlin.rename] in uniffi.toml.",
+            "kotlin: {} uniffi method(s) take unsigned integers \
+             where an extension of the same name takes an `Int`. \
+             Delete those extensions, since the members take `UInt` or `List<UInt>`.",
             shadowed.len()
         );
     }
@@ -560,6 +528,23 @@ mod kotlin {
         *t == KType::Int
     }
 
+    /// `UInt` and the other unsigned types, or a `List` of one.
+    fn takes_unsigned(t: &KType) -> bool {
+        match t {
+            KType::List(element) => is_unsigned(element),
+            other => is_unsigned(other),
+        }
+    }
+
+    /// `Int`, `List<Int>` or `IntArray`.
+    fn takes_int(t: &KType) -> bool {
+        match t {
+            KType::List(element) => is_int(element),
+            KType::PrimitiveArray(name) => name == "IntArray",
+            other => is_int(other),
+        }
+    }
+
     fn is_list(t: &KType) -> bool {
         matches!(t, KType::List(_))
     }
@@ -612,24 +597,24 @@ mod kotlin {
         receivers.any(is_float)
     }
 
-    /// The unsigned type an integer here converts to.
-    /// It comes from the overloads uniffi generates, and
-    /// a plain literal resolves to that member over an `Int` extension.
+    /// The unsigned type an integer here converts to,
+    /// where a receiver takes an unsigned integer here and no `Int`.
     fn unsigned_slot(receivers: &Receivers, conflicts: &mut Vec<Conflict>) -> Option<String> {
+        let wants = receivers.owners(|ts| has(ts, is_unsigned) && !has(ts, is_int));
+        if wants.is_empty() {
+            return None;
+        }
         let unsigned = receivers
             .overloads
             .iter()
-            .filter(|c| c.generated)
             .find_map(|c| match &c.params[receivers.position] {
                 KType::Unsigned(name) => Some(name.clone()),
                 _ => None,
             })?;
         let rejects = receivers.owners(|ts| has(ts, is_signed) && !has(ts, is_unsigned));
         if !rejects.is_empty() {
-            let wants = receivers.owners(|ts| has(ts, is_unsigned));
             let changes = |arg: &str| unsigned_literal(arg) != arg;
-            let conflict = receivers.disagreement("an unsigned integer", &wants, &rejects, changes);
-            conflicts.push(conflict);
+            conflicts.push(receivers.disagreement("an unsigned integer", &wants, &rejects, changes));
             return None;
         }
         Some(unsigned)

@@ -291,7 +291,7 @@ val raw_rgba = ByteArray(8 * 8 * 4) { 200.toByte() }
 val chain = Mipmap.build(encoded_png_bytes, TextureFormat.RGBA8_UNORM_SRGB)
 
 // Raw path: include the size so build skips decoding.
-val chain_raw = Mipmap.build(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, listOf(8, 8))
+val chain_raw = Mipmap.build(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, listOf(8u, 8u))
 
 // Either chain uploads the same way.
 val renderer = Renderer()
@@ -380,7 +380,7 @@ code={`
 import org.fragmentcolor.*
 val pixels = ByteArray(4 * 4 * 4) { 200.toByte() }
 
-val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(4, 4))
+val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(4u, 4u))
 val format = chain.format()
 `}
 lang="kotlin" meta="collapse={2-2}"
@@ -482,7 +482,7 @@ code={`
 import org.fragmentcolor.*
 
 val pixels = ByteArray(16 * 16 * 4)
-val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(16, 16))
+val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(16u, 16u))
 val (width, height) = chain.size()
 `}
 lang="kotlin"
@@ -569,7 +569,7 @@ code={`
 import org.fragmentcolor.*
 val pixels = ByteArray(8 * 8 * 4)
 
-val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(8, 8))
+val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(8u, 8u))
 val level_zero_bytes = chain.levels()[0]
 `}
 lang="kotlin" meta="collapse={2-2}"
@@ -656,8 +656,8 @@ code={`
 import org.fragmentcolor.*
 val pixels = ByteArray(8 * 8 * 4)
 
-val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(8, 8))
-val level_zero_bytes = chain.level(0)
+val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(8u, 8u))
+val level_zero_bytes = chain.level(0u)
 `}
 lang="kotlin" meta="collapse={2-2}"
 />
@@ -743,7 +743,7 @@ code={`
 import org.fragmentcolor.*
 val pixels = ByteArray(8 * 8 * 4)
 
-val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(8, 8))
+val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(8u, 8u))
 val count = chain.count()
 `}
 lang="kotlin" meta="collapse={2-2}"

@@ -353,6 +353,12 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
             ScalarKind::Float => UniformData::Float(0.0),
             _ => return Err(ShaderError::TypeMismatch("Unsupported scalar type".into())),
         }),
+        // An atomic has the same layout as its scalar, so it reflects as one.
+        TypeInner::Atomic(scalar) => Ok(match scalar.kind {
+            ScalarKind::Sint => UniformData::Int(0),
+            ScalarKind::Uint => UniformData::UInt(0),
+            _ => return Err(ShaderError::TypeMismatch("Unsupported atomic type".into())),
+        }),
         TypeInner::Vector { size, scalar, .. } => match scalar.kind {
             ScalarKind::Float => Ok(match size {
                 VectorSize::Bi => UniformData::Vec2(vec![0.0; 2]),

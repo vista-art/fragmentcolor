@@ -113,7 +113,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(listOf(64, 64))
+val target = renderer.createTextureTarget(listOf(64u, 64u))
 
 val shader = Shader.default()
 renderer.render(shader, target)
@@ -279,7 +279,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(listOf(256, 256))
+val target = renderer.createTextureTarget(listOf(256u, 256u))
 
 // Bind the offscreen target's contents as a uniform on a downstream
 // post-processing shader.
@@ -405,7 +405,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(listOf(64, 64))
+val target = renderer.createTextureTarget(listOf(64u, 64u))
 val size = target.size()
 val width = size.width
 val height = size.height
@@ -509,9 +509,9 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(listOf(64, 64))
+val target = renderer.createTextureTarget(listOf(64u, 64u))
 
-target.resize(listOf(128, 32))
+target.resize(listOf(128u, 32u))
 `}
 lang="kotlin"
 />
@@ -617,7 +617,7 @@ import org.fragmentcolor.*
 
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(listOf(16, 16))
+val target = renderer.createTextureTarget(listOf(16u, 16u))
 renderer.render(Shader.default(), target)
 
 val image = target.getImage()

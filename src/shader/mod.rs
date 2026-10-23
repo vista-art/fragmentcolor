@@ -1469,23 +1469,44 @@ struct Outer { a: vec4<f32>, arr: array<vec4<f32>, 2>, inner: Inner };
         }
     }
 
-    // Story: Atomics in storage buffers are not yet supported; parsing should return an error today.
+    // Story: Atomic fields in a storage buffer reflect with the layout of their scalar.
     #[test]
-    fn storage_atomic_fields_currently_unsupported() {
+    fn storage_atomic_fields_reflect_as_scalars() {
         let wgsl = r#"
-struct A { x: atomic<i32> };
+struct A { x: atomic<i32>, y: atomic<u32> };
 @group(0) @binding(0) var<storage, read_write> a: A;
-@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
-  return vec4f(p[i], 0., 1.);
+@group(0) @binding(1) var<storage, read_write> counts: array<atomic<u32>, 4>;
+@compute @workgroup_size(1)
+fn cs_main() {
+  atomicAdd(&a.x, 1);
+  atomicAdd(&a.y, 1u);
+  atomicAdd(&counts[0], 1u);
 }
-@fragment fn main() -> @location(0) vec4<f32> { return vec4f(0.,0.,0.,1.); }
         "#;
-        let err = Shader::new(wgsl).expect_err("expected error for atomic storage");
-        match err {
-            ShaderError::TypeMismatch(_) | ShaderError::ParseError(_) => {}
-            _ => panic!("unexpected error kind: {:?}", err),
-        }
+        let shader = Shader::new(wgsl).expect("atomic storage parses");
+        let s = shader.object.storage.read();
+
+        let (_, _, a) = s.uniforms.get("a").expect("a uniform");
+        let UniformData::Storage(data) = &a.data else {
+            panic!("a is not a storage buffer");
+        };
+        let entry = data.first().expect("storage data");
+        assert_eq!(entry.span, 8);
+        assert_eq!(entry.access, StorageAccess::ReadWrite);
+        let Some(UniformData::Struct(shape)) = entry.inner.first() else {
+            panic!("a is not a struct");
+        };
+        let kinds: Vec<_> = shape.fields.iter().map(|field| &field.ty[0]).collect();
+        assert!(matches!(
+            kinds[..],
+            [UniformData::Int(_), UniformData::UInt(_)]
+        ));
+
+        let (_, _, counts) = s.uniforms.get("counts").expect("counts uniform");
+        let UniformData::Storage(data) = &counts.data else {
+            panic!("counts is not a storage buffer");
+        };
+        assert_eq!(data.first().expect("storage data").span, 16);
     }
 
     // Story: Workgroup variables (unbound) should be ignored and not prevent parsing.

@@ -11,14 +11,13 @@ typealias TextureRegionMobile = TextureRegion
 /**
  * A texture region from `[width, height]`, `[x, y, width, height]`
  * or `[x, y, z, width, height, depth]`, as Rust's `TextureRegion::from` reads them.
- * Throws [FragmentColorException] for any other length or a negative number.
+ * Throws [FragmentColorException] for any other length.
  */
-fun TextureRegion.Companion.from(rect: List<Int>): TextureRegion {
-    val r = rect.map { unsigned(it, "TextureRegion.from", "region value") }
-    val (origin, size) = when (r.size) {
-        2 -> listOf(0u, 0u, 0u) to listOf(r[0], r[1], 1u)
-        4 -> listOf(r[0], r[1], 0u) to listOf(r[2], r[3], 1u)
-        6 -> r.subList(0, 3) to r.subList(3, 6)
+fun TextureRegion.Companion.from(rect: List<UInt>): TextureRegion {
+    val (origin, size) = when (rect.size) {
+        2 -> listOf(0u, 0u, 0u) to listOf(rect[0], rect[1], 1u)
+        4 -> listOf(rect[0], rect[1], 0u) to listOf(rect[2], rect[3], 1u)
+        6 -> rect.subList(0, 3) to rect.subList(3, 6)
         else -> throw FragmentColorException.Render("TextureRegion.from: rect must hold 2, 4 or 6 numbers")
     }
     return TextureRegion(
@@ -43,13 +42,7 @@ fun TextureRegion.Companion.from(region: ScreenRegion): TextureRegion = TextureR
  * When unset, rows are tightly packed unless the data is exactly the size
  * of rows padded to 256 bytes, in which case they read at the padded stride.
  */
-fun TextureRegion.withStride(bytesPerRow: Int): TextureRegion =
-    copy(bytesPerRow = unsigned(bytesPerRow, "withStride", "stride"))
-
 fun TextureRegion.withStride(bytesPerRow: UInt): TextureRegion = copy(bytesPerRow = bytesPerRow)
 
 /** Set `rowsPerImage`, which defaults to the region height, for layered or 3D uploads. */
-fun TextureRegion.withRows(rowsPerImage: Int): TextureRegion =
-    copy(rowsPerImage = unsigned(rowsPerImage, "withRows", "row count"))
-
 fun TextureRegion.withRows(rowsPerImage: UInt): TextureRegion = copy(rowsPerImage = rowsPerImage)

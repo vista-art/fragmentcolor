@@ -59,12 +59,9 @@ extension Scene {
     public func removePass(_ pass: Pass) -> Bool {
         return removePass(pass: pass)
     }
+    /// The pass at `index`, or `nil` when there is none.
     public func getPass(_ index: UInt32) -> Pass? {
         return getPass(index: index)
-    }
-    /// The pass at `index`, or `nil` when there is none, a negative index included.
-    public func getPass(_ index: Int) -> Pass? {
-        return UInt32(exactly: index).flatMap { getPass(index: $0) }
     }
     public func findPass(_ name: String) -> Pass? {
         return findPass(name: name)
@@ -97,18 +94,6 @@ extension Scene {
         try addTo(target: .index(index), object: .light(light))
     }
     @discardableResult
-    public func addTo(_ index: Int, _ model: Model) throws -> Scene {
-        try addTo(target: passIndex(index), object: .model(model))
-    }
-    @discardableResult
-    public func addTo(_ index: Int, _ camera: Camera) throws -> Scene {
-        try addTo(target: passIndex(index), object: .camera(camera))
-    }
-    @discardableResult
-    public func addTo(_ index: Int, _ light: Light) throws -> Scene {
-        try addTo(target: passIndex(index), object: .light(light))
-    }
-    @discardableResult
     public func addTo(_ name: String, _ model: Model) throws -> Scene {
         try addTo(target: .name(name), object: .model(model))
     }
@@ -120,12 +105,4 @@ extension Scene {
     public func addTo(_ name: String, _ light: Light) throws -> Scene {
         try addTo(target: .name(name), object: .light(light))
     }
-}
-
-/// The pass target at `index`. Throws for a negative index.
-private func passIndex(_ index: Int) throws -> PassTarget {
-    guard let index = UInt32(exactly: index) else {
-        throw FragmentColorError.Render("addTo: \(index) is not a pass index")
-    }
-    return .index(index)
 }

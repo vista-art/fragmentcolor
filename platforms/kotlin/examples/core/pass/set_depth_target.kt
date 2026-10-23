@@ -1,10 +1,10 @@
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(listOf(64, 64))
+val target = renderer.createTextureTarget(listOf(64u, 64u))
 
 // One depth attachment shared across the 3D-content pass.
-val depth = renderer.createDepthTexture(listOf(64, 64))
+val depth = renderer.createDepthTexture(listOf(64u, 64u))
 
 val mesh = Mesh()
 mesh.addVertex(listOf(0.0f, 0.0f, 0.0f))

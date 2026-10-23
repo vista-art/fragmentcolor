@@ -4,6 +4,6 @@ val renderer = Renderer()
 // 1x1 RGBA (white) raw pixel bytes
 val pixels = listOf(255, 255, 255, 255)
 
-val texture = renderer.createTexture(pixels, listOf(1, 1))
+val texture = renderer.createTexture(pixels, listOf(1u, 1u))
 val opts = SamplerOptions(repeatX = true, repeatY = true, smooth = true, compare = null)
 texture.setSamplerOptions(opts)

@@ -120,7 +120,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun core_pass_load_previous() = example("docs/api/core/pass/load_previous.md") {
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(listOf(64, 64))
+        val target = renderer.createTextureTarget(listOf(64u, 64u))
 
         val shader = Shader.default()
         val pass = Pass("blend with previous")
@@ -144,7 +144,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun core_pass_require() = example("docs/api/core/pass/require.md") {
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(listOf(100,100))
+        val target = renderer.createTextureTarget(listOf(100u, 100u))
         val color = Pass("color")
         val blurx = Pass("blur_x")
         blurx.require(color) // color before blur_x
@@ -159,7 +159,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun core_pass_set_clear_color() = example("docs/api/core/pass/set_clear_color.md") {
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(listOf(64, 64))
+        val target = renderer.createTextureTarget(listOf(64u, 64u))
 
         val shader = Shader.default()
         val pass = Pass("solid background")
@@ -174,16 +174,16 @@ class GeneratedExamples : ExampleCase() {
     fun core_pass_set_compute_dispatch() = example("docs/api/core/pass/set_compute_dispatch.md") {
         val cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
         val pass = Pass.fromShader("compute", cs)
-        pass.setComputeDispatch(64, 64, 1)
+        pass.setComputeDispatch(64u, 64u, 1u)
     }
 
     @Test
     fun core_pass_set_depth_target() = example("docs/api/core/pass/set_depth_target.md") {
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(listOf(64, 64))
+        val target = renderer.createTextureTarget(listOf(64u, 64u))
 
         // One depth attachment shared across the 3D-content pass.
-        val depth = renderer.createDepthTexture(listOf(64, 64))
+        val depth = renderer.createDepthTexture(listOf(64u, 64u))
 
         val mesh = Mesh()
         mesh.addVertex(listOf(0.0f, 0.0f, 0.0f))
@@ -203,7 +203,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun core_pass_set_target() = example("docs/api/core/pass/set_target.md") {
         val r = Renderer()
-        val tex_target = r.createTextureTarget(listOf(512, 512))
+        val tex_target = r.createTextureTarget(listOf(512u, 512u))
 
         val p = Pass("shadow")
         p.setTarget(tex_target)
@@ -212,13 +212,13 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun core_pass_set_viewport() = example("docs/api/core/pass/set_viewport.md") {
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(listOf(64, 64))
+        val target = renderer.createTextureTarget(listOf(64u, 64u))
 
         val shader = Shader.default()
         val pass = Pass("clipped")
         pass.addShader(shader)
 
-        pass.setViewport(ScreenRegion(listOf(0, 0), listOf(32, 32)))
+        pass.setViewport(ScreenRegion(listOf(0u, 0u), listOf(32u, 32u)))
 
         renderer.render(pass, target)
     }
@@ -254,7 +254,7 @@ class GeneratedExamples : ExampleCase() {
 
         // The canvas comes from your platform's windowing system
         val target = renderer.createTarget(canvas)
-        val texture_target = renderer.createTextureTarget(listOf(16, 16))
+        val texture_target = renderer.createTextureTarget(listOf(16u, 16u))
 
         // RENDERING
         renderer.render(Shader.default(), texture_target)
@@ -265,7 +265,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun core_renderer_create_depth_texture() = example("docs/api/core/renderer/create_depth_texture.md") {
         val r = Renderer()
-        val depth = r.createDepthTexture(listOf(800, 600))
+        val depth = r.createDepthTexture(listOf(800u, 600u))
     }
 
     @Test
@@ -282,11 +282,11 @@ class GeneratedExamples : ExampleCase() {
         val r = Renderer()
 
         // Empty storage texture.
-        val tex = r.createStorageTexture(listOf(64, 64), TextureFormat.RGBA)
+        val tex = r.createStorageTexture(listOf(64u, 64u), TextureFormat.RGBA)
 
         // Pre-seeded with bytes.
         val pixels = ByteArray(64 * 64 * 4)
-        val tex2 = r.createStorageTexture(listOf(64, 64), TextureFormat.RGBA, pixels)
+        val tex2 = r.createStorageTexture(listOf(64u, 64u), TextureFormat.RGBA, pixels)
     }
 
     @Test
@@ -311,7 +311,7 @@ class GeneratedExamples : ExampleCase() {
         val renderer = Renderer()
 
         // Create an offscreen texture target with a size of 64x64 pixels.
-        val target = renderer.createTextureTarget(listOf(64, 64))
+        val target = renderer.createTextureTarget(listOf(64u, 64u))
 
         renderer.render(Shader.default(), target)
 
@@ -322,7 +322,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun core_renderer_load() = example("docs/api/core/renderer/load.md") {
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(listOf(64, 64))
+        val target = renderer.createTextureTarget(listOf(64u, 64u))
 
         val mesh = Mesh()
         mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
@@ -330,7 +330,7 @@ class GeneratedExamples : ExampleCase() {
 
         // vocabulary covers all of them.
         val red_pixels = listOf(255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255)
-        val red_tex = renderer.createTexture(red_pixels, listOf(2, 2))
+        val red_tex = renderer.createTexture(red_pixels, listOf(2u, 2u))
         val material = Material.pbr().baseColorTexture(red_tex)
         val model = Model(mesh, material)
         val scene = Scene()
@@ -345,13 +345,13 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun core_renderer_new() = example("docs/api/core/renderer/new.md") {
         val renderer = Renderer()
-        val texture_target = renderer.createTextureTarget(listOf(16, 16))
+        val texture_target = renderer.createTextureTarget(listOf(16u, 16u))
     }
 
     @Test
     fun core_renderer_read_storage() = example("docs/api/core/renderer/read_storage.md") {
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(listOf(16, 16))
+        val target = renderer.createTextureTarget(listOf(16u, 16u))
 
         val compute = Shader("""
             struct Out { values: array<f32, 4> };
@@ -366,7 +366,7 @@ class GeneratedExamples : ExampleCase() {
         """)
 
         val pass = Pass.compute("seed")
-        pass.setComputeDispatch(1, 1, 1)
+        pass.setComputeDispatch(1u, 1u, 1u)
         pass.addShader(compute)
         renderer.render(pass, target)
 
@@ -376,7 +376,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun core_renderer_read_texture() = example("docs/api/core/renderer/read_texture.md") {
         val renderer = Renderer()
-        val texture = renderer.createStorageTexture(listOf(64, 64), TextureFormat.RGBA)
+        val texture = renderer.createStorageTexture(listOf(64u, 64u), TextureFormat.RGBA)
         texture.write(ByteArray(64 * 64 * 4))
 
         val bytes = renderer.readTexture(texture.id())
@@ -385,7 +385,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun core_renderer_render() = example("docs/api/core/renderer/render.md") {
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(listOf(10, 10))
+        val target = renderer.createTextureTarget(listOf(10u, 10u))
         val shader = Shader.default()
 
         renderer.render(shader, target)
@@ -394,7 +394,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun core_renderer_unregister_texture() = example("docs/api/core/renderer/unregister_texture.md") {
         val renderer = Renderer()
-        val texture = renderer.createStorageTexture(listOf(16, 16), TextureFormat.RGBA)
+        val texture = renderer.createStorageTexture(listOf(16u, 16u), TextureFormat.RGBA)
         val id = texture.id()
 
         renderer.unregisterTexture(id)
@@ -428,7 +428,7 @@ class GeneratedExamples : ExampleCase() {
         val res = shader.get("resolution")
 
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(listOf(16, 16))
+        val target = renderer.createTextureTarget(listOf(16u, 16u))
         renderer.render(shader, target)
     }
 
@@ -740,7 +740,7 @@ class GeneratedExamples : ExampleCase() {
     fun geometry_mesh_clear_indices() = example("docs/api/geometry/mesh/clear_indices.md") {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f)), Vertex(listOf(0.5f, -0.5f)), Vertex(listOf(0.0f, 0.5f))))
-        mesh.setIndices(listOf(0, 1, 2))
+        mesh.setIndices(listOf(0u, 1u, 2u))
         mesh.clearIndices() // back to auto-derived dedup
     }
 
@@ -773,7 +773,7 @@ class GeneratedExamples : ExampleCase() {
         val uv11 = listOf(1.0f, 1.0f)
         val uv01 = listOf(0.0f, 1.0f)
         mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f)).set("uv", uv00), Vertex(listOf(0.5f, -0.5f)).set("uv", uv10), Vertex(listOf(0.5f, 0.5f)).set("uv", uv11), Vertex(listOf(-0.5f, 0.5f)).set("uv", uv01)))
-        mesh.setIndices(listOf(0, 1, 2, 0, 2, 3))
+        mesh.setIndices(listOf(0u, 1u, 2u, 0u, 2u, 3u))
     }
 
     @Test
@@ -781,7 +781,7 @@ class GeneratedExamples : ExampleCase() {
         val m = Mesh()
         m.addVertices(listOf(listOf(-0.01f, -0.01f), listOf(0.01f, -0.01f), listOf(0.00f, 0.01f)))
         // Draw one million instances, fetching per-particle data from a storage buffer.
-        m.setInstanceCount(1_000_000)
+        m.setInstanceCount(1_000_000u)
     }
 
     @Test
@@ -833,7 +833,7 @@ class GeneratedExamples : ExampleCase() {
 
     @Test
     fun geometry_vertex_value_VertexValue() = example("docs/api/geometry/vertex_value/vertex_value.md") {
-        val vertex = Vertex(listOf(0.0f, 0.0f)).set("id", VertexValue.u32(7))
+        val vertex = Vertex(listOf(0.0f, 0.0f)).set("id", VertexValue.u32(7u))
     }
 
     @Test
@@ -1010,7 +1010,7 @@ class GeneratedExamples : ExampleCase() {
     fun scene_material_base_color_texture() = example("docs/api/scene/material/base_color_texture.md") {
         val renderer = Renderer()
         val albedo_bytes = listOf(255, 200, 120, 255, 255, 240, 180, 255, 230, 180, 100, 255, 255, 220, 150, 255)
-        val albedo = renderer.createTexture(albedo_bytes, listOf(2, 2))
+        val albedo = renderer.createTexture(albedo_bytes, listOf(2u, 2u))
 
         // Every Material that points at `albedo` reuses the same uploaded GPU
         // texture; passing the same handle into N Material instances costs one
@@ -1064,7 +1064,7 @@ class GeneratedExamples : ExampleCase() {
     fun scene_material_emissive_texture() = example("docs/api/scene/material/emissive_texture.md") {
         val renderer = Renderer()
         val glow_bytes = listOf(255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255)
-        val glow = renderer.createTexture(glow_bytes, listOf(2, 2))
+        val glow = renderer.createTexture(glow_bytes, listOf(2u, 2u))
         val mat = Material.pbr().emissive(listOf(0.8f, 0.0f, 0.0f)).emissiveTexture(glow)
     }
 
@@ -1077,7 +1077,7 @@ class GeneratedExamples : ExampleCase() {
     fun scene_material_metallic_roughness_texture() = example("docs/api/scene/material/metallic_roughness_texture.md") {
         val renderer = Renderer()
         val mr_map_bytes = listOf(0, 200, 50, 255, 0, 240, 80, 255, 0, 180, 30, 255, 0, 220, 60, 255)
-        val mr_map = renderer.createTexture(mr_map_bytes, listOf(2, 2))
+        val mr_map = renderer.createTexture(mr_map_bytes, listOf(2u, 2u))
         val mat = Material.pbr().metallicRoughnessTexture(mr_map)
     }
 
@@ -1090,7 +1090,7 @@ class GeneratedExamples : ExampleCase() {
     fun scene_material_normal_texture() = example("docs/api/scene/material/normal_texture.md") {
         val renderer = Renderer()
         val normal_map_bytes = listOf(128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255)
-        val normal_map = renderer.createTexture(normal_map_bytes, listOf(2, 2))
+        val normal_map = renderer.createTexture(normal_map_bytes, listOf(2u, 2u))
         val mat = Material.pbr().normalTexture(normal_map).normalScale(1.2f)
     }
 
@@ -1103,7 +1103,7 @@ class GeneratedExamples : ExampleCase() {
     fun scene_material_occlusion_texture() = example("docs/api/scene/material/occlusion_texture.md") {
         val renderer = Renderer()
         val ao_bytes = listOf(220, 0, 0, 255, 180, 0, 0, 255, 200, 0, 0, 255, 160, 0, 0, 255)
-        val ao = renderer.createTexture(ao_bytes, listOf(2, 2))
+        val ao = renderer.createTexture(ao_bytes, listOf(2u, 2u))
         val mat = Material.pbr().occlusionTexture(ao)
     }
 
@@ -1277,14 +1277,14 @@ class GeneratedExamples : ExampleCase() {
         val scene = Scene()
         scene.addPass(Pass("geometry"))
 
-        // Target the pass by name (or pass its index: scene.addTo(0, model)).
+        // Target the pass by name (or pass its index: scene.addTo(0u, model)).
         scene.addTo("geometry", model)
     }
 
     @Test
     fun scene_scene_ambient() = example("docs/api/scene/scene/ambient.md") {
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(listOf(64, 64))
+        val target = renderer.createTextureTarget(listOf(64u, 64u))
 
         val mesh = Mesh()
         mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
@@ -1330,7 +1330,7 @@ class GeneratedExamples : ExampleCase() {
 
         // Fetch the second pass (index 1) to reconfigure it. An out-of-range
         // index returns null instead.
-        val geometry = scene.getPass(1)
+        val geometry = scene.getPass(1u)
     }
 
     @Test
@@ -1484,7 +1484,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun targets_target_get_image() = example("docs/api/targets/target/get_image.md") {
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(listOf(16, 16))
+        val target = renderer.createTextureTarget(listOf(16u, 16u))
         renderer.render(Shader.default(), target)
 
         val image = target.getImage()
@@ -1493,15 +1493,15 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun targets_target_resize() = example("docs/api/targets/target/resize.md") {
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(listOf(64, 32))
+        val target = renderer.createTextureTarget(listOf(64u, 32u))
 
-        target.resize(listOf(128, 64))
+        target.resize(listOf(128u, 64u))
     }
 
     @Test
     fun targets_target_size() = example("docs/api/targets/target/size.md") {
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(listOf(64, 32))
+        val target = renderer.createTextureTarget(listOf(64u, 32u))
         val size = target.size()
         val width = size.width
         val height = size.height
@@ -1511,7 +1511,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun targets_texture_target_TextureTarget() = example("docs/api/targets/texture_target/texture_target.md") {
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(listOf(64, 64))
+        val target = renderer.createTextureTarget(listOf(64u, 64u))
 
         val shader = Shader.default()
         renderer.render(shader, target)
@@ -1522,7 +1522,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun targets_texture_target_get_image() = example("docs/api/targets/texture_target/get_image.md") {
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(listOf(16, 16))
+        val target = renderer.createTextureTarget(listOf(16u, 16u))
         renderer.render(Shader.default(), target)
 
         val image = target.getImage()
@@ -1531,15 +1531,15 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun targets_texture_target_resize() = example("docs/api/targets/texture_target/resize.md") {
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(listOf(64, 64))
+        val target = renderer.createTextureTarget(listOf(64u, 64u))
 
-        target.resize(listOf(128, 32))
+        target.resize(listOf(128u, 32u))
     }
 
     @Test
     fun targets_texture_target_size() = example("docs/api/targets/texture_target/size.md") {
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(listOf(64, 64))
+        val target = renderer.createTextureTarget(listOf(64u, 64u))
         val size = target.size()
         val width = size.width
         val height = size.height
@@ -1549,7 +1549,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun targets_texture_target_texture() = example("docs/api/targets/texture_target/texture.md") {
         val renderer = Renderer()
-        val target = renderer.createTextureTarget(listOf(256, 256))
+        val target = renderer.createTextureTarget(listOf(256u, 256u))
 
         // Bind the offscreen target's contents as a uniform on a downstream
         // post-processing shader.
@@ -1599,7 +1599,7 @@ class GeneratedExamples : ExampleCase() {
         val renderer = Renderer()
         val target = renderer.createTarget(canvas)
 
-        target.resize(listOf(1024, 768))
+        target.resize(listOf(1024u, 768u))
     }
 
     @Test
@@ -1635,7 +1635,7 @@ class GeneratedExamples : ExampleCase() {
         val chain = Mipmap.build(encoded_png_bytes, TextureFormat.RGBA8_UNORM_SRGB)
 
         // Raw path: include the size so build skips decoding.
-        val chain_raw = Mipmap.build(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, listOf(8, 8))
+        val chain_raw = Mipmap.build(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, listOf(8u, 8u))
 
         // Either chain uploads the same way.
         val renderer = Renderer()
@@ -1646,7 +1646,7 @@ class GeneratedExamples : ExampleCase() {
     fun texture_mipmap_count() = example("docs/api/texture/mipmap/count.md") {
         val pixels = ByteArray(8 * 8 * 4)
 
-        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(8, 8))
+        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(8u, 8u))
         val count = chain.count()
     }
 
@@ -1654,7 +1654,7 @@ class GeneratedExamples : ExampleCase() {
     fun texture_mipmap_format() = example("docs/api/texture/mipmap/format.md") {
         val pixels = ByteArray(4 * 4 * 4) { 200.toByte() }
 
-        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(4, 4))
+        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(4u, 4u))
         val format = chain.format()
     }
 
@@ -1662,22 +1662,22 @@ class GeneratedExamples : ExampleCase() {
     fun texture_mipmap_level() = example("docs/api/texture/mipmap/level.md") {
         val pixels = ByteArray(8 * 8 * 4)
 
-        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(8, 8))
-        val level_zero_bytes = chain.level(0)
+        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(8u, 8u))
+        val level_zero_bytes = chain.level(0u)
     }
 
     @Test
     fun texture_mipmap_levels() = example("docs/api/texture/mipmap/levels.md") {
         val pixels = ByteArray(8 * 8 * 4)
 
-        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(8, 8))
+        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(8u, 8u))
         val level_zero_bytes = chain.levels()[0]
     }
 
     @Test
     fun texture_mipmap_size() = example("docs/api/texture/mipmap/size.md") {
         val pixels = ByteArray(16 * 16 * 4)
-        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(16, 16))
+        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(16u, 16u))
         val (width, height) = chain.size()
     }
 
@@ -1698,7 +1698,7 @@ class GeneratedExamples : ExampleCase() {
         // 1x1 white pixel. Passing a size tells create_texture to read the bytes
         // as raw pixels; the default format, Rgba, uploads them as linear Rgba8Unorm.
         val pixels = listOf(255, 255, 255, 255)
-        val texture = renderer.createTexture(pixels, listOf(1, 1))
+        val texture = renderer.createTexture(pixels, listOf(1u, 1u))
 
         // Bind the texture to the uniform name declared in WGSL.
         shader.set("my_texture", texture)
@@ -1709,14 +1709,14 @@ class GeneratedExamples : ExampleCase() {
         val renderer = Renderer()
         // 1x1 RGBA (white) raw pixel bytes
         val pixels = listOf(255, 255, 255, 255)
-        val tex = renderer.createTexture(pixels, listOf(1, 1))
+        val tex = renderer.createTexture(pixels, listOf(1u, 1u))
         val a = tex.aspect()
     }
 
     @Test
     fun texture_texture_get_image() = example("docs/api/texture/texture/get_image.md") {
         val renderer = Renderer()
-        val texture = renderer.createStorageTexture(listOf(64, 64), TextureFormat.RGBA)
+        val texture = renderer.createStorageTexture(listOf(64u, 64u), TextureFormat.RGBA)
         texture.write(ByteArray(64 * 64 * 4))
 
         val bytes = texture.getImage()
@@ -1725,7 +1725,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun texture_texture_id() = example("docs/api/texture/texture/id.md") {
         val renderer = Renderer()
-        val texture = renderer.createStorageTexture(listOf(64, 64), TextureFormat.RGBA)
+        val texture = renderer.createStorageTexture(listOf(64u, 64u), TextureFormat.RGBA)
         val id = texture.id()
     }
 
@@ -1735,7 +1735,7 @@ class GeneratedExamples : ExampleCase() {
         // 1x1 RGBA (white) raw pixel bytes
         val pixels = listOf(255, 255, 255, 255)
 
-        val texture = renderer.createTexture(pixels, listOf(1, 1))
+        val texture = renderer.createTexture(pixels, listOf(1u, 1u))
         val opts = SamplerOptions(repeatX = true, repeatY = true, smooth = true, compare = null)
         texture.setSamplerOptions(opts)
     }
@@ -1744,7 +1744,7 @@ class GeneratedExamples : ExampleCase() {
     fun texture_texture_size() = example("docs/api/texture/texture/size.md") {
         val renderer = Renderer()
         val pixels = listOf(255, 255, 255, 255)
-        val tex = renderer.createTexture(pixels, listOf(1, 1))
+        val tex = renderer.createTexture(pixels, listOf(1u, 1u))
         val sz = tex.size()
         val width = sz.width
         val height = sz.height
@@ -1753,7 +1753,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun texture_texture_write() = example("docs/api/texture/texture/write.md") {
         val renderer = Renderer()
-        val texture = renderer.createStorageTexture(listOf(64, 64), TextureFormat.RGBA)
+        val texture = renderer.createStorageTexture(listOf(64u, 64u), TextureFormat.RGBA)
         val frame_bytes = ByteArray(64 * 64 * 4)
 
         texture.write(frame_bytes)
@@ -1762,14 +1762,14 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun texture_texture_write_region() = example("docs/api/texture/texture/write_region.md") {
         val renderer = Renderer()
-        val texture = renderer.createStorageTexture(listOf(64, 32), TextureFormat.RGBA)
+        val texture = renderer.createStorageTexture(listOf(64u, 32u), TextureFormat.RGBA)
         val bytes = ByteArray(64 * 32 * 4)
 
         // Simple sub-rectangle update.
-        texture.writeRegion(bytes, listOf(0, 0, 64, 32))
+        texture.writeRegion(bytes, listOf(0u, 0u, 64u, 32u))
 
         // Explicit data layout, for when the source rows are padded.
-        val region = TextureRegion.from(listOf(0, 0, 64, 32)).withStride(256).withRows(32)
+        val region = TextureRegion.from(listOf(0u, 0u, 64u, 32u)).withStride(256u).withRows(32u)
         texture.writeRegion(bytes, region)
     }
 }

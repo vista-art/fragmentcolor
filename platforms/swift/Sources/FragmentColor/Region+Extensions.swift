@@ -26,15 +26,6 @@ extension TextureRegion {
         return region
     }
 
-    /// `[Int]` form for convenient literal use in examples.
-    /// A negative number, or a length other than 2, 4 or 6, stops the program.
-    public static func from(_ rect: [Int]) -> TextureRegion {
-        guard let region = textureRegion(rect) else {
-            preconditionFailure("TextureRegion.from: expected 2, 4 or 6 non-negative numbers, got \(rect)")
-        }
-        return region
-    }
-
     /// The pixels a `ScreenRegion` covers, at depth 0.
     public static func from(_ region: ScreenRegion) -> TextureRegion {
         TextureRegion(
@@ -61,9 +52,6 @@ extension TextureRegion {
             bytesPerRow: bytesPerRow, rowsPerImage: rowsPerImage
         )
     }
-    public func withStride(_ bytesPerRow: Int) -> TextureRegion {
-        return withStride(UInt32(bytesPerRow))
-    }
 
     /// Set `rows_per_image`. Defaults to `sizeHeight` when unset; override
     /// for layered or 3D uploads with non-default packing.
@@ -74,23 +62,16 @@ extension TextureRegion {
             bytesPerRow: bytesPerRow, rowsPerImage: rowsPerImage
         )
     }
-    public func withRows(_ rowsPerImage: Int) -> TextureRegion {
-        return withRows(UInt32(rowsPerImage))
-    }
 }
 
 /// The region `[w, h]`, `[x, y, w, h]` or `[x, y, z, w, h, d]` describes,
-/// or `nil` for any other length or a value `UInt32` can't hold.
-func textureRegion<T: BinaryInteger>(_ rect: [T]) -> TextureRegion? {
-    let numbers = rect.compactMap { UInt32(exactly: $0) }
-    guard numbers.count == rect.count else {
-        return nil
-    }
+/// or `nil` for any other length.
+func textureRegion(_ rect: [UInt32]) -> TextureRegion? {
     let (origin, size): ([UInt32], [UInt32])
-    switch numbers.count {
-    case 2: (origin, size) = ([0, 0, 0], [numbers[0], numbers[1], 1])
-    case 4: (origin, size) = ([numbers[0], numbers[1], 0], [numbers[2], numbers[3], 1])
-    case 6: (origin, size) = (Array(numbers[0..<3]), Array(numbers[3..<6]))
+    switch rect.count {
+    case 2: (origin, size) = ([0, 0, 0], [rect[0], rect[1], 1])
+    case 4: (origin, size) = ([rect[0], rect[1], 0], [rect[2], rect[3], 1])
+    case 6: (origin, size) = (Array(rect[0..<3]), Array(rect[3..<6]))
     default: return nil
     }
     return TextureRegion(

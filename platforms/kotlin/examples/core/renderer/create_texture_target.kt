@@ -3,7 +3,7 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 
 // Create an offscreen texture target with a size of 64x64 pixels.
-val target = renderer.createTextureTarget(listOf(64, 64))
+val target = renderer.createTextureTarget(listOf(64u, 64u))
 
 renderer.render(Shader.default(), target)
 

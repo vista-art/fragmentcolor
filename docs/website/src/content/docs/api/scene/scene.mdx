@@ -647,7 +647,7 @@ val model = Model(mesh, Material.pbr())
 val scene = Scene()
 scene.addPass(Pass("geometry"))
 
-// Target the pass by name (or pass its index: scene.addTo(0, model)).
+// Target the pass by name (or pass its index: scene.addTo(0u, model)).
 scene.addTo("geometry", model)
 `}
 lang="kotlin"
@@ -1188,7 +1188,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(listOf(64, 64))
+val target = renderer.createTextureTarget(listOf(64u, 64u))
 
 val mesh = Mesh()
 mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
@@ -1615,7 +1615,7 @@ scene.addPass(Pass("geometry"))
 
 // Fetch the second pass (index 1) to reconfigure it. An out-of-range
 // index returns null instead.
-val geometry = scene.getPass(1)
+val geometry = scene.getPass(1u)
 `}
 lang="kotlin"
 />

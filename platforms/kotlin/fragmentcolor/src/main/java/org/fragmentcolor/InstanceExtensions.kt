@@ -60,7 +60,7 @@ fun Vertex.set(key: String, value: Double): Vertex = set(key, VertexValue.F32(va
 
 // ── VertexValue ───────────────────────────────────────────────────────────────
 
-// Lower-case factories that take plain Kotlin numbers, as JavaScript, Python and Swift spell them.
+// Lower-case factories, as JavaScript, Python and Swift spell them.
 
 /** [values] when it holds [size] numbers. Throws [FragmentColorException] otherwise. */
 private fun <T> sized(values: List<T>, size: Int, method: String): List<T> {
@@ -69,10 +69,6 @@ private fun <T> sized(values: List<T>, size: Int, method: String): List<T> {
     }
     return values
 }
-
-/** Unsigned numbers from [Int]s. Throws [FragmentColorException] for a negative one. */
-private fun unsignedList(values: List<Int>, size: Int, method: String): List<UInt> =
-    sized(values, size, method).map { unsigned(it, method, "unsigned value") }
 
 /** An `f32` value. */
 fun VertexValue.Companion.f32(value: Float): VertexValue = VertexValue.F32(value)
@@ -122,31 +118,16 @@ fun VertexValue.Companion.f32x4(values: FloatArray): VertexValue = f32x4(values.
 /** A `vec4<f32>` value from a [DoubleArray]. */
 fun VertexValue.Companion.f32x4(values: DoubleArray): VertexValue = f32x4(values.map { it.toFloat() })
 
-/** A `u32` value. Throws [FragmentColorException] for a negative number. */
-fun VertexValue.Companion.u32(value: Int): VertexValue = VertexValue.U32(unsigned(value, "VertexValue.u32", "unsigned value"))
-
-/** A `u32` value from a [UInt]. */
+/** A `u32` value. */
 fun VertexValue.Companion.u32(value: UInt): VertexValue = VertexValue.U32(value)
 
-/** A `vec2<u32>` value. Throws [FragmentColorException] for another length or a negative number. */
-fun VertexValue.Companion.u32x2(values: List<Int>): VertexValue = VertexValue.U32x2(unsignedList(values, 2, "VertexValue.u32x2"))
-
-/** A `vec2<u32>` value from [UInt]s. */
-@JvmName("u32x2Unsigned")
+/** A `vec2<u32>` value. Throws [FragmentColorException] for another length. */
 fun VertexValue.Companion.u32x2(values: List<UInt>): VertexValue = VertexValue.U32x2(sized(values, 2, "VertexValue.u32x2"))
 
-/** A `vec3<u32>` value. Throws [FragmentColorException] for another length or a negative number. */
-fun VertexValue.Companion.u32x3(values: List<Int>): VertexValue = VertexValue.U32x3(unsignedList(values, 3, "VertexValue.u32x3"))
-
-/** A `vec3<u32>` value from [UInt]s. */
-@JvmName("u32x3Unsigned")
+/** A `vec3<u32>` value. Throws [FragmentColorException] for another length. */
 fun VertexValue.Companion.u32x3(values: List<UInt>): VertexValue = VertexValue.U32x3(sized(values, 3, "VertexValue.u32x3"))
 
-/** A `vec4<u32>` value. Throws [FragmentColorException] for another length or a negative number. */
-fun VertexValue.Companion.u32x4(values: List<Int>): VertexValue = VertexValue.U32x4(unsignedList(values, 4, "VertexValue.u32x4"))
-
-/** A `vec4<u32>` value from [UInt]s. */
-@JvmName("u32x4Unsigned")
+/** A `vec4<u32>` value. Throws [FragmentColorException] for another length. */
 fun VertexValue.Companion.u32x4(values: List<UInt>): VertexValue = VertexValue.U32x4(sized(values, 4, "VertexValue.u32x4"))
 
 /** An `i32` value. */

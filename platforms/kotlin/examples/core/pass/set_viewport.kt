@@ -2,12 +2,12 @@
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(listOf(64, 64))
+val target = renderer.createTextureTarget(listOf(64u, 64u))
 
 val shader = Shader.default()
 val pass = Pass("clipped")
 pass.addShader(shader)
 
-pass.setViewport(ScreenRegion(listOf(0, 0), listOf(32, 32)))
+pass.setViewport(ScreenRegion(listOf(0u, 0u), listOf(32u, 32u)))
 
 renderer.render(pass, target)

@@ -33,11 +33,6 @@ extension Renderer {
         try await createTextureTarget(try sizeRecord(size, "createTextureTarget"))
     }
 
-    /// Create a headless texture target from a `[width, height]` array of `Int`.
-    public func createTextureTarget(_ size: [Int]) async throws -> TextureTarget {
-        try await createTextureTarget(try sizeRecord(size, "createTextureTarget"))
-    }
-
     /// Create a headless texture target from a `Size`.
     public func createTextureTarget(_ size: Size) async throws -> TextureTarget {
         try await createTextureTarget(width: size.width, height: size.height)
@@ -47,11 +42,6 @@ extension Renderer {
 
     /// Create a depth texture from a `[width, height]` array.
     public func createDepthTexture(_ size: [UInt32]) async throws -> Texture {
-        try await createDepthTexture(try sizeRecord(size, "createDepthTexture"))
-    }
-
-    /// Create a depth texture from a `[width, height]` array of `Int`.
-    public func createDepthTexture(_ size: [Int]) async throws -> Texture {
         try await createDepthTexture(try sizeRecord(size, "createDepthTexture"))
     }
 
@@ -75,7 +65,7 @@ extension Renderer {
 
     /// Create a storage texture from a `[width, height]` or `[width, height, depth]` array.
     public func createStorageTexture(
-        _ size: [Int],
+        _ size: [UInt32],
         _ format: TextureFormat,
         _ data: Data? = nil,
         _ usage: TextureUsage? = nil
@@ -86,7 +76,7 @@ extension Renderer {
 
     /// Create a storage texture seeded with `[UInt8]` bytes.
     public func createStorageTexture(
-        _ size: [Int],
+        _ size: [UInt32],
         _ format: TextureFormat,
         _ data: [UInt8],
         _ usage: TextureUsage? = nil
@@ -96,7 +86,7 @@ extension Renderer {
 
     /// Create a storage texture seeded with one `Int` per byte.
     public func createStorageTexture(
-        _ size: [Int],
+        _ size: [UInt32],
         _ format: TextureFormat,
         _ data: [Int],
         _ usage: TextureUsage? = nil
@@ -105,17 +95,17 @@ extension Renderer {
     }
 
     @available(*, deprecated, message: "Pass the size and format as separate arguments: createStorageTexture(size, format)")
-    public func createStorageTexture(_ sizeAndFormat: ([Int], TextureFormat)) async throws -> Texture {
+    public func createStorageTexture(_ sizeAndFormat: ([UInt32], TextureFormat)) async throws -> Texture {
         try await createStorageTexture(sizeAndFormat.0, sizeAndFormat.1)
     }
 
     @available(*, deprecated, message: "Pass the size, format and bytes as separate arguments: createStorageTexture(size, format, bytes)")
-    public func createStorageTexture(_ sizeFormatData: ([Int], TextureFormat, [Int])) async throws -> Texture {
+    public func createStorageTexture(_ sizeFormatData: ([UInt32], TextureFormat, [Int])) async throws -> Texture {
         try await createStorageTexture(sizeFormatData.0, sizeFormatData.1, sizeFormatData.2)
     }
 
     @available(*, deprecated, message: "Pass the size, format and bytes as separate arguments: createStorageTexture(size, format, bytes)")
-    public func createStorageTexture(_ sizeFormatData: ([Int], TextureFormat, [UInt8])) async throws -> Texture {
+    public func createStorageTexture(_ sizeFormatData: ([UInt32], TextureFormat, [UInt8])) async throws -> Texture {
         try await createStorageTexture(sizeFormatData.0, sizeFormatData.1, sizeFormatData.2)
     }
 
@@ -148,17 +138,17 @@ extension Renderer {
     }
 
     /// Create a texture from raw RGBA pixels and their `[width, height]`.
-    public func createTexture(_ bytes: Data, _ size: [Int], usage: TextureUsage? = nil) async throws -> Texture {
+    public func createTexture(_ bytes: Data, _ size: [UInt32], usage: TextureUsage? = nil) async throws -> Texture {
         try await createTexture(bytes, try sizeRecord(size, "createTexture"), usage: usage)
     }
 
     /// Create a texture from raw RGBA pixels given as `[UInt8]`, and their `[width, height]`.
-    public func createTexture(_ bytes: [UInt8], _ size: [Int], usage: TextureUsage? = nil) async throws -> Texture {
+    public func createTexture(_ bytes: [UInt8], _ size: [UInt32], usage: TextureUsage? = nil) async throws -> Texture {
         try await createTexture(Data(bytes), size, usage: usage)
     }
 
     /// Create a texture from raw RGBA pixels, one `Int` per byte, and their `[width, height]`.
-    public func createTexture(_ bytes: [Int], _ size: [Int], usage: TextureUsage? = nil) async throws -> Texture {
+    public func createTexture(_ bytes: [Int], _ size: [UInt32], usage: TextureUsage? = nil) async throws -> Texture {
         try await createTexture(try byteData(bytes, "createTexture"), size, usage: usage)
     }
 
@@ -195,12 +185,12 @@ extension Renderer {
     }
 
     @available(*, deprecated, message: "Pass the bytes and size as separate arguments: createTexture(bytes, size)")
-    public func createTexture(_ bytesAndSize: ([UInt8], [Int])) async throws -> Texture {
+    public func createTexture(_ bytesAndSize: ([UInt8], [UInt32])) async throws -> Texture {
         try await createTexture(bytesAndSize.0, bytesAndSize.1)
     }
 
     @available(*, deprecated, message: "Pass the bytes and size as separate arguments: createTexture(bytes, size)")
-    public func createTexture(_ bytesAndSize: ([Int], [Int])) async throws -> Texture {
+    public func createTexture(_ bytesAndSize: ([Int], [UInt32])) async throws -> Texture {
         try await createTexture(bytesAndSize.0, bytesAndSize.1)
     }
 
@@ -304,18 +294,12 @@ extension Renderer {
 }
 
 /// A `Size` from `[width, height]` or `[width, height, depth]`.
-/// Throws for any other length and for a value `UInt32` can't hold.
-func sizeRecord<T: BinaryInteger>(_ size: [T], _ method: String) throws -> Size {
+/// Throws for any other length.
+func sizeRecord(_ size: [UInt32], _ method: String) throws -> Size {
     guard size.count == 2 || size.count == 3 else {
         throw FragmentColorError.Render("\(method): a size holds 2 or 3 numbers, got \(size.count)")
     }
-    let dims = try size.map { value -> UInt32 in
-        guard let dim = UInt32(exactly: value) else {
-            throw FragmentColorError.Render("\(method): \(value) is not a valid size")
-        }
-        return dim
-    }
-    return Size(width: dims[0], height: dims[1], depth: dims.count == 3 ? dims[2] : nil)
+    return Size(width: size[0], height: size[1], depth: size.count == 3 ? size[2] : nil)
 }
 
 /// Bytes from one `Int` per byte. Throws for a value outside 0...255.

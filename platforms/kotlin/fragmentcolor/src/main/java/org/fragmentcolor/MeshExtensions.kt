@@ -113,26 +113,7 @@ fun Mesh.Companion.fromVertices(positions: List<List<Float>>): Mesh = fromVertic
 @JvmName("fromVerticesDoubles")
 fun Mesh.Companion.fromVertices(positions: List<List<Double>>): Mesh = fromVertices(positions.map { Vertex(it) })
 
-// ── Mesh: indices and instances ───────────────────────────────────────────────
-
-/** Explicit indices. Throws [FragmentColorException] for a negative index. */
-@JvmName("setIndicesInts")
-fun Mesh.setIndices(indices: List<Int>) {
-    setIndices(indices.map { unsigned(it, "setIndices", "index") })
-}
-
-/** Explicit indices. Throws [FragmentColorException] for a negative index. */
-fun Mesh.setIndices(indices: IntArray) {
-    setIndices(indices.toList())
-}
-
-/** Set the instance draw count. Throws [FragmentColorException] for a negative count. */
-fun Mesh.setInstanceCount(n: Int) {
-    setInstanceCountUInt(unsigned(n, "setInstanceCount", "count"))
-}
-
-/** Set the instance draw count from a [UInt]. */
-fun Mesh.setInstanceCount(n: UInt) = setInstanceCountUInt(n)
+// ── Mesh: instances ───────────────────────────────────────────────────────────
 
 /** Append the per-instance attributes of a vertex, as Rust's `Instance::from(vertex)` does. */
 fun Mesh.addInstance(vertex: Vertex) {

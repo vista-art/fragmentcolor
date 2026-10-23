@@ -157,7 +157,7 @@ extension Pass {
     }
 
     /// Set the viewport from `[x, y, width, height]`, or `[width, height]` at the origin.
-    public func setViewport(_ rect: [Int]) {
+    public func setViewport(_ rect: [UInt32]) {
         switch rect.count {
         case 2: setViewport(region: ScreenRegion([0, 0], rect))
         case 4: setViewport(region: ScreenRegion(Array(rect[0..<2]), Array(rect[2..<4])))
@@ -186,13 +186,8 @@ extension ScreenRegion {
     }
 
     /// A region at `origin` `[x, y]` that is `size` `[width, height]` large.
-    public init(_ origin: [Int], _ size: [Int]) {
+    public init(_ origin: [UInt32], _ size: [UInt32]) {
         precondition(origin.count == 2 && size.count == 2, "ScreenRegion: origin and size hold 2 numbers each")
-        guard let x = UInt32(exactly: origin[0]), let y = UInt32(exactly: origin[1]),
-              let width = UInt32(exactly: size[0]), let height = UInt32(exactly: size[1])
-        else {
-            preconditionFailure("ScreenRegion: \(origin) and \(size) must be non-negative 32-bit values")
-        }
-        self.init((x, y), (width, height))
+        self.init((origin[0], origin[1]), (size[0], size[1]))
     }
 }
