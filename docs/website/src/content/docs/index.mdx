@@ -3,28 +3,23 @@ title: Welcome to FragmentColor
 description: FragmentColor - Universal GPU abstraction for Rust, JavaScript, Python, Swift, and Kotlin.
 template: splash
 hero:
+  title: FragmentColor
   tagline: Universal GPU abstraction for Rust, JavaScript, Python, Swift, and Kotlin.
-  image:
-    file: ../../assets/houston.webp
-  actions:
-    - text: Github
-      link: https://github.com/vista-art/fragmentcolor
-      icon: github
-      variant: primary
-    - text: Documentation
-      link: /welcome
-      icon: document
-      variant: secondary
-    - text: Demos
-      link: /demos
-      icon: rocket
-      variant: minimal
 ---
 
-import { Code, Tabs, TabItem } from "@astrojs/starlight/components";
-import ShaderGallery from "../../components/ShaderGallery.astro";
+import { LinkButton } from "@astrojs/starlight/components";
+import Playground from "../../components/Playground.astro";
 import Examples from "../../components/Examples.mdx";
 
-<ShaderGallery mode="hero" />
+<Playground mode="compact" demos={["cells", "shapes", "kaleidoscope", "raymarch"]} />
+
+<div class="landing-actions">
+  <LinkButton href="https://github.com/vista-art/fragmentcolor" icon="github" iconPlacement="end">Github</LinkButton>
+  <LinkButton href="/welcome" variant="secondary" icon="document" iconPlacement="end">Documentation</LinkButton>
+  <LinkButton href="/welcome/playground" variant="minimal" icon="pencil" iconPlacement="end">Playground</LinkButton>
+  <LinkButton href="/demos" variant="minimal" icon="rocket" iconPlacement="end">Demos</LinkButton>
+</div>
+
+Edit the shader or `main.js` and the canvas rebuilds as you type. The [playground](/welcome/playground) has every demo, including one million particles on a compute shader.
 
 <Examples />

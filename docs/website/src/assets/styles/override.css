@@ -2,8 +2,30 @@
   display: grid !important;
 }
 
+/* The landing page is the playground: a wider column, and no visible hero.
+ * The header logo names the project, so the hero's title and tagline stay
+ * only for screen readers, and the buttons sit in a row under the playground. */
+html[data-has-hero]:not([data-has-sidebar]) {
+  --sl-content-width: 90rem;
+}
+
 .hero {
-  padding-bottom: 1rem !important;
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0 !important;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.landing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem 1.5rem;
 }
 
 /* ---------------------------------------------------------------------
