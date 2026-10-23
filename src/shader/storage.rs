@@ -351,6 +351,7 @@ impl UniformStorage {
                     }
                 }
             }
+
             // 2) Storage buffer blobs
             if let Some(blob) = self.storage_blobs.get_mut(root) {
                 match value {
