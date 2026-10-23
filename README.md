@@ -22,7 +22,9 @@
   <a href="https://fragmentcolor.org/demos">Demos</a>
 </p>
 
-Write a shader in WGSL or GLSL, set its uniforms by name, and render it. FragmentColor reads the shader to build the pipeline, bind groups, and buffers, so you write no setup code. It runs on Vulkan, Metal, DirectX 12, OpenGL, WebGL2, and WebGPU through [wgpu](https://wgpu.rs).
+Write a shader in WGSL or GLSL, set its uniforms by name, and render it. FragmentColor reads the shader to build the pipeline, bind groups, and buffers, so you write no setup code.
+
+It runs on Vulkan, Metal, DirectX 12, OpenGL, WebGL2, and WebGPU through [wgpu](https://wgpu.rs).
 
 ## Why FragmentColor
 
