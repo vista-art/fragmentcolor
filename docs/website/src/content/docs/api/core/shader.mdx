@@ -104,7 +104,7 @@ They will fallback to regular uniform buffers when:
 - multiple push-constant roots are declared, or
 - the total push-constant size exceeds the device limit.
 
-In fallback mode, push constants are rewritten as classic uniform buffers in a newly allocated bind group (one binding per push-constant root). The fallback group goes into the next free slot (`max_existing_group + 1`); FragmentColor does not check the device's `max_bind_groups` limit, so a shader that already uses many bind groups *and* push constants can exceed it. Render pipelines fall back today; compute pipeline fallback may follow.
+In fallback mode, push constants are rewritten as classic uniform buffers in a newly allocated bind group (one binding per push-constant root). The fallback group goes into the next free slot (`max_existing_group + 1`); FragmentColor does not check the device's `max_bind_groups` limit, so a shader that already uses many bind groups *and* push constants can exceed it. Only render pipelines fall back. A compute shader needs native push constants.
 
 
 ## Example
