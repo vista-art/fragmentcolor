@@ -37,12 +37,6 @@ pub(crate) struct ReadbackBufferPool {
     label: String,
     entry_limit: usize,
     entries: VecDeque<ReadbackEntry>, // front = LRU, back = MRU
-    // instrumentation
-    hits: u64,
-    misses: u64,
-    evictions: u64,
-    allocations: u64,
-    bytes_allocated: u64,
 }
 
 impl ReadbackBufferPool {
@@ -51,11 +45,6 @@ impl ReadbackBufferPool {
             label: label.to_string(),
             entry_limit: entry_limit.max(1),
             entries: VecDeque::new(),
-            hits: 0,
-            misses: 0,
-            evictions: 0,
-            allocations: 0,
-            bytes_allocated: 0,
         }
     }
 
@@ -78,11 +67,9 @@ impl ReadbackBufferPool {
         {
             let buffer = entry.buffer.clone();
             self.entries.push_back(entry);
-            self.hits += 1;
             return buffer;
         }
 
-        self.misses += 1;
         // No suitable entry; create a new buffer exactly sized to `size`
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&self.label),
@@ -95,13 +82,10 @@ impl ReadbackBufferPool {
             capacity: size,
             buffer: arc.clone(),
         });
-        self.allocations += 1;
-        self.bytes_allocated += size;
 
         // Evict LRU if over capacity
         if self.entries.len() > self.entry_limit {
             let _ = self.entries.pop_front();
-            self.evictions += 1;
         }
         arc
     }
@@ -110,14 +94,6 @@ impl ReadbackBufferPool {
     pub fn discard(&mut self, buffer: &Arc<wgpu::Buffer>) {
         self.entries
             .retain(|entry| !Arc::ptr_eq(&entry.buffer, buffer));
-    }
-
-    pub fn reset_metrics(&mut self) {
-        self.hits = 0;
-        self.misses = 0;
-        self.evictions = 0;
-        self.allocations = 0;
-        self.bytes_allocated = 0;
     }
 }
 
@@ -154,22 +130,6 @@ impl Drop for PendingReadback<'_> {
         }
         self.buffer.unmap();
         self.pool.write().discard(&self.buffer);
-    }
-}
-
-impl crate::renderer::buffer_pool::BufferPool for ReadbackBufferPool {
-    fn stats(&self) -> crate::renderer::buffer_pool::PoolStats {
-        crate::renderer::buffer_pool::PoolStats {
-            hits: self.hits,
-            misses: self.misses,
-            evictions: self.evictions,
-            allocations: self.allocations,
-            bytes_allocated: self.bytes_allocated,
-        }
-    }
-
-    fn reset_metrics(&mut self) {
-        ReadbackBufferPool::reset_metrics(self)
     }
 }
 

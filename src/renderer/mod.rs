@@ -27,10 +27,10 @@ pub mod renderable;
 pub use renderable::*;
 
 mod buffer_pool;
-pub use buffer_pool::*;
+pub(crate) use buffer_pool::*;
 
 mod texture_pool;
-pub use texture_pool::*;
+pub(crate) use texture_pool::*;
 pub(crate) mod background;
 mod external_texture;
 mod sampler_pairs;
