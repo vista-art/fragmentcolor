@@ -2,7 +2,7 @@
 title: "v0.10.0: The Shader Object"
 excerpt: "The v0.10.0 release introduces the Shader-centered design, completes the rename from PLRender, and sets the shape of the API for what comes next."
 authors: ["rafaelbeckel"]
-date: 2024-02-15
+date: 2025-03-08
 tags: ["release", "milestone", "history"]
 ---
 
@@ -20,7 +20,7 @@ shader.set("my_uniform", 0.5);
 renderer.render(shader);
 ```
 
-Feel free to [read the docs](https://fragmentcolor.com/welcome) for more details.
+Feel free to [read the docs](/welcome/) for more details.
 
 Install it on your favorite platform with:
 
@@ -42,11 +42,11 @@ We're also keeping up with [wgpu](https://wgpu.rs) and naga as they evolve, the 
 
 - The Renderer API draws heavily from [pygfx](https://pygfx.org), a beautiful Python rendering engine that aims at a higher level than us. It is closer to Three.js for Python, with its own scene graph and renderable objects. FragmentColor uses pygfx's [RenderCanvas](https://github.com/pygfx/rendercanvas) abstraction for the Python render surface. 
 
-- The Shader-centric design came from Pupil Labs, as stated in our [origin story]().
+- The Shader-centric design came from Pupil Labs, as stated in our [origin story](/blog/thank-you-pupil-labs/).
 
 - Some of the GPU optimization techniques were inspired by [Ruffle](https://ruffle.rs) Flash Player engine.
 
-- Although most of the old code did not survive the full refactor, I owe most of my learning to kwark's (the wgpu contributor) and his minimalistic prototype engine [Baryon](https://github.com/kvark/baryon). 
+- Although most of the old code did not survive the full refactor, I owe most of my learning to kvark's (the wgpu contributor) and his minimalistic prototype engine [Baryon](https://github.com/kvark/baryon). 
 
 - And, of course, nobody starts their wgpu journey without passing through the fantastic [Learn Wgpu](https://sotrh.github.io/learn-wgpu/) series by Ben Hansen.
 
