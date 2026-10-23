@@ -2,6 +2,7 @@ mod website {
     use super::*;
     use crate::codegen::ApiMap;
     use crate::example::{Example, Lang};
+    use std::collections::HashMap;
 
     // Public outcome for the export phase so steps can be run independently.
     pub struct ExportOutcome {
@@ -288,6 +289,7 @@ mod website {
             );
 
             out.push_str("## Description\n\n");
+            let mut headings = vec![Heading::new("Description")];
 
             // Extract and remove the main "## Example" section from the object body (pre-Methods)
             let mut desc_without = String::new();
@@ -340,6 +342,8 @@ mod website {
                 // non-code content within example section is dropped from desc
             }
 
+            headings.extend(list_headings(&desc_without, None));
+
             // Escape inline generics in prose so MDX doesn't treat them as JSX
             let desc_sanitized = sanitize_inline_generics_in_prose(&desc_without);
             out.push_str(&desc_sanitized);
@@ -361,9 +365,11 @@ mod website {
                 );
                 out.push_str("\n## Example\n\n");
                 out.push_str(&tabs);
+                headings.push(Heading::new("Example"));
             }
 
             out.push_str("\n## Methods\n\n");
+            headings.push(Heading::new("Methods"));
             for file in method_files.iter() {
                 let md = std::fs::read_to_string(obj_dir.join(format!("{}.md", file)))
                     .unwrap_or_default();
@@ -402,9 +408,10 @@ mod website {
 
                 // Separator before each method title for visual grouping
                 out.push_str("\n---\n\n");
+                headings.extend(list_headings(&pre, Some(file.as_str())));
                 // Sanitize prose for MDX generics first, then downshift headings
                 let pre_sanitized = sanitize_inline_generics_in_prose(pre.trim_end());
-                out.push_str(&downshift_headings(&pre_sanitized));
+                out.push_str(&anchor_title(&downshift_headings(&pre_sanitized), file));
                 out.push('\n');
 
                 // Build example tabs via shared helper
@@ -422,6 +429,7 @@ mod website {
                 );
                 out.push_str("\n#### Example\n\n");
                 out.push_str(&tabs);
+                headings.push(Heading::new("Example"));
             }
 
             // Ensure exactly one trailing newline at EOF
@@ -445,6 +453,7 @@ mod website {
                     .join(cat_rel)
                     .join(format!("{}.mdx", object.to_lowercase()))
             };
+            check_heading_ids(&site_file, &headings);
             if let Some(parent) = site_file.parent() {
                 std::fs::create_dir_all(parent).unwrap();
             }
@@ -1389,6 +1398,93 @@ if __name__ == '__main__':
             }
         }
         out
+    }
+
+    /// A heading on a site page, and the id the export sets on it.
+    struct Heading {
+        text: String,
+        anchor: Option<String>,
+    }
+
+    impl Heading {
+        fn new(text: &str) -> Self {
+            Self {
+                text: text.to_string(),
+                anchor: None,
+            }
+        }
+    }
+
+    /// The headings of a docs/api page, with `anchor` on the first `#` heading, its title.
+    fn list_headings(md: &str, anchor: Option<&str>) -> Vec<Heading> {
+        let mut anchor = anchor.map(String::from);
+        super::links::read_headings(md)
+            .into_iter()
+            .map(|(level, text)| {
+                let anchor = if level == 1 { anchor.take() } else { None };
+                Heading { text, anchor }
+            })
+            .collect()
+    }
+
+    /// Ends the method title, the first `###` heading, with `\{#anchor\}`.
+    ///
+    /// The site's heading id plugin makes the braces the heading's id,
+    /// and the backslashes keep MDX from reading them as an expression.
+    fn anchor_title(mdx: &str, anchor: &str) -> String {
+        let mut fenced = false;
+        let mut tagged = false;
+        mdx.lines()
+            .map(|line| {
+                if line.trim_start().starts_with("```") {
+                    fenced = !fenced;
+                }
+                if fenced || tagged || !line.starts_with("### ") {
+                    return line.to_string();
+                }
+                tagged = true;
+                format!("{} \\{{#{anchor}\\}}", line.trim_end())
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Fails the build when two headings on the page at `path` get the same id.
+    ///
+    /// A heading with an anchor gets it as its id. Starlight gives every other
+    /// heading github-slugger's id for its text, with `-1`, `-2` on repeats, and
+    /// doesn't count the anchors as repeats, so an anchor can take a slug's id.
+    fn check_heading_ids(path: &std::path::Path, headings: &[Heading]) {
+        let mut slugs = HashMap::new();
+        let mut owners: HashMap<String, &str> = HashMap::new();
+        for heading in headings {
+            let id = match &heading.anchor {
+                Some(anchor) => anchor.clone(),
+                None => next_slug(&mut slugs, &heading.text),
+            };
+            if let Some(other) = owners.insert(id.clone(), &heading.text) {
+                panic!(
+                    "{}: the headings `{}` and `{}` both get the id `{}`. Rename one of them in docs/api.",
+                    path.display(),
+                    other,
+                    heading.text,
+                    id
+                );
+            }
+        }
+    }
+
+    /// The id github-slugger gives `text`, after the ids in `seen`.
+    fn next_slug(seen: &mut HashMap<String, u32>, text: &str) -> String {
+        let base = super::links::slugify(text);
+        let mut slug = base.clone();
+        while seen.contains_key(&slug) {
+            let count = seen.entry(base.clone()).or_default();
+            *count += 1;
+            slug = format!("{base}-{count}");
+        }
+        seen.insert(slug.clone(), 0);
+        slug
     }
 
     fn downshift_headings(md: &str) -> String {
