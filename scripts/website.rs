@@ -707,63 +707,107 @@ mod website {
         if let Some(parent) = py_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
+        // Each example fails on an exception or on a GPU error that the
+        // library appended to the file FC_GPU_ERROR_LOG names, and a failing
+        // example names its `docs/api` page.
         let mut py_out = String::new();
-        py_out.push_str("# Auto-generated: executes all Python examples with cargo-like output.\n");
-        py_out.push_str("import runpy, pathlib, sys, traceback, os\n\n");
-        py_out.push_str("GREEN='\x1b[1;32m'\nRED='\x1b[1;31m'\nRESET='\x1b[0m'\n\n");
-        py_out.push_str("def run_all():\n");
-        py_out.push_str("    base = pathlib.Path(__file__).parent\n");
-        py_out.push_str("    files = [\n");
+        py_out.push_str(
+            r#"# Auto-generated: executes all Python examples with cargo-like output.
+import runpy, pathlib, sys, traceback, os, tempfile
+
+GREEN='\x1b[1;32m'
+RED='\x1b[1;31m'
+RESET='\x1b[0m'
+
+def gpu_error_log():
+    """The file where FragmentColor appends each GPU error that no error scope caught."""
+    path = os.environ.get('FC_GPU_ERROR_LOG')
+    if not path:
+        handle, path = tempfile.mkstemp(prefix='fc-gpu-errors-', suffix='.log')
+        os.close(handle)
+        os.environ['FC_GPU_ERROR_LOG'] = path
+    return path
+
+def take_gpu_errors():
+    """Empties the GPU error log and returns what it held."""
+    with open(gpu_error_log(), 'a+') as log:
+        log.seek(0)
+        errors = log.read().strip()
+        log.truncate(0)
+    return errors
+
+def run_all():
+    base = pathlib.Path(__file__).parent
+    examples = [
+"#,
+        );
         for rel in &py_list {
             let rel_norm = rel.replace('\\', "/");
-            py_out.push_str(&format!("        '{}',\n", rel_norm));
+            let stem = rel_norm.strip_suffix(".py").unwrap_or(&rel_norm);
+            py_out.push_str(&format!(
+                "        ('{}', '{}'),\n",
+                rel_norm,
+                example_page(stem)
+            ));
         }
-        py_out.push_str("    ]\n");
-        py_out.push_str("\n    # Announce test count and optionally prepare summary file\n");
-        py_out.push_str("    total = len(files)\n");
-        py_out.push_str("    print(f\"running {total} tests\")\n");
-        py_out.push_str("    summary_path = os.environ.get('FC_PY_SUMMARY_PATH')\n");
-        py_out.push_str("    if summary_path:\n");
-        py_out.push_str("        try:\n");
-        py_out.push_str("            with open(summary_path, 'w') as f:\n");
-        py_out.push_str("                f.write(f\"total={total}\\npassed=0\\nfailed=0\\n\")\n");
-        py_out.push_str("        except Exception:\n");
-        py_out.push_str("            pass\n");
-        py_out.push_str("\n    passed = 0\n");
-        py_out.push_str("    failed = 0\n");
-        py_out.push_str("    for rel in files:\n");
-        py_out.push_str("        name = 'platforms.python.examples.' + rel.replace('/', '.').removesuffix('.py')\n");
-        py_out.push_str("        head = f'test {name} ... '\n");
-        py_out.push_str("        os.environ['FC_RUNNER'] = 'python'\n");
-        py_out.push_str("        os.environ['FC_CURRENT_TEST'] = name\n");
-        py_out.push_str("        try:\n");
-        py_out.push_str("            runpy.run_path(str(base / rel), run_name='__main__')\n");
-        py_out.push_str("            passed += 1\n");
-        py_out.push_str("            print(head + GREEN + 'OK' + RESET)\n");
-        py_out.push_str("        except SystemExit as _e:\n");
-        py_out.push_str("            if _e.code == 0:\n");
-        py_out.push_str("                passed += 1\n");
-        py_out.push_str("                print(head + GREEN + 'OK' + RESET)\n");
-        py_out.push_str("            else:\n");
-        py_out.push_str("                failed += 1\n");
-        py_out.push_str("                print(head + RED + 'FAILED' + RESET)\n");
-        py_out.push_str("                traceback.print_exc()\n");
-        py_out.push_str("        except Exception:\n");
-        py_out.push_str("            failed += 1\n");
-        py_out.push_str("            print(head + RED + 'FAILED' + RESET)\n");
-        py_out.push_str("            traceback.print_exc()\n");
-        py_out.push_str("\n    if summary_path:\n");
-        py_out.push_str("        try:\n");
-        py_out.push_str("            with open(summary_path, 'w') as f:\n");
-        py_out.push_str("                f.write(f\"total={total}\\npassed={passed}\\nfailed={failed}\\n\")\n");
-        py_out.push_str("        except Exception:\n");
-        py_out.push_str("            pass\n");
-        py_out.push_str("\n    if failed:\n");
-        py_out.push_str("        print(f\"\\n{RED}test result: FAILED{RESET}. {passed} passed; {failed} failed\")\n");
-        py_out.push_str("        raise SystemExit(1)\n");
-        py_out.push_str("    else:\n");
-        py_out.push_str("        print(f\"\\n{GREEN}test result: ok{RESET}. {passed} passed; {failed} failed\")\n");
-        py_out.push_str("\nif __name__ == '__main__':\n    run_all()\n");
+        py_out.push_str(
+            r#"    ]
+
+    # Announce test count and optionally prepare summary file
+    total = len(examples)
+    print(f"running {total} tests")
+    summary_path = os.environ.get('FC_PY_SUMMARY_PATH')
+    if summary_path:
+        try:
+            with open(summary_path, 'w') as f:
+                f.write(f"total={total}\npassed=0\nfailed=0\n")
+        except Exception:
+            pass
+
+    passed = 0
+    failed = 0
+    take_gpu_errors()
+    for rel, page in examples:
+        name = 'platforms.python.examples.' + rel.replace('/', '.').removesuffix('.py')
+        head = f'test {name} ... '
+        os.environ['FC_RUNNER'] = 'python'
+        os.environ['FC_CURRENT_TEST'] = name
+        problems = []
+        try:
+            runpy.run_path(str(base / rel), run_name='__main__')
+        except SystemExit as stop:
+            if stop.code != 0:
+                problems.append(traceback.format_exc())
+        except Exception:
+            problems.append(traceback.format_exc())
+        errors = take_gpu_errors()
+        if errors:
+            problems.append(f'GPU error: {errors}')
+        if problems:
+            failed += 1
+            print(head + RED + 'FAILED' + RESET)
+            print(f'{page}: ' + '\n'.join(problems))
+        else:
+            passed += 1
+            print(head + GREEN + 'OK' + RESET)
+
+    if summary_path:
+        try:
+            with open(summary_path, 'w') as f:
+                f.write(f"total={total}\npassed={passed}\nfailed={failed}\n")
+        except Exception:
+            pass
+
+    if failed:
+        print(f"\n{RED}test result: FAILED{RESET}. {passed} passed; {failed} failed")
+        raise SystemExit(1)
+    else:
+        print(f"\n{GREEN}test result: ok{RESET}. {passed} passed; {failed} failed")
+
+if __name__ == '__main__':
+    run_all()
+"#,
+        );
         let _ = super::meta::write_if_changed(&py_path, &py_out);
 
         // Sort and write the Swift example tests. Each transpiled example,

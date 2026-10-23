@@ -25,6 +25,7 @@ from fragmentcolor import (
     VertexValue,
     WindowTarget,
 )
+from platforms.python.examples.main import run_all, take_gpu_errors
 
 # Debug diagnostics for CI
 if os.environ.get("FC_HEALTHCHECK_VERBOSE") == "1":
@@ -427,6 +428,7 @@ def run():
     # Tag this process for GPU error context
     os.environ["FC_RUNNER"] = "python"
     os.environ["FC_CURRENT_TEST"] = "platforms.python.healthcheck"
+    take_gpu_errors()
 
     renderer = Renderer()
     target = renderer.create_texture_target((32, 64))
@@ -604,10 +606,12 @@ var<immediate> pc: PC;
 
     check_shader_set_values()
 
+    errors = take_gpu_errors()
+    assert not errors, f"GPU error: {errors}"
+
 
 if __name__ == "__main__":
     run()
 
     # Auto-generated: run all extracted & translated examples from docs/api
-    from platforms.python.examples.main import run_all
     run_all()
