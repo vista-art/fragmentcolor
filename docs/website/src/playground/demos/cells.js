@@ -7,7 +7,7 @@ export default {
   kind: "fragment",
   library: ["noise/worley2", "noise/fbm2", "gradient/palette_iq"],
   values: {
-    "u.scale": 7,
+    "u.scale": 12,
     "u.warp": 1.4,
     "u.edge": 0.08,
     "u.edge_color": [0.05, 0.03, 0.08],
