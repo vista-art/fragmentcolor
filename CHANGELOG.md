@@ -10,6 +10,8 @@ A patch release with fixes for the language bindings and the renderer, and the c
 
 On Android, `renderer.createTarget(surface)` builds the target on the renderer you call it on. The JNI path created a new `Renderer` for every surface, so the target lived on a different GPU device than the renderer drawing into it, and `render` either failed with `NoContext` or mixed the two devices. The JNI helper now only turns the `Surface` into an `ANativeWindow` pointer, and the Kotlin extension passes that pointer to the calling renderer's `createTarget`.
 
+On Android, `renderer.createTarget(surface)` creates its surface again. wgpu 30 takes a surface's display handle from the instance or from the target, and FragmentColor's instance has none while the Android path passed only the window, so every call since 0.12.3 failed with `Failed to create surface`. The target now hands wgpu the window's display handle too.
+
 `Model(mesh, material)` and `model.material()` no longer reset the Material on Swift, Kotlin, JavaScript, and Python. Both rebuilt the Material with `Material::custom`, which put the caller's Material back to the `Opaque` alpha mode and single-sided culling but left the shader's alpha flag untouched, so `Mask` and `Blend` materials drew with mismatched pipeline state. The bindings now share the Material the way Rust does.
 
 Python's `Renderer.create_target` keeps one target per renderer. It cached the target on the canvas and handed it to any renderer that asked, even one on another device.
