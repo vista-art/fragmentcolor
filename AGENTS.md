@@ -140,6 +140,7 @@ The API must look the same in Rust, JavaScript, Python, Swift, and Kotlin in eve
 - **`#[doc(hidden)]` is matched exactly.** An `lsp_doc` page under `hidden/` doesn't hide a type. Mark a binding wrapper struct, such as `PyTextureTarget`, with `#[doc(hidden)]`.
 - **Kotlin has no `Int` overload for an unsigned parameter.** `scripts/kotlin.rs` fails the build when a Kotlin extension takes an `Int` where the uniffi method of the same name and arity takes an unsigned integer. Delete the extension, since the generated method already takes the `UInt`.
 - **The web healthcheck fails on any `console.error`.**
+- **The iOS, Android, and Python healthchecks fail on any uncaptured GPU error.** wgpu's error handler appends each one to the file that `FC_GPU_ERROR_LOG` names. `ExampleCase` on iOS and Android and the generated `platforms/python/examples/main.py` read that file after every test, and a failing example names its `docs/api` page.
 - **CI lints the whole workspace** with `cargo clippy --workspace`, so every `fce` example has to build.
 
 ## Lock blocks (MDX) — content the user has hand-tuned
