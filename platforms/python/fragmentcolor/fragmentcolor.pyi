@@ -492,8 +492,10 @@ class Shader:
         | Web, `Shader.fetch` | The browser's `fetch()` | The browser's `fetch()` | Fetched relative to the page's origin |
         | Web, `new Shader` | Not fetched; an error that points at `Shader.fetch` | Not fetched; an error | Not fetched; an error |
 
-        A registry set with `Shader::set_registry` is fetched first on every
-        platform, and the bundled copy stands in when it can't be reached.
+        After `Shader::set_registry`, slugs and registry URLs are fetched first on
+        every platform, and the bundled copy stands in when the fetch fails. A slug
+        resolves against the new registry. A registry URL is fetched as written, so
+        `https://fragmentcolor.org/shaders/sdf2d/circle.wgsl` still asks the default registry.
 
         Example:
 
@@ -563,8 +565,10 @@ class Shader:
         | Web, `Shader.fetch` | The browser's `fetch()` | The browser's `fetch()` | Fetched relative to the page's origin |
         | Web, `new Shader` | Not fetched; an error that points at `Shader.fetch` | Not fetched; an error | Not fetched; an error |
 
-        A registry set with `Shader::set_registry` is fetched first on every
-        platform, and the bundled copy stands in when it can't be reached.
+        After `Shader::set_registry`, slugs and registry URLs are fetched first on
+        every platform, and the bundled copy stands in when the fetch fails. A slug
+        resolves against the new registry. A registry URL is fetched as written, so
+        `https://fragmentcolor.org/shaders/sdf2d/circle.wgsl` still asks the default registry.
 
         Example:
 
@@ -594,6 +598,8 @@ class Shader:
         The base may end with or without a trailing slash; both are normalized at lookup time.
 
         This setting is **process-wide**. It applies to every subsequent call to `Shader::new(...)` until overridden again.
+
+        A full URL into the default registry keeps pointing there. After `set_registry`, `https://fragmentcolor.org/shaders/sdf2d/circle.wgsl` is fetched as written, and the bundled shader library stands in when the fetch fails. Builds without the `network` feature, such as the Swift and Kotlin packages, always take the bundled copy.
 
         Example:
 
