@@ -14,6 +14,8 @@ The base may end with or without a trailing slash; both are normalized at lookup
 
 This setting is **process-wide**. It applies to every subsequent call to `Shader::new(...)` until overridden again.
 
+A full URL into the default registry keeps pointing there. After `set_registry`, `https://fragmentcolor.org/shaders/sdf2d/circle.wgsl` is fetched as written, and the bundled shader library stands in when the fetch fails. Builds without the `network` feature, such as the Swift and Kotlin packages, always take the bundled copy.
+
 ## Example
 
 ```rust

@@ -64,9 +64,9 @@ enum RegistrySource {
 }
 
 impl RegistrySource {
-    /// The embedded library serves the default registry, offline and without the `network` feature.
-    /// A registry set with `Shader::set_registry` is fetched first,
-    /// and the embedded copy stands in when it can't be reached.
+    /// The embedded library serves the default registry offline.
+    /// After `Shader::set_registry`, slugs and registry URLs are fetched first,
+    /// and the embedded copy stands in when the fetch fails, as it does without `network`.
     fn locate(part: &ShaderPart) -> RegistrySource {
         use crate::shader::registry;
         let (url, slug) = match part {
@@ -516,6 +516,50 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
                 RegistrySource::Embedded(_) => panic!("an override must be fetched first"),
             },
         );
+    }
+
+    // Story: after `set_registry`, a default-registry URL is fetched as written
+    // and keeps the embedded copy as its fallback, while slugs go to the mirror.
+    #[cfg(feature = "shaders-sdf2d")]
+    #[test]
+    fn default_registry_url_after_set_registry() {
+        let url = "https://fragmentcolor.org/shaders/sdf2d/circle.wgsl";
+        let part = ShaderPart::Url(url.into());
+        with_registry(
+            "https://cdn.example.com/shaders/",
+            || match RegistrySource::locate(&part) {
+                RegistrySource::Fetch {
+                    url: fetched,
+                    fallback,
+                } => {
+                    assert_eq!(fetched, url);
+                    assert!(fallback.is_some());
+                }
+                RegistrySource::Embedded(_) => panic!("expected a fetch"),
+            },
+        );
+    }
+
+    // Story: without `network`, a default-registry URL still resolves after
+    // `set_registry`, because the failed fetch falls back on the embedded copy.
+    #[cfg(all(feature = "shaders-postfx", not(feature = "network")))]
+    #[test]
+    fn default_registry_url_resolves_offline_after_set_registry() {
+        let main = r#"
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(f32(i), 0., 0., 1.);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> {
+  let v = vignette(vec2<f32>(0.5, 0.5), 0.5, 0.3);
+  return vec4<f32>(v, v, v, 1.0);
+}
+"#;
+        let url = "https://fragmentcolor.org/shaders/postfx/vignette.wgsl";
+        with_registry("http://127.0.0.1:1/", || {
+            let input = ShaderInput::from([url, main].as_slice());
+            let res = blocking::resolve(input);
+            assert!(res.is_ok(), "expected the embedded fallback, got {res:?}");
+        });
     }
 
     // Story: A slug whose category feature is NOT enabled still falls through

@@ -45,17 +45,15 @@ pub(crate) fn slug_to_url(slug: &str) -> String {
     format!("{trimmed_base}/{trimmed_slug}.wgsl")
 }
 
-/// Inverse of [`slug_to_url`]: if `url` is a registry URL of the form
-/// `<base>/<category>/<name>.wgsl` for the active registry base, return the
-/// slug `<category>/<name>`. Otherwise return `None`.
-///
-/// Used at part-resolution time to short-circuit registry-URLs to the
-/// embedded shader library: a doc snippet that writes the full URL still
-/// resolves locally on native (no network needed) when the matching
-/// `shaders-<category>` feature is on, falling through to the URL-fetch
-/// path only for URLs that don't map to a registered slug.
+/// The slug a URL names in a registry.
+/// The active registry is checked first, then the default one,
+/// so a default-registry URL keeps its slug, and its embedded copy, after `set_registry`.
 pub(crate) fn url_to_slug(url: &str) -> Option<String> {
-    let base = registry_base();
+    parse_slug(url, &registry_base()).or_else(|| parse_slug(url, DEFAULT_REGISTRY))
+}
+
+/// Inverse of [`slug_to_url`] for one base: `<base>/<category>/<name>.wgsl` gives `<category>/<name>`.
+fn parse_slug(url: &str, base: &str) -> Option<String> {
     let trimmed_base = base.trim_end_matches('/');
     let rest = url.strip_prefix(trimmed_base)?.trim_start_matches('/');
     let stem = rest.strip_suffix(".wgsl")?;
@@ -208,10 +206,17 @@ mod tests {
                 url_to_slug("https://my-cdn.example.com/shaders/sdf2d/circle.wgsl"),
                 Some("sdf2d/circle".to_string())
             );
-            // The default base must not match when an override is active.
+            // The default registry keeps its slugs under an override.
             assert_eq!(
                 url_to_slug("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl"),
-                None
+                Some("sdf2d/circle".to_string())
+            );
+        });
+        // A mirror above the default base doesn't hide the default registry's slugs.
+        with_registry("https://fragmentcolor.org/", || {
+            assert_eq!(
+                url_to_slug("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl"),
+                Some("sdf2d/circle".to_string())
             );
         });
     }
