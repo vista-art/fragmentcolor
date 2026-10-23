@@ -1,6 +1,7 @@
 
 import org.fragmentcolor.*
-val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+val surfaceTexture = android.graphics.SurfaceTexture(0)
+val canvas = android.view.Surface(surfaceTexture)
 
 val renderer = Renderer()
 val target = renderer.createTarget(canvas)
@@ -17,3 +18,4 @@ renderer.render(pass, target)
 
 // vector of passes rendered in order (any iterable of Pass is renderable)
 renderer.render(listOf(pass, pass2), target)
+surfaceTexture.release()

@@ -15,7 +15,8 @@ import org.junit.runner.RunWith
 class GeneratedExamples : ExampleCase() {
     @Test
     fun core_pass_Pass() = example("docs/api/core/pass/pass.md") {
-        val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+        val surfaceTexture = android.graphics.SurfaceTexture(0)
+        val canvas = android.view.Surface(surfaceTexture)
 
         val renderer = Renderer()
         val target = renderer.createTarget(canvas)
@@ -32,6 +33,7 @@ class GeneratedExamples : ExampleCase() {
 
         // vector of passes rendered in order (any iterable of Pass is renderable)
         renderer.render(listOf(pass, pass2), target)
+        surfaceTexture.release()
     }
 
     @Test
@@ -248,7 +250,8 @@ class GeneratedExamples : ExampleCase() {
 
     @Test
     fun core_renderer_Renderer() = example("docs/api/core/renderer/renderer.md") {
-        val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+        val surfaceTexture = android.graphics.SurfaceTexture(0)
+        val canvas = android.view.Surface(surfaceTexture)
 
         val renderer = Renderer()
 
@@ -260,6 +263,7 @@ class GeneratedExamples : ExampleCase() {
         renderer.render(Shader.default(), texture_target)
 
         // That's it. Welcome to FragmentColor!
+        surfaceTexture.release()
     }
 
     @Test
@@ -291,12 +295,14 @@ class GeneratedExamples : ExampleCase() {
 
     @Test
     fun core_renderer_create_target() = example("docs/api/core/renderer/create_target.md") {
-        val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+        val surfaceTexture = android.graphics.SurfaceTexture(0)
+        val canvas = android.view.Surface(surfaceTexture)
 
         val renderer = Renderer()
 
         // The canvas comes from your platform's windowing system.
         val target = renderer.createTarget(canvas)
+        surfaceTexture.release()
     }
 
     @Test
@@ -1469,7 +1475,8 @@ class GeneratedExamples : ExampleCase() {
 
     @Test
     fun targets_target_Target() = example("docs/api/targets/target/target.md") {
-        val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+        val surfaceTexture = android.graphics.SurfaceTexture(0)
+        val canvas = android.view.Surface(surfaceTexture)
 
         val renderer = Renderer()
 
@@ -1479,6 +1486,7 @@ class GeneratedExamples : ExampleCase() {
         // To animate, render again in your event loop...
         renderer.render(Shader.default(), target)
         renderer.render(Shader.default(), target)
+        surfaceTexture.release()
     }
 
     @Test
@@ -1571,7 +1579,8 @@ class GeneratedExamples : ExampleCase() {
 
     @Test
     fun targets_window_target_WindowTarget() = example("docs/api/targets/window_target/window_target.md") {
-        val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+        val surfaceTexture = android.graphics.SurfaceTexture(0)
+        val canvas = android.view.Surface(surfaceTexture)
 
         val renderer = Renderer()
 
@@ -1579,36 +1588,43 @@ class GeneratedExamples : ExampleCase() {
         val target = renderer.createTarget(canvas)
 
         renderer.render(Shader.default(), target)
+        surfaceTexture.release()
     }
 
     @Test
     fun targets_window_target_get_image() = example("docs/api/targets/window_target/get_image.md") {
-        val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+        val surfaceTexture = android.graphics.SurfaceTexture(0)
+        val canvas = android.view.Surface(surfaceTexture)
 
         val renderer = Renderer()
         val target = renderer.createTarget(canvas)
         renderer.render(Shader.default(), target)
 
         val image = target.getImage()
+        surfaceTexture.release()
     }
 
     @Test
     fun targets_window_target_resize() = example("docs/api/targets/window_target/resize.md") {
-        val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+        val surfaceTexture = android.graphics.SurfaceTexture(0)
+        val canvas = android.view.Surface(surfaceTexture)
 
         val renderer = Renderer()
         val target = renderer.createTarget(canvas)
 
         target.resize(listOf(1024u, 768u))
+        surfaceTexture.release()
     }
 
     @Test
     fun targets_window_target_size() = example("docs/api/targets/window_target/size.md") {
-        val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+        val surfaceTexture = android.graphics.SurfaceTexture(0)
+        val canvas = android.view.Surface(surfaceTexture)
 
         val renderer = Renderer()
         val target = renderer.createTarget(canvas)
         val size = target.size()
+        surfaceTexture.release()
     }
 
     @Test

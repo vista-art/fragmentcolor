@@ -119,7 +119,8 @@ lang="swift" meta="collapse={2-3}"
 code={`
 
 import org.fragmentcolor.*
-val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+val surfaceTexture = android.graphics.SurfaceTexture(0)
+val canvas = android.view.Surface(surfaceTexture)
 
 val renderer = Renderer()
 
@@ -127,8 +128,9 @@ val renderer = Renderer()
 val target = renderer.createTarget(canvas)
 
 renderer.render(Shader.default(), target)
+surfaceTexture.release()
 `}
-lang="kotlin" meta="collapse={2-2}"
+lang="kotlin" meta="collapse={2-3, 11-11}"
 />
 
 </TabItem>
@@ -228,13 +230,15 @@ lang="swift" meta="collapse={2-3}"
 <Code
 code={`
 import org.fragmentcolor.*
-val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+val surfaceTexture = android.graphics.SurfaceTexture(0)
+val canvas = android.view.Surface(surfaceTexture)
 
 val renderer = Renderer()
 val target = renderer.createTarget(canvas)
 val size = target.size()
+surfaceTexture.release()
 `}
-lang="kotlin" meta="collapse={2-2}"
+lang="kotlin" meta="collapse={2-3, 8-8}"
 />
 
 </TabItem>
@@ -336,14 +340,16 @@ lang="swift" meta="collapse={2-3}"
 <Code
 code={`
 import org.fragmentcolor.*
-val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+val surfaceTexture = android.graphics.SurfaceTexture(0)
+val canvas = android.view.Surface(surfaceTexture)
 
 val renderer = Renderer()
 val target = renderer.createTarget(canvas)
 
 target.resize(listOf(1024u, 768u))
+surfaceTexture.release()
 `}
-lang="kotlin" meta="collapse={2-2}"
+lang="kotlin" meta="collapse={2-3, 9-9}"
 />
 
 </TabItem>
@@ -446,15 +452,17 @@ lang="swift" meta="collapse={2-3}"
 <Code
 code={`
 import org.fragmentcolor.*
-val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+val surfaceTexture = android.graphics.SurfaceTexture(0)
+val canvas = android.view.Surface(surfaceTexture)
 
 val renderer = Renderer()
 val target = renderer.createTarget(canvas)
 renderer.render(Shader.default(), target)
 
 val image = target.getImage()
+surfaceTexture.release()
 `}
-lang="kotlin" meta="collapse={2-2}"
+lang="kotlin" meta="collapse={2-3, 10-10}"
 />
 
 </TabItem>

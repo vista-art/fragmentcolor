@@ -1,6 +1,7 @@
 
 import org.fragmentcolor.*
-val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+val surfaceTexture = android.graphics.SurfaceTexture(0)
+val canvas = android.view.Surface(surfaceTexture)
 
 val renderer = Renderer()
 
@@ -12,3 +13,4 @@ val texture_target = renderer.createTextureTarget(listOf(16u, 16u))
 renderer.render(Shader.default(), texture_target)
 
 // That's it. Welcome to FragmentColor!
+surfaceTexture.release()

@@ -141,7 +141,8 @@ lang="swift" meta="collapse={2-3}"
 code={`
 
 import org.fragmentcolor.*
-val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+val surfaceTexture = android.graphics.SurfaceTexture(0)
+val canvas = android.view.Surface(surfaceTexture)
 
 val renderer = Renderer()
 
@@ -153,8 +154,9 @@ val texture_target = renderer.createTextureTarget(listOf(16u, 16u))
 renderer.render(Shader.default(), texture_target)
 
 // That's it. Welcome to FragmentColor!
+surfaceTexture.release()
 `}
-lang="kotlin" meta="collapse={2-2}"
+lang="kotlin" meta="collapse={2-3, 15-15}"
 />
 
 </TabItem>
@@ -574,14 +576,16 @@ lang="swift" meta="collapse={2-3}"
 code={`
 
 import org.fragmentcolor.*
-val canvas = android.view.Surface(android.graphics.SurfaceTexture(0))
+val surfaceTexture = android.graphics.SurfaceTexture(0)
+val canvas = android.view.Surface(surfaceTexture)
 
 val renderer = Renderer()
 
 // The canvas comes from your platform's windowing system.
 val target = renderer.createTarget(canvas)
+surfaceTexture.release()
 `}
-lang="kotlin" meta="collapse={2-2}"
+lang="kotlin" meta="collapse={2-3, 9-9}"
 />
 
 </TabItem>
