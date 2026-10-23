@@ -14,13 +14,19 @@ const SUMMARIES = {
   signal: "A late broadcast curving across old glass. The pointer tunes it, and press and pulse add interference.",
 };
 
+// Starting values that replace the shared ones for one artwork. Monolith opens at
+// 60% of every slider, with its core charged and rippling.
+const VALUES = {
+  monolith: { "u.drag": [0.6, 0.6], "u.zoom": 1.64, "u.press": 0.6, "u.pulse": 0.84 },
+};
+
 export const ARTWORK_DEMOS = ARTWORKS.map((artwork) => ({
   id: artwork.id,
   title: artwork.title,
   summary: SUMMARIES[artwork.id] ?? artwork.caption,
   kind: "fragment",
   library: artwork.slugs,
-  values: { "u.drag": [0.55, 0.32], "u.zoom": 1, "u.press": 0, "u.pulse": 0 },
+  values: { "u.drag": [0.55, 0.32], "u.zoom": 1, "u.press": 0, "u.pulse": 0, ...VALUES[artwork.id] },
   frame: { time: "u.time", resolution: "u.resolution", pointer: "u.mouse" },
   files: { "shader.wgsl": `${artwork.source.trim()}\n\n${PRELUDE.trim()}\n` },
 }));
