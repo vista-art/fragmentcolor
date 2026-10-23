@@ -36,8 +36,10 @@ synchronous constructor.
 | Web, `Shader.fetch` | The browser's `fetch()` | The browser's `fetch()` | Fetched relative to the page's origin |
 | Web, `new Shader` | Not fetched; an error that points at `Shader.fetch` | Not fetched; an error | Not fetched; an error |
 
-A registry set with `Shader::set_registry` is fetched first on every
-platform, and the bundled copy stands in when it can't be reached.
+After `Shader::set_registry`, slugs and registry URLs are fetched first on
+every platform, and the bundled copy stands in when the fetch fails. A slug
+resolves against the new registry. A registry URL is fetched as written, so
+`https://fragmentcolor.org/shaders/sdf2d/circle.wgsl` still asks the default registry.
 
 ## Example
 
