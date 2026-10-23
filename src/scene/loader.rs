@@ -608,28 +608,30 @@ fn try_image_to_texture_input(
         .ok_or_else(|| SceneLoadError::Invalid("glTF texture references missing image".into()))?;
 
     let buffer = image.pixels.clone();
-    let dynamic = match image.format {
-        gltf::image::Format::R8G8B8A8 => image::DynamicImage::ImageRgba8(
+    let rgba = match image.format {
+        gltf::image::Format::R8G8B8A8 => {
             image::RgbaImage::from_raw(image.width, image.height, buffer).ok_or_else(|| {
                 SceneLoadError::Invalid(
                     "glTF RGBA image has fewer bytes than width × height × 4".into(),
                 )
-            })?,
-        ),
+            })?
+        }
         gltf::image::Format::R8G8B8 => image::DynamicImage::ImageRgb8(
             image::RgbImage::from_raw(image.width, image.height, buffer).ok_or_else(|| {
                 SceneLoadError::Invalid(
                     "glTF RGB image has fewer bytes than width × height × 3".into(),
                 )
             })?,
-        ),
+        )
+        .to_rgba8(),
         gltf::image::Format::R8 => image::DynamicImage::ImageLuma8(
             image::GrayImage::from_raw(image.width, image.height, buffer).ok_or_else(|| {
                 SceneLoadError::Invalid(
                     "glTF luminance image has fewer bytes than width × height".into(),
                 )
             })?,
-        ),
+        )
+        .to_rgba8(),
         other => {
             log::warn!(
                 "Scene::load skipping `{slot}` slot: glTF image format {other:?} is not yet supported by the loader; falling back to the Material's 1×1 default for this slot"
@@ -640,8 +642,9 @@ fn try_image_to_texture_input(
 
     let sampler_options = map_sampler_options(&texture.sampler());
     Ok(Some(TextureInput {
-        data: TextureData::DynamicImage(dynamic),
+        data: TextureData::Bytes(rgba.into_raw()),
         options: crate::TextureOptions {
+            size: Some(crate::Size::from([image.width, image.height])),
             sampler: sampler_options,
             ..Default::default()
         },

@@ -62,8 +62,6 @@ pub enum TextureData {
     Path(std::path::PathBuf),
     CloneOf(Texture),
     Url(String),
-    #[doc(hidden)]
-    DynamicImage(DynamicImage),
     /// In-memory KTX2 container bytes (decoded by the `ktx2` crate). The KTX2
     /// path trusts the file's own declared format and skips the JPEG/PNG
     /// sRGB-inference + CPU mipmap chain. Use this for pre-baked compressed
@@ -78,7 +76,7 @@ pub enum TextureData {
     /// worker thread (or any non-render thread) do the decode + mip
     /// generation, then hand the prepared chain to `Renderer::create_texture`
     /// for a GPU-only upload. The library already runs that prep on a
-    /// background thread for `Bytes`/`Path`/`Url`/`DynamicImage` inputs; reach
+    /// background thread for `Bytes`/`Path`/`Url` inputs; reach
     /// for this only when sharing a chain across textures or when you want
     /// explicit control over which thread does the work. Cross-language
     /// callers typically don't construct this variant directly — they hand a
@@ -131,8 +129,8 @@ impl Mipmap {
     /// Mipmap::build((rgba_bytes, TextureFormat::Rgba8UnormSrgb, [w, h]))?;
     /// ```
     ///
-    /// `build` requires a sync-friendly `data` variant: `Bytes`,
-    /// `DynamicImage`, or `Path` (file IO). `Url` (needs async fetch),
+    /// `build` requires a sync-friendly `data` variant: `Bytes` or
+    /// `Path` (file IO). `Url` (needs async fetch),
     /// `Ktx2*` (already pre-baked), `Prepared` (already a chain),
     /// `CloneOf` (existing texture), and `Empty` (nothing to chain) all
     /// return [`TextureError::InvalidInput`].
@@ -178,7 +176,6 @@ impl Mipmap {
                     bytes_as_image(&bytes[..expected], extent.width, extent.height, wfmt)?
                 }
             },
-            TextureData::DynamicImage(image) => image,
             TextureData::Path(path) => image::open(path)?,
             // Async / pre-baked / non-prep variants don't fit the sync CPU
             // mipmap pipeline. Surface a clear typed error so callers can
@@ -337,9 +334,7 @@ impl From<Mipmap> for TextureData {
 
 /// Uniffi mirror of [`TextureData`], which it converts into.
 ///
-/// It leaves out `Empty` and `DynamicImage`. uniffi can't lower the
-/// `image` crate's `DynamicImage`, and `Bytes` reaches the same result,
-/// since the library decodes them. Paths travel as `String`, handles as `Arc`.
+/// It leaves out `Empty`. Paths travel as `String`, handles as `Arc`.
 ///
 /// The Rust core stays on `TextureData`. This enum exists only so the mobile
 /// bindings can carry a concrete variant. Web and Python use their own dispatch
@@ -801,9 +796,6 @@ impl TextureObject {
                 }
                 TextureData::Path(path) => {
                     let image = image::open(&path)?;
-                    Self::from_image(context.as_ref(), &image, format_override, mipmaps, usage)
-                }
-                TextureData::DynamicImage(image) => {
                     Self::from_image(context.as_ref(), &image, format_override, mipmaps, usage)
                 }
                 TextureData::Prepared(chain) => Self::from_chain(context.as_ref(), chain, usage),
@@ -1771,6 +1763,18 @@ crate::impl_js_bridge!(Texture, TextureError);
 mod tests {
     use super::*;
 
+    /// Encodes `image` as PNG bytes, the way a file on disk would hold it.
+    fn encode_png(image: &DynamicImage) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        image
+            .write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageFormat::Png,
+            )
+            .expect("encode png");
+        bytes
+    }
+
     // Story: TextureInput conversions from common Rust types produce expected variants.
     #[test]
     fn texture_input_conversions() {
@@ -1820,9 +1824,9 @@ mod tests {
         assert!(matches!(chain.level(3), Err(TextureError::InvalidInput(_))));
     }
 
-    // Story: Create a texture from a dynamic image and verify aspect.
+    // Story: Create a texture from encoded image bytes and verify aspect.
     #[test]
-    fn dynamic_image_aspect_smoke() {
+    fn encoded_image_aspect_smoke() {
         pollster::block_on(async move {
             // 2x1 image in memory
             let img = image::DynamicImage::ImageRgba8(
@@ -1831,9 +1835,9 @@ mod tests {
 
             let r = crate::Renderer::new();
             let tex = r
-                .create_texture(TextureData::DynamicImage(img))
+                .create_texture(TextureData::Bytes(encode_png(&img)))
                 .await
-                .expect("create texture from dynamic image");
+                .expect("create texture from encoded image");
             assert_eq!(tex.aspect(), 2.0);
 
             // Change sampler options should not panic
@@ -1861,15 +1865,16 @@ mod tests {
 
     // Story: Default options request a mipmap chain; explicit opt-out yields a single level.
     #[test]
-    fn dynamic_image_creates_mipmap_chain_by_default() {
+    fn encoded_image_creates_mipmap_chain_by_default() {
         pollster::block_on(async move {
             // 8x8 solid color image — generates 4 mip levels (8, 4, 2, 1).
             let pixels = vec![200u8; 8 * 8 * 4];
             let img =
                 image::DynamicImage::ImageRgba8(image::RgbaImage::from_vec(8, 8, pixels).unwrap());
+            let png = encode_png(&img);
             let r = crate::Renderer::new();
             let tex = r
-                .create_texture(TextureData::DynamicImage(img.clone()))
+                .create_texture(TextureData::Bytes(png.clone()))
                 .await
                 .expect("create texture with mipmaps");
             assert_eq!(tex.object.inner.mip_level_count(), 4);
@@ -1880,14 +1885,14 @@ mod tests {
                 ..Default::default()
             };
             let tex_no_mip = r
-                .create_texture((TextureData::DynamicImage(img), opts))
+                .create_texture((TextureData::Bytes(png), opts))
                 .await
                 .expect("create texture without mipmaps");
             assert_eq!(tex_no_mip.object.inner.mip_level_count(), 1);
         });
     }
 
-    // Story: Format override is honored on the DynamicImage arm — same RGBA bytes,
+    // Story: Format override is honored on the encoded image arm — same RGBA bytes,
     // reinterpreted as linear instead of sRGB. Mipmap chain is still generated.
     #[test]
     fn format_override_honored_for_image_input() {
@@ -1902,7 +1907,7 @@ mod tests {
                 ..Default::default()
             };
             let tex = r
-                .create_texture((TextureData::DynamicImage(img), opts))
+                .create_texture((TextureData::Bytes(encode_png(&img)), opts))
                 .await
                 .expect("create texture with explicit linear format");
             assert_eq!(tex.object.format, wgpu::TextureFormat::Rgba8Unorm);
@@ -1922,7 +1927,7 @@ mod tests {
 
             let r = crate::Renderer::new();
             let tex = r
-                .create_texture(TextureData::DynamicImage(img))
+                .create_texture(TextureData::Bytes(encode_png(&img)))
                 .await
                 .expect("create R16Unorm texture from Luma16 image");
             assert_eq!(tex.object.format, wgpu::TextureFormat::R16Unorm);
@@ -1940,7 +1945,7 @@ mod tests {
 
             let r = crate::Renderer::new();
             let tex = r
-                .create_texture(TextureData::DynamicImage(img))
+                .create_texture(TextureData::Bytes(encode_png(&img)))
                 .await
                 .expect("create R8Unorm texture from Luma8 image");
             assert_eq!(tex.object.format, wgpu::TextureFormat::R8Unorm);

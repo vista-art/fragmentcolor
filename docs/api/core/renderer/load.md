@@ -2,7 +2,7 @@
 
 Realize every pending GPU upload referenced by a renderable. Material's
 texture setters (`base_color_texture`, `metallic_roughness_texture`, …)
-accept paths, bytes, URLs, and `DynamicImage` values in addition to
+accept paths, bytes, and URLs in addition to
 already-uploaded [`Texture`](https://fragmentcolor.org/api/texture/texture)
 handles; the path / bytes / URL variants are stored on the Material's
 Shader as *pending* uploads. `load` walks every Shader the renderable
