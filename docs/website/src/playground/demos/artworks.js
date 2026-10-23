@@ -7,7 +7,7 @@ import { PRELUDE } from "../../demos/prelude.js";
 
 const SUMMARIES = {
   nebula: "Fractal noise folded over itself until it ignites. The pointer is a gravity well, and press and pulse feed it.",
-  swirl: "A cosine palette folded over rings and a radar arm. The pointer steers the eye, drag spins the arm, and press tightens the rings.",
+  swirl: "A cosine palette folded over rings and radar arms. Moving across adds arms, moving up and down winds them into a spiral, drag spins them, and press tightens the rings.",
   rosewindow: "Living stained glass. Moving the pointer across refolds the symmetry, moving it up and down twists the light, and press and pulse make it bloom.",
   plankton: "Bioluminescent cells adrift in a dark tide, pushed aside by the pointer. Press and pulse make them glow.",
   monolith: "An obsidian body carved from signed distance fields and orbited by three moons. Drag orbits the camera, zoom moves it closer, and press charges the core.",

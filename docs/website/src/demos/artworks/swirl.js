@@ -2,8 +2,8 @@ export const swirl = {
   id: "swirl",
   title: "Swirl",
   caption:
-    "The site's original swirl: a cosine palette folded over rings and a radar arm, now following your hand.",
-  hint: "move to steer the eye · drag to spin · hold to tighten · scroll to zoom",
+    "The site's original swirl: a cosine palette folded over rings and radar arms. Horizontal motion adds arms; vertical motion winds them into a spiral.",
+  hint: "move to add and wind the arms · drag to spin · hold to tighten · scroll to zoom",
   slugs: [],
   source: /* wgsl */ `
 const TAU: f32 = 6.283185307179586;
@@ -14,18 +14,22 @@ fn pal(t: f32, brightness: vec3<f32>, contrast: vec3<f32>, oscillation: vec3<f32
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-  // the eye of the swirl drifts toward the cursor
-  let m = centered(pointer_uv());
-  let uv = centered(in.uv) - m * 0.6;
+  let uv = centered(in.uv);
   let t = u.time;
   let slow = t * (0.25 + 0.35 * u.press);
 
-  // drag spins the radar arm, a press tightens the rings, a click sends a ripple
+  // the cursor's x sets the arm count, a whole number so the arms meet across
+  // the atan2 seam, and its y winds them into a spiral either way
+  let m = clamp(pointer_uv(), vec2<f32>(0.0), vec2<f32>(1.0));
+  let arms = 1.0 + floor(m.x * 5.99);
+  let wind = (m.y - 0.5) * 12.0;
+
+  // drag spins the radar arms, a press tightens the rings, a click sends a ripple
   let radius = length(uv);
   let ripple = u.pulse * 2.0 * exp(-radius * 3.0);
   let rings = sin(slow - radius * (15.0 + 6.0 * u.press) + ripple);
   let angle = atan2(uv.y, uv.x) + u.drag.x * 1.5;
-  let radar = sin(angle + slow);
+  let radar = sin(arms * (angle + wind * radius) + slow);
   let swirl = sin(rings + radar + slow);
 
   let brightnessBlend = 0.5 * (sin(t + length(uv * 20.0)) + 1.0);
