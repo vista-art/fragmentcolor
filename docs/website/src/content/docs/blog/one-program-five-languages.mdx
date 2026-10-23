@@ -1,0 +1,742 @@
+---
+title: "One program, five languages"
+excerpt: "FragmentColor 0.12.6 tests every documented example in Rust, JavaScript, Python, Swift, and Kotlin, with Swift on an iOS simulator and Kotlin on an Android emulator. The website opens on a playground that writes each demo in all five."
+authors: ["rafaelbeckel"]
+date: 2026-10-23T00:01:00Z
+tags: ["release", "rust", "javascript", "python", "swift", "kotlin", "ios", "android", "webgpu"]
+---
+
+import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+FragmentColor is one GPU library in five languages: Rust, JavaScript, Python, Swift, and Kotlin. Version 0.12.6 makes that sentence precise. A program reads the same in each language, with a short written list of the ways it may differ, and every example in the documentation passes its tests in all five before a release ships. Swift runs on an iOS simulator. Kotlin runs on an Android emulator.
+
+The website shows it on the first screen. [fragmentcolor.org](/) opens on a playground where the shader rebuilds as you type and every demo appears as the same program in each language.
+
+This post is about those two ideas and the reasons behind their shape. The [0.12.6 changelog](/blog/announcing-v0-12-6/) lists every fix.
+
+<figure>
+  <img src="/blog/playground.webp" width="928" height="572" alt="The FragmentColor playground running the Cells demo. An edit to the WGSL rebuilds the canvas, the u.scale slider makes the cells smaller, and the Swift tab shows the program with the new value." />
+  <figcaption>Editing Cells on the home page. The canvas rebuilds as the WGSL changes, the `u.scale` slider resizes the cells, and the Swift tab writes the new value into its program.</figcaption>
+</figure>
+
+## The same program, five times
+
+The first demo is Cells: Worley noise, warped by fractal noise and colored with a cosine palette. Its `main.js` is the program the page runs. Beside it, the Rust, Python, Swift, and Kotlin tabs hold that program written against each binding. This is what the playground writes for Cells, unedited. Pick a language here and every other sample on this page switches with it.
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust title="main.rs"
+use std::error::Error;
+
+use fragmentcolor::{Renderer, Shader, Target};
+
+const SOURCE: &str = include_str!("shader.wgsl");
+
+// Add a `fn main` that opens a window,
+// then calls setup once and frame on every redraw.
+fn setup() -> Result<Shader, Box<dyn Error>> {
+    let shader = Shader::new(["noise/worley2", "noise/fbm2", "gradient/palette_iq", SOURCE])?;
+    shader.set("u.scale", 12.0)?;
+    shader.set("u.warp", 1.4)?;
+    shader.set("u.edge", 0.08)?;
+    shader.set("u.edge_color", [0.05, 0.03, 0.08])?;
+    Ok(shader)
+}
+
+fn frame(
+    shader: &Shader,
+    renderer: &Renderer,
+    target: &impl Target,
+    time: f32,
+    size: [f32; 2],
+    pointer: [f32; 2],
+) -> Result<(), Box<dyn Error>> {
+    shader.set("u.time", time)?;
+    shader.set("u.resolution", size)?;
+    shader.set("u.mouse", pointer)?;
+    renderer.render(shader, target)?;
+    Ok(())
+}
+```
+
+</TabItem>
+<TabItem label="JavaScript">
+
+```js title="main.js"
+import { Shader } from "fragmentcolor";
+import SOURCE from "./shader.wgsl?raw";
+
+const LIBRARY = ["noise/worley2", "noise/fbm2", "gradient/palette_iq"];
+
+export async function setup(renderer, target) {
+  const shader = await Shader.fetch([...LIBRARY, SOURCE]);
+  shader.set("u.scale", 12);
+  shader.set("u.warp", 1.4);
+  shader.set("u.edge", 0.08);
+  shader.set("u.edge_color", [0.05, 0.03, 0.08]);
+  return { shader };
+}
+
+export function frame({ shader }, renderer, target, time, size, pointer) {
+  shader.set("u.time", time);
+  shader.set("u.resolution", size);
+  shader.set("u.mouse", pointer);
+  renderer.render(shader, target);
+}
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python title="main.py"
+from pathlib import Path
+
+from fragmentcolor import Shader
+
+LIBRARY = ["noise/worley2", "noise/fbm2", "gradient/palette_iq"]
+SOURCE = Path(__file__).with_name("shader.wgsl").read_text()
+
+
+# Call setup() once, then frame() on every redraw of your canvas.
+def setup():
+    shader = Shader([*LIBRARY, SOURCE])
+    shader.set("u.scale", 12.0)
+    shader.set("u.warp", 1.4)
+    shader.set("u.edge", 0.08)
+    shader.set("u.edge_color", [0.05, 0.03, 0.08])
+    return shader
+
+
+def frame(shader, renderer, target, time, size, pointer):
+    shader.set("u.time", time)
+    shader.set("u.resolution", size)
+    shader.set("u.mouse", pointer)
+    renderer.render(shader, target)
+```
+
+</TabItem>
+<TabItem label="Swift">
+
+```swift title="Main.swift"
+import Foundation
+import FragmentColor
+
+let library = ["noise/worley2", "noise/fbm2", "gradient/palette_iq"]
+
+// Call setup once, then frame from your MTKView or CADisplayLink callback.
+func setup() throws -> Shader {
+    let url = Bundle.main.url(forResource: "shader", withExtension: "wgsl")!
+    let source = try String(contentsOf: url, encoding: .utf8)
+    let shader = try Shader(library + [source])
+    try shader.set("u.scale", 12.0)
+    try shader.set("u.warp", 1.4)
+    try shader.set("u.edge", 0.08)
+    try shader.set("u.edge_color", [0.05, 0.03, 0.08])
+    return shader
+}
+
+func frame(
+    shader: Shader,
+    renderer: Renderer,
+    target: WindowTarget,
+    time: Float,
+    size: [Float],
+    pointer: [Float]
+) throws {
+    try shader.set("u.time", time)
+    try shader.set("u.resolution", size)
+    try shader.set("u.mouse", pointer)
+    try renderer.render(shader, target)
+}
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin title="Main.kt"
+import android.content.res.AssetManager
+import org.fragmentcolor.*
+
+private val LIBRARY = listOf("noise/worley2", "noise/fbm2", "gradient/palette_iq")
+
+// Call setup once, then frame from your Choreographer or render thread callback.
+fun setup(assets: AssetManager): Shader {
+    val source = assets.open("shader.wgsl").bufferedReader().use { it.readText() }
+    val shader = Shader(LIBRARY + source)
+    shader.set("u.scale", 12.0f)
+    shader.set("u.warp", 1.4f)
+    shader.set("u.edge", 0.08f)
+    shader.set("u.edge_color", listOf(0.05f, 0.03f, 0.08f))
+    return shader
+}
+
+fun frame(
+    shader: Shader,
+    renderer: Renderer,
+    target: WindowTarget,
+    time: Float,
+    size: List<Float>,
+    pointer: List<Float>,
+) {
+    shader.set("u.time", time)
+    shader.set("u.resolution", size)
+    shader.set("u.mouse", pointer)
+    renderer.render(shader, target)
+}
+```
+
+</TabItem>
+</Tabs>
+
+Each file has two functions. `setup` builds the shader from three library functions plus `shader.wgsl`, then sets four uniforms by name. `frame` runs on every redraw. It hands the shader the time, the canvas size, and the pointer, then renders.
+
+The differences between tabs are the ones each language asks for. Rust and Python name methods in snake_case, and the other three use camelCase. Rust returns a `Result` that `?` passes up, Swift marks every call that can throw with `try`, and Kotlin writes its float literals as `12.0f`. The uniform keys, the library names, and the order of the calls stay put.
+
+One difference has a reason worth spelling out. JavaScript builds the shader with `Shader.fetch`, which loads the library functions from fragmentcolor.org over the network. Native builds carry the library inside the binary, and `Shader::new` resolves the same names offline.
+
+<div class="not-content" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: 1rem; margin-top: 1.5rem;">
+  <figure style="margin: 0;">
+    <img src="/shaders/noise/worley2.png" width="256" height="256" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="Worley noise in grayscale: dark points at the center of each cell brighten toward the cell borders." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><code>noise/worley2</code></figcaption>
+  </figure>
+  <figure style="margin: 0;">
+    <img src="/shaders/noise/fbm2.png" width="256" height="256" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="Fractal Brownian motion in grayscale, a soft cloudy texture." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><code>noise/fbm2</code></figcaption>
+  </figure>
+  <figure style="margin: 0;">
+    <img src="/shaders/gradient/palette_iq.png" width="256" height="256" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="A cosine palette swept around a center point, cycling through red, purple, blue, green, and orange." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><code>gradient/palette_iq</code></figcaption>
+  </figure>
+</div>
+
+The three functions Cells calls, as the [shader library](/shaders/) previews them. Cells adds the pointer, the warp, and the cell edges in its own WGSL.
+
+## Every example is a test
+
+Every public method in FragmentColor has an entry in the [API reference](/api/core/shader/), and every entry has an example. The example starts as Rust. The build translates it into JavaScript, Python, Swift, and Kotlin, and the page shows all five in tabs.
+
+Through 0.12.5, a Swift or Kotlin translation passed if it compiled. In 0.12.6, each one runs as a test of its own: an XCTest on an iOS simulator and a JUnit test on an Android emulator, each named after the documentation page its example came from. Rust compiles every example as a doctest and runs all but a handful, Python runs them against the built wheel, and JavaScript runs them in a browser. That makes over 170 examples per language.
+
+Each run has to finish cleanly, which also rules out quiet GPU errors. A GPU program can fail without throwing, when wgpu reports a validation error that no code catches. The iOS, Android, and Python runs fail on any such error, and the browser run fails on any console error.
+
+A GPU library needs that bar, since a compiler vouches for little of what happens on the GPU. Take the example for [`Pass.require`](/api/core/pass#require), which says that one pass renders after another and builds a render graph out of those links:
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use fragmentcolor::{Pass, Renderer};
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([100,100]).await?;
+let color = Pass::new("color");
+let blurx = Pass::new("blur_x");
+blurx.require(&color)?; // color before blur_x
+let blury = Pass::new("blur_y");
+blury.require(&blurx)?; // blur_x before blur_y
+let compose = Pass::new("compose");
+compose.require(&color)?;
+compose.require(&blury)?; // fan-in; color and blur_y before compose
+renderer.render(&compose, &target)?; // compose renders last
+```
+
+</TabItem>
+<TabItem label="JavaScript">
+
+```js
+import { Pass, Renderer } from "fragmentcolor";
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget([100,100]);
+const color = new Pass("color");
+const blurx = new Pass("blur_x");
+blurx.require(color); // color before blur_x
+const blury = new Pass("blur_y");
+blury.require(blurx); // blur_x before blur_y
+const compose = new Pass("compose");
+compose.require(color);
+compose.require(blury); // fan-in; color and blur_y before compose
+renderer.render(compose, target); // compose renders last
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+from fragmentcolor import Pass, Renderer
+renderer = Renderer()
+target = renderer.create_texture_target([100,100])
+color = Pass("color")
+blurx = Pass("blur_x")
+blurx.require(color) # color before blur_x
+blury = Pass("blur_y")
+blury.require(blurx) # blur_x before blur_y
+compose = Pass("compose")
+compose.require(color)
+compose.require(blury) # fan-in; color and blur_y before compose
+renderer.render(compose, target) # compose renders last
+```
+
+</TabItem>
+<TabItem label="Swift">
+
+```swift
+import FragmentColor
+let renderer = Renderer()
+let target = try await renderer.createTextureTarget([100,100])
+let color = Pass("color")
+let blurx = Pass("blur_x")
+try blurx.require(color) // color before blur_x
+let blury = Pass("blur_y")
+try blury.require(blurx) // blur_x before blur_y
+let compose = Pass("compose")
+try compose.require(color)
+try compose.require(blury) // fan-in; color and blur_y before compose
+try renderer.render(compose, target) // compose renders last
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import org.fragmentcolor.*
+val renderer = Renderer()
+val target = renderer.createTextureTarget(listOf(100u, 100u))
+val color = Pass("color")
+val blurx = Pass("blur_x")
+blurx.require(color) // color before blur_x
+val blury = Pass("blur_y")
+blury.require(blurx) // blur_x before blur_y
+val compose = Pass("compose")
+compose.require(color)
+compose.require(blury) // fan-in; color and blur_y before compose
+renderer.render(compose, target) // compose renders last
+```
+
+</TabItem>
+</Tabs>
+
+This code compiled in Swift and Kotlin. When it ran, both failed with `DuplicateDependency: color`. In 0.12.6, `require` links each dependency once on both platforms, and on the web when you pass it a list.
+
+Raw pixels hit a similar bug on both mobile platforms. Swift's `createTexture(pixels, size)` decoded the pixels as an encoded image, and the Kotlin examples that build a texture from pixels compiled, then handed them to the image decoder and failed. In 0.12.6, Swift's overload builds the texture from the pixels, and Kotlin gains the same call as `createTexture(pixels, listOf(w, h))`.
+
+The examples on the API pages come from the same translated files these tests run. The Swift you copy from a page is the Swift that runs on a simulator before each release ships.
+
+<figure>
+  <img src="/playground/two-platforms.webp" width="1600" height="900" loading="lazy" alt="The Cells shader in a macOS window titled Cells, with an iPhone beside it running the same shader." />
+  <figcaption>One shader on two Apple platforms: Cells in a macOS window and on an iPhone.</figcaption>
+</figure>
+
+## What "looks the same" means
+
+"The same API in five languages" is easy to say and hard to keep. Bindings drift a little with every release unless someone writes down where they may differ. FragmentColor writes it down as a short list of accepted differences. Anything outside the list counts as a bug, and the release that finds it fixes it in all five bindings.
+
+Names come first. Methods follow each language's case, and constructors follow its idiom. Named constructors such as `Pass::from_shader` and `Shader::fetch` are static methods everywhere.
+
+| Language | Method | Constructor |
+| --- | --- | --- |
+| Rust | `create_texture` | `Shader::new(source)` |
+| JavaScript | `createTexture` | `new Shader(source)` |
+| Python | `create_texture` | `Shader(source)` |
+| Swift | `createTexture` | `Shader(source)` |
+| Kotlin | `createTexture` | `Shader(source)` |
+
+Calls that wait or fail take each language's own form, and so does a value that may be missing.
+
+| Language | Async call | Error | Missing value |
+| --- | --- | --- | --- |
+| Rust | `async fn` | `Result` | `None` |
+| JavaScript | Promise | thrown `Error` | `undefined` |
+| Python | blocks | `FragmentColorError` | `None` |
+| Swift | `async` | `FragmentColorError` | `nil` |
+| Kotlin | `suspend` | `FragmentColorException` | `null` |
+
+Numbers and bytes arrive in each language's native types.
+
+| Language | Unsigned integer | Bytes |
+| --- | --- | --- |
+| Rust | `u32`, `u64` | `&[u8]` |
+| JavaScript | number, throws if negative | `Uint8Array`, `ArrayBuffer` |
+| Python | `int`, raises if negative | `bytes`, `bytearray`, `memoryview`, uint8 ndarray |
+| Swift | `UInt32`, `UInt64` | `Data`, `[UInt8]` |
+| Kotlin | `UInt`, `ULong` | `ByteArray` |
+
+Type names match everywhere. `WindowTarget`, `TextureTarget`, `TextureRegion`, and `PassInput` are the same classes in Rust, JavaScript, Python, Swift, and Kotlin. The older names that only one binding used, such as `CanvasTarget`, `RenderCanvasTarget`, and `TextureRegionMobile`, remain as aliases.
+
+Return values match as well. A Rust method that returns its receiver returns it in every binding, which lets `scene.add(model).add(camera)` chain. A size comes back as a `Size`, and in Python `texture.size.width` returns the width. Value types such as `Size`, `ScreenRegion`, and `TextureFormat` compare by value in Python, Swift, and Kotlin.
+
+Four differences take the most getting used to: async calls, errors, unsigned integers, and tuple arguments. Each gets an example below.
+
+### Async, and the bytes that come back
+
+[`get_image`](/api/targets/texturetarget#get_image) reads a target back into memory:
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use fragmentcolor::{Renderer, Target, Shader};
+
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([16, 16]).await?;
+renderer.render(&Shader::default(), &target)?;
+
+let image = target.get_image().await;
+```
+
+</TabItem>
+<TabItem label="JavaScript">
+
+```js
+import { Renderer, Shader } from "fragmentcolor";
+
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget([16, 16]);
+renderer.render(Shader.default(), target);
+
+const image = await target.getImage();
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+from fragmentcolor import Renderer, Shader
+
+renderer = Renderer()
+target = renderer.create_texture_target([16, 16])
+renderer.render(Shader.default(), target)
+
+image = target.get_image()
+```
+
+</TabItem>
+<TabItem label="Swift">
+
+```swift
+import FragmentColor
+
+let renderer = Renderer()
+let target = try await renderer.createTextureTarget([16, 16])
+try renderer.render(Shader.default(), target)
+
+let image = await target.getImage()
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val target = renderer.createTextureTarget(listOf(16u, 16u))
+renderer.render(Shader.default(), target)
+
+val image = target.getImage()
+```
+
+</TabItem>
+</Tabs>
+
+The read is async in Rust and returns a Promise in JavaScript. Swift awaits it with `await` alone, because the method doesn't throw. Kotlin declares it `suspend`, and you call it from a coroutine. Python blocks until the bytes arrive. Every binding has the method, under the same name in its own case.
+
+The bytes agree too: RGBA8, rows from top to bottom, without padding. Python returns them as a NumPy array shaped `(height, width, 4)` and indexed `image[y, x]`, the layout NumPy, OpenCV, and pygfx read. `create_texture` reads that layout as well, and `renderer.create_texture(target.get_image())` uploads the same image. Python's `TextureTarget.get_image` returned the transpose before 0.12.6. Code that indexed it `[x, y]` now indexes `[y, x]`.
+
+### Errors that look like errors
+
+A Rust `Result` turns into the error each language expects. JavaScript throws `Error` objects, and `e.message` carries the text, where most methods used to throw bare strings. Python raises `FragmentColorError` or one of its subclasses, and `TypeError` when an argument has the wrong type. Swift throws `FragmentColorError`. Kotlin throws `FragmentColorException`, argument errors included, where those used to surface as `IllegalArgumentException`.
+
+The rule covers bad input too, which several bindings used to absorb without a word. JavaScript clamped or zeroed sizes it could not use, and an index of `-1` wrapped around to `4294967295`. The old `Int` overloads in Swift and Kotlin trapped on negative numbers or wrapped them. On the web, `new Shader(source)` with broken WGSL returned the red fallback shader that `Shader.default()` still gives.
+
+In 0.12.6, bad input fails where you can see it. JavaScript and Python reject a size, region, or byte value they can't use, unsigned types keep negatives out of Swift and Kotlin, `new Shader` throws, and `Shader.fetch` rejects. Three Swift calls, `TextureRegion.from`, `Vertex.set`, and `Instance.set`, trap with a message on an array they can't read, where they used to misread it.
+
+Uniforms follow one set of rules in all five languages. [`Shader.set`](/api/core/shader#set) reads a value against the type the shader declares. An integer uniform takes whole numbers in range, a vector takes exactly as many numbers as it has components, and a `mat2x2`, `mat3x3`, or `mat4x4` takes 4, 9, or 16. Give a `vec2<f32>` three numbers and the error names the problem: `resolution: expected vec2<f32>, got 3 number(s)`.
+
+A live editor depends on errors like these. When an edit breaks the shader, the constructor throws, the playground prints the message under the editor, and the last shader that built keeps drawing.
+
+### Unsigned integers in Swift and Kotlin
+
+[`set_compute_dispatch`](/api/core/pass#set_compute_dispatch) sets the grid of workgroups a compute pass runs:
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use fragmentcolor::{Pass, Shader};
+let cs = Shader::new("@compute @workgroup_size(8,8,1) fn cs_main() {}").unwrap();
+let pass = Pass::from_shader("compute", &cs);
+pass.set_compute_dispatch(64, 64, 1);
+```
+
+</TabItem>
+<TabItem label="JavaScript">
+
+```js
+import { Pass, Shader } from "fragmentcolor";
+const cs = new Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}");
+const pass = Pass.fromShader("compute", cs);
+pass.setComputeDispatch(64, 64, 1);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+from fragmentcolor import Pass, Shader
+cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
+rpass = Pass.from_shader("compute", cs)
+rpass.set_compute_dispatch(64, 64, 1)
+```
+
+</TabItem>
+<TabItem label="Swift">
+
+```swift
+import FragmentColor
+let cs = try! Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
+let pass = Pass.fromShader("compute", cs)
+pass.setComputeDispatch(64, 64, 1)
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import org.fragmentcolor.*
+val cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
+val pass = Pass.fromShader("compute", cs)
+pass.setComputeDispatch(64u, 64u, 1u)
+```
+
+</TabItem>
+</Tabs>
+
+Where Rust takes a `u32` or `u64`, such as an index, a count, a size, or a region, Swift takes `UInt32` or `UInt64` and Kotlin takes `UInt` or `ULong`. A negative value never reaches the library, because the compiler stops it first. Swift literals fit as written, as in `pass.setComputeDispatch(64, 64, 1)`. Kotlin marks them with a `u`: `64u`, or `listOf(64u, 64u)` for a size.
+
+Of all the changes in 0.12.6, this one is the most likely to touch existing Swift and Kotlin code. An `Int` variable no longer compiles where an unsigned value belongs. Check its sign, then convert it with `UInt32(n)` in Swift or `n.toUInt()` in Kotlin. JavaScript and Python take plain numbers, and a negative one throws in JavaScript and raises in Python. Byte lists are the exception: Swift also takes `[Int]` and Kotlin `List<Int>`, with each value between 0 and 255.
+
+### Tuples become arguments
+
+Some Rust methods take a single tuple, because they accept anything that converts into one input type. The bindings spread that tuple into ordinary arguments, and trailing optional parts can be left out. [`create_storage_texture`](/api/core/renderer#create_storage_texture) takes a size, a format, and optional starting bytes:
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use fragmentcolor::{Renderer, TextureFormat};
+
+let r = Renderer::new();
+
+// Empty storage texture.
+let tex = r.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
+
+// Pre-seeded with bytes.
+let pixels = vec![0; 64 * 64 * 4];
+let tex2 = r
+    .create_storage_texture(([64, 64], TextureFormat::Rgba, pixels))
+    .await?;
+```
+
+</TabItem>
+<TabItem label="JavaScript">
+
+```js
+import { Renderer, TextureFormat } from "fragmentcolor";
+
+const r = new Renderer();
+
+// Empty storage texture.
+const tex = await r.createStorageTexture([64, 64], TextureFormat.Rgba);
+
+// Pre-seeded with bytes.
+const pixels = Array(64 * 64 * 4).fill(0);
+const tex2 = await r.createStorageTexture([64, 64], TextureFormat.Rgba, pixels);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+from fragmentcolor import Renderer, TextureFormat
+
+r = Renderer()
+
+# Empty storage texture.
+tex = r.create_storage_texture([64, 64], TextureFormat.Rgba)
+
+# Pre-seeded with bytes.
+pixels = [0] * (64 * 64 * 4)
+tex2 = r.create_storage_texture([64, 64], TextureFormat.Rgba, data=pixels)
+```
+
+</TabItem>
+<TabItem label="Swift">
+
+```swift
+import FragmentColor
+
+let r = Renderer()
+
+// Empty storage texture.
+let tex = try await r.createStorageTexture([64, 64], TextureFormat.rgba)
+
+// Pre-seeded with bytes.
+let pixels = Array(repeating: 0, count: 64 * 64 * 4)
+let tex2 = try await r.createStorageTexture([64, 64], TextureFormat.rgba, pixels)
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import org.fragmentcolor.*
+
+val r = Renderer()
+
+// Empty storage texture.
+val tex = r.createStorageTexture(listOf(64u, 64u), TextureFormat.RGBA)
+
+// Pre-seeded with bytes.
+val pixels = ByteArray(64 * 64 * 4)
+val tex2 = r.createStorageTexture(listOf(64u, 64u), TextureFormat.RGBA, pixels)
+```
+
+</TabItem>
+</Tabs>
+
+Each language keeps its own forms. The size is a `[w, h]` list everywhere, written `listOf(64u, 64u)` in Kotlin. The format is `TextureFormat::Rgba` in Rust, `TextureFormat.Rgba` in JavaScript and Python, `TextureFormat.rgba` in Swift, and `TextureFormat.RGBA` in Kotlin. The bytes come in each language's own list type, and Swift's `[Int]` is the byte-list exception from the section above. Python names the optional part with `data=`.
+
+## The playground on the home page
+
+The playground fills the home page, and `/demos` redirects there. Every demo is WGSL plus a `main.js`, and both are yours to edit. Most keep their WGSL in one `shader.wgsl`. Particles splits its compute and render shaders into two files, and Life keeps one file for each of its four passes. The playground rebuilds the program a quarter second after you stop typing.
+
+`main.js` exports two functions. `setup(renderer, target)` runs once per build and returns whatever the program keeps between frames. `frame(state, renderer, target, time, size, pointer)` runs on every animation frame. The imports use plain Vite syntax, as in `import SOURCE from "./shader.wgsl?raw"`, and the file runs unchanged in a Vite project.
+
+### Controls from the shader
+
+The sliders under the canvas come from the shader itself. The playground lists its keys with [`listKeys`](/api/core/shader#list_keys), reads each value with [`get`](/api/core/shader#get), and skips the keys that `frame` sets on every frame. A `// min..max` comment on a struct field sets the slider's range. This is the uniform block from Cells:
+
+```wgsl
+struct Params {
+  resolution: vec2<f32>,
+  mouse: vec2<f32>,
+  time: f32,
+  scale: f32, // 2..24
+  warp: f32, // 0..3
+  edge: f32, // 0.01..0.4
+  edge_color: vec3<f32>,
+}
+
+@group(0) @binding(0) var<uniform> u: Params;
+```
+
+`scale`, `warp`, and `edge` become sliders with the ranges in their comments. `edge_color` is a `vec3` with `color` in its name, and it gets a color picker. `resolution`, `mouse`, and `time` change on every frame and get no control.
+
+The code takes input too. Click a number and a slider appears beside it. A color literal such as `vec3<f32>(0.55, 0.5, 0.48)` gets a swatch that opens a color picker. On a `shader.set` value in `main.js`, the inline slider and the generated control move together without a rebuild, and moving the generated control rewrites the value in the code.
+
+### The library bar
+
+The **Library** bar edits the `const LIBRARY = [...]` line in `main.js`. Each entry names a function from the [shader library](/shaders/), and `Shader.fetch` loads those functions ahead of your WGSL. Your shader can call `worley2` or `heart` without defining it.
+
+<figure>
+  <img src="/blog/compose.webp" width="928" height="572" loading="lazy" alt="The Shapes demo in the playground. sdf2d/equilateral_triangle is added from the library picker, the code calls it where it called the star, and sdf2d/star is removed from the Library bar." />
+  <figcaption>In the Shapes demo, `sdf2d/equilateral_triangle` joins the Library bar and takes the star's place in the code, and `sdf2d/star` leaves.</figcaption>
+</figure>
+
+The language tabs follow every change. They pick up the library, the shader files, and the current slider values, and they rewrite themselves when you edit the WGSL or `main.js`.
+
+### Compute, and six artworks
+
+Two demos run compute shaders. In Particles, one million particles live in a storage buffer. A compute pass moves them and an instanced render pass draws them, and both shaders share the buffer by its name.
+
+Life runs four passes over a million particles of four species, and each species follows or flees the density of the others. Three compute passes turn the particles counted per grid cell into density slopes, clear the grid, and move each particle along the slopes while `atomicAdd` counts it into its new cell. A fourth pass draws the result. Both demos need WebGPU, and a browser that draws with WebGL2 shows a recording while the code stays editable.
+
+<div class="not-content" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; margin-top: 1.5rem;">
+  <figure style="margin: 0;">
+    <img src="/playground/particles.webp" width="640" height="356" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="A million blue and pink particles streaming in loops across a dark canvas." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><strong>Particles.</strong> One million particles, moved by a compute pass and drawn by an instanced render pass.</figcaption>
+  </figure>
+  <figure style="margin: 0;">
+    <img src="/playground/life.webp" width="640" height="356" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="Particle life: red, cyan, lime, and violet particles gather into small rings and trailing arcs on a black background." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><strong>Life.</strong> Four species gather into colonies of small rings and trailing arcs.</figcaption>
+  </figure>
+</div>
+
+The Rust `particles` example runs Life's simulation in a desktop window: `cargo run -p fce --example particles`.
+
+The last six demos are artworks, longer shaders built from the library. The pointer guides them as it guides the other demos, and their `press`, `pulse`, `drag`, and `zoom` uniforms are sliders.
+
+<div class="not-content" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 1rem; margin-top: 1.5rem;">
+  <figure style="margin: 0;">
+    <img src="/artworks/nebula.webp" width="1280" height="945" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="Nebula: clouds of violet, blue, and amber gas twisting over a black sky." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><strong>Nebula.</strong> Fractal noise folded over itself. The pointer is a gravity well.</figcaption>
+  </figure>
+  <figure style="margin: 0;">
+    <img src="/artworks/swirl.webp" width="1280" height="945" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="Swirl: bright rings of red, yellow, violet, and cyan winding into a spiral." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><strong>Swirl.</strong> A cosine palette wound into rings and radar arms.</figcaption>
+  </figure>
+  <figure style="margin: 0;">
+    <img src="/artworks/rosewindow.webp" width="1280" height="945" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="Rose Window: concentric rings of amber, blue, and red glass around a petaled center." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><strong>Rose Window.</strong> Stained glass whose symmetry shifts as the pointer moves.</figcaption>
+  </figure>
+  <figure style="margin: 0;">
+    <img src="/artworks/plankton.webp" width="1280" height="945" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="Plankton: glowing teal cell walls over a dark blue background." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><strong>Plankton.</strong> Bioluminescent cells that drift aside from the pointer.</figcaption>
+  </figure>
+  <figure style="margin: 0;">
+    <img src="/artworks/monolith.webp" width="1280" height="945" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="Monolith: a dark octahedron ringed by a glossy torus, with small spheres floating beside it." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><strong>Monolith.</strong> An obsidian body carved from signed distance fields.</figcaption>
+  </figure>
+  <figure style="margin: 0;">
+    <img src="/artworks/signal.webp" width="1280" height="945" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="Signal: amber contour lines snaking across a curved, dark screen like an old broadcast." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><strong>Signal.</strong> A late broadcast curving across old glass.</figcaption>
+  </figure>
+</div>
+
+## Fixes you can see
+
+Most of 0.12.6 is repair work, and the [changelog](/blog/announcing-v0-12-6/) lists all of it. The two compute demos depend on several of those fixes.
+
+Life needs 0.12.6 to run at all. Version 0.12.5 rejected the `atomic<u32>` storage buffers it counts with, and every pass in one `render` call drew with the last pass's uniform values. In 0.12.6, storage buffers hold `atomic<u32>` and `atomic<i32>`, and each pass keeps its own uniforms.
+
+The memory fixes matter most at a million particles. A simulation that size leaked about 30 MB each time it rebuilt, and at eight million particles every frame copied about 256 MB of storage buffers to the GPU. FragmentColor now frees passes, shaders, and their storage buffers when the last handle drops, and a storage buffer uploads only when it is created, resized, or changed by `set`. A `render` made only of compute passes acquires no surface frame, and a simulation keeps running while its window is minimized.
+
+Two library shapes draw correctly now. [`sdf2d/heart`](/shaders/sdf2d/#heart) returns Inigo Quilez's exact signed distance, and outlines and glows trace the heart. [`pattern/hexgrid`](/shaders/pattern/#hexgrid) draws hexagons where it drew tall, overlapping cells.
+
+<div class="not-content" style="display: grid; grid-template-columns: repeat(2, minmax(0, 12rem)); gap: 1rem; margin-top: 1.5rem;">
+  <figure style="margin: 0;">
+    <img src="/shaders/sdf2d/heart.png" width="256" height="256" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="A pink heart filled from the sdf2d/heart distance field on a dark navy background." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><code>sdf2d/heart</code></figcaption>
+  </figure>
+  <figure style="margin: 0;">
+    <img src="/shaders/pattern/hexgrid.png" width="256" height="256" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="A grid of navy hexagons in two shades, outlined in light blue." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><code>pattern/hexgrid</code></figcaption>
+  </figure>
+</div>
+
+The changelog covers the rest, from viewports and samplers to Android surfaces and docs.rs.
+
+## Upgrading
+
+The sections above cover the changes most likely to touch existing code: JavaScript `Error` objects, `new Shader` throwing on the web, unsigned integers in Swift and Kotlin, and Python's `[y, x]` image layout. Two more are worth a look:
+
+- A `ScreenRegion` built from `[w, h]` covers exactly that size. It used to add a pixel on each side.
+- Rust drops items that were public by accident, the glam conversions among them. Pass `v.to_array()` where code passed a glam vector.
+
+<Aside type="caution" title="Swift Package Manager">
+Each release tag pins its own xcframework. A dependency on `from: "0.12.5"` received the 0.12.4 binary, and the Swift wrapper the package compiled predated 0.12.0, without `Scene`, `Model`, and the other [0.12 types](/blog/announcing-v0-12-0/). Move Swift dependencies to 0.12.6.
+</Aside>
+
+The [complete list](/blog/announcing-v0-12-6/#breaking-and-behavior-changes) covers every change and what to do about it.
+
+| Language | Install |
+| --- | --- |
+| Rust | `cargo add fragmentcolor` |
+| JavaScript | `npm install fragmentcolor` |
+| Python | `pip install fragmentcolor` |
+| Swift | `.package(url: "https://github.com/vista-art/fragmentcolor", from: "0.12.6")` |
+| Kotlin | `implementation(files("libs/fragmentcolor-0.12.6.aar"))`, with the AAR from the [GitHub release](https://github.com/vista-art/fragmentcolor/releases/tag/v0.12.6) |
+
+Then open [fragmentcolor.org](/), change a number, and pick the tab for your language.
+
+Rafael
