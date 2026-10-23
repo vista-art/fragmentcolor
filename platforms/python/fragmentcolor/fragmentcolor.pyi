@@ -1274,11 +1274,13 @@ class Pass:
         """
         Sets the viewport region for this [Pass](https://fragmentcolor.org/api/core/pass).
 
-        The viewport restricts drawing to a rectangular area of the [Target](https://fragmentcolor.org/api/targets/target).
+        The pass's shaders draw only inside this rectangle of the [Target](https://fragmentcolor.org/api/targets/target), and each shader's output scales to fill it.
 
-        The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly.
+        The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly. Pixels count from the top-left corner of the target.
 
-        The renderer doesn't apply the viewport yet, so the pass still draws to the whole target.
+        A region that reaches past the target shrinks to the part inside it, and a region wholly outside the target draws nothing. When the pass has its own target from `set_target`, the region is measured against that target.
+
+        The clear color still fills the whole target. To split one target between passes, call `load_previous` on each pass after the first. In the fragment stage, `@builtin(position)` counts pixels from the target's corner, not the region's.
 
         Example:
 
