@@ -237,7 +237,12 @@ impl Pass {
 impl Renderable for Pass {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
         PassObject::ensure_flat_current(&self.object);
-        self.object.flat.read().clone()
+        let required = self.object.flat.read().clone();
+        required
+            .iter()
+            .cloned()
+            .chain([self.object.clone()])
+            .collect()
     }
     fn roots(&self) -> Arc<[Arc<PassObject>]> {
         vec![self.object.clone()].into()
@@ -448,6 +453,8 @@ pub struct PassObject {
     // DAG metadata and cached traversal
     pub(crate) dependencies: RwLock<Vec<Arc<PassObject>>>,
     pub(crate) dependency_names: RwLock<std::collections::HashSet<Arc<str>>>,
+    // Every pass this one requires, deps first. Never this pass:
+    // an Arc to itself would keep the pass and its shaders alive forever.
     pub(crate) flat: RwLock<Arc<[Arc<PassObject>]>>,
     pub(crate) built_version: AtomicU64,
 }
@@ -624,7 +631,7 @@ impl PassObject {
         false
     }
 
-    // Ensure cached deps-first flat slice is up-to-date with global graph version
+    // Ensure cached deps-first slice of required passes is up-to-date with global graph version
     pub(crate) fn ensure_flat_current(self_arc: &Arc<PassObject>) {
         let global = GRAPH_VERSION.load(Ordering::Relaxed);
         let built = self_arc.built_version.load(Ordering::Relaxed);
@@ -649,7 +656,10 @@ impl PassObject {
             }
             out.push(Arc::clone(n_arc));
         }
-        dfs(self_arc, &mut seen, &mut out);
+        let deps = self_arc.dependencies.read().clone();
+        for dep in deps.iter() {
+            dfs(dep, &mut seen, &mut out);
+        }
         let slice: Arc<[Arc<PassObject>]> = out.into_boxed_slice().into();
         *self_arc.flat.write() = slice;
         self_arc.built_version.store(global, Ordering::Relaxed);
@@ -889,5 +899,85 @@ mod tests {
         let e3 = n.require(&m).unwrap_err();
         let s3 = format!("{}", e3);
         assert!(s3.contains("cycle"), "expected cycle error: {s3}");
+    }
+
+    // Story: a pass runs after every pass it requires, and each pass runs once.
+    #[test]
+    fn require_chain_runs_dependencies_first() {
+        let color = Pass::new("color");
+        let blur_x = Pass::new("blur_x");
+        blur_x.require(&color).expect("blur_x requires color");
+        let blur_y = Pass::new("blur_y");
+        blur_y.require(&blur_x).expect("blur_y requires blur_x");
+        let compose = Pass::new("compose");
+        compose.require(&color).expect("compose requires color");
+        compose.require(&blur_y).expect("compose requires blur_y");
+
+        let names: Vec<String> = compose
+            .passes()
+            .iter()
+            .map(|pass| pass.name.to_string())
+            .collect();
+
+        assert_eq!(names, ["color", "blur_x", "blur_y", "compose"]);
+    }
+
+    // Story: dropping a rendered pass chain frees every pass and the shaders only they held.
+    #[test]
+    fn dropped_pass_frees_its_shaders() {
+        pollster::block_on(async move {
+            // Arrange: a draw pass that requires a compute pass
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([4u32, 4u32])
+                .await
+                .expect("texture target");
+            let source = r#"
+                @group(0) @binding(0) var<storage, read_write> particles: array<f32, 64>;
+                @compute @workgroup_size(64)
+                fn cs(@builtin(global_invocation_id) id: vec3<u32>) {
+                    particles[id.x] += 1.0;
+                }
+            "#;
+            let simulation = Shader::new(source).expect("compute shader");
+            let drawing = Shader::default();
+            let simulate = Pass::from_shader("simulate", &simulation);
+            let draw = Pass::from_shader("draw", &drawing);
+            draw.require(&simulate).expect("draw requires simulate");
+            let passes = [
+                Arc::downgrade(&simulate.object),
+                Arc::downgrade(&draw.object),
+            ];
+            let shaders = [
+                Arc::downgrade(&simulation.object),
+                Arc::downgrade(&drawing.object),
+            ];
+
+            // Act
+            renderer.render(&draw, &target).expect("render");
+            let bytes = renderer
+                .read_storage(&simulation, "particles")
+                .await
+                .expect("read_storage");
+            drop((simulation, drawing, simulate, draw));
+
+            // Assert: the required pass ran, then nothing outlived its handle
+            assert!(
+                bytes
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .all(|chunk| f32::from_le_bytes(*chunk) == 1.0),
+                "the required pass did not run"
+            );
+            assert!(
+                passes.iter().all(|pass| pass.upgrade().is_none()),
+                "a pass leaked"
+            );
+            assert!(
+                shaders.iter().all(|shader| shader.upgrade().is_none()),
+                "a shader leaked"
+            );
+        });
     }
 }

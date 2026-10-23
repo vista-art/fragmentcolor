@@ -148,7 +148,6 @@ impl Renderable for Mesh {
                 _ = shader.add_mesh(self.object.clone());
             }
         }
-        crate::pass::PassObject::ensure_flat_current(&self.pass);
         vec![self.pass.clone()].into()
     }
 }

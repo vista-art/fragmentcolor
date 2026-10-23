@@ -914,8 +914,6 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
 
 impl Renderable for Shader {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        // Ensure cached order for this pass is up-to-date
-        crate::pass::PassObject::ensure_flat_current(&self.pass);
         vec![self.pass.clone()].into()
     }
     fn roots(&self) -> Arc<[Arc<PassObject>]> {
@@ -2051,5 +2049,26 @@ struct Arr { arr: array<vec4<f32>, 2> };
         assert!(shader.object.pending.is_empty());
         assert_eq!(shader.get::<u32>("count").expect("count"), 5);
         assert_eq!(shader.get::<[i32; 2]>("cell").expect("cell"), [0, 0]);
+    }
+
+    // Story: a shader rendered on its own is freed with its pass when dropped.
+    #[test]
+    fn dropped_shader_frees_after_render() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([4u32, 4u32])
+                .await
+                .expect("texture target");
+            let shader = Shader::default();
+            let object = Arc::downgrade(&shader.object);
+            let pass = Arc::downgrade(&shader.pass);
+
+            renderer.render(&shader, &target).expect("render");
+            drop(shader);
+
+            assert!(object.upgrade().is_none(), "the shader leaked");
+            assert!(pass.upgrade().is_none(), "the shader's pass leaked");
+        });
     }
 }
