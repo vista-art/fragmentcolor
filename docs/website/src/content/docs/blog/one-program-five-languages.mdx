@@ -448,7 +448,7 @@ A Rust `Result` turns into the error each language expects. JavaScript throws `E
 
 The rule covers bad input too, which several bindings used to absorb without a word. JavaScript clamped or zeroed sizes it could not use, and an index of `-1` wrapped around to `4294967295`. The old `Int` overloads in Swift and Kotlin trapped on negative numbers or wrapped them. On the web, `new Shader(source)` with broken WGSL returned the red fallback shader that `Shader.default()` still gives.
 
-In 0.12.6, bad input fails where you can see it. JavaScript and Python reject a size, region, or byte value they can't use, unsigned types keep negatives out of Swift and Kotlin, `new Shader` throws, and `Shader.fetch` rejects. Three Swift calls, `TextureRegion.from`, `Vertex.set`, and `Instance.set`, trap with a message on an array they can't read, where they used to misread it.
+In 0.12.6, bad input fails where you can see it. JavaScript and Python reject a size, region, or byte value they can't use, unsigned types keep negatives out of Swift and Kotlin, `new Shader` throws, and `Shader.fetch` rejects.
 
 Uniforms follow one set of rules in all five languages. [`Shader.set`](/api/core/shader#set) reads a value against the type the shader declares. An integer uniform takes whole numbers in range, a vector takes exactly as many numbers as it has components, and a `mat2x2`, `mat3x3`, or `mat4x4` takes 4, 9, or 16. Give a `vec2<f32>` three numbers and the error names the problem: `resolution: expected vec2<f32>, got 3 number(s)`.
 
