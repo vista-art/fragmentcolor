@@ -59,6 +59,8 @@ Shaders can use atomics in storage buffers. Reflection rejected `atomic<u32>` an
 
 A readback that times out or fails no longer breaks the ones after it. `get_image` and `read_storage` wait up to five seconds for the GPU. On a timeout they left their pooled buffer mapped, and every later readback of the same size failed with `BufferStillMapped`. The failed buffer now leaves the pool, and the next readback gets a fresh one.
 
+Passes and shaders are freed when their last handle drops. Every `Pass` cached the order its passes run in, and that list held the pass itself, so no pass was ever freed, and neither were its shaders and their storage buffers. A `Shader` or `Mesh` passed to `render` did the same through the pass it builds for itself. A program that rebuilt a one-million-particle simulation on each edit grew by about 30 MB per rebuild. The cached list now holds only the passes a pass requires, and `render` adds the pass after them.
+
 A render made only of compute passes leaves the target alone. `Renderer::render` acquired a frame even when no pass drew into it and presented that frame untouched, so compute work failed whenever the target had no frame to give, as with a minimized window. Compute-only calls now skip the frame.
 
 Compute passes reuse their pipelines. The compute pipeline cache keyed on the memory addresses of bind group layouts that every render built from scratch, so the key never matched. Each compute pass compiled a new shader module and pipeline on every frame and kept all of them, which grew memory for as long as the app ran. The key now holds the layout entries themselves, and layouts are built only along with a new pipeline.
