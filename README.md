@@ -19,7 +19,7 @@
   <a href="https://fragmentcolor.org/welcome">Get started</a> ·
   <a href="https://fragmentcolor.org/api">API reference</a> ·
   <a href="https://fragmentcolor.org/shaders">Shader library</a> ·
-  <a href="https://fragmentcolor.org/welcome/playground">Playground</a>
+  <a href="https://fragmentcolor.org">Playground</a>
 </p>
 
 FragmentColor is a universal GPU abstraction library where you can simply write some WGSL or GLSL code, **forget about manual pipeline setup**, set uniforms by key-value, and it will render on every device in existence:
@@ -40,7 +40,7 @@ It runs on Vulkan, Metal, DirectX 12, OpenGL, WebGL2, and WebGPU through [wgpu](
   <img src="docs/media/playground.webp" width="928" alt="The FragmentColor playground: a shader edit rebuilds the canvas as it is typed, a generated slider changes a uniform, and the Rust tab shows the same program">
 </p>
 
-In the [playground](https://fragmentcolor.org/welcome/playground), the canvas rebuilds as you type, the sliders come from the shader's own uniforms, and every demo shows the same program in all five languages.
+In the [playground](https://fragmentcolor.org), the canvas rebuilds as you type, the sliders come from the shader's own uniforms, and every demo shows the same program in all five languages.
 
 - **The shader is the source of truth.** Uniforms, textures, samplers, storage buffers, and push constants come from the shader itself. `shader.set("light.color", [1.0, 0.8, 0.6])` writes the field it names.
 - **One API in five languages.** Rust, JavaScript, Python, Swift, and Kotlin share the same calls.
