@@ -1,10 +1,27 @@
 ---
 title: Demos
-description: Live GPU artworks rendered in the browser by FragmentColor.
+description: Live demos rendered in the browser by FragmentColor, from a compute simulation to a set of shader artworks.
 template: splash
 ---
 
+import Playground from "../../components/Playground.astro";
 import ShaderGallery from "../../components/ShaderGallery.astro";
+
+## One million particles
+
+A compute pass moves every particle and an instanced render pass draws them, both from one `renderer.render` call that takes the two passes. The particle state never leaves the GPU. Move the pointer to pull the swarm. Compute shaders need WebGPU, so browsers on WebGL2 see a recording.
+
+<Playground demos={["particles"]} />
+
+## One shader, two platforms
+
+The same WGSL and the same calls, running natively in a Rust window on macOS and in a Swift app on iOS.
+
+![The Cells demo running in a macOS window and on an iPhone](/playground/two-platforms.webp)
+
+The [playground](/welcome/playground) has the Cells shader and the other demos, with the Rust, Python, Swift, and Kotlin code for each.
+
+## Artworks
 
 <ShaderGallery mode="page" />
 
@@ -12,7 +29,7 @@ Every pixel above is drawn by the same `fragmentcolor` package you install from 
 
 Move the pointer, hold the mouse button, drag, and scroll to zoom. The arrow keys switch artworks and `F` toggles fullscreen.
 
-## The artworks
+### Built from the library
 
 **Nebula.** Fractal noise folded over itself until it ignites. The cursor is a gravity well; hold to feed it. Built from `noise/fbm2`, `hash/hash12`, and `color/tonemap_aces`.
 
@@ -26,7 +43,7 @@ Move the pointer, hold the mouse button, drag, and scroll to zoom. The arrow key
 
 **Signal.** A late broadcast curving across old glass. It degrades when touched. Built from `postfx/crt_curvature`, `postfx/scanlines`, `postfx/film_grain`, `noise/fbm2`, `gradient/palette_iq`, and `hash/hash12`.
 
-## How it is wired
+### How the artworks are wired
 
 The whole render graph is a handful of calls. Each artwork gets a `Pass` that draws into a texture target, and the compositor binds that target's texture as a uniform:
 

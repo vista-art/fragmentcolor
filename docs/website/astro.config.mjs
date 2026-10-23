@@ -26,7 +26,6 @@ export default defineConfig({
       },
       favicon: "./favicon.svg",
       components: {
-        Repl: "./src/components/Repl.astro",
         Examples: "./src/components/Examples.mdx",
         SiteTitle: "./src/components/SiteTitle.astro",
         Footer: "./src/components/Footer.astro",
@@ -212,8 +211,8 @@ export default defineConfig({
             // Each item here is one entry in the navigation menu.
             { label: "Start Here", link: "/welcome" },
             { label: "Platform Support", link: "/welcome/platforms" },
+            { label: "Playground", link: "/welcome/playground" },
             { label: "Demos", link: "/demos" },
-            // { label: "Playground", link: "/welcome/playground" }, // @TODO uncomment when JS integration is ready
           ],
         },
         {

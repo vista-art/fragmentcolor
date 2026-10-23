@@ -1,34 +1,21 @@
 ---
 title: Playground
-description: Play with FragmentColor in this REPL environment.
+description: Edit WGSL and JavaScript in the browser and watch FragmentColor rebuild the shader as you type.
+template: splash
 ---
 
-## Try it out (coming soon)
+import Playground from "../../../components/Playground.astro";
 
-If you are reading this, you arrived here in the very early days of development.
+<Playground />
 
-You will soon be able to play with the library in this REPL environment.
+## How it works
 
-You can [follow the project on GitHub](https://github.com/vista-art/fragmentcolor) to stay tuned.
+Every demo is a WGSL shader and a `main.js` that drives it. Both are yours to edit. The playground rebuilds the program a quarter second after you stop typing. When a build fails, the error shows under the editor and the last version that built keeps drawing.
 
-This is a test for the Repl component itself:
+`main.js` exports two functions. `setup(renderer, target)` runs once per build and returns whatever the program keeps between frames. `frame(state, renderer, target, time, size, pointer)` runs on every animation frame. The imports are plain Vite syntax (`import SOURCE from "./shader.wgsl?raw"`), so the file runs unchanged in a Vite project.
 
-import Repl from "../../../components/Repl.astro";
+The **Library** bar edits the `const LIBRARY = [...]` line in `main.js`. Each entry names a function from the [shader library](/shaders/), and [`Shader.fetch`](/api/core/shader/) loads those functions ahead of your WGSL, so the shader can call `worley2` or `heart` without defining it.
 
-<Repl initialCode={`// You can write code here and see the result in the right panel.
+The sliders come from the shader itself. The playground lists its keys with [`listKeys`](/api/core/shader/), reads each value with [`get`](/api/core/shader/), and leaves out the keys `frame` sets on every frame. A `// min..max` comment on a struct field sets the slider range, and a `vec3` or `vec4` field whose name contains `color` gets a color picker.
 
-// Create gradient background
-const gradient = ctx.createLinearGradient(0, 0, 200, 420);
-gradient.addColorStop(0, 'cyan');
-gradient.addColorStop(1, 'blue');
-ctx.fillStyle = gradient;
-ctx.fillRect(0, 0, 600, 420);
-
-// Draw a rotating rectangle
-ctx.save();
-ctx.translate(180, 210);
-ctx.rotate(Date.now() / 1000);
-ctx.fillStyle = 'yellow';
-ctx.fillRect(-50, -50, 100, 100);
-ctx.restore();
-`} />
+The Rust, Python, Swift, and Kotlin tabs show the same program written against each binding. They follow the library, the shader files, and the current slider values. Edit the WGSL or `main.js` to change them.
