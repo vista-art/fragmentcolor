@@ -130,6 +130,7 @@ export class Playground {
       poster: root.querySelector(".fcp-poster"),
       reset: root.querySelector(".fcp-reset"),
       copy: root.querySelector(".fcp-copy"),
+      fullscreen: root.querySelector(".fcp-fullscreen"),
     };
     this.edits = new Map();
     this.overrides = new Map();
@@ -673,6 +674,19 @@ export class Playground {
         // clipboard blocked; selection still works
       }
     });
+    if (ui.fullscreen && document.fullscreenEnabled) {
+      const frame = canvas.parentElement;
+      ui.fullscreen.hidden = false;
+      this.on(ui.fullscreen, "click", () => {
+        if (document.fullscreenElement === frame) document.exitFullscreen();
+        else frame.requestFullscreen().catch(() => {});
+      });
+      this.on(document, "fullscreenchange", () => {
+        const label = document.fullscreenElement === frame ? "Exit fullscreen" : "Fullscreen";
+        ui.fullscreen.setAttribute("aria-label", label);
+        ui.fullscreen.title = label;
+      });
+    }
     const installSelect = this.root.querySelector(".fcp-install-select");
     if (installSelect) this.on(installSelect, "change", () => this.showInstall(installSelect.value));
     const langs = [...this.root.querySelectorAll(".fcp-install-langs button")];

@@ -109,6 +109,9 @@ const installs = [
         <div class="fcp-fallback" hidden>
           <p>The playground draws with WebGPU or WebGL2, and this browser could not start either. A recent Chrome, Edge, Safari, or Firefox runs it.</p>
         </div>
+        <button type="button" class="fcp-fullscreen" aria-label="Fullscreen" title="Fullscreen" hidden>
+          <svg class="icon-enter" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg><svg class="icon-exit" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6 2.5V6H2.5M13.5 6H10V2.5M10 13.5V10h3.5M2.5 10H6v3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
       </div>
       <div class="fcp-controls" role="group" aria-label="Uniforms" hidden></div>
     </section>
@@ -673,7 +676,8 @@ const installs = [
     gap: 4px;
   }
 
-  .fcp-actions button {
+  .fcp-actions button,
+  .fcp-fullscreen {
     display: grid;
     place-items: center;
     width: 28px;
@@ -685,9 +689,27 @@ const installs = [
     color: var(--fcp-dim);
   }
 
-  .fcp-actions button:hover {
+  .fcp-actions button:hover,
+  .fcp-fullscreen:hover {
     color: var(--fcp-ink);
     border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .fcp-fullscreen {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 5;
+  }
+
+  .fcp-fullscreen[hidden],
+  .fcp-fullscreen .icon-exit,
+  .fcp-canvas:fullscreen .fcp-fullscreen .icon-enter {
+    display: none;
+  }
+
+  .fcp-canvas:fullscreen .fcp-fullscreen .icon-exit {
+    display: block;
   }
 
   .fcp-copy .icon-done,
