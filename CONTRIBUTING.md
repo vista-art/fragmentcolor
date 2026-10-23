@@ -86,7 +86,7 @@ Contributions are welcome! This document outlines the current workflow for devel
 
 ### Tooling versions
 
-- Node 20 and pnpm 10 for docs site builds.
+- Node 24 or later and pnpm 10 for the docs site and the web examples.
 - Rust toolchain stable in CI.
 
 ## Running locally
