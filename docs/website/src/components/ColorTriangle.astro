@@ -366,10 +366,8 @@ function wireColorTriangle(root) {
     if (started || stopped) return;
     started = true;
     try {
-      const fc = await import('fragmentcolor');
-      const wasmUrl = (await import('fragmentcolor/fragmentcolor_bg.wasm?url')).default;
-      await fc.default({ module_or_path: wasmUrl });
-      try { fc.Shader.setRegistry('/shaders/'); } catch {}
+      const { loadFragmentColor } = await import('../runtime.js');
+      const fc = await loadFragmentColor();
       renderer = new fc.Renderer();
       applySize();
       target = await renderer.createTarget(canvas);
