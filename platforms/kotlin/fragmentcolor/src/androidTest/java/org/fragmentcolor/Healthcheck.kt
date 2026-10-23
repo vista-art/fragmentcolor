@@ -1,12 +1,10 @@
 package org.fragmentcolor
 
-import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.runBlocking
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import org.junit.Assume
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -22,45 +20,7 @@ import org.junit.runner.RunWith
 class Healthcheck {
     @Test
     fun headlessRenderSmoke() = runBlocking {
-        // The CI emulator runs Google's `swiftshader_indirect` GPU, whose
-        // Vulkan path advertises features that fail wgpu-hal's
-        // device-creation feature-presence check (returns
-        // `VK_ERROR_FEATURE_NOT_PRESENT` with an empty wgpu-hal
-        // "Missing features:" log line) and whose GLES path doesn't
-        // currently expose a wgpu-compatible adapter through SwiftShader's
-        // EGL implementation. The error surfaces at the first call that
-        // forces device creation — typically `createTextureTarget`,
-        // since `Renderer()` is lazy on the Rust side.
-        //
-        // Skip the runtime smoke (rather than fail) when the emulator's
-        // GPU driver can't produce an adapter: the test still validates
-        // the entire build pipeline (cargo-ndk → AAR → instrumentation
-        // → uniffi class loading), which is the actual regression
-        // surface for the CI job. A real-Vulkan emulator
-        // (e.g. moltenvk on macOS-host runners) would exercise the
-        // runtime path; tracked for v0.11.x follow-up.
-        try {
-            runHeadlessRenderSmoke()
-        } catch (e: Throwable) {
-            val msg = e.message ?: e.toString()
-            if (msg.contains("not available on this device", ignoreCase = true) ||
-                msg.contains("VK_ERROR_FEATURE_NOT_PRESENT", ignoreCase = true) ||
-                msg.contains("no suitable adapter", ignoreCase = true) ||
-                msg.contains("Failed to create VkDevice", ignoreCase = true)
-            ) {
-                Log.w(
-                    "FragmentColorHealthcheck",
-                    "skipping headlessRenderSmoke — emulator GPU driver can't " +
-                        "produce a wgpu adapter: $msg"
-                )
-                Assume.assumeTrue(
-                    "no wgpu-compatible GPU adapter on this emulator",
-                    false
-                )
-                return@runBlocking
-            }
-            throw e
-        }
+        runHeadlessRenderSmoke()
     }
 
     // Shader.set shapes each Kotlin value to the uniform's declared WGSL type.

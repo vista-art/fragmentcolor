@@ -2,10 +2,9 @@
 //  Healthcheck.swift
 //  FragmentColor
 //
-//  Mirrors platforms/python/healthcheck.py — exercises the full uniffi
-//  surface against a real Metal device on an iOS simulator. Run via
-//  xcodebuild in `./fc healthcheck ios`; assertions drive the process exit
-//  code so the top-level runner can report pass/fail.
+//  Mirrors platforms/python/healthcheck.py. Exercises the uniffi surface
+//  against a real Metal device on an iOS simulator, where
+//  `./fc healthcheck ios` runs it with the generated example tests.
 //
 //  DOC: This file is the source of truth for Swift code snippets shown on
 //  fragmentcolor.org. Examples between `// DOC: <Object>.<method> (begin)`
@@ -15,6 +14,7 @@
 
 import Foundation
 import FragmentColor
+import XCTest
 
 enum HealthcheckError: Error {
     case assertion(String)
@@ -26,22 +26,8 @@ func assertEqual<T: Equatable>(_ actual: T, _ expected: T, _ label: String) thro
     }
 }
 
-@main
-struct Healthcheck {
-    static func main() async {
-        do {
-            try await run()
-            print("FragmentColor iOS healthcheck: PASS")
-            exit(0)
-        } catch {
-            print("FragmentColor iOS healthcheck: FAIL — \(error)")
-            exit(1)
-        }
-    }
-
-    static func run() async throws {
-        try checkShaderSetValues()
-
+final class Healthcheck: XCTestCase {
+    func testHeadlessRender() async throws {
         // DOC: Renderer.new (begin)
         let renderer = Renderer()
         // DOC: (end)
@@ -76,7 +62,7 @@ struct Healthcheck {
     }
 
     // Shader.set shapes each Swift value to the uniform's declared WGSL type.
-    static func checkShaderSetValues() throws {
+    func testShaderSetValues() throws {
         let shader = try Shader(source: """
             struct Particles { items: array<vec4<f32>, 2> };
             @group(0) @binding(0) var<uniform> count: u32;

@@ -10,6 +10,8 @@ A patch release with fixes for the language bindings and the renderer, and the c
 
 On Android, `renderer.createTarget(surface)` builds the target on the renderer you call it on. The JNI path created a new `Renderer` for every surface, so the target lived on a different GPU device than the renderer drawing into it, and `render` either failed with `NoContext` or mixed the two devices. The JNI helper now only turns the `Surface` into an `ANativeWindow` pointer, and the Kotlin extension passes that pointer to the calling renderer's `createTarget`.
 
+On Android, `renderer.createTarget(surface)` creates its surface again. wgpu 30 takes a surface's display handle from the instance or from the target, and FragmentColor's instance has none while the Android path passed only the window, so every call since 0.12.3 failed with `Failed to create surface`. The target now hands wgpu the window's display handle too.
+
 `Model(mesh, material)` and `model.material()` no longer reset the Material on Swift, Kotlin, JavaScript, and Python. Both rebuilt the Material with `Material::custom`, which put the caller's Material back to the `Opaque` alpha mode and single-sided culling but left the shader's alpha flag untouched, so `Mask` and `Blend` materials drew with mismatched pipeline state. The bindings now share the Material the way Rust does.
 
 Python's `Renderer.create_target` keeps one target per renderer. It cached the target on the canvas and handed it to any renderer that asked, even one on another device.
@@ -122,6 +124,8 @@ The Rust examples for `TextureTarget.size` and `TextureTarget.resize` compile, a
 The generated JavaScript examples write Rust's `None` as `undefined`, which wasm-bindgen returns, and build a `ScreenRegion` with `new ScreenRegion(origin, size)` where they passed a bare array. Python examples spread a tuple over a static method's parameters as they already did for instance methods, so `Mipmap::build((bytes, format, [8, 8]))` reads `Mipmap.build(bytes, format, size=[8, 8])`.
 
 The API docs gain pages for `Instance`, `PassInput`, and `VertexValue`, which every binding exposed, and `Mipmap::level` gets a page of its own. Several pages now say what the code does: where `Shader::new` and `Shader::fetch` find registry slugs, URLs, and paths on each platform, that only a depth `Texture` works as a depth target, that a pass viewport isn't applied yet, and that adding a `Light` can fail at the 32-light cap, depending on the order. The window target pages build a real window target, and the `Renderer::create_texture` and `Mipmap` examples read real image bytes in every language.
+
+The iOS and Android healthchecks run every documented example. They compiled the Swift and Kotlin examples into functions that nothing called, so an example could type-check and still throw on a device. Each example is now a test of its own, an XCTest on an iOS simulator and a JUnit test on an Android emulator, and a failing test names its `docs/api` page. The examples read fixtures such as `examples/assets/logo.png` from the repository root, as the Rust doctests do. The checks in the iOS healthcheck's own `Healthcheck.swift` run too, where CI only built them.
 
 ### Parity across languages
 

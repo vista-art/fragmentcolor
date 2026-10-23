@@ -28,7 +28,7 @@ Write a shader in WGSL or GLSL, set its uniforms by name, and render it. Fragmen
 
 - **The shader is the source of truth.** Uniforms, textures, samplers, storage buffers, and push constants come from the shader itself. `shader.set("light.color", [1.0, 0.8, 0.6])` writes the field it names.
 - **One API in five languages.** Rust, JavaScript, Python, Swift, and Kotlin share the same calls.
-- **Examples that work.** Every published example compiles in all five languages, and runs in Rust, JavaScript, and Python.
+- **Examples that work.** Every published example compiles and runs in all languages.
 - **A shader library built in.** Over 200 WGSL functions for noise, distance fields, color, lighting, and post effects compose into your shader by name.
 - **Passes and compute.** Chain render and compute passes, render into textures, and read the results back.
 - **Native surfaces.** A window on desktop, a `<canvas>` on the web, a `CAMetalLayer` on iOS, and a `Surface` on Android.
