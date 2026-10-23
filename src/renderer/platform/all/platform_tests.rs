@@ -40,3 +40,24 @@ fn rejects_a_surface_without_formats() {
         "got {result:?}"
     );
 }
+
+// Story: a healthcheck reads the GPU errors of a test from the file FC_GPU_ERROR_LOG names.
+#[cfg(not(wasm))]
+#[test]
+fn appends_each_error_to_the_log() {
+    // Arrange
+    let dir = tempfile::tempdir().expect("tempdir");
+    let log = dir.path().join("gpu-errors.log");
+    let error = |description: &str| wgpu::Error::Validation {
+        source: description.into(),
+        description: description.into(),
+    };
+
+    // Act
+    super::append_error(&log, &error("first"));
+    super::append_error(&log, &error("second"));
+
+    // Assert
+    let text = std::fs::read_to_string(&log).expect("read the log");
+    assert_eq!(text, "first\nsecond\n");
+}
