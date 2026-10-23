@@ -387,6 +387,13 @@ impl Renderer {
             return Err(RendererError::StorageBindingNotFound(binding.to_string()));
         }
         let context = self.context(None).await?;
+        // DRILL: a deliberate validation error. Never merge.
+        let _drill = context.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("gpu error drill"),
+            size: 4,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::MAP_WRITE,
+            mapped_at_creation: false,
+        });
         let (buffer, span) = context
             .storage_registry
             .get(binding)
