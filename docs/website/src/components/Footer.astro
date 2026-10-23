@@ -1,7 +1,10 @@
 ---
 import Default from "@astrojs/starlight/components/Footer.astro";
 import DevEditor from "./DevEditor.astro";
+
+// The landing page is the playground alone, and a footer under it only adds a scroll.
+const landing = Boolean(Astro.locals.starlightRoute?.entry.data.hero);
 ---
 
-<Default><slot /></Default>
+{!landing && <Default><slot /></Default>}
 <DevEditor />
