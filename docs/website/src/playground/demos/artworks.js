@@ -15,9 +15,10 @@ const SUMMARIES = {
 };
 
 // Starting values that replace the shared ones for one artwork. Monolith opens at
-// 60% of every slider, with its core charged and rippling.
+// 60% of every slider, and Rose Window in full bloom with its pulse near the top.
 const VALUES = {
   monolith: { "u.drag": [0.6, 0.6], "u.zoom": 1.64, "u.press": 0.6, "u.pulse": 0.84 },
+  rosewindow: { "u.press": 0.85, "u.pulse": 1.3 },
 };
 
 export const ARTWORK_DEMOS = ARTWORKS.map((artwork) => ({
