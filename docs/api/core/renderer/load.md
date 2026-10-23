@@ -24,31 +24,35 @@ draws with its 1×1 default maps.
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+# let image = std::fs::read("examples/assets/logo.png")?;
+# /*[js]
+# const image = new Uint8Array(await (await fetch("/healthcheck/public/favicon.png")).arrayBuffer());
+# */
+# /*[python]
+# image = open("examples/assets/logo.png", "rb").read()
+# */
+# /*[swift]
+# import Foundation
+# let image = try Data(contentsOf: URL(fileURLWithPath: "examples/assets/logo.png"))
+# */
+# /*[kotlin]
+# val image = java.io.File("examples/assets/logo.png").readBytes()
+# */
 use fragmentcolor::{Material, Mesh, Model, Renderer, Scene, Vertex};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
 
 let mesh = Mesh::new();
-mesh.add_vertex(
-    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
-);
-// Raw 2×2 RGBA pixel bytes, uploaded lazily by `Renderer::load` below.
-// In practice the loader hands the setter encoded PNG/JPEG bytes (from a
-// BIN chunk) or a file path (from a URI); the same `Into<TextureInput>`
-// vocabulary covers all of them.
-let red_pixels: Vec<u8> = vec![
-    255,   0,   0, 255,    0, 255,   0, 255,
-      0,   0, 255, 255,  255, 255, 255, 255,
-];
-let red_tex = renderer.create_texture((red_pixels, [2, 2])).await?;
-let material = Material::pbr().base_color_texture(&red_tex);
+mesh.add_vertex(Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]));
+
+// The material keeps the encoded image as a pending upload.
+let material = Material::pbr().base_color_texture(&image);
 let model = Model::new(mesh, material);
 let scene = Scene::new();
 scene.add(&model)?;
 
-// Eager prewarm: upload the pending textures now, so the next render
-// is GPU-only.
+// Decode and upload it now, so the first render only draws.
 renderer.load(&scene).await?;
 renderer.render(&scene, &target)?;
 # Ok(())
