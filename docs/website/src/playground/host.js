@@ -12,6 +12,7 @@ import { LibraryPicker } from "./picker.js";
 import { loadFragmentColor } from "../runtime.js";
 
 const BUILD_DELAY = 250;
+const SCRUB_DELAY = 40;
 const DPR_CAP = 2;
 
 let runtime;
@@ -74,6 +75,32 @@ function shadersIn(state, Shader) {
 function plain(value) {
   if (typeof value === "number") return Math.round(value * 1e4) / 1e4;
   return Array.from(value, (n) => Math.round(n * 1e4) / 1e4);
+}
+
+// `.set("key", value)` calls in main.js, with the span of each literal value.
+// The generated controls and the inline sliders keep these literals current.
+const SET_CALL = /\.set\(\s*(["'])([^"'\n]+)\1\s*,\s*/g;
+const SET_VALUE = /^(-?(?:\d[\d_]*\.?\d*|\.\d+)(?:[eE][-+]?\d+)?|\[[^\]\n]*\])\s*\)/;
+
+function findSetValues(text) {
+  const found = [];
+  for (const match of text.matchAll(SET_CALL)) {
+    const from = match.index + match[0].length;
+    const literal = text.slice(from, from + 200).match(SET_VALUE);
+    if (literal) found.push({ key: match[2], from, to: from + literal[1].length, text: literal[1] });
+  }
+  return found;
+}
+
+function parseLiteral(text) {
+  const numbers = text.replace(/[[\]\s_]/g, "").split(",").map(Number);
+  if (numbers.some((n) => !Number.isFinite(n))) return null;
+  return text.trim().startsWith("[") ? numbers : numbers[0];
+}
+
+function formatLiteral(value) {
+  const one = (n) => String(Math.round(n * 1e4) / 1e4);
+  return typeof value === "number" ? one(value) : `[${Array.from(value, one).join(", ")}]`;
 }
 
 function message(err) {
@@ -240,14 +267,76 @@ export class Playground {
         languages(kind),
         EditorState.readOnly.of(!editable),
         EditorView.editable.of(editable),
+        editable ? this.cm.inline(kind, this) : [],
         EditorView.updateListener.of((update) => {
           if (!update.docChanged || !editable) return;
           const tab = this.tabs.find((t) => t.id === this.activeTab);
           if (tab) tab.state = update.state;
+          const changes = update.transactions.filter((t) => t.docChanged);
+          if (changes.every((t) => t.annotation(this.cm.synced))) return;
+          if (changes.every((t) => t.annotation(this.cm.scrubbed))) {
+            if (kind === "js" && this.applyScrub(update)) return;
+            this.scheduleBuild(SCRUB_DELAY);
+            return;
+          }
           this.scheduleBuild();
         }),
       ],
     });
+  }
+
+  // An inline slider on a `.set` value applies it at once, with no rebuild.
+  applyScrub(update) {
+    const values = findSetValues(update.state.doc.toString());
+    const touched = [];
+    let inside = true;
+    update.changes.iterChangedRanges((fromA, toA, from, to) => {
+      const value = values.find((v) => v.from <= from && to <= v.to);
+      if (value) touched.push(value);
+      else inside = false;
+    });
+    if (!inside || !touched.length || !this.program) return false;
+    try {
+      for (const { key, text } of touched) {
+        const parsed = parseLiteral(text);
+        const shader = this.program.shaders.find((sh) => sh.listKeys().includes(key));
+        if (parsed === null || !shader) return false;
+        shader.set(key, parsed);
+        this.controls.find((c) => c.key === key && c.shader === shader)?.update?.(parsed);
+      }
+    } catch {
+      return false;
+    }
+    this.invalidateCode();
+    return true;
+  }
+
+  // Writes a control's value into its `.set` literal in main.js, if there is one.
+  writeValue(key, value) {
+    const tab = this.tabs.find((t) => t.id === "js");
+    if (!tab) return false;
+    const state = tab.id === this.activeTab ? this.view.state : tab.state;
+    const target = findSetValues(state.doc.toString()).find((v) => v.key === key);
+    if (!target) return false;
+    const spec = {
+      changes: { from: target.from, to: target.to, insert: formatLiteral(value) },
+      annotations: this.cm.synced.of(true),
+    };
+    if (tab.id === this.activeTab) {
+      this.view.dispatch(spec);
+      tab.state = this.view.state;
+    } else {
+      tab.state = tab.state.update(spec).state;
+    }
+    return true;
+  }
+
+  // Ranges and color hints for the inline controls on `.set` values.
+  setValueAt(state, from, to) {
+    const value = findSetValues(state.doc.toString()).find((v) => v.from <= from && to <= v.to);
+    if (!value) return null;
+    const control = this.controls.find((c) => c.key === value.key);
+    return { key: value.key, control };
   }
 
   showTab(id) {
@@ -274,6 +363,21 @@ export class Playground {
       if (active) this.ui.editor.setAttribute("aria-labelledby", button.id);
     }
     this.root.dataset.tab = tab.generated ? "generated" : "source";
+    this.showInstall(tab.kind);
+  }
+
+  // The landing install line follows the language tab; WGSL tabs keep the last one.
+  showInstall(lang) {
+    const lines = this.root.querySelectorAll(".fcp-install-line");
+    if (![...lines].some((line) => line.dataset.lang === lang)) return;
+    for (const line of lines) line.hidden = line.dataset.lang !== lang;
+    for (const button of this.root.querySelectorAll(".fcp-install-langs button")) {
+      const active = button.dataset.lang === lang;
+      button.setAttribute("aria-selected", String(active));
+      button.tabIndex = active ? 0 : -1;
+    }
+    const select = this.root.querySelector(".fcp-install-select");
+    if (select) select.value = lang;
   }
 
   text(id) {
@@ -293,13 +397,13 @@ export class Playground {
     }
   }
 
-  scheduleBuild() {
+  scheduleBuild(delay = BUILD_DELAY) {
     clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       this.renderLibrary();
       if (this.blocked) this.invalidateCode();
       else this.build();
-    }, BUILD_DELAY);
+    }, delay);
   }
 
   // Builds run one at a time, since a build swaps console.error and the set
@@ -399,7 +503,7 @@ export class Playground {
   adjust(control, value) {
     try {
       control.shader.set(control.key, value);
-      this.overrides.set(control.key, value);
+      if (!this.writeValue(control.key, value)) this.overrides.set(control.key, value);
       this.invalidateCode();
     } catch (err) {
       this.showError(err);
@@ -569,6 +673,27 @@ export class Playground {
         // clipboard blocked; selection still works
       }
     });
+    const installSelect = this.root.querySelector(".fcp-install-select");
+    if (installSelect) this.on(installSelect, "change", () => this.showInstall(installSelect.value));
+    const langs = [...this.root.querySelectorAll(".fcp-install-langs button")];
+    for (const button of langs) this.on(button, "click", () => this.showInstall(button.dataset.lang));
+    if (langs.length) {
+      this.on(langs[0].parentElement, "keydown", (e) => {
+        const index = langs.findIndex((b) => b.getAttribute("aria-selected") === "true");
+        const step = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: langs.length - 1 }[e.key];
+        if (step === undefined) return;
+        e.preventDefault();
+        const next = langs[(step + langs.length) % langs.length];
+        this.showInstall(next.dataset.lang);
+        next.focus();
+      });
+    }
+    for (const button of this.root.querySelectorAll(".fcp-install-copy")) {
+      this.on(button, "click", () => {
+        const code = button.parentElement?.querySelector("code")?.textContent ?? "";
+        navigator.clipboard?.writeText(code).catch(() => {});
+      });
+    }
     this.on(ui.tabs, "keydown", (e) => {
       const count = this.tabs.length;
       const index = this.tabs.findIndex((t) => t.id === this.activeTab);
@@ -602,7 +727,7 @@ export class Playground {
 
 // CodeMirror loads with the playground, never with the page.
 async function loadEditor() {
-  const [{ EditorView, basicSetup }, { EditorState }, { javascript }, { dracula }, { wgsl }, { highlight }] =
+  const [{ EditorView, basicSetup }, { EditorState, Annotation }, { javascript }, { dracula }, { wgsl }, { highlight }, inline] =
     await Promise.all([
       import("codemirror"),
       import("@codemirror/state"),
@@ -610,6 +735,7 @@ async function loadEditor() {
       import("thememirror"),
       import("./wgsl.js"),
       import("./highlight.js"),
+      import("./inline.js"),
     ]);
   const extensions = [
     basicSetup,
@@ -625,5 +751,21 @@ async function loadEditor() {
     if (kind === "js") return javascript();
     return highlight(kind);
   };
-  return { EditorView, EditorState, extensions, languages };
+  // Inline sliders and swatches; on main.js `.set` values they take the control's range.
+  const inlineFor = (kind, host) =>
+    inline.inlineControls({
+      language: kind === "wgsl" ? "wgsl" : "js",
+      rangeFor: (state, from, to) => {
+        const control = kind === "js" ? host.setValueAt(state, from, to)?.control : null;
+        return control && !control.color ? { min: control.min, max: control.max, step: control.step } : null;
+      },
+      isColor: (state, from, to) => {
+        const found = kind === "js" ? host.setValueAt(state, from, to) : null;
+        if (!found) return false;
+        return found.control ? found.control.color : /colou?r|tint/i.test(found.key);
+      },
+    });
+  // Edits from the controls into main.js are tagged so they do not rebuild.
+  const synced = Annotation.define();
+  return { EditorView, EditorState, extensions, languages, inline: inlineFor, synced, scrubbed: inline.scrubbed };
 }

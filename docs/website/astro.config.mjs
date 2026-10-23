@@ -252,6 +252,7 @@ export default defineConfig({
         "fragmentcolor",
         "codemirror",
         "@codemirror/state",
+        "@codemirror/view",
         "@codemirror/language",
         "@codemirror/lang-markdown",
         "thememirror",

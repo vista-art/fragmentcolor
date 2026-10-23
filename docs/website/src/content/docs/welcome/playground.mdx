@@ -18,6 +18,8 @@ The **Library** bar edits the `const LIBRARY = [...]` line in `main.js`. Each en
 
 The sliders come from the shader itself. The playground lists its keys with [`listKeys`](/api/core/shader/), reads each value with [`get`](/api/core/shader/), and leaves out the keys `frame` sets on every frame. A `// min..max` comment on a struct field sets the slider range, and a `vec3` or `vec4` field whose name contains `color` gets a color picker.
 
+Click a number in the code and a slider appears next to it. A color literal such as `vec3<f32>(0.55, 0.5, 0.48)` gets a swatch that opens a color picker. On a `shader.set` value in `main.js`, the inline slider and the generated control move together without a rebuild, and moving a generated control rewrites that value in the code.
+
 The **Artworks** group holds six longer shaders built from the library. The pointer steers them as it does the other demos, and their `press`, `pulse`, `drag`, and `zoom` uniforms are sliders.
 
 The Rust, Python, Swift, and Kotlin tabs show the same program written against each binding. They follow the library, the shader files, and the current slider values. Edit the WGSL or `main.js` to change them.

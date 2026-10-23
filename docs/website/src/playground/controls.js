@@ -105,6 +105,7 @@ function format(n, step) {
 
 /**
  * Renders the controls into `container` and calls `onInput(control, value)` as they move.
+ * Each control gains `update(value)`, which moves it to a value set elsewhere.
  */
 export function renderControls(container, controls, onInput) {
   container.replaceChildren();
@@ -128,6 +129,10 @@ export function renderControls(container, controls, onInput) {
         value.splice(0, 3, r, g, b);
         onInput(control, [...value]);
       });
+      control.update = (next) => {
+        value.splice(0, value.length, ...next);
+        input.value = toHex(value);
+      };
       row.append(input);
       container.append(row);
       continue;
@@ -135,6 +140,7 @@ export function renderControls(container, controls, onInput) {
 
     const sliders = document.createElement("div");
     sliders.className = "fcp-control-sliders";
+    const fields = [];
     value.forEach((component, i) => {
       const field = document.createElement("label");
       field.className = "fcp-control-slider";
@@ -157,7 +163,17 @@ export function renderControls(container, controls, onInput) {
       });
       field.append(input, readout);
       sliders.append(field);
+      fields.push({ input, readout });
     });
+    control.update = (next) => {
+      const numbers = typeof next === "number" ? [next] : [...next];
+      numbers.forEach((component, i) => {
+        if (!fields[i]) return;
+        value[i] = component;
+        fields[i].input.value = String(component);
+        fields[i].readout.textContent = format(component, control.step);
+      });
+    };
     row.append(sliders);
     container.append(row);
   }
