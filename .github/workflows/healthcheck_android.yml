@@ -120,13 +120,8 @@ jobs:
           # NOTE: the WGPU_BACKEND env var here only reaches the *gradle*
           # process, not the instrumentation test running inside the
           # emulator (Android app processes don't inherit host env vars).
-          # SwiftShader's Vulkan currently fails wgpu-hal's device-creation
-          # feature check on this emulator regardless; the test in
-          # `Healthcheck.kt` `Assume.assumeTrue(false)`-skips the runtime
-          # path when the adapter can't be created so the build/link/
-          # instrumentation pipeline still gates the job. A real-Vulkan
-          # emulator (or arm64 host-based runner) would let us drop the
-          # skip; tracked for v0.11.x follow-up.
+          # wgpu picks SwiftShader's Vulkan device on its own, and every
+          # healthcheck test and generated example renders on it.
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
           script: cd platforms/kotlin && WGPU_BACKEND=vulkan gradle fragmentcolor:connectedAndroidTest --stacktrace
 
