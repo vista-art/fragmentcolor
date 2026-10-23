@@ -8,11 +8,11 @@ light slots from the host doesn't want those stock values layered on top.
 `no_defaults` leaves the pass graph exactly as built.
 
 For finer control, reach for the per-kind switches
-[`no_default_camera`](https://fragmentcolor.org/api/scene/scene#sceneno_default_camera)
-and [`no_default_light`](https://fragmentcolor.org/api/scene/scene#sceneno_default_light).
+[`no_default_camera`](https://fragmentcolor.org/api/scene/scene#no_default_camera)
+and [`no_default_light`](https://fragmentcolor.org/api/scene/scene#no_default_light).
 To keep injection on but swap the stock values for your own, use
-[`set_default_camera`](https://fragmentcolor.org/api/scene/scene#sceneset_default_camera)
-and [`set_default_light`](https://fragmentcolor.org/api/scene/scene#sceneset_default_light).
+[`set_default_camera`](https://fragmentcolor.org/api/scene/scene#set_default_camera)
+and [`set_default_light`](https://fragmentcolor.org/api/scene/scene#set_default_light).
 
 ## Example
 

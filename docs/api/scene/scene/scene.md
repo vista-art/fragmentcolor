@@ -31,13 +31,13 @@ A `Scene` owns one ordered `Vec<Pass>`. Loaders, builders, and your own code
 all append into the same list, and the renderer walks it in order. No pass is
 privileged in render order: the default Pass that `scene.add(&model)` targets
 is an ordinary member, slotted in at the point of your first `add`. After
-[`Scene::load`](https://fragmentcolor.org/api/scene/scene#sceneload) the whole
+[`Scene::load`](https://fragmentcolor.org/api/scene/scene#load) the whole
 graph is in your hands. Read it with
-[`list_passes`](https://fragmentcolor.org/api/scene/scene#scenelist_passes) or
-[`get_pass`](https://fragmentcolor.org/api/scene/scene#sceneget_pass), restructure
-it with [`add_pass`](https://fragmentcolor.org/api/scene/scene#sceneadd_pass),
-[`remove_pass`](https://fragmentcolor.org/api/scene/scene#sceneremove_pass), and
-[`set_passes`](https://fragmentcolor.org/api/scene/scene#sceneset_passes), and
+[`list_passes`](https://fragmentcolor.org/api/scene/scene#list_passes) or
+[`get_pass`](https://fragmentcolor.org/api/scene/scene#get_pass), restructure
+it with [`add_pass`](https://fragmentcolor.org/api/scene/scene#add_pass),
+[`remove_pass`](https://fragmentcolor.org/api/scene/scene#remove_pass), and
+[`set_passes`](https://fragmentcolor.org/api/scene/scene#set_passes), and
 configure each pass (`load_previous`, clear color, viewport, target) the same
 way you would a hand-built one. That makes a loaded Scene compose onto any
 other Pass in a frame, instead of clearing whatever it lands on.
@@ -58,7 +58,7 @@ Scene injects sensible defaults when the user hasn't supplied them:
 These only fire when no user Camera / Light has been added; as soon as you
 add your own, your values win. A composition caller that drives every uniform
 from the host can suppress them with
-[`no_defaults`](https://fragmentcolor.org/api/scene/scene#sceneno_defaults) (or the
+[`no_defaults`](https://fragmentcolor.org/api/scene/scene#no_defaults) (or the
 per-kind `no_default_camera` / `no_default_light`), or swap the stock values
 out with `set_default_camera` / `set_default_light`.
 

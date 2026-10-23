@@ -13,11 +13,11 @@ propagates live to every Material the Pass renders.
 
 Internally builds the view matrix with `glam::Mat4::look_at_rh`. The
 result is a right-handed view matrix that pairs with the right-handed
-projection produced by [`perspective`](https://fragmentcolor.org/api/scene/camera#cameraperspective)
-and [`orthographic`](https://fragmentcolor.org/api/scene/camera#cameraorthographic).
+projection produced by [`perspective`](https://fragmentcolor.org/api/scene/camera#perspective)
+and [`orthographic`](https://fragmentcolor.org/api/scene/camera#orthographic).
 
 The world-space position is cached on the Camera and exposed via
-[`position`](https://fragmentcolor.org/api/scene/camera#cameraposition) so
+[`position`](https://fragmentcolor.org/api/scene/camera#position) so
 shaders that need it (specular highlights, fresnel) don't have to invert
 the view matrix on every frame.
 

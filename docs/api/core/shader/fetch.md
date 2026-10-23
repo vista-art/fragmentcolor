@@ -61,4 +61,4 @@ let shader2 = Shader::fetch("sdf2d/circle").await?;
 ```
 
 For composition (passing multiple parts as an array), see
-[Shader::new](https://fragmentcolor.org/api/core/shader#shadernewinput-string--string).
+[Shader::new](https://fragmentcolor.org/api/core/shader#new).

@@ -133,6 +133,20 @@ When a pattern fights the transpiler, **change the example's shape**
 before trying to extend the transpiler. The Rust doc reads slightly
 differently; every other language reads correctly.
 
+## Links
+
+Each object has one page at `/api/<category>/<object>`, with the
+object's name in lower case, and each method's heading there takes the
+method's name as its id. Link a method with that name as the anchor:
+
+```
+[`Scene::remove_pass`](https://fragmentcolor.org/api/scene/scene#remove_pass)
+```
+
+Other headings keep the id Starlight makes from their text. The build
+fails on a link to a page or heading the site doesn't build, and on two
+headings of one page that would get the same id.
+
 ## Cross-cutting invariants
 
 - Every public item must have a `## Example` section, an `#[lsp_doc(…)]`

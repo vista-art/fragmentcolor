@@ -1,13 +1,13 @@
 # Camera::position
 
 Read the world-space eye position as `[x, y, z]`. This is the value set by
-the most recent [`look_at`](https://fragmentcolor.org/api/scene/camera#cameralook_at)
+the most recent [`look_at`](https://fragmentcolor.org/api/scene/camera#look_at)
 call, or `[0, 0, 0]` if the camera has only been constructed (the default
 view is identity, with the eye at the origin).
 
 Shaders that need the eye position (specular highlights, fresnel,
 parallax) typically pull it from the `camera.position` uniform seeded by
-[`Pass::add`](https://fragmentcolor.org/api/core/pass#passadd) when the Camera
+[`Pass::add`](https://fragmentcolor.org/api/core/pass#add) when the Camera
 is absorbed. Caching it here keeps every frame cheap (no view-matrix
 inversion on the GPU side).
 

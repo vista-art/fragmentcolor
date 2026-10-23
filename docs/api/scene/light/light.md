@@ -5,31 +5,31 @@ kinds: **directional** (parallel rays for sun, sky, fill), **point**
 (radiates from a position with inverse-square falloff: lamps, candles,
 fireballs), and **spot** (point light constrained to a cone: flashlights,
 headlamps, theater lighting). The kind is set once at construction via
-[`Light::directional`](https://fragmentcolor.org/api/scene/light#lightdirectional),
-[`Light::point`](https://fragmentcolor.org/api/scene/light#lightpoint), or
-[`Light::spot`](https://fragmentcolor.org/api/scene/light#lightspot).
+[`Light::directional`](https://fragmentcolor.org/api/scene/light#directional),
+[`Light::point`](https://fragmentcolor.org/api/scene/light#point), or
+[`Light::spot`](https://fragmentcolor.org/api/scene/light#spot).
 
 The unified surface keeps the public API simple: one type, one
-[`Scene::add`](https://fragmentcolor.org/api/scene/scene#sceneadd) method, one
-[`Pass::add`](https://fragmentcolor.org/api/core/pass#passadd) method, and one
+[`Scene::add`](https://fragmentcolor.org/api/scene/scene#add) method, one
+[`Pass::add`](https://fragmentcolor.org/api/core/pass#add) method, and one
 binding per platform. Setters fall into two groups:
 
-- **Universal**: [`set_color`](https://fragmentcolor.org/api/scene/light#lightset_color)
-  and [`set_intensity`](https://fragmentcolor.org/api/scene/light#lightset_intensity)
+- **Universal**: [`set_color`](https://fragmentcolor.org/api/scene/light#set_color)
+  and [`set_intensity`](https://fragmentcolor.org/api/scene/light#set_intensity)
   apply to every kind and return `Self` for chaining.
-- **Kind-specific**: [`set_position`](https://fragmentcolor.org/api/scene/light#lightset_position),
-  [`set_direction`](https://fragmentcolor.org/api/scene/light#lightset_direction),
-  [`set_range`](https://fragmentcolor.org/api/scene/light#lightset_range), and
-  [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#lightset_cone_angles)
+- **Kind-specific**: [`set_position`](https://fragmentcolor.org/api/scene/light#set_position),
+  [`set_direction`](https://fragmentcolor.org/api/scene/light#set_direction),
+  [`set_range`](https://fragmentcolor.org/api/scene/light#set_range), and
+  [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles)
   return `Result<Self, LightError>`. Calling one on the wrong kind returns
   `LightError::FieldNotApplicable { kind, field }`.
 
 The matching getters use `Option<T>` for the kind-specific fields:
-[`position`](https://fragmentcolor.org/api/scene/light#lightposition),
-[`direction`](https://fragmentcolor.org/api/scene/light#lightdirection),
-[`range`](https://fragmentcolor.org/api/scene/light#lightrange),
-[`inner_cone_angle`](https://fragmentcolor.org/api/scene/light#lightinner_cone_angle),
-[`outer_cone_angle`](https://fragmentcolor.org/api/scene/light#lightouter_cone_angle)
+[`position`](https://fragmentcolor.org/api/scene/light#position),
+[`direction`](https://fragmentcolor.org/api/scene/light#direction),
+[`range`](https://fragmentcolor.org/api/scene/light#range),
+[`inner_cone_angle`](https://fragmentcolor.org/api/scene/light#inner_cone_angle),
+[`outer_cone_angle`](https://fragmentcolor.org/api/scene/light#outer_cone_angle)
 return `Some` only on the kinds that carry the value, `None` otherwise.
 
 Lights hold Arc-shared state, so a single handle can be absorbed by

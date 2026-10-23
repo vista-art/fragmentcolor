@@ -3,11 +3,11 @@
 Supply your own default [`Camera`](https://fragmentcolor.org/api/scene/camera)
 for the Scene to inject at first render in place of FC's stock perspective
 camera. This fires only when no Camera arrived through
-[`Scene::add`](https://fragmentcolor.org/api/scene/scene#sceneadd); an explicit
+[`Scene::add`](https://fragmentcolor.org/api/scene/scene#add); an explicit
 `scene.add(&camera)` still wins.
 
 Naming a default re-arms injection. If
-[`no_default_camera`](https://fragmentcolor.org/api/scene/scene#sceneno_default_camera)
+[`no_default_camera`](https://fragmentcolor.org/api/scene/scene#no_default_camera)
 ran earlier, calling `set_default_camera` turns camera injection back on with
 the camera you pass.
 

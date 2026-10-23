@@ -58,7 +58,7 @@ mismatch. Use `Material::custom(...)` to bring your own vertex layout.
 | `light.color`                | `[1, 1, 1]`          |
 
 The camera and light are the user's domain, not the Material's. Pass them
-to [`Pass::add`](https://fragmentcolor.org/api/core/pass#passadd). The
+to [`Pass::add`](https://fragmentcolor.org/api/core/pass#add). The
 typed [Camera](https://fragmentcolor.org/api/scene/camera) and
 [Light](https://fragmentcolor.org/api/scene/light) handles seed the matching
 `camera.*` / `light.*` uniforms and propagate any later updates back into

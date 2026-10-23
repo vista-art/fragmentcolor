@@ -11,7 +11,7 @@ to a [Target](https://fragmentcolor.org/api/targets/target) (canvas, window, or 
 The [Renderer](https://fragmentcolor.org/api/core/renderer) internals are lazily initialized
 when the user creates a [Target](https://fragmentcolor.org/api/targets/target).
 
-See the constructor [Renderer::new()](https://fragmentcolor.org/api/core/renderer/#renderernew)
+See the constructor [Renderer::new()](https://fragmentcolor.org/api/core/renderer#new)
 description below for details.
 
 ## Example

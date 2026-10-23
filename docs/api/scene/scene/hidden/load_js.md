@@ -1,6 +1,6 @@
 # Scene.load (JS/web)
 
-Web-specific example for [`Scene::load`](https://fragmentcolor.org/api/scene/scene#sceneload).
+Web-specific example for [`Scene::load`](https://fragmentcolor.org/api/scene/scene#load).
 
 On the web there's no filesystem, so the path form of `Scene.load` isn't
 available. Fetch the `.glb` bytes yourself (over `fetch`, from an asset

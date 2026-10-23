@@ -3,11 +3,11 @@
 Supply your own default [`Light`](https://fragmentcolor.org/api/scene/light)
 for the Scene to inject at first render in place of FC's stock white
 directional light. This fires only when no Light arrived through
-[`Scene::add`](https://fragmentcolor.org/api/scene/scene#sceneadd); an explicit
+[`Scene::add`](https://fragmentcolor.org/api/scene/scene#add); an explicit
 `scene.add(&light)` still wins.
 
 Naming a default re-arms injection. If
-[`no_default_light`](https://fragmentcolor.org/api/scene/scene#sceneno_default_light)
+[`no_default_light`](https://fragmentcolor.org/api/scene/scene#no_default_light)
 ran earlier, calling `set_default_light` turns light injection back on with
 the light you pass.
 

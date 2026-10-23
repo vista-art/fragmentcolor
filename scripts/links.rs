@@ -2,8 +2,9 @@ mod links {
     //! Checks every fragmentcolor.org/api link in docs/api against the site's pages.
     //!
     //! The site writes one page per object, at `/api/<category>/<object>`.
-    //! A method is a heading on its object's page, with the id github-slugger
-    //! makes from its text, so a link names it by anchor: `/api/core/renderer#rendererload`.
+    //! A method is a heading on its object's page whose id is the method's name,
+    //! so a link names it by anchor: `/api/core/renderer#load`. Other headings get
+    //! the id github-slugger makes from their text, as Starlight gives every heading.
     //! The same links reach the Rust hover docs and the Python stub, so they must work as written.
 
     use std::collections::{HashMap, HashSet};
@@ -17,11 +18,11 @@ mod links {
         "http://www.fragmentcolor.org/api/",
     ];
 
-    /// The heading ids of one page, and the id each method's heading gets.
+    /// The heading ids of one page, and the method named by the slug of each method's title.
     #[derive(Default)]
     struct Page {
         ids: HashSet<String>,
-        methods: HashMap<String, String>,
+        slugs: HashMap<String, String>,
     }
 
     /// One problem for each link that names no page, or no heading on its page.
@@ -83,12 +84,11 @@ mod links {
                 continue;
             };
             for (level, heading) in read_headings(&text) {
-                let id = slugify(&heading);
                 if level == 1 && stem != name {
-                    page.methods.insert(stem.to_string(), id.clone());
-                }
-                if level > 1 || stem != name {
-                    page.ids.insert(id);
+                    page.slugs.insert(slugify(&heading), stem.to_string());
+                    page.ids.insert(stem.to_string());
+                } else if level > 1 {
+                    page.ids.insert(slugify(&heading));
                 }
             }
         }
@@ -96,7 +96,7 @@ mod links {
     }
 
     /// The level and text of each Markdown heading outside a code fence.
-    fn read_headings(text: &str) -> Vec<(usize, String)> {
+    pub fn read_headings(text: &str) -> Vec<(usize, String)> {
         let mut headings = Vec::new();
         let mut fenced = false;
         for line in text.lines() {
@@ -113,7 +113,7 @@ mod links {
     }
 
     /// The id github-slugger gives a heading, which is the id Starlight uses.
-    fn slugify(heading: &str) -> String {
+    pub fn slugify(heading: &str) -> String {
         heading
             .trim()
             .to_lowercase()
@@ -172,13 +172,16 @@ mod links {
                 return None;
             }
             let hint = page
-                .methods
+                .slugs
                 .get(anchor)
-                .map(|id| format!("; use {SITE}{path}#{id}"))
+                .map(|method| format!("; use {SITE}{path}#{method}"))
                 .unwrap_or_default();
             return Some(format!("{SITE}{link} names no heading on its page{hint}"));
         }
-        Some(format!("{SITE}{link} names no page{}", suggest(pages, dirs, path)))
+        Some(format!(
+            "{SITE}{link} names no page{}",
+            suggest(pages, dirs, path)
+        ))
     }
 
     /// Whether `anchor` is a heading id on `page`, counting the `-1`, `-2` ids of repeats.
@@ -211,9 +214,9 @@ mod links {
                 None => return String::new(),
             }
         };
-        match pages.get(key).and_then(|page| page.methods.get(method)) {
-            Some(id) => format!("; use {SITE}{key}#{id}"),
-            None => String::new(),
+        match pages.get(key) {
+            Some(page) if page.ids.contains(method) => format!("; use {SITE}{key}#{method}"),
+            _ => String::new(),
         }
     }
 }

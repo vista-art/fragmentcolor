@@ -1,7 +1,7 @@
 # Scene::load_bytes_mobile()
 
 Generated uniffi plumbing for `Scene::load` with in-memory files. Call
-[`Scene.load(bytes)`](https://fragmentcolor.org/api/scene/scene#sceneload)
+[`Scene.load(bytes)`](https://fragmentcolor.org/api/scene/scene#load)
 instead: the Swift and Kotlin extensions add that overload on top of this
 method, so the call reads like every other platform.
 

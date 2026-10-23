@@ -1,11 +1,11 @@
 # Scene.cameras (JS/web)
 
-Web-specific example for [`Scene::cameras`](https://fragmentcolor.org/api/scene/scene#scenecameras).
+Web-specific example for [`Scene::cameras`](https://fragmentcolor.org/api/scene/scene#cameras).
 
 Same behavior as every other binding; the only difference is how the Scene
 is loaded. On the web there's no filesystem, so the `.glb` bytes are fetched
 and passed to `Scene.load` (see
-[`Scene::load`](https://fragmentcolor.org/api/scene/scene#sceneload)).
+[`Scene::load`](https://fragmentcolor.org/api/scene/scene#load)).
 
 ## Example
 

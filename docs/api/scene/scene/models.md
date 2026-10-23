@@ -1,7 +1,7 @@
 # Scene::models
 
 Return a snapshot of every [`Model`](https://fragmentcolor.org/api/scene/model)
-added to this Scene via [`Scene::add`](https://fragmentcolor.org/api/scene/scene#sceneadd),
+added to this Scene via [`Scene::add`](https://fragmentcolor.org/api/scene/scene#add),
 including Models the loader instantiated from glTF `mesh` nodes.
 
 Each entry is an Arc-shared clone of the original handle. Mutating one

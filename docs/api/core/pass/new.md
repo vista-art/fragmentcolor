@@ -3,9 +3,9 @@
 Creates a new render Pass.
 
 The name is required. Graphics debuggers show it as the pass label,
-[`Scene::find_pass`](https://fragmentcolor.org/api/scene/scene#scenefind_pass)
+[`Scene::find_pass`](https://fragmentcolor.org/api/scene/scene#find_pass)
 looks passes up by it, and
-[`require`](https://fragmentcolor.org/api/core/pass#passrequiredeps) tells
+[`require`](https://fragmentcolor.org/api/core/pass#require) tells
 dependencies apart by it.
 
 ## Example

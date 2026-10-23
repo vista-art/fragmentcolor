@@ -12,8 +12,8 @@ and JS, Python, Swift and Kotlin build them with lower-case factories
 that doesn't fit its type is an error.
 
 Pass a `VertexValue` to
-[`Vertex::set`](https://fragmentcolor.org/api/geometry/vertex#vertexset) or
-[`Instance::set`](https://fragmentcolor.org/api/geometry/instance#instanceset).
+[`Vertex::set`](https://fragmentcolor.org/api/geometry/vertex#set) or
+[`Instance::set`](https://fragmentcolor.org/api/geometry/instance#set).
 
 ## Example
 

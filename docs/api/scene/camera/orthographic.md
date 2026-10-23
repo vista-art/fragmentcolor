@@ -11,7 +11,7 @@ range `[0, 1]`. Pair with a depth attachment configured for that range
 when you add the Camera to a Pass that does depth testing.
 
 The view component starts at identity: eye at the world origin, looking
-down `-Z`, with `+Y` up. Chain [`look_at`](https://fragmentcolor.org/api/scene/camera#cameralook_at)
+down `-Z`, with `+Y` up. Chain [`look_at`](https://fragmentcolor.org/api/scene/camera#look_at)
 to position the camera before binding it.
 
 ## Example

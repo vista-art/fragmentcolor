@@ -3,20 +3,20 @@
 A `Camera` packages the two things every 3D render needs into one object: a
 projection (how the view frustum maps to clip space) and a view (where the
 camera sits and what it looks at). Pass it to
-[`Pass::add`](https://fragmentcolor.org/api/core/pass#passadd) to wire its
+[`Pass::add`](https://fragmentcolor.org/api/core/pass#add) to wire its
 `camera.view_proj` and `camera.position` into every shader the pass renders;
 the Camera holds Arc-shared state, so subsequent
-[`look_at`](https://fragmentcolor.org/api/scene/camera#cameralook_at) calls
+[`look_at`](https://fragmentcolor.org/api/scene/camera#look_at) calls
 propagate to every shader the Camera has been wired into.
 
 Internally a Camera carries:
 
-- A `proj` matrix built by [`Camera::perspective`](https://fragmentcolor.org/api/scene/camera#cameraperspective)
-  or [`Camera::orthographic`](https://fragmentcolor.org/api/scene/camera#cameraorthographic).
+- A `proj` matrix built by [`Camera::perspective`](https://fragmentcolor.org/api/scene/camera#perspective)
+  or [`Camera::orthographic`](https://fragmentcolor.org/api/scene/camera#orthographic).
   Both use glam's right-handed builders (`Mat4::perspective_rh`,
   `Mat4::orthographic_rh`), which match wgpu's NDC depth range `[0, 1]`.
 - A `view` matrix initialized to identity (eye at origin, looking down `-Z`,
-  with `+Y` up). Call [`look_at`](https://fragmentcolor.org/api/scene/camera#cameralook_at)
+  with `+Y` up). Call [`look_at`](https://fragmentcolor.org/api/scene/camera#look_at)
   to position the camera in world space.
 - The world-space `position` of the eye, kept alongside the view matrix so
   shaders that need it (specular highlights, fresnel) don't have to invert

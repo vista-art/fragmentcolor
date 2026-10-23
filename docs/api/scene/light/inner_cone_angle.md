@@ -4,9 +4,9 @@ Read the inner cone half-angle (radians). Returns `Some(value)` only for a
 spot light, `None` for directional and point lights. The inner cone is the
 band where the light reaches full intensity; beyond it the contribution
 smoothly rolls off until it reaches zero at the outer cone (see
-[`outer_cone_angle`](https://fragmentcolor.org/api/scene/light#lightouter_cone_angle)).
+[`outer_cone_angle`](https://fragmentcolor.org/api/scene/light#outer_cone_angle)).
 Call
-[`set_cone_angles`](https://fragmentcolor.org/api/scene/light#lightset_cone_angles)
+[`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles)
 to update both at once.
 
 ## Example

@@ -2,7 +2,7 @@
 
 Override the base URL used to resolve shader **slugs** (e.g. `"sdf2d/circle"`).
 
-When a slug is passed to [Shader::new](https://fragmentcolor.org/api/core/shader#shadernewinput-string--string), it is expanded to:
+When a slug is passed to [Shader::new](https://fragmentcolor.org/api/core/shader#new), it is expanded to:
 
 ```text
 <base_url>/<slug>.wgsl

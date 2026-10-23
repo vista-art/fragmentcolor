@@ -3,12 +3,12 @@
 Build an empty `Scene`. No `Renderer` argument, no async, nothing to await.
 The Scene's GPU resources initialize lazily when it's first rendered.
 
-The first call to [`Scene::add`](https://fragmentcolor.org/api/scene/scene#sceneadd)
+The first call to [`Scene::add`](https://fragmentcolor.org/api/scene/scene#add)
 creates a default [Pass](https://fragmentcolor.org/api/core/pass) under the
 hood and routes the object into it. Multiple
 `SceneObjects` share that one Pass
 unless you explicitly add more via
-[`Scene::add_pass`](https://fragmentcolor.org/api/scene/scene#sceneadd_pass).
+[`Scene::add_pass`](https://fragmentcolor.org/api/scene/scene#add_pass).
 
 `Scene` is `Clone` (shallow Arc-share); cloning gives another handle to
 the same underlying scene, so mutations on one clone are visible on the

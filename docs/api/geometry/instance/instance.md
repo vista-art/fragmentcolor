@@ -11,7 +11,7 @@ first, then by name. On a name clash, the instance attribute wins over the
 vertex attribute.
 
 Most code doesn't build one by hand.
-[`Vertex::create_instance`](https://fragmentcolor.org/api/geometry/vertex#vertexcreate_instance)
+[`Vertex::create_instance`](https://fragmentcolor.org/api/geometry/vertex#create_instance)
 copies a vertex's properties, and `Mesh::add_instance` takes a `Vertex` too.
 Build an `Instance` when the per-instance data doesn't come from a vertex.
 

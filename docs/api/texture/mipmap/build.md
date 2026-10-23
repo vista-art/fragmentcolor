@@ -1,6 +1,6 @@
 # Mipmap::build
 
-Build a mip chain on the calling thread, then hand it to [Renderer::create_texture](https://fragmentcolor.org/api/core/renderer#renderercreate_texture) for a GPU-only upload. The work is pure CPU (decode if needed, then downsample to 1x1), so call it from wherever you already do heavy work: a worker thread, a thread pool, an async task, a Web Worker. The renderer thread sees only the finished chain.
+Build a mip chain on the calling thread, then hand it to [Renderer::create_texture](https://fragmentcolor.org/api/core/renderer#create_texture) for a GPU-only upload. The work is pure CPU (decode if needed, then downsample to 1x1), so call it from wherever you already do heavy work: a worker thread, a thread pool, an async task, a Web Worker. The renderer thread sees only the finished chain.
 
 `build(input)` takes the same input shapes as `Renderer::create_texture` and `Renderer::create_storage_texture`, so you write the call the same way regardless of which entry point you target. Whether `build` decodes the bytes depends on whether you pass a `size`:
 
