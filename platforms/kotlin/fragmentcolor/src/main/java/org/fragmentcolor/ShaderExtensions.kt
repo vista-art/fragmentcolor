@@ -55,6 +55,10 @@ fun Shader.set(key: String, value: List<Double>) = set(key, UniformValue.Numbers
 fun Shader.set(key: String, value: List<Int>) =
     set(key, UniformValue.Numbers(value.map { it.toDouble() }))
 
+@JvmName("setUInts")
+fun Shader.set(key: String, value: List<UInt>) =
+    set(key, UniformValue.Numbers(value.map { it.toDouble() }))
+
 /** A matrix as its columns, as Rust's `[[f32; 4]; 4]` holds it. */
 @JvmName("setFloatColumns")
 fun Shader.set(key: String, columns: List<List<Float>>) = set(key, columns.flatten())

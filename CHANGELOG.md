@@ -51,7 +51,7 @@ A patch release that fixes crashes, memory leaks, and wrong output, and closes p
 
 - Every binding uses Rust's type names, such as `WindowTarget` and `TextureRegion`. `CanvasTarget`, `RenderCanvasTarget`, `TextureRegionMobile`, and the other `Mobile*` names remain aliases.
 - `Pass.add` and the `Scene` builders return the receiver, and `scene.add(model).add(camera)` chains. `Pass.require` takes a `Scene`. Every binding has `ScreenRegion(origin, size)`, `[x, y, w, h]` viewports, `[r, g, b]` clear colors, and a readable `PassInput`.
-- `Shader.set` takes each platform's number types, matrices flat or as columns, raw bytes for storage and push-constant roots, and bools as 1 or 0. Rust's `set("scale", 2)` fills an `f32`, and `Shader::get` reads matrices and bytes.
+- `Shader.set` takes each platform's number types, matrices flat or as columns, raw bytes for storage and push-constant roots, and bools as 1 or 0. Kotlin takes a `List<UInt>`, as Swift takes `[UInt32]`. Rust's `set("scale", 2)` fills an `f32`, and `Shader::get` reads matrices and bytes.
 - Swift and Kotlin `createTexture` takes bytes alone or with a format, a `[w, h]` size, or options, and every binding has the `TextureUsage` flags. Rust takes path and URL strings, the web reads every option, and JavaScript and Python load KTX2.
 - Python has one readable `Size` class, and `texture.size.width` no longer raises `AttributeError`. Python also builds `SamplerOptions` and `CompareFunction` and compares value types by value.
 - Every binding has `Vertex.UV0` and the other constants, and `(position, uv, color)` vertices. JavaScript gains `VertexValue`, Python `render` takes a `Mesh`, and `Scene.load` takes `.glb` bytes and can skip cameras or lights.
