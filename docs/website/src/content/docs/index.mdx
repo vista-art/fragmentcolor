@@ -7,18 +7,6 @@ hero:
   tagline: Universal GPU abstraction for Rust, JavaScript, Python, Swift, and Kotlin.
 ---
 
-import { LinkButton } from "@astrojs/starlight/components";
 import Playground from "../../components/Playground.astro";
-import Examples from "../../components/Examples.mdx";
 
-<Playground mode="compact" demos={["cells", "shapes", "kaleidoscope", "raymarch"]} />
-
-<div class="landing-actions">
-  <LinkButton href="https://github.com/vista-art/fragmentcolor" icon="github" iconPlacement="end">Github</LinkButton>
-  <LinkButton href="/welcome" variant="secondary" icon="document" iconPlacement="end">Documentation</LinkButton>
-  <LinkButton href="/welcome/playground" variant="minimal" icon="pencil" iconPlacement="end">Playground</LinkButton>
-</div>
-
-Edit the shader or `main.js` and the canvas rebuilds as you type. The [playground](/welcome/playground) has every demo, including one million particles on a compute shader and the artworks.
-
-<Examples />
+<Playground mode="landing" />
