@@ -601,13 +601,12 @@ struct ComputePipelineKey {
     bind_group_entries: BindGroupEntries,
 }
 
-#[doc(hidden)]
 #[derive(Debug)]
 /// Draws things on the screen or a texture.
 ///
 /// It owns and manages all GPU resources, serving as the
 /// main graphics context provider for the application.
-pub struct RenderContext {
+pub(crate) struct RenderContext {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
 
