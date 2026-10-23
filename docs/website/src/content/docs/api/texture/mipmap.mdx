@@ -21,7 +21,7 @@ Typical reasons to build one explicitly:
 - You stream tiles into a paint-canvas or terrain renderer and need each tile's GPU upload to be a single write, not a decode-plus-resize per upload.
 - You want to share one chain across many textures without rebuilding it.
 
-Build with [Mipmap::build(input)](/api/texture/mipmap#mipmapbuild); the input shapes match what [Renderer::create_texture](/api/core/renderer#renderercreate_texture) accepts. Whether the bytes get decoded depends on whether you pass a `size`:
+Build with [Mipmap::build(input)](/api/texture/mipmap#build); the input shapes match what [Renderer::create_texture](/api/core/renderer#create_texture) accepts. Whether the bytes get decoded depends on whether you pass a `size`:
 
 - `build((bytes, format))`: encoded image (PNG, JPEG, BMP, HDR, ...). FC decodes and infers the dimensions.
 - `build((bytes, format, size))`: raw pixel bytes already laid out for `format` at `size`. No decode.
@@ -157,9 +157,9 @@ lang="kotlin" meta="collapse={2-2}"
 
 ---
 
-### Mipmap::build
+### Mipmap::build \{#build\}
 
-Build a mip chain on the calling thread, then hand it to [Renderer::create_texture](/api/core/renderer#renderercreate_texture) for a GPU-only upload. The work is pure CPU (decode if needed, then downsample to 1x1), so call it from wherever you already do heavy work: a worker thread, a thread pool, an async task, a Web Worker. The renderer thread sees only the finished chain.
+Build a mip chain on the calling thread, then hand it to [Renderer::create_texture](/api/core/renderer#create_texture) for a GPU-only upload. The work is pure CPU (decode if needed, then downsample to 1x1), so call it from wherever you already do heavy work: a worker thread, a thread pool, an async task, a Web Worker. The renderer thread sees only the finished chain.
 
 `build(input)` takes the same input shapes as `Renderer::create_texture` and `Renderer::create_storage_texture`, so you write the call the same way regardless of which entry point you target. Whether `build` decodes the bytes depends on whether you pass a `size`:
 
@@ -307,7 +307,7 @@ lang="kotlin" meta="collapse={2-3}"
 
 ---
 
-### Mipmap::format
+### Mipmap::format \{#format\}
 
 Return the texture format the chain was built for: the `format` you passed to `build(...)`, with an alias such as `Rgba` returned as the concrete format it stands for, `Rgba8Unorm`. Useful when you receive a chain you didn't build yourself (passed in from another thread or stored in a cache) and need to confirm it matches the format your shader expects before uploading.
 
@@ -393,7 +393,7 @@ lang="kotlin" meta="collapse={2-2}"
 
 ---
 
-### Mipmap::size
+### Mipmap::size \{#size\}
 
 Return the base level (level 0) dimensions as `(width, height)`. Useful when you want to know what you're about to upload without keeping a separate copy of the source dimensions around. The chain has `1 + floor(log2(max(width, height)))` levels, each one half the previous size down to 1x1.
 
@@ -495,7 +495,7 @@ lang="kotlin"
 
 ---
 
-### Mipmap::levels
+### Mipmap::levels \{#levels\}
 
 Return the tightly-packed bytes for each mip level, level 0 first. Each level holds `bytes_per_pixel(format) * max(1, base_w >> level) * max(1, base_h >> level)` bytes. Reach for this when you want to inspect a level, dump the chain to disk, or feed the bytes into a tool that isn't FragmentColor. When you upload via `Renderer::create_texture(chain)`, the renderer reads the bytes directly and you don't need to touch them yourself.
 
@@ -582,7 +582,7 @@ lang="kotlin" meta="collapse={2-2}"
 
 ---
 
-### Mipmap::level
+### Mipmap::level \{#level\}
 
 Return the bytes of one mip level, with level 0 the full-size image. An index past the last level returns `TextureError::InvalidInput`.
 
@@ -669,7 +669,7 @@ lang="kotlin" meta="collapse={2-2}"
 
 ---
 
-### Mipmap::count
+### Mipmap::count \{#count\}
 
 Return how many mip levels the chain holds (always at least 1). For a base size of `w x h`, that's `1 + floor(log2(max(w, h)))`. So an 8x8 source yields four levels (8, 4, 2, 1). Handy for asserting that the chain has the depth you expected before you upload, or for sizing a fixed-array view of the levels in your own code.
 

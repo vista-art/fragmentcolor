@@ -77,7 +77,7 @@ class Renderer:
     The [Renderer](https://fragmentcolor.org/api/core/renderer) internals are lazily initialized
     when the user creates a [Target](https://fragmentcolor.org/api/targets/target).
 
-    See the constructor [Renderer::new()](https://fragmentcolor.org/api/core/renderer/#renderernew)
+    See the constructor [Renderer::new()](https://fragmentcolor.org/api/core/renderer#new)
     description below for details.
 
     Example:
@@ -185,7 +185,7 @@ class Renderer:
         | `(bytes, size)` / options with `size` set | Raw pixel bytes; `bpp(format) * width * height` long, no decode. The default `Rgba` format uploads them as linear `Rgba8Unorm`. |
         | `(bytes, format)` / options with `format` set | Encoded image reinterpreted as `format` (e.g. `Rgba8Unorm` for normal-map data, `R16Unorm` for 16-bit grayscale). |
         | `path` / `URL` | File or HTTP fetch, then decoded. |
-        | `Mipmap` | Pre-built CPU mip chain; GPU-only upload. Build via [Mipmap::build](https://fragmentcolor.org/api/texture/mipmap#mipmapbuild) on a worker thread. |
+        | `Mipmap` | Pre-built CPU mip chain; GPU-only upload. Build via [Mipmap::build](https://fragmentcolor.org/api/texture/mipmap#build) on a worker thread. |
         | `Ktx2Bytes` / `Ktx2Path` / `Ktx2Url` | KTX2 container (BC / ETC2 / ASTC / uncompressed); the file's declared format and pre-baked mip chain win. |
 
         A full mipmap chain is generated for source images by default (`options.mipmaps = true`). Set to `false` to skip the CPU work for textures that won't be sampled at distance.
@@ -208,7 +208,7 @@ class Renderer:
         handles; the path / bytes / URL variants are stored on the Material's
         Shader as *pending* uploads. `load` walks every Shader the renderable
         visits, drains its pending list, calls
-        [`Renderer::create_texture`](https://fragmentcolor.org/api/core/renderer#renderercreate_texture)
+        [`Renderer::create_texture`](https://fragmentcolor.org/api/core/renderer#create_texture)
         for each, and writes the resulting `Texture` into the matching uniform.
 
         On native targets, [`Renderer::render`](https://fragmentcolor.org/api/core/renderer)
@@ -416,13 +416,13 @@ class Shader:
 
     It takes a WGSL or GLSL shader source as input, parses it, validates it, and exposes the uniforms as keys.
 
-    `Shader::new` accepts a source string, a registry slug like `"sdf2d/circle"`, an `https://` URL, a local file path, or an array mixing any of those. Array parts are deduplicated by hash and concatenated in order, so you can pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](https://fragmentcolor.org/api/core/shader#shaderset_registrybase_url-string).
+    `Shader::new` accepts a source string, a registry slug like `"sdf2d/circle"`, an `https://` URL, a local file path, or an array mixing any of those. Array parts are deduplicated by hash and concatenated in order, so you can pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](https://fragmentcolor.org/api/core/shader#set_registry).
 
     To draw your shader, you must use your [Shader](https://fragmentcolor.org/api/core/shader) instance as input to a [Renderer](https://fragmentcolor.org/api/core/renderer).
 
     You can compose [Shader](https://fragmentcolor.org/api/core/shader) instances into a [Pass](https://fragmentcolor.org/api/core/pass) object to create more complex rendering pipelines.
 
-    You can also create renderings with multiple Render Passes by passing an array of [Pass](https://fragmentcolor.org/api/core/pass) instances to [Renderer::render](https://fragmentcolor.org/api/core/renderer#rendererrenderrenderable-target).
+    You can also create renderings with multiple Render Passes by passing an array of [Pass](https://fragmentcolor.org/api/core/pass) instances to [Renderer::render](https://fragmentcolor.org/api/core/renderer#render).
 
     Example:
 
@@ -587,7 +587,7 @@ class Shader:
         """
         Override the base URL used to resolve shader **slugs** (e.g. `"sdf2d/circle"`).
 
-        When a slug is passed to [Shader::new](https://fragmentcolor.org/api/core/shader#shadernewinput-string--string), it is expanded to:
+        When a slug is passed to [Shader::new](https://fragmentcolor.org/api/core/shader#new), it is expanded to:
 
         ```text
         <base_url>/<slug>.wgsl
@@ -1032,9 +1032,9 @@ class Pass:
         Creates a new render Pass.
 
         The name is required. Graphics debuggers show it as the pass label,
-        [`Scene::find_pass`](https://fragmentcolor.org/api/scene/scene#scenefind_pass)
+        [`Scene::find_pass`](https://fragmentcolor.org/api/scene/scene#find_pass)
         looks passes up by it, and
-        [`require`](https://fragmentcolor.org/api/core/pass#passrequiredeps) tells
+        [`require`](https://fragmentcolor.org/api/core/pass#require) tells
         dependencies apart by it.
 
         Example:
@@ -1084,10 +1084,10 @@ class Pass:
     def name(self) -> str:
         """
         Read the pass's name, the string passed to
-        [`Pass::new`](https://fragmentcolor.org/api/core/pass#passnewname-str---self) (or the label a
+        [`Pass::new`](https://fragmentcolor.org/api/core/pass#new) (or the label a
         loader gave it). Names are how you address a pass by something other than its
         index: pair this with
-        [`Scene::find_pass`](https://fragmentcolor.org/api/scene/scene#scenefind_pass) to
+        [`Scene::find_pass`](https://fragmentcolor.org/api/scene/scene#find_pass) to
         locate a pass in a scene's graph, and it's the label graphics debuggers
         (RenderDoc, Xcode GPU capture) show for the pass.
 
@@ -1340,7 +1340,7 @@ class Pass:
 
         A Pass has at most one depth attachment. Call `set_depth_target` again to swap it.
 
-        The target must be a depth `Texture` (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](https://fragmentcolor.org/api/core/renderer#renderercreate_depth_texture). A `TextureTarget` always has a color format, so passing one returns an error. The depth attachment's sample count must match the color attachments'. Mixing 1× and 4× MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
+        The target must be a depth `Texture` (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](https://fragmentcolor.org/api/core/renderer#create_depth_texture). A `TextureTarget` always has a color format, so passing one returns an error. The depth attachment's sample count must match the color attachments'. Mixing 1× and 4× MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
 
         To **opt out** of depth testing, simply don't call `set_depth_target`. The pass then renders without depth-state, painter's-algorithm style (later draws win).
 
@@ -1758,12 +1758,12 @@ class Vertex:
     def pbr(position: _PyVertexPosition) -> Vertex:
         """
         Construct a `Vertex` that matches the PBR shader's vertex input layout.
-        Seeds every attribute [`Material::pbr`](https://fragmentcolor.org/api/scene/material#materialpbr)
+        Seeds every attribute [`Material::pbr`](https://fragmentcolor.org/api/scene/material#pbr)
         reads (`NORMAL`, `UV0`, `COLOR0`, `UV1`, `TANGENT`) with a neutral identity
         default; chain `.set(...)` to override the slots a real mesh has data for.
 
         A vertex built with `Vertex::pbr(pos)` alone renders the same way
-        [`Scene::load`](https://fragmentcolor.org/api/scene/scene#sceneload) renders a
+        [`Scene::load`](https://fragmentcolor.org/api/scene/scene#load) renders a
         glTF primitive that carries only POSITION. Face-normal computation, UV
         defaults, vertex tint, and tangents all collapse to the values the loader
         falls back to. Useful for building PBR meshes by hand without spelling
@@ -1842,7 +1842,7 @@ class Instance:
     vertex attribute.
 
     Most code doesn't build one by hand.
-    [`Vertex::create_instance`](https://fragmentcolor.org/api/geometry/vertex#vertexcreate_instance)
+    [`Vertex::create_instance`](https://fragmentcolor.org/api/geometry/vertex#create_instance)
     copies a vertex's properties, and `Mesh::add_instance` takes a `Vertex` too.
     Build an `Instance` when the per-instance data doesn't come from a vertex.
 
@@ -1906,8 +1906,8 @@ class VertexValue:
     that doesn't fit its type is an error.
 
     Pass a `VertexValue` to
-    [`Vertex::set`](https://fragmentcolor.org/api/geometry/vertex#vertexset) or
-    [`Instance::set`](https://fragmentcolor.org/api/geometry/instance#instanceset).
+    [`Vertex::set`](https://fragmentcolor.org/api/geometry/vertex#set) or
+    [`Instance::set`](https://fragmentcolor.org/api/geometry/instance#set).
 
     Example:
 
@@ -2019,13 +2019,13 @@ class Scene:
     all append into the same list, and the renderer walks it in order. No pass is
     privileged in render order: the default Pass that `scene.add(&model)` targets
     is an ordinary member, slotted in at the point of your first `add`. After
-    [`Scene::load`](https://fragmentcolor.org/api/scene/scene#sceneload) the whole
+    [`Scene::load`](https://fragmentcolor.org/api/scene/scene#load) the whole
     graph is in your hands. Read it with
-    [`list_passes`](https://fragmentcolor.org/api/scene/scene#scenelist_passes) or
-    [`get_pass`](https://fragmentcolor.org/api/scene/scene#sceneget_pass), restructure
-    it with [`add_pass`](https://fragmentcolor.org/api/scene/scene#sceneadd_pass),
-    [`remove_pass`](https://fragmentcolor.org/api/scene/scene#sceneremove_pass), and
-    [`set_passes`](https://fragmentcolor.org/api/scene/scene#sceneset_passes), and
+    [`list_passes`](https://fragmentcolor.org/api/scene/scene#list_passes) or
+    [`get_pass`](https://fragmentcolor.org/api/scene/scene#get_pass), restructure
+    it with [`add_pass`](https://fragmentcolor.org/api/scene/scene#add_pass),
+    [`remove_pass`](https://fragmentcolor.org/api/scene/scene#remove_pass), and
+    [`set_passes`](https://fragmentcolor.org/api/scene/scene#set_passes), and
     configure each pass (`load_previous`, clear color, viewport, target) the same
     way you would a hand-built one. That makes a loaded Scene compose onto any
     other Pass in a frame, instead of clearing whatever it lands on.
@@ -2046,7 +2046,7 @@ class Scene:
     These only fire when no user Camera / Light has been added; as soon as you
     add your own, your values win. A composition caller that drives every uniform
     from the host can suppress them with
-    [`no_defaults`](https://fragmentcolor.org/api/scene/scene#sceneno_defaults) (or the
+    [`no_defaults`](https://fragmentcolor.org/api/scene/scene#no_defaults) (or the
     per-kind `no_default_camera` / `no_default_light`), or swap the stock values
     out with `set_default_camera` / `set_default_light`.
 
@@ -2079,12 +2079,12 @@ class Scene:
         Build an empty `Scene`. No `Renderer` argument, no async, nothing to await.
         The Scene's GPU resources initialize lazily when it's first rendered.
 
-        The first call to [`Scene::add`](https://fragmentcolor.org/api/scene/scene#sceneadd)
+        The first call to [`Scene::add`](https://fragmentcolor.org/api/scene/scene#add)
         creates a default [Pass](https://fragmentcolor.org/api/core/pass) under the
         hood and routes the object into it. Multiple
         `SceneObjects` share that one Pass
         unless you explicitly add more via
-        [`Scene::add_pass`](https://fragmentcolor.org/api/scene/scene#sceneadd_pass).
+        [`Scene::add_pass`](https://fragmentcolor.org/api/scene/scene#add_pass).
 
         `Scene` is `Clone` (shallow Arc-share); cloning gives another handle to
         the same underlying scene, so mutations on one clone are visible on the
@@ -2246,10 +2246,10 @@ class Scene:
         That makes `add_pass` the hook for shadow maps, depth pre-passes, screen-space
         backdrops, and post-effects alike. Insert before your geometry for a backdrop,
         after it for an overlay. To inspect or reorder the result, reach for
-        [`list_passes`](https://fragmentcolor.org/api/scene/scene#scenelist_passes),
-        [`get_pass`](https://fragmentcolor.org/api/scene/scene#sceneget_pass),
-        [`remove_pass`](https://fragmentcolor.org/api/scene/scene#sceneremove_pass), and
-        [`set_passes`](https://fragmentcolor.org/api/scene/scene#sceneset_passes).
+        [`list_passes`](https://fragmentcolor.org/api/scene/scene#list_passes),
+        [`get_pass`](https://fragmentcolor.org/api/scene/scene#get_pass),
+        [`remove_pass`](https://fragmentcolor.org/api/scene/scene#remove_pass), and
+        [`set_passes`](https://fragmentcolor.org/api/scene/scene#set_passes).
 
         The Pass is cloned (shallow Arc-share) when stored, so further changes you
         make to the original handle reach the Scene's copy too.
@@ -2300,7 +2300,7 @@ class Scene:
         Returns `true` when a pass left the graph, `false` when the handle wasn't
         there.
 
-        If the removed pass was the default pass that [`Scene::add`](https://fragmentcolor.org/api/scene/scene#sceneadd)
+        If the removed pass was the default pass that [`Scene::add`](https://fragmentcolor.org/api/scene/scene#add)
         routes objects into, the Scene forgets it. The next `add` builds a fresh
         default pass at the end of the graph.
 
@@ -2327,7 +2327,7 @@ class Scene:
         The returned `Pass` is an Arc-shared clone of the one the Scene renders.
         Configuring it (`load_previous`, `set_clear_color`, `set_target`) drives the
         live pass, no re-insert needed. To borrow the whole graph at once, use
-        [`Scene::list_passes`](https://fragmentcolor.org/api/scene/scene#scenelist_passes).
+        [`Scene::list_passes`](https://fragmentcolor.org/api/scene/scene#list_passes).
 
         Example:
 
@@ -2347,12 +2347,12 @@ class Scene:
         """
         Find a [`Pass`](https://fragmentcolor.org/api/core/pass) in the scene's graph
         by name, returning `None` when nothing matches. Names come from
-        [`Pass::new`](https://fragmentcolor.org/api/core/pass#passnewname-str---self) (or whatever label a
+        [`Pass::new`](https://fragmentcolor.org/api/core/pass#new) (or whatever label a
         loader assigned), and you can read one back with
-        [`Pass::name`](https://fragmentcolor.org/api/core/pass#passname).
+        [`Pass::name`](https://fragmentcolor.org/api/core/pass#name).
 
         This is the name-addressed counterpart to
-        [`get_pass`](https://fragmentcolor.org/api/scene/scene#sceneget_pass), which
+        [`get_pass`](https://fragmentcolor.org/api/scene/scene#get_pass), which
         addresses by index. Names aren't required to be unique; `find_pass` returns the
         first match in render order. The returned `Pass` is an Arc-shared clone, so
         configuring it drives the pass the Scene renders.
@@ -2380,7 +2380,7 @@ class Scene:
         snapshot at call time; appending passes afterward doesn't grow it.
 
         This is the composition hook. After
-        [`Scene::load`](https://fragmentcolor.org/api/scene/scene#sceneload) the whole
+        [`Scene::load`](https://fragmentcolor.org/api/scene/scene#load) the whole
         pass graph is in your hands: walk it and call `load_previous` so the scene
         composes onto a previous draw instead of clearing it, then hand the Scene to
         the renderer alongside whatever else the frame needs.
@@ -2407,12 +2407,12 @@ class Scene:
         Add a `SceneObject` (Model / Camera /
         Light, or a custom one in Rust) to a specific Pass in the graph, addressed by index or by
         name. It's the targeted form of
-        [`add`](https://fragmentcolor.org/api/scene/scene#sceneadd): where `add` routes
+        [`add`](https://fragmentcolor.org/api/scene/scene#add): where `add` routes
         into the scene's default pass, `add_to` lets you pick the pass yourself, which
         matters once a scene holds more than one.
 
-        Pass an index (matching [`get_pass`](https://fragmentcolor.org/api/scene/scene#sceneget_pass))
-        or a name (matching [`find_pass`](https://fragmentcolor.org/api/scene/scene#scenefind_pass)).
+        Pass an index (matching [`get_pass`](https://fragmentcolor.org/api/scene/scene#get_pass))
+        or a name (matching [`find_pass`](https://fragmentcolor.org/api/scene/scene#find_pass)).
         An index out of range, or a name that matches nothing, is an error. The
         Scene-level bookkeeping is identical to `add`: the object surfaces in
         `models()` / `cameras()` / `lights()`, and a Camera or Light there still
@@ -2441,11 +2441,11 @@ class Scene:
         Replace the scene's entire pass graph with a new ordered list. The passes
         render in vec order. This is the sugar for "load, reorder, render" when you'd
         rather hand over a fresh ordering than call
-        [`remove_pass`](https://fragmentcolor.org/api/scene/scene#sceneremove_pass) and
-        [`add_pass`](https://fragmentcolor.org/api/scene/scene#sceneadd_pass) one at a
+        [`remove_pass`](https://fragmentcolor.org/api/scene/scene#remove_pass) and
+        [`add_pass`](https://fragmentcolor.org/api/scene/scene#add_pass) one at a
         time.
 
-        If the default pass that [`Scene::add`](https://fragmentcolor.org/api/scene/scene#sceneadd)
+        If the default pass that [`Scene::add`](https://fragmentcolor.org/api/scene/scene#add)
         routes objects into survives in the new list, the Scene keeps using it. If you
         drop it, the Scene forgets it and the next `add` builds a fresh one at the end.
 
@@ -2475,11 +2475,11 @@ class Scene:
         `no_defaults` leaves the pass graph exactly as built.
 
         For finer control, reach for the per-kind switches
-        [`no_default_camera`](https://fragmentcolor.org/api/scene/scene#sceneno_default_camera)
-        and [`no_default_light`](https://fragmentcolor.org/api/scene/scene#sceneno_default_light).
+        [`no_default_camera`](https://fragmentcolor.org/api/scene/scene#no_default_camera)
+        and [`no_default_light`](https://fragmentcolor.org/api/scene/scene#no_default_light).
         To keep injection on but swap the stock values for your own, use
-        [`set_default_camera`](https://fragmentcolor.org/api/scene/scene#sceneset_default_camera)
-        and [`set_default_light`](https://fragmentcolor.org/api/scene/scene#sceneset_default_light).
+        [`set_default_camera`](https://fragmentcolor.org/api/scene/scene#set_default_camera)
+        and [`set_default_light`](https://fragmentcolor.org/api/scene/scene#set_default_light).
 
         Example:
 
@@ -2507,9 +2507,9 @@ class Scene:
         and the stock camera would only fight for the same uniform.
 
         To turn off both kinds at once, use
-        [`no_defaults`](https://fragmentcolor.org/api/scene/scene#sceneno_defaults). To
+        [`no_defaults`](https://fragmentcolor.org/api/scene/scene#no_defaults). To
         keep injection on but supply your own camera, use
-        [`set_default_camera`](https://fragmentcolor.org/api/scene/scene#sceneset_default_camera).
+        [`set_default_camera`](https://fragmentcolor.org/api/scene/scene#set_default_camera).
 
         Example:
 
@@ -2535,9 +2535,9 @@ class Scene:
         `lights.lights[..]` slots.
 
         To turn off both kinds at once, use
-        [`no_defaults`](https://fragmentcolor.org/api/scene/scene#sceneno_defaults). To
+        [`no_defaults`](https://fragmentcolor.org/api/scene/scene#no_defaults). To
         keep injection on but supply your own light, use
-        [`set_default_light`](https://fragmentcolor.org/api/scene/scene#sceneset_default_light).
+        [`set_default_light`](https://fragmentcolor.org/api/scene/scene#set_default_light).
 
         Example:
 
@@ -2559,11 +2559,11 @@ class Scene:
         Supply your own default [`Camera`](https://fragmentcolor.org/api/scene/camera)
         for the Scene to inject at first render in place of FC's stock perspective
         camera. This fires only when no Camera arrived through
-        [`Scene::add`](https://fragmentcolor.org/api/scene/scene#sceneadd); an explicit
+        [`Scene::add`](https://fragmentcolor.org/api/scene/scene#add); an explicit
         `scene.add(&camera)` still wins.
 
         Naming a default re-arms injection. If
-        [`no_default_camera`](https://fragmentcolor.org/api/scene/scene#sceneno_default_camera)
+        [`no_default_camera`](https://fragmentcolor.org/api/scene/scene#no_default_camera)
         ran earlier, calling `set_default_camera` turns camera injection back on with
         the camera you pass.
 
@@ -2588,11 +2588,11 @@ class Scene:
         Supply your own default [`Light`](https://fragmentcolor.org/api/scene/light)
         for the Scene to inject at first render in place of FC's stock white
         directional light. This fires only when no Light arrived through
-        [`Scene::add`](https://fragmentcolor.org/api/scene/scene#sceneadd); an explicit
+        [`Scene::add`](https://fragmentcolor.org/api/scene/scene#add); an explicit
         `scene.add(&light)` still wins.
 
         Naming a default re-arms injection. If
-        [`no_default_light`](https://fragmentcolor.org/api/scene/scene#sceneno_default_light)
+        [`no_default_light`](https://fragmentcolor.org/api/scene/scene#no_default_light)
         ran earlier, calling `set_default_light` turns light injection back on with
         the light you pass.
 
@@ -2653,7 +2653,7 @@ class Scene:
     def models(self) -> list[Model]:
         """
         Return a snapshot of every [`Model`](https://fragmentcolor.org/api/scene/model)
-        added to this Scene via [`Scene::add`](https://fragmentcolor.org/api/scene/scene#sceneadd),
+        added to this Scene via [`Scene::add`](https://fragmentcolor.org/api/scene/scene#add),
         including Models the loader instantiated from glTF `mesh` nodes.
 
         Each entry is an Arc-shared clone of the original handle. Mutating one
@@ -2689,10 +2689,10 @@ class Scene:
     def cameras(self) -> list[Camera]:
         """
         Return a snapshot of every [`Camera`](https://fragmentcolor.org/api/scene/camera)
-        added to this Scene via [`Scene::add`](https://fragmentcolor.org/api/scene/scene#sceneadd),
+        added to this Scene via [`Scene::add`](https://fragmentcolor.org/api/scene/scene#add),
         including Cameras the loader instantiated from glTF `camera` nodes
         (unless you skipped them via the camera filter on
-        [`Scene::load`](https://fragmentcolor.org/api/scene/scene#sceneload)).
+        [`Scene::load`](https://fragmentcolor.org/api/scene/scene#load)).
 
         Each entry is an Arc-shared clone of the original handle.
         `camera.look_at(...)` / `camera.set_aspect(...)` on a returned handle
@@ -2722,10 +2722,10 @@ class Scene:
     def lights(self) -> list[Light]:
         """
         Return a snapshot of every [`Light`](https://fragmentcolor.org/api/scene/light)
-        added to this Scene via [`Scene::add`](https://fragmentcolor.org/api/scene/scene#sceneadd),
+        added to this Scene via [`Scene::add`](https://fragmentcolor.org/api/scene/scene#add),
         including Lights the loader instantiated from glTF
         `KHR_lights_punctual` nodes (unless you skipped them via the light filter
-        on [`Scene::load`](https://fragmentcolor.org/api/scene/scene#sceneload)).
+        on [`Scene::load`](https://fragmentcolor.org/api/scene/scene#load)).
 
         Each entry is an Arc-shared clone. Mutating a returned handle
         (`set_color`, `set_intensity`, `set_position`, …) propagates to every
@@ -2892,7 +2892,7 @@ class Model:
         starts at the identity matrix and is modified by `set_transform`,
         `translate`, `rotate`, and `scale`.
 
-        For the setter, see [Model::set_transform](https://fragmentcolor.org/api/scene/model#modelset_transform).
+        For the setter, see [Model::set_transform](https://fragmentcolor.org/api/scene/model#set_transform).
         Rust doesn't allow getter/setter overloads on the same name, so the read
         side is `transform` and the write side is `set_transform`.
 
@@ -2921,7 +2921,7 @@ class Model:
         The renderer reads the new matrix on the next render, so a Model already
         added to a Pass or Scene moves without being added again. To read the
         current transform, see
-        [Model::transform](https://fragmentcolor.org/api/scene/model#modeltransform).
+        [Model::transform](https://fragmentcolor.org/api/scene/model#transform).
 
         Example:
 
@@ -2974,7 +2974,7 @@ class Model:
         with a logged warning and no change.
 
         For pure world-space rotations (e.g. tumbling around a fixed pivot), compose
-        the matrix yourself and call [set_transform](https://fragmentcolor.org/api/scene/model#modelset_transform).
+        the matrix yourself and call [set_transform](https://fragmentcolor.org/api/scene/model#set_transform).
 
         Example:
 
@@ -3020,7 +3020,7 @@ class Model:
     def visible(self) -> bool:
         """
         Read the current visibility flag. Returns `true` for newly-built Models;
-        toggle with [`Model::set_visible`](https://fragmentcolor.org/api/scene/model#modelset_visible).
+        toggle with [`Model::set_visible`](https://fragmentcolor.org/api/scene/model#set_visible).
 
         The renderer reads this every frame. Hidden Models are skipped in both
         the opaque-batched and blend-sorted draw paths without requiring a Pass
@@ -3079,20 +3079,20 @@ class Camera:
     A `Camera` packages the two things every 3D render needs into one object: a
     projection (how the view frustum maps to clip space) and a view (where the
     camera sits and what it looks at). Pass it to
-    [`Pass::add`](https://fragmentcolor.org/api/core/pass#passadd) to wire its
+    [`Pass::add`](https://fragmentcolor.org/api/core/pass#add) to wire its
     `camera.view_proj` and `camera.position` into every shader the pass renders;
     the Camera holds Arc-shared state, so subsequent
-    [`look_at`](https://fragmentcolor.org/api/scene/camera#cameralook_at) calls
+    [`look_at`](https://fragmentcolor.org/api/scene/camera#look_at) calls
     propagate to every shader the Camera has been wired into.
 
     Internally a Camera carries:
 
-    - A `proj` matrix built by [`Camera::perspective`](https://fragmentcolor.org/api/scene/camera#cameraperspective)
-      or [`Camera::orthographic`](https://fragmentcolor.org/api/scene/camera#cameraorthographic).
+    - A `proj` matrix built by [`Camera::perspective`](https://fragmentcolor.org/api/scene/camera#perspective)
+      or [`Camera::orthographic`](https://fragmentcolor.org/api/scene/camera#orthographic).
       Both use glam's right-handed builders (`Mat4::perspective_rh`,
       `Mat4::orthographic_rh`), which match wgpu's NDC depth range `[0, 1]`.
     - A `view` matrix initialized to identity (eye at origin, looking down `-Z`,
-      with `+Y` up). Call [`look_at`](https://fragmentcolor.org/api/scene/camera#cameralook_at)
+      with `+Y` up). Call [`look_at`](https://fragmentcolor.org/api/scene/camera#look_at)
       to position the camera in world space.
     - The world-space `position` of the eye, kept alongside the view matrix so
       shaders that need it (specular highlights, fresnel) don't have to invert
@@ -3125,7 +3125,7 @@ class Camera:
         when you add the Camera to a Pass that does depth testing.
 
         The view component starts at identity: eye at the world origin, looking
-        down `-Z`, with `+Y` up. Chain [`look_at`](https://fragmentcolor.org/api/scene/camera#cameralook_at)
+        down `-Z`, with `+Y` up. Chain [`look_at`](https://fragmentcolor.org/api/scene/camera#look_at)
         to position the camera before binding it.
 
         Example:
@@ -3150,7 +3150,7 @@ class Camera:
         when you add the Camera to a Pass that does depth testing.
 
         The view component starts at identity: eye at the world origin, looking
-        down `-Z`, with `+Y` up. Chain [`look_at`](https://fragmentcolor.org/api/scene/camera#cameralook_at)
+        down `-Z`, with `+Y` up. Chain [`look_at`](https://fragmentcolor.org/api/scene/camera#look_at)
         to position the camera before binding it.
 
         Example:
@@ -3177,11 +3177,11 @@ class Camera:
 
         Internally builds the view matrix with `glam::Mat4::look_at_rh`. The
         result is a right-handed view matrix that pairs with the right-handed
-        projection produced by [`perspective`](https://fragmentcolor.org/api/scene/camera#cameraperspective)
-        and [`orthographic`](https://fragmentcolor.org/api/scene/camera#cameraorthographic).
+        projection produced by [`perspective`](https://fragmentcolor.org/api/scene/camera#perspective)
+        and [`orthographic`](https://fragmentcolor.org/api/scene/camera#orthographic).
 
         The world-space position is cached on the Camera and exposed via
-        [`position`](https://fragmentcolor.org/api/scene/camera#cameraposition) so
+        [`position`](https://fragmentcolor.org/api/scene/camera#position) so
         shaders that need it (specular highlights, fresnel) don't have to invert
         the view matrix on every frame.
 
@@ -3235,7 +3235,7 @@ class Camera:
         the result is ready to feed directly into a Shader's `camera.view_proj`
         uniform via `Shader::set(...)` if you need direct control. For the common
         case, pass the Camera to
-        [`Pass::add`](https://fragmentcolor.org/api/core/pass#passadd). The Pass seeds
+        [`Pass::add`](https://fragmentcolor.org/api/core/pass#add). The Pass seeds
         `camera.view_proj` + `camera.position` on every Material attached to it
         and keeps them in sync with later updates.
 
@@ -3252,13 +3252,13 @@ class Camera:
     def position(self) -> list[float]:
         """
         Read the world-space eye position as `[x, y, z]`. This is the value set by
-        the most recent [`look_at`](https://fragmentcolor.org/api/scene/camera#cameralook_at)
+        the most recent [`look_at`](https://fragmentcolor.org/api/scene/camera#look_at)
         call, or `[0, 0, 0]` if the camera has only been constructed (the default
         view is identity, with the eye at the origin).
 
         Shaders that need the eye position (specular highlights, fresnel,
         parallax) typically pull it from the `camera.position` uniform seeded by
-        [`Pass::add`](https://fragmentcolor.org/api/core/pass#passadd) when the Camera
+        [`Pass::add`](https://fragmentcolor.org/api/core/pass#add) when the Camera
         is absorbed. Caching it here keeps every frame cheap (no view-matrix
         inversion on the GPU side).
 
@@ -3281,31 +3281,31 @@ class Light:
     (radiates from a position with inverse-square falloff: lamps, candles,
     fireballs), and **spot** (point light constrained to a cone: flashlights,
     headlamps, theater lighting). The kind is set once at construction via
-    [`Light::directional`](https://fragmentcolor.org/api/scene/light#lightdirectional),
-    [`Light::point`](https://fragmentcolor.org/api/scene/light#lightpoint), or
-    [`Light::spot`](https://fragmentcolor.org/api/scene/light#lightspot).
+    [`Light::directional`](https://fragmentcolor.org/api/scene/light#directional),
+    [`Light::point`](https://fragmentcolor.org/api/scene/light#point), or
+    [`Light::spot`](https://fragmentcolor.org/api/scene/light#spot).
 
     The unified surface keeps the public API simple: one type, one
-    [`Scene::add`](https://fragmentcolor.org/api/scene/scene#sceneadd) method, one
-    [`Pass::add`](https://fragmentcolor.org/api/core/pass#passadd) method, and one
+    [`Scene::add`](https://fragmentcolor.org/api/scene/scene#add) method, one
+    [`Pass::add`](https://fragmentcolor.org/api/core/pass#add) method, and one
     binding per platform. Setters fall into two groups:
 
-    - **Universal**: [`set_color`](https://fragmentcolor.org/api/scene/light#lightset_color)
-      and [`set_intensity`](https://fragmentcolor.org/api/scene/light#lightset_intensity)
+    - **Universal**: [`set_color`](https://fragmentcolor.org/api/scene/light#set_color)
+      and [`set_intensity`](https://fragmentcolor.org/api/scene/light#set_intensity)
       apply to every kind and return `Self` for chaining.
-    - **Kind-specific**: [`set_position`](https://fragmentcolor.org/api/scene/light#lightset_position),
-      [`set_direction`](https://fragmentcolor.org/api/scene/light#lightset_direction),
-      [`set_range`](https://fragmentcolor.org/api/scene/light#lightset_range), and
-      [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#lightset_cone_angles)
+    - **Kind-specific**: [`set_position`](https://fragmentcolor.org/api/scene/light#set_position),
+      [`set_direction`](https://fragmentcolor.org/api/scene/light#set_direction),
+      [`set_range`](https://fragmentcolor.org/api/scene/light#set_range), and
+      [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles)
       return `Result<Self, LightError>`. Calling one on the wrong kind returns
       `LightError::FieldNotApplicable { kind, field }`.
 
     The matching getters use `Option<T>` for the kind-specific fields:
-    [`position`](https://fragmentcolor.org/api/scene/light#lightposition),
-    [`direction`](https://fragmentcolor.org/api/scene/light#lightdirection),
-    [`range`](https://fragmentcolor.org/api/scene/light#lightrange),
-    [`inner_cone_angle`](https://fragmentcolor.org/api/scene/light#lightinner_cone_angle),
-    [`outer_cone_angle`](https://fragmentcolor.org/api/scene/light#lightouter_cone_angle)
+    [`position`](https://fragmentcolor.org/api/scene/light#position),
+    [`direction`](https://fragmentcolor.org/api/scene/light#direction),
+    [`range`](https://fragmentcolor.org/api/scene/light#range),
+    [`inner_cone_angle`](https://fragmentcolor.org/api/scene/light#inner_cone_angle),
+    [`outer_cone_angle`](https://fragmentcolor.org/api/scene/light#outer_cone_angle)
     return `Some` only on the kinds that carry the value, `None` otherwise.
 
     Lights hold Arc-shared state, so a single handle can be absorbed by
@@ -3386,13 +3386,13 @@ class Light:
 
         Use this for sun / moon / fill / key lights: anything where every shaded
         surface should receive parallel rays from a fixed direction. For positioned
-        sources, see [`Light::point`](https://fragmentcolor.org/api/scene/light#lightpoint)
-        and [`Light::spot`](https://fragmentcolor.org/api/scene/light#lightspot).
+        sources, see [`Light::point`](https://fragmentcolor.org/api/scene/light#point)
+        and [`Light::spot`](https://fragmentcolor.org/api/scene/light#spot).
 
         A directional light carries no position. Calling
-        [`set_position`](https://fragmentcolor.org/api/scene/light#lightset_position),
-        [`set_range`](https://fragmentcolor.org/api/scene/light#lightset_range), or
-        [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#lightset_cone_angles)
+        [`set_position`](https://fragmentcolor.org/api/scene/light#set_position),
+        [`set_range`](https://fragmentcolor.org/api/scene/light#set_range), or
+        [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles)
         on a directional light returns `LightError::FieldNotApplicable`.
 
         Example:
@@ -3409,20 +3409,20 @@ class Light:
         Construct a point light. `position` is the world-space location the light
         radiates from; `color` is linear-RGB intensity (`[1, 1, 1]` for full white).
         Falloff is inverse-square distance. Bring
-        [`set_range`](https://fragmentcolor.org/api/scene/light#lightset_range) in to
+        [`set_range`](https://fragmentcolor.org/api/scene/light#set_range) in to
         cap the influence radius, and
-        [`set_intensity`](https://fragmentcolor.org/api/scene/light#lightset_intensity)
+        [`set_intensity`](https://fragmentcolor.org/api/scene/light#set_intensity)
         to scale the color uniformly.
 
         Use this for lamps, candles, fireballs: anything where light radiates
         outward from a fixed point. For a parallel-ray sun-like light see
-        [`Light::directional`](https://fragmentcolor.org/api/scene/light#lightdirectional);
+        [`Light::directional`](https://fragmentcolor.org/api/scene/light#directional);
         for a cone-constrained beam see
-        [`Light::spot`](https://fragmentcolor.org/api/scene/light#lightspot).
+        [`Light::spot`](https://fragmentcolor.org/api/scene/light#spot).
 
         A point light carries no direction or cone. Calling
-        [`set_direction`](https://fragmentcolor.org/api/scene/light#lightset_direction)
-        or [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#lightset_cone_angles)
+        [`set_direction`](https://fragmentcolor.org/api/scene/light#set_direction)
+        or [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles)
         on a point light returns `LightError::FieldNotApplicable`.
 
         Example:
@@ -3442,18 +3442,18 @@ class Light:
 
         Falloff is inverse-square distance with a smooth cone roll-off between an
         inner and outer cone angle (defaults: `0` and `π/4`). Tighten the beam
-        with [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#lightset_cone_angles),
+        with [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles),
         cap the influence with
-        [`set_range`](https://fragmentcolor.org/api/scene/light#lightset_range), and
+        [`set_range`](https://fragmentcolor.org/api/scene/light#set_range), and
         scale the radiance with
-        [`set_intensity`](https://fragmentcolor.org/api/scene/light#lightset_intensity).
+        [`set_intensity`](https://fragmentcolor.org/api/scene/light#set_intensity).
 
         Use this for flashlights, headlamps, theater lighting, mood key-lights:
         anything where the lit volume is a cone aimed at a target. For an
         unconstrained point source see
-        [`Light::point`](https://fragmentcolor.org/api/scene/light#lightpoint);
+        [`Light::point`](https://fragmentcolor.org/api/scene/light#point);
         for parallel-ray illumination see
-        [`Light::directional`](https://fragmentcolor.org/api/scene/light#lightdirectional).
+        [`Light::directional`](https://fragmentcolor.org/api/scene/light#directional).
 
         A spot light carries every kind-specific field, so every kind-specific
         setter (`set_position`, `set_direction`, `set_range`, `set_cone_angles`)
@@ -3491,9 +3491,9 @@ class Light:
         """
         Read the linear-RGB color the light emits. Defined for every kind. The
         returned value is the `[r, g, b]` triple stored on the Light. Call
-        [`set_color`](https://fragmentcolor.org/api/scene/light#lightset_color) to
+        [`set_color`](https://fragmentcolor.org/api/scene/light#set_color) to
         update it. The scalar
-        [`intensity`](https://fragmentcolor.org/api/scene/light#lightintensity)
+        [`intensity`](https://fragmentcolor.org/api/scene/light#intensity)
         multiplier is separate and multiplies the color uniformly in the shader.
 
         Example:
@@ -3507,10 +3507,10 @@ class Light:
     def intensity(self) -> float:
         """
         Read the scalar intensity multiplier. Defined for every kind. The shader
-        multiplies the [`color`](https://fragmentcolor.org/api/scene/light#lightcolor)
+        multiplies the [`color`](https://fragmentcolor.org/api/scene/light#color)
         by this value when accumulating the light's contribution, so doubling
         intensity doubles every channel uniformly. Call
-        [`set_intensity`](https://fragmentcolor.org/api/scene/light#lightset_intensity)
+        [`set_intensity`](https://fragmentcolor.org/api/scene/light#set_intensity)
         to update it.
 
         Example:
@@ -3527,7 +3527,7 @@ class Light:
         `Some([x, y, z])` for a point or spot light, `None` for a directional
         light (directional rays travel from infinitely far away, so there's no position to
         report). Call
-        [`set_position`](https://fragmentcolor.org/api/scene/light#lightset_position)
+        [`set_position`](https://fragmentcolor.org/api/scene/light#set_position)
         to update it.
 
         Example:
@@ -3545,7 +3545,7 @@ class Light:
         `Some([x, y, z])` for a directional or spot light, `None` for a point
         light (point sources radiate omnidirectionally, so there's no direction to report).
         Call
-        [`set_direction`](https://fragmentcolor.org/api/scene/light#lightset_direction)
+        [`set_direction`](https://fragmentcolor.org/api/scene/light#set_direction)
         to update it.
 
         Example:
@@ -3564,7 +3564,7 @@ class Light:
         falloff). A value of `0.0` means "unlimited", matching glTF
         `KHR_lights_punctual`'s default; positive values cut the contribution off
         smoothly past that distance. Call
-        [`set_range`](https://fragmentcolor.org/api/scene/light#lightset_range) to
+        [`set_range`](https://fragmentcolor.org/api/scene/light#set_range) to
         update it.
 
         Example:
@@ -3582,9 +3582,9 @@ class Light:
         spot light, `None` for directional and point lights. The inner cone is the
         band where the light reaches full intensity; beyond it the contribution
         smoothly rolls off until it reaches zero at the outer cone (see
-        [`outer_cone_angle`](https://fragmentcolor.org/api/scene/light#lightouter_cone_angle)).
+        [`outer_cone_angle`](https://fragmentcolor.org/api/scene/light#outer_cone_angle)).
         Call
-        [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#lightset_cone_angles)
+        [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles)
         to update both at once.
 
         Example:
@@ -3603,9 +3603,9 @@ class Light:
         where the light's contribution reaches zero. Beyond this angle the
         fragment receives nothing from this light. Between the inner and outer
         cones the contribution smoothly rolls off; see
-        [`inner_cone_angle`](https://fragmentcolor.org/api/scene/light#lightinner_cone_angle).
+        [`inner_cone_angle`](https://fragmentcolor.org/api/scene/light#inner_cone_angle).
         Call
-        [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#lightset_cone_angles)
+        [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles)
         to update both at once.
 
         Example:
@@ -3639,7 +3639,7 @@ class Light:
         """
         Update the scalar intensity multiplier. Defined for every kind; returns
         `Self` for chaining. The shader multiplies the
-        [`color`](https://fragmentcolor.org/api/scene/light#lightcolor) by this value
+        [`color`](https://fragmentcolor.org/api/scene/light#color) by this value
         when accumulating, so doubling intensity doubles every channel uniformly.
         The new value propagates live to every shader the Light has already been
         wired into.
@@ -3899,7 +3899,7 @@ class Material:
         | `light.color`                | `[1, 1, 1]`          |
 
         The camera and light are the user's domain, not the Material's. Pass them
-        to [`Pass::add`](https://fragmentcolor.org/api/core/pass#passadd). The
+        to [`Pass::add`](https://fragmentcolor.org/api/core/pass#add). The
         typed [Camera](https://fragmentcolor.org/api/scene/camera) and
         [Light](https://fragmentcolor.org/api/scene/light) handles seed the matching
         `camera.*` / `light.*` uniforms and propagate any later updates back into
@@ -4406,7 +4406,7 @@ class Texture:
     """
     A GPU texture resource. Public API wrapper that holds a shareable reference to the internal TextureObject and a numeric handle used by uniforms.
 
-    - Construct via [Renderer::create_texture(input)](https://fragmentcolor.org/api/core/renderer#renderercreate_texture). `input` accepts bytes, `(bytes, [w, h])`, `(bytes, format)`, a path, a URL, a KTX2 container, or a prepared chain.
+    - Construct via [Renderer::create_texture(input)](https://fragmentcolor.org/api/core/renderer#create_texture). `input` accepts bytes, `(bytes, [w, h])`, `(bytes, format)`, a path, a URL, a KTX2 container, or a prepared chain.
     - Bind to a shader with `shader.set("key", &texture)`.
     - The texture owns its sampler; tweak filtering and wrapping via `set_sampler_options`.
 
@@ -4630,7 +4630,7 @@ class Mipmap:
     - You stream tiles into a paint-canvas or terrain renderer and need each tile's GPU upload to be a single write, not a decode-plus-resize per upload.
     - You want to share one chain across many textures without rebuilding it.
 
-    Build with [Mipmap::build(input)](https://fragmentcolor.org/api/texture/mipmap#mipmapbuild); the input shapes match what [Renderer::create_texture](https://fragmentcolor.org/api/core/renderer#renderercreate_texture) accepts. Whether the bytes get decoded depends on whether you pass a `size`:
+    Build with [Mipmap::build(input)](https://fragmentcolor.org/api/texture/mipmap#build); the input shapes match what [Renderer::create_texture](https://fragmentcolor.org/api/core/renderer#create_texture) accepts. Whether the bytes get decoded depends on whether you pass a `size`:
 
     - `build((bytes, format))`: encoded image (PNG, JPEG, BMP, HDR, ...). FC decodes and infers the dimensions.
     - `build((bytes, format, size))`: raw pixel bytes already laid out for `format` at `size`. No decode.
@@ -4665,7 +4665,7 @@ class Mipmap:
     @staticmethod
     def build(bytes: _PyTextureBytes, format: TextureFormat, size: _PySize | None = ...) -> Mipmap:
         """
-        Build a mip chain on the calling thread, then hand it to [Renderer::create_texture](https://fragmentcolor.org/api/core/renderer#renderercreate_texture) for a GPU-only upload. The work is pure CPU (decode if needed, then downsample to 1x1), so call it from wherever you already do heavy work: a worker thread, a thread pool, an async task, a Web Worker. The renderer thread sees only the finished chain.
+        Build a mip chain on the calling thread, then hand it to [Renderer::create_texture](https://fragmentcolor.org/api/core/renderer#create_texture) for a GPU-only upload. The work is pure CPU (decode if needed, then downsample to 1x1), so call it from wherever you already do heavy work: a worker thread, a thread pool, an async task, a Web Worker. The renderer thread sees only the finished chain.
 
         `build(input)` takes the same input shapes as `Renderer::create_texture` and `Renderer::create_storage_texture`, so you write the call the same way regardless of which entry point you target. Whether `build` decodes the bytes depends on whether you pass a `size`:
 

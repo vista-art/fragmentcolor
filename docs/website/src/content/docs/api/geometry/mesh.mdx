@@ -116,7 +116,7 @@ lang="kotlin"
 
 ---
 
-### Mesh::new
+### Mesh::new \{#new\}
 
 Create an empty mesh. Add vertices with `add_vertex` (or `add_vertices`)
 and instances with `add_instance`, then attach the mesh to a shader to
@@ -187,7 +187,7 @@ lang="kotlin"
 
 ---
 
-### Mesh::from_vertices
+### Mesh::from_vertices \{#from_vertices\}
 
 Create a mesh from an iterator of Vertex values.
 
@@ -272,7 +272,7 @@ lang="kotlin"
 
 ---
 
-### Mesh::add_vertex
+### Mesh::add_vertex \{#add_vertex\}
 
 Append a single vertex to the mesh. Pass an array literal for the
 position (`[x, y]` or `[x, y, z]`); for vertices that carry `uv`, `color`,
@@ -348,7 +348,7 @@ lang="kotlin"
 
 ---
 
-### Mesh::add_vertices
+### Mesh::add_vertices \{#add_vertices\}
 
 Add many vertices to the mesh.
 
@@ -430,7 +430,7 @@ lang="kotlin"
 
 ---
 
-### Mesh::add_instance
+### Mesh::add_instance \{#add_instance\}
 
 Add a single per-instance attribute set to the mesh.
 
@@ -525,7 +525,7 @@ lang="kotlin"
 
 ---
 
-### Mesh::add_instances
+### Mesh::add_instances \{#add_instances\}
 
 Add many per-instance attribute sets to the mesh in one call.
 
@@ -637,7 +637,7 @@ lang="kotlin"
 
 ---
 
-### Mesh::clear_instances
+### Mesh::clear_instances \{#clear_instances\}
 
 Reset the mesh's instance state to the default (1 draw, no per-instance data).
 
@@ -732,7 +732,7 @@ lang="kotlin"
 
 ---
 
-### Mesh::set_instance_count
+### Mesh::set_instance_count \{#set_instance_count\}
 
 Override how many instances to draw without providing per-instance attributes.
 
@@ -834,7 +834,7 @@ lang="kotlin"
 
 ---
 
-### Mesh::set_indices
+### Mesh::set_indices \{#set_indices\}
 
 Provide the index buffer directly, bypassing the mesh's automatic vertex
 dedup pass. Use this when an asset already carries its own indexing: glTF
@@ -979,7 +979,7 @@ lang="kotlin"
 
 ---
 
-### Mesh::clear_indices
+### Mesh::clear_indices \{#clear_indices\}
 
 Drop the user-supplied index buffer and return to auto-derived indexing.
 

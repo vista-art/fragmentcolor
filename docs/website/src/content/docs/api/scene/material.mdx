@@ -199,7 +199,7 @@ lang="kotlin"
 
 ---
 
-### Material::alpha_cutoff
+### Material::alpha_cutoff \{#alpha_cutoff\}
 
 Sets the alpha threshold used by `AlphaMode::Mask`. Fragments whose
 `base_color.a` falls below this value are `discard`ed in the fragment
@@ -282,7 +282,7 @@ lang="kotlin"
 
 ---
 
-### Material::alpha_mode
+### Material::alpha_mode \{#alpha_mode\}
 
 Set how the renderer interprets the alpha channel of the material's output. Mirrors the
 glTF 2.0 `alphaMode` semantics. Pipeline state is baked into the WebGPU pipeline, so
@@ -410,7 +410,7 @@ lang="kotlin"
 
 ---
 
-### Material::base_color
+### Material::base_color \{#base_color\}
 
 Set the base color factor (linear RGBA). For dielectrics this is the diffuse
 albedo; for metals it's the F0 reflectance. Alpha goes through the fragment
@@ -502,7 +502,7 @@ lang="kotlin"
 
 ---
 
-### Material::base_color_texture
+### Material::base_color_texture \{#base_color_texture\}
 
 Bind a texture to the `base_color_map` slot. The default PBR shader samples it in `fs_main` and multiplies by the factor. The albedo for each fragment is `material.base_color * textureSample(base_color_map, sampler, in.uv)`.
 
@@ -656,7 +656,7 @@ lang="kotlin"
 
 ---
 
-### Material::custom
+### Material::custom \{#custom\}
 
 Wrap an arbitrary `Shader` as a `Material` so it can be paired with a
 `Mesh` to form a `Model`. The PBR-named setters (`base_color`, `metallic`,
@@ -862,7 +862,7 @@ lang="kotlin"
 
 ---
 
-### Material::double_sided
+### Material::double_sided \{#double_sided\}
 
 Toggle backface culling for this material's pipeline. When `true`, the renderer skips
 its default back-face cull and draws both faces of every triangle. When `false`
@@ -981,7 +981,7 @@ lang="kotlin"
 
 ---
 
-### Material::emissive
+### Material::emissive \{#emissive\}
 
 Set the emissive factor (linear RGB): light the surface emits regardless of
 incident illumination. Added on top of the PBR shading and clamped only by
@@ -1071,7 +1071,7 @@ lang="kotlin"
 
 ---
 
-### Material::emissive_texture
+### Material::emissive_texture \{#emissive_texture\}
 
 Bind an emissive map to the canonical `emissive_map` slot. The default PBR
 shader samples it in `fs_main` and multiplies by the factor: per-fragment
@@ -1186,7 +1186,7 @@ lang="kotlin"
 
 ---
 
-### Material::metallic
+### Material::metallic \{#metallic\}
 
 Set the metallic factor in `[0, 1]`. `0` is a pure dielectric (uses the
 default F0 of 0.04), `1` is a pure metal (F0 = `base_color`). Values in
@@ -1270,7 +1270,7 @@ lang="kotlin"
 
 ---
 
-### Material::metallic_roughness_texture
+### Material::metallic_roughness_texture \{#metallic_roughness_texture\}
 
 Bind a texture to the canonical `metallic_roughness_map` slot. Following
 glTF 2.0, the green channel encodes per-fragment roughness, the blue channel
@@ -1385,7 +1385,7 @@ lang="kotlin"
 
 ---
 
-### Material::normal_scale
+### Material::normal_scale \{#normal_scale\}
 
 Scales the per-fragment normal perturbation read from a tangent-space normal
 map, mirroring glTF 2.0's `normalTextureInfo.scale`. Higher values exaggerate
@@ -1468,7 +1468,7 @@ lang="kotlin"
 
 ---
 
-### Material::normal_texture
+### Material::normal_texture \{#normal_texture\}
 
 Bind a tangent-space normal map to the canonical `normal_map` slot. The
 default PBR shader samples the map in `fs_main`, decodes the stored
@@ -1585,7 +1585,7 @@ lang="kotlin"
 
 ---
 
-### Material::occlusion_strength
+### Material::occlusion_strength \{#occlusion_strength\}
 
 Blends the per-fragment ambient-occlusion factor (read from an occlusion
 map) toward `1.0`, matching glTF 2.0's `occlusionTextureInfo.strength`.
@@ -1668,7 +1668,7 @@ lang="kotlin"
 
 ---
 
-### Material::occlusion_texture
+### Material::occlusion_texture \{#occlusion_texture\}
 
 Bind an ambient-occlusion map to the canonical `occlusion_map` slot.
 Following glTF 2.0, only the red channel is read; the sampled value is
@@ -1782,7 +1782,7 @@ lang="kotlin"
 
 ---
 
-### Material::pbr
+### Material::pbr \{#pbr\}
 
 Construct a `Material` whose shader is FragmentColor's built-in
 physically-based-rendering default. The bundle ships pre-configured with
@@ -1842,7 +1842,7 @@ mismatch. Use `Material::custom(...)` to bring your own vertex layout.
 | `light.color`                | `[1, 1, 1]`          |
 
 The camera and light are the user's domain, not the Material's. Pass them
-to [`Pass::add`](/api/core/pass#passadd). The
+to [`Pass::add`](/api/core/pass#add). The
 typed [Camera](/api/scene/camera) and
 [Light](/api/scene/light) handles seed the matching
 `camera.*` / `light.*` uniforms and propagate any later updates back into
@@ -1928,7 +1928,7 @@ lang="kotlin"
 
 ---
 
-### Material::roughness
+### Material::roughness \{#roughness\}
 
 Set the surface roughness in `[0, 1]`. `0` is a perfect mirror; `1` is a
 fully matte surface. The PBR shader uses the squared form (alpha = r²) for
@@ -2016,7 +2016,7 @@ lang="kotlin"
 
 ---
 
-### Material::shader
+### Material::shader \{#shader\}
 
 Borrow the underlying `Shader` to drop down to direct uniform manipulation.
 This is the escape hatch when the Material's typed setters don't cover what you need
@@ -2125,7 +2125,7 @@ lang="kotlin"
 
 ---
 
-### Material::uv_transform
+### Material::uv_transform \{#uv_transform\}
 
 Set a global UV transform applied to every map sample. Matches glTF's
 [`KHR_texture_transform`](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_texture_transform)

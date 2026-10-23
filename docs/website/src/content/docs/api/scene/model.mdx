@@ -53,7 +53,7 @@ again.
 
 ---
 
-### Model::material
+### Model::material \{#material\}
 
 Borrow the Material handle the Model owns. The Material wraps a Shader;
 reach through `model.material().shader()` if you need direct uniform
@@ -167,7 +167,7 @@ lang="kotlin"
 
 ---
 
-### Model::mesh
+### Model::mesh \{#mesh\}
 
 Borrow the Mesh the Model owns. Useful for adding more vertices or instances
 to the geometry after construction without losing access through the Model
@@ -279,7 +279,7 @@ lang="kotlin"
 
 ---
 
-### Model::new
+### Model::new \{#new\}
 
 Construct a `Model` from a `Mesh` and a `Material`. Both arguments are taken
 by value; the Model owns them. The transform starts at the 4×4 identity
@@ -397,7 +397,7 @@ lang="kotlin"
 
 ---
 
-### Model::rotate
+### Model::rotate \{#rotate\}
 
 Rotate the Model around `axis` (in local space) by `radians`. Post-multiplies
 the current transform by an axis-angle rotation, so a rotated-then-translated
@@ -406,7 +406,7 @@ origin. The axis is normalized internally; a zero-length axis is rejected
 with a logged warning and no change.
 
 For pure world-space rotations (e.g. tumbling around a fixed pivot), compose
-the matrix yourself and call [set_transform](/api/scene/model#modelset_transform).
+the matrix yourself and call [set_transform](/api/scene/model#set_transform).
 
 #### Example
 
@@ -514,7 +514,7 @@ lang="kotlin"
 
 ---
 
-### Model::scale
+### Model::scale \{#scale\}
 
 Scale the Model by per-axis `factor` (in local space). Post-multiplies the
 current transform by a scale matrix, so the Model grows or shrinks around
@@ -631,7 +631,7 @@ lang="kotlin"
 
 ---
 
-### Model::set_transform
+### Model::set_transform \{#set_transform\}
 
 Replace the Model's 4×4 transform wholesale, in column-major order. Useful
 when you already have a matrix from a math library or a glTF node and want
@@ -641,7 +641,7 @@ to apply it directly without composing through `translate` / `rotate` /
 The renderer reads the new matrix on the next render, so a Model already
 added to a Pass or Scene moves without being added again. To read the
 current transform, see
-[Model::transform](/api/scene/model#modeltransform).
+[Model::transform](/api/scene/model#transform).
 
 #### Example
 
@@ -764,7 +764,7 @@ lang="kotlin"
 
 ---
 
-### Model::set_visible
+### Model::set_visible \{#set_visible\}
 
 Toggle the Model in or out of the next frame. Hidden Models are skipped
 by the renderer in both the opaque-batched and blend-sorted draw paths;
@@ -889,14 +889,14 @@ lang="kotlin"
 
 ---
 
-### Model::transform
+### Model::transform \{#transform\}
 
 Read the Model's current 4×4 transform in column-major order, matching
 WGSL's `mat4x4<f32>` layout and glam's `to_cols_array_2d`. The transform
 starts at the identity matrix and is modified by `set_transform`,
 `translate`, `rotate`, and `scale`.
 
-For the setter, see [Model::set_transform](/api/scene/model#modelset_transform).
+For the setter, see [Model::set_transform](/api/scene/model#set_transform).
 Rust doesn't allow getter/setter overloads on the same name, so the read
 side is `transform` and the write side is `set_transform`.
 
@@ -1009,7 +1009,7 @@ lang="kotlin"
 
 ---
 
-### Model::translate
+### Model::translate \{#translate\}
 
 Move the Model by `offset` in world coordinates. Pre-multiplies the current
 transform by a translation matrix, so the result is independent of the
@@ -1128,10 +1128,10 @@ lang="kotlin"
 
 ---
 
-### Model::visible
+### Model::visible \{#visible\}
 
 Read the current visibility flag. Returns `true` for newly-built Models;
-toggle with [`Model::set_visible`](/api/scene/model#modelset_visible).
+toggle with [`Model::set_visible`](/api/scene/model#set_visible).
 
 The renderer reads this every frame. Hidden Models are skipped in both
 the opaque-batched and blend-sorted draw paths without requiring a Pass

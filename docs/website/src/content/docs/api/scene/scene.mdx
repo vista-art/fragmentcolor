@@ -42,13 +42,13 @@ A `Scene` owns one ordered `Vec<Pass>`. Loaders, builders, and your own code
 all append into the same list, and the renderer walks it in order. No pass is
 privileged in render order: the default Pass that `scene.add(&model)` targets
 is an ordinary member, slotted in at the point of your first `add`. After
-[`Scene::load`](/api/scene/scene#sceneload) the whole
+[`Scene::load`](/api/scene/scene#load) the whole
 graph is in your hands. Read it with
-[`list_passes`](/api/scene/scene#scenelist_passes) or
-[`get_pass`](/api/scene/scene#sceneget_pass), restructure
-it with [`add_pass`](/api/scene/scene#sceneadd_pass),
-[`remove_pass`](/api/scene/scene#sceneremove_pass), and
-[`set_passes`](/api/scene/scene#sceneset_passes), and
+[`list_passes`](/api/scene/scene#list_passes) or
+[`get_pass`](/api/scene/scene#get_pass), restructure
+it with [`add_pass`](/api/scene/scene#add_pass),
+[`remove_pass`](/api/scene/scene#remove_pass), and
+[`set_passes`](/api/scene/scene#set_passes), and
 configure each pass (`load_previous`, clear color, viewport, target) the same
 way you would a hand-built one. That makes a loaded Scene compose onto any
 other Pass in a frame, instead of clearing whatever it lands on.
@@ -69,7 +69,7 @@ Scene injects sensible defaults when the user hasn't supplied them:
 These only fire when no user Camera / Light has been added; as soon as you
 add your own, your values win. A composition caller that drives every uniform
 from the host can suppress them with
-[`no_defaults`](/api/scene/scene#sceneno_defaults) (or the
+[`no_defaults`](/api/scene/scene#no_defaults) (or the
 per-kind `no_default_camera` / `no_default_light`), or swap the stock values
 out with `set_default_camera` / `set_default_light`.
 
@@ -79,7 +79,7 @@ out with `set_default_camera` / `set_default_light`.
 
 ---
 
-### Scene::load
+### Scene::load \{#load\}
 
 Build a `Scene` from a serialized 3D file. Pass a **path** (`.gltf` or `.glb`)
 or in-memory **`.glb` bytes** straight to `Scene::load`. The format is
@@ -243,17 +243,17 @@ lang="kotlin" meta="collapse={2-2}"
 
 ---
 
-### Scene::new
+### Scene::new \{#new\}
 
 Build an empty `Scene`. No `Renderer` argument, no async, nothing to await.
 The Scene's GPU resources initialize lazily when it's first rendered.
 
-The first call to [`Scene::add`](/api/scene/scene#sceneadd)
+The first call to [`Scene::add`](/api/scene/scene#add)
 creates a default [Pass](/api/core/pass) under the
 hood and routes the object into it. Multiple
 `SceneObjects` share that one Pass
 unless you explicitly add more via
-[`Scene::add_pass`](/api/scene/scene#sceneadd_pass).
+[`Scene::add_pass`](/api/scene/scene#add_pass).
 
 `Scene` is `Clone` (shallow Arc-share); cloning gives another handle to
 the same underlying scene, so mutations on one clone are visible on the
@@ -334,7 +334,7 @@ lang="kotlin"
 
 ---
 
-### Scene::add
+### Scene::add \{#add\}
 
 Absorb any `SceneObject` (a
 [Model](/api/scene/model),
@@ -525,17 +525,17 @@ lang="kotlin"
 
 ---
 
-### Scene::add_to
+### Scene::add_to \{#add_to\}
 
 Add a `SceneObject` (Model / Camera /
 Light, or a custom one in Rust) to a specific Pass in the graph, addressed by index or by
 name. It's the targeted form of
-[`add`](/api/scene/scene#sceneadd): where `add` routes
+[`add`](/api/scene/scene#add): where `add` routes
 into the scene's default pass, `add_to` lets you pick the pass yourself, which
 matters once a scene holds more than one.
 
-Pass an index (matching [`get_pass`](/api/scene/scene#sceneget_pass))
-or a name (matching [`find_pass`](/api/scene/scene#scenefind_pass)).
+Pass an index (matching [`get_pass`](/api/scene/scene#get_pass))
+or a name (matching [`find_pass`](/api/scene/scene#find_pass)).
 An index out of range, or a name that matches nothing, is an error. The
 Scene-level bookkeeping is identical to `add`: the object surfaces in
 `models()` / `cameras()` / `lights()`, and a Camera or Light there still
@@ -660,10 +660,10 @@ lang="kotlin"
 
 ---
 
-### Scene::models
+### Scene::models \{#models\}
 
 Return a snapshot of every [`Model`](/api/scene/model)
-added to this Scene via [`Scene::add`](/api/scene/scene#sceneadd),
+added to this Scene via [`Scene::add`](/api/scene/scene#add),
 including Models the loader instantiated from glTF `mesh` nodes.
 
 Each entry is an Arc-shared clone of the original handle. Mutating one
@@ -806,13 +806,13 @@ lang="kotlin"
 
 ---
 
-### Scene::cameras
+### Scene::cameras \{#cameras\}
 
 Return a snapshot of every [`Camera`](/api/scene/camera)
-added to this Scene via [`Scene::add`](/api/scene/scene#sceneadd),
+added to this Scene via [`Scene::add`](/api/scene/scene#add),
 including Cameras the loader instantiated from glTF `camera` nodes
 (unless you skipped them via the camera filter on
-[`Scene::load`](/api/scene/scene#sceneload)).
+[`Scene::load`](/api/scene/scene#load)).
 
 Each entry is an Arc-shared clone of the original handle.
 `camera.look_at(...)` / `camera.set_aspect(...)` on a returned handle
@@ -937,13 +937,13 @@ lang="kotlin"
 
 ---
 
-### Scene::lights
+### Scene::lights \{#lights\}
 
 Return a snapshot of every [`Light`](/api/scene/light)
-added to this Scene via [`Scene::add`](/api/scene/scene#sceneadd),
+added to this Scene via [`Scene::add`](/api/scene/scene#add),
 including Lights the loader instantiated from glTF
 `KHR_lights_punctual` nodes (unless you skipped them via the light filter
-on [`Scene::load`](/api/scene/scene#sceneload)).
+on [`Scene::load`](/api/scene/scene#load)).
 
 Each entry is an Arc-shared clone. Mutating a returned handle
 (`set_color`, `set_intensity`, `set_position`, …) propagates to every
@@ -1056,7 +1056,7 @@ lang="kotlin"
 
 ---
 
-### Scene::ambient
+### Scene::ambient \{#ambient\}
 
 Set the scene-wide ambient color. The PBR shader adds
 `albedo * ambient` to every fragment regardless of which lights are
@@ -1211,7 +1211,7 @@ lang="kotlin"
 
 ---
 
-### Scene::add_pass
+### Scene::add_pass \{#add_pass\}
 
 Append a user-built [Pass](/api/core/pass) to the
 scene's pass graph. A `Scene` owns one ordered list of passes, and `add_pass`
@@ -1222,10 +1222,10 @@ ordinary member of that list, slotted in at the point of your first `add`.
 That makes `add_pass` the hook for shadow maps, depth pre-passes, screen-space
 backdrops, and post-effects alike. Insert before your geometry for a backdrop,
 after it for an overlay. To inspect or reorder the result, reach for
-[`list_passes`](/api/scene/scene#scenelist_passes),
-[`get_pass`](/api/scene/scene#sceneget_pass),
-[`remove_pass`](/api/scene/scene#sceneremove_pass), and
-[`set_passes`](/api/scene/scene#sceneset_passes).
+[`list_passes`](/api/scene/scene#list_passes),
+[`get_pass`](/api/scene/scene#get_pass),
+[`remove_pass`](/api/scene/scene#remove_pass), and
+[`set_passes`](/api/scene/scene#set_passes).
 
 The Pass is cloned (shallow Arc-share) when stored, so further changes you
 make to the original handle reach the Scene's copy too.
@@ -1389,7 +1389,7 @@ lang="kotlin"
 
 ---
 
-### Scene::remove_pass
+### Scene::remove_pass \{#remove_pass\}
 
 Remove a [`Pass`](/api/core/pass) from the scene's
 pass graph. Identity is by handle: `Pass` is `Clone` and Arc-backed, so the
@@ -1397,7 +1397,7 @@ handle you pass in is matched against the graph by pointer, not by name.
 Returns `true` when a pass left the graph, `false` when the handle wasn't
 there.
 
-If the removed pass was the default pass that [`Scene::add`](/api/scene/scene#sceneadd)
+If the removed pass was the default pass that [`Scene::add`](/api/scene/scene#add)
 routes objects into, the Scene forgets it. The next `add` builds a fresh
 default pass at the end of the graph.
 
@@ -1510,7 +1510,7 @@ lang="kotlin"
 
 ---
 
-### Scene::get_pass
+### Scene::get_pass \{#get_pass\}
 
 Read one [`Pass`](/api/core/pass) from the graph by
 index, in render order. Returns `None` when the index is out of range.
@@ -1518,7 +1518,7 @@ index, in render order. Returns `None` when the index is out of range.
 The returned `Pass` is an Arc-shared clone of the one the Scene renders.
 Configuring it (`load_previous`, `set_clear_color`, `set_target`) drives the
 live pass, no re-insert needed. To borrow the whole graph at once, use
-[`Scene::list_passes`](/api/scene/scene#scenelist_passes).
+[`Scene::list_passes`](/api/scene/scene#list_passes).
 
 #### Example
 
@@ -1627,16 +1627,16 @@ lang="kotlin"
 
 ---
 
-### Scene::find_pass
+### Scene::find_pass \{#find_pass\}
 
 Find a [`Pass`](/api/core/pass) in the scene's graph
 by name, returning `None` when nothing matches. Names come from
-[`Pass::new`](/api/core/pass#passnewname-str---self) (or whatever label a
+[`Pass::new`](/api/core/pass#new) (or whatever label a
 loader assigned), and you can read one back with
-[`Pass::name`](/api/core/pass#passname).
+[`Pass::name`](/api/core/pass#name).
 
 This is the name-addressed counterpart to
-[`get_pass`](/api/scene/scene#sceneget_pass), which
+[`get_pass`](/api/scene/scene#get_pass), which
 addresses by index. Names aren't required to be unique; `find_pass` returns the
 first match in render order. The returned `Pass` is an Arc-shared clone, so
 configuring it drives the pass the Scene renders.
@@ -1745,7 +1745,7 @@ lang="kotlin"
 
 ---
 
-### Scene::list_passes
+### Scene::list_passes \{#list_passes\}
 
 Return a snapshot of every [`Pass`](/api/core/pass)
 in the scene, in render order. Each entry is an Arc-shared clone, so
@@ -1754,7 +1754,7 @@ configuring one (`load_previous`, `set_clear_color`, `set_viewport`,
 snapshot at call time; appending passes afterward doesn't grow it.
 
 This is the composition hook. After
-[`Scene::load`](/api/scene/scene#sceneload) the whole
+[`Scene::load`](/api/scene/scene#load) the whole
 pass graph is in your hands: walk it and call `load_previous` so the scene
 composes onto a previous draw instead of clearing it, then hand the Scene to
 the renderer alongside whatever else the frame needs.
@@ -1874,16 +1874,16 @@ lang="kotlin"
 
 ---
 
-### Scene::set_passes
+### Scene::set_passes \{#set_passes\}
 
 Replace the scene's entire pass graph with a new ordered list. The passes
 render in vec order. This is the sugar for "load, reorder, render" when you'd
 rather hand over a fresh ordering than call
-[`remove_pass`](/api/scene/scene#sceneremove_pass) and
-[`add_pass`](/api/scene/scene#sceneadd_pass) one at a
+[`remove_pass`](/api/scene/scene#remove_pass) and
+[`add_pass`](/api/scene/scene#add_pass) one at a
 time.
 
-If the default pass that [`Scene::add`](/api/scene/scene#sceneadd)
+If the default pass that [`Scene::add`](/api/scene/scene#add)
 routes objects into survives in the new list, the Scene keeps using it. If you
 drop it, the Scene forgets it and the next `add` builds a fresh one at the end.
 
@@ -1992,7 +1992,7 @@ lang="kotlin"
 
 ---
 
-### Scene::no_defaults
+### Scene::no_defaults \{#no_defaults\}
 
 Turn off both default-Camera and default-Light injection. By default a Scene
 carrying Models but no Camera or Light injects a stock perspective camera and
@@ -2002,11 +2002,11 @@ light slots from the host doesn't want those stock values layered on top.
 `no_defaults` leaves the pass graph exactly as built.
 
 For finer control, reach for the per-kind switches
-[`no_default_camera`](/api/scene/scene#sceneno_default_camera)
-and [`no_default_light`](/api/scene/scene#sceneno_default_light).
+[`no_default_camera`](/api/scene/scene#no_default_camera)
+and [`no_default_light`](/api/scene/scene#no_default_light).
 To keep injection on but swap the stock values for your own, use
-[`set_default_camera`](/api/scene/scene#sceneset_default_camera)
-and [`set_default_light`](/api/scene/scene#sceneset_default_light).
+[`set_default_camera`](/api/scene/scene#set_default_camera)
+and [`set_default_light`](/api/scene/scene#set_default_light).
 
 #### Example
 
@@ -2128,7 +2128,7 @@ lang="kotlin"
 
 ---
 
-### Scene::no_default_camera
+### Scene::no_default_camera \{#no_default_camera\}
 
 Turn off default-Camera injection while leaving the default Light in place.
 By default a Scene with Models but no Camera injects a stock perspective
@@ -2136,9 +2136,9 @@ camera at first render. Call this when the host supplies the view projection
 and the stock camera would only fight for the same uniform.
 
 To turn off both kinds at once, use
-[`no_defaults`](/api/scene/scene#sceneno_defaults). To
+[`no_defaults`](/api/scene/scene#no_defaults). To
 keep injection on but supply your own camera, use
-[`set_default_camera`](/api/scene/scene#sceneset_default_camera).
+[`set_default_camera`](/api/scene/scene#set_default_camera).
 
 #### Example
 
@@ -2243,7 +2243,7 @@ lang="kotlin"
 
 ---
 
-### Scene::no_default_light
+### Scene::no_default_light \{#no_default_light\}
 
 Turn off default-Light injection while leaving the default Camera in place.
 By default a Scene with Models but no Light injects a white directional light
@@ -2252,9 +2252,9 @@ light rig and the stock light would only compete for the same
 `lights.lights[..]` slots.
 
 To turn off both kinds at once, use
-[`no_defaults`](/api/scene/scene#sceneno_defaults). To
+[`no_defaults`](/api/scene/scene#no_defaults). To
 keep injection on but supply your own light, use
-[`set_default_light`](/api/scene/scene#sceneset_default_light).
+[`set_default_light`](/api/scene/scene#set_default_light).
 
 #### Example
 
@@ -2359,16 +2359,16 @@ lang="kotlin"
 
 ---
 
-### Scene::set_default_camera
+### Scene::set_default_camera \{#set_default_camera\}
 
 Supply your own default [`Camera`](/api/scene/camera)
 for the Scene to inject at first render in place of FC's stock perspective
 camera. This fires only when no Camera arrived through
-[`Scene::add`](/api/scene/scene#sceneadd); an explicit
+[`Scene::add`](/api/scene/scene#add); an explicit
 `scene.add(&camera)` still wins.
 
 Naming a default re-arms injection. If
-[`no_default_camera`](/api/scene/scene#sceneno_default_camera)
+[`no_default_camera`](/api/scene/scene#no_default_camera)
 ran earlier, calling `set_default_camera` turns camera injection back on with
 the camera you pass.
 
@@ -2481,16 +2481,16 @@ lang="kotlin"
 
 ---
 
-### Scene::set_default_light
+### Scene::set_default_light \{#set_default_light\}
 
 Supply your own default [`Light`](/api/scene/light)
 for the Scene to inject at first render in place of FC's stock white
 directional light. This fires only when no Light arrived through
-[`Scene::add`](/api/scene/scene#sceneadd); an explicit
+[`Scene::add`](/api/scene/scene#add); an explicit
 `scene.add(&light)` still wins.
 
 Naming a default re-arms injection. If
-[`no_default_light`](/api/scene/scene#sceneno_default_light)
+[`no_default_light`](/api/scene/scene#no_default_light)
 ran earlier, calling `set_default_light` turns light injection back on with
 the light you pass.
 

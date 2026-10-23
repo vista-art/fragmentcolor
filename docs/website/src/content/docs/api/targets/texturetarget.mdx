@@ -133,7 +133,7 @@ lang="kotlin"
 
 ---
 
-### TextureTarget::texture
+### TextureTarget::texture \{#texture\}
 
 Return a sampleable [`Texture`](/api/texture/texture)
 handle that aliases the offscreen render target's storage. Useful for
@@ -308,7 +308,7 @@ lang="kotlin"
 
 ---
 
-### TextureTarget::size() -&gt; Size &#123; width: u32, height: u32, depth: `Option<u32>` &#125;
+### TextureTarget::size() -&gt; Size &#123; width: u32, height: u32, depth: `Option<u32>` &#125; \{#size\}
 
 Returns the size of the [TextureTarget](/api/targets/texturetarget) in pixels.
 
@@ -421,7 +421,7 @@ lang="kotlin"
 
 ---
 
-### TextureTarget::resize(size: [u32; 2] | (u32, u32))
+### TextureTarget::resize(size: [u32; 2] | (u32, u32)) \{#resize\}
 
 Resizes the [TextureTarget](/api/targets/texturetarget) to the given width and height.
 
@@ -523,7 +523,7 @@ lang="kotlin"
 
 ---
 
-### TextureTarget::get_image()
+### TextureTarget::get_image() \{#get_image\}
 
 Returns the current contents of the target as a byte array in RGBA8 format.
 

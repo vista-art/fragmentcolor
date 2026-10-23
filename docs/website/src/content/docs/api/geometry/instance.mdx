@@ -22,7 +22,7 @@ first, then by name. On a name clash, the instance attribute wins over the
 vertex attribute.
 
 Most code doesn't build one by hand.
-[`Vertex::create_instance`](/api/geometry/vertex#vertexcreate_instance)
+[`Vertex::create_instance`](/api/geometry/vertex#create_instance)
 copies a vertex's properties, and `Mesh::add_instance` takes a `Vertex` too.
 Build an `Instance` when the per-instance data doesn't come from a vertex.
 
@@ -120,7 +120,7 @@ lang="kotlin"
 
 ---
 
-### Instance::new
+### Instance::new \{#new\}
 
 Create an empty `Instance`. Chain `set` calls to give it per-instance
 attributes.
@@ -195,7 +195,7 @@ lang="kotlin"
 
 ---
 
-### Instance::set
+### Instance::set \{#set\}
 
 Set a per-instance attribute. `set` returns a new `Instance` with the
 attribute added, so chain the calls and keep the result.

@@ -99,7 +99,7 @@ lang="kotlin"
 
 ---
 
-### Vertex::new
+### Vertex::new \{#new\}
 
 Construct a `Vertex` from a 2D or 3D position. Set additional attributes
 (`uv`, `color`, custom keys) with `set` to match the per-vertex inputs
@@ -172,15 +172,15 @@ lang="kotlin"
 
 ---
 
-### Vertex::pbr
+### Vertex::pbr \{#pbr\}
 
 Construct a `Vertex` that matches the PBR shader's vertex input layout.
-Seeds every attribute [`Material::pbr`](/api/scene/material#materialpbr)
+Seeds every attribute [`Material::pbr`](/api/scene/material#pbr)
 reads (`NORMAL`, `UV0`, `COLOR0`, `UV1`, `TANGENT`) with a neutral identity
 default; chain `.set(...)` to override the slots a real mesh has data for.
 
 A vertex built with `Vertex::pbr(pos)` alone renders the same way
-[`Scene::load`](/api/scene/scene#sceneload) renders a
+[`Scene::load`](/api/scene/scene#load) renders a
 glTF primitive that carries only POSITION. Face-normal computation, UV
 defaults, vertex tint, and tangents all collapse to the values the loader
 falls back to. Useful for building PBR meshes by hand without spelling
@@ -293,7 +293,7 @@ lang="kotlin"
 
 ---
 
-### Vertex::set
+### Vertex::set \{#set\}
 
 Attach an arbitrary property to the vertex. `set` returns a new `Vertex`
 with the property added, so chain the calls and keep the result.
@@ -370,7 +370,7 @@ lang="kotlin"
 
 ---
 
-### Vertex::create_instance
+### Vertex::create_instance \{#create_instance\}
 
 Create an `Instance` that inherits this vertex's attributes. Use this
 when you want a starting point for an instance whose per-instance values

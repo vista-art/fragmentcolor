@@ -15,13 +15,13 @@ The [Shader](/api/core/shader) object is the main building block in [FragmentCol
 
 It takes a WGSL or GLSL shader source as input, parses it, validates it, and exposes the uniforms as keys.
 
-`Shader::new` accepts a source string, a registry slug like `"sdf2d/circle"`, an `https://` URL, a local file path, or an array mixing any of those. Array parts are deduplicated by hash and concatenated in order, so you can pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](/api/core/shader#shaderset_registrybase_url-string).
+`Shader::new` accepts a source string, a registry slug like `"sdf2d/circle"`, an `https://` URL, a local file path, or an array mixing any of those. Array parts are deduplicated by hash and concatenated in order, so you can pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](/api/core/shader#set_registry).
 
 To draw your shader, you must use your [Shader](/api/core/shader) instance as input to a [Renderer](/api/core/renderer).
 
 You can compose [Shader](/api/core/shader) instances into a [Pass](/api/core/pass) object to create more complex rendering pipelines.
 
-You can also create renderings with multiple Render Passes by passing an array of [Pass](/api/core/pass) instances to [Renderer::render](/api/core/renderer#rendererrenderrenderable-target).
+You can also create renderings with multiple Render Passes by passing an array of [Pass](/api/core/pass) instances to [Renderer::render](/api/core/renderer#render).
 
 ## Uniforms
 
@@ -328,7 +328,7 @@ lang="kotlin"
 
 ---
 
-### Shader::new(input: string | string[])
+### Shader::new(input: string | string[]) \{#new\}
 
 Creates a new [Shader](/api/core/shader). The input
 is a single string, or an array of strings, of any of these shapes:
@@ -612,7 +612,7 @@ lang="kotlin"
 
 ---
 
-### Shader::fetch(input)
+### Shader::fetch(input) \{#fetch\}
 
 Async constructor that returns a compiled `Shader` from one or more parts.
 Each part can be:
@@ -755,7 +755,7 @@ lang="kotlin"
 
 ---
 
-### Shader::set(key: string, value: any)
+### Shader::set(key: string, value: any) \{#set\}
 
 Sets the value of the uniform identified by the given key.
 
@@ -917,7 +917,7 @@ lang="kotlin"
 
 ---
 
-### Shader::get(key: string) -&gt; any
+### Shader::get(key: string) -&gt; any \{#get\}
 
 Returns the current value of the uniform identified by the given key.
 
@@ -1012,7 +1012,7 @@ lang="kotlin"
 
 ---
 
-### Shader::list_uniforms() -&gt; [string]
+### Shader::list_uniforms() -&gt; [string] \{#list_uniforms\}
 
 Returns a list of all uniform names in the [Shader](/api/core/shader) (excluding struct fields).
 
@@ -1097,7 +1097,7 @@ lang="kotlin"
 
 ---
 
-### Shader::list_keys() -&gt; [string]
+### Shader::list_keys() -&gt; [string] \{#list_keys\}
 
 Returns a list of all keys in the [Shader](/api/core/shader), including uniform names and struct fields using the dot notation.
 
@@ -1189,7 +1189,7 @@ lang="kotlin"
 
 ---
 
-### Shader::from_vertex
+### Shader::from_vertex \{#from_vertex\}
 
 Build a basic WGSL shader source from a single Vertex layout.
 
@@ -1277,7 +1277,7 @@ lang="kotlin"
 
 ---
 
-### Shader::from_mesh
+### Shader::from_mesh \{#from_mesh\}
 
 Build a basic WGSL shader source from the first vertex in a Mesh.
 
@@ -1376,7 +1376,7 @@ lang="kotlin"
 
 ---
 
-### Shader::add_mesh
+### Shader::add_mesh \{#add_mesh\}
 
 Attach a Mesh to this Shader. The Renderer will draw all meshes attached to it (one draw call per mesh, same pipeline).
 
@@ -1549,7 +1549,7 @@ lang="kotlin"
 
 ---
 
-### Shader::remove_mesh
+### Shader::remove_mesh \{#remove_mesh\}
 
 Remove a single Mesh previously attached to this Shader.
 If the Mesh is attached multiple times, removes the first match.
@@ -1716,7 +1716,7 @@ lang="kotlin"
 
 ---
 
-### Shader::remove_meshes
+### Shader::remove_meshes \{#remove_meshes\}
 
 Remove multiple meshes from this Shader.
 
@@ -1897,7 +1897,7 @@ lang="kotlin"
 
 ---
 
-### Shader::clear_meshes
+### Shader::clear_meshes \{#clear_meshes\}
 
 Remove all meshes attached to this Shader.
 
@@ -2063,7 +2063,7 @@ lang="kotlin"
 
 ---
 
-### Shader::validate_mesh
+### Shader::validate_mesh \{#validate_mesh\}
 
 Validate that a Mesh is compatible with this Shader's vertex inputs.
 
@@ -2247,7 +2247,7 @@ lang="kotlin"
 
 ---
 
-### Shader::is_compute
+### Shader::is_compute \{#is_compute\}
 
 Returns true if this Shader is a compute shader (has a compute entry point).
 
@@ -2363,11 +2363,11 @@ lang="kotlin"
 
 ---
 
-### Shader::set_registry(base_url: string)
+### Shader::set_registry(base_url: string) \{#set_registry\}
 
 Override the base URL used to resolve shader **slugs** (e.g. `"sdf2d/circle"`).
 
-When a slug is passed to [Shader::new](/api/core/shader#shadernewinput-string--string), it is expanded to:
+When a slug is passed to [Shader::new](/api/core/shader#new), it is expanded to:
 
 ```text
 <base_url>/<slug>.wgsl
@@ -2479,7 +2479,7 @@ lang="kotlin"
 
 ---
 
-### Shader::default()
+### Shader::default() \{#default\}
 
 Creates a new [Shader](/api/core/shader) from the default shader source.
 

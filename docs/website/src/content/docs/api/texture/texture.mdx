@@ -13,7 +13,7 @@ import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
 A GPU texture resource. Public API wrapper that holds a shareable reference to the internal TextureObject and a numeric handle used by uniforms.
 
-- Construct via [Renderer::create_texture(input)](/api/core/renderer#renderercreate_texture). `input` accepts bytes, `(bytes, [w, h])`, `(bytes, format)`, a path, a URL, a KTX2 container, or a prepared chain.
+- Construct via [Renderer::create_texture(input)](/api/core/renderer#create_texture). `input` accepts bytes, `(bytes, [w, h])`, `(bytes, format)`, a path, a URL, a KTX2 container, or a prepared chain.
 - Bind to a shader with `shader.set("key", &texture)`.
 - The texture owns its sampler; tweak filtering and wrapping via `set_sampler_options`.
 
@@ -185,7 +185,7 @@ lang="kotlin"
 
 ---
 
-### Texture::id()
+### Texture::id() \{#id\}
 
 Return the stable `TextureId` for this texture. The id is valid within
 the `Renderer` that created it and is the handle uniforms use to refer to
@@ -272,7 +272,7 @@ lang="kotlin"
 
 ---
 
-### Texture::size
+### Texture::size \{#size\}
 
 Return the texture's dimensions as a `Size` (`width`, `height`, and
 `depth`, which is 1 for a 2D texture and the layer count for 3D or array
@@ -373,7 +373,7 @@ lang="kotlin"
 
 ---
 
-### Texture::aspect
+### Texture::aspect \{#aspect\}
 
 Return the texture's `width / height` as `f32`. Useful for setting up
 projection matrices or laying out a sprite without recomputing the ratio
@@ -477,7 +477,7 @@ lang="kotlin"
 
 ---
 
-### Texture::set_sampler_options
+### Texture::set_sampler_options \{#set_sampler_options\}
 
 Update the texture sampler options (filtering, wrapping, etc.).
 
@@ -588,7 +588,7 @@ lang="kotlin"
 
 ---
 
-### Texture::write(bytes)
+### Texture::write(bytes) \{#write\}
 
 Efficiently upload raw pixel data into an existing texture. Ideal for video playback or any per-frame dynamic image updates.
 
@@ -690,7 +690,7 @@ lang="kotlin"
 
 ---
 
-### Texture::write_region(bytes, region)
+### Texture::write_region(bytes, region) \{#write_region\}
 
 Same as `Texture::write`, but writes into a sub-region of the texture and/or with explicit source data layout.
 
@@ -821,7 +821,7 @@ lang="kotlin"
 
 ---
 
-### Texture::get_image()
+### Texture::get_image() \{#get_image\}
 
 Read back the mip-0 contents of this texture as tightly-packed bytes in the texture's native format.
 
