@@ -3,7 +3,8 @@
 export default {
   id: "shapes",
   title: "Shapes",
-  summary: "Signed distance fields for a star, a hexagon and a circle, merged with a smooth union. The circle follows the pointer.",
+  summary:
+    "A star and a hexagon from Inigo Quilez's 2D distance functions and a circle, merged with his smooth union and drawn with his contour coloring. The circle follows the pointer.",
   kind: "fragment",
   library: ["sdf2d/star", "sdf2d/hexagon", "sdf2d/circle", "sdf/op_smooth_union", "map/rotate2"],
   values: {
@@ -14,7 +15,10 @@ export default {
   },
   frame: { time: "u.time", resolution: "u.resolution", pointer: "u.mouse" },
   files: {
-    "shader.wgsl": /* wgsl */ `struct Params {
+    "shader.wgsl": /* wgsl */ `// The star and hexagon distances, the smooth union and the contour coloring
+// follow Inigo Quilez: https://iquilezles.org/articles/distfunctions2d/
+
+struct Params {
   resolution: vec2<f32>,
   mouse: vec2<f32>,
   time: f32,
