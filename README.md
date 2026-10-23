@@ -19,8 +19,7 @@
   <a href="https://fragmentcolor.org/welcome">Get started</a> ·
   <a href="https://fragmentcolor.org/api">API reference</a> ·
   <a href="https://fragmentcolor.org/shaders">Shader library</a> ·
-  <a href="https://fragmentcolor.org/welcome/playground">Playground</a> ·
-  <a href="https://fragmentcolor.org/demos">Demos</a>
+  <a href="https://fragmentcolor.org/welcome/playground">Playground</a>
 </p>
 
 FragmentColor is a universal GPU abstraction library where you can simply write some WGSL or GLSL code, **forget about manual pipeline setup**, set uniforms by key-value, and it will render on every device in existence:

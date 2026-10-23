@@ -15,6 +15,10 @@ import locks from "./integrations/locks";
 // https://astro.build/config
 export default defineConfig({
   site: "https://fragmentcolor.org",
+  // The demos live in the playground; the old page keeps its links working.
+  redirects: {
+    "/demos": "/welcome/playground",
+  },
   integrations: [
     locks(),
     starlight({
@@ -212,7 +216,6 @@ export default defineConfig({
             { label: "Start Here", link: "/welcome" },
             { label: "Platform Support", link: "/welcome/platforms" },
             { label: "Playground", link: "/welcome/playground" },
-            { label: "Demos", link: "/demos" },
           ],
         },
         {
