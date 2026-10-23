@@ -9,7 +9,7 @@ import { loadProgram } from "./program.js";
 import { describeControls, renderControls } from "./controls.js";
 import { LANGUAGES, generateCode, parseLibrary, replaceLibrary } from "./codegen.js";
 import { LibraryPicker } from "./picker.js";
-import { loadFragmentColor, RELEASE } from "../runtime.js";
+import { loadFragmentColor } from "../runtime.js";
 
 const BUILD_DELAY = 250;
 const SCRUB_DELAY = 40;
@@ -107,16 +107,6 @@ function message(err) {
   return String(err?.message ?? err).trim();
 }
 
-// Whether release `version` is `needed` or a later one. 0.12.6-dev passes for 0.12.6.
-function atLeast(version, needed) {
-  const have = version.split(/[.-]/).map(Number);
-  const want = needed.split(".").map(Number);
-  for (const [i, part] of want.entries()) {
-    if (have[i] !== part) return have[i] > part;
-  }
-  return true;
-}
-
 export class Playground {
   /**
    * @param {HTMLElement} root the <fc-playground> element
@@ -142,7 +132,6 @@ export class Playground {
       copy: root.querySelector(".fcp-copy"),
       fullscreen: root.querySelector(".fcp-fullscreen"),
     };
-    this.webgpuNote = this.ui.poster.querySelector("p").textContent;
     this.edits = new Map();
     this.overrides = new Map();
     this.pointer = null;
@@ -199,35 +188,18 @@ export class Playground {
     this.loadTabs(this.edits.get(demo.id) ?? this.original(demo));
     this.showError(null);
 
-    const blocker = this.blocker(demo);
-    this.blocked = Boolean(blocker);
-    this.ui.poster.hidden = !blocker;
-    if (blocker) {
+    const blocked = demo.requires === "webgpu" && this.backend !== "WebGPU";
+    this.blocked = blocked;
+    this.ui.poster.hidden = !blocked;
+    if (blocked) {
       const img = this.ui.poster.querySelector("img");
       img.hidden = !demo.poster;
       if (demo.poster) img.src = demo.poster;
-      this.ui.poster.querySelector("p").textContent = blocker.note;
-      this.setStatus(blocker.status);
+      this.setStatus(`${this.backend} · this demo needs WebGPU`);
       return;
     }
     this.setStatus(`${this.backend} · building`);
     this.build();
-  }
-
-  // Why this page can't run `demo`, or null when it can. A blocked demo shows its poster.
-  blocker(demo) {
-    if (demo.requires === "webgpu" && this.backend !== "WebGPU") {
-      return { status: `${this.backend} · this demo needs WebGPU`, note: this.webgpuNote };
-    }
-    if (demo.needs && !atLeast(RELEASE, demo.needs)) {
-      const note = [
-        `This demo needs FragmentColor ${demo.needs} or later.`,
-        `This page loads ${RELEASE}, so it shows a recording.`,
-        "The code is still yours to read and edit.",
-      ].join(" ");
-      return { status: `${this.backend} · this demo needs FragmentColor ${demo.needs}`, note };
-    }
-    return null;
   }
 
   original(demo) {

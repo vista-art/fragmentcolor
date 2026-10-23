@@ -7,8 +7,16 @@
 
 import { version } from "fragmentcolor/package.json";
 
-// The FragmentColor release this site loads.
-export const RELEASE = version;
+// Whether the FragmentColor release this site loads is `needed` or a later one.
+// A development build such as 0.12.6-dev counts as its release.
+export function supports(needed) {
+  const have = version.split(/[.-]/).map(Number);
+  const want = needed.split(".").map(Number);
+  for (const [i, part] of want.entries()) {
+    if (have[i] !== part) return have[i] > part;
+  }
+  return true;
+}
 
 let ready;
 
