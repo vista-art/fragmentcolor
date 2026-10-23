@@ -10,6 +10,7 @@
 //
 
 import Foundation
+import FragmentColor
 import XCTest
 
 class ExampleCase: XCTestCase {
@@ -21,6 +22,12 @@ class ExampleCase: XCTestCase {
             .deletingLastPathComponent() // platforms
             .deletingLastPathComponent() // repository root
         FileManager.default.changeCurrentDirectoryPath(root.path)
+    }
+
+    /// Each example starts from the default registry, as each Rust doctest runs in a process of its own.
+    override func setUp() {
+        super.setUp()
+        Shader.setRegistry("https://fragmentcolor.org/shaders/")
     }
 
     /// Runs one example and fails the test with its `docs/api` page when it throws.

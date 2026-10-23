@@ -6,13 +6,18 @@ import com.sun.jna.Library
 import com.sun.jna.Native
 import java.io.File
 import kotlinx.coroutines.runBlocking
+import org.junit.Before
 import org.junit.BeforeClass
 
 // Base class of the generated example tests. The examples read fixtures such
 // as `examples/assets/logo.png` relative to the repository root, as the Rust
 // doctests do, so build.gradle packs those fixtures into the test APK and each
 // test class runs from a copy of them. A failing example names its `docs/api` page.
-open class ExampleCase {
+abstract class ExampleCase {
+    /** Each example starts from the default registry, as each Rust doctest runs in a process of its own. */
+    @Before
+    fun useDefaultRegistry() = Shader.setRegistry("https://fragmentcolor.org/shaders/")
+
     /** Runs one example and fails the test with its `docs/api` page when it throws. */
     fun example(page: String, body: suspend () -> Unit) {
         runBlocking {
