@@ -227,6 +227,8 @@ export class Playground {
 
   // Editor tabs: the WGSL files and main.js are editable; the other languages are generated.
   loadTabs({ files, js }) {
+    // A demo opens on the language the reader is on, main.js at first, and never on a shader file.
+    const language = this.tabs?.find((t) => t.id === this.activeTab && t.kind !== "wgsl")?.id ?? "js";
     const tabs = [];
     for (const [name, text] of Object.entries(files)) {
       tabs.push({ id: name, label: name, kind: "wgsl", state: this.editorState(text, "wgsl", true) });
@@ -255,7 +257,7 @@ export class Playground {
       }),
     );
     this.activeTab = null;
-    this.showTab(tabs[0].id);
+    this.showTab(language);
     this.renderLibrary();
   }
 
