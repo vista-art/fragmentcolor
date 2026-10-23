@@ -1,5 +1,5 @@
 use crate::{PassObject, ShaderHash, Target, TargetFrame, TextureData, TextureTarget, UniformData};
-use crate::{Size, WindowTarget};
+use crate::{ScreenRegion, Size, WindowTarget};
 use dashmap::DashMap;
 use lsp_doc::lsp_doc;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
@@ -1148,11 +1148,7 @@ impl RenderContext {
             }
         }
 
-        // wgpu rejects a scissor rect that leaves the attachment.
-        let viewport = pass
-            .viewport
-            .read()
-            .map(|region| region.clip(extent.width, extent.height));
+        let viewport = *pass.viewport.read();
 
         let mut texture_view: &wgpu::TextureView =
             if let Some(pass_view) = pass_texture_view.as_ref() {
@@ -1242,24 +1238,21 @@ impl RenderContext {
         let mut render_pass = encoder.begin_render_pass(&descriptor);
 
         if let Some(region) = viewport {
-            // A region that misses the attachment leaves the pass its clear and no draws.
-            if region.width() == 0 || region.height() == 0 {
+            // The scissor crops to the attachment, and a region that misses it
+            // leaves the pass its clear and no draws.
+            let scissor = region.clip(extent.width, extent.height);
+            if scissor.width() == 0 || scissor.height() == 0 {
                 self.release_msaa(msaa_texture);
                 return Ok(());
             }
-            render_pass.set_viewport(
-                region.min_x as f32,
-                region.min_y as f32,
-                region.width_f32(),
-                region.height_f32(),
-                0.0,
-                1.0,
-            );
+            let (x, y, width, height) =
+                viewport_rect(&region, self.device.limits().max_texture_dimension_2d);
+            render_pass.set_viewport(x, y, width, height, 0.0, 1.0);
             render_pass.set_scissor_rect(
-                region.min_x,
-                region.min_y,
-                region.width(),
-                region.height(),
+                scissor.min_x,
+                scissor.min_y,
+                scissor.width(),
+                scissor.height(),
             );
         }
 
@@ -2061,6 +2054,17 @@ fn vertex_buffer_layouts(
 type BindGroupEntries = std::collections::BTreeMap<u32, Vec<wgpu::BindGroupLayoutEntry>>;
 
 /// Layout entries for the shader's bind groups, derived from its reflected uniforms.
+/// The viewport for `region` within the bounds wgpu accepts:
+/// a size up to `max_dimension`, and a far edge below twice that.
+fn viewport_rect(region: &ScreenRegion, max_dimension: u32) -> (f32, f32, f32, f32) {
+    let range = 2.0 * max_dimension as f32 - 1.0;
+    let width = (region.max_x.abs_diff(region.min_x) as f32).min(max_dimension as f32);
+    let height = (region.max_y.abs_diff(region.min_y) as f32).min(max_dimension as f32);
+    let x = (region.min_x.min(region.max_x) as f32).min(range - width);
+    let y = (region.min_y.min(region.max_y) as f32).min(range - height);
+    (x, y, width, height)
+}
+
 fn bind_group_entries(shader: &crate::ShaderObject) -> BindGroupEntries {
     let uniforms = &shader.storage.read().uniforms;
     let mut group_entries = BindGroupEntries::new();

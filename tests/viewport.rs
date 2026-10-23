@@ -99,6 +99,46 @@ fn clips_a_viewport_larger_than_the_target() {
     });
 }
 
+// Story: A viewport that reaches past the target is cropped, not squeezed into the part that fits.
+#[test]
+fn crops_a_viewport_that_reaches_past_the_target() {
+    const HALVES: &str = r#"
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) ndc_x: f32,
+};
+
+@vertex
+fn vs_main(@builtin(vertex_index) i: u32) -> VertexOutput {
+    let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+    return VertexOutput(vec4<f32>(p[i], 0.0, 1.0), p[i].x);
+}
+
+@fragment
+fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
+    if input.ndc_x < 0.0 { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
+    return vec4<f32>(0.0, 1.0, 0.0, 1.0);
+}
+"#;
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let target = renderer
+            .create_texture_target([16, 8])
+            .await
+            .expect("create_texture_target failed");
+        let shader = Shader::new(HALVES).expect("halves shader failed");
+        let pass = Pass::from_shader("halves", &shader);
+        pass.set_clear_color([0.0, 0.0, 1.0, 1.0]);
+        // The viewport spans x 8..24, so its red left half covers 8..16 and its green half falls off.
+        pass.set_viewport([8, 0, 16, 8]);
+
+        renderer.render(&pass, &target).expect("render failed");
+
+        let image = target.get_image().await;
+        assert_pixels(&image, 16, 8, |x, _| if x < 8 { BLUE } else { RED });
+    });
+}
+
 // Story: A viewport outside the target draws nothing, and the pass still clears.
 #[test]
 fn skips_draws_for_a_viewport_outside_the_target() {

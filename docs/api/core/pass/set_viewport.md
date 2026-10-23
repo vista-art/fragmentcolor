@@ -6,7 +6,7 @@ The pass's shaders draw only inside this rectangle of the [Target](https://fragm
 
 The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly. Pixels count from the top-left corner of the target.
 
-A region that reaches past the target shrinks to the part inside it, and a region wholly outside the target draws nothing. When the pass has its own target from `set_target`, the region is measured against that target.
+A region that reaches past the target keeps its size and loses the part outside, and a region wholly outside the target draws nothing. When the pass has its own target from `set_target`, the region is measured against that target.
 
 The clear color still fills the whole target. To split one target between passes, call `load_previous` on each pass after the first. In the fragment stage, `@builtin(position)` counts pixels from the target's corner, not the region's.
 
