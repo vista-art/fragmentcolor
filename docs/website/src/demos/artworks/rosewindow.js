@@ -43,9 +43,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   );
   col = col * (0.30 + 1.05 * field);
 
-  // dark lead seams between the panes
-  let seam = smoothstep(0.0, 0.10, abs(rings) * (0.35 + 0.65 * abs(petals)));
-  col = col * (0.18 + 0.82 * seam);
+  // soft lead seams between the panes, a deeper and warmer tone of the glass
+  // around them, widened by the pixel footprint so they stay smooth
+  let edge = abs(rings) * (0.35 + 0.65 * abs(petals));
+  let seam = smoothstep(0.0, 0.16 + 2.0 * fwidth(edge), edge);
+  col = mix(col * vec3<f32>(0.46, 0.36, 0.30), col, seam);
 
   // sunlight through the center, swelling while held
   let bloom = 0.10 + 0.45 * u.press + 0.75 * u.pulse;
