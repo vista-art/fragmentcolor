@@ -77,13 +77,13 @@ fn compositions() -> Vec<Composition> {
         },
         Composition {
             name: "hexgrid",
-            description: "Hexagonal grid line mask. Returns (edge_dist, hex_id.x, hex_id.y).",
-            slugs: &["pattern/hexgrid"],
+            description: "Hexagonal grid line mask, each cell tinted by a hash of its hex id.",
+            slugs: &["pattern/hexgrid", "hash/hash12"],
             fragment: r#"
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let h = hexgrid(in.uv, 8.0);
     let line = 1.0 - smoothstep(0.04, 0.06, h.x);
-    let bg = vec3<f32>(0.10, 0.12, 0.18);
+    let bg = mix(vec3<f32>(0.10, 0.12, 0.18), vec3<f32>(0.16, 0.24, 0.34), hash12(h.yz));
     let fg = vec3<f32>(0.55, 0.85, 0.95);
     return vec4<f32>(mix(bg, fg, line), 1.0);
 }
