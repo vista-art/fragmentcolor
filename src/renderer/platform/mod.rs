@@ -1,6 +1,5 @@
 /// Shared initialization logic for all platforms.
-pub mod all;
-pub use all::*;
+pub(crate) mod all;
 
 /// wasm-bindgen (Web)
 #[cfg(wasm)]

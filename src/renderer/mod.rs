@@ -17,6 +17,7 @@ use wasm_bindgen::prelude::*;
 use pyo3::prelude::*;
 
 pub mod platform;
+#[cfg(python)]
 pub use platform::*;
 
 pub mod error;
@@ -470,7 +471,8 @@ impl Renderer {
 
         let adapter = self.adapter.read();
         let adapter_ref = adapter.as_ref().ok_or(InitializationError::AdapterNotSet)?;
-        let config = configure_surface(&context.device, adapter_ref, &surface, &size)?;
+        let config =
+            platform::all::configure_surface(&context.device, adapter_ref, &surface, &size)?;
 
         // Negotiate and store effective sample count (currently default wanted=1; configurable later)
         if let Some(adapter_ref) = adapter.as_ref() {
@@ -500,8 +502,8 @@ impl Renderer {
             context.clone()
         } else {
             let instance = self.instance().await;
-            let adapter = request_adapter(instance.as_ref(), surface).await?;
-            let (device, queue) = request_device(&adapter).await?;
+            let adapter = platform::all::request_adapter(instance.as_ref(), surface).await?;
+            let (device, queue) = platform::all::request_device(&adapter).await?;
             let context = Arc::new(RenderContext::new(device, queue));
             let flags = adapter.get_downlevel_capabilities().flags;
             context.aligned_uniform_bindings.store(

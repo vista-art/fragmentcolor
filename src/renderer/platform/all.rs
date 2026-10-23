@@ -3,8 +3,8 @@ use std::sync::Arc;
 #[cfg(not(wasm))]
 use std::{fs::OpenOptions, io::Write, path::Path};
 
-#[doc(hidden)]
-pub async fn create_instance() -> wgpu::Instance {
+/// Creates the wgpu instance, detecting WebGPU on the web.
+pub(crate) async fn create_instance() -> wgpu::Instance {
     #[cfg(wasm)]
     use wgpu::util::new_instance_with_webgpu_detection;
     #[cfg(wasm)]
@@ -20,8 +20,8 @@ pub async fn create_instance() -> wgpu::Instance {
     instance
 }
 
-#[doc(hidden)]
-pub async fn request_adapter(
+/// Requests an adapter that favors performance and can present to `surface`, if given.
+pub(crate) async fn request_adapter(
     instance: &wgpu::Instance,
     surface: Option<&wgpu::Surface<'_>>,
 ) -> Result<wgpu::Adapter, InitializationError> {
@@ -37,8 +37,8 @@ pub async fn request_adapter(
     Ok(adapter)
 }
 
-#[doc(hidden)]
-pub async fn request_device(
+/// Opens the device with the stable features the adapter offers.
+pub(crate) async fn request_device(
     adapter: &wgpu::Adapter,
 ) -> Result<(wgpu::Device, wgpu::Queue), InitializationError> {
     // Features: probe a curated set of stable, end-user-relevant features
@@ -135,8 +135,8 @@ fn append_error(path: &Path, error: &wgpu::Error) {
     }
 }
 
-#[doc(hidden)]
-pub fn configure_surface(
+/// Configures `surface` at `size` with a format the adapter supports.
+pub(crate) fn configure_surface(
     device: &wgpu::Device,
     adapter: &wgpu::Adapter,
     surface: &wgpu::Surface,
@@ -220,8 +220,7 @@ mod platform_tests;
 
 /// Negotiate a supported MSAA sample count for a given format on this adapter.
 /// Halves `wanted` until `features.sample_count_supported(n)` or returns 1.
-#[doc(hidden)]
-pub fn pick_sample_count(
+pub(crate) fn pick_sample_count(
     adapter: &wgpu::Adapter,
     mut wanted: u32,
     fmt: wgpu::TextureFormat,
