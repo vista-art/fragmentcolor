@@ -327,23 +327,21 @@ class GeneratedExamples : ExampleCase() {
 
     @Test
     fun core_renderer_load() = example("docs/api/core/renderer/load.md") {
+        val image = java.io.File("examples/assets/logo.png").readBytes()
+
         val renderer = Renderer()
         val target = renderer.createTextureTarget(listOf(64u, 64u))
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
-        // Raw 2×2 RGBA pixel bytes, uploaded lazily by `Renderer.load` below.
+        mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)))
 
-        // vocabulary covers all of them.
-        val red_pixels = listOf(255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255)
-        val red_tex = renderer.createTexture(red_pixels, listOf(2u, 2u))
-        val material = Material.pbr().baseColorTexture(red_tex)
+        // The material keeps the encoded image as a pending upload.
+        val material = Material.pbr().baseColorTexture(image)
         val model = Model(mesh, material)
         val scene = Scene()
         scene.add(model)
 
-        // Eager prewarm: upload the pending textures now, so the next render
-        // is GPU-only.
+        // Decode and upload it now, so the first render only draws.
         renderer.load(scene)
         renderer.render(scene, target)
     }

@@ -1,22 +1,18 @@
 import { Material, Mesh, Model, Renderer, Scene, Vertex } from "fragmentcolor";
+const image = new Uint8Array(await (await fetch("/healthcheck/public/favicon.png")).arrayBuffer());
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([64, 64]);
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
-// Raw 2×2 RGBA pixel bytes, uploaded lazily by `Renderer.load` below.
-// In practice the loader hands the setter encoded PNG/JPEG bytes (from a
-// BIN chunk) or a file path (from a URI); the same `Into<TextureInput>`
-// vocabulary covers all of them.
-const red_pixels = [ 255,   0,   0, 255,    0, 255,   0, 255, 0,   0, 255, 255,  255, 255, 255, 255, ];
-const red_tex = await renderer.createTexture(red_pixels, [2, 2]);
-const material = Material.pbr().baseColorTexture(red_tex);
+mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]));
+
+// The material keeps the encoded image as a pending upload.
+const material = Material.pbr().baseColorTexture(image);
 const model = new Model(mesh, material);
 const scene = new Scene();
 scene.add(model);
 
-// Eager prewarm: upload the pending textures now, so the next render
-// is GPU-only.
+// Decode and upload it now, so the first render only draws.
 await renderer.load(scene);
 renderer.render(scene, target);

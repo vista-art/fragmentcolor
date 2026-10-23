@@ -225,30 +225,21 @@ class Renderer:
 
         ```python
         from fragmentcolor import Material, Mesh, Model, Renderer, Scene, Vertex
+        image = open("examples/assets/logo.png", "rb").read()
 
         renderer = Renderer()
         target = renderer.create_texture_target([64, 64])
 
         mesh = Mesh()
-        mesh.add_vertex(
-            Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
-        # Raw 2×2 RGBA pixel bytes, uploaded lazily by `Renderer.load` below.
-        # In practice the loader hands the setter encoded PNG/JPEG bytes (from a
-        # BIN chunk) or a file path (from a URI); the same `Into<TextureInput>`
-        # vocabulary covers all of them.
-        red_pixels = [
-            255,   0,   0, 255,    0, 255,   0, 255,
-              0,   0, 255, 255,  255, 255, 255, 255,
-        ]
-        red_tex = renderer.create_texture(red_pixels, size=[2, 2])
-        material = Material.pbr().base_color_texture(red_tex)
+        mesh.add_vertex(Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]))
+
+        # The material keeps the encoded image as a pending upload.
+        material = Material.pbr().base_color_texture(image)
         model = Model(mesh, material)
         scene = Scene()
         scene.add(model)
 
-        # Eager prewarm: upload the pending textures now, so the next render
-        # is GPU-only.
+        # Decode and upload it now, so the first render only draws.
         renderer.load(scene)
         renderer.render(scene, target)
         ```

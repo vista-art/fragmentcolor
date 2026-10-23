@@ -857,38 +857,29 @@ draws with its 1×1 default maps.
 <Code
 code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let image = std::fs::read("examples/assets/logo.png")?;
 use fragmentcolor::{Material, Mesh, Model, Renderer, Scene, Vertex};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
 
 let mesh = Mesh::new();
-mesh.add_vertex(
-    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
-);
-// Raw 2×2 RGBA pixel bytes, uploaded lazily by \`Renderer::load\` below.
-// In practice the loader hands the setter encoded PNG/JPEG bytes (from a
-// BIN chunk) or a file path (from a URI); the same \`Into<TextureInput>\`
-// vocabulary covers all of them.
-let red_pixels: Vec<u8> = vec![
-    255,   0,   0, 255,    0, 255,   0, 255,
-      0,   0, 255, 255,  255, 255, 255, 255,
-];
-let red_tex = renderer.create_texture((red_pixels, [2, 2])).await?;
-let material = Material::pbr().base_color_texture(&red_tex);
+mesh.add_vertex(Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]));
+
+// The material keeps the encoded image as a pending upload.
+let material = Material::pbr().base_color_texture(&image);
 let model = Model::new(mesh, material);
 let scene = Scene::new();
 scene.add(&model)?;
 
-// Eager prewarm: upload the pending textures now, so the next render
-// is GPU-only.
+// Decode and upload it now, so the first render only draws.
 renderer.load(&scene).await?;
 renderer.render(&scene, &target)?;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 29-31}"
+lang="rust" meta="collapse={1-2, 20-22}"
 />
 
 </TabItem>
@@ -897,29 +888,25 @@ lang="rust" meta="collapse={1-1, 29-31}"
 <Code
 code={`
 import { Material, Mesh, Model, Renderer, Scene, Vertex } from "fragmentcolor";
+const image = new Uint8Array(await (await fetch("/healthcheck/public/favicon.png")).arrayBuffer());
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([64, 64]);
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
-// Raw 2×2 RGBA pixel bytes, uploaded lazily by \`Renderer.load\` below.
-// In practice the loader hands the setter encoded PNG/JPEG bytes (from a
-// BIN chunk) or a file path (from a URI); the same \`Into<TextureInput>\`
-// vocabulary covers all of them.
-const red_pixels = [ 255,   0,   0, 255,    0, 255,   0, 255, 0,   0, 255, 255,  255, 255, 255, 255, ];
-const red_tex = await renderer.createTexture(red_pixels, [2, 2]);
-const material = Material.pbr().baseColorTexture(red_tex);
+mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]));
+
+// The material keeps the encoded image as a pending upload.
+const material = Material.pbr().baseColorTexture(image);
 const model = new Model(mesh, material);
 const scene = new Scene();
 scene.add(model);
 
-// Eager prewarm: upload the pending textures now, so the next render
-// is GPU-only.
+// Decode and upload it now, so the first render only draws.
 await renderer.load(scene);
 renderer.render(scene, target);
 `}
-lang="js"
+lang="js" meta="collapse={2-2}"
 />
 
 </TabItem>
@@ -928,34 +915,25 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import Material, Mesh, Model, Renderer, Scene, Vertex
+image = open("examples/assets/logo.png", "rb").read()
 
 renderer = Renderer()
 target = renderer.create_texture_target([64, 64])
 
 mesh = Mesh()
-mesh.add_vertex(
-    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-)
-# Raw 2×2 RGBA pixel bytes, uploaded lazily by \`Renderer.load\` below.
-# In practice the loader hands the setter encoded PNG/JPEG bytes (from a
-# BIN chunk) or a file path (from a URI); the same \`Into<TextureInput>\`
-# vocabulary covers all of them.
-red_pixels = [
-    255,   0,   0, 255,    0, 255,   0, 255,
-      0,   0, 255, 255,  255, 255, 255, 255,
-]
-red_tex = renderer.create_texture(red_pixels, size=[2, 2])
-material = Material.pbr().base_color_texture(red_tex)
+mesh.add_vertex(Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]))
+
+# The material keeps the encoded image as a pending upload.
+material = Material.pbr().base_color_texture(image)
 model = Model(mesh, material)
 scene = Scene()
 scene.add(model)
 
-# Eager prewarm: upload the pending textures now, so the next render
-# is GPU-only.
+# Decode and upload it now, so the first render only draws.
 renderer.load(scene)
 renderer.render(scene, target)
 `}
-lang="python"
+lang="python" meta="collapse={2-2}"
 />
 
 </TabItem>
@@ -964,34 +942,26 @@ lang="python"
 <Code
 code={`
 import FragmentColor
+import Foundation
+let image = try Data(contentsOf: URL(fileURLWithPath: "examples/assets/logo.png"))
 
 let renderer = Renderer()
 let target = try await renderer.createTextureTarget([64, 64])
 
 let mesh = Mesh()
-try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
-)
-// Raw 2×2 RGBA pixel bytes, uploaded lazily by \`Renderer.load\` below.
-// In practice the loader hands the setter encoded PNG/JPEG bytes (from a
-// BIN chunk) or a file path (from a URI); the same \`Into<TextureInput>\`
-// vocabulary covers all of them.
-let red_pixels = [
-    255,   0,   0, 255,    0, 255,   0, 255,
-      0,   0, 255, 255,  255, 255, 255, 255,
-]
-let red_tex = try await renderer.createTexture(red_pixels, [2, 2])
-let material = Material.pbr().baseColorTexture(red_tex)
+try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]))
+
+// The material keeps the encoded image as a pending upload.
+let material = Material.pbr().baseColorTexture(image)
 let model = Model(mesh, material)
 let scene = Scene()
 try scene.add(model)
 
-// Eager prewarm: upload the pending textures now, so the next render
-// is GPU-only.
+// Decode and upload it now, so the first render only draws.
 try await renderer.load(scene)
 try renderer.render(scene, target)
 `}
-lang="swift"
+lang="swift" meta="collapse={2-3}"
 />
 
 </TabItem>
@@ -1000,28 +970,25 @@ lang="swift"
 <Code
 code={`
 import org.fragmentcolor.*
+val image = java.io.File("examples/assets/logo.png").readBytes()
 
 val renderer = Renderer()
 val target = renderer.createTextureTarget(listOf(64u, 64u))
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
-// Raw 2×2 RGBA pixel bytes, uploaded lazily by \`Renderer.load\` below.
- 
-// vocabulary covers all of them.
-val red_pixels = listOf(255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255)
-val red_tex = renderer.createTexture(red_pixels, listOf(2u, 2u))
-val material = Material.pbr().baseColorTexture(red_tex)
+mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)))
+
+// The material keeps the encoded image as a pending upload.
+val material = Material.pbr().baseColorTexture(image)
 val model = Model(mesh, material)
 val scene = Scene()
 scene.add(model)
 
-// Eager prewarm: upload the pending textures now, so the next render
-// is GPU-only.
+// Decode and upload it now, so the first render only draws.
 renderer.load(scene)
 renderer.render(scene, target)
 `}
-lang="kotlin"
+lang="kotlin" meta="collapse={2-2}"
 />
 
 </TabItem>
