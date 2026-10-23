@@ -137,10 +137,7 @@ impl ScreenRegion {
     }
 
     pub fn clamp(&mut self, width: u32, height: u32) {
-        self.min_x = self.min_x.min(width);
-        self.min_y = self.min_y.min(height);
-        self.max_x = self.max_x.min(width);
-        self.max_y = self.max_y.min(height);
+        *self = self.clip(width, height);
     }
 
     /// The part of this region inside a `width` by `height` area, min corner first.
