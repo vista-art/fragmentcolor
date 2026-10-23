@@ -26,7 +26,7 @@ func assertEqual<T: Equatable>(_ actual: T, _ expected: T, _ label: String) thro
     }
 }
 
-final class Healthcheck: XCTestCase {
+final class Healthcheck: ExampleCase {
     func testHeadlessRender() async throws {
         // DOC: Renderer.new (begin)
         let renderer = Renderer()

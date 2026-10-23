@@ -17,7 +17,7 @@ import org.junit.runner.RunWith
 // and `// DOC: (end)` markers get extracted at build time and spliced
 // into the generated MDX pages.
 @RunWith(AndroidJUnit4::class)
-class Healthcheck {
+class Healthcheck : ExampleCase() {
     @Test
     fun headlessRenderSmoke() = runBlocking {
         runHeadlessRenderSmoke()
