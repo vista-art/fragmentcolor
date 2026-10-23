@@ -1,6 +1,3 @@
-use glam::Vec2;
-use glam::Vec4;
-
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
@@ -271,32 +268,6 @@ impl ScreenRegion {
             self.min_x + self.half_width(),
             self.min_y + self.half_height(),
         )
-    }
-
-    #[doc(hidden)]
-    pub fn to_vec2(&self) -> Vec2 {
-        Vec2 {
-            x: self.width() as f32,
-            y: self.height() as f32,
-        }
-    }
-
-    #[doc(hidden)]
-    pub fn to_vec4(&self) -> Vec4 {
-        Vec4::new(
-            self.min_x as f32,
-            self.min_y as f32,
-            self.max_x as f32,
-            self.max_y as f32,
-        )
-    }
-
-    #[doc(hidden)]
-    pub fn center_f32(&self) -> Vec2 {
-        Vec2 {
-            x: self.min_x as f32 + self.width() as f32 / 2.0,
-            y: self.min_y as f32 + self.height() as f32 / 2.0,
-        }
     }
 
     /// Clamps this ScreenRegion to a theoretical overlap of another ScreenRegion,
@@ -660,20 +631,6 @@ impl From<&([i32; 2], [i32; 2])> for ScreenRegion {
 }
 
 // Outbound conversions for convenience
-#[doc(hidden)]
-impl From<&ScreenRegion> for Vec2 {
-    #[inline]
-    fn from(r: &ScreenRegion) -> Self {
-        r.to_vec2()
-    }
-}
-#[doc(hidden)]
-impl From<&ScreenRegion> for Vec4 {
-    #[inline]
-    fn from(r: &ScreenRegion) -> Self {
-        r.to_vec4()
-    }
-}
 impl From<&ScreenRegion> for [f32; 4] {
     #[inline]
     fn from(r: &ScreenRegion) -> Self {
@@ -881,9 +838,6 @@ mod tests {
         let square = ScreenRegion::from_region(0, 0, 4, 4);
         assert!((square.inbound_radius() - 2.0).abs() < 1e-6);
         assert!((square.outbound_radius() - (2.0f32.hypot(2.0))).abs() < 1e-6);
-
-        let c = square.center_f32();
-        assert!((c.x - 2.0).abs() < 1e-6 && (c.y - 2.0).abs() < 1e-6);
     }
 
     // Story: Clip keeps the part of a region inside an area and orders its corners.
