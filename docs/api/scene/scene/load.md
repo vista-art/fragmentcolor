@@ -10,7 +10,7 @@ encounters are queued as pending uploads on the resulting Materials.
 them. On native targets the first render runs it for you; on the web, await
 it before the first render.
 
-Today's coverage: static glTF, meaning mesh primitives (POSITION + NORMAL + UV0 +
+The loader reads static glTF: mesh primitives (POSITION + NORMAL + UV0 +
 indices), PBR-MR materials with all five texture slots, per-node transforms
 flattened into Model matrices, glTF camera nodes, and `KHR_lights_punctual`
 lights. Animation, skinning, morph targets, and material extensions beyond
