@@ -12,6 +12,7 @@ Core invariants
 Render targets & present
 - If no per-pass offscreen target is set, render to the provided final frame by default.
 - Per-pass targets render intermediate results; the last render pass in the executed DAG becomes the presentation pass automatically (there is no explicit `present(...)` API).
+- A pass viewport is clipped to the pass's color attachment and sets both the wgpu viewport and the scissor rect. A viewport that clips to nothing keeps the pass's clear and skips its draws, since Metal can't take an empty scissor.
 
 MSAA & resolves
 - Use transient MSAA textures from the texture pool and resolve into the target view; return them to the pool after use.

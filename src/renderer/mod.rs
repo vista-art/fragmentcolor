@@ -1133,16 +1133,24 @@ impl RenderContext {
         let mut resolve_target: Option<&wgpu::TextureView> = None;
 
         let mut color_format = frame.format();
+        let mut extent = size;
         let mut pass_texture_view = None;
         if let Some(id) = *pass.color_target.read() {
             if let Some(texture) = self.get_texture(&id) {
                 pass_texture_view = Some(texture.create_view());
                 color_format = texture.format();
                 sample_count = texture.inner.sample_count();
+                extent = texture.inner.size();
             } else {
                 return Err(RendererError::TextureNotFoundError(id));
             }
         }
+
+        // wgpu rejects a scissor rect that leaves the attachment.
+        let viewport = pass
+            .viewport
+            .read()
+            .map(|region| region.clip(extent.width, extent.height));
 
         let mut texture_view: &wgpu::TextureView =
             if let Some(pass_view) = pass_texture_view.as_ref() {
@@ -1152,7 +1160,7 @@ impl RenderContext {
             };
 
         // Keep MSAA resources alive for the duration of the pass
-        let mut msaa_texture: Option<wgpu::Texture> = None;
+        let mut msaa_texture: Option<(wgpu::Texture, TextureKey)> = None;
         let mut _msaa_view: Option<wgpu::TextureView> = None;
         if pass_texture_view.is_none() && sample_count > 1 {
             let key = TextureKey::new(
@@ -1166,7 +1174,7 @@ impl RenderContext {
                 pool.acquire(&self.device, key)
             };
             _msaa_view = Some(texture.create_view(&wgpu::TextureViewDescriptor::default()));
-            msaa_texture = Some(texture);
+            msaa_texture = Some((texture, key));
             texture_view = match _msaa_view.as_ref() {
                 Some(v) => v,
                 None => return Err(RendererError::MsaaViewMissing),
@@ -1230,6 +1238,28 @@ impl RenderContext {
             multiview_mask: None,
         };
         let mut render_pass = encoder.begin_render_pass(&descriptor);
+
+        if let Some(region) = viewport {
+            // A region that misses the attachment leaves the pass its clear and no draws.
+            if region.width() == 0 || region.height() == 0 {
+                self.release_msaa(msaa_texture);
+                return Ok(());
+            }
+            render_pass.set_viewport(
+                region.min_x as f32,
+                region.min_y as f32,
+                region.width_f32(),
+                region.height_f32(),
+                0.0,
+                1.0,
+            );
+            render_pass.set_scissor_rect(
+                region.min_x,
+                region.min_y,
+                region.width(),
+                region.height(),
+            );
+        }
 
         let required_size = *pass.required_buffer_size.read();
         self.buffer_pool
@@ -1615,18 +1645,16 @@ impl RenderContext {
             }
         }
 
-        // Return MSAA texture to pool if used
-        if let Some(texture) = msaa_texture.take() {
-            let key = TextureKey::new(
-                size,
-                color_format,
-                sample_count,
-                wgpu::TextureUsages::RENDER_ATTACHMENT,
-            );
-            self.texture_pool.write().release(key, texture);
-        }
+        self.release_msaa(msaa_texture);
 
         Ok(())
+    }
+
+    /// Hands a pass's transient MSAA texture back to the pool.
+    fn release_msaa(&self, msaa: Option<(wgpu::Texture, TextureKey)>) {
+        if let Some((texture, key)) = msaa {
+            self.texture_pool.write().release(key, texture);
+        }
     }
 
     fn process_compute_pass(
@@ -3434,6 +3462,67 @@ struct VOut { @builtin(position) pos: vec4<f32> };
                     res.err()
                 );
             }
+        });
+    }
+
+    // Story: A multisampled pass draws only inside its viewport and resolves the clear around it.
+    #[test]
+    fn msaa_pass_draws_inside_the_viewport() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([16u32, 16u32])
+                .await
+                .expect("texture target");
+            let supported = renderer
+                .adapter
+                .read()
+                .as_ref()
+                .expect("adapter")
+                .get_texture_format_features(wgpu::TextureFormat::Rgba8Unorm)
+                .flags
+                .sample_count_supported(4);
+            if !supported {
+                return;
+            }
+            renderer
+                .context
+                .read()
+                .as_ref()
+                .expect("context")
+                .set_sample_count(4);
+
+            let wgsl = r#"
+@vertex
+fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+    let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+    return vec4<f32>(p[i], 0.0, 1.0);
+}
+@fragment
+fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
+            "#;
+            let shader = Shader::new(wgsl).expect("shader");
+            let pass = Pass::from_shader("msaa-viewport", &shader);
+            pass.set_clear_color([0.0, 0.0, 1.0, 1.0]);
+            pass.set_viewport(crate::ScreenRegion::new((4, 4), (8, 8)));
+
+            renderer.render(&pass, &target).expect("render ok");
+
+            let image = target.get_image().await;
+            let pixel = |x: usize, y: usize| {
+                let start = (y * 16 + x) * 4;
+                [
+                    image[start],
+                    image[start + 1],
+                    image[start + 2],
+                    image[start + 3],
+                ]
+            };
+            assert_eq!(pixel(4, 4), [255, 0, 0, 255], "inside, top left");
+            assert_eq!(pixel(11, 11), [255, 0, 0, 255], "inside, bottom right");
+            assert_eq!(pixel(3, 4), [0, 0, 255, 255], "left of the region");
+            assert_eq!(pixel(12, 11), [0, 0, 255, 255], "right of the region");
+            assert_eq!(pixel(8, 0), [0, 0, 255, 255], "above the region");
         });
     }
 

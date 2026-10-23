@@ -146,6 +146,16 @@ impl ScreenRegion {
         self.max_y = self.max_y.min(height);
     }
 
+    /// The part of this region inside a `width` by `height` area, min corner first.
+    pub(crate) fn clip(&self, width: u32, height: u32) -> ScreenRegion {
+        Self {
+            min_x: self.min_x.min(self.max_x).min(width),
+            min_y: self.min_y.min(self.max_y).min(height),
+            max_x: self.min_x.max(self.max_x).min(width),
+            max_y: self.min_y.max(self.max_y).min(height),
+        }
+    }
+
     pub fn union(&mut self, other: ScreenRegion) {
         self.min_x = self.min_x.min(other.min_x);
         self.min_y = self.min_y.min(other.min_y);
@@ -874,5 +884,26 @@ mod tests {
 
         let c = square.center_f32();
         assert!((c.x - 2.0).abs() < 1e-6 && (c.y - 2.0).abs() < 1e-6);
+    }
+
+    // Story: Clip keeps the part of a region inside an area and orders its corners.
+    #[test]
+    fn clips_to_an_area() {
+        let inside = ScreenRegion::from_region(2, 2, 4, 4);
+        assert_eq!(inside.clip(8, 8), inside);
+
+        let past = ScreenRegion::from_region(6, 4, 10, 10);
+        assert_eq!(past.clip(8, 8), ScreenRegion::from_region(6, 4, 2, 4));
+
+        let outside = ScreenRegion::from_region(10, 10, 4, 4);
+        assert_eq!(outside.clip(8, 8).area(), 0);
+
+        let flipped = ScreenRegion {
+            min_x: 5,
+            min_y: 6,
+            max_x: 1,
+            max_y: 2,
+        };
+        assert_eq!(flipped.clip(8, 8), ScreenRegion::from_region(1, 2, 4, 4));
     }
 }
