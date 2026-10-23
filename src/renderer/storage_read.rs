@@ -8,7 +8,7 @@
 //! Mirrors [`super::super::texture::read`] (texture readback) so both readback
 //! paths use the same `readback_pool` and `map_async` discipline.
 
-use crate::renderer::{RenderContext, RendererError};
+use crate::renderer::{PendingReadback, RenderContext, RendererError};
 
 /// Copy `[0, span)` of `buffer` into a pooled readback buffer, map it,
 /// extract the bytes, and return them.
@@ -38,6 +38,7 @@ pub(crate) async fn read_buffer_bytes(
         });
     encoder.copy_buffer_to_buffer(buffer, 0, &staging, 0, span);
     context.queue.submit(Some(encoder.finish()));
+    let readback = PendingReadback::new(&context.readback_pool, staging.clone());
 
     let slice = staging.slice(0..span);
     let (tx, rx) = futures::channel::oneshot::channel();
@@ -84,5 +85,6 @@ pub(crate) async fn read_buffer_bytes(
     let bytes = view.to_vec();
     drop(view);
     staging.unmap();
+    readback.finish();
     Ok(bytes)
 }

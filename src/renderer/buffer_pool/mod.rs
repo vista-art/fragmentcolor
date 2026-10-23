@@ -36,7 +36,7 @@ pub(crate) mod uniform;
 pub(crate) use uniform::{BufferLocation, UniformBufferPool};
 
 pub(crate) mod readback;
-pub(crate) use readback::ReadbackBufferPool;
+pub(crate) use readback::{PendingReadback, ReadbackBufferPool};
 
 pub(crate) mod storage;
 pub(crate) use storage::StorageBufferPool;
