@@ -36,26 +36,24 @@ extension Texture {
     // MARK: - writeRegion convenience
 
     /// Upload pixel data into a region given as `[w, h]`, `[x, y, w, h]` or `[x, y, z, w, h, d]`.
-    /// Throws for any other length or a negative number.
-    public func writeRegion(_ bytes: Data, _ rect: [Int]) throws {
+    /// Throws for any other length.
+    public func writeRegion(_ bytes: Data, _ rect: [UInt32]) throws {
         guard let region = textureRegion(rect) else {
-            throw FragmentColorError.Render("writeRegion: expected 2, 4 or 6 non-negative numbers, got \(rect)")
+            throw FragmentColorError.Render("writeRegion: expected 2, 4 or 6 numbers, got \(rect.count)")
         }
         try writeRegion(bytes: bytes, region: region)
     }
 
-    public func writeRegion(_ bytes: [UInt8], _ rect: [Int]) throws {
+    public func writeRegion(_ bytes: [UInt8], _ rect: [UInt32]) throws {
         try writeRegion(Data(bytes), rect)
     }
 
-    public func writeRegion(_ bytes: [Int], _ rect: [Int]) throws {
+    public func writeRegion(_ bytes: [Int], _ rect: [UInt32]) throws {
         try writeRegion(try byteData(bytes, "writeRegion"), rect)
     }
 
-    // Pre-built `TextureRegion` overloads, for the
-    // `TextureRegion.from(_:).withStride(_:).withRows(_:)` builder chain
-    // in `write_region.md`. Without them the Swift overload resolver picks
-    // the `[Int]` overload above and rejects a `TextureRegion` argument.
+    // `TextureRegion` overloads, for a region built with
+    // `TextureRegion.from(_:).withStride(_:).withRows(_:)`.
 
     public func writeRegion(_ bytes: Data, _ region: TextureRegion) throws {
         try writeRegion(bytes: bytes, region: region)
@@ -100,11 +98,7 @@ extension TextureTarget {
     // MARK: - resize convenience
 
     /// Resize the target from a `[width, height]` array.
-    /// A length other than 2 or 3, or a negative number, stops the program.
-    public func resize(_ size: [Int]) {
-        resize(targetSize(size))
-    }
-
+    /// A length other than 2 or 3 stops the program.
     public func resize(_ size: [UInt32]) {
         resize(targetSize(size))
     }
@@ -119,11 +113,7 @@ extension WindowTarget {
     // MARK: - resize convenience
 
     /// Resize the target from a `[width, height]` array.
-    /// A length other than 2 or 3, or a negative number, stops the program.
-    public func resize(_ size: [Int]) {
-        resize(targetSize(size))
-    }
-
+    /// A length other than 2 or 3 stops the program.
     public func resize(_ size: [UInt32]) {
         resize(targetSize(size))
     }
@@ -151,20 +141,17 @@ extension Mipmap {
     }
 
     /// Build a chain from raw pixels of `format` and their `[width, height]`.
-    public static func build(_ bytes: Data, _ format: TextureFormat, _ size: [Int]) throws -> Mipmap {
+    public static func build(_ bytes: Data, _ format: TextureFormat, _ size: [UInt32]) throws -> Mipmap {
         try Mipmap.build(bytes, format, try sizeRecord(size, "Mipmap.build"))
     }
 
-    public static func build(_ bytes: [UInt8], _ format: TextureFormat, _ size: [Int]) throws -> Mipmap {
+    public static func build(_ bytes: [UInt8], _ format: TextureFormat, _ size: [UInt32]) throws -> Mipmap {
         try Mipmap.build(Data(bytes), format, size)
     }
 
     /// The bytes of one mip level (unlabeled overload). Throws for an index out of range.
-    public func level(_ index: Int) throws -> Data {
-        guard let index = UInt32(exactly: index) else {
-            throw FragmentColorError.Render("level: \(index) is not a level index")
-        }
-        return try level(index: index)
+    public func level(_ index: UInt32) throws -> Data {
+        try level(index: index)
     }
 }
 
@@ -188,7 +175,7 @@ extension TextureUsage {
 
 /// The `Size` a resize array names. A bad array stops the program,
 /// since the resize methods return nothing to throw through.
-private func targetSize<T: BinaryInteger>(_ size: [T]) -> Size {
+private func targetSize(_ size: [UInt32]) -> Size {
     do {
         return try sizeRecord(size, "resize")
     } catch {

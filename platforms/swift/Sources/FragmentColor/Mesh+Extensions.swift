@@ -68,17 +68,6 @@ extension Mesh {
         setIndices(indices: indices)
     }
 
-    /// Explicit indices from a `[Int]` literal (convenient for example code).
-    /// A negative index, or one above `UInt32.max`, stops the program.
-    public func setIndices(_ indices: [Int]) {
-        setIndices(indices: indices.map { index in
-            guard let index = UInt32(exactly: index) else {
-                preconditionFailure("setIndices: \(index) is not a valid index")
-            }
-            return index
-        })
-    }
-
     /// Build a Mesh from vertices already constructed (unlabeled overload).
     public static func fromVertices(_ vertices: [Vertex]) -> Mesh {
         return Mesh.fromVertices(vertices: vertices)
@@ -200,14 +189,6 @@ extension Mesh {
     /// Set the instance draw count without an argument label.
     public func setInstanceCount(_ n: UInt32) {
         setInstanceCount(n: n)
-    }
-
-    /// Set the instance draw count from an `Int`. A negative count stops the program.
-    public func setInstanceCount(_ n: Int) {
-        guard let count = UInt32(exactly: n) else {
-            preconditionFailure("setInstanceCount: \(n) is not a valid count")
-        }
-        setInstanceCount(n: count)
     }
 }
 
