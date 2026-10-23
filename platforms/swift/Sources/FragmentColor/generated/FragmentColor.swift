@@ -7335,9 +7335,7 @@ public func FfiConverterTypeTextureFormat_lower(_ value: TextureFormat) -> RustB
 /**
  * Uniffi mirror of [`TextureData`], which it converts into.
  *
- * It leaves out `Empty` and `DynamicImage`. uniffi can't lower the
- * `image` crate's `DynamicImage`, and `Bytes` reaches the same result,
- * since the library decodes them. Paths travel as `String`, handles as `Arc`.
+ * It leaves out `Empty`. Paths travel as `String`, handles as `Arc`.
  *
  * The Rust core stays on `TextureData`. This enum exists only so the mobile
  * bindings can carry a concrete variant. Web and Python use their own dispatch

@@ -509,7 +509,7 @@ Bind a texture to the `base_color_map` slot. The default PBR shader samples it i
 Accepts any `Into<TextureInput>`:
 
 - A pre-built [`&Texture`](/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations.
-- Bytes / path / URL / `DynamicImage`. The setter queues the input on the Material's Shader. [`Renderer::load`](/api/core/renderer) uploads it, and on native targets the first [`Renderer::render`](/api/core/renderer) runs `load` for you.
+- Bytes / path / URL. The setter queues the input on the Material's Shader. [`Renderer::load`](/api/core/renderer) uploads it, and on native targets the first [`Renderer::render`](/api/core/renderer) runs `load` for you.
 
 Unset, this slot resolves to a 1×1 white default the renderer hands out
 lazily, so calling `Material::pbr()` without binding a

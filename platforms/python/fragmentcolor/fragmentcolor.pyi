@@ -203,7 +203,7 @@ class Renderer:
         """
         Realize every pending GPU upload referenced by a renderable. Material's
         texture setters (`base_color_texture`, `metallic_roughness_texture`, …)
-        accept paths, bytes, URLs, and `DynamicImage` values in addition to
+        accept paths, bytes, and URLs in addition to
         already-uploaded [`Texture`](https://fragmentcolor.org/api/texture/texture)
         handles; the path / bytes / URL variants are stored on the Material's
         Shader as *pending* uploads. `load` walks every Shader the renderable
@@ -4244,7 +4244,7 @@ class Material:
         Accepts any `Into<TextureInput>`:
 
         - A pre-built [`&Texture`](https://fragmentcolor.org/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations.
-        - Bytes / path / URL / `DynamicImage`. The setter queues the input on the Material's Shader. [`Renderer::load`](https://fragmentcolor.org/api/core/renderer) uploads it, and on native targets the first [`Renderer::render`](https://fragmentcolor.org/api/core/renderer) runs `load` for you.
+        - Bytes / path / URL. The setter queues the input on the Material's Shader. [`Renderer::load`](https://fragmentcolor.org/api/core/renderer) uploads it, and on native targets the first [`Renderer::render`](https://fragmentcolor.org/api/core/renderer) runs `load` for you.
 
         Unset, this slot resolves to a 1×1 white default the renderer hands out
         lazily, so calling `Material::pbr()` without binding a
