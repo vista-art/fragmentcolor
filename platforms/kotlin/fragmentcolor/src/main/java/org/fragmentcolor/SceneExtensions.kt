@@ -37,14 +37,14 @@ fun Scene.ambient(color: DoubleArray): Scene = ambient(color.map { it.toFloat() 
 // object type directly instead of wrapping it in PassTarget /
 // SceneObjectHandle.
 
-/** Add a [Model] to the Pass at [index]. Throws [FragmentColorException] for a negative index. */
-fun Scene.addTo(index: Int, model: Model): Scene = addTo(passIndex(index), SceneObjectHandle.Model(model))
+/** Add a [Model] to the Pass at [index]. */
+fun Scene.addTo(index: UInt, model: Model): Scene = addTo(PassTarget.Index(index), SceneObjectHandle.Model(model))
 
-/** Add a [Camera] to the Pass at [index]. Throws [FragmentColorException] for a negative index. */
-fun Scene.addTo(index: Int, camera: Camera): Scene = addTo(passIndex(index), SceneObjectHandle.Camera(camera))
+/** Add a [Camera] to the Pass at [index]. */
+fun Scene.addTo(index: UInt, camera: Camera): Scene = addTo(PassTarget.Index(index), SceneObjectHandle.Camera(camera))
 
-/** Add a [Light] to the Pass at [index]. Throws [FragmentColorException] for a negative index. */
-fun Scene.addTo(index: Int, light: Light): Scene = addTo(passIndex(index), SceneObjectHandle.Light(light))
+/** Add a [Light] to the Pass at [index]. */
+fun Scene.addTo(index: UInt, light: Light): Scene = addTo(PassTarget.Index(index), SceneObjectHandle.Light(light))
 
 /** Add a [Model] to the Pass named [name]. */
 fun Scene.addTo(name: String, model: Model): Scene = addTo(PassTarget.Name(name), SceneObjectHandle.Model(model))
@@ -55,19 +55,7 @@ fun Scene.addTo(name: String, camera: Camera): Scene = addTo(PassTarget.Name(nam
 /** Add a [Light] to the Pass named [name]. */
 fun Scene.addTo(name: String, light: Light): Scene = addTo(PassTarget.Name(name), SceneObjectHandle.Light(light))
 
-// Numeric / collection convenience overloads so example code can pass an Int
-// index and an array literal without converting to UInt / List by hand.
-
-/** Read a Pass by [index], or `null` when there is none, a negative index included. */
-fun Scene.getPass(index: Int): Pass? = if (index < 0) null else getPassUInt(index.toUInt())
-
-/** Read a Pass by [index], or `null` when there is none. */
-fun Scene.getPass(index: UInt): Pass? = getPassUInt(index)
-
 /** Replace the whole pass graph from an array of passes. */
 fun Scene.setPasses(passes: Array<Pass>) {
     setPasses(passes.toList())
 }
-
-/** The pass target at [index]. Throws [FragmentColorException] for a negative index. */
-private fun passIndex(index: Int): PassTarget = PassTarget.Index(unsigned(index, "addTo", "pass index"))

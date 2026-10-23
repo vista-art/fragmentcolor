@@ -87,11 +87,11 @@ fun Pass.setClearColor(r: Float, g: Float, b: Float, a: Float = 1.0f) {
 
 /**
  * Set the viewport from `[x, y, width, height]`, or `[width, height]` at the origin.
- * Throws [FragmentColorException] for any other length or a negative number.
+ * Throws [FragmentColorException] for any other length.
  */
-fun Pass.setViewport(rect: List<Int>) {
+fun Pass.setViewport(rect: List<UInt>) {
     val region = when (rect.size) {
-        2 -> ScreenRegion(listOf(0, 0), rect)
+        2 -> ScreenRegion(listOf(0u, 0u), rect)
         4 -> ScreenRegion(rect.subList(0, 2), rect.subList(2, 4))
         else -> throw FragmentColorException.Render(
             "setViewport: expected [width, height] or [x, y, width, height], got ${rect.size} numbers",
@@ -103,14 +103,14 @@ fun Pass.setViewport(rect: List<Int>) {
 /**
  * A region at [origin] `[x, y]` that is [size] `[width, height]` large,
  * as Rust's `ScreenRegion::new(origin, size)` reads them.
- * Throws [FragmentColorException] unless each holds two non-negative numbers.
+ * Throws [FragmentColorException] unless each holds two numbers.
  */
-operator fun ScreenRegion.Companion.invoke(origin: List<Int>, size: List<Int>): ScreenRegion {
+operator fun ScreenRegion.Companion.invoke(origin: List<UInt>, size: List<UInt>): ScreenRegion {
     if (origin.size != 2 || size.size != 2) {
         throw FragmentColorException.Render("ScreenRegion: origin and size hold 2 numbers each")
     }
-    val (x, y) = origin.map { unsigned(it, "ScreenRegion", "origin") }
-    val (width, height) = size.map { unsigned(it, "ScreenRegion", "size") }
+    val (x, y) = origin
+    val (width, height) = size
     return ScreenRegion(
         minX = x,
         minY = y,
@@ -121,17 +121,3 @@ operator fun ScreenRegion.Companion.invoke(origin: List<Int>, size: List<Int>): 
 
 /** `a + b`, or [UInt.MAX_VALUE] when the sum doesn't fit. */
 private fun saturatingAdd(a: UInt, b: UInt): UInt = if (a > UInt.MAX_VALUE - b) UInt.MAX_VALUE else a + b
-
-// ── Compute dispatch ──────────────────────────────────────────────────────────
-
-/**
- * Set the compute dispatch sizes from [Int] arguments.
- * Throws [FragmentColorException] for a negative size.
- */
-fun Pass.setComputeDispatch(x: Int, y: Int, z: Int) {
-    val method = "setComputeDispatch"
-    setComputeDispatchUInt(unsigned(x, method, "size"), unsigned(y, method, "size"), unsigned(z, method, "size"))
-}
-
-/** Set the compute dispatch sizes from [UInt] arguments. */
-fun Pass.setComputeDispatch(x: UInt, y: UInt, z: UInt) = setComputeDispatchUInt(x, y, z)

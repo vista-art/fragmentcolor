@@ -20,13 +20,13 @@ fun Texture.write(bytes: List<Int>) {
  * Upload pixels into part of the texture, given as `[width, height]`,
  * `[x, y, width, height]` or `[x, y, z, width, height, depth]`.
  */
-fun Texture.writeRegion(bytes: ByteArray, rect: List<Int>) {
+fun Texture.writeRegion(bytes: ByteArray, rect: List<UInt>) {
     writeRegion(bytes, TextureRegion.from(rect))
 }
 
 /** Upload pixels, one [Int] per byte, into part of the texture given as a list of numbers. */
 @JvmName("writeRegionInts")
-fun Texture.writeRegion(bytes: List<Int>, rect: List<Int>) {
+fun Texture.writeRegion(bytes: List<Int>, rect: List<UInt>) {
     writeRegion(byteArray(bytes, "writeRegion"), rect)
 }
 
@@ -53,7 +53,7 @@ fun TextureTarget.resize(size: Size) {
 }
 
 /** Resize the target from a `[width, height]` list. */
-fun TextureTarget.resize(size: List<Int>) {
+fun TextureTarget.resize(size: List<UInt>) {
     resize(sizeRecord(size, "resize"))
 }
 
@@ -63,21 +63,15 @@ fun WindowTarget.resize(size: Size) {
 }
 
 /** Resize the target from a `[width, height]` list. */
-fun WindowTarget.resize(size: List<Int>) {
+fun WindowTarget.resize(size: List<UInt>) {
     resize(sizeRecord(size, "resize"))
 }
 
 // ── Mipmap ───────────────────────────────────────────────────────────────────
 
 /** Build a chain from raw pixels of [format] and their `[width, height]`. */
-fun Mipmap.Companion.build(bytes: ByteArray, format: TextureFormat, size: List<Int>): Mipmap =
+fun Mipmap.Companion.build(bytes: ByteArray, format: TextureFormat, size: List<UInt>): Mipmap =
     build(bytes, format, sizeRecord(size, "Mipmap.build"))
-
-/** The bytes of one mip level. Throws [FragmentColorException] for an index out of range. */
-fun Mipmap.level(index: Int): ByteArray = levelUInt(unsigned(index, "level", "level index"))
-
-/** The bytes of one mip level. Throws [FragmentColorException] for an index out of range. */
-fun Mipmap.level(index: UInt): ByteArray = levelUInt(index)
 
 // ── TextureUsage ─────────────────────────────────────────────────────────────
 
