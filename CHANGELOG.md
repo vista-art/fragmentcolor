@@ -6,6 +6,7 @@ A patch release that fixes crashes, memory leaks, and wrong output, and closes p
 
 ### Renderer and meshes
 
+- `Pass.set_viewport` takes effect. A pass draws only inside its region, the part past the target is cropped, and the clear color still fills the whole target. The renderer ignored the viewport.
 - Passes in one `render` call keep their own uniforms. Every pass drew with the last pass's values.
 - Shaders that share a source get one render pipeline per vertex layout, and compute passes reuse theirs. A mesh with another layout drew wrong vertices, and every frame leaked layout memory and compiled and kept new compute pipelines.
 - Passes, shaders, and their storage buffers are freed when the last handle drops. A simulation of a million particles leaked about 30 MB per rebuild.
@@ -61,7 +62,7 @@ A patch release that fixes crashes, memory leaks, and wrong output, and closes p
 - The iOS and Android healthchecks run each documented example as a test named after its `docs/api` page instead of only compiling it.
 - Uncaptured GPU errors go to the file that `FC_GPU_ERROR_LOG` names and fail the iOS, Android, and Python healthchecks.
 - Generated examples match their Rust source, and the build removes those of deleted pages. Kotlin gains `createTexture(pixels, listOf(w, h))`. Its examples sent raw pixels to the image decoder and failed.
-- Method links open their heading instead of a 404. `Instance`, `PassInput`, `VertexValue`, and `Mipmap.level` gain pages, and four missing method pages reach the site.
+- Method links open their heading instead of a 404, and each method's anchor is its name, as in `/api/scene/scene#remove_pass`. `Instance`, `PassInput`, `VertexValue`, and `Mipmap.level` gain pages, and four missing method pages reach the site.
 - The regenerated Python stub gains `Scene`, `Mipmap`, and the other types it lacked.
 
 ### Website and examples
@@ -90,7 +91,7 @@ A patch release that fixes crashes, memory leaks, and wrong output, and closes p
 - A Python window target's `depth` is `None` instead of 1, and `create_texture` reads `http(s)` strings as URLs.
 - JavaScript and Python sizes take 2 or 3 numbers, regions 2, 4, or 6, and bytes 0 to 255, each finite and non-negative. Anything else fails, where JavaScript clamped or zeroed it.
 - JavaScript indices, counts, and `setComputeDispatch` sizes take whole numbers, where -1 wrapped to 4294967295. On the web, `Pass.require`, `createTexture`, `Vertex.set`, and `Instance.set` throw for wrong types, which they ignored or read as 0.
-- A region built from a size covers exactly that size. `ScreenRegion::from([w, h])` added a pixel per side, which failed `write_region`. Swift `setViewport([x, y, w, h])` reads an origin and size instead of two corners; viewports don't apply yet.
+- A region built from a size covers exactly that size. `ScreenRegion::from([w, h])` added a pixel per side, which failed `write_region`. Swift `setViewport([x, y, w, h])` reads an origin and size instead of two corners.
 - `create_target` returns `InitializationError` when the adapter can't present, as on a second WebGL2 canvas, which needs its own `Renderer`. It used to succeed and only log.
 - Swift and Kotlin report a GPU that fails to start as `FragmentColorError.Init` from every renderer method, where several said `Render`. Kotlin argument errors throw `FragmentColorException` in place of `IllegalArgumentException`.
 - The generated `set(key:value:)` takes `UniformValue` in place of `UniformData`; documented `shader.set` calls are unchanged. Swift `addVertex` and `addVertices` don't throw. Drop their `try`.
@@ -99,7 +100,8 @@ A patch release that fixes crashes, memory leaks, and wrong output, and closes p
 - Swift deprecates `Shader.new([...])` for `Shader([...])`, `setRegistry(baseUrl:)` for `setRegistry(_:)`, and the tuple forms of `createTexture` and `createStorageTexture`. Kotlin deprecates `ShaderFetch` for `Shader.fetch`, and Python `usage_bits=` for `usage=`.
 - Samplers with no texture in their group filter linearly instead of picking the nearest texel. glTF textures follow their glTF sampler. UVs outside 0 to 1 tile unless the file's sampler clamps.
 - `pattern/hexgrid` returns the edge distance and an integer id, `x` in half cells and `y` the row. The cell center it returned split hashed cells into stripes along the axes. Its page derives the center.
-- The Python stub drops plumbing such as `passes`, and rustdoc hides internals such as `headless_window`. Both leave the public API in 0.13.
+- The Python stub drops plumbing such as `passes`, which leaves the bindings in 0.13.
+- Rust items that were public by accident leave the API: the built-in shader sources, the wgpu device setup helpers, `RenderContext`, the buffer and texture pools, `TextureData::DynamicImage`, and the glam and wgpu conversions of `ScreenRegion` and `UniformData`. Pass `v.to_array()` where code passed a glam vector.
 
 ## 0.12.5: WebGL2 fixes
 
