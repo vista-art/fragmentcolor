@@ -19,6 +19,7 @@
   <a href="https://fragmentcolor.org/welcome">Get started</a> ·
   <a href="https://fragmentcolor.org/api">API reference</a> ·
   <a href="https://fragmentcolor.org/shaders">Shader library</a> ·
+  <a href="https://fragmentcolor.org/welcome/playground">Playground</a> ·
   <a href="https://fragmentcolor.org/demos">Demos</a>
 </p>
 
@@ -35,6 +36,12 @@ And that's it.
 It runs on Vulkan, Metal, DirectX 12, OpenGL, WebGL2, and WebGPU through [wgpu](https://wgpu.rs).
 
 ## Why FragmentColor
+
+<p align="center">
+  <a href="https://fragmentcolor.org/welcome/playground"><img src="docs/media/playground.webp" width="928" alt="The FragmentColor playground: a shader edit rebuilds the canvas as it is typed, a generated slider changes a uniform, and the Rust tab shows the same program"></a>
+</p>
+
+In the [playground](https://fragmentcolor.org/welcome/playground), the canvas rebuilds as you type, the sliders come from the shader's own uniforms, and every demo shows the same program in all five languages.
 
 - **The shader is the source of truth.** Uniforms, textures, samplers, storage buffers, and push constants come from the shader itself. `shader.set("light.color", [1.0, 0.8, 0.6])` writes the field it names.
 - **One API in five languages.** Rust, JavaScript, Python, Swift, and Kotlin share the same calls.
@@ -177,6 +184,12 @@ let shader = Shader::new([
 
 Native builds carry the library in the binary and work offline. On the web, `await Shader.fetch([...])` loads the parts from fragmentcolor.org.
 
+The playground's **Library** bar edits that list. Pick a function, call it, and the shader rebuilds with it:
+
+<p align="center">
+  <img src="docs/media/compose.webp" width="928" alt="Adding sdf2d/equilateral_triangle from the library picker, calling it in place of the star, and removing sdf2d/star">
+</p>
+
 | <img src="docs/website/public/shaders/noise/worley2.png" width="110" alt="noise/worley2"> | <img src="docs/website/public/shaders/sdf2d/heart.png" width="110" alt="sdf2d/heart"> | <img src="docs/website/public/shaders/pattern/truchet.png" width="110" alt="pattern/truchet"> | <img src="docs/website/public/shaders/gradient/palette_iq.png" width="110" alt="gradient/palette_iq"> | <img src="docs/website/public/shaders/lighting/cook_torrance.png" width="110" alt="lighting/cook_torrance"> | <img src="docs/website/public/shaders/postfx/crt_curvature.png" width="110" alt="postfx/crt_curvature"> |
 | :-: | :-: | :-: | :-: | :-: | :-: |
 | `noise/worley2` | `sdf2d/heart` | `pattern/truchet` | `gradient/palette_iq` | `lighting/cook_torrance` | `postfx/crt_curvature` |
@@ -206,6 +219,12 @@ The `examples/rust` crate holds runnable examples, from a single triangle to a m
 ```
 
 ## Platform support
+
+<p align="center">
+  <img src="docs/website/public/playground/two-platforms.webp" width="800" alt="The Cells shader running natively in a Rust window on macOS and in a Swift app on iOS">
+</p>
+
+Above, one shader runs natively in a Rust window on macOS and in a Swift app on iOS, from the same WGSL and the same calls.
 
 Platform support follows upstream [wgpu](https://github.com/gfx-rs/wgpu):
 
