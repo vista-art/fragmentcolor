@@ -559,8 +559,12 @@ export class Playground {
     this.on(ui.copy, "click", async () => {
       try {
         await navigator.clipboard.writeText(this.view.state.doc.toString());
-        ui.copy.textContent = "Copied";
-        setTimeout(() => (ui.copy.textContent = "Copy"), 1200);
+        ui.copy.classList.add("done");
+        ui.copy.setAttribute("aria-label", "Copied");
+        setTimeout(() => {
+          ui.copy.classList.remove("done");
+          ui.copy.setAttribute("aria-label", "Copy this file");
+        }, 1200);
       } catch {
         // clipboard blocked; selection still works
       }
