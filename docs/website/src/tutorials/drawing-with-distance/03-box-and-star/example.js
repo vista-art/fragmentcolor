@@ -1,4 +1,4 @@
-// Drawing with distance, step 3: corners, from a box and a star.
+// Drawing with distance step 3: corners, from a box and a star.
 
 import { Shader } from "fragmentcolor";
 
