@@ -79,9 +79,9 @@ export async function setup(renderer, target) {
     shader.set("u.blend", 0.12);
     shader.set("u.rings", 20);
     shader.set("u.glow", 10);
-    shader.set("u.inside_color", [1, 0, 0.51]);
-    shader.set("u.edge_color", [0.51, 0, 1]);
-    shader.set("u.outside_color", [0, 0.51, 1]);
+    shader.set("u.inside_color", [1, 0, 0.514]);
+    shader.set("u.edge_color", [0.514, 0, 1]);
+    shader.set("u.outside_color", [0, 0.514, 1]);
     // #endregion: setup
     return { shader };
 }

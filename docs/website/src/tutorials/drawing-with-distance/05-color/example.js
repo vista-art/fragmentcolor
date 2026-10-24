@@ -40,9 +40,9 @@ fn fs_main(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
     // #endregion: scene
 
     // #region: color
-    let magenta = vec3<f32>(1.0, 0.0, 0.51);
-    let violet = vec3<f32>(0.51, 0.0, 1.0);
-    let azure = vec3<f32>(0.0, 0.51, 1.0);
+    let magenta = vec3<f32>(1.0, 0.0, 0.514);
+    let violet = vec3<f32>(0.514, 0.0, 1.0);
+    let azure = vec3<f32>(0.0, 0.514, 1.0);
     let outside = max(d, 0.0);
     let pixel_size = fwidth(d);
 
