@@ -15,7 +15,7 @@ struct VOut {
 @group(0) @binding(0) var<uniform> resolution: vec2<f32>;
 @group(0) @binding(1) var<uniform> time: f32;
 
-// PCG hash: mixes the bits of a number until the result looks random.
+// PCG hash: mixes the bits of a number so the result looks random.
 fn hash(value: u32) -> u32 {
     let state = value * 747796405u + 2891336453u;
     let word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
@@ -42,7 +42,7 @@ fn vs_main(
     let angle = arm + radius * 5.0 + spread - time * 0.15;
     let center = vec2<f32>(cos(angle), sin(angle)) * radius * 0.95;
 
-    // Shrink the longer axis so the disc stays round.
+    // Keep the disc round on a canvas of any shape.
     let fit = min(resolution.x, resolution.y) / resolution;
     // Measured in pixels, each triangle is about four wide.
     let shape = position * 6.0 / resolution;

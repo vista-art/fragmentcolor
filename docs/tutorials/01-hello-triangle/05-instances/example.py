@@ -40,7 +40,7 @@ fn vs_main(
         cos(time * 0.9 + phase * 1.4),
     ) * 0.03;
 
-    // in_out_sine comes from easing/in_out_sine and flattens the wave near 0 and 1.
+    // The library's in_out_sine flattens the wave near 0 and 1.
     let wave = 0.5 + 0.5 * sin(time * 2.0 + phase);
     let glow = 0.75 + 0.75 * in_out_sine(wave);
 
