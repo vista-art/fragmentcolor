@@ -922,11 +922,10 @@ public func FfiConverterTypeExternalTextureHandle_lower(_ value: ExternalTexture
 public protocol InstanceProtocol: AnyObject, Sendable {
     
     /**
-     * Set a per-instance attribute by key.
-     *
-     * Returns the updated `Instance` (builder style).
+     * Set a per-instance attribute to 1 to 4 numbers.
+     * The shader that reads it decides their type when the mesh attaches.
      */
-    func set(key: String, value: VertexValue)  -> Instance
+    func set(key: String, value: [Double]) throws  -> Instance
     
 }
 open class Instance: InstanceProtocol, @unchecked Sendable {
@@ -995,17 +994,16 @@ public convenience init() {
 
     
     /**
-     * Set a per-instance attribute by key.
-     *
-     * Returns the updated `Instance` (builder style).
+     * Set a per-instance attribute to 1 to 4 numbers.
+     * The shader that reads it decides their type when the mesh attaches.
      */
-open func set(key: String, value: VertexValue) -> Instance  {
-    return try!  FfiConverterTypeInstance_lift(try! rustCall() {
+open func set(key: String, value: [Double])throws  -> Instance  {
+    return try  FfiConverterTypeInstance_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_instance_set(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(key),
-        FfiConverterTypeVertexValue_lower(value),uniffiCallStatus
+        FfiConverterSequenceDouble.lower(value),uniffiCallStatus
     )
 })
 }
@@ -2495,15 +2493,6 @@ public protocol PassProtocol: AnyObject, Sendable {
     func addShader(shader: Shader) 
     
     /**
-     * Return the current input descriptor for this pass.
-     *
-     * The mobile binding returns a `MobilePassInput` record because
-     * `PassInput` contains a `Color(u32)` tuple-newtype that uniffi cannot
-     * serialize as a `Record`.
-     */
-    func getInput()  -> PassInput
-    
-    /**
      * Return `true` if this is a compute pass; `false` for a render pass.
      */
     func isCompute()  -> Bool
@@ -2702,22 +2691,6 @@ open func addShader(shader: Shader)  {try! rustCall() {
         FfiConverterTypeShader_lower(shader),uniffiCallStatus
     )
 }
-}
-    
-    /**
-     * Return the current input descriptor for this pass.
-     *
-     * The mobile binding returns a `MobilePassInput` record because
-     * `PassInput` contains a `Color(u32)` tuple-newtype that uniffi cannot
-     * serialize as a `Record`.
-     */
-open func getInput() -> PassInput  {
-    return try!  FfiConverterTypePassInput_lift(try! rustCall() {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_pass_getinput(
-            self.uniffiCloneHandle(),uniffiCallStatus
-    )
-})
 }
     
     /**
@@ -4726,12 +4699,10 @@ public protocol VertexProtocol: AnyObject, Sendable {
     func createInstance()  -> Instance
     
     /**
-     * Set a vertex attribute by key. `VertexValue` is a `uniffi::Enum` so
-     * Swift/Kotlin callers construct the variant directly.
-     *
-     * Returns the updated `Vertex` (builder style).
+     * Set a vertex attribute to 1 to 4 numbers.
+     * The shader that reads it decides their type when the mesh attaches.
      */
-    func set(key: String, value: VertexValue)  -> Vertex
+    func set(key: String, value: [Double]) throws  -> Vertex
     
 }
 open class Vertex: VertexProtocol, @unchecked Sendable {
@@ -4829,18 +4800,16 @@ open func createInstance() -> Instance  {
 }
     
     /**
-     * Set a vertex attribute by key. `VertexValue` is a `uniffi::Enum` so
-     * Swift/Kotlin callers construct the variant directly.
-     *
-     * Returns the updated `Vertex` (builder style).
+     * Set a vertex attribute to 1 to 4 numbers.
+     * The shader that reads it decides their type when the mesh attaches.
      */
-open func set(key: String, value: VertexValue) -> Vertex  {
-    return try!  FfiConverterTypeVertex_lift(try! rustCall() {
+open func set(key: String, value: [Double])throws  -> Vertex  {
+    return try  FfiConverterTypeVertex_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_vertex_set(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(key),
-        FfiConverterTypeVertexValue_lower(value),uniffiCallStatus
+        FfiConverterSequenceDouble.lower(value),uniffiCallStatus
     )
 })
 }
@@ -5143,99 +5112,6 @@ public func FfiConverterTypeArrayElement_lift(_ buf: RustBuffer) throws -> Array
 #endif
 public func FfiConverterTypeArrayElement_lower(_ value: ArrayElement) -> RustBuffer {
     return FfiConverterTypeArrayElement.lower(value)
-}
-
-
-/**
- * Mobile-serializable mirror of `PassInput`.
- *
- * `PassInput` stores a `Color(u32)` tuple-newtype which uniffi's `Record`
- * derive does not support. `MobilePassInput` exposes the same information
- * as named fields that uniffi can marshal. Swift and Kotlin see it as `PassInput`.
- */
-public struct PassInput: Equatable, Hashable {
-    /**
-     * If `true`, the previous frame's contents are loaded (no clear).
-     * If `false`, the `color_rgba` value is used to clear the attachment.
-     */
-    public var load: Bool
-    /**
-     * Clear color packed as 0xRRGGBBAA (same bit layout as `Color(u32)`).
-     */
-    public var colorRgba: UInt32
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(
-        /**
-         * If `true`, the previous frame's contents are loaded (no clear).
-         * If `false`, the `color_rgba` value is used to clear the attachment.
-         */load: Bool, 
-        /**
-         * Clear color packed as 0xRRGGBBAA (same bit layout as `Color(u32)`).
-         */colorRgba: UInt32) {
-        self.load = load
-        self.colorRgba = colorRgba
-    }
-
-    
-public func color() -> [Float]  {
-    return try!  FfiConverterSequenceFloat.lift(try! rustCall() {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_passinput_color(
-            FfiConverterTypePassInput_lower(self),uniffiCallStatus
-    )
-})
-}
-    
-public func loadsPrevious() -> Bool  {
-    return try!  FfiConverterBool.lift(try! rustCall() {
-        uniffiCallStatus in
-    uniffi_fragmentcolor_fn_method_passinput_loadsprevious(
-            FfiConverterTypePassInput_lower(self),uniffiCallStatus
-    )
-})
-}
-    
-
-    
-}
-
-#if compiler(>=6)
-extension PassInput: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypePassInput: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PassInput {
-        return
-            try PassInput(
-                load: FfiConverterBool.read(from: &buf), 
-                colorRgba: FfiConverterUInt32.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: PassInput, into buf: inout [UInt8]) {
-        FfiConverterBool.write(value.load, into: &buf)
-        FfiConverterUInt32.write(value.colorRgba, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypePassInput_lift(_ buf: RustBuffer) throws -> PassInput {
-    return try FfiConverterTypePassInput.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypePassInput_lower(_ value: PassInput) -> RustBuffer {
-    return FfiConverterTypePassInput.lower(value)
 }
 
 
@@ -8361,178 +8237,6 @@ public func FfiConverterTypeUniformValue_lower(_ value: UniformValue) -> RustBuf
 }
 
 
-
-
-public enum VertexValue: Equatable, Hashable {
-    
-    case f32(Float
-    )
-    case f32x2([Float]
-    )
-    case f32x3([Float]
-    )
-    case f32x4([Float]
-    )
-    case u32(UInt32
-    )
-    case u32x2([UInt32]
-    )
-    case u32x3([UInt32]
-    )
-    case u32x4([UInt32]
-    )
-    case i32(Int32
-    )
-    case i32x2([Int32]
-    )
-    case i32x3([Int32]
-    )
-    case i32x4([Int32]
-    )
-
-
-
-
-
-}
-
-#if compiler(>=6)
-extension VertexValue: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeVertexValue: FfiConverterRustBuffer {
-    typealias SwiftType = VertexValue
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> VertexValue {
-        let variant: Int32 = try readInt(&buf)
-        switch variant {
-        
-        case 1: return .f32(try FfiConverterFloat.read(from: &buf)
-        )
-        
-        case 2: return .f32x2(try FfiConverterSequenceFloat.read(from: &buf)
-        )
-        
-        case 3: return .f32x3(try FfiConverterSequenceFloat.read(from: &buf)
-        )
-        
-        case 4: return .f32x4(try FfiConverterSequenceFloat.read(from: &buf)
-        )
-        
-        case 5: return .u32(try FfiConverterUInt32.read(from: &buf)
-        )
-        
-        case 6: return .u32x2(try FfiConverterSequenceUInt32.read(from: &buf)
-        )
-        
-        case 7: return .u32x3(try FfiConverterSequenceUInt32.read(from: &buf)
-        )
-        
-        case 8: return .u32x4(try FfiConverterSequenceUInt32.read(from: &buf)
-        )
-        
-        case 9: return .i32(try FfiConverterInt32.read(from: &buf)
-        )
-        
-        case 10: return .i32x2(try FfiConverterSequenceInt32.read(from: &buf)
-        )
-        
-        case 11: return .i32x3(try FfiConverterSequenceInt32.read(from: &buf)
-        )
-        
-        case 12: return .i32x4(try FfiConverterSequenceInt32.read(from: &buf)
-        )
-        
-        default: throw UniffiInternalError.unexpectedEnumCase
-        }
-    }
-
-    public static func write(_ value: VertexValue, into buf: inout [UInt8]) {
-        switch value {
-        
-        
-        case let .f32(v1):
-            writeInt(&buf, Int32(1))
-            FfiConverterFloat.write(v1, into: &buf)
-            
-        
-        case let .f32x2(v1):
-            writeInt(&buf, Int32(2))
-            FfiConverterSequenceFloat.write(v1, into: &buf)
-            
-        
-        case let .f32x3(v1):
-            writeInt(&buf, Int32(3))
-            FfiConverterSequenceFloat.write(v1, into: &buf)
-            
-        
-        case let .f32x4(v1):
-            writeInt(&buf, Int32(4))
-            FfiConverterSequenceFloat.write(v1, into: &buf)
-            
-        
-        case let .u32(v1):
-            writeInt(&buf, Int32(5))
-            FfiConverterUInt32.write(v1, into: &buf)
-            
-        
-        case let .u32x2(v1):
-            writeInt(&buf, Int32(6))
-            FfiConverterSequenceUInt32.write(v1, into: &buf)
-            
-        
-        case let .u32x3(v1):
-            writeInt(&buf, Int32(7))
-            FfiConverterSequenceUInt32.write(v1, into: &buf)
-            
-        
-        case let .u32x4(v1):
-            writeInt(&buf, Int32(8))
-            FfiConverterSequenceUInt32.write(v1, into: &buf)
-            
-        
-        case let .i32(v1):
-            writeInt(&buf, Int32(9))
-            FfiConverterInt32.write(v1, into: &buf)
-            
-        
-        case let .i32x2(v1):
-            writeInt(&buf, Int32(10))
-            FfiConverterSequenceInt32.write(v1, into: &buf)
-            
-        
-        case let .i32x3(v1):
-            writeInt(&buf, Int32(11))
-            FfiConverterSequenceInt32.write(v1, into: &buf)
-            
-        
-        case let .i32x4(v1):
-            writeInt(&buf, Int32(12))
-            FfiConverterSequenceInt32.write(v1, into: &buf)
-            
-        }
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeVertexValue_lift(_ buf: RustBuffer) throws -> VertexValue {
-    return try FfiConverterTypeVertexValue.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeVertexValue_lower(_ value: VertexValue) -> RustBuffer {
-    return FfiConverterTypeVertexValue.lower(value)
-}
-
-
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -9353,13 +9057,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_quad_getmesh() != 50418) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_instance_set() != 60280) {
+    if (uniffi_fragmentcolor_checksum_method_instance_set() != 20798) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_vertex_createinstance() != 31105) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_vertex_set() != 35547) {
+    if (uniffi_fragmentcolor_checksum_method_vertex_set() != 50075) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_pass_add() != 4541) {
@@ -9369,9 +9073,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_pass_addshader() != 48048) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_pass_getinput() != 8271) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_pass_iscompute() != 10190) {

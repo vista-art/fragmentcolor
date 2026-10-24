@@ -21,7 +21,6 @@ __all__ = [
     "Mesh",
     "Vertex",
     "Instance",
-    "VertexValue",
     "Quad",
     "Scene",
     "Model",
@@ -43,7 +42,6 @@ __all__ = [
     "rendercanvas_context_hook",
 ]
 
-_PyAttributeValue: TypeAlias = float | VertexValue | Sequence[float]
 _PySize: TypeAlias = Size | Sequence[float] | Sequence[int] | dict[str, float] | dict[str, int]
 _PyTextureBytes: TypeAlias = bytes | npt.NDArray[numpy.uint8] | Sequence[int]
 _PyTextureSource: TypeAlias = str | bytearray | bytes | memoryview[Any] | Mipmap | Texture | list[int] | npt.NDArray[numpy.uint8] | tuple[Any, ...]
@@ -691,12 +689,14 @@ class Shader:
         """
     def add_mesh(self, mesh: Mesh) -> None:
         """
-        Attach a Mesh to this Shader. The Renderer will draw all meshes attached to it (one draw call per mesh, same pipeline).
+        Attach a Mesh to this Shader. The Renderer draws every mesh attached to it, one draw call per mesh, with the same pipeline.
 
-        This method now validates that the mesh's vertex/instance layout is compatible with the shader's @location inputs and returns Result<(), ShaderError>.
+        `add_mesh` checks every vertex and instance of the mesh against the shader's `@location` inputs and returns `Result<(), ShaderError>`.
 
-        - On success, the mesh is attached and will be drawn when this shader is rendered.
-        - On mismatch (missing attribute or type mismatch), returns an error and does not attach.
+        - An attribute set from numbers takes the type the shader declares at its location: floats for `f32` and `vecN<f32>`, integers for `u32`, `i32` and their vectors when every value is whole and fits.
+        - On success, the mesh is attached, its attributes keep those types for as long as the mesh lives, and it is drawn when this shader renders.
+        - On a missing attribute or a value that doesn't fit, the error names the attribute, the declared type and the value. The mesh isn't attached and records no type.
+        - A shader that declares another type for an attribute an earlier shader already typed on this mesh fails to attach.
 
         ## See also
 
@@ -825,16 +825,18 @@ class Shader:
         """
         Validate that a Mesh is compatible with this Shader's vertex inputs.
 
-        - Checks presence and type for all @location(...) inputs of the vertex entry point.
-        - Matches attributes in the following order:
-          1) Instance attributes by explicit @location index (if the mesh has instances)
-          2) Vertex attributes by explicit @location index (position is assumed at @location(0))
-          3) Fallback by name (tries instance first, then vertex)
-        - Returns Ok(()) when all inputs are matched with a compatible wgpu::VertexFormat; returns an error otherwise.
+        - Checks that every `@location` input of the vertex entry point finds an attribute, and that every vertex and instance value fits the type the input declares.
+        - Matches each input in this order:
+          1) by name, instance attributes first, then vertex attributes (`position` included)
+          2) the position, at `@location(0)`
+          3) by the attribute's own location, instance attributes first, then vertex attributes
+        - A number fills a float input unless the shader declares an integer type there. An integer input takes whole numbers that fit its type.
+        - Returns `Ok(())` when every input matches; returns the same error `Shader::add_mesh` would otherwise.
 
         ## Notes
 
-        - This method is called automatically when adding a Mesh to a Shader or Pass, so you usually don't need to call it manually.
+        - `Shader::add_mesh` and `Pass::add_mesh` run the same check. Call `validate_mesh` to test a mesh without attaching it.
+        - It changes nothing: the mesh isn't attached and its attributes take no type.
         - If the Shader has no @location inputs (fullscreen/builtin-only), attaching a Mesh is rejected.
         - This method does not allocate GPU buffers; it inspects CPU-side vertex/instance data only.
 
@@ -1119,21 +1121,6 @@ class Pass:
         renderer.render(rpass, target)
         ```
         """
-    def get_input(self) -> _PassInput:
-        """
-        Returns a copy of the current input configuration for this [Pass](https://fragmentcolor.org/api/core/pass).
-
-        It includes the clear/load behavior and clear color.
-
-        Example:
-
-        ```python
-        from fragmentcolor import Pass
-
-        rpass = Pass("example")
-        input = rpass.get_input()
-        ```
-        """
     def add_shader(self, shader: Shader) -> None:
         """
         Add a [Shader](https://fragmentcolor.org/api/core/shader) to the
@@ -1156,12 +1143,15 @@ class Pass:
         Attach a Mesh to this Pass.
 
         - The mesh is attached to the last shader in this Pass that accepts it.
-        - Each shader checks the mesh against its vertex inputs.
+        - Each shader checks the mesh against its vertex inputs, as
+          [`Shader::add_mesh`](https://fragmentcolor.org/api/core/shader#add_mesh) does.
+          A shader that rejects the mesh leaves no type on it, and the next one tries.
         - Returns `Result<(), PassError>`. When no shader accepts the mesh, the error is
-          `PassError::NoCompatibleShader` and the mesh is not attached.
+          `PassError::NoCompatibleShader` with the reason the last shader gave, and the
+          mesh is not attached.
 
-        A Pass with no shaders has nothing to attach the mesh to, so it returns the same
-        error. No default shader is created.
+        A Pass with no shaders has nothing to attach the mesh to and returns
+        `PassError::NoShader`. No default shader is created.
 
         Example:
 
@@ -1454,17 +1444,15 @@ class Mesh:
     Internally it deduplicates vertices and always draws indexed and instanced
     (instance_count defaults to 1 when none are provided).
 
-    Vertex layouts are managed by the Shader. At render time, inputs declared in your
-    shader's vertex function (annotated with @location(N)) are derived from the source
-    and matched by name and type to Mesh properties across both streams (instance first,
-    then vertex).
+    The shader decides the vertex layout. When the mesh attaches through
+    `Shader::add_mesh` or `Pass::add_mesh`, each `@location` input of the
+    shader's vertex function looks for its data by name (instance first, then
+    vertex), then takes the position at `@location(0)`, then looks by the
+    attribute's own location (instance first, then vertex).
 
-    Mapping is driven by shader reflection; there are no special-case names or reserved locations.
-    The renderer matches attributes by explicit location if provided (instance first, then vertex),
-    and otherwise by name.
-
-    If a required input cannot be found or its type does not match, rendering returns an error
-    indicating the missing attribute or mismatch.
+    A plain number takes the type the shader declares for its input. The attach
+    checks every vertex and instance, and it fails with an error that names the
+    attribute when an input finds no data or a value doesn't fit its type.
 
     Example:
 
@@ -1554,9 +1542,7 @@ class Mesh:
         from fragmentcolor import Mesh, Instance
 
         m = Mesh()
-        offset = [0.25, 0.10]
-        tint = [1.0, 0.0, 0.0, 1.0]
-        m.add_instance(Instance().set("offset", offset).set("tint", tint))
+        m.add_instance(Instance().set("offset", [0.25, 0.10]).set("tint", [1.0, 0.0, 0.0, 1.0]))
         ```
         """
     def add_instances(self, items: Sequence[Instance | Vertex | dict[str, Any]]) -> None:
@@ -1576,13 +1562,10 @@ class Mesh:
         from fragmentcolor import Mesh, Instance
 
         m = Mesh()
-        red = [1.0, 0.0, 0.0, 1.0]
-        green = [0.0, 1.0, 0.0, 1.0]
-        blue = [0.0, 0.0, 1.0, 1.0]
         m.add_instances([
-            Instance().set("tint", red),
-            Instance().set("tint", green),
-            Instance().set("tint", blue),
+            Instance().set("tint", [1.0, 0.0, 0.0, 1.0]),
+            Instance().set("tint", [0.0, 1.0, 0.0, 1.0]),
+            Instance().set("tint", [0.0, 0.0, 1.0, 1.0]),
         ])
         ```
         """
@@ -1603,8 +1586,7 @@ class Mesh:
         from fragmentcolor import Mesh, Instance
 
         m = Mesh()
-        red = [1.0, 0.0, 0.0, 1.0]
-        m.add_instance(Instance().set("tint", red))
+        m.add_instance(Instance().set("tint", [1.0, 0.0, 0.0, 1.0]))
         m.clear_instances() # back to a single uninstanced draw
         ```
         """
@@ -1658,15 +1640,11 @@ class Mesh:
         # happen to carry distinct UVs (only positions repeat), so we keep them
         # all and reference each by index.
         mesh = Mesh()
-        uv00 = [0.0, 0.0]
-        uv10 = [1.0, 0.0]
-        uv11 = [1.0, 1.0]
-        uv01 = [0.0, 1.0]
         mesh.add_vertices([
-            Vertex([-0.5, -0.5]).set("uv", uv00),
-            Vertex([ 0.5, -0.5]).set("uv", uv10),
-            Vertex([ 0.5,  0.5]).set("uv", uv11),
-            Vertex([-0.5,  0.5]).set("uv", uv01),
+            Vertex([-0.5, -0.5]).set("uv", [0.0, 0.0]),
+            Vertex([ 0.5, -0.5]).set("uv", [1.0, 0.0]),
+            Vertex([ 0.5,  0.5]).set("uv", [1.0, 1.0]),
+            Vertex([-0.5,  0.5]).set("uv", [0.0, 1.0]),
         ])
         mesh.set_indices([0, 1, 2, 0, 2, 3])
         ```
@@ -1783,24 +1761,55 @@ class Vertex:
         mesh.add_vertex(Vertex.pbr([ 0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]))
         ```
         """
-    def set(self, key: str, value: _PyAttributeValue) -> Vertex:
+    def set(self, key: str, value: float | Sequence[float]) -> Vertex:
         """
-        Attach an arbitrary property to the vertex. `set` returns a new `Vertex`
-        with the property added, so chain the calls and keep the result.
+        Attach a property to the vertex. `set` returns a new `Vertex` with the
+        property added, so chain the calls and keep the result.
+
+        The value is a number or a list of 1 to 4 numbers, and the shader decides
+        its type when the mesh attaches. A number fills a float input unless the
+        shader declares an integer type at that location: with
+        `@location(1) id: u32`, `set("id", 7)` uploads the `u32` 7. An integer
+        input takes whole numbers that fit its type. A value that doesn't fit,
+        such as `-1` for a `u32` or `2.5` for an `i32`, fails the attach with an
+        error that names the attribute, the declared type and the value. A
+        property no shader reads uploads as floats.
+
+        In Rust, an `f32` or a `u32` value keeps its type and must match the
+        input exactly. An unsuffixed literal, an `f64` or an `i32` takes the
+        shader's type like a number from any other language.
 
         Locations and mapping:
 
-        - When you call `set(key, value)` for the first time for a given key, the Vertex assigns the next available `@location(N)` to that property (starting after position). Subsequent calls reuse the same location.
-        - At render time, shader vertex inputs (declared with `@location(N)`) are derived from the Shader and matched to Vertex/Instance properties by:
-          1) explicit location (instance first, then vertex), then
-          2) name (instance first, then vertex).
-        - There is no special-case for location(0) in the mapping; position is just another vertex attribute exposed as `position` with a 2- or 3-component format depending on how you constructed the Vertex.
+        - The first `set` for a key gives the property the next free `@location`,
+          starting after the position. Setting the same key again keeps its location.
+        - When the mesh attaches, each shader input looks for its property by name
+          (instance first, then vertex), then takes the position at `@location(0)`,
+          then looks by the property's own location (instance first, then vertex).
+        - The first shader that reads a property fixes its type for that mesh. A
+          shader that declares another type for it fails to attach.
 
         Example:
 
         ```python
-        from fragmentcolor import Vertex
-        v = Vertex([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0])
+        from fragmentcolor import Mesh, Shader, Vertex
+
+        shader = Shader(\"\"\"
+          @vertex
+          fn vs_main(@location(0) pos: vec2<f32>, @location(1) id: u32, @location(2) weight: f32) -> @builtin(position) vec4<f32> {
+            return vec4<f32>(pos * weight, f32(id) * 0.1, 1.0);
+          }
+          @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
+
+        \"\"\")
+
+        vertex = Vertex([0.0, 0.0]).set("id", 7).set("weight", 0.5)
+
+        mesh = Mesh()
+        mesh.add_vertex(vertex)
+
+        # id uploads as the u32 7 and weight as the f32 0.5.
+        shader.add_mesh(mesh)
         ```
         """
     def create_instance(self) -> Instance:
@@ -1828,9 +1837,10 @@ class Instance:
     own values.
 
     Instance attributes have their own `@location` numbering, separate from the
-    vertex attributes, and the shader matches them the same way: by location
-    first, then by name. On a name clash, the instance attribute wins over the
-    vertex attribute.
+    vertex attributes, and the shader matches them the same way: by name first,
+    then by location. On a clash, the instance attribute wins over the vertex
+    attribute. A number fills a float input unless the shader declares an
+    integer type at that location.
 
     Most code doesn't build one by hand.
     [`Vertex::create_instance`](https://fragmentcolor.org/api/geometry/vertex#create_instance)
@@ -1862,76 +1872,46 @@ class Instance:
         instance = Instance()
         ```
         """
-    def set(self, key: str, value: _PyAttributeValue) -> Instance:
+    def set(self, key: str, value: float | Sequence[float]) -> Instance:
         """
         Set a per-instance attribute. `set` returns a new `Instance` with the
         attribute added, so chain the calls and keep the result.
 
         The first `set` for a key gives it the next free instance `@location`,
-        in call order; setting the same key again keeps its location. Plain
-        numbers and number lists are floats in every language. Pass a
-        [VertexValue](https://fragmentcolor.org/api/geometry/vertexvalue) for an
-        integer attribute.
+        in call order; setting the same key again keeps its location.
+
+        The value is a number or a list of 1 to 4 numbers, and the shader decides
+        its type when the mesh attaches, the same way it does for
+        [`Vertex::set`](https://fragmentcolor.org/api/geometry/vertex#set). A
+        number fills a float input unless the shader declares an integer type at
+        that location. An integer input takes whole numbers that fit its type,
+        and any other value fails the attach with an error that names the
+        attribute, the declared type, the value and the instance.
 
         Example:
 
         ```python
-        from fragmentcolor import Instance
+        from fragmentcolor import Instance, Mesh, Shader
 
-        instance = Instance().set("offset", [0.5, 0.0]).set("tint", [1.0, 0.0, 0.0, 1.0])
+        shader = Shader(\"\"\"
+          @vertex
+          fn vs_main(@location(0) pos: vec2<f32>, @location(1) offset: vec2<f32>, @location(2) layer: u32) -> @builtin(position) vec4<f32> {
+            return vec4<f32>(pos + offset, f32(layer) * 0.1, 1.0);
+          }
+          @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
+
+        \"\"\")
+
+        mesh = Mesh()
+        mesh.add_vertex([0.0, 0.0])
+
+        instance = Instance().set("offset", [0.5, 0.0]).set("layer", 2)
+        mesh.add_instance(instance)
+
+        # offset uploads as a vec2<f32> and layer as the u32 2.
+        shader.add_mesh(mesh)
         ```
         """
-
-@final
-class VertexValue:
-    """
-    A vertex or instance attribute value of an exact type. Plain numbers and
-    number lists are floats (`f32`) in every language, so use a `VertexValue`
-    when a shader input is an integer, such as `@location(1) id: u32`.
-
-    There is one variant per type and size: `F32`, `U32` and `I32` hold one
-    number, and `F32x2` to `F32x4`, `U32x2` to `U32x4` and `I32x2` to `I32x4` hold
-    two to four. Rust names the variants in upper case (`VertexValue::U32(7)`),
-    and JS, Python, Swift and Kotlin build them with lower-case factories
-    (`VertexValue.u32(7)`, or `VertexValue.u32(7u)` in Kotlin). An integer
-    that doesn't fit its type is an error.
-
-    Pass a `VertexValue` to
-    [`Vertex::set`](https://fragmentcolor.org/api/geometry/vertex#set) or
-    [`Instance::set`](https://fragmentcolor.org/api/geometry/instance#set).
-
-    Example:
-
-    ```python
-    from fragmentcolor import Vertex, VertexValue
-
-    vertex = Vertex([0.0, 0.0]).set("id", VertexValue.u32(7))
-    ```
-    """
-    @staticmethod
-    def f32(x: float) -> VertexValue: ...
-    @staticmethod
-    def f32x2(x: Sequence[float]) -> VertexValue: ...
-    @staticmethod
-    def f32x3(x: Sequence[float]) -> VertexValue: ...
-    @staticmethod
-    def f32x4(x: Sequence[float]) -> VertexValue: ...
-    @staticmethod
-    def u32(x: int) -> VertexValue: ...
-    @staticmethod
-    def u32x2(x: Sequence[int]) -> VertexValue: ...
-    @staticmethod
-    def u32x3(x: Sequence[int]) -> VertexValue: ...
-    @staticmethod
-    def u32x4(x: Sequence[int]) -> VertexValue: ...
-    @staticmethod
-    def i32(x: int) -> VertexValue: ...
-    @staticmethod
-    def i32x2(x: Sequence[int]) -> VertexValue: ...
-    @staticmethod
-    def i32x3(x: Sequence[int]) -> VertexValue: ...
-    @staticmethod
-    def i32x4(x: Sequence[int]) -> VertexValue: ...
 
 @final
 class Quad:
@@ -4976,60 +4956,6 @@ class WindowTarget:
 
 @final
 class RenderCanvasFrame: ...
-
-@final
-class _PassInput:
-    """
-    What a [Pass](https://fragmentcolor.org/api/core/pass) does with its target
-    before it draws: keep the previous contents, or clear them to a color.
-
-    Read it with `Pass::get_input`. Change it on the Pass with `load_previous`
-    or `set_clear_color`; a `PassInput` is a copy, so it doesn't change when
-    the Pass does.
-
-    Example:
-
-    ```python
-    from fragmentcolor import Pass
-
-    rpass = Pass("overlay")
-    rpass.load_previous()
-
-    input = rpass.get_input()
-    keeps = input.loads_previous()
-    ```
-    """
-    def loads_previous(self) -> bool:
-        """
-        True when the pass keeps the previous contents of its target, and false
-        when it clears them to its clear color first.
-
-        Example:
-
-        ```python
-        from fragmentcolor import Pass
-
-        rpass = Pass("overlay")
-        rpass.load_previous()
-        keeps = rpass.get_input().loads_previous()
-        ```
-        """
-    def color(self) -> list[float]:
-        """
-        The RGBA color the pass clears its target to, as four numbers from 0 to 1.
-        The pass stores its clear color at 8 bits per channel, so a value reads
-        back rounded to the nearest 1/255.
-
-        Example:
-
-        ```python
-        from fragmentcolor import Pass
-
-        rpass = Pass("background")
-        rpass.set_clear_color([1.0, 0.0, 0.0, 1.0])
-        color = rpass.get_input().color()
-        ```
-        """
 
 @final
 class _SamplerInfo: ...

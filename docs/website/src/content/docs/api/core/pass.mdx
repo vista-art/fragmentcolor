@@ -669,90 +669,6 @@ lang="kotlin"
 
 ---
 
-### Pass::get_input() -&gt; PassInput \{#get_input\}
-
-Returns a copy of the current input configuration for this [Pass](/api/core/pass).
-
-It includes the clear/load behavior and clear color.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-use fragmentcolor::Pass;
-
-let pass = Pass::new("example");
-let input = pass.get_input();
-
-_ = input; // Silence unused variable warning
-`}
-lang="rust" meta="collapse={6-6}"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-import { Pass } from "fragmentcolor";
-
-const pass = new Pass("example");
-const input = pass.getInput();
-
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-from fragmentcolor import Pass
-
-rpass = Pass("example")
-input = rpass.get_input()
-
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Code
-code={`
-import FragmentColor
-
-let pass = Pass("example")
-let input = pass.getInput()
-`}
-lang="swift"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Code
-code={`
-import org.fragmentcolor.*
-
-val pass = Pass("example")
-val input = pass.getInput()
-`}
-lang="kotlin"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
 ### Pass::add_shader(shader: Shader) \{#add_shader\}
 
 Add a [Shader](/api/core/shader) to the
@@ -844,12 +760,15 @@ lang="kotlin"
 Attach a Mesh to this Pass.
 
 - The mesh is attached to the last shader in this Pass that accepts it.
-- Each shader checks the mesh against its vertex inputs.
+- Each shader checks the mesh against its vertex inputs, as
+  [`Shader::add_mesh`](/api/core/shader#add_mesh) does.
+  A shader that rejects the mesh leaves no type on it, and the next one tries.
 - Returns `Result<(), PassError>`. When no shader accepts the mesh, the error is
-  `PassError::NoCompatibleShader` and the mesh is not attached.
+  `PassError::NoCompatibleShader` with the reason the last shader gave, and the
+  mesh is not attached.
 
-A Pass with no shaders has nothing to attach the mesh to, so it returns the same
-error. No default shader is created.
+A Pass with no shaders has nothing to attach the mesh to and returns
+`PassError::NoShader`. No default shader is created.
 
 #### Example
 

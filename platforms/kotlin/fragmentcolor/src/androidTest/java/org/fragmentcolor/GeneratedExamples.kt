@@ -101,12 +101,6 @@ class GeneratedExamples : ExampleCase() {
     }
 
     @Test
-    fun core_pass_get_input() = example("docs/api/core/pass/get_input.md") {
-        val pass = Pass("example")
-        val input = pass.getInput()
-    }
-
-    @Test
     fun core_pass_is_compute() = example("docs/api/core/pass/is_compute.md") {
         val shader = Shader("""
         @compute @workgroup_size(1)
@@ -223,29 +217,6 @@ class GeneratedExamples : ExampleCase() {
         pass.setViewport(ScreenRegion(listOf(0u, 0u), listOf(32u, 32u)))
 
         renderer.render(pass, target)
-    }
-
-    @Test
-    fun core_pass_input_PassInput() = example("docs/api/core/pass_input/pass_input.md") {
-        val pass = Pass("overlay")
-        pass.loadPrevious()
-
-        val input = pass.getInput()
-        val keeps = input.loadsPrevious()
-    }
-
-    @Test
-    fun core_pass_input_color() = example("docs/api/core/pass_input/color.md") {
-        val pass = Pass("background")
-        pass.setClearColor(listOf(1.0f, 0.0f, 0.0f, 1.0f))
-        val color = pass.getInput().color()
-    }
-
-    @Test
-    fun core_pass_input_loads_previous() = example("docs/api/core/pass_input/loads_previous.md") {
-        val pass = Pass("overlay")
-        pass.loadPrevious()
-        val keeps = pass.getInput().loadsPrevious()
     }
 
     @Test
@@ -700,7 +671,23 @@ class GeneratedExamples : ExampleCase() {
 
     @Test
     fun geometry_instance_set() = example("docs/api/geometry/instance/set.md") {
-        val instance = Instance().set("offset", listOf(0.5f, 0.0f)).set("tint", listOf(1.0f, 0.0f, 0.0f, 1.0f))
+        val shader = Shader("""
+          @vertex
+          fn vs_main(@location(0) pos: vec2<f32>, @location(1) offset: vec2<f32>, @location(2) layer: u32) -> @builtin(position) vec4<f32> {
+            return vec4<f32>(pos + offset, f32(layer) * 0.1, 1.0);
+          }
+          @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
+
+        """)
+
+        val mesh = Mesh()
+        mesh.addVertex(listOf(0.0f, 0.0f))
+
+        val instance = Instance().set("offset", listOf(0.5f, 0.0f)).set("layer", 2)
+        mesh.addInstance(instance)
+
+        // offset uploads as a vec2<f32> and layer as the u32 2.
+        shader.addMesh(mesh)
     }
 
     @Test
@@ -714,18 +701,13 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun geometry_mesh_add_instance() = example("docs/api/geometry/mesh/add_instance.md") {
         val m = Mesh()
-        val offset = listOf(0.25f, 0.10f)
-        val tint = listOf(1.0f, 0.0f, 0.0f, 1.0f)
-        m.addInstance(Instance().set("offset", offset).set("tint", tint))
+        m.addInstance(Instance().set("offset", listOf(0.25f, 0.10f)).set("tint", listOf(1.0f, 0.0f, 0.0f, 1.0f)))
     }
 
     @Test
     fun geometry_mesh_add_instances() = example("docs/api/geometry/mesh/add_instances.md") {
         val m = Mesh()
-        val red = listOf(1.0f, 0.0f, 0.0f, 1.0f)
-        val green = listOf(0.0f, 1.0f, 0.0f, 1.0f)
-        val blue = listOf(0.0f, 0.0f, 1.0f, 1.0f)
-        m.addInstances(listOf(Instance().set("tint", red), Instance().set("tint", green), Instance().set("tint", blue),))
+        m.addInstances(listOf(Instance().set("tint", listOf(1.0f, 0.0f, 0.0f, 1.0f)), Instance().set("tint", listOf(0.0f, 1.0f, 0.0f, 1.0f)), Instance().set("tint", listOf(0.0f, 0.0f, 1.0f, 1.0f)),))
     }
 
     @Test
@@ -751,8 +733,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun geometry_mesh_clear_instances() = example("docs/api/geometry/mesh/clear_instances.md") {
         val m = Mesh()
-        val red = listOf(1.0f, 0.0f, 0.0f, 1.0f)
-        m.addInstance(Instance().set("tint", red))
+        m.addInstance(Instance().set("tint", listOf(1.0f, 0.0f, 0.0f, 1.0f)))
         m.clearInstances() // back to a single uninstanced draw
     }
 
@@ -772,11 +753,7 @@ class GeneratedExamples : ExampleCase() {
         // happen to carry distinct UVs (only positions repeat), so we keep them
         // all and reference each by index.
         val mesh = Mesh()
-        val uv00 = listOf(0.0f, 0.0f)
-        val uv10 = listOf(1.0f, 0.0f)
-        val uv11 = listOf(1.0f, 1.0f)
-        val uv01 = listOf(0.0f, 1.0f)
-        mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f)).set("uv", uv00), Vertex(listOf(0.5f, -0.5f)).set("uv", uv10), Vertex(listOf(0.5f, 0.5f)).set("uv", uv11), Vertex(listOf(-0.5f, 0.5f)).set("uv", uv01)))
+        mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f)).set("uv", listOf(0.0f, 0.0f)), Vertex(listOf(0.5f, -0.5f)).set("uv", listOf(1.0f, 0.0f)), Vertex(listOf(0.5f, 0.5f)).set("uv", listOf(1.0f, 1.0f)), Vertex(listOf(-0.5f, 0.5f)).set("uv", listOf(0.0f, 1.0f))))
         mesh.setIndices(listOf(0u, 1u, 2u, 0u, 2u, 3u))
     }
 
@@ -832,12 +809,22 @@ class GeneratedExamples : ExampleCase() {
 
     @Test
     fun geometry_vertex_set() = example("docs/api/geometry/vertex/set.md") {
-        val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("weight", 1.0f).set("color",listOf(1.0f, 0.0f, 0.0f))
-    }
+        val shader = Shader("""
+          @vertex
+          fn vs_main(@location(0) pos: vec2<f32>, @location(1) id: u32, @location(2) weight: f32) -> @builtin(position) vec4<f32> {
+            return vec4<f32>(pos * weight, f32(id) * 0.1, 1.0);
+          }
+          @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
 
-    @Test
-    fun geometry_vertex_value_VertexValue() = example("docs/api/geometry/vertex_value/vertex_value.md") {
-        val vertex = Vertex(listOf(0.0f, 0.0f)).set("id", VertexValue.u32(7u))
+        """)
+
+        val vertex = Vertex(listOf(0.0f, 0.0f)).set("id", 7).set("weight", 0.5f)
+
+        val mesh = Mesh()
+        mesh.addVertex(vertex)
+
+        // id uploads as the u32 7 and weight as the f32 0.5.
+        shader.addMesh(mesh)
     }
 
     @Test

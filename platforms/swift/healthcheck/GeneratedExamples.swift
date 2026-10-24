@@ -103,13 +103,6 @@ final class GeneratedExamples: ExampleCase {
         }
     }
 
-    func test_core_pass_get_input() async {
-        await example("docs/api/core/pass/get_input.md") {
-            let pass = Pass("example")
-            let input = pass.getInput()
-        }
-    }
-
     func test_core_pass_is_compute() async {
         await example("docs/api/core/pass/is_compute.md") {
             let shader = try Shader("""
@@ -236,32 +229,6 @@ final class GeneratedExamples: ExampleCase {
             pass.setViewport(ScreenRegion((0, 0), (32, 32)))
 
             try renderer.render(pass, target)
-        }
-    }
-
-    func test_core_pass_input_PassInput() async {
-        await example("docs/api/core/pass_input/pass_input.md") {
-            let pass = Pass("overlay")
-            pass.loadPrevious()
-
-            let input = pass.getInput()
-            let keeps = input.loadsPrevious()
-        }
-    }
-
-    func test_core_pass_input_color() async {
-        await example("docs/api/core/pass_input/color.md") {
-            let pass = Pass("background")
-            try pass.setClearColor([1.0, 0.0, 0.0, 1.0])
-            let color = pass.getInput().color()
-        }
-    }
-
-    func test_core_pass_input_loads_previous() async {
-        await example("docs/api/core/pass_input/loads_previous.md") {
-            let pass = Pass("overlay")
-            pass.loadPrevious()
-            let keeps = pass.getInput().loadsPrevious()
         }
     }
 
@@ -741,7 +708,7 @@ final class GeneratedExamples: ExampleCase {
             try mesh.addVertex([0.0, 0.0])
 
             let instance = try Instance().set("offset", [0.5, 0.0])
-            mesh.addInstance(instance)
+            try mesh.addInstance(instance)
         }
     }
 
@@ -753,7 +720,23 @@ final class GeneratedExamples: ExampleCase {
 
     func test_geometry_instance_set() async {
         await example("docs/api/geometry/instance/set.md") {
-            let instance = try Instance().set("offset", [0.5, 0.0]).set("tint", [1.0, 0.0, 0.0, 1.0])
+            let shader = try Shader("""
+              @vertex
+              fn vs_main(@location(0) pos: vec2<f32>, @location(1) offset: vec2<f32>, @location(2) layer: u32) -> @builtin(position) vec4<f32> {
+                return vec4<f32>(pos + offset, f32(layer) * 0.1, 1.0);
+              }
+              @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
+
+            """)
+
+            let mesh = Mesh()
+            try mesh.addVertex([0.0, 0.0])
+
+            let instance = try Instance().set("offset", [0.5, 0.0]).set("layer", 2)
+            try mesh.addInstance(instance)
+
+            // offset uploads as a vec2<f32> and layer as the u32 2.
+            try shader.addMesh(mesh)
         }
     }
 
@@ -769,22 +752,17 @@ final class GeneratedExamples: ExampleCase {
     func test_geometry_mesh_add_instance() async {
         await example("docs/api/geometry/mesh/add_instance.md") {
             let m = Mesh()
-            let offset = [0.25, 0.10]
-            let tint = [1.0, 0.0, 0.0, 1.0]
-            try m.addInstance(Instance().set("offset", offset).set("tint", tint))
+            try m.addInstance(Instance().set("offset", [0.25, 0.10]).set("tint", [1.0, 0.0, 0.0, 1.0]))
         }
     }
 
     func test_geometry_mesh_add_instances() async {
         await example("docs/api/geometry/mesh/add_instances.md") {
             let m = Mesh()
-            let red = [1.0, 0.0, 0.0, 1.0]
-            let green = [0.0, 1.0, 0.0, 1.0]
-            let blue = [0.0, 0.0, 1.0, 1.0]
             m.addInstances([
-                try Instance().set("tint", red),
-                try Instance().set("tint", green),
-                try Instance().set("tint", blue),
+                try Instance().set("tint", [1.0, 0.0, 0.0, 1.0]),
+                try Instance().set("tint", [0.0, 1.0, 0.0, 1.0]),
+                try Instance().set("tint", [0.0, 0.0, 1.0, 1.0]),
             ])
         }
     }
@@ -822,8 +800,7 @@ final class GeneratedExamples: ExampleCase {
     func test_geometry_mesh_clear_instances() async {
         await example("docs/api/geometry/mesh/clear_instances.md") {
             let m = Mesh()
-            let red = [1.0, 0.0, 0.0, 1.0]
-            try m.addInstance(Instance().set("tint", red))
+            try m.addInstance(Instance().set("tint", [1.0, 0.0, 0.0, 1.0]))
             m.clearInstances() // back to a single uninstanced draw
         }
     }
@@ -850,15 +827,11 @@ final class GeneratedExamples: ExampleCase {
             // happen to carry distinct UVs (only positions repeat), so we keep them
             // all and reference each by index.
             let mesh = Mesh()
-            let uv00 = [0.0, 0.0]
-            let uv10 = [1.0, 0.0]
-            let uv11 = [1.0, 1.0]
-            let uv01 = [0.0, 1.0]
             try mesh.addVertices([
-                try Vertex([-0.5, -0.5]).set("uv", uv00),
-                try Vertex([ 0.5, -0.5]).set("uv", uv10),
-                try Vertex([ 0.5,  0.5]).set("uv", uv11),
-                try Vertex([-0.5,  0.5]).set("uv", uv01),
+                try Vertex([-0.5, -0.5]).set("uv", [0.0, 0.0]),
+                try Vertex([ 0.5, -0.5]).set("uv", [1.0, 0.0]),
+                try Vertex([ 0.5,  0.5]).set("uv", [1.0, 1.0]),
+                try Vertex([-0.5,  0.5]).set("uv", [0.0, 1.0]),
             ])
             mesh.setIndices([0, 1, 2, 0, 2, 3])
         }
@@ -928,13 +901,22 @@ final class GeneratedExamples: ExampleCase {
 
     func test_geometry_vertex_set() async {
         await example("docs/api/geometry/vertex/set.md") {
-            let v = try Vertex([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0])
-        }
-    }
+            let shader = try Shader("""
+              @vertex
+              fn vs_main(@location(0) pos: vec2<f32>, @location(1) id: u32, @location(2) weight: f32) -> @builtin(position) vec4<f32> {
+                return vec4<f32>(pos * weight, f32(id) * 0.1, 1.0);
+              }
+              @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
 
-    func test_geometry_vertex_value_VertexValue() async {
-        await example("docs/api/geometry/vertex_value/vertex_value.md") {
-            let vertex = try Vertex([0.0, 0.0]).set("id", VertexValue.u32(7))
+            """)
+
+            let vertex = try Vertex([0.0, 0.0]).set("id", 7).set("weight", 0.5)
+
+            let mesh = Mesh()
+            try mesh.addVertex(vertex)
+
+            // id uploads as the u32 7 and weight as the f32 0.5.
+            try shader.addMesh(mesh)
         }
     }
 

@@ -1378,12 +1378,14 @@ lang="kotlin"
 
 ### Shader::add_mesh \{#add_mesh\}
 
-Attach a Mesh to this Shader. The Renderer will draw all meshes attached to it (one draw call per mesh, same pipeline).
+Attach a Mesh to this Shader. The Renderer draws every mesh attached to it, one draw call per mesh, with the same pipeline.
 
-This method now validates that the mesh's vertex/instance layout is compatible with the shader's @location inputs and returns `Result<(), ShaderError>`.
+`add_mesh` checks every vertex and instance of the mesh against the shader's `@location` inputs and returns `Result<(), ShaderError>`.
 
-- On success, the mesh is attached and will be drawn when this shader is rendered.
-- On mismatch (missing attribute or type mismatch), returns an error and does not attach.
+- An attribute set from numbers takes the type the shader declares at its location: floats for `f32` and `vecN<f32>`, integers for `u32`, `i32` and their vectors when every value is whole and fits.
+- On success, the mesh is attached, its attributes keep those types for as long as the mesh lives, and it is drawn when this shader renders.
+- On a missing attribute or a value that doesn't fit, the error names the attribute, the declared type and the value. The mesh isn't attached and records no type.
+- A shader that declares another type for an attribute an earlier shader already typed on this mesh fails to attach.
 
 #### See also
 
@@ -2067,16 +2069,18 @@ lang="kotlin"
 
 Validate that a Mesh is compatible with this Shader's vertex inputs.
 
-- Checks presence and type for all @location(...) inputs of the vertex entry point.
-- Matches attributes in the following order:
-  1) Instance attributes by explicit @location index (if the mesh has instances)
-  2) Vertex attributes by explicit @location index (position is assumed at @location(0))
-  3) Fallback by name (tries instance first, then vertex)
-- Returns Ok(()) when all inputs are matched with a compatible wgpu::VertexFormat; returns an error otherwise.
+- Checks that every `@location` input of the vertex entry point finds an attribute, and that every vertex and instance value fits the type the input declares.
+- Matches each input in this order:
+  1) by name, instance attributes first, then vertex attributes (`position` included)
+  2) the position, at `@location(0)`
+  3) by the attribute's own location, instance attributes first, then vertex attributes
+- A number fills a float input unless the shader declares an integer type there. An integer input takes whole numbers that fit its type.
+- Returns `Ok(())` when every input matches; returns the same error `Shader::add_mesh` would otherwise.
 
 #### Notes
 
-- This method is called automatically when adding a Mesh to a Shader or Pass, so you usually don't need to call it manually.
+- `Shader::add_mesh` and `Pass::add_mesh` run the same check. Call `validate_mesh` to test a mesh without attaching it.
+- It changes nothing: the mesh isn't attached and its attributes take no type.
 - If the Shader has no @location inputs (fullscreen/builtin-only), attaching a Mesh is rejected.
 - This method does not allocate GPU buffers; it inspects CPU-side vertex/instance data only.
 
