@@ -67,6 +67,14 @@ name = "tutorial_01_hello_triangle_postfx_pass"
 path = "../../docs/tutorials/01-hello-triangle/06-postfx-pass/example.rs"
 
 [[example]]
+name = "tutorial_01_hello_triangle_instance_index"
+path = "../../docs/tutorials/01-hello-triangle/07-instance-index/example.rs"
+
+[[example]]
+name = "tutorial_01_hello_triangle_compute"
+path = "../../docs/tutorials/01-hello-triangle/08-compute/example.rs"
+
+[[example]]
 name = "tutorial_drawing_with_distance_coordinates"
 path = "../../docs/tutorials/drawing-with-distance/01-coordinates/example.rs"
 
