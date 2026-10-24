@@ -17,9 +17,9 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
     // Three corners of an equilateral triangle, centered on the origin.
     var corners = array<vec2<f32>, 3>(
-        vec2<f32>(-0.7, -0.4),
-        vec2<f32>( 0.7, -0.4),
-        vec2<f32>( 0.0,  0.8),
+        vec2<f32>(-0.7, -0.404),
+        vec2<f32>( 0.7, -0.404),
+        vec2<f32>( 0.0,  0.808),
     );
     var out: VOut;
     out.pos = vec4<f32>(corners[i], 0.0, 1.0);

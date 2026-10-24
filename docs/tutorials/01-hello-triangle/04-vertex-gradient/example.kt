@@ -1,5 +1,7 @@
+@file:Suppress("UNUSED_PARAMETER")
+
 // Step 4: the program owns the triangle's corners, each with its own color.
-// Call setup once, then frame on every display refresh, such as from a Choreographer callback.
+// Call `setup` once, then call `frame` on every display refresh, such as from a `Choreographer` callback.
 
 import org.fragmentcolor.*
 
@@ -41,9 +43,9 @@ fun setup(): Shader {
 
     val mesh = Mesh()
     mesh.addVertices(listOf(
-        Vertex(listOf(-0.7f, -0.4f, 0.0f)).set("color", listOf(0.95f, 0.30f, 0.42f)),
-        Vertex(listOf(0.7f, -0.4f, 0.0f)).set("color", listOf(0.30f, 0.85f, 0.55f)),
-        Vertex(listOf(0.0f, 0.8f, 0.0f)).set("color", listOf(0.30f, 0.55f, 0.95f)),
+        Vertex(listOf(-0.7f, -0.404f, 0.0f)).set("color", listOf(0.95f, 0.30f, 0.42f)),
+        Vertex(listOf(0.7f, -0.404f, 0.0f)).set("color", listOf(0.30f, 0.85f, 0.55f)),
+        Vertex(listOf(0.0f, 0.808f, 0.0f)).set("color", listOf(0.30f, 0.55f, 0.95f)),
     ))
     shader.addMesh(mesh)
     return shader

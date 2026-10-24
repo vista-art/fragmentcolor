@@ -92,7 +92,7 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
     let green = textureSample(scene, scene_sampler, offsets[1]).g;
     let blue = textureSample(scene, scene_sampler, offsets[2]).b;
 
-    // Expose at half brightness, then roll off the highlights like film.
+    // Halve the exposure, then compress the highlights.
     let graded = tonemap_filmic(vec3<f32>(red, green, blue) * 0.5);
     let edges = vignette(in.uv, 0.55, 0.40);
     let grain = film_grain(in.uv, time) * 0.05;
@@ -117,9 +117,9 @@ def setup(renderer):
 
     mesh = Mesh()
     mesh.add_vertices([
-        Vertex([-0.7, -0.4, 0.0]).set("color", [0.95, 0.30, 0.42]),
-        Vertex([0.7, -0.4, 0.0]).set("color", [0.30, 0.85, 0.55]),
-        Vertex([0.0, 0.8, 0.0]).set("color", [0.30, 0.55, 0.95]),
+        Vertex([-0.7, -0.404, 0.0]).set("color", [0.95, 0.30, 0.42]),
+        Vertex([0.7, -0.404, 0.0]).set("color", [0.30, 0.85, 0.55]),
+        Vertex([0.0, 0.808, 0.0]).set("color", [0.30, 0.55, 0.95]),
     ])
     for _ in range(COPIES):
         center = [uniform(-1.0, 1.0), uniform(-1.0, 1.0)]

@@ -19,9 +19,9 @@ struct VOut {
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
     var corners = array<vec2<f32>, 3>(
-        vec2<f32>(-0.7, -0.4),
-        vec2<f32>( 0.7, -0.4),
-        vec2<f32>( 0.0,  0.8),
+        vec2<f32>(-0.7, -0.404),
+        vec2<f32>( 0.7, -0.404),
+        vec2<f32>( 0.0,  0.808),
     );
     let aspect = resolution.x / resolution.y;
     var pos = corners[i];

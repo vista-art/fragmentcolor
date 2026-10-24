@@ -1,8 +1,8 @@
 """Runs one step of the tutorial in a window: `python host.py 01-three-lines`.
 
-It loads the step's example.py, calls its `setup` once, and calls its `frame`
+It loads the step's `example.py`, calls its `setup` once, and calls its `frame`
 about 60 times a second with the seconds since the window opened. With
-FC_TUTORIAL_FRAMES=n set, it closes the window after n frames.
+`FC_TUTORIAL_FRAMES=n` set, it closes the window after `n` frames.
 It needs `pip install fragmentcolor rendercanvas glfw`.
 """
 

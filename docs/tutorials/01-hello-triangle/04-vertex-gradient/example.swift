@@ -1,5 +1,5 @@
 // Step 4: the program owns the triangle's corners, each with its own color.
-// Call setup once, then frame on every display refresh, such as from an MTKView delegate.
+// Call `setup` once, then call `frame` on every display refresh, such as from an `MTKView` delegate.
 
 import FragmentColor
 
@@ -41,9 +41,9 @@ func setup() throws -> Shader {
 
     let mesh = Mesh()
     mesh.addVertices([
-        try Vertex([-0.7, -0.4, 0.0]).set("color", [0.95, 0.30, 0.42]),
-        try Vertex([0.7, -0.4, 0.0]).set("color", [0.30, 0.85, 0.55]),
-        try Vertex([0.0, 0.8, 0.0]).set("color", [0.30, 0.55, 0.95]),
+        try Vertex([-0.7, -0.404, 0.0]).set("color", [0.95, 0.30, 0.42]),
+        try Vertex([0.7, -0.404, 0.0]).set("color", [0.30, 0.85, 0.55]),
+        try Vertex([0.0, 0.808, 0.0]).set("color", [0.30, 0.55, 0.95]),
     ])
     try shader.addMesh(mesh)
     return shader

@@ -1,5 +1,5 @@
 // Step 6: the particles render into a texture, and a second pass grades it for the screen.
-// Call setup once, then frame on every display refresh, such as from an MTKView delegate.
+// Call `setup` once, then call `frame` on every display refresh, such as from an `MTKView` delegate.
 
 import FragmentColor
 
@@ -86,7 +86,7 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
     let green = textureSample(scene, scene_sampler, offsets[1]).g;
     let blue = textureSample(scene, scene_sampler, offsets[2]).b;
 
-    // Expose at half brightness, then roll off the highlights like film.
+    // Halve the exposure, then compress the highlights.
     let graded = tonemap_filmic(vec3<f32>(red, green, blue) * 0.5);
     let edges = vignette(in.uv, 0.55, 0.40);
     let grain = film_grain(in.uv, time) * 0.05;
@@ -108,9 +108,9 @@ func setup(_ renderer: Renderer) async throws -> State {
 
     let mesh = Mesh()
     mesh.addVertices([
-        try Vertex([-0.7, -0.4, 0.0]).set("color", [0.95, 0.30, 0.42]),
-        try Vertex([0.7, -0.4, 0.0]).set("color", [0.30, 0.85, 0.55]),
-        try Vertex([0.0, 0.8, 0.0]).set("color", [0.30, 0.55, 0.95]),
+        try Vertex([-0.7, -0.404, 0.0]).set("color", [0.95, 0.30, 0.42]),
+        try Vertex([0.7, -0.404, 0.0]).set("color", [0.30, 0.85, 0.55]),
+        try Vertex([0.0, 0.808, 0.0]).set("color", [0.30, 0.55, 0.95]),
     ])
     for _ in 0..<copies {
         let center = [Float.random(in: -1...1), Float.random(in: -1...1)]

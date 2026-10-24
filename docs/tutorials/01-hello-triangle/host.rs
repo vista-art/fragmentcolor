@@ -1,8 +1,8 @@
 //! The program around each step: it opens a window, calls the step's `setup` once,
 //! and calls its `frame` on every redraw with the seconds since the window opened.
 //!
-//! With `FC_TUTORIAL_FRAMES=n` set, it renders n frames into a 256 by 256 texture
-//! instead, fails if nothing reached it, and exits, so a step runs without a display.
+//! With `FC_TUTORIAL_FRAMES=n` set, it renders `n` frames into a 256 by 256 texture,
+//! fails if they cover less than 1% of its pixels, and exits without opening a window.
 //! `FC_TUTORIAL_IMAGE=path` also saves the last of those frames as a PNG.
 
 use anyhow::{Result, bail};

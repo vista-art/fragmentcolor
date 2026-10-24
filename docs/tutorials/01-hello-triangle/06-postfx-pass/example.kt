@@ -1,5 +1,5 @@
 // Step 6: the particles render into a texture, and a second pass grades it for the screen.
-// Call setup once, then frame on every display refresh, such as from a Choreographer callback.
+// Call `setup` once, then call `frame` on every display refresh, such as from a `Choreographer` callback.
 
 import org.fragmentcolor.*
 import kotlin.math.PI
@@ -88,7 +88,7 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
     let green = textureSample(scene, scene_sampler, offsets[1]).g;
     let blue = textureSample(scene, scene_sampler, offsets[2]).b;
 
-    // Expose at half brightness, then roll off the highlights like film.
+    // Halve the exposure, then compress the highlights.
     let graded = tonemap_filmic(vec3<f32>(red, green, blue) * 0.5);
     let edges = vignette(in.uv, 0.55, 0.40);
     let grain = film_grain(in.uv, time) * 0.05;
@@ -106,9 +106,9 @@ suspend fun setup(renderer: Renderer): State {
 
     val mesh = Mesh()
     mesh.addVertices(listOf(
-        Vertex(listOf(-0.7f, -0.4f, 0.0f)).set("color", listOf(0.95f, 0.30f, 0.42f)),
-        Vertex(listOf(0.7f, -0.4f, 0.0f)).set("color", listOf(0.30f, 0.85f, 0.55f)),
-        Vertex(listOf(0.0f, 0.8f, 0.0f)).set("color", listOf(0.30f, 0.55f, 0.95f)),
+        Vertex(listOf(-0.7f, -0.404f, 0.0f)).set("color", listOf(0.95f, 0.30f, 0.42f)),
+        Vertex(listOf(0.7f, -0.404f, 0.0f)).set("color", listOf(0.30f, 0.85f, 0.55f)),
+        Vertex(listOf(0.0f, 0.808f, 0.0f)).set("color", listOf(0.30f, 0.55f, 0.95f)),
     ))
     repeat(COPIES) {
         val center = listOf(Random.nextFloat() * 2f - 1f, Random.nextFloat() * 2f - 1f)

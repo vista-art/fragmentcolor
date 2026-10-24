@@ -1,5 +1,5 @@
 // Step 4: the program owns the triangle's corners, each with its own color.
-// Call setup once, then frame on every animation frame, such as from requestAnimationFrame.
+// Call `setup` once, then call `frame` from each `requestAnimationFrame` callback.
 
 import { Mesh, Shader, Vertex } from "fragmentcolor";
 
@@ -41,9 +41,9 @@ export function setup() {
 
     const mesh = new Mesh();
     mesh.addVertices([
-        new Vertex([-0.7, -0.4, 0.0]).set("color", [0.95, 0.30, 0.42]),
-        new Vertex([0.7, -0.4, 0.0]).set("color", [0.30, 0.85, 0.55]),
-        new Vertex([0.0, 0.8, 0.0]).set("color", [0.30, 0.55, 0.95]),
+        new Vertex([-0.7, -0.404, 0.0]).set("color", [0.95, 0.30, 0.42]),
+        new Vertex([0.7, -0.404, 0.0]).set("color", [0.30, 0.85, 0.55]),
+        new Vertex([0.0, 0.808, 0.0]).set("color", [0.30, 0.55, 0.95]),
     ]);
     shader.addMesh(mesh);
     return shader;

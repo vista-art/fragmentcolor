@@ -15,9 +15,9 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
     var corners = array<vec2<f32>, 3>(
-        vec2<f32>(-0.7, -0.4),
-        vec2<f32>( 0.7, -0.4),
-        vec2<f32>( 0.0,  0.8),
+        vec2<f32>(-0.7, -0.404),
+        vec2<f32>( 0.7, -0.404),
+        vec2<f32>( 0.0,  0.808),
     );
     // Shrink the longer axis so one unit spans as many pixels on x as on y.
     let aspect = resolution.x / resolution.y;

@@ -1,5 +1,5 @@
 // Step 1: a shader with one uniform, drawn every frame in a new color.
-// Call setup once, then frame on every display refresh, such as from a Choreographer callback.
+// Call `setup` once, then call `frame` on every display refresh, such as from a `Choreographer` callback.
 
 import org.fragmentcolor.*
 import kotlin.math.cos
@@ -15,9 +15,9 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
     // Three corners of an equilateral triangle, centered on the origin.
     var corners = array<vec2<f32>, 3>(
-        vec2<f32>(-0.7, -0.4),
-        vec2<f32>( 0.7, -0.4),
-        vec2<f32>( 0.0,  0.8),
+        vec2<f32>(-0.7, -0.404),
+        vec2<f32>( 0.7, -0.404),
+        vec2<f32>( 0.0,  0.808),
     );
     var out: VOut;
     out.pos = vec4<f32>(corners[i], 0.0, 1.0);
