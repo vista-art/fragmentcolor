@@ -28,7 +28,7 @@ fn center(pixel: vec2<f32>) -> vec2<f32> {
 // #region: show
 // Magenta inside, azure outside, and a stripe every 0.05 units of distance.
 fn show(d: f32) -> vec3<f32> {
-    let tint = select(vec3<f32>(0.0, 0.51, 1.0), vec3<f32>(1.0, 0.0, 0.51), d < 0.0);
+    let tint = select(vec3<f32>(0.0, 0.514, 1.0), vec3<f32>(1.0, 0.0, 0.514), d < 0.0);
     let stripe = step(0.5, fract(d * 20.0));
     return tint * (0.3 + 0.45 * stripe);
 }
