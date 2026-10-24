@@ -5,6 +5,7 @@
 // fills the screen under the site header, without a frame, and leads with the
 // tagline and an install line.
 import { DEMOS } from "../playground/demos/index.js";
+import { SPLIT_KEY } from "../playground/divider.js";
 import site from "../../package.json";
 
 interface Props {
@@ -116,6 +117,17 @@ const installs = [
       </div>
       <div class="fcp-controls" role="group" aria-label="Uniforms" hidden></div>
     </section>
+    <div
+      class="fcp-divider"
+      role="separator"
+      tabindex="0"
+      aria-orientation="vertical"
+      aria-label="Resize the canvas and the code"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      aria-valuenow="49"
+      title="Drag to resize. Double-click to reset."
+    ></div>
     <section class="fcp-code" aria-label="Code">
       <div class="fcp-library">
         <span class="fcp-library-label">Library</span>
@@ -139,6 +151,17 @@ const installs = [
       <pre class="fcp-error" aria-live="polite" hidden></pre>
     </section>
   </div>
+  <script is:inline define:vars={{ key: SPLIT_KEY }}>
+    // Applying the remembered split before the first paint keeps the panes from jumping.
+    try {
+      const split = Number(localStorage.getItem(key));
+      if (split > 0 && split < 100) {
+        document.currentScript.parentElement.querySelector(".fcp-body").style.setProperty("--fcp-split", `${split}%`);
+      }
+    } catch {
+      // with storage blocked, the panes keep the default split
+    }
+  </script>
 </fc-playground>
 
 <style is:global>
@@ -151,6 +174,8 @@ const installs = [
     --fcp-accent: #a5b4fc;
     --fcp-accent-bg: rgba(165, 180, 252, 0.14);
     --fcp-height: clamp(460px, 72vh, 760px);
+    --fcp-stage-min: 360px;
+    --fcp-code-min: 360px;
     display: block;
     margin: 1.5rem 0;
     border: 1px solid var(--fcp-line);
@@ -424,10 +449,71 @@ const installs = [
     border-bottom: 1px solid var(--fcp-line);
   }
 
+  /* --fcp-split is the canvas share the divider sets. Without it the panes split 1 to 1.05.
+     Above the stacked layout the clamp keeps each pane at least as wide as its own minimum. */
   .fcp-body {
+    position: relative;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+    grid-template-columns:
+      clamp(var(--fcp-stage-min), var(--fcp-split, calc(100% / 2.05)), 100% - var(--fcp-code-min))
+      minmax(0, 1fr);
     height: var(--fcp-height);
+  }
+
+  /* The divider sits on the code pane's left border, which draws its resting line.
+     Hover, focus, and a drag light a 2px accent line in the middle of the grab area. */
+  .fcp-divider {
+    --fcp-grab: 12px;
+    position: absolute;
+    grid-column: 2;
+    grid-row: 1;
+    inset-block: 0;
+    left: calc(var(--fcp-grab) / -2);
+    z-index: 4;
+    width: var(--fcp-grab);
+    cursor: col-resize;
+    touch-action: none;
+  }
+
+  /* A finger needs a wider grab area, and the fullscreen button stays above it. */
+  @media (pointer: coarse) {
+    .fcp-divider {
+      --fcp-grab: 20px;
+    }
+  }
+
+  .fcp-divider::before {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    left: calc(50% - 1px);
+    width: 2px;
+    background: var(--fcp-accent);
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .fcp-divider:hover::before,
+  .fcp-divider:focus-visible::before,
+  fc-playground.fcp-resizing .fcp-divider::before {
+    opacity: 1;
+  }
+
+  .fcp-divider:focus-visible {
+    outline: none;
+    background: var(--fcp-accent-bg);
+  }
+
+  /* While the divider moves, the panes ignore the pointer and nothing gets selected. */
+  fc-playground.fcp-resizing {
+    cursor: col-resize;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  fc-playground.fcp-resizing .fcp-stage,
+  fc-playground.fcp-resizing .fcp-code {
+    pointer-events: none;
   }
 
   .fcp-code {
@@ -802,6 +888,10 @@ const installs = [
       height: auto;
     }
 
+    .fcp-divider {
+      display: none;
+    }
+
     .fcp-canvas {
       flex: none;
       aspect-ratio: 4 / 3;
@@ -835,12 +925,16 @@ const installs = [
 
 <script>
   import { DEMOS } from "../playground/demos/index.js";
+  import { wireDivider } from "../playground/divider.js";
 
   if (!customElements.get("fc-playground")) {
     class PlaygroundElement extends HTMLElement {
       #playground: { start(id?: string): Promise<void>; destroy(): void } | undefined;
+      #unwire: (() => void) | undefined;
 
       connectedCallback() {
+        // The divider works before the runtime loads, and when it fails to.
+        this.#unwire = wireDivider(this);
         const ids = (this.dataset.demos ?? "").split(",");
         const demos = ids.flatMap((id) => DEMOS.filter((d) => d.id === id));
         let hash = location.hash.slice(1);
@@ -878,6 +972,7 @@ const installs = [
       }
 
       disconnectedCallback() {
+        this.#unwire?.();
         this.#playground?.destroy();
       }
     }
