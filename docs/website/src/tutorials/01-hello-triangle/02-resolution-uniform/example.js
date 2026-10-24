@@ -1,17 +1,10 @@
-// Step 3 — a second uniform (JS port).
-//
-// The triangles in steps 1 and 2 squished as the canvas resized: NDC
-// maps [-1, 1] across each axis independently, so positions hardcoded
-// in clip space stretch with the canvas. The fix is information the
-// shader doesn't have yet — the canvas aspect ratio. We add a second
-// uniform, `resolution`, set it from the canvas pixel size each
-// frame, and let the vertex stage aspect-correct the positions before
-// output.
+// Step 2: a second uniform, `resolution`, keeps the triangle's shape on any canvas.
+// The page's <Demo> calls setup once and frame on every animation frame.
 
 import { Shader } from "fragmentcolor";
 
+const TRIANGLE = `
 // #region: shader
-const RESOLUTION_TRIANGLE_WGSL = `
 struct VOut { @builtin(position) pos: vec4<f32> };
 
 @group(0) @binding(0) var<uniform> color: vec4<f32>;
@@ -19,15 +12,14 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
-    // Equilateral triangle in NDC, centroid at origin; aspect-corrected below.
-    var p = array<vec2<f32>, 3>(
+    var corners = array<vec2<f32>, 3>(
         vec2<f32>(-0.7, -0.4),
         vec2<f32>( 0.7, -0.4),
         vec2<f32>( 0.0,  0.8),
     );
-    let res = max(resolution, vec2<f32>(1.0));
-    let aspect = res.x / res.y;
-    var pos = p[i];
+    // Shrink the longer axis so one unit spans the same pixels on both.
+    let aspect = resolution.x / resolution.y;
+    var pos = corners[i];
     if (aspect > 1.0) { pos.x = pos.x / aspect; }
     else              { pos.y = pos.y * aspect; }
 
@@ -40,27 +32,26 @@ fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
 fn fs_main() -> @location(0) vec4<f32> {
     return color;
 }
-`;
 // #endregion: shader
+`;
 
 // #region: setup
-export async function setup(_renderer, _target) {
-    const shader = new Shader(RESOLUTION_TRIANGLE_WGSL);
+export function setup() {
+    const shader = new Shader(TRIANGLE);
     shader.set("color", [0.95, 0.30, 0.42, 1.0]);
-    return { shader };
+    return shader;
 }
 // #endregion: setup
 
 // #region: frame
-export function frame(state, renderer, target, time, size) {
-    const r = 0.5 + 0.45 * Math.sin(time * 0.7);
-    const g = 0.5 + 0.45 * Math.cos(time * 0.5 + 1.7);
-    const b = 0.5 + 0.45 * Math.sin(time * 0.9 + 3.1);
-    state.shader.set("color", [r, g, b, 1.0]);
-    // The new uniform is updated from the canvas pixel size every
-    // frame, so resizing the page keeps the triangle proportions
-    // correct.
-    state.shader.set("resolution", size);
-    renderer.render(state.shader, target);
+export function frame(shader, renderer, target, time) {
+    const red = 0.5 + 0.45 * Math.sin(time * 0.7);
+    const green = 0.5 + 0.45 * Math.cos(time * 0.5 + 1.7);
+    const blue = 0.5 + 0.45 * Math.sin(time * 0.9 + 3.1);
+    shader.set("color", [red, green, blue, 1.0]);
+
+    const size = target.size();
+    shader.set("resolution", [size.width, size.height]);
+    renderer.render(shader, target);
 }
 // #endregion: frame
