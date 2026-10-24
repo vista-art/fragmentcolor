@@ -19,7 +19,7 @@ order and the rough ideas. A tutorial moves out of here when it ships.
 
 | Order | Tutorial | Playground demo | Status |
 |---|---|---|---|
-| 10 | Hello, 15000 triangles! | | Draft with locked passages; polish and publish |
+| 10 | Hello, a million triangles! | | Written; student, technical and prose reviews passed |
 | 20 | Drawing with distance | Shapes | Written; student, technical and prose reviews passed |
 | 90 | Infinite zoom | Mandelbrot (new) | Written; reviews passed |
 
@@ -30,8 +30,9 @@ other three leave out.
 
 ### Part 1: first pixels
 
-- **10. Hello, 15000 triangles!** From a three-line triangle to fifteen hundred
-  particles and a post-processing pass. A tour of the whole library in one sitting.
+- **10. Hello, a million triangles!** From a five-line triangle to a million instanced
+  triangles, a post-processing pass and 8 million particles moved by a compute shader.
+  A tour of the whole library in one sitting.
 
 ### Part 2: thinking in fragments
 
