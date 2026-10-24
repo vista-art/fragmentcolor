@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       fragmentcolor:
-        specifier: '>=0.12.5 <1.0.0'
-        version: 0.12.5
+        specifier: '>=0.12.6 <1.0.0'
+        version: 0.12.6
     devDependencies:
       vite:
         specifier: '>=7.0.0 <8.0.0'
@@ -377,8 +377,8 @@ packages:
       picomatch:
         optional: true
 
-  fragmentcolor@0.12.5:
-    resolution: {integrity: sha512-pLw8b1rtOju4epgVp4Lt6Q4AkRoGuog1MewH1akGfs4ihxCMQLazuMjXXT2ysOmNuFruw37GJbInifIEuglrkA==}
+  fragmentcolor@0.12.6:
+    resolution: {integrity: sha512-tZo/7AsGAcg8c4P38PHEBpjYBQJYzvKZLqmT3wP1aMJbSRFkms/TI1Qp+/vVfOeSEiW/0hrT80h6tzw9FLVjDw==}
 
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
@@ -697,7 +697,7 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.3
 
-  fragmentcolor@0.12.5: {}
+  fragmentcolor@0.12.6: {}
 
   fsevents@2.3.3:
     optional: true
