@@ -23,11 +23,11 @@ A triangle on the GPU is three corners and a rule for filling the space between 
 
 This tutorial draws shapes the other way around. Every pixel runs the same small function and answers one question for itself: how far am I from the shape? The sign of the answer says inside or outside. Its size says how far. With that one number we draw a circle, a box and a star, merge them, paint them with contour lines, and set them moving with time and the pointer. The last step rebuilds the Shapes demo from the [playground](/welcome/playground/), the live editor on this site.
 
-This page builds on [Hello, 15000 triangles!](/tutorials/01-hello-triangle/) and assumes you know what `Shader::new`, `set` and `render` do.
+The [Hello, 15000 triangles!](/tutorials/01-hello-triangle/) page comes first, and this one assumes you know what `Shader::new`, `set` and `render` do.
 
 ## Every pixel gets a coordinate
 
-A fragment shader runs once per pixel it covers, so the first job is a triangle that covers all of them. One oversized triangle does it. Its corners sit at `(-1, -1)`, `(3, -1)` and `(-1, 3)` in the `[-1, 1]` space from the hello triangle tutorial, and its long edge runs exactly through the canvas corner at `(1, 1)`, which puts the whole canvas inside it. The GPU clips the parts that hang off the edges and runs the fragment stage for every pixel that's left.
+A fragment shader runs once per pixel it covers, so the first job is to cover all of them. One oversized triangle does it. Its corners sit at `(-1, -1)`, `(3, -1)` and `(-1, 3)` in the `[-1, 1]` space from the hello triangle tutorial, and its long edge runs exactly through the canvas corner at `(1, 1)`, which puts the whole canvas inside it. The GPU clips the parts that hang off the edges and runs the fragment stage for every pixel that's left.
 
 <Code lang="wgsl" code={region("01-coordinates", "triangle").rust} />
 
@@ -43,13 +43,13 @@ Pixels make an awkward unit for drawing. A circle 100 pixels wide spans a third 
 2. Dividing by the shorter side makes that side one unit long, from `-0.5` to `0.5`. Both axes divide by the same number, which keeps a unit along x as long as a unit along y. The longer side gets whatever range is left: `-0.67` to `0.67` across an 800 by 600 canvas.
 3. Negating y makes up positive, the way a math textbook draws its axes.
 
-The result is `p`. The square where both of its coordinates run from `-0.5` to `0.5` is the unit square, and it always fits the canvas exactly along the shorter side. Painted as a color, `p.x` drives red and `p.y` drives green. Inside the unit square the colors run at full strength; past its edges they dim to 30 percent.
+That gives `p`. Where both of its coordinates run from `-0.5` to `0.5` lies the unit square, which always fits the canvas exactly along the shorter side. Painted as a color, `p.x` drives red and `p.y` drives green, at full strength inside the unit square and at 30 percent past its edges.
 
 <Code lang="wgsl" code={region("01-coordinates", "paint").rust} />
 
 <Demo file="drawing-with-distance/01-coordinates/example.rs" />
 
-The bright square keeps its shape at any window size. A wide canvas grows dim margins at the sides, and a tall one grows them above and below. Had we divided x by the width and y by the height, the square would stretch with the canvas, the same way the triangle did before the hello triangle tutorial fixed its aspect ratio.
+The bright square keeps its shape at any window size, and only the dim margins grow. Dividing x by the width and y by the height would have stretched it, the way the hello triangle did before its tutorial fixed the aspect ratio.
 
 On the host, `setup` builds the shader once:
 
@@ -59,7 +59,7 @@ and `frame` runs on every redraw, with `size` holding the canvas size in pixels 
 
 <Snippet file="drawing-with-distance/01-coordinates/example.rs" region="frame" />
 
-Something has to call them. In the Rust programs, a small `winit` loop calls `frame` on every redraw, and on this page each demo canvas does the same. The playground's programs use this layout too. From step to step, the shader changes and the list of uniforms grows, while the loop stays put. Each step's complete Rust program and its JavaScript port are in [`docs/tutorials/drawing-with-distance`](https://github.com/vista-art/fragmentcolor/tree/main/docs/tutorials/drawing-with-distance), and this command runs the first one:
+Something has to call them. In the Rust programs, a small `winit` loop calls `frame` whenever the window needs a new image, and on this page each demo canvas does the same. The playground's programs use this layout too. From step to step, the shader changes and the list of uniforms grows, while the loop stays put. Each step's complete Rust program and its JavaScript port are in [`docs/tutorials/drawing-with-distance`](https://github.com/vista-art/fragmentcolor/tree/main/docs/tutorials/drawing-with-distance), and this command runs the first one:
 
 ```bash
 cargo run -p fce --example tutorial_drawing_with_distance_coordinates
@@ -73,17 +73,19 @@ One line of `fs_main` already measures a distance. `max(abs(p.x), abs(p.y))` is 
 
 <Code lang="wgsl" code={region("02-circle", "paint").rust} />
 
-Points on the circle get `0.0`. Inside, the numbers turn negative and bottom out at `-0.3` in the center; outside, they keep growing toward the corners of the canvas. The size of `d` is the distance to the nearest point of the circle, and its sign tells you which side you're on. A function that gives a signed distance for every point of the plane is a **signed distance field**, or SDF.
+Points on the circle get `0.0`. Inside, the numbers turn negative and bottom out at `-0.3` in the center; outside, they keep growing toward the corners of the canvas. The size of `d` is how far `p` lies from the circle's outline, and its sign tells you which side you're on. A function that gives that signed number for every point of the plane is a **signed distance field**, or SDF.
 
 To see the field, `show` paints the sign and adds a stripe every `0.05` units of distance:
 
 <Code lang="wgsl" code={region("02-circle", "show").rust} />
 
-`select(a, b, condition)` returns `b` where the condition holds and `a` elsewhere, which paints blue where `d` is negative. `fract(d * 20.0)` climbs from `0.0` to `1.0` once every `0.05` units. `step(0.5, x)` is `0.0` while `x` stays below `0.5` and `1.0` after, and it turns each climb into a dark half and a light half.
+`select(a, b, condition)` returns `b` where the condition holds and `a` elsewhere, which paints blue where `d` is negative. Every `0.05` units, `fract(d * 20.0)` climbs from `0.0` to `1.0`. `step(0.5, x)` is `0.0` while `x` stays below `0.5` and `1.0` after, and it turns each climb into a dark half and a light half.
 
 <Demo file="drawing-with-distance/02-circle/example.rs" />
 
-The circle's edge is the line where blue meets orange, at `d = 0`. From that edge to the center there are six dark stripes, one for every `0.05` of the radius. Outside, the rings keep their spacing all the way to the edges of the canvas. From any spot, counting rings back to the edge reads off the distance.
+Blue meets orange exactly where `d` crosses zero. That line is the circle.
+
+Six dark stripes run from the edge to the center, one for every `0.05` of the radius. Outside, the rings keep their spacing all the way to the borders of the canvas, and counting them back from any spot to the outline reads off that spot's distance.
 
 A circle moves when the point does: `length(p - c) - r` is a circle of radius `r` centered on `c`. Every shape on this page measures from `p` minus its position. Size works in reverse. Dividing `p` by `2.0` before measuring draws the circle twice as large, and multiplying the result by `2.0` keeps it a true distance: `(length(p / 2.0) - r) * 2.0`.
 
@@ -110,7 +112,7 @@ A box makes the question harder, because the nearest point might lie on an edge 
 
 At any point one of the two terms is zero, and the sum is the other one.
 
-The star repeats the trick twice, around its center into a single tip and then across the middle of that tip. Inigo Quilez, a graphics programmer who has published distance functions for dozens of shapes, worked it out, and the shader library includes his version as [`sdf2d/star`](/shaders/sdf2d/#star). It takes `star(p, r, n, m)`. `r` is the distance from the center to each tip, and `n` counts the tips as a `u32`, which is why the call below writes `5u`. `m` runs from `2.0` to `n`: at `2.0` the star is a plain pentagon, and larger values cut deeper valleys between the tips.
+The star repeats the trick twice, around its center into a single arm, then across the middle of it. Inigo Quilez, a graphics programmer who has published distance functions for dozens of shapes, worked it out, and the shader library includes his version as [`sdf2d/star`](/shaders/sdf2d/#star). It takes `star(p, r, n, m)`. `r` is the distance from the center to each tip, and `n` counts the arms as a `u32`, which is why the call below writes `5u`. `m` runs from `2.0` to `n`: at `2.0` the star is a plain pentagon, and larger values carve the valleys deeper.
 
 Keeping the smaller of the two distances draws both shapes at once. The next section shows why `min` works.
 
@@ -128,7 +130,7 @@ Next to each shape the stripes copy its outline, pointed around the star and squ
 
 ## Combining shapes
 
-`min` works because of what the sign means. A point lies inside the union of two shapes when it lies inside either one, and the smaller of two distances is negative whenever either distance is. Outside both, the smaller distance belongs to the nearer shape, and that's the distance to the union. With `max`, the result goes negative only where both distances are: the intersection. `max(a, -b)`, with one sign flipped, keeps the parts of `a` that lie outside `b`, which subtracts `b` from `a`.
+`min` works because of what the sign means. A point lies inside the union of two shapes when it is inside either one, and the smaller of two numbers is negative whenever at least one of them is. Outside both shapes, the smaller value belongs to the nearer shape, which makes it the distance to the union. With `max`, the result goes negative only where both distances are: the intersection. `max(a, -b)`, with one sign flipped, keeps the parts of `a` that lie outside `b`, which subtracts `b` from `a`.
 
 The shader library names these three `op_union`, `op_intersect` and `op_subtract`. Each one is the single line above. They are in `sdf/`, next to the 3D shapes, because they combine distances of any dimension.
 
@@ -141,7 +143,7 @@ fn op_smooth_union(a: f32, b: f32, k: f32) -> f32 {
 }
 ```
 
-`h` compares the two distances, and `clamp` pins it between `0.0` and `1.0`. `mix(b, a, h)` moves from `b` to `a` as `h` goes from `0.0` to `1.0`. When one shape is closer by more than `k`, `h` is exactly `0.0` or `1.0`, and `mix` returns the plain minimum. When the two are within `k` of each other, `mix` blends them and `k * h * (1.0 - h)` takes away a little more, most of all where the distances are equal. Taking away from a distance moves the zero line outward, and the sharp corner rounds into a fillet about `k` units wide.
+`h` compares the two distances, and `clamp` keeps it between `0.0` and `1.0`. `mix(b, a, h)` moves from `b` to `a` as `h` grows. When one shape is closer by more than `k`, `h` hits one of its limits and `mix` returns the plain minimum. Inside that margin, `mix` blends them and `k * h * (1.0 - h)` takes away a little more, most of all where the distances are equal. A smaller distance moves the zero line outward, and the sharp corner rounds into a fillet about `k` units wide.
 
 The next picture holds one circle and one box in each quarter of the unit square, combined four different ways. `vec2<f32>(0.11)` repeats one value in both components, which makes the box square.
 
@@ -149,7 +151,12 @@ The next picture holds one circle and one box in each quarter of the unit square
 
 <Code lang="wgsl" code={region("04-combine", "paint").rust} />
 
-`joined`, in the upper left, is the union. `overlap`, upper right, keeps only the part where circle and box meet. In the lower left, `carved` takes the circle out of the box, and `blended` in the lower right is the smooth union, with `k` at `0.08`. The last line of `fs_main` gathers the four into one picture with the same `min`.
+- `joined`, upper left: the union.
+- `overlap`, upper right: only the part where circle and box meet.
+- `carved`, lower left: the box minus the circle.
+- `blended`, lower right: the smooth union, with `k` at `0.08`.
+
+One more `min`, on the last line of `fs_main`, gathers the four into one picture.
 
 This step imports the circle and the box from the library, along with the operations. `sdf2d/box` is the function you wrote, under the same name:
 
@@ -159,17 +166,17 @@ This step imports the circle and the box from the library, along with the operat
 
 The two unions differ where the outlines cross. In the upper left, the circle meets the box at two sharp notches; in the lower right, the notches fill with curves. Inside the bite of the subtraction, the rings circle the center of the missing disc.
 
-`min`, `max` and `op_subtract` keep the zero line and the sign exact. Away from the edge the number can come out smaller than the true distance, inside a union for instance. An outline reads only the zero line and stays exact. An effect that reads the number itself, like a glow that fades over `0.1` units, can come out slightly off.
+`min`, `max` and `op_subtract` keep the zero line and the sign exact. Away from the edge the number can fall short of the true distance, inside a union for instance. Outlines read only the zero line. A glow that fades over `0.1` units reads the number itself and comes out slightly off.
 
 ## Coloring the field
 
-The stripes in `show` are a debugging view. Inigo Quilez colors his fields with four more lines that show the edge, the falloff and the distance at once. The next scene holds the star, a box, and a small circle set close enough to both that the smooth unions merge all three into one outline. It needs four slugs:
+The stripes in `show` are a debugging view. Inigo Quilez colors his fields with four more lines that mark the edge, the falloff and the distance at once. This step draws the star, a box and a small circle set close enough to both that the smooth unions merge all three into one outline. Its `setup` pulls the shapes and the smooth union from the library:
 
 <Snippet file="drawing-with-distance/05-color/example.rs" region="setup" />
 
 <Code lang="wgsl" code={region("05-color", "scene").rust} />
 
-The lines that reassign `color` each scale or mix it:
+Every line that writes `color` adds one layer:
 
 <Code lang="wgsl" code={region("05-color", "color").rust} />
 
@@ -196,7 +203,7 @@ In the shader, time moves the star and the box:
 
 <Code lang="wgsl" code={region("06-time", "scene").rust} />
 
-`rotate2(p, a)` from [`map/rotate2`](/shaders/map/#rotate2) turns a point counterclockwise around the origin by `a` radians. Turning every point counterclockwise by `time * 0.4` spins the star clockwise, about one turn every 16 seconds. `0.05 * sin(time)` lifts and lowers the box by `0.05` units, once every 6.3 seconds. With `rotate2` in use, the slug list grows by one:
+`rotate2(p, a)` from [`map/rotate2`](/shaders/map/#rotate2) turns a point counterclockwise around the origin by `a` radians. Applied to every point with `time * 0.4` as the angle, it spins the star clockwise, once around in about 16 seconds. `0.05 * sin(time)` lifts and lowers the box by `0.05` units on a 6.3 second cycle. With `rotate2` in use, the slug list grows by one:
 
 <Snippet file="drawing-with-distance/06-time/example.rs" region="setup" />
 
@@ -204,25 +211,25 @@ The contour lines move too. Subtracting time inside the cosine slides each one o
 
 <Code lang="wgsl" code={region("06-time", "ripple").rust} />
 
-A contour sits wherever the cosine's argument holds a fixed value. As `time` grows, `d` has to grow with it to keep that value. Every line drifts outward: inside a shape toward its outline, outside toward the edges of the canvas.
+A contour sits wherever the cosine's argument holds a fixed value. As `time` grows, `d` has to grow with it to keep that value. Every line drifts: inside a shape toward its outline, outside toward the edges of the canvas.
 
 <Demo file="drawing-with-distance/06-time/example.rs" />
 
 ## The pointer, and knobs
 
-The last inputs are the pointer and four settings to tune by hand. That makes seven uniforms, enough to gather into a struct. `shader.set` names a field with a dot: `"u.time"`, `"u.pointer"`.
+Two kinds of input remain: the pointer, and four settings to tune by hand. With `resolution` and `time`, that makes seven uniforms, enough to gather into a struct. `shader.set` names a field with a dot: `"u.time"`, `"u.pointer"`.
 
 <Code lang="wgsl" code={region("07-pointer", "params").rust} />
 
-The playground gives a control to every value its `setup` sets and its `frame` leaves alone. A `// min..max` comment after the field, like the ones on `blend` and `bands`, sets the slider's range, and a `vec3<f32>` whose name contains `color` or `tint` gets a color picker instead. On the GPU the comments do nothing, and in your own program those fields are plain values, set once in `setup`:
+The playground gives a control to every value its `setup` sets and its `frame` leaves alone. A `// min..max` comment after the field, like the ones on `blend` and `bands`, becomes the slider's range, and a `vec3<f32>` whose name contains `color` or `tint` gets a color picker instead. On the GPU the comments do nothing, and in your own program those fields are plain values, set once in `setup`:
 
 <Snippet file="drawing-with-distance/07-pointer/example.rs" region="setup" />
 
-The pointer arrives in `frame` the way `time` does, as an argument, and `frame` sets it along with the other two inputs that change while the program runs:
+Like `time`, the pointer arrives in `frame` as an argument, and `frame` sets it along with the other two inputs that change while the program runs:
 
 <Snippet file="drawing-with-distance/07-pointer/example.rs" region="frame" />
 
-Where the position comes from depends on the platform. In the Rust program, `winit` reports each cursor move in the window's pixels, and the loop hands the latest one to `frame`. On this page, each demo canvas listens for `pointermove`, subtracts the canvas's position on the page and scales CSS pixels to the canvas's own pixels; the playground's `index.js` tab shows that code. In both, `frame` gets the middle of the canvas until the pointer first moves over it. Python, Swift and Kotlin read the pointer from their own windowing toolkits.
+Where the position comes from depends on the platform. In the Rust program, `winit` reports each cursor move in the window's physical pixels, and the loop hands the latest one to `frame`. On this page, each demo canvas listens for `pointermove`, subtracts the canvas's position on the page and scales from CSS units to the canvas's own resolution; the playground's `index.js` tab shows that code. Until the pointer first moves over the canvas, both supply its middle instead. Python, Swift and Kotlin read the pointer from their own windowing toolkits.
 
 Pointer positions count from the top left corner with y growing downward, the same space `@builtin(position)` uses. `center` converts them without a single change, and one subtraction parks the circle under the pointer:
 
@@ -238,6 +245,6 @@ The playground's Shapes demo is this program with a few changes: a hexagon from 
 
 <Playground demos={["shapes"]} />
 
-The star and box distances, the smooth union and the contour coloring all come from Inigo Quilez. His page on [2D distance functions](https://iquilezles.org/articles/distfunctions2d/) lists dozens more shapes, from arcs to Bézier curves, each with a live example, and most of them carry over to WGSL line for line. Many already live in the shader library under [`sdf2d/`](/shaders/sdf2d/).
+Inigo Quilez is the source of the star and box distances, the smooth union and the contour coloring. His page on [2D distance functions](https://iquilezles.org/articles/distfunctions2d/) lists dozens more shapes, from arcs to Bézier curves, each with a live example, and most of them carry over to WGSL line for line. Many are already in the shader library under [`sdf2d/`](/shaders/sdf2d/).
 
-Every step keeps `center` and changes what follows it. A pixel goes in as `p` and comes out as a color, and noise, fractals and lighting fit in the same place.
+`center` stays fixed through all seven steps, and only what follows it changes. A pixel goes in as `p` and comes out as a color, and noise, fractals and lighting fit in the same place.
