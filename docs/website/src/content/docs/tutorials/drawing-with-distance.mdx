@@ -105,7 +105,7 @@ A box makes the question harder, because the nearest point might lie on an edge 
 
 <Code lang="wgsl" code={region("03-box-and-star", "box").rust} />
 
-This formula comes from [Inigo Quilez](https://iquilezles.org/), who pioneered drawing with distance functions in shaders. His page of [2D distance functions](https://iquilezles.org/articles/distfunctions2d/) derives exact formulas for dozens of shapes.
+This formula comes from [Inigo Quilez](https://iquilezles.org/), who pioneered drawing with distance functions in shaders and published the method in his articles. With Pol Jeremias he also created [Shadertoy](https://www.shadertoy.com/), where a community grew up around it. His page of [2D distance functions](https://iquilezles.org/articles/distfunctions2d/) derives exact formulas for dozens of shapes, each with a live example.
 
 `q` says how far the point sits past the right edge (`q.x`) and past the top edge (`q.y`). A negative value means it hasn't reached that edge yet.
 
@@ -172,7 +172,7 @@ The two unions differ where the outlines cross. In the upper left, the circle me
 
 ## Coloring the field
 
-The stripes in `show` are a debugging view. Quilez colors the fields in [his examples](https://iquilezles.org/articles/distfunctions2d/) with four more lines that mark the edge, the falloff and the distance at once. This step draws the star, a box and a small circle set close enough to both that the smooth unions merge all three into one outline. Its `setup` pulls the shapes and the smooth union from the library:
+The stripes in `show` are a debugging view. This step colors the field the way Quilez colors [his examples](https://iquilezles.org/articles/distfunctions2d/), down to the orange outside and the blue inside. Four more lines mark the edge, the falloff and the distance at once. This step draws the star, a box and a small circle set close enough to both that the smooth unions merge all three into one outline. Its `setup` pulls the shapes and the smooth union from the library:
 
 <Snippet file="drawing-with-distance/05-color/example.rs" region="setup" />
 
@@ -247,6 +247,6 @@ The playground's Shapes demo is this program with a few changes: a hexagon from 
 
 <Playground demos={["shapes"]} />
 
-Inigo Quilez is the source of the star and box distances, the smooth union and the contour coloring. His page on [2D distance functions](https://iquilezles.org/articles/distfunctions2d/) lists dozens more shapes, from arcs to Bézier curves, each with a live example, and most of them carry over to WGSL line for line. Many are already in the shader library under [`sdf2d/`](/shaders/sdf2d/).
+Inigo Quilez is the source of the star and box distances, the smooth union, and the contour coloring with its palette. His page on [2D distance functions](https://iquilezles.org/articles/distfunctions2d/) lists dozens more shapes, from arcs to Bézier curves, each with a live example, and most of them carry over to WGSL line for line. Many are already in the shader library under [`sdf2d/`](/shaders/sdf2d/).
 
 `center` stays fixed through all seven steps, and only what follows it changes. A pixel goes in as `p` and comes out as a color, and noise, fractals and lighting fit in the same place.
