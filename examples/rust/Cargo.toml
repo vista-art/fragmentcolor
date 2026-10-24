@@ -67,5 +67,17 @@ name = "tutorial_01_hello_triangle_postfx_pass"
 path = "../../docs/tutorials/01-hello-triangle/06-postfx-pass/example.rs"
 
 [[example]]
+name = "tutorial_infinite_zoom_one_image"
+path = "../../docs/tutorials/infinite-zoom/01-one-image/example.rs"
+
+[[example]]
+name = "tutorial_infinite_zoom_on_the_gpu"
+path = "../../docs/tutorials/infinite-zoom/02-on-the-gpu/example.rs"
+
+[[example]]
+name = "tutorial_infinite_zoom_perturbation"
+path = "../../docs/tutorials/infinite-zoom/03-perturbation/example.rs"
+
+[[example]]
 name = "tutorial_infinite_zoom_deep_zoom"
 path = "../../docs/tutorials/infinite-zoom/04-deep-zoom/example.rs"

@@ -1,18 +1,17 @@
 //! Infinite zoom, step 4: past every exponent.
 //!
-//! One reference orbit, computed once with BigInt at the precision the deepest
-//! view needs, guides a compute pass that iterates every pixel as a small `f32`
-//! difference from it. The difference is kept as `w * 2^s`, so it never leaves
-//! `f32`'s range, and Martin's series skips the iterations every pixel shares.
-//! A render pass colors the counts. The zoom dives toward a spiral until the view
-//! is `1e-1000` tall and climbs back. The pointer's height picks the depth while
-//! it moves.
+//! One reference orbit, computed once with BigInt, guides a compute pass that
+//! iterates every pixel as a small f32 difference from it. The difference is
+//! kept as w * 2^s, so it never leaves f32's range, and Martin's series skips
+//! the iterations every pixel shares. A render pass colors the counts. The zoom
+//! dives toward a spiral until the view is 1e-1000 tall and climbs back, and the
+//! pointer's height picks the depth while it moves.
 
 use std::error::Error;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
-use fragmentcolor::{App, Pass, Renderer, SetupResult, Shader, Target, call};
+use fragmentcolor::{App, Pass, RenderTarget, Renderer, SetupResult, Shader, Target, call};
 use num_bigint::BigInt;
 use num_traits::ToPrimitive;
 use parking_lot::Mutex;
@@ -22,8 +21,8 @@ use winit::window::Window;
 
 type Failure = Box<dyn Error + Send + Sync>;
 
-// #region: shader
 const ITERATE: &str = r#"
+// #region: shader
 // Iterates every pixel as a small difference from the reference orbit that
 // main.js computes at full precision. main.js puts ORBIT and PIXELS ahead of
 // this file, and present.wgsl reads the counts it writes.
@@ -151,17 +150,17 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
   }
   counts[index] = count;
 }
-"#;
 // #endregion: shader
+"#;
 
-// #region: present-shader
 const PRESENT: &str = r#"
-// Colors the counts that iterate.wgsl writes, and prints how deep the view is.
+// #region: present-shader
+// Colors the counts that iterate.wgsl writes. label.wgsl prints the depth.
 
 struct Look {
   resolution: vec2<f32>,
   image: vec2<u32>,
-  // The view is 10^-depth tall.
+  // The view is about 10^-depth tall.
   depth: f32,
   density: f32, // 0.002..0.1
   phase: f32, // 0..1
@@ -185,25 +184,45 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
       vec3<f32>(0.0, 0.1, 0.2),
     );
   }
-  let unit = max(floor(look.resolution.y / 160.0), 2.0);
-  color = mix(color, vec3<f32>(0.0), label(position.xy - unit, unit));
-  color = mix(color, vec3<f32>(1.0), label(position.xy, unit));
-  return vec4<f32>(color, 1.0);
+  return vec4<f32>(print_depth(color, position.xy, look.resolution, look.depth), 1.0);
 }
 
-// 1 where "1e-<depth>" covers this pixel, in the bottom left corner. Each glyph
-// is 3 by 5 cells, one bit per cell, top row first: 0 to 9, then "e" and "-".
-fn label(position: vec2<f32>, unit: f32) -> f32 {
+// Fullscreen triangle: three vertices that cover the canvas.
+@vertex
+fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  var corners = array<vec2<f32>, 3>(
+    vec2<f32>(-1.0, -1.0),
+    vec2<f32>(3.0, -1.0),
+    vec2<f32>(-1.0, 3.0),
+  );
+  return vec4<f32>(corners[i], 0.0, 1.0);
+}
+// #endregion: present-shader
+"#;
+
+/// Prints the view's depth in a corner of the window.
+const LABEL: &str = r#"
+// Prints "1e-<depth>" in the bottom left corner: white with a dark shadow.
+fn print_depth(color: vec3<f32>, position: vec2<f32>, resolution: vec2<f32>, depth: f32) -> vec3<f32> {
+  let unit = max(floor(resolution.y / 160.0), 2.0);
+  let shadow = mix(color, vec3<f32>(0.0), label(position - unit, resolution, depth));
+  return mix(shadow, vec3<f32>(1.0), label(position, resolution, depth));
+}
+
+// 1 where the label covers this pixel. Each glyph is 3 by 5 cells, one bit per
+// cell, top row first: 0 to 9, then "e" and "-".
+fn label(position: vec2<f32>, resolution: vec2<f32>, depth: f32) -> f32 {
   var glyphs = array<u32, 12>(
     0x7B6Fu, 0x2C97u, 0x73E7u, 0x73CFu, 0x5BC9u, 0x79CFu,
     0x79EFu, 0x7249u, 0x7BEFu, 0x7BCFu, 0x2BE3u, 0x01C0u,
   );
-  let origin = vec2<f32>(unit * 4.0, look.resolution.y - unit * 9.0);
+  let unit = max(floor(resolution.y / 160.0), 2.0);
+  let origin = vec2<f32>(unit * 4.0, resolution.y - unit * 9.0);
   let cell = vec2<i32>(floor((position - origin) / unit));
   if (cell.x < 0 || cell.y < 0 || cell.y > 4 || cell.x % 4 == 3) {
     return 0.0;
   }
-  let exponent = u32(max(look.depth, 0.0));
+  let exponent = u32(max(depth, 0.0));
   var digits = 1u;
   var power = 1u;
   while (power * 10u <= exponent) {
@@ -221,9 +240,8 @@ fn label(position: vec2<f32>, unit: f32) -> f32 {
   } else if (slot == 2u && sign == 1u) {
     glyph = 11u;
   } else if (slot < 2u + sign + digits) {
-    let place = 2u + sign + digits - 1u - slot;
     var divisor = 1u;
-    for (var i = 0u; i < place; i++) {
+    for (var i = slot; i < 1u + sign + digits; i++) {
       divisor *= 10u;
     }
     glyph = exponent / divisor % 10u;
@@ -232,20 +250,7 @@ fn label(position: vec2<f32>, unit: f32) -> f32 {
   }
   let bit = 14u - u32(cell.y * 3 + cell.x % 4);
   return f32((glyphs[glyph] >> bit) & 1u);
-}
-
-// Fullscreen triangle: three vertices that cover the canvas.
-@vertex
-fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-  var corners = array<vec2<f32>, 3>(
-    vec2<f32>(-1.0, -1.0),
-    vec2<f32>(3.0, -1.0),
-    vec2<f32>(-1.0, 3.0),
-  );
-  return vec4<f32>(corners[i], 0.0, 1.0);
-}
-"#;
-// #endregion: present-shader
+}"#;
 
 /// A Misiurewicz point: the orbit of 0 lands on a cycle of `period` after `preperiod` steps.
 struct Point {
@@ -264,7 +269,7 @@ const TARGET: Point = Point {
     period: 2,
 };
 /// The zoom dives until the view is 10^-DEPTH tall, then climbs back.
-const DEPTH: u32 = 1000;
+const DEPTH: f64 = 1000.0;
 /// Zoom speed, in doublings per second.
 const SPEED: f64 = 1.5;
 /// Height of the first view.
@@ -277,7 +282,6 @@ const PIXELS: u32 = 1 << 21;
 const BUDGET: usize = 5000;
 // #endregion: constants
 
-// #region: setup
 struct Zoom {
     iterate: Shader,
     present: Shader,
@@ -287,24 +291,16 @@ struct Zoom {
     motion: Mutex<Motion>,
 }
 
-/// Where the zoom is, in doublings from the first view, and how the pointer last moved.
-struct Motion {
-    zoom: f64,
-    direction: f64,
-    last: Option<f64>,
-    pointer: Option<[f32; 2]>,
-    moved: f64,
-}
-
 impl Zoom {
-    fn new() -> Result<Self, Failure> {
+    // #region: setup
+    fn new() -> Result<Zoom, Failure> {
         let header = format!("const ORBIT: u32 = {ORBIT}u;\nconst PIXELS: u32 = {PIXELS}u;");
 
         let iterate = Shader::new([header.as_str(), ITERATE])?;
         iterate.set("view.budget", 1000_u32)?;
 
         // The library brings the palette that present.wgsl calls.
-        let present = Shader::new(["gradient/palette_iq", header.as_str(), PRESENT])?;
+        let present = Shader::new(["gradient/palette_iq", header.as_str(), LABEL, PRESENT])?;
         present.set("look.density", 0.02_f32)?;
         present.set("look.phase", 0.6_f32)?;
         present.set("look.inside_color", [0.02_f32, 0.02, 0.05])?;
@@ -321,26 +317,21 @@ impl Zoom {
             present,
             compute,
             reference,
-            motion: Mutex::new(Motion {
-                zoom: 0.0,
-                direction: 1.0,
-                last: None,
-                pointer: None,
-                moved: f64::NEG_INFINITY,
-            }),
+            motion: Mutex::new(Motion::new()),
         })
     }
     // #endregion: setup
 
     // #region: frame
-    fn frame(&self, time: f64, size: [u32; 2]) -> Result<(), Failure> {
-        let zoom = self.steer(time, size);
+    fn frame(&self, renderer: &Renderer, target: &RenderTarget) -> Result<(), Failure> {
+        let zoom = self.motion.lock().steer(seconds());
+        let size = target.size();
 
         // The compute pass fills at most PIXELS: the window, or a whole fraction of it.
         let shrink = (1..)
-            .find(|k| (size[0] / k) * (size[1] / k) <= PIXELS)
+            .find(|k| (size.width / k) * (size.height / k) <= PIXELS)
             .unwrap_or(1);
-        let image = [(size[0] / shrink).max(1), (size[1] / shrink).max(1)];
+        let image = [(size.width / shrink).max(1), (size.height / shrink).max(1)];
 
         // A pixel is 2^pixel wide. The series covers every pixel within radius of the target.
         let pixel = (START / f64::from(image[1])).log2() - zoom;
@@ -367,47 +358,14 @@ impl Zoom {
             .set_compute_dispatch(image[0].div_ceil(8), image[1].div_ceil(8), 1);
 
         self.present
-            .set("look.resolution", [size[0] as f32, size[1] as f32])?;
+            .set("look.resolution", [size.width as f32, size.height as f32])?;
         self.present.set("look.image", image)?;
         let depth = zoom * 2_f64.log10() - START.log10();
         self.present.set("look.depth", depth as f32)?;
+        renderer.render(&self.passes, target)?;
         Ok(())
     }
-
-    /// The zoom runs from the whole set down to DEPTH and back on its own. Moving the
-    /// pointer takes over for two seconds: its height picks the depth, deepest at the top.
-    fn steer(&self, time: f64, size: [u32; 2]) -> f64 {
-        let deepest = f64::from(DEPTH) * 10_f64.log2() + START.log2();
-        let mut motion = self.motion.lock();
-        let delta = motion.last.map_or(0.0, |last| (time - last).min(0.1));
-        motion.last = Some(time);
-        match motion.pointer {
-            Some([_, y]) if time - motion.moved < 2.0 => {
-                let goal = (1.0 - f64::from(y) / f64::from(size[1].max(1))) * deepest;
-                motion.zoom += (goal - motion.zoom) * (delta * 4.0).min(1.0);
-            }
-            _ => {
-                motion.zoom += motion.direction * SPEED * delta;
-                if motion.zoom >= deepest {
-                    motion.direction = -1.0;
-                }
-                if motion.zoom <= 0.0 {
-                    motion.direction = 1.0;
-                }
-            }
-        }
-        motion.zoom = motion.zoom.clamp(0.0, deepest);
-        motion.zoom
-    }
     // #endregion: frame
-
-    fn point(&self, time: f64, pointer: [f32; 2]) {
-        let mut motion = self.motion.lock();
-        if motion.pointer.is_some_and(|last| last != pointer) {
-            motion.moved = time;
-        }
-        motion.pointer = Some(pointer);
-    }
 }
 
 // #region: reference
@@ -425,9 +383,9 @@ struct Reference {
 const TOLERANCE: f64 = 1e-7;
 
 impl Reference {
-    fn new(target: &Point, depth: u32) -> Result<Self, Failure> {
-        let deepest = -f64::from(depth) * 10_f64.log2() - 1.0;
-        let bits = (f64::from(depth) * 10_f64.log2()).ceil() as usize + 80;
+    fn new(target: &Point, depth: f64) -> Result<Reference, Failure> {
+        let deepest = -depth * 10_f64.log2() - 1.0;
+        let bits = (depth * 10_f64.log2()).ceil() as usize + 80;
         let (cr, ci) = refine(target, bits)?;
         let mut orbit = vec![0.0_f32; 2 * ORBIT];
         let mut series = Vec::new();
@@ -435,7 +393,7 @@ impl Reference {
         let (mut zr, mut zi) = (BigInt::ZERO, BigInt::ZERO);
         let [mut a, mut b, mut c, mut d] = [Wide::ZERO; 4];
         let mut end = ORBIT - 1;
-        for n in 0.. {
+        for n in 0..ORBIT {
             let (re, im) = (to_float(&zr, bits), to_float(&zi, bits));
             orbit[2 * n] = re as f32;
             orbit[2 * n + 1] = im as f32;
@@ -449,12 +407,8 @@ impl Reference {
                 end = end.min(n + BUDGET);
             }
             if n == end || re * re + im * im > 4.0 {
-                return Ok(Reference {
-                    orbit,
-                    series,
-                    reach,
-                    length: n,
-                });
+                end = n;
+                break;
             }
             // Each coefficient follows from the old ones, so they update in this order.
             let twice = (2.0 * re, 2.0 * im);
@@ -468,7 +422,12 @@ impl Reference {
             zi = ((2 * &zr * &zi) >> bits) + &ci;
             zr = next;
         }
-        Err(Failure::from("the orbit never ends"))
+        Ok(Reference {
+            orbit,
+            series,
+            reach,
+            length: end,
+        })
     }
 
     /// The last iteration the series covers for a view of this radius (log2).
@@ -619,15 +578,72 @@ impl Wide {
 }
 // #endregion: reference
 
-fn seconds() -> f64 {
-    static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
-    START.get_or_init(Instant::now).elapsed().as_secs_f64()
+/// Where the zoom is, in doublings from the first view, and where the pointer
+/// last moved, as fractions of the window.
+struct Motion {
+    zoom: f64,
+    direction: f64,
+    last: Option<f64>,
+    pointer: [f64; 2],
+    moved: f64,
 }
 
-fn on_cursor_moved(app: &App, _device: DeviceId, position: &PhysicalPosition<f64>) {
-    if let Some(zoom) = app.get_state::<Zoom>("zoom") {
-        zoom.point(seconds(), [position.x as f32, position.y as f32]);
+impl Motion {
+    fn new() -> Motion {
+        Motion {
+            zoom: 0.0,
+            direction: 1.0,
+            last: None,
+            pointer: [0.5, 0.5],
+            moved: f64::NEG_INFINITY,
+        }
     }
+
+    /// The zoom runs from the whole set down to 10^-DEPTH and back on its own.
+    /// Moving the pointer takes over for two seconds: its height picks the depth,
+    /// deepest at the top. Returns the zoom in doublings.
+    fn steer(&mut self, now: f64) -> f64 {
+        let delta = self.last.map_or(0.0, |last| (now - last).min(0.1));
+        self.last = Some(now);
+        let deepest = DEPTH * 10_f64.log2() + START.log2();
+        if now - self.moved < 2.0 {
+            let goal = (1.0 - self.pointer[1]) * deepest;
+            self.zoom += (goal - self.zoom) * (delta * 4.0).min(1.0);
+        } else {
+            self.zoom += self.direction * SPEED * delta;
+            if self.zoom >= deepest {
+                self.direction = -1.0;
+            }
+            if self.zoom <= 0.0 {
+                self.direction = 1.0;
+            }
+        }
+        self.zoom = self.zoom.clamp(0.0, deepest);
+        self.zoom
+    }
+
+    fn point(&mut self, now: f64, pointer: [f64; 2]) {
+        self.pointer = pointer;
+        self.moved = now;
+    }
+}
+
+fn seconds() -> f64 {
+    static START: OnceLock<Instant> = OnceLock::new();
+    START.get_or_init(Instant::now).elapsed().as_secs_f64()
+}
+fn on_cursor_moved(app: &App, _device: DeviceId, position: &PhysicalPosition<f64>) {
+    let (Some(zoom), Some(size)) = (
+        app.get_state::<Zoom>("zoom"),
+        app.window_size(app.primary_window_id()),
+    ) else {
+        return;
+    };
+    let pointer = [
+        position.x / f64::from(size.width.max(1)),
+        position.y / f64::from(size.height.max(1)),
+    ];
+    zoom.motion.lock().point(seconds(), pointer);
 }
 
 fn on_resize(app: &App, size: &PhysicalSize<u32>) {
@@ -640,10 +656,7 @@ fn on_redraw(app: &App) {
     };
     let renderer = app.get_renderer();
     let rendered = app.with_target(app.primary_window_id(), |target| {
-        let size = target.size();
-        zoom.frame(seconds(), [size.width, size.height])?;
-        renderer.render(&zoom.passes, target)?;
-        Ok::<(), Failure>(())
+        zoom.frame(renderer, target)
     });
     if let Some(Err(error)) = rendered {
         eprintln!("infinite zoom: {error}");
