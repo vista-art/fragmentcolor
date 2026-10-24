@@ -1,4 +1,4 @@
-// Drawing with distance, step 1: a coordinate for every pixel.
+// Drawing with distance step 1: a coordinate for every pixel.
 
 import { Shader } from "fragmentcolor";
 

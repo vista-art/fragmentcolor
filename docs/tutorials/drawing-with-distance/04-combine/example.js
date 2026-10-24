@@ -1,4 +1,4 @@
-// Drawing with distance, step 4: union, intersection, subtraction and smooth union.
+// Drawing with distance step 4: union, intersection, subtraction and smooth union.
 
 import { Shader } from "fragmentcolor";
 

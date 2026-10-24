@@ -1,4 +1,4 @@
-// Drawing with distance, step 5: coloring a distance field.
+// Drawing with distance step 5: coloring a distance field.
 
 use std::sync::{Arc, Once};
 

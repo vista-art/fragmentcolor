@@ -1,4 +1,4 @@
-// Drawing with distance, step 2: a circle as a distance.
+// Drawing with distance step 2: a circle as a distance.
 
 use std::sync::{Arc, Once};
 
