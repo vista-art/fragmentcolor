@@ -1,7 +1,7 @@
 ---
 title: Drawing with distance
 description: Give every pixel a coordinate, describe shapes by how far each pixel is from them, merge and color them, then set them moving with time and the pointer.
-draft: true
+draft: false
 tableOfContents: false
 sidebar:
   order: 20
@@ -169,7 +169,7 @@ The stripes in `show` are a debugging view. Inigo Quilez colors his fields with 
 
 <Code lang="wgsl" code={region("05-color", "scene").rust} />
 
-Each line after the first scales or mixes the color:
+The lines that reassign `color` each scale or mix it:
 
 <Code lang="wgsl" code={region("05-color", "color").rust} />
 
