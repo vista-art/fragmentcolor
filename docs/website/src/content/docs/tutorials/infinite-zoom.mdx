@@ -1,0 +1,172 @@
+---
+title: Infinite zoom
+description: From one CPU image of the Mandelbrot set to a real-time zoom past 1e-1000, with K. I. Martin's perturbation method and a compute shader.
+draft: true
+tableOfContents: false
+sidebar:
+  order: 90
+---
+
+import Snippet from "../../../components/Snippet.astro";
+import Demo from "../../../components/Demo.astro";
+import Math from "../../../components/Math.astro";
+
+export const LANGS = ["rust", "js"];
+
+Take a complex number `c`. Start at zero, square, add `c`, and repeat:
+
+<Math block tex="z_0 = 0, \qquad z_{n+1} = z_n^2 + c" />
+
+For some values of `c` the numbers stay small forever. For others they grow without limit, and once a `z` lands farther than 2 from the origin, it never comes back. The **Mandelbrot set** is every `c` whose sequence stays put. Color each point of the plane by how many steps its sequence takes to leave, and that one line of algebra draws a coastline of bulbs, spirals and filaments. Zoom in anywhere on the edge and more of them appear, with smaller copies of the whole set tucked among them, all the way down.
+
+## A shape nobody could see
+
+Around 1918, Pierre Fatou and Gaston Julia studied what happens when you apply a function like this one over and over. They had proofs, and they had pencils. What they lacked was a way to look: a single picture of the set takes millions of these steps, and a person with paper might manage a few dozen points in an afternoon.
+
+In 1978, Robert Brooks and Peter Matelski printed a rough picture of the set, one character at a time. On March 1, 1980, Benoit Mandelbrot saw it on a screen at IBM's Thomas J. Watson Research Center, and the images that followed made it famous. Adrien Douady and John Hubbard proved that the set is connected and gave it Mandelbrot's name.
+
+The set itself is older than all of them. Its spirals follow from `z² + c` the way the primes follow from multiplication, and they were there before anyone wrote the rule down. Computers gave us a way to look.
+
+This tutorial builds a viewer for it in four steps, each one deeper than the last. The first draws one picture on the CPU. The second moves the same loop to the GPU and zooms until the numbers run out of digits. The third and fourth use K. I. Martin's perturbation method to keep going, past `1e-1000`, in real time.
+
+## Step 1: one image on the CPU
+
+Every pixel stands for one value of `c`. The program walks the sequence for that `c` and counts the steps until `z` leaves the disk of radius 2. A point that never leaves within `LIMIT` steps counts as inside the set.
+
+<Snippet file="infinite-zoom/01-one-image/example.rs" region="escape" langs={LANGS} />
+
+That count is the whole picture. The rest of the program maps each pixel to a `c` and turns its count into a color:
+
+<Snippet file="infinite-zoom/01-one-image/example.rs" region="image" langs={LANGS} />
+
+The color comes from a cosine palette: each extra step moves the hue a little, so the bands of equal count become stripes around the set.
+
+<Snippet file="infinite-zoom/01-one-image/example.rs" region="color" langs={LANGS} />
+
+The Rust program writes `mandelbrot.png`, and the JavaScript one draws into a `<canvas>`:
+
+![The Mandelbrot set: a black cardioid with a round bulb to its left, both fringed with smaller bulbs and thin filaments, on bands of blue that grow lighter toward the edge.](../../../assets/tutorials/infinite-zoom/one-image.png)
+
+Run it with `cargo run -p fce --example tutorial_infinite_zoom_one_image`. The Rust version takes about a quarter of a second for 960,000 pixels. A zoom needs sixty of those images every second, and deeper views need far more steps per pixel.
+
+## Step 2: the same loop on the GPU
+
+A GPU runs the same small program for every pixel at once, which is exactly the shape of this problem. The loop moves into a fragment shader almost line for line. Complex numbers become `vec2<f32>`, with the real part in `x` and the imaginary part in `y`:
+
+<Snippet file="infinite-zoom/02-on-the-gpu/example.rs" region="shader" langs={LANGS} />
+
+Two details changed. The escape radius grew from 2 to 256, which lets the shader measure how far past it the last step landed. That distance adds a fraction to the count, and the stripes from step 1 blend into smooth gradients. The shader also calls `print_depth`, a small helper that writes the view's size in the corner, so you always know how deep you are.
+
+The host creates the shader with the `gradient/palette_iq` slug from the [shader library](/shaders/), plus that helper:
+
+<Snippet file="infinite-zoom/02-on-the-gpu/example.rs" region="setup" langs={LANGS} />
+
+Each frame, `steer` moves the zoom one step toward the target and the shader gets the new height of the view:
+
+<Snippet file="infinite-zoom/02-on-the-gpu/example.rs" region="frame" langs={LANGS} />
+
+The zoom dives toward a spiral in Seahorse Valley, the crease between the big cardioid and the round bulb on its left. Move the pointer over the canvas to take over: its height picks the depth, and the top is deepest.
+
+<Demo file="infinite-zoom/02-on-the-gpu/example.rs" />
+
+Watch the corner as the zoom passes `1e-5`. The spiral turns grainy, and by `1e-6` it has fallen apart into rectangles.
+
+### The first wall
+
+An `f32` keeps 24 significant bits, about seven decimal digits. Near `c = -0.74`, two neighboring `f32` values sit about `6e-8` apart. In a view `1e-6` tall, a pixel is far smaller than that, so dozens of pixels round to the same `c` and get the same color. Those are the rectangles.
+
+Years ago I wrote a Mandelbrot explorer on CodePen that ran on the CPU, with JavaScript's 64-bit numbers. It drew until about `1e-13`, then melted into the same blocks. Its WebGL rewrite on Shadertoy ran far faster and hit the wall far sooner, around `1e-5`, because shaders compute in 32 bits. An `f64` only moves the wall. Any fixed number of bits runs out at some depth, and the set has no bottom.
+
+## Step 3: one careful orbit, many cheap ones
+
+In 2013, K. I. Martin released SuperFractalThing, a Java program for deep zooms, and explained its speed in a two-page note, [SuperFractalThing Maths](http://www.superfractalthing.co.nf/sft_maths.pdf). The original site is gone; the [Internet Archive keeps a copy of the paper](https://web.archive.org/web/20130701075021/http://www.superfractalthing.co.nf/sft_maths.pdf). Its idea is perturbation: compute one orbit with all the digits it needs, then describe every other pixel by how far it is from that one.
+
+Call the precise one the **reference**: a point `c` with orbit <Math tex="Z_n" />. A pixel sits at <Math tex="c + \delta" />, and its orbit at <Math tex="Z_n + z_n" />. Write both rules and subtract:
+
+<Math block tex="Z_{n+1} + z_{n+1} = (Z_n + z_n)^2 + c + \delta" />
+
+<Math block tex="Z_{n+1} = Z_n^2 + c" />
+
+<Math block tex="z_{n+1} = 2 Z_n z_n + z_n^2 + \delta" />
+
+Everything in the last line is small. The pixel never needs its own long, precise coordinates: it needs `δ`, a short `f32`, and the reference orbit. The precision that matters lives in one orbit, computed once.
+
+The reference comes from the CPU, with integers of any size. JavaScript has `BigInt` built in, and the Rust program uses the `num-bigint` crate. A `BigInt` `n` stands for the number `n / 2^bits`, which turns each multiplication into a multiply and a shift. The result is rounded to `f32` and sent to the GPU in a storage buffer:
+
+<Snippet file="infinite-zoom/03-perturbation/example.rs" region="reference" langs={LANGS} />
+
+The target itself is special. It is a **Misiurewicz point**: after 24 steps, the orbit of 0 lands on a cycle of 2 and repeats forever. Around such a point the set looks the same at every scale, a spiral inside a spiral, and the zoom never runs into empty space. Sixteen digits locate it. Newton's method (`refine` above) sharpens those to as many digits as the deepest view needs, each round doubling the correct ones.
+
+The host builds the orbit once, in `setup`:
+
+<Snippet file="infinite-zoom/03-perturbation/example.rs" region="setup" langs={LANGS} />
+
+The shader iterates `z` instead of the full value, and adds the reference only to test for escape:
+
+<Snippet file="infinite-zoom/03-perturbation/example.rs" region="shader" langs={LANGS} />
+
+### Glitches and rebasing
+
+Martin's method had one weak spot. When a pixel's orbit passes close to 0 and the reference doesn't, `z` and <Math tex="Z_n" /> nearly cancel, and the few digits that survive the subtraction carry the rest of the pixel's future. Whole regions come out wrong, as flat blobs called **glitches**. Pauldelbrot, a member of the fractalforums community, found a test for them: a pixel is in trouble once
+
+<Math block tex="|Z_n + z_n| < 10^{-3}\, |Z_n|" />
+
+and programs then computed a second reference for the glitched pixels. In 2021 Zhuoran proposed a simpler fix, **rebasing**: as soon as the pixel is closer to 0 than to the reference, set `z` to the full value and restart from the beginning of the same orbit, where <Math tex="Z_0 = 0" />. That is the last `if` in the shader. The same move handles a pixel that outlives the reference, when `m` reaches the end of the orbit. This spiral rarely shows a glitch at screen resolution, and the check costs one comparison per step.
+
+<Demo file="infinite-zoom/03-perturbation/example.rs" />
+
+This zoom moves twice as fast, and it sails past `1e-15`, then `1e-30`. Then, somewhere around `1e-35`, the picture turns into a single flat color.
+
+### The second wall
+
+An `f32` stores an exponent along with its digits, and the smallest ordinary `f32` is about `1.2e-38`. Below that come a few denormal values, which most GPUs flush to 0. Once one pixel spans less than `1.2e-38`, `view.pixel` reads as 0, every `δ` is 0, and every pixel follows the reference. This time the exponent runs out while the digits still have room. An `f64` would push this wall to `1e-308`, and the spiral goes on far beyond that.
+
+## Step 4: past every exponent
+
+Two problems remain. The differences have to stay inside the range of an `f32`, and deeper views need more iterations: at `1e-1000`, a pixel near this spiral takes about 32,000 steps to escape.
+
+### Keep the exponent separately
+
+The first fix is the trick Pauldelbrot called **rescaled iterations**. Store each difference as a pair: a `vec2<f32>` `w` near 1, and an integer exponent `s`, with <Math tex="z = w \cdot 2^s" />. Dividing the step by <Math tex="2^s" /> gives
+
+<Math block tex="w_{n+1} = 2 Z_n w_n + 2^s\, w_n^2 + 2^{-s}\,\delta" />
+
+`w` stays in range, and only the two scale factors <Math tex="2^s" /> and <Math tex="2^{-s}\delta" /> can be tiny. When they fall below what an `f32` holds, they really are negligible next to the first term, so rounding them to 0 costs nothing. Whenever `w` grows past `65536` or shrinks below `1/65536`, the shader moves a power of two from `w` into `s`. The pixel's offset `δ` arrives the same way, as a `vec2<f32>` and an exponent.
+
+### Skip what every pixel shares
+
+The second fix comes from Martin's paper too. For thousands of iterations, every pixel in a deep view stays so close to the reference that its difference is nearly a polynomial in `δ`:
+
+<Math block tex="z_n \approx A_n \delta + B_n \delta^2 + C_n \delta^3" />
+
+The coefficients don't depend on the pixel, so the CPU computes them once, alongside the orbit:
+
+<Math block tex="A_{n+1} = 2 Z_n A_n + 1, \quad B_{n+1} = 2 Z_n B_n + A_n^2, \quad C_{n+1} = 2 Z_n C_n + 2 A_n B_n" />
+
+starting from <Math tex="A_0 = B_0 = C_0 = 0" />. These numbers grow past anything a `f64` can hold, so the CPU keeps them as a mantissa and an exponent too. Each frame, the host finds the last iteration where the series still holds for every pixel on screen: the one where the next term, <Math tex="D_n \delta^4" />, stays below a ten-millionth of <Math tex="A_n \delta" />. Every pixel starts there. At `1e-1000` that skips about 32,100 of roughly 32,250 steps, and each pixel iterates around 130 on its own, at any depth.
+
+<Snippet file="infinite-zoom/04-deep-zoom/example.rs" region="frame" langs={LANGS} />
+
+### A compute pass and a render pass
+
+The iteration moves into a compute shader. It writes one smooth count per pixel into a storage buffer, `counts`, and a small render pass turns counts into colors. Splitting the work keeps the expensive math in one place and the look in another: the palette and density are uniforms of the render pass, and the compute pass can run at a lower resolution than a large window.
+
+<Snippet file="infinite-zoom/04-deep-zoom/example.rs" region="shader" langs={LANGS} />
+
+Both passes declare `counts`, and FragmentColor binds the same buffer to both because the names match. `setup` builds the reference with its series and both passes:
+
+<Snippet file="infinite-zoom/04-deep-zoom/example.rs" region="setup" langs={LANGS} />
+
+<Demo file="infinite-zoom/04-deep-zoom/example.rs" />
+
+Move the pointer to the top of the canvas and the view drops to `1e-1000` in a couple of seconds. The spiral there looks like the one at `1e-10`, which is the point of a Misiurewicz target.
+
+The results hold up. Checked against a slow `BigInt` computation of the same pixels, the shader's counts agree to within a hundredth of an iteration at `1e-6`, `1e-45`, `1e-308` and `1e-999` alike. The only disagreements come from pixels whose count jumps by hundreds when you nudge them by a thousandth of a pixel, where any finite precision gives a different answer. On a laptop with an Apple M2, a 1920 by 1080 frame takes 25 to 31 milliseconds at every depth from `1e-3` to `1e-999`, and the reference for `1e-1000` takes under a second to compute.
+
+## Where to go next
+
+The final program also lives in the [playground](/welcome/playground/#mandelbrot), where you can edit both shaders and the host while it runs, and copy the same program in Rust, Python, Swift or Kotlin. Some things to try there:
+
+- Change `TARGET` to another Misiurewicz point. Any preperiod and period work, as long as the sixteen digits start close enough for Newton's method.
+- Raise `DEPTH`. Each extra digit costs a few more iterations of `BigInt` math in `setup`, and the GPU work per frame stays the same.
+- Replace the series with **bilinear approximation**, also from Zhuoran's 2021 thread. It skips iterations in chunks after rebasing too, and current deep zoom programs build on it. Claude Heiland-Allen's [Deep zoom theory and practice (again)](https://mathr.co.uk/blog/2022-02-21_deep_zoom_theory_and_practice_again.html) explains it.
