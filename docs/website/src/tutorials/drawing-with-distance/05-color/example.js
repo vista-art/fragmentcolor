@@ -3,8 +3,8 @@
 import { Shader } from "fragmentcolor";
 
 const SHADER = `
-// The contour coloring follows Inigo Quilez:
-// https://iquilezles.org/articles/distfunctions2d/
+// The star and box distances and the smooth union
+// follow Inigo Quilez: https://iquilezles.org/articles/distfunctions2d/
 
 @group(0) @binding(0) var<uniform> resolution: vec2<f32>;
 
@@ -40,13 +40,17 @@ fn fs_main(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
     // #endregion: scene
 
     // #region: color
-    let inside = vec3<f32>(0.38, 0.62, 0.92);
-    let outside = vec3<f32>(0.92, 0.6, 0.32);
-    var color = select(outside, inside, d < 0.0);
-    color = color * (1.0 - 0.75 * exp(-8.0 * abs(d)));
-    color = color * (0.85 + 0.15 * cos(6.2831853 * 40.0 * d));
+    let magenta = vec3<f32>(1.0, 0.0, 0.51);
+    let violet = vec3<f32>(0.51, 0.0, 1.0);
+    let azure = vec3<f32>(0.0, 0.51, 1.0);
+    let outside = max(d, 0.0);
     let pixel_size = fwidth(d);
-    color = mix(color, vec3<f32>(1.0), 1.0 - smoothstep(pixel_size, 2.0 * pixel_size, abs(d)));
+
+    var color = vec3<f32>(0.05, 0.06, 0.08) + azure * 0.45 * exp(-10.0 * outside);
+    let ring = abs(fract(d * 20.0 + 0.5) - 0.5) / (20.0 * pixel_size);
+    color = color + azure * 0.35 * exp(-3.0 * outside) * (1.0 - smoothstep(0.5, 1.5, ring));
+    color = select(color, mix(violet, magenta, smoothstep(0.0, 0.12, -d)), d < 0.0);
+    color = mix(color, vec3<f32>(1.0), 1.0 - smoothstep(0.5 * pixel_size, 1.5 * pixel_size, abs(d)));
     // #endregion: color
     return vec4<f32>(color, 1.0);
 }
