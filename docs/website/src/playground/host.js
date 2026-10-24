@@ -147,9 +147,6 @@ export class Playground {
     this.demos = demos;
     this.canvas = root.querySelector("canvas");
     this.ui = {
-      demos: root.querySelector(".fcp-demos"),
-      picker: root.querySelector(".fcp-demo-select"),
-      summary: root.querySelector(".fcp-summary"),
       status: root.querySelector(".fcp-status"),
       library: root.querySelector(".fcp-library-list"),
       add: root.querySelector(".fcp-add"),
@@ -166,6 +163,7 @@ export class Playground {
     this.overrides = new Map();
     this.pointer = null;
     this.program = null;
+    this.pending = null;
     this.buildToken = 0;
     this.timer = 0;
     this.raf = 0;
@@ -194,13 +192,18 @@ export class Playground {
       onToggle: (slug, selected) => this.toggleSlug(slug, selected),
     });
     this.wire();
-    this.select(id);
+    this.select(this.pending ?? id);
     this.raf = requestAnimationFrame((t) => this.tick(t));
   }
 
   // Swaps in another demo. Edits made to the current one stay in memory until reset.
+  // A demo picked while the runtime loads opens when start is done.
   select(id) {
     const demo = this.demos.find((d) => d.id === id) ?? this.demos[0];
+    if (!this.view) {
+      this.pending = demo.id;
+      return;
+    }
     clearTimeout(this.timer);
     this.buildToken++;
     if (this.demo) this.edits.set(this.demo.id, this.snapshot());
@@ -209,11 +212,6 @@ export class Playground {
     this.program = null;
     this.controls = [];
     renderControls(this.ui.controls, [], () => {});
-    for (const button of this.ui.demos?.querySelectorAll("button") ?? []) {
-      button.setAttribute("aria-pressed", String(button.dataset.demo === demo.id));
-    }
-    if (this.ui.picker) this.ui.picker.value = demo.id;
-    if (this.ui.summary) this.ui.summary.textContent = demo.summary;
     this.root.dataset.active = demo.id;
     this.loadTabs(this.edits.get(demo.id) ?? this.original(demo));
     this.showError(null);
@@ -727,10 +725,6 @@ export class Playground {
     this.on(canvas, "pointermove", track);
     this.on(canvas, "pointerdown", track);
 
-    for (const button of ui.demos?.querySelectorAll("button") ?? []) {
-      this.on(button, "click", () => this.select(button.dataset.demo));
-    }
-    if (ui.picker) this.on(ui.picker, "change", () => this.select(ui.picker.value));
     this.on(ui.add, "click", () => this.picker.open(parseLibrary(this.text("js")) ?? []));
     this.on(ui.reset, "click", () => {
       this.edits.delete(this.demo.id);
