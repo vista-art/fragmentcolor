@@ -35,7 +35,7 @@ Items found while reviewing 0.12.6.
 - [ ] The website's Rust tabs hide a doctest's `#` lines
 - [ ] `UniformData` can be named outside the crate, so a helper can forward one value to `Shader::set` on several shaders
 - [ ] uniffi warns that `uniffi.toml` looks like an old-style config file; move it to the current layout
-- [ ] A push that changes only the website reruns every healthcheck. The `paths` filter on `pull_request` compares the whole PR with its base, not the last push, and `publish_py.yml` builds all fifteen wheels on every PR push with no filter at all. Skip a check when the files it reads match a commit where it already passed, for example with a cache key built from the tree hash of those paths, and keep the skipped job reporting success for branch protection
+- [ ] A push that changes only the website reruns every healthcheck. The `paths` filter on `pull_request` compares the whole PR with its base, not the last push. Skip a check when the files it reads match a commit where it already passed, for example with a cache key built from the tree hash of those paths, and keep the skipped job reporting success for branch protection
 
 ### First, because 0.13.0 needs them
 

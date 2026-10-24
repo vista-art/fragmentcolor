@@ -12,7 +12,22 @@ on:
       - master
     tags:
       - '*'
+  # The paths filter is not maturin's: keep it when regenerating this file.
+  # A pull request builds the wheels only when it changes what they compile.
   pull_request:
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'generated/**'
+      - 'docs/api/**'
+      - 'platforms/python/**'
+      - 'build.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'pyproject.toml'
+      - 'uniffi.toml'
+      - 'rust-toolchain*'
+      - '.github/workflows/publish_py.yml'
   workflow_dispatch:
 
 permissions:
