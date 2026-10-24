@@ -1,9 +1,10 @@
 //! The program around each step: it opens a window, calls the step's `setup` once,
 //! and calls its `frame` on every redraw with the seconds since the window opened.
 //!
-//! With `FC_TUTORIAL_FRAMES=n` set, it renders `n` frames into a 256 by 256 texture,
-//! fails if they cover less than 1% of its pixels, and exits without opening a window.
-//! `FC_TUTORIAL_IMAGE=path` also saves the last of those frames as a PNG.
+//! With `FC_TUTORIAL_FRAMES=n` set, it renders `n` frames into a 1280 by 720 texture,
+//! prints how long a frame took on average, fails if the frames cover less than 1% of
+//! its pixels, and exits without opening a window. `FC_TUTORIAL_IMAGE=path` also saves
+//! the last of those frames as a PNG.
 
 use anyhow::{Result, bail};
 use fragmentcolor::{
@@ -19,7 +20,7 @@ use winit::window::Window;
 pub type Frame<State> = fn(&State, &Renderer, &RenderTarget, f32) -> Result<(), FragmentColorError>;
 
 const STATE: &str = "state";
-const CHECK_SIZE: u32 = 256;
+const CHECK_SIZE: [u32; 2] = [1280, 720];
 
 pub fn run<State, Setup>(setup: Setup, frame: Frame<State>)
 where
@@ -96,11 +97,11 @@ where
     Setup: AsyncFnOnce(&Renderer) -> Result<State, FragmentColorError>,
 {
     let renderer = Renderer::new();
-    let texture = renderer
-        .create_texture_target([CHECK_SIZE, CHECK_SIZE])
-        .await?;
+    let texture = renderer.create_texture_target(CHECK_SIZE).await?;
     let target = RenderTarget::from(texture);
     let state = setup(&renderer).await?;
+    // Reading the image back waits for the GPU, so the clock covers every frame.
+    let start = Instant::now();
     for index in 0..frames {
         frame(&state, &renderer, &target, index as f32 / 60.0)?;
     }
@@ -113,10 +114,12 @@ where
     if drawn * 100 < total {
         bail!("only {drawn} of {total} pixels were drawn");
     }
-    println!("{frames} frames rendered, {drawn} of {total} pixels drawn");
+    let milliseconds = start.elapsed().as_secs_f64() * 1000.0 / f64::from(frames.max(1));
+    println!("{frames} frames, {milliseconds:.2} ms each, {drawn} of {total} pixels drawn");
 
     if let Ok(path) = std::env::var("FC_TUTORIAL_IMAGE") {
-        image::save_buffer(&path, &image, CHECK_SIZE, CHECK_SIZE, ColorType::Rgba8)?;
+        let [width, height] = CHECK_SIZE;
+        image::save_buffer(&path, &image, width, height, ColorType::Rgba8)?;
         println!("saved {path}");
     }
     Ok(())
