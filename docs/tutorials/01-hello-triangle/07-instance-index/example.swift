@@ -38,11 +38,11 @@ fn vs_main(
     let spread = (random(index * 4u + 2u) - 0.5) * (1.2 - radius);
     let brightness = 0.4 + 0.6 * random(index * 4u + 3u);
 
-    // Three spiral arms, turning slowly as one disc.
+    // Three spiral arms, turning slowly as one disk.
     let angle = arm + radius * 5.0 + spread - time * 0.15;
     let center = vec2<f32>(cos(angle), sin(angle)) * radius * 0.95;
 
-    // Keep the disc round on a canvas of any shape.
+    // Keep the disk round on a canvas of any shape.
     let fit = min(resolution.x, resolution.y) / resolution;
     // Measured in pixels, each triangle is about four wide.
     let shape = position * 6.0 / resolution;
