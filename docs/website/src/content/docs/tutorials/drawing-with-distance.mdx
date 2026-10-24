@@ -146,7 +146,7 @@ The next picture holds one circle and one box in each quarter of the unit square
 
 <Code lang="wgsl" code={region("04-combine", "paint").rust} />
 
-Upper left, the union. Upper right, the intersection: only the sliver where circle and box overlap. Lower left, the box with the circle taken out of it. Lower right, the smooth union, with `k` at `0.08`. The last line of `fs_main` gathers the four into one picture with the same `min`.
+Upper left, the union. Upper right, the intersection: only the part where circle and box overlap. Lower left, the box with the circle taken out of it. Lower right, the smooth union, with `k` at `0.08`. The last line of `fs_main` gathers the four into one picture with the same `min`.
 
 <Demo file="drawing-with-distance/04-combine/example.rs" />
 
