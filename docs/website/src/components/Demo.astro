@@ -32,9 +32,11 @@ interface Props {
   height?: string;
   /** If true, the demo boots WASM immediately instead of waiting for a click. */
   autoplay?: boolean;
+  /** If true, the demo needs WebGPU and shows a note instead of running on WebGL2. */
+  webgpu?: boolean;
 }
 
-const { file, height = "420px", autoplay = false } = Astro.props;
+const { file, height = "420px", autoplay = false, webgpu = false } = Astro.props;
 
 const entry = tutorials[file];
 if (!entry) {
@@ -52,6 +54,7 @@ const moduleKey = `../tutorials/${entry.jsModulePath}`;
   data-module-key={moduleKey}
   data-canvas-height={height}
   data-autoplay={autoplay ? "1" : "0"}
+  data-webgpu={webgpu ? "1" : "0"}
   style="display: block; margin: 1.5rem 0;">
 </tutorial-demo>
 
@@ -121,6 +124,7 @@ if (!customElements.get('tutorial-demo')) {
             display: none;
           }
           .err.visible { display: flex; }
+          .err.note { color: #cbd5e1; font-family: inherit; font-size: 0.95rem; }
           .play {
             position: absolute;
             inset: 0;
@@ -236,6 +240,12 @@ if (!customElements.get('tutorial-demo')) {
     }
 
     async #init() {
+      // Compute shaders need WebGPU; WebGL2 has nothing to run them on.
+      if (this.dataset.webgpu === '1' && !(await navigator.gpu?.requestAdapter())) {
+        this.#showError('This step runs a compute shader, which needs WebGPU. This browser offers only WebGL2.', 'note');
+        return;
+      }
+
       // 1) Boot WASM once per page, with slugs resolving against the local /shaders/ tree.
       const { loadFragmentColor } = await import('../runtime.js');
       const fc = await loadFragmentColor();
@@ -339,11 +349,12 @@ if (!customElements.get('tutorial-demo')) {
       } catch {}
     }
 
-    #showError(msg) {
+    #showError(msg, kind) {
       const div = this.#shadow.querySelector('.err');
       if (!div) return;
       div.textContent = msg;
       div.classList.add('visible');
+      if (kind) div.classList.add(kind);
     }
   }
   customElements.define('tutorial-demo', TutorialDemo);
