@@ -7,8 +7,8 @@ use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
 const SHADER: &str = r#"
-// The star and box distances and the smooth union
-// follow Inigo Quilez: https://iquilezles.org/articles/distfunctions2d/
+// The smooth union follows Inigo Quilez: https://iquilezles.org/articles/smin/
+// The star and box distances follow him too: https://iquilezles.org/articles/distfunctions2d/
 
 @group(0) @binding(0) var<uniform> resolution: vec2<f32>;
 
