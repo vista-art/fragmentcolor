@@ -19,11 +19,12 @@
 // Tabs use syncKey="lang" so the LangSelector + every Snippet on the
 // page stay in step. Each language stores its own literal format
 // (Rust/JS/Python/Swift use `[r, g, b, a]`; Kotlin uses
-// `floatArrayOf(rf, gf, bf, af)`); the underlying RGBA value is shared
+// `listOf(rf, gf, bf, af)`); the underlying RGBA value is shared
 // so editing in one tab updates all.
 //
-// Render is single-shot (no RAF loop) — exactly what those three lines
-// of code do when you actually run them.
+// The canvas compiles the `TRIANGLE` source that step 1 of the tutorial
+// exports, so the code on the left is the code that draws on the right.
+// Render is single-shot (no RAF loop), as those three lines are.
 
 import { Code, Tabs, TabItem } from "@astrojs/starlight/components";
 
@@ -32,14 +33,11 @@ interface Props {
   initialColor?: [number, number, number, number];
   /** Pixel height for the canvas. */
   height?: string;
-  /** Shader URL (defaults to the tutorial shader). */
-  shaderUrl?: string;
 }
 
 const {
   initialColor = [0.95, 0.30, 0.42, 1.0],
   height = "360px",
-  shaderUrl = "https://fragmentcolor.org/triangle.wgsl",
 } = Astro.props;
 
 // Per-language identifier placeholders. Each is a valid identifier in
@@ -54,19 +52,19 @@ const PLACEHOLDER = {
 };
 
 const code = {
-  rust: `let shader = Shader::new("${shaderUrl}")?;
+  rust: `let shader = Shader::new(TRIANGLE)?;
 shader.set("color", ${PLACEHOLDER.rust})?;
-renderer.render(&shader, &target);`,
-  js: `const shader = await Shader.fetch("${shaderUrl}");
+renderer.render(&shader, &target)?;`,
+  js: `const shader = new Shader(TRIANGLE);
 shader.set("color", ${PLACEHOLDER.js});
 renderer.render(shader, target);`,
-  py: `shader = Shader.fetch("${shaderUrl}")
+  py: `shader = Shader(TRIANGLE)
 shader.set("color", ${PLACEHOLDER.py})
 renderer.render(shader, target)`,
-  swift: `let shader = try await Shader.fetch("${shaderUrl}")
-shader.set("color", ${PLACEHOLDER.swift})
-renderer.render(shader, target)`,
-  kotlin: `val shader = Shader.fetch("${shaderUrl}")
+  swift: `let shader = try Shader(triangle)
+try shader.set("color", ${PLACEHOLDER.swift})
+try renderer.render(shader, target)`,
+  kotlin: `val shader = Shader(TRIANGLE)
 shader.set("color", ${PLACEHOLDER.kotlin})
 renderer.render(shader, target)`,
 };
@@ -75,7 +73,6 @@ renderer.render(shader, target)`,
 <div
   class="color-triangle not-content"
   data-rgba={JSON.stringify(initialColor)}
-  data-shader-url={shaderUrl}
   data-height={height}>
 
   <div class="ct-grid">
@@ -229,7 +226,7 @@ function literalFor(lang, rgba) {
   const f2 = (n) => n.toFixed(2);
   const f1 = (n) => n.toFixed(1);
   if (lang === 'kotlin') {
-    return `floatArrayOf(${f2(rgba[0])}f, ${f2(rgba[1])}f, ${f2(rgba[2])}f, ${f1(rgba[3])}f)`;
+    return `listOf(${f2(rgba[0])}f, ${f2(rgba[1])}f, ${f2(rgba[2])}f, ${f1(rgba[3])}f)`;
   }
   return `[${f2(rgba[0])}, ${f2(rgba[1])}, ${f2(rgba[2])}, ${f1(rgba[3])}]`;
 }
@@ -239,7 +236,6 @@ function wireColorTriangle(root) {
   root.dataset.ctWired = '1';
 
   const rgba = JSON.parse(root.dataset.rgba || '[0.95,0.30,0.42,1.0]');
-  const shaderUrl = root.dataset.shaderUrl || 'https://fragmentcolor.org/triangle.wgsl';
   const codeWrap = root.querySelector('.ct-code');
   const placeholders = JSON.parse(codeWrap.dataset.placeholders || '{}');
   const canvas = root.querySelector('canvas');
@@ -372,7 +368,8 @@ function wireColorTriangle(root) {
       applySize();
       target = await renderer.createTarget(canvas);
       target.resize([canvas.width, canvas.height]);
-      shader = await fc.Shader.fetch(shaderUrl);
+      const { TRIANGLE } = await import('../tutorials/01-hello-triangle/01-three-lines/example.js');
+      shader = new fc.Shader(TRIANGLE);
       const ro = new ResizeObserver(() => { applySize(); renderOnce(); });
       ro.observe(canvas);
       renderOnce();
