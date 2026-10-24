@@ -110,3 +110,33 @@ html[data-has-hero] main {
 .sl-markdown-content > .color-triangle + h2 {
   margin-top: 5.5rem;
 }
+
+/* A blog preview shows only the excerpt. It says so, and the whole card opens
+   the post, while its tags and any link inside the excerpt keep their own targets. */
+article.preview {
+  position: relative;
+}
+
+article.preview h2 a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+article.preview .sl-markdown-content::after {
+  content: "Read the post →";
+  display: block;
+  margin-top: 1rem;
+  color: var(--sl-color-text-accent);
+  font-weight: 600;
+}
+
+article.preview:hover .sl-markdown-content::after {
+  text-decoration: underline;
+}
+
+article.preview .sl-markdown-content a,
+article.preview footer {
+  position: relative;
+  z-index: 1;
+}
