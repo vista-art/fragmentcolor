@@ -1,9 +1,9 @@
 //! Infinite zoom, step 2: the same loop on the GPU.
 //!
-//! A fragment shader runs the escape-time loop for every pixel at once, in f32.
-//! The view dives toward a spiral in Seahorse Valley and climbs back, and the
-//! pointer's height picks the depth while it moves. Past 1e-5 the pixels run
-//! out of digits and the picture breaks into blocks.
+//! A fragment shader runs the escape-time loop for every pixel in parallel, in
+//! f32. The view zooms toward a spiral in Seahorse Valley and back out, and the
+//! pointer's height picks the depth while it moves. Past 1e-5, f32 rounding
+//! breaks the picture into blocks.
 
 use std::error::Error;
 use std::sync::{Arc, OnceLock};
@@ -42,7 +42,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     z = vec2<f32>(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;
     let size2 = dot(z, z);
     if (size2 > 65536.0) {
-      // How far past the escape radius this step landed smooths the count.
+      // The distance past the escape radius smooths the count.
       let count = f32(n) + 1.0 - log2(log2(size2) / 16.0);
       color = palette_iq(
         count * 0.02 + 0.6,
@@ -57,7 +57,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
   return vec4<f32>(print_depth(color, position.xy, view.resolution, view.depth), 1.0);
 }
 
-// Fullscreen triangle: three vertices that cover the canvas.
+// One triangle larger than the target covers every pixel; the GPU clips the rest.
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   var corners = array<vec2<f32>, 3>(
@@ -186,6 +186,7 @@ impl Motion {
         }
     }
 
+    // #region: steer
     /// The zoom runs from the whole set down to 10^-DEPTH and back on its own.
     /// Moving the pointer takes over for two seconds: its height picks the depth,
     /// deepest at the top. Returns the zoom in doublings.
@@ -208,6 +209,7 @@ impl Motion {
         self.zoom = self.zoom.clamp(0.0, deepest);
         self.zoom
     }
+    // #endregion: steer
 
     fn point(&mut self, now: f64, pointer: [f64; 2]) {
         self.pointer = pointer;

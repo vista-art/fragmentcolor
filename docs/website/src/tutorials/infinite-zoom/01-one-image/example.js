@@ -9,7 +9,8 @@
 const LIMIT = 500;
 
 // How many steps of z -> z^2 + c the orbit of 0 takes to leave the disk of
-// radius 2, or LIMIT if it stays.
+// radius 2, or LIMIT if it stays inside. Comparing squared sizes with 4 skips
+// a square root.
 function escape(cr, ci) {
   let [zr, zi] = [0, 0];
   for (let n = 0; n < LIMIT; n++) {
@@ -45,7 +46,7 @@ context.putImageData(image, 0, 0);
 // #endregion: image
 
 // #region: color
-// Near black inside the set. Outside, a cosine palette walks a little per iteration.
+// Near black inside the set. Outside, each iteration moves the color a little along a cosine palette.
 function color(count) {
   if (count === LIMIT) return [5, 5, 13];
   const t = count * 0.02 + 0.6;

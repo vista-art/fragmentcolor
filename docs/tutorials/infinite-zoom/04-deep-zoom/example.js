@@ -1,19 +1,20 @@
 // Infinite zoom, step 4: past every exponent.
 //
-// One reference orbit, computed once with BigInt, guides a compute pass that
-// iterates every pixel as a small f32 difference from it. The difference is
-// kept as w * 2^s, so it never leaves f32's range, and Martin's series skips
-// the iterations every pixel shares. A render pass colors the counts. The zoom
-// dives toward a spiral until the view is 1e-1000 tall and climbs back, and the
+// A compute pass iterates every pixel as a small f32 difference from one
+// reference orbit, which the host computes once with BigInt. The shader keeps
+// each difference as w * 2^s, which never leaves the range of an f32, and
+// Martin's series skips the iterations every pixel shares. A render pass colors
+// the counts. The zoom reaches a view 1e-1000 tall and comes back out, and the
 // pointer's height picks the depth while it moves.
 
 import { Pass, Shader } from "fragmentcolor";
 
 const ITERATE = `
 // #region: shader
-// Iterates every pixel as a small difference from the reference orbit that
-// main.js computes at full precision. main.js puts ORBIT and PIXELS ahead of
-// this file, and present.wgsl reads the counts it writes.
+// Iterates every pixel as a small difference from the reference orbit, which
+// the host computes at the precision the deepest view needs. The host puts the
+// ORBIT and PIXELS constants ahead of this code, and the present shader reads
+// the counts this one writes.
 
 struct View {
   image: vec2<u32>,
@@ -37,14 +38,14 @@ struct View {
 @group(0) @binding(1) var<storage, read> orbit: array<vec2<f32>, ORBIT>;
 @group(0) @binding(2) var<storage, read_write> counts: array<f32, PIXELS>;
 
-// An orbit whose squared size passes this never comes back.
+// The squared size past which an orbit always escapes: a radius of 256.
 const ESCAPE: f32 = 65536.0;
 
 fn mul(a: vec2<f32>, b: vec2<f32>) -> vec2<f32> {
   return vec2<f32>(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
 }
 
-// x * 2^k, or zero once 2^k is too small for an f32.
+// x * 2^k with k capped at 127, or zero once 2^k is too small for an f32.
 fn scale(x: vec2<f32>, k: i32) -> vec2<f32> {
   if (k < -126) {
     return vec2<f32>(0.0);
@@ -64,7 +65,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
   let index = id.y * view.image.x + id.x;
 
   // In a wide view, the main cardioid and the bulb left of it cover many pixels
-  // that never escape. A direct test spares them the whole budget.
+  // that never escape. A direct test skips their loop. orbit[1] is the target's c.
   if (e > -20) {
     let c = orbit[1] + scale(d, e);
     let q = dot(c - vec2<f32>(0.25, 0.0), c - vec2<f32>(0.25, 0.0));
@@ -75,8 +76,8 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
   }
 
-  // The series moves every pixel to iteration skip in one step. Its difference
-  // from the reference is w * 2^s, with w kept near 1.
+  // The series moves every pixel to iteration skip in one step. From there on,
+  // the pixel's difference from the reference is w * 2^s, with w kept near 1.
   let d2 = mul(d, d);
   let ea = view.a_exponent + e;
   let eb = view.b_exponent + 2 * e;
@@ -120,7 +121,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     if (size2 > ESCAPE) {
       break;
     }
-    // Rebase when the pixel is closer to 0 than to the reference, or the orbit runs out.
+    // Rebase when the pixel is closer to 0 than to the reference, or reaches the end of the orbit.
     if (size2 < dot(z, z) || m >= view.length) {
       let k = frexp(max(abs(full.x), abs(full.y))).exp;
       w = scale(full, -k);
@@ -131,7 +132,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
       offset = scale(d, e - s);
     }
   }
-  // A smooth count: how far past ESCAPE the last step went adds the fraction.
+  // A smooth count: the distance past ESCAPE adds the fraction.
   var count = -1.0;
   if (n < limit) {
     count = f32(n) + 1.0 - log2(log2(size2) / log2(ESCAPE));
@@ -143,7 +144,8 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
 
 const PRESENT = `
 // #region: present-shader
-// Colors the counts that iterate.wgsl writes. label.wgsl prints the depth.
+// Colors the counts that the iterate shader writes, and prints the depth with
+// print_depth from the label shader.
 
 struct Look {
   resolution: vec2<f32>,
@@ -175,7 +177,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
   return vec4<f32>(print_depth(color, position.xy, look.resolution, look.depth), 1.0);
 }
 
-// Fullscreen triangle: three vertices that cover the canvas.
+// One triangle larger than the target covers every pixel; the GPU clips the rest.
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   var corners = array<vec2<f32>, 3>(
@@ -242,7 +244,7 @@ fn label(position: vec2<f32>, resolution: vec2<f32>, depth: f32) -> f32 {
 
 // #region: constants
 // A Misiurewicz point in Seahorse Valley: the orbit of 0 lands on a cycle of
-// period 2 after 24 steps. Newton's method sharpens these digits to any precision.
+// period 2 after 24 steps. Newton's method refines these digits to the precision DEPTH needs.
 const TARGET = { re: "-0.7432918908524302", im: "0.1312405523087976", preperiod: 24, period: 2 };
 // The zoom dives until the view is 10^-DEPTH tall, then climbs back.
 const DEPTH = 1000;
@@ -254,8 +256,6 @@ const START = 3;
 // A larger canvas renders at a lower resolution.
 const ORBIT = 1 << 16;
 const PIXELS = 1 << 21;
-// Iterations the orbit keeps past the deepest view, for the budget.
-const BUDGET = 5000;
 // #endregion: constants
 
 // #region: setup
@@ -265,13 +265,13 @@ export async function setup(renderer, target) {
   const iterate = await Shader.fetch([header, ITERATE]);
   iterate.set("view.budget", 1000);
 
-  // The library brings the palette that present.wgsl calls.
+  // `gradient/palette_iq` from the shader library supplies the palette PRESENT calls.
   const present = await Shader.fetch(["gradient/palette_iq", header, LABEL, PRESENT]);
   present.set("look.density", 0.02);
   present.set("look.phase", 0.6);
   present.set("look.inside_color", [0.02, 0.02, 0.05]);
 
-  // One orbit at the precision the deepest view needs, sent to the GPU once.
+  // Compute one orbit at the precision the deepest view needs and send it to the GPU once.
   const reference = computeReference(TARGET, DEPTH);
   iterate.set("orbit", new Uint8Array(reference.orbit.buffer));
 
@@ -298,12 +298,12 @@ export async function setup(renderer, target) {
 export function frame(state, renderer, target, time, size) {
   const zoom = steer(state);
 
-  // The compute pass fills at most PIXELS: the canvas, or a whole fraction of it.
+  // The compute pass fills at most PIXELS: the canvas, or the canvas with each side divided by a whole number.
   let shrink = 1;
   while (Math.floor(size[0] / shrink) * Math.floor(size[1] / shrink) > PIXELS) shrink++;
   const image = [Math.max(Math.floor(size[0] / shrink), 1), Math.max(Math.floor(size[1] / shrink), 1)];
 
-  // A pixel is 2^pixel wide. The series covers every pixel within radius of the target.
+  // A pixel is 2^pixel wide. The series covers every pixel within 2^radius of the target.
   const pixel = Math.log2(START / image[1]) - zoom;
   const exponent = Math.floor(pixel);
   const radius = pixel + Math.log2(Math.hypot(image[0], image[1]) / 2);
@@ -321,7 +321,7 @@ export function frame(state, renderer, target, time, size) {
   state.iterate.set("view.b_exponent", b[2]);
   state.iterate.set("view.c", [c[0], c[1]]);
   state.iterate.set("view.c_exponent", c[2]);
-  // 8 matches @workgroup_size in iterate.wgsl.
+  // 8 matches @workgroup_size in ITERATE.
   state.compute.setComputeDispatch(Math.ceil(image[0] / 8), Math.ceil(image[1] / 8), 1);
 
   state.present.set("look.resolution", size);
@@ -332,11 +332,11 @@ export function frame(state, renderer, target, time, size) {
 // #endregion: frame
 
 // #region: reference
+// #region: series
 // The orbit of 0 under z^2 + c at full precision, rounded to f32 for the GPU,
 // with Martin's series coefficients A, B and C at every iteration. reach holds
 // the log2 of the widest radius the series still covers at each iteration.
 function computeReference(target, depth) {
-  const deepest = -depth * Math.log2(10) - 1;
   const bits = Math.ceil(depth * Math.log2(10)) + 80;
   const shift = BigInt(bits);
   const [cr, ci] = refine(target, bits);
@@ -345,7 +345,6 @@ function computeReference(target, depth) {
   const reach = new Float64Array(ORBIT).fill(Infinity);
   let [zr, zi] = [0n, 0n];
   let [a, b, c, d] = [ZERO, ZERO, ZERO, ZERO];
-  let end = ORBIT - 1;
   for (let n = 0; ; n++) {
     const [re, im] = [toFloat(zr, bits), toFloat(zi, bits)];
     orbit[2 * n] = re;
@@ -353,9 +352,11 @@ function computeReference(target, depth) {
     series.push([a, b, c]);
     // The series holds while the first dropped term, D d^4, stays below TOLERANCE * A d.
     if (n > 0) reach[n] = Math.min(reach[n - 1], (Math.log2(TOLERANCE) + log2Size(a) - log2Size(d)) / 3);
-    if (reach[n] < deepest) end = Math.min(end, n + BUDGET);
-    if (n === end || re * re + im * im > 4) return { orbit, series, reach, length: n };
-    // Each coefficient follows from the old ones, so they update in this order.
+    // Rounding errors in the orbit grow like A, so it stops while they stay below 2^-40.
+    if (n === ORBIT - 1 || re * re + im * im > 4 || log2Size(a) > bits - 40) {
+      return { orbit, series, reach, length: n };
+    }
+    // Each new coefficient reads the old values of the ones before it, so D updates first and A last.
     d = add(times(d, 2 * re, 2 * im), add(times(multiply(a, c), 2, 0), multiply(b, b)));
     c = add(times(c, 2 * re, 2 * im), times(multiply(a, b), 2, 0));
     b = add(times(b, 2 * re, 2 * im), multiply(a, a));
@@ -366,7 +367,7 @@ function computeReference(target, depth) {
   }
 }
 
-// How far the dropped terms of the series may drift, relative to the first one.
+// The largest the first dropped term of the series may grow, relative to the first term.
 const TOLERANCE = 1e-7;
 
 // The last iteration the series covers for a view of this radius (log2).
@@ -379,6 +380,7 @@ function skipFor(reference, radius) {
   }
   return low;
 }
+// #endregion: series
 
 // A BigInt n stands for the real number n / 2^bits.
 function parse(text, bits) {
@@ -392,7 +394,7 @@ function toFloat(value, bits) {
 }
 
 // Newton's method on z(preperiod + period) - z(preperiod) moves c until the orbit
-// of 0 lands exactly on its cycle. Each round doubles the correct digits.
+// of 0 enters its cycle, to the working precision. Each round doubles the correct digits.
 function refine(target, bits) {
   const shift = BigInt(bits);
   const one = 1n << shift;
@@ -419,7 +421,7 @@ function refine(target, bits) {
   return [re, im];
 }
 
-// Complex numbers beyond a double's range: [re, im, exponent] = (re + i im) * 2^exponent.
+// Complex numbers beyond the range of a double: [re, im, exponent] = (re + i im) * 2^exponent.
 const ZERO = [0, 0, 0];
 const ONE = [1, 0, 0];
 
@@ -459,6 +461,7 @@ function log2Size(a) {
 }
 // #endregion: reference
 
+// #region: steer
 // The zoom runs from the whole set down to 10^-DEPTH and back on its own. Moving
 // the pointer takes over for two seconds: its height picks the depth, deepest at
 // the top. Returns the zoom in doublings.
@@ -478,6 +481,7 @@ function steer(state) {
   state.zoom = Math.min(Math.max(state.zoom, 0), deepest);
   return state.zoom;
 }
+// #endregion: steer
 
 // Keeps the pointer's position over any canvas, as fractions of its size.
 function follow(state) {

@@ -10,8 +10,9 @@ use std::f64::consts::TAU;
 /// Iterations beyond which a point counts as inside the set.
 const LIMIT: u32 = 500;
 
-/// How many steps of z -> z^2 + c the orbit of 0 takes to leave the disk of
-/// radius 2, or LIMIT if it stays.
+/// How many steps of `z -> z^2 + c` the orbit of 0 takes to leave the disk of
+/// radius 2, or `LIMIT` if it stays inside. Comparing squared sizes with 4
+/// skips a square root.
 fn escape(cr: f64, ci: f64) -> u32 {
     let (mut zr, mut zi) = (0.0, 0.0);
     for n in 0..LIMIT {
@@ -55,7 +56,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 // #endregion: image
 
 // #region: color
-/// Near black inside the set. Outside, a cosine palette walks a little per iteration.
+/// Near black inside the set. Outside, each iteration moves the color a little along a cosine palette.
 fn color(count: u32) -> [u8; 3] {
     if count == LIMIT {
         return [5, 5, 13];

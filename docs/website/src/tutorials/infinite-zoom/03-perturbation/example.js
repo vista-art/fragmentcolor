@@ -3,8 +3,8 @@
 // One reference orbit, computed once with BigInt at the precision the deepest
 // view needs, sits in a storage buffer. Each pixel iterates only its small f32
 // difference from that orbit, and rebases onto the start of the orbit when it
-// drifts closer to 0 than to the reference. The zoom now passes 1e-30, until
-// the differences themselves fall below what an f32 exponent can hold.
+// drifts closer to 0 than to the reference. The zoom now passes 1e-30 and
+// breaks down near 1e-35, where a pixel's width falls below the smallest f32.
 
 import { Shader } from "fragmentcolor";
 
@@ -51,7 +51,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
       );
       break;
     }
-    // Rebase when the pixel is closer to 0 than to the reference, or the orbit runs out.
+    // Rebase when the pixel is closer to 0 than to the reference, or reaches the end of the orbit.
     if (size2 < dot(z, z) || m == view.length) {
       z = full;
       m = 0u;
@@ -60,7 +60,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
   return vec4<f32>(print_depth(color, position.xy, view.resolution, view.depth), 1.0);
 }
 
-// Fullscreen triangle: three vertices that cover the canvas.
+// One triangle larger than the target covers every pixel; the GPU clips the rest.
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   var corners = array<vec2<f32>, 3>(
@@ -127,7 +127,7 @@ fn label(position: vec2<f32>, resolution: vec2<f32>, depth: f32) -> f32 {
 
 // #region: constants
 // A Misiurewicz point in Seahorse Valley: the orbit of 0 lands on a cycle of
-// period 2 after 24 steps. Newton's method sharpens these digits to any precision.
+// period 2 after 24 steps. Newton's method refines these digits to the precision DEPTH needs.
 const TARGET = { re: "-0.7432918908524302", im: "0.1312405523087976", preperiod: 24, period: 2 };
 // The zoom dives until the view is 10^-DEPTH tall, then climbs back.
 const DEPTH = 45;
@@ -142,7 +142,7 @@ const ORBIT = 3001;
 // #region: setup
 export async function setup(renderer, target) {
   const shader = await Shader.fetch([`const ORBIT: u32 = ${ORBIT}u;`, "gradient/palette_iq", LABEL, SHADER]);
-  // One orbit at the precision the deepest view needs, sent to the GPU once.
+  // Compute one orbit at the precision the deepest view needs and send it to the GPU once.
   const { orbit, length } = reference(TARGET, DEPTH);
   shader.set("orbit", new Uint8Array(orbit.buffer));
   shader.set("view.length", length);
@@ -165,19 +165,21 @@ export function frame(state, renderer, target, time, size) {
 
 // #region: reference
 // The orbit of 0 under z^2 + c, computed with BigInt at the precision the
-// deepest view needs and rounded to f32 for the GPU. It stops early if rounding
-// ever lets it escape, and returns the last index it reached.
+// deepest view needs and rounded to f32 for the GPU. Rounding errors grow like
+// the derivative dz/dc, so the orbit stops while they stay below 2^-40.
 function reference(target, depth) {
   const bits = Math.ceil(depth * Math.log2(10)) + 80;
   const shift = BigInt(bits);
   const [cr, ci] = refine(target, bits);
   const orbit = new Float32Array(2 * ORBIT);
   let [zr, zi] = [0n, 0n];
+  let [dr, di] = [0, 0];
   for (let n = 0; n < ORBIT; n++) {
     const [re, im] = [toFloat(zr, bits), toFloat(zi, bits)];
     orbit[2 * n] = re;
     orbit[2 * n + 1] = im;
-    if (re * re + im * im > 4) return { orbit, length: n };
+    if (re * re + im * im > 4 || Math.log2(Math.hypot(dr, di)) > bits - 40) return { orbit, length: n };
+    [dr, di] = [2 * (re * dr - im * di) + 1, 2 * (re * di + im * dr)];
     const next = ((zr * zr - zi * zi) >> shift) + cr;
     zi = ((2n * zr * zi) >> shift) + ci;
     zr = next;
@@ -197,7 +199,7 @@ function toFloat(value, bits) {
 }
 
 // Newton's method on z(preperiod + period) - z(preperiod) moves c until the orbit
-// of 0 lands exactly on its cycle. Each round doubles the correct digits.
+// of 0 enters its cycle, to the working precision. Each round doubles the correct digits.
 function refine(target, bits) {
   const shift = BigInt(bits);
   const one = 1n << shift;
@@ -225,6 +227,7 @@ function refine(target, bits) {
 }
 // #endregion: reference
 
+// #region: steer
 // The zoom runs from the whole set down to 10^-DEPTH and back on its own. Moving
 // the pointer takes over for two seconds: its height picks the depth, deepest at
 // the top. Returns the zoom in doublings.
@@ -244,6 +247,7 @@ function steer(state) {
   state.zoom = Math.min(Math.max(state.zoom, 0), deepest);
   return state.zoom;
 }
+// #endregion: steer
 
 // Keeps the pointer's position over any canvas, as fractions of its size.
 function follow(state) {

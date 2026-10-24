@@ -1,10 +1,10 @@
 //! Infinite zoom, step 4: past every exponent.
 //!
-//! One reference orbit, computed once with BigInt, guides a compute pass that
-//! iterates every pixel as a small f32 difference from it. The difference is
-//! kept as w * 2^s, so it never leaves f32's range, and Martin's series skips
-//! the iterations every pixel shares. A render pass colors the counts. The zoom
-//! dives toward a spiral until the view is 1e-1000 tall and climbs back, and the
+//! A compute pass iterates every pixel as a small f32 difference from one
+//! reference orbit, which the host computes once with BigInt. The shader keeps
+//! each difference as w * 2^s, which never leaves the range of an f32, and
+//! Martin's series skips the iterations every pixel shares. A render pass colors
+//! the counts. The zoom reaches a view 1e-1000 tall and comes back out, and the
 //! pointer's height picks the depth while it moves.
 
 use std::error::Error;
@@ -13,7 +13,7 @@ use std::time::Instant;
 
 use fragmentcolor::{App, Pass, RenderTarget, Renderer, SetupResult, Shader, Target, call};
 use num_bigint::BigInt;
-use num_traits::ToPrimitive;
+use num_traits::{Signed, ToPrimitive};
 use parking_lot::Mutex;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::DeviceId;
@@ -23,9 +23,10 @@ type Failure = Box<dyn Error + Send + Sync>;
 
 const ITERATE: &str = r#"
 // #region: shader
-// Iterates every pixel as a small difference from the reference orbit that
-// main.js computes at full precision. main.js puts ORBIT and PIXELS ahead of
-// this file, and present.wgsl reads the counts it writes.
+// Iterates every pixel as a small difference from the reference orbit, which
+// the host computes at the precision the deepest view needs. The host puts the
+// ORBIT and PIXELS constants ahead of this code, and the present shader reads
+// the counts this one writes.
 
 struct View {
   image: vec2<u32>,
@@ -49,14 +50,14 @@ struct View {
 @group(0) @binding(1) var<storage, read> orbit: array<vec2<f32>, ORBIT>;
 @group(0) @binding(2) var<storage, read_write> counts: array<f32, PIXELS>;
 
-// An orbit whose squared size passes this never comes back.
+// The squared size past which an orbit always escapes: a radius of 256.
 const ESCAPE: f32 = 65536.0;
 
 fn mul(a: vec2<f32>, b: vec2<f32>) -> vec2<f32> {
   return vec2<f32>(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
 }
 
-// x * 2^k, or zero once 2^k is too small for an f32.
+// x * 2^k with k capped at 127, or zero once 2^k is too small for an f32.
 fn scale(x: vec2<f32>, k: i32) -> vec2<f32> {
   if (k < -126) {
     return vec2<f32>(0.0);
@@ -76,7 +77,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
   let index = id.y * view.image.x + id.x;
 
   // In a wide view, the main cardioid and the bulb left of it cover many pixels
-  // that never escape. A direct test spares them the whole budget.
+  // that never escape. A direct test skips their loop. orbit[1] is the target's c.
   if (e > -20) {
     let c = orbit[1] + scale(d, e);
     let q = dot(c - vec2<f32>(0.25, 0.0), c - vec2<f32>(0.25, 0.0));
@@ -87,8 +88,8 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
   }
 
-  // The series moves every pixel to iteration skip in one step. Its difference
-  // from the reference is w * 2^s, with w kept near 1.
+  // The series moves every pixel to iteration skip in one step. From there on,
+  // the pixel's difference from the reference is w * 2^s, with w kept near 1.
   let d2 = mul(d, d);
   let ea = view.a_exponent + e;
   let eb = view.b_exponent + 2 * e;
@@ -132,7 +133,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     if (size2 > ESCAPE) {
       break;
     }
-    // Rebase when the pixel is closer to 0 than to the reference, or the orbit runs out.
+    // Rebase when the pixel is closer to 0 than to the reference, or reaches the end of the orbit.
     if (size2 < dot(z, z) || m >= view.length) {
       let k = frexp(max(abs(full.x), abs(full.y))).exp;
       w = scale(full, -k);
@@ -143,7 +144,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
       offset = scale(d, e - s);
     }
   }
-  // A smooth count: how far past ESCAPE the last step went adds the fraction.
+  // A smooth count: the distance past ESCAPE adds the fraction.
   var count = -1.0;
   if (n < limit) {
     count = f32(n) + 1.0 - log2(log2(size2) / log2(ESCAPE));
@@ -155,7 +156,8 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
 
 const PRESENT: &str = r#"
 // #region: present-shader
-// Colors the counts that iterate.wgsl writes. label.wgsl prints the depth.
+// Colors the counts that the iterate shader writes, and prints the depth with
+// print_depth from the label shader.
 
 struct Look {
   resolution: vec2<f32>,
@@ -187,7 +189,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
   return vec4<f32>(print_depth(color, position.xy, look.resolution, look.depth), 1.0);
 }
 
-// Fullscreen triangle: three vertices that cover the canvas.
+// One triangle larger than the target covers every pixel; the GPU clips the rest.
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   var corners = array<vec2<f32>, 3>(
@@ -261,7 +263,7 @@ struct Point {
 }
 
 // #region: constants
-/// A spiral in Seahorse Valley. Newton's method sharpens these digits to any precision.
+/// A spiral in Seahorse Valley. Newton's method refines these digits to the precision DEPTH needs.
 const TARGET: Point = Point {
     re: "-0.7432918908524302",
     im: "0.1312405523087976",
@@ -278,8 +280,6 @@ const START: f64 = 3.0;
 /// A larger window renders at a lower resolution.
 const ORBIT: usize = 1 << 16;
 const PIXELS: u32 = 1 << 21;
-/// Iterations the orbit keeps past the deepest view, for the budget.
-const BUDGET: usize = 5000;
 // #endregion: constants
 
 struct Zoom {
@@ -299,13 +299,13 @@ impl Zoom {
         let iterate = Shader::new([header.as_str(), ITERATE])?;
         iterate.set("view.budget", 1000_u32)?;
 
-        // The library brings the palette that present.wgsl calls.
+        // `gradient/palette_iq` from the shader library supplies the palette PRESENT calls.
         let present = Shader::new(["gradient/palette_iq", header.as_str(), LABEL, PRESENT])?;
         present.set("look.density", 0.02_f32)?;
         present.set("look.phase", 0.6_f32)?;
         present.set("look.inside_color", [0.02_f32, 0.02, 0.05])?;
 
-        // One orbit at the precision the deepest view needs, sent to the GPU once.
+        // Compute one orbit at the precision the deepest view needs and send it to the GPU once.
         let reference = Reference::new(&TARGET, DEPTH)?;
         iterate.set("orbit", bytemuck::cast_slice::<f32, u8>(&reference.orbit))?;
 
@@ -327,13 +327,13 @@ impl Zoom {
         let zoom = self.motion.lock().steer(seconds());
         let size = target.size();
 
-        // The compute pass fills at most PIXELS: the window, or a whole fraction of it.
+        // The compute pass fills at most PIXELS: the window, or the window with each side divided by a whole number.
         let shrink = (1..)
             .find(|k| (size.width / k) * (size.height / k) <= PIXELS)
             .unwrap_or(1);
         let image = [(size.width / shrink).max(1), (size.height / shrink).max(1)];
 
-        // A pixel is 2^pixel wide. The series covers every pixel within radius of the target.
+        // A pixel is 2^pixel wide. The series covers every pixel within 2^radius of the target.
         let pixel = (START / f64::from(image[1])).log2() - zoom;
         let exponent = pixel.floor();
         let radius = pixel + (f64::from(image[0]).hypot(f64::from(image[1])) / 2.0).log2();
@@ -353,7 +353,7 @@ impl Zoom {
         self.iterate.set("view.b_exponent", b.exponent)?;
         self.iterate.set("view.c", [c.re as f32, c.im as f32])?;
         self.iterate.set("view.c_exponent", c.exponent)?;
-        // 8 matches @workgroup_size in iterate.wgsl.
+        // 8 matches @workgroup_size in ITERATE.
         self.compute
             .set_compute_dispatch(image[0].div_ceil(8), image[1].div_ceil(8), 1);
 
@@ -369,6 +369,7 @@ impl Zoom {
 }
 
 // #region: reference
+// #region: series
 /// The orbit of 0 under z^2 + c at full precision, rounded to f32 for the GPU,
 /// with Martin's series coefficients A, B and C at every iteration. `reach` holds
 /// the log2 of the widest radius the series still covers at each iteration.
@@ -379,12 +380,11 @@ struct Reference {
     length: usize,
 }
 
-/// How far the dropped terms of the series may drift, relative to the first one.
+/// The largest the first dropped term of the series may grow, relative to the first term.
 const TOLERANCE: f64 = 1e-7;
 
 impl Reference {
     fn new(target: &Point, depth: f64) -> Result<Reference, Failure> {
-        let deepest = -depth * 10_f64.log2() - 1.0;
         let bits = (depth * 10_f64.log2()).ceil() as usize + 80;
         let (cr, ci) = refine(target, bits)?;
         let mut orbit = vec![0.0_f32; 2 * ORBIT];
@@ -392,7 +392,7 @@ impl Reference {
         let mut reach = vec![f64::INFINITY; ORBIT];
         let (mut zr, mut zi) = (BigInt::ZERO, BigInt::ZERO);
         let [mut a, mut b, mut c, mut d] = [Wide::ZERO; 4];
-        let mut end = ORBIT - 1;
+        let mut length = ORBIT - 1;
         for n in 0..ORBIT {
             let (re, im) = (to_float(&zr, bits), to_float(&zi, bits));
             orbit[2 * n] = re as f32;
@@ -403,14 +403,12 @@ impl Reference {
                 let limit = (TOLERANCE.log2() + a.log2_size() - d.log2_size()) / 3.0;
                 reach[n] = reach[n - 1].min(limit);
             }
-            if reach[n] < deepest {
-                end = end.min(n + BUDGET);
-            }
-            if n == end || re * re + im * im > 4.0 {
-                end = n;
+            // Rounding errors in the orbit grow like A, so it stops while they stay below 2^-40.
+            if n == ORBIT - 1 || re * re + im * im > 4.0 || a.log2_size() > bits as f64 - 40.0 {
+                length = n;
                 break;
             }
-            // Each coefficient follows from the old ones, so they update in this order.
+            // Each new coefficient reads the old values of the ones before it, so D updates first and A last.
             let twice = (2.0 * re, 2.0 * im);
             d = d
                 .times(twice)
@@ -426,7 +424,7 @@ impl Reference {
             orbit,
             series,
             reach,
-            length: end,
+            length,
         })
     }
 
@@ -436,8 +434,9 @@ impl Reference {
         covered.saturating_sub(1)
     }
 }
+// #endregion: series
 
-/// A BigInt n stands for the real number n / 2^bits.
+/// A `BigInt` `n` stands for the real number `n / 2^bits`.
 fn parse(text: &str, bits: usize) -> Result<BigInt, Failure> {
     let (sign, digits) = match text.strip_prefix('-') {
         Some(rest) => (-1, rest),
@@ -454,8 +453,8 @@ fn to_float(value: &BigInt, bits: usize) -> f64 {
     (value >> (bits - 60)).to_f64().unwrap_or(f64::NAN) / 2_f64.powi(60)
 }
 
-/// Newton's method on z(preperiod + period) - z(preperiod) moves c until the orbit
-/// of 0 lands exactly on its cycle. Each round doubles the correct digits.
+/// Newton's method on z(preperiod + period) - z(preperiod) moves `c` until the orbit
+/// of 0 enters its cycle, to the working precision. Each round doubles the correct digits.
 fn refine(target: &Point, bits: usize) -> Result<(BigInt, BigInt), Failure> {
     let one = BigInt::from(1) << bits;
     let mut re = parse(target.re, bits)?;
@@ -485,14 +484,14 @@ fn refine(target: &Point, bits: usize) -> Result<(BigInt, BigInt), Failure> {
         let si = (((&fi * &gr - &fr * &gi) >> bits) << bits) / &size;
         re -= &sr;
         im -= &si;
-        if sr.magnitude().bits() + si.magnitude().bits() < 16 {
+        if sr.abs() + si.abs() < BigInt::from(256) {
             break;
         }
     }
     Ok((re, im))
 }
 
-/// A complex number beyond a double's range: (re + i im) * 2^exponent.
+/// A complex number beyond the range of an `f64`: `(re + i im) * 2^exponent`.
 #[derive(Clone, Copy)]
 struct Wide {
     re: f64,
@@ -599,6 +598,7 @@ impl Motion {
         }
     }
 
+    // #region: steer
     /// The zoom runs from the whole set down to 10^-DEPTH and back on its own.
     /// Moving the pointer takes over for two seconds: its height picks the depth,
     /// deepest at the top. Returns the zoom in doublings.
@@ -621,6 +621,7 @@ impl Motion {
         self.zoom = self.zoom.clamp(0.0, deepest);
         self.zoom
     }
+    // #endregion: steer
 
     fn point(&mut self, now: f64, pointer: [f64; 2]) {
         self.pointer = pointer;
