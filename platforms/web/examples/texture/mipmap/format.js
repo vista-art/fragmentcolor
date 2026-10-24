@@ -1,6 +1,5 @@
-import { TextureFormat, Mipmap } from "fragmentcolor";
+import { Mipmap, TextureFormat } from "fragmentcolor";
+const pixels = new Uint8Array(4 * 4 * 4).fill(200);
 
-const pixels = new Uint8Array(4 * 4 * 4);
-pixels.fill(200);
 const chain = Mipmap.build(pixels, TextureFormat.Rgba8UnormSrgb, [4, 4]);
-const _ = chain.format();
+const format = chain.format();

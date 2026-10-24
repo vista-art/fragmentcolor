@@ -1,149 +1,138 @@
 package org.fragmentcolor
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-
 // Idiomatic Kotlin wrappers on top of the uniffi-generated Shader API.
 // Matches the call shapes used by the JavaScript and Python bindings so
 // cross-platform examples read the same on every platform.
 
-// Shader.setRegistry(baseUrl) is provided directly by the uniffi-generated
-// companion object — calling it returns a Shader that the caller may discard.
-// We deliberately do NOT define a Void-returning extension here because such
-// an extension would shadow the generated method and cause infinite recursion
-// when this file calls Shader.setRegistry(baseUrl) (the call resolves to the
-// shadowing extension, not the underlying companion method).
-
-/** Set a Float uniform. */
-fun Shader.set(key: String, value: Float) {
-    set(key, UniformData.Float(value))
+/** Point registry slugs at [baseUrl], for every Shader in the process. */
+fun Shader.Companion.setRegistry(baseUrl: String) {
+    useRegistry(baseUrl).destroy()
 }
 
-/**
- * Set a Float uniform from a Kotlin [Double] literal. Lets example code
- * write `shader.set("k", 0.5)` without the `f` suffix; the value is downcast
- * to f32 before the FFI hop, matching every other binding's behaviour.
- */
-fun Shader.set(key: String, value: Double) {
-    set(key, UniformData.Float(value.toFloat()))
-}
+/** Build a [Shader] from parts: WGSL sources, registry slugs, URLs or file paths. */
+operator fun Shader.Companion.invoke(parts: List<String>): Shader = Shader.compose(parts)
 
-/** Set an Int (i32) uniform. */
-fun Shader.set(key: String, value: Int) {
-    set(key, UniformData.Int(value))
-}
+// Each overload only says what kind of value it carries. Rust shapes it to
+// the uniform's declared WGSL type, so `3` fits an f32, i32 or u32 uniform
+// and four numbers fit a vec4 or a mat2x2. The generated member
+// `set(key, UniformValue)` wins inside each body, so there is no recursion.
 
-/** Set a UInt (u32) uniform. */
-fun Shader.set(key: String, value: UInt) {
-    set(key, UniformData.UInt(value))
-}
+fun Shader.set(key: String, value: Float) = set(key, UniformValue.Number(value.toDouble()))
 
-/** Set a Bool uniform. */
-fun Shader.set(key: String, value: Boolean) {
-    set(key, UniformData.Bool(value))
-}
+fun Shader.set(key: String, value: Double) = set(key, UniformValue.Number(value))
 
-/** Float array — dispatches to Float / Vec2..4 / Mat3 / Mat4 by length. */
-fun Shader.set(key: String, value: FloatArray) {
-    val list = value.toList()
-    val uniform = when (value.size) {
-        1 -> UniformData.Float(list[0])
-        2 -> UniformData.Vec2(list)
-        3 -> UniformData.Vec3(list)
-        4 -> UniformData.Vec4(list)
-        9 -> UniformData.Mat3(list)
-        16 -> UniformData.Mat4(list)
-        else -> throw FragmentColorException.Shader(
-            "Unsupported float array length: ${value.size} (expected 1/2/3/4/9/16)"
-        )
-    }
-    set(key, uniform)
-}
+fun Shader.set(key: String, value: Int) = set(key, UniformValue.Number(value.toDouble()))
 
-/** Int (i32) array — dispatches to Int / IVec2..4 by length. */
-fun Shader.set(key: String, value: IntArray) {
-    val list = value.toList()
-    val uniform = when (value.size) {
-        1 -> UniformData.Int(list[0])
-        2 -> UniformData.IVec2(list)
-        3 -> UniformData.IVec3(list)
-        4 -> UniformData.IVec4(list)
-        else -> throw FragmentColorException.Shader(
-            "Unsupported int array length: ${value.size} (expected 1/2/3/4)"
-        )
-    }
-    set(key, uniform)
-}
+fun Shader.set(key: String, value: Long) = set(key, UniformValue.Number(value.toDouble()))
 
-/** UInt (u32) array — dispatches to UInt / UVec2..4 by length. */
-fun Shader.set(key: String, value: UIntArray) {
-    val list = value.toList()
-    val uniform = when (value.size) {
-        1 -> UniformData.UInt(list[0])
-        2 -> UniformData.UVec2(list)
-        3 -> UniformData.UVec3(list)
-        4 -> UniformData.UVec4(list)
-        else -> throw FragmentColorException.Shader(
-            "Unsupported uint array length: ${value.size} (expected 1/2/3/4)"
-        )
-    }
-    set(key, uniform)
-}
+fun Shader.set(key: String, value: UInt) = set(key, UniformValue.Number(value.toDouble()))
+
+fun Shader.set(key: String, value: Boolean) = set(key, UniformValue.Bool(value))
+
+fun Shader.set(key: String, value: FloatArray) =
+    set(key, UniformValue.Numbers(value.map { it.toDouble() }))
+
+fun Shader.set(key: String, value: DoubleArray) = set(key, UniformValue.Numbers(value.toList()))
+
+fun Shader.set(key: String, value: IntArray) =
+    set(key, UniformValue.Numbers(value.map { it.toDouble() }))
+
+fun Shader.set(key: String, value: LongArray) =
+    set(key, UniformValue.Numbers(value.map { it.toDouble() }))
+
+@OptIn(ExperimentalUnsignedTypes::class)
+fun Shader.set(key: String, value: UIntArray) =
+    set(key, UniformValue.Numbers(value.map { it.toDouble() }))
+
+/** A vector or matrix, such as the matrix `Camera.viewProj()` returns. */
+@JvmName("setFloats")
+fun Shader.set(key: String, value: List<Float>) =
+    set(key, UniformValue.Numbers(value.map { it.toDouble() }))
+
+@JvmName("setDoubles")
+fun Shader.set(key: String, value: List<Double>) = set(key, UniformValue.Numbers(value))
+
+@JvmName("setInts")
+fun Shader.set(key: String, value: List<Int>) =
+    set(key, UniformValue.Numbers(value.map { it.toDouble() }))
+
+@JvmName("setUInts")
+fun Shader.set(key: String, value: List<UInt>) =
+    set(key, UniformValue.Numbers(value.map { it.toDouble() }))
+
+/** A matrix as its columns, as Rust's `[[f32; 4]; 4]` holds it. */
+@JvmName("setFloatColumns")
+fun Shader.set(key: String, columns: List<List<Float>>) = set(key, columns.flatten())
+
+/** A matrix as its columns. */
+@JvmName("setDoubleColumns")
+fun Shader.set(key: String, columns: List<List<Double>>) = set(key, columns.flatten())
+
+/** A matrix as its columns. */
+@JvmName("setFloatArrayColumns")
+fun Shader.set(key: String, columns: List<FloatArray>) = set(key, columns.flatMap { it.toList() })
+
+/** Raw bytes for a storage-buffer or push-constant root. */
+fun Shader.set(key: String, bytes: ByteArray) = set(key, UniformValue.Bytes(bytes))
+
+/** Bind a [Texture] created by a [Renderer] to a texture uniform. */
+fun Shader.set(key: String, texture: Texture) = set(key, UniformValue.Texture(texture.id()))
+
+// `Shader.get` returns a [UniformData]. These accessors read it.
 
 /**
- * Pass a [Texture] handle for a sampler/texture binding. Storage merges
- * the user-supplied id with the shader-parsed metadata at set time, so
- * the placeholder values for `dim` / `arrayed` / `class` / `sampled`
- * here are overwritten by the real reflection data.
+ * The number a scalar uniform holds, as a [Float].
+ * `null` for anything but a bool, float, int or uint.
  */
-fun Shader.set(key: String, texture: Texture) {
-    val meta = TextureMeta(
-        id = texture.id(),
-        dim = TextureDim.D2,
-        arrayed = false,
-        `class` = TextureClass.Sampled(TextureScalarKind.FLOAT, false),
-        sampled = true
-    )
-    set(key, UniformData.Texture(meta))
-}
+val UniformData.float: Float?
+    get() = when (this) {
+        is UniformData.Float -> v1
+        is UniformData.Int -> v1.toFloat()
+        is UniformData.UInt -> v1.toFloat()
+        is UniformData.Bool -> if (v1) 1f else 0f
+        else -> null
+    }
+
+/**
+ * The numbers a scalar, vector or matrix uniform holds, as [Float]s.
+ * Matrices come column by column. `null` for textures, samplers and bytes.
+ */
+val UniformData.floats: List<Float>?
+    get() = when (this) {
+        is UniformData.Vec2 -> v1
+        is UniformData.Vec3 -> v1
+        is UniformData.Vec4 -> v1
+        is UniformData.Mat2 -> v1
+        is UniformData.Mat3 -> v1
+        is UniformData.Mat4 -> v1
+        is UniformData.UVec2 -> v1.map { it.toFloat() }
+        is UniformData.UVec3 -> v1.map { it.toFloat() }
+        is UniformData.UVec4 -> v1.map { it.toFloat() }
+        is UniformData.IVec2 -> v1.map { it.toFloat() }
+        is UniformData.IVec3 -> v1.map { it.toFloat() }
+        is UniformData.IVec4 -> v1.map { it.toFloat() }
+        else -> float?.let { listOf(it) }
+    }
+
+/** The bytes of a storage-buffer or push-constant root. `null` for anything else. */
+val UniformData.bytes: ByteArray?
+    get() = (this as? UniformData.Bytes)?.v1
 
 // ---------------------------------------------------------------------------
 // Async fetch factory helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Resolve a single URL, slug, file path, or raw WGSL source asynchronously
- * and return a compiled [Shader]. Mirrors `Shader.fetch(...)` on Web and Python.
- *
- * The underlying uniffi binding exposes `fetch` as a `suspend` instance method
- * (uniffi 0.31 does not support async constructors); this companion-style
- * top-level function creates a throw-away default instance to call through.
- *
- * Usage:
- * ```kotlin
- * val shader = ShaderFetch("https://example.com/shader.wgsl")
- * ```
- */
-suspend fun ShaderFetch(input: String): Shader =
-    Shader.default().fetch(input)
+@Deprecated("Use Shader.fetch(input)", ReplaceWith("Shader.fetch(input)"))
+suspend fun ShaderFetch(input: String): Shader = Shader.fetch(input)
 
-/**
- * Resolve an array of parts (URLs, slugs, paths, raw WGSL) asynchronously,
- * merge them, and return a compiled [Shader].
- *
- * Usage:
- * ```kotlin
- * val shader = ShaderFetch(listOf("sdf2d/circle", mySource))
- * ```
- */
-suspend fun ShaderFetch(parts: List<String>): Shader =
-    Shader.default().fetchCompose(parts)
+@Deprecated("Use Shader.fetch(parts)", ReplaceWith("Shader.fetch(parts)"))
+suspend fun ShaderFetch(parts: List<String>): Shader = Shader.fetch(parts)
 
 // Companion-object extensions that mirror the static-factory spelling used by
 // the JavaScript, Python, and Swift bindings: `Shader.fetch(input)` /
-// `Shader.fetch(parts)`. uniffi 0.31 cannot generate async constructors, so
-// the underlying binding is an instance method on `Shader`; these wrappers
-// create a throw-away default instance and discard it after the fetch.
+// `Shader.fetch(parts)`. The underlying binding is an instance method on
+// `Shader`; these wrappers create a throw-away default instance and discard
+// it after the fetch.
 
 /**
  * Static-factory async fetch: resolve a single URL, slug, file path, or raw

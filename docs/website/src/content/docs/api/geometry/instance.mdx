@@ -1,0 +1,364 @@
+---
+title: Instance
+description: "An `Instance` holds the per-instance attributes of one copy of a [Mesh](/api/geometry/mesh): an offset, a tint, an id. The renderer draws the mesh once per instance and feeds each copy its own values."
+category: geometry
+categoryLabel: Geometry
+sidebar:
+  order: 3
+---
+
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Description
+
+An `Instance` holds the per-instance attributes of one copy of a
+[Mesh](/api/geometry/mesh): an offset, a tint, an
+id. The renderer draws the mesh once per instance and feeds each copy its
+own values.
+
+Instance attributes have their own `@location` numbering, separate from the
+vertex attributes, and the shader matches them the same way: by name first,
+then by location. On a clash, the instance attribute wins over the vertex
+attribute. A number fills a float input unless the shader declares an
+integer type at that location.
+
+Most code doesn't build one by hand.
+[`Vertex::create_instance`](/api/geometry/vertex#create_instance)
+copies a vertex's properties, and `Mesh::add_instance` takes a `Vertex` too.
+Build an `Instance` when the per-instance data doesn't come from a vertex.
+
+
+
+## Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::mesh::{Instance, Mesh};
+
+let mesh = Mesh::new();
+mesh.add_vertex([0.0, 0.0]);
+
+let instance = Instance::new().set("offset", [0.5, 0.0]);
+mesh.add_instance(instance);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Instance, Mesh } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex([0.0, 0.0]);
+
+const instance = new Instance().set("offset", [0.5, 0.0]);
+mesh.addInstance(instance);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Instance, Mesh
+
+mesh = Mesh()
+mesh.add_vertex([0.0, 0.0])
+
+instance = Instance().set("offset", [0.5, 0.0])
+mesh.add_instance(instance)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex([0.0, 0.0])
+
+let instance = try Instance().set("offset", [0.5, 0.0])
+try mesh.addInstance(instance)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex(listOf(0.0f, 0.0f))
+
+val instance = Instance().set("offset", listOf(0.5f, 0.0f))
+mesh.addInstance(instance)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+## Methods
+
+
+---
+
+### Instance::new \{#new\}
+
+Create an empty `Instance`. Chain `set` calls to give it per-instance
+attributes.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::mesh::Instance;
+
+let instance = Instance::new();
+_ = instance;
+`}
+lang="rust" meta="collapse={4-4}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Instance } from "fragmentcolor";
+
+const instance = new Instance();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Instance
+
+instance = Instance()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let instance = Instance()
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val instance = Instance()
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Instance::set \{#set\}
+
+Set a per-instance attribute. `set` returns a new `Instance` with the
+attribute added, so chain the calls and keep the result.
+
+The first `set` for a key gives it the next free instance `@location`,
+in call order; setting the same key again keeps its location.
+
+The value is a number or a list of 1 to 4 numbers, and the shader decides
+its type when the mesh attaches, the same way it does for
+[`Vertex::set`](/api/geometry/vertex#set). A
+number fills a float input unless the shader declares an integer type at
+that location. An integer input takes whole numbers that fit its type,
+and any other value fails the attach with an error that names the
+attribute, the declared type, the value and the instance.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Instance, Mesh, Shader};
+
+let shader = Shader::new(r#"
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>, @location(1) offset: vec2<f32>, @location(2) layer: u32) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(pos + offset, f32(layer) * 0.1, 1.0);
+  }
+  @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
+"#)?;
+
+let mesh = Mesh::new();
+mesh.add_vertex([0.0, 0.0]);
+
+let instance = Instance::new()
+    .set("offset", [0.5, 0.0])
+    .set("layer", 2);
+mesh.add_instance(instance);
+
+// offset uploads as a vec2<f32> and layer as the u32 2.
+shader.add_mesh(&mesh)?;
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 22-23}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Instance, Mesh, Shader } from "fragmentcolor";
+
+const shader = new Shader(\`
+
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>, @location(1) offset: vec2<f32>, @location(2) layer: u32) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(pos + offset, f32(layer) * 0.1, 1.0);
+  }
+  @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
+
+\`);
+
+const mesh = new Mesh();
+mesh.addVertex([0.0, 0.0]);
+
+const instance = new Instance().set("offset", [0.5, 0.0]).set("layer", 2);
+mesh.addInstance(instance);
+
+// offset uploads as a vec2<f32> and layer as the u32 2.
+shader.addMesh(mesh);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Instance, Mesh, Shader
+
+shader = Shader("""
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>, @location(1) offset: vec2<f32>, @location(2) layer: u32) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(pos + offset, f32(layer) * 0.1, 1.0);
+  }
+  @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
+
+""")
+
+mesh = Mesh()
+mesh.add_vertex([0.0, 0.0])
+
+instance = Instance().set("offset", [0.5, 0.0]).set("layer", 2)
+mesh.add_instance(instance)
+
+# offset uploads as a vec2<f32> and layer as the u32 2.
+shader.add_mesh(mesh)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let shader = try Shader("""
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>, @location(1) offset: vec2<f32>, @location(2) layer: u32) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(pos + offset, f32(layer) * 0.1, 1.0);
+  }
+  @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
+
+""")
+
+let mesh = Mesh()
+try mesh.addVertex([0.0, 0.0])
+
+let instance = try Instance().set("offset", [0.5, 0.0]).set("layer", 2)
+try mesh.addInstance(instance)
+
+// offset uploads as a vec2<f32> and layer as the u32 2.
+try shader.addMesh(mesh)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val shader = Shader("""
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>, @location(1) offset: vec2<f32>, @location(2) layer: u32) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(pos + offset, f32(layer) * 0.1, 1.0);
+  }
+  @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
+
+""")
+
+val mesh = Mesh()
+mesh.addVertex(listOf(0.0f, 0.0f))
+
+val instance = Instance().set("offset", listOf(0.5f, 0.0f)).set("layer", 2)
+mesh.addInstance(instance)
+
+// offset uploads as a vec2<f32> and layer as the u32 2.
+shader.addMesh(mesh)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>

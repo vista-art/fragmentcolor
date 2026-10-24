@@ -15,7 +15,6 @@ again or call `set_instance_count`.
 use fragmentcolor::mesh::{Mesh, Instance};
 
 let m = Mesh::new();
-let red: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
-m.add_instance(Instance::new().set("tint", red));
+m.add_instance(Instance::new().set("tint", [1.0, 0.0, 0.0, 1.0]));
 m.clear_instances(); // back to a single uninstanced draw
 ```

@@ -9,7 +9,7 @@
 //! `Scene::new()` is sync — no `Renderer` argument, no async, nothing to
 //! await. The first time a SceneObject is added the Scene allocates a
 //! default Pass to hold it; the first time the Scene is rendered the
-//! underlying GPU resources initialise on demand. Same lazy-init pattern
+//! underlying GPU resources initialize on demand. Same lazy-init pattern
 //! the rest of FragmentColor follows.
 //!
 //! A Scene owns one ordered `Vec<Pass>`. Loaders, builders, and user code
@@ -23,7 +23,7 @@
 //!
 //! When the user has added Models but no Camera or Light, the Scene injects
 //! sensible defaults at render time so the "hello world" path renders
-//! something recognisable. As soon as you add your own Camera / Light, the
+//! something recognizable. As soon as you add your own Camera / Light, the
 //! defaults stop firing. Composition callers that drive every uniform
 //! themselves can turn the injection off with `no_defaults` (or the
 //! per-kind `no_default_camera` / `no_default_light`), or replace the stock
@@ -47,11 +47,11 @@ use crate::{Pass, PassError, PassObject, Renderable};
 #[derive(Debug, Clone)]
 #[lsp_doc("docs/api/scene/scene/scene.md")]
 pub struct Scene {
-    pub(crate) inner: Arc<SceneInner>,
+    pub(crate) inner: Arc<SceneState>,
 }
 
 #[derive(Debug)]
-pub(crate) struct SceneInner {
+pub(crate) struct SceneState {
     /// The Scene's ordered pass graph. Loaders, builders, `add_pass`, and
     /// the lazily-created default Pass all push into this one vec;
     /// `Renderable for Scene` iterates it in order. Empty until the first
@@ -143,7 +143,7 @@ impl Scene {
     #[lsp_doc("docs/api/scene/scene/new.md")]
     pub fn new() -> Self {
         Self {
-            inner: Arc::new(SceneInner {
+            inner: Arc::new(SceneState {
                 passes: RwLock::new(Vec::new()),
                 default_pass: RwLock::new(None),
                 has_camera: RwLock::new(false),
@@ -560,7 +560,7 @@ mod tests {
     fn add_after_add_pass_follows_call_order() {
         // The default Pass is no longer privileged: a Pass added after the
         // geometry renders after it, unlike the old "extras always first"
-        // behaviour.
+        // behavior.
         let scene = Scene::new();
         let model = Model::new(pbr_triangle_mesh(), Material::pbr());
         scene.add(&model).expect("add"); // default pass first

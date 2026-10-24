@@ -84,7 +84,7 @@ impl Material {
         let material = Self { shader };
         material.apply_defaults();
         // Seed the ShaderObject. The default ShaderObject double_sided is
-        // `true` (preserves the pre-Material no-cull behaviour for raw
+        // `true` (preserves the pre-Material no-cull behavior for raw
         // Shader callers); Material::pbr flips it to `false` to follow
         // glTF 2.0's single-sided default.
         material.shader.object.set_alpha_mode(AlphaMode::default());
@@ -146,7 +146,7 @@ impl Material {
         // Material renders correctly without any Light attached; the
         // first `pass.add(&light)` writes to slot 0 too, overwriting the
         // defaults. Subsequent Lights take slots 1, 2, … up to
-        // `PBR_MAX_LIGHTS` (32). Ambient is a small grey tint so unlit
+        // `PBR_MAX_LIGHTS` (32). Ambient is a small gray tint so unlit
         // faces don't read as pitch-black — matches the prior shader's
         // hardcoded `* 0.03` term.
         let _ = self.shader.set("lights.count", 1_u32);

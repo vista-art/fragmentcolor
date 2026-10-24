@@ -1,7 +1,7 @@
 # Camera::position
 
 Read the world-space eye position as `[x, y, z]`. This is the value set by
-the most recent [`look_at`](https://fragmentcolor.org/api/scene/camera/look_at)
+the most recent [`look_at`](https://fragmentcolor.org/api/scene/camera#look_at)
 call, or `[0, 0, 0]` if the camera has only been constructed (the default
 view is identity, with the eye at the origin).
 

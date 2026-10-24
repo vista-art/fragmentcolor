@@ -14,7 +14,7 @@ let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
 texture.write(&vec![0; 64 * 64 * 4])?;
 
-let bytes = renderer.read_texture(*texture.id()).await?;
+let bytes = renderer.read_texture(texture.id()).await?;
 # assert_eq!(bytes.len(), 64 * 64 * 4);
 # Ok(())
 # }

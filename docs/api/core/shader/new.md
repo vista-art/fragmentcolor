@@ -19,6 +19,23 @@ uniforms are initialized to zero.
 GLSL is supported only as a single part (a `.vert`, `.frag`, or `.glsl`
 file). Mixing GLSL with other parts is rejected.
 
+An empty string, or an empty array, gives the default shader.
+
+## Where each input resolves
+
+| Platform | Registry slugs and registry URLs | Other `https://` URLs | File paths |
+|----------|----------------------------------|-----------------------|------------|
+| Rust (desktop) | Bundled shader library, offline | Fetched with the `network` feature, an error without it | Read from disk |
+| Python | Bundled shader library, offline | Fetched by a wheel built with the `network` feature, an error otherwise | Read from disk |
+| Swift / Kotlin | Bundled shader library, offline | Not fetched; a network error | Read from disk |
+| Web, `Shader.fetch` | The browser's `fetch()` | The browser's `fetch()` | Fetched relative to the page's origin |
+| Web, `new Shader` | Not fetched; an error that points at `Shader.fetch` | Not fetched; an error | Not fetched; an error |
+
+After `Shader::set_registry`, slugs and registry URLs are fetched first on
+every platform, and the bundled copy stands in when the fetch fails. A slug
+resolves against the new registry. A registry URL is fetched as written, so
+`https://fragmentcolor.org/shaders/sdf2d/circle.wgsl` still asks the default registry.
+
 ## Example - Single Shader Source
 
 ```rust
@@ -86,5 +103,5 @@ let shader = Shader::new([
 In WASM the constructor cannot perform network requests, because
 constructors cannot be async. Pass raw source strings to `new Shader([...])`,
 or use the async
-[Shader::fetch](https://fragmentcolor.org/api/core/shader#shaderfetch)
+[Shader::fetch](https://fragmentcolor.org/api/core/shader#fetch)
 builder to resolve URLs and slugs over the browser's `fetch()`.

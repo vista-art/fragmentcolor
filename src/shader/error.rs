@@ -35,6 +35,20 @@ pub enum ShaderError {
     },
     #[error("Shader busy: {0}")]
     Busy(String),
+    /// A mesh value that doesn't fit the type its attribute takes.
+    #[error("Mesh attribute {name}: expected {expected}, got {found}")]
+    AttributeMismatch {
+        name: String,
+        expected: String,
+        found: String,
+    },
+    /// An attribute one shader typed, which this shader declares another way.
+    #[error("Mesh attribute {name} is {fixed} on this mesh, but the shader declares {declared}")]
+    AttributeConflict {
+        name: String,
+        fixed: String,
+        declared: String,
+    },
     #[cfg(wasm)]
     #[error("WASM Shader Error: {0}")]
     Error(String),
@@ -73,7 +87,7 @@ impl From<wasm_bindgen::JsValue> for ShaderError {
 #[cfg(wasm)]
 impl From<ShaderError> for wasm_bindgen::JsValue {
     fn from(error: ShaderError) -> Self {
-        wasm_bindgen::JsValue::from_str(&error.to_string())
+        js_sys::Error::new(&error.to_string()).into()
     }
 }
 
@@ -95,6 +109,16 @@ mod tests {
             len: 2,
         };
         let g = ShaderError::FieldNotFound("x".into());
+        let h = ShaderError::AttributeMismatch {
+            name: "id".into(),
+            expected: "u32".into(),
+            found: "-1 at vertex 2".into(),
+        };
+        let i = ShaderError::AttributeConflict {
+            name: "id".into(),
+            fixed: "u32".into(),
+            declared: "f32".into(),
+        };
 
         assert!(a.to_string().contains("parse"));
         assert!(b.to_string().contains("Planned feature"));
@@ -103,5 +127,13 @@ mod tests {
         assert!(e.to_string().contains("Invalid key"));
         assert!(f.to_string().contains("Index out of bounds"));
         assert!(g.to_string().contains("Field not found"));
+        assert_eq!(
+            h.to_string(),
+            "Mesh attribute id: expected u32, got -1 at vertex 2"
+        );
+        assert_eq!(
+            i.to_string(),
+            "Mesh attribute id is u32 on this mesh, but the shader declares f32"
+        );
     }
 }

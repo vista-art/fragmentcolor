@@ -1,11 +1,8 @@
 import org.fragmentcolor.*
+val glb_bytes = java.io.File("path/to/model.glb").readBytes()
 
-// A path — """.gltf""" JSON (with external buffers/images) or a """.glb""" container.
+// A path to a `.gltf` file with its buffers and images, or to a `.glb` file.
 val scene = Scene.load("path/to/model.gltf")
 
-val bytes: ByteArray = byteArrayOf()
-// In-memory """.glb""" bytes — fetched from disk, the network, or another
-// asset pipeline before this point.
-val png: ByteArray = byteArrayOf()
-val glb_bytes = "/healthcheck/public/favicon.png"
+// The bytes of a `.glb` file, read from disk or the network.
 val scene2 = Scene.load(glb_bytes)

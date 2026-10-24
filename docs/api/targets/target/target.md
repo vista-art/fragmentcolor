@@ -1,10 +1,10 @@
 # Target
 
-The [Target](https://fragmentcolor.org/api/core/target) interface (trait in Rust) is a rendering destination for the [Renderer](https://fragmentcolor.org/api/core/renderer) implemented by both [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget) and [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget).
+The [Target](https://fragmentcolor.org/api/targets/target) interface (trait in Rust) is a rendering destination for the [Renderer](https://fragmentcolor.org/api/core/renderer) implemented by both [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget) and [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget).
 
 It contains a GPU surface texture attached to a platform-specific window or an offscreen texture for headless rendering (see [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget)).
 
-[Target](https://fragmentcolor.org/api/core/target) constructors are private and can only be created via the [Renderer](https://fragmentcolor.org/api/core/renderer) using either `Renderer.create_target(window)` for on-screen rendering, or `Renderer.create_texture_target()` for offscreen rendering.
+[Target](https://fragmentcolor.org/api/targets/target) constructors are private and can only be created via the [Renderer](https://fragmentcolor.org/api/core/renderer) using either `Renderer.create_target(window)` for on-screen rendering, or `Renderer.create_texture_target()` for offscreen rendering.
 
 ## Examples
 
@@ -12,20 +12,40 @@ It contains a GPU surface texture attached to a platform-specific window or an o
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+# let canvas = fragmentcolor::headless_window([800, 600]);
+# /*[js]
+# const canvas = document.createElement("canvas");
+# */
+# /*[python]
+# import os, sys
+# # Skip this example in headless/CI environments that have no display surface.
+# if os.environ.get('DISPLAY') is None and sys.platform != 'win32' and os.environ.get('FC_ALLOW_WINDOW') != '1':
+#     raise SystemExit(0)
+# from rendercanvas.auto import RenderCanvas
+# canvas = RenderCanvas(size=(800, 600))
+# */
+# /*[swift]
+# import QuartzCore
+# let canvas = CAMetalLayer()
+# */
+# /*[kotlin]
+# val surfaceTexture = android.graphics.SurfaceTexture(0)
+# val canvas = android.view.Surface(surfaceTexture)
+# */
 
 use fragmentcolor::{Renderer, Shader};
 
 let renderer = Renderer::new();
 
-// Use your platform's windowing system to create a window.
-// We officially support Winit. Check the examples folder for details.
-let window = fragmentcolor::headless_window([800, 600]);
-
-let target = renderer.create_target(window).await?;
+// The canvas comes from your platform's windowing system.
+let target = renderer.create_target(canvas).await?;
 
 // To animate, render again in your event loop...
 renderer.render(&Shader::default(), &target)?;
 renderer.render(&Shader::default(), &target)?;
+# /*[kotlin]
+# surfaceTexture.release()
+# */
 
 # Ok(())
 # }

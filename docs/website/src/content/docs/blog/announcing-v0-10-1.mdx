@@ -1,0 +1,31 @@
+---
+title: "v0.10.1: Cleanup and bug fixes"
+excerpt: "A simpler internal shader representation, pooled uniform buffers, runtime errors in place of panics, and a render call that takes a renderable and a target."
+authors: ["rafaelbeckel"]
+date: 2025-03-10
+tags: ["release", "rust", "bugfix"]
+---
+
+v0.10.1 is a round of cleanup and bug fixes on top of [v0.10.0](/blog/first/). It simplifies the internals, makes the renderer simpler to call, and trims the boilerplate from the Rust demos.
+
+### Internals
+
+- A simpler internal shader representation.
+- A `BufferPool` for uniform buffers.
+- Runtime errors return instead of panicking.
+- Fixes for the uniform getters and setters.
+
+### Rendering
+
+- [`Renderer::render`](/api/core/renderer/#render) takes two arguments: a renderable and a target.
+- The renderer accepts a `Shader`, a `Pass`, or a `Frame`.
+- A simpler [`Target`](/api/targets/target/) interface covers the common single-target case.
+
+### Platforms and demos
+
+- Helper functions initialize each platform.
+- The Rust demos carry less boilerplate.
+
+Release notes: [CHANGELOG](https://github.com/vista-art/fragmentcolor/blob/main/CHANGELOG.md#0101-cleanup-and-bug-fixes).
+
+Rafael

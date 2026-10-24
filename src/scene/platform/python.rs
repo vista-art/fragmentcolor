@@ -3,7 +3,7 @@
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 
-use crate::scene::{Camera, Light, LightError, LightKind, Model, Scene};
+use crate::scene::{Camera, Light, LightError, LightKind, Model, Scene, SceneLoadError};
 use crate::{Material, Mesh, Pass};
 
 #[pymethods]
@@ -23,11 +23,9 @@ impl Model {
     #[pyo3(name = "material")]
     #[lsp_doc("docs/api/scene/model/material.md")]
     pub fn material_py(&self) -> Material {
-        // Material is Clone (deep clone via Shader::duplicate). For the
-        // Python accessor we want share semantics: cheap, mutates propagate.
-        // We can't reach into Material here without duplicating; expose a
-        // shallow share by reconstructing from the existing Arc-shared Shader.
-        Material::custom(self.material.shader.clone())
+        // Material::clone is a shallow Arc-share, so mutations through the
+        // returned handle reach the Model's Material.
+        self.material.clone()
     }
 
     #[pyo3(name = "transform")]
@@ -38,8 +36,8 @@ impl Model {
 
     #[pyo3(name = "set_transform")]
     #[lsp_doc("docs/api/scene/model/set_transform.md")]
-    pub fn set_transform_py(&self, matrix: [[f32; 4]; 4]) {
-        self.set_transform(matrix);
+    pub fn set_transform_py(&self, matrix: PyMatrix) {
+        self.set_transform(matrix.into());
     }
 
     #[pyo3(name = "translate")]
@@ -121,10 +119,61 @@ impl Camera {
     }
 }
 
-/// Convert a `LightError` into a Python `ValueError`. Used by every
-/// kind-specific setter on the `Light` Python binding.
-fn light_err_to_py(e: LightError) -> PyErr {
-    pyo3::exceptions::PyValueError::new_err(e.to_string())
+/// A 4x4 matrix from Python: four columns of four, or 16 numbers column after column.
+#[derive(FromPyObject)]
+pub enum PyMatrix {
+    #[pyo3(annotation = "Sequence[Sequence[float]]")]
+    Columns([[f32; 4]; 4]),
+    #[pyo3(annotation = "Sequence[float]")]
+    Flat([f32; 16]),
+}
+
+impl From<PyMatrix> for [[f32; 4]; 4] {
+    fn from(matrix: PyMatrix) -> Self {
+        match matrix {
+            PyMatrix::Columns(columns) => columns,
+            PyMatrix::Flat(flat) => {
+                std::array::from_fn(|column| std::array::from_fn(|row| flat[column * 4 + row]))
+            }
+        }
+    }
+}
+
+/// A light setter that doesn't fit the light raises `LightError`,
+/// a `FragmentColorError` that is also a `ValueError`.
+impl From<LightError> for PyErr {
+    fn from(error: LightError) -> Self {
+        crate::error::PythonError::Light.new_err(error.to_string())
+    }
+}
+
+/// A scene that fails to load raises `SceneLoadError`,
+/// a `FragmentColorError` that is also a `RuntimeError`.
+impl From<SceneLoadError> for PyErr {
+    fn from(error: SceneLoadError) -> Self {
+        crate::error::PythonError::SceneLoad.new_err(error.to_string())
+    }
+}
+
+/// A `Scene.load` source from Python: a path, or the bytes of a `.glb` file.
+#[derive(FromPyObject)]
+pub enum PySceneSource<'py> {
+    #[pyo3(annotation = "str")]
+    Path(String),
+    #[pyo3(annotation = "bytes")]
+    Bytes(Bound<'py, pyo3::types::PyBytes>),
+    #[pyo3(annotation = "bytearray")]
+    ByteArray(Bound<'py, pyo3::types::PyByteArray>),
+}
+
+impl From<PySceneSource<'_>> for crate::scene::GltfSource {
+    fn from(source: PySceneSource<'_>) -> Self {
+        match source {
+            PySceneSource::Path(path) => path.into(),
+            PySceneSource::Bytes(bytes) => bytes.as_bytes().into(),
+            PySceneSource::ByteArray(bytes) => bytes.to_vec().into(),
+        }
+    }
 }
 
 #[pymethods]
@@ -217,19 +266,19 @@ impl Light {
     #[pyo3(name = "set_position")]
     #[lsp_doc("docs/api/scene/light/set_position.md")]
     pub fn set_position_py(&self, position: [f32; 3]) -> Result<Self, PyErr> {
-        self.set_position(position).map_err(light_err_to_py)
+        Ok(self.set_position(position)?)
     }
 
     #[pyo3(name = "set_direction")]
     #[lsp_doc("docs/api/scene/light/set_direction.md")]
     pub fn set_direction_py(&self, direction: [f32; 3]) -> Result<Self, PyErr> {
-        self.set_direction(direction).map_err(light_err_to_py)
+        Ok(self.set_direction(direction)?)
     }
 
     #[pyo3(name = "set_range")]
     #[lsp_doc("docs/api/scene/light/set_range.md")]
     pub fn set_range_py(&self, value: f32) -> Result<Self, PyErr> {
-        self.set_range(value).map_err(light_err_to_py)
+        Ok(self.set_range(value)?)
     }
 
     #[pyo3(name = "set_cone_angles")]
@@ -239,8 +288,7 @@ impl Light {
         inner_radians: f32,
         outer_radians: f32,
     ) -> Result<Self, PyErr> {
-        self.set_cone_angles(inner_radians, outer_radians)
-            .map_err(light_err_to_py)
+        Ok(self.set_cone_angles(inner_radians, outer_radians)?)
     }
 }
 
@@ -253,25 +301,16 @@ impl Scene {
     }
 
     /// Load a scene file. Pass a path string for `.gltf` / `.glb` files;
-    /// pass a `bytes` object for an in-memory `.glb` payload.
+    /// pass `bytes` for an in-memory `.glb` payload. `cameras=False` and
+    /// `lights=False` leave out the file's own cameras and lights.
     #[staticmethod]
-    #[pyo3(name = "load")]
+    #[pyo3(name = "load", signature = (source, cameras=true, lights=true))]
     #[lsp_doc("docs/api/scene/scene/load.md")]
-    pub fn load_py(source: Py<PyAny>) -> Result<Self, PyErr> {
-        Python::attach(|py| -> Result<Self, PyErr> {
-            let bound = source.bind(py);
-            let scene_source = if let Ok(s) = bound.extract::<String>() {
-                crate::scene::SceneSource::gltf(s)
-            } else if let Ok(b) = bound.extract::<Vec<u8>>() {
-                crate::scene::SceneSource::gltf(b)
-            } else {
-                return Err(pyo3::exceptions::PyTypeError::new_err(
-                    "Scene.load: expected a path string or a bytes object",
-                ));
-            };
-            Scene::load(scene_source)
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
-        })
+    pub fn load_py(source: PySceneSource<'_>, cameras: bool, lights: bool) -> PyResult<Self> {
+        let source = crate::scene::SceneSource::gltf(source)
+            .cameras(cameras)
+            .lights(lights);
+        Ok(Scene::load(source)?)
     }
 
     /// Unified Scene::add — branches on the runtime Python type. Anything
@@ -280,31 +319,29 @@ impl Scene {
     /// extra cast arm below.
     #[pyo3(name = "add")]
     #[lsp_doc("docs/api/scene/scene/add.md")]
-    pub fn add_py(&self, object: Py<PyAny>) -> Result<(), PyErr> {
-        Python::attach(|py| -> Result<(), PyErr> {
-            let bound = object.bind(py);
-            if let Ok(model) = bound.cast::<Model>() {
-                let m = model.borrow();
-                return self.add(&*m).map(|_| ()).map_err(|e| e.into());
-            }
-            if let Ok(camera) = bound.cast::<Camera>() {
-                let c = camera.borrow();
-                return self.add(&*c).map(|_| ()).map_err(|e| e.into());
-            }
-            if let Ok(light) = bound.cast::<Light>() {
-                let l = light.borrow();
-                return self.add(&*l).map(|_| ()).map_err(|e| e.into());
-            }
-            Err(pyo3::exceptions::PyTypeError::new_err(
+    pub fn add_py<'py>(
+        slf: PyRef<'py, Self>,
+        object: &Bound<'py, PyAny>,
+    ) -> PyResult<PyRef<'py, Self>> {
+        if let Ok(model) = object.cast::<Model>() {
+            slf.add(&*model.borrow())?;
+        } else if let Ok(camera) = object.cast::<Camera>() {
+            slf.add(&*camera.borrow())?;
+        } else if let Ok(light) = object.cast::<Light>() {
+            slf.add(&*light.borrow())?;
+        } else {
+            return Err(pyo3::exceptions::PyTypeError::new_err(
                 "Scene.add: expected a Model, Camera, or Light",
-            ))
-        })
+            ));
+        }
+        Ok(slf)
     }
 
     #[pyo3(name = "add_pass")]
     #[lsp_doc("docs/api/scene/scene/add_pass.md")]
-    pub fn add_pass_py(&self, pass: &Pass) {
-        self.add_pass(pass);
+    pub fn add_pass_py<'py>(slf: PyRef<'py, Self>, pass: &Pass) -> PyRef<'py, Self> {
+        slf.add_pass(pass);
+        slf
     }
 
     #[pyo3(name = "remove_pass")]
@@ -336,35 +373,32 @@ impl Scene {
     /// `Scene.add` does.
     #[pyo3(name = "add_to")]
     #[lsp_doc("docs/api/scene/scene/add_to.md")]
-    pub fn add_to_py(&self, target: Py<PyAny>, object: Py<PyAny>) -> Result<(), PyErr> {
-        Python::attach(|py| -> Result<(), PyErr> {
-            let target = target.bind(py);
-            let target = if let Ok(index) = target.extract::<usize>() {
-                crate::scene::PassRef::Index(index)
-            } else if let Ok(name) = target.extract::<String>() {
-                crate::scene::PassRef::Name(name)
-            } else {
-                return Err(pyo3::exceptions::PyTypeError::new_err(
-                    "Scene.add_to: target must be an int index or a str name",
-                ));
-            };
-            let object = object.bind(py);
-            if let Ok(model) = object.cast::<Model>() {
-                let m = model.borrow();
-                return self.add_to(target, &*m).map(|_| ()).map_err(|e| e.into());
-            }
-            if let Ok(camera) = object.cast::<Camera>() {
-                let c = camera.borrow();
-                return self.add_to(target, &*c).map(|_| ()).map_err(|e| e.into());
-            }
-            if let Ok(light) = object.cast::<Light>() {
-                let l = light.borrow();
-                return self.add_to(target, &*l).map(|_| ()).map_err(|e| e.into());
-            }
-            Err(pyo3::exceptions::PyTypeError::new_err(
+    pub fn add_to_py<'py>(
+        slf: PyRef<'py, Self>,
+        target: &Bound<'py, PyAny>,
+        object: &Bound<'py, PyAny>,
+    ) -> PyResult<PyRef<'py, Self>> {
+        let target = if let Ok(index) = target.extract::<usize>() {
+            crate::scene::PassRef::Index(index)
+        } else if let Ok(name) = target.extract::<String>() {
+            crate::scene::PassRef::Name(name)
+        } else {
+            return Err(pyo3::exceptions::PyTypeError::new_err(
+                "Scene.add_to: target must be an int index or a str name",
+            ));
+        };
+        if let Ok(model) = object.cast::<Model>() {
+            slf.add_to(target, &*model.borrow())?;
+        } else if let Ok(camera) = object.cast::<Camera>() {
+            slf.add_to(target, &*camera.borrow())?;
+        } else if let Ok(light) = object.cast::<Light>() {
+            slf.add_to(target, &*light.borrow())?;
+        } else {
+            return Err(pyo3::exceptions::PyTypeError::new_err(
                 "Scene.add_to: expected a Model, Camera, or Light",
-            ))
-        })
+            ));
+        }
+        Ok(slf)
     }
 
     #[pyo3(name = "set_passes")]
@@ -375,38 +409,44 @@ impl Scene {
 
     #[pyo3(name = "no_defaults")]
     #[lsp_doc("docs/api/scene/scene/no_defaults.md")]
-    pub fn no_defaults_py(&self) {
-        self.no_defaults();
+    pub fn no_defaults_py(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf.no_defaults();
+        slf
     }
 
     #[pyo3(name = "no_default_camera")]
     #[lsp_doc("docs/api/scene/scene/no_default_camera.md")]
-    pub fn no_default_camera_py(&self) {
-        self.no_default_camera();
+    pub fn no_default_camera_py(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf.no_default_camera();
+        slf
     }
 
     #[pyo3(name = "no_default_light")]
     #[lsp_doc("docs/api/scene/scene/no_default_light.md")]
-    pub fn no_default_light_py(&self) {
-        self.no_default_light();
+    pub fn no_default_light_py(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf.no_default_light();
+        slf
     }
 
     #[pyo3(name = "set_default_camera")]
     #[lsp_doc("docs/api/scene/scene/set_default_camera.md")]
-    pub fn set_default_camera_py(&self, camera: &Camera) {
-        self.set_default_camera(camera);
+    pub fn set_default_camera_py<'py>(slf: PyRef<'py, Self>, camera: &Camera) -> PyRef<'py, Self> {
+        slf.set_default_camera(camera);
+        slf
     }
 
     #[pyo3(name = "set_default_light")]
     #[lsp_doc("docs/api/scene/scene/set_default_light.md")]
-    pub fn set_default_light_py(&self, light: &Light) {
-        self.set_default_light(light);
+    pub fn set_default_light_py<'py>(slf: PyRef<'py, Self>, light: &Light) -> PyRef<'py, Self> {
+        slf.set_default_light(light);
+        slf
     }
 
     #[pyo3(name = "ambient")]
     #[lsp_doc("docs/api/scene/scene/ambient.md")]
-    pub fn ambient_py(&self, color: [f32; 3]) {
-        self.ambient(color);
+    pub fn ambient_py(slf: PyRef<'_, Self>, color: [f32; 3]) -> PyRef<'_, Self> {
+        slf.ambient(color);
+        slf
     }
 
     #[pyo3(name = "models")]

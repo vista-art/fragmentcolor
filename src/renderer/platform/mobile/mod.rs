@@ -5,9 +5,9 @@
 //! live. This module adds the mobile-only constructor and helper methods.
 //!
 //! Android's `Surface` → `WindowTarget` constructor cannot go through uniffi
-//! (uniffi cannot marshal `JNIEnv*`). It is implemented in the `android`
-//! submodule as a raw `#[jni_fn]` entry point that returns an `Arc` pointer;
-//! the Kotlin side reconstructs the `WindowTarget` from that pointer.
+//! alone (uniffi cannot marshal `JNIEnv*`). The `android` submodule exposes a
+//! raw `#[jni_fn]` entry point that returns the surface's `ANativeWindow*`;
+//! Kotlin hands that pointer to the uniffi `createTarget` on the same `Renderer`.
 //!
 //! Naming convention mirrors the Web/Python platform modules: mobile-specific
 //! methods carry a `_mobile` / `_ios` / `_android` suffix on the Rust side
@@ -45,7 +45,10 @@ impl From<crate::InitializationError> for FragmentColorError {
 
 impl From<crate::RendererError> for FragmentColorError {
     fn from(e: crate::RendererError) -> Self {
-        FragmentColorError::Render(e.to_string())
+        match e {
+            crate::RendererError::InitializationError(e) => e.into(),
+            e => FragmentColorError::Render(e.to_string()),
+        }
     }
 }
 
@@ -61,18 +64,28 @@ impl From<crate::texture::TextureError> for FragmentColorError {
     }
 }
 
+impl From<crate::mesh::MeshError> for FragmentColorError {
+    fn from(e: crate::mesh::MeshError) -> Self {
+        FragmentColorError::Render(e.to_string())
+    }
+}
+
 impl From<crate::pass::PassError> for FragmentColorError {
     fn from(e: crate::pass::PassError) -> Self {
         FragmentColorError::Render(e.to_string())
     }
 }
 
+impl From<crate::scene::SceneLoadError> for FragmentColorError {
+    fn from(e: crate::scene::SceneLoadError) -> Self {
+        FragmentColorError::Render(e.to_string())
+    }
+}
+
 #[uniffi::export]
 impl Renderer {
-    /// Foreign bindings see this as `Renderer.new()`. On Swift, uniffi
-    /// generates a `convenience init` when the name is `new`, so callers
-    /// write `let r = Renderer()`. Kotlin gets a companion `Renderer.new()`
-    /// factory that the extension in `RendererExtensions.kt` wraps.
+    /// uniffi makes a constructor named `new` the primary constructor,
+    /// so Swift and Kotlin both call `Renderer()`.
     #[uniffi::constructor(name = "new")]
     #[lsp_doc("docs/api/core/renderer/hidden/new_mobile.md")]
     pub fn new_mobile() -> Arc<Self> {
@@ -127,7 +140,8 @@ impl Renderer {
     /// — uniffi can't marshal `impl Into`, so the mobile shim takes the
     /// fields directly and the body builds a `TextureInput` from them.
     /// `usage_bits = None` defaults to STORAGE | TEXTURE | COPY_SRC | COPY_DST.
-    #[uniffi::method(name = "createStorageTexture")]
+    /// Both trailing arguments default to `None`, so Swift and Kotlin may leave them out.
+    #[uniffi::method(name = "createStorageTexture", default(data = None, usage_bits = None))]
     #[lsp_doc("docs/api/core/renderer/create_storage_texture.md")]
     pub async fn create_storage_texture_mobile(
         self: Arc<Self>,
@@ -239,10 +253,8 @@ impl Renderer {
     }
 
     /// Remove a texture from the renderer's registry by its raw numeric ID.
-    ///
-    /// TextureId wraps a `u64`; passing the raw value here avoids the need for
-    /// a separate uniffi::Object binding for TextureId while the texture agent
-    /// lands that binding on a parallel branch.
+    /// The Swift and Kotlin extensions take the `TextureId` record and pass
+    /// its `id` here.
     #[uniffi::method(name = "unregisterTexture")]
     #[lsp_doc("docs/api/core/renderer/hidden/unregister_texture_mobile.md")]
     pub fn unregister_texture_mobile(
@@ -257,9 +269,9 @@ impl Renderer {
     /// The Web binding accepts an `HTMLVideoElement`; the mobile bindings
     /// take a raw pointer (`u64`) to a `CVPixelBuffer` (iOS) or
     /// `SurfaceTexture` (Android) because uniffi cannot marshal those
-    /// types directly. Currently returns `FragmentColorError::Render`
-    /// — the per-platform plumbing to convert the native source into a
-    /// `wgpu::ExternalTexture` is a follow-up.
+    /// types directly. Returns `FragmentColorError::Render` until the
+    /// per-platform plumbing converts the native source into a
+    /// `wgpu::ExternalTexture`.
     #[uniffi::method(name = "createExternalTexture")]
     #[lsp_doc("docs/api/core/renderer/hidden/create_external_texture_mobile.md")]
     pub fn create_external_texture_mobile(

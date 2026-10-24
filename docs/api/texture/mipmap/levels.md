@@ -5,14 +5,23 @@ Return the tightly-packed bytes for each mip level, level 0 first. Each level ho
 ## Example
 
 ```rust
+# let pixels: Vec<u8> = vec![0; 8 * 8 * 4];
+# /*[js]
+# const pixels = new Uint8Array(8 * 8 * 4);
+# */
+# /*[python]
+# pixels = bytes(8 * 8 * 4)
+# */
+# /*[swift]
+# import Foundation
+# let pixels = Data(repeating: 0, count: 8 * 8 * 4)
+# */
+# /*[kotlin]
+# val pixels = ByteArray(8 * 8 * 4)
+# */
 use fragmentcolor::{Mipmap, TextureFormat};
 
-let pixels: Vec<u8> = vec![0; 8 * 8 * 4];
-let chain = Mipmap::build((
-    pixels.as_slice(),
-    TextureFormat::Rgba8UnormSrgb,
-    [8, 8],
-))?;
+let chain = Mipmap::build((pixels.as_slice(), TextureFormat::Rgba8UnormSrgb, [8, 8]))?;
 let level_zero_bytes = &chain.levels()[0];
 # assert_eq!(level_zero_bytes.len(), 8 * 8 * 4);
 # let _level_zero_bytes = level_zero_bytes;

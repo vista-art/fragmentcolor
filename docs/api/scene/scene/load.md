@@ -5,11 +5,12 @@ or in-memory **`.glb` bytes** straight to `Scene::load`. The format is
 inferred from the input, so there's nothing extra to name.
 
 `Scene::load` is synchronous and takes no `Renderer`. Any textures the parser
-encounters are queued as pending uploads on the resulting Materials; the
-renderer drains them on first render, or earlier if you call
-[`Renderer::load`](https://fragmentcolor.org/api/core/renderer/load).
+encounters are queued as pending uploads on the resulting Materials.
+[`Renderer::load`](https://fragmentcolor.org/api/core/renderer) uploads
+them. On native targets the first render runs it for you; on the web, await
+it before the first render.
 
-Today's coverage: static glTF, meaning mesh primitives (POSITION + NORMAL + UV0 +
+The loader reads static glTF: mesh primitives (POSITION + NORMAL + UV0 +
 indices), PBR-MR materials with all five texture slots, per-node transforms
 flattened into Model matrices, glTF camera nodes, and `KHR_lights_punctual`
 lights. Animation, skinning, morph targets, and material extensions beyond
@@ -42,6 +43,14 @@ scene.add(&camera)?;
 # }
 ```
 
+The other bindings take the same two switches with `Scene.load`. Both
+default to `true`:
+
+- **JS:** `Scene.load(bytes, { cameras: false, lights: false })`
+- **Python:** `Scene.load(source, cameras=False, lights=False)`
+- **Swift:** `try Scene.load(source, cameras: false, lights: false)`
+- **Kotlin:** `Scene.load(source, cameras = false, lights = false)`
+
 ## Threading and WASM
 
 `Scene::load` is fully synchronous: the underlying importer decodes embedded
@@ -59,14 +68,23 @@ for the duration. Two implications:
 
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
+# let glb_bytes: Vec<u8> = std::fs::read("path/to/model.glb")?;
+# /*[python]
+# glb_bytes = open("path/to/model.glb", "rb").read()
+# */
+# /*[swift]
+# import Foundation
+# let glb_bytes = try Data(contentsOf: URL(fileURLWithPath: "path/to/model.glb"))
+# */
+# /*[kotlin]
+# val glb_bytes = java.io.File("path/to/model.glb").readBytes()
+# */
 use fragmentcolor::Scene;
 
-// A path — `.gltf` JSON (with external buffers/images) or a `.glb` container.
+// A path to a `.gltf` file with its buffers and images, or to a `.glb` file.
 let scene = Scene::load("path/to/model.gltf")?;
 
-// In-memory `.glb` bytes — fetched from disk, the network, or another
-// asset pipeline before this point.
-let glb_bytes: Vec<u8> = std::fs::read("path/to/model.glb")?;
+// The bytes of a `.glb` file, read from disk or the network.
 let scene2 = Scene::load(glb_bytes)?;
 # let _ = (scene, scene2);
 # Ok(())

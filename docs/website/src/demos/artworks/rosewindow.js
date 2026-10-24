@@ -19,9 +19,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   let t = u.time * 0.1;
 
   // fold count follows the cursor's x, always an even count
-  let seg = max(6.0 + floor(clamp(u.mouse.x, 0.0, 1.0) * 7.0) * 2.0, 2.0);
+  let m = pointer_uv();
+  let seg = max(6.0 + floor(clamp(m.x, 0.0, 1.0) * 7.0) * 2.0, 2.0);
   var k = kaleidoscope(c + vec2<f32>(0.5), u32(seg));
-  let twist = (u.mouse.y - 0.5) * 3.2 + 0.35 * sin(t * 0.9);
+  let twist = (m.y - 0.5) * 3.2 + 0.35 * sin(t * 0.9);
   k = twirl(k, vec2<f32>(0.5), twist);
 
   let p = (k - vec2<f32>(0.5)) * 2.0;
@@ -42,9 +43,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   );
   col = col * (0.30 + 1.05 * field);
 
-  // dark lead seams between the panes
-  let seam = smoothstep(0.0, 0.10, abs(rings) * (0.35 + 0.65 * abs(petals)));
-  col = col * (0.18 + 0.82 * seam);
+  // soft lead seams between the panes, a deeper and warmer tone of the glass
+  // around them, widened by the pixel footprint so they stay smooth
+  let edge = abs(rings) * (0.35 + 0.65 * abs(petals));
+  let seam = smoothstep(0.0, 0.16 + 2.0 * fwidth(edge), edge);
+  col = mix(col * vec3<f32>(0.46, 0.36, 0.30), col, seam);
 
   // sunlight through the center, swelling while held
   let bloom = 0.10 + 0.45 * u.press + 0.75 * u.pulse;

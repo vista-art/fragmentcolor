@@ -1,9 +1,9 @@
 import FragmentColor
+import Foundation
+let glb_bytes = try Data(contentsOf: URL(fileURLWithPath: "path/to/model.glb"))
 
-// A path — """.gltf""" JSON (with external buffers/images) or a """.glb""" container.
-let scene = try await Scene.load("path/to/model.gltf")
+// A path to a `.gltf` file with its buffers and images, or to a `.glb` file.
+let scene = try Scene.load("path/to/model.gltf")
 
-// In-memory """.glb""" bytes — fetched from disk, the network, or another
-// asset pipeline before this point.
-let glb_bytes = "/healthcheck/public/favicon.png"
-let scene2 = try await Scene.load(glb_bytes)
+// The bytes of a `.glb` file, read from disk or the network.
+let scene2 = try Scene.load(glb_bytes)

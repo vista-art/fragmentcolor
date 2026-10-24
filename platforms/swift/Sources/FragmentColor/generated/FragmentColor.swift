@@ -39,6 +39,52 @@ fileprivate extension ForeignBytes {
     init(bufferPointer: UnsafeBufferPointer<UInt8>) {
         self.init(len: Int32(bufferPointer.count), data: bufferPointer.baseAddress)
     }
+
+    init(rawBufferPointer: UnsafeRawBufferPointer) {
+        self.init(
+            len: Int32(rawBufferPointer.count),
+            data: rawBufferPointer.baseAddress?.assumingMemoryBound(to: UInt8.self)
+        )
+    }
+}
+
+// Converter for `&[u8]` / `[ByRef] bytes` arguments.
+//
+// Conforms to `FfiConverter` so the compiler enforces the full converter
+// method set. Only the scope-bound `lower(_:_body:)` overload is sound —
+// zero-copy byte buffers only flow foreign -> Rust, and only in argument
+// position. The four protocol-witness methods (`lift`, `lower`, `read`,
+// `write`) `fatalError` at runtime if anyone reaches them.
+//
+// The scope-bound `lower` takes a closure because the `ForeignBytes`
+// pointer is only guaranteed valid for the duration of
+// `Data.withUnsafeBytes`. Callers must run the full FFI call inside
+// the closure body.
+fileprivate enum FfiConverterByRefBytes: FfiConverter {
+    typealias SwiftType = Data
+    typealias FfiType = ForeignBytes
+
+    static func lower<R>(_ value: Data, _ body: (ForeignBytes) throws -> R) rethrows -> R {
+        return try value.withUnsafeBytes { rawBuf in
+            try body(ForeignBytes(rawBufferPointer: rawBuf))
+        }
+    }
+
+    static func lower(_ value: Data) -> ForeignBytes {
+        fatalError("ByRef bytes cannot use the plain lower: returning ForeignBytes escapes the Data.withUnsafeBytes scope. Use the scope-bound lower(_:_body:) overload instead.")
+    }
+
+    static func lift(_ value: ForeignBytes) throws -> Data {
+        fatalError("ByRef bytes cannot be lifted: zero-copy &[u8] only flows foreign->Rust")
+    }
+
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Data {
+        fatalError("ByRef bytes cannot be read from a buffer: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.")
+    }
+
+    static func write(_ value: Data, into buf: inout [UInt8]) {
+        fatalError("ByRef bytes cannot be written to a buffer: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.")
+    }
 }
 
 // For every type used in the interface, we provide helper methods for conveniently
@@ -483,6 +529,22 @@ fileprivate struct FfiConverterFloat: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterDouble: FfiConverterPrimitive {
+    typealias FfiType = Double
+    typealias SwiftType = Double
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Double {
+        return try lift(readDouble(&buf))
+    }
+
+    public static func write(_ value: Double, into buf: inout [UInt8]) {
+        writeDouble(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterBool : FfiConverter {
     typealias FfiType = Int8
     typealias SwiftType = Bool
@@ -519,7 +581,11 @@ fileprivate struct FfiConverterString: FfiConverter {
             return String()
         }
         let bytes = UnsafeBufferPointer<UInt8>(start: value.data!, count: Int(value.len))
-        return String(bytes: bytes, encoding: String.Encoding.utf8)!
+        // Use Swift's native UTF-8 decoder; `String(bytes:encoding:.utf8)` goes
+        // through Foundation's NSString and silently strips a leading U+FEFF BOM.
+        // Invalid UTF-8 substitutes U+FFFD instead of trapping (unreachable
+        // given Rust's `String` invariant).
+        return String(decoding: bytes, as: UTF8.self)
     }
 
     public static func lower(_ value: String) -> RustBuffer {
@@ -535,7 +601,8 @@ fileprivate struct FfiConverterString: FfiConverter {
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> String {
         let len: Int32 = try readInt(&buf)
-        return String(bytes: try readBytes(&buf, count: Int(len)), encoding: String.Encoding.utf8)!
+        // See `lift` above for why we avoid Foundation's NSString-backed decoder here.
+        return String(decoding: try readBytes(&buf, count: Int(len)), as: UTF8.self)
     }
 
     public static func write(_ value: String, into buf: inout [UInt8]) {
@@ -562,6 +629,186 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
         writeBytes(&buf, value)
     }
 }
+
+
+
+
+public protocol CameraProtocol: AnyObject, Sendable {
+    
+    func lookAt(position: [Float], target: [Float], up: [Float]) throws  -> Camera
+    
+    func position()  -> [Float]
+    
+    func setAspect(aspect: Float)  -> Camera
+    
+    func viewProj()  -> [Float]
+    
+}
+open class Camera: CameraProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_fragmentcolor_fn_clone_camera(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_fragmentcolor_fn_free_camera(handle, $0) }
+    }
+
+    
+public static func orthographic(left: Float, right: Float, bottom: Float, top: Float, near: Float, far: Float) -> Camera  {
+    return try!  FfiConverterTypeCamera_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_camera_orthographic(
+        FfiConverterFloat.lower(left),
+        FfiConverterFloat.lower(right),
+        FfiConverterFloat.lower(bottom),
+        FfiConverterFloat.lower(top),
+        FfiConverterFloat.lower(near),
+        FfiConverterFloat.lower(far),uniffiCallStatus
+    )
+})
+}
+    
+public static func perspective(fovyRadians: Float, aspect: Float, near: Float, far: Float) -> Camera  {
+    return try!  FfiConverterTypeCamera_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_camera_perspective(
+        FfiConverterFloat.lower(fovyRadians),
+        FfiConverterFloat.lower(aspect),
+        FfiConverterFloat.lower(near),
+        FfiConverterFloat.lower(far),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+open func lookAt(position: [Float], target: [Float], up: [Float])throws  -> Camera  {
+    return try  FfiConverterTypeCamera_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_camera_lookat(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceFloat.lower(position),
+        FfiConverterSequenceFloat.lower(target),
+        FfiConverterSequenceFloat.lower(up),uniffiCallStatus
+    )
+})
+}
+    
+open func position() -> [Float]  {
+    return try!  FfiConverterSequenceFloat.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_camera_position(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func setAspect(aspect: Float) -> Camera  {
+    return try!  FfiConverterTypeCamera_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_camera_setaspect(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(aspect),uniffiCallStatus
+    )
+})
+}
+    
+open func viewProj() -> [Float]  {
+    return try!  FfiConverterSequenceFloat.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_camera_viewproj(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCamera: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = Camera
+
+    public static func lift(_ handle: UInt64) throws -> Camera {
+        return Camera(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: Camera) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Camera {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: Camera, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCamera_lift(_ handle: UInt64) throws -> Camera {
+    return try FfiConverterTypeCamera.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCamera_lower(_ value: Camera) -> UInt64 {
+    return FfiConverterTypeCamera.lower(value)
+}
+
+
 
 
 
@@ -675,11 +922,10 @@ public func FfiConverterTypeExternalTextureHandle_lower(_ value: ExternalTexture
 public protocol InstanceProtocol: AnyObject, Sendable {
     
     /**
-     * Set a per-instance attribute by key.
-     *
-     * Returns the updated `Instance` (builder style).
+     * Set a per-instance attribute to 1 to 4 numbers.
+     * The shader that reads it decides their type when the mesh attaches.
      */
-    func set(key: String, value: VertexValue)  -> Instance
+    func set(key: String, value: [Double]) throws  -> Instance
     
 }
 open class Instance: InstanceProtocol, @unchecked Sendable {
@@ -722,13 +968,14 @@ open class Instance: InstanceProtocol, @unchecked Sendable {
         return try! rustCall { uniffi_fragmentcolor_fn_clone_instance(self.handle, $0) }
     }
     /**
-     * Create an empty `Instance`. Chain `.set(key:value:)` calls to populate
+     * Create an empty `Instance`. Chain `.set(key, value)` calls to populate
      * per-instance attributes.
      */
 public convenience init() {
     let handle =
         try! rustCall() {
-    uniffi_fragmentcolor_fn_constructor_instance_new($0
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_instance_new(uniffiCallStatus
     )
 }
     self.init(unsafeFromHandle: handle)
@@ -747,16 +994,16 @@ public convenience init() {
 
     
     /**
-     * Set a per-instance attribute by key.
-     *
-     * Returns the updated `Instance` (builder style).
+     * Set a per-instance attribute to 1 to 4 numbers.
+     * The shader that reads it decides their type when the mesh attaches.
      */
-open func set(key: String, value: VertexValue) -> Instance  {
-    return try!  FfiConverterTypeInstance_lift(try! rustCall() {
+open func set(key: String, value: [Double])throws  -> Instance  {
+    return try  FfiConverterTypeInstance_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_instance_set(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(key),
-        FfiConverterTypeVertexValue_lower(value),$0
+        FfiConverterSequenceDouble.lower(value),uniffiCallStatus
     )
 })
 }
@@ -811,6 +1058,725 @@ public func FfiConverterTypeInstance_lower(_ value: Instance) -> UInt64 {
 
 
 
+public protocol LightProtocol: AnyObject, Sendable {
+    
+    func color()  -> [Float]
+    
+    func direction()  -> [Float]?
+    
+    func innerConeAngle()  -> Float?
+    
+    func intensity()  -> Float
+    
+    func kind()  -> String
+    
+    func outerConeAngle()  -> Float?
+    
+    func position()  -> [Float]?
+    
+    func range()  -> Float?
+    
+    func setColor(color: [Float]) throws  -> Light
+    
+    func setConeAngles(innerRadians: Float, outerRadians: Float) throws  -> Light
+    
+    func setDirection(direction: [Float]) throws  -> Light
+    
+    func setIntensity(value: Float)  -> Light
+    
+    func setPosition(position: [Float]) throws  -> Light
+    
+    func setRange(value: Float) throws  -> Light
+    
+}
+open class Light: LightProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_fragmentcolor_fn_clone_light(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_fragmentcolor_fn_free_light(handle, $0) }
+    }
+
+    
+public static func directional(direction: [Float], color: [Float])throws  -> Light  {
+    return try  FfiConverterTypeLight_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_light_directional(
+        FfiConverterSequenceFloat.lower(direction),
+        FfiConverterSequenceFloat.lower(color),uniffiCallStatus
+    )
+})
+}
+    
+public static func point(position: [Float], color: [Float])throws  -> Light  {
+    return try  FfiConverterTypeLight_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_light_point(
+        FfiConverterSequenceFloat.lower(position),
+        FfiConverterSequenceFloat.lower(color),uniffiCallStatus
+    )
+})
+}
+    
+public static func spot(position: [Float], direction: [Float], color: [Float])throws  -> Light  {
+    return try  FfiConverterTypeLight_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_light_spot(
+        FfiConverterSequenceFloat.lower(position),
+        FfiConverterSequenceFloat.lower(direction),
+        FfiConverterSequenceFloat.lower(color),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+open func color() -> [Float]  {
+    return try!  FfiConverterSequenceFloat.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_light_color(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func direction() -> [Float]?  {
+    return try!  FfiConverterOptionSequenceFloat.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_light_direction(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func innerConeAngle() -> Float?  {
+    return try!  FfiConverterOptionFloat.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_light_innerconeangle(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func intensity() -> Float  {
+    return try!  FfiConverterFloat.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_light_intensity(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func kind() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_light_kind(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func outerConeAngle() -> Float?  {
+    return try!  FfiConverterOptionFloat.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_light_outerconeangle(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func position() -> [Float]?  {
+    return try!  FfiConverterOptionSequenceFloat.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_light_position(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func range() -> Float?  {
+    return try!  FfiConverterOptionFloat.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_light_range(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func setColor(color: [Float])throws  -> Light  {
+    return try  FfiConverterTypeLight_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_light_setcolor(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceFloat.lower(color),uniffiCallStatus
+    )
+})
+}
+    
+open func setConeAngles(innerRadians: Float, outerRadians: Float)throws  -> Light  {
+    return try  FfiConverterTypeLight_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_light_setconeangles(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(innerRadians),
+        FfiConverterFloat.lower(outerRadians),uniffiCallStatus
+    )
+})
+}
+    
+open func setDirection(direction: [Float])throws  -> Light  {
+    return try  FfiConverterTypeLight_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_light_setdirection(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceFloat.lower(direction),uniffiCallStatus
+    )
+})
+}
+    
+open func setIntensity(value: Float) -> Light  {
+    return try!  FfiConverterTypeLight_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_light_setintensity(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+open func setPosition(position: [Float])throws  -> Light  {
+    return try  FfiConverterTypeLight_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_light_setposition(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceFloat.lower(position),uniffiCallStatus
+    )
+})
+}
+    
+open func setRange(value: Float)throws  -> Light  {
+    return try  FfiConverterTypeLight_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_light_setrange(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLight: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = Light
+
+    public static func lift(_ handle: UInt64) throws -> Light {
+        return Light(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: Light) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Light {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: Light, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLight_lift(_ handle: UInt64) throws -> Light {
+    return try FfiConverterTypeLight.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLight_lower(_ value: Light) -> UInt64 {
+    return FfiConverterTypeLight.lower(value)
+}
+
+
+
+
+
+
+public protocol MaterialProtocol: AnyObject, Sendable {
+    
+    func alphaCutoff(value: Float)  -> Material
+    
+    func alphaMode(mode: AlphaMode)  -> Material
+    
+    func baseColor(color: [Float]) throws  -> Material
+    
+    /**
+     * The texture input form of `baseColorTexture`: bytes, a path, a URL or a mipmap chain,
+     * uploaded when the scene loads. Swift and Kotlin expose it as `baseColorTexture(source)`.
+     */
+    func baseColorSource(input: TextureInputMobile, options: TextureOptions?)  -> Material
+    
+    func baseColorTexture(texture: Texture)  -> Material
+    
+    func doubleSided(value: Bool)  -> Material
+    
+    func emissive(factor: [Float]) throws  -> Material
+    
+    /**
+     * The texture input form of `emissiveTexture`: bytes, a path, a URL or a mipmap chain,
+     * uploaded when the scene loads. Swift and Kotlin expose it as `emissiveTexture(source)`.
+     */
+    func emissiveSource(input: TextureInputMobile, options: TextureOptions?)  -> Material
+    
+    func emissiveTexture(texture: Texture)  -> Material
+    
+    func metallic(value: Float)  -> Material
+    
+    /**
+     * The texture input form of `metallicRoughnessTexture`: bytes, a path, a URL or a mipmap chain,
+     * uploaded when the scene loads. Swift and Kotlin expose it as `metallicRoughnessTexture(source)`.
+     */
+    func metallicRoughnessSource(input: TextureInputMobile, options: TextureOptions?)  -> Material
+    
+    func metallicRoughnessTexture(texture: Texture)  -> Material
+    
+    func normalScale(value: Float)  -> Material
+    
+    /**
+     * The texture input form of `normalTexture`: bytes, a path, a URL or a mipmap chain,
+     * uploaded when the scene loads. Swift and Kotlin expose it as `normalTexture(source)`.
+     */
+    func normalSource(input: TextureInputMobile, options: TextureOptions?)  -> Material
+    
+    func normalTexture(texture: Texture)  -> Material
+    
+    /**
+     * The texture input form of `occlusionTexture`: bytes, a path, a URL or a mipmap chain,
+     * uploaded when the scene loads. Swift and Kotlin expose it as `occlusionTexture(source)`.
+     */
+    func occlusionSource(input: TextureInputMobile, options: TextureOptions?)  -> Material
+    
+    func occlusionStrength(value: Float)  -> Material
+    
+    func occlusionTexture(texture: Texture)  -> Material
+    
+    func roughness(value: Float)  -> Material
+    
+    func shader()  -> Shader
+    
+    func uvTransform(offset: [Float], scale: [Float], rotation: Float) throws  -> Material
+    
+}
+open class Material: MaterialProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_fragmentcolor_fn_clone_material(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_fragmentcolor_fn_free_material(handle, $0) }
+    }
+
+    
+public static func custom(shader: Shader) -> Material  {
+    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_material_custom(
+        FfiConverterTypeShader_lower(shader),uniffiCallStatus
+    )
+})
+}
+    
+public static func pbr() -> Material  {
+    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_material_pbr(uniffiCallStatus
+    )
+})
+}
+    
+
+    
+open func alphaCutoff(value: Float) -> Material  {
+    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_alphacutoff(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+open func alphaMode(mode: AlphaMode) -> Material  {
+    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_alphamode(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeAlphaMode_lower(mode),uniffiCallStatus
+    )
+})
+}
+    
+open func baseColor(color: [Float])throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_basecolor(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceFloat.lower(color),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The texture input form of `baseColorTexture`: bytes, a path, a URL or a mipmap chain,
+     * uploaded when the scene loads. Swift and Kotlin expose it as `baseColorTexture(source)`.
+     */
+open func baseColorSource(input: TextureInputMobile, options: TextureOptions? = nil) -> Material  {
+    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_basecolorsource(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTextureInputMobile_lower(input),
+        FfiConverterOptionTypeTextureOptions.lower(options),uniffiCallStatus
+    )
+})
+}
+    
+open func baseColorTexture(texture: Texture) -> Material  {
+    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_basecolortexture(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTexture_lower(texture),uniffiCallStatus
+    )
+})
+}
+    
+open func doubleSided(value: Bool) -> Material  {
+    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_doublesided(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+open func emissive(factor: [Float])throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_emissive(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceFloat.lower(factor),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The texture input form of `emissiveTexture`: bytes, a path, a URL or a mipmap chain,
+     * uploaded when the scene loads. Swift and Kotlin expose it as `emissiveTexture(source)`.
+     */
+open func emissiveSource(input: TextureInputMobile, options: TextureOptions? = nil) -> Material  {
+    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_emissivesource(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTextureInputMobile_lower(input),
+        FfiConverterOptionTypeTextureOptions.lower(options),uniffiCallStatus
+    )
+})
+}
+    
+open func emissiveTexture(texture: Texture) -> Material  {
+    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_emissivetexture(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTexture_lower(texture),uniffiCallStatus
+    )
+})
+}
+    
+open func metallic(value: Float) -> Material  {
+    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_metallic(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The texture input form of `metallicRoughnessTexture`: bytes, a path, a URL or a mipmap chain,
+     * uploaded when the scene loads. Swift and Kotlin expose it as `metallicRoughnessTexture(source)`.
+     */
+open func metallicRoughnessSource(input: TextureInputMobile, options: TextureOptions? = nil) -> Material  {
+    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_metallicroughnesssource(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTextureInputMobile_lower(input),
+        FfiConverterOptionTypeTextureOptions.lower(options),uniffiCallStatus
+    )
+})
+}
+    
+open func metallicRoughnessTexture(texture: Texture) -> Material  {
+    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_metallicroughnesstexture(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTexture_lower(texture),uniffiCallStatus
+    )
+})
+}
+    
+open func normalScale(value: Float) -> Material  {
+    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_normalscale(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The texture input form of `normalTexture`: bytes, a path, a URL or a mipmap chain,
+     * uploaded when the scene loads. Swift and Kotlin expose it as `normalTexture(source)`.
+     */
+open func normalSource(input: TextureInputMobile, options: TextureOptions? = nil) -> Material  {
+    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_normalsource(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTextureInputMobile_lower(input),
+        FfiConverterOptionTypeTextureOptions.lower(options),uniffiCallStatus
+    )
+})
+}
+    
+open func normalTexture(texture: Texture) -> Material  {
+    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_normaltexture(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTexture_lower(texture),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The texture input form of `occlusionTexture`: bytes, a path, a URL or a mipmap chain,
+     * uploaded when the scene loads. Swift and Kotlin expose it as `occlusionTexture(source)`.
+     */
+open func occlusionSource(input: TextureInputMobile, options: TextureOptions? = nil) -> Material  {
+    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_occlusionsource(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTextureInputMobile_lower(input),
+        FfiConverterOptionTypeTextureOptions.lower(options),uniffiCallStatus
+    )
+})
+}
+    
+open func occlusionStrength(value: Float) -> Material  {
+    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_occlusionstrength(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+open func occlusionTexture(texture: Texture) -> Material  {
+    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_occlusiontexture(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTexture_lower(texture),uniffiCallStatus
+    )
+})
+}
+    
+open func roughness(value: Float) -> Material  {
+    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_roughness(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(value),uniffiCallStatus
+    )
+})
+}
+    
+open func shader() -> Shader  {
+    return try!  FfiConverterTypeShader_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_shader(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func uvTransform(offset: [Float], scale: [Float], rotation: Float)throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_uvtransform(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceFloat.lower(offset),
+        FfiConverterSequenceFloat.lower(scale),
+        FfiConverterFloat.lower(rotation),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMaterial: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = Material
+
+    public static func lift(_ handle: UInt64) throws -> Material {
+        return Material(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: Material) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Material {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: Material, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMaterial_lift(_ handle: UInt64) throws -> Material {
+    return try FfiConverterTypeMaterial.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMaterial_lower(_ value: Material) -> UInt64 {
+    return FfiConverterTypeMaterial.lower(value)
+}
+
+
+
+
+
+
 public protocol MeshProtocol: AnyObject, Sendable {
     
     /**
@@ -834,9 +1800,19 @@ public protocol MeshProtocol: AnyObject, Sendable {
     func addVertices(vertices: [Vertex]) 
     
     /**
+     * Drop user-supplied indices and return to auto-derived dedup indexing.
+     */
+    func clearIndices() 
+    
+    /**
      * Remove all per-instance attribute data, resetting to single-instance rendering.
      */
     func clearInstances() 
+    
+    /**
+     * Supply explicit indices, bypassing the auto-derived dedup pass.
+     */
+    func setIndices(indices: [UInt32]) 
     
     /**
      * Override how many instances to draw (when not using per-instance attributes).
@@ -889,7 +1865,8 @@ open class Mesh: MeshProtocol, @unchecked Sendable {
 public convenience init() {
     let handle =
         try! rustCall() {
-    uniffi_fragmentcolor_fn_constructor_mesh_new($0
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_mesh_new(uniffiCallStatus
     )
 }
     self.init(unsafeFromHandle: handle)
@@ -910,8 +1887,9 @@ public convenience init() {
      */
 public static func fromVertices(vertices: [Vertex]) -> Mesh  {
     return try!  FfiConverterTypeMesh_lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_constructor_mesh_fromvertices(
-        FfiConverterSequenceTypeVertex.lower(vertices),$0
+        FfiConverterSequenceTypeVertex.lower(vertices),uniffiCallStatus
     )
 })
 }
@@ -922,9 +1900,10 @@ public static func fromVertices(vertices: [Vertex]) -> Mesh  {
      * Append a single instance data record to the mesh.
      */
 open func addInstance(instance: Instance)  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_mesh_addinstance(
             self.uniffiCloneHandle(),
-        FfiConverterTypeInstance_lower(instance),$0
+        FfiConverterTypeInstance_lower(instance),uniffiCallStatus
     )
 }
 }
@@ -933,9 +1912,10 @@ open func addInstance(instance: Instance)  {try! rustCall() {
      * Append multiple instance data records to the mesh.
      */
 open func addInstances(instances: [Instance])  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_mesh_addinstances(
             self.uniffiCloneHandle(),
-        FfiConverterSequenceTypeInstance.lower(instances),$0
+        FfiConverterSequenceTypeInstance.lower(instances),uniffiCallStatus
     )
 }
 }
@@ -944,9 +1924,10 @@ open func addInstances(instances: [Instance])  {try! rustCall() {
      * Append a single vertex to the mesh.
      */
 open func addVertex(v: Vertex)  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_mesh_addvertex(
             self.uniffiCloneHandle(),
-        FfiConverterTypeVertex_lower(v),$0
+        FfiConverterTypeVertex_lower(v),uniffiCallStatus
     )
 }
 }
@@ -955,9 +1936,21 @@ open func addVertex(v: Vertex)  {try! rustCall() {
      * Append multiple vertices to the mesh.
      */
 open func addVertices(vertices: [Vertex])  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_mesh_addvertices(
             self.uniffiCloneHandle(),
-        FfiConverterSequenceTypeVertex.lower(vertices),$0
+        FfiConverterSequenceTypeVertex.lower(vertices),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Drop user-supplied indices and return to auto-derived dedup indexing.
+     */
+open func clearIndices()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_mesh_clearindices(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
 }
@@ -966,8 +1959,21 @@ open func addVertices(vertices: [Vertex])  {try! rustCall() {
      * Remove all per-instance attribute data, resetting to single-instance rendering.
      */
 open func clearInstances()  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_mesh_clearinstances(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Supply explicit indices, bypassing the auto-derived dedup pass.
+     */
+open func setIndices(indices: [UInt32])  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_mesh_setindices(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceUInt32.lower(indices),uniffiCallStatus
     )
 }
 }
@@ -976,9 +1982,10 @@ open func clearInstances()  {try! rustCall() {
      * Override how many instances to draw (when not using per-instance attributes).
      */
 open func setInstanceCount(n: UInt32)  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_mesh_setinstancecount(
             self.uniffiCloneHandle(),
-        FfiConverterUInt32.lower(n),$0
+        FfiConverterUInt32.lower(n),uniffiCallStatus
     )
 }
 }
@@ -1034,45 +2041,42 @@ public func FfiConverterTypeMesh_lower(_ value: Mesh) -> UInt64 {
 
 
 /**
- * Mobile-facing wrapper around [`TextureTarget`].
+ * A pre-computed CPU mipmap chain. Build with [`Mipmap::build`], then pass
+ * to [`crate::Renderer::create_texture`] (the unified entry point
+ * dispatches via `From<Mipmap> for TextureInput`).
  *
- * Exposes `size()`, `resize(width, height)`, and `get_image()` to Swift and
- * Kotlin. `get_image()` returns a packed RGBA8 byte array of the offscreen
- * texture contents.
+ * Levels are tightly-packed bytes, level 0 first, with `bytes_per_pixel(format) *
+ * max(1, base_w >> level) * max(1, base_h >> level)` bytes per level.
  */
-public protocol MobileTextureTargetProtocol: AnyObject, Sendable {
+public protocol MipmapProtocol: AnyObject, Sendable {
+    
+    func count()  -> UInt32
+    
+    func format()  -> TextureFormat
     
     /**
-     * Returns the current offscreen texture contents as a packed RGBA8
-     * byte array (row-major, top-left origin). Uniffi exposes this as a
-     * Swift / Kotlin `suspend fun`; the underlying readback runs through
-     * `TextureTarget::get_image` async.
+     * Return the bytes for a single mip level. Use `count()` to discover
+     * the valid range.
      */
-    func getImage() async  -> Data
+    func level(index: UInt32) throws  -> Data
     
     /**
-     * Resizes the offscreen texture to `width` × `height` pixels.
-     *
-     * The underlying GPU texture is recreated; any previously-rendered
-     * pixel data is lost. Uniffi cannot express `&mut self` on an
-     * `Arc`-wrapped object, so this method acquires the inner write-lock.
+     * Every mip level's bytes, the base level first.
      */
-    func resize(width: UInt32, height: UInt32) 
+    func levels()  -> [Data]
     
-    /**
-     * Returns the current size of the offscreen texture in pixels.
-     */
     func size()  -> Size
     
 }
 /**
- * Mobile-facing wrapper around [`TextureTarget`].
+ * A pre-computed CPU mipmap chain. Build with [`Mipmap::build`], then pass
+ * to [`crate::Renderer::create_texture`] (the unified entry point
+ * dispatches via `From<Mipmap> for TextureInput`).
  *
- * Exposes `size()`, `resize(width, height)`, and `get_image()` to Swift and
- * Kotlin. `get_image()` returns a packed RGBA8 byte array of the offscreen
- * texture contents.
+ * Levels are tightly-packed bytes, level 0 first, with `bytes_per_pixel(format) *
+ * max(1, base_w >> level) * max(1, base_h >> level)` bytes per level.
  */
-open class MobileTextureTarget: MobileTextureTargetProtocol, @unchecked Sendable {
+open class Mipmap: MipmapProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
 
     /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
@@ -1109,7 +2113,7 @@ open class MobileTextureTarget: MobileTextureTargetProtocol, @unchecked Sendable
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_fragmentcolor_fn_clone_mobiletexturetarget(self.handle, $0) }
+        return try! rustCall { uniffi_fragmentcolor_fn_clone_mipmap(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -1119,59 +2123,85 @@ open class MobileTextureTarget: MobileTextureTargetProtocol, @unchecked Sendable
             return
         }
 
-        try! rustCall { uniffi_fragmentcolor_fn_free_mobiletexturetarget(handle, $0) }
+        try! rustCall { uniffi_fragmentcolor_fn_free_mipmap(handle, $0) }
     }
 
     
+    /**
+     * Build a chain from raw bytes + format (+ optional size). If
+     * `size` is `None`, `bytes` is decoded as an image (PNG / JPEG / etc.);
+     * if `Some(size)`, `bytes` is treated as raw pixel data already laid
+     * out for `format` at `size`. Pure CPU work — call from a Swift `Task`
+     * or Kotlin coroutine on a background dispatcher, then hand the chain
+     * to `renderer.createTexture(chain:)` for the GPU upload.
+     *
+     * Mobile shim takes the fields directly because uniffi can't marshal
+     * `impl Into<TextureInput>`. `size` defaults to `None`, and the Swift
+     * extensions add unlabeled `Mipmap.build(bytes, format)` (encoded) and
+     * `Mipmap.build(bytes, format, size)` (raw) overloads on top.
+     */
+public static func build(bytes: Data, format: TextureFormat, size: Size? = nil)throws  -> Mipmap  {
+    return try  FfiConverterTypeMipmap_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_mipmap_build(
+        FfiConverterData.lower(bytes),
+        FfiConverterTypeTextureFormat_lower(format),
+        FfiConverterOptionTypeSize.lower(size),uniffiCallStatus
+    )
+})
+}
+    
 
     
-    /**
-     * Returns the current offscreen texture contents as a packed RGBA8
-     * byte array (row-major, top-left origin). Uniffi exposes this as a
-     * Swift / Kotlin `suspend fun`; the underlying readback runs through
-     * `TextureTarget::get_image` async.
-     */
-open func getImage()async  -> Data  {
-    return
-        try!  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_fragmentcolor_fn_method_mobiletexturetarget_getimage(
-                    self.uniffiCloneHandle()
-                    
-                )
-            },
-            pollFunc: ffi_fragmentcolor_rust_future_poll_rust_buffer,
-            completeFunc: ffi_fragmentcolor_rust_future_complete_rust_buffer,
-            freeFunc: ffi_fragmentcolor_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterData.lift,
-            errorHandler: nil
-            
-        )
-}
-    
-    /**
-     * Resizes the offscreen texture to `width` × `height` pixels.
-     *
-     * The underlying GPU texture is recreated; any previously-rendered
-     * pixel data is lost. Uniffi cannot express `&mut self` on an
-     * `Arc`-wrapped object, so this method acquires the inner write-lock.
-     */
-open func resize(width: UInt32, height: UInt32)  {try! rustCall() {
-    uniffi_fragmentcolor_fn_method_mobiletexturetarget_resize(
-            self.uniffiCloneHandle(),
-        FfiConverterUInt32.lower(width),
-        FfiConverterUInt32.lower(height),$0
+open func count() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_mipmap_count(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
+})
 }
+    
+open func format() -> TextureFormat  {
+    return try!  FfiConverterTypeTextureFormat_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_mipmap_format(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
     /**
-     * Returns the current size of the offscreen texture in pixels.
+     * Return the bytes for a single mip level. Use `count()` to discover
+     * the valid range.
      */
+open func level(index: UInt32)throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_mipmap_level(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(index),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Every mip level's bytes, the base level first.
+     */
+open func levels() -> [Data]  {
+    return try!  FfiConverterSequenceData.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_mipmap_levels(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
 open func size() -> Size  {
     return try!  FfiConverterTypeSize_lift(try! rustCall() {
-    uniffi_fragmentcolor_fn_method_mobiletexturetarget_size(
-            self.uniffiCloneHandle(),$0
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_mipmap_size(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -1184,24 +2214,24 @@ open func size() -> Size  {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public struct FfiConverterTypeMobileTextureTarget: FfiConverter {
+public struct FfiConverterTypeMipmap: FfiConverter {
     typealias FfiType = UInt64
-    typealias SwiftType = MobileTextureTarget
+    typealias SwiftType = Mipmap
 
-    public static func lift(_ handle: UInt64) throws -> MobileTextureTarget {
-        return MobileTextureTarget(unsafeFromHandle: handle)
+    public static func lift(_ handle: UInt64) throws -> Mipmap {
+        return Mipmap(unsafeFromHandle: handle)
     }
 
-    public static func lower(_ value: MobileTextureTarget) -> UInt64 {
+    public static func lower(_ value: Mipmap) -> UInt64 {
         return value.uniffiCloneHandle()
     }
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MobileTextureTarget {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Mipmap {
         let handle: UInt64 = try readInt(&buf)
         return try lift(handle)
     }
 
-    public static func write(_ value: MobileTextureTarget, into buf: inout [UInt8]) {
+    public static func write(_ value: Mipmap, into buf: inout [UInt8]) {
         writeInt(&buf, lower(value))
     }
 }
@@ -1210,15 +2240,15 @@ public struct FfiConverterTypeMobileTextureTarget: FfiConverter {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeMobileTextureTarget_lift(_ handle: UInt64) throws -> MobileTextureTarget {
-    return try FfiConverterTypeMobileTextureTarget.lift(handle)
+public func FfiConverterTypeMipmap_lift(_ handle: UInt64) throws -> Mipmap {
+    return try FfiConverterTypeMipmap.lift(handle)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeMobileTextureTarget_lower(_ value: MobileTextureTarget) -> UInt64 {
-    return FfiConverterTypeMobileTextureTarget.lower(value)
+public func FfiConverterTypeMipmap_lower(_ value: Mipmap) -> UInt64 {
+    return FfiConverterTypeMipmap.lower(value)
 }
 
 
@@ -1226,47 +2256,28 @@ public func FfiConverterTypeMobileTextureTarget_lower(_ value: MobileTextureTarg
 
 
 
-/**
- * Mobile-facing wrapper around [`WindowTarget`].
- *
- * Exposes `size()`, `resize(width, height)`, and `get_image()` to Swift and
- * Kotlin. `WindowTarget::get_image()` always returns an empty byte array —
- * window-backed surfaces are not readable; use a
- * [`MobileTextureTarget`] for pixel-readback.
- */
-public protocol MobileWindowTargetProtocol: AnyObject, Sendable {
+public protocol ModelProtocol: AnyObject, Sendable {
     
-    /**
-     * Returns an empty byte array.
-     *
-     * Window-backed surfaces are not readable across all GPU backends.
-     * Use a [`MobileTextureTarget`] and call `get_image()` there instead.
-     */
-    func getImage() async  -> Data
+    func material()  -> Material
     
-    /**
-     * Resizes the window surface to `width` × `height` pixels.
-     *
-     * Uniffi cannot express `&mut self` on an `Arc`-wrapped object, so this
-     * method acquires the inner mutex, applies the resize, and releases it.
-     */
-    func resize(width: UInt32, height: UInt32) 
+    func mesh()  -> Mesh
     
-    /**
-     * Returns the current size of the window surface in pixels.
-     */
-    func size()  -> Size
+    func rotate(axis: [Float], radians: Float) throws 
+    
+    func scale(factor: [Float]) throws 
+    
+    func setTransform(matrix: [Float]) throws 
+    
+    func setVisible(visible: Bool) 
+    
+    func transform()  -> [Float]
+    
+    func translate(offset: [Float]) throws 
+    
+    func visible()  -> Bool
     
 }
-/**
- * Mobile-facing wrapper around [`WindowTarget`].
- *
- * Exposes `size()`, `resize(width, height)`, and `get_image()` to Swift and
- * Kotlin. `WindowTarget::get_image()` always returns an empty byte array —
- * window-backed surfaces are not readable; use a
- * [`MobileTextureTarget`] for pixel-readback.
- */
-open class MobileWindowTarget: MobileWindowTargetProtocol, @unchecked Sendable {
+open class Model: ModelProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
 
     /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
@@ -1303,9 +2314,19 @@ open class MobileWindowTarget: MobileWindowTargetProtocol, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_fragmentcolor_fn_clone_mobilewindowtarget(self.handle, $0) }
+        return try! rustCall { uniffi_fragmentcolor_fn_clone_model(self.handle, $0) }
     }
-    // No primary constructor declared for this class.
+public convenience init(mesh: Mesh, material: Material) {
+    let handle =
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_model_new(
+        FfiConverterTypeMesh_lower(mesh),
+        FfiConverterTypeMaterial_lower(material),uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
 
     deinit {
         if handle == 0 {
@@ -1313,58 +2334,90 @@ open class MobileWindowTarget: MobileWindowTargetProtocol, @unchecked Sendable {
             return
         }
 
-        try! rustCall { uniffi_fragmentcolor_fn_free_mobilewindowtarget(handle, $0) }
+        try! rustCall { uniffi_fragmentcolor_fn_free_model(handle, $0) }
     }
 
     
 
     
-    /**
-     * Returns an empty byte array.
-     *
-     * Window-backed surfaces are not readable across all GPU backends.
-     * Use a [`MobileTextureTarget`] and call `get_image()` there instead.
-     */
-open func getImage()async  -> Data  {
-    return
-        try!  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_fragmentcolor_fn_method_mobilewindowtarget_getimage(
-                    self.uniffiCloneHandle()
-                    
-                )
-            },
-            pollFunc: ffi_fragmentcolor_rust_future_poll_rust_buffer,
-            completeFunc: ffi_fragmentcolor_rust_future_complete_rust_buffer,
-            freeFunc: ffi_fragmentcolor_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterData.lift,
-            errorHandler: nil
-            
-        )
+open func material() -> Material  {
+    return try!  FfiConverterTypeMaterial_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_model_material(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
-    /**
-     * Resizes the window surface to `width` × `height` pixels.
-     *
-     * Uniffi cannot express `&mut self` on an `Arc`-wrapped object, so this
-     * method acquires the inner mutex, applies the resize, and releases it.
-     */
-open func resize(width: UInt32, height: UInt32)  {try! rustCall() {
-    uniffi_fragmentcolor_fn_method_mobilewindowtarget_resize(
+open func mesh() -> Mesh  {
+    return try!  FfiConverterTypeMesh_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_model_mesh(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func rotate(axis: [Float], radians: Float)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_model_rotate(
             self.uniffiCloneHandle(),
-        FfiConverterUInt32.lower(width),
-        FfiConverterUInt32.lower(height),$0
+        FfiConverterSequenceFloat.lower(axis),
+        FfiConverterFloat.lower(radians),uniffiCallStatus
     )
 }
 }
     
-    /**
-     * Returns the current size of the window surface in pixels.
-     */
-open func size() -> Size  {
-    return try!  FfiConverterTypeSize_lift(try! rustCall() {
-    uniffi_fragmentcolor_fn_method_mobilewindowtarget_size(
-            self.uniffiCloneHandle(),$0
+open func scale(factor: [Float])throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_model_scale(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceFloat.lower(factor),uniffiCallStatus
+    )
+}
+}
+    
+open func setTransform(matrix: [Float])throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_model_settransform(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceFloat.lower(matrix),uniffiCallStatus
+    )
+}
+}
+    
+open func setVisible(visible: Bool)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_model_setvisible(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(visible),uniffiCallStatus
+    )
+}
+}
+    
+open func transform() -> [Float]  {
+    return try!  FfiConverterSequenceFloat.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_model_transform(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func translate(offset: [Float])throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_model_translate(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceFloat.lower(offset),uniffiCallStatus
+    )
+}
+}
+    
+open func visible() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_model_visible(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -1377,24 +2430,24 @@ open func size() -> Size  {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public struct FfiConverterTypeMobileWindowTarget: FfiConverter {
+public struct FfiConverterTypeModel: FfiConverter {
     typealias FfiType = UInt64
-    typealias SwiftType = MobileWindowTarget
+    typealias SwiftType = Model
 
-    public static func lift(_ handle: UInt64) throws -> MobileWindowTarget {
-        return MobileWindowTarget(unsafeFromHandle: handle)
+    public static func lift(_ handle: UInt64) throws -> Model {
+        return Model(unsafeFromHandle: handle)
     }
 
-    public static func lower(_ value: MobileWindowTarget) -> UInt64 {
+    public static func lower(_ value: Model) -> UInt64 {
         return value.uniffiCloneHandle()
     }
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MobileWindowTarget {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Model {
         let handle: UInt64 = try readInt(&buf)
         return try lift(handle)
     }
 
-    public static func write(_ value: MobileWindowTarget, into buf: inout [UInt8]) {
+    public static func write(_ value: Model, into buf: inout [UInt8]) {
         writeInt(&buf, lower(value))
     }
 }
@@ -1403,15 +2456,15 @@ public struct FfiConverterTypeMobileWindowTarget: FfiConverter {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeMobileWindowTarget_lift(_ handle: UInt64) throws -> MobileWindowTarget {
-    return try FfiConverterTypeMobileWindowTarget.lift(handle)
+public func FfiConverterTypeModel_lift(_ handle: UInt64) throws -> Model {
+    return try FfiConverterTypeModel.lift(handle)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeMobileWindowTarget_lower(_ value: MobileWindowTarget) -> UInt64 {
-    return FfiConverterTypeMobileWindowTarget.lower(value)
+public func FfiConverterTypeModel_lower(_ value: Model) -> UInt64 {
+    return FfiConverterTypeModel.lower(value)
 }
 
 
@@ -1422,12 +2475,12 @@ public func FfiConverterTypeMobileWindowTarget_lower(_ value: MobileWindowTarget
 public protocol PassProtocol: AnyObject, Sendable {
     
     /**
-     * Set the depth attachment for this pass.
-     *
-     * The `target` must be a `TargetHandle::Texture` variant wrapping a
-     * depth-format texture (e.g. `Depth32Float`).
+     * Unified `Pass.add` — branches on the runtime mobile handle. Adding
+     * a new `SceneObject` Rust-side means adding one extra variant to
+     * [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
+     * Returns the pass, as Rust's `add` does, so calls chain.
      */
-    func addDepthTarget(target: TargetHandle) throws 
+    func add(object: SceneObjectHandle) throws  -> Pass
     
     /**
      * Add a mesh to the last compatible shader in this pass.
@@ -1440,23 +2493,6 @@ public protocol PassProtocol: AnyObject, Sendable {
     func addShader(shader: Shader) 
     
     /**
-     * Set the render target (color attachment) for this pass.
-     *
-     * The `target` must be a `TargetHandle::Texture` variant; window targets
-     * cannot be used as a render-to-texture colour target.
-     */
-    func addTarget(target: TargetHandle) throws 
-    
-    /**
-     * Return the current input descriptor for this pass.
-     *
-     * The mobile binding returns a `MobilePassInput` record because
-     * `PassInput` contains a `Color(u32)` tuple-newtype that uniffi cannot
-     * serialize as a `Record`.
-     */
-    func getInput()  -> MobilePassInput
-    
-    /**
      * Return `true` if this is a compute pass; `false` for a render pass.
      */
     func isCompute()  -> Bool
@@ -1466,6 +2502,8 @@ public protocol PassProtocol: AnyObject, Sendable {
      * preserved rather than cleared at the start of the frame.
      */
     func loadPrevious() 
+    
+    func name()  -> String
     
     /**
      * Declare DAG dependencies for this pass.
@@ -1478,10 +2516,10 @@ public protocol PassProtocol: AnyObject, Sendable {
     func require(deps: [RenderableHandle]) throws 
     
     /**
-     * Set the clear colour for this pass (as `[r, g, b, a]` in linear 0..1 space).
+     * Set the clear color for this pass (as `[r, g, b, a]` in linear 0..1 space).
      *
      * Switching from load to clear mode: after calling this the pass will
-     * clear its colour attachment to `color` at the start of each frame.
+     * clear its color attachment to `color` at the start of each frame.
      */
     func setClearColor(color: [Float]) throws 
     
@@ -1490,6 +2528,34 @@ public protocol PassProtocol: AnyObject, Sendable {
      * All zero values are clamped to 1.
      */
     func setComputeDispatch(x: UInt32, y: UInt32, z: UInt32) 
+    
+    /**
+     * Set the depth attachment for this pass.
+     *
+     * The `target` must be a `TargetHandle::Texture` variant wrapping a
+     * depth-format texture (e.g. `Depth32Float`).
+     */
+    func setDepthTarget(target: TargetHandle) throws 
+    
+    /**
+     * Set a depth `Texture` from `Renderer.createDepthTexture` as the
+     * depth attachment. Swift and Kotlin expose it as `setDepthTarget(texture)`.
+     */
+    func setDepthTexture(texture: Texture) throws 
+    
+    /**
+     * Set the render target (color attachment) for this pass.
+     *
+     * The `target` must be a `TargetHandle::Texture` variant; window targets
+     * cannot be used as a render-to-texture color target.
+     */
+    func setTarget(target: TargetHandle) throws 
+    
+    /**
+     * Set a `Texture` as the color attachment.
+     * Swift and Kotlin expose it as `setTarget(texture)`.
+     */
+    func setTargetTexture(texture: Texture) throws 
     
     /**
      * Set the viewport (scissor + render region) for this pass.
@@ -1542,8 +2608,9 @@ open class Pass: PassProtocol, @unchecked Sendable {
 public convenience init(name: String) {
     let handle =
         try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_constructor_pass_new(
-        FfiConverterString.lower(name),$0
+        FfiConverterString.lower(name),uniffiCallStatus
     )
 }
     self.init(unsafeFromHandle: handle)
@@ -1564,8 +2631,9 @@ public convenience init(name: String) {
      */
 public static func compute(name: String) -> Pass  {
     return try!  FfiConverterTypePass_lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_constructor_pass_compute(
-        FfiConverterString.lower(name),$0
+        FfiConverterString.lower(name),uniffiCallStatus
     )
 })
 }
@@ -1575,9 +2643,10 @@ public static func compute(name: String) -> Pass  {
      */
 public static func fromShader(name: String, shader: Shader) -> Pass  {
     return try!  FfiConverterTypePass_lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_constructor_pass_fromshader(
         FfiConverterString.lower(name),
-        FfiConverterTypeShader_lower(shader),$0
+        FfiConverterTypeShader_lower(shader),uniffiCallStatus
     )
 })
 }
@@ -1585,26 +2654,29 @@ public static func fromShader(name: String, shader: Shader) -> Pass  {
 
     
     /**
-     * Set the depth attachment for this pass.
-     *
-     * The `target` must be a `TargetHandle::Texture` variant wrapping a
-     * depth-format texture (e.g. `Depth32Float`).
+     * Unified `Pass.add` — branches on the runtime mobile handle. Adding
+     * a new `SceneObject` Rust-side means adding one extra variant to
+     * [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
+     * Returns the pass, as Rust's `add` does, so calls chain.
      */
-open func addDepthTarget(target: TargetHandle)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-    uniffi_fragmentcolor_fn_method_pass_adddepthtarget(
+open func add(object: SceneObjectHandle)throws  -> Pass  {
+    return try  FfiConverterTypePass_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pass_add(
             self.uniffiCloneHandle(),
-        FfiConverterTypeTargetHandle_lower(target),$0
+        FfiConverterTypeSceneObjectHandle_lower(object),uniffiCallStatus
     )
-}
+})
 }
     
     /**
      * Add a mesh to the last compatible shader in this pass.
      */
 open func addMesh(mesh: Mesh)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_pass_addmesh(
             self.uniffiCloneHandle(),
-        FfiConverterTypeMesh_lower(mesh),$0
+        FfiConverterTypeMesh_lower(mesh),uniffiCallStatus
     )
 }
 }
@@ -1613,40 +2685,12 @@ open func addMesh(mesh: Mesh)throws   {try rustCallWithError(FfiConverterTypeFra
      * Attach a shader to this pass.
      */
 open func addShader(shader: Shader)  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_pass_addshader(
             self.uniffiCloneHandle(),
-        FfiConverterTypeShader_lower(shader),$0
+        FfiConverterTypeShader_lower(shader),uniffiCallStatus
     )
 }
-}
-    
-    /**
-     * Set the render target (color attachment) for this pass.
-     *
-     * The `target` must be a `TargetHandle::Texture` variant; window targets
-     * cannot be used as a render-to-texture colour target.
-     */
-open func addTarget(target: TargetHandle)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-    uniffi_fragmentcolor_fn_method_pass_addtarget(
-            self.uniffiCloneHandle(),
-        FfiConverterTypeTargetHandle_lower(target),$0
-    )
-}
-}
-    
-    /**
-     * Return the current input descriptor for this pass.
-     *
-     * The mobile binding returns a `MobilePassInput` record because
-     * `PassInput` contains a `Color(u32)` tuple-newtype that uniffi cannot
-     * serialize as a `Record`.
-     */
-open func getInput() -> MobilePassInput  {
-    return try!  FfiConverterTypeMobilePassInput_lift(try! rustCall() {
-    uniffi_fragmentcolor_fn_method_pass_getinput(
-            self.uniffiCloneHandle(),$0
-    )
-})
 }
     
     /**
@@ -1654,8 +2698,9 @@ open func getInput() -> MobilePassInput  {
      */
 open func isCompute() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_pass_iscompute(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -1665,10 +2710,20 @@ open func isCompute() -> Bool  {
      * preserved rather than cleared at the start of the frame.
      */
 open func loadPrevious()  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_pass_loadprevious(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
+}
+    
+open func name() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pass_name(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -1680,23 +2735,25 @@ open func loadPrevious()  {try! rustCall() {
      * detected, or if the same dependency appears twice.
      */
 open func require(deps: [RenderableHandle])throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_pass_require(
             self.uniffiCloneHandle(),
-        FfiConverterSequenceTypeRenderableHandle.lower(deps),$0
+        FfiConverterSequenceTypeRenderableHandle.lower(deps),uniffiCallStatus
     )
 }
 }
     
     /**
-     * Set the clear colour for this pass (as `[r, g, b, a]` in linear 0..1 space).
+     * Set the clear color for this pass (as `[r, g, b, a]` in linear 0..1 space).
      *
      * Switching from load to clear mode: after calling this the pass will
-     * clear its colour attachment to `color` at the start of each frame.
+     * clear its color attachment to `color` at the start of each frame.
      */
 open func setClearColor(color: [Float])throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_pass_setclearcolor(
             self.uniffiCloneHandle(),
-        FfiConverterSequenceFloat.lower(color),$0
+        FfiConverterSequenceFloat.lower(color),uniffiCallStatus
     )
 }
 }
@@ -1706,11 +2763,68 @@ open func setClearColor(color: [Float])throws   {try rustCallWithError(FfiConver
      * All zero values are clamped to 1.
      */
 open func setComputeDispatch(x: UInt32, y: UInt32, z: UInt32)  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_pass_setcomputedispatch(
             self.uniffiCloneHandle(),
         FfiConverterUInt32.lower(x),
         FfiConverterUInt32.lower(y),
-        FfiConverterUInt32.lower(z),$0
+        FfiConverterUInt32.lower(z),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Set the depth attachment for this pass.
+     *
+     * The `target` must be a `TargetHandle::Texture` variant wrapping a
+     * depth-format texture (e.g. `Depth32Float`).
+     */
+open func setDepthTarget(target: TargetHandle)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pass_setdepthtarget(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTargetHandle_lower(target),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Set a depth `Texture` from `Renderer.createDepthTexture` as the
+     * depth attachment. Swift and Kotlin expose it as `setDepthTarget(texture)`.
+     */
+open func setDepthTexture(texture: Texture)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pass_setdepthtexture(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTexture_lower(texture),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Set the render target (color attachment) for this pass.
+     *
+     * The `target` must be a `TargetHandle::Texture` variant; window targets
+     * cannot be used as a render-to-texture color target.
+     */
+open func setTarget(target: TargetHandle)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pass_settarget(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTargetHandle_lower(target),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Set a `Texture` as the color attachment.
+     * Swift and Kotlin expose it as `setTarget(texture)`.
+     */
+open func setTargetTexture(texture: Texture)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_pass_settargettexture(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTexture_lower(texture),uniffiCallStatus
     )
 }
 }
@@ -1719,9 +2833,10 @@ open func setComputeDispatch(x: UInt32, y: UInt32, z: UInt32)  {try! rustCall() 
      * Set the viewport (scissor + render region) for this pass.
      */
 open func setViewport(region: ScreenRegion)  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_pass_setviewport(
             self.uniffiCloneHandle(),
-        FfiConverterTypeScreenRegion_lower(region),$0
+        FfiConverterTypeScreenRegion_lower(region),uniffiCallStatus
     )
 }
 }
@@ -1831,9 +2946,10 @@ open class Quad: QuadProtocol, @unchecked Sendable {
 public convenience init(min: [Float], max: [Float])throws  {
     let handle =
         try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_constructor_quad_new(
         FfiConverterSequenceFloat.lower(min),
-        FfiConverterSequenceFloat.lower(max),$0
+        FfiConverterSequenceFloat.lower(max),uniffiCallStatus
     )
 }
     self.init(unsafeFromHandle: handle)
@@ -1856,8 +2972,9 @@ public convenience init(min: [Float], max: [Float])throws  {
      */
 open func getMesh() -> Mesh  {
     return try!  FfiConverterTypeMesh_lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_quad_getmesh(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -1927,9 +3044,9 @@ public protocol RendererProtocol: AnyObject, Sendable {
      * The Web binding accepts an `HTMLVideoElement`; the mobile bindings
      * take a raw pointer (`u64`) to a `CVPixelBuffer` (iOS) or
      * `SurfaceTexture` (Android) because uniffi cannot marshal those
-     * types directly. Currently returns `FragmentColorError::Render`
-     * — the per-platform plumbing to convert the native source into a
-     * `wgpu::ExternalTexture` is a follow-up.
+     * types directly. Returns `FragmentColorError::Render` until the
+     * per-platform plumbing converts the native source into a
+     * `wgpu::ExternalTexture`.
      */
     func createExternalTexture(sourcePtr: UInt64) throws  -> ExternalTextureHandle
     
@@ -1939,6 +3056,7 @@ public protocol RendererProtocol: AnyObject, Sendable {
      * — uniffi can't marshal `impl Into`, so the mobile shim takes the
      * fields directly and the body builds a `TextureInput` from them.
      * `usage_bits = None` defaults to STORAGE | TEXTURE | COPY_SRC | COPY_DST.
+     * Both trailing arguments default to `None`, so Swift and Kotlin may leave them out.
      */
     func createStorageTexture(size: Size, format: TextureFormat, data: Data?, usageBits: UInt32?) async throws  -> Texture
     
@@ -1959,16 +3077,7 @@ public protocol RendererProtocol: AnyObject, Sendable {
      * Returns a `MobileTextureTarget` wrapper that exposes `size()`,
      * `resize()`, and `get_image()` on the Swift / Kotlin side.
      */
-    func createTextureTarget(width: UInt32, height: UInt32) async throws  -> MobileTextureTarget
-    
-    /**
-     * Read back the mip-0 contents of a registered texture as tightly-packed
-     * bytes in the texture's native format. Uniffi exposes this as a Swift
-     * `async throws` / Kotlin `suspend fun` automatically. Foreign callers
-     * await this in a coroutine or `Task`; the underlying GPU readback is
-     * driven by the async `texture::read::read_pixels` path.
-     */
-    func readTexture(textureId: UInt64) async throws  -> Data
+    func createTextureTarget(width: UInt32, height: UInt32) async throws  -> TextureTarget
     
     /**
      * Single mobile `render` entry. Mirrors the canonical Rust
@@ -1981,27 +3090,29 @@ public protocol RendererProtocol: AnyObject, Sendable {
      * into the matching enum variant invisibly, so callers never see the
      * mobile-only mirror types.
      */
+    func load(renderable: RenderableHandle) async throws 
+    
+    func readStorage(shader: Shader, binding: String) async throws  -> Data
+    
+    /**
+     * Read back the mip-0 contents of a registered texture as tightly-packed
+     * bytes in the texture's native format. Uniffi exposes this as a Swift
+     * `async throws` / Kotlin `suspend fun` automatically. Foreign callers
+     * await this in a coroutine or `Task`; the underlying GPU readback is
+     * driven by the async `texture::read::read_pixels` path.
+     */
+    func readTexture(textureId: UInt64) async throws  -> Data
+    
     func render(renderable: RenderableHandle, target: TargetHandle) throws 
     
     /**
      * Remove a texture from the renderer's registry by its raw numeric ID.
-     *
-     * TextureId wraps a `u64`; passing the raw value here avoids the need for
-     * a separate uniffi::Object binding for TextureId while the texture agent
-     * lands that binding on a parallel branch.
+     * The Swift and Kotlin extensions take the `TextureId` record and pass
+     * its `id` here.
      */
     func unregisterTexture(textureId: UInt64) throws 
     
-    /**
-     * Block until all GPU submissions on this device have finished.
-     *
-     * Useful before readbacks (`read_texture`, `Texture.id`, `TextureTarget.getImage`)
-     * to ensure deterministic ordering. This is a genuine blocking call on
-     * native platforms; on web it is a no-op.
-     */
-    func waitIdle() throws 
-    
-    func createTarget(metalLayerPtr: UInt64) throws  -> MobileWindowTarget
+    func createTarget(metalLayerPtr: UInt64) throws  -> WindowTarget
     
 }
 open class Renderer: RendererProtocol, @unchecked Sendable {
@@ -2044,15 +3155,14 @@ open class Renderer: RendererProtocol, @unchecked Sendable {
         return try! rustCall { uniffi_fragmentcolor_fn_clone_renderer(self.handle, $0) }
     }
     /**
-     * Foreign bindings see this as `Renderer.new()`. On Swift, uniffi
-     * generates a `convenience init` when the name is `new`, so callers
-     * write `let r = Renderer()`. Kotlin gets a companion `Renderer.new()`
-     * factory that the extension in `RendererExtensions.kt` wraps.
+     * uniffi makes a constructor named `new` the primary constructor,
+     * so Swift and Kotlin both call `Renderer()`.
      */
 public convenience init() {
     let handle =
         try! rustCall() {
-    uniffi_fragmentcolor_fn_constructor_renderer_new($0
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_renderer_new(uniffiCallStatus
     )
 }
     self.init(unsafeFromHandle: handle)
@@ -2081,8 +3191,7 @@ open func createDepthTexture(width: UInt32, height: UInt32)async throws  -> Text
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_fragmentcolor_fn_method_renderer_createdepthtexture(
-                    self.uniffiCloneHandle(),
-                    FfiConverterUInt32.lower(width),FfiConverterUInt32.lower(height)
+                        self.uniffiCloneHandle(),FfiConverterUInt32.lower(width),FfiConverterUInt32.lower(height)
                 )
             },
             pollFunc: ffi_fragmentcolor_rust_future_poll_u64,
@@ -2098,15 +3207,16 @@ open func createDepthTexture(width: UInt32, height: UInt32)async throws  -> Text
      * The Web binding accepts an `HTMLVideoElement`; the mobile bindings
      * take a raw pointer (`u64`) to a `CVPixelBuffer` (iOS) or
      * `SurfaceTexture` (Android) because uniffi cannot marshal those
-     * types directly. Currently returns `FragmentColorError::Render`
-     * — the per-platform plumbing to convert the native source into a
-     * `wgpu::ExternalTexture` is a follow-up.
+     * types directly. Returns `FragmentColorError::Render` until the
+     * per-platform plumbing converts the native source into a
+     * `wgpu::ExternalTexture`.
      */
 open func createExternalTexture(sourcePtr: UInt64)throws  -> ExternalTextureHandle  {
     return try  FfiConverterTypeExternalTextureHandle_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_renderer_createexternaltexture(
             self.uniffiCloneHandle(),
-        FfiConverterUInt64.lower(sourcePtr),$0
+        FfiConverterUInt64.lower(sourcePtr),uniffiCallStatus
     )
 })
 }
@@ -2117,14 +3227,14 @@ open func createExternalTexture(sourcePtr: UInt64)throws  -> ExternalTextureHand
      * — uniffi can't marshal `impl Into`, so the mobile shim takes the
      * fields directly and the body builds a `TextureInput` from them.
      * `usage_bits = None` defaults to STORAGE | TEXTURE | COPY_SRC | COPY_DST.
+     * Both trailing arguments default to `None`, so Swift and Kotlin may leave them out.
      */
-open func createStorageTexture(size: Size, format: TextureFormat, data: Data?, usageBits: UInt32?)async throws  -> Texture  {
+open func createStorageTexture(size: Size, format: TextureFormat, data: Data? = nil, usageBits: UInt32? = nil)async throws  -> Texture  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_fragmentcolor_fn_method_renderer_createstoragetexture(
-                    self.uniffiCloneHandle(),
-                    FfiConverterTypeSize_lower(size),FfiConverterTypeTextureFormat_lower(format),FfiConverterOptionData.lower(data),FfiConverterOptionUInt32.lower(usageBits)
+                        self.uniffiCloneHandle(),FfiConverterTypeSize_lower(size),FfiConverterTypeTextureFormat_lower(format),FfiConverterOptionData.lower(data),FfiConverterOptionUInt32.lower(usageBits)
                 )
             },
             pollFunc: ffi_fragmentcolor_rust_future_poll_u64,
@@ -2148,8 +3258,7 @@ open func createTexture(input: TextureInputMobile, options: TextureOptions?)asyn
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_fragmentcolor_fn_method_renderer_createtexture(
-                    self.uniffiCloneHandle(),
-                    FfiConverterTypeTextureInputMobile_lower(input),FfiConverterOptionTypeTextureOptions.lower(options)
+                        self.uniffiCloneHandle(),FfiConverterTypeTextureInputMobile_lower(input),FfiConverterOptionTypeTextureOptions.lower(options)
                 )
             },
             pollFunc: ffi_fragmentcolor_rust_future_poll_u64,
@@ -2167,19 +3276,61 @@ open func createTexture(input: TextureInputMobile, options: TextureOptions?)asyn
      * Returns a `MobileTextureTarget` wrapper that exposes `size()`,
      * `resize()`, and `get_image()` on the Swift / Kotlin side.
      */
-open func createTextureTarget(width: UInt32, height: UInt32)async throws  -> MobileTextureTarget  {
+open func createTextureTarget(width: UInt32, height: UInt32)async throws  -> TextureTarget  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_fragmentcolor_fn_method_renderer_createtexturetarget(
-                    self.uniffiCloneHandle(),
-                    FfiConverterUInt32.lower(width),FfiConverterUInt32.lower(height)
+                        self.uniffiCloneHandle(),FfiConverterUInt32.lower(width),FfiConverterUInt32.lower(height)
                 )
             },
             pollFunc: ffi_fragmentcolor_rust_future_poll_u64,
             completeFunc: ffi_fragmentcolor_rust_future_complete_u64,
             freeFunc: ffi_fragmentcolor_rust_future_free_u64,
-            liftFunc: FfiConverterTypeMobileTextureTarget_lift,
+            liftFunc: FfiConverterTypeTextureTarget_lift,
+            errorHandler: FfiConverterTypeFragmentColorError_lift
+        )
+}
+    
+    /**
+     * Single mobile `render` entry. Mirrors the canonical Rust
+     * `Renderer::render(&impl Renderable, &impl Target)` — uniffi can't
+     * marshal `&impl Trait`, so the mobile shim takes the concrete enums
+     * `RenderableHandle` (Shader / Pass / Mesh / Passes) and `TargetHandle`
+     * (Window / Texture). Swift and Kotlin extension files supply natural
+     * overloads (`renderer.render(shader, target)`,
+     * `renderer.render(pass, target)`, etc.) that wrap the concrete value
+     * into the matching enum variant invisibly, so callers never see the
+     * mobile-only mirror types.
+     */
+open func load(renderable: RenderableHandle)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_fragmentcolor_fn_method_renderer_load(
+                        self.uniffiCloneHandle(),FfiConverterTypeRenderableHandle_lower(renderable)
+                )
+            },
+            pollFunc: ffi_fragmentcolor_rust_future_poll_void,
+            completeFunc: ffi_fragmentcolor_rust_future_complete_void,
+            freeFunc: ffi_fragmentcolor_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeFragmentColorError_lift
+        )
+}
+    
+open func readStorage(shader: Shader, binding: String)async throws  -> Data  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_fragmentcolor_fn_method_renderer_readstorage(
+                        self.uniffiCloneHandle(),FfiConverterTypeShader_lower(shader),FfiConverterString.lower(binding)
+                )
+            },
+            pollFunc: ffi_fragmentcolor_rust_future_poll_rust_buffer,
+            completeFunc: ffi_fragmentcolor_rust_future_complete_rust_buffer,
+            freeFunc: ffi_fragmentcolor_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterData.lift,
             errorHandler: FfiConverterTypeFragmentColorError_lift
         )
 }
@@ -2196,8 +3347,7 @@ open func readTexture(textureId: UInt64)async throws  -> Data  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_fragmentcolor_fn_method_renderer_readtexture(
-                    self.uniffiCloneHandle(),
-                    FfiConverterUInt64.lower(textureId)
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(textureId)
                 )
             },
             pollFunc: ffi_fragmentcolor_rust_future_poll_rust_buffer,
@@ -2208,60 +3358,36 @@ open func readTexture(textureId: UInt64)async throws  -> Data  {
         )
 }
     
-    /**
-     * Single mobile `render` entry. Mirrors the canonical Rust
-     * `Renderer::render(&impl Renderable, &impl Target)` — uniffi can't
-     * marshal `&impl Trait`, so the mobile shim takes the concrete enums
-     * `RenderableHandle` (Shader / Pass / Mesh / Passes) and `TargetHandle`
-     * (Window / Texture). Swift and Kotlin extension files supply natural
-     * overloads (`renderer.render(shader, target)`,
-     * `renderer.render(pass, target)`, etc.) that wrap the concrete value
-     * into the matching enum variant invisibly, so callers never see the
-     * mobile-only mirror types.
-     */
 open func render(renderable: RenderableHandle, target: TargetHandle)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_renderer_render(
             self.uniffiCloneHandle(),
         FfiConverterTypeRenderableHandle_lower(renderable),
-        FfiConverterTypeTargetHandle_lower(target),$0
+        FfiConverterTypeTargetHandle_lower(target),uniffiCallStatus
     )
 }
 }
     
     /**
      * Remove a texture from the renderer's registry by its raw numeric ID.
-     *
-     * TextureId wraps a `u64`; passing the raw value here avoids the need for
-     * a separate uniffi::Object binding for TextureId while the texture agent
-     * lands that binding on a parallel branch.
+     * The Swift and Kotlin extensions take the `TextureId` record and pass
+     * its `id` here.
      */
 open func unregisterTexture(textureId: UInt64)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_renderer_unregistertexture(
             self.uniffiCloneHandle(),
-        FfiConverterUInt64.lower(textureId),$0
+        FfiConverterUInt64.lower(textureId),uniffiCallStatus
     )
 }
 }
     
-    /**
-     * Block until all GPU submissions on this device have finished.
-     *
-     * Useful before readbacks (`read_texture`, `Texture.id`, `TextureTarget.getImage`)
-     * to ensure deterministic ordering. This is a genuine blocking call on
-     * native platforms; on web it is a no-op.
-     */
-open func waitIdle()throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-    uniffi_fragmentcolor_fn_method_renderer_waitidle(
-            self.uniffiCloneHandle(),$0
-    )
-}
-}
-    
-open func createTarget(metalLayerPtr: UInt64)throws  -> MobileWindowTarget  {
-    return try  FfiConverterTypeMobileWindowTarget_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+open func createTarget(metalLayerPtr: UInt64)throws  -> WindowTarget  {
+    return try  FfiConverterTypeWindowTarget_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_renderer_createtarget(
             self.uniffiCloneHandle(),
-        FfiConverterUInt64.lower(metalLayerPtr),$0
+        FfiConverterUInt64.lower(metalLayerPtr),uniffiCallStatus
     )
 })
 }
@@ -2316,6 +3442,369 @@ public func FfiConverterTypeRenderer_lower(_ value: Renderer) -> UInt64 {
 
 
 
+public protocol SceneProtocol: AnyObject, Sendable {
+    
+    /**
+     * Unified `Scene.add` — branches on the runtime mobile handle. Adding
+     * a new `SceneObject` Rust-side means adding one extra variant to
+     * [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
+     * Every Scene mutator returns the scene, as in Rust, so calls chain.
+     */
+    func add(object: SceneObjectHandle) throws  -> Scene
+    
+    func addPass(pass: Pass)  -> Scene
+    
+    /**
+     * Add a SceneObject to a specific Pass, addressed by index or name via
+     * [`PassTarget`]. The Swift / Kotlin extension files supply natural
+     * `addTo(index, object)` / `addTo(name, object)` overloads on top.
+     */
+    func addTo(target: PassTarget, object: SceneObjectHandle) throws  -> Scene
+    
+    func ambient(color: [Float]) throws  -> Scene
+    
+    func cameras()  -> [Camera]
+    
+    func findPass(name: String)  -> Pass?
+    
+    func getPass(index: UInt32)  -> Pass?
+    
+    func lights()  -> [Light]
+    
+    func listPasses()  -> [Pass]
+    
+    func models()  -> [Model]
+    
+    func noDefaultCamera()  -> Scene
+    
+    func noDefaultLight()  -> Scene
+    
+    func noDefaults()  -> Scene
+    
+    func removePass(pass: Pass)  -> Bool
+    
+    func setDefaultCamera(camera: Camera)  -> Scene
+    
+    func setDefaultLight(light: Light)  -> Scene
+    
+    func setPasses(passes: [Pass]) 
+    
+}
+open class Scene: SceneProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_fragmentcolor_fn_clone_scene(self.handle, $0) }
+    }
+public convenience init() {
+    let handle =
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_scene_new(uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_fragmentcolor_fn_free_scene(handle, $0) }
+    }
+
+    
+    /**
+     * Load a scene from a `.gltf` or `.glb` file on disk.
+     * `cameras` and `lights` decide whether the file's own cameras and lights load.
+     */
+public static func load(path: String, cameras: Bool = true, lights: Bool = true)throws  -> Scene  {
+    return try  FfiConverterTypeScene_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_scene_load(
+        FfiConverterString.lower(path),
+        FfiConverterBool.lower(cameras),
+        FfiConverterBool.lower(lights),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Load a scene from the bytes of a `.glb` file.
+     * `cameras` and `lights` decide whether the file's own cameras and lights load.
+     */
+public static func loadBytes(bytes: Data, cameras: Bool = true, lights: Bool = true)throws  -> Scene  {
+    return try  FfiConverterTypeScene_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_scene_loadbytes(
+        FfiConverterData.lower(bytes),
+        FfiConverterBool.lower(cameras),
+        FfiConverterBool.lower(lights),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+    /**
+     * Unified `Scene.add` — branches on the runtime mobile handle. Adding
+     * a new `SceneObject` Rust-side means adding one extra variant to
+     * [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
+     * Every Scene mutator returns the scene, as in Rust, so calls chain.
+     */
+open func add(object: SceneObjectHandle)throws  -> Scene  {
+    return try  FfiConverterTypeScene_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_scene_add(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeSceneObjectHandle_lower(object),uniffiCallStatus
+    )
+})
+}
+    
+open func addPass(pass: Pass) -> Scene  {
+    return try!  FfiConverterTypeScene_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_scene_addpass(
+            self.uniffiCloneHandle(),
+        FfiConverterTypePass_lower(pass),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Add a SceneObject to a specific Pass, addressed by index or name via
+     * [`PassTarget`]. The Swift / Kotlin extension files supply natural
+     * `addTo(index, object)` / `addTo(name, object)` overloads on top.
+     */
+open func addTo(target: PassTarget, object: SceneObjectHandle)throws  -> Scene  {
+    return try  FfiConverterTypeScene_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_scene_addto(
+            self.uniffiCloneHandle(),
+        FfiConverterTypePassTarget_lower(target),
+        FfiConverterTypeSceneObjectHandle_lower(object),uniffiCallStatus
+    )
+})
+}
+    
+open func ambient(color: [Float])throws  -> Scene  {
+    return try  FfiConverterTypeScene_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_scene_ambient(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceFloat.lower(color),uniffiCallStatus
+    )
+})
+}
+    
+open func cameras() -> [Camera]  {
+    return try!  FfiConverterSequenceTypeCamera.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_scene_cameras(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func findPass(name: String) -> Pass?  {
+    return try!  FfiConverterOptionTypePass.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_scene_findpass(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(name),uniffiCallStatus
+    )
+})
+}
+    
+open func getPass(index: UInt32) -> Pass?  {
+    return try!  FfiConverterOptionTypePass.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_scene_getpass(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(index),uniffiCallStatus
+    )
+})
+}
+    
+open func lights() -> [Light]  {
+    return try!  FfiConverterSequenceTypeLight.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_scene_lights(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func listPasses() -> [Pass]  {
+    return try!  FfiConverterSequenceTypePass.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_scene_listpasses(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func models() -> [Model]  {
+    return try!  FfiConverterSequenceTypeModel.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_scene_models(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func noDefaultCamera() -> Scene  {
+    return try!  FfiConverterTypeScene_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_scene_nodefaultcamera(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func noDefaultLight() -> Scene  {
+    return try!  FfiConverterTypeScene_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_scene_nodefaultlight(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func noDefaults() -> Scene  {
+    return try!  FfiConverterTypeScene_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_scene_nodefaults(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func removePass(pass: Pass) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_scene_removepass(
+            self.uniffiCloneHandle(),
+        FfiConverterTypePass_lower(pass),uniffiCallStatus
+    )
+})
+}
+    
+open func setDefaultCamera(camera: Camera) -> Scene  {
+    return try!  FfiConverterTypeScene_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_scene_setdefaultcamera(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCamera_lower(camera),uniffiCallStatus
+    )
+})
+}
+    
+open func setDefaultLight(light: Light) -> Scene  {
+    return try!  FfiConverterTypeScene_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_scene_setdefaultlight(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeLight_lower(light),uniffiCallStatus
+    )
+})
+}
+    
+open func setPasses(passes: [Pass])  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_scene_setpasses(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceTypePass.lower(passes),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeScene: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = Scene
+
+    public static func lift(_ handle: UInt64) throws -> Scene {
+        return Scene(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: Scene) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Scene {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: Scene, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeScene_lift(_ handle: UInt64) throws -> Scene {
+    return try FfiConverterTypeScene.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeScene_lower(_ value: Scene) -> UInt64 {
+    return FfiConverterTypeScene.lower(value)
+}
+
+
+
+
+
+
 public protocol ShaderProtocol: AnyObject, Sendable {
     
     /**
@@ -2334,10 +3823,9 @@ public protocol ShaderProtocol: AnyObject, Sendable {
      * Async fetch constructor: resolve each part of `input` (URL, slug, file
      * path, or raw source) over the network, then compile the merged WGSL.
      *
-     * Uniffi 0.31 does not support async constructors, so this is expressed
-     * as an async method rather than a constructor. Swift / Kotlin extension
-     * shims provide `Shader.fetch(input:)` as a static async factory so
-     * callers never need to hold a dummy instance.
+     * Expressed as an async method rather than a constructor. Swift / Kotlin
+     * extension shims provide `Shader.fetch(input:)` as a static async factory
+     * so callers never need to hold a dummy instance.
      *
      * Swift callers: `let shader = try await Shader.fetch("https://...")`
      * Kotlin callers: `val shader = Shader.fetch("https://...")`
@@ -2369,7 +3857,7 @@ public protocol ShaderProtocol: AnyObject, Sendable {
      */
     func removeMeshes(meshes: [Mesh]) 
     
-    func set(key: String, value: UniformData) throws 
+    func set(key: String, value: UniformValue) throws 
     
     /**
      * Check whether a `Mesh`'s vertex/instance layout is compatible with
@@ -2426,8 +3914,9 @@ open class Shader: ShaderProtocol, @unchecked Sendable {
 public convenience init(source: String)throws  {
     let handle =
         try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_constructor_shader_new(
-        FfiConverterString.lower(source),$0
+        FfiConverterString.lower(source),uniffiCallStatus
     )
 }
     self.init(unsafeFromHandle: handle)
@@ -2450,15 +3939,17 @@ public convenience init(source: String)throws  {
      */
 public static func compose(parts: [String])throws  -> Shader  {
     return try  FfiConverterTypeShader_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_constructor_shader_compose(
-        FfiConverterSequenceString.lower(parts),$0
+        FfiConverterSequenceString.lower(parts),uniffiCallStatus
     )
 })
 }
     
 public static func `default`() -> Shader  {
     return try!  FfiConverterTypeShader_lift(try! rustCall() {
-    uniffi_fragmentcolor_fn_constructor_shader_default($0
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_shader_default(uniffiCallStatus
     )
 })
 }
@@ -2471,8 +3962,9 @@ public static func `default`() -> Shader  {
      */
 public static func fromMesh(mesh: Mesh) -> Shader  {
     return try!  FfiConverterTypeShader_lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_constructor_shader_frommesh(
-        FfiConverterTypeMesh_lower(mesh),$0
+        FfiConverterTypeMesh_lower(mesh),uniffiCallStatus
     )
 })
 }
@@ -2484,8 +3976,9 @@ public static func fromMesh(mesh: Mesh) -> Shader  {
      */
 public static func fromVertex(vertex: Vertex) -> Shader  {
     return try!  FfiConverterTypeShader_lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_constructor_shader_fromvertex(
-        FfiConverterTypeVertex_lower(vertex),$0
+        FfiConverterTypeVertex_lower(vertex),uniffiCallStatus
     )
 })
 }
@@ -2494,14 +3987,15 @@ public static func fromVertex(vertex: Vertex) -> Shader  {
      * Override the slug registry base URL (process-wide).
      * Uniffi has no static-method form on `uniffi::Object`, so this is
      * expressed as a constructor that performs the side effect and returns
-     * a default `Shader`. The Swift / Kotlin extension shims discard the
-     * returned instance so callers see `Shader.setRegistry(baseUrl:)` with
-     * `Void` return — matching the JS / Python static-method spelling.
+     * a default `Shader`. It carries its own name so the Swift and Kotlin
+     * extensions can define `Shader.setRegistry(baseUrl)` without a return
+     * value, matching the JS / Python static-method spelling.
      */
-public static func setRegistry(baseUrl: String) -> Shader  {
+public static func useRegistry(baseUrl: String) -> Shader  {
     return try!  FfiConverterTypeShader_lift(try! rustCall() {
-    uniffi_fragmentcolor_fn_constructor_shader_setregistry(
-        FfiConverterString.lower(baseUrl),$0
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_shader_useregistry(
+        FfiConverterString.lower(baseUrl),uniffiCallStatus
     )
 })
 }
@@ -2514,9 +4008,10 @@ public static func setRegistry(baseUrl: String) -> Shader  {
      * returns an error and does not attach on mismatch.
      */
 open func addMesh(mesh: Mesh)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_shader_addmesh(
             self.uniffiCloneHandle(),
-        FfiConverterTypeMesh_lower(mesh),$0
+        FfiConverterTypeMesh_lower(mesh),uniffiCallStatus
     )
 }
 }
@@ -2525,8 +4020,9 @@ open func addMesh(mesh: Mesh)throws   {try rustCallWithError(FfiConverterTypeFra
      * Detach all meshes from this shader.
      */
 open func clearMeshes()  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_shader_clearmeshes(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
 }
@@ -2535,10 +4031,9 @@ open func clearMeshes()  {try! rustCall() {
      * Async fetch constructor: resolve each part of `input` (URL, slug, file
      * path, or raw source) over the network, then compile the merged WGSL.
      *
-     * Uniffi 0.31 does not support async constructors, so this is expressed
-     * as an async method rather than a constructor. Swift / Kotlin extension
-     * shims provide `Shader.fetch(input:)` as a static async factory so
-     * callers never need to hold a dummy instance.
+     * Expressed as an async method rather than a constructor. Swift / Kotlin
+     * extension shims provide `Shader.fetch(input:)` as a static async factory
+     * so callers never need to hold a dummy instance.
      *
      * Swift callers: `let shader = try await Shader.fetch("https://...")`
      * Kotlin callers: `val shader = Shader.fetch("https://...")`
@@ -2548,8 +4043,7 @@ open func fetch(input: String)async throws  -> Shader  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_fragmentcolor_fn_method_shader_fetch(
-                    self.uniffiCloneHandle(),
-                    FfiConverterString.lower(input)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(input)
                 )
             },
             pollFunc: ffi_fragmentcolor_rust_future_poll_u64,
@@ -2570,8 +4064,7 @@ open func fetchCompose(parts: [String])async throws  -> Shader  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_fragmentcolor_fn_method_shader_fetchcompose(
-                    self.uniffiCloneHandle(),
-                    FfiConverterSequenceString.lower(parts)
+                        self.uniffiCloneHandle(),FfiConverterSequenceString.lower(parts)
                 )
             },
             pollFunc: ffi_fragmentcolor_rust_future_poll_u64,
@@ -2584,33 +4077,37 @@ open func fetchCompose(parts: [String])async throws  -> Shader  {
     
 open func get(key: String)throws  -> UniformData  {
     return try  FfiConverterTypeUniformData_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_shader_get(
             self.uniffiCloneHandle(),
-        FfiConverterString.lower(key),$0
+        FfiConverterString.lower(key),uniffiCallStatus
     )
 })
 }
     
 open func isCompute() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_shader_iscompute(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
     
 open func listKeys() -> [String]  {
     return try!  FfiConverterSequenceString.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_shader_listkeys(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
     
 open func listUniforms() -> [String]  {
     return try!  FfiConverterSequenceString.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_shader_listuniforms(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -2619,9 +4116,10 @@ open func listUniforms() -> [String]  {
      * Detach a specific `Mesh` from this shader.
      */
 open func removeMesh(mesh: Mesh)  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_shader_removemesh(
             self.uniffiCloneHandle(),
-        FfiConverterTypeMesh_lower(mesh),$0
+        FfiConverterTypeMesh_lower(mesh),uniffiCallStatus
     )
 }
 }
@@ -2630,18 +4128,20 @@ open func removeMesh(mesh: Mesh)  {try! rustCall() {
      * Detach a list of meshes from this shader.
      */
 open func removeMeshes(meshes: [Mesh])  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_shader_removemeshes(
             self.uniffiCloneHandle(),
-        FfiConverterSequenceTypeMesh.lower(meshes),$0
+        FfiConverterSequenceTypeMesh.lower(meshes),uniffiCallStatus
     )
 }
 }
     
-open func set(key: String, value: UniformData)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+open func set(key: String, value: UniformValue)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_shader_set(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(key),
-        FfiConverterTypeUniformData_lower(value),$0
+        FfiConverterTypeUniformValue_lower(value),uniffiCallStatus
     )
 }
 }
@@ -2651,9 +4151,10 @@ open func set(key: String, value: UniformData)throws   {try rustCallWithError(Ff
      * this shader's `@location` inputs — without attaching it.
      */
 open func validateMesh(mesh: Mesh)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_shader_validatemesh(
             self.uniffiCloneHandle(),
-        FfiConverterTypeMesh_lower(mesh),$0
+        FfiConverterTypeMesh_lower(mesh),uniffiCallStatus
     )
 }
 }
@@ -2759,7 +4260,7 @@ public protocol TextureProtocol: AnyObject, Sendable {
      * `TextureRegionMobile` with all-zero `size_*` fields for a whole-texture
      * write (equivalent to `write()`). Mirrors `Texture::write_region`.
      */
-    func writeRegion(bytes: Data, region: TextureRegionMobile) throws 
+    func writeRegion(bytes: Data, region: TextureRegion) throws 
     
 }
 open class Texture: TextureProtocol, @unchecked Sendable {
@@ -2820,8 +4321,9 @@ open class Texture: TextureProtocol, @unchecked Sendable {
      */
 open func aspect() -> Float  {
     return try!  FfiConverterFloat.lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_texture_aspect(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -2838,8 +4340,7 @@ open func getImage()async throws  -> Data  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_fragmentcolor_fn_method_texture_getimage(
-                    self.uniffiCloneHandle()
-                    
+                        self.uniffiCloneHandle()
                 )
             },
             pollFunc: ffi_fragmentcolor_rust_future_poll_rust_buffer,
@@ -2857,8 +4358,9 @@ open func getImage()async throws  -> Data  {
      */
 open func id() -> TextureId  {
     return try!  FfiConverterTypeTextureId_lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_texture_id(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -2872,9 +4374,10 @@ open func id() -> TextureId  {
      * the camelCase form back onto a single overload.
      */
 open func setSamplerOptions(opts: SamplerOptions)  {try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_texture_setsampleroptions(
             self.uniffiCloneHandle(),
-        FfiConverterTypeSamplerOptions_lower(opts),$0
+        FfiConverterTypeSamplerOptions_lower(opts),uniffiCallStatus
     )
 }
 }
@@ -2885,8 +4388,9 @@ open func setSamplerOptions(opts: SamplerOptions)  {try! rustCall() {
      */
 open func size() -> Size  {
     return try!  FfiConverterTypeSize_lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_texture_size(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -2897,9 +4401,10 @@ open func size() -> Size  {
      * formats and alignment rules. Mirrors `Texture::write(&[u8])`.
      */
 open func write(bytes: Data)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_texture_write(
             self.uniffiCloneHandle(),
-        FfiConverterData.lower(bytes),$0
+        FfiConverterData.lower(bytes),uniffiCallStatus
     )
 }
 }
@@ -2909,11 +4414,12 @@ open func write(bytes: Data)throws   {try rustCallWithError(FfiConverterTypeFrag
      * `TextureRegionMobile` with all-zero `size_*` fields for a whole-texture
      * write (equivalent to `write()`). Mirrors `Texture::write_region`.
      */
-open func writeRegion(bytes: Data, region: TextureRegionMobile)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+open func writeRegion(bytes: Data, region: TextureRegion)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_texture_writeregion(
             self.uniffiCloneHandle(),
         FfiConverterData.lower(bytes),
-        FfiConverterTypeTextureRegionMobile_lower(region),$0
+        FfiConverterTypeTextureRegion_lower(region),uniffiCallStatus
     )
 }
 }
@@ -2969,205 +4475,52 @@ public func FfiConverterTypeTexture_lower(_ value: Texture) -> UInt64 {
 
 
 /**
- * A pre-computed CPU mipmap chain. Build with [`TextureMipChain::prepare`]
- * (encoded image bytes) or [`TextureMipChain::prepare_raw`] (raw pixel bytes),
- * then pass to [`crate::Renderer::create_texture`] (the unified entry
- * point dispatches via `From<TextureMipChain> for TextureInput`).
+ * Mobile-facing wrapper around [`TextureTarget`].
  *
- * Levels are tightly-packed bytes, level 0 first, with `bytes_per_pixel(format) *
- * max(1, base_w >> level) * max(1, base_h >> level)` bytes per level.
+ * Exposes `size()`, `resize(width, height)`, and `get_image()` to Swift and
+ * Kotlin. `get_image()` returns a packed RGBA8 byte array of the offscreen
+ * texture contents.
  */
-public protocol TextureMipChainProtocol: AnyObject, Sendable {
-    
-    func baseSize()  -> Size
-    
-    func format()  -> TextureFormat
+public protocol TextureTargetProtocol: AnyObject, Sendable {
     
     /**
-     * Return the bytes for a single mip level. Use `levelCount()` to discover
-     * the valid range.
+     * Returns the current offscreen texture contents as a packed RGBA8
+     * byte array (row-major, top-left origin). Uniffi exposes this as a
+     * Swift / Kotlin `suspend fun`; the underlying readback runs through
+     * `TextureTarget::get_image` async.
      */
-    func level(index: UInt32) throws  -> Data
+    func getImage() async  -> Data
     
-    func levelCount()  -> UInt32
+    /**
+     * Resizes the offscreen texture to `width` × `height` pixels.
+     *
+     * The underlying GPU texture is recreated; any previously-rendered
+     * pixel data is lost. Uniffi cannot express `&mut self` on an
+     * `Arc`-wrapped object, so this method acquires the inner write-lock.
+     */
+    func resize(width: UInt32, height: UInt32) 
+    
+    /**
+     * Returns the current size of the offscreen texture in pixels.
+     */
+    func size()  -> Size
+    
+    /**
+     * Return a sampleable [`Texture`](crate::texture::Texture) handle that
+     * aliases this target's offscreen storage. Mirrors the inherent
+     * `TextureTarget::texture()` on every other binding so the docs example
+     * reads `target.texture()` identically across Python, Swift, Kotlin, JS.
+     */
+    func texture()  -> Texture
     
 }
 /**
- * A pre-computed CPU mipmap chain. Build with [`TextureMipChain::prepare`]
- * (encoded image bytes) or [`TextureMipChain::prepare_raw`] (raw pixel bytes),
- * then pass to [`crate::Renderer::create_texture`] (the unified entry
- * point dispatches via `From<TextureMipChain> for TextureInput`).
+ * Mobile-facing wrapper around [`TextureTarget`].
  *
- * Levels are tightly-packed bytes, level 0 first, with `bytes_per_pixel(format) *
- * max(1, base_w >> level) * max(1, base_h >> level)` bytes per level.
+ * Exposes `size()`, `resize(width, height)`, and `get_image()` to Swift and
+ * Kotlin. `get_image()` returns a packed RGBA8 byte array of the offscreen
+ * texture contents.
  */
-open class TextureMipChain: TextureMipChainProtocol, @unchecked Sendable {
-    fileprivate let handle: UInt64
-
-    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public struct NoHandle {
-        public init() {}
-    }
-
-    // TODO: We'd like this to be `private` but for Swifty reasons,
-    // we can't implement `FfiConverter` without making this `required` and we can't
-    // make it `required` without making it `public`.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    required public init(unsafeFromHandle handle: UInt64) {
-        self.handle = handle
-    }
-
-    // This constructor can be used to instantiate a fake object.
-    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
-    //
-    // - Warning:
-    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public init(noHandle: NoHandle) {
-        self.handle = 0
-    }
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_fragmentcolor_fn_clone_texturemipchain(self.handle, $0) }
-    }
-    // No primary constructor declared for this class.
-
-    deinit {
-        if handle == 0 {
-            // Mock objects have handle=0 don't try to free them
-            return
-        }
-
-        try! rustCall { uniffi_fragmentcolor_fn_free_texturemipchain(handle, $0) }
-    }
-
-    
-    /**
-     * Build a chain from raw bytes + format (+ optional size). If
-     * `size` is `None`, `bytes` is decoded as an image (PNG / JPEG / etc.);
-     * if `Some(size)`, `bytes` is treated as raw pixel data already laid
-     * out for `format` at `size`. Pure CPU work — call from a Swift `Task`
-     * or Kotlin coroutine on a background dispatcher, then hand the chain
-     * to `renderer.createTexture(chain:)` for the GPU upload.
-     *
-     * Mobile shim takes the fields directly because uniffi can't marshal
-     * `impl Into<TextureInput>`. Swift / Kotlin extensions wrap this
-     * constructor so end users call `TextureMipChain.prepare(bytes:format:)`
-     * (encoded) or `TextureMipChain.prepare(bytes:format:size:)` (raw)
-     * without seeing the underlying `TextureInput` plumbing.
-     */
-public static func prepare(bytes: Data, format: TextureFormat, size: Size?)throws  -> TextureMipChain  {
-    return try  FfiConverterTypeTextureMipChain_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-    uniffi_fragmentcolor_fn_constructor_texturemipchain_prepare(
-        FfiConverterData.lower(bytes),
-        FfiConverterTypeTextureFormat_lower(format),
-        FfiConverterOptionTypeSize.lower(size),$0
-    )
-})
-}
-    
-
-    
-open func baseSize() -> Size  {
-    return try!  FfiConverterTypeSize_lift(try! rustCall() {
-    uniffi_fragmentcolor_fn_method_texturemipchain_basesize(
-            self.uniffiCloneHandle(),$0
-    )
-})
-}
-    
-open func format() -> TextureFormat  {
-    return try!  FfiConverterTypeTextureFormat_lift(try! rustCall() {
-    uniffi_fragmentcolor_fn_method_texturemipchain_format(
-            self.uniffiCloneHandle(),$0
-    )
-})
-}
-    
-    /**
-     * Return the bytes for a single mip level. Use `levelCount()` to discover
-     * the valid range.
-     */
-open func level(index: UInt32)throws  -> Data  {
-    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-    uniffi_fragmentcolor_fn_method_texturemipchain_level(
-            self.uniffiCloneHandle(),
-        FfiConverterUInt32.lower(index),$0
-    )
-})
-}
-    
-open func levelCount() -> UInt32  {
-    return try!  FfiConverterUInt32.lift(try! rustCall() {
-    uniffi_fragmentcolor_fn_method_texturemipchain_levelcount(
-            self.uniffiCloneHandle(),$0
-    )
-})
-}
-    
-
-    
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeTextureMipChain: FfiConverter {
-    typealias FfiType = UInt64
-    typealias SwiftType = TextureMipChain
-
-    public static func lift(_ handle: UInt64) throws -> TextureMipChain {
-        return TextureMipChain(unsafeFromHandle: handle)
-    }
-
-    public static func lower(_ value: TextureMipChain) -> UInt64 {
-        return value.uniffiCloneHandle()
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextureMipChain {
-        let handle: UInt64 = try readInt(&buf)
-        return try lift(handle)
-    }
-
-    public static func write(_ value: TextureMipChain, into buf: inout [UInt8]) {
-        writeInt(&buf, lower(value))
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextureMipChain_lift(_ handle: UInt64) throws -> TextureMipChain {
-    return try FfiConverterTypeTextureMipChain.lift(handle)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextureMipChain_lower(_ value: TextureMipChain) -> UInt64 {
-    return FfiConverterTypeTextureMipChain.lower(value)
-}
-
-
-
-
-
-
-public protocol TextureTargetProtocol: AnyObject, Sendable {
-    
-}
 open class TextureTarget: TextureTargetProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
 
@@ -3220,6 +4573,73 @@ open class TextureTarget: TextureTargetProtocol, @unchecked Sendable {
 
     
 
+    
+    /**
+     * Returns the current offscreen texture contents as a packed RGBA8
+     * byte array (row-major, top-left origin). Uniffi exposes this as a
+     * Swift / Kotlin `suspend fun`; the underlying readback runs through
+     * `TextureTarget::get_image` async.
+     */
+open func getImage()async  -> Data  {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_fragmentcolor_fn_method_texturetarget_getimage(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_fragmentcolor_rust_future_poll_rust_buffer,
+            completeFunc: ffi_fragmentcolor_rust_future_complete_rust_buffer,
+            freeFunc: ffi_fragmentcolor_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterData.lift,
+            errorHandler: nil
+            
+        )
+}
+    
+    /**
+     * Resizes the offscreen texture to `width` × `height` pixels.
+     *
+     * The underlying GPU texture is recreated; any previously-rendered
+     * pixel data is lost. Uniffi cannot express `&mut self` on an
+     * `Arc`-wrapped object, so this method acquires the inner write-lock.
+     */
+open func resize(width: UInt32, height: UInt32)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_texturetarget_resize(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(width),
+        FfiConverterUInt32.lower(height),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Returns the current size of the offscreen texture in pixels.
+     */
+open func size() -> Size  {
+    return try!  FfiConverterTypeSize_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_texturetarget_size(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Return a sampleable [`Texture`](crate::texture::Texture) handle that
+     * aliases this target's offscreen storage. Mirrors the inherent
+     * `TextureTarget::texture()` on every other binding so the docs example
+     * reads `target.texture()` identically across Python, Swift, Kotlin, JS.
+     */
+open func texture() -> Texture  {
+    return try!  FfiConverterTypeTexture_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_texturetarget_texture(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
     
 
     
@@ -3279,12 +4699,10 @@ public protocol VertexProtocol: AnyObject, Sendable {
     func createInstance()  -> Instance
     
     /**
-     * Set a vertex attribute by key. `VertexValue` is a `uniffi::Enum` so
-     * Swift/Kotlin callers construct the variant directly.
-     *
-     * Returns the updated `Vertex` (builder style).
+     * Set a vertex attribute to 1 to 4 numbers.
+     * The shader that reads it decides their type when the mesh attaches.
      */
-    func set(key: String, value: VertexValue)  -> Vertex
+    func set(key: String, value: [Double]) throws  -> Vertex
     
 }
 open class Vertex: VertexProtocol, @unchecked Sendable {
@@ -3327,15 +4745,16 @@ open class Vertex: VertexProtocol, @unchecked Sendable {
         return try! rustCall { uniffi_fragmentcolor_fn_clone_vertex(self.handle, $0) }
     }
     /**
-     * Create a new `Vertex` from a position vector. Accepts 2, 3, or 4
-     * components; any other length returns an error. Mobile shim because
-     * uniffi cannot marshal the generic `impl IntoVertexPositionFull`.
+     * Create a new `Vertex` from a position vector of 1 to 4 components.
+     * Any other length returns an error. Mobile shim because uniffi cannot
+     * marshal the generic `impl IntoVertexPositionFull`.
      */
 public convenience init(position: [Float])throws  {
     let handle =
         try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_constructor_vertex_new(
-        FfiConverterSequenceFloat.lower(position),$0
+        FfiConverterSequenceFloat.lower(position),uniffiCallStatus
     )
 }
     self.init(unsafeFromHandle: handle)
@@ -3351,6 +4770,21 @@ public convenience init(position: [Float])throws  {
     }
 
     
+    /**
+     * Construct a `Vertex` with PBR-shader defaults seeded for the
+     * optional attributes (`NORMAL`, `UV0`, `COLOR0`, `UV1`, `TANGENT`).
+     * Mobile shim because uniffi cannot marshal the generic position
+     * type.
+     */
+public static func pbr(position: [Float])throws  -> Vertex  {
+    return try  FfiConverterTypeVertex_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_vertex_pbr(
+        FfiConverterSequenceFloat.lower(position),uniffiCallStatus
+    )
+})
+}
+    
 
     
     /**
@@ -3358,24 +4792,24 @@ public convenience init(position: [Float])throws  {
      */
 open func createInstance() -> Instance  {
     return try!  FfiConverterTypeInstance_lift(try! rustCall() {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_vertex_createinstance(
-            self.uniffiCloneHandle(),$0
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
     
     /**
-     * Set a vertex attribute by key. `VertexValue` is a `uniffi::Enum` so
-     * Swift/Kotlin callers construct the variant directly.
-     *
-     * Returns the updated `Vertex` (builder style).
+     * Set a vertex attribute to 1 to 4 numbers.
+     * The shader that reads it decides their type when the mesh attaches.
      */
-open func set(key: String, value: VertexValue) -> Vertex  {
-    return try!  FfiConverterTypeVertex_lift(try! rustCall() {
+open func set(key: String, value: [Double])throws  -> Vertex  {
+    return try  FfiConverterTypeVertex_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_vertex_set(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(key),
-        FfiConverterTypeVertexValue_lower(value),$0
+        FfiConverterSequenceDouble.lower(value),uniffiCallStatus
     )
 })
 }
@@ -3430,9 +4864,44 @@ public func FfiConverterTypeVertex_lower(_ value: Vertex) -> UInt64 {
 
 
 
+/**
+ * Mobile-facing wrapper around [`WindowTarget`].
+ *
+ * Exposes `size()`, `resize(width, height)`, and `get_image()` to Swift and
+ * Kotlin. `get_image()` returns an empty byte array, because a window surface
+ * can't be read back. Render to a `TextureTarget` to read pixels.
+ */
 public protocol WindowTargetProtocol: AnyObject, Sendable {
     
+    /**
+     * Returns an empty byte array.
+     *
+     * Window-backed surfaces are not readable across all GPU backends.
+     * Use a [`MobileTextureTarget`] and call `get_image()` there instead.
+     */
+    func getImage() async  -> Data
+    
+    /**
+     * Resizes the window surface to `width` × `height` pixels.
+     *
+     * Uniffi cannot express `&mut self` on an `Arc`-wrapped object, so this
+     * method acquires the inner mutex, applies the resize, and releases it.
+     */
+    func resize(width: UInt32, height: UInt32) 
+    
+    /**
+     * Returns the current size of the window surface in pixels.
+     */
+    func size()  -> Size
+    
 }
+/**
+ * Mobile-facing wrapper around [`WindowTarget`].
+ *
+ * Exposes `size()`, `resize(width, height)`, and `get_image()` to Swift and
+ * Kotlin. `get_image()` returns an empty byte array, because a window surface
+ * can't be read back. Render to a `TextureTarget` to read pixels.
+ */
 open class WindowTarget: WindowTargetProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
 
@@ -3485,6 +4954,57 @@ open class WindowTarget: WindowTargetProtocol, @unchecked Sendable {
 
     
 
+    
+    /**
+     * Returns an empty byte array.
+     *
+     * Window-backed surfaces are not readable across all GPU backends.
+     * Use a [`MobileTextureTarget`] and call `get_image()` there instead.
+     */
+open func getImage()async  -> Data  {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_fragmentcolor_fn_method_windowtarget_getimage(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_fragmentcolor_rust_future_poll_rust_buffer,
+            completeFunc: ffi_fragmentcolor_rust_future_complete_rust_buffer,
+            freeFunc: ffi_fragmentcolor_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterData.lift,
+            errorHandler: nil
+            
+        )
+}
+    
+    /**
+     * Resizes the window surface to `width` × `height` pixels.
+     *
+     * Uniffi cannot express `&mut self` on an `Arc`-wrapped object, so this
+     * method acquires the inner mutex, applies the resize, and releases it.
+     */
+open func resize(width: UInt32, height: UInt32)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_windowtarget_resize(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(width),
+        FfiConverterUInt32.lower(height),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Returns the current size of the window surface in pixels.
+     */
+open func size() -> Size  {
+    return try!  FfiConverterTypeSize_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_windowtarget_size(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
     
 
     
@@ -3592,81 +5112,6 @@ public func FfiConverterTypeArrayElement_lift(_ buf: RustBuffer) throws -> Array
 #endif
 public func FfiConverterTypeArrayElement_lower(_ value: ArrayElement) -> RustBuffer {
     return FfiConverterTypeArrayElement.lower(value)
-}
-
-
-/**
- * Mobile-serializable mirror of `PassInput`.
- *
- * `PassInput` stores a `Color(u32)` tuple-newtype which uniffi's `Record`
- * derive does not support. `MobilePassInput` exposes the same information
- * as named fields that uniffi can marshal.
- */
-public struct MobilePassInput: Equatable, Hashable {
-    /**
-     * If `true`, the previous frame's contents are loaded (no clear).
-     * If `false`, the `color_rgba` value is used to clear the attachment.
-     */
-    public var load: Bool
-    /**
-     * Clear colour packed as 0xRRGGBBAA (same bit layout as `Color(u32)`).
-     */
-    public var colorRgba: UInt32
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(
-        /**
-         * If `true`, the previous frame's contents are loaded (no clear).
-         * If `false`, the `color_rgba` value is used to clear the attachment.
-         */load: Bool, 
-        /**
-         * Clear colour packed as 0xRRGGBBAA (same bit layout as `Color(u32)`).
-         */colorRgba: UInt32) {
-        self.load = load
-        self.colorRgba = colorRgba
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension MobilePassInput: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeMobilePassInput: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MobilePassInput {
-        return
-            try MobilePassInput(
-                load: FfiConverterBool.read(from: &buf), 
-                colorRgba: FfiConverterUInt32.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: MobilePassInput, into buf: inout [UInt8]) {
-        FfiConverterBool.write(value.load, into: &buf)
-        FfiConverterUInt32.write(value.colorRgba, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeMobilePassInput_lift(_ buf: RustBuffer) throws -> MobilePassInput {
-    return try FfiConverterTypeMobilePassInput.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeMobilePassInput_lower(_ value: MobilePassInput) -> RustBuffer {
-    return FfiConverterTypeMobilePassInput.lower(value)
 }
 
 
@@ -3785,7 +5230,7 @@ public struct SamplerOptions: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(repeatX: Bool, repeatY: Bool, smooth: Bool, compare: CompareFunction?) {
+    public init(repeatX: Bool = false, repeatY: Bool = false, smooth: Bool = true, compare: CompareFunction? = nil) {
         self.repeatX = repeatX
         self.repeatY = repeatY
         self.smooth = smooth
@@ -3842,6 +5287,9 @@ public func FfiConverterTypeSamplerOptions_lower(_ value: SamplerOptions) -> Rus
 /**
  * A 2D pixel-space rectangle used for viewports and scissor rects.
  * For texture upload regions see `TextureRegion` in the texture module.
+ *
+ * `max_x` and `max_y` are exclusive, so `width()` is `max_x - min_x`.
+ * A size alone, `[w, h]` or `(w, h)`, covers exactly `w` by `h` pixels from the origin.
  */
 public struct ScreenRegion: Equatable, Hashable {
     public var minX: UInt32
@@ -3912,7 +5360,7 @@ public struct Size: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(width: UInt32, height: UInt32, depth: UInt32?) {
+    public init(width: UInt32, height: UInt32, depth: UInt32? = nil) {
         self.width = width
         self.height = height
         self.depth = depth
@@ -4290,34 +5738,40 @@ public struct TextureOptions: Equatable, Hashable {
      */
     public var mipmaps: Bool
     /**
-     * Optional `wgpu::TextureUsages` override, stored as the underlying
-     * `u32` bit mask so it crosses every FFI cleanly. `None` lets the
-     * renderer pick per-method defaults:
-     * - `create_texture` → `TEXTURE_BINDING | COPY_DST`
-     * - `create_storage_texture` → `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`
-     * Set with `.with_usage(wgpu::TextureUsages::STORAGE_BINDING | ...)` for
+     * Optional [`crate::TextureUsage`] bits, stored as the underlying
+     * `u32` bit mask so it crosses every FFI cleanly.
+     *
+     * - `create_texture` adds them to the `TEXTURE_BINDING | COPY_DST` it always sets.
+     * Add `COPY_SRC` to read the texture back with `read_texture`.
+     * - `create_storage_texture` uses them in place of its default,
+     * `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`.
+     *
+     * Set with `.with_usage(TextureUsage::COPY_SRC | ...)` for
      * readability on the Rust side.
      */
     public var usage: UInt32?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(size: Size?, format: TextureFormat, sampler: SamplerOptions, 
+    public init(size: Size? = nil, format: TextureFormat, sampler: SamplerOptions = SamplerOptions(), 
         /**
          * Generate a full mipmap chain at upload for source images. Default: true.
          * Combined with the default linear sampler, this enables trilinear filtering
          * so textured surfaces stay smooth at any zoom or rotation. Set to false
          * to skip the CPU work for textures that won't be sampled at distance.
-         */mipmaps: Bool, 
+         */mipmaps: Bool = true, 
         /**
-         * Optional `wgpu::TextureUsages` override, stored as the underlying
-         * `u32` bit mask so it crosses every FFI cleanly. `None` lets the
-         * renderer pick per-method defaults:
-         * - `create_texture` → `TEXTURE_BINDING | COPY_DST`
-         * - `create_storage_texture` → `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`
-         * Set with `.with_usage(wgpu::TextureUsages::STORAGE_BINDING | ...)` for
+         * Optional [`crate::TextureUsage`] bits, stored as the underlying
+         * `u32` bit mask so it crosses every FFI cleanly.
+         *
+         * - `create_texture` adds them to the `TEXTURE_BINDING | COPY_DST` it always sets.
+         * Add `COPY_SRC` to read the texture back with `read_texture`.
+         * - `create_storage_texture` uses them in place of its default,
+         * `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`.
+         *
+         * Set with `.with_usage(TextureUsage::COPY_SRC | ...)` for
          * readability on the Rust side.
-         */usage: UInt32?) {
+         */usage: UInt32? = nil) {
         self.size = size
         self.format = format
         self.sampler = sampler
@@ -4382,8 +5836,10 @@ public func FfiConverterTypeTextureOptions_lower(_ value: TextureOptions) -> Rus
  * Use `origin_x/y/z = 0` and `size_width/height/depth = 0` (the defaults)
  * to target the whole texture; the write path interprets zeros as
  * "infer the full extent from the texture dimensions".
+ *
+ * Swift and Kotlin see it as `TextureRegion`, the name every other binding uses.
  */
-public struct TextureRegionMobile: Equatable, Hashable {
+public struct TextureRegion: Equatable, Hashable {
     public var originX: UInt32
     public var originY: UInt32
     public var originZ: UInt32
@@ -4430,16 +5886,16 @@ public struct TextureRegionMobile: Equatable, Hashable {
 }
 
 #if compiler(>=6)
-extension TextureRegionMobile: Sendable {}
+extension TextureRegion: Sendable {}
 #endif
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public struct FfiConverterTypeTextureRegionMobile: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextureRegionMobile {
+public struct FfiConverterTypeTextureRegion: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextureRegion {
         return
-            try TextureRegionMobile(
+            try TextureRegion(
                 originX: FfiConverterUInt32.read(from: &buf), 
                 originY: FfiConverterUInt32.read(from: &buf), 
                 originZ: FfiConverterUInt32.read(from: &buf), 
@@ -4451,7 +5907,7 @@ public struct FfiConverterTypeTextureRegionMobile: FfiConverterRustBuffer {
         )
     }
 
-    public static func write(_ value: TextureRegionMobile, into buf: inout [UInt8]) {
+    public static func write(_ value: TextureRegion, into buf: inout [UInt8]) {
         FfiConverterUInt32.write(value.originX, into: &buf)
         FfiConverterUInt32.write(value.originY, into: &buf)
         FfiConverterUInt32.write(value.originZ, into: &buf)
@@ -4467,15 +5923,15 @@ public struct FfiConverterTypeTextureRegionMobile: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeTextureRegionMobile_lift(_ buf: RustBuffer) throws -> TextureRegionMobile {
-    return try FfiConverterTypeTextureRegionMobile.lift(buf)
+public func FfiConverterTypeTextureRegion_lift(_ buf: RustBuffer) throws -> TextureRegion {
+    return try FfiConverterTypeTextureRegion.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeTextureRegionMobile_lower(_ value: TextureRegionMobile) -> RustBuffer {
-    return FfiConverterTypeTextureRegionMobile.lower(value)
+public func FfiConverterTypeTextureRegion_lower(_ value: TextureRegion) -> RustBuffer {
+    return FfiConverterTypeTextureRegion.lower(value)
 }
 
 
@@ -4539,8 +5995,160 @@ public func FfiConverterTypeTextureStorageAccess_lower(_ value: TextureStorageAc
     return FfiConverterTypeTextureStorageAccess.lower(value)
 }
 
-// Note that we don't yet support `indirect` for enums.
-// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
+public struct TextureUsage: Equatable, Hashable {
+    public var bits: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(bits: UInt32) {
+        self.bits = bits
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension TextureUsage: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTextureUsage: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextureUsage {
+        return
+            try TextureUsage(
+                bits: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TextureUsage, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.bits, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTextureUsage_lift(_ buf: RustBuffer) throws -> TextureUsage {
+    return try FfiConverterTypeTextureUsage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTextureUsage_lower(_ value: TextureUsage) -> RustBuffer {
+    return FfiConverterTypeTextureUsage.lower(value)
+}
+
+
+/**
+ * How the renderer interprets the alpha channel of a Material's output.
+ *
+ * Mirrors the glTF 2.0 `alphaMode` field — `OPAQUE`, `MASK`, `BLEND` — with
+ * the same semantics:
+ *
+ * - `Opaque`: depth-test on, blending off. Alpha bits go to the framebuffer
+ * but the blend equation ignores them. Cheapest path; the only one where
+ * the depth buffer fully describes the geometry.
+ * - `Mask`: depth-test on, blending off, but fragments with
+ * `material.base_color.a < material.alpha_cutoff` are `discard`ed in the
+ * fragment shader. Hard-edged cut-out; perf profile matches opaque.
+ * - `Blend`: depth-test on but depth-write **off**, color target uses
+ * standard `SrcAlpha / OneMinusSrcAlpha` over-blend. The renderer sorts
+ * Models with this mode back-to-front by eye-space Z before drawing,
+ * using the Camera attached via `Pass::add(&camera)` — no caller-side
+ * sorting required. Sort granularity is per-Model (not per-fragment),
+ * so self-intersecting translucent meshes can still show artifacts.
+ */
+
+public enum AlphaMode: Equatable, Hashable {
+    
+    /**
+     * Depth-test on, blending off, no alpha cutoff. Default.
+     */
+    case opaque
+    /**
+     * Depth-test on, blending off, fragment discarded if
+     * `material.base_color.a < material.alpha_cutoff`.
+     */
+    case mask
+    /**
+     * Depth-test on (depth-write off), standard `SrcAlpha / OneMinusSrcAlpha`
+     * over-blend.
+     */
+    case blend
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AlphaMode: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAlphaMode: FfiConverterRustBuffer {
+    typealias SwiftType = AlphaMode
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AlphaMode {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .opaque
+        
+        case 2: return .mask
+        
+        case 3: return .blend
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AlphaMode, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .opaque:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .mask:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .blend:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAlphaMode_lift(_ buf: RustBuffer) throws -> AlphaMode {
+    return try FfiConverterTypeAlphaMode.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAlphaMode_lower(_ value: AlphaMode) -> RustBuffer {
+    return FfiConverterTypeAlphaMode.lower(value)
+}
+
+
+
 
 public enum CompareFunction: Equatable, Hashable {
     
@@ -4681,7 +6289,8 @@ public func FfiConverterTypeCompareFunction_lower(_ value: CompareFunction) -> R
  * Mobile-facing error type. Flattens every internal error to its `Display`
  * representation so Swift/Kotlin callers get a single typed error to match on.
  */
-public enum FragmentColorError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+public 
+enum FragmentColorError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
     
     
@@ -4774,8 +6383,90 @@ public func FfiConverterTypeFragmentColorError_lower(_ value: FragmentColorError
     return FfiConverterTypeFragmentColorError.lower(value)
 }
 
-// Note that we don't yet support `indirect` for enums.
-// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
+/**
+ * Mobile-marshallable target for [`Scene::add_to`]: a pass index or a pass
+ * name. Uniffi can't marshal `impl Into<PassRef>`, so Swift / Kotlin pick a
+ * variant; the `Scene+Extensions` / `SceneExtensions` files wrap it behind
+ * natural `addTo(index, object)` / `addTo(name, object)` overloads.
+ *
+ * The index is `u32` (→ Kotlin `UInt`, Swift `UInt32`): a pass position is
+ * never negative. Kotlin can't coerce a bare `1` into an unsigned parameter,
+ * so the transpiler suffixes the literal (`getPass(1u)`) the same way it does
+ * for `setComputeDispatch`.
+ */
+
+public enum PassTarget: Equatable, Hashable {
+    
+    case index(UInt32
+    )
+    case name(String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension PassTarget: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePassTarget: FfiConverterRustBuffer {
+    typealias SwiftType = PassTarget
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PassTarget {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .index(try FfiConverterUInt32.read(from: &buf)
+        )
+        
+        case 2: return .name(try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PassTarget, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .index(v1):
+            writeInt(&buf, Int32(1))
+            FfiConverterUInt32.write(v1, into: &buf)
+            
+        
+        case let .name(v1):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(v1, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePassTarget_lift(_ buf: RustBuffer) throws -> PassTarget {
+    return try FfiConverterTypePassTarget.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePassTarget_lower(_ value: PassTarget) -> RustBuffer {
+    return FfiConverterTypePassTarget.lower(value)
+}
+
+
+
 /**
  * Uniffi-marshallable union of every type that implements [`Renderable`].
  * Mobile bindings carry a concrete enum because uniffi can't marshal
@@ -4793,6 +6484,12 @@ public enum RenderableHandle {
     case pass(Pass
     )
     case mesh(Mesh
+    )
+    /**
+     * Top-level [`Scene`](crate::Scene) — emits its ordered pass graph,
+     * including the default Pass that holds the scene's `SceneObject`s.
+     */
+    case scene(Scene
     )
     /**
      * Iterable of `Pass` instances — emits passes in order.
@@ -4829,7 +6526,10 @@ public struct FfiConverterTypeRenderableHandle: FfiConverterRustBuffer {
         case 3: return .mesh(try FfiConverterTypeMesh.read(from: &buf)
         )
         
-        case 4: return .passes(try FfiConverterSequenceTypePass.read(from: &buf)
+        case 4: return .scene(try FfiConverterTypeScene.read(from: &buf)
+        )
+        
+        case 5: return .passes(try FfiConverterSequenceTypePass.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -4855,8 +6555,13 @@ public struct FfiConverterTypeRenderableHandle: FfiConverterRustBuffer {
             FfiConverterTypeMesh.write(v1, into: &buf)
             
         
-        case let .passes(v1):
+        case let .scene(v1):
             writeInt(&buf, Int32(4))
+            FfiConverterTypeScene.write(v1, into: &buf)
+            
+        
+        case let .passes(v1):
+            writeInt(&buf, Int32(5))
             FfiConverterSequenceTypePass.write(v1, into: &buf)
             
         }
@@ -4879,8 +6584,98 @@ public func FfiConverterTypeRenderableHandle_lower(_ value: RenderableHandle) ->
 }
 
 
-// Note that we don't yet support `indirect` for enums.
-// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
+/**
+ * Uniffi-marshallable union of every type that implements
+ * [`crate::scene::SceneObject`]. Mobile bindings carry a concrete enum
+ * because uniffi can't marshal `&impl SceneObject`. The Rust core stays
+ * generic; this enum exists so Swift / Kotlin can call `scene.add(...)`
+ * or `pass.add(...)` through a single mobile entry point — the Swift /
+ * Kotlin extension files supply natural overloads that wrap the
+ * concrete handle into the matching variant invisibly.
+ */
+
+public enum SceneObjectHandle {
+    
+    case model(Model
+    )
+    case camera(Camera
+    )
+    case light(Light
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension SceneObjectHandle: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSceneObjectHandle: FfiConverterRustBuffer {
+    typealias SwiftType = SceneObjectHandle
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SceneObjectHandle {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .model(try FfiConverterTypeModel.read(from: &buf)
+        )
+        
+        case 2: return .camera(try FfiConverterTypeCamera.read(from: &buf)
+        )
+        
+        case 3: return .light(try FfiConverterTypeLight.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: SceneObjectHandle, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .model(v1):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeModel.write(v1, into: &buf)
+            
+        
+        case let .camera(v1):
+            writeInt(&buf, Int32(2))
+            FfiConverterTypeCamera.write(v1, into: &buf)
+            
+        
+        case let .light(v1):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeLight.write(v1, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSceneObjectHandle_lift(_ buf: RustBuffer) throws -> SceneObjectHandle {
+    return try FfiConverterTypeSceneObjectHandle.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSceneObjectHandle_lower(_ value: SceneObjectHandle) -> RustBuffer {
+    return FfiConverterTypeSceneObjectHandle.lower(value)
+}
+
+
+
 
 public enum StorageAccess: Equatable, Hashable {
     
@@ -4981,8 +6776,7 @@ public func FfiConverterTypeStorageAccess_lower(_ value: StorageAccess) -> RustB
 }
 
 
-// Note that we don't yet support `indirect` for enums.
-// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
 /**
  * Uniffi-marshallable union of every type that implements [`crate::Target`].
  * Same rationale as [`RenderableHandle`] — uniffi can't marshal
@@ -4997,9 +6791,9 @@ public func FfiConverterTypeStorageAccess_lower(_ value: StorageAccess) -> RustB
 
 public enum TargetHandle {
     
-    case window(MobileWindowTarget
+    case window(WindowTarget
     )
-    case texture(MobileTextureTarget
+    case texture(TextureTarget
     )
 
 
@@ -5022,10 +6816,10 @@ public struct FfiConverterTypeTargetHandle: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
         
-        case 1: return .window(try FfiConverterTypeMobileWindowTarget.read(from: &buf)
+        case 1: return .window(try FfiConverterTypeWindowTarget.read(from: &buf)
         )
         
-        case 2: return .texture(try FfiConverterTypeMobileTextureTarget.read(from: &buf)
+        case 2: return .texture(try FfiConverterTypeTextureTarget.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -5038,12 +6832,12 @@ public struct FfiConverterTypeTargetHandle: FfiConverterRustBuffer {
         
         case let .window(v1):
             writeInt(&buf, Int32(1))
-            FfiConverterTypeMobileWindowTarget.write(v1, into: &buf)
+            FfiConverterTypeWindowTarget.write(v1, into: &buf)
             
         
         case let .texture(v1):
             writeInt(&buf, Int32(2))
-            FfiConverterTypeMobileTextureTarget.write(v1, into: &buf)
+            FfiConverterTypeTextureTarget.write(v1, into: &buf)
             
         }
     }
@@ -5065,8 +6859,7 @@ public func FfiConverterTypeTargetHandle_lower(_ value: TargetHandle) -> RustBuf
 }
 
 
-// Note that we don't yet support `indirect` for enums.
-// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
 /**
  * Image sub-class. Mirrors `naga::ImageClass`.
  */
@@ -5160,8 +6953,7 @@ public func FfiConverterTypeTextureClass_lower(_ value: TextureClass) -> RustBuf
 }
 
 
-// Note that we don't yet support `indirect` for enums.
-// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
 /**
  * Image-view dimension. Mirrors `naga::ImageDimension`.
  */
@@ -5244,8 +7036,7 @@ public func FfiConverterTypeTextureDim_lower(_ value: TextureDim) -> RustBuffer 
 }
 
 
-// Note that we don't yet support `indirect` for enums.
-// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
 
 public enum TextureFormat: Equatable, Hashable {
     
@@ -5416,19 +7207,15 @@ public func FfiConverterTypeTextureFormat_lower(_ value: TextureFormat) -> RustB
 }
 
 
-// Note that we don't yet support `indirect` for enums.
-// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
 /**
- * Uniffi-marshallable mirror of [`TextureInput`]. Drops the `DynamicImage`
- * variant (the `image` crate's `DynamicImage` isn't an FFI-friendly type;
- * callers on every non-Rust platform reach the same outcome by passing
- * `Bytes` and letting the library decode internally) and uses owned types
- * uniffi can lower across the FFI (`String` for paths, `Arc<Object>` for
- * handles).
+ * Uniffi mirror of [`TextureData`], which it converts into.
  *
- * The Rust core stays on `TextureInput`; this enum exists only so mobile
- * bindings can carry a concrete variant. Web and Python use their own
- * dispatch (`TryFrom<JsValue>` / Python kwargs) and never see this type.
+ * It leaves out `Empty`. Paths travel as `String`, handles as `Arc`.
+ *
+ * The Rust core stays on `TextureData`. This enum exists only so the mobile
+ * bindings can carry a concrete variant. Web and Python use their own dispatch
+ * (`TryFrom<JsValue>` and Python kwargs) and never see this type.
  */
 
 public enum TextureInputMobile {
@@ -5441,7 +7228,7 @@ public enum TextureInputMobile {
     )
     case cloneOf(Texture
     )
-    case prepared(TextureMipChain
+    case prepared(Mipmap
     )
     case ktx2Bytes(Data
     )
@@ -5482,7 +7269,7 @@ public struct FfiConverterTypeTextureInputMobile: FfiConverterRustBuffer {
         case 4: return .cloneOf(try FfiConverterTypeTexture.read(from: &buf)
         )
         
-        case 5: return .prepared(try FfiConverterTypeTextureMipChain.read(from: &buf)
+        case 5: return .prepared(try FfiConverterTypeMipmap.read(from: &buf)
         )
         
         case 6: return .ktx2Bytes(try FfiConverterData.read(from: &buf)
@@ -5524,7 +7311,7 @@ public struct FfiConverterTypeTextureInputMobile: FfiConverterRustBuffer {
         
         case let .prepared(v1):
             writeInt(&buf, Int32(5))
-            FfiConverterTypeTextureMipChain.write(v1, into: &buf)
+            FfiConverterTypeMipmap.write(v1, into: &buf)
             
         
         case let .ktx2Bytes(v1):
@@ -5561,8 +7348,7 @@ public func FfiConverterTypeTextureInputMobile_lower(_ value: TextureInputMobile
 }
 
 
-// Note that we don't yet support `indirect` for enums.
-// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
 /**
  * Texel scalar kind for sampled textures. Mirrors the relevant `naga::ScalarKind`
  * variants. Naga's abstract numeric variants are folded into `Float` since they
@@ -5647,8 +7433,7 @@ public func FfiConverterTypeTextureScalarKind_lower(_ value: TextureScalarKind) 
 }
 
 
-// Note that we don't yet support `indirect` for enums.
-// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
 /**
  * Storage-texture format. Mirrors `naga::StorageFormat`.
  *
@@ -5993,13 +7778,12 @@ public func FfiConverterTypeTextureStorageFormat_lower(_ value: TextureStorageFo
 }
 
 
-// Note that we don't yet support `indirect` for enums.
-// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
 /**
  * Converts from User Input
  */
 
-public enum UniformData: Equatable, Hashable {
+public indirect enum UniformData: Equatable, Hashable {
     
     case bool(Bool
     )
@@ -6055,17 +7839,17 @@ public enum UniformData: Equatable, Hashable {
     case iVec4([Int32]
     )
     /**
-     * Mat2: 4 elements (flattened 2x2, row-major)
+     * Mat2: 4 elements (flattened 2x2, column-major)
      */
     case mat2([Float]
     )
     /**
-     * Mat3: 9 elements (flattened 3x3, row-major)
+     * Mat3: 9 elements (flattened 3x3, column-major)
      */
     case mat3([Float]
     )
     /**
-     * Mat4: 16 elements (flattened 4x4, row-major)
+     * Mat4: 16 elements (flattened 4x4, column-major)
      */
     case mat4([Float]
     )
@@ -6332,34 +8116,38 @@ public func FfiConverterTypeUniformData_lower(_ value: UniformData) -> RustBuffe
 }
 
 
-// Note that we don't yet support `indirect` for enums.
-// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 
-public enum VertexValue: Equatable, Hashable {
+/**
+ * A `Shader.set` value as Swift and Kotlin hand it over.
+ * The uniform's declared WGSL type decides how Rust reads it.
+ */
+
+public enum UniformValue: Equatable, Hashable {
     
-    case f32(Float
+    /**
+     * Writes 1 or 0 into a numeric uniform.
+     */
+    case bool(Bool
     )
-    case f32x2([Float]
+    /**
+     * One `f32`, `i32` or `u32`.
+     */
+    case number(Double
     )
-    case f32x3([Float]
+    /**
+     * A vector, a matrix, or a one-element scalar.
+     */
+    case numbers([Double]
     )
-    case f32x4([Float]
+    /**
+     * A texture created by a `Renderer`.
+     */
+    case texture(TextureId
     )
-    case u32(UInt32
-    )
-    case u32x2([UInt32]
-    )
-    case u32x3([UInt32]
-    )
-    case u32x4([UInt32]
-    )
-    case i32(Int32
-    )
-    case i32x2([Int32]
-    )
-    case i32x3([Int32]
-    )
-    case i32x4([Int32]
+    /**
+     * Raw bytes for a storage-buffer or push-constant root.
+     */
+    case bytes(Data
     )
 
 
@@ -6369,121 +8157,65 @@ public enum VertexValue: Equatable, Hashable {
 }
 
 #if compiler(>=6)
-extension VertexValue: Sendable {}
+extension UniformValue: Sendable {}
 #endif
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public struct FfiConverterTypeVertexValue: FfiConverterRustBuffer {
-    typealias SwiftType = VertexValue
+public struct FfiConverterTypeUniformValue: FfiConverterRustBuffer {
+    typealias SwiftType = UniformValue
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> VertexValue {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UniformValue {
         let variant: Int32 = try readInt(&buf)
         switch variant {
         
-        case 1: return .f32(try FfiConverterFloat.read(from: &buf)
+        case 1: return .bool(try FfiConverterBool.read(from: &buf)
         )
         
-        case 2: return .f32x2(try FfiConverterSequenceFloat.read(from: &buf)
+        case 2: return .number(try FfiConverterDouble.read(from: &buf)
         )
         
-        case 3: return .f32x3(try FfiConverterSequenceFloat.read(from: &buf)
+        case 3: return .numbers(try FfiConverterSequenceDouble.read(from: &buf)
         )
         
-        case 4: return .f32x4(try FfiConverterSequenceFloat.read(from: &buf)
+        case 4: return .texture(try FfiConverterTypeTextureId.read(from: &buf)
         )
         
-        case 5: return .u32(try FfiConverterUInt32.read(from: &buf)
-        )
-        
-        case 6: return .u32x2(try FfiConverterSequenceUInt32.read(from: &buf)
-        )
-        
-        case 7: return .u32x3(try FfiConverterSequenceUInt32.read(from: &buf)
-        )
-        
-        case 8: return .u32x4(try FfiConverterSequenceUInt32.read(from: &buf)
-        )
-        
-        case 9: return .i32(try FfiConverterInt32.read(from: &buf)
-        )
-        
-        case 10: return .i32x2(try FfiConverterSequenceInt32.read(from: &buf)
-        )
-        
-        case 11: return .i32x3(try FfiConverterSequenceInt32.read(from: &buf)
-        )
-        
-        case 12: return .i32x4(try FfiConverterSequenceInt32.read(from: &buf)
+        case 5: return .bytes(try FfiConverterData.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
-    public static func write(_ value: VertexValue, into buf: inout [UInt8]) {
+    public static func write(_ value: UniformValue, into buf: inout [UInt8]) {
         switch value {
         
         
-        case let .f32(v1):
+        case let .bool(v1):
             writeInt(&buf, Int32(1))
-            FfiConverterFloat.write(v1, into: &buf)
+            FfiConverterBool.write(v1, into: &buf)
             
         
-        case let .f32x2(v1):
+        case let .number(v1):
             writeInt(&buf, Int32(2))
-            FfiConverterSequenceFloat.write(v1, into: &buf)
+            FfiConverterDouble.write(v1, into: &buf)
             
         
-        case let .f32x3(v1):
+        case let .numbers(v1):
             writeInt(&buf, Int32(3))
-            FfiConverterSequenceFloat.write(v1, into: &buf)
+            FfiConverterSequenceDouble.write(v1, into: &buf)
             
         
-        case let .f32x4(v1):
+        case let .texture(v1):
             writeInt(&buf, Int32(4))
-            FfiConverterSequenceFloat.write(v1, into: &buf)
+            FfiConverterTypeTextureId.write(v1, into: &buf)
             
         
-        case let .u32(v1):
+        case let .bytes(v1):
             writeInt(&buf, Int32(5))
-            FfiConverterUInt32.write(v1, into: &buf)
-            
-        
-        case let .u32x2(v1):
-            writeInt(&buf, Int32(6))
-            FfiConverterSequenceUInt32.write(v1, into: &buf)
-            
-        
-        case let .u32x3(v1):
-            writeInt(&buf, Int32(7))
-            FfiConverterSequenceUInt32.write(v1, into: &buf)
-            
-        
-        case let .u32x4(v1):
-            writeInt(&buf, Int32(8))
-            FfiConverterSequenceUInt32.write(v1, into: &buf)
-            
-        
-        case let .i32(v1):
-            writeInt(&buf, Int32(9))
-            FfiConverterInt32.write(v1, into: &buf)
-            
-        
-        case let .i32x2(v1):
-            writeInt(&buf, Int32(10))
-            FfiConverterSequenceInt32.write(v1, into: &buf)
-            
-        
-        case let .i32x3(v1):
-            writeInt(&buf, Int32(11))
-            FfiConverterSequenceInt32.write(v1, into: &buf)
-            
-        
-        case let .i32x4(v1):
-            writeInt(&buf, Int32(12))
-            FfiConverterSequenceInt32.write(v1, into: &buf)
+            FfiConverterData.write(v1, into: &buf)
             
         }
     }
@@ -6493,15 +8225,15 @@ public struct FfiConverterTypeVertexValue: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeVertexValue_lift(_ buf: RustBuffer) throws -> VertexValue {
-    return try FfiConverterTypeVertexValue.lift(buf)
+public func FfiConverterTypeUniformValue_lift(_ buf: RustBuffer) throws -> UniformValue {
+    return try FfiConverterTypeUniformValue.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeVertexValue_lower(_ value: VertexValue) -> RustBuffer {
-    return FfiConverterTypeVertexValue.lower(value)
+public func FfiConverterTypeUniformValue_lower(_ value: UniformValue) -> RustBuffer {
+    return FfiConverterTypeUniformValue.lower(value)
 }
 
 
@@ -6532,6 +8264,30 @@ fileprivate struct FfiConverterOptionUInt32: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionFloat: FfiConverterRustBuffer {
+    typealias SwiftType = Float?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterFloat.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterFloat.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionData: FfiConverterRustBuffer {
     typealias SwiftType = Data?
 
@@ -6548,6 +8304,30 @@ fileprivate struct FfiConverterOptionData: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterData.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypePass: FfiConverterRustBuffer {
+    typealias SwiftType = Pass?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypePass.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypePass.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -6620,6 +8400,30 @@ fileprivate struct FfiConverterOptionTypeCompareFunction: FfiConverterRustBuffer
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeCompareFunction.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionSequenceFloat: FfiConverterRustBuffer {
+    typealias SwiftType = [Float]?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterSequenceFloat.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterSequenceFloat.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -6703,6 +8507,31 @@ fileprivate struct FfiConverterSequenceFloat: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceDouble: FfiConverterRustBuffer {
+    typealias SwiftType = [Double]
+
+    public static func write(_ value: [Double], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterDouble.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Double] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Double]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterDouble.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
     typealias SwiftType = [String]
 
@@ -6720,6 +8549,56 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceData: FfiConverterRustBuffer {
+    typealias SwiftType = [Data]
+
+    public static func write(_ value: [Data], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterData.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Data] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Data]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterData.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeCamera: FfiConverterRustBuffer {
+    typealias SwiftType = [Camera]
+
+    public static func write(_ value: [Camera], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeCamera.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Camera] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Camera]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeCamera.read(from: &buf))
         }
         return seq
     }
@@ -6753,6 +8632,31 @@ fileprivate struct FfiConverterSequenceTypeInstance: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeLight: FfiConverterRustBuffer {
+    typealias SwiftType = [Light]
+
+    public static func write(_ value: [Light], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLight.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Light] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Light]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLight.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeMesh: FfiConverterRustBuffer {
     typealias SwiftType = [Mesh]
 
@@ -6770,6 +8674,31 @@ fileprivate struct FfiConverterSequenceTypeMesh: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeMesh.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeModel: FfiConverterRustBuffer {
+    typealias SwiftType = [Model]
+
+    public static func write(_ value: [Model], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeModel.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Model] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Model]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeModel.read(from: &buf))
         }
         return seq
     }
@@ -7038,232 +8967,487 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mesh_addinstance() != 58088) {
+    if (uniffi_fragmentcolor_checksum_method_material_alphacutoff() != 29721) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mesh_addinstances() != 61365) {
+    if (uniffi_fragmentcolor_checksum_method_material_alphamode() != 29084) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mesh_addvertex() != 55076) {
+    if (uniffi_fragmentcolor_checksum_method_material_basecolor() != 31598) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mesh_addvertices() != 43985) {
+    if (uniffi_fragmentcolor_checksum_method_material_basecolorsource() != 17722) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mesh_clearinstances() != 62049) {
+    if (uniffi_fragmentcolor_checksum_method_material_basecolortexture() != 33368) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mesh_setinstancecount() != 65275) {
+    if (uniffi_fragmentcolor_checksum_method_material_doublesided() != 36719) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_quad_getmesh() != 2532) {
+    if (uniffi_fragmentcolor_checksum_method_material_emissive() != 10867) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_instance_set() != 13349) {
+    if (uniffi_fragmentcolor_checksum_method_material_emissivesource() != 27355) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_vertex_createinstance() != 40843) {
+    if (uniffi_fragmentcolor_checksum_method_material_emissivetexture() != 12572) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_vertex_set() != 13476) {
+    if (uniffi_fragmentcolor_checksum_method_material_metallic() != 54731) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_adddepthtarget() != 45458) {
+    if (uniffi_fragmentcolor_checksum_method_material_metallicroughnesssource() != 43381) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_addmesh() != 50161) {
+    if (uniffi_fragmentcolor_checksum_method_material_metallicroughnesstexture() != 53146) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_addshader() != 51444) {
+    if (uniffi_fragmentcolor_checksum_method_material_normalscale() != 21579) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_addtarget() != 17) {
+    if (uniffi_fragmentcolor_checksum_method_material_normalsource() != 58153) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_getinput() != 55218) {
+    if (uniffi_fragmentcolor_checksum_method_material_normaltexture() != 24320) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_iscompute() != 26012) {
+    if (uniffi_fragmentcolor_checksum_method_material_occlusionsource() != 59278) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_loadprevious() != 44414) {
+    if (uniffi_fragmentcolor_checksum_method_material_occlusionstrength() != 7530) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_require() != 33940) {
+    if (uniffi_fragmentcolor_checksum_method_material_occlusiontexture() != 57329) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_setclearcolor() != 14916) {
+    if (uniffi_fragmentcolor_checksum_method_material_roughness() != 63414) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_setcomputedispatch() != 6156) {
+    if (uniffi_fragmentcolor_checksum_method_material_shader() != 3459) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_setviewport() != 53255) {
+    if (uniffi_fragmentcolor_checksum_method_material_uvtransform() != 378) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createdepthtexture() != 63697) {
+    if (uniffi_fragmentcolor_checksum_method_mesh_addinstance() != 26345) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createexternaltexture() != 54669) {
+    if (uniffi_fragmentcolor_checksum_method_mesh_addinstances() != 15548) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createstoragetexture() != 42920) {
+    if (uniffi_fragmentcolor_checksum_method_mesh_addvertex() != 39036) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createtexture() != 33733) {
+    if (uniffi_fragmentcolor_checksum_method_mesh_addvertices() != 7740) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createtexturetarget() != 18679) {
+    if (uniffi_fragmentcolor_checksum_method_mesh_clearindices() != 2137) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_readtexture() != 3544) {
+    if (uniffi_fragmentcolor_checksum_method_mesh_clearinstances() != 38224) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_render() != 50295) {
+    if (uniffi_fragmentcolor_checksum_method_mesh_setindices() != 12046) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_unregistertexture() != 4181) {
+    if (uniffi_fragmentcolor_checksum_method_mesh_setinstancecount() != 19726) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_waitidle() != 42983) {
+    if (uniffi_fragmentcolor_checksum_method_quad_getmesh() != 50418) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createtarget() != 58343) {
+    if (uniffi_fragmentcolor_checksum_method_instance_set() != 20798) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_addmesh() != 1186) {
+    if (uniffi_fragmentcolor_checksum_method_vertex_createinstance() != 31105) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_clearmeshes() != 40775) {
+    if (uniffi_fragmentcolor_checksum_method_vertex_set() != 50075) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_fetch() != 25104) {
+    if (uniffi_fragmentcolor_checksum_method_pass_add() != 4541) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_fetchcompose() != 35557) {
+    if (uniffi_fragmentcolor_checksum_method_pass_addmesh() != 3682) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_get() != 37943) {
+    if (uniffi_fragmentcolor_checksum_method_pass_addshader() != 48048) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_iscompute() != 13423) {
+    if (uniffi_fragmentcolor_checksum_method_pass_iscompute() != 10190) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_listkeys() != 17327) {
+    if (uniffi_fragmentcolor_checksum_method_pass_loadprevious() != 11703) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_listuniforms() != 19754) {
+    if (uniffi_fragmentcolor_checksum_method_pass_name() != 54036) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_removemesh() != 60930) {
+    if (uniffi_fragmentcolor_checksum_method_pass_require() != 26754) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_removemeshes() != 19868) {
+    if (uniffi_fragmentcolor_checksum_method_pass_setclearcolor() != 35533) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_set() != 12337) {
+    if (uniffi_fragmentcolor_checksum_method_pass_setcomputedispatch() != 59690) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_validatemesh() != 32311) {
+    if (uniffi_fragmentcolor_checksum_method_pass_setdepthtarget() != 17216) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mobiletexturetarget_getimage() != 15321) {
+    if (uniffi_fragmentcolor_checksum_method_pass_setdepthtexture() != 62254) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mobiletexturetarget_resize() != 38101) {
+    if (uniffi_fragmentcolor_checksum_method_pass_settarget() != 44915) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mobiletexturetarget_size() != 10461) {
+    if (uniffi_fragmentcolor_checksum_method_pass_settargettexture() != 11684) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mobilewindowtarget_getimage() != 16873) {
+    if (uniffi_fragmentcolor_checksum_method_pass_setviewport() != 4614) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mobilewindowtarget_resize() != 65051) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_createdepthtexture() != 48149) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mobilewindowtarget_size() != 59680) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_createexternaltexture() != 14702) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texture_aspect() != 32251) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_createstoragetexture() != 5214) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texture_getimage() != 49245) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_createtexture() != 57813) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texture_id() != 9370) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_createtexturetarget() != 7750) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texture_setsampleroptions() != 35295) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_load() != 27451) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texture_size() != 28323) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_readstorage() != 45648) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texture_write() != 63532) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_readtexture() != 30358) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texture_writeregion() != 50728) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_render() != 24508) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texturemipchain_basesize() != 45080) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_unregistertexture() != 64082) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texturemipchain_format() != 62808) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_createtarget() != 51357) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texturemipchain_level() != 4505) {
+    if (uniffi_fragmentcolor_checksum_method_model_material() != 3603) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texturemipchain_levelcount() != 55070) {
+    if (uniffi_fragmentcolor_checksum_method_model_mesh() != 29004) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_mesh_fromvertices() != 41915) {
+    if (uniffi_fragmentcolor_checksum_method_model_rotate() != 39850) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_mesh_new() != 47612) {
+    if (uniffi_fragmentcolor_checksum_method_model_scale() != 9650) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_quad_new() != 9648) {
+    if (uniffi_fragmentcolor_checksum_method_model_settransform() != 34132) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_instance_new() != 27655) {
+    if (uniffi_fragmentcolor_checksum_method_model_setvisible() != 57873) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_vertex_new() != 22278) {
+    if (uniffi_fragmentcolor_checksum_method_model_transform() != 63198) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_pass_compute() != 26009) {
+    if (uniffi_fragmentcolor_checksum_method_model_translate() != 28577) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_pass_fromshader() != 50454) {
+    if (uniffi_fragmentcolor_checksum_method_model_visible() != 27855) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_pass_new() != 26077) {
+    if (uniffi_fragmentcolor_checksum_method_camera_lookat() != 44037) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_renderer_new() != 50342) {
+    if (uniffi_fragmentcolor_checksum_method_camera_position() != 27841) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_shader_compose() != 46970) {
+    if (uniffi_fragmentcolor_checksum_method_camera_setaspect() != 46144) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_shader_default() != 34438) {
+    if (uniffi_fragmentcolor_checksum_method_camera_viewproj() != 472) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_shader_frommesh() != 24320) {
+    if (uniffi_fragmentcolor_checksum_method_light_color() != 14620) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_shader_fromvertex() != 30666) {
+    if (uniffi_fragmentcolor_checksum_method_light_direction() != 57279) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_shader_new() != 53579) {
+    if (uniffi_fragmentcolor_checksum_method_light_innerconeangle() != 7923) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_shader_setregistry() != 11610) {
+    if (uniffi_fragmentcolor_checksum_method_light_intensity() != 59247) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_texturemipchain_prepare() != 19760) {
+    if (uniffi_fragmentcolor_checksum_method_light_kind() != 46581) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_light_outerconeangle() != 43372) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_light_position() != 10205) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_light_range() != 15787) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_light_setcolor() != 28873) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_light_setconeangles() != 58811) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_light_setdirection() != 6434) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_light_setintensity() != 10170) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_light_setposition() != 42495) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_light_setrange() != 43238) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_add() != 13250) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_addpass() != 14901) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_addto() != 7885) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_ambient() != 40778) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_cameras() != 10018) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_findpass() != 61567) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_getpass() != 13717) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_lights() != 47895) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_listpasses() != 29631) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_models() != 45076) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_nodefaultcamera() != 58108) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_nodefaultlight() != 42232) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_nodefaults() != 63857) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_removepass() != 35828) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_setdefaultcamera() != 26204) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_setdefaultlight() != 47600) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_scene_setpasses() != 10864) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_shader_addmesh() != 44921) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_shader_clearmeshes() != 28200) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_shader_fetch() != 58090) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_shader_fetchcompose() != 49163) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_shader_get() != 35343) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_shader_iscompute() != 2250) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_shader_listkeys() != 14574) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_shader_listuniforms() != 53327) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_shader_removemesh() != 20522) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_shader_removemeshes() != 20268) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_shader_set() != 8819) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_shader_validatemesh() != 2752) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_texturetarget_getimage() != 37264) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_texturetarget_resize() != 10714) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_texturetarget_size() != 13445) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_texturetarget_texture() != 22004) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_windowtarget_getimage() != 18017) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_windowtarget_resize() != 41290) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_windowtarget_size() != 26325) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_mipmap_count() != 17756) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_mipmap_format() != 21775) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_mipmap_level() != 51419) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_mipmap_levels() != 15349) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_mipmap_size() != 10538) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_texture_aspect() != 39032) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_texture_getimage() != 65145) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_texture_id() != 15416) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_texture_setsampleroptions() != 62541) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_texture_size() != 35978) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_texture_write() != 15815) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_texture_writeregion() != 41639) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_material_custom() != 28686) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_material_pbr() != 7718) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_mesh_fromvertices() != 53986) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_mesh_new() != 39851) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_quad_new() != 40775) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_instance_new() != 41358) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_vertex_new() != 62704) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_vertex_pbr() != 63949) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_pass_compute() != 50670) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_pass_fromshader() != 52942) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_pass_new() != 53820) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_renderer_new() != 32881) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_model_new() != 51565) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_camera_orthographic() != 24104) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_camera_perspective() != 9457) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_light_directional() != 7479) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_light_point() != 36893) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_light_spot() != 35903) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_scene_load() != 32448) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_scene_loadbytes() != 11591) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_scene_new() != 58352) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_shader_compose() != 22610) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_shader_default() != 8333) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_shader_frommesh() != 50203) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_shader_fromvertex() != 21833) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_shader_new() != 55745) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_shader_useregistry() != 15008) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_mipmap_build() != 27441) {
         return InitializationResult.apiChecksumMismatch
     }
 

@@ -1,5 +1,38 @@
 mod convert {
-    use crate::{js_objectize_sampleroptions_literal, js_region_new_to_array, simplify_js_size_from};
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use crate::reflect::Reflection;
+    use crate::source_text::{closing, code_only, is_ident_char, split_args};
+
+    /// API facts the converter reads, derived from the source model.
+    struct Facts {
+        /// Names an example can import from `fragmentcolor` in JS.
+        js_exports: BTreeSet<String>,
+        /// Names an example can import from `fragmentcolor` in Python.
+        py_exports: BTreeSet<String>,
+        /// The parameters of each Python method, by name, one list per method of that name.
+        py_methods: BTreeMap<String, Vec<Vec<(String, bool)>>>,
+    }
+
+    static FACTS: std::sync::OnceLock<Facts> = std::sync::OnceLock::new();
+
+    /// Derive the converter's API facts. Runs once before any example converts.
+    pub fn install(model: &Reflection) {
+        let _ = FACTS.set(Facts {
+            js_exports: model.wasm_exports(),
+            py_exports: model.python_exports(&crate::meta::workspace_root()),
+            py_methods: model.python_methods().into_iter().fold(BTreeMap::new(), |mut by_name, m| {
+                by_name.entry(m.name).or_insert_with(Vec::new).push(m.params);
+                by_name
+            }),
+        });
+    }
+
+    fn facts() -> &'static Facts {
+        FACTS
+            .get()
+            .unwrap_or_else(|| panic!("convert::install must run before examples convert"))
+    }
 
     /// Target languages for the Rust→FFI example transpiler.
     ///
@@ -24,10 +57,9 @@ mod convert {
     pub fn to_js(items: &[(String, bool)]) -> String {
         // Web JS output: collapse multi-line statements and unwrap Rust
         // 1-tuple-wrapped call args (`f((a, b))` → `f(a, b)`). The Swift
-        // and Kotlin emitters skip both peephole passes because their own
-        // tuple-aware rewrites (`kotlin::rewrite_texturemipchain_prepare_tuple`,
-        // `kotlin::rewrite_shader_new_to_compose`, swift's tuple→Size
-        // baseSize rewrite) rely on the original Rust shape.
+        // and Kotlin emitters skip both peephole passes: Swift passes the
+        // tuple to its tuple overloads, and Kotlin spreads it over the
+        // parameters of the call it reaches.
         let raw = convert(items, Lang::Js, /*aggressive_js_flatten=*/ true);
         let out = flatten_tuple_call_args_js_multiline(&raw);
         // Rust `for x in iter { ... }` survives the per-line emitter verbatim,
@@ -36,21 +68,12 @@ mod convert {
         // Nested `Type::new(...)` constructors become `Type.new(...)` via the
         // generic `::` → `.` pass; the top-level handler only rewrites
         // `let x = Type::new(...)`. Promote any leftover `Type.new(` (e.g.
-        // `scene.add(Model.new(...))`) to the JS `new Type(...)` form. And
-        // flatten a `[[f32;4];4]` mat4 literal to the flat 16-float array the
-        // `setTransform` binding expects (mirrors scripts/kotlin.rs).
-        let out = out
-            .lines()
-            .map(|l| rewrite_settransform_mat4_flatten_js(&rewrite_dotnew_to_new_js(l)))
+        // `scene.add(Model.new(...))`) to the JS `new Type(...)` form.
+        out.lines()
+            .map(rewrite_dotnew_to_new_js)
             .collect::<Vec<_>>()
             .join("\n")
-            + if out.ends_with('\n') { "\n" } else { "" };
-        // wasm-bindgen doesn't expose the Rust-side `pub const UV0: &str = "uv0"`
-        // declarations on the JS class — `Vertex.UV0` resolves to `undefined`
-        // at runtime, which then trips `set(undefined, ...)` with
-        // "expected a string argument, found undefined". Mirror the inline
-        // rewrite that scripts/swift.rs and scripts/kotlin.rs already do.
-        inline_vertex_attr_constants_js(&out)
+            + if out.ends_with('\n') { "\n" } else { "" }
     }
 
     /// Rewrite a Rust `for <ident> in <expr> {` loop header into JavaScript's
@@ -150,86 +173,6 @@ mod convert {
         out
     }
 
-    /// Flatten a `[[…], […], […], […]]` 4×4 mat4 literal passed to
-    /// `setTransform(...)` into the flat 16-float array the wasm-bindgen
-    /// binding expects (`Vec<f32>`). The Rust source writes the readable row
-    /// form; Kotlin does the same flatten (`rewrite_settransform_mat4_flatten`).
-    fn rewrite_settransform_mat4_flatten_js(line: &str) -> String {
-        let needle = ".setTransform([";
-        let Some(start) = line.find(needle) else {
-            return line.to_string();
-        };
-        let chars: Vec<char> = line.chars().collect();
-        // Index of the outer `[` (last char of the needle).
-        let open = start + needle.chars().count() - 1;
-        let Some(close) = match_bracket_js(&chars, open) else {
-            return line.to_string();
-        };
-        // The `setTransform(` paren must close immediately after the array.
-        if close + 1 >= chars.len() || chars[close + 1] != ')' {
-            return line.to_string();
-        }
-        // Collect numeric tokens, ignoring the inner `[` `]` row delimiters.
-        let inner: String = chars[open + 1..close]
-            .iter()
-            .map(|&c| if c == '[' || c == ']' { ' ' } else { c })
-            .collect();
-        let nums: Vec<String> = inner
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
-        if nums.len() != 16 || !nums.iter().all(|n| n.parse::<f64>().is_ok()) {
-            return line.to_string();
-        }
-        let prefix: String = chars[..start].iter().collect();
-        let suffix: String = chars[close + 2..].iter().collect();
-        format!("{}.setTransform([{}]){}", prefix, nums.join(", "), suffix)
-    }
-
-    /// Return the index of the `]` matching the `[` at `open`, ignoring
-    /// brackets inside string literals.
-    fn match_bracket_js(chars: &[char], open: usize) -> Option<usize> {
-        let mut depth = 0usize;
-        let mut in_string: Option<char> = None;
-        for (i, &c) in chars.iter().enumerate().skip(open) {
-            if let Some(q) = in_string {
-                if c == q && chars[i - 1] != '\\' {
-                    in_string = None;
-                }
-                continue;
-            }
-            match c {
-                '"' | '\'' | '`' => in_string = Some(c),
-                '[' => depth += 1,
-                ']' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return Some(i);
-                    }
-                }
-                _ => {}
-            }
-        }
-        None
-    }
-
-    fn inline_vertex_attr_constants_js(src: &str) -> String {
-        const ATTRS: &[(&str, &str)] = &[
-            ("Vertex.UV0", "\"uv0\""),
-            ("Vertex.UV1", "\"uv1\""),
-            ("Vertex.NORMAL", "\"normal\""),
-            ("Vertex.TANGENT", "\"tangent\""),
-            ("Vertex.COLOR0", "\"color0\""),
-            ("Vertex.COLOR1", "\"color1\""),
-        ];
-        let mut out = src.to_string();
-        for (needle, repl) in ATTRS {
-            out = out.replace(needle, repl);
-        }
-        out
-    }
-
     pub fn to_py(items: &[(String, bool)]) -> String {
         convert(items, Lang::Py, false)
     }
@@ -241,8 +184,7 @@ mod convert {
     /// produces a JS-shaped intermediate (Swift shares JS's control flow),
     /// then `swift::finalize` finishes the syntactic swaps that don't
     /// fit a per-line model — backtick template literals → `"""`,
-    /// `null` → `nil`, `try` insertion for throwing inits, the canvas →
-    /// `createTextureTarget` rewrite for headless examples, etc.
+    /// `null` → `nil`, `try` insertion for throwing inits, etc.
     pub fn to_swift(items: &[(String, bool)]) -> String {
         let ir = convert(items, Lang::Swift, /*aggressive_js_flatten=*/ false);
         super::swift::finalize(&ir)
@@ -277,10 +219,6 @@ mod convert {
             out.push('\n');
         }
         out
-    }
-
-    fn is_ident_char(c: char) -> bool {
-        c.is_ascii_alphanumeric() || c == '_'
     }
 
     // Drop Rust integer / float type suffixes from numeric literals:
@@ -710,7 +648,7 @@ mod convert {
         out
     }
 
-    // Strip Rust slice-cast method calls that have no JS / Python analogue:
+    // Strip Rust slice-cast method calls that have no JS / Python analog:
     // `bytes.as_slice()`, `vec.as_ref()`, `s.to_vec()`. These coerce types
     // in Rust but the receiver in JS / Python already has the right shape.
     // Only matches an empty argument list (`(...)` with whitespace only).
@@ -756,7 +694,7 @@ mod convert {
     // `f((a, b, c))` becomes `f(a, b, c)`. Rust uses tuples to dispatch
     // through `From<(A, B, ...)>` impls; JS exposes the same shapes as
     // plain positional args. Only fires when the entire argument list of
-    // the call is a single parenthesised tuple — `f([a, b])`, `f((a))`
+    // the call is a single parenthesized tuple — `f([a, b])`, `f((a))`
     // (parens around one expr, not a tuple), and `f(x, (a, b))` are left
     // alone.
     fn flatten_tuple_call_args_js(line: &str) -> String {
@@ -1013,6 +951,14 @@ mod convert {
         out
     }
 
+    /// What Rust's `None` reads as in `lang`.
+    fn none_literal(lang: Lang) -> &'static str {
+        match lang {
+            Lang::Js => "undefined",
+            _ => "null",
+        }
+    }
+
     fn strip_refs(s: &str) -> String {
         s.replace('&', "")
     }
@@ -1030,6 +976,15 @@ mod convert {
         let t = s.trim_end();
         if t.is_empty() {
             return String::new();
+        }
+        // A trailing comment keeps the semicolon on the code before it.
+        if let Some(idx) = find_comment_marker(t)
+            && !t[..idx].trim().is_empty()
+        {
+            let (code, comment) = t.split_at(idx);
+            let body = code.trim_end();
+            let gap = &code[body.len()..];
+            return format!("{}{}{}", ensure_js_semicolon(body), gap, comment);
         }
         // If it already ends with a semicolon, keep as-is
         if t.ends_with(';') {
@@ -1147,28 +1102,6 @@ mod convert {
         }
     }
 
-    fn map_assert(line: &str, lang: Lang) -> Option<String> {
-        // assert_eq!(a, b);
-        let t = line.trim_start();
-        if !t.starts_with("assert_eq!(") {
-            return None;
-        }
-        let mut inner = &t["assert_eq!(".len()..];
-        if let Some(end) = inner.find(')') {
-            inner = &inner[..end];
-        }
-        let mut parts = inner.splitn(2, ',');
-        let a = parts.next().unwrap_or("").trim();
-        let b = parts.next().unwrap_or("").trim();
-        match lang {
-            Lang::Js | Lang::Swift | Lang::Kotlin => Some(format!(
-                "if (JSON.stringify({}) !== JSON.stringify({})) {{ throw new Error(\"assert_eq failed\"); }}",
-                a, b
-            )),
-            Lang::Py => Some(format!("assert {} == {}", a, b)),
-        }
-    }
-
     fn parse_use_fragmentcolor(line: &str) -> Option<Vec<String>> {
         // Returns a flat list of imported names from `use fragmentcolor::...` syntax
         // Supports nested paths before a group: e.g., `use fragmentcolor::mesh::{Mesh, Vertex};`
@@ -1217,8 +1150,6 @@ mod convert {
         line: &str,
         lang: Lang,
         py_renames: &mut std::collections::HashMap<String, String>,
-        js_renames: &mut std::collections::HashMap<String, String>,
-        need_rendercanvas_import: &mut bool,
     ) -> Option<String> {
         let t = line.trim_start();
         if !t.starts_with("let ") {
@@ -1242,89 +1173,27 @@ mod convert {
         // Remove trailing ';'
         rhs = strip_trailing_semicolon(&rhs);
 
-        // Replace fragmentcolor headless helpers with native canvases
-        // Python: fragmentcolor::headless_window([w,h]) -> RenderCanvas(size=(w,h))
-        // JS: fragmentcolor.headlessWindow([w,h]) -> (()=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c;})()
-        let rhs_lc = rhs.replace("::", ".");
-        if rhs_lc.contains("headless_window(") || rhs_lc.contains("headlessWindow(") {
-            match lang {
-                Lang::Py => {
-                    if let (Some(lp), Some(rp)) = (rhs.find('('), rhs.rfind(')')) {
-                        let inside = rhs[lp + 1..rp].trim();
-                        let inner = inside
-                            .trim_start_matches('[')
-                            .trim_end_matches(']')
-                            .trim_start_matches('(')
-                            .trim_end_matches(')')
-                            .trim();
-                        rhs = format!("RenderCanvas(size=({}))", inner);
-                        *need_rendercanvas_import = true;
-                        if var == "window" {
-                            // rename variable to canvas in Python output and future references
-                            py_renames.insert("window".into(), "canvas".into());
-                        }
-                    }
-                }
-                Lang::Js | Lang::Swift | Lang::Kotlin => {
-                    if let (Some(_), Some(_)) = (rhs.find('('), rhs.rfind(')')) {
-                        rhs = "document.createElement('canvas');".to_string();
-                        if var == "window" {
-                            js_renames.insert("window".into(), "canvas".into());
-                        }
-                    }
-                }
-            }
-        } else {
-            // Type::new(args)
-            if let Some(pos) = rhs.find("::new(") {
-                let ty = rhs[..pos].trim().rsplit("::").next().unwrap_or("");
-                let args_with = &rhs[pos + "::new(".len()..];
-                if let Some(endp) = args_with.rfind(')') {
-                    let args = &args_with[..endp];
-                    rhs = match lang {
-                        Lang::Js | Lang::Swift | Lang::Kotlin => format!("new {}({})", ty, args.trim()),
-                        Lang::Py => format!("{}({})", ty, args.trim()),
-                    };
-                }
+        // Type::new(args)
+        if let Some(pos) = rhs.find("::new(") {
+            let ty = rhs[..pos].trim().rsplit("::").next().unwrap_or("");
+            let args_with = &rhs[pos + "::new(".len()..];
+            if let Some(endp) = args_with.rfind(')') {
+                let args = &args_with[..endp];
+                rhs = match lang {
+                    Lang::Js | Lang::Swift | Lang::Kotlin => format!("new {}({})", ty, args.trim()),
+                    Lang::Py => format!("{}({})", ty, args.trim()),
+                };
             }
         }
-        // Pass::from_shader(name, shader) -> one-line construct+add
-        if rhs.starts_with("Pass::from_shader(")
-            || rhs.starts_with("fragmentcolor::Pass::from_shader(")
-        {
-            // Extract args inside (...)
-            if let Some(lp) = rhs.find('(')
-                && let Some(rp) = rhs.rfind(')')
-            {
-                let inside = &rhs[lp + 1..rp];
-                let mut parts = inside.splitn(2, ',');
-                let a1 = parts.next().unwrap_or("").trim();
-                let mut a2 = parts.next().unwrap_or("").trim().to_string();
-                a2 = strip_refs(&a2);
-                match lang {
-                    Lang::Js | Lang::Swift | Lang::Kotlin => {
-                        rhs = format!("new Pass({}); {}.addShader({})", a1, var, a2);
-                    }
-                    Lang::Py => {
-                        rhs = format!("Pass({}); {}.add_shader({})", a1, var, a2);
-                    }
-                }
-            }
-        }
-
         // UFCS associated calls remaining: Type::method( -> Type.method(
         rhs = replace_static_call_to_dot(&rhs);
-        // Python-specific cleanups: simplify Type.new(args) -> Type(args); Size.from(x) -> x; strip unwrap()
+        // Python simplifies Type.new(args) -> Type(args). Python and JS throw on
+        // errors, so neither keeps Rust's unwrap().
         if let Lang::Py = lang {
             rhs = simplify_py_static_new(&rhs);
-            rhs = simplify_py_size_from(&rhs);
-            // Convert SamplerOptions { ... } -> { ... } Python dict
-            if rhs.contains("SamplerOptions {") {
-                rhs = pythonize_sampleroptions_literal(&rhs);
-            }
-            if rhs.contains(".unwrap()") {
-                rhs = rhs.replace(".unwrap()", "");
-            }
+        }
+        if matches!(lang, Lang::Py | Lang::Js) && rhs.contains(".unwrap()") {
+            rhs = rhs.replace(".unwrap()", "");
         }
         // Strip refs '&'
         rhs = strip_refs(&rhs);
@@ -1335,65 +1204,27 @@ mod convert {
         if matches!(lang, Lang::Js | Lang::Swift | Lang::Kotlin) {
             rhs = camelize_method_calls_js(&rhs);
             // JS fixups:
-            // 1) None -> null
-            rhs = rhs.replace("None", "null");
-            // 2) SamplerOptions { ... } -> { ... }
-            if rhs.contains("SamplerOptions {") {
-                rhs = js_objectize_sampleroptions_literal(&rhs);
-            }
-            // 3) Size.from(x) -> x
-            rhs = simplify_js_size_from(&rhs);
-            // 4) ScreenRegion.new(a,b,c,d) -> [a,b,c,d]
-            rhs = js_region_new_to_array(&rhs);
-            // 5) std.fs.read(path) -> "/healthcheck/public/favicon.png" (served by healthcheck server)
-            if let Some(i) = rhs.find("std.fs.read(") {
-                let before = &rhs[..i];
-                let after = &rhs[i + "std.fs.read(".len()..];
-                if let Some(rp) = after.find(')') {
-                    let tail = &after[rp + 1..];
-                    rhs = format!("{}\"/healthcheck/public/favicon.png\"{}", before, tail);
-                }
-            }
-        }
-        // Python fix: map std.fs.read(path) -> open(path, "rb").read() in RHS
-        if let Lang::Py = lang
-            && let Some(i) = rhs.find("std.fs.read(")
-        {
-            let before = &rhs[..i];
-            let after = &rhs[i + "std.fs.read(".len()..];
-            if let Some(rp) = after.find(')') {
-                let args = &after[..rp];
-                let tail = &after[rp + 1..];
-                rhs = format!("{}open({}, \"rb\").read(){}", before, args.trim(), tail);
-            }
+            // 1) None -> undefined in JS, which wasm-bindgen returns for None;
+            //    null in Swift (nil later) and Kotlin
+            rhs = rhs.replace("None", none_literal(lang));
+            // 2) ScreenRegion.new((x, y), (w, h)) -> array arguments in JS
+            rhs = region_tuples_to_arrays(&rhs, lang);
         }
         // Python: convert `.size()` calls on RHS into `.size` property
         if let Lang::Py = lang {
             rhs = replace_py_size_calls(&rhs);
         }
 
-        // Var rename for Python reserved keyword "pass" and window->canvas mapping
+        // Var rename for Python reserved keyword "pass"
         let var_out: &str = match lang {
-            Lang::Py => {
-                if var == "pass" {
-                    py_renames.insert("pass".into(), "rpass".into());
-                    "rpass"
-                } else if var == "window" && py_renames.get("window").is_some() {
-                    "canvas"
-                } else {
-                    var
-                }
+            Lang::Py if var == "pass" => {
+                py_renames.insert("pass".into(), "rpass".into());
+                "rpass"
             }
-            Lang::Js | Lang::Swift | Lang::Kotlin => {
-                if var == "window" && js_renames.get("window").is_some() {
-                    "canvas"
-                } else {
-                    var
-                }
-            }
+            _ => var,
         };
 
-        // If RHS references the original var (e.g., Pass::from_shader expansion), adjust to var_out for Python
+        // If RHS references the variable itself, use its renamed form for Python
         if let Lang::Py = lang {
             let needle = format!("{}.", var);
             let replacement = format!("{}.", var_out);
@@ -1403,11 +1234,10 @@ mod convert {
         // Convert Rust vec! macros and Vec::new() in RHS to JS/Python arrays
         rhs = convert_vec_syntax(&rhs);
 
-        // Apply pending variable renames inside RHS for both languages (e.g., window->canvas)
-        rhs = match lang {
-            Lang::Py => apply_renames_py(&rhs, py_renames),
-            Lang::Js | Lang::Swift | Lang::Kotlin => apply_renames_py(&rhs, js_renames),
-        };
+        // Apply pending Python variable renames inside RHS (pass -> rpass)
+        if let Lang::Py = lang {
+            rhs = apply_renames_py(&rhs, py_renames);
+        }
 
         let mut line_out = match lang {
             Lang::Js | Lang::Swift | Lang::Kotlin => ensure_js_semicolon(&format!("const {} = {}", var_out, rhs)),
@@ -1420,7 +1250,7 @@ mod convert {
             && let Some(idx) = find_comment_marker(&line_out)
         {
             let (mut head, tail) = line_out.split_at(idx);
-            head = head.trim_end_matches(';').trim_end();
+            head = head.trim_end().trim_end_matches(';').trim_end();
             if head.is_empty() {
                 line_out = format!("#{}", &tail[2..]);
             } else {
@@ -1466,26 +1296,27 @@ mod convert {
         if renames.is_empty() {
             return s.to_string();
         }
+        /// Replaces whole-word `from` with `to` in code,
+        /// leaving string literals and `//` or `# ` comments as written.
         fn replace_word(src: &str, from: &str, to: &str) -> String {
-            let bytes: Vec<char> = src.chars().collect();
-            let from_chars: Vec<char> = from.chars().collect();
+            let code = code_only(src);
+            let end = code.find("# ").unwrap_or(code.len());
+            let code = &code[..end];
             let mut out = String::with_capacity(src.len());
-            let mut i = 0usize;
-            while i < bytes.len() {
-                // Try to match `from` at position i with word boundaries
-                let end = i + from_chars.len();
-                if end <= bytes.len() && bytes[i..end] == from_chars[..] {
-                    let left_ok = i == 0 || !super::convert::is_ident_char(bytes[i - 1]);
-                    let right_ok = end == bytes.len() || !super::convert::is_ident_char(bytes[end]);
-                    if left_ok && right_ok {
-                        out.push_str(to);
-                        i = end;
-                        continue;
-                    }
+            let (mut copied, mut search) = (0, 0);
+            while let Some(found) = code[search..].find(from) {
+                let at = search + found;
+                let after = at + from.len();
+                let left_ok = code[..at].chars().next_back().is_none_or(|c| !is_ident_char(c));
+                let right_ok = code[after..].chars().next().is_none_or(|c| !is_ident_char(c));
+                if left_ok && right_ok {
+                    out.push_str(&src[copied..at]);
+                    out.push_str(to);
+                    copied = after;
                 }
-                out.push(bytes[i]);
-                i += 1;
+                search = after;
             }
+            out.push_str(&src[copied..]);
             out
         }
         let mut out = s.to_string();
@@ -1496,7 +1327,7 @@ mod convert {
     }
 
     // Detect and convert a multi-line Rust raw string assignment into a
-    // single emitted line. Two shapes are recognised:
+    // single emitted line. Two shapes are recognized:
     //   - `let var = Type::new(r#"..."#)` — constructor call (JS: `new Type`,
     //     Py: bare `Type`).
     //   - `let var = r#"..."#`             — bare string assignment (no
@@ -1508,7 +1339,6 @@ mod convert {
         start_idx: usize,
         lang: Lang,
         py_renames: &mut std::collections::HashMap<String, String>,
-        _js_renames: &mut std::collections::HashMap<String, String>,
     ) -> Option<(String, usize)> {
         let line = src.get(start_idx)?.as_str();
         let t = line.trim_start();
@@ -1708,7 +1538,7 @@ mod convert {
             }
         }
         // Pre-pass: strip Rust idioms with no JS / Python / Swift / Kotlin
-        // analogue. These transformations are language-agnostic — they
+        // analog. These transformations are language-agnostic — they
         // make the line "look like" idiomatic non-Rust code so the
         // downstream branches don't have to special-case Rust integer
         // literal suffixes (`0u8`, `64u32`) or unary deref (`*var.id()`).
@@ -1716,7 +1546,7 @@ mod convert {
             *line = strip_rust_numeric_suffixes(line);
             *line = strip_rust_deref_star(line);
             // Rust slice-cast no-ops (`bytes.as_slice()`, `vec.as_ref()`,
-            // `s.to_vec()`) have no JS / Python / Swift / Kotlin analogue —
+            // `s.to_vec()`) have no JS / Python / Swift / Kotlin analog —
             // the receiver already has the right shape.
             *line = strip_rust_coercion_calls(line);
             // `vec![...]` → `[...]`. Strip BEFORE the array-repeat pass
@@ -1736,12 +1566,10 @@ mod convert {
         //
         // Gated behind `aggressive_js_flatten` because the Swift / Kotlin
         // emitters call `convert(_, _, /*aggressive_js_flatten=*/ false)`
-        // and rely on the original line layout (e.g.
-        // `Shader.new([\n    "...",\n])` is detected by
-        // `kotlin::rewrite_shader_new_to_compose` only after `kotlin::finalize`
-        // does its own array→arrayOf substitution; if we join here, the
-        // array elements end up on a single line with line comments
-        // slurping subsequent items).
+        // and rely on the original line layout: joining
+        // `Shader.new([\n    "...", // comment\n])` here would put the
+        // array elements on one line, where each line comment swallows
+        // the items after it.
         if aggressive_js_flatten {
             src = reassemble_open_bracket_lines(src);
         }
@@ -1771,7 +1599,16 @@ mod convert {
                 );
             }
         }
-        // Enforce no visible pollster
+        // Enforce no visible file reads: each language reads its file in hidden lines
+        for line in &src {
+            if line.contains("std::fs::") {
+                panic!(
+                    "Visible std::fs found in an example. Read the file in hidden lines, Rust's '#' and each language's block: \n {}",
+                    line
+                );
+            }
+        }
+        // Enforce no visible assert_eq
         for line in &src {
             if line.contains("assert_eq") {
                 panic!(
@@ -1783,8 +1620,6 @@ mod convert {
 
         let mut out: Vec<String> = Vec::new();
         let mut py_renames: HashMap<String, String> = HashMap::new();
-        let mut js_renames: HashMap<String, String> = HashMap::new();
-        let mut need_rendercanvas_import: bool = false;
 
         let mut idx = 0usize;
         while idx < src.len() {
@@ -1796,16 +1631,9 @@ mod convert {
                 continue;
             }
 
-            // Drop Rust-only windowing note for non-Rust outputs
-            // "We officially support Winit. Check the examples folder for details." doesn't apply to JS/Python.
-            if t.contains("We officially support Winit") {
-                idx += 1;
-                continue;
-            }
-
             // Special-case: let var = Type::new(r#"..."#) with multi-line raw string
             if let Some((mapped, next_idx)) =
-                try_handle_raw_string_new(&src, idx, lang, &mut py_renames, &mut js_renames)
+                try_handle_raw_string_new(&src, idx, lang, &mut py_renames)
             {
                 out.push(mapped);
                 idx = next_idx;
@@ -1814,23 +1642,19 @@ mod convert {
 
             // Imports from fragmentcolor
             if let Some(list) = parse_use_fragmentcolor(t) {
-                // Drop names that aren't exposed as constructible types in the
-                // foreign bindings (Target/WindowTarget/TextureTarget — the
-                // first is a Rust trait, the latter two are returned by
-                // factory methods, never constructed; Size is auto-converted
-                // from arrays/tuples; VertexValue is internal).
-                // SamplerOptions IS exposed (uniffi::Record / wasm_bindgen /
-                // pyo3::pyclass) so it stays in the import list.
-                let list: Vec<String> = list
-                    .into_iter()
-                    .filter(|name| {
-                        name != "Target"
-                            && name != "WindowTarget"
-                            && name != "TextureTarget"
-                            && name != "Size"
-                            && name != "VertexValue"
-                    })
-                    .collect();
+                // Keep the names the binding exports. Swift and Kotlin swap
+                // the line for a module import in their finalize step.
+                let list: Vec<String> = match lang {
+                    Lang::Js => list
+                        .into_iter()
+                        .filter(|name| facts().js_exports.contains(name))
+                        .collect(),
+                    Lang::Py => list
+                        .into_iter()
+                        .filter(|name| facts().py_exports.contains(name))
+                        .collect(),
+                    Lang::Swift | Lang::Kotlin => list,
+                };
                 match lang {
                     Lang::Js | Lang::Swift | Lang::Kotlin => out.push(format!(
                         "import {{ {} }} from \"fragmentcolor\";",
@@ -1846,62 +1670,8 @@ mod convert {
                 continue;
             }
 
-            // Sanitize any raw Python import lines
-            if let Lang::Py = lang {
-                if t.starts_with("from fragmentcolor import ") {
-                    let raw = t.trim_start_matches("from fragmentcolor import ").trim();
-                    let mut names: Vec<String> =
-                        raw.split(',').map(|s| s.trim().to_string()).collect();
-                    names.retain(|name| {
-                        name != "Target"
-                            && name != "WindowTarget"
-                            && name != "TextureTarget"
-                            && name != "Size"
-                    });
-                    if !names.is_empty() {
-                        out.push(format!("from fragmentcolor import {}", names.join(", ")));
-                    }
-                    idx += 1;
-                    continue;
-                }
-                if t.starts_with("from fragmentcolor import {")
-                    && let (Some(lb), Some(rb)) = (t.find('{'), t.find('}'))
-                {
-                    let inside = &t[lb + 1..rb];
-                    let mut names: Vec<String> =
-                        inside.split(',').map(|s| s.trim().to_string()).collect();
-                    names.retain(|name| {
-                        name != "Target"
-                            && name != "WindowTarget"
-                            && name != "TextureTarget"
-                            && name != "Size"
-                    });
-                    if !names.is_empty() {
-                        out.push(format!("from fragmentcolor import {}", names.join(", ")));
-                    }
-                    idx += 1;
-                    continue;
-                }
-            }
-
-            // Map assert_eq!
-            if let Some(mapped) = map_assert(t, lang) {
-                out.push(match lang {
-                    Lang::Js | Lang::Swift | Lang::Kotlin => ensure_js_semicolon(&mapped),
-                    Lang::Py => mapped,
-                });
-                idx += 1;
-                continue;
-            }
-
             // let assignments (single-line cases)
-            if let Some(mapped) = handle_let_assignment(
-                t,
-                lang,
-                &mut py_renames,
-                &mut js_renames,
-                &mut need_rendercanvas_import,
-            ) {
+            if let Some(mapped) = handle_let_assignment(t, lang, &mut py_renames) {
                 // Preserve the original line's leading whitespace so the
                 // mapped line stays inside any enclosing block (matters for
                 // Python where indentation is grammar). `handle_let_assignment`
@@ -1920,86 +1690,25 @@ mod convert {
             line = replace_static_call_to_dot(&line);
             // JS-specific early fixups on raw line
             if matches!(lang, Lang::Js | Lang::Swift | Lang::Kotlin) {
-                // None -> null
-                line = line.replace("None", "null");
-                // SamplerOptions { ... } -> { ... }
-                if line.contains("SamplerOptions {") {
-                    line = js_objectize_sampleroptions_literal(&line);
-                }
-                // Size.from(x) -> x
-                line = simplify_js_size_from(&line);
-                // ScreenRegion.new(a,b,c,d) -> [a,b,c,d]
-                line = js_region_new_to_array(&line);
-                // std.fs.read("...") -> "/healthcheck/public/favicon.png"
-                if let Some(i) = line.find("std.fs.read(") {
-                    let before = &line[..i];
-                    let after = &line[i + "std.fs.read(".len()..];
-                    if let Some(rp) = after.find(')') {
-                        let tail = &after[rp + 1..];
-                        line = format!("{}\"/healthcheck/public/favicon.png\"{}", before, tail);
-                    }
-                }
+                // None -> undefined in JS, null in Swift (nil later) and Kotlin
+                line = line.replace("None", none_literal(lang));
+                // ScreenRegion.new((x, y), (w, h)) -> array arguments in JS
+                line = region_tuples_to_arrays(&line, lang);
             }
 
             // 1.1) Python: simplify Type.new(args) -> Type(args)
             if let Lang::Py = lang {
                 line = simplify_py_static_new(&line);
-                // Map Size.from([w,h]) or Size.from((w,h)) -> (w,h)
-                line = simplify_py_size_from(&line);
-                // Convert SamplerOptions literal to dict
-                if line.contains("SamplerOptions {") {
-                    line = pythonize_sampleroptions_literal(&line);
-                }
-                // Drop Result-style unwrap() noise
-                if line.contains(".unwrap()") {
-                    line = line.replace(".unwrap()", "");
-                }
+            }
+            // Drop Result-style unwrap() noise: Python and JS throw on errors
+            if matches!(lang, Lang::Py | Lang::Js) && line.contains(".unwrap()") {
+                line = line.replace(".unwrap()", "");
             }
 
             // 1.1) Convert Vec syntax (vec![], Vec::new()) into JS/Py arrays
             line = convert_vec_syntax(&line);
 
-            // 2) Drop explicit module prefix on every target — Swift/Kotlin
-            // both fall through `swift::finalize` / `kotlin::finalize` after this so
-            // they want the same plain `Shader` token the JS/Py emitters do.
-            line = line.replace("fragmentcolor.Shader", "Shader");
-
-            // 3) Handling for Shader::default();
-            if line.contains("Shader::default()")
-                || line.contains("Shader.default()")
-                || line.contains("fragmentcolor::Shader::default()")
-                || line.contains("fragmentcolor::Shader.default()")
-            {
-                line = match lang {
-                    Lang::Js | Lang::Swift | Lang::Kotlin => line
-                        .replace("Shader::default()", "new Shader(\"\")")
-                        .replace("fragmentcolor::Shader::default()", "new Shader(\"\")")
-                        .replace("Shader.default()", "new Shader(\"\")")
-                        .replace("fragmentcolor::Shader.default()", "new Shader(\"\")"),
-                    Lang::Py => {
-                        // Add import at the top later if needed
-                        need_rendercanvas_import = true;
-                        line.replace("Shader::default()", "Shader(\"\")")
-                            .replace("fragmentcolor::Shader::default()", "Shader(\"\")")
-                            .replace("Shader.default()", "Shader(\"\")")
-                            .replace("fragmentcolor::Shader.default()", "Shader(\"\")")
-                    }
-                };
-            }
-
             // 4) Strip refs
-            // Python fix: map std.fs.read(path) -> open(path, "rb").read()
-            if let Lang::Py = lang
-                && let Some(i) = line.find("std.fs.read(")
-            {
-                let before = &line[..i];
-                let after = &line[i + "std.fs.read(".len()..];
-                if let Some(rp) = after.find(')') {
-                    let args = &after[..rp];
-                    let tail = &after[rp + 1..];
-                    line = format!("{}open({}, \"rb\").read(){}", before, args.trim(), tail);
-                }
-            }
             line = strip_refs(&line);
 
             // 5) Await / remove error '?' artifacts
@@ -2014,7 +1723,7 @@ mod convert {
                 if let Some(idx) = find_comment_marker(&line) {
                     let (mut head, tail) = line.split_at(idx);
                     // Strip any trailing semicolon immediately before comment
-                    head = head.trim_end_matches(';').trim_end();
+                    head = head.trim_end().trim_end_matches(';').trim_end();
                     if head.is_empty() {
                         // Pure comment line: no leading space before '#'
                         line = format!("#{}", &tail[2..]);
@@ -2039,32 +1748,20 @@ mod convert {
                 }
             }
 
-            // 9) Apply var renames in Python/JS lines after we possibly introduced references
-            match lang {
-                Lang::Py => {
-                    line = apply_renames_py(&line, &py_renames);
-                }
-                Lang::Js | Lang::Swift | Lang::Kotlin => {
-                    line = apply_renames_py(&line, &js_renames);
-                }
+            // 9) Apply var renames in Python lines after we possibly introduced references
+            if let Lang::Py = lang {
+                line = apply_renames_py(&line, &py_renames);
             }
 
             out.push(line);
             idx += 1;
         }
 
-        // Prepend RenderCanvas import if needed for Python examples
-        if need_rendercanvas_import {
-            let mut out2 = Vec::with_capacity(out.len() + 1);
-            out2.push("from rendercanvas.auto import RenderCanvas, loop".to_string());
-            out2.extend(out);
-            out = out2;
-        }
-
         // Python: capitalize `true` / `false` to Python's `True` / `False`.
         // Match standalone identifier tokens only (no leading/trailing ident
         // char), and skip lines that look like string literals or comments.
-        // Also strip the Rust full-range slice tail `[..]` and convert
+        // Also strip the Rust full-range slice tail `[..]`, spread tuple
+        // arguments over the method's parameters, and convert
         // `for x in y { ... }` blocks into Python `for x in y: ...` with
         // the body re-indented one level under the `for:` header.
         if matches!(lang, Lang::Py) {
@@ -2073,7 +1770,7 @@ mod convert {
                 .map(|line| {
                     let l = capitalize_py_bool_literals(&line);
                     let l = drop_rust_slice_suffix_py(&l);
-                    rewrite_py_create_texture_pixels_tuple(&l)
+                    spread_py_tuple_args(&l)
                 })
                 .collect();
             out = rewrite_py_braced_blocks(out);
@@ -2090,79 +1787,62 @@ mod convert {
         line.replace("[..]", "")
     }
 
-    /// Rewrite `renderer.create_texture((bytes, [w, h]))` →
-    /// `renderer.create_texture(bytes, size=[w, h])`. The Rust API takes
-    /// a tuple via `impl Into<TextureInput>`; the Python binding uses
-    /// keyword arguments instead (`create_texture(input, size=...)`).
-    /// Only fires when the outer call's single argument is a parenthesised
-    /// tuple of exactly two top-level elements.
-    fn rewrite_py_create_texture_pixels_tuple(line: &str) -> String {
-        let needle = "create_texture(";
-        let Some(start) = line.find(needle) else {
-            return line.to_string();
-        };
-        let chars: Vec<char> = line.chars().collect();
-        let arg_start = start + needle.len();
-        if arg_start >= chars.len() || chars[arg_start] != '(' {
-            return line.to_string();
-        }
-        // Walk the outer paren of the tuple to find its closing `)`.
-        let mut depth = 0i32;
-        let mut j = arg_start;
-        let mut tuple_end = None;
-        while j < chars.len() {
-            match chars[j] {
-                '(' => depth += 1,
-                ')' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        tuple_end = Some(j);
-                        break;
-                    }
+    /// `renderer.create_texture((bytes, [2, 2]))` → `renderer.create_texture(bytes, size=[2, 2])`.
+    /// A Rust tuple argument spreads over the parameters of the Python method it calls,
+    /// and an item that lands on a parameter with a default goes by keyword.
+    fn spread_py_tuple_args(line: &str) -> String {
+        let mut out = String::with_capacity(line.len());
+        let mut at = 0;
+        while let Some(found) = line[at..].find("((").map(|p| at + p) {
+            let head = &line[..found];
+            let name = &head[head.trim_end_matches(is_ident_char).len()..];
+            let is_method = !name.is_empty() && head[..head.len() - name.len()].ends_with('.');
+            let tuple = &line[found + 1..];
+            match is_method.then(|| py_spread(name, tuple)).flatten() {
+                Some((args, used)) => {
+                    out.push_str(&line[at..=found]);
+                    out.push_str(&args);
+                    at = found + 1 + used;
                 }
-                _ => {}
-            }
-            j += 1;
-        }
-        let Some(tuple_end) = tuple_end else {
-            return line.to_string();
-        };
-        // The next char after `tuple_end` must be `)` so the entire
-        // `create_texture( ... )` call closes immediately after the tuple.
-        if tuple_end + 1 >= chars.len() || chars[tuple_end + 1] != ')' {
-            return line.to_string();
-        }
-        // Split the tuple body at the top-level comma.
-        let body: String = chars[arg_start + 1..tuple_end].iter().collect();
-        let mut depth = 0i32;
-        let mut split_at = None;
-        for (idx, c) in body.chars().enumerate() {
-            match c {
-                '(' | '[' | '{' => depth += 1,
-                ')' | ']' | '}' => depth -= 1,
-                ',' if depth == 0 => {
-                    split_at = Some(idx);
-                    break;
+                None => {
+                    out.push_str(&line[at..=found]);
+                    at = found + 1;
                 }
-                _ => {}
             }
         }
-        let Some(split_at) = split_at else {
-            return line.to_string();
-        };
-        let bytes_part = body[..split_at].trim();
-        let size_part = body[split_at + 1..].trim();
-        // `chars[..arg_start]` already includes the outer `create_texture(`
-        // paren; emit the new args and the matching outer `)` directly.
-        // `tuple_end + 1` is the outer closing `)`; skip past it.
-        let mut out = String::new();
-        out.push_str(&chars[..arg_start].iter().collect::<String>());
-        out.push_str(bytes_part);
-        out.push_str(", size=");
-        out.push_str(size_part);
-        out.push(')');
-        out.push_str(&chars[tuple_end + 2..].iter().collect::<String>());
+        out.push_str(&line[at..]);
         out
+    }
+
+    /// The arguments the tuple `tuple` starts with spreads into for the method `name`,
+    /// and the byte length of the tuple, when it is the call's only argument
+    /// and every method of that name takes its items the same way.
+    fn py_spread(name: &str, tuple: &str) -> Option<(String, usize)> {
+        let close = closing(tuple, 0)?;
+        if !tuple[close + 1..].starts_with(')') {
+            return None;
+        }
+        let items = split_args(&tuple[1..close]);
+        if items.len() < 2 {
+            return None;
+        }
+        let spellings: BTreeSet<Option<String>> = facts()
+            .py_methods
+            .get(name)?
+            .iter()
+            .map(|params| {
+                let spelled: Vec<String> = items
+                    .iter()
+                    .zip(params)
+                    .map(|(item, (param, default))| if *default { format!("{param}={item}") } else { item.clone() })
+                    .collect();
+                (items.len() <= params.len()).then(|| spelled.join(", "))
+            })
+            .collect();
+        match Vec::from_iter(spellings).as_slice() {
+            [Some(only)] => Some((only.clone(), close + 1)),
+            _ => None,
+        }
     }
 
     /// Convert Rust-style braced bodies (`for x in y { ... }`,
@@ -2197,7 +1877,7 @@ mod convert {
         out
     }
 
-    /// Recognise a Rust-style block header line and return the header text
+    /// Recognize a Rust-style block header line and return the header text
     /// without the trailing `{`. Supports `for x in y`, `if expr`,
     /// `while expr`, `loop`. Body must be on subsequent lines (header ends
     /// with `{`).
@@ -2314,7 +1994,7 @@ mod convert {
             if i + 5 <= bytes.len() && bytes[i..i + 5] == ['.', 'n', 'e', 'w', '('] {
                 // Backtrack to the start of the identifier
                 let mut j = i;
-                while j > 0 && super::convert::is_ident_char(bytes[j - 1]) {
+                while j > 0 && is_ident_char(bytes[j - 1]) {
                     j -= 1;
                 }
                 // Rewrite: keep the identifier, drop ".new"
@@ -2331,39 +2011,6 @@ mod convert {
             i += 1;
         }
         out
-    }
-
-    // Convert Size.from(arg) -> arg (strip the wrapper) for Python.
-    fn simplify_py_size_from(line: &str) -> String {
-        let needle = "Size.from(";
-        if let Some(start) = line.find(needle) {
-            // Find matching closing parenthesis
-            let mut depth = 0i32;
-            let mut end = start + needle.len();
-            let chars: Vec<char> = line.chars().collect();
-            let mut i = end;
-            while i < chars.len() {
-                let c = chars[i];
-                if c == '(' {
-                    depth += 1;
-                }
-                if c == ')' {
-                    if depth == 0 {
-                        end = i;
-                        break;
-                    }
-                    depth -= 1;
-                }
-                i += 1;
-            }
-            if end > start + needle.len() {
-                let before = &line[..start];
-                let inner = &line[start + needle.len()..end];
-                let after = &line[end + 1..]; // skip ')'
-                return format!("{}{}{}", before, inner.trim(), after);
-            }
-        }
-        line.to_string()
     }
 
     // Replace `.size()` (allowing whitespace as `.size ( )`) with `.size` in Python output
@@ -2408,148 +2055,30 @@ mod convert {
         out
     }
 
-    // Pythonize a Rust literal: SamplerOptions { repeat_x: true, ... }
-    fn pythonize_sampleroptions_literal(line: &str) -> String {
-        let needle = "SamplerOptions {";
-        if let Some(start) = line.find(needle) {
-            let chars: Vec<char> = line.chars().collect();
-            let mut depth = 0i32;
-            let mut i = start + needle.len();
-            let mut end = i;
-            while i < chars.len() {
-                let c = chars[i];
-                if c == '{' {
-                    depth += 1;
-                }
-                if c == '}' {
-                    if depth == 0 {
-                        end = i;
-                        break;
-                    }
-                    depth -= 1;
-                }
-                i += 1;
-            }
-            if end > start {
-                let before = &line[..start];
-                let inside = &line[start + needle.len()..end];
-                let after = &line[end + 1..];
-                let mut fields: Vec<String> = Vec::new();
-                for part in inside.split(',') {
-                    let p = part.trim();
-                    if p.is_empty() {
-                        continue;
-                    }
-                    if let Some(colon) = p.find(':') {
-                        let key = p[..colon].trim();
-                        let mut val = p[colon + 1..].trim().to_string();
-                        val = val.replace("true", "True").replace("false", "False");
-                        if val.starts_with("CompareFunction::") {
-                            let name = val.trim_start_matches("CompareFunction::");
-                            val = format!("\"{}\"", name);
-                        }
-                        fields.push(format!("\"{}\": {}", key, val));
-                    }
-                }
-                let dict = format!("{{{}}}", fields.join(", "));
-                return format!("{}{}{}", before, dict, after);
-            }
+    /// `ScreenRegion.new((x, y), (w, h))` → `ScreenRegion.new([x, y], [w, h])`,
+    /// which `to_js` then writes as `new ScreenRegion(...)`. JS has no tuples,
+    /// and its constructor takes the origin and the size as arrays.
+    /// Swift and Kotlin keep the call, which their `ScreenRegion(origin, size)` factories take.
+    fn region_tuples_to_arrays(line: &str, lang: Lang) -> String {
+        if !matches!(lang, Lang::Js) {
+            return line.to_string();
         }
-        line.to_string()
+        let needle = "ScreenRegion.new(";
+        let Some(start) = line.find(needle) else {
+            return line.to_string();
+        };
+        let open = start + needle.len() - 1;
+        let Some(close) = closing(line, open) else {
+            return line.to_string();
+        };
+        let items = split_args(line[open + 1..close].trim())
+            .into_iter()
+            .map(|arg| match closing(&arg, 0) {
+                Some(end) if arg.starts_with('(') && end == arg.len() - 1 => format!("[{}]", arg[1..end].trim()),
+                _ => arg,
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("{}({items}){}", &line[..open], &line[close + 1..])
     }
-}
-
-// JS: Size.from(x) -> x
-fn simplify_js_size_from(line: &str) -> String {
-    let needle = "Size.from(";
-    if let Some(start) = line.find(needle) {
-        // Find matching ')'
-        let mut depth: i32 = 0;
-        let mut end = start + needle.len();
-        let chars: Vec<char> = line.chars().collect();
-        let mut i = end;
-        while i < chars.len() {
-            let c = chars[i];
-            if c == '(' { depth += 1; }
-            if c == ')' {
-                if depth == 0 { end = i; break; }
-                depth -= 1;
-            }
-            i += 1;
-        }
-        if end > start + needle.len() {
-            let before = &line[..start];
-            let inner = &line[start + needle.len()..end];
-            let after = &line[end + 1..];
-            return format!("{}{}{}", before, inner.trim(), after);
-        }
-    }
-    line.to_string()
-}
-
-// JS: SamplerOptions { repeat_x: true, ... } -> { repeat_x: true, ... }
-fn js_objectize_sampleroptions_literal(line: &str) -> String {
-    let needle = "SamplerOptions {";
-    if let Some(start) = line.find(needle) {
-        let chars: Vec<char> = line.chars().collect();
-        let mut depth = 0i32;
-        let mut i = start + needle.len();
-        let mut end = i;
-        while i < chars.len() {
-            let c = chars[i];
-            if c == '{' { depth += 1; }
-            if c == '}' {
-                if depth == 0 { end = i; break; }
-                depth -= 1;
-            }
-            i += 1;
-        }
-        if end > start {
-            let before = &line[..start];
-            let inside = &line[start + needle.len()..end];
-            let after = &line[end + 1..];
-            let mut fields: Vec<String> = Vec::new();
-            for part in inside.split(',') {
-                let p = part.trim();
-                if p.is_empty() { continue; }
-                if let Some(colon) = p.find(':') {
-                    let key = p[..colon].trim();
-                    let mut val = p[colon + 1..].trim().to_string();
-                    // Map booleans and None
-                    val = val.replace("None", "null");
-                    // keep true/false as-is for JS
-                    fields.push(format!("{}: {}", key, val));
-                }
-            }
-            return format!("{}{{{}}}{}", before, fields.join(", "), after);
-        }
-    }
-    line.to_string()
-}
-
-// JS: ScreenRegion.new(a,b,c,d) -> [a,b,c,d]
-fn js_region_new_to_array(line: &str) -> String {
-    let needle = "ScreenRegion.new(";
-    if let Some(start) = line.find(needle) {
-        let chars: Vec<char> = line.chars().collect();
-        let mut depth = 0i32;
-        let mut i = start + needle.len();
-        let mut end = i;
-        while i < chars.len() {
-            let c = chars[i];
-            if c == '(' { depth += 1; }
-            if c == ')' {
-                if depth == 0 { end = i; break; }
-                depth -= 1;
-            }
-            i += 1;
-        }
-        if end > start {
-            let before = &line[..start];
-            let args = &line[start + needle.len()..end];
-            let after = &line[end + 1..];
-            return format!("{}[{}]{}", before, args.trim(), after);
-        }
-    }
-    line.to_string()
 }

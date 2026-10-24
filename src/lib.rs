@@ -1,6 +1,6 @@
 //! # FragmentColor
 //!
-//! Universal GPU abstraction for Javascript, Python, Swift, and Kotlin.
+//! Universal GPU abstraction for Rust, JavaScript, Python, Swift, and Kotlin.
 
 // Uniffi scaffolding for Swift (iOS) and Kotlin (Android).
 // Must be called at crate root. Compiled on every non-wasm target so

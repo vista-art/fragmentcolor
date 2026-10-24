@@ -43,7 +43,7 @@ struct PbrMaterial {
   alpha_cutoff: f32,
   // glTF 2.0 `alphaMode` projected to a numeric flag: 0=Opaque, 1=Mask,
   // 2=Blend. Only `Mask` gates a `discard` in fs_main; `Opaque` and
-  // `Blend` ignore the flag — their behaviour is pipeline-state
+  // `Blend` ignore the flag — their behavior is pipeline-state
   // (depth-write, blend equation) rather than fragment-shader logic.
   alpha_mode_flag: u32,
   // KHR_texture_transform — single global UV transform applied to every

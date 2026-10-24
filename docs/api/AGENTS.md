@@ -29,14 +29,14 @@ Forbidden suffix patterns (both underscore-prefixed and bare):
 `u32`, `u64`, `usize`, `i8`, `i16`, `i32`, `i64`, `isize`, `u128`,
 `i128` when attached to a numeric literal.
 
-Why: every FragmentColor API that takes a numeric type accepts bare
-literals — Rust's type inference picks the right f32 / u32 / etc. from
-the function signature. The suffix is implementation detail that leaks
-into the website, JS, Python, Swift, and Kotlin tabs. Stripping it from
-the source removes a class of transpiler bugs at the root.
+Why: Rust's type inference picks `f32`, `u32` and the rest from the
+function signature, so every FragmentColor API takes a bare literal.
+A suffix is implementation detail that leaks into every language tab.
+The Kotlin transpiler writes the `u` an unsigned parameter needs, as in
+`64u`, from the parameter's type, so the source never carries it either.
 
-Verification: `cargo test --doc` still passes; the language tabs in the
-generated website show the same clean literal.
+Verification: `cargo test --doc` still passes, and the generated website
+tabs show the same literal, with a `u` on Kotlin's unsigned arguments.
 
 ## Angles
 
@@ -60,7 +60,7 @@ without a per-language transpiler map. `std::f32::consts::FRAC_PI_4`
 similarly has no clean cross-language translation. A bare numeric
 literal works in every language unchanged.
 
-Reference values worth memorising:
+Reference values worth memorizing:
 
 | degrees | radians  | constant   |
 | ------- | -------- | ---------- |
@@ -71,14 +71,47 @@ Reference values worth memorising:
 
 ## Hidden lines
 
-Lines prefixed with `# ` inside a Rust codefence are doctest scaffolding
-(an `async fn run() { ... }` wrapper, an executor like
+Lines prefixed with `# ` inside a Rust codefence are Rust's doctest
+scaffolding (an `async fn run() { ... }` wrapper, an executor like
 `pollster::block_on(run())`, error-case demonstrations the doctest is
 expected to evaluate but the website should not show).
 
-Hidden lines belong at the **start and end** of the codefence only,
-never interleaved with the visible body. The website renderer trims them
-before display, and the transpilers translate only the visible portion.
+Every other language has hidden lines too, for the setup its
+healthcheck file needs: a canvas, a file's bytes, a guard. They sit in
+a hidden Rust block comment tagged with the language:
+
+```
+# let canvas = fragmentcolor::headless_window([800, 600]);
+# /*[js]
+# const canvas = document.createElement("canvas");
+# */
+# /*[python]
+# from rendercanvas.auto import RenderCanvas
+# canvas = RenderCanvas(size=(800, 600))
+# */
+```
+
+The tags are `js`, `python`, `swift` and `kotlin`. Rustdoc compiles a
+block as a comment, so the doctest still runs. Everything after the
+`# ` of a line inside a block is copied as written, Python indentation
+included, and no transpiler reads it.
+
+Hidden lines, Rust's and every block, belong at the **start and end**
+of the codefence only, never interleaved with the visible body. A
+block before the first visible line lands right after the imports of
+that language's example, and a block after the last visible line lands
+at its end. Every tab shows its hidden lines collapsed, the way the
+Rust tab shows Rust's. The build fails on a block between visible
+lines, on an unknown tag, on a block with no closing `# */`, and on a
+line inside a block that holds `/*` or `*/`. Rust nests block comments,
+so either one would move the end of the block and swallow the rest of
+the doctest.
+
+Platform setup lives in these blocks, never in the transpilers. When
+the languages make a value differently (a window, a file's bytes),
+make it under one name in every language's hidden lines and use that
+name on the visible lines. The visible lines then hold only
+FragmentColor's API, and the tabs pair line by line.
 
 ## Method and constructor shapes
 
@@ -94,11 +127,25 @@ The transpiler can map straightforward call shapes (`Type::new(args)`,
   source the binding already exposes.
 - Rust's `std::` paths (`std::f32::consts::FRAC_PI_4`,
   `std::fs::read`); hide them in `#` lines and pass a named local that
-  the transpiler can stub per language.
+  every language's hidden block makes.
 
 When a pattern fights the transpiler, **change the example's shape**
 before trying to extend the transpiler. The Rust doc reads slightly
 differently; every other language reads correctly.
+
+## Links
+
+Each object has one page at `/api/<category>/<object>`, with the
+object's name in lower case, and each method's heading there takes the
+method's name as its id. Link a method with that name as the anchor:
+
+```
+[`Scene::remove_pass`](https://fragmentcolor.org/api/scene/scene#remove_pass)
+```
+
+Other headings keep the id Starlight makes from their text. The build
+fails on a link to a page or heading the site doesn't build, and on two
+headings of one page that would get the same id.
 
 ## Cross-cutting invariants
 
@@ -116,5 +163,7 @@ differently; every other language reads correctly.
 - Project-root `AGENTS.md` — the broader contributor guide.
 - `scripts/convert.rs`, `scripts/kotlin.rs`, `scripts/swift.rs` — the
   transpilers that consume what gets written here.
+- `scripts/example.rs` — splits a codefence into Rust's lines and each
+  language's hidden blocks.
 - `~/.claude/projects/.../memory/transpiler_v2_design.md` — design notes
   for the next-generation per-language harness scheme.

@@ -2,6 +2,11 @@
 
 Returns the current value of the uniform identified by the given key.
 
+A struct or array root reads back as its bytes, and `set` doesn't take
+those bytes back for that root. Set a struct one field at a time
+(`"light.color"`) and an array one element at a time (`"weights[0]"`).
+Only a storage-buffer or push-constant root takes its whole bytes.
+
 ## Example
 
 ```rust

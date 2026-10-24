@@ -17,12 +17,9 @@ pub(crate) struct UniformBufferPool {
     current_chunk: usize,
     current_offset: u64,
     pub alignment: u64,
-    // metrics
-    allocations: u64,
-    bytes_allocated: u64,
 }
 
-/// Represents a location within a BufferPool
+/// A location within the buffers of a pool.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct BufferLocation {
     pub chunk_index: usize,
@@ -68,8 +65,6 @@ impl UniformBufferPool {
             current_chunk: 0,
             current_offset: 0,
             alignment: device.limits().min_uniform_buffer_offset_alignment as u64,
-            allocations: 1,
-            bytes_allocated: chunk_size,
         }
     }
 
@@ -96,8 +91,6 @@ impl UniformBufferPool {
                     usage: self.usage,
                     mapped_at_creation: false,
                 }));
-            self.allocations += 1;
-            self.bytes_allocated += self.chunk_size;
         }
     }
 
@@ -121,8 +114,6 @@ impl UniformBufferPool {
                         usage: self.usage,
                         mapped_at_creation: false,
                     }));
-                self.allocations += 1;
-                self.bytes_allocated += aligned_size;
                 self.buffers.len() - 1
             };
 
@@ -153,8 +144,6 @@ impl UniformBufferPool {
                         usage: self.usage,
                         mapped_at_creation: false,
                     }));
-                self.allocations += 1;
-                self.bytes_allocated += self.chunk_size;
             }
         }
 
@@ -192,29 +181,14 @@ impl UniformBufferPool {
         }
     }
 
-    /// Resets the pool for reuse in the next frame.
+    /// Rewinds the write cursor to the start of the pool.
     ///
-    /// Must be called at the start or the end of every frame.
+    /// Call it once per render, before any pass uploads.
+    /// Uploads apply at the next submit, so a rewind between
+    /// passes of one submit lets later passes overwrite earlier ones.
     pub fn reset(&mut self) {
         self.current_chunk = 0;
         self.current_offset = 0;
-    }
-}
-
-impl crate::renderer::buffer_pool::BufferPool for UniformBufferPool {
-    fn stats(&self) -> crate::renderer::buffer_pool::PoolStats {
-        crate::renderer::buffer_pool::PoolStats {
-            hits: 0,
-            misses: 0,
-            evictions: 0,
-            allocations: self.allocations,
-            bytes_allocated: self.bytes_allocated,
-        }
-    }
-
-    fn reset_metrics(&mut self) {
-        self.allocations = 1; // initial buffer accounted
-        self.bytes_allocated = self.chunk_size;
     }
 }
 
@@ -222,7 +196,6 @@ impl crate::renderer::buffer_pool::BufferPool for UniformBufferPool {
 #[cfg(not(wasm))]
 mod tests {
     use super::*;
-    use crate::renderer::buffer_pool::BufferPool;
 
     async fn device_and_queue() -> (wgpu::Device, wgpu::Queue) {
         let instance = crate::renderer::platform::all::create_instance().await;
@@ -246,15 +219,13 @@ mod tests {
                 wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 4096,
             );
-            let initial = pool.stats();
+            let initial = pool.buffers.len();
 
             // Act: require 3 chunks worth
             pool.ensure_capacity(3 * 4096 + 1, &device);
 
-            // Assert
-            let after = pool.stats();
-            assert!(after.bytes_allocated >= initial.bytes_allocated + 2 * 4096);
-            assert!(after.allocations >= initial.allocations + 2);
+            // Assert: one chunk was free, so three more cover the rest
+            assert_eq!(pool.buffers.len(), initial + 3);
         });
     }
 

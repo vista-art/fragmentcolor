@@ -2,9 +2,9 @@
 use wasm_bindgen::prelude::*;
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyo3::pyclass(from_py_object))]
+#[cfg_attr(python, pyo3::pyclass(from_py_object, eq, hash, frozen))]
 #[cfg_attr(mobile, derive(uniffi::Enum))]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum TextureFormat {
     R8Unorm,
     Rg8Unorm,

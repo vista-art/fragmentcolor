@@ -2,14 +2,14 @@ import org.fragmentcolor.*
 
 val shader = Shader("""
   @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
-    return vec4<f32>(pos, 1.0)
+    return vec4<f32>(pos, 1.0);
   }
   @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
 """)
 
 val mesh = Mesh()
-mesh.addVertex(Vertex(listOf(0.0f, 0.0f, 0.0f)))
+mesh.addVertex(listOf(0.0f, 0.0f, 0.0f))
 
 // Attach mesh to this shader (errors if incompatible)
 shader.addMesh(mesh)

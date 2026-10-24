@@ -81,13 +81,13 @@ pub(crate) fn surface_texture_from(
 /// through the existing [`crate::Renderer::create_target`] /
 /// [`crate::Renderer::create_texture_target`] constructors, which produce
 /// the canonical impls.
-pub(crate) trait TargetInternal {
+pub(crate) trait FrameSource {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError>;
 }
 
 #[lsp_doc("docs/api/targets/target/target.md")]
 #[allow(private_bounds)]
-pub trait Target: TargetInternal {
+pub trait Target: FrameSource {
     fn size(&self) -> Size;
 
     fn resize(&mut self, size: impl Into<Size>);

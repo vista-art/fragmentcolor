@@ -15,17 +15,15 @@ High-level geometry container. A Mesh owns a list of vertices and optional insta
 Internally it deduplicates vertices and always draws indexed and instanced
 (instance_count defaults to 1 when none are provided).
 
-Vertex layouts are managed by the Shader. At render time, inputs declared in your
-shader's vertex function (annotated with @location(N)) are derived from the source
-and matched by name and type to Mesh properties across both streams (instance first,
-then vertex).
+The shader decides the vertex layout. When the mesh attaches through
+`Shader::add_mesh` or `Pass::add_mesh`, each `@location` input of the
+shader's vertex function looks for its data by name (instance first, then
+vertex), then takes the position at `@location(0)`, then looks by the
+attribute's own location (instance first, then vertex).
 
-Mapping is driven by shader reflection; there are no special-case names or reserved locations.
-The renderer matches attributes by explicit location if provided (instance first, then vertex),
-and otherwise by name.
-
-If a required input cannot be found or its type does not match, rendering returns an error
-indicating the missing attribute or mismatch.
+A plain number takes the type the shader declares for its input. The attach
+checks every vertex and instance, and it fails with an error that names the
+attribute when an input finds no data or a value doesn't fit its type.
 
 
 
@@ -36,7 +34,7 @@ indicating the missing attribute or mismatch.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::{Mesh, Vertex, VertexValue};
+use fragmentcolor::mesh::{Mesh, Vertex};
 
 let mut mesh = Mesh::new();
 mesh.add_vertex([0.0, 0.5, 0.0]);
@@ -99,9 +97,9 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex(Vertex(listOf(0.0f, 0.5f, 0.0f)))
-mesh.addVertex(Vertex(listOf(-0.5f, -0.5f, 0.0f)))
-mesh.addVertex(Vertex(listOf(0.5f, -0.5f, 0.0f)))
+mesh.addVertex(listOf(0.0f, 0.5f, 0.0f))
+mesh.addVertex(listOf(-0.5f, -0.5f, 0.0f))
+mesh.addVertex(listOf(0.5f, -0.5f, 0.0f))
 `}
 lang="kotlin"
 />
@@ -116,7 +114,7 @@ lang="kotlin"
 
 ---
 
-### Mesh::new
+### Mesh::new \{#new\}
 
 Create an empty mesh. Add vertices with `add_vertex` (or `add_vertices`)
 and instances with `add_instance`, then attach the mesh to a shader to
@@ -187,7 +185,7 @@ lang="kotlin"
 
 ---
 
-### Mesh::from_vertices
+### Mesh::from_vertices \{#from_vertices\}
 
 Create a mesh from an iterator of Vertex values.
 
@@ -260,7 +258,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val mesh = Mesh.fromVertices(listOf(Vertex(listOf(0.0f, 0.0f)), Vertex(listOf(1.0f, 0.0f)), Vertex(listOf(0.0f, 1.0f))))
+val mesh = Mesh.fromVertices(listOf(listOf(0.0f, 0.0f), listOf(1.0f, 0.0f), listOf(0.0f, 1.0f)))
 `}
 lang="kotlin"
 />
@@ -272,7 +270,7 @@ lang="kotlin"
 
 ---
 
-### Mesh::add_vertex
+### Mesh::add_vertex \{#add_vertex\}
 
 Append a single vertex to the mesh. Pass an array literal for the
 position (`[x, y]` or `[x, y, z]`); for vertices that carry `uv`, `color`,
@@ -336,7 +334,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val m = Mesh()
-m.addVertex(Vertex(listOf(0.0f, 0.0f)))
+m.addVertex(listOf(0.0f, 0.0f))
 `}
 lang="kotlin"
 />
@@ -348,7 +346,7 @@ lang="kotlin"
 
 ---
 
-### Mesh::add_vertices
+### Mesh::add_vertices \{#add_vertices\}
 
 Add many vertices to the mesh.
 
@@ -418,7 +416,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val m = Mesh()
-m.addVertices(listOf(Vertex(listOf(0.0f, 0.0f)), Vertex(listOf(1.0f, 0.0f))))
+m.addVertices(listOf(listOf(0.0f, 0.0f), listOf(1.0f, 0.0f)))
 `}
 lang="kotlin"
 />
@@ -430,7 +428,7 @@ lang="kotlin"
 
 ---
 
-### Mesh::add_instance
+### Mesh::add_instance \{#add_instance\}
 
 Add a single per-instance attribute set to the mesh.
 
@@ -451,9 +449,7 @@ code={`
 use fragmentcolor::mesh::{Mesh, Instance};
 
 let m = Mesh::new();
-let offset: [f32; 2] = [0.25, 0.10];
-let tint:   [f32; 4] = [1.0, 0.0, 0.0, 1.0];
-m.add_instance(Instance::new().set("offset", offset).set("tint", tint));
+m.add_instance(Instance::new().set("offset", [0.25, 0.10]).set("tint", [1.0, 0.0, 0.0, 1.0]));
 `}
 lang="rust"
 />
@@ -466,9 +462,7 @@ code={`
 import { Mesh, Instance } from "fragmentcolor";
 
 const m = new Mesh();
-const offset = [0.25, 0.10];
-const tint = [1.0, 0.0, 0.0, 1.0];
-m.addInstance(new Instance().set("offset", offset).set("tint", tint));
+m.addInstance(new Instance().set("offset", [0.25, 0.10]).set("tint", [1.0, 0.0, 0.0, 1.0]));
 `}
 lang="js"
 />
@@ -481,9 +475,7 @@ code={`
 from fragmentcolor import Mesh, Instance
 
 m = Mesh()
-offset = [0.25, 0.10]
-tint = [1.0, 0.0, 0.0, 1.0]
-m.add_instance(Instance().set("offset", offset).set("tint", tint))
+m.add_instance(Instance().set("offset", [0.25, 0.10]).set("tint", [1.0, 0.0, 0.0, 1.0]))
 `}
 lang="python"
 />
@@ -496,9 +488,7 @@ code={`
 import FragmentColor
 
 let m = Mesh()
-let offset = [0.25, 0.10]
-let tint = [1.0, 0.0, 0.0, 1.0]
-try m.addInstance(Instance().set("offset", offset).set("tint", tint))
+try m.addInstance(Instance().set("offset", [0.25, 0.10]).set("tint", [1.0, 0.0, 0.0, 1.0]))
 `}
 lang="swift"
 />
@@ -511,9 +501,7 @@ code={`
 import org.fragmentcolor.*
 
 val m = Mesh()
-val offset = listOf(0.25f, 0.10f)
-val tint = listOf(1.0f, 0.0f, 0.0f, 1.0f)
-m.addInstance(Instance().set("offset", offset).set("tint", tint))
+m.addInstance(Instance().set("offset", listOf(0.25f, 0.10f)).set("tint", listOf(1.0f, 0.0f, 0.0f, 1.0f)))
 `}
 lang="kotlin"
 />
@@ -525,7 +513,7 @@ lang="kotlin"
 
 ---
 
-### Mesh::add_instances
+### Mesh::add_instances \{#add_instances\}
 
 Add many per-instance attribute sets to the mesh in one call.
 
@@ -546,13 +534,10 @@ code={`
 use fragmentcolor::mesh::{Mesh, Instance};
 
 let m = Mesh::new();
-let red:   [f32; 4] = [1.0, 0.0, 0.0, 1.0];
-let green: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
-let blue:  [f32; 4] = [0.0, 0.0, 1.0, 1.0];
 m.add_instances([
-    Instance::new().set("tint", red),
-    Instance::new().set("tint", green),
-    Instance::new().set("tint", blue),
+    Instance::new().set("tint", [1.0, 0.0, 0.0, 1.0]),
+    Instance::new().set("tint", [0.0, 1.0, 0.0, 1.0]),
+    Instance::new().set("tint", [0.0, 0.0, 1.0, 1.0]),
 ]);
 `}
 lang="rust"
@@ -566,10 +551,7 @@ code={`
 import { Mesh, Instance } from "fragmentcolor";
 
 const m = new Mesh();
-const red = [1.0, 0.0, 0.0, 1.0];
-const green = [0.0, 1.0, 0.0, 1.0];
-const blue = [0.0, 0.0, 1.0, 1.0];
-m.addInstances([ new Instance().set("tint", red), new Instance().set("tint", green), new Instance().set("tint", blue), ]);
+m.addInstances([ new Instance().set("tint", [1.0, 0.0, 0.0, 1.0]), new Instance().set("tint", [0.0, 1.0, 0.0, 1.0]), new Instance().set("tint", [0.0, 0.0, 1.0, 1.0]), ]);
 `}
 lang="js"
 />
@@ -582,13 +564,10 @@ code={`
 from fragmentcolor import Mesh, Instance
 
 m = Mesh()
-red = [1.0, 0.0, 0.0, 1.0]
-green = [0.0, 1.0, 0.0, 1.0]
-blue = [0.0, 0.0, 1.0, 1.0]
 m.add_instances([
-    Instance().set("tint", red),
-    Instance().set("tint", green),
-    Instance().set("tint", blue),
+    Instance().set("tint", [1.0, 0.0, 0.0, 1.0]),
+    Instance().set("tint", [0.0, 1.0, 0.0, 1.0]),
+    Instance().set("tint", [0.0, 0.0, 1.0, 1.0]),
 ])
 `}
 lang="python"
@@ -602,13 +581,10 @@ code={`
 import FragmentColor
 
 let m = Mesh()
-let red = [1.0, 0.0, 0.0, 1.0]
-let green = [0.0, 1.0, 0.0, 1.0]
-let blue = [0.0, 0.0, 1.0, 1.0]
 m.addInstances([
-    try Instance().set("tint", red),
-    try Instance().set("tint", green),
-    try Instance().set("tint", blue),
+    try Instance().set("tint", [1.0, 0.0, 0.0, 1.0]),
+    try Instance().set("tint", [0.0, 1.0, 0.0, 1.0]),
+    try Instance().set("tint", [0.0, 0.0, 1.0, 1.0]),
 ])
 `}
 lang="swift"
@@ -622,10 +598,7 @@ code={`
 import org.fragmentcolor.*
 
 val m = Mesh()
-val red = listOf(1.0f, 0.0f, 0.0f, 1.0f)
-val green = listOf(0.0f, 1.0f, 0.0f, 1.0f)
-val blue = listOf(0.0f, 0.0f, 1.0f, 1.0f)
-m.addInstances(listOf(Instance().set("tint", red), Instance().set("tint", green), Instance().set("tint", blue),))
+m.addInstances(listOf(Instance().set("tint", listOf(1.0f, 0.0f, 0.0f, 1.0f)), Instance().set("tint", listOf(0.0f, 1.0f, 0.0f, 1.0f)), Instance().set("tint", listOf(0.0f, 0.0f, 1.0f, 1.0f)),))
 `}
 lang="kotlin"
 />
@@ -637,7 +610,7 @@ lang="kotlin"
 
 ---
 
-### Mesh::clear_instances
+### Mesh::clear_instances \{#clear_instances\}
 
 Reset the mesh's instance state to the default (1 draw, no per-instance data).
 
@@ -658,8 +631,7 @@ code={`
 use fragmentcolor::mesh::{Mesh, Instance};
 
 let m = Mesh::new();
-let red: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
-m.add_instance(Instance::new().set("tint", red));
+m.add_instance(Instance::new().set("tint", [1.0, 0.0, 0.0, 1.0]));
 m.clear_instances(); // back to a single uninstanced draw
 `}
 lang="rust"
@@ -673,9 +645,8 @@ code={`
 import { Mesh, Instance } from "fragmentcolor";
 
 const m = new Mesh();
-const red = [1.0, 0.0, 0.0, 1.0];
-m.addInstance(new Instance().set("tint", red));
-m.clearInstances(); // back to a single uninstanced draw;
+m.addInstance(new Instance().set("tint", [1.0, 0.0, 0.0, 1.0]));
+m.clearInstances(); // back to a single uninstanced draw
 `}
 lang="js"
 />
@@ -688,9 +659,8 @@ code={`
 from fragmentcolor import Mesh, Instance
 
 m = Mesh()
-red = [1.0, 0.0, 0.0, 1.0]
-m.add_instance(Instance().set("tint", red))
-m.clear_instances(); # back to a single uninstanced draw
+m.add_instance(Instance().set("tint", [1.0, 0.0, 0.0, 1.0]))
+m.clear_instances() # back to a single uninstanced draw
 `}
 lang="python"
 />
@@ -703,9 +673,8 @@ code={`
 import FragmentColor
 
 let m = Mesh()
-let red = [1.0, 0.0, 0.0, 1.0]
-try m.addInstance(Instance().set("tint", red))
-m.clearInstances(); // back to a single uninstanced draw
+try m.addInstance(Instance().set("tint", [1.0, 0.0, 0.0, 1.0]))
+m.clearInstances() // back to a single uninstanced draw
 `}
 lang="swift"
 />
@@ -718,9 +687,8 @@ code={`
 import org.fragmentcolor.*
 
 val m = Mesh()
-val red = listOf(1.0f, 0.0f, 0.0f, 1.0f)
-m.addInstance(Instance().set("tint", red))
-m.clearInstances(); // back to a single uninstanced draw
+m.addInstance(Instance().set("tint", listOf(1.0f, 0.0f, 0.0f, 1.0f)))
+m.clearInstances() // back to a single uninstanced draw
 `}
 lang="kotlin"
 />
@@ -732,7 +700,7 @@ lang="kotlin"
 
 ---
 
-### Mesh::set_instance_count
+### Mesh::set_instance_count \{#set_instance_count\}
 
 Override how many instances to draw without providing per-instance attributes.
 
@@ -820,7 +788,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val m = Mesh()
-m.addVertices(listOf(Vertex(listOf(-0.01f, -0.01f)), Vertex(listOf(0.01f, -0.01f)), Vertex(listOf(0.00f, 0.01f))))
+m.addVertices(listOf(listOf(-0.01f, -0.01f), listOf(0.01f, -0.01f), listOf(0.00f, 0.01f)))
 // Draw one million instances, fetching per-particle data from a storage buffer.
 m.setInstanceCount(1_000_000u)
 `}
@@ -834,7 +802,7 @@ lang="kotlin"
 
 ---
 
-### Mesh::set_indices
+### Mesh::set_indices \{#set_indices\}
 
 Provide the index buffer directly, bypassing the mesh's automatic vertex
 dedup pass. Use this when an asset already carries its own indexing: glTF
@@ -863,15 +831,11 @@ use fragmentcolor::{Mesh, Vertex};
 // happen to carry distinct UVs (only positions repeat), so we keep them
 // all and reference each by index.
 let mesh = Mesh::new();
-let uv00: [f32; 2] = [0.0, 0.0];
-let uv10: [f32; 2] = [1.0, 0.0];
-let uv11: [f32; 2] = [1.0, 1.0];
-let uv01: [f32; 2] = [0.0, 1.0];
 mesh.add_vertices([
-    Vertex::new([-0.5, -0.5]).set("uv", uv00),
-    Vertex::new([ 0.5, -0.5]).set("uv", uv10),
-    Vertex::new([ 0.5,  0.5]).set("uv", uv11),
-    Vertex::new([-0.5,  0.5]).set("uv", uv01),
+    Vertex::new([-0.5, -0.5]).set("uv", [0.0, 0.0]),
+    Vertex::new([ 0.5, -0.5]).set("uv", [1.0, 0.0]),
+    Vertex::new([ 0.5,  0.5]).set("uv", [1.0, 1.0]),
+    Vertex::new([-0.5,  0.5]).set("uv", [0.0, 1.0]),
 ]);
 mesh.set_indices([0, 1, 2, 0, 2, 3]);
 `}
@@ -889,11 +853,7 @@ import { Mesh, Vertex } from "fragmentcolor";
 // happen to carry distinct UVs (only positions repeat), so we keep them
 // all and reference each by index.
 const mesh = new Mesh();
-const uv00 = [0.0, 0.0];
-const uv10 = [1.0, 0.0];
-const uv11 = [1.0, 1.0];
-const uv01 = [0.0, 1.0];
-mesh.addVertices([ new Vertex([-0.5, -0.5]).set("uv", uv00), new Vertex([ 0.5, -0.5]).set("uv", uv10), new Vertex([ 0.5,  0.5]).set("uv", uv11), new Vertex([-0.5,  0.5]).set("uv", uv01), ]);
+mesh.addVertices([ new Vertex([-0.5, -0.5]).set("uv", [0.0, 0.0]), new Vertex([ 0.5, -0.5]).set("uv", [1.0, 0.0]), new Vertex([ 0.5,  0.5]).set("uv", [1.0, 1.0]), new Vertex([-0.5,  0.5]).set("uv", [0.0, 1.0]), ]);
 mesh.setIndices([0, 1, 2, 0, 2, 3]);
 `}
 lang="js"
@@ -910,15 +870,11 @@ from fragmentcolor import Mesh, Vertex
 # happen to carry distinct UVs (only positions repeat), so we keep them
 # all and reference each by index.
 mesh = Mesh()
-uv00 = [0.0, 0.0]
-uv10 = [1.0, 0.0]
-uv11 = [1.0, 1.0]
-uv01 = [0.0, 1.0]
 mesh.add_vertices([
-    Vertex([-0.5, -0.5]).set("uv", uv00),
-    Vertex([ 0.5, -0.5]).set("uv", uv10),
-    Vertex([ 0.5,  0.5]).set("uv", uv11),
-    Vertex([-0.5,  0.5]).set("uv", uv01),
+    Vertex([-0.5, -0.5]).set("uv", [0.0, 0.0]),
+    Vertex([ 0.5, -0.5]).set("uv", [1.0, 0.0]),
+    Vertex([ 0.5,  0.5]).set("uv", [1.0, 1.0]),
+    Vertex([-0.5,  0.5]).set("uv", [0.0, 1.0]),
 ])
 mesh.set_indices([0, 1, 2, 0, 2, 3])
 `}
@@ -936,17 +892,13 @@ import FragmentColor
 // happen to carry distinct UVs (only positions repeat), so we keep them
 // all and reference each by index.
 let mesh = Mesh()
-let uv00 = [0.0, 0.0]
-let uv10 = [1.0, 0.0]
-let uv11 = [1.0, 1.0]
-let uv01 = [0.0, 1.0]
 try mesh.addVertices([
-    try Vertex([-0.5, -0.5]).set("uv", uv00),
-    try Vertex([ 0.5, -0.5]).set("uv", uv10),
-    try Vertex([ 0.5,  0.5]).set("uv", uv11),
-    try Vertex([-0.5,  0.5]).set("uv", uv01),
+    try Vertex([-0.5, -0.5]).set("uv", [0.0, 0.0]),
+    try Vertex([ 0.5, -0.5]).set("uv", [1.0, 0.0]),
+    try Vertex([ 0.5,  0.5]).set("uv", [1.0, 1.0]),
+    try Vertex([-0.5,  0.5]).set("uv", [0.0, 1.0]),
 ])
-try mesh.setIndices([0, 1, 2, 0, 2, 3])
+mesh.setIndices([0, 1, 2, 0, 2, 3])
 `}
 lang="swift"
 />
@@ -962,11 +914,7 @@ import org.fragmentcolor.*
 // happen to carry distinct UVs (only positions repeat), so we keep them
 // all and reference each by index.
 val mesh = Mesh()
-val uv00 = listOf(0.0f, 0.0f)
-val uv10 = listOf(1.0f, 0.0f)
-val uv11 = listOf(1.0f, 1.0f)
-val uv01 = listOf(0.0f, 1.0f)
-mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f)).set("uv", uv00), Vertex(listOf(0.5f, -0.5f)).set("uv", uv10), Vertex(listOf(0.5f, 0.5f)).set("uv", uv11), Vertex(listOf(-0.5f, 0.5f)).set("uv", uv01)))
+mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f)).set("uv", listOf(0.0f, 0.0f)), Vertex(listOf(0.5f, -0.5f)).set("uv", listOf(1.0f, 0.0f)), Vertex(listOf(0.5f, 0.5f)).set("uv", listOf(1.0f, 1.0f)), Vertex(listOf(-0.5f, 0.5f)).set("uv", listOf(0.0f, 1.0f))))
 mesh.setIndices(listOf(0u, 1u, 2u, 0u, 2u, 3u))
 `}
 lang="kotlin"
@@ -979,7 +927,7 @@ lang="kotlin"
 
 ---
 
-### Mesh::clear_indices
+### Mesh::clear_indices \{#clear_indices\}
 
 Drop the user-supplied index buffer and return to auto-derived indexing.
 
@@ -1019,7 +967,7 @@ import { Mesh, Vertex } from "fragmentcolor";
 const mesh = new Mesh();
 mesh.addVertices([ new Vertex([-0.5, -0.5]), new Vertex([ 0.5, -0.5]), new Vertex([ 0.0,  0.5]), ]);
 mesh.setIndices([0, 1, 2]);
-mesh.clearIndices(); // back to auto-derived dedup;
+mesh.clearIndices(); // back to auto-derived dedup
 `}
 lang="js"
 />
@@ -1038,7 +986,7 @@ mesh.add_vertices([
     Vertex([ 0.0,  0.5]),
 ])
 mesh.set_indices([0, 1, 2])
-mesh.clear_indices(); # back to auto-derived dedup
+mesh.clear_indices() # back to auto-derived dedup
 `}
 lang="python"
 />
@@ -1056,8 +1004,8 @@ try mesh.addVertices([
     try Vertex([ 0.5, -0.5]),
     try Vertex([ 0.0,  0.5]),
 ])
-try mesh.setIndices([0, 1, 2])
-mesh.clearIndices(); // back to auto-derived dedup
+mesh.setIndices([0, 1, 2])
+mesh.clearIndices() // back to auto-derived dedup
 `}
 lang="swift"
 />
@@ -1072,7 +1020,7 @@ import org.fragmentcolor.*
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f)), Vertex(listOf(0.5f, -0.5f)), Vertex(listOf(0.0f, 0.5f))))
 mesh.setIndices(listOf(0u, 1u, 2u))
-mesh.clearIndices(); // back to auto-derived dedup
+mesh.clearIndices() // back to auto-derived dedup
 `}
 lang="kotlin"
 />

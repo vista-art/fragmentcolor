@@ -29,36 +29,80 @@
 docs/api/core/renderer/hidden/render_mobile.md=>docs/api/core/renderer/render.md: uniffi cannot marshal &impl Renderable/Target; the single mobile render entry takes RenderableHandle + TargetHandle uniffi::Enums and Swift/Kotlin extensions overload the natural shapes back on top.
 
 # Shader::new accepts both `String` and `Vec<String>` via `impl Into<ShaderInput>`.
-# Uniffi cannot marshal `impl Into`, so mobile splits this into Shader.new(source)
-# and Shader.compose(parts). Both forms credit the canonical Shader::new docs.
-docs/api/core/shader/hidden/compose_mobile.md=>docs/api/core/shader/new.md: Mobile splits Shader::new's impl-Into-based overload into a separate Shader.compose constructor.
+# Uniffi cannot marshal `impl Into`, so mobile splits this into Shader(source)
+# and the raw Shader.compose(parts) constructor. The Swift and Kotlin extensions
+# spell the array form Shader([parts]). Both forms credit the canonical Shader::new docs.
+docs/api/core/shader/hidden/compose_mobile.md=>docs/api/core/shader/new.md: Mobile splits Shader::new's impl-Into-based overload into a separate Shader.compose constructor; Swift/Kotlin extensions spell it Shader([parts]).
 
-# Shader::fetch is async; uniffi 0.31 does not support async constructors, so
-# both the single-part (fetch_mobile) and multi-part (fetch_compose_mobile)
-# bindings are expressed as async instance methods. Extension shims provide
-# static-factory spellings on Swift and Kotlin.
-docs/api/core/shader/hidden/fetch_mobile.md=>docs/api/core/shader/fetch.md: Mobile exposes fetch as an async instance method (uniffi 0.31 lacks async constructors); Swift/Kotlin shims wrap it as a static factory.
-docs/api/core/shader/hidden/fetch_compose_mobile.md=>docs/api/core/shader/fetch.md: Mobile multi-part fetch variant; same async-method workaround as fetch_mobile.
+# Scene::load accepts a path or bytes via `impl Into<SceneSource>`. Mobile keeps
+# Scene.load(path) and adds Scene.loadBytes(bytes); both credit the Scene::load docs.
+docs/api/scene/scene/hidden/load_bytes_mobile.md=>docs/api/scene/scene/load.md: Mobile splits Scene::load's impl-Into-based overload into a separate Scene.loadBytes constructor.
 
-# TextureTarget::texture() — the canonical doc lives at
-# docs/api/targets/texture_target/texture.md and the Web binding is the
-# `_js` shim under hidden/, so the suffix-strip rule already credits Web
-# without an explicit alias entry.
+# Shader::set_registry is a static method returning nothing. uniffi has no static
+# methods, so mobile sets the registry through a useRegistry constructor and the
+# Swift/Kotlin extensions spell it Shader.setRegistry(baseUrl).
+docs/api/core/shader/hidden/use_registry_mobile.md=>docs/api/core/shader/set_registry.md: Mobile sets the registry through a useRegistry constructor; Swift/Kotlin extensions expose Shader.setRegistry with no return value.
+
+# Shader::fetch is async, and uniffi 0.32 can't make a primary constructor async,
+# so both the single-part (fetch_mobile) and multi-part (fetch_compose_mobile)
+# bindings are async instance methods. The Swift and Kotlin extensions spell
+# both as the static Shader.fetch(...).
+docs/api/core/shader/hidden/fetch_mobile.md=>docs/api/core/shader/fetch.md: Mobile exposes fetch as an async instance method (uniffi 0.32 has no async primary constructor); Swift/Kotlin extensions spell it Shader.fetch(input).
+docs/api/core/shader/hidden/fetch_compose_mobile.md=>docs/api/core/shader/fetch.md: Mobile multi-part fetch variant, the raw fetchCompose method; Swift/Kotlin extensions spell it Shader.fetch(parts).
+
+# Pass::set_depth_target accepts a TextureTarget or a depth Texture via
+# `impl TryInto<DepthTarget>`. Mobile takes the TextureTarget through
+# setDepthTarget(TargetHandle) and the Texture through setDepthTexture;
+# Swift/Kotlin extensions spell both as setDepthTarget(...).
+docs/api/core/pass/hidden/set_depth_texture_mobile.md=>docs/api/core/pass/set_depth_target.md: Mobile splits the Texture form of Pass::set_depth_target into a separate setDepthTexture method.
+
+# Pass::set_target takes a TextureTarget or a Texture in the same way. Mobile takes the
+# TextureTarget through setTarget(TargetHandle) and the Texture through setTargetTexture;
+# Swift/Kotlin extensions spell both as setTarget(...).
+docs/api/core/pass/hidden/set_target_texture_mobile.md=>docs/api/core/pass/set_target.md: Mobile splits the Texture form of Pass::set_target into a separate setTargetTexture method.
+
+# Material's five texture setters take impl Into<TextureInput>: a Texture, or bytes, a
+# path, a URL or a mipmap chain that upload when the scene loads. Mobile takes the
+# Texture through <slot>Texture(texture) and the other inputs through <slot>Source(input);
+# Swift/Kotlin extensions spell both as <slot>Texture(...).
+docs/api/scene/material/hidden/base_color_source_mobile.md=>docs/api/scene/material/base_color_texture.md: Mobile splits the texture input form of Material::base_color_texture into a separate baseColorSource method.
+docs/api/scene/material/hidden/metallic_roughness_source_mobile.md=>docs/api/scene/material/metallic_roughness_texture.md: Mobile splits the texture input form of Material::metallic_roughness_texture into a separate metallicRoughnessSource method.
+docs/api/scene/material/hidden/normal_source_mobile.md=>docs/api/scene/material/normal_texture.md: Mobile splits the texture input form of Material::normal_texture into a separate normalSource method.
+docs/api/scene/material/hidden/occlusion_source_mobile.md=>docs/api/scene/material/occlusion_texture.md: Mobile splits the texture input form of Material::occlusion_texture into a separate occlusionSource method.
+docs/api/scene/material/hidden/emissive_source_mobile.md=>docs/api/scene/material/emissive_texture.md: Mobile splits the texture input form of Material::emissive_texture into a separate emissiveSource method.
+
+# ---- Types documented through their methods (no page of their own) ----
 #
-# Native platforms (Python / Swift / Kotlin) currently lack the binding —
-# the offscreen TextureTarget is passed directly to renderer.render() and
-# the texture binding is implicit there — so the gap is acknowledged in
-# PARITY_BASELINE rather than waived here.
+# `AlphaMode` exists in every binding. Its three values are documented on
+# docs/api/scene/material/alpha_mode.md, the one method that takes it, like the
+# other value enums (`TextureFormat`, `CompareFunction`).
+#
+# `LightKind` is what Rust's `Light::kind` returns. JS and Python also export
+# the enum, Swift and Kotlin don't, and `Light.kind()` returns the kind's name
+# as a string ("directional", "point", "spot") in every binding. The values
+# are documented on docs/api/scene/light/kind.md. Returning `LightKind` from
+# every binding is a breaking change, so it waits for 0.13.
+
+# ---- Old type names kept as deprecated aliases ----
+#
+# Each binding's window and texture targets and `TextureRegion` carry the
+# Rust name. The old names stay as aliases so existing code keeps working,
+# and no doc shows them:
+#   JS:     CanvasTarget -> WindowTarget
+#   Python: RenderCanvasTarget -> WindowTarget
+#   Swift/Kotlin: MobileWindowTarget -> WindowTarget, MobileTextureTarget -> TextureTarget,
+#           TextureRegionMobile -> TextureRegion
 
 # ---- Trait-level docs (no platform binding required) ----
 #
-# `Target` is a Rust trait; uniffi/wasm_bindgen/pyo3 cannot expose traits over
-# the FFI boundary. The trait's methods are conceptually available on every
-# concrete target type (WindowTarget, TextureTarget, RenderCanvasTarget,
-# CAMetalLayer-backed targets, etc.) — parity is enforced via the concrete
-# `targets/window_target/*.md` and `targets/texture_target/*.md` entries.
-# These trait docs are kept for human reference but do not require their own
-# bindings.
+# `Target` is a sealed Rust trait. uniffi 0.32 can export a trait and lets Swift
+# and Kotlin implement one, but wasm_bindgen and pyo3 can't, and the crate-private
+# `FrameSource` supertrait keeps every implementation inside the crate anyway.
+# Its methods exist on every concrete target type (WindowTarget and TextureTarget
+# in every binding), so the concrete
+# `targets/window_target/*.md` and `targets/texture_target/*.md` entries enforce
+# parity. These trait docs are kept for human reference and need no bindings
+# of their own.
 docs/api/targets/target/size.md::Trait method; parity enforced via concrete WindowTarget/TextureTarget docs.
 docs/api/targets/target/resize.md::Trait method; parity enforced via concrete WindowTarget/TextureTarget docs.
 docs/api/targets/target/get_image.md::Trait method; parity enforced via concrete WindowTarget/TextureTarget docs.
@@ -77,3 +121,32 @@ docs/api/targets/target/get_image.md::Trait method; parity enforced via concrete
 # frames host-side and upload via Texture.write() / Texture.write_region()
 # instead. See docs/api/core/renderer/hidden/create_external_texture_py.md.
 docs/api/core/renderer/create_external_texture.md:web,swift,kotlin:Python lacks a portable native video-frame source; use Texture.write/write_region to upload decoded frames instead.
+
+# ---- Type names (binding-only classes) ----
+#
+# scripts/binding_checks.rs fails the build when a binding declares a class that
+# the Rust crate root does not export in a plain Rust build. It reads the generated
+# Swift wrapper (Kotlin gets the same uniffi names), the Python stub and the wasm
+# exports. Each class below is an exception with its reason:
+#   type <ClassName>:<platforms>:<reason>
+# A class from the uniffi wrapper lists swift and kotlin. An entry for a class no
+# binding declares, or for a Rust root export, fails the build too.
+
+type RenderableHandle:swift,kotlin:uniffi can't marshal &impl Renderable, so mobile render and load take this enum; the Swift and Kotlin extensions overload the natural shapes on top.
+type TargetHandle:swift,kotlin:uniffi can't marshal &impl Target, so mobile render and the pass target setters take this enum; the Swift and Kotlin extensions overload the natural shapes on top.
+type SceneObjectHandle:swift,kotlin:uniffi can't marshal &impl SceneObject, so mobile Scene.add and Pass.add take this enum; the Swift and Kotlin extensions overload Model, Camera and Light on top.
+type PassTarget:swift,kotlin:uniffi can't marshal impl Into<PassRef>, so the mobile Scene methods that pick a pass take this index-or-name enum.
+type TextureInputMobile:swift,kotlin:uniffi can't marshal impl Into<TextureInput>, so the mobile texture inputs take this enum, which mirrors TextureData without Empty.
+type UniformValue:swift,kotlin:uniffi can't marshal impl Into<UniformData>, so mobile Shader.set takes this enum; the Swift and Kotlin extensions overload set on top.
+type UniformData:swift,kotlin:mobile Shader.get returns the uniform value itself; Rust keeps UniformData crate-private and reads values through Shader::get<T>.
+type ArrayElement:swift,kotlin:part of UniformData, which mobile Shader.get returns and Rust keeps crate-private.
+type PushEntry:swift,kotlin:part of UniformData, which mobile Shader.get returns and Rust keeps crate-private.
+type StorageAccess:swift,kotlin:part of UniformData, which mobile Shader.get returns and Rust keeps crate-private.
+type StorageEntry:swift,kotlin:part of UniformData, which mobile Shader.get returns and Rust keeps crate-private.
+type StructField:swift,kotlin:part of UniformData, which mobile Shader.get returns and Rust keeps crate-private.
+type StructShape:swift,kotlin:part of UniformData, which mobile Shader.get returns and Rust keeps crate-private.
+type ExternalTextureHandle:web,swift,kotlin:Renderer.createExternalTexture returns this stub on the platforms with a native video frame source; Rust has no external texture API yet.
+type RenderCanvasFrame:python:the frame object of the rendercanvas present protocol, which only Python uses.
+type InvalidInputError:python:Python raises a FragmentColorError subclass for texture bytes that don't match their size or format; Rust reports a TextureError.
+type UnsupportedMipmapFormatError:python:Python raises a FragmentColorError subclass for a format the CPU mipmap builder can't fill; Rust reports a TextureError.
+type MalformedImageError:python:Python raises a FragmentColorError subclass for image bytes that can't be decoded; Rust reports a TextureError.

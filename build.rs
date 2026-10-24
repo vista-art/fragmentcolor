@@ -2,14 +2,29 @@ use cfg_aliases::cfg_aliases;
 
 fn main() {
     configure_aliases();
-    set_build_env();
+    let checkout = is_repo_checkout();
+    set_build_env(checkout);
     embedded_shaders::generate();
-    generate_docs();
-    // Generate language-specific READMEs from templates + Rust examples
-    println!("cargo::rerun-if-changed=README.md");
-    println!("cargo::rerun-if-changed=platforms/web/README.tpl.md");
-    println!("cargo::rerun-if-changed=platforms/python/README.tpl.md");
-    readme::generate_readmes();
+    if checkout {
+        generate_docs();
+        // Generate language-specific READMEs from templates + Rust examples
+        println!("cargo::rerun-if-changed=README.md");
+        println!("cargo::rerun-if-changed=platforms/web/README.tpl.md");
+        println!("cargo::rerun-if-changed=platforms/python/README.tpl.md");
+        readme::generate_readmes();
+    }
+}
+
+/// True in a FragmentColor repository checkout.
+///
+/// Only a checkout runs the docs pipeline, which writes into the source tree.
+/// Packaged sources (crates.io, docs.rs, a vendored tree) can be read-only, so
+/// their builds skip the pipeline and write nothing outside OUT_DIR. A worktree
+/// keeps `.git` as a file and a clone as a directory, and both count as checkouts.
+fn is_repo_checkout() -> bool {
+    println!("cargo::rerun-if-env-changed=DOCS_RS");
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    std::env::var_os("DOCS_RS").is_none() && manifest_dir.join(".git").exists()
 }
 
 /// Configures custom cfg aliases for conditional compilation
@@ -36,15 +51,20 @@ fn configure_aliases() {
 }
 
 /// Capture build metadata for runtime diagnostics (e.g., GPU error hook)
-fn set_build_env() {
-    // Git commit hash (short)
-    let git_hash = std::process::Command::new("git")
-        .args(["rev-parse", "--short=12", "HEAD"])
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| "unknown".to_string());
+fn set_build_env(checkout: bool) {
+    // Git commit hash (short). A packaged crate reads the commit `cargo package`
+    // recorded, so a vendored copy never reports the hash of the repo around it.
+    let git_hash = if checkout {
+        std::process::Command::new("git")
+            .args(["rev-parse", "--short=12", "HEAD"])
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.trim().to_string())
+    } else {
+        packaged_git_hash()
+    }
+    .unwrap_or_else(|| "unknown".to_string());
     println!("cargo::rustc-env=FC_GIT_HASH={}", git_hash);
 
     // Build timestamp (unix epoch seconds)
@@ -55,7 +75,18 @@ fn set_build_env() {
     println!("cargo::rustc-env=FC_BUILD_TIME={}", build_time);
 
     // Rerun when HEAD changes
-    println!("cargo::rerun-if-changed=.git/HEAD");
+    if checkout {
+        println!("cargo::rerun-if-changed=.git/HEAD");
+    }
+}
+
+/// Short commit hash from the `.cargo_vcs_info.json` that `cargo package` writes.
+fn packaged_git_hash() -> Option<String> {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".cargo_vcs_info.json");
+    let info = std::fs::read_to_string(path).ok()?;
+    let (_, rest) = info.split_once("\"sha1\"")?;
+    let sha = rest.split('"').nth(1)?;
+    Some(sha.chars().take(12).collect())
 }
 
 /// This function validates all the API documentation and breaks
@@ -89,7 +120,6 @@ fn generate_docs() {
     let catalog = codegen::build_catalog();
     let api_map = codegen::scan_api(&catalog);
     codegen::export_api_map(&api_map);
-    codegen::export_api_objects(&catalog);
     println!("✅ API map successfully generated!\n");
 
     println!("🔎 Validating documentation...");
@@ -131,17 +161,35 @@ fn generate_docs() {
     println!("cargo::rerun-if-changed=src");
     println!("cargo::rerun-if-changed=docs/api");
     parity::print_report(&parity_report, mode, &baseline_path);
+
+    // Shape fingerprints warn in this release. FC_PARITY_REWRITE_BASELINE=1
+    // rewrites docs/api/PARITY_SHAPES too, and a missing file is bootstrapped.
+    let shapes_path = workspace.join("docs/api/PARITY_SHAPES");
+    let shapes_mode = if matches!(mode, parity::Mode::RewriteBaseline) || !shapes_path.exists() {
+        parity::Mode::RewriteBaseline
+    } else {
+        parity::Mode::Warn
+    };
+    println!("cargo::rerun-if-changed=docs/api/PARITY_SHAPES");
+    let shapes = parity::shapes::audit(&workspace, &catalog.reflection);
+    parity::shapes::report(&shapes, shapes_mode, &shapes_path);
     println!(
         "==> docs/api/PARITY drives intentional divergence; PARITY_BASELINE tracks Phase-3 backlog.\n"
     );
 
     println!("🌎 Exporting website (examples + pages)...");
+    convert::install(&catalog.reflection);
+    swift::install(&catalog.reflection);
+    kotlin::install(&catalog.reflection);
 
     println!("==> website::export_examples_and_pages()");
     let outcome = website::export_examples_and_pages(&catalog, &api_map);
 
     println!("==> website::cleanup_site()");
     website::cleanup_site(&outcome.expected);
+
+    println!("==> website::cleanup_examples()");
+    website::cleanup_examples(&outcome);
 
     println!("==> website::write_healthcheck_aggregators()");
     website::write_healthcheck_aggregators(
@@ -153,17 +201,30 @@ fn generate_docs() {
 
     println!("✅ Website export done!\n");
 
+    println!("🐍 Generating Python type stubs...");
+    python_stubs::generate(&workspace, &catalog.reflection);
+    println!("✅ Python stubs written.\n");
+
+    println!("🔤 Checking binding type names and JS errors...");
+    println!("cargo::rerun-if-changed=platforms/swift/Sources/FragmentColor/generated");
+    binding_checks::check(&workspace, &catalog.reflection);
+    println!();
+
     println!("📚 Building tutorials manifest...");
     tutorials::build();
     println!("✅ Tutorials manifest written.\n");
 }
 
 include!("scripts/no_panics.rs");
+include!("scripts/reflect.rs");
 include!("scripts/codegen.rs");
 include!("scripts/convert.rs");
+include!("scripts/example.rs");
+include!("scripts/source_text.rs");
 include!("scripts/swift.rs");
 include!("scripts/kotlin.rs");
 include!("scripts/docs.rs");
+include!("scripts/links.rs");
 include!("scripts/validation.rs");
 include!("scripts/parity.rs");
 include!("scripts/website.rs");
@@ -171,3 +232,5 @@ include!("scripts/tutorials.rs");
 include!("scripts/meta.rs");
 include!("scripts/readme.rs");
 include!("scripts/embedded_shaders.rs");
+include!("scripts/python_stubs.rs");
+include!("scripts/binding_checks.rs");

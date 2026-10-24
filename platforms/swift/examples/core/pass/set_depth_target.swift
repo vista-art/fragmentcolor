@@ -12,10 +12,10 @@ try mesh.addVertex([1.0, 0.0, 0.0])
 try mesh.addVertex([0.0, 1.0, 0.0])
 try mesh.addVertex([1.0, 1.0, 0.0])
 let shader = Shader.fromMesh(mesh)
-let pass = Pass("blobs"); pass.addShader(shader)
+let pass = Pass.fromShader("blobs", shader)
 
-// Depth-test on — closer fragments win, the pass writes to the depth
-// buffer so subsequent draws within the same pass see the depth.
+// Depth test on: closer fragments win, and the pass writes the depth
+// buffer, so later draws in the same pass see it.
 try pass.setDepthTarget(depth)
 
 try renderer.render(pass, target)

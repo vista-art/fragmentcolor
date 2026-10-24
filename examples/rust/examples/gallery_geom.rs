@@ -2,7 +2,7 @@
 //!
 //! Renders one 256x256 PNG per geometry helper in
 //! `docs/website/public/shaders/geom/`. Each entry pulls a single registry
-//! slug into a fullscreen fragment that calls the helper and visualises the
+//! slug into a fullscreen fragment that calls the helper and visualizes the
 //! result over a muted background.
 //!
 //! Run with:
@@ -143,7 +143,7 @@ fn compositions() -> Vec<Composition> {
     let p = (in.uv - vec2<f32>(0.5)) * 2.0;
     let m = rotate_2d(0.7);
     let q = m * p;
-    // Visualise rotated grid as stripes along q.x.
+    // Visualize rotated grid as stripes along q.x.
     let stripes = 0.5 + 0.5 * sin(q.x * 18.84);
     let bg = vec3<f32>(0.10, 0.12, 0.18);
     let fg = vec3<f32>(0.85, 0.55, 0.95);
@@ -195,7 +195,7 @@ fn compositions() -> Vec<Composition> {
         },
         Composition {
             name: "tbn_from_normal",
-            description: "TBN basis from a UV-driven normal: rows visualised as tangent (R), bitangent (G), normal (B).",
+            description: "TBN basis from a UV-driven normal: rows visualized as tangent (R), bitangent (G), normal (B).",
             slugs: &["geom/tbn_from_normal"],
             fragment: r#"
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {

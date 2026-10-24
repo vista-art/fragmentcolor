@@ -7,9 +7,9 @@ let albedo_bytes = [
     230, 180, 100, 255,
     255, 220, 150, 255,
 ]
-let albedo = try await renderer.createTexture((albedo_bytes, [2, 2]))
+let albedo = try await renderer.createTexture(albedo_bytes, [2, 2])
 
-// Every Material that points at """albedo""" reuses the same uploaded GPU
+// Every Material that points at `albedo` reuses the same uploaded GPU
 // texture; passing the same handle into N Material instances costs one
 // upload and N shader-uniform references.
 let blob = Material.pbr().baseColorTexture(albedo)

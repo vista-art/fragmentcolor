@@ -54,6 +54,19 @@ jobs:
           chmod +x ./tools/healthcheck
           ./tools/healthcheck ios
 
+      # Swift Package Manager compiles the committed wrapper straight from the
+      # release tag, so it has to match what build_ios generates from this commit.
+      - name: Check the committed Swift wrapper is current
+        if: ${{ !cancelled() }}
+        run: |
+          GENERATED=platforms/swift/Sources/FragmentColor/generated
+          if [ -n "$(git status --porcelain -- "$GENERATED")" ]; then
+            git status --short -- "$GENERATED"
+            git diff --stat -- "$GENERATED"
+            echo "::error::$GENERATED is out of date. Run ./fc build_ios and commit the result, or commit the copy in this run's swift-bindings artifact."
+            exit 1
+          fi
+
       - name: Upload generated Swift bindings (for inspection)
         if: always()
         uses: actions/upload-artifact@v4

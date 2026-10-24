@@ -2,50 +2,57 @@
 
 Realize every pending GPU upload referenced by a renderable. Material's
 texture setters (`base_color_texture`, `metallic_roughness_texture`, …)
-accept paths, bytes, URLs, and `DynamicImage` values in addition to
+accept paths, bytes, and URLs in addition to
 already-uploaded [`Texture`](https://fragmentcolor.org/api/texture/texture)
 handles; the path / bytes / URL variants are stored on the Material's
 Shader as *pending* uploads. `load` walks every Shader the renderable
 visits, drains its pending list, calls
-[`Renderer::create_texture`](https://fragmentcolor.org/api/core/renderer/create_texture)
+[`Renderer::create_texture`](https://fragmentcolor.org/api/core/renderer#create_texture)
 for each, and writes the resulting `Texture` into the matching uniform.
 
-[`Renderer::render`](https://fragmentcolor.org/api/core/renderer/render)
-calls `load` automatically the first time it sees a renderable with
-pending uploads, so explicit `load` is optional. Reach for it when you
-want to amortize the decode + upload cost outside the render loop, for
-example in a loading screen that prepares the scene before the first
-frame goes out.
+On native targets, [`Renderer::render`](https://fragmentcolor.org/api/core/renderer)
+runs `load` first whenever the renderable has pending uploads, so an
+explicit `load` is optional there. Reach for it when you want to pay the
+decode and upload cost outside the render loop, for example in a loading
+screen that prepares the scene before the first frame goes out.
+
+On the web, `render` can't wait for an upload, so it leaves pending uploads
+alone. Await `load` before the first `render`. Until then, a PBR Material
+draws with its 1×1 default maps.
 
 ## Example
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+# let image = std::fs::read("examples/assets/logo.png")?;
+# /*[js]
+# const image = new Uint8Array(await (await fetch("/healthcheck/public/favicon.png")).arrayBuffer());
+# */
+# /*[python]
+# image = open("examples/assets/logo.png", "rb").read()
+# */
+# /*[swift]
+# import Foundation
+# let image = try Data(contentsOf: URL(fileURLWithPath: "examples/assets/logo.png"))
+# */
+# /*[kotlin]
+# val image = java.io.File("examples/assets/logo.png").readBytes()
+# */
 use fragmentcolor::{Material, Mesh, Model, Renderer, Scene, Vertex};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
 
 let mesh = Mesh::new();
-mesh.add_vertex(
-    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
-);
-// Raw 2×2 RGBA pixel bytes — uploaded lazily by `Renderer::load` below.
-// In practice the loader hands the setter encoded PNG/JPEG bytes (from a
-// BIN chunk) or a file path (from a URI); the same `Into<TextureInput>`
-// vocabulary covers all of them.
-let red_pixels: Vec<u8> = vec![
-    255,   0,   0, 255,    0, 255,   0, 255,
-      0,   0, 255, 255,  255, 255, 255, 255,
-];
-let red_tex = renderer.create_texture((red_pixels, [2, 2])).await?;
-let material = Material::pbr().base_color_texture(&red_tex);
+mesh.add_vertex(Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]));
+
+// The material keeps the encoded image as a pending upload.
+let material = Material::pbr().base_color_texture(&image);
 let model = Model::new(mesh, material);
 let scene = Scene::new();
 scene.add(&model)?;
 
-// Eager prewarm — uploads the pending texture(s) so the next render is
-// GPU-only.
+// Decode and upload it now, so the first render only draws.
 renderer.load(&scene).await?;
 renderer.render(&scene, &target)?;
 # Ok(())

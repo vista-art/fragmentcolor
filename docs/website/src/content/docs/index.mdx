@@ -3,28 +3,10 @@ title: Welcome to FragmentColor
 description: FragmentColor - Universal GPU abstraction for Rust, JavaScript, Python, Swift, and Kotlin.
 template: splash
 hero:
+  title: FragmentColor
   tagline: Universal GPU abstraction for Rust, JavaScript, Python, Swift, and Kotlin.
-  image:
-    file: ../../assets/houston.webp
-  actions:
-    - text: Github
-      link: https://github.com/vista-art/fragmentcolor
-      icon: github
-      variant: primary
-    - text: Documentation
-      link: /welcome
-      icon: document
-      variant: secondary
-    - text: Demos
-      link: /demos
-      icon: rocket
-      variant: minimal
 ---
 
-import { Code, Tabs, TabItem } from "@astrojs/starlight/components";
-import ShaderGallery from "../../components/ShaderGallery.astro";
-import Examples from "../../components/Examples.mdx";
+import Playground from "../../components/Playground.astro";
 
-<ShaderGallery mode="hero" />
-
-<Examples />
+<Playground mode="landing" />

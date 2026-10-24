@@ -5,7 +5,7 @@ let shader = try Shader("""
 fn cs_main() { }
 
 """)
-let pass = Pass("p"); pass.addShader(shader)
+let pass = Pass.fromShader("p", shader)
 
 // Call the method
 let is_compute = pass.isCompute()

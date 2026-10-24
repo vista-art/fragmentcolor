@@ -1,8 +1,12 @@
-import init, { Renderer, Shader, Pass, Mesh, Vertex, Instance, set_log_level } from "fragmentcolor";
+import init, {
+  Renderer, Shader, Pass, Mesh, Vertex, Instance, Scene, Model, Material, Camera, Mipmap,
+  TextureFormat, TextureUsage, set_log_level,
+} from "fragmentcolor";
+import * as fc from "fragmentcolor";
 
 // import { installInstrumentation } from './instrument.mjs';
 // Install JS-level instrumentation before running any examples or docs coverage.
-// installInstrumentation({ Renderer, Shader, Pass, TextureTarget, CanvasTarget });
+// installInstrumentation({ Renderer, Shader, Pass, TextureTarget, WindowTarget });
 
 const wasmUrl = new URL("./pkg/fragmentcolor_bg.wasm", import.meta.url);
 await init({ module_or_path: wasmUrl.href });
@@ -188,6 +192,30 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     renderer.render(shader, target);
     const img = await target.getImage();
     console.log('Rendered textured shader:', img);
+
+    // Other exported classes, and plain objects that copy their pointer, are
+    // rejected instead of being read as a Texture. The bound texture survives.
+    const pass = new Pass('not a texture');
+    const notTextures = [
+      ['a Shader', shader],
+      ['a Pass', pass],
+      ['a Mesh', new Mesh()],
+      ['a plain object with a pointer', { __wbg_ptr: pass.__wbg_ptr }],
+    ];
+    for (const [label, value] of notTextures) {
+      let threw = false;
+      try {
+        shader.set("tex", value);
+      } catch (e) {
+        threw = true;
+        console.log(`shader.set rejected ${label}:`, e?.message ?? String(e));
+      }
+      if (!threw) {
+        throw new Error(`shader.set("tex", ${label}) should throw`);
+      }
+    }
+    renderer.render(shader, target);
+    console.log('Texture binding intact after rejected sets');
 });
 
 // Mesh smoke: positions-only triangle
@@ -257,6 +285,78 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
     console.log('mesh.instances image bytes:', img?.length || 0);
 });
 
+// A plain number on a Vertex or Instance takes the type the shader declares at its location.
+// The vertex stage compares the values, so every pixel is exactly green or red.
+await withModule('platforms.web.healthcheck.vertex.types', async () => {
+    const renderer = new Renderer();
+    const typed = `
+struct VOut {
+  @builtin(position) pos: vec4<f32>,
+  @location(0) @interpolate(flat) ok: u32,
+};
+@vertex fn vs_main(
+  @location(0) position: vec2<f32>,
+  @location(1) id: u32,
+  @location(2) cell: vec2<i32>,
+) -> VOut {
+  var out: VOut;
+  out.pos = vec4f(position, 0., 1.);
+  out.ok = select(0u, 1u, id == 16777217u && all(cell == vec2<i32>(-1, 2)));
+  return out;
+}
+@fragment fn fs_main(v: VOut) -> @location(0) vec4<f32> {
+  if (v.ok == 1u) { return vec4f(0., 1., 0., 1.); }
+  return vec4f(1., 0., 0., 1.);
+}
+`;
+    const corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+    const green = async (label, shader) => {
+      const target = await renderer.createTextureTarget([8, 8]);
+      renderer.render(Pass.fromShader(label, shader), target);
+      const image = await target.getImage();
+      const pixel = Array.from(image.slice(0, 4));
+      if (pixel.join() !== '0,255,0,255') throw new Error(`${label}: pixel ${pixel}, want green`);
+    };
+
+    // 2^24 + 1 only survives as an integer, so a float transport would draw red.
+    const vertices = new Mesh();
+    for (const corner of corners) {
+      vertices.addVertex(new Vertex(corner).set('id', 16777217).set('cell', new Int32Array([-1, 2])));
+    }
+    const vertexShader = new Shader(typed);
+    vertexShader.addMesh(vertices);
+    await green('vertex numbers', vertexShader);
+
+    const instanced = new Mesh();
+    for (const corner of corners) instanced.addVertex(new Vertex(corner).set('cell', [-1, 2]));
+    instanced.addInstance({ id: 16777217 });
+    const instanceShader = new Shader(typed);
+    instanceShader.addMesh(instanced);
+    await green('instance numbers', instanceShader);
+
+    // A value that doesn't fit the declared type fails the attach and names it.
+    const rejects = (label, mesh, needle) => {
+      try {
+        new Shader(typed).addMesh(mesh);
+      } catch (e) {
+        if (!(e instanceof Error) || !e.message.includes(needle)) {
+          throw new Error(`${label}: expected an Error naming "${needle}", got ${e?.message ?? e}`);
+        }
+        console.log(`${label} rejected:`, e.message);
+        return;
+      }
+      throw new Error(`${label} should fail to attach`);
+    };
+    const negative = new Mesh();
+    negative.addVertex(new Vertex([0.0, 0.0]).set('id', 7).set('cell', [0, 0]));
+    negative.addVertex(new Vertex([1.0, 0.0]).set('id', -1).set('cell', [0, 0]));
+    rejects('-1 for a u32', negative, 'expected u32, got -1 at vertex 1');
+    const fraction = new Mesh();
+    fraction.addVertex(new Vertex([0.0, 0.0]).set('id', 7).set('cell', [2.5, 0]));
+    rejects('2.5 for an i32', fraction, 'expected vec2<i32>, got 2.5');
+    console.log('Vertex and Instance numbers take the shader types');
+});
+
 // Signal success for Playwright harness if we reached this point
 // Push constants smoke: solid color via var<immediate>
 await withModule('platforms.web.healthcheck.push_constant.smoke', async () => {
@@ -280,6 +380,201 @@ var<immediate> pc: PC;
     if (px[0] !== expect[0] || px[1] !== expect[1] || px[2] !== expect[2] || px[3] !== expect[3]) {
       throw new Error(`unexpected pixel ${px} != ${expect}`);
     }
+});
+
+// Shader.set shapes plain JS values to each uniform's declared WGSL type.
+await withModule('platforms.web.healthcheck.shader.set.values', async () => {
+    const shader = new Shader(`
+struct Light { color: vec4<f32>, power: f32 };
+struct Particles { items: array<vec4<f32>, 2> };
+@group(0) @binding(0) var<uniform> count: u32;
+@group(0) @binding(1) var<uniform> cell: vec2<i32>;
+@group(0) @binding(2) var<uniform> rot: mat2x2<f32>;
+@group(0) @binding(3) var<uniform> light: Light;
+@group(0) @binding(4) var<uniform> offset: vec2<f32>;
+@group(0) @binding(5) var<storage, read> particles: Particles;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> {
+  let x = f32(count) + f32(cell.x) + rot[0].x + light.power + offset.x + particles.items[0].x;
+  return vec4f(x, 0., 0., 1.);
+}
+`);
+    const same = (label, got, want) => {
+      const a = Array.from(got), b = Array.from(want);
+      if (a.length !== b.length || a.some((v, i) => v !== b[i])) {
+        throw new Error(`${label}: got [${a}], want [${b}]`);
+      }
+    };
+    const rejects = (label, key, value) => {
+      try {
+        shader.set(key, value);
+      } catch (e) {
+        console.log(`shader.set rejected ${label}:`, e?.message ?? String(e));
+        return;
+      }
+      throw new Error(`shader.set("${key}", ${label}) should throw`);
+    };
+
+    shader.set("count", 3);
+    if (shader.get("count") !== 3) throw new Error(`u32 from a number: got ${shader.get("count")}`);
+    shader.set("cell", [2, -1]);
+    same("vec2<i32> from an array", shader.get("cell"), [2, -1]);
+    shader.set("rot", [1, 2, 3, 4]);
+    same("mat2x2 from four numbers", shader.get("rot"), [1, 2, 3, 4]);
+    shader.set("offset", new Int32Array([5, 6]));
+    same("vec2<f32> from an Int32Array", shader.get("offset"), [5, 6]);
+
+    rejects("three numbers for a vec2", "offset", [1, 2, 3]);
+    same("vec2 kept after a rejected set", shader.get("offset"), [5, 6]);
+    rejects("3.5 for a u32", "count", 3.5);
+    rejects("-1 for a u32", "count", -1);
+    rejects("bytes for a vec2", "offset", new Uint8Array(8));
+
+    const blob = Uint8Array.from({ length: 32 }, (_, i) => i);
+    shader.set("particles", blob);
+    same("storage root from a Uint8Array", shader.get("particles"), blob);
+
+    shader.set("light.power", 0.5);
+    const light = shader.get("light");
+    if (!(light instanceof Uint8Array) || light.length !== 32) {
+      throw new Error(`struct root should read as 32 bytes, got ${light}`);
+    }
+    same("struct root reads current bytes", new Float32Array(light.buffer, 16, 1), [0.5]);
+});
+
+// The JS shapes 0.12.6 brings in line with Rust, Python, Swift and Kotlin.
+await withModule('platforms.web.healthcheck.parity', async () => {
+    const renderer = new Renderer();
+    const fail = (message) => { throw new Error(message); };
+    const caught = (label, error) => {
+      if (!(error instanceof Error)) fail(`${label} threw a ${typeof error}, not an Error`);
+      console.log(`${label} threw:`, error.message);
+    };
+    const throws = (label, run) => {
+      try { run(); } catch (e) { return caught(label, e); }
+      fail(`${label} should throw`);
+    };
+    const rejects = async (label, run) => {
+      try { await run(); } catch (e) { return caught(label, e); }
+      fail(`${label} should reject`);
+    };
+    const same = (label, got, want) => {
+      const a = Array.from(got), b = Array.from(want);
+      if (a.length !== b.length || a.some((v, i) => v !== b[i])) fail(`${label}: got [${a}], want [${b}]`);
+    };
+
+    // Failures are Error objects, and a bad shader throws instead of falling back.
+    throws('new Shader with invalid WGSL', () => new Shader('not wgsl'));
+    await rejects('Shader.fetch with a number', () => Shader.fetch(42));
+    throws('Shader.set on a missing key', () => Shader.default().set('missing', 1.0));
+
+    // Scene.setPasses leaves the caller's passes usable.
+    const first = new Pass('first');
+    const second = new Pass('second');
+    const scene = new Scene();
+    scene.setPasses([first, second]);
+    if (first.name() !== 'first' || second.name() !== 'second') fail('setPasses consumed its passes');
+    if (scene.listPasses().length !== 2) fail('setPasses did not keep two passes');
+    throws('Scene.setPasses with a number item', () => scene.setPasses([first, 1]));
+
+    // Builder methods return the receiver.
+    const mesh = new Mesh();
+    mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]));
+    const model = new Model(mesh, Material.pbr());
+    const camera = Camera.perspective(1.047, 1.0, 0.1, 100.0);
+    const built = new Scene().add(model).add(camera).ambient([0.1, 0.1, 0.1]).noDefaultLight();
+    if (built.models().length !== 1) fail('chained Scene.add lost the model');
+    if (!(new Pass('chain').add(model) instanceof Pass)) fail('Pass.add should return the pass');
+
+    // Indices, counts and dispatch sizes are whole numbers.
+    throws('Scene.addTo(-1)', () => built.addTo(-1, model));
+    throws('Scene.getPass(1.5)', () => built.getPass(1.5));
+    throws('Mesh.setInstanceCount(-1)', () => mesh.setInstanceCount(-1));
+    throws('Mesh.setIndices([0.5])', () => mesh.setIndices([0.5]));
+    throws('Pass.setComputeDispatch(-1, 1, 1)', () => first.setComputeDispatch(-1, 1, 1));
+
+    // Pass.require takes a Scene, and throws on anything it can't render.
+    const compose = new Pass('compose');
+    compose.require(built);
+    throws('Pass.require with a string', () => compose.require('nope'));
+    throws('Pass.require with a string item', () => compose.require([first, 'nope']));
+
+    // An array renders as one frame, and load takes an array.
+    const target = await renderer.createTextureTarget([8, 8]);
+    await renderer.load([Shader.default(), built]);
+    renderer.render([Shader.default(), Shader.default()], target);
+    throws('render with a string item', () => renderer.render([Shader.default(), 'x'], target));
+
+    // The window target is WindowTarget, and CanvasTarget names the same class.
+    const canvas = document.createElement('canvas');
+    canvas.width = 8; canvas.height = 8;
+    const windowTarget = await renderer.createTarget(canvas);
+    if (!(windowTarget instanceof fc.WindowTarget)) fail('createTarget should return a WindowTarget');
+    if (fc.CanvasTarget !== fc.WindowTarget) fail('CanvasTarget should alias WindowTarget');
+    const empty = await windowTarget.getImage();
+    if (!(empty instanceof Uint8Array) || empty.length !== 0) fail('WindowTarget.getImage should resolve empty');
+
+    // createTexture takes an ImageData's size, and reads sampler and usage.
+    const image = new ImageData(new Uint8ClampedArray([255, 0, 0, 255, 0, 255, 0, 255]), 2, 1);
+    const fromImage = await renderer.createTexture(image);
+    const size = fromImage.size();
+    if (size.width !== 2 || size.height !== 1) fail(`ImageData texture is ${size.width}x${size.height}`);
+    await renderer.createTexture(new Uint8Array([255, 255, 255, 255]), {
+      size: [1, 1], sampler: { repeatX: true, smooth: false },
+    });
+    await rejects('createTexture with mipmaps: "yes"', () =>
+      renderer.createTexture(new Uint8Array(4), { size: [1, 1], mipmaps: 'yes' }));
+    const readable = await renderer.createTexture(new Uint8Array([1, 2, 3, 255]), {
+      size: [1, 1], format: TextureFormat.Rgba8Unorm, mipmaps: false, usage: TextureUsage.COPY_SRC,
+    });
+    same('readTexture after usage: COPY_SRC', (await renderer.readTexture(readable.id())).slice(0, 4), [1, 2, 3, 255]);
+
+    // Material texture setters take any texture source.
+    Material.pbr().baseColorTexture(new Uint8Array([255, 0, 0, 255]), { size: [1, 1] });
+    Material.pbr().baseColorTexture(fromImage);
+
+    // Scene.load takes an ArrayBuffer or a view, and can skip the file's cameras and lights.
+    const glb = await (await fetch('/healthcheck/public/model.glb')).arrayBuffer();
+    const loaded = Scene.load(glb);
+    const bare = Scene.load(new DataView(glb), { cameras: false, lights: false });
+    if (bare.cameras().length !== 0 || bare.lights().length !== 0) fail('Scene.load kept filtered nodes');
+    if (bare.models().length !== loaded.models().length) fail('Scene.load options dropped models');
+    throws('Scene.load with cameras: "no"', () => Scene.load(glb, { cameras: 'no' }));
+
+    // Matrices as columns, and bytes from an ArrayBuffer.
+    const columns = [[2, 0, 0, 0], [0, 2, 0, 0], [0, 0, 2, 0], [3, 0, 0, 1]];
+    model.setTransform(columns);
+    same('Model.transform after columns', model.transform(), columns.flat());
+    const shader = new Shader(`
+struct Data { items: array<vec4<f32>, 2> };
+@group(0) @binding(0) var<storage, read> data: Data;
+@group(0) @binding(1) var<uniform> m: mat2x2<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  return vec4f(0., 0., 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> { return data.items[0] + vec4f(m[0], 0., 0.); }
+`);
+    shader.set('m', [[1, 2], [3, 4]]);
+    same('mat2x2 from columns', shader.get('m'), [1, 2, 3, 4]);
+    const blob = Uint8Array.from({ length: 32 }, (_, i) => i);
+    shader.set('data', blob.buffer);
+    same('storage root from an ArrayBuffer', shader.get('data'), blob);
+
+    // Vertex constants, attribute values, and vertices given in parts.
+    if (Vertex.UV0 !== 'uv0' || Vertex.NORMAL !== 'normal') fail('Vertex constants are missing');
+    throws('Vertex.set with a string item', () => new Vertex([0.0, 0.0]).set('uv', [1, 'x']));
+    throws('Vertex.set with five numbers', () => new Vertex([0.0, 0.0]).set('uv', [1, 2, 3, 4, 5]));
+    throws('Instance.set with an empty list', () => new Instance().set('offset', []));
+    new Mesh().addVertex([[0.0, 0.0, 0.0], [0.0, 1.0]]);
+    new Mesh().addVertices([[[1.0, 0.0, 0.0], [1.0, 1.0], [1.0, 1.0, 1.0, 1.0]]]);
+
+    // Mipmap.levels returns every level.
+    const chain = Mipmap.build(new Uint8Array(4 * 4 * 4), TextureFormat.Rgba8Unorm, [4, 4]);
+    const levels = chain.levels();
+    if (levels.length !== chain.count() || !(levels[0] instanceof Uint8Array)) fail('Mipmap.levels is wrong');
 });
 
 // Auto-generated: run all extracted examples (after init)

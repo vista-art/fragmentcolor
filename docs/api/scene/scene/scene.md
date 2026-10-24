@@ -4,10 +4,10 @@ A `Scene` is the top-level container for the real-world things you render:
 [Models](https://fragmentcolor.org/api/scene/model),
 [Cameras](https://fragmentcolor.org/api/scene/camera),
 [Lights](https://fragmentcolor.org/api/scene/light) (directional, point, and
-spot are all one type), and any custom
-[SceneObject](https://fragmentcolor.org/api/scene). It owns one or more
+spot are all one type), and, in Rust, any custom
+`SceneObject`. It owns one or more
 [Passes](https://fragmentcolor.org/api/core/pass) underneath and implements
-[Renderable](https://fragmentcolor.org/api/core/renderable), so you hand
+`Renderable`, so you hand
 the whole scene to the [Renderer](https://fragmentcolor.org/api/core/renderer)
 in a single call.
 
@@ -20,9 +20,9 @@ underneath and don't leak into the call site.
 ## Lazy + sync, like Shader and Pass
 
 `Scene::new()` is synchronous and takes no `Renderer`. The first time a
-[SceneObject](https://fragmentcolor.org/api/scene) is added, the Scene
+`SceneObject` is added, the Scene
 creates a default Pass to hold it. The first time the Scene is rendered, the
-underlying GPU resources initialise on demand. This is the lazy-init pattern
+underlying GPU resources initialize on demand. This is the lazy-init pattern
 the rest of FragmentColor follows.
 
 ## An open, composable pass graph
@@ -31,13 +31,13 @@ A `Scene` owns one ordered `Vec<Pass>`. Loaders, builders, and your own code
 all append into the same list, and the renderer walks it in order. No pass is
 privileged in render order: the default Pass that `scene.add(&model)` targets
 is an ordinary member, slotted in at the point of your first `add`. After
-[`Scene::load`](https://fragmentcolor.org/api/scene/scene/load) the whole
+[`Scene::load`](https://fragmentcolor.org/api/scene/scene#load) the whole
 graph is in your hands. Read it with
-[`list_passes`](https://fragmentcolor.org/api/scene/scene/list_passes) or
-[`get_pass`](https://fragmentcolor.org/api/scene/scene/get_pass), restructure
-it with [`add_pass`](https://fragmentcolor.org/api/scene/scene/add_pass),
-[`remove_pass`](https://fragmentcolor.org/api/scene/scene/remove_pass), and
-[`set_passes`](https://fragmentcolor.org/api/scene/scene/set_passes), and
+[`list_passes`](https://fragmentcolor.org/api/scene/scene#list_passes) or
+[`get_pass`](https://fragmentcolor.org/api/scene/scene#get_pass), restructure
+it with [`add_pass`](https://fragmentcolor.org/api/scene/scene#add_pass),
+[`remove_pass`](https://fragmentcolor.org/api/scene/scene#remove_pass), and
+[`set_passes`](https://fragmentcolor.org/api/scene/scene#set_passes), and
 configure each pass (`load_previous`, clear color, viewport, target) the same
 way you would a hand-built one. That makes a loaded Scene compose onto any
 other Pass in a frame, instead of clearing whatever it lands on.
@@ -46,7 +46,7 @@ other Pass in a frame, instead of clearing whatever it lands on.
 
 A Scene that only carries Models would normally render black: shaders need a
 camera projection and at least one light for the lighting term to be
-non-zero. To make the "hello world" path render something recognisable, the
+non-zero. To make the "hello world" path render something recognizable, the
 Scene injects sensible defaults when the user hasn't supplied them:
 
 - **Default Camera**: `Camera::perspective(60°, 1.0, 0.1, 100.0)` looking
@@ -58,7 +58,7 @@ Scene injects sensible defaults when the user hasn't supplied them:
 These only fire when no user Camera / Light has been added; as soon as you
 add your own, your values win. A composition caller that drives every uniform
 from the host can suppress them with
-[`no_defaults`](https://fragmentcolor.org/api/scene/scene/no_defaults) (or the
+[`no_defaults`](https://fragmentcolor.org/api/scene/scene#no_defaults) (or the
 per-kind `no_default_camera` / `no_default_light`), or swap the stock values
 out with `set_default_camera` / `set_default_light`.
 
@@ -68,8 +68,11 @@ out with `set_default_camera` / `set_default_light`.
 | -------------------- | ---------------------------------------------------------- |
 | `new`                | construct an empty Scene                                   |
 | `load`               | construct a Scene from a 3D file (glTF `.gltf` / `.glb` path or in-memory `.glb` bytes) |
-| `add`                | add a `SceneObject` (Model / Camera / Light / custom) to the default pass |
+| `add`                | add a `SceneObject` (Model / Camera / Light, or a custom one in Rust) to the default pass |
 | `add_to`             | add a `SceneObject` to a specific Pass, by index or name   |
+| `models`             | list the Models added to the scene                         |
+| `cameras`            | list the Cameras added to the scene                        |
+| `lights`             | list the Lights added to the scene                         |
 | `add_pass`           | append a user-built [Pass](https://fragmentcolor.org/api/core/pass) to the graph |
 | `remove_pass`        | remove a Pass from the graph by handle                     |
 | `get_pass`           | read one Pass by index, in render order                    |

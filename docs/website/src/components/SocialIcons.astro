@@ -1,0 +1,23 @@
+---
+import Default from "@astrojs/starlight/components/SocialIcons.astro";
+---
+
+<Default />
+<a class="docs-link" href="/welcome/">Docs</a>
+
+<style>
+  /* Past the divider after the icons, beside the Blog link, as Blog shows on large viewports only. */
+  .docs-link {
+    display: none;
+    order: 1;
+    color: var(--sl-color-text-accent);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  @media (min-width: 50rem) {
+    .docs-link {
+      display: flex;
+    }
+  }
+</style>

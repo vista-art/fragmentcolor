@@ -5,8 +5,9 @@ when you already have a matrix from a math library or a glTF node and want
 to apply it directly without composing through `translate` / `rotate` /
 `scale`.
 
-Writes the four columns into the Mesh's per-instance attribute stream
-immediately (locations 3..6). To read the current transform, see
+The renderer reads the new matrix on the next render, so a Model already
+added to a Pass or Scene moves without being added again. To read the
+current transform, see
 [Model::transform](https://fragmentcolor.org/api/scene/model#transform).
 
 ## Example

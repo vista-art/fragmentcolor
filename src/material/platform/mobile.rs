@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::Shader;
 use crate::material::{AlphaMode, Material};
 use crate::renderer::platform::mobile::FragmentColorError;
-use crate::texture::Texture;
+use crate::texture::{Texture, TextureInput, TextureInputMobile, TextureOptions};
 
 #[uniffi::export]
 impl Material {
@@ -131,6 +131,74 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/emissive_texture.md")]
     pub fn emissive_texture_mobile(self: Arc<Self>, texture: Arc<Texture>) -> Arc<Self> {
         Arc::new(self.emissive_texture(&*texture))
+    }
+
+    /// The texture input form of `baseColorTexture`: bytes, a path, a URL or a mipmap chain,
+    /// uploaded when the scene loads. Swift and Kotlin expose it as `baseColorTexture(source)`.
+    #[uniffi::method(name = "baseColorSource", default(options = None))]
+    #[lsp_doc("docs/api/scene/material/hidden/base_color_source_mobile.md")]
+    pub fn base_color_source_mobile(
+        self: Arc<Self>,
+        input: TextureInputMobile,
+        options: Option<TextureOptions>,
+    ) -> Arc<Self> {
+        Arc::new(self.base_color_texture(texture_input(input, options)))
+    }
+
+    /// The texture input form of `metallicRoughnessTexture`: bytes, a path, a URL or a mipmap chain,
+    /// uploaded when the scene loads. Swift and Kotlin expose it as `metallicRoughnessTexture(source)`.
+    #[uniffi::method(name = "metallicRoughnessSource", default(options = None))]
+    #[lsp_doc("docs/api/scene/material/hidden/metallic_roughness_source_mobile.md")]
+    pub fn metallic_roughness_source_mobile(
+        self: Arc<Self>,
+        input: TextureInputMobile,
+        options: Option<TextureOptions>,
+    ) -> Arc<Self> {
+        Arc::new(self.metallic_roughness_texture(texture_input(input, options)))
+    }
+
+    /// The texture input form of `normalTexture`: bytes, a path, a URL or a mipmap chain,
+    /// uploaded when the scene loads. Swift and Kotlin expose it as `normalTexture(source)`.
+    #[uniffi::method(name = "normalSource", default(options = None))]
+    #[lsp_doc("docs/api/scene/material/hidden/normal_source_mobile.md")]
+    pub fn normal_source_mobile(
+        self: Arc<Self>,
+        input: TextureInputMobile,
+        options: Option<TextureOptions>,
+    ) -> Arc<Self> {
+        Arc::new(self.normal_texture(texture_input(input, options)))
+    }
+
+    /// The texture input form of `occlusionTexture`: bytes, a path, a URL or a mipmap chain,
+    /// uploaded when the scene loads. Swift and Kotlin expose it as `occlusionTexture(source)`.
+    #[uniffi::method(name = "occlusionSource", default(options = None))]
+    #[lsp_doc("docs/api/scene/material/hidden/occlusion_source_mobile.md")]
+    pub fn occlusion_source_mobile(
+        self: Arc<Self>,
+        input: TextureInputMobile,
+        options: Option<TextureOptions>,
+    ) -> Arc<Self> {
+        Arc::new(self.occlusion_texture(texture_input(input, options)))
+    }
+
+    /// The texture input form of `emissiveTexture`: bytes, a path, a URL or a mipmap chain,
+    /// uploaded when the scene loads. Swift and Kotlin expose it as `emissiveTexture(source)`.
+    #[uniffi::method(name = "emissiveSource", default(options = None))]
+    #[lsp_doc("docs/api/scene/material/hidden/emissive_source_mobile.md")]
+    pub fn emissive_source_mobile(
+        self: Arc<Self>,
+        input: TextureInputMobile,
+        options: Option<TextureOptions>,
+    ) -> Arc<Self> {
+        Arc::new(self.emissive_texture(texture_input(input, options)))
+    }
+}
+
+/// A crate texture input from the mobile input and its optional options.
+fn texture_input(input: TextureInputMobile, options: Option<TextureOptions>) -> TextureInput {
+    TextureInput {
+        data: input.into(),
+        options: options.unwrap_or_default(),
     }
 }
 

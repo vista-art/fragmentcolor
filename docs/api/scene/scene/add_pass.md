@@ -9,10 +9,10 @@ ordinary member of that list, slotted in at the point of your first `add`.
 That makes `add_pass` the hook for shadow maps, depth pre-passes, screen-space
 backdrops, and post-effects alike. Insert before your geometry for a backdrop,
 after it for an overlay. To inspect or reorder the result, reach for
-[`list_passes`](https://fragmentcolor.org/api/scene/scene/list_passes),
-[`get_pass`](https://fragmentcolor.org/api/scene/scene/get_pass),
-[`remove_pass`](https://fragmentcolor.org/api/scene/scene/remove_pass), and
-[`set_passes`](https://fragmentcolor.org/api/scene/scene/set_passes).
+[`list_passes`](https://fragmentcolor.org/api/scene/scene#list_passes),
+[`get_pass`](https://fragmentcolor.org/api/scene/scene#get_pass),
+[`remove_pass`](https://fragmentcolor.org/api/scene/scene#remove_pass), and
+[`set_passes`](https://fragmentcolor.org/api/scene/scene#set_passes).
 
 The Pass is cloned (shallow Arc-share) when stored, so further changes you
 make to the original handle reach the Scene's copy too.
@@ -20,14 +20,14 @@ make to the original handle reach the Scene's copy too.
 ### Each new Pass clears by default
 
 Every `Pass::new(name)` starts with a clear-to-transparent input. The first
-render of the frame for that Pass wipes its colour attachment to
+render of the frame for that Pass wipes its color attachment to
 `[0, 0, 0, 0]`. When you chain passes that read each other's output, the
 downstream Pass clears the upstream Pass's output unless you opt out:
 
 - Call `pass.load_previous()` on the downstream Pass to keep the previous
   contents around (the wgpu `LoadOp::Load` equivalent).
 - Or call `pass.set_clear_color([r, g, b, a])` to choose a specific clear
-  value (still a clear, just a different colour).
+  value (still a clear, just a different color).
 
 `Scene::add_pass` stores each pass independently. There's no automatic
 chaining of their attachments. To share a target between two passes, route

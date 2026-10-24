@@ -1,4 +1,4 @@
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
+val texture = renderer.createStorageTexture(listOf(64u, 64u), TextureFormat.RGBA)
 val id = texture.id()

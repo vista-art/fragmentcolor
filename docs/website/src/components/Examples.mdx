@@ -19,9 +19,9 @@ async function start() {
   const renderer = new Renderer();
   const target = await renderer.createTarget(canvas);
 
-  // You can pass the shader as a source string, file path, or URL:
-  const circle = new Shader("./path/to/circle.wgsl");
-  const triangle = new Shader("https://fragmentcolor.org/shaders/triangle.wgsl");
+  // A source string builds at once. A file path or URL loads with Shader.fetch:
+  const circle = await Shader.fetch("./path/to/circle.wgsl");
+  const triangle = await Shader.fetch("https://fragmentcolor.org/shaders/triangle.wgsl");
   const shader = new Shader(\`
     struct VertexOutput {
         @builtin(position) coords: vec4<f32>,

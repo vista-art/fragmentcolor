@@ -28,8 +28,11 @@ pub struct TextureRegion {
 /// Use `origin_x/y/z = 0` and `size_width/height/depth = 0` (the defaults)
 /// to target the whole texture; the write path interprets zeros as
 /// "infer the full extent from the texture dimensions".
+///
+/// Swift and Kotlin see it as `TextureRegion`, the name every other binding uses.
 #[cfg(mobile)]
 #[derive(Debug, Clone, uniffi::Record)]
+#[uniffi(name = "TextureRegion")]
 pub struct TextureRegionMobile {
     pub origin_x: u32,
     pub origin_y: u32,
@@ -101,8 +104,10 @@ impl TextureRegion {
         }
     }
 
-    /// Set `bytes_per_row` (must be a multiple of 256 when calling
-    /// `Texture::write_region`). Use this when the source data has row padding.
+    /// Set `bytes_per_row` for source data with row padding.
+    /// It must be at least the region width times the bytes per pixel.
+    /// When unset, rows are tightly packed unless the data is exactly the size
+    /// of rows padded to 256 bytes, in which case they read at the padded stride.
     pub fn with_stride(mut self, bytes_per_row: u32) -> Self {
         self.bytes_per_row = Some(bytes_per_row);
         self
@@ -182,77 +187,64 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
     type Error = TextureError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
-        use js_sys::{Array, Reflect, Uint32Array};
-        use wasm_bindgen::JsCast;
+        use js_sys::{Array, ArrayBuffer, Reflect};
 
         // undefined / null → whole-texture default
         if value.is_undefined() || value.is_null() {
             return Ok(Self::default());
         }
 
-        // Typed arrays (Uint32Array): support length 2, 4, 6
-        if let Some(arr) = value.dyn_ref::<Uint32Array>() {
-            let len = arr.length();
-            return match len {
-                2 => {
-                    let mut buf = [0u32; 2];
-                    arr.copy_to(&mut buf);
-                    Ok(buf.into())
-                }
-                4 => {
-                    let mut buf = [0u32; 4];
-                    arr.copy_to(&mut buf);
-                    Ok(buf.into())
-                }
-                6 => {
-                    let mut buf = [0u32; 6];
-                    arr.copy_to(&mut buf);
-                    Ok(buf.into())
-                }
-                _ => Err(TextureError::Error(
-                    "TextureRegion typed array must have length 2, 4, or 6".into(),
-                )),
-            };
-        }
+        let dimension = |item: &wasm_bindgen::JsValue| {
+            item.as_f64()
+                .and_then(crate::size::read_dimension)
+                .ok_or_else(|| {
+                    TextureError::InvalidInput(format!(
+                        "a region takes numbers from 0 up, got {item:?}"
+                    ))
+                })
+        };
 
-        // Plain Array: [w,h] | [x,y,w,h] | [x,y,z,w,h,d]
-        if let Some(arr) = value.dyn_ref::<Array>() {
-            let len = arr.length();
-            let num = |i: u32| arr.get(i).as_f64().unwrap_or(0.0).max(0.0) as u32;
-            return match len {
-                2 => Ok([num(0), num(1)].into()),
-                4 => Ok([num(0), num(1), num(2), num(3)].into()),
-                6 => Ok([num(0), num(1), num(2), num(3), num(4), num(5)].into()),
-                _ => Err(TextureError::Error(
-                    "TextureRegion array must have length 2, 4, or 6".into(),
-                )),
+        // Plain or typed array: [w,h] | [x,y,w,h] | [x,y,z,w,h,d]
+        if Array::is_array(value) || ArrayBuffer::is_view(value) {
+            let numbers = Array::from(value)
+                .iter()
+                .map(|item| dimension(&item))
+                .collect::<Result<Vec<u32>, TextureError>>()?;
+            return match numbers[..] {
+                [w, h] => Ok([w, h].into()),
+                [x, y, w, h] => Ok([x, y, w, h].into()),
+                [x, y, z, w, h, d] => Ok([x, y, z, w, h, d].into()),
+                _ => Err(TextureError::InvalidInput(format!(
+                    "TextureRegion array must have length 2, 4, or 6, got {}",
+                    numbers.len()
+                ))),
             };
         }
 
         // Object: { x?, y?, z?, width?, height?, depth?, bytesPerRow?, rowsPerImage? }
         // or       { minX, minY, maxX, maxY, minZ?, maxZ?, bytesPerRow?, rowsPerImage? }
         if value.is_object() {
-            let read = |names: &[&str]| -> Option<u32> {
+            let read = |names: &[&str]| -> Result<Option<u32>, TextureError> {
                 for name in names {
-                    if let Ok(field) = Reflect::get(value, &wasm_bindgen::JsValue::from_str(name))
-                        && let Some(n) = field.as_f64()
-                    {
-                        return Some(n.max(0.0) as u32);
+                    let field = Reflect::get(value, &wasm_bindgen::JsValue::from_str(name))
+                        .unwrap_or(wasm_bindgen::JsValue::UNDEFINED);
+                    if !field.is_undefined() && !field.is_null() {
+                        return dimension(&field).map(Some);
                     }
                 }
-                None
+                Ok(None)
             };
 
             // min/max variant
-            let has_minmax =
-                read(&["minX", "min_x"]).is_some() || read(&["maxX", "max_x"]).is_some();
-            if has_minmax {
-                let min_x = read(&["minX", "min_x"]).unwrap_or(0);
-                let min_y = read(&["minY", "min_y"]).unwrap_or(0);
-                let max_x = read(&["maxX", "max_x"]).unwrap_or(min_x);
-                let max_y = read(&["maxY", "max_y"]).unwrap_or(min_y);
-                let min_z = read(&["minZ", "min_z"]).unwrap_or(0);
-                let max_z = read(&["maxZ", "max_z"]).unwrap_or(min_z + 1);
+            let min_x = read(&["minX", "min_x"])?;
+            let max_x = read(&["maxX", "max_x"])?;
+            if min_x.is_some() || max_x.is_some() {
+                let min_x = min_x.unwrap_or(0);
+                let min_y = read(&["minY", "min_y"])?.unwrap_or(0);
+                let max_x = max_x.unwrap_or(min_x);
+                let max_y = read(&["maxY", "max_y"])?.unwrap_or(min_y);
+                let min_z = read(&["minZ", "min_z"])?.unwrap_or(0);
+                let max_z = read(&["maxZ", "max_z"])?.unwrap_or(min_z + 1);
                 let mut tr = Self::new(
                     [min_x, min_y, min_z],
                     [
@@ -261,21 +253,21 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
                         max_z.saturating_sub(min_z).max(1),
                     ],
                 );
-                tr.bytes_per_row = read(&["bytesPerRow", "bytes_per_row"]);
-                tr.rows_per_image = read(&["rowsPerImage", "rows_per_image"]);
+                tr.bytes_per_row = read(&["bytesPerRow", "bytes_per_row"])?;
+                tr.rows_per_image = read(&["rowsPerImage", "rows_per_image"])?;
                 return Ok(tr);
             }
 
             // x/y/z + width/height/depth variant
-            let x = read(&["x"]).unwrap_or(0);
-            let y = read(&["y"]).unwrap_or(0);
-            let z = read(&["z"]).unwrap_or(0);
-            let w = read(&["width"]).unwrap_or(0);
-            let h = read(&["height"]).unwrap_or(0);
-            let d = read(&["depth"]).unwrap_or(1);
+            let x = read(&["x"])?.unwrap_or(0);
+            let y = read(&["y"])?.unwrap_or(0);
+            let z = read(&["z"])?.unwrap_or(0);
+            let w = read(&["width"])?.unwrap_or(0);
+            let h = read(&["height"])?.unwrap_or(0);
+            let d = read(&["depth"])?.unwrap_or(1);
             let mut tr = Self::new([x, y, z], [w, h, d]);
-            tr.bytes_per_row = read(&["bytesPerRow", "bytes_per_row"]);
-            tr.rows_per_image = read(&["rowsPerImage", "rows_per_image"]);
+            tr.bytes_per_row = read(&["bytesPerRow", "bytes_per_row"])?;
+            tr.rows_per_image = read(&["rowsPerImage", "rows_per_image"])?;
             return Ok(tr);
         }
 
@@ -284,96 +276,4 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
                 .into(),
         ))
     }
-}
-
-// -------------------------------------------
-// Python conversion
-// -------------------------------------------
-
-#[cfg(python)]
-pub(crate) fn py_to_texture_region<'py>(
-    any: &pyo3::Bound<'py, pyo3::PyAny>,
-) -> pyo3::PyResult<TextureRegion> {
-    use pyo3::prelude::*;
-    use pyo3::types::{PyDict, PyList, PySequence, PyTuple};
-
-    fn read_dict_u32<'py>(
-        dict: &pyo3::Bound<'py, PyDict>,
-        names: &[&str],
-    ) -> pyo3::PyResult<Option<u32>> {
-        for name in names {
-            if let Some(value) = dict.get_item(name)? {
-                if value.is_none() {
-                    return Ok(None);
-                }
-                return Ok(Some(value.extract::<u32>()?));
-            }
-        }
-        Ok(None)
-    }
-
-    // `None` → whole-texture default
-    if any.is_none() {
-        return Ok(TextureRegion::default());
-    }
-
-    // Sequence (list / tuple) of length 2, 4, or 6
-    if let Ok(seq) = any.cast::<PySequence>() {
-        let len = seq.len()?;
-        let read = |i: usize| -> pyo3::PyResult<u32> { seq.get_item(i)?.extract::<u32>() };
-        return match len {
-            2 => Ok([read(0)?, read(1)?].into()),
-            4 => Ok([read(0)?, read(1)?, read(2)?, read(3)?].into()),
-            6 => Ok([read(0)?, read(1)?, read(2)?, read(3)?, read(4)?, read(5)?].into()),
-            _ => Err(crate::error::PyFragmentColorError::new_err(
-                "TextureRegion sequence must have length 2, 4, or 6",
-            )),
-        };
-    }
-    // Explicit tuple/list paths in case downcast<PySequence> doesn't catch them on some types.
-    if any.cast::<PyTuple>().is_ok() || any.cast::<PyList>().is_ok() {
-        // delegated above
-    }
-
-    // Dict variant
-    if let Ok(dict) = any.cast::<PyDict>() {
-        // min/max variant
-        let has_minmax = read_dict_u32(dict, &["min_x", "minX"])?.is_some()
-            || read_dict_u32(dict, &["max_x", "maxX"])?.is_some();
-        if has_minmax {
-            let min_x = read_dict_u32(dict, &["min_x", "minX"])?.unwrap_or(0);
-            let min_y = read_dict_u32(dict, &["min_y", "minY"])?.unwrap_or(0);
-            let max_x = read_dict_u32(dict, &["max_x", "maxX"])?.unwrap_or(min_x);
-            let max_y = read_dict_u32(dict, &["max_y", "maxY"])?.unwrap_or(min_y);
-            let min_z = read_dict_u32(dict, &["min_z", "minZ"])?.unwrap_or(0);
-            let max_z = read_dict_u32(dict, &["max_z", "maxZ"])?.unwrap_or(min_z + 1);
-            let mut tr = TextureRegion::new(
-                [min_x, min_y, min_z],
-                [
-                    max_x.saturating_sub(min_x),
-                    max_y.saturating_sub(min_y),
-                    max_z.saturating_sub(min_z).max(1),
-                ],
-            );
-            tr.bytes_per_row = read_dict_u32(dict, &["bytes_per_row", "bytesPerRow"])?;
-            tr.rows_per_image = read_dict_u32(dict, &["rows_per_image", "rowsPerImage"])?;
-            return Ok(tr);
-        }
-
-        // x/y/z + width/height/depth variant
-        let x = read_dict_u32(dict, &["x"])?.unwrap_or(0);
-        let y = read_dict_u32(dict, &["y"])?.unwrap_or(0);
-        let z = read_dict_u32(dict, &["z"])?.unwrap_or(0);
-        let w = read_dict_u32(dict, &["width"])?.unwrap_or(0);
-        let h = read_dict_u32(dict, &["height"])?.unwrap_or(0);
-        let d = read_dict_u32(dict, &["depth"])?.unwrap_or(1);
-        let mut tr = TextureRegion::new([x, y, z], [w, h, d]);
-        tr.bytes_per_row = read_dict_u32(dict, &["bytes_per_row", "bytesPerRow"])?;
-        tr.rows_per_image = read_dict_u32(dict, &["rows_per_image", "rowsPerImage"])?;
-        return Ok(tr);
-    }
-
-    Err(crate::error::PyFragmentColorError::new_err(
-        "Expected a TextureRegion-shaped value (sequence of length 2/4/6 or dict)",
-    ))
 }

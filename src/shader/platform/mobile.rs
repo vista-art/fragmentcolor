@@ -19,7 +19,37 @@ use lsp_doc::lsp_doc;
 use crate::Shader;
 use crate::mesh::{Mesh, Vertex};
 use crate::renderer::platform::mobile::FragmentColorError;
+use crate::shader::UniformInput;
 use crate::shader::uniform::UniformData;
+use crate::texture::TextureId;
+
+/// A `Shader.set` value as Swift and Kotlin hand it over.
+/// The uniform's declared WGSL type decides how Rust reads it.
+#[derive(uniffi::Enum, Debug, Clone, PartialEq)]
+pub enum UniformValue {
+    /// Writes 1 or 0 into a numeric uniform.
+    Bool(bool),
+    /// One `f32`, `i32` or `u32`.
+    Number(f64),
+    /// A vector, a matrix, or a one-element scalar.
+    Numbers(Vec<f64>),
+    /// A texture created by a `Renderer`.
+    Texture(TextureId),
+    /// Raw bytes for a storage-buffer or push-constant root.
+    Bytes(Vec<u8>),
+}
+
+impl From<UniformValue> for UniformInput {
+    fn from(value: UniformValue) -> Self {
+        match value {
+            UniformValue::Bool(flag) => Self::Bool(flag),
+            UniformValue::Number(number) => Self::Number(number),
+            UniformValue::Numbers(numbers) => Self::Numbers(numbers),
+            UniformValue::Texture(id) => Self::Texture(id),
+            UniformValue::Bytes(bytes) => Self::Bytes(bytes),
+        }
+    }
+}
 
 #[uniffi::export]
 impl Shader {
@@ -55,12 +85,12 @@ impl Shader {
     /// Override the slug registry base URL (process-wide).
     /// Uniffi has no static-method form on `uniffi::Object`, so this is
     /// expressed as a constructor that performs the side effect and returns
-    /// a default `Shader`. The Swift / Kotlin extension shims discard the
-    /// returned instance so callers see `Shader.setRegistry(baseUrl:)` with
-    /// `Void` return — matching the JS / Python static-method spelling.
-    #[uniffi::constructor(name = "setRegistry")]
-    #[lsp_doc("docs/api/core/shader/set_registry.md")]
-    pub fn set_registry_mobile(base_url: String) -> Arc<Self> {
+    /// a default `Shader`. It carries its own name so the Swift and Kotlin
+    /// extensions can define `Shader.setRegistry(baseUrl)` without a return
+    /// value, matching the JS / Python static-method spelling.
+    #[uniffi::constructor(name = "useRegistry")]
+    #[lsp_doc("docs/api/core/shader/hidden/use_registry_mobile.md")]
+    pub fn use_registry_mobile(base_url: String) -> Arc<Self> {
         Shader::set_registry(&base_url);
         Arc::new(Shader::default())
     }
@@ -68,10 +98,9 @@ impl Shader {
     /// Async fetch constructor: resolve each part of `input` (URL, slug, file
     /// path, or raw source) over the network, then compile the merged WGSL.
     ///
-    /// Uniffi 0.31 does not support async constructors, so this is expressed
-    /// as an async method rather than a constructor. Swift / Kotlin extension
-    /// shims provide `Shader.fetch(input:)` as a static async factory so
-    /// callers never need to hold a dummy instance.
+    /// Expressed as an async method rather than a constructor. Swift / Kotlin
+    /// extension shims provide `Shader.fetch(input:)` as a static async factory
+    /// so callers never need to hold a dummy instance.
     ///
     /// Swift callers: `let shader = try await Shader.fetch("https://...")`
     /// Kotlin callers: `val shader = Shader.fetch("https://...")`
@@ -104,8 +133,10 @@ impl Shader {
 
     #[uniffi::method(name = "set")]
     #[lsp_doc("docs/api/core/shader/set.md")]
-    pub fn set_mobile(&self, key: String, value: UniformData) -> Result<(), FragmentColorError> {
-        self.set(&key, value).map_err(FragmentColorError::from)
+    pub fn set_mobile(&self, key: String, value: UniformValue) -> Result<(), FragmentColorError> {
+        self.object
+            .set_input(&key, value.into())
+            .map_err(FragmentColorError::from)
     }
 
     #[uniffi::method(name = "get")]

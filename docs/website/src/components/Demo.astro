@@ -9,7 +9,7 @@
 // Generalization of the ShaderHero front-page demo. ShaderHero will refactor
 // to use this component once it stabilizes.
 //
-// Lazy-start behaviour:
+// Lazy-start behavior:
 //   - On mount the canvas frame is rendered with a play (▶) overlay; no
 //     WASM is loaded and no example.js is imported.
 //   - Clicking the overlay (or supplying `autoplay`) triggers the existing
@@ -232,23 +232,18 @@ if (!customElements.get('tutorial-demo')) {
     }
 
     async #init() {
-      // 1) Boot WASM (idempotent — wasm-bindgen guards against double init).
-      const fc = await import('fragmentcolor');
+      // 1) Boot WASM once per page, with slugs resolving against the local /shaders/ tree.
+      const { loadFragmentColor } = await import('../runtime.js');
+      const fc = await loadFragmentColor();
       this.#fcModule = fc;
-      const wasmUrl = (await import('fragmentcolor/fragmentcolor_bg.wasm?url')).default;
-      await fc.default({ module_or_path: wasmUrl });
 
-      // 2) Point slug resolution at the local /shaders/ tree so dev works offline
-      //    (and prod works against fragmentcolor.org/shaders/, which is the same files).
-      try { fc.Shader.setRegistry('/shaders/'); } catch {}
-
-      // 3) Renderer + canvas target.
+      // 2) Renderer + canvas target.
       this.#renderer = new fc.Renderer();
       this.#applySize(); // size the canvas before creating the target
       this.#target = await this.#renderer.createTarget(this.#canvas);
       this.#target.resize([this.#canvas.width, this.#canvas.height]);
 
-      // 4) Load the tutorial module via Vite's pre-registered loaders.
+      // 3) Load the tutorial module via Vite's pre-registered loaders.
       const key = this.dataset.moduleKey;
       const loader = tutorialModules[key];
       if (!loader) {
@@ -259,16 +254,16 @@ if (!customElements.get('tutorial-demo')) {
         throw new Error('example.js must export `setup` and `frame` functions');
       }
 
-      // 5) Build initial state.
+      // 4) Build initial state.
       this.#state = await example.setup(this.#renderer, this.#target);
       this.#frame = example.frame;
 
-      // 6) Resize observer keeps the canvas in sync with layout changes.
+      // 5) Resize observer keeps the canvas in sync with layout changes.
       this.#ro = new ResizeObserver(() => this.#applySize());
       this.#ro.observe(this.#canvas);
       window.addEventListener('resize', () => this.#applySize());
 
-      // 7) RAF loop, stored on `this` so the IntersectionObserver and
+      // 6) RAF loop, stored on `this` so the IntersectionObserver and
       //    the cross-demo coordination can re-arm it.
       this.#loop = (now) => {
         if (this.#stopped || this.#paused || this.#userPaused) return;
@@ -285,7 +280,7 @@ if (!customElements.get('tutorial-demo')) {
         }
       };
 
-      // 8) Pause / resume the RAF loop based on viewport visibility so an
+      // 7) Pause / resume the RAF loop based on viewport visibility so an
       //    offscreen demo doesn't burn GPU time. We re-anchor #start when
       //    resuming so animations don't jump forward by the offscreen
       //    duration. Resumes only if the demo isn't user-paused too.

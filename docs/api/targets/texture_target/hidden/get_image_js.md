@@ -1,11 +1,11 @@
 # TextureTarget::get_image_js
 
-Web-specific marshalling for [`TextureTarget::get_image`](https://fragmentcolor.org/api/targets/texture_target/get_image)
+Web-specific marshaling for [`TextureTarget::get_image`](https://fragmentcolor.org/api/targets/texturetarget#get_image)
 that returns a `Uint8Array`.
 
 Hidden from the public website. The canonical
-[`get_image`](https://fragmentcolor.org/api/targets/texture_target/get_image)
-page documents the behaviour for every binding.
+[`get_image`](https://fragmentcolor.org/api/targets/texturetarget#get_image)
+page documents the behavior for every binding.
 
 ## Example
 

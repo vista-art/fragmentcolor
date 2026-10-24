@@ -54,8 +54,13 @@ impl Renderer {
         self: Arc<Self>,
         metal_layer_ptr: u64,
     ) -> Result<Arc<MobileWindowTarget>, FragmentColorError> {
-        // Read drawableSize off the CAMetalLayer via Objective-C runtime.
         let layer = metal_layer_ptr as *mut AnyObject;
+        if layer.is_null() {
+            return Err(FragmentColorError::Init(
+                "createTarget: the CAMetalLayer pointer is null".into(),
+            ));
+        }
+        // Read drawableSize off the CAMetalLayer via Objective-C runtime.
         let size: CGSize = unsafe { msg_send![layer, drawableSize] };
         let extent = wgpu::Extent3d {
             width: u32::max(size.width as u32, 1),

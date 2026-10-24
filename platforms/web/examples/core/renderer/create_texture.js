@@ -1,6 +1,4 @@
 import { Renderer } from "fragmentcolor";
-const image = "/healthcheck/public/favicon.png";
+const image = new Uint8Array(await (await fetch("/healthcheck/public/favicon.png")).arrayBuffer());
 const renderer = new Renderer();
 const tex = await renderer.createTexture(image);
-// use in a shader uniform
-// shader.set("tex", tex);

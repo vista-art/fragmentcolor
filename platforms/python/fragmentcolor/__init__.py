@@ -6,8 +6,10 @@ try:
     # Keep __doc__ and __all__ aligned with the extension module
     from . import fragmentcolor as _fragmentcolor  # type: ignore
     __doc__ = _fragmentcolor.__doc__
+    # The window target is WindowTarget, as in every other binding. This name stays as an alias.
+    RenderCanvasTarget = _fragmentcolor.WindowTarget
     if hasattr(_fragmentcolor, "__all__"):
-        __all__ = _fragmentcolor.__all__
+        __all__ = [*_fragmentcolor.__all__, "RenderCanvasTarget"]
 except OSError as e:
     # Provide a helpful hint for macOS code signature errors during import
     if sys.platform == "darwin" and "code signature in" in str(e) and "not valid for use in process" in str(e):

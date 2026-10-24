@@ -1,17 +1,22 @@
-use glam::Vec2;
-use glam::Vec4;
-
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
 pub mod error;
+#[cfg(wasm)]
+use error::ScreenRegionError;
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyo3::pyclass(from_py_object))]
+#[cfg_attr(
+    python,
+    pyo3::pyclass(from_py_object, get_all, eq, hash, frozen, module = "fragmentcolor")
+)]
 #[cfg_attr(mobile, derive(uniffi::Record))]
 /// A 2D pixel-space rectangle used for viewports and scissor rects.
 /// For texture upload regions see `TextureRegion` in the texture module.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+///
+/// `max_x` and `max_y` are exclusive, so `width()` is `max_x - min_x`.
+/// A size alone, `[w, h]` or `(w, h)`, covers exactly `w` by `h` pixels from the origin.
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
 pub struct ScreenRegion {
     pub min_x: u32,
     pub min_y: u32,
@@ -70,10 +75,12 @@ impl ScreenRegion {
         )
     }
 
+    /// A region of exactly `size` pixels at the origin, the same as [`ScreenRegion::from_size`].
     pub fn from_tuple(size: (u32, u32)) -> Self {
-        Self::from_tuples((0, 0), size)
+        Self::from_size(size.0, size.1)
     }
 
+    /// The region between two corners, both inside it, so it spans one pixel more than their distance.
     pub fn from_tuples(a: (u32, u32), b: (u32, u32)) -> Self {
         // Figure out what our two ranges are
         let (min, max) = ((a.0.min(b.0), a.1.min(b.1)), (a.0.max(b.0), a.1.max(b.1)));
@@ -130,10 +137,17 @@ impl ScreenRegion {
     }
 
     pub fn clamp(&mut self, width: u32, height: u32) {
-        self.min_x = self.min_x.min(width);
-        self.min_y = self.min_y.min(height);
-        self.max_x = self.max_x.min(width);
-        self.max_y = self.max_y.min(height);
+        *self = self.clip(width, height);
+    }
+
+    /// The part of this region inside a `width` by `height` area, min corner first.
+    pub(crate) fn clip(&self, width: u32, height: u32) -> ScreenRegion {
+        Self {
+            min_x: self.min_x.min(self.max_x).min(width),
+            min_y: self.min_y.min(self.max_y).min(height),
+            max_x: self.min_x.max(self.max_x).min(width),
+            max_y: self.min_y.max(self.max_y).min(height),
+        }
     }
 
     pub fn union(&mut self, other: ScreenRegion) {
@@ -253,29 +267,6 @@ impl ScreenRegion {
         )
     }
 
-    pub fn to_vec2(&self) -> Vec2 {
-        Vec2 {
-            x: self.width() as f32,
-            y: self.height() as f32,
-        }
-    }
-
-    pub fn to_vec4(&self) -> Vec4 {
-        Vec4::new(
-            self.min_x as f32,
-            self.min_y as f32,
-            self.max_x as f32,
-            self.max_y as f32,
-        )
-    }
-
-    pub fn center_f32(&self) -> Vec2 {
-        Vec2 {
-            x: self.min_x as f32 + self.width() as f32 / 2.0,
-            y: self.min_y as f32 + self.height() as f32 / 2.0,
-        }
-    }
-
     /// Clamps this ScreenRegion to a theoretical overlap of another ScreenRegion,
     /// referring to "overlapping pixels" (such as a copy destination vs copy source),
     /// in such a way that only pixels that are valid for both Regions are valid.
@@ -385,137 +376,150 @@ fn translate_region(
     )
 }
 
+/// Reads `[w, h]` or `[x, y, w, h]` from a plain or typed array, an `{ x, y, width, height }`
+/// object such as a `DOMRect`, or the `{ minX, minY, maxX, maxY }` fields of a `ScreenRegion`.
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for ScreenRegion {
-    type Error = crate::region::error::ScreenRegionError;
+    type Error = ScreenRegionError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
-        use js_sys::{Array, Float32Array, Int32Array, Reflect, Uint32Array};
-        use wasm_bindgen::JsCast;
+        use js_sys::{Array, ArrayBuffer};
 
-        // Typed arrays: Uint32Array, Int32Array, Float32Array
-        if let Some(arr) = value.dyn_ref::<Uint32Array>() {
-            let len = arr.length();
-            if len == 2 {
-                let mut buf = [0u32; 2];
-                arr.copy_to(&mut buf);
-                return Ok(((buf[0], buf[1])).into());
-            }
-            if len == 4 {
-                let mut buf = [0u32; 4];
-                arr.copy_to(&mut buf);
-                return Ok(((buf[0], buf[1], buf[2], buf[3])).into());
-            }
-        }
-        if let Some(arr) = value.dyn_ref::<Int32Array>() {
-            let len = arr.length();
-            if len == 2 {
-                let mut buf = [0i32; 2];
-                arr.copy_to(&mut buf);
-                return Ok(((buf[0].max(0) as u32, buf[1].max(0) as u32)).into());
-            }
-            if len == 4 {
-                let mut buf = [0i32; 4];
-                arr.copy_to(&mut buf);
-                return Ok(((
-                    buf[0].max(0) as u32,
-                    buf[1].max(0) as u32,
-                    buf[2].max(0) as u32,
-                    buf[3].max(0) as u32,
-                ))
-                    .into());
-            }
-        }
-        if let Some(arr) = value.dyn_ref::<Float32Array>() {
-            let len = arr.length();
-            if len == 2 {
-                let mut buf = [0.0f32; 2];
-                arr.copy_to(&mut buf);
-                return Ok(((buf[0].max(0.0) as u32, buf[1].max(0.0) as u32)).into());
-            }
-            if len == 4 {
-                let mut buf = [0.0f32; 4];
-                arr.copy_to(&mut buf);
-                return Ok(((
-                    buf[0].max(0.0) as u32,
-                    buf[1].max(0.0) as u32,
-                    buf[2].max(0.0) as u32,
-                    buf[3].max(0.0) as u32,
-                ))
-                    .into());
-            }
+        if Array::is_array(value) || ArrayBuffer::is_view(value) {
+            let numbers = Array::from(value)
+                .iter()
+                .map(|item| js_to_dimension(&item))
+                .collect::<Result<Vec<u32>, ScreenRegionError>>()?;
+            return match numbers[..] {
+                [width, height] => Ok(ScreenRegion::from_size(width, height)),
+                [x, y, width, height] => Ok(ScreenRegion::from_region(x, y, width, height)),
+                _ => Err(ScreenRegionError::TypeMismatch(format!(
+                    "a region takes [w, h] or [x, y, w, h], got {} numbers",
+                    numbers.len()
+                ))),
+            };
         }
 
-        // Array: [x,y,width,height] or [w,h]
-        if let Some(arr) = value.dyn_ref::<Array>() {
-            let len = arr.length();
-            let num = |i: u32| arr.get(i).as_f64().unwrap_or(0.0).max(0.0) as u32;
-            if len == 2 {
-                return Ok(((num(0), num(1))).into());
-            }
-            if len == 4 {
-                return Ok(((num(0), num(1), num(2), num(3))).into());
-            }
-        }
-
-        // Object: support DOMRect/Rect-like objects and min/max variants
         if value.is_object() {
-            let x = Reflect::get(value, &wasm_bindgen::JsValue::from_str("x"))
-                .ok()
-                .and_then(|v| v.as_f64());
-            let y = Reflect::get(value, &wasm_bindgen::JsValue::from_str("y"))
-                .ok()
-                .and_then(|v| v.as_f64());
-            let w = Reflect::get(value, &wasm_bindgen::JsValue::from_str("width"))
-                .ok()
-                .and_then(|v| v.as_f64());
-            let h = Reflect::get(value, &wasm_bindgen::JsValue::from_str("height"))
-                .ok()
-                .and_then(|v| v.as_f64());
-
-            if let (Some(x), Some(y), Some(w), Some(h)) = (x, y, w, h) {
-                return Ok(((
-                    x.max(0.0) as u32,
-                    y.max(0.0) as u32,
-                    w.max(0.0) as u32,
-                    h.max(0.0) as u32,
-                ))
-                    .into());
+            let field = |names: &[&str]| -> Result<Option<u32>, ScreenRegionError> {
+                for name in names {
+                    let item = js_sys::Reflect::get(value, &JsValue::from_str(name))
+                        .unwrap_or(JsValue::UNDEFINED);
+                    if !item.is_undefined() && !item.is_null() {
+                        return js_to_dimension(&item).map(Some);
+                    }
+                }
+                Ok(None)
+            };
+            // Bounds first: on a `ScreenRegion`, `width` and `height` are methods.
+            let bounds = (
+                field(&["minX", "min_x"])?,
+                field(&["minY", "min_y"])?,
+                field(&["maxX", "max_x"])?,
+                field(&["maxY", "max_y"])?,
+            );
+            if let (Some(min_x), Some(min_y), Some(max_x), Some(max_y)) = bounds {
+                return Ok(ScreenRegion {
+                    min_x: min_x.min(max_x),
+                    min_y: min_y.min(max_y),
+                    max_x: max_x.max(min_x),
+                    max_y: max_y.max(min_y),
+                });
             }
-
-            // min/max variant: { minX, minY, maxX, maxY }
-            let min_x = Reflect::get(value, &wasm_bindgen::JsValue::from_str("minX"))
-                .ok()
-                .and_then(|v| v.as_f64());
-            let min_y = Reflect::get(value, &wasm_bindgen::JsValue::from_str("minY"))
-                .ok()
-                .and_then(|v| v.as_f64());
-            let max_x = Reflect::get(value, &wasm_bindgen::JsValue::from_str("maxX"))
-                .ok()
-                .and_then(|v| v.as_f64());
-            let max_y = Reflect::get(value, &wasm_bindgen::JsValue::from_str("maxY"))
-                .ok()
-                .and_then(|v| v.as_f64());
-
-            if let (Some(ax), Some(ay), Some(bx), Some(by)) = (min_x, min_y, max_x, max_y) {
-                let a = (ax.max(0.0) as u32, ay.max(0.0) as u32);
-                let b = (bx.max(0.0) as u32, by.max(0.0) as u32);
-                return Ok(((a, b)).into());
+            let rect = (
+                field(&["x"])?,
+                field(&["y"])?,
+                field(&["width"])?,
+                field(&["height"])?,
+            );
+            if let (Some(x), Some(y), Some(width), Some(height)) = rect {
+                return Ok(ScreenRegion::from_region(x, y, width, height));
             }
         }
 
-        Err(crate::region::error::ScreenRegionError::TypeMismatch(
+        Err(ScreenRegionError::TypeMismatch(
             "Cannot convert JavaScript value to ScreenRegion (expected [x,y,w,h], [w,h], or {x,y,width,height})".into(),
         ))
     }
 }
 
+/// One region number from JS, checked by [`crate::size::read_dimension`].
 #[cfg(wasm)]
-crate::impl_tryfrom_owned_via_ref!(
-    ScreenRegion,
-    wasm_bindgen::JsValue,
-    crate::region::error::ScreenRegionError
-);
+fn js_to_dimension(item: &JsValue) -> Result<u32, ScreenRegionError> {
+    item.as_f64()
+        .and_then(crate::size::read_dimension)
+        .ok_or_else(|| {
+            ScreenRegionError::TypeMismatch(format!(
+                "a region takes numbers from 0 up, got {item:?}"
+            ))
+        })
+}
+
+/// A pair of region numbers from JS, such as an origin or a size.
+#[cfg(wasm)]
+fn js_to_pair(value: &JsValue) -> Result<(u32, u32), ScreenRegionError> {
+    let numbers = js_sys::Array::from(value)
+        .iter()
+        .map(|item| js_to_dimension(&item))
+        .collect::<Result<Vec<u32>, ScreenRegionError>>()?;
+    match numbers[..] {
+        [first, second] => Ok((first, second)),
+        _ => Err(ScreenRegionError::TypeMismatch(format!(
+            "expected two numbers, got {value:?}"
+        ))),
+    }
+}
+
+// ScreenRegion is a value type. The parity audit tracks the methods that take
+// it, so its constructor and accessors have no doc pages.
+#[cfg(wasm)]
+#[wasm_bindgen]
+impl ScreenRegion {
+    #[doc(hidden)]
+    #[wasm_bindgen(constructor)]
+    pub fn new_js(origin: &JsValue, size: &JsValue) -> Result<ScreenRegion, JsError> {
+        Ok(ScreenRegion::new(js_to_pair(origin)?, js_to_pair(size)?))
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter = minX)]
+    pub fn min_x_js(&self) -> u32 {
+        self.min_x
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter = minY)]
+    pub fn min_y_js(&self) -> u32 {
+        self.min_y
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter = maxX)]
+    pub fn max_x_js(&self) -> u32 {
+        self.max_x
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter = maxY)]
+    pub fn max_y_js(&self) -> u32 {
+        self.max_y
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(js_name = width)]
+    pub fn width_js(&self) -> u32 {
+        self.width()
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(js_name = height)]
+    pub fn height_js(&self) -> u32 {
+        self.height()
+    }
+}
+
+#[cfg(wasm)]
+crate::impl_tryfrom_owned_via_ref!(ScreenRegion, wasm_bindgen::JsValue, ScreenRegionError);
 
 crate::impl_from_into_with_refs!(
     ScreenRegion,
@@ -535,26 +539,26 @@ crate::impl_from_into_with_refs!(
 impl From<(u32, u32)> for ScreenRegion {
     #[inline]
     fn from(size: (u32, u32)) -> Self {
-        ScreenRegion::from_tuple(size)
+        ScreenRegion::from_size(size.0, size.1)
     }
 }
 impl From<&(u32, u32)> for ScreenRegion {
     #[inline]
     fn from(size: &(u32, u32)) -> Self {
-        ScreenRegion::from_tuple(*size)
+        ScreenRegion::from_size(size.0, size.1)
     }
 }
 
 impl From<[u32; 2]> for ScreenRegion {
     #[inline]
     fn from(a: [u32; 2]) -> Self {
-        ScreenRegion::from_tuple((a[0], a[1]))
+        ScreenRegion::from_size(a[0], a[1])
     }
 }
 impl From<&[u32; 2]> for ScreenRegion {
     #[inline]
     fn from(a: &[u32; 2]) -> Self {
-        ScreenRegion::from_tuple((a[0], a[1]))
+        ScreenRegion::from_size(a[0], a[1])
     }
 }
 
@@ -624,18 +628,6 @@ impl From<&([i32; 2], [i32; 2])> for ScreenRegion {
 }
 
 // Outbound conversions for convenience
-impl From<&ScreenRegion> for Vec2 {
-    #[inline]
-    fn from(r: &ScreenRegion) -> Self {
-        r.to_vec2()
-    }
-}
-impl From<&ScreenRegion> for Vec4 {
-    #[inline]
-    fn from(r: &ScreenRegion) -> Self {
-        r.to_vec4()
-    }
-}
 impl From<&ScreenRegion> for [f32; 4] {
     #[inline]
     fn from(r: &ScreenRegion) -> Self {
@@ -671,6 +663,18 @@ mod python_bindings {
         #[pyo3(name = "from_tuple")]
         pub fn from_tuple_py(size: (u32, u32)) -> Self {
             ScreenRegion::from_tuple(size)
+        }
+
+        #[doc(hidden)]
+        #[pyo3(name = "width")]
+        pub fn width_py(&self) -> u32 {
+            self.width()
+        }
+
+        #[doc(hidden)]
+        #[pyo3(name = "height")]
+        pub fn height_py(&self) -> u32 {
+            self.height()
         }
     }
 }
@@ -767,6 +771,23 @@ mod tests {
         );
     }
 
+    // Story: a size alone covers exactly that many pixels, while two corners
+    // both sit inside the region.
+    #[test]
+    fn size_forms_cover_exact_pixels() {
+        assert_eq!(ScreenRegion::from([32, 32]).width(), 32);
+        assert_eq!(ScreenRegion::from((64, 32)).height(), 32);
+        assert_eq!(
+            ScreenRegion::from_tuple((64, 32)),
+            ScreenRegion::from_size(64, 32)
+        );
+        assert_eq!(
+            ScreenRegion::from([2, 4, 8, 6]),
+            ScreenRegion::from_region(2, 4, 8, 6)
+        );
+        assert_eq!(ScreenRegion::from_tuples((0, 0), (31, 31)).width(), 32);
+    }
+
     // Story: Construct regions using helpers and verify geometry utilities.
     #[test]
     fn computes_area_aspect_and_centers() {
@@ -814,8 +835,26 @@ mod tests {
         let square = ScreenRegion::from_region(0, 0, 4, 4);
         assert!((square.inbound_radius() - 2.0).abs() < 1e-6);
         assert!((square.outbound_radius() - (2.0f32.hypot(2.0))).abs() < 1e-6);
+    }
 
-        let c = square.center_f32();
-        assert!((c.x - 2.0).abs() < 1e-6 && (c.y - 2.0).abs() < 1e-6);
+    // Story: Clip keeps the part of a region inside an area and orders its corners.
+    #[test]
+    fn clips_to_an_area() {
+        let inside = ScreenRegion::from_region(2, 2, 4, 4);
+        assert_eq!(inside.clip(8, 8), inside);
+
+        let past = ScreenRegion::from_region(6, 4, 10, 10);
+        assert_eq!(past.clip(8, 8), ScreenRegion::from_region(6, 4, 2, 4));
+
+        let outside = ScreenRegion::from_region(10, 10, 4, 4);
+        assert_eq!(outside.clip(8, 8).area(), 0);
+
+        let flipped = ScreenRegion {
+            min_x: 5,
+            min_y: 6,
+            max_x: 1,
+            max_y: 2,
+        };
+        assert_eq!(flipped.clip(8, 8), ScreenRegion::from_region(1, 2, 4, 4));
     }
 }

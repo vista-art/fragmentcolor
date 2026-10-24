@@ -1,86 +1,63 @@
 name: Publish Swift Package
 
-# Builds the iOS xcframework, zips it, attaches it to the GitHub Release as
-# `FragmentColorFFI.xcframework.zip`, and computes the SPM checksum. The
-# consumer-facing `Package.swift` at the repo root references this URL; the
-# post-publish workflow rewrites the pinned checksum via a follow-up PR.
-#
-# Swift Package Manager has no central registry — distribution is via git
-# URL + `.binaryTarget(url:, checksum:)`, so "publishing" means uploading
-# the xcframework zip to the release and updating the checksum in
-# `Package.swift`.
+# Checks a published release against its Swift Package Manager pin.
+# Swift Package Manager has no registry: consumers resolve the git tag and
+# download the xcframework from the URL and checksum in its `Package.swift`.
+# `prepare_release.yml` builds that xcframework, attaches it to the draft
+# release, and commits the pin that the tag points at. This workflow never
+# rebuilds, because a rebuilt static library would not match the pinned checksum.
 
 on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to check (vX.Y.Z)"
+        required: true
 
 permissions:
-  contents: write   # needed to upload the release asset
+  contents: read
 
 jobs:
-  build-and-upload:
+  verify:
     runs-on: macos-15
-    outputs:
-      checksum: ${{ steps.checksum.outputs.checksum }}
-      version: ${{ steps.vars.outputs.version }}
-    env:
-      RUSTC_WRAPPER: ""
     steps:
-      - name: Checkout
+      - name: Determine tag
+        id: vars
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout the tag
         uses: actions/checkout@v4
         with:
-          submodules: "recursive"
+          ref: ${{ steps.vars.outputs.tag }}
 
-      - name: Determine version
-        id: vars
-        run: |
-          if [ "${{ github.event_name }}" = "release" ] && [ -n "${{ github.event.release.tag_name }}" ]; then
-            RAW="${{ github.event.release.tag_name }}"
-          else
-            RAW=$(grep '^version = ' Cargo.toml | head -n1 | cut -d'"' -f2)
-            RAW="v$RAW"
-          fi
-          VERSION="${RAW#v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Setup Rust (with iOS targets)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-ios,aarch64-apple-ios-sim
-
-      - name: Build xcframework
-        run: |
-          chmod +x ./tools/build_ios
-          ./tools/build_ios
-
-      - name: Zip xcframework
-        run: |
-          cd build/ios
-          zip -r -X FragmentColorFFI.xcframework.zip FragmentColorFFI.xcframework
-
-      - name: Compute SPM checksum
-        id: checksum
-        run: |
-          # Swift Package Manager uses `swift package compute-checksum`,
-          # which on the same input produces the same hex string as
-          # sha256sum. We use swift directly so it matches exactly.
-          CHECKSUM=$(swift package compute-checksum build/ios/FragmentColorFFI.xcframework.zip)
-          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
-          echo "xcframework checksum: $CHECKSUM"
-
-      - name: Upload xcframework to GitHub Release
-        if: ${{ github.event_name == 'release' }}
+      - name: Compare the release asset with the Package.swift pin
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.vars.outputs.tag }}
         run: |
-          gh release upload "$TAG" build/ios/FragmentColorFFI.xcframework.zip --clobber
+          set -euo pipefail
+          VERSION=$(sed -n -E 's/^let fragmentcolorVersion = "(.*)"$/\1/p' Package.swift)
+          PINNED=$(sed -n -E 's/^let fragmentcolorChecksum = "(.*)"$/\1/p' Package.swift)
+          if [ "v$VERSION" != "$TAG" ]; then
+            echo "::error::Package.swift at $TAG pins the v$VERSION xcframework. Start releases with the Prepare release workflow."
+            exit 1
+          fi
+          gh release download "$TAG" --pattern FragmentColorFFI.xcframework.zip --dir "$RUNNER_TEMP/xcf"
+          ACTUAL=$(swift package compute-checksum "$RUNNER_TEMP/xcf/FragmentColorFFI.xcframework.zip")
+          if [ "$ACTUAL" != "$PINNED" ]; then
+            echo "::error::The $TAG xcframework asset has checksum $ACTUAL, but Package.swift pins $PINNED."
+            exit 1
+          fi
+          echo "Package.swift at $TAG matches the attached xcframework ($ACTUAL)."
 
-      - name: Upload xcframework as workflow artifact (workflow_dispatch)
-        if: ${{ github.event_name != 'release' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: fragmentcolor-xcframework
-          path: build/ios/FragmentColorFFI.xcframework.zip
+      # Resolves the binary target from the release URL, as a consumer would.
+      - name: Build the package for the iOS Simulator
+        run: |
+          xcodebuild -scheme FragmentColor \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            build

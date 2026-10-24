@@ -5,7 +5,7 @@ val shader = Shader("""
 fn cs_main() { }
 
 """)
-val pass = Pass("p"); pass.addShader(shader)
+val pass = Pass.fromShader("p", shader)
 
 // Call the method
 val is_compute = pass.isCompute()

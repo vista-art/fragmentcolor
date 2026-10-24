@@ -2,8 +2,7 @@
 
 Swift wrapper for `Renderer::create_external_texture`. Takes a raw `UInt64`
 pointer to a `CVPixelBuffer` so uniffi can marshal it across the FFI
-boundary; the public Swift extension wraps a real `CVPixelBuffer` and hands
-the underlying pointer in.
+boundary.
 
 Currently a stub: every call returns
 `FragmentColorError.render("not implemented yet")` until the iOS plumbing

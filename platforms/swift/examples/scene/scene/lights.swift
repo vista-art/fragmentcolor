@@ -1,6 +1,6 @@
 import FragmentColor
 
-let scene = try await Scene.load("path/to/model.glb")
+let scene = try Scene.load("path/to/model.glb")
 
 // Darken every loaded light to half intensity for a moody pass.
 for light in scene.lights() {

@@ -44,6 +44,9 @@ macro_rules! spec_from_input {
 
 spec_from_input!(
     &[u8],
+    &str,
+    String,
+    &String,
     Vec<u8>,
     &Vec<u8>,
     &std::path::Path,
@@ -79,6 +82,9 @@ macro_rules! spec_from_input_with_options {
 
 spec_from_input_with_options!(
     &[u8],
+    &str,
+    String,
+    &String,
     Vec<u8>,
     &Vec<u8>,
     &std::path::Path,
@@ -162,23 +168,28 @@ impl<S: Into<Size>, F: Into<TextureFormat>> From<(S, F, &[u8])> for TextureInput
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Clone)]
 pub struct TextureOptions {
+    #[cfg_attr(mobile, uniffi(default = None))]
     pub size: Option<Size>,
     pub format: TextureFormat,
+    #[cfg_attr(mobile, uniffi(default))]
     pub sampler: SamplerOptions,
     /// Generate a full mipmap chain at upload for source images. Default: true.
     /// Combined with the default linear sampler, this enables trilinear filtering
     /// so textured surfaces stay smooth at any zoom or rotation. Set to false
     /// to skip the CPU work for textures that won't be sampled at distance.
+    #[cfg_attr(mobile, uniffi(default = true))]
     pub mipmaps: bool,
-    /// Optional [`crate::TextureUsage`] override, stored as the underlying
-    /// `u32` bit mask so it crosses every FFI cleanly. `None` lets the
-    /// renderer pick per-method defaults:
+    /// Optional [`crate::TextureUsage`] bits, stored as the underlying
+    /// `u32` bit mask so it crosses every FFI cleanly.
     ///
-    /// - `create_texture` → `TEXTURE_BINDING | COPY_DST`
-    /// - `create_storage_texture` → `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`
+    /// - `create_texture` adds them to the `TEXTURE_BINDING | COPY_DST` it always sets.
+    ///   Add `COPY_SRC` to read the texture back with `read_texture`.
+    /// - `create_storage_texture` uses them in place of its default,
+    ///   `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`.
     ///
-    /// Set with `.with_usage(TextureUsage::STORAGE_BINDING | ...)` for
+    /// Set with `.with_usage(TextureUsage::COPY_SRC | ...)` for
     /// readability on the Rust side.
+    #[cfg_attr(mobile, uniffi(default = None))]
     pub usage: Option<u32>,
 }
 

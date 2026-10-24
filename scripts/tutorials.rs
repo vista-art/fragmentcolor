@@ -35,7 +35,7 @@ mod tutorials {
         walk_tutorials(&tut_root, &tut_root, &mut entries);
 
         write_manifest(&workspace_root, &entries);
-        copy_example_js(&workspace_root, &tut_root, &entries);
+        copy_examples(&workspace_root, &tut_root, &entries);
 
         println!("cargo::rerun-if-changed={}", TUTORIALS_DIR);
     }
@@ -276,7 +276,7 @@ mod tutorials {
         out.push('}');
     }
 
-    fn copy_example_js(
+    fn copy_examples(
         workspace_root: &Path,
         tut_root: &Path,
         entries: &BTreeMap<String, TutorialEntry>,

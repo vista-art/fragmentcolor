@@ -16,6 +16,8 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 
+use parking_lot::RwLock;
+
 #[derive(Debug)]
 pub(crate) struct ReadbackEntry {
     pub capacity: u64,
@@ -35,12 +37,6 @@ pub(crate) struct ReadbackBufferPool {
     label: String,
     entry_limit: usize,
     entries: VecDeque<ReadbackEntry>, // front = LRU, back = MRU
-    // instrumentation
-    hits: u64,
-    misses: u64,
-    evictions: u64,
-    allocations: u64,
-    bytes_allocated: u64,
 }
 
 impl ReadbackBufferPool {
@@ -49,11 +45,6 @@ impl ReadbackBufferPool {
             label: label.to_string(),
             entry_limit: entry_limit.max(1),
             entries: VecDeque::new(),
-            hits: 0,
-            misses: 0,
-            evictions: 0,
-            allocations: 0,
-            bytes_allocated: 0,
         }
     }
 
@@ -76,11 +67,9 @@ impl ReadbackBufferPool {
         {
             let buffer = entry.buffer.clone();
             self.entries.push_back(entry);
-            self.hits += 1;
             return buffer;
         }
 
-        self.misses += 1;
         // No suitable entry; create a new buffer exactly sized to `size`
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&self.label),
@@ -93,45 +82,62 @@ impl ReadbackBufferPool {
             capacity: size,
             buffer: arc.clone(),
         });
-        self.allocations += 1;
-        self.bytes_allocated += size;
 
         // Evict LRU if over capacity
         if self.entries.len() > self.entry_limit {
             let _ = self.entries.pop_front();
-            self.evictions += 1;
         }
         arc
     }
 
-    pub fn reset_metrics(&mut self) {
-        self.hits = 0;
-        self.misses = 0;
-        self.evictions = 0;
-        self.allocations = 0;
-        self.bytes_allocated = 0;
+    /// Remove `buffer` from the pool, so no later readback receives it.
+    pub fn discard(&mut self, buffer: &Arc<wgpu::Buffer>) {
+        self.entries
+            .retain(|entry| !Arc::ptr_eq(&entry.buffer, buffer));
     }
 }
 
-impl crate::renderer::buffer_pool::BufferPool for ReadbackBufferPool {
-    fn stats(&self) -> crate::renderer::buffer_pool::PoolStats {
-        crate::renderer::buffer_pool::PoolStats {
-            hits: self.hits,
-            misses: self.misses,
-            evictions: self.evictions,
-            allocations: self.allocations,
-            bytes_allocated: self.bytes_allocated,
+/// A pooled buffer with a read mapping in flight.
+///
+/// Dropping it before [`PendingReadback::finish`] unmaps the buffer and removes it from the pool.
+/// A readback that timed out or failed leaves its mapping pending or mapped, and a later
+/// readback copying into that buffer would fail validation with `BufferStillMapped`.
+pub(crate) struct PendingReadback<'pool> {
+    pool: &'pool RwLock<ReadbackBufferPool>,
+    buffer: Arc<wgpu::Buffer>,
+    finished: bool,
+}
+
+impl<'pool> PendingReadback<'pool> {
+    pub fn new(pool: &'pool RwLock<ReadbackBufferPool>, buffer: Arc<wgpu::Buffer>) -> Self {
+        Self {
+            pool,
+            buffer,
+            finished: false,
         }
     }
 
-    fn reset_metrics(&mut self) {
-        ReadbackBufferPool::reset_metrics(self)
+    /// Keep the buffer pooled. Call it once the bytes are read and the buffer is unmapped.
+    pub fn finish(mut self) {
+        self.finished = true;
+    }
+}
+
+impl Drop for PendingReadback<'_> {
+    fn drop(&mut self) {
+        if self.finished {
+            return;
+        }
+        self.buffer.unmap();
+        self.pool.write().discard(&self.buffer);
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::PendingReadback;
     use crate::ReadbackBufferPool;
+    use parking_lot::RwLock;
     use std::sync::Arc;
 
     // Helper to get a test device
@@ -164,6 +170,52 @@ mod tests {
             // Request 900 should best-fit to b1 (1024)
             let b4 = pool.get(&device, 900);
             assert!(Arc::ptr_eq(&b1, &b4));
+        });
+    }
+
+    // Story: a readback that stops before its bytes are read never hands its buffer out again.
+    #[test]
+    fn unfinished_readback_leaves_the_pool_unmapped() {
+        pollster::block_on(async move {
+            let device = device().await;
+            let pool = RwLock::new(ReadbackBufferPool::new("Test Readback Pool", 8));
+
+            let buffer = pool.write().get(&device, 1024);
+            buffer.slice(..).map_async(wgpu::MapMode::Read, |_| {});
+            drop(PendingReadback::new(&pool, buffer.clone()));
+
+            let fresh = pool.write().get(&device, 1024);
+            assert!(!Arc::ptr_eq(&buffer, &fresh));
+
+            // The pending map was cancelled, so the buffer maps again.
+            let (sender, receiver) = std::sync::mpsc::channel();
+            buffer
+                .slice(..)
+                .map_async(wgpu::MapMode::Read, move |result| {
+                    let _ = sender.send(result);
+                });
+            device
+                .poll(wgpu::PollType::Wait {
+                    submission_index: None,
+                    timeout: None,
+                })
+                .expect("poll");
+            assert!(receiver.recv().expect("map callback").is_ok());
+        });
+    }
+
+    // Story: a finished readback keeps its buffer for the next one.
+    #[test]
+    fn finished_readback_stays_in_the_pool() {
+        pollster::block_on(async move {
+            let device = device().await;
+            let pool = RwLock::new(ReadbackBufferPool::new("Test Readback Pool", 8));
+
+            let buffer = pool.write().get(&device, 1024);
+            PendingReadback::new(&pool, buffer.clone()).finish();
+
+            let again = pool.write().get(&device, 1024);
+            assert!(Arc::ptr_eq(&buffer, &again));
         });
     }
 

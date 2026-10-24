@@ -4,190 +4,71 @@ use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
-use crate::mesh::{Instance, Mesh, Quad, Vertex, VertexValue};
+use crate::mesh::{Instance, Mesh, Quad, Vertex, VertexData};
+use crate::platforms::web::{read_numbers, read_rows, read_unsigned};
 
 // -----------------------------
 // JS helpers
 // -----------------------------
 fn js_to_f32_vec(value: &JsValue) -> Option<Vec<f32>> {
-    use js_sys::{Array, Float32Array, Int32Array, Uint32Array};
-
-    if let Some(arr) = value.dyn_ref::<Float32Array>() {
-        let len = arr.length() as usize;
-        let mut buf = vec![0.0f32; len];
-        arr.copy_to(&mut buf[..]);
-        return Some(buf);
+    if let Some(number) = value.as_f64() {
+        return Some(vec![number as f32]);
     }
-    if let Some(arr) = value.dyn_ref::<Int32Array>() {
-        let len = arr.length() as usize;
-        let mut buf_i = vec![0i32; len];
-        arr.copy_to(&mut buf_i[..]);
-        return Some(buf_i.into_iter().map(|v| v as f32).collect());
-    }
-    if let Some(arr) = value.dyn_ref::<Uint32Array>() {
-        let len = arr.length() as usize;
-        let mut buf_u = vec![0u32; len];
-        arr.copy_to(&mut buf_u[..]);
-        return Some(buf_u.into_iter().map(|v| v as f32).collect());
-    }
-    if let Some(arr) = value.dyn_ref::<Array>() {
-        let len = arr.length() as usize;
-        let mut out = Vec::with_capacity(len);
-        for i in 0..(len as u32) {
-            let v = arr.get(i).as_f64()? as f32;
-            out.push(v);
-        }
-        return Some(out);
-    }
-    if let Some(n) = value.as_f64() {
-        return Some(vec![n as f32]);
-    }
-    None
+    let numbers = read_numbers(value)?;
+    Some(numbers.into_iter().map(|number| number as f32).collect())
 }
 
-fn js_to_vertex_value(value: &JsValue) -> Result<VertexValue, JsError> {
-    use js_sys::{Float32Array, Int32Array, Uint32Array};
-
-    // Float32Array
-    if let Some(arr) = value.dyn_ref::<Float32Array>() {
-        let len = arr.length();
-        match len {
-            1 => {
-                let mut v = [0.0f32; 1];
-                arr.copy_to(&mut v);
-                return Ok(VertexValue::F32(v[0]));
-            }
-            2 => {
-                let mut v = [0.0f32; 2];
-                arr.copy_to(&mut v);
-                return Ok(VertexValue::F32x2(v));
-            }
-            3 => {
-                let mut v = [0.0f32; 3];
-                arr.copy_to(&mut v);
-                return Ok(VertexValue::F32x3(v));
-            }
-            4 => {
-                let mut v = [0.0f32; 4];
-                arr.copy_to(&mut v);
-                return Ok(VertexValue::F32x4(v));
-            }
-            _ => {
-                return Err(JsError::new(
-                    "Unsupported Float32Array length for vertex attribute",
-                ));
-            }
-        }
+/// Reads a vertex attribute value: a number,
+/// or an array or typed array of 1 to 4 numbers.
+/// They take the type the shader declares when the mesh attaches to it.
+fn read_attribute(value: &JsValue) -> Result<VertexData, JsError> {
+    if let Some(number) = value.as_f64() {
+        return Ok(number.into());
     }
-    // Int32Array
-    if let Some(arr) = value.dyn_ref::<Int32Array>() {
-        let len = arr.length();
-        match len {
-            1 => {
-                let mut v = [0i32; 1];
-                arr.copy_to(&mut v);
-                return Ok(VertexValue::I32(v[0]));
-            }
-            2 => {
-                let mut v = [0i32; 2];
-                arr.copy_to(&mut v);
-                return Ok(VertexValue::I32x2(v));
-            }
-            3 => {
-                let mut v = [0i32; 3];
-                arr.copy_to(&mut v);
-                return Ok(VertexValue::I32x3(v));
-            }
-            4 => {
-                let mut v = [0i32; 4];
-                arr.copy_to(&mut v);
-                return Ok(VertexValue::I32x4(v));
-            }
-            _ => {
-                return Err(JsError::new(
-                    "Unsupported Int32Array length for vertex attribute",
-                ));
-            }
-        }
-    }
-    // Uint32Array
-    if let Some(arr) = value.dyn_ref::<Uint32Array>() {
-        let len = arr.length();
-        match len {
-            1 => {
-                let mut v = [0u32; 1];
-                arr.copy_to(&mut v);
-                return Ok(VertexValue::U32(v[0]));
-            }
-            2 => {
-                let mut v = [0u32; 2];
-                arr.copy_to(&mut v);
-                return Ok(VertexValue::U32x2(v));
-            }
-            3 => {
-                let mut v = [0u32; 3];
-                arr.copy_to(&mut v);
-                return Ok(VertexValue::U32x3(v));
-            }
-            4 => {
-                let mut v = [0u32; 4];
-                arr.copy_to(&mut v);
-                return Ok(VertexValue::U32x4(v));
-            }
-            _ => {
-                return Err(JsError::new(
-                    "Unsupported Uint32Array length for vertex attribute",
-                ));
-            }
-        }
-    }
-    // Plain JS array of numbers -> floats
-    if let Some(arr) = value.dyn_ref::<js_sys::Array>() {
-        let len = arr.length();
-        match len {
-            1 => Ok(VertexValue::F32(arr.get(0).as_f64().unwrap_or(0.0) as f32)),
-            2 => Ok(VertexValue::F32x2([
-                arr.get(0).as_f64().unwrap_or(0.0) as f32,
-                arr.get(1).as_f64().unwrap_or(0.0) as f32,
-            ])),
-            3 => Ok(VertexValue::F32x3([
-                arr.get(0).as_f64().unwrap_or(0.0) as f32,
-                arr.get(1).as_f64().unwrap_or(0.0) as f32,
-                arr.get(2).as_f64().unwrap_or(0.0) as f32,
-            ])),
-            4 => Ok(VertexValue::F32x4([
-                arr.get(0).as_f64().unwrap_or(0.0) as f32,
-                arr.get(1).as_f64().unwrap_or(0.0) as f32,
-                arr.get(2).as_f64().unwrap_or(0.0) as f32,
-                arr.get(3).as_f64().unwrap_or(0.0) as f32,
-            ])),
-            _ => Err(JsError::new(
-                "Unsupported array length for vertex attribute",
-            )),
-        }
-    } else if let Some(n) = value.as_f64() {
-        Ok(VertexValue::F32(n as f32))
-    } else {
-        Err(JsError::new("Cannot convert value to a vertex attribute"))
-    }
+    let numbers = read_numbers(value).ok_or_else(|| {
+        JsError::new("a vertex attribute is a number or a list of 1 to 4 numbers")
+    })?;
+    Ok(VertexData::try_from(numbers.as_slice())?)
 }
 
+/// Reads a vertex position: a `Vertex`, a number, or 1 to 4 numbers.
 fn js_to_vertex_into(value: &JsValue) -> Result<Vertex, JsError> {
-    // First try direct conversion if it's already a Vertex
     if let Ok(vertex) = Vertex::try_from(value) {
         return Ok(vertex);
     }
-
-    // Then try converting from position data (arrays/typed arrays/numbers)
     let data = js_to_f32_vec(value).ok_or_else(|| {
         JsError::new("Expected Vertex object, number, or array/typed array for position")
     })?;
-    match data.len() {
-        1 => Ok(Vertex::new(data[0])),
-        2 => Ok(Vertex::new([data[0], data[1]])),
-        3 => Ok(Vertex::new([data[0], data[1], data[2]])),
-        4 => Ok(Vertex::new([data[0], data[1], data[2], data[3]])),
+    match *data {
+        [x] => Ok(Vertex::new(x)),
+        [x, y] => Ok(Vertex::new([x, y])),
+        [x, y, z] => Ok(Vertex::new([x, y, z])),
+        [x, y, z, w] => Ok(Vertex::new([x, y, z, w])),
         _ => Err(JsError::new("Position must have 1..=4 components")),
+    }
+}
+
+/// Reads a vertex for the `Mesh` methods: anything `new Vertex` takes, or the
+/// `[position, uv]` and `[position, uv, color]` forms of Rust's `Into<Vertex>`.
+fn read_vertex(value: &JsValue) -> Result<Vertex, JsError> {
+    let Some(parts) = read_rows(value).filter(|parts| parts.len() > 1) else {
+        return js_to_vertex_into(value);
+    };
+    let floats = |part: &Vec<f64>| part.iter().map(|&n| n as f32).collect::<Vec<f32>>();
+    let parts: Vec<Vec<f32>> = parts.iter().map(floats).collect();
+    match parts.as_slice() {
+        [position, uv] if position.len() == 3 && uv.len() == 2 => {
+            let (position, uv) = ([position[0], position[1], position[2]], [uv[0], uv[1]]);
+            Ok(Vertex::from((position, uv)))
+        }
+        [position, uv, color] if position.len() == 3 && uv.len() == 2 && color.len() == 4 => {
+            let position = [position[0], position[1], position[2]];
+            let color = [color[0], color[1], color[2], color[3]];
+            Ok(Vertex::from((position, [uv[0], uv[1]], color)))
+        }
+        _ => Err(JsError::new(
+            "a vertex given in parts is [position, uv] or [position, uv, color], with 3, 2 and 4 numbers",
+        )),
     }
 }
 
@@ -211,8 +92,7 @@ fn js_to_instance_into(value: &JsValue) -> Result<Instance, JsError> {
                 .get(0)
                 .as_string()
                 .ok_or_else(|| JsError::new("Instance attribute keys must be strings"))?;
-            let vv = js_to_vertex_value(&pair.get(1))?;
-            instance = instance.set(&key, vv);
+            instance = instance.set(&key, read_attribute(&pair.get(1))?);
         }
         return Ok(instance);
     }
@@ -235,6 +115,44 @@ crate::impl_js_bridge!(Instance, crate::mesh::error::MeshError);
 // -----------------------------
 #[wasm_bindgen]
 impl Vertex {
+    // The attribute names `Vertex::NORMAL` and friends, as static getters on the
+    // JS class. Python exposes the same constants as class attributes.
+    #[doc(hidden)]
+    #[wasm_bindgen(getter, js_name = "NORMAL")]
+    pub fn normal_js() -> String {
+        Self::NORMAL.into()
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter, js_name = "TANGENT")]
+    pub fn tangent_js() -> String {
+        Self::TANGENT.into()
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter, js_name = "UV0")]
+    pub fn uv0_js() -> String {
+        Self::UV0.into()
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter, js_name = "UV1")]
+    pub fn uv1_js() -> String {
+        Self::UV1.into()
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter, js_name = "COLOR0")]
+    pub fn color0_js() -> String {
+        Self::COLOR0.into()
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter, js_name = "COLOR1")]
+    pub fn color1_js() -> String {
+        Self::COLOR1.into()
+    }
+
     #[wasm_bindgen(constructor)]
     #[lsp_doc("docs/api/geometry/vertex/new.md")]
     pub fn new_js(position: &JsValue) -> Result<Vertex, JsError> {
@@ -262,9 +180,12 @@ impl Vertex {
 
     #[wasm_bindgen(js_name = "set")]
     #[lsp_doc("docs/api/geometry/vertex/set.md")]
-    pub fn set_js(&self, key: &str, value: &JsValue) -> Result<Vertex, JsError> {
-        let vv = js_to_vertex_value(value)?;
-        Ok(self.clone().set(key, vv))
+    pub fn set_js(
+        &self,
+        key: &str,
+        #[wasm_bindgen(unchecked_param_type = "number | ArrayLike<number>")] value: &JsValue,
+    ) -> Result<Vertex, JsError> {
+        Ok(self.clone().set(key, read_attribute(value)?))
     }
 
     #[wasm_bindgen(js_name = "createInstance")]
@@ -275,17 +196,13 @@ impl Vertex {
 }
 
 // -----------------------------
-// Instance (WASM bindings) — `new Instance()` + `.set(key, value)` builder.
-// JS users typically pass a plain `{ key: value, ... }` object to `mesh.addInstance`,
-// but explicit construction is supported for symmetry with the Rust API.
+// Instance (WASM bindings): `new Instance()` + `.set(key, value)` builder.
+// `mesh.addInstance` also takes a plain `{ key: value, ... }` object.
 // -----------------------------
 #[wasm_bindgen]
 impl Instance {
-    // Instance is a helper value type; its constructors are not separately
-    // documented as user API — callers use Vertex.createInstance() or plain
-    // object literals passed to Mesh.addInstance().
-    #[doc(hidden)]
     #[wasm_bindgen(constructor)]
+    #[lsp_doc("docs/api/geometry/instance/new.md")]
     pub fn new_js() -> Instance {
         Instance::new()
     }
@@ -296,11 +213,14 @@ impl Instance {
         Instance::new()
     }
 
-    #[doc(hidden)]
     #[wasm_bindgen(js_name = "set")]
-    pub fn set_js(&self, key: &str, value: &JsValue) -> Result<Instance, JsError> {
-        let vv = js_to_vertex_value(value)?;
-        Ok(self.clone().set(key, vv))
+    #[lsp_doc("docs/api/geometry/instance/set.md")]
+    pub fn set_js(
+        &self,
+        key: &str,
+        #[wasm_bindgen(unchecked_param_type = "number | ArrayLike<number>")] value: &JsValue,
+    ) -> Result<Instance, JsError> {
+        Ok(self.clone().set(key, read_attribute(value)?))
     }
 }
 
@@ -323,7 +243,7 @@ impl Mesh {
             .ok_or_else(|| JsError::new("Expected an array"))?;
         let m = Mesh::new();
         for v in arr.iter() {
-            let vertex = js_to_vertex_into(&v)?;
+            let vertex = read_vertex(&v)?;
             m.add_vertex(vertex);
         }
         Ok(m)
@@ -332,7 +252,7 @@ impl Mesh {
     #[wasm_bindgen(js_name = "addVertex")]
     #[lsp_doc("docs/api/geometry/mesh/add_vertex.md")]
     pub fn add_vertex_js(&mut self, v: &JsValue) -> Result<(), JsError> {
-        let vertex = js_to_vertex_into(v)?;
+        let vertex = read_vertex(v)?;
         self.add_vertex(vertex);
         Ok(())
     }
@@ -345,7 +265,7 @@ impl Mesh {
             .ok_or_else(|| JsError::new("Expected an array"))?;
         let mut verts: Vec<Vertex> = Vec::with_capacity(arr.length() as usize);
         for v in arr.iter() {
-            let vertex = js_to_vertex_into(&v)?;
+            let vertex = read_vertex(&v)?;
             verts.push(vertex);
         }
         self.add_vertices(verts);
@@ -383,38 +303,29 @@ impl Mesh {
 
     #[wasm_bindgen(js_name = "setInstanceCount")]
     #[lsp_doc("docs/api/geometry/mesh/set_instance_count.md")]
-    pub fn set_instance_count_js(&mut self, n: u32) {
-        self.set_instance_count(n);
+    pub fn set_instance_count_js(&mut self, count: f64) -> Result<(), JsError> {
+        self.set_instance_count(read_unsigned(count, "Mesh.setInstanceCount: count")?);
+        Ok(())
     }
 
     #[wasm_bindgen(js_name = "setIndices")]
     #[lsp_doc("docs/api/geometry/mesh/set_indices.md")]
-    pub fn set_indices_js(&mut self, indices: &JsValue) -> Result<(), JsError> {
-        use js_sys::{Array, Uint32Array};
-        let out: Vec<u32> = if let Some(arr) = indices.dyn_ref::<Uint32Array>() {
-            let mut buf = vec![0u32; arr.length() as usize];
-            arr.copy_to(&mut buf[..]);
-            buf
-        } else if let Some(arr) = indices.dyn_ref::<Array>() {
-            let len = arr.length();
-            let mut buf = Vec::with_capacity(len as usize);
-            for i in 0..len {
-                let n = arr
-                    .get(i)
-                    .as_f64()
-                    .ok_or_else(|| JsError::new("Indices must be numbers"))?;
-                if n < 0.0 || n > u32::MAX as f64 {
-                    return Err(JsError::new("Indices must fit in a u32"));
-                }
-                buf.push(n as u32);
-            }
-            buf
-        } else {
-            return Err(JsError::new(
-                "Expected Uint32Array or an array of numbers for indices",
-            ));
+    pub fn set_indices_js(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] indices: &JsValue,
+    ) -> Result<(), JsError> {
+        if let Some(array) = indices.dyn_ref::<js_sys::Uint32Array>() {
+            self.set_indices(array.to_vec());
+            return Ok(());
+        }
+        let numbers = read_numbers(indices).ok_or_else(|| {
+            JsError::new("Mesh.setIndices: expected an array or typed array of numbers")
+        })?;
+        let read = |(index, number): (usize, f64)| {
+            read_unsigned(number, &format!("Mesh.setIndices: item {index}"))
         };
-        self.set_indices(out);
+        let indices = numbers.into_iter().enumerate().map(read);
+        self.set_indices(indices.collect::<Result<Vec<u32>, JsError>>()?);
         Ok(())
     }
 

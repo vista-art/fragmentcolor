@@ -136,12 +136,12 @@ impl Camera {
     /// shader (and the Pass camera snapshot used by the transparency sort)
     /// without dropping the Camera handle.
     ///
-    /// Behaviour by projection kind:
+    /// Behavior by projection kind:
     /// - **Perspective**: rebuilds from `fovy_radians / near / far` with
     ///   the new aspect.
     /// - **Orthographic**: keeps the current vertical extent and rescales
     ///   the horizontal extents so `(right - left) / (top - bottom)`
-    ///   matches the new aspect, centred on the existing horizontal
+    ///   matches the new aspect, centered on the existing horizontal
     ///   midpoint. Frustum height stays put.
     ///
     /// Returns a handle to the same Camera (Arc-shared) for chaining.
@@ -494,7 +494,7 @@ mod tests {
     fn set_aspect_on_orthographic_rescales_horizontal_extent() {
         // Orthographic frustums absorb the new aspect by keeping the
         // vertical extent and rescaling the horizontal extents around the
-        // current horizontal midpoint. Starting from a centred 2×2 frustum,
+        // current horizontal midpoint. Starting from a centered 2×2 frustum,
         // an aspect of 2.0 should land at a 4×2 frustum (left=-2, right=2).
         let camera = Camera::orthographic(-1.0, 1.0, -1.0, 1.0, 0.1, 100.0);
         camera.set_aspect(2.0);

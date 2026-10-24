@@ -7,13 +7,27 @@ use std::convert::TryInto;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen]
+/// The window target on the web, exported to JS as `WindowTarget`.
+/// `CanvasTarget` stays available in JS as an alias of the same class.
+#[wasm_bindgen(js_name = "WindowTarget")]
 #[derive(Clone)]
 pub struct CanvasTarget {
     inner: Arc<Mutex<WindowTarget>>,
 }
 
-crate::impl_fc_kind!(CanvasTarget, "CanvasTarget");
+// `impl_fc_kind!` can't name the renamed JS class, so the brand is written out.
+impl crate::FcKind for CanvasTarget {
+    const KIND: &'static str = "WindowTarget";
+}
+
+#[wasm_bindgen(js_class = "WindowTarget")]
+impl CanvasTarget {
+    #[doc(hidden)]
+    #[wasm_bindgen(getter, js_name = "__fc_kind")]
+    pub fn js_fc_kind(&self) -> String {
+        <Self as crate::FcKind>::KIND.into()
+    }
+}
 
 impl CanvasTarget {
     pub(crate) fn new(
@@ -27,7 +41,7 @@ impl CanvasTarget {
     }
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_class = "WindowTarget")]
 impl CanvasTarget {
     #[wasm_bindgen(js_name = "resize")]
     #[lsp_doc("docs/api/targets/window_target/resize.md")]
@@ -47,14 +61,12 @@ impl CanvasTarget {
 
     #[wasm_bindgen(js_name = "getImage")]
     #[lsp_doc("docs/api/targets/window_target/get_image.md")]
-    pub fn get_image_js(&self) -> Result<js_sys::Uint8Array, JsError> {
-        Err(JsError::new(
-            "getImage() is only supported for texture targets",
-        ))
+    pub async fn get_image_js(&self) -> js_sys::Uint8Array {
+        js_sys::Uint8Array::from(Target::get_image(self).await.as_slice())
     }
 }
 
-impl crate::target::TargetInternal for CanvasTarget {
+impl crate::target::FrameSource for CanvasTarget {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
         self.inner.lock().get_current_frame()
     }
@@ -100,11 +112,11 @@ impl TextureTarget {
     /// Get a sampleable Texture handle for binding in a shader uniform.
     /// Mirrors the native `TextureTarget::texture()` method.
     #[wasm_bindgen(js_name = "texture")]
-    #[lsp_doc("docs/api/targets/texture_target/hidden/texture_js.md")]
+    #[lsp_doc("docs/api/targets/texture_target/texture.md")]
     pub fn texture_js(&self) -> crate::texture::Texture {
         self.texture()
     }
 }
 
-crate::impl_js_bridge!(CanvasTarget, ShaderError);
+crate::impl_js_bridge!(CanvasTarget, ShaderError, "WindowTarget");
 crate::impl_js_bridge!(TextureTarget, ShaderError);

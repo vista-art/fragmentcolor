@@ -6,18 +6,18 @@ radiates from; `direction` is the world-space vector the cone aims along
 
 Falloff is inverse-square distance with a smooth cone roll-off between an
 inner and outer cone angle (defaults: `0` and `π/4`). Tighten the beam
-with [`set_cone_angles`](https://fragmentcolor.org/api/scene/light/set_cone_angles),
+with [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles),
 cap the influence with
-[`set_range`](https://fragmentcolor.org/api/scene/light/set_range), and
+[`set_range`](https://fragmentcolor.org/api/scene/light#set_range), and
 scale the radiance with
-[`set_intensity`](https://fragmentcolor.org/api/scene/light/set_intensity).
+[`set_intensity`](https://fragmentcolor.org/api/scene/light#set_intensity).
 
-Use this for flashlights, headlamps, theatre lighting, mood key-lights:
+Use this for flashlights, headlamps, theater lighting, mood key-lights:
 anything where the lit volume is a cone aimed at a target. For an
 unconstrained point source see
-[`Light::point`](https://fragmentcolor.org/api/scene/light/point);
+[`Light::point`](https://fragmentcolor.org/api/scene/light#point);
 for parallel-ray illumination see
-[`Light::directional`](https://fragmentcolor.org/api/scene/light/directional).
+[`Light::directional`](https://fragmentcolor.org/api/scene/light#directional).
 
 A spot light carries every kind-specific field, so every kind-specific
 setter (`set_position`, `set_direction`, `set_range`, `set_cone_angles`)

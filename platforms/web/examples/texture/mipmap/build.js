@@ -1,20 +1,14 @@
-import { Renderer, TextureFormat, Mipmap } from "fragmentcolor";
+import { Mipmap, Renderer, TextureFormat } from "fragmentcolor";
+const encoded_png_bytes = new Uint8Array(await (await fetch("/healthcheck/public/favicon.png")).arrayBuffer());
+const raw_rgba = new Uint8Array(8 * 8 * 4).fill(200);
 
-// Encoded path - build from PNG / JPEG bytes (size is inferred).
-// Use a fixture you have on hand. The favicon below is served by the
-// healthcheck server so the example runs end-to-end without the test
-// having to bring its own bytes.
-const pngResp = await fetch("/healthcheck/public/favicon.png");
-const pngBytes = new Uint8Array(await pngResp.arrayBuffer());
-const chain = Mipmap.build(pngBytes, TextureFormat.Rgba8UnormSrgb);
+// Encoded path: bytes plus the format you want the chain to live in.
+// The dimensions come from the decoded image.
+const chain = Mipmap.build(encoded_png_bytes, TextureFormat.Rgba8UnormSrgb);
 
-// Raw pixel path: include the size so build skips decoding.
-const rawRgba = new Uint8Array(8 * 8 * 4);
-rawRgba.fill(200);
-const chainRaw = Mipmap.build(rawRgba, TextureFormat.Rgba8UnormSrgb, [8, 8]);
+// Raw path: include the size so build skips decoding.
+const chain_raw = Mipmap.build(raw_rgba, TextureFormat.Rgba8UnormSrgb, [8, 8]);
 
-// Upload the chain through the regular createTexture entry point.
+// Either chain uploads the same way.
 const renderer = new Renderer();
 const texture = await renderer.createTexture(chain);
-const _ = chainRaw.count();
-const __ = texture.size();

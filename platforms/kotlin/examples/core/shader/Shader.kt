@@ -8,12 +8,12 @@ val shader = Shader("""
             vec2<f32>(-1.0, -1.0),
             vec2<f32>( 3.0, -1.0),
             vec2<f32>(-1.0,  3.0)
-        )
-        return vec4<f32>(pos[index], 0.0, 1.0)
+        );
+        return vec4<f32>(pos[index], 0.0, 1.0);
     }
 
     @group(0) @binding(0)
-    var<uniform> resolution: vec2<f32>
+    var<uniform> resolution: vec2<f32>;
 
     @fragment
     fn fs_main() -> @location(0) vec4<f32> {
@@ -23,9 +23,9 @@ val shader = Shader("""
 """)
 
 // Set the "resolution" uniform
-shader.set("resolution", floatArrayOf(800.0f, 600.0f))
+shader.set("resolution", listOf(800.0f, 600.0f))
 val res = shader.get("resolution")
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(16u, 16u)
+val target = renderer.createTextureTarget(listOf(16u, 16u))
 renderer.render(shader, target)

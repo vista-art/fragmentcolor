@@ -17,13 +17,18 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-pub mod constants;
-pub use constants::*;
+mod constants;
+use constants::*;
 pub(crate) mod uniform;
 pub(crate) use uniform::*;
 
 pub mod composer;
 pub use composer::{ShaderInput, ShaderPart};
+
+mod coerce;
+pub(crate) use coerce::{UniformInput, is_whole_in};
+
+mod attach;
 
 pub(crate) mod registry;
 
@@ -52,6 +57,7 @@ pub struct Shader {
 crate::impl_fc_kind!(Shader, "Shader");
 
 impl Default for Shader {
+    #[lsp_doc("docs/api/core/shader/default.md")]
     fn default() -> Self {
         Self::new(DEFAULT_SHADER).expect("SAFETY: DEFAULT_SHADER is built-in")
     }
@@ -77,9 +83,9 @@ impl Shader {
     ///
     /// Use this method when one or more parts of the shader must be fetched
     /// from the network. On WASM this is the *only* way to compose shaders
-    /// from remote URLs because constructors cannot be async. On Python, Swift,
-    /// and Kotlin the network I/O blocks the calling thread
-    /// (via `pollster::block_on` on Python; uniffi async on Swift/Kotlin).
+    /// from remote URLs because constructors cannot be async. Python blocks
+    /// the calling thread (via `pollster::block_on`); Swift and Kotlin
+    /// await it as a uniffi async method.
     #[lsp_doc("docs/api/core/shader/fetch.md")]
     pub async fn fetch(input: impl Into<ShaderInput>) -> Result<Self, ShaderError> {
         Ok(Self::from(input::resolve(input.into()).await?))
@@ -87,7 +93,10 @@ impl Shader {
 
     #[lsp_doc("docs/api/core/shader/set.md")]
     pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
-        self.object.set(key, value)
+        match UniformInput::try_from(value.into()) {
+            Ok(input) => self.object.set_input(key, input),
+            Err(data) => self.object.set(key, data),
+        }
     }
 
     #[lsp_doc("docs/api/core/shader/get.md")]
@@ -150,7 +159,7 @@ impl Shader {
 
     #[lsp_doc("docs/api/core/shader/validate_mesh.md")]
     pub fn validate_mesh(&self, mesh: &crate::mesh::Mesh) -> Result<(), ShaderError> {
-        self.object.validate_mesh(mesh.object.clone())
+        self.object.validate_mesh(&mesh.object)
     }
 
     #[lsp_doc("docs/api/core/shader/is_compute.md")]
@@ -188,7 +197,7 @@ pub(crate) struct ShaderObject {
     padded: std::sync::OnceLock<Option<Module>>,
     pub(crate) storage: RwLock<UniformStorage>,
     pub(crate) total_bytes: u64,
-    pub(crate) pending: DashMap<String, UniformData>,
+    pub(crate) pending: DashMap<String, PendingUpdate>,
     pub(crate) meshes: RwLock<Vec<Arc<crate::mesh::MeshObject>>>,
     pub(crate) alpha_mode: RwLock<crate::material::AlphaMode>,
     pub(crate) double_sided: RwLock<bool>,
@@ -205,6 +214,15 @@ pub(crate) struct ShaderObject {
     /// surface; each entry becomes a real GPU texture + a
     /// `UniformData::Texture` write under the recorded key.
     pub(crate) pending_textures: RwLock<Vec<PendingTexture>>,
+}
+
+/// A `set` queued while the storage was busy, applied by `flush_pending`.
+#[derive(Debug, Clone)]
+pub(crate) enum PendingUpdate {
+    /// A value already shaped to the key's declared type.
+    Value(UniformData),
+    /// A loose value that could not see the key's type yet.
+    Input(UniformInput),
 }
 
 /// A texture upload waiting to be realized — slot key plus the TextureInput
@@ -227,10 +245,6 @@ impl ShaderObject {
     ///
     /// GLSL is also supported, but you need to provide both vertex and fragment shaders:
     /// `Shader::glsl(vertex_source, fragment_source)`.
-    ///
-    /// Shadertoy-flavored GLSL is supported in the toy() constructor.
-    /// In this case, a default vertex shader is provided automatically:
-    /// `Shader::toy(shadertoy_source)`.
     pub fn new(source: &str) -> Result<Self, ShaderError> {
         Self::wgsl(source)
     }
@@ -243,9 +257,27 @@ impl ShaderObject {
             self.pending.remove(key);
             storage.update(key, &val)
         } else {
-            self.pending.insert(key.to_string(), val);
+            self.pending
+                .insert(key.to_string(), PendingUpdate::Value(val));
             Ok(())
         }
+    }
+
+    /// Sets a uniform from a loose value, shaped to the key's declared WGSL type.
+    /// Never blocks: when the storage is busy the update is queued, already shaped
+    /// when a read lock is free, so a type error still surfaces here in the common case.
+    pub(crate) fn set_input(&self, key: &str, input: UniformInput) -> Result<(), ShaderError> {
+        if let Some(mut storage) = self.storage.try_write() {
+            let value = input.resolve(key, storage.shape(key)?)?;
+            self.pending.remove(key);
+            return storage.update(key, &value);
+        }
+        let update = match self.storage.try_read() {
+            Some(storage) => PendingUpdate::Value(input.resolve(key, storage.shape(key)?)?),
+            None => PendingUpdate::Input(input),
+        };
+        self.pending.insert(key.to_string(), update);
+        Ok(())
     }
 
     // getters
@@ -296,11 +328,17 @@ impl ShaderObject {
         shader
     }
 
-    /// Add a mesh to this shader.
+    /// Add a mesh to this shader, giving its untyped attributes the types this shader declares.
     pub fn add_mesh(&self, mesh: Arc<crate::mesh::MeshObject>) -> Result<(), ShaderError> {
-        self.validate_mesh(mesh.clone())?;
+        let types = self.bind_mesh(&mesh)?;
+        mesh.declare(types)?;
         self.meshes.write().push(mesh);
         Ok(())
+    }
+
+    /// Check that a mesh can attach to this shader, without attaching it or recording any type.
+    pub(crate) fn validate_mesh(&self, mesh: &crate::mesh::MeshObject) -> Result<(), ShaderError> {
+        self.bind_mesh(mesh).map(drop)
     }
 
     /// Remove a mesh from this shader.
@@ -330,22 +368,18 @@ impl ShaderObject {
         *self.double_sided.write() = value;
     }
 
-    /// Get a uniform value as UniformData enum.
+    /// Reads the current value of `key` from the CPU-side bytes, in the key's declared shape.
     ///
-    /// Blocking read: waits briefly (microseconds) for any in-flight `set`
-    /// to release the write lock. The previous `try_read` surfaced as
-    /// `Busy("storage read")` from `Shader::get` under contention with
-    /// concurrent setters — a defensible contract but uniformly
-    /// surprising for callers expecting the shader to be query-able at
-    /// any time. The clone-and-return body holds the lock only during
-    /// the lookup; no lock is held across the return, so re-entrance
-    /// from caller code (e.g. `let v = get(); set(v)`) is safe.
+    /// Takes a blocking read lock, which waits briefly for any in-flight `set`.
+    /// The lock is released before returning, so `let v = get(); set(v)` is safe.
+    /// Structs, arrays, and buffer roots read as raw bytes. See [`UniformData::decode`].
     pub fn get_uniform_data(&self, key: &str) -> Result<UniformData, ShaderError> {
         let storage = self.storage.read();
-        let uniform = storage
-            .get(key)
-            .ok_or(ShaderError::UniformNotFound(key.into()))?;
-        Ok(uniform.data.clone())
+        let slot = storage.shape(key)?;
+        let bytes = storage
+            .get_bytes(key)
+            .ok_or_else(|| ShaderError::InvalidKey(key.into()))?;
+        Ok(slot.decode(bytes))
     }
 
     /// True iff the shader declares a top-level storage binding named
@@ -356,6 +390,14 @@ impl ShaderObject {
     /// the same condition.
     pub(crate) fn has_storage(&self, root: &str) -> bool {
         self.storage.read().has_storage(root)
+    }
+
+    /// The entry point a pipeline runs for `stage`: the first one declared.
+    pub(crate) fn find_entry_point(&self, stage: naga::ShaderStage) -> Option<&naga::EntryPoint> {
+        self.module
+            .entry_points
+            .iter()
+            .find(|entry_point| entry_point.stage == stage)
     }
 
     /// Tells weather the shader is a compute shader.
@@ -394,7 +436,7 @@ impl ShaderObject {
             meshes: RwLock::new(Vec::new()),
             alpha_mode: RwLock::new(crate::material::AlphaMode::default()),
             // Default `double_sided=true` for shaders used directly: this
-            // preserves the pre-Material renderer behaviour (no back-face
+            // preserves the pre-Material renderer behavior (no back-face
             // cull) for callers who build a Shader without going through
             // Material. `Material::pbr()` flips it back to `false` so that
             // path follows the glTF 2.0 default (single-sided = back-face
@@ -480,194 +522,13 @@ impl ShaderObject {
         Ok(uniform.clone())
     }
 
-    /// Validate that a Mesh is compatible with this Shader's vertex inputs.
-    pub(crate) fn validate_mesh(
-        &self,
-        mesh: Arc<crate::mesh::MeshObject>,
-    ) -> Result<(), ShaderError> {
-        let inputs = self.reflect_vertex_inputs()?;
-        if inputs.is_empty() {
-            return Err(ShaderError::InvalidKey(
-                "
-                Invalid Mesh: Shader has no vertex inputs and renders fullscreen.\n
-
-                To create a compatible Shader, use Shader::from_vertex() or Shader::from_mesh(),
-                or provide a vertex shader with at least a 'position' input.
-                "
-                .into(),
-            ));
-        }
-
-        use std::collections::HashMap;
-        // Build maps from the first vertex
-        let (pos_fmt_opt, v_loc_map, v_name_map) = {
-            let verts = mesh.verts.read();
-            if let Some(v) = verts.first() {
-                let pos_fmt = if v.dimensions <= 2 {
-                    wgpu::VertexFormat::Float32x2
-                } else {
-                    wgpu::VertexFormat::Float32x3
-                };
-                // location -> (name, fmt) for vertex properties; position is handled specially at loc 0
-                let mut loc: HashMap<u32, (String, wgpu::VertexFormat)> = HashMap::new();
-                for (name, loc_idx) in v.prop_locations.iter() {
-                    if let Some(val) = v.properties.get(name) {
-                        loc.insert(*loc_idx, (name.clone(), val.format()));
-                    }
-                }
-                // name -> fmt, include position under name "position"
-                let mut by_name: HashMap<String, wgpu::VertexFormat> = HashMap::new();
-                by_name.insert("position".to_string(), pos_fmt);
-                for (name, val) in v.properties.iter() {
-                    by_name.insert(name.clone(), val.format());
-                }
-                (Some(pos_fmt), loc, by_name)
-            } else {
-                // No vertices present: cannot satisfy vertex inputs
-                (None, HashMap::new(), HashMap::new())
-            }
-        };
-
-        // Build maps from the first instance (if present), falling back to
-        // the schema declared on the Mesh when no instances are present yet.
-        // `Pass::add_model` declares the model-instance schema (the four vec4
-        // columns of mat4x4) without populating any instances on the Mesh —
-        // the per-Model transforms ride a Pass-owned instance buffer instead.
-        // Without this fall-through, validate_mesh would reject the Material's
-        // PBR shader because `model_0..3` look unprovisioned.
-        let (i_loc_map, i_name_map) = {
-            let insts = mesh.insts.read();
-            if let Some(i) = insts.first() {
-                let mut loc: HashMap<u32, (String, wgpu::VertexFormat)> = HashMap::new();
-                let mut by_name: HashMap<String, wgpu::VertexFormat> = HashMap::new();
-                for (name, loc_idx) in i.prop_locations.iter() {
-                    if let Some(val) = i.properties.get(name) {
-                        loc.insert(*loc_idx, (name.clone(), val.format()));
-                        by_name.insert(name.clone(), val.format());
-                    }
-                }
-                (loc, by_name)
-            } else if let Some(schema) = mesh.instance_schema.read().as_ref() {
-                // Schema-only mode: locations aren't known (no prop_locations
-                // without an Instance), so only the by-name map is populated.
-                // The renderer's vertex_buffer_layouts has the same name-based
-                // fallback and the pipeline layout matches.
-                let mut by_name: HashMap<String, wgpu::VertexFormat> = HashMap::new();
-                for field in schema.fields.iter() {
-                    by_name.insert(field.name.clone(), field.fmt);
-                }
-                (HashMap::new(), by_name)
-            } else {
-                (HashMap::new(), HashMap::new())
-            }
-        };
-
-        // position location is assumed to be 0
-        let pos_loc: u32 = 0;
-
-        // Validate each shader input. Name match wins over location match —
-        // see the parallel comment in `Renderer::vertex_buffer_layouts` for
-        // the why: shader `@location(...)` indices and the mesh's
-        // buffer-local location maps live in different namespaces, so any
-        // shader that mixes fixed locations with the Vertex's
-        // auto-incremented ones (e.g. PBR with `model_0..model_3` at 3..6
-        // alongside `color0` / `uv1` on the vertex side) trips the
-        // location-first matcher.
-        for inp in inputs.iter() {
-            let mut matched = false;
-
-            // 1) Name match against instance (e.g. `model_*`).
-            if let Some(fmt) = i_name_map.get(&inp.name) {
-                if *fmt == inp.format {
-                    matched = true;
-                } else {
-                    return Err(ShaderError::TypeMismatch(format!(
-                        "Type mismatch for shader input '{}' by name: shader expects {:?}, mesh has {:?}",
-                        inp.name, inp.format, fmt
-                    )));
-                }
-            }
-
-            // 2) Name match against vertex (NORMAL / UV0 / UV1 / COLOR0 /
-            //    TANGENT etc.).
-            if !matched && let Some(fmt) = v_name_map.get(&inp.name) {
-                if *fmt == inp.format {
-                    matched = true;
-                } else {
-                    return Err(ShaderError::TypeMismatch(format!(
-                        "Type mismatch for shader input '{}' by name: shader expects {:?}, mesh has {:?}",
-                        inp.name, inp.format, fmt
-                    )));
-                }
-            }
-
-            // 3) Position fallback — the only vertex slot that's commonly
-            //    unnamed on the shader side.
-            if !matched && inp.location == pos_loc {
-                if let Some(pos_fmt) = pos_fmt_opt {
-                    if pos_fmt == inp.format {
-                        matched = true;
-                    } else {
-                        return Err(ShaderError::TypeMismatch(format!(
-                            "Type mismatch for vertex 'position' @location({}): shader expects {:?}, mesh has {:?}",
-                            inp.location, inp.format, pos_fmt
-                        )));
-                    }
-                } else {
-                    return Err(ShaderError::InvalidKey(
-                        "Mesh has no vertices to provide 'position'".into(),
-                    ));
-                }
-            }
-
-            // 4) Instance match by buffer-local location index (raw shaders
-            //    without canonical names).
-            if !matched && let Some((_, f)) = i_loc_map.get(&inp.location) {
-                if *f == inp.format {
-                    matched = true;
-                } else {
-                    return Err(ShaderError::TypeMismatch(format!(
-                        "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                        inp.name, inp.location, inp.format, *f
-                    )));
-                }
-            }
-
-            // 5) Vertex match by buffer-local location index.
-            if !matched && let Some((_, f)) = v_loc_map.get(&inp.location) {
-                if *f == inp.format {
-                    matched = true;
-                } else {
-                    return Err(ShaderError::TypeMismatch(format!(
-                        "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                        inp.name, inp.location, inp.format, *f
-                    )));
-                }
-            }
-
-            if !matched {
-                return Err(ShaderError::InvalidKey(format!(
-                    "Mesh attribute not found for shader input '{}' @location({})",
-                    inp.name, inp.location
-                )));
-            }
-        }
-
-        Ok(())
-    }
-
     /// Reflect the vertex entry-point inputs as (name, location, format).
     /// Returns only parameters with @location decorations; builtins are ignored.
     pub(crate) fn reflect_vertex_inputs(&self) -> Result<Vec<VertexInputDesc>, ShaderError> {
-        // Find the vertex entry point (assume first if multiple; consistent with create_render_pipeline).
         let mut inputs: Vec<VertexInputDesc> = Vec::new();
 
-        // Iterate entry points and collect from the vertex stage only once (first hit wins)
-        for entry_point in self.module.entry_points.iter() {
-            if entry_point.stage != naga::ShaderStage::Vertex {
-                continue;
-            }
-
+        // The same entry point create_render_pipeline runs.
+        if let Some(entry_point) = self.find_entry_point(naga::ShaderStage::Vertex) {
             for argument in entry_point.function.arguments.iter() {
                 // Only consider @location bindings
                 let Some(binding) = argument.binding.as_ref() else {
@@ -688,7 +549,6 @@ impl ShaderObject {
                     format,
                 });
             }
-            break;
         }
         // Sort by location to keep a stable order
         inputs.sort_by_key(|vertex_input| vertex_input.location);
@@ -703,13 +563,19 @@ impl ShaderObject {
             return;
         }
         if let Some(mut storage) = self.storage.try_write() {
-            let updates: Vec<(String, UniformData)> = self
+            let updates: Vec<(String, PendingUpdate)> = self
                 .pending
                 .iter()
                 .map(|e| (e.key().clone(), e.value().clone()))
                 .collect();
-            for (k, v) in updates.into_iter() {
-                if let Err(e) = storage.update(&k, &v) {
+            for (k, update) in updates.into_iter() {
+                let value = match update {
+                    PendingUpdate::Value(value) => Ok(value),
+                    PendingUpdate::Input(input) => {
+                        storage.shape(&k).and_then(|slot| input.resolve(&k, slot))
+                    }
+                };
+                if let Err(e) = value.and_then(|value| storage.update(&k, &value)) {
                     log::warn!("flush_pending: dropping update for '{}': {}", k, e);
                 }
                 self.pending.remove(&k);
@@ -876,8 +742,6 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
 
 impl Renderable for Shader {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        // Ensure cached order for this pass is up-to-date
-        crate::pass::PassObject::ensure_flat_current(&self.pass);
         vec![self.pass.clone()].into()
     }
     fn roots(&self) -> Arc<[Arc<PassObject>]> {
@@ -957,10 +821,13 @@ fn build_wgsl_from_vertex(v: &crate::mesh::Vertex) -> String {
         "vec3<f32>"
     };
 
-    // Optional color: if present and F32x4, capture its location
+    // Optional color: four floats or four plain numbers, at the vertex's own location
     let mut color_decl: Option<(u32, &'static str)> = None;
     if let Some(val) = v.properties.get("color")
-        && matches!(val, crate::mesh::VertexValue::F32x4(_))
+        && matches!(
+            val,
+            crate::mesh::VertexData::F32x4(_) | crate::mesh::VertexData::Number4(_)
+        )
         && let Some(loc) = v.prop_locations.get("color").cloned()
     {
         color_decl = Some((loc, "vec4<f32>"));
@@ -1043,6 +910,45 @@ mod tests {
         let _ = from_slice_str.list_uniforms();
     }
 
+    // Story: Rust sets and reads matrices as flat column-major lists, as every
+    // binding does, next to the nested arrays.
+    #[test]
+    fn set_and_get_flat_matrices() {
+        let wgsl = r#"
+@group(0) @binding(0) var<uniform> m4: mat4x4<f32>;
+@group(0) @binding(1) var<uniform> m3: mat3x3<f32>;
+@group(0) @binding(2) var<uniform> m2: mat2x2<f32>;
+@vertex fn vs_main() -> @builtin(position) vec4<f32> {
+    return m4[0] + vec4<f32>(m3[0], 0.0) + vec4<f32>(m2[0], 0.0, 0.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+        "#;
+        let shader = Shader::new(wgsl).expect("shader");
+
+        shader.set("m4", [0.0; 16]).expect("flat mat4");
+        let identity: Vec<f32> = (0..16)
+            .map(|i| if i % 5 == 0 { 1.0 } else { 0.0 })
+            .collect();
+        shader.set("m4", identity.clone()).expect("mat4 from a Vec");
+        assert_eq!(shader.get::<[f32; 16]>("m4").expect("get"), identity[..]);
+        assert_eq!(shader.get::<Vec<f32>>("m4").expect("get"), identity);
+
+        let three: [f32; 9] = std::array::from_fn(|i| i as f32);
+        shader.set("m3", three).expect("flat mat3");
+        assert_eq!(shader.get::<[f32; 9]>("m3").expect("get"), three);
+
+        shader
+            .set("m2", [1.0, 2.0, 3.0, 4.0])
+            .expect("mat2 from four numbers");
+        assert_eq!(
+            shader.get::<[f32; 4]>("m2").expect("get"),
+            [1.0, 2.0, 3.0, 4.0]
+        );
+        assert_eq!(shader.get::<Vec<u8>>("m2").expect("get").len(), 16);
+
+        assert!(shader.set("m4", [0.0; 9]).is_err());
+    }
+
     #[test]
     fn shader_new_accepts_owned_string() {
         let owned: String = DEFAULT_SHADER.to_string();
@@ -1108,10 +1014,10 @@ fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut 
         let e2 = shader
             .validate_mesh(&m_mismatch)
             .expect_err("mismatch should err");
-        match e2 {
-            ShaderError::TypeMismatch(_) => {}
-            _ => panic!("unexpected error kind: {:?}", e2),
-        }
+        assert_eq!(
+            e2.to_string(),
+            "Mesh attribute offset: expected vec2<f32>, got vec3<f32> at instance 0"
+        );
     }
 
     const SHADER: &str = r#"
@@ -1392,23 +1298,44 @@ struct Outer { a: vec4<f32>, arr: array<vec4<f32>, 2>, inner: Inner };
         }
     }
 
-    // Story: Atomics in storage buffers are not yet supported; parsing should return an error today.
+    // Story: Atomic fields in a storage buffer reflect with the layout of their scalar.
     #[test]
-    fn storage_atomic_fields_currently_unsupported() {
+    fn storage_atomic_fields_reflect_as_scalars() {
         let wgsl = r#"
-struct A { x: atomic<i32> };
+struct A { x: atomic<i32>, y: atomic<u32> };
 @group(0) @binding(0) var<storage, read_write> a: A;
-@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
-  return vec4f(p[i], 0., 1.);
+@group(0) @binding(1) var<storage, read_write> counts: array<atomic<u32>, 4>;
+@compute @workgroup_size(1)
+fn cs_main() {
+  atomicAdd(&a.x, 1);
+  atomicAdd(&a.y, 1u);
+  atomicAdd(&counts[0], 1u);
 }
-@fragment fn main() -> @location(0) vec4<f32> { return vec4f(0.,0.,0.,1.); }
         "#;
-        let err = Shader::new(wgsl).expect_err("expected error for atomic storage");
-        match err {
-            ShaderError::TypeMismatch(_) | ShaderError::ParseError(_) => {}
-            _ => panic!("unexpected error kind: {:?}", err),
-        }
+        let shader = Shader::new(wgsl).expect("atomic storage parses");
+        let s = shader.object.storage.read();
+
+        let (_, _, a) = s.uniforms.get("a").expect("a uniform");
+        let UniformData::Storage(data) = &a.data else {
+            panic!("a is not a storage buffer");
+        };
+        let entry = data.first().expect("storage data");
+        assert_eq!(entry.span, 8);
+        assert_eq!(entry.access, StorageAccess::ReadWrite);
+        let Some(UniformData::Struct(shape)) = entry.inner.first() else {
+            panic!("a is not a struct");
+        };
+        let kinds: Vec<_> = shape.fields.iter().map(|field| &field.ty[0]).collect();
+        assert!(matches!(
+            kinds[..],
+            [UniformData::Int(_), UniformData::UInt(_)]
+        ));
+
+        let (_, _, counts) = s.uniforms.get("counts").expect("counts uniform");
+        let UniformData::Storage(data) = &counts.data else {
+            panic!("counts is not a storage buffer");
+        };
+        assert_eq!(data.first().expect("storage data").span, 16);
     }
 
     // Story: Workgroup variables (unbound) should be ignored and not prevent parsing.
@@ -1738,7 +1665,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
         let shader = crate::Shader::new(wgsl).expect("shader");
 
         let mesh = crate::mesh::Mesh::new();
-        use crate::mesh::{Vertex, VertexValue};
+        use crate::mesh::{Vertex, VertexData};
         mesh.add_vertices([
             Vertex::new([-0.5, -0.5, 0.0]),
             Vertex::new([0.5, -0.5, 0.0]),
@@ -1746,13 +1673,110 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
         ]);
         // Add instance with wrong-typed "offset" (vec3 instead of vec2)
         mesh.add_instance(
-            Vertex::new([0.0, 0.0]).set("offset", VertexValue::F32x3([0.0, 0.0, 0.0])),
+            Vertex::new([0.0, 0.0]).set("offset", VertexData::F32x3([0.0, 0.0, 0.0])),
         );
 
         let res = shader.add_mesh(&mesh);
         assert!(res.is_err());
         let s = format!("{}", res.unwrap_err());
-        assert!(s.contains("Type mismatch for shader input 'offset'"));
+        assert_eq!(
+            s,
+            "Mesh attribute offset: expected vec2<f32>, got vec3<f32> at instance 0"
+        );
+
+        // Three plain numbers can't fill a vec2 either.
+        let mesh = crate::mesh::Mesh::new();
+        mesh.add_vertices([
+            Vertex::new([-0.5, -0.5, 0.0]),
+            Vertex::new([0.5, -0.5, 0.0]),
+            Vertex::new([0.0, 0.5, 0.0]),
+        ]);
+        mesh.add_instance(Vertex::new([0.0, 0.0]).set("offset", [0.0, 0.0, 0.0]));
+        let s = shader.add_mesh(&mesh).expect_err("count").to_string();
+        assert_eq!(
+            s,
+            "Mesh attribute offset: expected vec2<f32>, got 3 number(s) at instance 0"
+        );
+    }
+
+    const TYPED_ID: &str = r#"
+struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat) id: u32 };
+@vertex
+fn vs_main(@location(0) pos: vec2<f32>, @location(1) id: u32) -> VOut {
+  var out: VOut;
+  out.pos = vec4<f32>(pos, 0.0, 1.0);
+  out.id = id;
+  return out;
+}
+@fragment
+fn fs_main(v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(f32(v.id)); }
+"#;
+
+    const FLOAT_ID: &str = r#"
+@vertex
+fn vs_main(@location(0) pos: vec2<f32>, @location(1) id: f32) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(pos, id, 1.0);
+}
+@fragment
+fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+"#;
+
+    fn mesh_with_ids(ids: &[f64]) -> crate::mesh::Mesh {
+        let mesh = crate::mesh::Mesh::new();
+        for (index, id) in ids.iter().enumerate() {
+            let x = index as f32;
+            mesh.add_vertex(crate::mesh::Vertex::new([x, 0.0]).set("id", *id));
+        }
+        mesh
+    }
+
+    // Story: validate_mesh is a dry run. It checks the mesh, and a later
+    // shader may still give its plain numbers another type.
+    #[test]
+    fn validate_mesh_commits_nothing() {
+        let unsigned = Shader::new(TYPED_ID).expect("shader");
+        let mesh = mesh_with_ids(&[1.0, 2.0, 3.0]);
+        unsigned.validate_mesh(&mesh).expect("fits");
+        assert!(mesh.object.types.read().vertex.is_empty());
+
+        let float = Shader::new(FLOAT_ID).expect("shader");
+        float.add_mesh(&mesh).expect("still untyped");
+        assert_eq!(
+            mesh.object.types.read().vertex.get("id"),
+            Some(&wgpu::VertexFormat::Float32)
+        );
+    }
+
+    // Story: an attach that fails leaves no type behind, so the next shader gets a clean try.
+    #[test]
+    fn failed_attach_leaves_no_types() {
+        let unsigned = Shader::new(TYPED_ID).expect("shader");
+        let mesh = mesh_with_ids(&[1.0, 2.0, -1.0]);
+        let error = unsigned.add_mesh(&mesh).expect_err("negative u32");
+        assert_eq!(
+            error.to_string(),
+            "Mesh attribute id: expected u32, got -1 at vertex 2"
+        );
+        assert!(mesh.object.types.read().vertex.is_empty());
+        assert!(unsigned.object.meshes.read().is_empty());
+
+        let float = Shader::new(FLOAT_ID).expect("shader");
+        float.add_mesh(&mesh).expect("floats take -1");
+        assert_eq!(float.object.meshes.read().len(), 1);
+    }
+
+    // Story: the shader Shader::from_vertex builds reads a color of four plain numbers.
+    #[test]
+    fn from_vertex_reads_an_untyped_color() {
+        let vertex = crate::mesh::Vertex::new([0.0, 0.0]).set("color", [1.0, 0.0, 0.0, 1.0]);
+        let shader = Shader::from_vertex(&vertex);
+        let inputs = shader.object.reflect_vertex_inputs().expect("inputs");
+        assert!(inputs.iter().any(|input| input.name == "color"
+            && input.format == wgpu::VertexFormat::Float32x4));
+
+        let mesh = crate::mesh::Mesh::new();
+        mesh.add_vertex(vertex);
+        shader.add_mesh(&mesh).expect("color attaches");
     }
 
     // Story: non-blocking set() enqueues while storage is write-locked; flush_pending applies updates
@@ -1797,5 +1821,182 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
         // Expect the last value (9.0)
         let r: f32 = shader.get("circle.radius").expect("radius");
         assert!((r - 9.0).abs() < 1e-6);
+    }
+
+    const TYPED: &str = r#"
+struct Item { v: vec4<f32> };
+struct Buf { items: array<Item, 3> };
+struct Arr { arr: array<vec4<f32>, 2> };
+@group(0) @binding(0) var<uniform> count: u32;
+@group(0) @binding(1) var<uniform> cell: vec2<i32>;
+@group(0) @binding(2) var<uniform> rot: mat2x2<f32>;
+@group(0) @binding(3) var<uniform> u: Arr;
+@group(0) @binding(4) var<storage, read> buf: Buf;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> {
+  let x = f32(count) + f32(cell.x) + rot[0].x + u.arr[1].x + buf.items[0].v.x;
+  return vec4f(x, 0., 0., 1.);
+}
+    "#;
+
+    // Story: plain numbers reach integer uniforms, the way JS and Python send them.
+    #[test]
+    fn set_writes_whole_numbers_into_integer_uniforms() {
+        let shader = Shader::new(TYPED).expect("shader");
+        shader
+            .object
+            .set_input("count", UniformInput::Number(3.0))
+            .expect("u32 from a number");
+        shader
+            .object
+            .set_input("cell", UniformInput::Numbers(vec![2.0, -1.0]))
+            .expect("vec2<i32> from numbers");
+        assert_eq!(shader.get::<u32>("count").expect("count"), 3);
+        assert_eq!(shader.get::<[i32; 2]>("cell").expect("cell"), [2, -1]);
+
+        // Rust takes the same path: an i32 literal fits the u32 slot.
+        shader.set("count", 7).expect("u32 from an i32 literal");
+        assert_eq!(shader.get::<u32>("count").expect("count"), 7);
+
+        let err = shader.set("count", -1).expect_err("negative u32");
+        assert!(err.to_string().ends_with("count: expected u32, got -1"));
+    }
+
+    // Story: a mat2x2 uniform takes four numbers from any language.
+    #[test]
+    fn set_builds_a_mat2_from_four_numbers() {
+        let shader = Shader::new(TYPED).expect("shader");
+        let values = vec![1.0, 2.0, 3.0, 4.0];
+        shader
+            .object
+            .set_input("rot", UniformInput::Numbers(values))
+            .expect("mat2x2 from four numbers");
+        let rot: [[f32; 2]; 2] = shader.get("rot").expect("rot");
+        assert_eq!(rot, [[1.0, 2.0], [3.0, 4.0]]);
+        shader
+            .set("rot", [1.0, 0.0, 0.0, 1.0])
+            .expect("mat2x2 from a vec4");
+    }
+
+    // Story: a value with the wrong length is rejected and the uniform keeps its value.
+    #[test]
+    fn set_rejects_wrong_lengths_and_keeps_the_value() {
+        let shader = Shader::new(SHADER).expect("shader");
+        shader.set("resolution", [800.0, 600.0]).expect("vec2");
+        let three = UniformInput::Numbers(vec![1.0, 2.0, 3.0]);
+        let err = shader
+            .object
+            .set_input("resolution", three)
+            .expect_err("three numbers for a vec2");
+        assert!(matches!(err, ShaderError::TypeMismatch(_)));
+        assert!(
+            err.to_string()
+                .ends_with("resolution: expected vec2<f32>, got 3 number(s)")
+        );
+        let resolution: [f32; 2] = shader.get("resolution").expect("resolution");
+        assert_eq!(resolution, [800.0, 600.0]);
+    }
+
+    // Story: indexed keys check the declared type, not only the byte count.
+    #[test]
+    fn indexed_keys_check_the_declared_type() {
+        let shader = Shader::new(TYPED).expect("shader");
+        // A vec4<u32> has the 16 bytes of a vec4<f32> but the wrong type.
+        let uints = UniformData::UVec4(vec![1, 2, 3, 4]);
+        let err = shader
+            .object
+            .set("buf.items[1].v", uints.clone())
+            .expect_err("vec4<u32> into vec4<f32>");
+        assert!(matches!(err, ShaderError::TypeMismatch(_)));
+        assert!(shader.object.set("u.arr[1]", uints).is_err());
+
+        // Loose numbers resolve to the declared vec4<f32>.
+        shader.set("buf.items[1].v", [1, 2, 3, 4]).expect("numbers");
+        let v: [f32; 4] = shader.get("buf.items[1].v").expect("indexed get");
+        assert_eq!(v, [1.0, 2.0, 3.0, 4.0]);
+        shader
+            .set("u.arr[1]", [5.0, 6.0, 7.0, 8.0])
+            .expect("array element");
+        let e: [f32; 4] = shader.get("u.arr[1]").expect("indexed get");
+        assert_eq!(e, [5.0, 6.0, 7.0, 8.0]);
+
+        let storage = shader.object.storage.read();
+        let shape = storage.shape("buf.items[2].v").expect("shape");
+        assert!(matches!(shape, UniformData::Vec4(_)));
+    }
+
+    // Story: raw bytes fill a storage root, and are rejected anywhere else.
+    #[test]
+    fn set_takes_bytes_only_for_buffer_roots() {
+        let shader = Shader::new(TYPED).expect("shader");
+        let blob: Vec<u8> = (0..48).collect();
+        shader
+            .object
+            .set_input("buf", UniformInput::Bytes(blob.clone()))
+            .expect("bytes into a storage root");
+        let storage = shader.object.storage.read();
+        assert_eq!(storage.get_bytes("buf").expect("blob"), &blob[..]);
+        drop(storage);
+
+        let bytes = UniformInput::Bytes(vec![0; 8]);
+        assert!(shader.object.set_input("cell", bytes.clone()).is_err());
+        assert!(shader.object.set_input("buf.items[0].v", bytes).is_err());
+    }
+
+    // Story: get on a struct root reads the bytes as they are now, not the reflected defaults.
+    #[test]
+    fn get_reads_struct_roots_from_current_bytes() {
+        let shader = Shader::new(SHADER).expect("shader");
+        shader.set("circle.radius", 0.25).expect("radius");
+        let circle = shader.object.get_uniform_data("circle").expect("circle");
+        let UniformData::Bytes(bytes) = circle else {
+            panic!("struct roots read as bytes, got {circle:?}");
+        };
+        // `radius` sits at offset 8, after `position: vec2<f32>`.
+        assert_eq!(&bytes[8..12], &0.25f32.to_le_bytes());
+    }
+
+    // Story: a loose value queued while the storage is locked resolves when it flushes.
+    #[test]
+    fn set_queues_loose_values_while_locked() {
+        let shader = Shader::new(TYPED).expect("shader");
+        let guard = shader.object.storage.write();
+        let count = UniformInput::Number(5.0);
+        shader.object.set_input("count", count).expect("queued");
+        let cell = UniformInput::Numbers(vec![1.0, 2.0, 3.0]);
+        shader
+            .object
+            .set_input("cell", cell)
+            .expect("queued, checked at flush");
+        drop(guard);
+
+        shader.object.flush_pending();
+        assert!(shader.object.pending.is_empty());
+        assert_eq!(shader.get::<u32>("count").expect("count"), 5);
+        assert_eq!(shader.get::<[i32; 2]>("cell").expect("cell"), [0, 0]);
+    }
+
+    // Story: a shader rendered on its own is freed with its pass when dropped.
+    #[test]
+    fn dropped_shader_frees_after_render() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([4u32, 4u32])
+                .await
+                .expect("texture target");
+            let shader = Shader::default();
+            let object = Arc::downgrade(&shader.object);
+            let pass = Arc::downgrade(&shader.pass);
+
+            renderer.render(&shader, &target).expect("render");
+            drop(shader);
+
+            assert!(object.upgrade().is_none(), "the shader leaked");
+            assert!(pass.upgrade().is_none(), "the shader's pass leaked");
+        });
     }
 }

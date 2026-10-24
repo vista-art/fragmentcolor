@@ -22,7 +22,10 @@ use std::ops::{BitOr, BitOrAssign};
 use wasm_bindgen::prelude::*;
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyo3::pyclass(from_py_object))]
+#[cfg_attr(
+    python,
+    pyo3::pyclass(from_py_object, get_all, eq, hash, frozen, module = "fragmentcolor")
+)]
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct TextureUsage {
@@ -52,6 +55,85 @@ impl TextureUsage {
     }
 
     pub const fn raw_bits(self) -> u32 {
+        self.bits
+    }
+}
+
+// The named flags as plain numbers, like WebGPU's `GPUTextureUsage`, so they
+// combine with `|` and pass straight to the `usage` options.
+#[cfg(wasm)]
+#[wasm_bindgen]
+impl TextureUsage {
+    #[doc(hidden)]
+    #[wasm_bindgen(getter = COPY_SRC)]
+    pub fn copy_src_js() -> u32 {
+        TextureUsage::COPY_SRC.bits
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter = COPY_DST)]
+    pub fn copy_dst_js() -> u32 {
+        TextureUsage::COPY_DST.bits
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter = TEXTURE_BINDING)]
+    pub fn texture_binding_js() -> u32 {
+        TextureUsage::TEXTURE_BINDING.bits
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter = STORAGE_BINDING)]
+    pub fn storage_binding_js() -> u32 {
+        TextureUsage::STORAGE_BINDING.bits
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter = RENDER_ATTACHMENT)]
+    pub fn render_attachment_js() -> u32 {
+        TextureUsage::RENDER_ATTACHMENT.bits
+    }
+}
+
+// The named flags as class attributes that combine with `|`, like `enum.Flag`.
+#[cfg(python)]
+#[pyo3::pymethods]
+impl TextureUsage {
+    #[classattr]
+    #[pyo3(name = "COPY_SRC")]
+    fn copy_src_py() -> TextureUsage {
+        TextureUsage::COPY_SRC
+    }
+
+    #[classattr]
+    #[pyo3(name = "COPY_DST")]
+    fn copy_dst_py() -> TextureUsage {
+        TextureUsage::COPY_DST
+    }
+
+    #[classattr]
+    #[pyo3(name = "TEXTURE_BINDING")]
+    fn texture_binding_py() -> TextureUsage {
+        TextureUsage::TEXTURE_BINDING
+    }
+
+    #[classattr]
+    #[pyo3(name = "STORAGE_BINDING")]
+    fn storage_binding_py() -> TextureUsage {
+        TextureUsage::STORAGE_BINDING
+    }
+
+    #[classattr]
+    #[pyo3(name = "RENDER_ATTACHMENT")]
+    fn render_attachment_py() -> TextureUsage {
+        TextureUsage::RENDER_ATTACHMENT
+    }
+
+    fn __or__(&self, other: TextureUsage) -> TextureUsage {
+        *self | other
+    }
+
+    fn __int__(&self) -> u32 {
         self.bits
     }
 }

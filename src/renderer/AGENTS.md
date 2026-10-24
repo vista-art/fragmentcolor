@@ -3,15 +3,16 @@
 Core invariants
 - Draw all meshes attached to a Shader under the same RenderPipeline (per-shader batching).
 - Pipeline cache keys are descriptive structs, not tuples:
-  - `RenderPipelineKey { shader_hash, color_format, depth_format, sample_count }`
-  - `ComputePipelineKey { shader_hash }`
+  - `RenderPipelineKey { shader_hash, color_format, depth_format, sample_count, alpha_mode, double_sided, vertex_layouts }`
+  - `ComputePipelineKey { shader_hash, bind_group_entries }` (layout entry contents, never resource addresses)
   Do not rely on tuple ordering; extend these structs if new state starts to affect pipeline configuration.
 - If a shader has no `@location` vertex inputs, draw a single fullscreen triangle (three built-in verts).
-- Vertex layouts are derived once from an authoritative mesh; the renderer does not re-validate per-mesh at draw time.
+- Vertex layouts are derived from the shader's first mesh and are part of the pipeline key, since shaders with the same source can feed meshes with different layouts. The renderer does not re-validate per-mesh at draw time.
 
 Render targets & present
 - If no per-pass offscreen target is set, render to the provided final frame by default.
 - Per-pass targets render intermediate results; the last render pass in the executed DAG becomes the presentation pass automatically (there is no explicit `present(...)` API).
+- A pass viewport goes to wgpu as given, within wgpu's limits, and the scissor rect is the viewport clipped to the pass's color attachment. Output past the attachment is cropped, never squeezed. A viewport that clips to nothing keeps the pass's clear and skips its draws, because Metal can't take an empty scissor.
 
 MSAA & resolves
 - Use transient MSAA textures from the texture pool and resolve into the target view; return them to the pool after use.
@@ -20,6 +21,7 @@ MSAA & resolves
 Bind groups & alignment
 - Sort bind group entries by binding index; create empty groups for expected-but-unused groups so indices stay stable.
 - Uniforms: align to `device.limits().min_uniform_buffer_offset_alignment`.
+- Uniform and storage pools rewind once per `render`, never per pass. `queue.write_buffer` applies at submit, so passes that share a submit need distinct offsets.
 - Storage buffers: bind the full buffer (`size: None`) to avoid backend padding surprises.
 - Push constants: prefer native push constants when the adapter supports them; fall back to a per-root uniform buffer otherwise (single source of truth in `PushMode`).
 

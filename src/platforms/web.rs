@@ -47,3 +47,61 @@ pub(crate) async fn yield_to_event_loop() {
     });
     let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
 }
+
+/// Reads a JS number as an unsigned 32-bit integer, such as an index or a count.
+/// Negative, fractional, NaN and out-of-range values fail with an error that names `what`.
+pub(crate) fn read_unsigned(value: f64, what: &str) -> Result<u32, wasm_bindgen::JsError> {
+    let whole = value.is_finite() && value.fract() == 0.0;
+    if whole && (0.0..=u32::MAX as f64).contains(&value) {
+        return Ok(value as u32);
+    }
+    Err(wasm_bindgen::JsError::new(&format!(
+        "{what} must be a whole number from 0 to {}, got {value}",
+        u32::MAX
+    )))
+}
+
+/// Reads a plain array of numbers or a numeric typed array.
+/// Returns `None` for any other value, or when an item is not a number.
+pub(crate) fn read_numbers(value: &wasm_bindgen::JsValue) -> Option<Vec<f64>> {
+    use wasm_bindgen::JsCast;
+    let is_list = js_sys::Array::is_array(value)
+        || (js_sys::ArrayBuffer::is_view(value) && !value.is_instance_of::<js_sys::DataView>());
+    if !is_list {
+        return None;
+    }
+    js_sys::Array::from(value)
+        .iter()
+        .map(|item| item.as_f64())
+        .collect()
+}
+
+/// Reads an array whose items are each an array or typed array of numbers,
+/// such as the columns of a matrix. Returns `None` for any other value.
+pub(crate) fn read_rows(value: &wasm_bindgen::JsValue) -> Option<Vec<Vec<f64>>> {
+    if !js_sys::Array::is_array(value) {
+        return None;
+    }
+    js_sys::Array::from(value)
+        .iter()
+        .map(|row| read_numbers(&row))
+        .collect()
+}
+
+/// Reads the bytes of an `ArrayBuffer`, or the bytes a view such as a `DataView` or
+/// a typed array covers. Returns `None` for any other value.
+pub(crate) fn read_bytes(value: &wasm_bindgen::JsValue) -> Option<Vec<u8>> {
+    use js_sys::{ArrayBuffer, Reflect, Uint8Array};
+    use wasm_bindgen::JsCast;
+    if let Some(buffer) = value.dyn_ref::<ArrayBuffer>() {
+        return Some(Uint8Array::new(buffer).to_vec());
+    }
+    if !ArrayBuffer::is_view(value) {
+        return None;
+    }
+    let field = |name: &str| Reflect::get(value, &name.into()).ok();
+    let buffer = field("buffer")?;
+    let offset = field("byteOffset")?.as_f64()? as u32;
+    let length = field("byteLength")?.as_f64()? as u32;
+    Some(Uint8Array::new_with_byte_offset_and_length(&buffer, offset, length).to_vec())
+}

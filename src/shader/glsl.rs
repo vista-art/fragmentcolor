@@ -52,16 +52,4 @@ impl ShaderObject {
 
         Self::wgsl(&format!("{}\n{}", wgsl_vertex_source, wgsl_fragment_source))
     }
-
-    // @TODO
-    /// Create a Shader object from a Shadertoy-flavored GLSL source.
-    pub fn _toy(source: &str) -> Result<Self, ShaderError> {
-        use crate::DEFAULT_VERTEX_SHADER;
-        use crate::SHADERTOY_WRAPPER;
-
-        Self::glsl(
-            DEFAULT_VERTEX_SHADER,
-            &SHADERTOY_WRAPPER.replace("{{shader}}", source),
-        )
-    }
 }

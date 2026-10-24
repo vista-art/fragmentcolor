@@ -1,7 +1,10 @@
 use crate::renderer::error::InitializationError;
 use std::sync::Arc;
+#[cfg(not(wasm))]
+use std::{fs::OpenOptions, io::Write, path::Path};
 
-pub async fn create_instance() -> wgpu::Instance {
+/// Creates the wgpu instance, detecting WebGPU on the web.
+pub(crate) async fn create_instance() -> wgpu::Instance {
     #[cfg(wasm)]
     use wgpu::util::new_instance_with_webgpu_detection;
     #[cfg(wasm)]
@@ -17,7 +20,8 @@ pub async fn create_instance() -> wgpu::Instance {
     instance
 }
 
-pub async fn request_adapter(
+/// Requests an adapter that favors performance and can present to `surface`, if given.
+pub(crate) async fn request_adapter(
     instance: &wgpu::Instance,
     surface: Option<&wgpu::Surface<'_>>,
 ) -> Result<wgpu::Adapter, InitializationError> {
@@ -33,7 +37,8 @@ pub async fn request_adapter(
     Ok(adapter)
 }
 
-pub async fn request_device(
+/// Opens the device with the stable features the adapter offers.
+pub(crate) async fn request_device(
     adapter: &wgpu::Adapter,
 ) -> Result<(wgpu::Device, wgpu::Queue), InitializationError> {
     // Features: probe a curated set of stable, end-user-relevant features
@@ -78,36 +83,72 @@ pub async fn request_device(
         })
         .await?;
 
-    device.on_uncaptured_error(Arc::new(|error| {
-        // Build metadata (compile-time)
-        let pkg = env!("CARGO_PKG_NAME");
-        let ver = env!("CARGO_PKG_VERSION");
-        let profile = std::env::var("PROFILE").unwrap_or_else(|_| "unknown".into());
-        let git = option_env!("FC_GIT_HASH").unwrap_or("unknown");
-        let built = option_env!("FC_BUILD_TIME").unwrap_or("unknown");
-        // Runtime context set by runners like healthchecks
-        let runner = std::env::var("FC_RUNNER").unwrap_or_else(|_| "".into());
-        let current = std::env::var("FC_CURRENT_TEST").unwrap_or_else(|_| "".into());
-
-        // log::error! reaches every platform's sink, including the browser
-        // console on wasm where stdout is discarded.
-        log::error!(
-            "\n\n==== GPU error ({} v{} | {} | git {} | built {}) ====\nRunner: {}\nContext: {}\n\n{:#?}\n",
-            pkg, ver, profile, git, built, runner, current, error
-        );
-    }));
+    device.on_uncaptured_error(Arc::new(report_error));
 
     Ok((device, queue))
 }
 
-pub fn configure_surface(
+/// The variable that names the file collecting uncaptured GPU errors.
+#[cfg(not(wasm))]
+const ERROR_LOG: &str = "FC_GPU_ERROR_LOG";
+
+/// Reports a GPU error that no error scope caught.
+/// The logger gets it with the build and runner that hit it,
+/// and the file that `FC_GPU_ERROR_LOG` names gets it too, so the
+/// iOS, Android and Python healthchecks fail the test that raised it.
+fn report_error(error: wgpu::Error) {
+    // Build metadata (compile-time)
+    let pkg = env!("CARGO_PKG_NAME");
+    let ver = env!("CARGO_PKG_VERSION");
+    let profile = std::env::var("PROFILE").unwrap_or_else(|_| "unknown".into());
+    let git = option_env!("FC_GIT_HASH").unwrap_or("unknown");
+    let built = option_env!("FC_BUILD_TIME").unwrap_or("unknown");
+    // Runtime context set by runners like healthchecks
+    let runner = std::env::var("FC_RUNNER").unwrap_or_else(|_| "".into());
+    let current = std::env::var("FC_CURRENT_TEST").unwrap_or_else(|_| "".into());
+
+    // log::error! reaches every platform's sink, including the browser
+    // console on wasm where stdout is discarded.
+    log::error!(
+        "\n\n==== GPU error ({pkg} v{ver} | {profile} | git {git} | built {built}) ====\nRunner: {runner}\nContext: {current}\n\n{error:#?}\n"
+    );
+
+    #[cfg(not(wasm))]
+    if let Some(path) = std::env::var_os(ERROR_LOG) {
+        append_error(Path::new(&path), &error);
+    }
+}
+
+/// Appends `error` to the file at `path`, creating it when missing.
+#[cfg(not(wasm))]
+fn append_error(path: &Path, error: &wgpu::Error) {
+    let appended = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .and_then(|mut file| writeln!(file, "{error}"));
+    if let Err(problem) = appended {
+        log::warn!(
+            "Failed to append a GPU error to {}: {problem}",
+            path.display()
+        );
+    }
+}
+
+/// Configures `surface` at `size` with a format the adapter supports.
+pub(crate) fn configure_surface(
     device: &wgpu::Device,
     adapter: &wgpu::Adapter,
     surface: &wgpu::Surface,
     size: &wgpu::Extent3d,
-) -> wgpu::SurfaceConfiguration {
+) -> Result<wgpu::SurfaceConfiguration, InitializationError> {
     let capabilities = surface.get_capabilities(adapter);
-    let format = choose_surface_format(&capabilities);
+    let format = choose_surface_format(&capabilities)?;
+    let alpha_mode = capabilities
+        .alpha_modes
+        .first()
+        .copied()
+        .unwrap_or(wgpu::CompositeAlphaMode::Auto);
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         format,
@@ -115,17 +156,17 @@ pub fn configure_surface(
         width: u32::max(size.width, 1),
         height: u32::max(size.height, 1),
         present_mode: wgpu::PresentMode::AutoVsync,
-        alpha_mode: capabilities.alpha_modes[0],
+        alpha_mode,
         desired_maximum_frame_latency: 2,
         view_formats: vec![format],
     };
     surface.configure(device, &config);
 
-    config
+    Ok(config)
 }
 
 // Extracted so it can be tested without constructing a full SurfaceCapabilities
-fn choose_surface_format_from(formats: &[wgpu::TextureFormat]) -> wgpu::TextureFormat {
+fn choose_surface_format_from(formats: &[wgpu::TextureFormat]) -> Option<wgpu::TextureFormat> {
     // Try preferred linear formats first.
     if let Some(&fmt) = formats.iter().find(|&&f| {
         matches!(
@@ -133,7 +174,7 @@ fn choose_surface_format_from(formats: &[wgpu::TextureFormat]) -> wgpu::TextureF
             wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Bgra8Unorm
         )
     }) {
-        return fmt;
+        return Some(fmt);
     }
 
     // If no linear 8-bit format is available, accept sRGB variants if present.
@@ -143,14 +184,11 @@ fn choose_surface_format_from(formats: &[wgpu::TextureFormat]) -> wgpu::TextureF
             wgpu::TextureFormat::Rgba8UnormSrgb | wgpu::TextureFormat::Bgra8UnormSrgb
         )
     }) {
-        return fmt;
+        return Some(fmt);
     }
 
     // Otherwise, fall back to the first advertised format.
-    formats
-        .first()
-        .copied()
-        .unwrap_or(wgpu::TextureFormat::Rgba8Unorm)
+    formats.first().copied()
 }
 
 // The previous `features()` and `format_features()` helpers folded into
@@ -163,10 +201,18 @@ fn memory_hints() -> wgpu::MemoryHints {
     wgpu::MemoryHints::Performance
 }
 
+/// Why a surface that lists no format, such as a second WebGL2 canvas, cannot present.
+const NO_SURFACE_FORMATS: &str =
+    "the surface lists no formats for this adapter. On WebGL2, each canvas needs its own Renderer";
+
 /// Prefer a linear (non-sRGB) 8-bit RGBA/BGRA format if available; otherwise, fall back to the
 /// first supported format. We must choose a format that is actually advertised by the surface.
-fn choose_surface_format(capabilities: &wgpu::SurfaceCapabilities) -> wgpu::TextureFormat {
+/// A surface that lists no format cannot present for this adapter, such as a second WebGL2 canvas.
+fn choose_surface_format(
+    capabilities: &wgpu::SurfaceCapabilities,
+) -> Result<wgpu::TextureFormat, InitializationError> {
     choose_surface_format_from(&capabilities.formats)
+        .ok_or_else(|| InitializationError::Error(NO_SURFACE_FORMATS.into()))
 }
 
 #[cfg(test)]
@@ -174,7 +220,7 @@ mod platform_tests;
 
 /// Negotiate a supported MSAA sample count for a given format on this adapter.
 /// Halves `wanted` until `features.sample_count_supported(n)` or returns 1.
-pub fn pick_sample_count(
+pub(crate) fn pick_sample_count(
     adapter: &wgpu::Adapter,
     mut wanted: u32,
     fmt: wgpu::TextureFormat,

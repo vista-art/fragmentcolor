@@ -18,15 +18,19 @@ content; the Material handles shading, the Mesh handles geometry, the Model
 handles "where in the world".
 
 Each `Model::new` takes ownership of the Material it's given. Cloning the
-Material before passing it in is cheap: `Material::clone` is an Arc-clone
-(handle share), not a deep duplicate. The per-Model transform is *not* a
-Material uniform: it's written as four `vec4<f32>` columns into the Mesh's
-per-instance attribute stream at locations 3..6. Many Models can share one
-Material's Shader without colliding because each Model writes its transform
-to **its own** Mesh's instance buffer.
+Material before passing it in is cheap: `Material::clone` shares the handle
+and copies nothing. The per-Model transform is *not* a Material uniform. The
+renderer reads it at draw time and feeds it to the vertex stage as four
+`vec4<f32>` instance attributes, `model_0` to `model_3`, the columns of a
+`mat4x4<f32>`. The PBR shader reads them at locations 3 to 6.
 
-For the fan-out case (one Material, many positioned instances on
-unique geometries), the pattern is:
+Models that share a Material and a Mesh draw together. On every render, the
+renderer packs the transforms of the visible `Opaque` and `Mask` Models with
+the same Shader and Mesh into one instance buffer and draws them in one
+instanced call. `Blend` Models draw one at a time, back to front, since
+their order matters.
+
+For the fan-out case (one Material, many positioned items), the pattern is:
 
 ```text
 template = Material::pbr().base_color(...)
@@ -36,17 +40,12 @@ for each item:
   pass.add(&model)
 ```
 
-Pipeline cached once by shader hash; one bind-group setup per pass; N draws
-(one per unique Mesh). For *batched* instancing (one shared Mesh, many
-transforms in one draw) drop down to `Mesh::add_instance(...)` directly
-with a `Material::custom(shader_that_reads_instance_attrs)`. The Model API
-is for one logical thing per draw, not for managing your own per-instance
-buffers.
-
-**Caveat:** the Mesh's instance buffer is Arc-shared via `Mesh::clone`. Two
-Models that share a Mesh handle (`mesh.clone()`) collide on the same instance
-buffer; the most recent transform-mutating call wins. Give each Model its
-own Mesh.
+The pipeline is cached once per shader, the bind groups are set once per
+pass, and the pass issues one draw per Mesh. Give every Model the same
+`mesh.clone()` to draw them all in one call: `Mesh::clone` shares the
+handle, so the Models share one Mesh. A transform changed after
+`pass.add(&model)` shows up on the next render, without adding the Model
+again.
 
 
 ## Methods
@@ -54,7 +53,7 @@ own Mesh.
 
 ---
 
-### Model::material
+### Model::material \{#material\}
 
 Borrow the Material handle the Model owns. The Material wraps a Shader;
 reach through `model.material().shader()` if you need direct uniform
@@ -101,7 +100,7 @@ code={`
 import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
 const model = new Model(mesh, Material.pbr());
 model.material().shader().set("camera.position", [0.0, 0.0, 5.0]);
@@ -136,7 +135,7 @@ import FragmentColor
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+    try Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0])
 )
 
 let model = Model(mesh, Material.pbr())
@@ -153,10 +152,10 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
 val model = Model(mesh, Material.pbr())
-model.material().shader().set("camera.position", floatArrayOf(0.0f, 0.0f, 5.0f))
+model.material().shader().set("camera.position", listOf(0.0f, 0.0f, 5.0f))
 `}
 lang="kotlin"
 />
@@ -168,7 +167,7 @@ lang="kotlin"
 
 ---
 
-### Model::mesh
+### Model::mesh \{#mesh\}
 
 Borrow the Mesh the Model owns. Useful for adding more vertices or instances
 to the geometry after construction without losing access through the Model
@@ -209,10 +208,10 @@ code={`
 import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 
 const model = new Model(mesh, Material.pbr());
-model.mesh().addVertex( new Vertex([-0.5, -0.5, 0.0]) .set("normal", [0.0, 0.0, 1.0]) .set("uv0", [0.0, 0.0]), );
+model.mesh().addVertex( new Vertex([-0.5, -0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 `}
 lang="js"
 />
@@ -246,12 +245,12 @@ import FragmentColor
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
 )
 
 let model = Model(mesh, Material.pbr())
 try model.mesh().addVertex(
-    try Vertex([-0.5, -0.5, 0.0]).set("normal", [0.0, 0.0, 1.0]).set("uv0", [0.0, 0.0])
+    try Vertex([-0.5, -0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.0, 0.0])
 )
 `}
 lang="swift"
@@ -265,10 +264,10 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 
 val model = Model(mesh, Material.pbr())
-model.mesh().addVertex( Vertex(listOf(-0.5f, -0.5f, 0.0f)).set("normal", floatArrayOf(0.0f, 0.0f, 1.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+model.mesh().addVertex( Vertex(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 `}
 lang="kotlin"
 />
@@ -280,19 +279,19 @@ lang="kotlin"
 
 ---
 
-### Model::new
+### Model::new \{#new\}
 
 Construct a `Model` from a `Mesh` and a `Material`. Both arguments are taken
 by value; the Model owns them. The transform starts at the 4×4 identity
-matrix; `Model::sync_transform` writes it as a single instance into the
-Mesh's per-instance attribute stream (four `vec4<f32>` columns at locations
-3..6).
+matrix. The renderer reads it at draw time and passes it to the vertex stage
+as the `model_0` to `model_3` instance attributes, the four columns of a
+`mat4x4<f32>`.
 
 If you want several Models that share a look, clone the Material before each
-`Model::new`. `Material::clone` is a cheap Arc-clone (handle share, not a
-deep duplicate), so the Models share one pipeline + one bind-group setup.
-Per-Model transforms don't collide because each Model owns its own Mesh, and
-the transform lives on the Mesh's instance buffer, not the Material's Shader.
+`Model::new`. `Material::clone` shares the handle and copies nothing, so the
+Models share one pipeline and one bind-group setup. The transform belongs to
+the Model, not to the Material's Shader or the Mesh, so Models can share
+both. Models with the same Material and Mesh draw in one instanced call.
 
 `Material::pbr` requires the Mesh's first vertex to declare position
 (`vec3`), normal (`vec3`), and uv0 (`vec2`) in that exact insertion order,
@@ -333,7 +332,7 @@ code={`
 import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
 const model = new Model(mesh, Material.pbr());
 
@@ -368,7 +367,7 @@ import FragmentColor
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+    try Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0])
 )
 
 let model = Model(mesh, Material.pbr())
@@ -384,7 +383,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
 val model = Model(mesh, Material.pbr())
 `}
@@ -398,13 +397,13 @@ lang="kotlin"
 
 ---
 
-### Model::rotate
+### Model::rotate \{#rotate\}
 
 Rotate the Model around `axis` (in local space) by `radians`. Post-multiplies
 the current transform by an axis-angle rotation, so a rotated-then-translated
 Model spins in place around its own origin rather than orbiting the world
-origin. The axis is normalised internally; a zero-length axis is rejected
-with a debug log and no change.
+origin. The axis is normalized internally; a zero-length axis is rejected
+with a logged warning and no change.
 
 For pure world-space rotations (e.g. tumbling around a fixed pivot), compose
 the matrix yourself and call [set_transform](/api/scene/model#set_transform).
@@ -445,10 +444,10 @@ import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
-mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
 const model = new Model(mesh, Material.pbr());
-model.rotate([0.0, 1.0, 0.0], 1.571); // 90° around Y;
+model.rotate([0.0, 1.0, 0.0], 1.571); // 90° around Y
 `}
 lang="js"
 />
@@ -467,7 +466,7 @@ mesh.add_vertex(
 )
 
 model = Model(mesh, Material.pbr())
-model.rotate([0.0, 1.0, 0.0], 1.571); # 90° around Y
+model.rotate([0.0, 1.0, 0.0], 1.571) # 90° around Y
 `}
 lang="python"
 />
@@ -482,11 +481,11 @@ import FragmentColor
 let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+    try Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0])
 )
 
 let model = Model(mesh, Material.pbr())
-try model.rotate([0.0, 1.0, 0.0], 1.571); // 90° around Y
+try model.rotate([0.0, 1.0, 0.0], 1.571) // 90° around Y
 `}
 lang="swift"
 />
@@ -500,10 +499,10 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 val mesh = Mesh()
-mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
 val model = Model(mesh, Material.pbr())
-model.rotate(listOf(0.0f, 1.0f, 0.0f), 1.571f); // 90° around Y
+model.rotate(listOf(0.0f, 1.0f, 0.0f), 1.571f) // 90° around Y
 `}
 lang="kotlin"
 />
@@ -515,7 +514,7 @@ lang="kotlin"
 
 ---
 
-### Model::scale
+### Model::scale \{#scale\}
 
 Scale the Model by per-axis `factor` (in local space). Post-multiplies the
 current transform by a scale matrix, so the Model grows or shrinks around
@@ -562,7 +561,7 @@ import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
-mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
 const model = new Model(mesh, Material.pbr());
 model.scale([2.0, 2.0, 2.0]);
@@ -599,7 +598,7 @@ import FragmentColor
 let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+    try Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0])
 )
 
 let model = Model(mesh, Material.pbr())
@@ -617,7 +616,7 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 val mesh = Mesh()
-mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
 val model = Model(mesh, Material.pbr())
 model.scale(listOf(2.0f, 2.0f, 2.0f))
@@ -632,15 +631,16 @@ lang="kotlin"
 
 ---
 
-### Model::set_transform
+### Model::set_transform \{#set_transform\}
 
 Replace the Model's 4×4 transform wholesale, in column-major order. Useful
 when you already have a matrix from a math library or a glTF node and want
 to apply it directly without composing through `translate` / `rotate` /
 `scale`.
 
-Writes the four columns into the Mesh's per-instance attribute stream
-immediately (locations 3..6). To read the current transform, see
+The renderer reads the new matrix on the next render, so a Model already
+added to a Pass or Scene moves without being added again. To read the
+current transform, see
 [Model::transform](/api/scene/model#transform).
 
 #### Example
@@ -684,10 +684,10 @@ import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
-mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
 const model = new Model(mesh, Material.pbr());
-model.setTransform([2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 3.0, 0.0, 0.0, 1.0]);
+model.setTransform([ [2.0, 0.0, 0.0, 0.0], [0.0, 2.0, 0.0, 0.0], [0.0, 0.0, 2.0, 0.0], [3.0, 0.0, 0.0, 1.0], ]);
 `}
 lang="js"
 />
@@ -726,7 +726,7 @@ import FragmentColor
 let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+    try Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0])
 )
 
 let model = Model(mesh, Material.pbr())
@@ -749,7 +749,7 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 val mesh = Mesh()
-mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
 val model = Model(mesh, Material.pbr())
 model.setTransform(listOf(2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 3.0f, 0.0f, 0.0f, 1.0f))
@@ -764,7 +764,7 @@ lang="kotlin"
 
 ---
 
-### Model::set_visible
+### Model::set_visible \{#set_visible\}
 
 Toggle the Model in or out of the next frame. Hidden Models are skipped
 by the renderer in both the opaque-batched and blend-sorted draw paths;
@@ -796,9 +796,9 @@ let mesh = Mesh::new();
 mesh.add_vertex(Vertex::pbr([0.0, 0.5, 0.0]));
 let blob = Model::new(mesh, Material::pbr());
 
-// Wide zoom level — skip the detail blobs.
+// At a wide zoom level, skip the detail blobs.
 blob.set_visible(false);
-// Zoom back in — turn them on again.
+// Zoomed back in, turn them on again.
 blob.set_visible(true);
 Ok(())
 }
@@ -817,9 +817,9 @@ const mesh = new Mesh();
 mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]));
 const blob = new Model(mesh, Material.pbr());
 
-// Wide zoom level — skip the detail blobs.
+// At a wide zoom level, skip the detail blobs.
 blob.setVisible(false);
-// Zoom back in — turn them on again.
+// Zoomed back in, turn them on again.
 blob.setVisible(true);
 `}
 lang="js"
@@ -836,9 +836,9 @@ mesh = Mesh()
 mesh.add_vertex(Vertex.pbr([0.0, 0.5, 0.0]))
 blob = Model(mesh, Material.pbr())
 
-# Wide zoom level — skip the detail blobs.
+# At a wide zoom level, skip the detail blobs.
 blob.set_visible(False)
-# Zoom back in — turn them on again.
+# Zoomed back in, turn them on again.
 blob.set_visible(True)
 `}
 lang="python"
@@ -855,9 +855,9 @@ let mesh = Mesh()
 try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]))
 let blob = Model(mesh, Material.pbr())
 
-// Wide zoom level — skip the detail blobs.
+// At a wide zoom level, skip the detail blobs.
 blob.setVisible(false)
-// Zoom back in — turn them on again.
+// Zoomed back in, turn them on again.
 blob.setVisible(true)
 `}
 lang="swift"
@@ -874,9 +874,9 @@ val mesh = Mesh()
 mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)))
 val blob = Model(mesh, Material.pbr())
 
-// Wide zoom level — skip the detail blobs.
+// At a wide zoom level, skip the detail blobs.
 blob.setVisible(false)
-// Zoom back in — turn them on again.
+// Zoomed back in, turn them on again.
 blob.setVisible(true)
 `}
 lang="kotlin"
@@ -889,7 +889,7 @@ lang="kotlin"
 
 ---
 
-### Model::transform
+### Model::transform \{#transform\}
 
 Read the Model's current 4×4 transform in column-major order, matching
 WGSL's `mat4x4<f32>` layout and glam's `to_cols_array_2d`. The transform
@@ -939,7 +939,7 @@ import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
-mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
 const model = new Model(mesh, Material.pbr());
 const identity = model.transform();
@@ -976,7 +976,7 @@ import FragmentColor
 let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+    try Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0])
 )
 
 let model = Model(mesh, Material.pbr())
@@ -994,7 +994,7 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 val mesh = Mesh()
-mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
 val model = Model(mesh, Material.pbr())
 val identity = model.transform()
@@ -1009,7 +1009,7 @@ lang="kotlin"
 
 ---
 
-### Model::translate
+### Model::translate \{#translate\}
 
 Move the Model by `offset` in world coordinates. Pre-multiplies the current
 transform by a translation matrix, so the result is independent of the
@@ -1056,7 +1056,7 @@ import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
-mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
 const model = new Model(mesh, Material.pbr());
 model.translate([5.0, 0.0, -2.0]);
@@ -1095,7 +1095,7 @@ import FragmentColor
 let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+    try Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0])
 )
 
 let model = Model(mesh, Material.pbr())
@@ -1113,7 +1113,7 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 val mesh = Mesh()
-mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
 val model = Model(mesh, Material.pbr())
 model.translate(listOf(5.0f, 0.0f, -2.0f))
@@ -1128,10 +1128,10 @@ lang="kotlin"
 
 ---
 
-### Model::visible
+### Model::visible \{#visible\}
 
 Read the current visibility flag. Returns `true` for newly-built Models;
-toggle with [`Model::set_visible`](/api/scene/model/set_visible).
+toggle with [`Model::set_visible`](/api/scene/model#set_visible).
 
 The renderer reads this every frame. Hidden Models are skipped in both
 the opaque-batched and blend-sorted draw paths without requiring a Pass
@@ -1205,7 +1205,7 @@ let mesh = Mesh()
 try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]))
 let model = Model(mesh, Material.pbr())
 
-// Models start visible; toggle with """set_visible""".
+// Models start visible; toggle with \`set_visible\`.
 let visible_now = model.visible()
 `}
 lang="swift"
@@ -1222,7 +1222,7 @@ val mesh = Mesh()
 mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)))
 val model = Model(mesh, Material.pbr())
 
-// Models start visible; toggle with """set_visible""".
+// Models start visible; toggle with \`set_visible\`.
 val visible_now = model.visible()
 `}
 lang="kotlin"

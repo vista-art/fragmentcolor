@@ -1,11 +1,11 @@
 # TextureTarget::size_js
 
-Web-specific marshalling for [`TextureTarget::size`](https://fragmentcolor.org/api/targets/texture_target/size)
+Web-specific marshaling for [`TextureTarget::size`](https://fragmentcolor.org/api/targets/texturetarget#size)
 that returns a JS-friendly `Size` value.
 
 Hidden from the public website. The canonical
-[`size`](https://fragmentcolor.org/api/targets/texture_target/size) page
-documents the behaviour for every binding.
+[`size`](https://fragmentcolor.org/api/targets/texturetarget#size) page
+documents the behavior for every binding.
 
 ## Example
 

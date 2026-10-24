@@ -1,10 +1,10 @@
 # Light::intensity
 
 Read the scalar intensity multiplier. Defined for every kind. The shader
-multiplies the [`color`](https://fragmentcolor.org/api/scene/light/color)
+multiplies the [`color`](https://fragmentcolor.org/api/scene/light#color)
 by this value when accumulating the light's contribution, so doubling
 intensity doubles every channel uniformly. Call
-[`set_intensity`](https://fragmentcolor.org/api/scene/light/set_intensity)
+[`set_intensity`](https://fragmentcolor.org/api/scene/light#set_intensity)
 to update it.
 
 ## Example

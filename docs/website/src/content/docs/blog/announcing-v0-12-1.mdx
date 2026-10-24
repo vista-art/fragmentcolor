@@ -1,0 +1,20 @@
+---
+title: "v0.12.1: Publishing fix"
+excerpt: "A patch release that gets v0.12.0 onto crates.io and fixes a lockfile mismatch and a timing race in the release pipeline."
+authors: ["rafaelbeckel"]
+date: 2026-06-08T09:21:30Z
+tags: ["release", "rust", "bugfix"]
+---
+
+v0.12.1 is a patch release that gets [v0.12.0](/blog/announcing-v0-12-0/) onto crates.io. There are no API changes.
+
+The crates.io publish failed verification because `build.rs` wrote the `Scene::load` example fixtures into the source tree. Those fixtures are now committed static assets and `build.rs` no longer generates them, so `cargo publish` passes verification (no `--no-verify` needed).
+
+Two smaller items also land:
+
+- The release regenerates the website and JS pnpm lockfiles for the published `fragmentcolor` 0.12.0, so the frozen-lockfile CI install matches.
+- The release workflow widens the post-publish registry wait window to 40 min and fails clearly on timeout, fixing the consumer-bump timing race.
+
+Release notes: [GitHub v0.12.1](https://github.com/vista-art/fragmentcolor/releases/tag/v0.12.1).
+
+Rafael

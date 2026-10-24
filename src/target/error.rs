@@ -27,6 +27,6 @@ impl From<wasm_bindgen::JsValue> for DisplayError {
 #[cfg(wasm)]
 impl From<DisplayError> for wasm_bindgen::JsValue {
     fn from(error: DisplayError) -> Self {
-        wasm_bindgen::JsValue::from_str(&error.to_string())
+        js_sys::Error::new(&error.to_string()).into()
     }
 }

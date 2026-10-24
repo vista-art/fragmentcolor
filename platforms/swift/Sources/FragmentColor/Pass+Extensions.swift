@@ -22,12 +22,10 @@ extension Pass {
         return Pass.compute(name: name)
     }
 
-    // `Pass.fromShader(_:)` deliberately omitted: uniffi generates the
-    // factory as `Pass(fromShader: ...)` (a convenience init), not as a
-    // static method. Adding a static func with the same base name shadows
-    // the constructor and the compiler picks the static, then fails to
-    // find a matching label. Callers can write `Pass(fromShader: shader)`
-    // directly — it reads the same as the JS / Python spelling.
+    /// A pass holding `shader`, render or compute to match it (unlabeled overload).
+    public static func fromShader(_ name: String, _ shader: Shader) -> Pass {
+        return Pass.fromShader(name: name, shader: shader)
+    }
 
     // MARK: - Shader / Mesh (unlabeled overloads)
 
@@ -52,20 +50,23 @@ extension Pass {
     // The mobile binding takes a SceneObjectHandle enum (Model / Camera /
     // Light) and dispatches internally; these overloads let callers pass the
     // concrete types directly so example code reads pass.add(model) instead
-    // of pass.add(object: .model(model)).
+    // of pass.add(object: .model(model)). Each returns the pass, so calls chain.
 
     /// Attach a `Model` to the pass.
-    public func add(_ model: Model) throws {
+    @discardableResult
+    public func add(_ model: Model) throws -> Pass {
         try self.add(object: .model(model))
     }
 
     /// Attach a `Camera` to the pass.
-    public func add(_ camera: Camera) throws {
+    @discardableResult
+    public func add(_ camera: Camera) throws -> Pass {
         try self.add(object: .camera(camera))
     }
 
     /// Attach a `Light` to the pass.
-    public func add(_ light: Light) throws {
+    @discardableResult
+    public func add(_ light: Light) throws -> Pass {
         try self.add(object: .light(light))
     }
 
@@ -86,73 +87,79 @@ extension Pass {
         try self.require(deps: [.mesh(mesh)])
     }
 
+    /// Declare a `Scene`'s passes as dependencies of this pass.
+    public func require(_ scene: Scene) throws {
+        try self.require(deps: [.scene(scene)])
+    }
+
     /// Declare multiple `Pass` objects as dependencies (in order).
     public func require(_ passes: [Pass]) throws {
         try self.require(deps: passes.map { .pass($0) })
     }
 
     /// Declare a heterogeneous list of renderables as dependencies.
-    /// Each element is a `RenderableHandle` variant (`.shader`, `.pass`, `.mesh`, or `.passes`).
+    /// Each element is a `RenderableHandle` variant (`.shader`, `.pass`, `.mesh`, `.scene` or `.passes`).
     public func require(_ deps: [RenderableHandle]) throws {
         try self.require(deps: deps)
     }
 
     // MARK: - Targets
 
-    /// Set the colour attachment target for this pass.
-    public func setTarget(_ target: MobileTextureTarget) throws {
+    /// Set the color attachment target for this pass.
+    public func setTarget(_ target: TextureTarget) throws {
         try self.setTarget(target: .texture(target))
     }
 
+    /// Render into a `Texture`, such as one from `Renderer.createTexture`.
+    public func setTarget(_ texture: Texture) throws {
+        try self.setTargetTexture(texture: texture)
+    }
+
     /// Set the depth attachment target for this pass.
-    public func setDepthTarget(_ target: MobileTextureTarget) throws {
+    public func setDepthTarget(_ target: TextureTarget) throws {
         try self.setDepthTarget(target: .texture(target))
     }
 
     /// Attach a depth `Texture` (created via `Renderer.createDepthTexture`)
     /// as the depth-stencil attachment. Mirrors the Kotlin
-    /// `Pass.setDepthTarget(Texture)` extension: the uniffi layer takes a
-    /// `MobileTextureTarget`, but the depth-texture handle is the natural
-    /// shape for the doc example.
+    /// `Pass.setDepthTarget(Texture)` extension.
     public func setDepthTarget(_ texture: Texture) throws {
-        // The depth-texture handle shares the underlying Arc<dyn Target>;
-        // re-wrap as a `MobileTextureTarget` so the `TargetHandle.texture`
-        // variant accepts it.
-        let asMobile = MobileTextureTarget(unsafeFromHandle: texture.uniffiCloneHandle())
-        try self.setDepthTarget(target: .texture(asMobile))
+        try self.setDepthTexture(texture: texture)
     }
 
-    // MARK: - Clear colour
+    // MARK: - Clear color
 
-    /// Set the clear colour as separate RGBA components (0..1 linear space).
+    /// Set the clear color as separate RGBA components (0..1 linear space).
     public func setClearColor(r: Float, g: Float, b: Float, a: Float = 1.0) throws {
         try self.setClearColor(color: [r, g, b, a])
     }
 
-    /// Set the clear colour from a 3- or 4-element float array (`[r, g, b]` or `[r, g, b, a]`).
+    /// Set the clear color from a 3- or 4-element float array (`[r, g, b]` or `[r, g, b, a]`).
     public func setClearColor(_ rgba: [Float]) throws {
         try self.setClearColor(color: rgba)
     }
 
     // MARK: - Viewport
 
-    /// Set the viewport from a `[(x, y), (width, height)]`-style tuple array.
-    /// Accepts `[(minX, minY), (maxX, maxY)]` as two-element tuple array.
-    public func setViewport(_ corners: [(UInt32, UInt32)]) {
-        guard corners.count == 2 else { return }
-        setViewport(region: ScreenRegion(
-            minX: corners[0].0, minY: corners[0].1,
-            maxX: corners[1].0, maxY: corners[1].1
-        ))
+    /// Set the viewport (unlabeled overload).
+    public func setViewport(_ region: ScreenRegion) {
+        setViewport(region: region)
     }
 
-    /// Set the viewport from a 4-element Int array `[minX, minY, maxX, maxY]`.
-    public func setViewport(_ rect: [Int]) {
-        guard rect.count == 4 else { return }
-        setViewport(region: ScreenRegion(
-            minX: UInt32(rect[0]), minY: UInt32(rect[1]),
-            maxX: UInt32(rect[2]), maxY: UInt32(rect[3])
-        ))
+    /// Set the viewport from `[(x, y), (width, height)]`, an origin and a size,
+    /// as `ScreenRegion(origin, size)` reads them.
+    public func setViewport(_ originAndSize: [(UInt32, UInt32)]) {
+        precondition(originAndSize.count == 2, "setViewport: expected [(x, y), (width, height)]")
+        setViewport(region: ScreenRegion(originAndSize[0], originAndSize[1]))
+    }
+
+    /// Set the viewport from `[x, y, width, height]`, or `[width, height]` at the origin.
+    public func setViewport(_ rect: [UInt32]) {
+        switch rect.count {
+        case 2: setViewport(region: ScreenRegion([0, 0], rect))
+        case 4: setViewport(region: ScreenRegion(Array(rect[0..<2]), Array(rect[2..<4])))
+        default: preconditionFailure("setViewport: expected [width, height] or [x, y, width, height], got \(rect.count) numbers")
+        }
     }
 
     // MARK: - Compute dispatch
@@ -160,5 +167,24 @@ extension Pass {
     /// Set the compute dispatch grid size.
     public func setComputeDispatch(_ x: UInt32, _ y: UInt32, _ z: UInt32) {
         setComputeDispatch(x: x, y: y, z: z)
+    }
+}
+
+extension ScreenRegion {
+    /// A region at `origin` (x, y) that is `size` (width, height) large,
+    /// as Rust's `ScreenRegion::new(origin, size)` reads them.
+    public init(_ origin: (UInt32, UInt32), _ size: (UInt32, UInt32)) {
+        self.init(
+            minX: origin.0,
+            minY: origin.1,
+            maxX: UInt32(clamping: UInt64(origin.0) + UInt64(size.0)),
+            maxY: UInt32(clamping: UInt64(origin.1) + UInt64(size.1))
+        )
+    }
+
+    /// A region at `origin` `[x, y]` that is `size` `[width, height]` large.
+    public init(_ origin: [UInt32], _ size: [UInt32]) {
+        precondition(origin.count == 2 && size.count == 2, "ScreenRegion: origin and size hold 2 numbers each")
+        self.init((origin[0], origin[1]), (size[0], size[1]))
     }
 }

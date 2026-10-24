@@ -2,7 +2,7 @@
 
 A GPU texture resource. Public API wrapper that holds a shareable reference to the internal TextureObject and a numeric handle used by uniforms.
 
-- Construct via [Renderer::create_texture(input)](https://fragmentcolor.org/api/core/renderer/create_texture). `input` accepts bytes, `(bytes, [w, h])`, `(bytes, format)`, a path, a URL, a KTX2 container, or a prepared chain.
+- Construct via [Renderer::create_texture(input)](https://fragmentcolor.org/api/core/renderer#create_texture). `input` accepts bytes, `(bytes, [w, h])`, `(bytes, format)`, a path, a URL, a KTX2 container, or a prepared chain.
 - Bind to a shader with `shader.set("key", &texture)`.
 - The texture owns its sampler; tweak filtering and wrapping via `set_sampler_options`.
 
@@ -36,7 +36,7 @@ let shader = Shader::new(r#"
 "#)?;
 
 // 1x1 white pixel. Passing a size tells create_texture to read the bytes
-// as raw pixels; the default format is Rgba (sRGB-aware).
+// as raw pixels; the default format, Rgba, uploads them as linear Rgba8Unorm.
 let pixels: &[u8] = &[255, 255, 255, 255];
 let texture = renderer.create_texture((pixels, [1, 1])).await?;
 

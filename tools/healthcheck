@@ -112,27 +112,33 @@ run_ios_bindings() {
   fi
 }
 
-# iOS sub-test 2/2: builds the healthcheck executable, which embeds
-# `GeneratedExamples.swift` — the auto-generated aggregator for every
-# transpiled Swift example under `platforms/swift/examples/`. Compile
-# errors here mean the transpiler (`scripts/convert.rs::to_swift`) emitted
-# something invalid, or the example references an item that uniffi does
-# not export to Swift.
-#
-# Reported as a **warning** rather than a hard failure — the v0.11.0
-# launch ships with ~10 known transpiler-drift errors in this aggregate
-# (TextureId/UInt64, Data/[UInt8], Pass.addDepthTarget(Texture),
-# TextureRegionMobile.from, missing `import Foundation`, `let shader`
-# redeclaration, etc.). Each is tracked for follow-up in v0.11.x — the
-# transpiler's Rust→Swift coverage of the texture-input vocabulary +
-# uniffi-flattened signatures isn't complete yet, but the *bindings*
-# test (above) gates on the actual API surface working, which is what
-# users hit. The CHANGELOG already documents this as compile-only +
-# follow-up; mirroring the same gracious-skip stance Android takes
-# when its emulator can't produce a wgpu adapter.
-#
-# Promote back to gating once the punch list is drained — see CHANGELOG
-# "Carried over to 0.12.0" for the residual list.
+# The `-destination` the iOS tests run on. FC_IOS_SIMULATOR picks one by
+# name or UDID; otherwise the last available iPhone, on the newest runtime.
+ios_destination() {
+  local pick="${FC_IOS_SIMULATOR:-}"
+  if [ -z "$pick" ]; then
+    pick=$(xcrun simctl list devices available \
+      | grep 'iPhone' \
+      | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}' \
+      | tail -1)
+  fi
+  if [ -z "$pick" ]; then
+    return 1
+  fi
+  if printf '%s' "$pick" | grep -qE '^[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}$'; then
+    echo "id=$pick"
+  else
+    echo "platform=iOS Simulator,name=$pick"
+  fi
+}
+
+# iOS sub-test 2/2: runs the XCTests in `platforms/swift/healthcheck/` on an
+# iOS simulator. `Healthcheck.swift` checks the binding against Metal, and
+# `GeneratedExamples.swift` runs every transpiled Swift example under
+# `platforms/swift/examples/`, one test each. A failing test names the
+# `docs/api` page of its example. A compile error means the transpiler
+# (`scripts/convert.rs::to_swift` + `scripts/swift.rs`) emitted invalid
+# Swift, or the example calls an item that uniffi does not export.
 run_ios_examples() {
   local name="platforms.swift.examples"
 
@@ -146,25 +152,23 @@ run_ios_examples() {
     return 1
   fi
 
-  # SPM exposes the *package* name (`FragmentColorHealthcheck`) as the
-  # xcodebuild scheme, not the executable product name
-  # (`fragmentcolor-healthcheck`). `xcodebuild -list` from
-  # `platforms/swift/healthcheck/` lists exactly one scheme:
-  # `FragmentColorHealthcheck`.
-  #
-  # GeneratedExamples.swift is the auto-generated aggregator of every
-  # transpiled Swift example. Cross-platform API parity is a hard guarantee
-  # of FragmentColor: if any example fails to compile here it means the
-  # transpiler (`scripts/convert.rs::to_swift` + `scripts/swift.rs`) or the
-  # underlying uniffi binding is out of sync with the Rust source. Fix the
-  # source — this step is a hard fail.
+  local destination
+  if ! destination=$(ios_destination); then
+    echo "No available iPhone simulator. Create one in Xcode, or set FC_IOS_SIMULATOR." >&2
+    log_test_fail "$name"
+    return 1
+  fi
+  echo "[ios] testing on $destination"
+
+  # SPM names the scheme that tests the whole package `<package>-Package`.
+  # The time allowance stops an example that hangs on the GPU.
   if (cd "$ROOT_DIR/platforms/swift/healthcheck" \
-        && xcodebuild \
-             -scheme FragmentColorHealthcheck \
-             -destination "generic/platform=iOS Simulator" \
-             -sdk iphonesimulator \
-             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES SUPPORTS_MACCATALYST=NO \
-             build); then
+        && xcodebuild test \
+             -scheme FragmentColorHealthcheck-Package \
+             -destination "$destination" \
+             -test-timeouts-enabled YES \
+             -default-test-execution-time-allowance 60 \
+             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES SUPPORTS_MACCATALYST=NO); then
     log_test_ok "$name"
     return 0
   else
@@ -187,8 +191,9 @@ run_android() {
 
   # Build the native libs + regenerate Kotlin bindings, then run the
   # androidTest suite on a connected device or emulator (gradle picks it up).
+  # Gradle's output stays visible, since it names each failing example.
   if bash "$ROOT_DIR/tools/build_android" >/dev/null 2>&1 \
-     && (cd "$ROOT_DIR/platforms/kotlin" && ./gradlew fragmentcolor:connectedAndroidTest >/dev/null 2>&1); then
+     && (cd "$ROOT_DIR/platforms/kotlin" && ./gradlew fragmentcolor:connectedAndroidTest); then
     log_test_ok "$name"
     return 0
   else

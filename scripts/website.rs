@@ -1,6 +1,8 @@
 mod website {
     use super::*;
     use crate::codegen::ApiMap;
+    use crate::example::{Example, Lang};
+    use std::collections::HashMap;
 
     // Public outcome for the export phase so steps can be run independently.
     pub struct ExportOutcome {
@@ -287,6 +289,7 @@ mod website {
             );
 
             out.push_str("## Description\n\n");
+            let mut headings = vec![Heading::new("Description")];
 
             // Extract and remove the main "## Example" section from the object body (pre-Methods)
             let mut desc_without = String::new();
@@ -339,6 +342,8 @@ mod website {
                 // non-code content within example section is dropped from desc
             }
 
+            headings.extend(list_headings(&desc_without, None));
+
             // Escape inline generics in prose so MDX doesn't treat them as JSX
             let desc_sanitized = sanitize_inline_generics_in_prose(&desc_without);
             out.push_str(&desc_sanitized);
@@ -348,7 +353,7 @@ mod website {
                 // Use the struct name as file stem per user preference
                 let dir_slug = obj_dirname;
                 let tabs = build_tabs_for_example(
-                    &lines_to_items(&main_rust),
+                    &parse_example(&main_rust, obj_dir, obj_dirname),
                     cat_rel,
                     dir_slug,
                     object,
@@ -360,9 +365,11 @@ mod website {
                 );
                 out.push_str("\n## Example\n\n");
                 out.push_str(&tabs);
+                headings.push(Heading::new("Example"));
             }
 
             out.push_str("\n## Methods\n\n");
+            headings.push(Heading::new("Methods"));
             for file in method_files.iter() {
                 let md = std::fs::read_to_string(obj_dir.join(format!("{}.md", file)))
                     .unwrap_or_default();
@@ -401,16 +408,16 @@ mod website {
 
                 // Separator before each method title for visual grouping
                 out.push_str("\n---\n\n");
+                headings.extend(list_headings(&pre, Some(file.as_str())));
                 // Sanitize prose for MDX generics first, then downshift headings
                 let pre_sanitized = sanitize_inline_generics_in_prose(pre.trim_end());
-                out.push_str(&downshift_headings(&pre_sanitized));
+                out.push_str(&anchor_title(&downshift_headings(&pre_sanitized), file));
                 out.push('\n');
 
                 // Build example tabs via shared helper
                 let dir_slug = obj_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
-                let items = lines_to_items(&rust_body);
                 let tabs = build_tabs_for_example(
-                    &items,
+                    &parse_example(&rust_body, obj_dir, file),
                     cat_rel,
                     dir_slug,
                     file,
@@ -422,6 +429,7 @@ mod website {
                 );
                 out.push_str("\n#### Example\n\n");
                 out.push_str(&tabs);
+                headings.push(Heading::new("Example"));
             }
 
             // Ensure exactly one trailing newline at EOF
@@ -445,6 +453,7 @@ mod website {
                     .join(cat_rel)
                     .join(format!("{}.mdx", object.to_lowercase()))
             };
+            check_heading_ids(&site_file, &headings);
             if let Some(parent) = site_file.parent() {
                 std::fs::create_dir_all(parent).unwrap();
             }
@@ -482,28 +491,6 @@ mod website {
                         }
                     }
                 }
-            }
-
-            // If no methods were discovered, fall back to docs files in the folder
-            if method_files.is_empty()
-                && obj_dir.exists()
-                && obj_dir.is_dir()
-                && let Ok(read_dir) = std::fs::read_dir(&obj_dir)
-            {
-                let mut files: Vec<String> = read_dir
-                    .filter_map(|e| e.ok())
-                    .filter_map(|e| {
-                        let p = e.path();
-                        if p.extension()?.to_str()? == "md" {
-                            let stem = p.file_stem()?.to_str()?.to_string();
-                            if stem != dir_name { Some(stem) } else { None }
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                files.sort();
-                method_files = files;
             }
 
             if is_hidden_category(&cat_rel) {
@@ -610,33 +597,86 @@ mod website {
 
     /// Step 3: cleanup stale site files (non-destructive to source docs)
     pub fn cleanup_site(expected: &std::collections::HashSet<String>) {
+        let site_root = meta::workspace_root().join("docs/website/src/content/docs/api");
+        remove_unlisted(&site_root, "mdx", expected);
+    }
+
+    /// Step 3b: removes the example files this export did not write,
+    /// so a deleted or renamed docs/api page leaves no example behind.
+    pub fn cleanup_examples(outcome: &ExportOutcome) {
         let root = meta::workspace_root();
-        let site_root = root.join("docs/website/src/content/docs/api");
-        fn walk_and_cleanup(
-            root: &std::path::Path,
+        let examples = [
+            ("platforms/web/examples", "js", &outcome.ex_js),
+            ("platforms/python/examples", "py", &outcome.ex_py),
+            ("platforms/swift/examples", "swift", &outcome.ex_swift),
+            ("platforms/kotlin/examples", "kt", &outcome.ex_kotlin),
+        ];
+        for (dir, ext, written) in examples {
+            // An export that wrote nothing failed; keep what is on disk.
+            if written.is_empty() {
+                continue;
+            }
+            let mut keep = written.clone();
+            // The Python aggregator lives next to the examples it runs.
+            if ext == "py" {
+                keep.insert("main.py".to_string());
+            }
+            let dir = root.join(dir);
+            remove_unlisted(&dir, ext, &keep);
+            remove_empty_dirs(&dir);
+        }
+    }
+
+    /// Removes each `.{ext}` file under `dir` whose path relative to `dir`
+    /// is not in `keep`. Matching ignores case, so on a case-insensitive disk
+    /// a file whose name differs from a kept one only in case is never removed.
+    fn remove_unlisted(
+        dir: &std::path::Path,
+        ext: &str,
+        keep: &std::collections::HashSet<String>,
+    ) {
+        fn walk(
+            dir: &std::path::Path,
             base: &std::path::Path,
-            expected: &std::collections::HashSet<String>,
+            ext: &str,
+            keep: &std::collections::HashSet<String>,
         ) {
-            if let Ok(read_dir) = std::fs::read_dir(root) {
-                for entry in read_dir.flatten() {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        walk_and_cleanup(&path, base, expected);
-                        continue;
-                    }
-                    if let Some(ext) = path.extension().and_then(|s| s.to_str())
-                        && ext == "mdx"
-                        && let Ok(rel) = path.strip_prefix(base)
-                    {
-                        let key = rel.to_string_lossy().replace('\\', "/");
-                        if !expected.contains(&key) {
-                            let _ = std::fs::remove_file(&path);
-                        }
+            let Ok(read_dir) = std::fs::read_dir(dir) else {
+                return;
+            };
+            for entry in read_dir.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, base, ext, keep);
+                    continue;
+                }
+                if path.extension().and_then(|s| s.to_str()) == Some(ext)
+                    && let Ok(rel) = path.strip_prefix(base)
+                {
+                    let key = rel.to_string_lossy().replace('\\', "/").to_lowercase();
+                    if !keep.contains(&key) {
+                        let _ = std::fs::remove_file(&path);
                     }
                 }
             }
         }
-        walk_and_cleanup(&site_root, &site_root, expected);
+        let keep = keep.iter().map(|k| k.to_lowercase()).collect();
+        walk(dir, dir, ext, &keep);
+    }
+
+    /// Removes the empty directories under `dir`, deepest first.
+    fn remove_empty_dirs(dir: &std::path::Path) {
+        let Ok(read_dir) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in read_dir.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                remove_empty_dirs(&path);
+                // remove_dir refuses a directory that still holds anything.
+                let _ = std::fs::remove_dir(&path);
+            }
+        }
     }
 
     /// Step 4: write healthcheck aggregators referencing all generated example files
@@ -676,71 +716,112 @@ mod website {
         if let Some(parent) = py_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
+        // Each example fails on an exception or on a GPU error that the
+        // library appended to the file FC_GPU_ERROR_LOG names, and a failing
+        // example names its `docs/api` page.
         let mut py_out = String::new();
-        py_out.push_str("# Auto-generated: executes all Python examples with cargo-like output.\n");
-        py_out.push_str("import runpy, pathlib, sys, traceback, os\n\n");
-        py_out.push_str("GREEN='\x1b[1;32m'\nRED='\x1b[1;31m'\nRESET='\x1b[0m'\n\n");
-        py_out.push_str("def run_all():\n");
-        py_out.push_str("    base = pathlib.Path(__file__).parent\n");
-        py_out.push_str("    files = [\n");
+        py_out.push_str(
+            r#"# Auto-generated: executes all Python examples with cargo-like output.
+import runpy, pathlib, sys, traceback, os, tempfile
+
+GREEN='\x1b[1;32m'
+RED='\x1b[1;31m'
+RESET='\x1b[0m'
+
+def gpu_error_log():
+    """The file where FragmentColor appends each GPU error that no error scope caught."""
+    path = os.environ.get('FC_GPU_ERROR_LOG')
+    if not path:
+        handle, path = tempfile.mkstemp(prefix='fc-gpu-errors-', suffix='.log')
+        os.close(handle)
+        os.environ['FC_GPU_ERROR_LOG'] = path
+    return path
+
+def take_gpu_errors():
+    """Empties the GPU error log and returns what it held."""
+    with open(gpu_error_log(), 'a+') as log:
+        log.seek(0)
+        errors = log.read().strip()
+        log.truncate(0)
+    return errors
+
+def run_all():
+    base = pathlib.Path(__file__).parent
+    examples = [
+"#,
+        );
         for rel in &py_list {
             let rel_norm = rel.replace('\\', "/");
-            py_out.push_str(&format!("        '{}',\n", rel_norm));
+            let stem = rel_norm.strip_suffix(".py").unwrap_or(&rel_norm);
+            py_out.push_str(&format!(
+                "        ('{}', '{}'),\n",
+                rel_norm,
+                example_page(stem)
+            ));
         }
-        py_out.push_str("    ]\n");
-        py_out.push_str("\n    # Announce test count and optionally prepare summary file\n");
-        py_out.push_str("    total = len(files)\n");
-        py_out.push_str("    print(f\"running {total} tests\")\n");
-        py_out.push_str("    summary_path = os.environ.get('FC_PY_SUMMARY_PATH')\n");
-        py_out.push_str("    if summary_path:\n");
-        py_out.push_str("        try:\n");
-        py_out.push_str("            with open(summary_path, 'w') as f:\n");
-        py_out.push_str("                f.write(f\"total={total}\\npassed=0\\nfailed=0\\n\")\n");
-        py_out.push_str("        except Exception:\n");
-        py_out.push_str("            pass\n");
-        py_out.push_str("\n    passed = 0\n");
-        py_out.push_str("    failed = 0\n");
-        py_out.push_str("    for rel in files:\n");
-        py_out.push_str("        name = 'platforms.python.examples.' + rel.replace('/', '.').removesuffix('.py')\n");
-        py_out.push_str("        head = f'test {name} ... '\n");
-        py_out.push_str("        os.environ['FC_RUNNER'] = 'python'\n");
-        py_out.push_str("        os.environ['FC_CURRENT_TEST'] = name\n");
-        py_out.push_str("        try:\n");
-        py_out.push_str("            runpy.run_path(str(base / rel), run_name='__main__')\n");
-        py_out.push_str("            passed += 1\n");
-        py_out.push_str("            print(head + GREEN + 'OK' + RESET)\n");
-        py_out.push_str("        except SystemExit as _e:\n");
-        py_out.push_str("            if _e.code == 0:\n");
-        py_out.push_str("                passed += 1\n");
-        py_out.push_str("                print(head + GREEN + 'OK' + RESET)\n");
-        py_out.push_str("            else:\n");
-        py_out.push_str("                failed += 1\n");
-        py_out.push_str("                print(head + RED + 'FAILED' + RESET)\n");
-        py_out.push_str("                traceback.print_exc()\n");
-        py_out.push_str("        except Exception:\n");
-        py_out.push_str("            failed += 1\n");
-        py_out.push_str("            print(head + RED + 'FAILED' + RESET)\n");
-        py_out.push_str("            traceback.print_exc()\n");
-        py_out.push_str("\n    if summary_path:\n");
-        py_out.push_str("        try:\n");
-        py_out.push_str("            with open(summary_path, 'w') as f:\n");
-        py_out.push_str("                f.write(f\"total={total}\\npassed={passed}\\nfailed={failed}\\n\")\n");
-        py_out.push_str("        except Exception:\n");
-        py_out.push_str("            pass\n");
-        py_out.push_str("\n    if failed:\n");
-        py_out.push_str("        print(f\"\\n{RED}test result: FAILED{RESET}. {passed} passed; {failed} failed\")\n");
-        py_out.push_str("        raise SystemExit(1)\n");
-        py_out.push_str("    else:\n");
-        py_out.push_str("        print(f\"\\n{GREEN}test result: ok{RESET}. {passed} passed; {failed} failed\")\n");
-        py_out.push_str("\nif __name__ == '__main__':\n    run_all()\n");
+        py_out.push_str(
+            r#"    ]
+
+    # Announce test count and optionally prepare summary file
+    total = len(examples)
+    print(f"running {total} tests")
+    summary_path = os.environ.get('FC_PY_SUMMARY_PATH')
+    if summary_path:
+        try:
+            with open(summary_path, 'w') as f:
+                f.write(f"total={total}\npassed=0\nfailed=0\n")
+        except Exception:
+            pass
+
+    passed = 0
+    failed = 0
+    take_gpu_errors()
+    for rel, page in examples:
+        name = 'platforms.python.examples.' + rel.replace('/', '.').removesuffix('.py')
+        head = f'test {name} ... '
+        os.environ['FC_RUNNER'] = 'python'
+        os.environ['FC_CURRENT_TEST'] = name
+        problems = []
+        try:
+            runpy.run_path(str(base / rel), run_name='__main__')
+        except SystemExit as stop:
+            if stop.code != 0:
+                problems.append(traceback.format_exc())
+        except Exception:
+            problems.append(traceback.format_exc())
+        errors = take_gpu_errors()
+        if errors:
+            problems.append(f'GPU error: {errors}')
+        if problems:
+            failed += 1
+            print(head + RED + 'FAILED' + RESET)
+            print(f'{page}: ' + '\n'.join(problems))
+        else:
+            passed += 1
+            print(head + GREEN + 'OK' + RESET)
+
+    if summary_path:
+        try:
+            with open(summary_path, 'w') as f:
+                f.write(f"total={total}\npassed={passed}\nfailed={failed}\n")
+        except Exception:
+            pass
+
+    if failed:
+        print(f"\n{RED}test result: FAILED{RESET}. {passed} passed; {failed} failed")
+        raise SystemExit(1)
+    else:
+        print(f"\n{GREEN}test result: ok{RESET}. {passed} passed; {failed} failed")
+
+if __name__ == '__main__':
+    run_all()
+"#,
+        );
         let _ = super::meta::write_if_changed(&py_path, &py_out);
 
-        // Sort and write Swift aggregator (compile-only on iOS Simulator).
-        // Each generated `.swift` example is read from disk, its `import`
-        // lines stripped, and the body inlined inside a private function.
-        // The compiler type-checks every body during the SPM build run by
-        // `./fc healthcheck ios`; failures here mean either a `convert::to_swift`
-        // shortcoming or a missing uniffi export, not an aggregator bug.
+        // Sort and write the Swift example tests. Each transpiled example,
+        // minus its `import` lines, becomes the body of one XCTest that
+        // `./fc healthcheck ios` runs on an iOS simulator.
         let mut swift_list: Vec<String> = ex_swift.iter().cloned().collect();
         swift_list.sort();
         let swift_aggregator_path =
@@ -751,64 +832,45 @@ mod website {
         let mut swift_out = String::new();
         swift_out.push_str("// AUTO-GENERATED by build.rs (scripts/website.rs). DO NOT EDIT.\n");
         swift_out.push_str("//\n");
-        swift_out.push_str("// Compile-only aggregator for every transpiled Swift example under\n");
-        swift_out.push_str("// `platforms/swift/examples/`. Each function below embeds the body\n");
-        swift_out.push_str("// of one example so the compiler type-checks it. Functions are\n");
-        swift_out.push_str("// never invoked at runtime — wiring up GPU-backed runtime\n");
-        swift_out.push_str("// execution is a follow-up task.\n");
-        swift_out.push_str("//\n");
-        swift_out.push_str("// A failure here means either:\n");
-        swift_out.push_str("//  (a) the source `docs/api/**.md` example uses a Rust API that\n");
-        swift_out.push_str("//      `scripts/convert.rs::to_swift` cannot map, or\n");
-        swift_out.push_str("//  (b) the example references an item that uniffi does not\n");
-        swift_out.push_str("//      export to Swift.\n");
-        swift_out.push_str("// Fix the source — this file is regenerated on every cargo build.\n");
+        swift_out.push_str("// One test per transpiled Swift example under `platforms/swift/examples/`.\n");
+        swift_out.push_str("// `./fc healthcheck ios` runs them on an iOS simulator, where a failing test\n");
+        swift_out.push_str("// names the `docs/api` page of its example. Fix that page, the binding it calls,\n");
+        swift_out.push_str("// or `scripts/convert.rs::to_swift`, since every cargo build rewrites this file.\n");
         swift_out.push('\n');
         // Foundation gives us `Data`, which the texture-input examples need
         // when wrapping `[UInt8]` byte arrays. Importing FragmentColor alone
         // doesn't transitively re-export Foundation symbols into this file.
         swift_out.push_str("import Foundation\n");
         swift_out.push_str("import FragmentColor\n");
+        for import in example_imports(&root.join("platforms/swift/examples"), &swift_list, &swift_out) {
+            swift_out.push_str(&import);
+            swift_out.push('\n');
+        }
         swift_out.push('\n');
-        swift_out.push_str("@available(iOS 16.0, *)\n");
-        swift_out.push_str("private enum _GeneratedExamples {\n");
-        for rel in &swift_list {
+        swift_out.push_str("final class GeneratedExamples: ExampleCase {\n");
+        for (index, rel) in swift_list.iter().enumerate() {
             let stem = rel.strip_suffix(".swift").unwrap_or(rel);
-            let slug = ident_slug(stem);
             let example_path = root.join("platforms/swift/examples").join(rel);
             let body = std::fs::read_to_string(&example_path).unwrap_or_default();
             let body_clean = strip_lang_lines(&body, &["import "]);
-            // Wrap each example body in a `do { ... }` block so its `let`
-            // declarations live in a private lexical scope. Two examples
-            // that both declare `let shader = ...` would otherwise collide
-            // (Swift's enum-scope name resolution treats the surrounding
-            // static-func body as a single scope when names clash).
-            swift_out.push_str(&format!(
-                "    static func _example_{}() async throws {{\n",
-                slug
-            ));
-            swift_out.push_str("        do {\n");
-            for line in body_clean.lines() {
-                if line.trim().is_empty() {
-                    swift_out.push('\n');
-                } else {
-                    swift_out.push_str("            ");
-                    swift_out.push_str(line);
-                    swift_out.push('\n');
-                }
+            if index > 0 {
+                swift_out.push('\n');
             }
+            swift_out.push_str(&format!("    func test_{}() async {{\n", ident_slug(stem)));
+            swift_out.push_str(&format!(
+                "        await example(\"{}\") {{\n",
+                example_page(stem)
+            ));
+            push_indented(&mut swift_out, &body_clean, "            ");
             swift_out.push_str("        }\n");
-            swift_out.push_str("    }\n\n");
+            swift_out.push_str("    }\n");
         }
         swift_out.push_str("}\n");
         let _ = super::meta::write_if_changed(&swift_aggregator_path, &swift_out);
 
-        // Sort and write Kotlin aggregator.
-        // Lives under `androidTest/` so it's compiled (and the @Test class
-        // executed as a no-op) by the existing
-        // `gradle fragmentcolor:connectedAndroidTest` invocation in
-        // `./fc healthcheck android`. The wrappers are private suspend fns
-        // that the Kotlin compiler type-checks at build time.
+        // Sort and write the Kotlin example tests. Each transpiled example,
+        // minus its `import` and `package` lines, becomes the body of one
+        // JUnit test that `./fc healthcheck android` runs on a device.
         let mut kotlin_list: Vec<String> = ex_kotlin.iter().cloned().collect();
         kotlin_list.sort();
         let kotlin_aggregator_path = root.join(
@@ -821,52 +883,89 @@ mod website {
         k_out.push_str("package org.fragmentcolor\n\n");
         k_out.push_str("// AUTO-GENERATED by build.rs (scripts/website.rs). DO NOT EDIT.\n");
         k_out.push_str("//\n");
-        k_out.push_str("// Compile-only aggregator for every transpiled Kotlin example under\n");
-        k_out.push_str("// `platforms/kotlin/examples/`. Each function below embeds the body\n");
-        k_out.push_str("// of one example so kotlinc type-checks it during\n");
-        k_out.push_str("// `connectedAndroidTest`. Functions are never invoked at runtime —\n");
-        k_out.push_str("// wiring up GPU-backed runtime execution is a follow-up task.\n");
-        k_out.push_str("//\n");
-        k_out.push_str("// A failure here means either:\n");
-        k_out.push_str("//  (a) the source `docs/api/**.md` example uses a Rust API that\n");
-        k_out.push_str("//      `scripts/convert.rs::to_kotlin` cannot map, or\n");
-        k_out.push_str("//  (b) the example references an item that uniffi does not export\n");
-        k_out.push_str("//      to Kotlin.\n");
-        k_out.push_str("// Fix the source — this file is regenerated on every cargo build.\n");
+        k_out.push_str("// One test per transpiled Kotlin example under `platforms/kotlin/examples/`.\n");
+        k_out.push_str("// `./fc healthcheck android` runs them on a device or emulator. A failing test\n");
+        k_out.push_str("// names the `docs/api` page of its example. Fix that page, the binding it calls,\n");
+        k_out.push_str("// or `scripts/convert.rs::to_kotlin`, since every cargo build rewrites this file.\n");
         k_out.push('\n');
         k_out.push_str("import androidx.test.ext.junit.runners.AndroidJUnit4\n");
         k_out.push_str("import org.junit.Test\n");
-        k_out.push_str("import org.junit.runner.RunWith\n\n");
+        k_out.push_str("import org.junit.runner.RunWith\n");
+        let kotlin_dir = root.join("platforms/kotlin/examples");
+        // The aggregator sits in the package itself.
+        let in_package = "import org.fragmentcolor.*\n".to_string() + &k_out;
+        for import in example_imports(&kotlin_dir, &kotlin_list, &in_package) {
+            k_out.push_str(&import);
+            k_out.push('\n');
+        }
+        k_out.push('\n');
         k_out.push_str("@RunWith(AndroidJUnit4::class)\n");
-        k_out.push_str("class GeneratedExamples {\n");
-        k_out.push_str("    @Test\n");
-        k_out.push_str("    fun compileGeneratedExamples() {\n");
-        k_out.push_str("        // Empty body. The value of this test is that all wrappers\n");
-        k_out.push_str("        // below are type-checked at compile time.\n");
-        k_out.push_str("    }\n\n");
-        for rel in &kotlin_list {
+        k_out.push_str("class GeneratedExamples : ExampleCase() {\n");
+        for (index, rel) in kotlin_list.iter().enumerate() {
             let stem = rel.strip_suffix(".kt").unwrap_or(rel);
-            let slug = ident_slug(stem);
-            let example_path = root.join("platforms/kotlin/examples").join(rel);
+            let example_path = kotlin_dir.join(rel);
             let body = std::fs::read_to_string(&example_path).unwrap_or_default();
             let body_clean = strip_lang_lines(&body, &["import ", "package "]);
-            k_out.push_str(&format!(
-                "    @Suppress(\"unused\") private suspend fun _example_{}() {{\n",
-                slug
-            ));
-            for line in body_clean.lines() {
-                if line.trim().is_empty() {
-                    k_out.push('\n');
-                } else {
-                    k_out.push_str("        ");
-                    k_out.push_str(line);
-                    k_out.push('\n');
-                }
+            if index > 0 {
+                k_out.push('\n');
             }
-            k_out.push_str("    }\n\n");
+            k_out.push_str("    @Test\n");
+            k_out.push_str(&format!(
+                "    fun {}() = example(\"{}\") {{\n",
+                ident_slug(stem),
+                example_page(stem)
+            ));
+            push_indented(&mut k_out, &body_clean, "        ");
+            k_out.push_str("    }\n");
         }
         k_out.push_str("}\n");
         let _ = super::meta::write_if_changed(&kotlin_aggregator_path, &k_out);
+    }
+
+    /// The `docs/api` page an example comes from.
+    /// A method's example takes the name of its page.
+    /// An object's example takes its type's name instead,
+    /// so `core/pass/Pass` comes from the object page `core/pass/pass.md`.
+    fn example_page(stem: &str) -> String {
+        let (dir, name) = stem.rsplit_once('/').unwrap_or(("", stem));
+        let page = if name.starts_with(char::is_uppercase) {
+            dir.rsplit('/').next().unwrap_or(name)
+        } else {
+            name
+        };
+        format!("docs/api/{dir}/{page}.md")
+    }
+
+    /// Appends the lines of `body` to `out` behind `indent`.
+    /// Blank lines around the body are dropped, and those inside it stay empty.
+    fn push_indented(out: &mut String, body: &str, indent: &str) {
+        let lines: Vec<&str> = body.lines().collect();
+        let blank = |line: &&str| line.trim().is_empty();
+        let start = lines.iter().position(|line| !blank(line)).unwrap_or(lines.len());
+        let end = lines.iter().rposition(|line| !blank(line)).map_or(start, |last| last + 1);
+        for line in &lines[start..end] {
+            if !line.trim().is_empty() {
+                out.push_str(indent);
+                out.push_str(line);
+            }
+            out.push('\n');
+        }
+    }
+
+    /// The import lines of the examples at `rels` under `dir`
+    /// that `header` doesn't import yet, sorted, each once.
+    fn example_imports(dir: &std::path::Path, rels: &[String], header: &str) -> Vec<String> {
+        let imported: std::collections::BTreeSet<&str> = header.lines().collect();
+        let mut imports = std::collections::BTreeSet::new();
+        for rel in rels {
+            let body = std::fs::read_to_string(dir.join(rel)).unwrap_or_default();
+            for line in body.lines().map(str::trim) {
+                if line.starts_with("import ") && !imported.contains(line) {
+                    imports.insert(line.to_string());
+                }
+            }
+        }
+        imports.into_iter().collect()
     }
 
     fn ident_slug(s: &str) -> String {
@@ -980,7 +1079,11 @@ mod website {
                         k += 1;
                     }
                     if let Some(end_gt) = found_gt {
-                        // Wrap from start..=end_gt in backticks
+                        // Wrap from start..=end_gt in backticks. The identifier
+                        // is already in `out`, so take it back first.
+                        for _ in start..i {
+                            out.pop();
+                        }
                         out.push('`');
                         for &ch in &chars[start..=end_gt] {
                             out.push(ch);
@@ -1001,31 +1104,18 @@ mod website {
         out
     }
 
-    // Reusable: turn a Rust code body into (text, hidden) items using doc-test '#'
-    fn lines_to_items(rust: &str) -> Vec<(String, bool)> {
-        let mut items: Vec<(String, bool)> = Vec::new();
-        for l in rust.lines() {
-            let trimmed = l.trim_start();
-            let indent_len = l.len() - trimmed.len();
-            if trimmed.starts_with('#') {
-                let after = if let Some(stripped) = trimmed.strip_prefix('#') {
-                    stripped
-                } else {
-                    trimmed
-                };
-                // Optional single space after '#'
-                let after = if let Some(stripped) = after.strip_prefix(' ') {
-                    stripped
-                } else {
-                    after
-                };
-                let new_text = format!("{}{}", &l[..indent_len], after);
-                items.push((new_text, true));
-            } else {
-                items.push((l.to_string(), false));
-            }
+    /// The example in `stem.md` under `dir`. Fails the build on a hidden block it can't place.
+    fn parse_example(rust: &str, dir: &std::path::Path, stem: &str) -> Example {
+        Example::parse(rust).unwrap_or_else(|e| panic!("{}: {e}", dir.join(format!("{stem}.md")).display()))
+    }
+
+    /// ` meta="collapse={1-3, 9-10}"` for the hidden line ranges of a tab, or nothing.
+    fn collapse_attr(ranges: &[(usize, usize)]) -> String {
+        if ranges.is_empty() {
+            return String::new();
         }
-        items
+        let ranges: Vec<String> = ranges.iter().map(|(start, end)| format!("{start}-{end}")).collect();
+        format!(" meta=\"collapse={{{}}}\"", ranges.join(", "))
     }
 
     fn extract_first_code_block(md: &str) -> Option<(String, String)> {
@@ -1081,13 +1171,45 @@ mod website {
         out
     }
 
+    /// The example in `lang`, with its hidden line ranges:
+    /// a hand-written page when one exists, the transpiled Rust example otherwise.
+    fn lang_code(
+        example: &Example,
+        lang: Lang,
+        root: &std::path::Path,
+        cat_rel: &str,
+        obj_dir_slug: &str,
+        file_stem: &str,
+    ) -> (String, Vec<(usize, usize)>) {
+        read_lang_override(root, cat_rel, obj_dir_slug, file_stem, lang)
+            .unwrap_or_else(|| transpile(example, lang))
+    }
+
+    /// `example`'s Rust lines in `lang`, between that language's hidden lines.
+    fn transpile(example: &Example, lang: Lang) -> (String, Vec<(usize, usize)>) {
+        let items = &example.rust;
+        let body = match lang {
+            Lang::Js => crate::convert::to_js(items),
+            Lang::Python => crate::convert::to_py(items),
+            Lang::Swift => crate::convert::to_swift(items),
+            Lang::Kotlin => crate::convert::to_kotlin(items),
+        };
+        example.harness(lang).wrap(&body)
+    }
+
     fn read_lang_override(
         root: &std::path::Path,
         cat_rel: &str,
         obj_dir_slug: &str,
         file_stem: &str,
-        lang_suffix: &str,
-    ) -> Option<String> {
+        lang: Lang,
+    ) -> Option<(String, Vec<(usize, usize)>)> {
+        let lang_suffix = match lang {
+            Lang::Js => "js",
+            Lang::Python => "py",
+            Lang::Swift => "swift",
+            Lang::Kotlin => "kotlin",
+        };
         // Class entry-point examples use the CamelCase struct name as the
         // `file_stem` (e.g. `Texture`, `Mipmap`), so the natural
         // override path is `Texture_py.md`. The earlier convention put the
@@ -1118,33 +1240,25 @@ mod website {
             )),
         ];
         let hidden = candidates.into_iter().find(|p| p.exists())?;
-        let md = std::fs::read_to_string(hidden).ok()?;
-        let (lang, code) = extract_first_code_block(&md)?;
+        let md = std::fs::read_to_string(&hidden).ok()?;
+        let (fence, code) = extract_first_code_block(&md)?;
         if is_placeholder_example(&code) {
             return None;
         }
-        let is_rust = lang.is_empty() || lang == "rust" || lang.starts_with("rust,");
+        let is_rust = fence.is_empty() || fence == "rust" || fence.starts_with("rust,");
         if !is_rust {
-            return Some(code);
+            return Some((code, Vec::new()));
         }
-
-        let items = lines_to_items(&code);
-        match lang_suffix {
-            "js" => Some(crate::convert::to_js(&items)),
-            "py" => Some(crate::convert::to_py(&items)),
-            "swift" => Some(crate::convert::to_swift(&items)),
-            "kotlin" => Some(crate::convert::to_kotlin(&items)),
-            _ => Some(code),
-        }
+        let example = Example::parse(&code).unwrap_or_else(|e| panic!("{}: {e}", hidden.display()));
+        Some(transpile(&example, lang))
     }
 
-    // Central helper to build Tabs for an example and persist JS/Py files.
-    // Nine args is more than clippy's default, but each one is load-bearing
-    // and the four `ex_*` sets carry distinct per-language state — folding
-    // them into a struct would just trade arg count for boilerplate.
+    // Build the Tabs for an example and write each language's healthcheck file.
+    // Nine args is more than clippy's default, but each one is load-bearing,
+    // and the four `ex_*` sets carry distinct per-language state.
     #[allow(clippy::too_many_arguments)]
     fn build_tabs_for_example(
-        items: &[(String, bool)],
+        example: &Example,
         cat_rel: &str,
         obj_dir_slug: &str,
         file_stem: &str,
@@ -1154,7 +1268,8 @@ mod website {
         ex_swift: &mut std::collections::HashSet<String>,
         ex_kotlin: &mut std::collections::HashSet<String>,
     ) -> String {
-        // Compute collapse ranges (1-based inclusive) from hidden runs
+        // Collapse ranges (1-based inclusive) over the hidden runs
+        let items = &example.rust;
         let mut ranges: Vec<(usize, usize)> = Vec::new();
         let mut i_ln = 0usize;
         while i_ln < items.len() {
@@ -1171,125 +1286,56 @@ mod website {
         }
         let rust_lines: Vec<String> = items.iter().map(|(t, _)| t.clone()).collect();
         let rust_processed = rust_lines.join("\n");
-        let meta_attr = if ranges.is_empty() {
-            String::new()
-        } else {
-            let mut s = String::from(" meta=\"collapse={");
-            for (idx, (s1, e1)) in ranges.iter().enumerate() {
-                if idx > 0 {
-                    s.push_str(", ");
-                }
-                s.push_str(&format!("{}-{}", s1, e1));
-            }
-            s.push_str("}\"");
-            s
-        };
 
-        // Convert to JS/Python
-        let js_code = read_lang_override(root, cat_rel, obj_dir_slug, file_stem, "js")
-            .unwrap_or_else(|| crate::convert::to_js(items));
-        let py_code = read_lang_override(root, cat_rel, obj_dir_slug, file_stem, "py")
-            .unwrap_or_else(|| crate::convert::to_py(items));
-
-        // Persist example files for healthchecks
-        let js_rel = if cat_rel.is_empty() {
-            format!("{}/{}.js", obj_dir_slug, file_stem)
-        } else {
-            format!("{}/{}/{}.js", cat_rel, obj_dir_slug, file_stem)
-        };
-        let py_rel = if cat_rel.is_empty() {
-            format!("{}/{}.py", obj_dir_slug, file_stem)
-        } else {
-            format!("{}/{}/{}.py", cat_rel, obj_dir_slug, file_stem)
-        };
-        let js_abs = root.join("platforms/web/examples").join(&js_rel);
-        let py_abs = root.join("platforms/python/examples").join(&py_rel);
-        if let Some(p) = js_abs.parent() {
-            let _ = std::fs::create_dir_all(p);
-        }
-        if let Some(p) = py_abs.parent() {
-            let _ = std::fs::create_dir_all(p);
-        }
-        let _ = super::meta::write_if_changed(&js_abs, &js_code);
-        let _ = super::meta::write_if_changed(&py_abs, &py_code);
-        ex_js.insert(js_rel.clone());
-        ex_py.insert(py_rel.clone());
-
-        // Swift/Kotlin: transpile from the same Rust items that produced
-        // the JS/Python outputs (uses the JS output internally as a
-        // starting point — see scripts/swift.rs and scripts/kotlin.rs).
-        let swift_code = read_lang_override(root, cat_rel, obj_dir_slug, file_stem, "swift")
-            .unwrap_or_else(|| crate::convert::to_swift(items));
-        let kotlin_code = read_lang_override(root, cat_rel, obj_dir_slug, file_stem, "kotlin")
-            .unwrap_or_else(|| crate::convert::to_kotlin(items));
-
-        let swift_rel = if cat_rel.is_empty() {
-            format!("{}/{}.swift", obj_dir_slug, file_stem)
-        } else {
-            format!("{}/{}/{}.swift", cat_rel, obj_dir_slug, file_stem)
-        };
-        let kotlin_rel = if cat_rel.is_empty() {
-            format!("{}/{}.kt", obj_dir_slug, file_stem)
-        } else {
-            format!("{}/{}/{}.kt", cat_rel, obj_dir_slug, file_stem)
-        };
-        let swift_abs = root.join("platforms/swift/examples").join(&swift_rel);
-        let kotlin_abs = root.join("platforms/kotlin/examples").join(&kotlin_rel);
-        if let Some(parent) = swift_abs.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        if let Some(parent) = kotlin_abs.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let _ = super::meta::write_if_changed(&swift_abs, &swift_code);
-        let _ = super::meta::write_if_changed(&kotlin_abs, &kotlin_code);
-        ex_swift.insert(swift_rel.clone());
-        ex_kotlin.insert(kotlin_rel.clone());
-
-        // Build Tabs snippet
         let mut tabs = String::new();
         tabs.push_str("<Tabs>\n\n");
+        push_tab(&mut tabs, "Rust", "rust", &rust_processed, &ranges);
 
-        tabs.push_str("<TabItem label=\"Rust\">\n");
-        tabs.push_str("<Code\n");
-        tabs.push_str("code={`\n");
-        // Escape backticks so a Rust doc-comment like `// see `Foo` ` doesn't
-        // close the MDX template literal early. The JS/Python/Swift/Kotlin tabs
-        // below already run their code through this; the Rust tab was the one
-        // omission, which broke any page whose example carried a backtick in a
-        // comment.
-        tabs.push_str(&sanitize_for_template(&rust_processed));
-        tabs.push_str("\n`}\n");
-        tabs.push_str("lang=\"rust\"");
-        tabs.push_str(&meta_attr);
-        tabs.push_str("\n/>\n\n</TabItem>\n\n");
-
-        tabs.push_str("<TabItem label=\"JavaScript\">\n");
-        tabs.push_str("<Code\n");
-        tabs.push_str("code={`\n");
-        tabs.push_str(&sanitize_for_template(&js_code));
-        tabs.push_str("\n`}\nlang=\"js\"\n/>\n\n</TabItem>\n\n");
-
-        tabs.push_str("<TabItem label=\"Python\">\n");
-        tabs.push_str("<Code\n");
-        tabs.push_str("code={`\n");
-        tabs.push_str(&sanitize_for_template(&py_code));
-        tabs.push_str("\n`}\nlang=\"python\"\n/>\n\n</TabItem>\n\n");
-
-        tabs.push_str("<TabItem label=\"Swift\">\n");
-        tabs.push_str("<Code\n");
-        tabs.push_str("code={`\n");
-        tabs.push_str(&sanitize_for_template(&swift_code));
-        tabs.push_str("\n`}\nlang=\"swift\"\n/>\n\n</TabItem>\n\n");
-
-        tabs.push_str("<TabItem label=\"Kotlin\">\n");
-        tabs.push_str("<Code\n");
-        tabs.push_str("code={`\n");
-        tabs.push_str(&sanitize_for_template(&kotlin_code));
-        tabs.push_str("\n`}\nlang=\"kotlin\"\n/>\n\n</TabItem>\n\n");
+        // Each language's example is both a tab and a healthcheck file.
+        let outputs = [
+            (Lang::Js, "JavaScript", "js", "js", "platforms/web/examples", ex_js),
+            (Lang::Python, "Python", "python", "py", "platforms/python/examples", ex_py),
+            (Lang::Swift, "Swift", "swift", "swift", "platforms/swift/examples", ex_swift),
+            (Lang::Kotlin, "Kotlin", "kotlin", "kt", "platforms/kotlin/examples", ex_kotlin),
+        ];
+        for (lang, label, fence, ext, dir, written) in outputs {
+            let (code, hidden) = lang_code(example, lang, root, cat_rel, obj_dir_slug, file_stem);
+            let rel = if cat_rel.is_empty() {
+                format!("{}/{}.{}", obj_dir_slug, file_stem, ext)
+            } else {
+                format!("{}/{}/{}.{}", cat_rel, obj_dir_slug, file_stem, ext)
+            };
+            let abs = root.join(dir).join(&rel);
+            if let Some(parent) = abs.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = super::meta::write_if_changed(&abs, &code);
+            written.insert(rel);
+            push_tab(&mut tabs, label, fence, &code, &hidden);
+        }
 
         tabs.push_str("</Tabs>\n\n");
         tabs
+    }
+
+    /// One `<TabItem>` holding `code`, with its hidden lines collapsed.
+    fn push_tab(tabs: &mut String, label: &str, fence: &str, code: &str, hidden: &[(usize, usize)]) {
+        tabs.push_str(&format!("<TabItem label=\"{label}\">\n"));
+        tabs.push_str("<Code\n");
+        tabs.push_str("code={`\n");
+        // Escape backticks so a comment like `// see `Foo` ` doesn't close the template literal early.
+        tabs.push_str(&sanitize_for_template(code));
+        tabs.push_str("\n`}\n");
+        tabs.push_str(&format!("lang=\"{fence}\""));
+        // The Code component numbers lines from the first one with text.
+        let blank = code.lines().take_while(|line| line.trim_end().is_empty()).count();
+        let hidden: Vec<(usize, usize)> = hidden
+            .iter()
+            .filter(|(_, end)| *end > blank)
+            .map(|(start, end)| (start.saturating_sub(blank).max(1), end - blank))
+            .collect();
+        tabs.push_str(&collapse_attr(&hidden));
+        tabs.push_str("\n/>\n\n</TabItem>\n\n");
     }
 
     fn first_paragraph(md: &str) -> String {
@@ -1352,6 +1398,93 @@ mod website {
             }
         }
         out
+    }
+
+    /// A heading on a site page, and the id the export sets on it.
+    struct Heading {
+        text: String,
+        anchor: Option<String>,
+    }
+
+    impl Heading {
+        fn new(text: &str) -> Self {
+            Self {
+                text: text.to_string(),
+                anchor: None,
+            }
+        }
+    }
+
+    /// The headings of a docs/api page, with `anchor` on the first `#` heading, its title.
+    fn list_headings(md: &str, anchor: Option<&str>) -> Vec<Heading> {
+        let mut anchor = anchor.map(String::from);
+        super::links::read_headings(md)
+            .into_iter()
+            .map(|(level, text)| {
+                let anchor = if level == 1 { anchor.take() } else { None };
+                Heading { text, anchor }
+            })
+            .collect()
+    }
+
+    /// Ends the method title, the first `###` heading, with `\{#anchor\}`.
+    ///
+    /// The site's heading id plugin makes the braces the heading's id,
+    /// and the backslashes keep MDX from reading them as an expression.
+    fn anchor_title(mdx: &str, anchor: &str) -> String {
+        let mut fenced = false;
+        let mut tagged = false;
+        mdx.lines()
+            .map(|line| {
+                if line.trim_start().starts_with("```") {
+                    fenced = !fenced;
+                }
+                if fenced || tagged || !line.starts_with("### ") {
+                    return line.to_string();
+                }
+                tagged = true;
+                format!("{} \\{{#{anchor}\\}}", line.trim_end())
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Fails the build when two headings on the page at `path` get the same id.
+    ///
+    /// A heading with an anchor gets it as its id. Starlight gives every other
+    /// heading github-slugger's id for its text, with `-1`, `-2` on repeats, and
+    /// doesn't count the anchors as repeats, so an anchor can take a slug's id.
+    fn check_heading_ids(path: &std::path::Path, headings: &[Heading]) {
+        let mut slugs = HashMap::new();
+        let mut owners: HashMap<String, &str> = HashMap::new();
+        for heading in headings {
+            let id = match &heading.anchor {
+                Some(anchor) => anchor.clone(),
+                None => next_slug(&mut slugs, &heading.text),
+            };
+            if let Some(other) = owners.insert(id.clone(), &heading.text) {
+                panic!(
+                    "{}: the headings `{}` and `{}` both get the id `{}`. Rename one of them in docs/api.",
+                    path.display(),
+                    other,
+                    heading.text,
+                    id
+                );
+            }
+        }
+    }
+
+    /// The id github-slugger gives `text`, after the ids in `seen`.
+    fn next_slug(seen: &mut HashMap<String, u32>, text: &str) -> String {
+        let base = super::links::slugify(text);
+        let mut slug = base.clone();
+        while seen.contains_key(&slug) {
+            let count = seen.entry(base.clone()).or_default();
+            *count += 1;
+            slug = format!("{base}-{count}");
+        }
+        seen.insert(slug.clone(), 0);
+        slug
     }
 
     fn downshift_headings(md: &str) -> String {
@@ -1460,37 +1593,15 @@ mod website {
         }
 
         fn process_rust_block(header: &str, body: &[String]) -> (String, Vec<String>) {
-            // Build items with hidden flags by stripping leading '#'
-            let mut items: Vec<LineItem> = Vec::with_capacity(body.len());
-            for l in body {
-                let trimmed = l.trim_start();
-                let indent_len = l.len() - trimmed.len();
-                if trimmed.starts_with('#') {
-                    // Strip one leading '#' and one optional following space
-                    let after = if let Some(stripped) = trimmed.strip_prefix('#') {
-                        stripped
-                    } else {
-                        trimmed
-                    };
-
-                    let after = if let Some(stripped) = after.strip_prefix(' ') {
-                        stripped
-                    } else {
-                        after
-                    };
-
-                    let new_text = format!("{}{}", &l[..indent_len], after);
-                    items.push(LineItem {
-                        text: new_text,
-                        hidden: true,
-                    });
-                } else {
-                    items.push(LineItem {
-                        text: l.clone(),
-                        hidden: false,
-                    });
-                }
-            }
+            // Hidden lines lose their '#', and other languages' hidden lines leave the Rust code
+            let code: String = body.iter().map(|line| format!("{line}\n")).collect();
+            let example =
+                Example::parse(&code).unwrap_or_else(|e| panic!("in a Rust code fence: {e}\n{code}"));
+            let items: Vec<LineItem> = example
+                .rust
+                .into_iter()
+                .map(|(text, hidden)| LineItem { text, hidden })
+                .collect();
 
             // Compute collapse ranges over final items
             let mut ranges: Vec<(usize, usize)> = Vec::new();

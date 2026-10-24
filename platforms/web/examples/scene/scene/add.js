@@ -3,7 +3,7 @@ import { Camera, Light, Material, Mesh, Model, Renderer, Scene, Vertex } from "f
 const renderer = new Renderer();
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 const model = new Model(mesh, Material.pbr());
 
 const camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
@@ -14,6 +14,6 @@ scene.add(model);
 scene.add(camera);
 scene.add(sun);
 
-// Updating the camera later is enough — every shader on the scene picks
-// the new view_proj up at the next render.
+// Updating the camera later is enough. Every shader on the scene picks
+// up the new view_proj at the next render.
 camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);

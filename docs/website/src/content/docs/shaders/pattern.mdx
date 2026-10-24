@@ -68,9 +68,13 @@ fn dots(uv: vec2<f32>, cells: f32, radius: f32, fw: f32) -> f32
 
 ## hexgrid
 
-Hexagonal tiling helper. Returns a `vec3<f32>` whose `.x` is the distance
-to the nearest hex edge (use it as a line mask) and whose `.yz` is an
-integer-valued hex id you can hash for per-cell colour.
+Pointy-top hexagonal tiling with `scale` cells per UV unit across. Returns
+a `vec3<f32>` whose `.x` is the distance to the nearest hex edge in cell
+widths, from 0.5 at the center to 0 on the edge (use it as a line mask), and
+whose `.yz` is an integer-valued hex id you can hash for per-cell color.
+`.z` is the row and `.y` counts half cells along it, so `.y + .z` is always
+even. For `let h = hexgrid(uv, scale)`, the cell center in UV space is
+`vec2<f32>(h.y * 0.5, h.z * 0.8660254) / scale`.
 
 ```wgsl
 fn hexgrid(uv: vec2<f32>, scale: f32) -> vec3<f32>
@@ -80,7 +84,7 @@ fn hexgrid(uv: vec2<f32>, scale: f32) -> vec3<f32>
 
 ## stripes
 
-Straight stripes in any direction. `direction` is normalised inside the
+Straight stripes in any direction. `direction` is normalized inside the
 function. `period` is the stripe period in UV units, `duty` is the
 fraction of each period that is "on" (0.5 for equal stripes), and `fw`
 anti-aliases the edges.
@@ -119,7 +123,7 @@ fn truchet(uv: vec2<f32>, scale: f32) -> f32
 
 Simple over/under weave pattern. `cells` is the thread density per UV
 unit, and `fw` smooths the ridge/valley boundary. Returns a soft mask in
-`[0, 1]` you can mix between a warp and a weft colour.
+`[0, 1]` you can mix between a warp and a weft color.
 
 ```wgsl
 fn weave(uv: vec2<f32>, cells: f32, fw: f32) -> f32

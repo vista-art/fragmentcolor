@@ -351,6 +351,7 @@ impl UniformStorage {
                     }
                 }
             }
+
             // 2) Storage buffer blobs
             if let Some(blob) = self.storage_blobs.get_mut(root) {
                 match value {
@@ -422,80 +423,67 @@ impl UniformStorage {
 
             Ok(())
         } else {
-            // Slow path: support keys with array indices like "data.arr[3].field" or "u[2]"
-            let (root, parts) = parse_key(key)?;
-            // Find the root entry (top-level uniform variable)
-            let (root_offset, _root_size, root_uniform) = self
-                .uniforms
-                .get(&root)
-                .cloned()
-                .ok_or_else(|| ShaderError::UniformNotFound(root.clone()))?;
-
-            let is_storage = matches!(root_uniform.data, UniformData::Storage(_));
-            let is_push = matches!(root_uniform.data, UniformData::PushConstant(_));
-
-            let (rel_ofs, leaf_sz) = if is_storage {
-                // For storage buffers, traverse the inner shape
-                if let UniformData::Storage(data) = &root_uniform.data
-                    && let Some(StorageEntry { inner, .. }) = data.first()
-                    && let Some(shape) = inner.first()
-                {
-                    compute_offset(shape, &parts, key)?
-                } else {
-                    return Err(ShaderError::InvalidKey(key.into()));
-                }
-            } else if is_push {
-                if let UniformData::PushConstant(data) = &root_uniform.data
-                    && let Some(PushEntry { inner, .. }) = data.first()
-                    && let Some(shape) = inner.first()
-                {
-                    compute_offset(shape, &parts, key)?
-                } else {
-                    return Err(ShaderError::InvalidKey(key.into()));
-                }
-            } else {
-                compute_offset(&root_uniform.data, &parts, key)?
-            };
-
-            // Size/type check: the provided value must match leaf size
-            let val_bytes = value.to_bytes();
-            if val_bytes.len() != leaf_sz as usize {
+            // Slow path: keys with array indices like "data.arr[3].field" or "u[2]"
+            let (root, blob, start, leaf) = self.locate_key(key)?;
+            let bytes = value.to_bytes();
+            if std::mem::discriminant(value) != std::mem::discriminant(leaf)
+                || bytes.len() != leaf.size() as usize
+            {
                 return Err(ShaderError::TypeMismatch(key.into()));
             }
 
-            if is_storage {
-                if let Some(blob) = self.storage_blobs.get_mut(&root) {
-                    let start = rel_ofs as usize;
-                    let end = start.saturating_add(val_bytes.len());
-                    if end <= blob.len() {
-                        blob[start..end].copy_from_slice(&val_bytes);
-                        // Mark dirty for nested update
-                        self.storage_dirty.insert(root.clone());
-                        return Ok(());
-                    }
-                }
-                Err(ShaderError::InvalidKey(key.into()))
-            } else if is_push {
-                if let Some(blob) = self.push_blobs.get_mut(&root) {
-                    let start = rel_ofs as usize;
-                    let end = start.saturating_add(val_bytes.len());
-                    if end <= blob.len() {
-                        blob[start..end].copy_from_slice(&val_bytes);
-                        return Ok(());
-                    }
-                }
-                Err(ShaderError::InvalidKey(key.into()))
-            } else {
-                // Classic uniform buffer bytes: base offset + relative offset
-                let start = root_offset.saturating_add(rel_ofs) as usize;
-                let end = start.saturating_add(val_bytes.len());
-                if end <= self.uniform_bytes.len() {
-                    self.uniform_bytes[start..end].copy_from_slice(&val_bytes);
-                    return Ok(());
-                }
-                Err(ShaderError::InvalidKey(key.into()))
+            let target = match blob {
+                Blob::Uniform => Some(&mut self.uniform_bytes),
+                Blob::Storage => self.storage_blobs.get_mut(&root),
+                Blob::Push => self.push_blobs.get_mut(&root),
+            };
+            let end = start.saturating_add(bytes.len());
+            match target {
+                Some(target) if end <= target.len() => target[start..end].copy_from_slice(&bytes),
+                _ => return Err(ShaderError::InvalidKey(key.into())),
             }
+            if blob == Blob::Storage {
+                self.storage_dirty.insert(root);
+            }
+            Ok(())
         }
+    }
+
+    /// The declared type of `key`, including nested and indexed keys like `buf.items[2].v`.
+    pub(crate) fn shape(&self, key: &str) -> Result<&UniformData, ShaderError> {
+        if let Some((_, _, uniform)) = self.uniforms.get(key) {
+            return Ok(&uniform.data);
+        }
+        self.locate_key(key).map(|(_, _, _, leaf)| leaf)
+    }
+
+    /// Finds a key that the index does not hold by walking its root's declared shape.
+    /// Returns the root name, the blob holding the root, the key's byte offset in
+    /// that blob, and the key's declared type.
+    fn locate_key(&self, key: &str) -> Result<(String, Blob, usize, &UniformData), ShaderError> {
+        let (root, parts) = parse_key(key)?;
+        let (root_offset, _, uniform) = self
+            .uniforms
+            .get(&root)
+            .ok_or_else(|| ShaderError::UniformNotFound(root.clone()))?;
+        let (blob, base, shape) = match &uniform.data {
+            UniformData::Storage(data) => (
+                Blob::Storage,
+                0,
+                data.first()
+                    .and_then(|StorageEntry { inner, .. }| inner.first()),
+            ),
+            UniformData::PushConstant(data) => (
+                Blob::Push,
+                0,
+                data.first()
+                    .and_then(|PushEntry { inner, .. }| inner.first()),
+            ),
+            other => (Blob::Uniform, *root_offset, Some(other)),
+        };
+        let shape = shape.ok_or_else(|| ShaderError::InvalidKey(key.into()))?;
+        let (offset, leaf) = locate(shape, &parts, key)?;
+        Ok((root, blob, base.saturating_add(offset) as usize, leaf))
     }
 
     /// List all top-level uniforms
@@ -556,59 +544,14 @@ impl UniformStorage {
         }
 
         // Slow path: compute offsets from array/struct shapes and return a slice
-        if let Ok((root, parts)) = parse_key(key)
-            && let Some((root_offset, _root_size, root_uniform)) = self.uniforms.get(&root)
-        {
-            let is_storage = matches!(root_uniform.data, UniformData::Storage(_));
-            let is_push = matches!(root_uniform.data, UniformData::PushConstant(_));
-            let (rel_ofs, leaf_sz) = if is_storage {
-                if let UniformData::Storage(data) = &root_uniform.data
-                    && let Some(StorageEntry { inner, .. }) = data.first()
-                    && let Some(shape) = inner.first()
-                {
-                    compute_offset(shape, &parts, key).ok()?
-                } else {
-                    return None;
-                }
-            } else if is_push {
-                if let UniformData::PushConstant(data) = &root_uniform.data
-                    && let Some(PushEntry { inner, .. }) = data.first()
-                    && let Some(shape) = inner.first()
-                {
-                    compute_offset(shape, &parts, key).ok()?
-                } else {
-                    return None;
-                }
-            } else {
-                compute_offset(&root_uniform.data, &parts, key).ok()?
-            };
-
-            if is_storage {
-                if let Some(blob) = self.storage_blobs.get(&root) {
-                    let start = rel_ofs as usize;
-                    let end = start + leaf_sz as usize;
-                    if end <= blob.len() {
-                        return Some(&blob[start..end]);
-                    }
-                }
-            } else if is_push {
-                if let Some(blob) = self.push_blobs.get(&root) {
-                    let start = rel_ofs as usize;
-                    let end = start + leaf_sz as usize;
-                    if end <= blob.len() {
-                        return Some(&blob[start..end]);
-                    }
-                }
-            } else {
-                let start = root_offset.saturating_add(rel_ofs) as usize;
-                let end = start + leaf_sz as usize;
-                if end <= self.uniform_bytes.len() {
-                    return Some(&self.uniform_bytes[start..end]);
-                }
-            }
-        }
-
-        None
+        let (root, blob, start, leaf) = self.locate_key(key).ok()?;
+        let end = start.saturating_add(leaf.size() as usize);
+        let source = match blob {
+            Blob::Uniform => &self.uniform_bytes,
+            Blob::Storage => self.storage_blobs.get(&root)?,
+            Blob::Push => self.push_blobs.get(&root)?,
+        };
+        source.get(start..end)
     }
 
     // ----- Storage dirty helpers (crate-private) -----
@@ -633,6 +576,14 @@ impl UniformStorage {
 enum Segment {
     Field(String),
     Index(usize),
+}
+
+/// The CPU-side buffer that holds a root's bytes.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Blob {
+    Uniform,
+    Storage,
+    Push,
 }
 
 fn parse_key(key: &str) -> Result<(String, Vec<Segment>), ShaderError> {
@@ -703,11 +654,12 @@ fn parse_key(key: &str) -> Result<(String, Vec<Segment>), ShaderError> {
     Ok((root, parts))
 }
 
-fn compute_offset(
-    shape: &UniformData,
+/// Walks `parts` into `shape`. Returns the byte offset and the declared type that the path reaches.
+fn locate<'a>(
+    shape: &'a UniformData,
     parts: &[Segment],
     key: &str,
-) -> Result<(u32, u32), ShaderError> {
+) -> Result<(u32, &'a UniformData), ShaderError> {
     let mut ofs: u32 = 0;
     let mut cur = shape;
 
@@ -776,5 +728,5 @@ fn compute_offset(
         return Err(ShaderError::InvalidKey(key.into()));
     }
 
-    Ok((ofs, cur.size()))
+    Ok((ofs, cur))
 }

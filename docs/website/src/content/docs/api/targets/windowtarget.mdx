@@ -1,6 +1,6 @@
 ---
 title: WindowTarget
-description: "[WindowTarget](/api/targets/windowtarget) is an implementation of [Target](/api/core/target) that represents a rendering destination attached to a platform-specific window."
+description: "[WindowTarget](/api/targets/windowtarget) is an implementation of [Target](/api/targets/target) that represents a rendering destination attached to a platform-specific window."
 category: targets
 categoryLabel: Targets
 ---
@@ -9,11 +9,13 @@ import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
 ## Description
 
-[WindowTarget](/api/targets/windowtarget) is an implementation of [Target](/api/core/target) that represents a rendering destination attached to a platform-specific window.
+[WindowTarget](/api/targets/windowtarget) is an implementation of [Target](/api/targets/target) that represents a rendering destination attached to a platform-specific window.
 
-The [Target](/api/core/target) object is a rendering destination for the [Renderer](/api/core/renderer).
+The [Target](/api/targets/target) object is a rendering destination for the [Renderer](/api/core/renderer).
 
 It contains a GPU surface texture attached to a platform-specific window or an offscreen texture for headless rendering (see [TextureTarget](/api/targets/texturetarget)).
+
+In Rust, we officially support Winit. Check the examples folder for details.
 
 
 
@@ -25,15 +27,14 @@ It contains a GPU surface texture attached to a platform-specific window or an o
 <Code
 code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let canvas = fragmentcolor::headless_window([800, 600]);
 
 use fragmentcolor::{Renderer, Shader, Target};
 
-// Use your platform's windowing system to create a window.
-// We officially support Winit. Check the examples folder for details.
-let window = fragmentcolor::headless_window([800, 600]);
-
 let renderer = Renderer::new();
-let target = renderer.create_target(window).await?;
+
+// The canvas comes from your platform's windowing system.
+let target = renderer.create_target(canvas).await?;
 
 renderer.render(&Shader::default(), &target)?;
 
@@ -43,7 +44,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 14-18}"
+lang="rust" meta="collapse={1-2, 13-17}"
 />
 
 </TabItem>
@@ -53,17 +54,17 @@ lang="rust" meta="collapse={1-1, 14-18}"
 code={`
 
 import { Renderer, Shader } from "fragmentcolor";
-
-// Use your platform's windowing system to create a window.
-const canvas = document.createElement('canvas');
+const canvas = document.createElement("canvas");
 
 const renderer = new Renderer();
+
+// The canvas comes from your platform's windowing system.
 const target = await renderer.createTarget(canvas);
 
-renderer.render(new Shader(""), target);
+renderer.render(Shader.default(), target);
 
 `}
-lang="js"
+lang="js" meta="collapse={2-2}"
 />
 
 </TabItem>
@@ -71,24 +72,24 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+
+from fragmentcolor import Renderer, Shader
 import os, sys
 # Skip this example in headless/CI environments that have no display surface.
 if os.environ.get('DISPLAY') is None and sys.platform != 'win32' and os.environ.get('FC_ALLOW_WINDOW') != '1':
     raise SystemExit(0)
-
-from rendercanvas.auto import RenderCanvas, loop
-
-from fragmentcolor import Renderer, Shader
-
-# Use your platform's windowing system to create a window.
+from rendercanvas.auto import RenderCanvas
 canvas = RenderCanvas(size=(800, 600))
 
 renderer = Renderer()
+
+# The canvas comes from your platform's windowing system.
 target = renderer.create_target(canvas)
 
-renderer.render(Shader(""), target)
+renderer.render(Shader.default(), target)
+
 `}
-lang="python"
+lang="python" meta="collapse={2-7}"
 />
 
 </TabItem>
@@ -98,16 +99,17 @@ lang="python"
 code={`
 
 import FragmentColor
-
-// Use your platform's windowing system to create a window.
-// iOS: window/canvas provided by CAMetalLayer at runtime
+import QuartzCore
+let canvas = CAMetalLayer()
 
 let renderer = Renderer()
-let target = try await renderer.createTextureTarget([800, 600])
 
-try renderer.render(Shader(""), target)
+// The canvas comes from your platform's windowing system.
+let target = try await renderer.createTarget(canvas)
+
+try renderer.render(Shader.default(), target)
 `}
-lang="swift"
+lang="swift" meta="collapse={2-3}"
 />
 
 </TabItem>
@@ -117,16 +119,18 @@ lang="swift"
 code={`
 
 import org.fragmentcolor.*
-
-// Use your platform's windowing system to create a window.
-// HEADLESS: canvas creation not needed on Android
+val surfaceTexture = android.graphics.SurfaceTexture(0)
+val canvas = android.view.Surface(surfaceTexture)
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(800u, 600u)
 
-renderer.render(Shader(""), target)
+// The canvas comes from your platform's windowing system.
+val target = renderer.createTarget(canvas)
+
+renderer.render(Shader.default(), target)
+surfaceTexture.release()
 `}
-lang="kotlin"
+lang="kotlin" meta="collapse={2-3, 11-11}"
 />
 
 </TabItem>
@@ -139,7 +143,223 @@ lang="kotlin"
 
 ---
 
-### WindowTarget::get_image()
+### WindowTarget::size() -&gt; Size &#123; width, height, depth &#125; \{#size\}
+
+Returns the size of the [WindowTarget](/api/targets/windowtarget) in pixels.
+`depth` is absent for a window target in every language: `None` in Rust and
+Python, `undefined` in JS, `nil` in Swift and `null` in Kotlin.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let canvas = fragmentcolor::headless_window([800, 600]);
+use fragmentcolor::{Renderer, Target};
+
+let renderer = Renderer::new();
+let target = renderer.create_target(canvas).await?;
+let size = target.size();
+
+assert_eq!([size.width, size.height], [800, 600]);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-2, 9-12}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer } from "fragmentcolor";
+const canvas = document.createElement("canvas");
+
+const renderer = new Renderer();
+const target = await renderer.createTarget(canvas);
+const size = target.size();
+
+`}
+lang="js" meta="collapse={2-2}"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+import os, sys
+# Skip this example in headless/CI environments that have no display surface.
+if os.environ.get('DISPLAY') is None and sys.platform != 'win32' and os.environ.get('FC_ALLOW_WINDOW') != '1':
+    raise SystemExit(0)
+from rendercanvas.auto import RenderCanvas
+from fragmentcolor import Renderer
+
+canvas = RenderCanvas(size=(800, 600))
+renderer = Renderer()
+target = renderer.create_target(canvas)
+size = target.size()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+import QuartzCore
+let canvas = CAMetalLayer()
+
+let renderer = Renderer()
+let target = try await renderer.createTarget(canvas)
+let size = target.size()
+`}
+lang="swift" meta="collapse={2-3}"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+val surfaceTexture = android.graphics.SurfaceTexture(0)
+val canvas = android.view.Surface(surfaceTexture)
+
+val renderer = Renderer()
+val target = renderer.createTarget(canvas)
+val size = target.size()
+surfaceTexture.release()
+`}
+lang="kotlin" meta="collapse={2-3, 8-8}"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### WindowTarget::resize(size: [u32; 2] | (u32, u32)) \{#resize\}
+
+Resizes the [WindowTarget](/api/targets/windowtarget) to the given width and height.
+Call it when the window or canvas changes size.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let canvas = fragmentcolor::headless_window([800, 600]);
+use fragmentcolor::{Renderer, Target};
+
+let renderer = Renderer::new();
+let mut target = renderer.create_target(canvas).await?;
+
+target.resize([1024, 768]);
+
+let size = target.size();
+assert_eq!([size.width, size.height], [1024, 768]);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-2, 10-14}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer } from "fragmentcolor";
+const canvas = document.createElement("canvas");
+
+const renderer = new Renderer();
+const target = await renderer.createTarget(canvas);
+
+target.resize([1024, 768]);
+
+`}
+lang="js" meta="collapse={2-2}"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer
+import os, sys
+# Skip this example in headless/CI environments that have no display surface.
+if os.environ.get('DISPLAY') is None and sys.platform != 'win32' and os.environ.get('FC_ALLOW_WINDOW') != '1':
+    raise SystemExit(0)
+from rendercanvas.auto import RenderCanvas
+canvas = RenderCanvas(size=(800, 600))
+
+renderer = Renderer()
+target = renderer.create_target(canvas)
+
+target.resize([1024, 768])
+
+`}
+lang="python" meta="collapse={2-7}"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+import QuartzCore
+let canvas = CAMetalLayer()
+
+let renderer = Renderer()
+let target = try await renderer.createTarget(canvas)
+
+target.resize([1024, 768])
+`}
+lang="swift" meta="collapse={2-3}"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+val surfaceTexture = android.graphics.SurfaceTexture(0)
+val canvas = android.view.Surface(surfaceTexture)
+
+val renderer = Renderer()
+val target = renderer.createTarget(canvas)
+
+target.resize(listOf(1024u, 768u))
+surfaceTexture.release()
+`}
+lang="kotlin" meta="collapse={2-3, 9-9}"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### WindowTarget::get_image() \{#get_image\}
 
 This operation returns an empty array for [WindowTarget](/api/targets/windowtarget).
 
@@ -153,21 +373,20 @@ Use a [TextureTarget](/api/targets/texturetarget) instead.
 <Code
 code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
-use fragmentcolor::{Renderer, Target, Shader};
+let canvas = fragmentcolor::headless_window([800, 600]);
+use fragmentcolor::{Renderer, Shader, Target};
 
 let renderer = Renderer::new();
-let target = renderer.create_texture_target([16, 16]).await?;
+let target = renderer.create_target(canvas).await?;
 renderer.render(&Shader::default(), &target)?;
 
 let image = target.get_image().await;
-
-assert_eq!(image.len(), 16 * 16 * 4); // RGBA8
+_ = image;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 11-14}"
+lang="rust" meta="collapse={1-2, 10-13}"
 />
 
 </TabItem>
@@ -175,17 +394,16 @@ lang="rust" meta="collapse={1-1, 11-14}"
 <TabItem label="JavaScript">
 <Code
 code={`
-
 import { Renderer, Shader } from "fragmentcolor";
+const canvas = document.createElement("canvas");
 
 const renderer = new Renderer();
-const target = await renderer.createTextureTarget([16, 16]);
-renderer.render(new Shader(""), target);
+const target = await renderer.createTarget(canvas);
+renderer.render(Shader.default(), target);
 
 const image = await target.getImage();
-
 `}
-lang="js"
+lang="js" meta="collapse={2-2}"
 />
 
 </TabItem>
@@ -193,18 +411,21 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from rendercanvas.auto import RenderCanvas, loop
-
 from fragmentcolor import Renderer, Shader
+import os, sys
+# Skip this example in headless/CI environments that have no display surface.
+if os.environ.get('DISPLAY') is None and sys.platform != 'win32' and os.environ.get('FC_ALLOW_WINDOW') != '1':
+    raise SystemExit(0)
+from rendercanvas.auto import RenderCanvas
+canvas = RenderCanvas(size=(800, 600))
 
 renderer = Renderer()
-target = renderer.create_texture_target([16, 16])
-renderer.render(Shader(""), target)
+target = renderer.create_target(canvas)
+renderer.render(Shader.default(), target)
 
 image = target.get_image()
-
 `}
-lang="python"
+lang="python" meta="collapse={2-7}"
 />
 
 </TabItem>
@@ -212,16 +433,17 @@ lang="python"
 <TabItem label="Swift">
 <Code
 code={`
-
 import FragmentColor
+import QuartzCore
+let canvas = CAMetalLayer()
 
 let renderer = Renderer()
-let target = try await renderer.createTextureTarget([16, 16])
-try renderer.render(Shader(""), target)
+let target = try await renderer.createTarget(canvas)
+try renderer.render(Shader.default(), target)
 
 let image = try await target.getImage()
 `}
-lang="swift"
+lang="swift" meta="collapse={2-3}"
 />
 
 </TabItem>
@@ -229,208 +451,18 @@ lang="swift"
 <TabItem label="Kotlin">
 <Code
 code={`
-
 import org.fragmentcolor.*
+val surfaceTexture = android.graphics.SurfaceTexture(0)
+val canvas = android.view.Surface(surfaceTexture)
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(16u, 16u)
-renderer.render(Shader(""), target)
+val target = renderer.createTarget(canvas)
+renderer.render(Shader.default(), target)
 
 val image = target.getImage()
+surfaceTexture.release()
 `}
-lang="kotlin"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
-### WindowTarget::resize(size: [u32; 2] | (u32, u32))
-
-Resizes the [Target](https://fragmentcolor.org/docs/api/target) to the given width and height.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
-use fragmentcolor::Renderer;
-
-let renderer = Renderer::new();
-let mut target = renderer.create_texture_target([64, 32]).await?;
-
-target.resize([128, 64]);
-
-assert_eq!(target.size(), [128, 64]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-`}
-lang="rust" meta="collapse={1-1, 10-13}"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-
-import { Renderer } from "fragmentcolor";
-
-const renderer = new Renderer();
-const target = await renderer.createTextureTarget([64, 32]);
-
-target.resize([128, 64]);
-
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-
-from fragmentcolor import Renderer
-
-renderer = Renderer()
-target = renderer.create_texture_target([64, 32])
-
-target.resize([128, 64])
-
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Code
-code={`
-
-import FragmentColor
-
-let renderer = Renderer()
-let target = try await renderer.createTextureTarget([64, 32])
-
-target.resize([128, 64])
-`}
-lang="swift"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Code
-code={`
-
-import org.fragmentcolor.*
-
-val renderer = Renderer()
-val target = renderer.createTextureTarget(64u, 32u)
-
-target.resize(128u, 64u)
-`}
-lang="kotlin"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
-### WindowTarget::size() -&gt; [u32; 2]
-
-Returns the size of the [Target](/api/core/target) in pixels.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
-use fragmentcolor::{Renderer, Shader};
-
-let renderer = Renderer::new();
-let target = renderer.create_texture_target([64, 32]).await?;
-
-assert_eq!(target.size(), [64, 32]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-`}
-lang="rust" meta="collapse={1-1, 8-11}"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-
-import { Renderer, Shader } from "fragmentcolor";
-
-const renderer = new Renderer();
-const target = await renderer.createTextureTarget([64, 32]);
-
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-
-from fragmentcolor import Renderer, Shader
-
-renderer = Renderer()
-target = renderer.create_texture_target([64, 32])
-
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Code
-code={`
-
-import FragmentColor
-
-let renderer = Renderer()
-let target = try await renderer.createTextureTarget([64, 32])
-`}
-lang="swift"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Code
-code={`
-
-import org.fragmentcolor.*
-
-val renderer = Renderer()
-val target = renderer.createTextureTarget(64u, 32u)
-`}
-lang="kotlin"
+lang="kotlin" meta="collapse={2-3, 10-10}"
 />
 
 </TabItem>

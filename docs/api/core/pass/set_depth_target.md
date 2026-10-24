@@ -4,7 +4,7 @@ Attach a depth texture to this pass. Once attached, the renderer builds the pipe
 
 A Pass has at most one depth attachment. Call `set_depth_target` again to swap it.
 
-The target must be a depth texture (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](https://fragmentcolor.org/api/core/renderer/create_depth_texture). The depth attachment's sample count must match the color attachments'. Mixing 1× and 4× MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
+The target must be a depth `Texture` (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](https://fragmentcolor.org/api/core/renderer#create_depth_texture). A `TextureTarget` always has a color format, so passing one returns an error. The depth attachment's sample count must match the color attachments'. Mixing 1× and 4× MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
 
 To **opt out** of depth testing, simply don't call `set_depth_target`. The pass then renders without depth-state, painter's-algorithm style (later draws win).
 
@@ -30,8 +30,8 @@ mesh.add_vertex([1.0, 1.0, 0.0]);
 let shader = Shader::from_mesh(&mesh);
 let pass = Pass::from_shader("blobs", &shader);
 
-// Depth-test on — closer fragments win, the pass writes to the depth
-// buffer so subsequent draws within the same pass see the depth.
+// Depth test on: closer fragments win, and the pass writes the depth
+// buffer, so later draws in the same pass see it.
 pass.set_depth_target(&depth)?;
 
 renderer.render(&pass, &target)?;

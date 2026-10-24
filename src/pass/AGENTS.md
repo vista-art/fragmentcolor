@@ -15,3 +15,8 @@ Compute vs render
 Mesh handling
 - `Pass::add_mesh(mesh)` delegates to the last compatible shader. For per-shader attachment, callers use `Shader::add_mesh(mesh)` directly. `Pass` never owns mesh validation itself.
 - Rejecting incompatible meshes is the shader's job; passes propagate the resulting `PassError` unchanged.
+
+Host objects
+- FragmentColor holds no host object, such as a Python object or a JS value, and `render` never calls into host code.
+- The one exception is a Python `RenderCanvasTarget` (src/target/platform/python.rs). It keeps the canvas, which the RenderCanvas context protocol reads back, and the present methods it was given.
+- Don't add another. A host object held in Rust forms a cycle the host's garbage collector can't see, so it never frees either side.

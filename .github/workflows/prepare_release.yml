@@ -1,0 +1,155 @@
+name: Prepare release
+
+# Starts a release from the dispatched commit on `main`.
+# Builds the iOS xcframework and pins its URL and checksum in `Package.swift`.
+# The pin is committed on top of the dispatched commit and pushed to `release/vX.Y.Z`.
+# A draft GitHub Release targets that commit, with `FragmentColorFFI.xcframework.zip` attached.
+#
+# Publishing the draft creates the tag on the pinned commit, so the tagged
+# `Package.swift` points at the binary built from that same source. The tag
+# push and the published release then fire every publish workflow. Run this
+# again before publishing to replace the binary, the pin commit, and the
+# draft's target. Static libraries are not bit-reproducible, so the
+# uploaded zip is the only binary that matches the pinned checksum.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # push release/vX.Y.Z, create the draft, upload the asset
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+jobs:
+  swift:
+    runs-on: macos-15
+    env:
+      RUSTC_WRAPPER: ""
+    steps:
+      - name: Require main
+        if: ${{ github.ref != 'refs/heads/main' }}
+        run: |
+          echo "::error::Run this workflow on main after merging the release PR (got $GITHUB_REF)."
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+
+      - name: Determine version
+        id: vars
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION=$(grep '^version = ' Cargo.toml | head -n1 | cut -d'"' -f2)
+          TAG="v$VERSION"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "::error::Tag $TAG already exists. Bump the version before preparing another release."
+            exit 1
+          fi
+          # A published release always has a tag, so any release found here is a draft.
+          if gh release view "$TAG" >/dev/null 2>&1; then DRAFT=1; else DRAFT=0; fi
+          {
+            echo "version=$VERSION"
+            echo "tag=$TAG"
+            echo "branch=release/$TAG"
+            echo "draft=$DRAFT"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Extract release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          set -euo pipefail
+          awk -v v="$VERSION" '
+            /^## / {
+              if (found) exit
+              if (index($0, "## " v ":") == 1 || $0 == "## " v) { found = 1; sub(/^## /, "## v") }
+            }
+            found { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          if [ ! -s "$RUNNER_TEMP/notes.md" ]; then
+            echo "::error::CHANGELOG.md has no '## $VERSION' entry."
+            exit 1
+          fi
+
+      - name: Setup Rust (with iOS targets)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+
+      - name: Build xcframework
+        run: |
+          chmod +x ./tools/build_ios
+          ./tools/build_ios
+
+      # The tag ships this commit's wrapper next to the binary built above.
+      - name: Check the committed Swift wrapper is current
+        run: |
+          GENERATED=platforms/swift/Sources/FragmentColor/generated
+          if [ -n "$(git status --porcelain -- "$GENERATED")" ]; then
+            git status --short -- "$GENERATED"
+            echo "::error::$GENERATED differs from build_ios output. Commit the regenerated wrapper to main first."
+            exit 1
+          fi
+
+      - name: Zip xcframework
+        run: |
+          cd build/ios
+          zip -r -X FragmentColorFFI.xcframework.zip FragmentColorFFI.xcframework
+
+      - name: Compute SPM checksum
+        id: checksum
+        run: |
+          CHECKSUM=$(swift package compute-checksum build/ios/FragmentColorFFI.xcframework.zip)
+          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
+          echo "xcframework checksum: $CHECKSUM"
+
+      - name: Commit the Package.swift pin to the release branch
+        id: commit
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+          CHECKSUM: ${{ steps.checksum.outputs.checksum }}
+          BRANCH: ${{ steps.vars.outputs.branch }}
+        run: |
+          set -euo pipefail
+          sed -i.bak -E \
+            -e "s/^let fragmentcolorVersion = \".*\"$/let fragmentcolorVersion = \"${VERSION}\"/" \
+            -e "s/^let fragmentcolorChecksum = \".*\"$/let fragmentcolorChecksum = \"${CHECKSUM}\"/" \
+            Package.swift
+          rm Package.swift.bak
+          grep -qxF "let fragmentcolorVersion = \"${VERSION}\"" Package.swift
+          grep -qxF "let fragmentcolorChecksum = \"${CHECKSUM}\"" Package.swift
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Package.swift
+          git commit -m "chore(release): pin Package.swift to the v${VERSION} xcframework"
+          git push --force origin "HEAD:refs/heads/${BRANCH}"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.vars.outputs.tag }}
+          DRAFT: ${{ steps.vars.outputs.draft }}
+          SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          set -euo pipefail
+          ASSET=build/ios/FragmentColorFFI.xcframework.zip
+          if [ "$DRAFT" = "1" ]; then
+            # Keep the draft's notes, which may have been edited by hand.
+            gh release edit "$TAG" --target "$SHA"
+            gh release upload "$TAG" "$ASSET" --clobber
+          else
+            gh release create "$TAG" "$ASSET" \
+              --draft \
+              --target "$SHA" \
+              --title "FragmentColor $TAG" \
+              --notes-file "$RUNNER_TEMP/notes.md" \
+              --generate-notes
+          fi
+          echo "Draft $TAG targets $SHA. Review and publish it to create the tag."

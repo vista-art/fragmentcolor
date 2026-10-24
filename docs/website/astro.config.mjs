@@ -11,12 +11,20 @@ import vercel from "@astrojs/vercel";
 // production build. Owner of `.claude/locks/locks.json`. See the
 // integration source for full docs.
 import locks from "./integrations/locks";
+// Sets a heading's id from a trailing `{#id}`, which the API pages use
+// to give each method heading its name as an anchor.
+import headingIds from "./integrations/heading-ids";
 
 // https://astro.build/config
 export default defineConfig({
   site: "https://fragmentcolor.org",
+  // The demos live on the landing page; the old page keeps its links working.
+  redirects: {
+    "/demos": "/",
+  },
   integrations: [
     locks(),
+    headingIds(),
     starlight({
       title: "Fragment Color",
       logo: {
@@ -26,10 +34,10 @@ export default defineConfig({
       },
       favicon: "./favicon.svg",
       components: {
-        Repl: "./src/components/Repl.astro",
         Examples: "./src/components/Examples.mdx",
         SiteTitle: "./src/components/SiteTitle.astro",
         Footer: "./src/components/Footer.astro",
+        SocialIcons: "./src/components/SocialIcons.astro",
       },
       customCss: ["./src/assets/styles/override.css"],
       // @TODO set up a system for automatic translation
@@ -158,7 +166,7 @@ export default defineConfig({
         // <Lang /> wiring — keeps inline tab-synced text up to date
         // without rendering DOM siblings next to the substitution span.
         // Lives here (page-level head) so the component itself only
-        // emits the <span>, avoiding inline-context whitespace artefacts.
+        // emits the <span>, avoiding inline-context whitespace artifacts.
         {
           tag: "style",
           content: ".lang-text{display:inline;margin:0;padding:0;white-space:normal;}",
@@ -212,8 +220,7 @@ export default defineConfig({
             // Each item here is one entry in the navigation menu.
             { label: "Start Here", link: "/welcome" },
             { label: "Platform Support", link: "/welcome/platforms" },
-            { label: "Demos", link: "/demos" },
-            // { label: "Playground", link: "/welcome/playground" }, // @TODO uncomment when JS integration is ready
+            { label: "Playground", link: "/" },
           ],
         },
         {
@@ -246,6 +253,7 @@ export default defineConfig({
         "fragmentcolor",
         "codemirror",
         "@codemirror/state",
+        "@codemirror/view",
         "@codemirror/language",
         "@codemirror/lang-markdown",
         "thememirror",

@@ -7,9 +7,9 @@ light rig and the stock light would only compete for the same
 `lights.lights[..]` slots.
 
 To turn off both kinds at once, use
-[`no_defaults`](https://fragmentcolor.org/api/scene/scene/no_defaults). To
+[`no_defaults`](https://fragmentcolor.org/api/scene/scene#no_defaults). To
 keep injection on but supply your own light, use
-[`set_default_light`](https://fragmentcolor.org/api/scene/scene/set_default_light).
+[`set_default_light`](https://fragmentcolor.org/api/scene/scene#set_default_light).
 
 ## Example
 

@@ -6,17 +6,17 @@ camera sits and what it looks at). Pass it to
 [`Pass::add`](https://fragmentcolor.org/api/core/pass#add) to wire its
 `camera.view_proj` and `camera.position` into every shader the pass renders;
 the Camera holds Arc-shared state, so subsequent
-[`look_at`](https://fragmentcolor.org/api/scene/camera/look_at) calls
+[`look_at`](https://fragmentcolor.org/api/scene/camera#look_at) calls
 propagate to every shader the Camera has been wired into.
 
 Internally a Camera carries:
 
-- A `proj` matrix built by [`Camera::perspective`](https://fragmentcolor.org/api/scene/camera/perspective)
-  or [`Camera::orthographic`](https://fragmentcolor.org/api/scene/camera/orthographic).
+- A `proj` matrix built by [`Camera::perspective`](https://fragmentcolor.org/api/scene/camera#perspective)
+  or [`Camera::orthographic`](https://fragmentcolor.org/api/scene/camera#orthographic).
   Both use glam's right-handed builders (`Mat4::perspective_rh`,
   `Mat4::orthographic_rh`), which match wgpu's NDC depth range `[0, 1]`.
 - A `view` matrix initialized to identity (eye at origin, looking down `-Z`,
-  with `+Y` up). Call [`look_at`](https://fragmentcolor.org/api/scene/camera/look_at)
+  with `+Y` up). Call [`look_at`](https://fragmentcolor.org/api/scene/camera#look_at)
   to position the camera in world space.
 - The world-space `position` of the eye, kept alongside the view matrix so
   shaders that need it (specular highlights, fresnel) don't have to invert
@@ -35,6 +35,7 @@ viewpoint we're using right now".
 | `look_at`      | position the eye and aim at a target (chainable, live)    |
 | `view_proj`    | read `proj * view` as a column-major 4x4                  |
 | `position`     | read the world-space eye position                         |
+| `set_aspect`   | update the aspect ratio after a resize (live)             |
 
 ## Example
 
@@ -56,7 +57,7 @@ let pass = Pass::new("scene");
 pass.add(&model)?;
 pass.add(&camera);
 
-// Move later — every shader on the pass picks up the new view at the next render.
+// Move it later. Every shader on the pass picks up the new view at the next render.
 camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 # Ok(())
 # }

@@ -23,8 +23,8 @@ let main = r#"
 let shader = Shader::new(&["geom/rotate_2d", main])?;
 ```
 
-Each preview below visualises the function across a UV grid: scalar
-results map to a colour ramp, vector results render as `abs(v)` so the
+Each preview below visualizes the function across a UV grid: scalar
+results map to a color ramp, vector results render as `abs(v)` so the
 x/y/z components show up as RGB, and the barycentric example tints a
 fixed triangle by its (u, v, w) coordinates.
 
@@ -53,7 +53,7 @@ fn quaternion_conjugate(q: vec4<f32>) -> vec4<f32>
 ## quaternion_from_axis_angle
 
 Build a unit quaternion (xyzw) from a rotation axis and an angle in
-radians. The axis is normalised internally.
+radians. The axis is normalized internally.
 
 ```wgsl
 fn quaternion_from_axis_angle(axis: vec3<f32>, angle: f32) -> vec4<f32>

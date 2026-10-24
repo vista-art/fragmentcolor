@@ -15,13 +15,13 @@ The [Shader](/api/core/shader) object is the main building block in [FragmentCol
 
 It takes a WGSL or GLSL shader source as input, parses it, validates it, and exposes the uniforms as keys.
 
-`Shader::new` accepts a source string, a registry slug like `"sdf2d/circle"`, an `https://` URL, a local file path, or an array mixing any of those. Array parts are deduplicated by hash and concatenated in order, so you can pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](/api/core/shader#shaderset_registry).
+`Shader::new` accepts a source string, a registry slug like `"sdf2d/circle"`, an `https://` URL, a local file path, or an array mixing any of those. Array parts are deduplicated by hash and concatenated in order, so you can pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](/api/core/shader#set_registry).
 
 To draw your shader, you must use your [Shader](/api/core/shader) instance as input to a [Renderer](/api/core/renderer).
 
 You can compose [Shader](/api/core/shader) instances into a [Pass](/api/core/pass) object to create more complex rendering pipelines.
 
-You can also create renderings with multiple Render Passes by passing an array of [Pass](/api/core/pass) instances to [Renderer::render](/api/core/renderer#renderrender).
+You can also create renderings with multiple Render Passes by passing an array of [Pass](/api/core/pass) instances to [Renderer::render](/api/core/renderer#render).
 
 ## Uniforms
 
@@ -104,7 +104,7 @@ They will fallback to regular uniform buffers when:
 - multiple push-constant roots are declared, or
 - the total push-constant size exceeds the device limit.
 
-In fallback mode, push constants are rewritten as classic uniform buffers in a newly allocated bind group (one binding per push-constant root). The fallback group goes into the next free slot (`max_existing_group + 1`); FragmentColor does not check the device's `max_bind_groups` limit, so a shader that already uses many bind groups *and* push constants can exceed it. Render pipelines fall back today; compute pipeline fallback may follow.
+In fallback mode, push constants are rewritten as classic uniform buffers in a newly allocated bind group (one binding per push-constant root). The fallback group goes into the next free slot (`max_existing_group + 1`); FragmentColor does not check the device's `max_bind_groups` limit, so a shader that already uses many bind groups *and* push constants can exceed it. Only render pipelines fall back. A compute shader needs native push constants.
 
 
 ## Example
@@ -253,12 +253,12 @@ let shader = try Shader("""
             vec2<f32>(-1.0, -1.0),
             vec2<f32>( 3.0, -1.0),
             vec2<f32>(-1.0,  3.0)
-        )
-        return vec4<f32>(pos[index], 0.0, 1.0)
+        );
+        return vec4<f32>(pos[index], 0.0, 1.0);
     }
 
     @group(0) @binding(0)
-    var<uniform> resolution: vec2<f32>
+    var<uniform> resolution: vec2<f32>;
 
     @fragment
     fn fs_main() -> @location(0) vec4<f32> {
@@ -293,12 +293,12 @@ val shader = Shader("""
             vec2<f32>(-1.0, -1.0),
             vec2<f32>( 3.0, -1.0),
             vec2<f32>(-1.0,  3.0)
-        )
-        return vec4<f32>(pos[index], 0.0, 1.0)
+        );
+        return vec4<f32>(pos[index], 0.0, 1.0);
     }
 
     @group(0) @binding(0)
-    var<uniform> resolution: vec2<f32>
+    var<uniform> resolution: vec2<f32>;
 
     @fragment
     fn fs_main() -> @location(0) vec4<f32> {
@@ -308,11 +308,11 @@ val shader = Shader("""
 """)
 
 // Set the "resolution" uniform
-shader.set("resolution", floatArrayOf(800.0f, 600.0f))
+shader.set("resolution", listOf(800.0f, 600.0f))
 val res = shader.get("resolution")
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(16u, 16u)
+val target = renderer.createTextureTarget(listOf(16u, 16u))
 renderer.render(shader, target)
 `}
 lang="kotlin"
@@ -328,7 +328,7 @@ lang="kotlin"
 
 ---
 
-### Shader::new(input: string | string[])
+### Shader::new(input: string | string[]) \{#new\}
 
 Creates a new [Shader](/api/core/shader). The input
 is a single string, or an array of strings, of any of these shapes:
@@ -348,6 +348,23 @@ uniforms are initialized to zero.
 
 GLSL is supported only as a single part (a `.vert`, `.frag`, or `.glsl`
 file). Mixing GLSL with other parts is rejected.
+
+An empty string, or an empty array, gives the default shader.
+
+#### Where each input resolves
+
+| Platform | Registry slugs and registry URLs | Other `https://` URLs | File paths |
+|----------|----------------------------------|-----------------------|------------|
+| Rust (desktop) | Bundled shader library, offline | Fetched with the `network` feature, an error without it | Read from disk |
+| Python | Bundled shader library, offline | Fetched by a wheel built with the `network` feature, an error otherwise | Read from disk |
+| Swift / Kotlin | Bundled shader library, offline | Not fetched; a network error | Read from disk |
+| Web, `Shader.fetch` | The browser's `fetch()` | The browser's `fetch()` | Fetched relative to the page's origin |
+| Web, `new Shader` | Not fetched; an error that points at `Shader.fetch` | Not fetched; an error | Not fetched; an error |
+
+After `Shader::set_registry`, slugs and registry URLs are fetched first on
+every platform, and the bundled copy stands in when the fetch fails. A slug
+resolves against the new registry. A registry URL is fetched as written, so
+`https://fragmentcolor.org/shaders/sdf2d/circle.wgsl` still asks the default registry.
 
 #### Example
 
@@ -434,6 +451,21 @@ const shader = new Shader(\`
         return vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
     }
 \`);
+
+// Compose pure helpers from the registry with your own source.
+const main = \`
+    @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+        let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+        return vec4<f32>(p[i], 0.0, 1.0);
+    }
+
+    @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+        let d = circle(pos.xy - vec2<f32>(400.0, 300.0), 100.0);
+        let n = simplex2(pos.xy * 0.01);
+        return vec4<f32>(vec3<f32>(step(0.0, d) + n * 0.1), 1.0);
+    }
+\`;
+const composed = await Shader.fetch(["sdf2d/circle", "noise/simplex2", main]);
 `}
 lang="js"
 />
@@ -453,6 +485,20 @@ shader = Shader("""
 }
 @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4f(1., 0., 0., 1.); }
 """)
+
+# Compose pure helpers from the registry with your own source.
+main = """
+@vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4<f32>(p[i], 0.0, 1.0);
+}
+@fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+  let d = circle(pos.xy - vec2<f32>(400.0, 300.0), 100.0);
+  let n = simplex2(pos.xy * 0.01);
+  return vec4<f32>(vec3<f32>(step(0.0, d) + n * 0.1), 1.0);
+}
+"""
+composed = Shader(["sdf2d/circle", "noise/simplex2", main])
 `}
 lang="python"
 />
@@ -472,12 +518,12 @@ let shader = try Shader("""
             vec2<f32>(-1.0, -1.0),
             vec2<f32>( 3.0, -1.0),
             vec2<f32>(-1.0,  3.0)
-        )
-        return vec4<f32>(pos[index], 0.0, 1.0)
+        );
+        return vec4<f32>(pos[index], 0.0, 1.0);
     }
 
     @group(0) @binding(0)
-    var<uniform> resolution: vec2<f32>
+    var<uniform> resolution: vec2<f32>;
 
     @fragment
     fn fs_main() -> @location(0) vec4<f32> {
@@ -489,19 +535,19 @@ let shader = try Shader("""
 
 let main = """
     @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-        let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.))
-        return vec4<f32>(p[i], 0.0, 1.0)
+        let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+        return vec4<f32>(p[i], 0.0, 1.0);
     }
 
     @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
-        let d = circle(pos.xy - vec2<f32>(400.0, 300.0), 100.0)
-        let n = simplex2(pos.xy * 0.01)
-        return vec4<f32>(vec3<f32>(step(0.0, d) + n * 0.1), 1.0)
+        let d = circle(pos.xy - vec2<f32>(400.0, 300.0), 100.0);
+        let n = simplex2(pos.xy * 0.01);
+        return vec4<f32>(vec3<f32>(step(0.0, d) + n * 0.1), 1.0);
     }
 
 """
 
-let shader2 = try Shader.new([
+let shader2 = try Shader([
     "sdf2d/circle",      // pure function: fn circle(p: vec2<f32>, r: f32) -> f32
     "noise/simplex2",    // pure function: fn simplex2(v: vec2<f32>) -> f32
     main,
@@ -525,12 +571,12 @@ val shader = Shader("""
             vec2<f32>(-1.0, -1.0),
             vec2<f32>( 3.0, -1.0),
             vec2<f32>(-1.0,  3.0)
-        )
-        return vec4<f32>(pos[index], 0.0, 1.0)
+        );
+        return vec4<f32>(pos[index], 0.0, 1.0);
     }
 
     @group(0) @binding(0)
-    var<uniform> resolution: vec2<f32>
+    var<uniform> resolution: vec2<f32>;
 
     @fragment
     fn fs_main() -> @location(0) vec4<f32> {
@@ -542,19 +588,19 @@ val shader = Shader("""
 
 val main = """
     @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-        let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.))
-        return vec4<f32>(p[i], 0.0, 1.0)
+        let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+        return vec4<f32>(p[i], 0.0, 1.0);
     }
 
     @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
-        let d = circle(pos.xy - vec2<f32>(400.0, 300.0), 100.0)
-        let n = simplex2(pos.xy * 0.01)
-        return vec4<f32>(vec3<f32>(step(0.0, d) + n * 0.1), 1.0)
+        let d = circle(pos.xy - vec2<f32>(400.0, 300.0), 100.0);
+        let n = simplex2(pos.xy * 0.01);
+        return vec4<f32>(vec3<f32>(step(0.0, d) + n * 0.1), 1.0);
     }
 
 """
 
-val shader2 = Shader.compose(listOf("sdf2d/circle", "noise/simplex2", main,))
+val shader2 = Shader(listOf("sdf2d/circle", "noise/simplex2", main,))
 `}
 lang="kotlin"
 />
@@ -566,7 +612,7 @@ lang="kotlin"
 
 ---
 
-### Shader::fetch(input)
+### Shader::fetch(input) \{#fetch\}
 
 Async constructor that returns a compiled `Shader` from one or more parts.
 Each part can be:
@@ -575,7 +621,6 @@ Each part can be:
 - a registry slug like `"sdf2d/circle"`
 - an `https://` URL pointing at a `.wgsl` file
 - a local file path ending in `.wgsl`, `.glsl`, `.frag`, or `.vert`
-  (native platforms only)
 
 Parts are deduplicated by source hash and concatenated in order before
 compilation. `fetch` is the async path used when any part needs network or
@@ -589,12 +634,26 @@ synchronous constructor.
 | Web (JS) | `await Shader.fetch(input)` | `Promise` via `wasm_bindgen` async |
 | Python   | `Shader.fetch(input)` | Blocks the calling thread via `pollster::block_on` |
 | Swift    | `try await Shader.fetch(input)` | `async throws` via uniffi async method |
-| Kotlin   | `ShaderFetch(input)` | `suspend fun` via uniffi async method |
+| Kotlin   | `Shader.fetch(input)` | `suspend fun` via uniffi async method |
 
-> **Note (Swift / Kotlin):** uniffi 0.31 does not support async constructors.
-> The underlying uniffi binding is an `async` instance method; the Swift
-> `Shader.fetch(_:)` and Kotlin `ShaderFetch(...)` wrappers handle the
-> throw-away receiver internally so callers see a clean static factory.
+> **Note (Swift / Kotlin):** the underlying uniffi binding is an `async`
+> instance method. The Swift and Kotlin `Shader.fetch(...)` extensions call
+> it on a throwaway default shader, so callers see a static factory.
+
+#### Where each input resolves
+
+| Platform | Registry slugs and registry URLs | Other `https://` URLs | File paths |
+|----------|----------------------------------|-----------------------|------------|
+| Rust (desktop) | Bundled shader library, offline | Fetched with the `network` feature, an error without it | Read from disk |
+| Python | Bundled shader library, offline | Fetched by a wheel built with the `network` feature, an error otherwise | Read from disk |
+| Swift / Kotlin | Bundled shader library, offline | Not fetched; a network error | Read from disk |
+| Web, `Shader.fetch` | The browser's `fetch()` | The browser's `fetch()` | Fetched relative to the page's origin |
+| Web, `new Shader` | Not fetched; an error that points at `Shader.fetch` | Not fetched; an error | Not fetched; an error |
+
+After `Shader::set_registry`, slugs and registry URLs are fetched first on
+every platform, and the bundled copy stands in when the fetch fails. A slug
+resolves against the new registry. A registry URL is fetched as written, so
+`https://fragmentcolor.org/shaders/sdf2d/circle.wgsl` still asks the default registry.
 
 #### Example
 
@@ -696,11 +755,20 @@ lang="kotlin"
 
 ---
 
-### Shader::set(key: string, value: any)
+### Shader::set(key: string, value: any) \{#set\}
 
 Sets the value of the uniform identified by the given key.
 
 If the key does not exist or the value format is incorrect, the `set` method throws an exception. The shader remains valid, and if the exception is caught, the shader can still be used with the renderer.
+
+`set` never blocks. When another thread holds the shader's storage, the value is queued and applied before the next draw. A bad value that can't be checked right away is dropped later with a logged warning instead of throwing.
+
+The uniform's declared WGSL type decides how the value is read, so a call behaves the same in every language:
+
+- A number fits an `f32`, `i32`, or `u32` uniform. Integer uniforms take whole numbers in range.
+- A vector takes exactly as many numbers as it has components. A `mat2x2`, `mat3x3`, or `mat4x4` takes 4, 9, or 16.
+- A `Texture` created by a `Renderer` binds to a texture uniform.
+- Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` (or a `bytearray` or `memoryview`) in Python, `Data` in Swift, or a `ByteArray` in Kotlin.
 
 #### Example
 
@@ -796,14 +864,14 @@ code={`
 import FragmentColor
 let r = Renderer()
 let shader = try Shader("""
-@group(0) @binding(0) var<uniform> resolution: vec2<f32>
+@group(0) @binding(0) var<uniform> resolution: vec2<f32>;
 
-struct VOut { @builtin(position) pos: vec4<f32> }
+struct VOut { @builtin(position) pos: vec4<f32> };
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
-  var p = array<vec2<f32>, 3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.))
-  var out: VOut
-  out.pos = vec4<f32>(p[i], 0., 1.)
-  return out
+  var p = array<vec2<f32>, 3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.));
+  var out: VOut;
+  out.pos = vec4<f32>(p[i], 0., 1.);
+  return out;
 }
 @fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
@@ -823,21 +891,21 @@ code={`
 import org.fragmentcolor.*
 val r = Renderer()
 val shader = Shader("""
-@group(0) @binding(0) var<uniform> resolution: vec2<f32>
+@group(0) @binding(0) var<uniform> resolution: vec2<f32>;
 
-struct VOut { @builtin(position) pos: vec4<f32> }
+struct VOut { @builtin(position) pos: vec4<f32> };
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
-  var p = array<vec2<f32>, 3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.))
-  var out: VOut
-  out.pos = vec4<f32>(p[i], 0., 1.)
-  return out
+  var p = array<vec2<f32>, 3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.));
+  var out: VOut;
+  out.pos = vec4<f32>(p[i], 0., 1.);
+  return out;
 }
 @fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
 """)
 
 // Set scalars/vectors on declared uniforms
-shader.set("resolution", floatArrayOf(800.0f, 600.0f))
+shader.set("resolution", listOf(800.0f, 600.0f))
 `}
 lang="kotlin"
 />
@@ -849,9 +917,14 @@ lang="kotlin"
 
 ---
 
-### Shader::get(key: string) -&gt; any
+### Shader::get(key: string) -&gt; any \{#get\}
 
 Returns the current value of the uniform identified by the given key.
+
+A struct or array root reads back as its bytes, and `set` doesn't take
+those bytes back for that root. Set a struct one field at a time
+(`"light.color"`) and an array one element at a time (`"weights[0]"`).
+Only a storage-buffer or push-constant root takes its whole bytes.
 
 #### Example
 
@@ -926,7 +999,7 @@ code={`
 import org.fragmentcolor.*
 
 val shader = Shader.default()
-shader.set("resolution", floatArrayOf(800.0f, 600.0f))
+shader.set("resolution", listOf(800.0f, 600.0f))
 val res = shader.get("resolution")
 `}
 lang="kotlin"
@@ -939,7 +1012,7 @@ lang="kotlin"
 
 ---
 
-### Shader::list_uniforms() -&gt; [string]
+### Shader::list_uniforms() -&gt; [string] \{#list_uniforms\}
 
 Returns a list of all uniform names in the [Shader](/api/core/shader) (excluding struct fields).
 
@@ -1024,9 +1097,11 @@ lang="kotlin"
 
 ---
 
-### Shader::list_keys() -&gt; [string]
+### Shader::list_keys() -&gt; [string] \{#list_keys\}
 
 Returns a list of all keys in the [Shader](/api/core/shader), including uniform names and struct fields using the dot notation.
+
+`list_keys` never blocks. When another thread holds the shader's storage, it returns an empty list and logs a warning.
 
 #### Example
 
@@ -1114,7 +1189,7 @@ lang="kotlin"
 
 ---
 
-### Shader::from_vertex
+### Shader::from_vertex \{#from_vertex\}
 
 Build a basic WGSL shader source from a single Vertex layout.
 
@@ -1202,7 +1277,7 @@ lang="kotlin"
 
 ---
 
-### Shader::from_mesh
+### Shader::from_mesh \{#from_mesh\}
 
 Build a basic WGSL shader source from the first vertex in a Mesh.
 
@@ -1215,8 +1290,8 @@ It generates a minimal vertex shader that consumes `@location(0)` position and a
 
 #### Empty Mesh Handling
 
-If the Mesh has no vertices, a default shader is returned and a warning is logged.
-Because the default shader does not take any vertex inputs, it is compatible with any Mesh.
+If the Mesh has no vertices, `from_mesh` returns the default shader and logs a warning.
+The default shader takes no vertex inputs, so it rejects the mesh and the empty mesh is not attached.
 
 #### Example
 
@@ -1288,7 +1363,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex(Vertex(listOf(0.0f, 0.0f, 0.0f)))
+mesh.addVertex(listOf(0.0f, 0.0f, 0.0f))
 val shader = Shader.fromMesh(mesh)
 `}
 lang="kotlin"
@@ -1301,14 +1376,16 @@ lang="kotlin"
 
 ---
 
-### Shader::add_mesh
+### Shader::add_mesh \{#add_mesh\}
 
-Attach a Mesh to this Shader. The Renderer will draw all meshes attached to it (one draw call per mesh, same pipeline).
+Attach a Mesh to this Shader. The Renderer draws every mesh attached to it, one draw call per mesh, with the same pipeline.
 
-This method now validates that the mesh's vertex/instance layout is compatible with the shader's @location inputs and returns Result`Result<(), ShaderError>`.
+`add_mesh` checks every vertex and instance of the mesh against the shader's `@location` inputs and returns `Result<(), ShaderError>`.
 
-- On success, the mesh is attached and will be drawn when this shader is rendered.
-- On mismatch (missing attribute or type mismatch), returns an error and does not attach.
+- An attribute set from numbers takes the type the shader declares at its location: floats for `f32` and `vecN<f32>`, integers for `u32`, `i32` and their vectors when every value is whole and fits.
+- On success, the mesh is attached, its attributes keep those types for as long as the mesh lives, and it is drawn when this shader renders.
+- On a missing attribute or a value that doesn't fit, the error names the attribute, the declared type and the value. The mesh isn't attached and records no type.
+- A shader that declares another type for an attribute an earlier shader already typed on this mesh fails to attach.
 
 #### See also
 
@@ -1418,7 +1495,7 @@ import FragmentColor
 
 let shader = try Shader("""
   @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
-    return vec4<f32>(pos, 1.0)
+    return vec4<f32>(pos, 1.0);
   }
   @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
@@ -1447,14 +1524,14 @@ import org.fragmentcolor.*
 
 val shader = Shader("""
   @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
-    return vec4<f32>(pos, 1.0)
+    return vec4<f32>(pos, 1.0);
   }
   @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
 """)
 
 val mesh = Mesh()
-mesh.addVertex(Vertex(listOf(0.0f, 0.0f, 0.0f)))
+mesh.addVertex(listOf(0.0f, 0.0f, 0.0f))
 
 // Attach mesh to this shader (errors if incompatible)
 shader.addMesh(mesh)
@@ -1474,7 +1551,7 @@ lang="kotlin"
 
 ---
 
-### Shader::remove_mesh
+### Shader::remove_mesh \{#remove_mesh\}
 
 Remove a single Mesh previously attached to this Shader.
 If the Mesh is attached multiple times, removes the first match.
@@ -1582,12 +1659,12 @@ code={`
 import FragmentColor
 
 let shader = try Shader("""
-  struct VOut { @builtin(position) pos: vec4<f32> }
+  struct VOut { @builtin(position) pos: vec4<f32> };
   @vertex
   fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-    var out: VOut
-    out.pos = vec4<f32>(pos, 0.0, 1.0)
-    return out
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
   }
   @fragment
   fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
@@ -1599,7 +1676,7 @@ try mesh.addVertex([0.0, 0.0])
 try shader.addMesh(mesh)
 
 // Detach the mesh
-try shader.removeMesh(mesh)
+shader.removeMesh(mesh)
 `}
 lang="swift"
 />
@@ -1612,12 +1689,12 @@ code={`
 import org.fragmentcolor.*
 
 val shader = Shader("""
-  struct VOut { @builtin(position) pos: vec4<f32> }
+  struct VOut { @builtin(position) pos: vec4<f32> };
   @vertex
   fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-    var out: VOut
-    out.pos = vec4<f32>(pos, 0.0, 1.0)
-    return out
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
   }
   @fragment
   fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
@@ -1625,7 +1702,7 @@ val shader = Shader("""
 """)
 
 val mesh = Mesh()
-mesh.addVertex(Vertex(listOf(0.0f, 0.0f)))
+mesh.addVertex(listOf(0.0f, 0.0f))
 shader.addMesh(mesh)
 
 // Detach the mesh
@@ -1641,7 +1718,7 @@ lang="kotlin"
 
 ---
 
-### Shader::remove_meshes
+### Shader::remove_meshes \{#remove_meshes\}
 
 Remove multiple meshes from this Shader.
 
@@ -1757,12 +1834,12 @@ code={`
 import FragmentColor
 
 let shader = try Shader("""
-  struct VOut { @builtin(position) pos: vec4<f32> }
+  struct VOut { @builtin(position) pos: vec4<f32> };
   @vertex
   fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-    var out: VOut
-    out.pos = vec4<f32>(pos, 0.0, 1.0)
-    return out
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
   }
   @fragment
   fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
@@ -1790,12 +1867,12 @@ code={`
 import org.fragmentcolor.*
 
 val shader = Shader("""
-  struct VOut { @builtin(position) pos: vec4<f32> }
+  struct VOut { @builtin(position) pos: vec4<f32> };
   @vertex
   fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-    var out: VOut
-    out.pos = vec4<f32>(pos, 0.0, 1.0)
-    return out
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
   }
   @fragment
   fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
@@ -1803,9 +1880,9 @@ val shader = Shader("""
 """)
 
 val m1 = Mesh()
-m1.addVertex(Vertex(listOf(0.0f, 0.0f)))
+m1.addVertex(listOf(0.0f, 0.0f))
 val m2 = Mesh()
-m2.addVertex(Vertex(listOf(0.5f, 0.0f)))
+m2.addVertex(listOf(0.5f, 0.0f))
 
 shader.addMesh(m1)
 shader.addMesh(m2)
@@ -1822,7 +1899,7 @@ lang="kotlin"
 
 ---
 
-### Shader::clear_meshes
+### Shader::clear_meshes \{#clear_meshes\}
 
 Remove all meshes attached to this Shader.
 
@@ -1929,12 +2006,12 @@ code={`
 import FragmentColor
 
 let shader = try Shader("""
-  struct VOut { @builtin(position) pos: vec4<f32> }
+  struct VOut { @builtin(position) pos: vec4<f32> };
   @vertex
   fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-    var out: VOut
-    out.pos = vec4<f32>(pos, 0.0, 1.0)
-    return out
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
   }
   @fragment
   fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
@@ -1959,12 +2036,12 @@ code={`
 import org.fragmentcolor.*
 
 val shader = Shader("""
-  struct VOut { @builtin(position) pos: vec4<f32> }
+  struct VOut { @builtin(position) pos: vec4<f32> };
   @vertex
   fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-    var out: VOut
-    out.pos = vec4<f32>(pos, 0.0, 1.0)
-    return out
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
   }
   @fragment
   fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
@@ -1972,7 +2049,7 @@ val shader = Shader("""
 """)
 
 val mesh = Mesh()
-mesh.addVertex(Vertex(listOf(0.0f, 0.0f)))
+mesh.addVertex(listOf(0.0f, 0.0f))
 shader.addMesh(mesh)
 
 // Clear all
@@ -1988,20 +2065,22 @@ lang="kotlin"
 
 ---
 
-### Shader::validate_mesh
+### Shader::validate_mesh \{#validate_mesh\}
 
 Validate that a Mesh is compatible with this Shader's vertex inputs.
 
-- Checks presence and type for all @location(...) inputs of the vertex entry point.
-- Matches attributes in the following order:
-  1) Instance attributes by explicit @location index (if the mesh has instances)
-  2) Vertex attributes by explicit @location index (position is assumed at @location(0))
-  3) Fallback by name (tries instance first, then vertex)
-- Returns Ok(()) when all inputs are matched with a compatible wgpu::VertexFormat; returns an error otherwise.
+- Checks that every `@location` input of the vertex entry point finds an attribute, and that every vertex and instance value fits the type the input declares.
+- Matches each input in this order:
+  1) by name, instance attributes first, then vertex attributes (`position` included)
+  2) the position, at `@location(0)`
+  3) by the attribute's own location, instance attributes first, then vertex attributes
+- A number fills a float input unless the shader declares an integer type there. An integer input takes whole numbers that fit its type.
+- Returns `Ok(())` when every input matches; returns the same error `Shader::add_mesh` would otherwise.
 
 #### Notes
 
-- This method is called automatically when adding a Mesh to a Shader or Pass, so you usually don't need to call it manually.
+- `Shader::add_mesh` and `Pass::add_mesh` run the same check. Call `validate_mesh` to test a mesh without attaching it.
+- It changes nothing: the mesh isn't attached and its attributes take no type.
 - If the Shader has no @location inputs (fullscreen/builtin-only), attaching a Mesh is rejected.
 - This method does not allocate GPU buffers; it inspects CPU-side vertex/instance data only.
 
@@ -2060,12 +2139,12 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 @fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
 \`);
-const pass = new Pass("p"); pass.addShader(shader);
+const pass = Pass.fromShader("p", shader);
 
 const mesh = new Mesh();
 mesh.addVertices([ [-0.5, -0.5, 0.0], [ 0.5, -0.5, 0.0], [ 0.0,  0.5, 0.0], ]);
 
-shader.validateMesh(mesh); // Ok;
+shader.validateMesh(mesh); // Ok
 pass.addMesh(mesh);
 
 `}
@@ -2089,7 +2168,7 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 @fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
 """)
-rpass = Pass("p"); rpass.add_shader(shader)
+rpass = Pass.from_shader("p", shader)
 
 mesh = Mesh()
 mesh.add_vertices([
@@ -2098,7 +2177,7 @@ mesh.add_vertices([
   [ 0.0,  0.5, 0.0],
 ])
 
-shader.validate_mesh(mesh); # Ok
+shader.validate_mesh(mesh) # Ok
 rpass.add_mesh(mesh)
 
 `}
@@ -2113,16 +2192,16 @@ code={`
 import FragmentColor
 
 let shader = try Shader("""
-struct VOut { @builtin(position) pos: vec4<f32> }
+struct VOut { @builtin(position) pos: vec4<f32> };
 @vertex fn vs_main(@location(0) pos: vec3<f32>) -> VOut {
-  var out: VOut
-  out.pos = vec4<f32>(pos, 1.0)
-  return out
+  var out: VOut;
+  out.pos = vec4<f32>(pos, 1.0);
+  return out;
 }
 @fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
 """)
-let pass = Pass("p"); pass.addShader(shader)
+let pass = Pass.fromShader("p", shader)
 
 let mesh = Mesh()
 try mesh.addVertices([
@@ -2131,7 +2210,7 @@ try mesh.addVertices([
   [ 0.0,  0.5, 0.0],
 ])
 
-try shader.validateMesh(mesh); // Ok
+try shader.validateMesh(mesh) // Ok
 try pass.addMesh(mesh)
 `}
 lang="swift"
@@ -2145,21 +2224,21 @@ code={`
 import org.fragmentcolor.*
 
 val shader = Shader("""
-struct VOut { @builtin(position) pos: vec4<f32> }
+struct VOut { @builtin(position) pos: vec4<f32> };
 @vertex fn vs_main(@location(0) pos: vec3<f32>) -> VOut {
-  var out: VOut
-  out.pos = vec4<f32>(pos, 1.0)
-  return out
+  var out: VOut;
+  out.pos = vec4<f32>(pos, 1.0);
+  return out;
 }
 @fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
 """)
-val pass = Pass("p"); pass.addShader(shader)
+val pass = Pass.fromShader("p", shader)
 
 val mesh = Mesh()
-mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f, 0.0f)), Vertex(listOf(0.5f, -0.5f, 0.0f)), Vertex(listOf(0.0f, 0.5f, 0.0f))))
+mesh.addVertices(listOf(listOf(-0.5f, -0.5f, 0.0f), listOf(0.5f, -0.5f, 0.0f), listOf(0.0f, 0.5f, 0.0f)))
 
-shader.validateMesh(mesh); // Ok
+shader.validateMesh(mesh) // Ok
 pass.addMesh(mesh)
 `}
 lang="kotlin"
@@ -2172,7 +2251,7 @@ lang="kotlin"
 
 ---
 
-### Shader::is_compute
+### Shader::is_compute \{#is_compute\}
 
 Returns true if this Shader is a compute shader (has a compute entry point).
 
@@ -2288,11 +2367,11 @@ lang="kotlin"
 
 ---
 
-### Shader::set_registry(base_url: string)
+### Shader::set_registry(base_url: string) \{#set_registry\}
 
 Override the base URL used to resolve shader **slugs** (e.g. `"sdf2d/circle"`).
 
-When a slug is passed to [Shader::new](/api/core/shader#shadernew), it is expanded to:
+When a slug is passed to [Shader::new](/api/core/shader#new), it is expanded to:
 
 ```text
 <base_url>/<slug>.wgsl
@@ -2300,9 +2379,11 @@ When a slug is passed to [Shader::new](/api/core/shader#shadernew), it is expand
 
 The default base URL is `https://fragmentcolor.org/shaders/`, which serves the public shader registry. Override it to point at your own collection (a CDN, a local dev server, or a mirror) without changing the rest of your code.
 
-The base may end with or without a trailing slash; both are normalised at lookup time.
+The base may end with or without a trailing slash; both are normalized at lookup time.
 
 This setting is **process-wide**. It applies to every subsequent call to `Shader::new(...)` until overridden again.
+
+A full URL into the default registry keeps pointing there. After `set_registry`, `https://fragmentcolor.org/shaders/sdf2d/circle.wgsl` is fetched as written, and the bundled shader library stands in when the fetch fails. Builds without the `network` feature, such as the Swift and Kotlin packages, always take the bundled copy.
 
 #### Example
 
@@ -2391,6 +2472,136 @@ Shader.setRegistry("https://cdn.example.com/shaders/")
 
 // Now the slug "sdf2d/circle" resolves to https://cdn.example.com/shaders/sdf2d/circle.wgsl
 // (Skipping the actual fetch in this doctest)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Shader::default() \{#default\}
+
+Creates a new [Shader](/api/core/shader) from the default shader source.
+
+Useful for examples and quick demos. Includes a "**resolution**" uniform.
+
+```wgsl
+struct VertexOutput {
+    @builtin(position) coords: vec4<f32>,
+}
+
+@group(0) @binding(0)
+var<uniform> resolution: vec2<f32>;
+
+@vertex
+fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
+    let x = f32(i32(in_vertex_index) - 1);
+    let y = f32(i32(in_vertex_index & 1u) * 2 - 1);
+    return VertexOutput(vec4<f32>(x, y, 0.0, 1.0));
+}
+
+@fragment
+fn fs_main(pixel: VertexOutput) -> @location(0) vec4<f32> {
+    let _dummy = resolution.x + resolution.y * 0.0;
+    return vec4<f32>(1.0, 0.0, 0.0, 1.0);
+}
+```
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Shader};
+
+let shader = Shader::default();
+
+// The default shader includes a "resolution" uniform
+shader.set("resolution", [800.0, 600.0])?;
+let res: [f32; 2] = shader.get("resolution")?;
+
+assert!(shader.list_keys().len() >= 1);
+assert_eq!(res, [800.0, 600.0]);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 11-14}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+import { Shader } from "fragmentcolor";
+
+const shader = Shader.default();
+
+// The default shader includes a "resolution" uniform
+shader.set("resolution", [800.0, 600.0]);
+const res = shader.get("resolution");
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+from fragmentcolor import Shader
+
+shader = Shader.default()
+
+# The default shader includes a "resolution" uniform
+shader.set("resolution", [800.0, 600.0])
+res = shader.get("resolution")
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+
+import FragmentColor
+
+let shader = Shader.default()
+
+// The default shader includes a "resolution" uniform
+try shader.set("resolution", [800.0, 600.0])
+let res = try shader.get("resolution")
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+
+import org.fragmentcolor.*
+
+val shader = Shader.default()
+
+// The default shader includes a "resolution" uniform
+shader.set("resolution", listOf(800.0f, 600.0f))
+val res = shader.get("resolution")
 `}
 lang="kotlin"
 />

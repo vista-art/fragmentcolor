@@ -1,8 +1,10 @@
-
 import org.fragmentcolor.*
+val surfaceTexture = android.graphics.SurfaceTexture(0)
+val canvas = android.view.Surface(surfaceTexture)
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(16u, 16u)
-renderer.render(Shader(""), target)
+val target = renderer.createTarget(canvas)
+renderer.render(Shader.default(), target)
 
 val image = target.getImage()
+surfaceTexture.release()

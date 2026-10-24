@@ -1,0 +1,981 @@
+---
+// <Playground /> runs the developer demos: editable WGSL and JS that rebuild as
+// you type, uniform controls for the keys main.js sets, the page code that runs
+// it, and the same program in Rust, Python, Swift, and Kotlin. mode="landing"
+// fills the screen under the site header, without a frame, and leads with the
+// tagline and an install line.
+import { DEMOS } from "../playground/demos/index.js";
+import { SPLIT_KEY } from "../playground/divider.js";
+import site from "../../package.json";
+
+interface Props {
+  mode?: "full" | "landing";
+  /** Demo ids to offer, in order. Defaults to every demo. */
+  demos?: string[];
+  /** The demo to open first. A matching URL hash wins in full mode. */
+  demo?: string;
+}
+
+const { mode = "full", demos, demo } = Astro.props;
+const list = demos ? demos.flatMap((id) => DEMOS.filter((d) => d.id === id)) : DEMOS;
+const first = list.find((d) => d.id === demo) ?? list[0];
+if (!first) throw new Error(`<Playground>: no demo matches ${JSON.stringify(demos)}.`);
+
+// The install line follows the language tab the reader has open.
+const RELEASES = "https://github.com/vista-art/fragmentcolor/releases/latest";
+const installs = [
+  { lang: "js", label: "JavaScript", command: "npm install fragmentcolor" },
+  { lang: "rust", label: "Rust", command: "cargo add fragmentcolor" },
+  { lang: "python", label: "Python", command: "pip install fragmentcolor" },
+  {
+    lang: "swift",
+    label: "Swift",
+    command: `.package(url: "https://github.com/vista-art/fragmentcolor", from: "${site.version}")`,
+  },
+  {
+    lang: "kotlin",
+    label: "Kotlin",
+    command: `implementation(files("libs/fragmentcolor-${site.version}.aar"))`,
+    link: RELEASES,
+  },
+];
+---
+
+<fc-playground
+  class={`not-content ${mode}`}
+  data-mode={mode}
+  data-demo={first.id}
+  data-demos={list.map((d) => d.id).join(",")}
+>
+  {
+    mode === "landing" && (
+      <div class="fcp-intro">
+        <p class="fcp-tagline">Universal GPU abstraction for Rust, JavaScript, Python, Swift, and Kotlin.</p>
+        <div class="fcp-install">
+          <select class="fcp-install-select" aria-label="Install for">
+            {installs.map((i) => <option value={i.lang} selected={i.lang === "js"}>{i.label}</option>)}
+          </select>
+          <div class="fcp-install-langs" role="tablist" aria-label="Install for">
+            {installs.map((i) => (
+              <button
+                type="button"
+                role="tab"
+                data-lang={i.lang}
+                aria-selected={i.lang === "js" ? "true" : "false"}
+                tabindex={i.lang === "js" ? 0 : -1}
+              >
+                {i.label}
+              </button>
+            ))}
+          </div>
+          {installs.map((i) => (
+            <div class="fcp-install-line" data-lang={i.lang} role="tabpanel" hidden={i.lang !== "js"}>
+              <code>{i.command}</code>
+              <button type="button" class="fcp-install-copy" aria-label={`Copy the ${i.label} install line`} title="Copy">
+                <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4" /><path d="M10.5 3.5v-.5A1.5 1.5 0 0 0 9 1.5H4A1.5 1.5 0 0 0 2.5 3v5A1.5 1.5 0 0 0 4 9.5h.5" fill="none" stroke="currentColor" stroke-width="1.4" /></svg>
+              </button>
+              {i.link && <a href={i.link}>Get the AAR</a>}
+            </div>
+          ))}
+        </div>
+        <nav class="fcp-links" aria-label="Get started">
+          <a href="/welcome">Docs</a>
+        </nav>
+      </div>
+    )
+  }
+  <div class="fcp-toolbar">
+    <div class="fcp-demos" role="group" aria-label="Demos">
+      {
+        list.map((d) => (
+          <button type="button" data-demo={d.id} aria-pressed={d.id === first.id ? "true" : "false"}>
+            {d.title}
+          </button>
+        ))
+      }
+    </div>
+    <select class="fcp-demo-select" aria-label="Demo">
+      {list.map((d) => <option value={d.id} selected={d.id === first.id}>{d.title}</option>)}
+    </select>
+    <span class="fcp-status">Loading</span>
+  </div>
+  <p class="fcp-summary">{first.summary}</p>
+  <div class="fcp-body">
+    <section class="fcp-stage" aria-label="Output">
+      <div class="fcp-canvas">
+        <canvas></canvas>
+        <div class="fcp-poster" hidden>
+          <img alt="" />
+          <p>This demo runs compute shaders, which need WebGPU. This browser is drawing with WebGL2, so it shows a recording. The code is still yours to read and edit.</p>
+        </div>
+        <div class="fcp-fallback" hidden>
+          <p>The playground draws with WebGPU or WebGL2, and this browser could not start either. A recent Chrome, Edge, Safari, or Firefox runs it.</p>
+        </div>
+        <button type="button" class="fcp-fullscreen" aria-label="Fullscreen" title="Fullscreen" hidden>
+          <svg class="icon-enter" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg><svg class="icon-exit" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6 2.5V6H2.5M13.5 6H10V2.5M10 13.5V10h3.5M2.5 10H6v3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <div class="fcp-controls" role="group" aria-label="Uniforms" hidden></div>
+    </section>
+    <div
+      class="fcp-divider"
+      role="separator"
+      tabindex="0"
+      aria-orientation="vertical"
+      aria-label="Resize the canvas and the code"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      aria-valuenow="49"
+      title="Drag to resize. Double-click to reset."
+    ></div>
+    <section class="fcp-code" aria-label="Code">
+      <div class="fcp-library">
+        <span class="fcp-library-label">Library</span>
+        <div class="fcp-library-list"></div>
+        <button type="button" class="fcp-add" aria-haspopup="dialog">+ Add</button>
+      </div>
+      <div class="fcp-tabbar">
+        <div class="fcp-tabs" role="tablist" aria-label="Files"></div>
+      </div>
+      <div class="fcp-editor-frame">
+        <div class="fcp-editor" role="tabpanel"></div>
+        <div class="fcp-actions">
+          <button type="button" class="fcp-copy" aria-label="Copy this file" title="Copy this file">
+            <svg class="icon-copy" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10.5 3.5v-.5A1.5 1.5 0 0 0 9 1.5H4A1.5 1.5 0 0 0 2.5 3v5A1.5 1.5 0 0 0 4 9.5h.5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg><svg class="icon-done" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button type="button" class="fcp-reset" aria-label="Reset this demo" title="Restore this demo's original code">
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2.75 8a5.25 5.25 0 1 0 1.6-3.78" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M2.5 2.25v3.5h3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+      <pre class="fcp-error" aria-live="polite" hidden></pre>
+    </section>
+  </div>
+  <script is:inline define:vars={{ key: SPLIT_KEY }}>
+    // Applying the remembered split before the first paint keeps the panes from jumping.
+    try {
+      const split = Number(localStorage.getItem(key));
+      if (split > 0 && split < 100) {
+        document.currentScript.parentElement.querySelector(".fcp-body").style.setProperty("--fcp-split", `${split}%`);
+      }
+    } catch {
+      // with storage blocked, the panes keep the default split
+    }
+  </script>
+</fc-playground>
+
+<style is:global>
+  fc-playground {
+    --fcp-bg: #0d0f14;
+    --fcp-panel: #151821;
+    --fcp-line: rgba(255, 255, 255, 0.09);
+    --fcp-ink: #e6e8ee;
+    --fcp-dim: rgba(230, 232, 238, 0.6);
+    --fcp-accent: #a5b4fc;
+    --fcp-accent-bg: rgba(165, 180, 252, 0.14);
+    --fcp-height: clamp(460px, 72vh, 760px);
+    --fcp-stage-min: 360px;
+    --fcp-code-min: 360px;
+    display: block;
+    margin: 1.5rem 0;
+    border: 1px solid var(--fcp-line);
+    border-radius: 12px;
+    background: var(--fcp-bg);
+    color: var(--fcp-ink);
+    font-family: var(--sl-font, system-ui, sans-serif);
+    font-size: 14px;
+    overflow: hidden;
+  }
+
+  /* The landing playground fills the screen under the site header, with no frame. */
+  fc-playground.landing {
+    display: flex;
+    flex-direction: column;
+    height: calc(100svh - var(--sl-nav-height, 3.5rem));
+    min-height: 560px;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  fc-playground.landing .fcp-body {
+    flex: 1;
+    height: auto;
+    min-height: 0;
+  }
+
+  /* Rows above the panes share the site header's side padding, so the logo,
+     the tagline, and the pickers line up. */
+  fc-playground.landing .fcp-intro,
+  fc-playground.landing .fcp-toolbar,
+  fc-playground.landing .fcp-summary {
+    padding-inline: var(--sl-nav-pad-x, 1.5rem);
+  }
+
+  .fcp-intro {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--fcp-line);
+  }
+
+  .fcp-tagline {
+    margin: 0;
+    flex: 0 0 auto;
+    color: var(--fcp-ink);
+    font-size: 15px;
+    white-space: nowrap;
+  }
+
+  .fcp-install {
+    display: flex;
+    align-items: center;
+    flex: 1 1 16rem;
+    max-width: 24rem;
+    min-width: 16rem;
+    margin-left: auto;
+    border: 1px solid var(--fcp-line);
+    border-radius: 8px;
+    background: var(--fcp-panel);
+    overflow: hidden;
+  }
+
+  /* Wide screens pick the language from a dropdown; phones show tabs above the command. */
+  .fcp-install-select {
+    flex: none;
+    align-self: stretch;
+    padding: 0 26px 0 10px;
+    border: 0;
+    border-right: 1px solid var(--fcp-line);
+    border-radius: 0;
+    background: transparent
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%23a5b4fc' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+      no-repeat right 8px center / 12px;
+    color: var(--fcp-ink);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    appearance: none;
+  }
+
+  .fcp-install-select option {
+    background: var(--fcp-panel);
+    color: var(--fcp-ink);
+  }
+
+  .fcp-install-langs {
+    display: none;
+    padding: 3px;
+    gap: 2px;
+  }
+
+  .fcp-install-langs button {
+    padding: 3px 8px;
+    border: 0;
+    border-radius: 5px;
+    background: none;
+    color: var(--fcp-dim);
+    font-size: 12px;
+  }
+
+  .fcp-install-langs button:hover {
+    color: var(--fcp-ink);
+  }
+
+  .fcp-install-langs button[aria-selected="true"] {
+    color: var(--fcp-ink);
+    background: var(--fcp-accent-bg);
+  }
+
+  .fcp-install-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+    padding: 2px 4px 2px 10px;
+    font-size: 12.5px;
+  }
+
+  .fcp-install-line[hidden] {
+    display: none;
+  }
+
+  .fcp-install-line code {
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    white-space: nowrap;
+    background: none;
+    padding: 0;
+    color: var(--fcp-ink);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.5px;
+  }
+
+  .fcp-install-line a,
+  .fcp-links a {
+    flex: none;
+    color: var(--fcp-accent);
+    font-size: 13px;
+    text-decoration: none;
+  }
+
+  .fcp-install-line a:hover,
+  .fcp-links a:hover {
+    text-decoration: underline;
+  }
+
+  .fcp-install-copy {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    background: none;
+    color: var(--fcp-dim);
+  }
+
+  .fcp-install-copy:hover {
+    color: var(--fcp-ink);
+  }
+
+  .fcp-links {
+    display: flex;
+    gap: 16px;
+  }
+
+  /* The header carries the Docs link where it shows its links. */
+  @media (min-width: 50rem) {
+    .fcp-links {
+      display: none;
+    }
+  }
+
+  /* the playground is dark in both site themes, and so is its library picker */
+  fc-playground .fcp-picker {
+    --fcp-picker-bg: #181b25;
+    --fcp-picker-field: #0d0f14;
+    --fcp-picker-line: rgba(255, 255, 255, 0.1);
+    --fcp-picker-text: #c9ccd6;
+    --fcp-picker-strong: #ffffff;
+    --fcp-picker-muted: rgba(230, 232, 238, 0.55);
+    --fcp-picker-accent: #a5b4fc;
+    --fcp-picker-accent-low: rgba(165, 180, 252, 0.16);
+    --fcp-picker-accent-high: #c7d2fe;
+  }
+
+  fc-playground button {
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  fc-playground button:focus-visible,
+  fc-playground a:focus-visible {
+    outline: 2px solid var(--fcp-accent);
+    outline-offset: 1px;
+  }
+
+  fc-playground .fcp-tabs button:focus-visible {
+    outline-offset: -2px;
+  }
+
+  .fcp-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--fcp-line);
+  }
+
+  .fcp-demos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .fcp-demos button {
+    flex: none;
+    padding: 5px 12px;
+    border: 1px solid var(--fcp-line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--fcp-dim);
+  }
+
+  .fcp-demos button:hover {
+    color: var(--fcp-ink);
+  }
+
+  .fcp-demos button[aria-pressed="true"] {
+    color: var(--fcp-ink);
+    background: var(--fcp-accent-bg);
+    border-color: var(--fcp-accent);
+  }
+
+  .fcp-demo-select {
+    display: none;
+    flex: 1;
+    min-width: 0;
+    padding: 6px 10px;
+    border: 1px solid var(--fcp-line);
+    border-radius: 8px;
+    background: var(--fcp-panel);
+    color: var(--fcp-ink);
+    font: inherit;
+  }
+
+  .fcp-status {
+    flex: none;
+    color: var(--fcp-dim);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .fcp-summary {
+    margin: 0;
+    padding: 8px 14px;
+    color: var(--fcp-dim);
+    font-size: 13px;
+    border-bottom: 1px solid var(--fcp-line);
+  }
+
+  /* --fcp-split is the canvas share the divider sets. Without it the panes split 1 to 1.05.
+     Above the stacked layout the clamp keeps each pane at least as wide as its own minimum. */
+  .fcp-body {
+    position: relative;
+    display: grid;
+    grid-template-columns:
+      clamp(var(--fcp-stage-min), var(--fcp-split, calc(100% / 2.05)), 100% - var(--fcp-code-min))
+      minmax(0, 1fr);
+    height: var(--fcp-height);
+  }
+
+  /* The divider sits on the code pane's left border, which draws its resting line.
+     Hover, focus, and a drag light a 2px accent line in the middle of the grab area. */
+  .fcp-divider {
+    --fcp-grab: 12px;
+    position: absolute;
+    grid-column: 2;
+    grid-row: 1;
+    inset-block: 0;
+    left: calc(var(--fcp-grab) / -2);
+    z-index: 4;
+    width: var(--fcp-grab);
+    cursor: col-resize;
+    touch-action: none;
+  }
+
+  /* A finger needs a wider grab area, and the fullscreen button stays above it. */
+  @media (pointer: coarse) {
+    .fcp-divider {
+      --fcp-grab: 20px;
+    }
+  }
+
+  .fcp-divider::before {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    left: calc(50% - 1px);
+    width: 2px;
+    background: var(--fcp-accent);
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .fcp-divider:hover::before,
+  .fcp-divider:focus-visible::before,
+  fc-playground.fcp-resizing .fcp-divider::before {
+    opacity: 1;
+  }
+
+  .fcp-divider:focus-visible {
+    outline: none;
+    background: var(--fcp-accent-bg);
+  }
+
+  /* While the divider moves, the panes ignore the pointer and nothing gets selected. */
+  fc-playground.fcp-resizing {
+    cursor: col-resize;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  fc-playground.fcp-resizing .fcp-stage,
+  fc-playground.fcp-resizing .fcp-code {
+    pointer-events: none;
+  }
+
+  .fcp-code {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-left: 1px solid var(--fcp-line);
+    background: #282a36;
+  }
+
+  .fcp-stage {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .fcp-canvas {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    background: #000;
+  }
+
+  .fcp-canvas canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: pan-y;
+    cursor: crosshair;
+  }
+
+  .fcp-poster,
+  .fcp-fallback {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    background: #050608;
+  }
+
+  .fcp-poster[hidden],
+  .fcp-fallback[hidden] {
+    display: none;
+  }
+
+  .fcp-poster img {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    object-fit: contain;
+  }
+
+  .fcp-poster p,
+  .fcp-fallback p {
+    position: relative;
+    margin: 0;
+    padding: 12px 14px;
+    width: 100%;
+    font-size: 13px;
+    color: var(--fcp-ink);
+    background: #0b0d12;
+    border-top: 1px solid var(--fcp-line);
+  }
+
+  .fcp-controls {
+    flex: none;
+    max-height: 42%;
+    overflow-y: auto;
+    padding: 10px 14px 12px;
+    border-top: 1px solid var(--fcp-line);
+    background: var(--fcp-panel);
+    display: grid;
+    gap: 8px;
+  }
+
+  .fcp-controls[hidden] {
+    display: none;
+  }
+
+  .fcp-control {
+    display: grid;
+    grid-template-columns: minmax(84px, 9.5em) minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+  }
+
+  .fcp-control-key {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    color: var(--fcp-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .fcp-control-sliders {
+    display: grid;
+    gap: 4px;
+  }
+
+  .fcp-control-slider {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) 4.5em;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--fcp-dim);
+  }
+
+  .fcp-control-slider input {
+    width: 100%;
+    accent-color: var(--fcp-accent);
+  }
+
+  .fcp-control-slider output {
+    text-align: right;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+    color: var(--fcp-ink);
+  }
+
+  .fcp-control input[type="color"] {
+    width: 44px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid var(--fcp-line);
+    border-radius: 6px;
+    background: none;
+    cursor: pointer;
+  }
+
+  .fcp-library {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 10px;
+    background: var(--fcp-panel);
+    border-bottom: 1px solid var(--fcp-line);
+  }
+
+  .fcp-library-label {
+    font-size: 12px;
+    color: var(--fcp-dim);
+    margin-right: 2px;
+  }
+
+  .fcp-library-list {
+    display: contents;
+  }
+
+  .fcp-chip {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--fcp-line);
+    border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+  }
+
+  .fcp-chip a {
+    padding: 2px 4px 2px 8px;
+    color: var(--fcp-ink);
+    text-decoration: none;
+  }
+
+  .fcp-chip a:hover {
+    text-decoration: underline;
+  }
+
+  .fcp-chip button {
+    padding: 2px 7px 2px 4px;
+    border: 0;
+    background: none;
+    color: var(--fcp-dim);
+  }
+
+  .fcp-chip button:hover {
+    color: var(--fcp-ink);
+  }
+
+  .fcp-add {
+    padding: 2px 9px;
+    border: 1px dashed var(--fcp-accent);
+    border-radius: 6px;
+    background: none;
+    color: var(--fcp-accent) !important;
+    font-size: 12px !important;
+  }
+
+  .fcp-add:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .fcp-tabbar {
+    display: flex;
+    align-items: stretch;
+    border-bottom: 1px solid var(--fcp-line);
+    background: var(--fcp-panel);
+  }
+
+  .fcp-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .fcp-tabs button {
+    flex: none;
+    padding: 7px 9px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--fcp-dim);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+  }
+
+  .fcp-tabs button.generated,
+  .fcp-tabs button.readonly {
+    font-style: italic;
+  }
+
+  .fcp-tabs button:not(.generated) + button.generated {
+    margin-left: 6px;
+    border-left: 1px solid var(--fcp-line);
+  }
+
+  .fcp-tabs button[aria-selected="true"] {
+    color: var(--fcp-ink);
+    border-bottom-color: var(--fcp-accent);
+  }
+
+  /* Copy and Reset float over the editor so the tab row keeps its full width. */
+  .fcp-editor-frame {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .fcp-actions {
+    position: absolute;
+    top: 8px;
+    right: 16px;
+    z-index: 5;
+    display: flex;
+    gap: 4px;
+  }
+
+  .fcp-actions button,
+  .fcp-fullscreen {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--fcp-line);
+    border-radius: 6px;
+    background: rgba(21, 24, 33, 0.85);
+    color: var(--fcp-dim);
+  }
+
+  .fcp-actions button:hover,
+  .fcp-fullscreen:hover {
+    color: var(--fcp-ink);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .fcp-fullscreen {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    z-index: 5;
+  }
+
+  .fcp-fullscreen[hidden],
+  .fcp-fullscreen .icon-exit,
+  .fcp-canvas:fullscreen .fcp-fullscreen .icon-enter {
+    display: none;
+  }
+
+  .fcp-canvas:fullscreen .fcp-fullscreen .icon-exit {
+    display: block;
+  }
+
+  .fcp-copy .icon-done,
+  .fcp-copy.done .icon-copy {
+    display: none;
+  }
+
+  .fcp-copy.done .icon-done {
+    display: block;
+    color: #86efac;
+  }
+
+  .fcp-editor {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .fcp-editor .cm-editor {
+    height: 100%;
+  }
+
+  /* Read-only tabs dim the scroller. Opacity on .cm-content would give the lines
+     a stacking context of their own and lift the current line over the selection. */
+  fc-playground[data-tab="readonly"] .fcp-editor .cm-scroller {
+    opacity: 0.92;
+  }
+
+  .fcp-error {
+    flex: none;
+    max-height: 34%;
+    overflow: auto;
+    margin: 0;
+    padding: 10px 12px;
+    border-top: 1px solid rgba(239, 68, 68, 0.45);
+    background: #2a1416;
+    color: #fca5a5;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    border-radius: 0;
+  }
+
+  .fcp-error[hidden] {
+    display: none;
+  }
+
+  @media (max-width: 860px) {
+    fc-playground.landing {
+      height: auto;
+      min-height: 0;
+    }
+
+    .fcp-tagline {
+      flex: 1 1 100%;
+      white-space: normal;
+    }
+
+    .fcp-install {
+      flex: 1 1 100%;
+      flex-direction: column;
+      align-items: stretch;
+      width: 100%;
+      margin-left: 0;
+    }
+
+    .fcp-install-select {
+      display: none;
+    }
+
+    .fcp-install-langs {
+      display: flex;
+      border-bottom: 1px solid var(--fcp-line);
+    }
+
+    .fcp-install-line {
+      padding: 6px 6px 6px 10px;
+    }
+
+    .fcp-body {
+      grid-template-columns: minmax(0, 1fr);
+      height: auto;
+    }
+
+    .fcp-divider {
+      display: none;
+    }
+
+    .fcp-canvas {
+      flex: none;
+      aspect-ratio: 4 / 3;
+    }
+
+    .fcp-controls {
+      max-height: none;
+    }
+
+    .fcp-code {
+      border-left: 0;
+      border-top: 1px solid var(--fcp-line);
+    }
+
+    .fcp-editor-frame,
+    .fcp-editor {
+      flex: none;
+      height: min(440px, 70vh);
+    }
+
+    .fcp-status,
+    .fcp-demos {
+      display: none;
+    }
+
+    .fcp-demo-select {
+      display: block;
+    }
+  }
+</style>
+
+<script>
+  import { DEMOS } from "../playground/demos/index.js";
+  import { wireDivider } from "../playground/divider.js";
+
+  if (!customElements.get("fc-playground")) {
+    class PlaygroundElement extends HTMLElement {
+      #playground: { start(id?: string): Promise<void>; destroy(): void } | undefined;
+      #unwire: (() => void) | undefined;
+
+      connectedCallback() {
+        // The divider works before the runtime loads, and when it fails to.
+        this.#unwire = wireDivider(this);
+        const ids = (this.dataset.demos ?? "").split(",");
+        const demos = ids.flatMap((id) => DEMOS.filter((d) => d.id === id));
+        let hash = location.hash.slice(1);
+        try {
+          hash = decodeURIComponent(hash);
+        } catch {
+          // a malformed escape just matches no demo
+        }
+        const first = this.dataset.mode === "full" && ids.includes(hash) ? hash : this.dataset.demo;
+
+        import("../playground/host.js")
+          .then(({ Playground }) => {
+            const playground = new Playground(this, demos);
+            this.#playground = playground;
+            if (this.dataset.mode === "full") {
+              this.addEventListener("click", (e) => {
+                const target = e.target instanceof Element ? e.target : null;
+                const button = target?.closest<HTMLElement>(".fcp-demos button");
+                if (button) history.replaceState(null, "", `#${button.dataset.demo}`);
+              });
+              this.querySelector<HTMLSelectElement>(".fcp-demo-select")?.addEventListener("change", (e) => {
+                const select = e.currentTarget as HTMLSelectElement;
+                history.replaceState(null, "", `#${select.value}`);
+              });
+            }
+            return playground.start(first);
+          })
+          .catch((err) => {
+            console.error("[playground] start failed", err);
+            const fallback = this.querySelector<HTMLElement>(".fcp-fallback");
+            if (fallback) fallback.hidden = false;
+            const status = this.querySelector(".fcp-status");
+            if (status) status.textContent = "";
+          });
+      }
+
+      disconnectedCallback() {
+        this.#unwire?.();
+        this.#playground?.destroy();
+      }
+    }
+    customElements.define("fc-playground", PlaygroundElement);
+  }
+</script>

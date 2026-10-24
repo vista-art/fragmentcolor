@@ -2,6 +2,7 @@
 // offscreen texture target; a compositor pass samples it back, crossfades
 // between artworks, and adds grain, chromatic aberration, and a vignette.
 
+import { loadFragmentColor } from "../runtime.js";
 import { PRELUDE } from "./prelude.js";
 import { ARTWORKS } from "./artworks/index.js";
 import { COMPOSITOR_SLUGS, COMPOSITOR_SOURCE } from "./compositor.js";
@@ -10,16 +11,8 @@ export { ARTWORKS };
 
 let runtime;
 
-// Boots the WASM module once per page and resolves catalog slugs against
-// the site's own /shaders/ tree, so dev works offline and prod serves the
-// same files fragmentcolor.org publishes.
-async function loadRuntime() {
-  const fc = await import("fragmentcolor");
-  const wasmUrl = (await import("fragmentcolor/fragmentcolor_bg.wasm?url")).default;
-  await fc.default({ module_or_path: wasmUrl });
-  fc.Shader.setRegistry("/shaders/");
-  return fc;
-}
+// The page's one WASM boot, shared with every other component.
+const loadRuntime = loadFragmentColor;
 
 function clamp(v, lo, hi) {
   return Math.min(Math.max(v, lo), hi);
@@ -146,7 +139,8 @@ export class Gallery {
   setGlobals(shader, time, w, h) {
     const input = this.input;
     shader.set("u.resolution", [w, h]);
-    shader.set("u.mouse", input.smooth);
+    // the prelude takes the pointer in canvas pixels, y down, as the playground does
+    shader.set("u.mouse", [input.smooth[0] * w, (1 - input.smooth[1]) * h]);
     shader.set("u.drag", input.drag);
     shader.set("u.time", time);
     shader.set("u.zoom", input.zoom);

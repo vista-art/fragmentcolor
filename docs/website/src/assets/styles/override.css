@@ -2,8 +2,65 @@
   display: grid !important;
 }
 
+/* The landing page is the playground. It fills the width under a header that
+ * shares its dark surface in both site themes. The hero stays only for screen
+ * readers, since the header logo names the project. */
+html[data-has-hero][data-theme] {
+  --sl-color-white: hsl(0, 0%, 100%);
+  --sl-color-gray-1: hsl(224, 20%, 94%);
+  --sl-color-gray-2: hsl(224, 6%, 77%);
+  --sl-color-gray-3: hsl(224, 6%, 56%);
+  --sl-color-gray-4: hsl(224, 7%, 36%);
+  --sl-color-gray-5: hsl(224, 10%, 23%);
+  --sl-color-gray-6: hsl(224, 14%, 16%);
+  --sl-color-black: #0d0f14;
+  --sl-color-accent-low: hsl(224, 54%, 20%);
+  --sl-color-accent: hsl(224, 100%, 60%);
+  --sl-color-accent-high: hsl(224, 100%, 85%);
+  --sl-color-text-accent: var(--sl-color-accent-high);
+  --sl-color-text-invert: var(--sl-color-accent-low);
+  --sl-color-bg-nav: #0d0f14;
+  --sl-color-bg-inline-code: var(--sl-color-gray-5);
+  --sl-color-bg-accent: var(--sl-color-accent-high);
+  --sl-color-hairline-light: var(--sl-color-gray-5);
+  --sl-color-hairline-shade: rgba(255, 255, 255, 0.09);
+  --sl-content-width: 100%;
+  color-scheme: dark;
+}
+
+html[data-has-hero] .site-title .light\:sl-hidden {
+  display: initial;
+}
+
+html[data-has-hero] .site-title .dark\:sl-hidden {
+  display: none;
+}
+
+html[data-has-hero] .content-panel {
+  padding: 0;
+}
+
+html[data-has-hero] .sl-container {
+  max-width: none;
+}
+
+html[data-has-hero] .sl-markdown-content {
+  margin-top: 0;
+}
+
+html[data-has-hero] main {
+  padding-bottom: 0;
+}
+
 .hero {
-  padding-bottom: 1rem !important;
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0 !important;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* ---------------------------------------------------------------------

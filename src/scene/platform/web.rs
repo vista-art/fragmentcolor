@@ -1,9 +1,11 @@
 #![cfg(wasm)]
 
 use lsp_doc::lsp_doc;
+use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
-use crate::scene::{Camera, Light, LightKind, Model, Scene};
+use crate::platforms::web::{read_bytes, read_numbers, read_rows, read_unsigned};
+use crate::scene::{Camera, Light, LightKind, Model, Scene, SceneSource};
 use crate::{Material, Mesh, Pass};
 
 #[wasm_bindgen]
@@ -14,7 +16,7 @@ impl Model {
         // Materials and Meshes are wrapped around Arc internally, so cloning
         // here is an Arc::clone — cheap, share semantics. The JS caller keeps
         // their original handle live.
-        Model::new(mesh.clone(), material_share(material))
+        Model::new(mesh.clone(), material.clone())
     }
 
     #[wasm_bindgen(js_name = "mesh")]
@@ -26,7 +28,7 @@ impl Model {
     #[wasm_bindgen(js_name = "material")]
     #[lsp_doc("docs/api/scene/model/material.md")]
     pub fn material_js(&self) -> Material {
-        material_share(&self.material)
+        self.material.clone()
     }
 
     #[wasm_bindgen(js_name = "transform")]
@@ -42,25 +44,21 @@ impl Model {
 
     #[wasm_bindgen(js_name = "setTransform")]
     #[lsp_doc("docs/api/scene/model/set_transform.md")]
-    pub fn set_transform_js(&self, matrix: Vec<f32>) -> Result<(), JsError> {
-        if matrix.len() != 16 {
-            return Err(JsError::new(
-                "Model.setTransform: expected 16 floats (column-major mat4)",
-            ));
-        }
-        let m = [
-            [matrix[0], matrix[1], matrix[2], matrix[3]],
-            [matrix[4], matrix[5], matrix[6], matrix[7]],
-            [matrix[8], matrix[9], matrix[10], matrix[11]],
-            [matrix[12], matrix[13], matrix[14], matrix[15]],
-        ];
-        self.set_transform(m);
+    pub fn set_transform_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number> | ArrayLike<ArrayLike<number>>")]
+        matrix: &JsValue,
+    ) -> Result<(), JsError> {
+        self.set_transform(read_matrix(matrix)?);
         Ok(())
     }
 
     #[wasm_bindgen(js_name = "translate")]
     #[lsp_doc("docs/api/scene/model/translate.md")]
-    pub fn translate_js(&self, offset: Vec<f32>) -> Result<(), JsError> {
+    pub fn translate_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] offset: Vec<f32>,
+    ) -> Result<(), JsError> {
         let arr = vec3(&offset, "Model.translate")?;
         self.translate(arr);
         Ok(())
@@ -68,7 +66,11 @@ impl Model {
 
     #[wasm_bindgen(js_name = "rotate")]
     #[lsp_doc("docs/api/scene/model/rotate.md")]
-    pub fn rotate_js(&self, axis: Vec<f32>, radians: f32) -> Result<(), JsError> {
+    pub fn rotate_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] axis: Vec<f32>,
+        radians: f32,
+    ) -> Result<(), JsError> {
         let arr = vec3(&axis, "Model.rotate")?;
         self.rotate(arr, radians);
         Ok(())
@@ -76,7 +78,10 @@ impl Model {
 
     #[wasm_bindgen(js_name = "scale")]
     #[lsp_doc("docs/api/scene/model/scale.md")]
-    pub fn scale_js(&self, factor: Vec<f32>) -> Result<(), JsError> {
+    pub fn scale_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] factor: Vec<f32>,
+    ) -> Result<(), JsError> {
         let arr = vec3(&factor, "Model.scale")?;
         self.scale(arr);
         Ok(())
@@ -120,9 +125,9 @@ impl Camera {
     #[lsp_doc("docs/api/scene/camera/look_at.md")]
     pub fn look_at_js(
         &self,
-        position: Vec<f32>,
-        target: Vec<f32>,
-        up: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] position: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] target: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] up: Vec<f32>,
     ) -> Result<Camera, JsError> {
         let pos = vec3(&position, "Camera.lookAt position")?;
         let target = vec3(&target, "Camera.lookAt target")?;
@@ -162,7 +167,10 @@ crate::impl_js_bridge!(Light, crate::PassError);
 impl Light {
     #[wasm_bindgen(js_name = "directional")]
     #[lsp_doc("docs/api/scene/light/directional.md")]
-    pub fn directional_js(direction: Vec<f32>, color: Vec<f32>) -> Result<Light, JsError> {
+    pub fn directional_js(
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] direction: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] color: Vec<f32>,
+    ) -> Result<Light, JsError> {
         let direction = vec3(&direction, "Light.directional direction")?;
         let color = vec3(&color, "Light.directional color")?;
         Ok(Light::directional(direction, color))
@@ -170,7 +178,10 @@ impl Light {
 
     #[wasm_bindgen(js_name = "point")]
     #[lsp_doc("docs/api/scene/light/point.md")]
-    pub fn point_js(position: Vec<f32>, color: Vec<f32>) -> Result<Light, JsError> {
+    pub fn point_js(
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] position: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] color: Vec<f32>,
+    ) -> Result<Light, JsError> {
         let position = vec3(&position, "Light.point position")?;
         let color = vec3(&color, "Light.point color")?;
         Ok(Light::point(position, color))
@@ -179,9 +190,9 @@ impl Light {
     #[wasm_bindgen(js_name = "spot")]
     #[lsp_doc("docs/api/scene/light/spot.md")]
     pub fn spot_js(
-        position: Vec<f32>,
-        direction: Vec<f32>,
-        color: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] position: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] direction: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] color: Vec<f32>,
     ) -> Result<Light, JsError> {
         let position = vec3(&position, "Light.spot position")?;
         let direction = vec3(&direction, "Light.spot direction")?;
@@ -243,7 +254,10 @@ impl Light {
 
     #[wasm_bindgen(js_name = "setColor")]
     #[lsp_doc("docs/api/scene/light/set_color.md")]
-    pub fn set_color_js(&self, color: Vec<f32>) -> Result<Light, JsError> {
+    pub fn set_color_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] color: Vec<f32>,
+    ) -> Result<Light, JsError> {
         let color = vec3(&color, "Light.setColor")?;
         Ok(self.set_color(color))
     }
@@ -256,7 +270,10 @@ impl Light {
 
     #[wasm_bindgen(js_name = "setPosition")]
     #[lsp_doc("docs/api/scene/light/set_position.md")]
-    pub fn set_position_js(&self, position: Vec<f32>) -> Result<Light, JsError> {
+    pub fn set_position_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] position: Vec<f32>,
+    ) -> Result<Light, JsError> {
         let position = vec3(&position, "Light.setPosition")?;
         self.set_position(position)
             .map_err(|e| JsError::new(&e.to_string()))
@@ -264,7 +281,10 @@ impl Light {
 
     #[wasm_bindgen(js_name = "setDirection")]
     #[lsp_doc("docs/api/scene/light/set_direction.md")]
-    pub fn set_direction_js(&self, direction: Vec<f32>) -> Result<Light, JsError> {
+    pub fn set_direction_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] direction: Vec<f32>,
+    ) -> Result<Light, JsError> {
         let direction = vec3(&direction, "Light.setDirection")?;
         self.set_direction(direction)
             .map_err(|e| JsError::new(&e.to_string()))
@@ -297,46 +317,56 @@ impl Scene {
         Scene::new()
     }
 
-    /// Load a scene file. Pass a string for a path / URL-like locator, or a
-    /// `Uint8Array` for an in-memory `.glb` payload.
+    /// Load a scene from the bytes of a `.glb` file, as an `ArrayBuffer`, a
+    /// `Uint8Array` or any other view. The web build can't read a path, so
+    /// fetch the file first. `options` can skip the file's cameras and lights.
     #[wasm_bindgen(js_name = "load")]
     #[lsp_doc("docs/api/scene/scene/load.md")]
-    pub fn load_js(source: &JsValue) -> Result<Scene, JsError> {
-        let scene_source = if let Some(s) = source.as_string() {
-            crate::scene::SceneSource::gltf(s)
-        } else if let Ok(arr) = source.dyn_ref::<js_sys::Uint8Array>().ok_or(()) {
-            crate::scene::SceneSource::gltf(arr.to_vec())
+    pub fn load_js(
+        #[wasm_bindgen(unchecked_param_type = "ArrayBuffer | ArrayBufferView")] source: &JsValue,
+        #[wasm_bindgen(unchecked_optional_param_type = "{ cameras?: boolean; lights?: boolean }")]
+        options: Option<JsValue>,
+    ) -> Result<Scene, JsError> {
+        let source = if let Some(bytes) = read_bytes(source) {
+            SceneSource::gltf(bytes)
+        } else if let Some(path) = source.as_string() {
+            SceneSource::gltf(path)
         } else {
             return Err(JsError::new(
-                "Scene.load: expected a path string or a Uint8Array",
+                "Scene.load: expected the bytes of a .glb file, as an ArrayBuffer or a typed array",
             ));
         };
-        Scene::load(scene_source).map_err(|e| JsError::new(&e.to_string()))
+        let cameras = read_flag(options.as_ref(), "cameras")?;
+        let lights = read_flag(options.as_ref(), "lights")?;
+        Ok(Scene::load(source.cameras(cameras).lights(lights))?)
     }
 
-    /// Unified `Scene.add` — branches on the runtime JS type. Adding a new
-    /// `SceneObject` Rust-side means adding one extra try-cast arm here.
+    /// Unified `Scene.add`, which branches on the runtime JS type. Adding a new
+    /// `SceneObject` on the Rust side means adding one try-cast arm here.
     #[wasm_bindgen(js_name = "add")]
     #[lsp_doc("docs/api/scene/scene/add.md")]
-    pub fn add_js(&self, object: &JsValue) -> Result<(), JsError> {
+    pub fn add_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Model | Camera | Light")] object: &JsValue,
+    ) -> Result<Scene, JsError> {
         if let Ok(model) = Model::try_from(object) {
-            return self.add(&model).map(|_| ()).map_err(|e| e.into());
+            self.add(&model)?;
+        } else if let Ok(camera) = Camera::try_from(object) {
+            self.add(&camera)?;
+        } else if let Ok(light) = Light::try_from(object) {
+            self.add(&light)?;
+        } else {
+            return Err(JsError::new(
+                "Scene.add: expected a Model, Camera, or Light",
+            ));
         }
-        if let Ok(camera) = Camera::try_from(object) {
-            return self.add(&camera).map(|_| ()).map_err(|e| e.into());
-        }
-        if let Ok(light) = Light::try_from(object) {
-            return self.add(&light).map(|_| ()).map_err(|e| e.into());
-        }
-        Err(JsError::new(
-            "Scene.add: expected a Model, Camera, or Light",
-        ))
+        Ok(self.clone())
     }
 
     #[wasm_bindgen(js_name = "addPass")]
     #[lsp_doc("docs/api/scene/scene/add_pass.md")]
-    pub fn add_pass_js(&self, pass: &Pass) {
-        self.add_pass(pass);
+    pub fn add_pass_js(&self, pass: &Pass) -> Scene {
+        self.add_pass(pass).clone()
     }
 
     #[wasm_bindgen(js_name = "removePass")]
@@ -347,8 +377,9 @@ impl Scene {
 
     #[wasm_bindgen(js_name = "getPass")]
     #[lsp_doc("docs/api/scene/scene/get_pass.md")]
-    pub fn get_pass_js(&self, index: usize) -> Option<Pass> {
-        self.get_pass(index)
+    pub fn get_pass_js(&self, index: f64) -> Result<Option<Pass>, JsError> {
+        let index = read_unsigned(index, "Scene.getPass: index")?;
+        Ok(self.get_pass(index as usize))
     }
 
     #[wasm_bindgen(js_name = "findPass")]
@@ -367,9 +398,13 @@ impl Scene {
     /// a string name. Branches on the runtime JS type like `Scene.add`.
     #[wasm_bindgen(js_name = "addTo")]
     #[lsp_doc("docs/api/scene/scene/add_to.md")]
-    pub fn add_to_js(&self, target: &JsValue, object: &JsValue) -> Result<(), JsError> {
+    pub fn add_to_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "number | string")] target: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "Model | Camera | Light")] object: &JsValue,
+    ) -> Result<Scene, JsError> {
         let target = if let Some(index) = target.as_f64() {
-            crate::scene::PassRef::Index(index as usize)
+            crate::scene::PassRef::Index(read_unsigned(index, "Scene.addTo: index")? as usize)
         } else if let Some(name) = target.as_string() {
             crate::scene::PassRef::Name(name)
         } else {
@@ -378,70 +413,67 @@ impl Scene {
             ));
         };
         if let Ok(model) = Model::try_from(object) {
-            return self
-                .add_to(target, &model)
-                .map(|_| ())
-                .map_err(|e| e.into());
+            self.add_to(target, &model)?;
+        } else if let Ok(camera) = Camera::try_from(object) {
+            self.add_to(target, &camera)?;
+        } else if let Ok(light) = Light::try_from(object) {
+            self.add_to(target, &light)?;
+        } else {
+            return Err(JsError::new(
+                "Scene.addTo: expected a Model, Camera, or Light",
+            ));
         }
-        if let Ok(camera) = Camera::try_from(object) {
-            return self
-                .add_to(target, &camera)
-                .map(|_| ())
-                .map_err(|e| e.into());
-        }
-        if let Ok(light) = Light::try_from(object) {
-            return self
-                .add_to(target, &light)
-                .map(|_| ())
-                .map_err(|e| e.into());
-        }
-        Err(JsError::new(
-            "Scene.addTo: expected a Model, Camera, or Light",
-        ))
+        Ok(self.clone())
     }
 
     #[wasm_bindgen(js_name = "setPasses")]
     #[lsp_doc("docs/api/scene/scene/set_passes.md")]
-    pub fn set_passes_js(&self, passes: Vec<Pass>) {
-        self.set_passes(passes);
+    pub fn set_passes_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Pass[]")] passes: &JsValue,
+    ) -> Result<(), JsError> {
+        self.set_passes(read_passes(passes)?);
+        Ok(())
     }
 
     #[wasm_bindgen(js_name = "noDefaults")]
     #[lsp_doc("docs/api/scene/scene/no_defaults.md")]
-    pub fn no_defaults_js(&self) {
-        self.no_defaults();
+    pub fn no_defaults_js(&self) -> Scene {
+        self.no_defaults().clone()
     }
 
     #[wasm_bindgen(js_name = "noDefaultCamera")]
     #[lsp_doc("docs/api/scene/scene/no_default_camera.md")]
-    pub fn no_default_camera_js(&self) {
-        self.no_default_camera();
+    pub fn no_default_camera_js(&self) -> Scene {
+        self.no_default_camera().clone()
     }
 
     #[wasm_bindgen(js_name = "noDefaultLight")]
     #[lsp_doc("docs/api/scene/scene/no_default_light.md")]
-    pub fn no_default_light_js(&self) {
-        self.no_default_light();
+    pub fn no_default_light_js(&self) -> Scene {
+        self.no_default_light().clone()
     }
 
     #[wasm_bindgen(js_name = "setDefaultCamera")]
     #[lsp_doc("docs/api/scene/scene/set_default_camera.md")]
-    pub fn set_default_camera_js(&self, camera: &Camera) {
-        self.set_default_camera(camera);
+    pub fn set_default_camera_js(&self, camera: &Camera) -> Scene {
+        self.set_default_camera(camera).clone()
     }
 
     #[wasm_bindgen(js_name = "setDefaultLight")]
     #[lsp_doc("docs/api/scene/scene/set_default_light.md")]
-    pub fn set_default_light_js(&self, light: &Light) {
-        self.set_default_light(light);
+    pub fn set_default_light_js(&self, light: &Light) -> Scene {
+        self.set_default_light(light).clone()
     }
 
     #[wasm_bindgen(js_name = "ambient")]
     #[lsp_doc("docs/api/scene/scene/ambient.md")]
-    pub fn ambient_js(&self, color: Vec<f32>) -> Result<(), JsError> {
-        let c = vec3(&color, "Scene.ambient")?;
-        self.ambient(c);
-        Ok(())
+    pub fn ambient_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] color: Vec<f32>,
+    ) -> Result<Scene, JsError> {
+        let color = vec3(&color, "Scene.ambient")?;
+        Ok(self.ambient(color).clone())
     }
 
     #[wasm_bindgen(js_name = "models")]
@@ -469,11 +501,56 @@ crate::impl_js_bridge!(Scene, crate::PassError);
 crate::impl_js_bridge!(Model, crate::PassError);
 crate::impl_js_bridge!(Camera, crate::PassError);
 
-fn material_share(material: &Material) -> Material {
-    // Share the Material's shader (Arc-clone) so the JS handle and the new
-    // Material observe the same uniform state. Material::clone is itself a
-    // shallow Arc-share — the same shape, just routed through the derive.
-    Material::custom(material.shader.clone())
+/// Reads a column-major 4x4 matrix, as 16 numbers or as four columns of four.
+fn read_matrix(value: &JsValue) -> Result<[[f32; 4]; 4], JsError> {
+    let columns = match read_numbers(value) {
+        Some(flat) if flat.len() == 16 => flat.chunks(4).map(<[f64]>::to_vec).collect(),
+        Some(_) => Vec::new(),
+        None => read_rows(value).unwrap_or_default(),
+    };
+    if columns.len() != 4 || columns.iter().any(|column| column.len() != 4) {
+        return Err(JsError::new(
+            "Model.setTransform: expected 16 numbers or 4 columns of 4 (column-major)",
+        ));
+    }
+    let mut matrix = [[0.0; 4]; 4];
+    for (target, column) in matrix.iter_mut().zip(&columns) {
+        for (cell, value) in target.iter_mut().zip(column) {
+            *cell = *value as f32;
+        }
+    }
+    Ok(matrix)
+}
+
+/// Reads one boolean flag of the `Scene.load` options. A missing flag is `true`.
+fn read_flag(options: Option<&JsValue>, name: &str) -> Result<bool, JsError> {
+    let Some(options) = options.filter(|options| !options.is_undefined() && !options.is_null())
+    else {
+        return Ok(true);
+    };
+    if !options.is_object() {
+        return Err(JsError::new("Scene.load: options must be an object"));
+    }
+    match js_sys::Reflect::get(options, &name.into()) {
+        Ok(value) if value.is_undefined() => Ok(true),
+        Ok(value) => value
+            .as_bool()
+            .ok_or_else(|| JsError::new(&format!("Scene.load: options.{name} must be a boolean"))),
+        Err(_) => Ok(true),
+    }
+}
+
+/// Reads an array of passes. Each item is cloned through its handle,
+/// so the caller's `Pass` objects stay usable afterwards.
+fn read_passes(value: &JsValue) -> Result<Vec<Pass>, JsError> {
+    let Some(array) = value.dyn_ref::<js_sys::Array>() else {
+        return Err(JsError::new("Scene.setPasses: expected an array of Pass"));
+    };
+    let read = |(index, item): (usize, JsValue)| {
+        Pass::try_from(&item)
+            .map_err(|_| JsError::new(&format!("Scene.setPasses: item {index} is not a Pass")))
+    };
+    array.iter().enumerate().map(read).collect()
 }
 
 fn vec3(v: &[f32], field: &str) -> Result<[f32; 3], JsError> {

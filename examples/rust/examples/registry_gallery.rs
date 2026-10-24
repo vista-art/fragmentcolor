@@ -93,7 +93,7 @@ fn compositions() -> Vec<Composition> {
         },
         Composition {
             name: "05-postfx-vignette",
-            description: "Pure radial vignette mask multiplied against a flat colour.",
+            description: "Pure radial vignette mask multiplied against a flat color.",
             slugs: &["postfx/vignette"],
             fragment: r#"
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
@@ -105,7 +105,7 @@ fn compositions() -> Vec<Composition> {
         },
         Composition {
             name: "06-circle-noise",
-            description: "Composition: sdf2d/circle masked colour, modulated by noise/simplex2.",
+            description: "Composition: sdf2d/circle masked color, modulated by noise/simplex2.",
             slugs: &["sdf2d/circle", "noise/simplex2"],
             fragment: r#"
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {

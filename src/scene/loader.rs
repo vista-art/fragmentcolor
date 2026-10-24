@@ -224,7 +224,7 @@ fn load_gltf(source: GltfSource) -> Result<Scene, SceneLoadError> {
         #[cfg(wasm)]
         GltfPayload::Path(_) => {
             return Err(SceneLoadError::Invalid(
-                "Scene::load(path) is not supported on wasm32 — fetch the bytes from JS and pass them to Scene::load(bytes)".into(),
+                "Scene::load(path) is not supported on wasm32. Fetch the bytes from JS and pass them to Scene::load(bytes)".into(),
             ));
         }
         GltfPayload::Bytes(b) => gltf::import_slice(&b)?,
@@ -586,7 +586,7 @@ fn build_material(
 fn warn_unused_uv_transform(info: &gltf::texture::Info<'_>, slot: &str) {
     if info.texture_transform().is_some() {
         log::warn!(
-            "Scene::load ignoring KHR_texture_transform on `{slot}` slot — only `base_color` honours per-map transforms today"
+            "Scene::load ignoring KHR_texture_transform on `{slot}` slot — only `base_color` honors per-map transforms today"
         );
     }
 }
@@ -595,7 +595,7 @@ fn warn_unused_uv_transform(info: &gltf::texture::Info<'_>, slot: &str) {
 /// setter will queue. Returns `Ok(None)` for unsupported pixel formats so
 /// the caller can skip that slot and the Material falls back to its 1×1
 /// default — losing the whole `Scene::load` to one stray 16-bit-per-channel
-/// PNG was the prior behaviour and it's worse than silently degraded
+/// PNG was the prior behavior and it's worse than silently degraded
 /// shading on a single map. Hard errors (missing image, mismatched byte
 /// counts) still bubble up.
 fn try_image_to_texture_input(
@@ -608,28 +608,30 @@ fn try_image_to_texture_input(
         .ok_or_else(|| SceneLoadError::Invalid("glTF texture references missing image".into()))?;
 
     let buffer = image.pixels.clone();
-    let dynamic = match image.format {
-        gltf::image::Format::R8G8B8A8 => image::DynamicImage::ImageRgba8(
+    let rgba = match image.format {
+        gltf::image::Format::R8G8B8A8 => {
             image::RgbaImage::from_raw(image.width, image.height, buffer).ok_or_else(|| {
                 SceneLoadError::Invalid(
                     "glTF RGBA image has fewer bytes than width × height × 4".into(),
                 )
-            })?,
-        ),
+            })?
+        }
         gltf::image::Format::R8G8B8 => image::DynamicImage::ImageRgb8(
             image::RgbImage::from_raw(image.width, image.height, buffer).ok_or_else(|| {
                 SceneLoadError::Invalid(
                     "glTF RGB image has fewer bytes than width × height × 3".into(),
                 )
             })?,
-        ),
+        )
+        .to_rgba8(),
         gltf::image::Format::R8 => image::DynamicImage::ImageLuma8(
             image::GrayImage::from_raw(image.width, image.height, buffer).ok_or_else(|| {
                 SceneLoadError::Invalid(
                     "glTF luminance image has fewer bytes than width × height".into(),
                 )
             })?,
-        ),
+        )
+        .to_rgba8(),
         other => {
             log::warn!(
                 "Scene::load skipping `{slot}` slot: glTF image format {other:?} is not yet supported by the loader; falling back to the Material's 1×1 default for this slot"
@@ -640,8 +642,9 @@ fn try_image_to_texture_input(
 
     let sampler_options = map_sampler_options(&texture.sampler());
     Ok(Some(TextureInput {
-        data: TextureData::DynamicImage(dynamic),
+        data: TextureData::Bytes(rgba.into_raw()),
         options: crate::TextureOptions {
+            size: Some(crate::Size::from([image.width, image.height])),
             sampler: sampler_options,
             ..Default::default()
         },

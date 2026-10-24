@@ -6,7 +6,7 @@ description: A catalog of gradient and colormap functions in the FragmentColor s
 A **gradient** in this catalog is a pure WGSL function that maps a scalar
 `t` (typically in `[0, 1]`) to an RGB triple. They include perceptually
 uniform scientific colormaps (Viridis, Magma, Inferno, Plasma, Cividis,
-Turbo), classic ramps (Jet, Spectral, Grayscale), and parameterised
+Turbo), classic ramps (Jet, Spectral, Grayscale), and parameterized
 families like Cubehelix and the Inigo Quilez cosine palette.
 
 Pull one into a composition by slug, then call it from your fragment
@@ -72,7 +72,7 @@ fn inferno(t: f32) -> vec3<f32>
 ## jet
 
 Classic MATLAB Jet (not perceptually uniform; prefer Turbo for new
-visualisations). Swept radially in the preview to highlight all bands.
+visualizations). Swept radially in the preview to highlight all bands.
 
 ```wgsl
 fn jet(t: f32) -> vec3<f32>
@@ -141,7 +141,7 @@ fn turbo(t: f32) -> vec3<f32>
 ## viridis
 
 Matplotlib's Viridis approximated via the IQ cosine palette — the
-default perceptually uniform colormap for scientific visualisation.
+default perceptually uniform colormap for scientific visualization.
 Driven horizontally across the frame.
 
 ```wgsl

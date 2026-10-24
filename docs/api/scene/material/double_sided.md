@@ -28,7 +28,7 @@ let leaf = Material::pbr()
     .alpha_mode(AlphaMode::Mask)
     .alpha_cutoff(0.5);
 
-// Default is single-sided — back-face culling on.
+// The default is single-sided, with back-face culling on.
 let solid_mesh = Material::pbr().double_sided(false);
 # let _ = (leaf, solid_mesh);
 # Ok(())

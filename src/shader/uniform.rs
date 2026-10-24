@@ -44,11 +44,11 @@ pub enum UniformData {
     IVec3(Vec<i32>),
     /// IVec4: exactly 4 elements
     IVec4(Vec<i32>),
-    /// Mat2: 4 elements (flattened 2x2, row-major)
+    /// Mat2: 4 elements (flattened 2x2, column-major)
     Mat2(Vec<f32>),
-    /// Mat3: 9 elements (flattened 3x3, row-major)
+    /// Mat3: 9 elements (flattened 3x3, column-major)
     Mat3(Vec<f32>),
-    /// Mat4: 16 elements (flattened 4x4, row-major)
+    /// Mat4: 16 elements (flattened 4x4, column-major)
     Mat4(Vec<f32>),
     Texture(crate::texture::TextureMeta),
     Sampler(crate::texture::SamplerInfo),
@@ -174,7 +174,7 @@ impl UniformData {
             Self::UVec3(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
             Self::UVec4(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
             Self::Mat2(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
-            Self::Mat3(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::Mat3(v) => mat3_bytes(v),
             Self::Mat4(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
             Self::Texture(_m) => Vec::new(),
             Self::Sampler(_s) => Vec::new(),
@@ -250,6 +250,49 @@ impl UniformData {
         }
     }
 
+    /// Reads the value of a slot shaped like `self` out of its bytes.
+    /// Numbers decode into the same variant, and textures and samplers keep their binding.
+    /// Structs, arrays, and buffer roots read as raw bytes, since an array shape keeps one element.
+    pub(crate) fn decode(&self, bytes: &[u8]) -> UniformData {
+        fn words<T: bytemuck::Pod>(bytes: &[u8]) -> Vec<T> {
+            let chunks = bytes.chunks_exact(std::mem::size_of::<T>());
+            chunks.map(bytemuck::pod_read_unaligned).collect()
+        }
+        fn scalar<T: bytemuck::Pod + Default>(bytes: &[u8]) -> T {
+            let chunk = bytes.get(..std::mem::size_of::<T>());
+            chunk.map(bytemuck::pod_read_unaligned).unwrap_or_default()
+        }
+        match self {
+            Self::Bool(_) => Self::Bool(bytes.first().is_some_and(|&b| b != 0)),
+            Self::Float(_) => Self::Float(scalar(bytes)),
+            Self::Int(_) => Self::Int(scalar(bytes)),
+            Self::UInt(_) => Self::UInt(scalar(bytes)),
+            Self::Vec2(_) => Self::Vec2(words(bytes)),
+            Self::Vec3(_) => Self::Vec3(words(bytes)),
+            Self::Vec4(_) => Self::Vec4(words(bytes)),
+            Self::IVec2(_) => Self::IVec2(words(bytes)),
+            Self::IVec3(_) => Self::IVec3(words(bytes)),
+            Self::IVec4(_) => Self::IVec4(words(bytes)),
+            Self::UVec2(_) => Self::UVec2(words(bytes)),
+            Self::UVec3(_) => Self::UVec3(words(bytes)),
+            Self::UVec4(_) => Self::UVec4(words(bytes)),
+            Self::Mat2(_) => Self::Mat2(words(bytes)),
+            Self::Mat3(_) => Self::Mat3(
+                bytes
+                    .chunks(MAT3_COLUMN_STRIDE)
+                    .flat_map(|column| words(column.get(..12).unwrap_or(column)))
+                    .collect(),
+            ),
+            Self::Mat4(_) => Self::Mat4(words(bytes)),
+            Self::Texture(_) | Self::Sampler(_) => self.clone(),
+            Self::Array(_)
+            | Self::Struct(_)
+            | Self::Storage(_)
+            | Self::PushConstant(_)
+            | Self::Bytes(_) => Self::Bytes(bytes.to_vec()),
+        }
+    }
+
     pub(crate) fn size(&self) -> u32 {
         match self {
             Self::Bool(_) => 1,
@@ -266,7 +309,7 @@ impl UniformData {
             Self::UVec3(_) => 12,
             Self::UVec4(_) => 16,
             Self::Mat2(_) => 16,
-            Self::Mat3(_) => 36,
+            Self::Mat3(_) => 3 * MAT3_COLUMN_STRIDE as u32,
             Self::Mat4(_) => 64,
             Self::Texture(_) => 0,
             Self::Sampler(_) => 0,
@@ -287,6 +330,19 @@ impl UniformData {
     }
 }
 
+/// Bytes between the columns of a `mat3x3<f32>`, since WGSL aligns each `vec3` column to 16.
+const MAT3_COLUMN_STRIDE: usize = 16;
+
+/// Lays out 9 floats as the three padded `vec3` columns of a `mat3x3<f32>`.
+fn mat3_bytes(values: &[f32]) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(3 * MAT3_COLUMN_STRIDE);
+    for column in values.chunks(3) {
+        bytes.extend_from_slice(bytemuck::cast_slice(column));
+        bytes.resize(bytes.len().next_multiple_of(MAT3_COLUMN_STRIDE), 0);
+    }
+    bytes
+}
+
 /// Converts from a Naga type to our internal Uniform representation
 pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, ShaderError> {
     match &ty.inner {
@@ -296,6 +352,12 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
             ScalarKind::Uint => UniformData::UInt(0),
             ScalarKind::Float => UniformData::Float(0.0),
             _ => return Err(ShaderError::TypeMismatch("Unsupported scalar type".into())),
+        }),
+        // An atomic has the same layout as its scalar, so it reflects as one.
+        TypeInner::Atomic(scalar) => Ok(match scalar.kind {
+            ScalarKind::Sint => UniformData::Int(0),
+            ScalarKind::Uint => UniformData::UInt(0),
+            _ => return Err(ShaderError::TypeMismatch("Unsupported atomic type".into())),
         }),
         TypeInner::Vector { size, scalar, .. } => match scalar.kind {
             ScalarKind::Float => Ok(match size {
@@ -503,16 +565,6 @@ crate::impl_from_into_with_refs!(
     |t: (f32, f32)| UniformData::Vec2(vec![t.0, t.1])
 );
 
-crate::impl_from_into_with_refs!(
-    UniformData,
-    glam::Vec2,
-    |d: UniformData| match d {
-        UniformData::Vec2(v) if v.len() >= 2 => glam::Vec2::new(v[0], v[1]),
-        _ => glam::Vec2::ZERO,
-    },
-    |v: glam::Vec2| UniformData::Vec2(v.to_array().to_vec())
-);
-
 // 3 elements
 
 crate::impl_from_into_with_refs!(
@@ -555,23 +607,13 @@ crate::impl_from_into_with_refs!(
     |t: (f32, f32, f32)| UniformData::Vec3(vec![t.0, t.1, t.2])
 );
 
-crate::impl_from_into_with_refs!(
-    UniformData,
-    glam::Vec3,
-    |d: UniformData| match d {
-        UniformData::Vec3(v) if v.len() >= 3 => glam::Vec3::new(v[0], v[1], v[2]),
-        _ => glam::Vec3::ZERO,
-    },
-    |v: glam::Vec3| UniformData::Vec3(v.to_array().to_vec())
-);
-
 // 4 elements
 
 crate::impl_from_into_with_refs!(
     UniformData,
     [f32; 4],
     |d: UniformData| match d {
-        UniformData::Vec4(v) if v.len() >= 4 => [v[0], v[1], v[2], v[3]],
+        UniformData::Vec4(v) | UniformData::Mat2(v) if v.len() >= 4 => [v[0], v[1], v[2], v[3]],
         _ => [0.0; 4],
     },
     |a: [f32; 4]| UniformData::Vec4(a.to_vec())
@@ -605,16 +647,6 @@ crate::impl_from_into_with_refs!(
         _ => (0.0, 0.0, 0.0, 0.0),
     },
     |t: (f32, f32, f32, f32)| UniformData::Vec4(vec![t.0, t.1, t.2, t.3])
-);
-
-crate::impl_from_into_with_refs!(
-    UniformData,
-    glam::Vec4,
-    |d: UniformData| match d {
-        UniformData::Vec4(v) if v.len() >= 4 => glam::Vec4::new(v[0], v[1], v[2], v[3]),
-        _ => glam::Vec4::ZERO,
-    },
-    |v: glam::Vec4| UniformData::Vec4(v.to_array().to_vec())
 );
 
 // 2 elements
@@ -660,66 +692,25 @@ crate::impl_from_into_with_refs!(
     |m: [[f32; 4]; 4]| UniformData::Mat4(m.iter().flatten().copied().collect())
 );
 
+// Flat matrices, column after column, as the bindings pass them.
 crate::impl_from_into_with_refs!(
     UniformData,
-    wgpu::Extent3d,
-    |data: UniformData| match data {
-        UniformData::Vec2(v) if v.len() >= 2 => wgpu::Extent3d {
-            width: v[0] as u32,
-            height: v[1] as u32,
-            depth_or_array_layers: 1,
-        },
-        UniformData::Vec3(v) if v.len() >= 3 => wgpu::Extent3d {
-            width: v[0] as u32,
-            height: v[1] as u32,
-            depth_or_array_layers: v[2] as u32,
-        },
-        UniformData::Vec4(v) if v.len() >= 4 => wgpu::Extent3d {
-            width: v[0] as u32,
-            height: v[1] as u32,
-            depth_or_array_layers: v[2] as u32,
-        },
-        UniformData::UVec2(v) if v.len() >= 2 => wgpu::Extent3d {
-            width: v[0],
-            height: v[1],
-            depth_or_array_layers: 1,
-        },
-        UniformData::UVec3(v) if v.len() >= 3 => wgpu::Extent3d {
-            width: v[0],
-            height: v[1],
-            depth_or_array_layers: v[2],
-        },
-        UniformData::UVec4(v) if v.len() >= 4 => wgpu::Extent3d {
-            width: v[0],
-            height: v[1],
-            depth_or_array_layers: v[2],
-        },
-        UniformData::IVec2(v) if v.len() >= 2 => wgpu::Extent3d {
-            width: v[0] as u32,
-            height: v[1] as u32,
-            depth_or_array_layers: 1,
-        },
-        UniformData::IVec3(v) if v.len() >= 3 => wgpu::Extent3d {
-            width: v[0] as u32,
-            height: v[1] as u32,
-            depth_or_array_layers: v[2] as u32,
-        },
-        UniformData::IVec4(v) if v.len() >= 4 => wgpu::Extent3d {
-            width: v[0] as u32,
-            height: v[1] as u32,
-            depth_or_array_layers: v[2] as u32,
-        },
-        _ => wgpu::Extent3d {
-            width: 0,
-            height: 0,
-            depth_or_array_layers: 0,
-        },
+    [f32; 9],
+    |d: UniformData| match d {
+        UniformData::Mat3(m) if m.len() >= 9 => std::array::from_fn(|i| m[i]),
+        _ => [0.0; 9],
     },
-    |value: wgpu::Extent3d| UniformData::UVec3(vec![
-        value.width,
-        value.height,
-        value.depth_or_array_layers,
-    ])
+    |m: [f32; 9]| UniformData::Mat3(m.to_vec())
+);
+
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [f32; 16],
+    |d: UniformData| match d {
+        UniformData::Mat4(m) if m.len() >= 16 => std::array::from_fn(|i| m[i]),
+        _ => [0.0; 16],
+    },
+    |m: [f32; 16]| UniformData::Mat4(m.to_vec())
 );
 
 // Simple conversions for byte slices
@@ -734,360 +725,45 @@ impl From<Vec<u8>> for UniformData {
     }
 }
 
-// WASM conversions
-
-#[cfg(wasm)]
-impl TryFrom<&wasm_bindgen::JsValue> for UniformData {
-    type Error = crate::shader::error::ShaderError;
-
-    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
-        use js_sys::{Array, Float32Array, Int32Array, Uint32Array};
-        use wasm_bindgen::JsCast;
-
-        {
-            use js_sys::Reflect;
-            use wasm_bindgen::convert::RefFromWasmAbi;
-            let key = wasm_bindgen::JsValue::from_str("__wbg_ptr");
-            if let Ok(ptr) = Reflect::get(value, &key) {
-                if let Some(id) = ptr.as_f64() {
-                    let anchor: <crate::texture::Texture as RefFromWasmAbi>::Anchor = unsafe {
-                        <crate::texture::Texture as RefFromWasmAbi>::ref_from_abi(id as u32)
-                    };
-                    let tex = anchor.clone();
-                    let meta = crate::texture::TextureMeta::with_id_only(tex.id.clone());
-                    return Ok(UniformData::Texture(meta));
-                }
-            }
-        }
-
-        if let Some(arr) = value.dyn_ref::<Float32Array>() {
-            return arr.try_into();
-        }
-        if let Some(arr) = value.dyn_ref::<Int32Array>() {
-            return arr.try_into();
-        }
-        if let Some(arr) = value.dyn_ref::<Uint32Array>() {
-            return arr.try_into();
-        }
-        if let Some(arr) = value.dyn_ref::<Array>() {
-            return arr.try_into();
-        }
-        if let Some(n) = value.as_f64() {
-            return Ok((n as f32).into());
-        }
-        if let Some(b) = value.as_bool() {
-            return Ok(b.into());
-        }
-
-        Err(crate::shader::error::ShaderError::TypeMismatch(
-            "Cannot convert JavaScript value to UniformData".into(),
-        ))
-    }
-}
-
-#[cfg(wasm)]
-crate::impl_tryfrom_owned_via_ref!(
-    UniformData,
-    wasm_bindgen::JsValue,
-    crate::shader::error::ShaderError
-);
-
-#[cfg(wasm)]
-impl TryFrom<&js_sys::Float32Array> for UniformData {
-    type Error = crate::shader::error::ShaderError;
-
-    fn try_from(arr: &js_sys::Float32Array) -> Result<Self, Self::Error> {
-        let len = arr.length() as usize;
-        if len > 16 {
-            return Err(crate::shader::error::ShaderError::TypeMismatch(format!(
-                "Unsupported Float32Array length: {}",
-                len
-            )));
-        }
-
-        let mut buffer = [0.0f32; 16];
-        let values = &mut buffer[..len];
-        arr.copy_to(values);
-
-        match len {
-            1 => Ok(values[0].into()),
-            2 => Ok([values[0], values[1]].into()),
-            3 => Ok([values[0], values[1], values[2]].into()),
-            4 => Ok([values[0], values[1], values[2], values[3]].into()),
-            9 => {
-                let mut mat = [[0.0; 3]; 3];
-                for (i, chunk) in values.chunks_exact(3).enumerate() {
-                    mat[i].copy_from_slice(chunk);
-                }
-                Ok(mat.into())
-            }
-            16 => {
-                let mut mat = [[0.0; 4]; 4];
-                for (i, chunk) in values.chunks_exact(4).enumerate() {
-                    mat[i].copy_from_slice(chunk);
-                }
-                Ok(mat.into())
-            }
-            _ => Err(crate::shader::error::ShaderError::TypeMismatch(format!(
-                "Unsupported Float32Array length: {}",
-                len
-            ))),
+/// Any number of floats, such as a flat matrix built at run time.
+/// `Shader::set` shapes them to the type the shader declares for the key.
+impl From<Vec<f32>> for UniformData {
+    fn from(values: Vec<f32>) -> Self {
+        match values.len() {
+            1 => UniformData::Float(values[0]),
+            2 => UniformData::Vec2(values),
+            3 => UniformData::Vec3(values),
+            4 => UniformData::Vec4(values),
+            9 => UniformData::Mat3(values),
+            _ => UniformData::Mat4(values),
         }
     }
 }
-
-#[cfg(wasm)]
-impl TryFrom<&js_sys::Int32Array> for UniformData {
-    type Error = crate::shader::error::ShaderError;
-
-    fn try_from(arr: &js_sys::Int32Array) -> Result<Self, Self::Error> {
-        let len = arr.length() as usize;
-        if len > 4 {
-            return Err(crate::shader::error::ShaderError::TypeMismatch(format!(
-                "Unsupported Int32Array length: {}",
-                len
-            )));
-        }
-
-        let mut buffer = [0i32; 4];
-        let values = &mut buffer[..len];
-        arr.copy_to(values);
-
-        match len {
-            1 => Ok(values[0].into()),
-            2 => Ok([values[0], values[1]].into()),
-            3 => Ok([values[0], values[1], values[2]].into()),
-            4 => Ok([values[0], values[1], values[2], values[3]].into()),
-            _ => Err(crate::shader::error::ShaderError::TypeMismatch(format!(
-                "Unsupported Int32Array length: {}",
-                len
-            ))),
-        }
-    }
-}
-
-#[cfg(wasm)]
-impl TryFrom<&js_sys::Uint32Array> for UniformData {
-    type Error = crate::shader::error::ShaderError;
-
-    fn try_from(arr: &js_sys::Uint32Array) -> Result<Self, Self::Error> {
-        let len = arr.length() as usize;
-        if len > 4 {
-            return Err(crate::shader::error::ShaderError::TypeMismatch(format!(
-                "Unsupported Uint32Array length: {}",
-                len
-            )));
-        }
-
-        let mut buffer = [0u32; 4];
-        let values = &mut buffer[..len];
-        arr.copy_to(values);
-
-        match len {
-            1 => Ok(values[0].into()),
-            2 => Ok([values[0], values[1]].into()),
-            3 => Ok([values[0], values[1], values[2]].into()),
-            4 => Ok([values[0], values[1], values[2], values[3]].into()),
-            _ => Err(crate::shader::error::ShaderError::TypeMismatch(format!(
-                "Unsupported Uint32Array length: {}",
-                len
-            ))),
-        }
-    }
-}
-
-#[cfg(wasm)]
-impl TryFrom<&js_sys::Array> for UniformData {
-    type Error = crate::shader::error::ShaderError;
-
-    fn try_from(array: &js_sys::Array) -> Result<Self, Self::Error> {
-        let length = array.length();
-        if length == 0 {
-            return Err(crate::shader::error::ShaderError::TypeMismatch(
-                "Empty array".into(),
-            ));
-        }
-        if length > 16 {
-            return Err(crate::shader::error::ShaderError::TypeMismatch(format!(
-                "Unsupported array length: {}",
-                length
-            )));
-        }
-
-        let mut buffer = [0.0f64; 16];
-        let values = &mut buffer[..length as usize];
-
-        for (i, val) in values.iter_mut().enumerate() {
-            match array.get(i as u32).as_f64() {
-                Some(n) => {
-                    *val = n;
-                }
-                None => {
-                    return Err(crate::shader::error::ShaderError::TypeMismatch(
-                        "Array contains non-numeric values".into(),
-                    ));
-                }
-            }
-        }
-
-        // Always treat plain JS arrays as float-based uniforms by default
-        let mut float_buffer = [0.0f32; 16];
-        let floats = &mut float_buffer[..values.len()];
-        for (i, v) in values.iter().enumerate() {
-            floats[i] = *v as f32;
-        }
-
-        match floats.len() {
-            1 => Ok(floats[0].into()),
-            2 => Ok([floats[0], floats[1]].into()),
-            3 => Ok([floats[0], floats[1], floats[2]].into()),
-            4 => Ok([floats[0], floats[1], floats[2], floats[3]].into()),
-            9 => {
-                let mut mat = [[0.0; 3]; 3];
-                for (i, chunk) in floats.chunks_exact(3).enumerate() {
-                    mat[i].copy_from_slice(chunk);
-                }
-                Ok(mat.into())
-            }
-            16 => {
-                let mut mat = [[0.0; 4]; 4];
-                for (i, chunk) in floats.chunks_exact(4).enumerate() {
-                    mat[i].copy_from_slice(chunk);
-                }
-                Ok(mat.into())
-            }
-            _ => Err(crate::shader::error::ShaderError::TypeMismatch(format!(
-                "Unsupported array length: {}",
-                floats.len()
-            ))),
-        }
-    }
-}
-
-#[cfg(wasm)]
-impl From<UniformData> for wasm_bindgen::JsValue {
+/// The floats of a float scalar, vector or matrix, and an empty list for any other value.
+impl From<UniformData> for Vec<f32> {
     fn from(data: UniformData) -> Self {
-        use js_sys::{Array, Float32Array, Int32Array, Object, Reflect, Uint32Array};
-
+        use UniformData as U;
         match data {
-            UniformData::Bool(b) => wasm_bindgen::JsValue::from_bool(b),
-            UniformData::Float(f) => wasm_bindgen::JsValue::from_f64(f as f64),
-            UniformData::Int(i) => wasm_bindgen::JsValue::from_f64(i as f64),
-            UniformData::UInt(u) => wasm_bindgen::JsValue::from_f64(u as f64),
+            U::Float(value) => vec![value],
+            U::Vec2(v) | U::Vec3(v) | U::Vec4(v) | U::Mat2(v) | U::Mat3(v) | U::Mat4(v) => v,
+            _ => Vec::new(),
+        }
+    }
+}
 
-            UniformData::Vec2(v) => {
-                let arr = Float32Array::new_with_length(2);
-                arr.copy_from(&v);
-                arr.into()
-            }
-            UniformData::Vec3(v) => {
-                let arr = Float32Array::new_with_length(3);
-                arr.copy_from(&v);
-                arr.into()
-            }
-            UniformData::Vec4(v) => {
-                let arr = Float32Array::new_with_length(4);
-                arr.copy_from(&v);
-                arr.into()
-            }
+/// The value's bytes as the shader reads them.
+impl From<UniformData> for Vec<u8> {
+    fn from(data: UniformData) -> Self {
+        data.to_bytes()
+    }
+}
 
-            UniformData::IVec2(v) => {
-                let arr = Int32Array::new_with_length(2);
-                arr.copy_from(&v);
-                arr.into()
-            }
-            UniformData::IVec3(v) => {
-                let arr = Int32Array::new_with_length(3);
-                arr.copy_from(&v);
-                arr.into()
-            }
-            UniformData::IVec4(v) => {
-                let arr = Int32Array::new_with_length(4);
-                arr.copy_from(&v);
-                arr.into()
-            }
-
-            UniformData::UVec2(v) => {
-                let arr = Uint32Array::new_with_length(2);
-                arr.copy_from(&v);
-                arr.into()
-            }
-            UniformData::UVec3(v) => {
-                let arr = Uint32Array::new_with_length(3);
-                arr.copy_from(&v);
-                arr.into()
-            }
-            UniformData::UVec4(v) => {
-                let arr = Uint32Array::new_with_length(4);
-                arr.copy_from(&v);
-                arr.into()
-            }
-
-            UniformData::Mat2(m) => {
-                let arr = Float32Array::new_with_length(4);
-                arr.copy_from(&m);
-                arr.into()
-            }
-            UniformData::Mat3(m) => {
-                let arr = Float32Array::new_with_length(9);
-                arr.copy_from(&m);
-                arr.into()
-            }
-            UniformData::Mat4(m) => {
-                let arr = Float32Array::new_with_length(16);
-                arr.copy_from(&m);
-                arr.into()
-            }
-
-            UniformData::Texture(meta) => wasm_bindgen::JsValue::from_f64(meta.id.id as f64),
-
-            UniformData::Sampler(info) => {
-                let obj = Object::new();
-                let _ = Reflect::set(
-                    &obj,
-                    &wasm_bindgen::JsValue::from_str("comparison"),
-                    &wasm_bindgen::JsValue::from_bool(info.comparison),
-                );
-                obj.into()
-            }
-
-            UniformData::Array(items) => {
-                let arr = Array::new();
-                for ArrayElement { ty, count, .. } in items {
-                    // ty is Vec<UniformData> with a length-1 invariant; use first().
-                    if let Some(inner) = ty.into_iter().next() {
-                        let item_js: wasm_bindgen::JsValue = inner.into();
-                        for _ in 0..count {
-                            arr.push(&item_js);
-                        }
-                    }
-                }
-                arr.into()
-            }
-
-            UniformData::Struct(StructShape { fields, .. }) => {
-                let obj = Object::new();
-                for StructField { name, ty, .. } in fields {
-                    // ty is Vec<UniformData> with a length-1 invariant; use first().
-                    if let Some(inner) = ty.into_iter().next() {
-                        let _ = Reflect::set(
-                            &obj,
-                            &wasm_bindgen::JsValue::from_str(&name),
-                            &inner.into(),
-                        );
-                    }
-                }
-                obj.into()
-            }
-            UniformData::Storage(_) => wasm_bindgen::JsValue::UNDEFINED,
-            UniformData::PushConstant(_) => wasm_bindgen::JsValue::UNDEFINED,
-
-            UniformData::Bytes(b) => {
-                let arr = Uint32Array::new_with_length(b.len() as u32);
-                let byte_u32: Vec<u32> = b.iter().map(|&byte| byte as u32).collect();
-                arr.copy_from(&byte_u32);
-                arr.into()
-            }
+/// The id of the texture bound to a texture key, and id 0 for any other value.
+impl From<UniformData> for crate::texture::TextureId {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::Texture(meta) => meta.id,
+            _ => crate::texture::TextureId { id: 0 },
         }
     }
 }
@@ -1181,10 +857,10 @@ mod tests {
         assert_eq!(UniformData::Float(1.0).to_bytes().len(), 4);
         assert_eq!(UniformData::Vec3(vec![1.0, 2.0, 3.0]).to_bytes().len(), 12);
         assert_eq!(UniformData::Mat2(vec![0.0; 4]).to_bytes().len(), 16);
-        assert_eq!(UniformData::Mat3(vec![0.0; 9]).to_bytes().len(), 36);
+        assert_eq!(UniformData::Mat3(vec![0.0; 9]).to_bytes().len(), 48);
         assert_eq!(UniformData::Mat4(vec![0.0; 16]).to_bytes().len(), 64);
         assert_eq!(UniformData::Vec3(vec![0.0; 3]).size(), 12);
-        assert_eq!(UniformData::Mat3(vec![0.0; 9]).size(), 36);
+        assert_eq!(UniformData::Mat3(vec![0.0; 9]).size(), 48);
     }
 
     // Story: Array stride padding is honored; elements land at multiples of stride with zeros in between.
@@ -1206,18 +882,6 @@ mod tests {
         assert!(bytes[8..16].iter().all(|&b| b == 0));
     }
 
-    // Story: Extent3d conversions from various uniform shapes behave consistently.
-    #[test]
-    fn extent3d_conversions_from_uniforms() {
-        use wgpu::Extent3d;
-        let e: Extent3d = UniformData::UVec3(vec![10, 20, 3]).into();
-        assert_eq!((e.width, e.height, e.depth_or_array_layers), (10, 20, 3));
-        let e2: Extent3d = UniformData::Vec4(vec![9.0, 8.0, 7.0, 6.0]).into();
-        assert_eq!((e2.width, e2.height, e2.depth_or_array_layers), (9, 8, 7));
-        let e3: Extent3d = UniformData::Bool(true).into();
-        assert_eq!((e3.width, e3.height, e3.depth_or_array_layers), (0, 0, 0));
-    }
-
     // Story: Round-trips for scalar wrappers (f32/i32/u32 and single-element arrays)
     #[test]
     fn scalar_round_trips() {
@@ -1235,7 +899,7 @@ mod tests {
         assert_eq!(a1u, [6]);
     }
 
-    // Story: Vector conversions cover arrays, tuples, and glam types for f32 vectors.
+    // Story: Vector conversions cover arrays and tuples for f32 vectors.
     #[test]
     fn vector_conversions_roundtrip_vec2_vec3_vec4() {
         // Vec2
@@ -1244,8 +908,6 @@ mod tests {
         assert_eq!(a, [1.0, 2.0]);
         let t: (f32, f32) = u.clone().into();
         assert_eq!(t, (1.0, 2.0));
-        let gv: glam::Vec2 = u.clone().into();
-        assert_eq!(gv, glam::vec2(1.0, 2.0));
 
         // Vec3
         let u = UniformData::from([3.0f32, 4.0, 5.0]);
@@ -1253,8 +915,6 @@ mod tests {
         assert_eq!(a, [3.0, 4.0, 5.0]);
         let t: (f32, f32, f32) = u.clone().into();
         assert_eq!(t, (3.0, 4.0, 5.0));
-        let gv: glam::Vec3 = u.clone().into();
-        assert_eq!(gv, glam::vec3(3.0, 4.0, 5.0));
 
         // Vec4
         let u = UniformData::from([6.0f32, 7.0, 8.0, 9.0]);
@@ -1262,8 +922,6 @@ mod tests {
         assert_eq!(a, [6.0, 7.0, 8.0, 9.0]);
         let t: (f32, f32, f32, f32) = u.clone().into();
         assert_eq!(t, (6.0, 7.0, 8.0, 9.0));
-        let gv: glam::Vec4 = u.clone().into();
-        assert_eq!(gv, glam::vec4(6.0, 7.0, 8.0, 9.0));
     }
 
     // Story: Integer vector conversions for IVecN and UVecN arrays work round-trip.
@@ -1304,23 +962,6 @@ mod tests {
         let um4: UniformData = m4_src.into();
         let m4: [[f32; 4]; 4] = um4.into();
         assert_eq!(m4, m4_src);
-    }
-
-    // Story: Additional Extent3d conversions from Vec2/IVec2/IVec3/UVec4.
-    #[test]
-    fn extent3d_more_conversions() {
-        use wgpu::Extent3d;
-        let e: Extent3d = UniformData::Vec2(vec![100.0, 200.0]).into();
-        assert_eq!((e.width, e.height, e.depth_or_array_layers), (100, 200, 1));
-
-        let e: Extent3d = UniformData::IVec2(vec![3, 4]).into();
-        assert_eq!((e.width, e.height, e.depth_or_array_layers), (3, 4, 1));
-
-        let e: Extent3d = UniformData::IVec3(vec![5, 6, 7]).into();
-        assert_eq!((e.width, e.height, e.depth_or_array_layers), (5, 6, 7));
-
-        let e: Extent3d = UniformData::UVec4(vec![9, 8, 7, 6]).into();
-        assert_eq!((e.width, e.height, e.depth_or_array_layers), (9, 8, 7));
     }
 
     // Story: StorageAccess::is_readonly correctly classifies read-only variants.

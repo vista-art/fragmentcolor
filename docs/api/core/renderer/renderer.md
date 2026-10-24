@@ -6,34 +6,50 @@ The [Renderer](https://fragmentcolor.org/api/core/renderer) is the main entry po
 It is used to render
 [Shaders](https://fragmentcolor.org/api/core/shader) and
 [Passes](https://fragmentcolor.org/api/core/pass) (single passes or any iterable of them)
-to a [Target](https://fragmentcolor.org/api/core/target) (canvas, window, or texture).
+to a [Target](https://fragmentcolor.org/api/targets/target) (canvas, window, or texture).
 
 The [Renderer](https://fragmentcolor.org/api/core/renderer) internals are lazily initialized
-when the user creates a [Target](https://fragmentcolor.org/api/core/target).
+when the user creates a [Target](https://fragmentcolor.org/api/targets/target).
 
-See the constructor [Renderer::new()](https://fragmentcolor.org/api/core/renderer/#renderernew)
+See the constructor [Renderer::new()](https://fragmentcolor.org/api/core/renderer#new)
 description below for details.
 
 ## Example
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+# let canvas = fragmentcolor::headless_window([800, 600]);
+# /*[js]
+# const canvas = document.createElement("canvas");
+# */
+# /*[python]
+# from rendercanvas.auto import RenderCanvas
+# canvas = RenderCanvas(size=(800, 600))
+# */
+# /*[swift]
+# import QuartzCore
+# let canvas = CAMetalLayer()
+# */
+# /*[kotlin]
+# val surfaceTexture = android.graphics.SurfaceTexture(0)
+# val canvas = android.view.Surface(surfaceTexture)
+# */
 
 use fragmentcolor::{Shader, Renderer, Target};
 
 let renderer = Renderer::new();
 
-// Use your platform's windowing system to create a window
-let window = fragmentcolor::headless_window([800, 600]);
-
-// Create a Target from it
-let target = renderer.create_target(window).await?;
+// The canvas comes from your platform's windowing system
+let target = renderer.create_target(canvas).await?;
 let texture_target = renderer.create_texture_target([16, 16]).await?;
 
 // RENDERING
 renderer.render(&Shader::default(), &texture_target)?;
 
 // That's it. Welcome to FragmentColor!
+# /*[kotlin]
+# surfaceTexture.release()
+# */
 
 # let s = target.size();
 # assert_eq!([s.width, s.height], [800, 600]);

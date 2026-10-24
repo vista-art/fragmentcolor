@@ -1,11 +1,10 @@
-# Renderer::create_texture (Python)
+# Renderer.create_texture_py
 
-Hidden helper for Python binding documentation coverage.
+Python wrapper for Renderer::create_texture.
+Hidden from public website; used for IDE hover with lsp_doc.
 
 ## Example
 
 ```rust
-use fragmentcolor::Renderer;
-// Python binding: renderer.create_texture(input)
-// See main create_texture docs for examples.
+// hidden draft; no public example
 ```

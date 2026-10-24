@@ -1,16 +1,12 @@
 import FragmentColor
 import Foundation
+let png = try Data(contentsOf: URL(fileURLWithPath: "examples/assets/logo.png"))
 
+// Imagine `png` came off your asset loader on a worker thread.
+
+// Decode + mipmap generation. Pure CPU; run it wherever you like.
+let chain = try Mipmap.build(png, TextureFormat.rgba8UnormSrgb)
+
+// Back on the renderer thread, the upload is just a GPU write.
 let renderer = Renderer()
-
-// Minimal 1×1 RGBA raw pixel bytes.
-let pixels = Data([255, 0, 0, 255])
-let chain = try Mipmap.build(
-    bytes: pixels,
-    format: .rgba8UnormSrgb,
-    size: Size(width: 1, height: 1, depth: nil)
-)
-
-// Hand the chain to the unified create_texture entry.
-let texture = try await renderer.createTexture(input: .prepared(chain))
-let _ = texture.size()
+let texture = try await renderer.createTexture(chain)

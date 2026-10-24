@@ -1,9 +1,11 @@
+use crate::texture::{js_to_texture_bytes, read_texture_input, read_usage};
 use crate::{
-    Mesh, Pass, Renderer, RendererError, Shader, Size, Texture, TextureData, TextureTarget,
-    target::CanvasTarget,
+    Mesh, Pass, PassObject, Renderable, Renderer, RendererError, Scene, Shader, Size, Texture,
+    TextureData, TextureTarget, target::CanvasTarget,
 };
 use js_sys::Array;
 use lsp_doc::lsp_doc;
+use std::sync::Arc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
@@ -82,31 +84,19 @@ impl Renderer {
         Ok(CanvasTarget::new(context, surface, config))
     }
 
-    /// JS: Create a Texture from any input shape — Uint8Array bytes, URL
-    /// string, file path, CSS selector, HTMLImageElement, ImageData, OffscreenCanvas,
-    /// HTMLCanvasElement, or a `Mipmap` handle (built off-thread via
-    /// `Mipmap.build`). Optional second argument is an options object
-    /// `{ size?, format?, mipmaps?, sampler? }`. When `size` is present, `bytes`
-    /// is treated as raw pixel data; otherwise it's decoded as an encoded image.
+    /// Create a Texture from bytes, a URL, a CSS selector, an image, an
+    /// `ImageData`, a canvas, a `Mipmap` or another `Texture`. The optional
+    /// second argument is a size, a `TextureFormat`, or an options object
+    /// `{ size?, format?, mipmaps?, sampler?, usage? }`. With a size, bytes
+    /// are raw pixels; without one they are decoded as an encoded image.
     #[wasm_bindgen(js_name = "createTexture")]
     #[lsp_doc("docs/api/core/renderer/create_texture.md")]
     pub async fn create_texture_js(
         &self,
         input: &JsValue,
         options: Option<JsValue>,
-    ) -> Result<crate::texture::Texture, JsError> {
-        let data: TextureData = input.try_into()?;
-        let opts = match options {
-            None => crate::texture::TextureOptions::default(),
-            Some(value) if value.is_undefined() || value.is_null() => {
-                crate::texture::TextureOptions::default()
-            }
-            Some(value) => js_to_texture_options(&value)?,
-        };
-        let input = crate::texture::TextureInput {
-            data,
-            options: opts,
-        };
+    ) -> Result<Texture, JsError> {
+        let input = read_texture_input(input, options.as_ref())?;
         Ok(self.create_texture(input).await?)
     }
 
@@ -127,23 +117,28 @@ impl Renderer {
         &self,
         size: &JsValue,
         format: crate::TextureFormat,
-        data: Option<js_sys::Uint8Array>,
-        usage: Option<u32>,
+        #[wasm_bindgen(
+            unchecked_optional_param_type = "Uint8Array | ArrayBuffer | ArrayLike<number> | null"
+        )]
+        data: Option<JsValue>,
+        #[wasm_bindgen(unchecked_optional_param_type = "TextureUsage | number")] usage: Option<
+            JsValue,
+        >,
     ) -> Result<crate::texture::Texture, JsError> {
+        let given = |value: &JsValue| !value.is_undefined() && !value.is_null();
         let size: Size = size.try_into()?;
-        let data_vec = data.map(|arr| arr.to_vec());
-        let input = crate::TextureInput {
-            data: match data_vec {
-                Some(bytes) => crate::TextureData::Bytes(bytes),
-                None => crate::TextureData::Empty,
-            },
-            options: crate::TextureOptions {
-                size: Some(size),
-                format,
-                usage,
-                ..Default::default()
-            },
+        let usage = usage.filter(given).as_ref().map(read_usage).transpose()?;
+        let data = match data.filter(given) {
+            Some(bytes) => TextureData::Bytes(js_to_texture_bytes(&bytes)?),
+            None => TextureData::Empty,
         };
+        let options = crate::TextureOptions {
+            size: Some(size),
+            format,
+            usage,
+            ..Default::default()
+        };
+        let input = crate::TextureInput { data, options };
         Ok(self.create_storage_texture(input).await?)
     }
 
@@ -186,34 +181,15 @@ impl Renderer {
 
     #[wasm_bindgen(js_name = "load")]
     #[lsp_doc("docs/api/core/renderer/load.md")]
-    pub async fn load_js(&self, renderable: &JsValue) -> Result<(), JsError> {
-        if let Ok(shader) = Shader::try_from(renderable) {
-            return self
-                .load(&shader)
-                .await
-                .map_err(|e| JsError::new(&e.to_string()));
-        }
-        if let Ok(pass) = Pass::try_from(renderable) {
-            return self
-                .load(&pass)
-                .await
-                .map_err(|e| JsError::new(&e.to_string()));
-        }
-        if let Ok(mesh) = Mesh::try_from(renderable) {
-            return self
-                .load(&mesh)
-                .await
-                .map_err(|e| JsError::new(&e.to_string()));
-        }
-        if let Ok(scene) = crate::Scene::try_from(renderable) {
-            return self
-                .load(&scene)
-                .await
-                .map_err(|e| JsError::new(&e.to_string()));
-        }
-        Err(JsError::new(
-            "Renderer.load: unsupported renderable type (expected Shader, Pass, Mesh, or Scene)",
-        ))
+    pub async fn load_js(
+        &self,
+        #[wasm_bindgen(
+            unchecked_param_type = "Shader | Pass | Mesh | Scene | Array<Shader | Pass | Mesh | Scene>"
+        )]
+        renderable: &JsValue,
+    ) -> Result<(), JsError> {
+        let renderables = RenderableList::read(renderable, "Renderer.load")?;
+        Ok(self.load(&renderables).await?)
     }
 
     #[wasm_bindgen(js_name = "readStorage")]
@@ -230,115 +206,87 @@ impl Renderer {
 
     #[wasm_bindgen(js_name = "render")]
     #[lsp_doc("docs/api/core/renderer/render.md")]
-    pub fn render_js(&self, renderable: &JsValue, target: &JsValue) -> Result<(), RendererError> {
-        // Canvas target
-        if let Ok(canvas_target) = CanvasTarget::try_from(target) {
-            if let Ok(shader) = Shader::try_from(renderable) {
-                return self.render(&shader, &canvas_target);
-            } else if let Ok(pass) = Pass::try_from(renderable) {
-                return self.render(&pass, &canvas_target);
-            } else if let Ok(mesh) = Mesh::try_from(renderable) {
-                return self.render(&mesh, &canvas_target);
-            } else if let Ok(scene) = crate::Scene::try_from(renderable) {
-                return self.render(&scene, &canvas_target);
-            } else if Array::is_array(renderable) {
-                for item in Array::from(renderable) {
-                    self.render_js(&item, target)?;
-                }
-                return Ok(());
-            }
-        // Texture target
-        } else if let Ok(texture_target) = TextureTarget::try_from(target) {
-            if let Ok(shader) = Shader::try_from(renderable) {
-                return self.render(&shader, &texture_target);
-            } else if let Ok(pass) = Pass::try_from(renderable) {
-                return self.render(&pass, &texture_target);
-            } else if let Ok(mesh) = Mesh::try_from(renderable) {
-                return self.render(&mesh, &texture_target);
-            } else if let Ok(scene) = crate::Scene::try_from(renderable) {
-                return self.render(&scene, &texture_target);
-            } else if Array::is_array(renderable) {
-                for item in Array::from(renderable) {
-                    self.render_js(&item, target)?;
-                }
-                return Ok(());
-            }
+    pub fn render_js(
+        &self,
+        #[wasm_bindgen(
+            unchecked_param_type = "Shader | Pass | Mesh | Scene | Array<Shader | Pass | Mesh | Scene>"
+        )]
+        renderable: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "WindowTarget | TextureTarget")] target: &JsValue,
+    ) -> Result<(), JsError> {
+        let renderables = RenderableList::read(renderable, "Renderer.render")?;
+        if let Ok(window) = CanvasTarget::try_from(target) {
+            return Ok(self.render(&renderables, &window)?);
         }
-
-        Err(RendererError::Error(
-            "Invalid target type in render".to_string(),
+        if let Ok(texture) = TextureTarget::try_from(target) {
+            return Ok(self.render(&renderables, &texture)?);
+        }
+        Err(JsError::new(
+            "Renderer.render: expected a WindowTarget or a TextureTarget",
         ))
     }
 }
 
-/// Decode a JS value into [`crate::texture::TextureOptions`].
-///
-/// Accepts any of:
-/// - A bare Size (`[w, h]`, `{width, height}`, etc.) — sets `options.size`,
-///   leaving the rest at defaults. Equivalent to the old
-///   `createTextureWithSize(input, size)` shortcut.
-/// - A bare `TextureFormat` (numeric enum) — sets `options.format`. Equivalent
-///   to the old `createTextureWithFormat(input, format)` shortcut.
-/// - An options object `{ size?, format?, mipmaps? }` — explicit field-by-field.
-fn js_to_texture_options(value: &JsValue) -> Result<crate::texture::TextureOptions, JsError> {
-    // Bare Size shorthand (matches the old createTextureWithSize ergonomics).
-    if let Ok(size) = Size::try_from(value) {
-        return Ok(crate::texture::TextureOptions {
-            size: Some(size),
-            ..Default::default()
-        });
+/// What `render`, `load` and `Pass.require` take on the web: a `Shader`, `Pass`,
+/// `Mesh` or `Scene`, or an array of them. An array renders as one frame, each
+/// item's passes in order, and as a dependency it links each item's roots.
+pub(crate) struct RenderableList(Vec<Box<dyn Renderable>>);
+
+impl RenderableList {
+    /// Reads a renderable or an array of them. Errors start with `method`.
+    pub(crate) fn read(value: &JsValue, method: &str) -> Result<Self, JsError> {
+        if let Some(item) = read_renderable(value) {
+            return Ok(Self(vec![item]));
+        }
+        let Some(array) = value.dyn_ref::<Array>() else {
+            return Err(JsError::new(&format!(
+                "{method}: expected a Shader, Pass, Mesh, Scene, or an array of them"
+            )));
+        };
+        let read = |(index, item): (usize, JsValue)| {
+            read_renderable(&item).ok_or_else(|| {
+                JsError::new(&format!(
+                    "{method}: item {index} is not a Shader, Pass, Mesh, or Scene"
+                ))
+            })
+        };
+        array
+            .iter()
+            .enumerate()
+            .map(read)
+            .collect::<Result<_, _>>()
+            .map(Self)
     }
-    // Bare TextureFormat shorthand (matches the old createTextureWithFormat).
-    if let Some(n) = value.as_f64() {
-        return Ok(crate::texture::TextureOptions {
-            format: js_format_from_code(n as u32),
-            ..Default::default()
-        });
-    }
-    // Object with optional fields.
-    use js_sys::Reflect;
-    let mut opts = crate::texture::TextureOptions::default();
-    if let Ok(v) = Reflect::get(value, &JsValue::from_str("size"))
-        && !v.is_undefined()
-        && !v.is_null()
-        && let Ok(sz) = Size::try_from(&v)
-    {
-        opts.size = Some(sz);
-    }
-    if let Ok(v) = Reflect::get(value, &JsValue::from_str("format"))
-        && let Some(n) = v.as_f64()
-    {
-        opts.format = js_format_from_code(n as u32);
-    }
-    if let Ok(v) = Reflect::get(value, &JsValue::from_str("mipmaps"))
-        && let Some(b) = v.as_bool()
-    {
-        opts.mipmaps = b;
-    }
-    Ok(opts)
 }
 
-/// Map the wasm-bindgen numeric enum code back to a `TextureFormat`. Mirrors
-/// the variant order in `src/texture/format.rs` — keep in sync.
-fn js_format_from_code(code: u32) -> crate::TextureFormat {
-    match code {
-        0 => crate::TextureFormat::R8Unorm,
-        1 => crate::TextureFormat::Rg8Unorm,
-        2 => crate::TextureFormat::R16Unorm,
-        3 => crate::TextureFormat::Rg16Unorm,
-        4 => crate::TextureFormat::Rgba8Unorm,
-        5 => crate::TextureFormat::Rgba8UnormSrgb,
-        6 => crate::TextureFormat::Bgra8Unorm,
-        7 => crate::TextureFormat::Rgba16Unorm,
-        8 => crate::TextureFormat::Rgba16Float,
-        9 => crate::TextureFormat::Rgba32Float,
-        10 => crate::TextureFormat::Rgba32Uint,
-        11 => crate::TextureFormat::Rgba32Sint,
-        12 => crate::TextureFormat::Depth32Float,
-        13 => crate::TextureFormat::Rgba,
-        14 => crate::TextureFormat::Bgra,
-        15 => crate::TextureFormat::Lab,
-        16 => crate::TextureFormat::L8,
-        _ => crate::TextureFormat::default(),
+impl Renderable for RenderableList {
+    fn passes(&self) -> Arc<[Arc<PassObject>]> {
+        self.0
+            .iter()
+            .flat_map(|item| item.passes().to_vec())
+            .collect()
     }
+
+    fn roots(&self) -> Arc<[Arc<PassObject>]> {
+        self.0
+            .iter()
+            .flat_map(|item| item.roots().to_vec())
+            .collect()
+    }
+}
+
+fn read_renderable(value: &JsValue) -> Option<Box<dyn Renderable>> {
+    if let Ok(shader) = Shader::try_from(value) {
+        return Some(Box::new(shader));
+    }
+    if let Ok(pass) = Pass::try_from(value) {
+        return Some(Box::new(pass));
+    }
+    if let Ok(mesh) = Mesh::try_from(value) {
+        return Some(Box::new(mesh));
+    }
+    if let Ok(scene) = Scene::try_from(value) {
+        return Some(Box::new(scene));
+    }
+    None
 }

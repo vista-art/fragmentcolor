@@ -2,212 +2,132 @@
 
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PySequence};
+use pyo3::types::PyDict;
 
-use crate::mesh::{Instance, Mesh, Vertex, VertexValue};
+use crate::mesh::{Instance, Mesh, MeshError, Vertex, VertexData};
 use lsp_doc::lsp_doc;
 
-fn py_to_vertex_value(obj: &Bound<'_, PyAny>) -> PyResult<VertexValue> {
-    // First, try direct extraction of VertexValue (from our factory return)
-    if let Ok(vv) = obj.extract::<VertexValue>() {
-        return Ok(vv);
-    }
+/// A vertex or instance attribute from Python:
+/// a number, or a sequence of 1 to 4 numbers such as a NumPy array.
+/// Sequences come first, so a NumPy array never passes through `float()`.
+/// The numbers take the type the shader declares when the mesh attaches to it.
+#[derive(FromPyObject)]
+pub enum PyAttributeValue {
+    #[pyo3(annotation = "Sequence[float]")]
+    Numbers(Vec<f64>),
+    #[pyo3(annotation = "float")]
+    Number(f64),
+}
 
-    // Number => F32
-    if let Ok(f) = obj.extract::<f32>() {
-        return Ok(VertexValue::F32(f));
-    }
-    if let Ok(i) = obj.extract::<i64>() {
-        if i >= 0 && i <= u32::MAX as i64 {
-            return Ok(VertexValue::U32(i as u32));
-        } else {
-            return Ok(VertexValue::I32(i as i32));
-        }
-    }
+impl TryFrom<PyAttributeValue> for VertexData {
+    type Error = MeshError;
 
-    // Sequence => choose F32xN (fallback), or integer variants if all ints
-    if let Ok(seq) = obj.cast::<PySequence>() {
-        let len = seq.len()?;
-        if !(1..=4).contains(&len) {
-            return Err(PyErr::new::<PyTypeError, _>(format!(
-                "Expected a sequence of length 1..4, got {}",
-                len
-            )));
+    fn try_from(value: PyAttributeValue) -> Result<Self, Self::Error> {
+        match value {
+            PyAttributeValue::Numbers(numbers) => VertexData::try_from(numbers.as_slice()),
+            PyAttributeValue::Number(number) => Ok(number.into()),
         }
-        // Collect as f64 to detect ints vs floats
-        let mut floats: Vec<f64> = Vec::with_capacity(len);
-        let mut all_int = true;
-        for i in 0..len {
-            let item = seq.get_item(i)?;
-            if let Ok(v) = item.extract::<i64>() {
-                floats.push(v as f64);
-            } else if let Ok(vf) = item.extract::<f64>() {
-                all_int = false;
-                floats.push(vf);
-            } else {
-                return Err(PyErr::new::<PyTypeError, _>(
-                    "Sequence elements must be numbers",
-                ));
-            }
-        }
-        // Map to variants
-        match len {
-            1 => {
-                if all_int {
-                    let v = floats[0] as i64;
-                    if v >= 0 && v <= u32::MAX as i64 {
-                        Ok(VertexValue::U32(v as u32))
-                    } else {
-                        Ok(VertexValue::I32(v as i32))
-                    }
-                } else {
-                    Ok(VertexValue::F32(floats[0] as f32))
-                }
-            }
-            2 => {
-                if all_int {
-                    let a = [floats[0] as i64, floats[1] as i64];
-                    if a.iter().all(|v| *v >= 0 && *v <= u32::MAX as i64) {
-                        Ok(VertexValue::U32x2([a[0] as u32, a[1] as u32]))
-                    } else {
-                        Ok(VertexValue::I32x2([a[0] as i32, a[1] as i32]))
-                    }
-                } else {
-                    Ok(VertexValue::F32x2([floats[0] as f32, floats[1] as f32]))
-                }
-            }
-            3 => {
-                if all_int {
-                    let a = [floats[0] as i64, floats[1] as i64, floats[2] as i64];
-                    if a.iter().all(|v| *v >= 0 && *v <= u32::MAX as i64) {
-                        Ok(VertexValue::U32x3([a[0] as u32, a[1] as u32, a[2] as u32]))
-                    } else {
-                        Ok(VertexValue::I32x3([a[0] as i32, a[1] as i32, a[2] as i32]))
-                    }
-                } else {
-                    Ok(VertexValue::F32x3([
-                        floats[0] as f32,
-                        floats[1] as f32,
-                        floats[2] as f32,
-                    ]))
-                }
-            }
-            4 => {
-                if all_int {
-                    let a = [
-                        floats[0] as i64,
-                        floats[1] as i64,
-                        floats[2] as i64,
-                        floats[3] as i64,
-                    ];
-                    if a.iter().all(|v| *v >= 0 && *v <= u32::MAX as i64) {
-                        Ok(VertexValue::U32x4([
-                            a[0] as u32,
-                            a[1] as u32,
-                            a[2] as u32,
-                            a[3] as u32,
-                        ]))
-                    } else {
-                        Ok(VertexValue::I32x4([
-                            a[0] as i32,
-                            a[1] as i32,
-                            a[2] as i32,
-                            a[3] as i32,
-                        ]))
-                    }
-                } else {
-                    Ok(VertexValue::F32x4([
-                        floats[0] as f32,
-                        floats[1] as f32,
-                        floats[2] as f32,
-                        floats[3] as f32,
-                    ]))
-                }
-            }
-            _ => Err(PyErr::new::<PyTypeError, _>(
-                "(unreachable): Unexpected sequence length",
-            )),
-        }
-    } else {
-        Err(PyErr::new::<PyTypeError, _>(
-            "Unsupported value for Vertex.set (expected number or sequence)",
-        ))
     }
 }
 
-fn py_to_vertex(obj: &Bound<'_, PyAny>) -> PyResult<Vertex> {
-    // Try direct extraction first (already a Vertex)
-    if let Ok(v) = obj.extract::<Vertex>() {
-        return Ok(v);
+/// A mesh error raises `FragmentColorError`.
+impl From<MeshError> for PyErr {
+    fn from(error: MeshError) -> Self {
+        crate::error::PyFragmentColorError::new_err(error.to_string())
     }
-
-    // Try extracting various number/tuple/array types
-    if let Ok(v) = obj.extract::<f32>() {
-        return Ok(Vertex::new(v));
-    }
-    if let Ok(v) = obj.extract::<(f32, f32)>() {
-        return Ok(Vertex::new(v));
-    }
-    if let Ok(v) = obj.extract::<(f32, f32, f32)>() {
-        return Ok(Vertex::new(v));
-    }
-    if let Ok(v) = obj.extract::<(f32, f32, f32, f32)>() {
-        return Ok(Vertex::new(v));
-    }
-    if let Ok(v) = obj.extract::<(u32, u32)>() {
-        return Ok(Vertex::new(v));
-    }
-    if let Ok(v) = obj.extract::<(u32, u32, u32)>() {
-        return Ok(Vertex::new(v));
-    }
-    if let Ok(v) = obj.extract::<[f32; 2]>() {
-        return Ok(Vertex::new(v));
-    }
-    if let Ok(v) = obj.extract::<[f32; 3]>() {
-        return Ok(Vertex::new(v));
-    }
-    if let Ok(v) = obj.extract::<[f32; 4]>() {
-        return Ok(Vertex::new(v));
-    }
-    if let Ok(v) = obj.extract::<[u32; 2]>() {
-        return Ok(Vertex::new(v));
-    }
-    if let Ok(v) = obj.extract::<[u32; 3]>() {
-        return Ok(Vertex::new(v));
-    }
-
-    Err(PyErr::new::<PyTypeError, _>(
-        "Unsupported vertex type (expected Vertex or number/sequence)",
-    ))
 }
 
-fn py_to_instance(obj: &Bound<'_, PyAny>) -> PyResult<Instance> {
-    use pyo3::types::PyDict;
+/// A `Vertex` position from Python: a `Vertex` to copy,
+/// a number, or 1 to 4 numbers, tried in that order.
+#[derive(FromPyObject)]
+pub enum PyVertexPosition {
+    #[pyo3(annotation = "Vertex")]
+    Vertex(Vertex),
+    #[pyo3(annotation = "float")]
+    X(f32),
+    #[pyo3(annotation = "[x]")]
+    Single([f32; 1]),
+    #[pyo3(annotation = "[x, y]")]
+    Xy([f32; 2]),
+    #[pyo3(annotation = "[x, y, z]")]
+    Xyz([f32; 3]),
+    #[pyo3(annotation = "[x, y, z, w]")]
+    Xyzw([f32; 4]),
+}
 
-    // 1. Already an Instance.
-    if let Ok(i) = obj.extract::<Instance>() {
-        return Ok(i);
+impl From<PyVertexPosition> for Vertex {
+    fn from(position: PyVertexPosition) -> Self {
+        match position {
+            PyVertexPosition::Vertex(vertex) => vertex,
+            PyVertexPosition::X(x) => Vertex::new(x),
+            PyVertexPosition::Single(x) => Vertex::new(x),
+            PyVertexPosition::Xy(xy) => Vertex::new(xy),
+            PyVertexPosition::Xyz(xyz) => Vertex::new(xyz),
+            PyVertexPosition::Xyzw(xyzw) => Vertex::new(xyzw),
+        }
     }
+}
 
-    // 2. Plain dict of named attributes: {"key": value, ...} → Instance::new().set(...)
-    if let Ok(dict) = obj.cast::<PyDict>() {
+/// A vertex for the `Mesh` methods: any `Vertex` position, or the
+/// `(position, uv)` and `(position, uv, color)` tuples of `Into<Vertex>`.
+#[derive(FromPyObject)]
+pub enum PyIntoVertex {
+    #[pyo3(annotation = "Vertex | position")]
+    Position(PyVertexPosition),
+    #[pyo3(annotation = "(position, uv)")]
+    Uv([f32; 3], [f32; 2]),
+    #[pyo3(annotation = "(position, uv, color)")]
+    UvColor([f32; 3], [f32; 2], [f32; 4]),
+}
+
+impl From<PyIntoVertex> for Vertex {
+    fn from(vertex: PyIntoVertex) -> Self {
+        match vertex {
+            PyIntoVertex::Position(position) => position.into(),
+            PyIntoVertex::Uv(position, uv) => (position, uv).into(),
+            PyIntoVertex::UvColor(position, uv, color) => (position, uv, color).into(),
+        }
+    }
+}
+
+/// An instance for the `Mesh` methods: an `Instance`, a `Vertex`
+/// whose attributes it copies, or a dict of named attribute values.
+#[derive(FromPyObject)]
+pub enum PyIntoInstance<'py> {
+    #[pyo3(annotation = "Instance")]
+    Instance(Instance),
+    #[pyo3(annotation = "Vertex")]
+    Vertex(Vertex),
+    #[pyo3(annotation = "dict[str, float | Sequence[float]]")]
+    Attributes(Bound<'py, PyDict>),
+}
+
+impl TryFrom<PyIntoInstance<'_>> for Instance {
+    type Error = PyErr;
+
+    /// Dict entries are set in insertion order, so their locations follow it.
+    fn try_from(value: PyIntoInstance<'_>) -> PyResult<Self> {
+        let dict = match value {
+            PyIntoInstance::Instance(instance) => return Ok(instance),
+            PyIntoInstance::Vertex(vertex) => return Ok(vertex.into()),
+            PyIntoInstance::Attributes(dict) => dict,
+        };
         let mut instance = Instance::new();
         for (key, value) in dict.iter() {
-            let k: String = key.extract()?;
-            let vv = py_to_vertex_value(&value)?;
-            instance = instance.set(&k, vv);
+            let key: String = key
+                .extract()
+                .map_err(|_| PyTypeError::new_err("instance attribute names must be str"))?;
+            let value: PyAttributeValue = value.extract().map_err(|cause| {
+                let err = PyTypeError::new_err(format!(
+                    "instance attribute '{key}' must be a number or 1 to 4 numbers"
+                ));
+                err.set_cause(dict.py(), Some(cause));
+                err
+            })?;
+            instance = instance.set(&key, VertexData::try_from(value)?);
         }
-        return Ok(instance);
+        Ok(instance)
     }
-
-    // 3. Vertex (backward-compat: convert via create_instance, dropping position).
-    if let Ok(vertex) = py_to_vertex(obj) {
-        return Ok(vertex.create_instance());
-    }
-
-    Err(PyErr::new::<PyTypeError, _>(
-        "Expected an Instance, a dict of named attributes, or a Vertex",
-    ))
 }
 
 #[pymethods]
@@ -254,34 +174,29 @@ impl Vertex {
 
     #[new]
     #[lsp_doc("docs/api/geometry/vertex/new.md")]
-    pub fn new_py(position: Py<PyAny>) -> PyResult<Self> {
-        Python::attach(|py| py_to_vertex(position.bind(py)))
+    pub fn new_py(position: PyVertexPosition) -> Self {
+        position.into()
     }
 
     #[staticmethod]
     #[pyo3(name = "pbr")]
     #[lsp_doc("docs/api/geometry/vertex/pbr.md")]
-    pub fn pbr_py(position: Py<PyAny>) -> PyResult<Self> {
-        Python::attach(|py| -> PyResult<Self> {
-            // Build the base Vertex from the position, then layer the
-            // PBR identity defaults via the same `.set(...)` chain
-            // `Vertex::pbr` uses on the Rust side.
-            let v = py_to_vertex(position.bind(py))?;
-            Ok(v.set(Self::NORMAL, [0.0_f32, 0.0, 1.0])
-                .set(Self::UV0, [0.0_f32, 0.0])
-                .set(Self::COLOR0, [1.0_f32, 1.0, 1.0, 1.0])
-                .set(Self::UV1, [0.0_f32, 0.0])
-                .set(Self::TANGENT, [1.0_f32, 0.0, 0.0, 1.0]))
-        })
+    pub fn pbr_py(position: PyVertexPosition) -> Self {
+        // Build the base Vertex from the position, then layer the
+        // PBR identity defaults via the same `.set(...)` chain
+        // `Vertex::pbr` uses on the Rust side.
+        Vertex::from(position)
+            .set(Self::NORMAL, [0.0_f32, 0.0, 1.0])
+            .set(Self::UV0, [0.0_f32, 0.0])
+            .set(Self::COLOR0, [1.0_f32, 1.0, 1.0, 1.0])
+            .set(Self::UV1, [0.0_f32, 0.0])
+            .set(Self::TANGENT, [1.0_f32, 0.0, 0.0, 1.0])
     }
 
     #[pyo3(name = "set")]
     #[lsp_doc("docs/api/geometry/vertex/set.md")]
-    pub fn set_py(&self, key: &str, value: Py<PyAny>) -> PyResult<Self> {
-        Python::attach(|py| -> PyResult<Self> {
-            let vv = py_to_vertex_value(value.bind(py))?;
-            Ok(self.clone().set(key, vv))
-        })
+    pub fn set_py(&self, key: &str, value: PyAttributeValue) -> Result<Self, MeshError> {
+        Ok(self.clone().set(key, VertexData::try_from(value)?))
     }
 
     #[pyo3(name = "create_instance")]
@@ -293,22 +208,16 @@ impl Vertex {
 
 #[pymethods]
 impl Instance {
-    // Instance is a helper value type; its constructors/methods are not
-    // separately documented as user API. Mark as doc(hidden) to satisfy
-    // the parity audit's unlabeled-export check.
-    #[doc(hidden)]
     #[new]
+    #[lsp_doc("docs/api/geometry/instance/new.md")]
     pub fn new_py() -> Self {
         Self::default()
     }
 
-    #[doc(hidden)]
     #[pyo3(name = "set")]
-    pub fn set_py(&self, key: &str, value: Py<PyAny>) -> PyResult<Self> {
-        Python::attach(|py| -> PyResult<Self> {
-            let vv = py_to_vertex_value(value.bind(py))?;
-            Ok(self.clone().set(key, vv))
-        })
+    #[lsp_doc("docs/api/geometry/instance/set.md")]
+    pub fn set_py(&self, key: &str, value: PyAttributeValue) -> Result<Self, MeshError> {
+        Ok(self.clone().set(key, VertexData::try_from(value)?))
     }
 }
 
@@ -323,67 +232,38 @@ impl Mesh {
     #[staticmethod]
     #[pyo3(name = "from_vertices")]
     #[lsp_doc("docs/api/geometry/mesh/from_vertices.md")]
-    pub fn from_vertices_py(vertices: Py<PyAny>) -> PyResult<Self> {
-        Python::attach(|py| -> PyResult<Self> {
-            let seq = vertices.bind(py).cast::<PySequence>()?;
-            let len = seq.len()?;
-            let mut list: Vec<Vertex> = Vec::with_capacity(len);
-            for i in 0..len {
-                let item = seq.get_item(i)?;
-                list.push(py_to_vertex(&item)?);
-            }
-            Ok(Mesh::from_vertices(list))
-        })
+    pub fn from_vertices_py(vertices: Vec<PyIntoVertex>) -> Self {
+        Mesh::from_vertices(vertices)
     }
 
     #[pyo3(name = "add_vertex")]
     #[lsp_doc("docs/api/geometry/mesh/add_vertex.md")]
-    pub fn add_vertex_py(&mut self, vertex: Py<PyAny>) -> PyResult<()> {
-        Python::attach(|py| -> PyResult<()> {
-            let vertex = py_to_vertex(vertex.bind(py))?;
-            self.add_vertex(vertex);
-            Ok(())
-        })
+    pub fn add_vertex_py(&mut self, vertex: PyIntoVertex) {
+        self.add_vertex(vertex);
     }
 
     #[pyo3(name = "add_vertices")]
     #[lsp_doc("docs/api/geometry/mesh/add_vertices.md")]
-    pub fn add_vertices_py(&mut self, vertices: Py<PyAny>) -> PyResult<()> {
-        Python::attach(|py| -> PyResult<()> {
-            let seq = vertices.bind(py).cast::<PySequence>()?;
-            let len = seq.len()?;
-            for i in 0..len {
-                let item = seq.get_item(i)?;
-                let vertex = py_to_vertex(&item)?;
-                self.add_vertex(vertex);
-            }
-            Ok(())
-        })
+    pub fn add_vertices_py(&mut self, vertices: Vec<PyIntoVertex>) {
+        self.add_vertices(vertices);
     }
 
     #[pyo3(name = "add_instance")]
     #[lsp_doc("docs/api/geometry/mesh/add_instance.md")]
-    pub fn add_instance_py(&mut self, item: Py<PyAny>) -> PyResult<()> {
-        Python::attach(|py| -> PyResult<()> {
-            let instance = py_to_instance(item.bind(py))?;
-            self.add_instance(instance);
-            Ok(())
-        })
+    pub fn add_instance_py(&mut self, item: PyIntoInstance<'_>) -> PyResult<()> {
+        self.add_instance(Instance::try_from(item)?);
+        Ok(())
     }
 
     #[pyo3(name = "add_instances")]
     #[lsp_doc("docs/api/geometry/mesh/add_instances.md")]
-    pub fn add_instances_py(&mut self, items: Py<PyAny>) -> PyResult<()> {
-        Python::attach(|py| -> PyResult<()> {
-            let seq = items.bind(py).cast::<PySequence>()?;
-            let len = seq.len()?;
-            for i in 0..len {
-                let item = seq.get_item(i)?;
-                let instance = py_to_instance(&item)?;
-                self.add_instance(instance);
-            }
-            Ok(())
-        })
+    pub fn add_instances_py(&mut self, items: Vec<PyIntoInstance<'_>>) -> PyResult<()> {
+        let instances = items
+            .into_iter()
+            .map(Instance::try_from)
+            .collect::<PyResult<Vec<_>>>()?;
+        self.add_instances(instances);
+        Ok(())
     }
 
     #[pyo3(name = "clear_instances")]
@@ -400,18 +280,8 @@ impl Mesh {
 
     #[pyo3(name = "set_indices")]
     #[lsp_doc("docs/api/geometry/mesh/set_indices.md")]
-    pub fn set_indices_py(&mut self, indices: Py<PyAny>) -> PyResult<()> {
-        Python::attach(|py| -> PyResult<()> {
-            let seq = indices.bind(py).cast::<PySequence>()?;
-            let len = seq.len()?;
-            let mut out: Vec<u32> = Vec::with_capacity(len);
-            for i in 0..len {
-                let item = seq.get_item(i)?;
-                out.push(item.extract::<u32>()?);
-            }
-            self.set_indices(out);
-            Ok(())
-        })
+    pub fn set_indices_py(&mut self, indices: Vec<u32>) {
+        self.set_indices(indices);
     }
 
     #[pyo3(name = "clear_indices")]
@@ -419,73 +289,18 @@ impl Mesh {
     pub fn clear_indices_py(&mut self) {
         self.clear_indices();
     }
-}
 
-/// Tiny factory class to construct typed VertexValue variants from Python.
-/// Internal helper — not part of the public documented API.
-#[pyclass(name = "VertexValue")]
-pub struct PyVertexValue;
+    // Internal hook for PyRenderable dispatch, not part of the public docs.
+    #[doc(hidden)]
+    pub fn renderable_type(&self) -> &'static str {
+        "Mesh"
+    }
 
-#[pymethods]
-impl PyVertexValue {
+    // Internal hook for PyRenderable dispatch, not part of the public docs.
     #[doc(hidden)]
-    #[staticmethod]
-    pub fn f32(x: f32) -> VertexValue {
-        VertexValue::F32(x)
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn f32x2(x: [f32; 2]) -> VertexValue {
-        VertexValue::F32x2(x)
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn f32x3(x: [f32; 3]) -> VertexValue {
-        VertexValue::F32x3(x)
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn f32x4(x: [f32; 4]) -> VertexValue {
-        VertexValue::F32x4(x)
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn u32(x: u32) -> VertexValue {
-        VertexValue::U32(x)
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn u32x2(x: [u32; 2]) -> VertexValue {
-        VertexValue::U32x2(x)
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn u32x3(x: [u32; 3]) -> VertexValue {
-        VertexValue::U32x3(x)
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn u32x4(x: [u32; 4]) -> VertexValue {
-        VertexValue::U32x4(x)
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn i32(x: i32) -> VertexValue {
-        VertexValue::I32(x)
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn i32x2(x: [i32; 2]) -> VertexValue {
-        VertexValue::I32x2(x)
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn i32x3(x: [i32; 3]) -> VertexValue {
-        VertexValue::I32x3(x)
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn i32x4(x: [i32; 4]) -> VertexValue {
-        VertexValue::I32x4(x)
+    #[pyo3(name = "passes")]
+    pub fn passes_py(&self) -> crate::PyPassIterator {
+        let list = <Self as crate::Renderable>::passes(self);
+        crate::PyPassIterator(list.iter().cloned().collect())
     }
 }

@@ -1,16 +1,14 @@
 import org.fragmentcolor.*
+val encoded_png_bytes = java.io.File("examples/assets/logo.png").readBytes()
+val raw_rgba = ByteArray(8 * 8 * 4) { 200.toByte() }
 
-
-val bytes: ByteArray = byteArrayOf()
 // Encoded path: bytes plus the format you want the chain to live in.
 // The dimensions come from the decoded image.
-val encoded_png_bytes: ByteArray = byteArrayOf()
-val chain = Mipmap.build(encoded_png_bytes, TextureFormat.RGBA8_UNORM_SRGB, null)
+val chain = Mipmap.build(encoded_png_bytes, TextureFormat.RGBA8_UNORM_SRGB)
 
 // Raw path: include the size so build skips decoding.
-val raw_rgba: ByteArray = ByteArray(8 * 8 * 4)
-val chain_raw = Mipmap.build(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
+val chain_raw = Mipmap.build(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, listOf(8u, 8u))
 
 // Either chain uploads the same way.
 val renderer = Renderer()
-val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)
+val texture = renderer.createTexture(chain)

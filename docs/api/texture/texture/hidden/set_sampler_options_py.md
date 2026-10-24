@@ -1,6 +1,6 @@
 # Texture::set_sampler_options (Python)
 
-Configure sampler options via a dict.
+Takes a `SamplerOptions`, or a dict with the same keys.
 
 ## Example
 
@@ -11,6 +11,6 @@ renderer = Renderer()
 pixels = [255, 255, 255, 255]
 
 texture = renderer.create_texture(pixels, size=[1, 1])
-opts = {"repeat_x": True, "repeat_y": True, "smooth": True, "compare": None}
+opts = SamplerOptions(repeat_x=True, repeat_y=True, smooth=True, compare=None)
 texture.set_sampler_options(opts)
 ```

@@ -15,8 +15,8 @@ pub enum TextureError {
     MalformedImageError(#[from] image::ImageError),
     /// The requested target format isn't supported by the CPU mipmap
     /// dispatcher. Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`,
-    /// `Bgra8Unorm`, `Bgra8UnormSrgb`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`,
-    /// `Rg16Unorm`, `Rgba16Unorm`. For other formats, ship a pre-baked KTX2
+    /// `Bgra8Unorm`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`,
+    /// `Rgba16Unorm`, and the aliases for them. For other formats, ship a pre-baked KTX2
     /// chain (`TextureInput::Ktx2*`) or set `TextureOptions { mipmaps: false, .. }`.
     #[error(
         "Unsupported format for CPU mipmap generation: {format:?}. Supported formats: Rgba8/Bgra8 (Unorm + Srgb), R8Unorm, Rg8Unorm, R16Unorm, Rg16Unorm, Rgba16Unorm. Use TextureInput::Ktx2* for other formats, or set mipmaps=false."
@@ -64,19 +64,26 @@ pub enum TextureError {
 // Python-specific conversions
 
 #[cfg(python)]
-use pyo3::exceptions::PyException as PyFragmentColorError;
-
-#[cfg(python)]
 impl From<pyo3::PyErr> for TextureError {
     fn from(e: pyo3::PyErr) -> Self {
         TextureError::Error(e.to_string())
     }
 }
 
+/// Three texture errors raise their own subclass of `FragmentColorError`, so Python can tell them apart.
 #[cfg(python)]
 impl From<TextureError> for pyo3::PyErr {
     fn from(e: TextureError) -> Self {
-        PyFragmentColorError::new_err(e.to_string())
+        use crate::error::{InvalidInputError, MalformedImageError, UnsupportedMipmapFormatError};
+        let message = e.to_string();
+        match e {
+            TextureError::InvalidInput(_) => InvalidInputError::new_err(message),
+            TextureError::UnsupportedMipmapFormat { .. } => {
+                UnsupportedMipmapFormatError::new_err(message)
+            }
+            TextureError::MalformedImageError(_) => MalformedImageError::new_err(message),
+            _ => crate::PyFragmentColorError::new_err(message),
+        }
     }
 }
 
@@ -97,7 +104,7 @@ impl From<wasm_bindgen::JsValue> for TextureError {
 #[cfg(wasm)]
 impl From<TextureError> for wasm_bindgen::JsValue {
     fn from(error: TextureError) -> Self {
-        wasm_bindgen::JsValue::from_str(&error.to_string())
+        js_sys::Error::new(&error.to_string()).into()
     }
 }
 

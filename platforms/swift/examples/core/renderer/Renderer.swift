@@ -1,16 +1,15 @@
 
 import FragmentColor
+import QuartzCore
+let canvas = CAMetalLayer()
 
 let renderer = Renderer()
 
-// Use your platform's windowing system to create a window
-// iOS: window/canvas provided by CAMetalLayer at runtime
-
-// Create a Target from it
-let target = try await renderer.createTextureTarget([800, 600])
+// The canvas comes from your platform's windowing system
+let target = try await renderer.createTarget(canvas)
 let texture_target = try await renderer.createTextureTarget([16, 16])
 
 // RENDERING
-try renderer.render(Shader(""), texture_target)
+try renderer.render(Shader.default(), texture_target)
 
 // That's it. Welcome to FragmentColor!

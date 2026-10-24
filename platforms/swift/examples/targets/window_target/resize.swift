@@ -1,7 +1,8 @@
-
 import FragmentColor
+import QuartzCore
+let canvas = CAMetalLayer()
 
 let renderer = Renderer()
-let target = try await renderer.createTextureTarget([64, 32])
+let target = try await renderer.createTarget(canvas)
 
-target.resize([128, 64])
+target.resize([1024, 768])

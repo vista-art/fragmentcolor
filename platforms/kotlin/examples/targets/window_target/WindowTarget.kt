@@ -1,10 +1,12 @@
 
 import org.fragmentcolor.*
-
-// Use your platform's windowing system to create a window.
-// HEADLESS: canvas creation not needed on Android
+val surfaceTexture = android.graphics.SurfaceTexture(0)
+val canvas = android.view.Surface(surfaceTexture)
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(800u, 600u)
 
-renderer.render(Shader(""), target)
+// The canvas comes from your platform's windowing system.
+val target = renderer.createTarget(canvas)
+
+renderer.render(Shader.default(), target)
+surfaceTexture.release()

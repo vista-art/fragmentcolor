@@ -7,15 +7,19 @@ content; the Material handles shading, the Mesh handles geometry, the Model
 handles "where in the world".
 
 Each `Model::new` takes ownership of the Material it's given. Cloning the
-Material before passing it in is cheap: `Material::clone` is an Arc-clone
-(handle share), not a deep duplicate. The per-Model transform is *not* a
-Material uniform: it's written as four `vec4<f32>` columns into the Mesh's
-per-instance attribute stream at locations 3..6. Many Models can share one
-Material's Shader without colliding because each Model writes its transform
-to **its own** Mesh's instance buffer.
+Material before passing it in is cheap: `Material::clone` shares the handle
+and copies nothing. The per-Model transform is *not* a Material uniform. The
+renderer reads it at draw time and feeds it to the vertex stage as four
+`vec4<f32>` instance attributes, `model_0` to `model_3`, the columns of a
+`mat4x4<f32>`. The PBR shader reads them at locations 3 to 6.
 
-For the fan-out case (one Material, many positioned instances on
-unique geometries), the pattern is:
+Models that share a Material and a Mesh draw together. On every render, the
+renderer packs the transforms of the visible `Opaque` and `Mask` Models with
+the same Shader and Mesh into one instance buffer and draws them in one
+instanced call. `Blend` Models draw one at a time, back to front, since
+their order matters.
+
+For the fan-out case (one Material, many positioned items), the pattern is:
 
 ```text
 template = Material::pbr().base_color(...)
@@ -25,17 +29,12 @@ for each item:
   pass.add(&model)
 ```
 
-Pipeline cached once by shader hash; one bind-group setup per pass; N draws
-(one per unique Mesh). For *batched* instancing (one shared Mesh, many
-transforms in one draw) drop down to `Mesh::add_instance(...)` directly
-with a `Material::custom(shader_that_reads_instance_attrs)`. The Model API
-is for one logical thing per draw, not for managing your own per-instance
-buffers.
-
-**Caveat:** the Mesh's instance buffer is Arc-shared via `Mesh::clone`. Two
-Models that share a Mesh handle (`mesh.clone()`) collide on the same instance
-buffer; the most recent transform-mutating call wins. Give each Model its
-own Mesh.
+The pipeline is cached once per shader, the bind groups are set once per
+pass, and the pass issues one draw per Mesh. Give every Model the same
+`mesh.clone()` to draw them all in one call: `Mesh::clone` shares the
+handle, so the Models share one Mesh. A transform changed after
+`pass.add(&model)` shows up on the next render, without adding the Model
+again.
 
 ## Methods
 
@@ -49,6 +48,8 @@ own Mesh.
 | `translate`    | pre-multiply by a world-space translation         |
 | `rotate`       | post-multiply by a local-space axis-angle rotation |
 | `scale`        | post-multiply by a local-space per-axis scale     |
+| `visible`      | read whether the Model draws                       |
+| `set_visible`  | show or hide the Model without removing it         |
 
 ## Example
 

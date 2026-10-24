@@ -1,6 +1,6 @@
 ---
 title: Pass
-description: "The [Pass](/api/core/pass) object is a collection of [Shader](/api/core/shader) objects that are rendered to a [Target](/api/core/target) by the [Renderer](/api/core/renderer)."
+description: "The [Pass](/api/core/pass) object is a collection of [Shader](/api/core/shader) objects that are rendered to a [Target](/api/targets/target) by the [Renderer](/api/core/renderer)."
 category: core
 categoryLabel: Core
 sidebar:
@@ -11,7 +11,7 @@ import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
 ## Description
 
-The [Pass](/api/core/pass) object is a collection of [Shader](/api/core/shader) objects that are rendered to a [Target](/api/core/target) by the [Renderer](/api/core/renderer).
+The [Pass](/api/core/pass) object is a collection of [Shader](/api/core/shader) objects that are rendered to a [Target](/api/targets/target) by the [Renderer](/api/core/renderer).
 
 While the [Shader](/api/core/shader) represents a single **Render Pipeline** or a **Compute Pipeline**,
 the [Pass](/api/core/pass) can be used to draw multiple Shaders in sequence,
@@ -34,12 +34,12 @@ it won't add the shader to its internal list and log a warning message in the co
 <Code
 code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let canvas = fragmentcolor::headless_window([100, 100]);
 
 use fragmentcolor::{ Shader, Pass, Renderer };
 
 let renderer = Renderer::new();
-let window = fragmentcolor::headless_window([100, 100]);
-let target = renderer.create_target(window).await?;
+let target = renderer.create_target(canvas).await?;
 let shader = Shader::default();
 
 let mut pass = Pass::new("First Pass");
@@ -58,7 +58,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 22-24}"
+lang="rust" meta="collapse={1-2, 22-24}"
 />
 
 </TabItem>
@@ -68,9 +68,9 @@ lang="rust" meta="collapse={1-1, 22-24}"
 code={`
 
 import { Shader, Pass, Renderer } from "fragmentcolor";
+const canvas = document.createElement("canvas");
 
 const renderer = new Renderer();
-const canvas = document.createElement('canvas');
 const target = await renderer.createTarget(canvas);
 const shader = Shader.default();
 
@@ -87,7 +87,7 @@ renderer.render(pass, target);
 renderer.render([pass, pass2], target);
 
 `}
-lang="js"
+lang="js" meta="collapse={2-2}"
 />
 
 </TabItem>
@@ -95,17 +95,16 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+
+from fragmentcolor import Shader, Pass, Renderer
 import os, sys
 # Skip this example in headless/CI environments that have no display surface.
 if os.environ.get('DISPLAY') is None and sys.platform != 'win32' and os.environ.get('FC_ALLOW_WINDOW') != '1':
     raise SystemExit(0)
-
-from rendercanvas.auto import RenderCanvas, loop
-
-from fragmentcolor import Shader, Pass, Renderer
+from rendercanvas.auto import RenderCanvas
+canvas = RenderCanvas(size=(100, 100))
 
 renderer = Renderer()
-canvas = RenderCanvas(size=(100, 100))
 target = renderer.create_target(canvas)
 shader = Shader.default()
 
@@ -120,8 +119,9 @@ renderer.render(rpass, target)
 
 # vector of passes rendered in order (any iterable of Pass is renderable)
 renderer.render([rpass, pass2], target)
+
 `}
-lang="python"
+lang="python" meta="collapse={2-7}"
 />
 
 </TabItem>
@@ -131,10 +131,11 @@ lang="python"
 code={`
 
 import FragmentColor
+import QuartzCore
+let canvas = CAMetalLayer()
 
 let renderer = Renderer()
-// iOS: window/canvas provided by CAMetalLayer at runtime
-let target = try await renderer.createTextureTarget([800, 600])
+let target = try await renderer.createTarget(canvas)
 let shader = Shader.default()
 
 let pass = Pass("First Pass")
@@ -149,7 +150,7 @@ try renderer.render(pass, target)
 // vector of passes rendered in order (any iterable of Pass is renderable)
 try renderer.render([pass, pass2], target)
 `}
-lang="swift"
+lang="swift" meta="collapse={2-3}"
 />
 
 </TabItem>
@@ -159,10 +160,11 @@ lang="swift"
 code={`
 
 import org.fragmentcolor.*
+val surfaceTexture = android.graphics.SurfaceTexture(0)
+val canvas = android.view.Surface(surfaceTexture)
 
 val renderer = Renderer()
-// HEADLESS: canvas creation not needed on Android
-val target = renderer.createTextureTarget(800u, 600u)
+val target = renderer.createTarget(canvas)
 val shader = Shader.default()
 
 val pass = Pass("First Pass")
@@ -176,8 +178,9 @@ renderer.render(pass, target)
 
 // vector of passes rendered in order (any iterable of Pass is renderable)
 renderer.render(listOf(pass, pass2), target)
+surfaceTexture.release()
 `}
-lang="kotlin"
+lang="kotlin" meta="collapse={2-3, 20-20}"
 />
 
 </TabItem>
@@ -190,11 +193,15 @@ lang="kotlin"
 
 ---
 
-### Pass::new(name: &str) -&gt; Self
+### Pass::new(name: &str) -&gt; Self \{#new\}
 
-#### Creates a new Pass
+Creates a new render Pass.
 
-The name property is optional and is used for debugging purposes.
+The name is required. Graphics debuggers show it as the pass label,
+[`Scene::find_pass`](/api/scene/scene#find_pass)
+looks passes up by it, and
+[`require`](/api/core/pass#require) tells
+dependencies apart by it.
 
 #### Example
 
@@ -232,7 +239,7 @@ lang="js"
 code={`
 from fragmentcolor import Pass
 
-rpass = Pass("first rpass")
+rpass = Pass("first pass")
 
 `}
 lang="python"
@@ -269,11 +276,14 @@ lang="kotlin"
 
 ---
 
-### Pass::compute(name: &str) -&gt; Pass
+### Pass::compute(name: &str) -&gt; Pass \{#compute\}
 
 Creates a new [Pass](/api/core/pass) configured for compute workloads.
 
 Only [Shader](/api/core/shader) objects that compile to compute pipelines can be added.
+
+The first shader added decides the pass kind, whichever constructor made the
+pass. After that, a shader of the other kind is dropped with a logged warning.
 
 #### Example
 
@@ -282,12 +292,17 @@ Only [Shader](/api/core/shader) objects that compile to compute pipelines can be
 <TabItem label="Rust">
 <Code
 code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Pass, Shader};
 
-let cs = Shader::new("@compute @workgroup_size(8,8,1) fn cs_main() {}").unwrap();
-let pass = Pass::from_shader("compute", &cs);
+let cs = Shader::new("@compute @workgroup_size(8,8,1) fn cs_main() {}")?;
+let pass = Pass::compute("compute");
+pass.add_shader(&cs);
+assert!(pass.is_compute());
+Ok(())
+}
 `}
-lang="rust"
+lang="rust" meta="collapse={1-1, 7-9}"
 />
 
 </TabItem>
@@ -297,8 +312,9 @@ lang="rust"
 code={`
 import { Pass, Shader } from "fragmentcolor";
 
-const cs = new Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}").unwrap();
-const pass = new Pass("compute"); pass.addShader(cs);
+const cs = new Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}");
+const pass = Pass.compute("compute");
+pass.addShader(cs);
 `}
 lang="js"
 />
@@ -311,7 +327,8 @@ code={`
 from fragmentcolor import Pass, Shader
 
 cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
-rpass = Pass("compute"); rpass.add_shader(cs)
+rpass = Pass.compute("compute")
+rpass.add_shader(cs)
 `}
 lang="python"
 />
@@ -323,8 +340,9 @@ lang="python"
 code={`
 import FragmentColor
 
-let cs = try! Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
-let pass = Pass("compute"); pass.addShader(cs)
+let cs = try Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
+let pass = Pass.compute("compute")
+pass.addShader(cs)
 `}
 lang="swift"
 />
@@ -337,7 +355,8 @@ code={`
 import org.fragmentcolor.*
 
 val cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
-val pass = Pass("compute"); pass.addShader(cs)
+val pass = Pass.compute("compute")
+pass.addShader(cs)
 `}
 lang="kotlin"
 />
@@ -349,7 +368,7 @@ lang="kotlin"
 
 ---
 
-### Pass::from_shader(name: &str, shader: Shader) -&gt; Pass
+### Pass::from_shader(name: &str, shader: Shader) -&gt; Pass \{#from_shader\}
 
 Creates a new [Pass](/api/core/pass) from a single [Shader](/api/core/shader).
 
@@ -378,7 +397,7 @@ code={`
 import { Pass, Shader } from "fragmentcolor";
 
 const shader = Shader.default();
-const pass = new Pass("single"); pass.addShader(shader);
+const pass = Pass.fromShader("single", shader);
 `}
 lang="js"
 />
@@ -391,7 +410,7 @@ code={`
 from fragmentcolor import Pass, Shader
 
 shader = Shader.default()
-rpass = Pass("single"); rpass.add_shader(shader)
+rpass = Pass.from_shader("single", shader)
 `}
 lang="python"
 />
@@ -404,7 +423,7 @@ code={`
 import FragmentColor
 
 let shader = Shader.default()
-let pass = Pass("single"); pass.addShader(shader)
+let pass = Pass.fromShader("single", shader)
 `}
 lang="swift"
 />
@@ -417,7 +436,7 @@ code={`
 import org.fragmentcolor.*
 
 val shader = Shader.default()
-val pass = Pass("single"); pass.addShader(shader)
+val pass = Pass.fromShader("single", shader)
 `}
 lang="kotlin"
 />
@@ -429,18 +448,21 @@ lang="kotlin"
 
 ---
 
-### Pass::name
+### Pass::name \{#name\}
 
-Read the pass's name — the string passed to
-[`Pass::new`](/api/core/pass/new) (or the label a
+Read the pass's name, the string passed to
+[`Pass::new`](/api/core/pass#new) (or the label a
 loader gave it). Names are how you address a pass by something other than its
 index: pair this with
-[`Scene::find_pass`](/api/scene/scene/find_pass) to
+[`Scene::find_pass`](/api/scene/scene#find_pass) to
 locate a pass in a scene's graph, and it's the label graphics debuggers
 (RenderDoc, Xcode GPU capture) show for the pass.
 
 Names aren't required to be unique. If two passes share a name, name lookup
-returns the first one.
+returns the first one. `require` tells dependencies apart by name, though: a
+pass can't require two passes with the same name
+(`PassError::DuplicateDependency`), or a pass with its own name
+(`PassError::SelfDependency`).
 
 #### Example
 
@@ -520,9 +542,9 @@ lang="kotlin"
 
 ---
 
-### Pass::load_previous()
+### Pass::load_previous() \{#load_previous\}
 
-Configures this [Pass](/api/core/pass) to load the previous contents of the [Target](/api/core/target) instead of clearing it.
+Configures this [Pass](/api/core/pass) to load the previous contents of the [Target](/api/targets/target) instead of clearing it.
 
 This is useful when layering multiple passes where the next pass should blend with the prior results.
 
@@ -628,7 +650,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(64u, 64u)
+val target = renderer.createTextureTarget(listOf(64u, 64u))
 
 val shader = Shader.default()
 val pass = Pass("blend with previous")
@@ -647,91 +669,7 @@ lang="kotlin"
 
 ---
 
-### Pass::get_input() -&gt; PassInput
-
-Returns a copy of the current input configuration for this [Pass](/api/core/pass).
-
-It includes the clear/load behavior and clear color.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-use fragmentcolor::Pass;
-
-let pass = Pass::new("example");
-let input = pass.get_input();
-
-_ = input; // Silence unused variable warning
-`}
-lang="rust" meta="collapse={6-6}"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-import { Pass } from "fragmentcolor";
-
-const pass = new Pass("example");
-const input = pass.getInput();
-
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-from fragmentcolor import Pass
-
-rpass = Pass("example")
-input = rpass.get_input()
-
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Code
-code={`
-import FragmentColor
-
-let pass = Pass("example")
-let input = pass.getInput()
-`}
-lang="swift"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Code
-code={`
-import org.fragmentcolor.*
-
-val pass = Pass("example")
-val input = pass.getInput()
-`}
-lang="kotlin"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
-### Pass::add_shader(shader: Shader)
+### Pass::add_shader(shader: Shader) \{#add_shader\}
 
 Add a [Shader](/api/core/shader) to the
 [Pass](/api/core/pass). Shaders run in the order
@@ -817,15 +755,20 @@ lang="kotlin"
 
 ---
 
-### Pass::add_mesh
+### Pass::add_mesh \{#add_mesh\}
 
 Attach a Mesh to this Pass.
 
-- The mesh is attached to the last shader previously added to this Pass.
-- Validates compatibility with that shader’s vertex inputs.
-- Returns Result`Result<(), ShaderError>`; on error, the mesh is not attached.
+- The mesh is attached to the last shader in this Pass that accepts it.
+- Each shader checks the mesh against its vertex inputs, as
+  [`Shader::add_mesh`](/api/core/shader#add_mesh) does.
+  A shader that rejects the mesh leaves no type on it, and the next one tries.
+- Returns `Result<(), PassError>`. When no shader accepts the mesh, the error is
+  `PassError::NoCompatibleShader` with the reason the last shader gave, and the
+  mesh is not attached.
 
-If a Shader wasn't provided earlier, FragmentColor will create a default one.
+A Pass with no shaders has nothing to attach the mesh to and returns
+`PassError::NoShader`. No default shader is created.
 
 #### Example
 
@@ -886,7 +829,7 @@ const shader = new Shader(\`
 
 \`);
 
-const pass = new Pass("pass"); pass.addShader(shader);
+const pass = Pass.fromShader("pass", shader);
 
 pass.addMesh(mesh);
 
@@ -917,7 +860,7 @@ shader = Shader("""
 
 """)
 
-rpass = Pass("rpass"); rpass.add_shader(shader)
+rpass = Pass.from_shader("pass", shader)
 
 rpass.add_mesh(mesh)
 
@@ -936,19 +879,19 @@ let mesh = Mesh()
 try mesh.addVertex([0.0, 0.0])
 
 let shader = try Shader("""
-  struct VOut { @builtin(position) pos: vec4<f32> }
+  struct VOut { @builtin(position) pos: vec4<f32> };
   @vertex
   fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-    var out: VOut
-    out.pos = vec4<f32>(pos, 0.0, 1.0)
-    return out
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
   }
   @fragment
   fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
 """)
 
-let pass = Pass("pass"); pass.addShader(shader)
+let pass = Pass.fromShader("pass", shader)
 
 try pass.addMesh(mesh)
 `}
@@ -963,22 +906,22 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex(Vertex(listOf(0.0f, 0.0f)))
+mesh.addVertex(listOf(0.0f, 0.0f))
 
 val shader = Shader("""
-  struct VOut { @builtin(position) pos: vec4<f32> }
+  struct VOut { @builtin(position) pos: vec4<f32> };
   @vertex
   fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-    var out: VOut
-    out.pos = vec4<f32>(pos, 0.0, 1.0)
-    return out
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
   }
   @fragment
   fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
 """)
 
-val pass = Pass("pass"); pass.addShader(shader)
+val pass = Pass.fromShader("pass", shader)
 
 pass.addMesh(mesh)
 `}
@@ -992,14 +935,15 @@ lang="kotlin"
 
 ---
 
-### Pass::add
+### Pass::add \{#add\}
 
-Absorb any [`SceneObject`](/api/scene) (a
+Absorb any `SceneObject` (a
 [Model](/api/scene/model),
 [Camera](/api/scene/camera),
-[Light](/api/scene/light), or a user-defined
-node that implements the trait) into the pass. Each kind brings its
-own attach behaviour: a Model queues a draw with its own per-instance
+[Light](/api/scene/light), or, in Rust, a
+user-defined node that implements the trait) into the pass. The other
+bindings take the built-in kinds. Each kind brings its
+own attach behavior: a Model queues a draw with its own per-instance
 transform; a Camera or Light wires its uniforms into every shader the
 pass renders, both the ones already there and the ones added afterwards.
 
@@ -1008,8 +952,11 @@ same value (`camera.look_at(...)`, `light.set_color(...)`) propagate to
 every shader on the pass with no further `add` call.
 
 Returns `Result<&Pass, PassError>`. Models can fail at attach time when
-the Mesh layout doesn't match the Material's shader; Cameras and Lights
-always succeed. Chain with `?` between calls.
+the Mesh layout doesn't match the Material's shader, and Cameras always
+succeed. A Light fails with `PassError::LightCapReached` when a shader
+on the pass already holds 32 lights. Lights added before their shaders
+join the pass don't fail: a shader past the cap drops the extra ones
+with a logged warning instead. Chain with `?` between calls.
 
 #### Example
 
@@ -1038,8 +985,8 @@ pass.add(&model)?;
 pass.add(&camera)?;
 pass.add(&sun)?;
 
-// Updating the camera later is enough — every Model already on the pass
-// picks the new view_proj up at the next render.
+// Updating the camera later is enough. Every Model already on the pass
+// picks up the new view_proj at the next render.
 camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 let _ = renderer;
 Ok(())
@@ -1059,7 +1006,7 @@ import { Camera, Light, Material, Mesh, Model, Pass, Renderer, Vertex } from "fr
 const renderer = new Renderer();
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 const model = new Model(mesh, Material.pbr());
 
 const camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
@@ -1070,8 +1017,8 @@ pass.add(model);
 pass.add(camera);
 pass.add(sun);
 
-// Updating the camera later is enough — every Model already on the pass
-// picks the new view_proj up at the next render.
+// Updating the camera later is enough. Every Model already on the pass
+// picks up the new view_proj at the next render.
 camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 `}
 lang="js"
@@ -1100,8 +1047,8 @@ rpass.add(model)
 rpass.add(camera)
 rpass.add(sun)
 
-# Updating the camera later is enough — every Model already on the rpass
-# picks the new view_proj up at the next render.
+# Updating the camera later is enough. Every Model already on the pass
+# picks up the new view_proj at the next render.
 camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 `}
 lang="python"
@@ -1118,7 +1065,7 @@ let renderer = Renderer()
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
 )
 let model = Model(mesh, Material.pbr())
 
@@ -1130,8 +1077,8 @@ try pass.add(model)
 try pass.add(camera)
 try pass.add(sun)
 
-// Updating the camera later is enough — every Model already on the pass
-// picks the view_proj up at the next render.
+// Updating the camera later is enough. Every Model already on the pass
+// picks up the new view_proj at the next render.
 try camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 `}
 lang="swift"
@@ -1147,7 +1094,7 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 val model = Model(mesh, Material.pbr())
 
 val camera = Camera.perspective(1.047f, 1.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 0.0f, 2.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
@@ -1158,8 +1105,8 @@ pass.add(model)
 pass.add(camera)
 pass.add(sun)
 
-// Updating the camera later is enough — every Model already on the pass
-// picks the view_proj up at the next render.
+// Updating the camera later is enough. Every Model already on the pass
+// picks up the new view_proj at the next render.
 camera.lookAt(listOf(3.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
 `}
 lang="kotlin"
@@ -1172,13 +1119,17 @@ lang="kotlin"
 
 ---
 
-### Pass::set_viewport(viewport)
+### Pass::set_viewport(viewport) \{#set_viewport\}
 
 Sets the viewport region for this [Pass](/api/core/pass).
 
-The viewport restricts drawing to a rectangular area of the [Target](/api/core/target).
+The pass's shaders draw only inside this rectangle of the [Target](/api/targets/target), and each shader's output scales to fill it.
 
-The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly.
+The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly. Pixels count from the top-left corner of the target.
+
+A region that reaches past the target keeps its size and loses the part outside, and a region wholly outside the target draws nothing. When the pass has its own target from `set_target`, the region is measured against that target.
+
+The clear color still fills the whole target. To split one target between passes, call `load_previous` on each pass after the first. In the fragment stage, `@builtin(position)` counts pixels from the target's corner, not the region's.
 
 #### Example
 
@@ -1224,7 +1175,7 @@ const shader = Shader.default();
 const pass = new Pass("clipped");
 pass.addShader(shader);
 
-pass.setViewport([(0, 0), (32, 32)]);
+pass.setViewport(new ScreenRegion([0, 0], [32, 32]));
 
 renderer.render(pass, target);
 
@@ -1270,7 +1221,7 @@ let shader = Shader.default()
 let pass = Pass("clipped")
 pass.addShader(shader)
 
-pass.setViewport([(0, 0), (32, 32)])
+pass.setViewport(ScreenRegion((0, 0), (32, 32)))
 
 try renderer.render(pass, target)
 `}
@@ -1286,13 +1237,13 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(64u, 64u)
+val target = renderer.createTextureTarget(listOf(64u, 64u))
 
 val shader = Shader.default()
 val pass = Pass("clipped")
 pass.addShader(shader)
 
-pass.setViewport(ScreenRegion(minX=0u, minY=0u, maxX=32u, maxY=32u))
+pass.setViewport(ScreenRegion(listOf(0u, 0u), listOf(32u, 32u)))
 
 renderer.render(pass, target)
 `}
@@ -1306,7 +1257,7 @@ lang="kotlin"
 
 ---
 
-### Pass::set_clear_color(color: [f32; 4])
+### Pass::set_clear_color(color: [f32; 4]) \{#set_clear_color\}
 
 Sets the clear color for this [Pass](/api/core/pass).
 
@@ -1418,7 +1369,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(64u, 64u)
+val target = renderer.createTextureTarget(listOf(64u, 64u))
 
 val shader = Shader.default()
 val pass = Pass("solid background")
@@ -1438,13 +1389,13 @@ lang="kotlin"
 
 ---
 
-### Pass::set_compute_dispatch
+### Pass::set_compute_dispatch \{#set_compute_dispatch\}
 
 Set the workgroup-grid size for a compute pass. The three numbers are the
 number of workgroups to dispatch in each dimension; total invocations are
 `x * y * z * workgroup_size_x * workgroup_size_y * workgroup_size_z`,
 where the per-workgroup size comes from the WGSL `@workgroup_size`
-attribute. Has no effect on render passes.
+attribute. A 0 in any dimension becomes 1. Has no effect on render passes.
 
 #### Example
 
@@ -1467,8 +1418,8 @@ lang="rust"
 <Code
 code={`
 import { Pass, Shader } from "fragmentcolor";
-const cs = new Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}").unwrap();
-const pass = new Pass("compute"); pass.addShader(cs);
+const cs = new Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}");
+const pass = Pass.fromShader("compute", cs);
 pass.setComputeDispatch(64, 64, 1);
 `}
 lang="js"
@@ -1481,7 +1432,7 @@ lang="js"
 code={`
 from fragmentcolor import Pass, Shader
 cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
-rpass = Pass("compute"); rpass.add_shader(cs)
+rpass = Pass.from_shader("compute", cs)
 rpass.set_compute_dispatch(64, 64, 1)
 `}
 lang="python"
@@ -1494,7 +1445,7 @@ lang="python"
 code={`
 import FragmentColor
 let cs = try! Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
-let pass = Pass("compute"); pass.addShader(cs)
+let pass = Pass.fromShader("compute", cs)
 pass.setComputeDispatch(64, 64, 1)
 `}
 lang="swift"
@@ -1507,8 +1458,8 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
-val pass = Pass("compute"); pass.addShader(cs)
-pass.setComputeDispatch(64u,64u,1u)
+val pass = Pass.fromShader("compute", cs)
+pass.setComputeDispatch(64u, 64u, 1u)
 `}
 lang="kotlin"
 />
@@ -1520,7 +1471,7 @@ lang="kotlin"
 
 ---
 
-### Pass::set_target(target)
+### Pass::set_target(target) \{#set_target\}
 
 Attach a per-pass color render target. When set, this pass renders into the provided texture instead of the final Target.
 
@@ -1607,7 +1558,7 @@ code={`
 import org.fragmentcolor.*
 
 val r = Renderer()
-val tex_target = r.createTextureTarget(512u, 512u)
+val tex_target = r.createTextureTarget(listOf(512u, 512u))
 
 val p = Pass("shadow")
 p.setTarget(tex_target)
@@ -1622,13 +1573,13 @@ lang="kotlin"
 
 ---
 
-### Pass::set_depth_target
+### Pass::set_depth_target \{#set_depth_target\}
 
 Attach a depth texture to this pass. Once attached, the renderer builds the pipeline with a matching depth-stencil state and **depth-test is enabled**: fragments behind the current contents of the depth buffer are discarded, and the pass writes to the depth buffer as it draws. That's what you want for 3D meshes that occlude each other.
 
 A Pass has at most one depth attachment. Call `set_depth_target` again to swap it.
 
-The target must be a depth texture (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](/api/core/renderer/create_depth_texture). The depth attachment's sample count must match the color attachments'. Mixing 1× and 4× MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
+The target must be a depth `Texture` (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](/api/core/renderer#create_depth_texture). A `TextureTarget` always has a color format, so passing one returns an error. The depth attachment's sample count must match the color attachments'. Mixing 1× and 4× MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
 
 To **opt out** of depth testing, simply don't call `set_depth_target`. The pass then renders without depth-state, painter's-algorithm style (later draws win).
 
@@ -1656,8 +1607,8 @@ mesh.add_vertex([1.0, 1.0, 0.0]);
 let shader = Shader::from_mesh(&mesh);
 let pass = Pass::from_shader("blobs", &shader);
 
-// Depth-test on — closer fragments win, the pass writes to the depth
-// buffer so subsequent draws within the same pass see the depth.
+// Depth test on: closer fragments win, and the pass writes the depth
+// buffer, so later draws in the same pass see it.
 pass.set_depth_target(&depth)?;
 
 renderer.render(&pass, &target)?;
@@ -1687,10 +1638,10 @@ mesh.addVertex([1.0, 0.0, 0.0]);
 mesh.addVertex([0.0, 1.0, 0.0]);
 mesh.addVertex([1.0, 1.0, 0.0]);
 const shader = Shader.fromMesh(mesh);
-const pass = new Pass("blobs"); pass.addShader(shader);
+const pass = Pass.fromShader("blobs", shader);
 
-// Depth-test on — closer fragments win, the pass writes to the depth
-// buffer so subsequent draws within the same pass see the depth.
+// Depth test on: closer fragments win, and the pass writes the depth
+// buffer, so later draws in the same pass see it.
 pass.setDepthTarget(depth);
 
 renderer.render(pass, target);
@@ -1717,10 +1668,10 @@ mesh.add_vertex([1.0, 0.0, 0.0])
 mesh.add_vertex([0.0, 1.0, 0.0])
 mesh.add_vertex([1.0, 1.0, 0.0])
 shader = Shader.from_mesh(mesh)
-rpass = Pass("blobs"); rpass.add_shader(shader)
+rpass = Pass.from_shader("blobs", shader)
 
-# Depth-test on — closer fragments win, the rpass writes to the depth
-# buffer so subsequent draws within the same rpass see the depth.
+# Depth test on: closer fragments win, and the pass writes the depth
+# buffer, so later draws in the same pass see it.
 rpass.set_depth_target(depth)
 
 renderer.render(rpass, target)
@@ -1747,10 +1698,10 @@ try mesh.addVertex([1.0, 0.0, 0.0])
 try mesh.addVertex([0.0, 1.0, 0.0])
 try mesh.addVertex([1.0, 1.0, 0.0])
 let shader = Shader.fromMesh(mesh)
-let pass = Pass("blobs"); pass.addShader(shader)
+let pass = Pass.fromShader("blobs", shader)
 
-// Depth-test on — closer fragments win, the pass writes to the depth
-// buffer so subsequent draws within the same pass see the depth.
+// Depth test on: closer fragments win, and the pass writes the depth
+// buffer, so later draws in the same pass see it.
 try pass.setDepthTarget(depth)
 
 try renderer.render(pass, target)
@@ -1766,21 +1717,21 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(64u, 64u)
+val target = renderer.createTextureTarget(listOf(64u, 64u))
 
 // One depth attachment shared across the 3D-content pass.
-val depth = renderer.createDepthTexture(64u, 64u)
+val depth = renderer.createDepthTexture(listOf(64u, 64u))
 
 val mesh = Mesh()
-mesh.addVertex(Vertex(listOf(0.0f, 0.0f, 0.0f)))
-mesh.addVertex(Vertex(listOf(1.0f, 0.0f, 0.0f)))
-mesh.addVertex(Vertex(listOf(0.0f, 1.0f, 0.0f)))
-mesh.addVertex(Vertex(listOf(1.0f, 1.0f, 0.0f)))
+mesh.addVertex(listOf(0.0f, 0.0f, 0.0f))
+mesh.addVertex(listOf(1.0f, 0.0f, 0.0f))
+mesh.addVertex(listOf(0.0f, 1.0f, 0.0f))
+mesh.addVertex(listOf(1.0f, 1.0f, 0.0f))
 val shader = Shader.fromMesh(mesh)
-val pass = Pass("blobs"); pass.addShader(shader)
+val pass = Pass.fromShader("blobs", shader)
 
-// Depth-test on — closer fragments win, the pass writes to the depth
-// buffer so subsequent draws within the same pass see the depth.
+// Depth test on: closer fragments win, and the pass writes the depth
+// buffer, so later draws in the same pass see it.
 pass.setDepthTarget(depth)
 
 renderer.render(pass, target)
@@ -1795,7 +1746,7 @@ lang="kotlin"
 
 ---
 
-### Pass::is_compute
+### Pass::is_compute \{#is_compute\}
 
 Returns true if this Pass is a compute pass (has only compute shaders).
 
@@ -1839,7 +1790,7 @@ const shader = new Shader(\`
 fn cs_main() { }
 
 \`);
-const pass = new Pass("p"); pass.addShader(shader);
+const pass = Pass.fromShader("p", shader);
 
 // Call the method
 const is_compute = pass.isCompute();
@@ -1860,7 +1811,7 @@ shader = Shader("""
 fn cs_main() { }
 
 """)
-rpass = Pass("p"); rpass.add_shader(shader)
+rpass = Pass.from_shader("p", shader)
 
 # Call the method
 is_compute = rpass.is_compute()
@@ -1881,7 +1832,7 @@ let shader = try Shader("""
 fn cs_main() { }
 
 """)
-let pass = Pass("p"); pass.addShader(shader)
+let pass = Pass.fromShader("p", shader)
 
 // Call the method
 let is_compute = pass.isCompute()
@@ -1901,7 +1852,7 @@ val shader = Shader("""
 fn cs_main() { }
 
 """)
-val pass = Pass("p"); pass.addShader(shader)
+val pass = Pass.fromShader("p", shader)
 
 // Call the method
 val is_compute = pass.isCompute()
@@ -1916,7 +1867,7 @@ lang="kotlin"
 
 ---
 
-### Pass::require(deps)
+### Pass::require(deps) \{#require\}
 
 Declare that this pass depends on one or more other renderables (Pass, Shader, Mesh).
 All dependencies will render before this Pass.
@@ -1976,13 +1927,13 @@ const renderer = new Renderer();
 const target = await renderer.createTextureTarget([100,100]);
 const color = new Pass("color");
 const blurx = new Pass("blur_x");
-blurx.require(color); // color before blur_x;
+blurx.require(color); // color before blur_x
 const blury = new Pass("blur_y");
-blury.require(blurx); // blur_x before blur_y;
+blury.require(blurx); // blur_x before blur_y
 const compose = new Pass("compose");
 compose.require(color);
-compose.require(blury); // fan-in; color and blur_y before compose;
-renderer.render(compose, target); // compose renders last;
+compose.require(blury); // fan-in; color and blur_y before compose
+renderer.render(compose, target); // compose renders last
 `}
 lang="js"
 />
@@ -1997,13 +1948,13 @@ renderer = Renderer()
 target = renderer.create_texture_target([100,100])
 color = Pass("color")
 blurx = Pass("blur_x")
-blurx.require(color); # color before blur_x
+blurx.require(color) # color before blur_x
 blury = Pass("blur_y")
-blury.require(blurx); # blur_x before blur_y
+blury.require(blurx) # blur_x before blur_y
 compose = Pass("compose")
 compose.require(color)
-compose.require(blury); # fan-in; color and blur_y before compose
-renderer.render(compose, target); # compose renders last
+compose.require(blury) # fan-in; color and blur_y before compose
+renderer.render(compose, target) # compose renders last
 `}
 lang="python"
 />
@@ -2018,13 +1969,13 @@ let renderer = Renderer()
 let target = try await renderer.createTextureTarget([100,100])
 let color = Pass("color")
 let blurx = Pass("blur_x")
-try blurx.require(color); // color before blur_x
+try blurx.require(color) // color before blur_x
 let blury = Pass("blur_y")
-try blury.require(blurx); // blur_x before blur_y
+try blury.require(blurx) // blur_x before blur_y
 let compose = Pass("compose")
 try compose.require(color)
-try compose.require(blury); // fan-in; color and blur_y before compose
-try renderer.render(compose, target); // compose renders last
+try compose.require(blury) // fan-in; color and blur_y before compose
+try renderer.render(compose, target) // compose renders last
 `}
 lang="swift"
 />
@@ -2036,16 +1987,16 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val target = renderer.createTextureTarget(100u, 100u)
+val target = renderer.createTextureTarget(listOf(100u, 100u))
 val color = Pass("color")
 val blurx = Pass("blur_x")
-blurx.require(color); // color before blur_x
+blurx.require(color) // color before blur_x
 val blury = Pass("blur_y")
-blury.require(blurx); // blur_x before blur_y
+blury.require(blurx) // blur_x before blur_y
 val compose = Pass("compose")
 compose.require(color)
-compose.require(blury); // fan-in; color and blur_y before compose
-renderer.render(compose, target); // compose renders last
+compose.require(blury) // fan-in; color and blur_y before compose
+renderer.render(compose, target) // compose renders last
 `}
 lang="kotlin"
 />

@@ -15,38 +15,11 @@ use std::sync::Arc;
 
 use lsp_doc::lsp_doc;
 
+use crate::pass::Pass;
 use crate::pass::error::PassError;
-use crate::pass::{Pass, PassInput};
 use crate::renderer::platform::mobile::FragmentColorError;
 use crate::renderer::renderable::{RenderableHandle, SceneObjectHandle, TargetHandle};
-use crate::{Mesh, ScreenRegion, Shader};
-
-// -----------------------------------------------------------------
-// Mobile-only record types
-// -----------------------------------------------------------------
-
-/// Mobile-serializable mirror of `PassInput`.
-///
-/// `PassInput` stores a `Color(u32)` tuple-newtype which uniffi's `Record`
-/// derive does not support. `MobilePassInput` exposes the same information
-/// as named fields that uniffi can marshal.
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct MobilePassInput {
-    /// If `true`, the previous frame's contents are loaded (no clear).
-    /// If `false`, the `color_rgba` value is used to clear the attachment.
-    pub load: bool,
-    /// Clear colour packed as 0xRRGGBBAA (same bit layout as `Color(u32)`).
-    pub color_rgba: u32,
-}
-
-impl From<PassInput> for MobilePassInput {
-    fn from(pi: PassInput) -> Self {
-        Self {
-            load: pi.load,
-            color_rgba: pi.color.0,
-        }
-    }
-}
+use crate::{Mesh, ScreenRegion, Shader, Texture};
 
 // -----------------------------------------------------------------
 // Pass (uniffi bindings)
@@ -93,29 +66,25 @@ impl Pass {
     /// Unified `Pass.add` — branches on the runtime mobile handle. Adding
     /// a new `SceneObject` Rust-side means adding one extra variant to
     /// [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
+    /// Returns the pass, as Rust's `add` does, so calls chain.
     #[uniffi::method(name = "add")]
     #[lsp_doc("docs/api/core/pass/add.md")]
-    pub fn add_mobile(&self, object: SceneObjectHandle) -> Result<(), FragmentColorError> {
-        match object {
-            SceneObjectHandle::Model(m) => self
-                .add(m.as_ref())
-                .map(|_| ())
-                .map_err(|e: PassError| FragmentColorError::Render(e.to_string())),
-            SceneObjectHandle::Camera(c) => self
-                .add(c.as_ref())
-                .map(|_| ())
-                .map_err(|e: PassError| FragmentColorError::Render(e.to_string())),
-            SceneObjectHandle::Light(l) => self
-                .add(l.as_ref())
-                .map(|_| ())
-                .map_err(|e: PassError| FragmentColorError::Render(e.to_string())),
-        }
+    pub fn add_mobile(
+        self: Arc<Self>,
+        object: SceneObjectHandle,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        match &object {
+            SceneObjectHandle::Model(model) => self.add(model.as_ref())?,
+            SceneObjectHandle::Camera(camera) => self.add(camera.as_ref())?,
+            SceneObjectHandle::Light(light) => self.add(light.as_ref())?,
+        };
+        Ok(self)
     }
 
     /// Set the render target (color attachment) for this pass.
     ///
     /// The `target` must be a `TargetHandle::Texture` variant; window targets
-    /// cannot be used as a render-to-texture colour target.
+    /// cannot be used as a render-to-texture color target.
     #[uniffi::method(name = "setTarget")]
     #[lsp_doc("docs/api/core/pass/hidden/set_target_mobile.md")]
     pub fn set_target_mobile(&self, target: TargetHandle) -> Result<(), FragmentColorError> {
@@ -126,9 +95,20 @@ impl Pass {
                     .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
             }
             TargetHandle::Window(_) => Err(FragmentColorError::Render(
-                "setTarget: WindowTarget cannot be used as a Pass colour target; use TextureTarget instead".into(),
+                "setTarget: WindowTarget cannot be used as a Pass color target; use TextureTarget instead".into(),
             )),
         }
+    }
+
+    /// Set a `Texture` as the color attachment.
+    /// Swift and Kotlin expose it as `setTarget(texture)`.
+    #[uniffi::method(name = "setTargetTexture")]
+    #[lsp_doc("docs/api/core/pass/hidden/set_target_texture_mobile.md")]
+    pub fn set_target_texture_mobile(
+        &self,
+        texture: Arc<Texture>,
+    ) -> Result<(), FragmentColorError> {
+        Ok(self.set_target(texture.as_ref())?)
     }
 
     /// Set the depth attachment for this pass.
@@ -150,10 +130,22 @@ impl Pass {
         }
     }
 
-    /// Set the clear colour for this pass (as `[r, g, b, a]` in linear 0..1 space).
+    /// Set a depth `Texture` from `Renderer.createDepthTexture` as the
+    /// depth attachment. Swift and Kotlin expose it as `setDepthTarget(texture)`.
+    #[uniffi::method(name = "setDepthTexture")]
+    #[lsp_doc("docs/api/core/pass/hidden/set_depth_texture_mobile.md")]
+    pub fn set_depth_texture_mobile(
+        &self,
+        texture: Arc<Texture>,
+    ) -> Result<(), FragmentColorError> {
+        self.set_depth_target(texture.as_ref())
+            .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
+    }
+
+    /// Set the clear color for this pass (as `[r, g, b, a]` in linear 0..1 space).
     ///
     /// Switching from load to clear mode: after calling this the pass will
-    /// clear its colour attachment to `color` at the start of each frame.
+    /// clear its color attachment to `color` at the start of each frame.
     #[uniffi::method(name = "setClearColor")]
     #[lsp_doc("docs/api/core/pass/hidden/set_clear_color_mobile.md")]
     pub fn set_clear_color_mobile(&self, color: Vec<f32>) -> Result<(), FragmentColorError> {
@@ -202,17 +194,6 @@ impl Pass {
                 .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))?;
         }
         Ok(())
-    }
-
-    /// Return the current input descriptor for this pass.
-    ///
-    /// The mobile binding returns a `MobilePassInput` record because
-    /// `PassInput` contains a `Color(u32)` tuple-newtype that uniffi cannot
-    /// serialize as a `Record`.
-    #[uniffi::method(name = "getInput")]
-    #[lsp_doc("docs/api/core/pass/hidden/get_input_mobile.md")]
-    pub fn get_input_mobile(&self) -> MobilePassInput {
-        self.get_input().into()
     }
 
     /// Return `true` if this is a compute pass; `false` for a render pass.

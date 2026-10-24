@@ -4,16 +4,17 @@ Wrap a native platform video-frame source as an external texture so a WGSL
 shader can sample it directly via `texture_external` /
 `textureSampleBaseClampToEdge`, without an intermediate CPU upload.
 
+The method exists on the Web, iOS and Android bindings. Desktop Rust and
+Python have no native video-frame source to pass, so they don't have it.
 The `source` argument is platform-specific:
 
 - **Web**: `HTMLVideoElement` (or anything that decodes into one).
-- **iOS**: a `CVPixelBuffer`-backed handle (passed as a raw `UInt64` pointer
-  over the uniffi boundary).
-- **Android**: a `SurfaceTexture` handle (passed as a raw `ULong` pointer).
+- **iOS**: a raw `UInt64` pointer to a `CVPixelBuffer`.
+- **Android**: a raw `ULong` pointer to a `SurfaceTexture`.
 
-Currently returns an error on every platform. The public signature is
-stable; native-side decode hookup is on the roadmap. Track support via
-the typed `RendererError` you get back.
+Every call returns an error for now. The signature is stable, and the
+native decode hookup is on the roadmap. Track support via the typed
+`RendererError` you get back.
 
 ## Example
 

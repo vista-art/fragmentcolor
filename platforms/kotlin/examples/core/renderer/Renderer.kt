@@ -1,16 +1,16 @@
 
 import org.fragmentcolor.*
+val surfaceTexture = android.graphics.SurfaceTexture(0)
+val canvas = android.view.Surface(surfaceTexture)
 
 val renderer = Renderer()
 
-// Use your platform's windowing system to create a window
-// HEADLESS: canvas creation not needed on Android
-
-// Create a Target from it
-val target = renderer.createTextureTarget(800u, 600u)
-val texture_target = renderer.createTextureTarget(16u, 16u)
+// The canvas comes from your platform's windowing system
+val target = renderer.createTarget(canvas)
+val texture_target = renderer.createTextureTarget(listOf(16u, 16u))
 
 // RENDERING
-renderer.render(Shader(""), texture_target)
+renderer.render(Shader.default(), texture_target)
 
 // That's it. Welcome to FragmentColor!
+surfaceTexture.release()

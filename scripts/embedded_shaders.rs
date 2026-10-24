@@ -1,19 +1,17 @@
 mod embedded_shaders {
-    use super::meta;
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     const REGISTRY_REL: &str = "docs/website/public/shaders";
-    const OUTPUT_REL: &str = "generated/embedded_shaders.rs";
+    const OUTPUT_FILE: &str = "embedded_shaders.rs";
 
-    /// Walk the shader registry and emit `generated/embedded_shaders.rs` —
-    /// a feature-gated `match` from slugs to `include_str!` of the source.
-    /// Each slug's match arm is gated on `shaders-<category>`, so enabling a
-    /// category compiles its shaders into the binary; everything else stays
-    /// URL-only at runtime.
+    /// Walk the shader registry and write `$OUT_DIR/embedded_shaders.rs`.
+    ///
+    /// The file holds a `match` from slugs to `include_str!` of each source. Each
+    /// arm is gated on `shaders-<category>`, so enabling a category compiles its
+    /// shaders into the binary, and every other slug stays URL-only at runtime.
     pub fn generate() {
-        let root = meta::workspace_root();
-        let registry = root.join(REGISTRY_REL);
+        let registry = Path::new(env!("CARGO_MANIFEST_DIR")).join(REGISTRY_REL);
 
         // Re-run when the registry contents change (additions, removals, edits).
         println!("cargo::rerun-if-changed={}", REGISTRY_REL);
@@ -21,8 +19,14 @@ mod embedded_shaders {
         let entries = collect_entries(&registry);
         let source = render(&entries);
 
-        let dest = root.join(OUTPUT_REL);
-        if let Err(e) = meta::write_if_changed(&dest, &source) {
+        let Some(out_dir) = std::env::var_os("OUT_DIR") else {
+            panic!("OUT_DIR is not set; cargo sets it for every build script");
+        };
+        let dest = Path::new(&out_dir).join(OUTPUT_FILE);
+        if fs::read_to_string(&dest).is_ok_and(|existing| existing == source) {
+            return;
+        }
+        if let Err(e) = fs::write(&dest, &source) {
             panic!("failed to write {}: {}", dest.display(), e);
         }
     }

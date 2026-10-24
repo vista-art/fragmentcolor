@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Patch wasm-bindgen glue to guard Uint8Array construction against detached ArrayBuffer
+// Patch the wasm-bindgen glue: guard Uint8Array construction against a detached
+// ArrayBuffer, and export the WindowTarget class under its old CanvasTarget name.
 // Usage: node platforms/web/patch_glue.mjs [path/to/fragmentcolor.js]
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
@@ -24,7 +25,7 @@ let src = readFileSync(path, 'utf8');
 //       return ret;
 //   },
 //
-// We match both. The replacement keeps the same wrapping syntax so neighbouring
+// We match both. The replacement keeps the same wrapping syntax so neighboring
 // commas / semicolons don't drift.
 
 const bodyAssignment = /imports\.wbg\.(__wbg_new_[a-z0-9]+)\s*=\s*function\(arg0\)\s*\{\s*const\s+ret\s*=\s*new\s+Uint8Array\(arg0\);\s*return\s+ret;\s*\};/g;
@@ -60,4 +61,18 @@ if (count === 0) {
   console.log(`[patch_glue] Patched ${count} Uint8Array constructor shim(s) in ${path}`);
 }
 
+// The window target's JS class is `WindowTarget`. Code written for older releases
+// imports it as `CanvasTarget`, so the glue and its typings export the same class
+// under both names. Running the patch twice adds the alias once.
+const alias = 'export { WindowTarget as CanvasTarget };';
+const addAlias = (text) =>
+    /export class WindowTarget\b/.test(text) && !text.includes(alias) ? `${text}\n${alias}\n` : text;
+
+src = addAlias(src);
 writeFileSync(path, src, 'utf8');
+
+const typings = path.replace(/\.js$/, '.d.ts');
+if (typings !== path && existsSync(typings)) {
+    writeFileSync(typings, addAlias(readFileSync(typings, 'utf8')), 'utf8');
+    console.log(`[patch_glue] Exported WindowTarget as CanvasTarget in ${path} and ${typings}`);
+}

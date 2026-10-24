@@ -5,7 +5,7 @@ Bind a texture to the `base_color_map` slot. The default PBR shader samples it i
 Accepts any `Into<TextureInput>`:
 
 - A pre-built [`&Texture`](https://fragmentcolor.org/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations.
-- Bytes / path / URL / `DynamicImage`. The setter queues the input on the Material's Shader, and the renderer drains queued uploads on the first [`Renderer::render`](https://fragmentcolor.org/api/core/renderer/render) (or earlier via the explicit [`Renderer::load`](https://fragmentcolor.org/api/core/renderer/load)).
+- Bytes / path / URL. The setter queues the input on the Material's Shader. [`Renderer::load`](https://fragmentcolor.org/api/core/renderer) uploads it, and on native targets the first [`Renderer::render`](https://fragmentcolor.org/api/core/renderer) runs `load` for you.
 
 Unset, this slot resolves to a 1×1 white default the renderer hands out
 lazily, so calling `Material::pbr()` without binding a
@@ -16,8 +16,9 @@ texture renders correctly under the factor alone.
 The setter itself is infallible: it queues the upload (lazy path) or
 takes an Arc-clone (eager path) and returns. Failures from the lazy
 path (file not found, decode error, unsupported format) surface when
-the renderer actually drains the queue: either at first render or when
-you call [`Renderer::load(&material).await`](https://fragmentcolor.org/api/core/renderer/load).
+the queue drains: when you call
+[`Renderer::load(&material).await`](https://fragmentcolor.org/api/core/renderer),
+or at the first render on native targets.
 Until then the Material renders against its 1×1 default and a
 `log::warn!` line names the slot.
 

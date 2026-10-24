@@ -3,20 +3,20 @@
 Construct a point light. `position` is the world-space location the light
 radiates from; `color` is linear-RGB intensity (`[1, 1, 1]` for full white).
 Falloff is inverse-square distance. Bring
-[`set_range`](https://fragmentcolor.org/api/scene/light/set_range) in to
+[`set_range`](https://fragmentcolor.org/api/scene/light#set_range) in to
 cap the influence radius, and
-[`set_intensity`](https://fragmentcolor.org/api/scene/light/set_intensity)
+[`set_intensity`](https://fragmentcolor.org/api/scene/light#set_intensity)
 to scale the color uniformly.
 
 Use this for lamps, candles, fireballs: anything where light radiates
 outward from a fixed point. For a parallel-ray sun-like light see
-[`Light::directional`](https://fragmentcolor.org/api/scene/light/directional);
+[`Light::directional`](https://fragmentcolor.org/api/scene/light#directional);
 for a cone-constrained beam see
-[`Light::spot`](https://fragmentcolor.org/api/scene/light/spot).
+[`Light::spot`](https://fragmentcolor.org/api/scene/light#spot).
 
 A point light carries no direction or cone. Calling
-[`set_direction`](https://fragmentcolor.org/api/scene/light/set_direction)
-or [`set_cone_angles`](https://fragmentcolor.org/api/scene/light/set_cone_angles)
+[`set_direction`](https://fragmentcolor.org/api/scene/light#set_direction)
+or [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles)
 on a point light returns `LightError::FieldNotApplicable`.
 
 ## Example

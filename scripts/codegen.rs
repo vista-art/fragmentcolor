@@ -82,62 +82,21 @@ struct ObjectProperty {
 
         let mut api_map = extract_public_functions(crate_root.as_ref());
 
+        // Trait methods carry no `pub`, so the walk above leaves them out.
+        for (imp, f) in catalog.reflection.api_trait_methods() {
+            let methods = api_map.entry(imp.self_ident.clone()).or_default();
+            let method = extract_signature(&f.sig);
+            if !methods.contains(&method) {
+                methods.push(method);
+            }
+        }
+
         // Keep only documented public objects; drop file-key entries (free
         // functions) and any hidden/internal types.
         let objects = catalog.public_structs_excluding_hidden();
         api_map.retain(|k, _| objects.contains(k));
 
         api_map
-    }
-
-    /// Export a newline-delimited list of public API objects relevant for JS branding.
-    ///
-    /// Note: we currently include only types that are wasm-bindgen-exported, because
-    /// those are the ones that actually exist as JS classes at runtime. The filename
-    /// is intentionally platform-agnostic to allow future reuse.
-    pub fn export_api_objects(catalog: &ApiCatalog) {
-        let root = super::meta::workspace_root();
-        let out_path = root.join("generated/api_objects.txt");
-        let info = catalog.collect_public_structs_info();
-        let mut names: Vec<String> = Vec::new();
-        // Helper: detect #[wasm_bindgen] directly or nested via cfg_attr(..., wasm_bindgen, ...)
-        fn has_wasm_bindgen(attrs: &[syn::Attribute]) -> bool {
-            attrs.iter().any(|a| {
-                if a.path().is_ident("wasm_bindgen") {
-                    return true;
-                }
-                let mut found = false;
-                let _ = a.parse_nested_meta(|meta| {
-                    if meta.path.is_ident("wasm_bindgen") {
-                        found = true;
-                    }
-                    Ok(())
-                });
-                found
-            })
-        }
-
-        for (name, attrs, _inner_types) in info {
-            if has_wasm_bindgen(&attrs) {
-                names.push(name);
-            }
-        }
-        names.sort();
-        names.dedup();
-        // Write one per line
-        let mut buf = String::new();
-        for n in names {
-            buf.push_str(&n);
-            buf.push('\n');
-        }
-        if let Some(parent) = out_path.parent()
-            && let Err(e) = std::fs::create_dir_all(parent) {
-                eprintln!("Warning: Failed to create directory '{}': {}", parent.display(), e);
-            }
-        if let Err(e) = std::fs::write(&out_path, &buf) {
-            eprintln!("Warning: Failed to write to '{}': {}", out_path.display(), e);
-        }
-        println!("cargo::rerun-if-changed={}", out_path.to_string_lossy());
     }
 
     /// Traverses a Rust library `/src` directory and returns
@@ -574,6 +533,9 @@ struct ObjectProperty {
     pub struct ApiCatalog {
         pub structs: Vec<StructEntry>,
         pub methods: Vec<MethodEntry>,
+        /// Every item in the crate with the `cfg` that gates it, binding
+        /// impls included. Generators read their API facts from here.
+        pub reflection: super::reflect::Reflection,
     }
 
     impl ApiCatalog {
@@ -626,10 +588,12 @@ struct ObjectProperty {
         }
     }
 
+    /// Whether `attrs` hold exactly `#[doc(hidden)]`. A doc page under a
+    /// `hidden/` folder, as in `#[lsp_doc(".../hidden/...")]`, does not count.
     pub fn is_doc_hidden(attrs: &[syn::Attribute]) -> bool {
-        attrs.iter().any(|a| {
-            let s = a.to_token_stream().to_string();
-            s.contains("doc") && s.contains("hidden")
+        attrs.iter().any(|a| match &a.meta {
+            syn::Meta::List(list) => list.path.is_ident("doc") && list.tokens.to_string() == "hidden",
+            _ => false,
         })
     }
 
@@ -644,8 +608,23 @@ struct ObjectProperty {
     pub fn build_catalog() -> ApiCatalog {
         let crate_root = super::meta::workspace_root();
         let (entry_path, parsed) = parse_lib_entry_point(&crate_root);
-        let mut catalog = ApiCatalog::default();
+        let mut catalog = ApiCatalog {
+            reflection: super::reflect::Reflection::build(&crate_root),
+            ..Default::default()
+        };
         walk_catalog(&entry_path, parsed.items, &mut catalog, NameFilter::Global);
+        let trait_methods: Vec<MethodEntry> = catalog
+            .reflection
+            .api_trait_methods()
+            .into_iter()
+            .map(|(imp, f)| MethodEntry {
+                type_name: imp.self_ident.clone(),
+                method_name: f.sig.ident.to_string(),
+                has_lsp_doc: has_lsp_doc(&f.attrs),
+                is_doc_hidden: is_doc_hidden(&f.attrs),
+            })
+            .collect();
+        catalog.methods.extend(trait_methods);
         catalog
     }
 

@@ -1,7 +1,7 @@
 import { Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 const model = new Model(mesh, Material.pbr());
 
 const scene = new Scene();

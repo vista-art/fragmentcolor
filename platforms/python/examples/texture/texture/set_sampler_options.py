@@ -4,5 +4,5 @@ renderer = Renderer()
 pixels = [255, 255, 255, 255]
 
 texture = renderer.create_texture(pixels, size=[1, 1])
-opts = {"repeat_x": True, "repeat_y": True, "smooth": True, "compare": None}
+opts = SamplerOptions(repeat_x=True, repeat_y=True, smooth=True, compare=None)
 texture.set_sampler_options(opts)

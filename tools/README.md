@@ -27,6 +27,5 @@ dispatcher at the root, which lists everything when called without arguments:
 | `example` | Interactive picker for the Rust examples |
 | `bump_version` | Bumps the crate version across every manifest and badge |
 
-`js/` holds the Node helpers behind `sync_js` and the docs dependency gate;
-`swift/` holds the macOS stub compiled by `build_ios`. The Rust modules that
-`build.rs` includes stay in `scripts/`.
+`js/` holds the Node helpers behind `sync_js` and the docs dependency gate.
+The Rust modules that `build.rs` includes stay in `scripts/`.

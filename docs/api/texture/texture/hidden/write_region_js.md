@@ -15,7 +15,7 @@ The `region` argument accepts:
 import { Renderer, TextureFormat } from "fragmentcolor";
 
 const renderer = new Renderer();
-const texture = await renderer.createStorageTexture([64, 32], TextureFormat.Rgba, null);
+const texture = await renderer.createStorageTexture([64, 32], TextureFormat.Rgba);
 const bytes = new Uint8Array(64 * 32 * 4);
 
 // Simple sub-rectangle update.

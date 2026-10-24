@@ -1,9 +1,11 @@
 package org.fragmentcolor
 
-import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.runBlocking
-import org.junit.Assume
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -16,48 +18,87 @@ import org.junit.runner.RunWith
 // and `// DOC: (end)` markers get extracted at build time and spliced
 // into the generated MDX pages.
 @RunWith(AndroidJUnit4::class)
-class Healthcheck {
+class Healthcheck : ExampleCase() {
     @Test
     fun headlessRenderSmoke() = runBlocking {
-        // The CI emulator runs Google's `swiftshader_indirect` GPU, whose
-        // Vulkan path advertises features that fail wgpu-hal's
-        // device-creation feature-presence check (returns
-        // `VK_ERROR_FEATURE_NOT_PRESENT` with an empty wgpu-hal
-        // "Missing features:" log line) and whose GLES path doesn't
-        // currently expose a wgpu-compatible adapter through SwiftShader's
-        // EGL implementation. The error surfaces at the first call that
-        // forces device creation — typically `createTextureTarget`,
-        // since `Renderer()` is lazy on the Rust side.
-        //
-        // Skip the runtime smoke (rather than fail) when the emulator's
-        // GPU driver can't produce an adapter: the test still validates
-        // the entire build pipeline (cargo-ndk → AAR → instrumentation
-        // → uniffi class loading), which is the actual regression
-        // surface for the CI job. A real-Vulkan emulator
-        // (e.g. moltenvk on macOS-host runners) would exercise the
-        // runtime path; tracked for v0.11.x follow-up.
-        try {
-            runHeadlessRenderSmoke()
-        } catch (e: Throwable) {
-            val msg = e.message ?: e.toString()
-            if (msg.contains("not available on this device", ignoreCase = true) ||
-                msg.contains("VK_ERROR_FEATURE_NOT_PRESENT", ignoreCase = true) ||
-                msg.contains("no suitable adapter", ignoreCase = true) ||
-                msg.contains("Failed to create VkDevice", ignoreCase = true)
-            ) {
-                Log.w(
-                    "FragmentColorHealthcheck",
-                    "skipping headlessRenderSmoke — emulator GPU driver can't " +
-                        "produce a wgpu adapter: $msg"
-                )
-                Assume.assumeTrue(
-                    "no wgpu-compatible GPU adapter on this emulator",
-                    false
-                )
-                return@runBlocking
+        runHeadlessRenderSmoke()
+    }
+
+    // Shader.set shapes each Kotlin value to the uniform's declared WGSL type.
+    // Setting and reading uniforms touches no GPU, so this runs on any emulator.
+    @Test
+    fun shaderSetShapesValues() {
+        val shader = Shader(
+            """
+            struct Particles { items: array<vec4<f32>, 2> };
+            @group(0) @binding(0) var<uniform> count: u32;
+            @group(0) @binding(1) var<uniform> cell: vec2<i32>;
+            @group(0) @binding(2) var<uniform> rot: mat2x2<f32>;
+            @group(0) @binding(3) var<uniform> offset: vec2<f32>;
+            @group(0) @binding(4) var<storage, read> particles: Particles;
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+              let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+              return vec4f(p[i], 0., 1.);
             }
-            throw e
-        }
+            @fragment fn main() -> @location(0) vec4<f32> {
+              let x = f32(count) + f32(cell.x) + rot[0].x + offset.x + particles.items[0].x;
+              return vec4f(x, 0., 0., 1.);
+            }
+            """.trimIndent()
+        )
+
+        shader.set("count", 3)
+        assertEquals(UniformData.UInt(3u), shader.get("count"))
+        shader.set("cell", intArrayOf(2, -1))
+        assertEquals(UniformData.IVec2(listOf(2, -1)), shader.get("cell"))
+        shader.set("rot", floatArrayOf(1f, 2f, 3f, 4f))
+        assertEquals(UniformData.Mat2(listOf(1f, 2f, 3f, 4f)), shader.get("rot"))
+        shader.set("offset", intArrayOf(5, 6))
+        assertEquals(UniformData.Vec2(listOf(5f, 6f)), shader.get("offset"))
+
+        assertFailsWith<FragmentColorException> { shader.set("offset", floatArrayOf(1f, 2f, 3f)) }
+        assertEquals(UniformData.Vec2(listOf(5f, 6f)), shader.get("offset"))
+        assertFailsWith<FragmentColorException> { shader.set("count", -1) }
+        assertFailsWith<FragmentColorException> { shader.set("offset", ByteArray(8)) }
+
+        val blob = ByteArray(32) { it.toByte() }
+        shader.set("particles", blob)
+        val (bytes) = shader.get("particles") as UniformData.Bytes
+        assertContentEquals(blob, bytes)
+    }
+
+    // Vertex and Instance numbers take the type the shader declares when the mesh attaches.
+    // Attaching reads no GPU, so this runs on any emulator.
+    @Test
+    fun vertexNumbersTakeShaderTypes() {
+        val source = """
+            @vertex fn vs_main(
+              @location(0) position: vec2<f32>,
+              @location(1) id: u32,
+              @location(2) cell: vec2<i32>,
+            ) -> @builtin(position) vec4<f32> {
+              return vec4f(position, f32(id) + f32(cell.x), 1.);
+            }
+            @fragment fn main() -> @location(0) vec4<f32> { return vec4f(1., 0., 0., 1.); }
+            """.trimIndent()
+
+        val vertices = Mesh()
+        vertices.addVertex(Vertex(floatArrayOf(0f, 0f)).set("id", 7).set("cell", intArrayOf(-1, 2)))
+        Shader(source).addMesh(vertices)
+
+        val instanced = Mesh()
+        instanced.addVertex(Vertex(floatArrayOf(0f, 0f)).set("cell", intArrayOf(-1, 2)))
+        instanced.addInstance(mapOf("id" to listOf(7)))
+        Shader(source).addMesh(instanced)
+
+        val negative = Mesh()
+        negative.addVertex(Vertex(floatArrayOf(0f, 0f)).set("id", 7).set("cell", intArrayOf(0, 0)))
+        negative.addVertex(Vertex(floatArrayOf(1f, 0f)).set("id", -1).set("cell", intArrayOf(0, 0)))
+        val error = assertFailsWith<FragmentColorException> { Shader(source).addMesh(negative) }
+        assertTrue(error.message.orEmpty().contains("expected u32, got -1 at vertex 1"), error.message)
+
+        assertFailsWith<FragmentColorException> { Instance().set("offset", listOf(1.0, 2.0, 3.0, 4.0, 5.0)) }
+        assertFailsWith<FragmentColorException> { Instance().set("offset", listOf<Double>()) }
     }
 
     private suspend fun runHeadlessRenderSmoke() {

@@ -2,7 +2,7 @@
 
 Mobile binding for `Pass::set_target`. Accepts a `TargetHandle::Texture`
 variant; window targets are rejected with an error because they cannot be used
-as render-to-texture colour targets.
+as render-to-texture color targets.
 
 Uniffi cannot marshal `impl TryInto<ColorTarget>` across the FFI boundary, so
 this mobile shim dispatches through `TargetHandle`, the same pattern used by

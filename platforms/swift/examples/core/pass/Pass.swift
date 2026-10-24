@@ -1,9 +1,10 @@
 
 import FragmentColor
+import QuartzCore
+let canvas = CAMetalLayer()
 
 let renderer = Renderer()
-// iOS: window/canvas provided by CAMetalLayer at runtime
-let target = try await renderer.createTextureTarget([800, 600])
+let target = try await renderer.createTarget(canvas)
 let shader = Shader.default()
 
 let pass = Pass("First Pass")

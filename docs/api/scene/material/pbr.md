@@ -19,8 +19,9 @@ The shader uses:
   and Schlick Fresnel.
 - **Lambertian diffuse** with energy conservation against the specular
   Fresnel and metalness.
-- **One directional light** (uniform `light`), one camera (uniform `camera`),
-  per-Model transform via the instance-attribute stream.
+- **Up to 32 lights** in the `lights.lights[N]` array (uniform `lights`, with
+  `lights.count` active), one camera (uniform `camera`), and the per-Model
+  transform via the instance-attribute stream.
 - **glTF 2.0 PBR-MR texture sampling**: five sampled maps (`base_color_map`,
   `metallic_roughness_map`, `normal_map`, `occlusion_map`, `emissive_map`)
   combined with their matching factors per the spec.

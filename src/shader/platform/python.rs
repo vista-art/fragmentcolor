@@ -1,43 +1,27 @@
 #![cfg(python)]
 
-use crate::shader::lsp_doc;
+use crate::shader::{UniformInput, lsp_doc};
 use crate::{Shader, ShaderError, UniformData};
 use pyo3::prelude::*;
-use pyo3::types::{PyAnyMethods, PySequence};
+use pyo3::types::{PyAnyMethods, PyByteArray, PyBytes, PyMemoryView};
 
 #[pymethods]
 impl Shader {
     #[new]
     #[lsp_doc("docs/api/core/shader/new.md")]
-    pub fn new_py(input: &Bound<PyAny>) -> Result<Self, ShaderError> {
-        if let Ok(s) = input.extract::<String>() {
-            return Shader::new(s);
-        }
-        if let Ok(v) = input.extract::<Vec<String>>() {
-            return Shader::new(v);
-        }
-        Err(ShaderError::ParseError(
-            "Shader(input): expected str or list[str]".into(),
-        ))
+    pub fn new_py(input: PyShaderInput) -> Result<Self, ShaderError> {
+        Shader::new(input)
     }
 
     /// Async-shaped constructor: fetches each part of `input` from the network
     /// (URL or slug) or reads file paths, then compiles the merged source.
     /// Blocks the Python thread synchronously via `pollster::block_on` —
-    /// call from a thread-pool worker if you want non-blocking behaviour.
+    /// call from a thread-pool worker if you want non-blocking behavior.
     #[staticmethod]
     #[pyo3(name = "fetch")]
     #[lsp_doc("docs/api/core/shader/fetch.md")]
-    pub fn fetch_py(input: &Bound<PyAny>) -> Result<Self, ShaderError> {
-        if let Ok(s) = input.extract::<String>() {
-            return pollster::block_on(Shader::fetch(s));
-        }
-        if let Ok(v) = input.extract::<Vec<String>>() {
-            return pollster::block_on(Shader::fetch(v));
-        }
-        Err(ShaderError::ParseError(
-            "Shader.fetch(input): expected str or list[str]".into(),
-        ))
+    pub fn fetch_py(input: PyShaderInput) -> Result<Self, ShaderError> {
+        pollster::block_on(Shader::fetch(input))
     }
 
     #[staticmethod]
@@ -49,36 +33,14 @@ impl Shader {
 
     #[pyo3(name = "set")]
     #[lsp_doc("docs/api/core/shader/set.md")]
-    pub fn set_py(&self, key: &str, value: Py<PyAny>) -> Result<(), PyErr> {
-        Python::attach(|py| -> Result<(), PyErr> {
-            // If it's a Texture object, map to UniformData::Texture with id only
-            if let Ok(tex) = value.bind(py).cast::<crate::texture::Texture>() {
-                let meta = crate::texture::TextureMeta::with_id_only(tex.borrow().id);
-                return self
-                    .object
-                    .set(key, UniformData::Texture(meta))
-                    .map_err(|e| e.into());
-            }
-            // Look up the expected UniformData variant from the shader's current storage.
-            // This lets us coerce a plain Python list/scalar to the exact right variant
-            // (Vec2/Vec3/Vec4, IVec*, UVec*, Mat*) without relying on declaration order in
-            // the FromPyObject derive, which would always match the first Vec-like variant.
-            let expected = self.object.get_uniform_data(key).ok();
-            let ud = py_value_to_uniform_data(value.bind(py), expected.as_ref())?;
-            self.object.set(key, ud).map_err(|e| e.into())
-        })
+    pub fn set_py(&self, key: &str, value: PyUniformValue<'_>) -> Result<(), PyErr> {
+        Ok(self.object.set_input(key, value.into_input()?)?)
     }
 
     #[pyo3(name = "get")]
     #[lsp_doc("docs/api/core/shader/get.md")]
-    pub fn get_py(&self, key: &str) -> Result<Py<PyAny>, PyErr> {
-        Python::attach(|py| -> Result<Py<PyAny>, PyErr> {
-            let data = self.object.get_uniform_data(key)?;
-
-            let object = data.into_pyobject(py)?;
-
-            Ok(object.unbind())
-        })
+    pub fn get_py(&self, key: &str) -> Result<PyUniformData, ShaderError> {
+        Ok(self.object.get_uniform_data(key)?.into())
     }
 
     #[pyo3(name = "list_uniforms")]
@@ -166,163 +128,102 @@ impl Shader {
     }
 }
 
-/// Convert a Python value to `UniformData`, guided by the expected variant when
-/// the caller passes a plain list or scalar.  Without guidance the `FromPyObject`
-/// derive would always pick the first matching Vec-like variant (e.g. `Vec2`) for
-/// any Python list, causing a discriminant mismatch inside `storage.update`.
-///
-/// Resolution order:
-/// 1. If `expected` is Some, use its discriminant to coerce the Python value.
-/// 2. Fall back to the `FromPyObject` derive (handles all other cases).
-fn py_value_to_uniform_data(
-    value: &Bound<'_, PyAny>,
-    expected: Option<&UniformData>,
-) -> PyResult<UniformData> {
-    // If the caller passes a sequence (list/tuple) and we know the target variant, coerce.
-    if let Some(expected) = expected {
-        // Try to read as a sequence of floats
-        if let Ok(seq) = value.cast::<PySequence>() {
-            let len = seq.len().unwrap_or(0);
-            match expected {
-                UniformData::Vec2(_) => {
-                    let v: Vec<f32> = seq.extract()?;
-                    return Ok(UniformData::Vec2(v));
-                }
-                UniformData::Vec3(_) => {
-                    let v: Vec<f32> = seq.extract()?;
-                    return Ok(UniformData::Vec3(v));
-                }
-                UniformData::Vec4(_) => {
-                    let v: Vec<f32> = seq.extract()?;
-                    return Ok(UniformData::Vec4(v));
-                }
-                UniformData::IVec2(_) => {
-                    let v: Vec<i32> = seq.extract()?;
-                    return Ok(UniformData::IVec2(v));
-                }
-                UniformData::IVec3(_) => {
-                    let v: Vec<i32> = seq.extract()?;
-                    return Ok(UniformData::IVec3(v));
-                }
-                UniformData::IVec4(_) => {
-                    let v: Vec<i32> = seq.extract()?;
-                    return Ok(UniformData::IVec4(v));
-                }
-                UniformData::UVec2(_) => {
-                    let v: Vec<u32> = seq.extract()?;
-                    return Ok(UniformData::UVec2(v));
-                }
-                UniformData::UVec3(_) => {
-                    let v: Vec<u32> = seq.extract()?;
-                    return Ok(UniformData::UVec3(v));
-                }
-                UniformData::UVec4(_) => {
-                    let v: Vec<u32> = seq.extract()?;
-                    return Ok(UniformData::UVec4(v));
-                }
-                UniformData::Mat2(_) => {
-                    let v: Vec<f32> = seq.extract()?;
-                    return Ok(UniformData::Mat2(v));
-                }
-                UniformData::Mat3(_) => {
-                    let v: Vec<f32> = seq.extract()?;
-                    return Ok(UniformData::Mat3(v));
-                }
-                UniformData::Mat4(_) => {
-                    let v: Vec<f32> = seq.extract()?;
-                    return Ok(UniformData::Mat4(v));
-                }
-                // For unknown expected types, fall through to length-based inference below.
-                _ => {}
-            }
+/// A `Shader(...)` or `Shader.fetch(...)` input from Python: one source, or a list of parts.
+/// Any other type raises `TypeError`.
+#[derive(FromPyObject)]
+pub enum PyShaderInput {
+    #[pyo3(annotation = "str")]
+    Source(String),
+    #[pyo3(annotation = "list[str]")]
+    Parts(Vec<String>),
+}
 
-            // No `expected` match: infer from sequence length.
-            // Try f32 first, then i32, then u32.
-            if let Ok(v) = seq.extract::<Vec<f32>>() {
-                return Ok(match len {
-                    2 => UniformData::Vec2(v),
-                    3 => UniformData::Vec3(v),
-                    4 => UniformData::Vec4(v),
-                    9 => UniformData::Mat3(v),
-                    16 => UniformData::Mat4(v),
-                    _ => UniformData::Vec2(v),
-                });
-            }
-            if let Ok(v) = seq.extract::<Vec<i32>>() {
-                return Ok(match len {
-                    2 => UniformData::IVec2(v),
-                    3 => UniformData::IVec3(v),
-                    4 => UniformData::IVec4(v),
-                    _ => UniformData::IVec2(v),
-                });
-            }
-            if let Ok(v) = seq.extract::<Vec<u32>>() {
-                return Ok(match len {
-                    2 => UniformData::UVec2(v),
-                    3 => UniformData::UVec3(v),
-                    4 => UniformData::UVec4(v),
-                    _ => UniformData::UVec2(v),
-                });
-            }
+impl From<PyShaderInput> for crate::shader::ShaderInput {
+    fn from(input: PyShaderInput) -> Self {
+        match input {
+            PyShaderInput::Source(source) => source.into(),
+            PyShaderInput::Parts(parts) => parts.into(),
         }
+    }
+}
 
-        // Scalar coercions guided by expected type
-        match expected {
-            UniformData::Float(_) => {
-                if let Ok(v) = value.extract::<f32>() {
-                    return Ok(UniformData::Float(v));
-                }
+/// A `Shader.set` value from Python, tried in this order.
+/// The key's declared WGSL type does the rest. Vec extraction follows
+/// the sequence protocol, so a NumPy array counts as a sequence of numbers,
+/// and a nested list or a 2-D array as a matrix, one column per inner list.
+#[derive(FromPyObject)]
+pub enum PyUniformValue<'py> {
+    #[pyo3(annotation = "Texture")]
+    Texture(PyRef<'py, crate::texture::Texture>),
+    #[pyo3(annotation = "bool")]
+    Bool(bool),
+    #[pyo3(annotation = "bytes")]
+    Bytes(Bound<'py, PyBytes>),
+    #[pyo3(annotation = "bytearray")]
+    ByteArray(Bound<'py, PyByteArray>),
+    #[pyo3(annotation = "memoryview")]
+    MemoryView(Bound<'py, PyMemoryView>),
+    #[pyo3(annotation = "Sequence[float]")]
+    Numbers(Vec<f64>),
+    #[pyo3(annotation = "Sequence[Sequence[float]]")]
+    Matrix(Vec<Vec<f64>>),
+    #[pyo3(annotation = "float")]
+    Number(f64),
+}
+
+impl PyUniformValue<'_> {
+    /// The loose input this value stands for.
+    /// A memoryview is copied out with `tobytes`, whatever its item format.
+    fn into_input(self) -> PyResult<UniformInput> {
+        Ok(match self {
+            Self::Texture(texture) => UniformInput::Texture(texture.id),
+            Self::Bool(flag) => UniformInput::Bool(flag),
+            Self::Bytes(bytes) => UniformInput::Bytes(bytes.as_bytes().to_vec()),
+            Self::ByteArray(bytes) => UniformInput::Bytes(bytes.to_vec()),
+            Self::MemoryView(view) => UniformInput::Bytes(view.call_method0("tobytes")?.extract()?),
+            Self::Numbers(numbers) => UniformInput::Numbers(numbers),
+            // Each inner list is one column, as in Rust's [[f32; 4]; 4].
+            Self::Matrix(columns) => UniformInput::Numbers(columns.concat()),
+            Self::Number(number) => UniformInput::Number(number),
+        })
+    }
+}
+
+/// A `Shader.get` result for Python, in the shapes a key's current bytes decode to.
+/// Struct, array, and buffer roots decode to raw bytes, so they arrive as `bytes`.
+#[derive(IntoPyObject)]
+pub enum PyUniformData {
+    Bool(bool),
+    UInt(u32),
+    Int(i32),
+    Float(f32),
+    Floats(Vec<f32>),
+    UInts(Vec<u32>),
+    Ints(Vec<i32>),
+    Texture(crate::texture::TextureMeta),
+    Sampler(crate::texture::SamplerInfo),
+    Bytes(Vec<u8>),
+}
+
+impl From<UniformData> for PyUniformData {
+    fn from(data: UniformData) -> Self {
+        use UniformData as U;
+        match data {
+            U::Bool(value) => Self::Bool(value),
+            U::UInt(value) => Self::UInt(value),
+            U::Int(value) => Self::Int(value),
+            U::Float(value) => Self::Float(value),
+            U::Vec2(v) | U::Vec3(v) | U::Vec4(v) | U::Mat2(v) | U::Mat3(v) | U::Mat4(v) => {
+                Self::Floats(v)
             }
-            UniformData::Int(_) => {
-                if let Ok(v) = value.extract::<i32>() {
-                    return Ok(UniformData::Int(v));
-                }
-            }
-            UniformData::UInt(_) => {
-                if let Ok(v) = value.extract::<u32>() {
-                    return Ok(UniformData::UInt(v));
-                }
-            }
-            UniformData::Bool(_) => {
-                if let Ok(v) = value.extract::<bool>() {
-                    return Ok(UniformData::Bool(v));
-                }
-            }
-            _ => {}
-        }
-    } else {
-        // No expected type at all: try length-based inference for sequences.
-        if let Ok(seq) = value.cast::<PySequence>() {
-            let len = seq.len().unwrap_or(0);
-            if let Ok(v) = seq.extract::<Vec<f32>>() {
-                return Ok(match len {
-                    2 => UniformData::Vec2(v),
-                    3 => UniformData::Vec3(v),
-                    4 => UniformData::Vec4(v),
-                    9 => UniformData::Mat3(v),
-                    16 => UniformData::Mat4(v),
-                    _ => UniformData::Vec2(v),
-                });
-            }
-            if let Ok(v) = seq.extract::<Vec<i32>>() {
-                return Ok(match len {
-                    2 => UniformData::IVec2(v),
-                    3 => UniformData::IVec3(v),
-                    4 => UniformData::IVec4(v),
-                    _ => UniformData::IVec2(v),
-                });
-            }
-            if let Ok(v) = seq.extract::<Vec<u32>>() {
-                return Ok(match len {
-                    2 => UniformData::UVec2(v),
-                    3 => UniformData::UVec3(v),
-                    4 => UniformData::UVec4(v),
-                    _ => UniformData::UVec2(v),
-                });
+            U::UVec2(v) | U::UVec3(v) | U::UVec4(v) => Self::UInts(v),
+            U::IVec2(v) | U::IVec3(v) | U::IVec4(v) => Self::Ints(v),
+            U::Texture(meta) => Self::Texture(meta),
+            U::Sampler(info) => Self::Sampler(info),
+            U::Bytes(bytes) => Self::Bytes(bytes),
+            shape @ (U::Array(_) | U::Struct(_) | U::Storage(_) | U::PushConstant(_)) => {
+                Self::Bytes(shape.to_bytes())
             }
         }
     }
-
-    // Final fallback: let the FromPyObject derive do its best.
-    value.extract::<UniformData>()
 }

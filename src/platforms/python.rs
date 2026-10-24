@@ -1,6 +1,8 @@
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 
+use crate::error::PythonError;
+
 use crate::{
     Pass, Renderer, ScreenRegion, Shader, Size,
     target::{PyTextureTarget, RenderCanvasFrame, RenderCanvasTarget, rendercanvas_context_hook},
@@ -22,7 +24,6 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<crate::mesh::Mesh>()?;
     m.add_class::<crate::mesh::Vertex>()?;
     m.add_class::<crate::mesh::Instance>()?;
-    m.add_class::<crate::mesh::PyVertexValue>()?;
 
     // Mesh primitives
     m.add_class::<crate::mesh::Quad>()?;
@@ -46,6 +47,8 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<crate::TextureFormat>()?;
     m.add_class::<crate::texture::Mipmap>()?;
     m.add_class::<crate::SamplerOptions>()?;
+    m.add_class::<crate::CompareFunction>()?;
+    m.add_class::<crate::TextureUsage>()?;
 
     // TextureTarget (headless) API
     m.add_class::<PyTextureTarget>()?;
@@ -55,11 +58,26 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<RenderCanvasTarget>()?;
     m.add_class::<RenderCanvasFrame>()?;
 
-    // Custom error type
+    // Custom error types: FragmentColorError and its subclasses
+    let py = m.py();
     m.add(
         "FragmentColorError",
-        m.py().get_type::<crate::error::PyFragmentColorError>(),
+        py.get_type::<crate::error::PyFragmentColorError>(),
     )?;
+    m.add(
+        "InvalidInputError",
+        py.get_type::<crate::error::InvalidInputError>(),
+    )?;
+    m.add(
+        "UnsupportedMipmapFormatError",
+        py.get_type::<crate::error::UnsupportedMipmapFormatError>(),
+    )?;
+    m.add(
+        "MalformedImageError",
+        py.get_type::<crate::error::MalformedImageError>(),
+    )?;
+    m.add("SceneLoadError", PythonError::SceneLoad.class(py)?)?;
+    m.add("LightError", PythonError::Light.class(py)?)?;
 
     Ok(())
 }

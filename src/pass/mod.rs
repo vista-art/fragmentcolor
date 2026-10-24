@@ -11,32 +11,16 @@ use wasm_bindgen::prelude::*;
 
 mod platform;
 
-#[cfg(mobile)]
-pub use platform::mobile::MobilePassInput;
-
 pub mod error;
 pub use error::*;
 
-#[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass(from_py_object))]
-// Resource Definitions
-#[derive(Debug, Clone)]
-pub struct PassInput {
-    pub(crate) load: bool,
-    pub(crate) color: Color,
-}
-
-impl PassInput {
-    pub fn load() -> Self {
-        Self {
-            load: true,
-            color: Color::transparent(),
-        }
-    }
-
-    pub fn clear(color: Color) -> Self {
-        Self { load: false, color }
-    }
+/// What a render pass does with its target before drawing.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum PassInput {
+    /// Keep what the target holds.
+    Load,
+    /// Clear the target to this color.
+    Clear(Color),
 }
 
 #[derive(Debug)]
@@ -100,15 +84,7 @@ impl Pass {
 
     #[lsp_doc("docs/api/core/pass/load_previous.md")]
     pub fn load_previous(&self) {
-        *self.object.input.write() = PassInput {
-            load: true,
-            color: Color::transparent(),
-        }
-    }
-
-    #[lsp_doc("docs/api/core/pass/get_input.md")]
-    pub fn get_input(&self) -> PassInput {
-        self.object.get_input()
+        self.object.load_previous();
     }
 
     #[lsp_doc("docs/api/core/pass/add_shader.md")]
@@ -123,7 +99,7 @@ impl Pass {
 
     /// Absorb a [`SceneObject`](crate::scene::SceneObject) — Model, Camera,
     /// Light, or any custom node — into this pass. Each implementation owns
-    /// its own attach behaviour: Model queues a draw, Camera and Light wire
+    /// its own attach behavior: Model queues a draw, Camera and Light wire
     /// their uniforms into every shader the pass renders (current and
     /// future). Chainable; errors short-circuit the chain.
     #[lsp_doc("docs/api/core/pass/add.md")]
@@ -148,7 +124,7 @@ impl Pass {
     }
 
     #[lsp_doc("docs/api/core/pass/set_clear_color.md")]
-    pub fn set_clear_color(&self, color: [f32; 4]) {
+    pub fn set_clear_color(&self, color: impl Into<Color>) {
         self.object.set_clear_color(color);
     }
 
@@ -192,7 +168,12 @@ impl Pass {
 impl Renderable for Pass {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
         PassObject::ensure_flat_current(&self.object);
-        self.object.flat.read().clone()
+        let required = self.object.flat.read().clone();
+        required
+            .iter()
+            .cloned()
+            .chain([self.object.clone()])
+            .collect()
     }
     fn roots(&self) -> Arc<[Arc<PassObject>]> {
         vec![self.object.clone()].into()
@@ -403,6 +384,8 @@ pub struct PassObject {
     // DAG metadata and cached traversal
     pub(crate) dependencies: RwLock<Vec<Arc<PassObject>>>,
     pub(crate) dependency_names: RwLock<std::collections::HashSet<Arc<str>>>,
+    // Every pass this one requires, deps first. Never this pass:
+    // an Arc to itself would keep the pass and its shaders alive forever.
     pub(crate) flat: RwLock<Arc<[Arc<PassObject>]>>,
     pub(crate) built_version: AtomicU64,
 }
@@ -416,7 +399,7 @@ impl PassObject {
             model_entries: RwLock::new(Vec::new()),
             scene_objects: RwLock::new(Vec::new()),
             viewport: RwLock::new(None),
-            input: RwLock::new(PassInput::clear(Color::transparent())),
+            input: RwLock::new(PassInput::Clear(Color::transparent())),
             required_buffer_size: RwLock::new(0),
             camera_snapshot: RwLock::new(None),
             pass_type: RwLock::new(pass_type),
@@ -432,7 +415,12 @@ impl PassObject {
 
     /// Set the clear color for this pass; changes input to a clear operation.
     pub fn set_clear_color(&self, color: impl Into<Color>) {
-        *self.input.write() = PassInput::clear(color.into());
+        *self.input.write() = PassInput::Clear(color.into());
+    }
+
+    /// Keep what the target holds instead of clearing it.
+    pub(crate) fn load_previous(&self) {
+        *self.input.write() = PassInput::Load;
     }
 
     /// Set compute dispatch size for compute passes.
@@ -443,11 +431,6 @@ impl PassObject {
     /// Get the compute dispatch size for compute passes.
     pub fn compute_dispatch(&self) -> (u32, u32, u32) {
         *self.compute_dispatch.read()
-    }
-
-    /// Get the current PassInput (load or clear).
-    pub fn get_input(&self) -> PassInput {
-        self.input.read().clone()
     }
 
     /// Add a shader to this pass. The shader must be compatible with the pass type.
@@ -481,20 +464,23 @@ impl PassObject {
         *self.depth_target.write() = Some(id);
     }
 
-    /// Add a mesh to the last compatible shader in this pass.
-    /// If no compatible shader is found, an error is returned.
+    /// Add a mesh to the last shader in this pass that accepts it.
+    /// When none does, the error carries the reason the last shader gave.
     pub fn add_mesh(&self, mesh: &Mesh) -> Result<(), PassError> {
         let shaders = self.shaders.read();
-
-        // loop backwards and find a compatible shader
+        let mut first_error = None;
         for shader in shaders.iter().rev() {
             match shader.add_mesh(mesh.object.clone()) {
-                Ok(mesh_added) => return Ok(mesh_added),
-                Err(_) => continue,
+                Ok(()) => return Ok(()),
+                Err(error) => {
+                    first_error.get_or_insert(error);
+                }
             }
         }
-
-        Err(PassError::NoCompatibleShader)
+        match first_error {
+            Some(error) => Err(PassError::NoCompatibleShader(error)),
+            None => Err(PassError::NoShader),
+        }
     }
 
     pub fn set_viewport(&self, viewport: impl Into<ScreenRegion>) {
@@ -579,7 +565,7 @@ impl PassObject {
         false
     }
 
-    // Ensure cached deps-first flat slice is up-to-date with global graph version
+    // Ensure cached deps-first slice of required passes is up-to-date with global graph version
     pub(crate) fn ensure_flat_current(self_arc: &Arc<PassObject>) {
         let global = GRAPH_VERSION.load(Ordering::Relaxed);
         let built = self_arc.built_version.load(Ordering::Relaxed);
@@ -604,7 +590,10 @@ impl PassObject {
             }
             out.push(Arc::clone(n_arc));
         }
-        dfs(self_arc, &mut seen, &mut out);
+        let deps = self_arc.dependencies.read().clone();
+        for dep in deps.iter() {
+            dfs(dep, &mut seen, &mut out);
+        }
         let slice: Arc<[Arc<PassObject>]> = out.into_boxed_slice().into();
         *self_arc.flat.write() = slice;
         self_arc.built_version.store(global, Ordering::Relaxed);
@@ -735,24 +724,29 @@ mod tests {
         assert!(!pass.object.is_compute());
     }
 
-    // Story: set_clear_color changes PassInput to a clear op; load_previous flips back to load.
+    // Story: set_clear_color makes the pass clear its target; load_previous makes it keep it.
     #[test]
     fn toggles_input_between_clear_and_load() {
-        // Arrange
         let pass = Pass::new("p");
+        let input = |pass: &Pass| *pass.object.input.read();
 
-        // Act: set a clear color
         pass.set_clear_color([0.1, 0.2, 0.3, 0.4]);
-        let after_clear = pass.get_input();
+        assert_eq!(
+            input(&pass),
+            PassInput::Clear(Color::from([0.1, 0.2, 0.3, 0.4]))
+        );
 
-        // Act: switch to load previous contents
         pass.load_previous();
-        let after_load = pass.get_input();
+        assert_eq!(input(&pass), PassInput::Load);
 
-        // Assert
-        assert!(!after_clear.load);
-        assert_eq!(after_clear.color, Color::from([0.1, 0.2, 0.3, 0.4]));
-        assert!(after_load.load);
+        // Any Color form works: three channels are opaque, and a Color passes through.
+        pass.set_clear_color([1.0, 0.0, 0.0]);
+        assert_eq!(
+            input(&pass),
+            PassInput::Clear(Color::from([1.0, 0.0, 0.0, 1.0]))
+        );
+        pass.set_clear_color(Color::white());
+        assert_eq!(input(&pass), PassInput::Clear(Color::white()));
     }
 
     // Story: setting a viewport is stored and can be read back.
@@ -834,5 +828,85 @@ mod tests {
         let e3 = n.require(&m).unwrap_err();
         let s3 = format!("{}", e3);
         assert!(s3.contains("cycle"), "expected cycle error: {s3}");
+    }
+
+    // Story: a pass runs after every pass it requires, and each pass runs once.
+    #[test]
+    fn require_chain_runs_dependencies_first() {
+        let color = Pass::new("color");
+        let blur_x = Pass::new("blur_x");
+        blur_x.require(&color).expect("blur_x requires color");
+        let blur_y = Pass::new("blur_y");
+        blur_y.require(&blur_x).expect("blur_y requires blur_x");
+        let compose = Pass::new("compose");
+        compose.require(&color).expect("compose requires color");
+        compose.require(&blur_y).expect("compose requires blur_y");
+
+        let names: Vec<String> = compose
+            .passes()
+            .iter()
+            .map(|pass| pass.name.to_string())
+            .collect();
+
+        assert_eq!(names, ["color", "blur_x", "blur_y", "compose"]);
+    }
+
+    // Story: dropping a rendered pass chain frees every pass and the shaders only they held.
+    #[test]
+    fn dropped_pass_frees_its_shaders() {
+        pollster::block_on(async move {
+            // Arrange: a draw pass that requires a compute pass
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([4u32, 4u32])
+                .await
+                .expect("texture target");
+            let source = r#"
+                @group(0) @binding(0) var<storage, read_write> particles: array<f32, 64>;
+                @compute @workgroup_size(64)
+                fn cs(@builtin(global_invocation_id) id: vec3<u32>) {
+                    particles[id.x] += 1.0;
+                }
+            "#;
+            let simulation = Shader::new(source).expect("compute shader");
+            let drawing = Shader::default();
+            let simulate = Pass::from_shader("simulate", &simulation);
+            let draw = Pass::from_shader("draw", &drawing);
+            draw.require(&simulate).expect("draw requires simulate");
+            let passes = [
+                Arc::downgrade(&simulate.object),
+                Arc::downgrade(&draw.object),
+            ];
+            let shaders = [
+                Arc::downgrade(&simulation.object),
+                Arc::downgrade(&drawing.object),
+            ];
+
+            // Act
+            renderer.render(&draw, &target).expect("render");
+            let bytes = renderer
+                .read_storage(&simulation, "particles")
+                .await
+                .expect("read_storage");
+            drop((simulation, drawing, simulate, draw));
+
+            // Assert: the required pass ran, then nothing outlived its handle
+            assert!(
+                bytes
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .all(|chunk| f32::from_le_bytes(*chunk) == 1.0),
+                "the required pass did not run"
+            );
+            assert!(
+                passes.iter().all(|pass| pass.upgrade().is_none()),
+                "a pass leaked"
+            );
+            assert!(
+                shaders.iter().all(|shader| shader.upgrade().is_none()),
+                "a shader leaked"
+            );
+        });
     }
 }

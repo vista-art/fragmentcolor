@@ -1,8 +1,8 @@
 
 import { Shader, Pass, Renderer } from "fragmentcolor";
+const canvas = document.createElement("canvas");
 
 const renderer = new Renderer();
-const canvas = document.createElement('canvas');
 const target = await renderer.createTarget(canvas);
 const shader = Shader.default();
 

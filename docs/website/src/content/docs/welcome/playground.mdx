@@ -1,34 +1,27 @@
 ---
 title: Playground
-description: Play with FragmentColor in this REPL environment.
+description: Edit WGSL and JavaScript in the browser and watch FragmentColor rebuild the shader as you type.
+template: splash
 ---
 
-## Try it out (coming soon)
+import Playground from "../../../components/Playground.astro";
 
-If you are reading this, you arrived here in the very early days of development.
+<Playground />
 
-You will soon be able to play with the library in this REPL environment.
+## How it works
 
-You can [follow the project on GitHub](https://github.com/vista-art/fragmentcolor) to stay tuned.
+Every demo is a WGSL shader and a `main.js` that drives it. Both are yours to edit. The playground rebuilds the program a quarter second after you stop typing. When a build fails, the error shows under the editor and the last version that built keeps drawing.
 
-This is a test for the Repl component itself:
+`main.js` exports two functions. `setup(renderer, target)` runs once per build and returns whatever the program keeps between frames. `frame(state, renderer, target, time, size, pointer)` runs on every animation frame.
 
-import Repl from "../../../components/Repl.astro";
+The read-only `index.js` tab holds the page code that calls them, the same steps the playground takes. It starts FragmentColor, creates a `Renderer` and a target from the canvas, and awaits `setup` once. Then, on every animation frame, it hands `frame` the seconds since `setup` returned, the canvas size in device pixels (at most two per CSS pixel), and the pointer in canvas pixels with y pointing down. Until the pointer moves over the canvas, `frame` gets the center. The imports are plain Vite syntax (`import SOURCE from "./shader.wgsl?raw"`), so `main.js`, the shader files, and `index.js` run unchanged as a Vite project.
 
-<Repl initialCode={`// You can write code here and see the result in the right panel.
+The **Library** bar edits the `const LIBRARY = [...]` line in `main.js`. Each entry names a function from the [shader library](/shaders/), and [`Shader.fetch`](/api/core/shader/) loads those functions ahead of your WGSL, so the shader can call `worley2` or `heart` without defining it.
 
-// Create gradient background
-const gradient = ctx.createLinearGradient(0, 0, 200, 420);
-gradient.addColorStop(0, 'cyan');
-gradient.addColorStop(1, 'blue');
-ctx.fillStyle = gradient;
-ctx.fillRect(0, 0, 600, 420);
+The sliders follow `main.js`. A key gets a slider when `setup` sets it, the shader declares it, and `frame` doesn't set it again on every frame. [`listKeys`](/api/core/shader/) tells the playground which keys the shader declares, and [`get`](/api/core/shader/) gives each slider its starting value. Delete a `set` line from `setup` and its slider disappears with the next build. Add one and a slider appears. A `// min..max` comment on a struct field sets the slider range, and a `vec3` or `vec4` field whose name contains `color` gets a color picker.
 
-// Draw a rotating rectangle
-ctx.save();
-ctx.translate(180, 210);
-ctx.rotate(Date.now() / 1000);
-ctx.fillStyle = 'yellow';
-ctx.fillRect(-50, -50, 100, 100);
-ctx.restore();
-`} />
+Click a number in the code and a slider appears next to it. A color literal such as `vec3<f32>(0.55, 0.5, 0.48)` gets a swatch that opens a color picker. On a `shader.set` value in `main.js`, the inline slider and the generated control move together without a rebuild, and moving a generated control rewrites that value in the code. The two share one range. Type a value past either end and both sliders stretch to reach it.
+
+The last six demos, from Nebula to Signal, are longer shaders built from the library. The pointer steers them as it does the other demos, and their `press`, `pulse`, `drag`, and `zoom` uniforms are sliders.
+
+The Rust, Python, Swift, and Kotlin tabs show the same program written against each binding. They follow the library, the shader files, and the current slider values. Edit the WGSL or `main.js` to change them.

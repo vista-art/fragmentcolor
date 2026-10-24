@@ -1,4 +1,5 @@
 import FragmentColor
+import Foundation
+let image = try Data(contentsOf: URL(fileURLWithPath: "examples/assets/logo.png"))
 let renderer = Renderer()
-let image = "/healthcheck/public/favicon.png"
 let tex = try await renderer.createTexture(image)

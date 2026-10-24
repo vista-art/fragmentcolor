@@ -7,8 +7,9 @@
 //! Kotlin callers can safely invoke `size()`, `resize()`, and `get_image()`
 //! on a shared `Arc`.
 //!
-//! `WindowTarget` → `MobileWindowTarget`
-//! `TextureTarget` → `MobileTextureTarget`
+//! Swift and Kotlin see each wrapper under the name of the type it wraps:
+//! `MobileWindowTarget` exports as `WindowTarget` and `MobileTextureTarget`
+//! as `TextureTarget`. The extension files keep the old names as typealiases.
 //!
 //! The iOS and Android constructors return these wrapper types; `TargetHandle`
 //! references them so that `Renderer::render_mobile` continues to work.
@@ -27,10 +28,10 @@ use crate::{Size, SurfaceError, Target, TargetFrame, TextureTarget, WindowTarget
 /// Mobile-facing wrapper around [`WindowTarget`].
 ///
 /// Exposes `size()`, `resize(width, height)`, and `get_image()` to Swift and
-/// Kotlin. `WindowTarget::get_image()` always returns an empty byte array —
-/// window-backed surfaces are not readable; use a
-/// [`MobileTextureTarget`] for pixel-readback.
+/// Kotlin. `get_image()` returns an empty byte array, because a window surface
+/// can't be read back. Render to a `TextureTarget` to read pixels.
 #[derive(Debug, uniffi::Object)]
+#[uniffi(name = "WindowTarget")]
 pub struct MobileWindowTarget {
     inner: Mutex<WindowTarget>,
 }
@@ -44,7 +45,7 @@ impl MobileWindowTarget {
     }
 }
 
-#[uniffi::export]
+#[uniffi::export(name = "WindowTarget")]
 impl MobileWindowTarget {
     /// Returns the current size of the window surface in pixels.
     #[uniffi::method(name = "size")]
@@ -74,7 +75,7 @@ impl MobileWindowTarget {
     }
 }
 
-impl crate::target::TargetInternal for MobileWindowTarget {
+impl crate::target::FrameSource for MobileWindowTarget {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
         self.inner.lock().get_current_frame()
     }
@@ -103,6 +104,7 @@ impl Target for MobileWindowTarget {
 /// Kotlin. `get_image()` returns a packed RGBA8 byte array of the offscreen
 /// texture contents.
 #[derive(Debug, uniffi::Object)]
+#[uniffi(name = "TextureTarget")]
 pub struct MobileTextureTarget {
     inner: RwLock<TextureTarget>,
 }
@@ -125,7 +127,7 @@ impl MobileTextureTarget {
     }
 }
 
-#[uniffi::export]
+#[uniffi::export(name = "TextureTarget")]
 impl MobileTextureTarget {
     /// Returns the current size of the offscreen texture in pixels.
     #[uniffi::method(name = "size")]
@@ -168,7 +170,7 @@ impl MobileTextureTarget {
     }
 }
 
-impl crate::target::TargetInternal for MobileTextureTarget {
+impl crate::target::FrameSource for MobileTextureTarget {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
         self.inner.read().get_current_frame()
     }

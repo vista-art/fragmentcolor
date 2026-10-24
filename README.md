@@ -1,161 +1,231 @@
-# FragmentColor
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/website/src/assets/logo.svg">
+    <img alt="FragmentColor" src="docs/website/src/assets/logo-black.svg" width="320">
+  </picture>
+</p>
 
-[FragmentColor](https://fragmentcolor.org) is a cross-platform GPU programming library that is both **easy to use** and **powerful**.
+<p align="center"><strong>Universal GPU abstraction for Rust, JavaScript, Python, Swift, and Kotlin.</strong></p>
 
-The API encourages a simple shader composition workflow, where you can use **WGSL** or **GLSL** shaders as the source of truth
-for visual consistency across platforms, while **avoiding the verbosity of modern GPU APIs**.
+<p align="center">
+  <a href="https://crates.io/crates/fragmentcolor"><img alt="crates.io" src="https://img.shields.io/crates/v/fragmentcolor"></a>
+  <a href="https://www.npmjs.com/package/fragmentcolor"><img alt="npm" src="https://img.shields.io/npm/v/fragmentcolor"></a>
+  <a href="https://pypi.org/project/fragmentcolor/"><img alt="PyPI" src="https://img.shields.io/pypi/v/fragmentcolor"></a>
+  <a href="https://docs.rs/fragmentcolor"><img alt="docs.rs" src="https://img.shields.io/docsrs/fragmentcolor"></a>
+  <a href="LICENSE.md"><img alt="MIT license" src="https://img.shields.io/crates/l/fragmentcolor"></a>
+</p>
 
-It has bindings for [**JavaScript**](./platforms/web/README.md) (WASM), [**Python**](./platforms/python/README.md), **Swift** (iOS / macOS), and **Kotlin** (Android).
-It targets each platform's native graphics API: **Vulkan**, **Metal**, **DirectX**, **OpenGL**, **WebGL**, and **WebGPU**.
-See [Platform Support](#platform-support) for details.
+<p align="center">
+  <a href="https://fragmentcolor.org/welcome">Get started</a> ·
+  <a href="https://fragmentcolor.org/api">API reference</a> ·
+  <a href="https://fragmentcolor.org/shaders">Shader library</a> ·
+  <a href="https://fragmentcolor.org">Playground</a>
+</p>
 
-Check the website for the Getting Started guide and full reference:
+FragmentColor is a universal GPU abstraction library where you can simply write some WGSL or GLSL code, **forget about manual pipeline setup**, set uniforms by key-value, and it will render on every device in existence:
 
-- **Documentation:** <https://fragmentcolor.org/welcome>
-- **API Reference:** <https://fragmentcolor.org/api>
-
-## Install
-
-- Rust: add the crate to your Cargo.toml
-
-```toml
-[dependencies]
-fragmentcolor = "0.12.5"
+```rust
+let shader = Shader::new(wgsl)?;
+shader.set("my_uniform", 0.5)?; // reflected from source
+renderer.render(&shader, &target)?;
 ```
 
-We also support JavaScript and Python:
+And that's it.
 
-- JavaScript users, see: [platforms/web/README.md](./platforms/web/README.md)
-- Python users, see: [platforms/python/README.md](./platforms/python/README.md)
+It runs on Vulkan, Metal, DirectX 12, OpenGL, WebGL2, and WebGPU through [wgpu](https://wgpu.rs).
+
+## Why FragmentColor
+
+<p align="center">
+  <img src="docs/media/playground.webp" width="928" alt="The FragmentColor playground: a shader edit rebuilds the canvas as it is typed, a generated slider changes a uniform, and the Rust tab shows the same program">
+</p>
+
+In the [playground](https://fragmentcolor.org), the canvas rebuilds as you type, the sliders come from the shader's own uniforms, and every demo shows the same program in all five languages.
+
+- **The shader is the source of truth.** Uniforms, textures, samplers, storage buffers, and push constants come from the shader itself. `shader.set("light.color", [1.0, 0.8, 0.6])` writes the field it names.
+- **One API in five languages.** Rust, JavaScript, Python, Swift, and Kotlin share the same calls.
+- **A shader library built in.** Over 200 WGSL functions for noise, distance fields, color, lighting, and post effects compose into your shader by name.
+- **Passes and compute.** Chain render and compute passes, render into textures, and read the results back.
+- **Native surfaces.** A window on desktop, a `<canvas>` on the web, a `CAMetalLayer` on iOS, and a `Surface` on Android.
 
 ## Quick start
 
-### Rust
+Add the crate to `Cargo.toml`:
+
+```toml
+[dependencies]
+fragmentcolor = "0.12.6"
+```
+
+Then render a shader. Its one uniform, `color`, is ready to set as soon as the shader builds:
 
 ```rust
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, Shader};
 
-use fragmentcolor::{Renderer, Shader, Pass};
-
-// Example window. We officially support winit.
-let window = fragmentcolor::headless_window(800, 600);
-
-// Initializes a renderer and a target compatible with the OS window.
 let renderer = Renderer::new();
-let target = renderer.create_target(&window).await?;
+let target = renderer.create_texture_target([800, 600]).await?;
 
-// You can pass the shader as a source string, a file path, a registry slug,
-// or an https URL pointing at a .wgsl file.
-let circle = Shader::new("./path/to/circle.wgsl")?;
-let triangle = Shader::new("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl")?;
-let wgsl = r#"
-struct VertexOutput {
-    @builtin(position) coords: vec4<f32>,
-}
+let shader = Shader::new(r#"
+    @group(0) @binding(0)
+    var<uniform> color: vec4<f32>;
 
-struct MyStruct {
-    my_field: vec3<f32>,
-}
+    @vertex
+    fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
+        var pos = array<vec2<f32>, 3>(
+            vec2<f32>(-1.0, -1.0),
+            vec2<f32>( 3.0, -1.0),
+            vec2<f32>(-1.0,  3.0)
+        );
+        return vec4<f32>(pos[index], 0.0, 1.0);
+    }
 
-@group(0) @binding(0)
-var<uniform> my_struct: MyStruct;
+    @fragment
+    fn fs_main() -> @location(0) vec4<f32> {
+        return color;
+    }
+"#)?;
 
-@group(0) @binding(1)
-var<uniform> my_vec2: vec2<f32>;
-
-@vertex
-fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
-    const vertices = array(
-        vec2( -1., -1.),
-        vec2(  3., -1.),
-        vec2( -1.,  3.)
-    );
-    return VertexOutput(vec4<f32>(vertices[in_vertex_index], 0.0, 1.0));
-}
-
-@fragment
-fn fs_main() -> @location(0) vec4<f32> {
-    return vec4<f32>(my_struct.my_field, 1.0);
-}
-"#;
-
-let shader = Shader::new(wgsl)?;
-
-// The library binds and updates the uniforms automatically
-shader.set("my_struct.my_field", [0.1f32, 0.8, 0.9])?;
-shader.set("my_vec2", [1.0f32, 1.0])?;
-
-// One shader is all you need to render
+shader.set("color", [1.0, 0.2, 0.4, 1.0])?;
 renderer.render(&shader, &target)?;
-
-// But you can also combine multiple shaders in a render Pass
-let pass = Pass::new("single pass");
-pass.add_shader(&circle);
-pass.add_shader(&triangle);
-pass.add_shader(&shader);
-renderer.render(&pass, &target)?;
-
-// You can build arbitrary multi-pass graphs by declaring Pass dependencies
-let blurx = Pass::new("blur x");
-blurx.add_shader(&Shader::new("./shaders/blur_x.wgsl")?);
-blurx.require(&pass)?; // pass renders before blurx
-
-// Finally, any iterable of Pass can be rendered in order
-let passes = vec![pass, Pass::new("GUI pass")];
-renderer.render(&passes, &target)?;
-
-// To animate, simply update the uniforms in a loop
-for i in 0..10 {
-    circle.set("position", [i, i])?;
-    renderer.render(&passes, &target)?;
-}
-
-# Ok(())
-# }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
 
-### Running examples
+### The same calls in every language
 
-See the examples project under `examples/rust` for implementation details.
+With `source` holding the WGSL above:
+
+<details>
+<summary>JavaScript</summary>
+
+```js
+import { Renderer, Shader } from "fragmentcolor";
+
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget([800, 600]);
+
+const shader = new Shader(source);
+shader.set("color", [1.0, 0.2, 0.4, 1.0]);
+renderer.render(shader, target);
+```
+
+</details>
+
+<details>
+<summary>Python</summary>
+
+```python
+from fragmentcolor import Renderer, Shader
+
+renderer = Renderer()
+target = renderer.create_texture_target([800, 600])
+
+shader = Shader(source)
+shader.set("color", [1.0, 0.2, 0.4, 1.0])
+renderer.render(shader, target)
+```
+
+</details>
+
+<details>
+<summary>Swift</summary>
+
+```swift
+import FragmentColor
+
+let renderer = Renderer()
+let target = try await renderer.createTextureTarget([800, 600])
+
+let shader = try Shader(source)
+try shader.set("color", [1.0, 0.2, 0.4, 1.0])
+try renderer.render(shader, target)
+```
+
+</details>
+
+<details>
+<summary>Kotlin</summary>
+
+```kotlin
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val target = renderer.createTextureTarget(listOf(800u, 600u))
+
+val shader = Shader(source)
+shader.set("color", listOf(1.0f, 0.2f, 0.4f, 1.0f))
+renderer.render(shader, target)
+```
+
+</details>
+
+### Draw into a window
+
+Swap the texture target for a window target. Each platform passes its own surface:
+
+| Language   | Surface                   | Call                                     |
+| ---------- | ------------------------- | ---------------------------------------- |
+| Rust       | a `winit` window          | `renderer.create_target(window).await?`  |
+| JavaScript | a `<canvas>`              | `await renderer.createTarget(canvas)`    |
+| Python     | a `RenderCanvas`          | `renderer.create_target(canvas)`         |
+| Swift      | a `CAMetalLayer`          | `try await renderer.createTarget(layer)` |
+| Kotlin     | an `android.view.Surface` | `renderer.createTarget(surface)`         |
+
+## Compose shaders from the library
+
+Name the functions you need next to your own source. The parts join into one module before it compiles:
+
+```rust
+let shader = Shader::new([
+    "sdf2d/circle",   // fn circle(p: vec2<f32>, r: f32) -> f32
+    "noise/simplex2", // fn simplex2(v: vec2<f32>) -> f32
+    my_shader,        // your entry points, which call both
+])?;
+```
+
+Native builds carry the library in the binary and work offline. On the web, `await Shader.fetch([...])` loads the parts from fragmentcolor.org.
+
+The playground's **Library** bar edits that list. Pick a function, call it, and the shader rebuilds with it:
+
+<p align="center">
+  <img src="docs/media/compose.webp" width="928" alt="Adding sdf2d/equilateral_triangle from the library picker, calling it in place of the star, and removing sdf2d/star">
+</p>
+
+| <img src="docs/website/public/shaders/noise/worley2.png" width="110" alt="noise/worley2"> | <img src="docs/website/public/shaders/sdf2d/heart.png" width="110" alt="sdf2d/heart"> | <img src="docs/website/public/shaders/pattern/truchet.png" width="110" alt="pattern/truchet"> | <img src="docs/website/public/shaders/gradient/palette_iq.png" width="110" alt="gradient/palette_iq"> | <img src="docs/website/public/shaders/lighting/cook_torrance.png" width="110" alt="lighting/cook_torrance"> | <img src="docs/website/public/shaders/postfx/crt_curvature.png" width="110" alt="postfx/crt_curvature"> |
+| :-: | :-: | :-: | :-: | :-: | :-: |
+| `noise/worley2` | `sdf2d/heart` | `pattern/truchet` | `gradient/palette_iq` | `lighting/cook_torrance` | `postfx/crt_curvature` |
+
+[Browse the shader library](https://fragmentcolor.org/shaders) for every function and its preview.
+
+## Install
+
+| Language   | Install                                                                                                      |
+| ---------- | ------------------------------------------------------------------------------------------------------------ |
+| Rust       | `cargo add fragmentcolor`                                                                                    |
+| JavaScript | `npm install fragmentcolor`                                                                                  |
+| Python     | `pip install fragmentcolor`                                                                                  |
+| Swift      | Add `https://github.com/vista-art/fragmentcolor` as a Swift Package dependency                              |
+| Kotlin     | Download `fragmentcolor-<version>.aar` from the [latest release](https://github.com/vista-art/fragmentcolor/releases/latest) |
+
+The [JavaScript](./platforms/web/README.md) and [Python](./platforms/python/README.md) packages have READMEs of their own.
+
+## Try the examples
+
+The `examples/rust` crate holds runnable examples, from a single triangle to a million particles that compute shaders move and draw:
 
 ```bash
-> ./fc example
-
-Available FragmentColor examples:
-=================================
- 1. app_healthcheck
- 2. circle
- 3. compute_texture
- 4. fullscreen_triangle
- 5. mesh_triangle
- 6. mesh_two_textured_quads
- 7. multiobject
- 8. multipass
- 9. multipass_shadows
-10. particles
-11. particles_1m
-12. particles_compute
-13. particles_splat
-14. particles_splat_3d
-15. push_constant_color
-16. texture
-17. triangle
-
-Enter example name, number, 'q'/'quit' to quit: 
+./fc example              # pick one from the list
+./fc example triangle
+./fc example particles
 ```
-
-## Documentation & website
-
-- Docs' source of truth lives in `docs/api`. The Rust code uses `#[lsp_doc]` to pull these docs into editor hovers.
-- The website lives under `docs/website` and is automatically generated from `docs/api` at build time.
-- Method pages include JavaScript and Python examples extracted from the healthcheck scripts.
-
-For contribution guidelines and the release process, see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Platform support
 
-Platform support is aligned with upstream [wgpu](https://github.com/gfx-rs/wgpu):
+<p align="center">
+  <img src="docs/website/public/playground/two-platforms.webp" width="800" alt="The Cells shader running natively in a Rust window on macOS and in a Swift app on iOS">
+</p>
+
+Above, one shader runs natively in a Rust window on macOS and in a Swift app on iOS, from the same WGSL and the same calls.
+
+Platform support follows upstream [wgpu](https://github.com/gfx-rs/wgpu):
 
 | API    | Windows      | Linux/Android   | macOS/iOS | Web (wasm)  |
 | ------ | ------------ | --------------- | --------- | ----------- |
@@ -170,70 +240,12 @@ Platform support is aligned with upstream [wgpu](https://github.com/gfx-rs/wgpu)
 📐 = Requires the [ANGLE](http://angleproject.org/) translation layer (GL ES 3.0 only)  
 🌋 = Requires the [MoltenVK](https://vulkan.lunarg.com/sdk/home#mac) translation layer
 
-## Limitations (planned features)
+## Learn more
 
-- See the [Roadmap](./ROADMAP.md) and [Changelog](./CHANGELOG.md) for planned features and known limitations.
+- [Getting started](https://fragmentcolor.org/welcome) and the [API reference](https://fragmentcolor.org/api), with every example in all five languages
+- [Roadmap](./ROADMAP.md) for what comes next, and the [Changelog](./CHANGELOG.md) for what changed
+- [Contributing](./CONTRIBUTING.md) for building, testing, and the release process
 
-## Common workflows
+## License
 
-### Rust core
-
-```bash
-# Build
-cargo build
-
-# Test (all)
-./fc test
-
-# Lint & Format
-./fc clippy
-
-# Healthcheck (all platforms)
-./fc healthcheck
-
-# Filtered Healthcheck
-./fc healthcheck web
-./fc healthcheck py
-```
-
-### Web (WASM)
-
-```bash
-# Build WASM package (wasm-pack target web) and sync into local JS examples
-./fc build_web        # add --debug for a debug build
-
-# Run JS demos (Vite dev server) and open browser
-./fc run_web repl     # or: ./fc run_web gallery | ./fc run_web visual
-
-# Manual alternative
-pnpm --dir examples/javascript install
-pnpm --dir examples/javascript dev
-```
-
-### Python binding (local dev)
-
-```bash
-# Quick run helper: build wheel into dist/, create venv, and run an example
-./fc run_py main      # or: ./fc run_py multiobject | ./fc run_py headless
-
-# Manual alternative
-pipx install maturin
-maturin develop
-pip install glfw rendercanvas
-python examples/python/main.py
-```
-
-### Docs site (Astro/Starlight)
-
-- Docs source of truth lives in docs/api and is referenced from code via `#[lsp_doc]`.
-- Examples on method pages are sliced from the healthcheck scripts; no filesystem reads in docs.
-- Doc examples follow async + pollster patterns.
-
-```bash
-./fc run_docs                      # from root, runs the dev server
-
-# or
-pnpm --dir docs/website install
-pnpm --dir docs/website dev      # dev server
-pnpm --dir docs/website build    # static build
-```
+FragmentColor is released under the [MIT License](./LICENSE.md).

@@ -1,12 +1,15 @@
+use crate::pass::PassInput;
 use crate::{PassObject, ShaderHash, Target, TargetFrame, TextureData, TextureTarget, UniformData};
-use crate::{Size, WindowTarget};
+use crate::{ScreenRegion, Size, WindowTarget};
 use dashmap::DashMap;
 use lsp_doc::lsp_doc;
-use parking_lot::RwLock;
+use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+
+use sampler_pairs::SamplerSources;
 
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
@@ -15,6 +18,7 @@ use wasm_bindgen::prelude::*;
 use pyo3::prelude::*;
 
 pub mod platform;
+#[cfg(python)]
 pub use platform::*;
 
 pub mod error;
@@ -24,12 +28,13 @@ pub mod renderable;
 pub use renderable::*;
 
 mod buffer_pool;
-pub use buffer_pool::*;
+pub(crate) use buffer_pool::*;
 
 mod texture_pool;
-pub use texture_pool::*;
+pub(crate) use texture_pool::*;
 pub(crate) mod background;
 mod external_texture;
+mod sampler_pairs;
 mod storage_read;
 mod unregister;
 
@@ -173,9 +178,9 @@ impl Renderer {
         Ok(crate::texture::Texture::new(context, object, id))
     }
 
-    /// Create a storage-class texture from a [`crate::TextureInput`]. Same
-    /// transport as `create_texture` — one vocabulary across the API. The
-    /// `From<T>` impls cover the common shapes:
+    /// Create a storage-class texture from a [`crate::TextureInput`], the
+    /// same input type `create_texture` takes. The `From<T>` impls cover
+    /// the common shapes:
     ///
     /// - `(size, format)` → empty storage texture, no initial data.
     /// - `(size, format, bytes)` → storage texture pre-seeded with `bytes`.
@@ -183,8 +188,8 @@ impl Renderer {
     /// `options.usage` overrides the default storage usage mask
     /// (`STORAGE | TEXTURE | COPY_SRC | COPY_DST`); use
     /// `TextureOptions::with_usage(...)` for the typed builder. `options.size`
-    /// is **required** for this entry — there's no source to infer dimensions
-    /// from. Returns [`crate::texture::TextureError::InvalidInput`] when
+    /// is **required** for this entry, since there's no source to infer
+    /// dimensions from. Returns [`RendererError::CreateTextureError`] when
     /// missing.
     #[lsp_doc("docs/api/core/renderer/create_storage_texture.md")]
     pub async fn create_storage_texture(
@@ -253,7 +258,7 @@ impl Renderer {
             wgpu_size,
             wgpu_format,
             usage,
-            crate::texture::SamplerOptions::default(),
+            options.sampler,
         )?;
 
         if let Some(bytes) = bytes_opt {
@@ -300,16 +305,17 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
     pub fn unregister_texture(
         &self,
-        texture_id: crate::texture::TextureId,
+        texture_id: impl Into<crate::texture::TextureId>,
     ) -> Result<(), RendererError> {
-        unregister::unregister_texture(self, texture_id)
+        unregister::unregister_texture(self, texture_id.into())
     }
 
     #[lsp_doc("docs/api/core/renderer/read_texture.md")]
     pub async fn read_texture(
         &self,
-        texture_id: crate::texture::TextureId,
+        texture_id: impl Into<crate::texture::TextureId>,
     ) -> Result<Vec<u8>, RendererError> {
+        let texture_id = texture_id.into();
         let context = self
             .context
             .read()
@@ -336,9 +342,8 @@ impl Renderer {
     /// loader-built Scenes, and so on. After `load` returns, `render` against
     /// the same renderable is GPU-only.
     ///
-    /// `render` runs `load` automatically the first time it sees a renderable
-    /// with pending uploads, so calling `load` is optional; reach for it when
-    /// you want to amortize the decode + upload cost outside the render loop.
+    /// On native targets `render` runs `load` first, so calling it is optional
+    /// there. On wasm `render` can't block, so await `load` before the first frame.
     #[lsp_doc("docs/api/core/renderer/load.md")]
     pub async fn load(&self, renderable: &impl Renderable) -> Result<(), RendererError> {
         for pass in renderable.passes().iter() {
@@ -367,14 +372,13 @@ impl Renderer {
     /// to recover the typed view.
     ///
     /// Returns [`RendererError::StorageBindingNotFound`] when the shader does
-    /// not declare `binding`, or when no render pass has yet materialised the
+    /// not declare `binding`, or when no render pass has yet materialized the
     /// GPU-side buffer (the registry is populated lazily on first bind).
     ///
     /// This is intentionally explicit and async because the underlying
     /// `map_async` is async on every platform — keeping it visible at the
     /// call site so callers don't accidentally pay a GPU sync per frame.
-    /// The cheap CPU-mirror accessors ([`Shader::get`], [`Shader::get_bytes`])
-    /// remain available for "what did I last set on the CPU side" reads.
+    /// [`Shader::get`] stays the cheap read of what was last set on the CPU side.
     #[lsp_doc("docs/api/core/renderer/read_storage.md")]
     pub async fn read_storage(
         &self,
@@ -400,11 +404,9 @@ impl Renderer {
         target: &impl Target,
     ) -> Result<(), RendererError> {
         // Drain any pending texture uploads from lazy Material setters before
-        // we touch the GPU. Cheap when nothing is pending — the load future
-        // doesn't await anything in that case. On native we block via
-        // `futures::executor`; on wasm there's no blocking executor, so the
-        // wasm async wrapper (`render_js`) is responsible for awaiting
-        // `load` explicitly.
+        // we touch the GPU. Cheap when nothing is pending, since the load future
+        // then awaits nothing. Wasm has no blocking executor, so pending uploads
+        // wait there until the caller awaits `load`.
         #[cfg(not(wasm))]
         futures::executor::block_on(self.load(renderable))?;
         if let Some(context) = self.context.read().as_ref() {
@@ -470,7 +472,8 @@ impl Renderer {
 
         let adapter = self.adapter.read();
         let adapter_ref = adapter.as_ref().ok_or(InitializationError::AdapterNotSet)?;
-        let config = configure_surface(&context.device, adapter_ref, &surface, &size);
+        let config =
+            platform::all::configure_surface(&context.device, adapter_ref, &surface, &size)?;
 
         // Negotiate and store effective sample count (currently default wanted=1; configurable later)
         if let Some(adapter_ref) = adapter.as_ref() {
@@ -500,8 +503,8 @@ impl Renderer {
             context.clone()
         } else {
             let instance = self.instance().await;
-            let adapter = request_adapter(instance.as_ref(), surface).await?;
-            let (device, queue) = request_device(&adapter).await?;
+            let adapter = platform::all::request_adapter(instance.as_ref(), surface).await?;
+            let (device, queue) = platform::all::request_device(&adapter).await?;
             let context = Arc::new(RenderContext::new(device, queue));
             let flags = adapter.get_downlevel_capabilities().flags;
             context.aligned_uniform_bindings.store(
@@ -585,22 +588,26 @@ struct RenderPipelineKey {
     /// `Material::double_sided` flips the `cull_mode` on the primitive
     /// state, so it also baked into the pipeline.
     double_sided: bool,
+    /// Vertex buffer layouts of the shader's mesh, if any.
+    /// Shaders that share a source can feed meshes with different strides,
+    /// attribute offsets, or step modes, and each layout bakes into the pipeline.
+    vertex_layouts: Option<VertexLayouts>,
 }
 
-// Key for caching compute pipelines
+/// Key for caching compute pipelines
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ComputePipelineKey {
     shader_hash: ShaderHash,
-    layout_signature: u64,
+    /// The layout entries the pipeline's bind group layouts are built from.
+    bind_group_entries: BindGroupEntries,
 }
 
-#[doc(hidden)]
 #[derive(Debug)]
 /// Draws things on the screen or a texture.
 ///
 /// It owns and manages all GPU resources, serving as the
 /// main graphics context provider for the application.
-pub struct RenderContext {
+pub(crate) struct RenderContext {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
 
@@ -651,19 +658,19 @@ struct RenderScratch {
 
 #[derive(Debug)]
 pub(crate) struct PbrDefaults {
-    /// Five (view, sampler) pairs the renderer binds to the PBR-named slots
+    /// Five views the renderer binds to the PBR-named slots
     /// when a Material::pbr Shader doesn't have a user-supplied texture for
     /// the slot. The byte payload is chosen so `factor * sample = factor`
     /// (binding the default is equivalent to "no map").
-    pub(crate) base_color: (wgpu::TextureView, wgpu::Sampler),
-    pub(crate) metallic_roughness: (wgpu::TextureView, wgpu::Sampler),
-    pub(crate) normal: (wgpu::TextureView, wgpu::Sampler),
-    pub(crate) occlusion: (wgpu::TextureView, wgpu::Sampler),
-    pub(crate) emissive: (wgpu::TextureView, wgpu::Sampler),
+    pub(crate) base_color: wgpu::TextureView,
+    pub(crate) metallic_roughness: wgpu::TextureView,
+    pub(crate) normal: wgpu::TextureView,
+    pub(crate) occlusion: wgpu::TextureView,
+    pub(crate) emissive: wgpu::TextureView,
 }
 
 impl PbrDefaults {
-    fn slot(&self, uniform_name: &str) -> Option<&(wgpu::TextureView, wgpu::Sampler)> {
+    fn slot(&self, uniform_name: &str) -> Option<&wgpu::TextureView> {
         match uniform_name {
             "base_color_map" => Some(&self.base_color),
             "metallic_roughness_map" => Some(&self.metallic_roughness),
@@ -713,10 +720,6 @@ impl RenderContext {
         if let Some(existing) = self.pbr_defaults.read().clone() {
             return existing;
         }
-        let sampler = self.device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("PBR default sampler"),
-            ..Default::default()
-        });
         let make = |label: &'static str, rgba: [u8; 4]| -> wgpu::TextureView {
             let tex = self.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(label),
@@ -755,26 +758,14 @@ impl RenderContext {
         };
         // Defaults chosen so `factor * sample = factor` in the shader.
         let bundle = Arc::new(PbrDefaults {
-            base_color: (
-                make("PBR default base_color", [255, 255, 255, 255]),
-                sampler.clone(),
-            ),
+            base_color: make("PBR default base_color", [255, 255, 255, 255]),
             // glTF stores metallic in .b and roughness in .g; the shader's
             // .bgr swizzle puts metallic in .r (=1) and roughness in .g (=1).
-            metallic_roughness: (
-                make("PBR default metallic_roughness", [0, 255, 255, 255]),
-                sampler.clone(),
-            ),
+            metallic_roughness: make("PBR default metallic_roughness", [0, 255, 255, 255]),
             // Neutral tangent-space normal (0, 0, 1) after the * 2.0 - 1.0 decode.
-            normal: (
-                make("PBR default normal", [128, 128, 255, 255]),
-                sampler.clone(),
-            ),
-            occlusion: (
-                make("PBR default occlusion", [255, 255, 255, 255]),
-                sampler.clone(),
-            ),
-            emissive: (make("PBR default emissive", [255, 255, 255, 255]), sampler),
+            normal: make("PBR default normal", [128, 128, 255, 255]),
+            occlusion: make("PBR default occlusion", [255, 255, 255, 255]),
+            emissive: make("PBR default emissive", [255, 255, 255, 255]),
         });
         *self.pbr_defaults.write() = Some(bundle.clone());
         bundle
@@ -792,9 +783,21 @@ impl RenderContext {
                 label: Some("Command Encoder"),
             });
 
-        let frame = self.acquire_frame(target)?;
-
         let pass_list = renderable.passes();
+
+        // Compute passes never draw into the target, so a
+        // render made only of compute passes acquires no frame.
+        let frame = match pass_list.iter().any(|pass| !pass.is_compute()) {
+            true => Some(self.acquire_frame(target)?),
+            false => None,
+        };
+
+        // Uploads land at the next submit, so every pass recorded
+        // before it needs its own pool offsets. Rewind once per render:
+        // a rewind per pass makes every pass read the last pass's uniforms.
+        self.buffer_pool.write().reset();
+        self.storage_pool.write().reset();
+
         // Apple's Metal driver does not reliably flush tile-based storage-texture writes between
         // two compute passes recorded in the same command buffer, so a subsequent sampled
         // (`texture_2d<…>`) read returns zeros on Apple Silicon. Submitting the encoder between
@@ -818,14 +821,16 @@ impl RenderContext {
             }
             if pass.is_compute() {
                 self.process_compute_pass(&mut encoder, pass)?
-            } else {
-                self.process_render_pass(&mut encoder, pass, frame.as_ref(), target.size().into())?
+            } else if let Some(frame) = frame.as_deref() {
+                self.process_render_pass(&mut encoder, pass, frame, target.size().into())?
             }
         }
 
         self.queue.submit(Some(encoder.finish()));
 
-        if frame.auto_present() {
+        if let Some(frame) = frame
+            && frame.auto_present()
+        {
             frame.present(&self.queue);
         }
 
@@ -851,6 +856,46 @@ impl RenderContext {
 }
 
 impl RenderContext {
+    /// The persistent buffer behind the storage root `name`.
+    /// It is created, or recreated at a new `span`, with the shader's bytes,
+    /// and takes a fresh upload only when `set` has changed them since the last frame.
+    fn storage_buffer(&self, shader: &crate::ShaderObject, name: &str, span: u64) -> wgpu::Buffer {
+        let existing = self
+            .storage_registry
+            .get(name)
+            .filter(|entry| entry.value().1 == span)
+            .map(|entry| entry.value().0.clone());
+        let created = existing.is_none();
+        let buffer = existing.unwrap_or_else(|| {
+            let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(&format!("Persistent Storage Buffer: {name}")),
+                size: span,
+                usage: wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::COPY_DST
+                    | wgpu::BufferUsages::COPY_SRC,
+                mapped_at_creation: false,
+            });
+            self.storage_registry
+                .insert(name.to_string(), (buffer.clone(), span));
+            buffer
+        });
+        // An upgradable read blocks a `set` until the dirty flag is cleared, so no update is lost.
+        let storage = shader.storage.upgradable_read();
+        let dirty = storage.is_storage_dirty(name);
+        if created || dirty {
+            match storage.get_bytes(name) {
+                Some(bytes) => self.queue.write_buffer(&buffer, 0, bytes),
+                None => self
+                    .queue
+                    .write_buffer(&buffer, 0, &vec![0u8; span as usize]),
+            }
+        }
+        if dirty {
+            RwLockUpgradableReadGuard::upgrade(storage).clear_storage_dirty(name);
+        }
+        buffer
+    }
+
     pub(crate) fn register_texture(
         &self,
         texture: Arc<crate::TextureObject>,
@@ -957,7 +1002,7 @@ impl RenderContext {
         // non-deterministic. The linear-scan over a `Vec` is fine for
         // typical pass sizes — most passes have a single-digit number of
         // `(shader, mesh)` groups. The Vec lives on `self.scratch` so the
-        // allocation amortises across frames.
+        // allocation amortizes across frames.
         let mut scratch = self.scratch.write();
         let opaque_groups = &mut scratch.opaque_groups;
         for (_, bytes) in opaque_groups.iter_mut() {
@@ -1069,9 +1114,6 @@ impl RenderContext {
         frame: &dyn TargetFrame,
         size: wgpu::Extent3d,
     ) -> Result<(), RendererError> {
-        self.buffer_pool.write().reset();
-        self.storage_pool.write().reset();
-
         // Snapshot per-Model transforms for this Pass into GPU instance
         // buffers BEFORE begin_render_pass — the wgpu::Buffer handles need
         // to outlive the render_pass. Opaque/Mask entries collapse to one
@@ -1082,9 +1124,9 @@ impl RenderContext {
         let model_overrides = &pass_draws.opaque_overrides;
         let blend_draws = &pass_draws.blend_draws;
 
-        let load_op = match pass.get_input().load {
-            true => wgpu::LoadOp::Load,
-            false => wgpu::LoadOp::Clear(pass.get_input().color.into()),
+        let load_op = match *pass.input.read() {
+            PassInput::Load => wgpu::LoadOp::Load,
+            PassInput::Clear(color) => wgpu::LoadOp::Clear(color.into()),
         };
 
         // Choose color attachment: per-pass override or default frame view.
@@ -1093,16 +1135,20 @@ impl RenderContext {
         let mut resolve_target: Option<&wgpu::TextureView> = None;
 
         let mut color_format = frame.format();
+        let mut extent = size;
         let mut pass_texture_view = None;
         if let Some(id) = *pass.color_target.read() {
             if let Some(texture) = self.get_texture(&id) {
                 pass_texture_view = Some(texture.create_view());
                 color_format = texture.format();
                 sample_count = texture.inner.sample_count();
+                extent = texture.inner.size();
             } else {
                 return Err(RendererError::TextureNotFoundError(id));
             }
         }
+
+        let viewport = *pass.viewport.read();
 
         let mut texture_view: &wgpu::TextureView =
             if let Some(pass_view) = pass_texture_view.as_ref() {
@@ -1112,7 +1158,7 @@ impl RenderContext {
             };
 
         // Keep MSAA resources alive for the duration of the pass
-        let mut msaa_texture: Option<wgpu::Texture> = None;
+        let mut msaa_texture: Option<(wgpu::Texture, TextureKey)> = None;
         let mut _msaa_view: Option<wgpu::TextureView> = None;
         if pass_texture_view.is_none() && sample_count > 1 {
             let key = TextureKey::new(
@@ -1126,7 +1172,7 @@ impl RenderContext {
                 pool.acquire(&self.device, key)
             };
             _msaa_view = Some(texture.create_view(&wgpu::TextureViewDescriptor::default()));
-            msaa_texture = Some(texture);
+            msaa_texture = Some((texture, key));
             texture_view = match _msaa_view.as_ref() {
                 Some(v) => v,
                 None => return Err(RendererError::MsaaViewMissing),
@@ -1191,6 +1237,25 @@ impl RenderContext {
         };
         let mut render_pass = encoder.begin_render_pass(&descriptor);
 
+        if let Some(region) = viewport {
+            // The scissor crops to the attachment, and a region that misses it
+            // leaves the pass its clear and no draws.
+            let scissor = region.clip(extent.width, extent.height);
+            if scissor.width() == 0 || scissor.height() == 0 {
+                self.release_msaa(msaa_texture);
+                return Ok(());
+            }
+            let (x, y, width, height) =
+                viewport_rect(&region, self.device.limits().max_texture_dimension_2d);
+            render_pass.set_viewport(x, y, width, height, 0.0, 1.0);
+            render_pass.set_scissor_rect(
+                scissor.min_x,
+                scissor.min_y,
+                scissor.width(),
+                scissor.height(),
+            );
+        }
+
         let required_size = *pass.required_buffer_size.read();
         self.buffer_pool
             .write()
@@ -1231,6 +1296,7 @@ impl RenderContext {
                 sample_count,
                 alpha_mode,
                 double_sided,
+                vertex_layouts: layouts.clone(),
             };
             let cached_pipeline = self
                 .render_pipelines
@@ -1241,7 +1307,7 @@ impl RenderContext {
                         shader,
                         color_format,
                         sample_count,
-                        layouts,
+                        layouts.as_ref(),
                         depth_format,
                         alpha_mode,
                         double_sided,
@@ -1257,8 +1323,7 @@ impl RenderContext {
                 storage_buffers: Vec<(u32, buffer_pool::BufferLocation)>,
                 // persistent storage buffers (buffer, span)
                 persistent_storage_buffers: Vec<(u32, wgpu::Buffer, u64)>,
-                last_texture_sampler: Option<wgpu::Sampler>,
-                samplers: Vec<(u32, wgpu::Sampler)>,
+                sampler_sources: SamplerSources,
                 views: Vec<(u32, wgpu::TextureView)>,
             }
 
@@ -1274,20 +1339,27 @@ impl RenderContext {
                                 &format!("texture view for binding '{}'", name),
                                 || tex.create_view(),
                             )?;
-                            let sampler = tex.sampler();
                             let group_entry = groups.entry(uniform.group).or_default();
                             group_entry.views.push((uniform.binding, view));
-                            group_entry.last_texture_sampler = Some(sampler);
+                            if meta.sampled {
+                                group_entry
+                                    .sampler_sources
+                                    .add_texture(uniform.binding, tex);
+                            }
                         } else {
                             // No user texture — fall back to the PBR default for
                             // the known glTF slot names so `Material::pbr` works
-                            // without the caller supplying every map.
+                            // without the caller supplying every map. The 1x1
+                            // defaults look the same under any sampler, so they
+                            // don't pair with one.
                             let defaults =
                                 pbr_defaults_handle.get_or_insert_with(|| self.pbr_defaults());
-                            if let Some((view, sampler)) = defaults.slot(name) {
-                                let group_entry = groups.entry(uniform.group).or_default();
-                                group_entry.views.push((uniform.binding, view.clone()));
-                                group_entry.last_texture_sampler = Some(sampler.clone());
+                            if let Some(view) = defaults.slot(name) {
+                                groups
+                                    .entry(uniform.group)
+                                    .or_default()
+                                    .views
+                                    .push((uniform.binding, view.clone()));
                             } else {
                                 log::warn!(
                                     "Texture handle {:?} not found for uniform {}",
@@ -1298,117 +1370,18 @@ impl RenderContext {
                         }
                     }
                     UniformData::Sampler(info) => {
-                        // Create the appropriate sampler type explicitly so it always matches the layout
-                        let sampler = if info.comparison {
-                            self.device.create_sampler(&wgpu::SamplerDescriptor {
-                                label: Some("Default Comparison Sampler"),
-                                address_mode_u: wgpu::AddressMode::ClampToEdge,
-                                address_mode_v: wgpu::AddressMode::ClampToEdge,
-                                address_mode_w: wgpu::AddressMode::ClampToEdge,
-                                mag_filter: wgpu::FilterMode::Linear,
-                                min_filter: wgpu::FilterMode::Linear,
-                                mipmap_filter: wgpu::MipmapFilterMode::Linear,
-                                lod_min_clamp: 0.0,
-                                lod_max_clamp: 100.0,
-                                compare: Some(wgpu::CompareFunction::LessEqual),
-                                anisotropy_clamp: 1,
-                                border_color: None,
-                            })
-                        } else {
-                            self.device
-                                .create_sampler(&wgpu::SamplerDescriptor::default())
-                        };
                         groups
                             .entry(uniform.group)
                             .or_default()
-                            .samplers
-                            .push((uniform.binding, sampler));
+                            .sampler_sources
+                            .add_sampler(uniform.binding, info.comparison);
                     }
                     UniformData::Storage(data) => {
                         if let Some(crate::shader::uniform::StorageEntry { span, .. }) =
                             data.first()
                         {
-                            // Acquire persistent storage buffer and upload only if necessary
                             let span_u64 = *span as u64;
-                            // Obtain initial bytes for creation or update.
-                            // Blocking read: waits briefly (microseconds) if a `set` is
-                            // mid-write. `try_read` here would surface as `Busy`
-                            // mid-render under stress (writer thread holds the
-                            // write lock for the duration of one `update` call).
-                            // No deadlock risk — render doesn't re-enter `set` on
-                            // the same thread.
-                            let init_bytes: Vec<u8> = {
-                                let s = shader.storage.read();
-                                s.get_bytes(name)
-                                    .map(|b| b.to_vec())
-                                    .unwrap_or_else(|| vec![0u8; span_u64 as usize])
-                            };
-                            // Create or get persistent buffer
-                            let buf = {
-                                // Check existing
-                                if let Some(entry) = self.storage_registry.get(name) {
-                                    let (existing, existing_span) = entry.value();
-                                    if *existing_span != span_u64 {
-                                        drop(entry);
-                                        // Recreate with new span
-                                        let buffer =
-                                            self.device.create_buffer(&wgpu::BufferDescriptor {
-                                                label: Some(&format!(
-                                                    "Persistent Storage Buffer: {}",
-                                                    name
-                                                )),
-                                                size: span_u64,
-                                                usage: wgpu::BufferUsages::STORAGE
-                                                    | wgpu::BufferUsages::COPY_DST
-                                                    | wgpu::BufferUsages::COPY_SRC,
-                                                mapped_at_creation: false,
-                                            });
-                                        self.queue.write_buffer(&buffer, 0, &init_bytes);
-                                        self.storage_registry
-                                            .insert(name.to_string(), (buffer.clone(), span_u64));
-                                        buffer
-                                    } else {
-                                        existing.clone()
-                                    }
-                                } else {
-                                    // Create
-                                    let buffer =
-                                        self.device.create_buffer(&wgpu::BufferDescriptor {
-                                            label: Some(&format!(
-                                                "Persistent Storage Buffer: {}",
-                                                name
-                                            )),
-                                            size: span_u64,
-                                            usage: wgpu::BufferUsages::STORAGE
-                                                | wgpu::BufferUsages::COPY_DST
-                                                | wgpu::BufferUsages::COPY_SRC,
-                                            mapped_at_creation: false,
-                                        });
-                                    self.queue.write_buffer(&buffer, 0, &init_bytes);
-                                    self.storage_registry
-                                        .insert(name.to_string(), (buffer.clone(), span_u64));
-                                    buffer
-                                }
-                            };
-                            // If CPU blob is marked dirty, upload and clear flag.
-                            // Blocking acquisitions (read for the snapshot, write
-                            // for the dirty-flag clear) — see comment on the
-                            // earlier `init_bytes` block for the rationale.
-                            let need_upload = {
-                                let s = shader.storage.read();
-                                s.is_storage_dirty(name)
-                            };
-                            if need_upload {
-                                let bytes: Vec<u8> = {
-                                    let s = shader.storage.read();
-                                    s.get_bytes(name)
-                                        .map(|b| b.to_vec())
-                                        .unwrap_or_else(|| vec![0u8; span_u64 as usize])
-                                };
-                                self.queue.write_buffer(&buf, 0, &bytes);
-                                let mut s = shader.storage.write();
-                                s.clear_storage_dirty(name);
-                            }
+                            let buf = self.storage_buffer(shader, name, span_u64);
 
                             groups
                                 .entry(uniform.group)
@@ -1476,6 +1449,7 @@ impl RenderContext {
                 };
 
                 // Assemble entries borrowing from owned resources and buffer pool
+                let samplers = resources.sampler_sources.resolve(&self.device);
                 let buffer_pool = self.buffer_pool.read();
                 let storage_pool = self.storage_pool.read();
                 let mut entries: Vec<wgpu::BindGroupEntry> = Vec::new();
@@ -1512,7 +1486,7 @@ impl RenderContext {
                         resource: wgpu::BindingResource::TextureView(view),
                     });
                 }
-                for (binding, sampler) in resources.samplers.iter() {
+                for (binding, sampler) in samplers.iter() {
                     entries.push(wgpu::BindGroupEntry {
                         binding: *binding,
                         resource: wgpu::BindingResource::Sampler(sampler),
@@ -1666,18 +1640,16 @@ impl RenderContext {
             }
         }
 
-        // Return MSAA texture to pool if used
-        if let Some(texture) = msaa_texture.take() {
-            let key = TextureKey::new(
-                size,
-                color_format,
-                sample_count,
-                wgpu::TextureUsages::RENDER_ATTACHMENT,
-            );
-            self.texture_pool.write().release(key, texture);
-        }
+        self.release_msaa(msaa_texture);
 
         Ok(())
+    }
+
+    /// Hands a pass's transient MSAA texture back to the pool.
+    fn release_msaa(&self, msaa: Option<(wgpu::Texture, TextureKey)>) {
+        if let Some((texture, key)) = msaa {
+            self.texture_pool.write().release(key, texture);
+        }
     }
 
     fn process_compute_pass(
@@ -1686,42 +1658,17 @@ impl RenderContext {
         pass: &PassObject,
     ) -> Result<(), RendererError> {
         // Similar resource binding as render pass, but no target
-        self.buffer_pool.write().reset();
-        self.storage_pool.write().reset();
-
         for (shader_index, shader) in pass.shaders.read().iter().enumerate() {
             shader.flush_pending();
-            // Build or fetch pipeline
-            // Layout signature: hash the bind group layouts
-            let layouts = bind_group_layouts(&self.device, shader);
-
-            use sha2::{Digest, Sha256};
-            let mut hasher = Sha256::new();
-            for (g, l) in layouts.iter() {
-                hasher.update(g.to_le_bytes());
-                // Hash the address as a proxy (layout contents are derived from uniforms)
-                let ptr = (l as *const _ as usize) as u64;
-                hasher.update(ptr.to_le_bytes());
-            }
-            let sig_bytes = hasher.finalize();
-            let sig = u64::from_le_bytes([
-                sig_bytes[0],
-                sig_bytes[1],
-                sig_bytes[2],
-                sig_bytes[3],
-                sig_bytes[4],
-                sig_bytes[5],
-                sig_bytes[6],
-                sig_bytes[7],
-            ]);
-
+            let entries = bind_group_entries(shader);
             let cached = self
                 .compute_pipelines
                 .entry(ComputePipelineKey {
                     shader_hash: shader.hash,
-                    layout_signature: sig,
+                    bind_group_entries: entries.clone(),
                 })
                 .or_insert_with(|| {
+                    let layouts = create_bind_group_layouts(&self.device, &entries);
                     let mut sorted_groups: Vec<_> = layouts.keys().cloned().collect();
                     sorted_groups.sort();
                     let mut sorted_layouts: Vec<Option<&wgpu::BindGroupLayout>> = Vec::new();
@@ -1745,14 +1692,9 @@ impl RenderContext {
                                 source: wgpu::ShaderSource::Naga(module),
                             });
 
-                    // Find compute entry point name
-                    let mut cs_entry = None;
-                    for ep in shader.module.entry_points.iter() {
-                        if ep.stage == naga::ShaderStage::Compute {
-                            cs_entry = ep.function.name.clone();
-                            break;
-                        }
-                    }
+                    let cs_entry = shader
+                        .find_entry_point(naga::ShaderStage::Compute)
+                        .map(|entry_point| entry_point.name.as_str());
 
                     let pipeline =
                         self.device
@@ -1760,7 +1702,7 @@ impl RenderContext {
                                 label: Some("Compute Pipeline"),
                                 layout: Some(&layout),
                                 module: &shader_module,
-                                entry_point: Some(cs_entry.as_deref().unwrap_or("cs_main")),
+                                entry_point: Some(cs_entry.unwrap_or("cs_main")),
                                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                                 cache: None,
                             });
@@ -1775,7 +1717,7 @@ impl RenderContext {
                 buffers: Vec<(u32, buffer_pool::BufferLocation)>,
                 storage_buffers: Vec<(u32, wgpu::Buffer, u64)>,
                 views: Vec<(u32, wgpu::TextureView)>,
-                samplers: Vec<(u32, wgpu::Sampler)>,
+                sampler_sources: SamplerSources,
             }
             let mut groups: HashMap<u32, BindGroupResources> = HashMap::new();
             for name in &shader.list_uniforms() {
@@ -1787,38 +1729,21 @@ impl RenderContext {
                                 &format!("texture view for binding '{}'", name),
                                 || tex.create_view(),
                             )?;
-                            groups
-                                .entry(uniform.group)
-                                .or_default()
-                                .views
-                                .push((uniform.binding, view));
+                            let group_entry = groups.entry(uniform.group).or_default();
+                            group_entry.views.push((uniform.binding, view));
+                            if meta.sampled {
+                                group_entry
+                                    .sampler_sources
+                                    .add_texture(uniform.binding, tex);
+                            }
                         }
                     }
                     UniformData::Sampler(info) => {
-                        let sampler = if info.comparison {
-                            self.device.create_sampler(&wgpu::SamplerDescriptor {
-                                label: Some("Default Comparison Sampler"),
-                                address_mode_u: wgpu::AddressMode::ClampToEdge,
-                                address_mode_v: wgpu::AddressMode::ClampToEdge,
-                                address_mode_w: wgpu::AddressMode::ClampToEdge,
-                                mag_filter: wgpu::FilterMode::Linear,
-                                min_filter: wgpu::FilterMode::Linear,
-                                mipmap_filter: wgpu::MipmapFilterMode::Linear,
-                                lod_min_clamp: 0.0,
-                                lod_max_clamp: 100.0,
-                                compare: Some(wgpu::CompareFunction::LessEqual),
-                                anisotropy_clamp: 1,
-                                border_color: None,
-                            })
-                        } else {
-                            self.device
-                                .create_sampler(&wgpu::SamplerDescriptor::default())
-                        };
                         groups
                             .entry(uniform.group)
                             .or_default()
-                            .samplers
-                            .push((uniform.binding, sampler));
+                            .sampler_sources
+                            .add_sampler(uniform.binding, info.comparison);
                     }
                     UniformData::Storage(data) => {
                         if let Some(crate::shader::uniform::StorageEntry {
@@ -1826,75 +1751,7 @@ impl RenderContext {
                         }) = data.first()
                         {
                             let span = *span_u32 as u64;
-                            // Obtain bytes. Blocking read — see comment on the
-                            // first storage-buffer init block above.
-                            let init_bytes: Vec<u8> = {
-                                let s = shader.storage.read();
-                                s.get_bytes(name)
-                                    .map(|b| b.to_vec())
-                                    .unwrap_or_else(|| vec![0u8; span as usize])
-                            };
-                            // Create or get buffer
-                            let buf = {
-                                if let Some(entry) = self.storage_registry.get(name) {
-                                    let (existing, existing_span) = entry.value();
-                                    if *existing_span != span {
-                                        drop(entry);
-                                        let buffer =
-                                            self.device.create_buffer(&wgpu::BufferDescriptor {
-                                                label: Some(&format!(
-                                                    "Persistent Storage Buffer: {}",
-                                                    name
-                                                )),
-                                                size: span,
-                                                usage: wgpu::BufferUsages::STORAGE
-                                                    | wgpu::BufferUsages::COPY_DST
-                                                    | wgpu::BufferUsages::COPY_SRC,
-                                                mapped_at_creation: false,
-                                            });
-                                        self.queue.write_buffer(&buffer, 0, &init_bytes);
-                                        self.storage_registry
-                                            .insert(name.to_string(), (buffer.clone(), span));
-                                        buffer
-                                    } else {
-                                        existing.clone()
-                                    }
-                                } else {
-                                    let buffer =
-                                        self.device.create_buffer(&wgpu::BufferDescriptor {
-                                            label: Some(&format!(
-                                                "Persistent Storage Buffer: {}",
-                                                name
-                                            )),
-                                            size: span,
-                                            usage: wgpu::BufferUsages::STORAGE
-                                                | wgpu::BufferUsages::COPY_DST
-                                                | wgpu::BufferUsages::COPY_SRC,
-                                            mapped_at_creation: false,
-                                        });
-                                    self.queue.write_buffer(&buffer, 0, &init_bytes);
-                                    self.storage_registry
-                                        .insert(name.to_string(), (buffer.clone(), span));
-                                    buffer
-                                }
-                            };
-                            // Upload if dirty. Blocking acquisitions — see
-                            // comment on the earlier dirty-flag block above.
-                            let need_upload = {
-                                let s = shader.storage.read();
-                                s.is_storage_dirty(name)
-                            };
-                            if need_upload {
-                                let bytes: Vec<u8> = {
-                                    let s = shader.storage.read();
-                                    s.get_bytes(name)
-                                        .map(|b| b.to_vec())
-                                        .unwrap_or_else(|| vec![0u8; span as usize])
-                                };
-                                self.queue.write_buffer(&buf, 0, &bytes);
-                                let mut s = shader.storage.write();
-                                s.clear_storage_dirty(name);
-                            }
+                            let buf = self.storage_buffer(shader, name, span);
                             groups
                                 .entry(uniform.group)
                                 .or_default()
@@ -1930,6 +1787,7 @@ impl RenderContext {
                         group
                     )));
                 };
+                let samplers = owned.sampler_sources.resolve(&self.device);
                 let buffer_pool = self.buffer_pool.read();
                 let mut entries: Vec<wgpu::BindGroupEntry> = Vec::new();
                 for (binding, loc) in owned.buffers.iter() {
@@ -1958,7 +1816,7 @@ impl RenderContext {
                         resource: wgpu::BindingResource::TextureView(view),
                     });
                 }
-                for (binding, sampler) in owned.samplers.iter() {
+                for (binding, sampler) in samplers.iter() {
                     entries.push(wgpu::BindGroupEntry {
                         binding: *binding,
                         resource: wgpu::BindingResource::Sampler(sampler),
@@ -1999,10 +1857,34 @@ impl RenderContext {
     }
 }
 
-type VertexLayouts = (
-    wgpu::VertexBufferLayout<'static>,
-    Option<wgpu::VertexBufferLayout<'static>>,
-);
+/// One vertex buffer slot of a render pipeline.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct VertexStream {
+    stride: u64,
+    step_mode: wgpu::VertexStepMode,
+    attributes: Vec<wgpu::VertexAttribute>,
+}
+
+/// Vertex buffer layouts a shader reads from its mesh:
+/// slot 0 steps per vertex, the optional slot 1 per instance.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct VertexLayouts {
+    vertex: VertexStream,
+    instance: Option<VertexStream>,
+}
+
+impl VertexLayouts {
+    fn buffers(&self) -> Vec<wgpu::VertexBufferLayout<'_>> {
+        std::iter::once(&self.vertex)
+            .chain(self.instance.as_ref())
+            .map(|stream| wgpu::VertexBufferLayout {
+                array_stride: stream.stride,
+                step_mode: stream.step_mode,
+                attributes: &stream.attributes,
+            })
+            .collect()
+    }
+}
 
 // @TODO the Shader should provide this
 //.      - heck if the logic in the Shader is the same
@@ -2146,40 +2028,46 @@ fn vertex_buffer_layouts(
         }
     }
 
-    // Build layouts; leak attributes to 'static for the pipeline builder
     vertex_attributes.sort_by_key(|attr| attr.shader_location);
-    let vertex_layout = wgpu::VertexBufferLayout {
-        array_stride: vertex_stride,
+    let vertex = VertexStream {
+        stride: vertex_stride,
         step_mode: wgpu::VertexStepMode::Vertex,
-        attributes: Box::leak(vertex_attributes.into_boxed_slice()),
+        attributes: vertex_attributes,
     };
 
-    let instance_attributes = match instance_attributes.is_empty() {
-        true => None,
-        false => Some(instance_attributes),
-    };
-    let instance_layout =
-        if let (Some(attrs), Some(stride)) = (instance_attributes, instance_stride) {
-            let mut instance_attributes = attrs;
-            instance_attributes.sort_by_key(|a| a.shader_location);
-            Some(wgpu::VertexBufferLayout {
-                array_stride: stride,
+    let instance = match (instance_attributes.is_empty(), instance_stride) {
+        (false, Some(stride)) => {
+            instance_attributes.sort_by_key(|attr| attr.shader_location);
+            Some(VertexStream {
+                stride,
                 step_mode: wgpu::VertexStepMode::Instance,
-                attributes: Box::leak(instance_attributes.into_boxed_slice()),
+                attributes: instance_attributes,
             })
-        } else {
-            None
-        };
+        }
+        _ => None,
+    };
 
-    Ok(Some((vertex_layout, instance_layout)))
+    Ok(Some(VertexLayouts { vertex, instance }))
 }
 
-fn bind_group_layouts(
-    device: &wgpu::Device,
-    shader: &crate::ShaderObject,
-) -> HashMap<u32, wgpu::BindGroupLayout> {
+/// Bind group layout entries by group index, each group sorted by binding.
+type BindGroupEntries = std::collections::BTreeMap<u32, Vec<wgpu::BindGroupLayoutEntry>>;
+
+/// Layout entries for the shader's bind groups, derived from its reflected uniforms.
+/// The viewport for `region` within the bounds wgpu accepts:
+/// a size up to `max_dimension`, and a far edge below twice that.
+fn viewport_rect(region: &ScreenRegion, max_dimension: u32) -> (f32, f32, f32, f32) {
+    let range = 2.0 * max_dimension as f32 - 1.0;
+    let width = (region.max_x.abs_diff(region.min_x) as f32).min(max_dimension as f32);
+    let height = (region.max_y.abs_diff(region.min_y) as f32).min(max_dimension as f32);
+    let x = (region.min_x.min(region.max_x) as f32).min(range - width);
+    let y = (region.min_y.min(region.max_y) as f32).min(range - height);
+    (x, y, width, height)
+}
+
+fn bind_group_entries(shader: &crate::ShaderObject) -> BindGroupEntries {
     let uniforms = &shader.storage.read().uniforms;
-    let mut group_entries: HashMap<u32, Vec<wgpu::BindGroupLayoutEntry>> = HashMap::new();
+    let mut group_entries = BindGroupEntries::new();
     for (_, size, uniform) in uniforms.values() {
         if uniform.name.contains('.') {
             continue;
@@ -2379,13 +2267,23 @@ fn bind_group_layouts(
         group_entries.entry(uniform.group).or_default().push(entry);
     }
 
+    for entries in group_entries.values_mut() {
+        entries.sort_by_key(|entry| entry.binding);
+    }
+    group_entries
+}
+
+fn create_bind_group_layouts(
+    device: &wgpu::Device,
+    group_entries: &BindGroupEntries,
+) -> HashMap<u32, wgpu::BindGroupLayout> {
     let mut layouts = HashMap::new();
     for (group, entries) in group_entries {
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some(&format!("Bind Group Layout for group: {}", group)),
             entries: entries.as_slice(),
         });
-        layouts.insert(group, layout);
+        layouts.insert(*group, layout);
     }
 
     layouts
@@ -2397,24 +2295,20 @@ fn create_render_pipeline(
     shader: &crate::ShaderObject,
     format: wgpu::TextureFormat,
     sample_count: u32,
-    vertex_layouts: Option<VertexLayouts>,
+    vertex_layouts: Option<&VertexLayouts>,
     depth_format: Option<wgpu::TextureFormat>,
     alpha_mode: crate::material::AlphaMode,
     double_sided: bool,
     pad_uniforms: bool,
 ) -> RenderPipeline {
-    let mut layouts = bind_group_layouts(device, shader);
+    let mut layouts = create_bind_group_layouts(device, &bind_group_entries(shader));
 
-    let mut vs_entry = None;
-    let mut fs_entry = None;
-    for entry_point in shader.module.entry_points.iter() {
-        if entry_point.stage == naga::ShaderStage::Vertex {
-            vs_entry = entry_point.function.name.clone();
-        }
-        if entry_point.stage == naga::ShaderStage::Fragment {
-            fs_entry = entry_point.function.name.clone();
-        }
-    }
+    let vs_entry = shader
+        .find_entry_point(naga::ShaderStage::Vertex)
+        .map(|entry_point| entry_point.name.as_str());
+    let fs_entry = shader
+        .find_entry_point(naga::ShaderStage::Fragment)
+        .map(|entry_point| entry_point.name.as_str());
 
     // Determine push-constant roots
     let storage = shader.storage.read();
@@ -2575,28 +2469,25 @@ fn create_render_pipeline(
         immediate_size,
     });
 
+    let vertex_buffers: Vec<Option<wgpu::VertexBufferLayout>> = vertex_layouts
+        .map(VertexLayouts::buffers)
+        .unwrap_or_default()
+        .into_iter()
+        .map(Some)
+        .collect();
+
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("Default Render Pipeline"),
         layout: Some(&layout),
         vertex: wgpu::VertexState {
             module: &shader_module,
-            entry_point: Some(vs_entry.as_deref().unwrap_or("vs_main")),
-            buffers: {
-                // Build a local Vec to keep the layouts alive for this call
-                let mut tmp: Vec<Option<wgpu::VertexBufferLayout>> = Vec::new();
-                if let Some((v, instance_buffer)) = vertex_layouts {
-                    tmp.push(Some(v.clone()));
-                    if let Some(i) = instance_buffer {
-                        tmp.push(Some(i.clone()));
-                    }
-                }
-                Box::leak(tmp.into_boxed_slice())
-            },
+            entry_point: Some(vs_entry.unwrap_or("vs_main")),
+            buffers: &vertex_buffers,
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
             module: &shader_module,
-            entry_point: Some(fs_entry.as_deref().unwrap_or("fs_main")),
+            entry_point: Some(fs_entry.unwrap_or("fs_main")),
             targets: &[Some(wgpu::ColorTargetState {
                 format,
                 // Blend state baked from Material::alpha_mode:
@@ -2621,7 +2512,7 @@ fn create_render_pipeline(
         primitive: wgpu::PrimitiveState {
             // `double_sided=true` (the ShaderObject default) leaves
             // `cull_mode: None`, matching the renderer's pre-Material
-            // behaviour. `Material::pbr` (and `Material::custom`) flip
+            // behavior. `Material::pbr` (and `Material::custom`) flip
             // it to `false`, which engages standard back-face culling —
             // the glTF 2.0 default for single-sided materials.
             cull_mode: if double_sided {
@@ -2697,6 +2588,38 @@ mod more_error_path_tests {
                 .expect("texture raw bytes");
             let sz = tex.size();
             assert_eq!([sz.width, sz.height], [2, 2]);
+        });
+    }
+
+    // Story: TextureOptions.usage adds COPY_SRC, so read_texture returns the uploaded pixels.
+    #[test]
+    fn create_texture_honors_usage_for_readback() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            #[rustfmt::skip]
+            let bytes: Vec<u8> = vec![
+                255, 0, 0, 255,   0, 255, 0, 255,
+                0, 0, 255, 255,   255, 255, 255, 255,
+            ];
+            let options = TextureOptions {
+                size: Some([2u32, 2].into()),
+                format: crate::TextureFormat::Rgba8Unorm,
+                mipmaps: false,
+                ..Default::default()
+            }
+            .with_usage(crate::TextureUsage::COPY_SRC);
+            let texture = renderer
+                .create_texture((bytes.clone(), options))
+                .await
+                .expect("texture with COPY_SRC");
+            let read = renderer.read_texture(texture.id()).await.expect("readback");
+            assert_eq!(read, bytes);
+
+            let plain = renderer
+                .create_texture((bytes.clone(), [2u32, 2]))
+                .await
+                .expect("texture without COPY_SRC");
+            assert!(renderer.read_texture(*plain.id()).await.is_err());
         });
     }
 
@@ -2809,6 +2732,25 @@ mod tests {
         fn present(self: Box<Self>, _queue: &wgpu::Queue) {}
         fn auto_present(&self) -> bool {
             false
+        }
+    }
+
+    /// A target that never has a frame, like a minimized window.
+    struct FramelessTarget;
+
+    impl crate::target::FrameSource for FramelessTarget {
+        fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
+            Err(crate::SurfaceError::Occluded)
+        }
+    }
+
+    impl crate::Target for FramelessTarget {
+        fn size(&self) -> crate::Size {
+            crate::Size::from((1u32, 1u32))
+        }
+        fn resize(&mut self, _size: impl Into<crate::Size>) {}
+        async fn get_image(&self) -> Vec<u8> {
+            Vec::new()
         }
     }
 
@@ -3135,12 +3077,10 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
                 Vertex::new([0.0, 0.5, 0.0]),
             ]);
             // Two instances with different offsets: provide an "offset" property to match the shader
-            use crate::mesh::VertexValue;
+            use crate::mesh::VertexData;
+            mesh.add_instance(Vertex::new([0.0, 0.0]).set("offset", VertexData::F32x2([0.0, 0.0])));
             mesh.add_instance(
-                Vertex::new([0.0, 0.0]).set("offset", VertexValue::F32x2([0.0, 0.0])),
-            );
-            mesh.add_instance(
-                Vertex::new([0.25, 0.0]).set("offset", VertexValue::F32x2([0.25, 0.0])),
+                Vertex::new([0.25, 0.0]).set("offset", VertexData::F32x2([0.25, 0.0])),
             );
 
             pass.add_mesh(&mesh).expect("mesh is compatible");
@@ -3265,24 +3205,23 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return v.tint; }
             let pass = crate::Pass::from_shader("p", &shader);
 
             let mesh = crate::mesh::Mesh::new();
-            use crate::mesh::{Vertex, VertexValue};
+            use crate::mesh::{Vertex, VertexData};
             // Triangle geometry in clip-space
             mesh.add_vertices([
-                Vertex::new([-0.5, -0.5, 0.0])
-                    .set("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])), // vertex-level green (should be ignored)
-                Vertex::new([0.5, -0.5, 0.0]).set("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])),
-                Vertex::new([0.0, 0.5, 0.0]).set("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])),
+                Vertex::new([-0.5, -0.5, 0.0]).set("tint", VertexData::F32x4([0.0, 1.0, 0.0, 1.0])), // vertex-level green (should be ignored)
+                Vertex::new([0.5, -0.5, 0.0]).set("tint", VertexData::F32x4([0.0, 1.0, 0.0, 1.0])),
+                Vertex::new([0.0, 0.5, 0.0]).set("tint", VertexData::F32x4([0.0, 1.0, 0.0, 1.0])),
             ]);
             // Two instances with different offsets and tints
             mesh.add_instance(
                 Vertex::new([-0.6, 0.0])
-                    .set("offset", VertexValue::F32x2([-0.6, 0.0]))
-                    .set("tint", VertexValue::F32x4([1.0, 0.0, 0.0, 1.0])), // red
+                    .set("offset", VertexData::F32x2([-0.6, 0.0]))
+                    .set("tint", VertexData::F32x4([1.0, 0.0, 0.0, 1.0])), // red
             );
             mesh.add_instance(
                 Vertex::new([0.6, 0.0])
-                    .set("offset", VertexValue::F32x2([0.6, 0.0]))
-                    .set("tint", VertexValue::F32x4([0.0, 0.0, 1.0, 1.0])), // blue
+                    .set("offset", VertexData::F32x2([0.6, 0.0]))
+                    .set("tint", VertexData::F32x4([0.0, 0.0, 1.0, 1.0])), // blue
             );
 
             pass.add_mesh(&mesh).expect("mesh is compatible");
@@ -3529,6 +3468,67 @@ struct VOut { @builtin(position) pos: vec4<f32> };
         });
     }
 
+    // Story: A multisampled pass draws only inside its viewport and resolves the clear around it.
+    #[test]
+    fn msaa_pass_draws_inside_the_viewport() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([16u32, 16u32])
+                .await
+                .expect("texture target");
+            let supported = renderer
+                .adapter
+                .read()
+                .as_ref()
+                .expect("adapter")
+                .get_texture_format_features(wgpu::TextureFormat::Rgba8Unorm)
+                .flags
+                .sample_count_supported(4);
+            if !supported {
+                return;
+            }
+            renderer
+                .context
+                .read()
+                .as_ref()
+                .expect("context")
+                .set_sample_count(4);
+
+            let wgsl = r#"
+@vertex
+fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+    let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+    return vec4<f32>(p[i], 0.0, 1.0);
+}
+@fragment
+fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
+            "#;
+            let shader = Shader::new(wgsl).expect("shader");
+            let pass = Pass::from_shader("msaa-viewport", &shader);
+            pass.set_clear_color([0.0, 0.0, 1.0, 1.0]);
+            pass.set_viewport(crate::ScreenRegion::new((4, 4), (8, 8)));
+
+            renderer.render(&pass, &target).expect("render ok");
+
+            let image = target.get_image().await;
+            let pixel = |x: usize, y: usize| {
+                let start = (y * 16 + x) * 4;
+                [
+                    image[start],
+                    image[start + 1],
+                    image[start + 2],
+                    image[start + 3],
+                ]
+            };
+            assert_eq!(pixel(4, 4), [255, 0, 0, 255], "inside, top left");
+            assert_eq!(pixel(11, 11), [255, 0, 0, 255], "inside, bottom right");
+            assert_eq!(pixel(3, 4), [0, 0, 255, 255], "left of the region");
+            assert_eq!(pixel(12, 11), [0, 0, 255, 255], "right of the region");
+            assert_eq!(pixel(8, 0), [0, 0, 255, 255], "above the region");
+        });
+    }
+
     #[test]
     fn pick_sample_count_properties() {
         pollster::block_on(async move {
@@ -3619,7 +3619,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
             let pass = crate::Pass::from_shader("mesh", &shader);
 
             let mesh = crate::mesh::Mesh::new();
-            use crate::mesh::{Vertex, VertexValue};
+            use crate::mesh::{Vertex, VertexData};
             mesh.add_vertices([
                 Vertex::new([-0.5, -0.5, 0.0]),
                 Vertex::new([0.5, -0.5, 0.0]),
@@ -3627,7 +3627,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
             ]);
             // Add instance with wrong-typed "offset" (vec3 instead of vec2)
             mesh.add_instance(
-                Vertex::new([0.0, 0.0]).set("offset", VertexValue::F32x3([0.0, 0.0, 0.0])),
+                Vertex::new([0.0, 0.0]).set("offset", VertexData::F32x3([0.0, 0.0, 0.0])),
             );
 
             // Expect validation at call site: type mismatch for "offset"
@@ -3674,7 +3674,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
             }
         }
 
-        impl crate::target::TargetInternal for DummyTarget {
+        impl crate::target::FrameSource for DummyTarget {
             fn get_current_frame(
                 &self,
             ) -> Result<Box<dyn crate::TargetFrame>, crate::SurfaceError> {
@@ -3718,6 +3718,63 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
             ]);
             let f3 = ctx.acquire_frame(&t3);
             assert!(matches!(f3, Err(crate::SurfaceError::Timeout)));
+        });
+    }
+
+    // Story: A render made only of compute passes acquires no frame; one with a render pass still does.
+    #[test]
+    fn compute_only_render_skips_frame_acquisition() {
+        pollster::block_on(async move {
+            let (_adapter, device, queue) = create_device_and_queue().await;
+            let ctx = RenderContext::new(device, queue);
+            let compute = Shader::new("@compute @workgroup_size(1)\nfn cs_main() {}\n")
+                .expect("compute shader");
+            let draw = Shader::default();
+
+            let compute_only = vec![
+                Pass::from_shader("first", &compute),
+                Pass::from_shader("second", &compute),
+            ];
+            ctx.render(&compute_only, &FramelessTarget)
+                .expect("compute-only render needs no frame");
+
+            let mixed = vec![
+                Pass::from_shader("compute", &compute),
+                Pass::from_shader("draw", &draw),
+            ];
+            let result = ctx.render(&mixed, &FramelessTarget);
+            assert!(matches!(
+                result,
+                Err(RendererError::SurfaceError(crate::SurfaceError::Occluded))
+            ));
+        });
+    }
+
+    // Story: Repeated compute renders reuse one cached pipeline, shared by shaders with the same source.
+    #[test]
+    fn compute_pipeline_cache_reuses_pipelines() {
+        pollster::block_on(async move {
+            let (_adapter, device, queue) = create_device_and_queue().await;
+            let ctx = RenderContext::new(device, queue);
+            let source = "
+@group(0) @binding(0) var<uniform> scale: f32;
+@group(0) @binding(1) var<storage, read_write> cache_probe: array<f32, 4>;
+@compute @workgroup_size(1)
+fn cs_main() { cache_probe[0] = scale; }
+";
+            let first = Shader::new(source).expect("compute shader");
+            let second = Shader::new(source).expect("compute shader");
+            let passes = vec![
+                Pass::from_shader("first", &first),
+                Pass::from_shader("second", &second),
+            ];
+
+            for _ in 0..3 {
+                ctx.render(&passes, &FramelessTarget)
+                    .expect("compute render");
+            }
+
+            assert_eq!(ctx.compute_pipelines.len(), 1);
         });
     }
 

@@ -14,12 +14,12 @@ extension Mesh {
     // MARK: - Convenience vertex construction
 
     /// Append a single vertex already constructed.
-    public func addVertex(_ vertex: Vertex) throws {
-        try addVertex(v: vertex)
+    public func addVertex(_ vertex: Vertex) {
+        addVertex(v: vertex)
     }
 
     /// Append a single vertex from a position float array.
-    /// Accepts 2, 3, or 4 components.
+    /// Accepts 1 to 4 components.
     public func addVertex(_ position: [Float]) throws {
         try addVertex(v: Vertex(position: position))
     }
@@ -27,6 +27,25 @@ extension Mesh {
     /// Append a single vertex from a Double array (converted to Float).
     public func addVertex(_ position: [Double]) throws {
         try addVertex(v: Vertex(position: position.map { Float($0) }))
+    }
+
+    /// Append a vertex at `position` with a `"uv"` attribute, as Rust's `(position, uv)` tuple does.
+    public func addVertex(_ position: [Float], _ uv: [Float]) throws {
+        addVertex(try Vertex(position).set("uv", uv))
+    }
+
+    public func addVertex(_ position: [Double], _ uv: [Double]) throws {
+        addVertex(try Vertex(position).set("uv", uv))
+    }
+
+    /// Append a vertex at `position` with `"uv"` and `"color"` attributes,
+    /// as Rust's `(position, uv, color)` tuple does.
+    public func addVertex(_ position: [Float], _ uv: [Float], _ color: [Float]) throws {
+        addVertex(try Vertex(position).set("uv", uv).set("color", color))
+    }
+
+    public func addVertex(_ position: [Double], _ uv: [Double], _ color: [Double]) throws {
+        addVertex(try Vertex(position).set("uv", uv).set("color", color))
     }
 
     /// Append multiple vertices from an array of float-array positions.
@@ -40,17 +59,18 @@ extension Mesh {
     }
 
     /// Append multiple already-constructed vertices (drops the `vertices:` label).
-    public func addVertices(_ vertices: [Vertex]) throws {
-        try addVertices(vertices: vertices)
+    public func addVertices(_ vertices: [Vertex]) {
+        addVertices(vertices: vertices)
     }
 
     /// Explicit indices, dropping the `indices:` label.
     public func setIndices(_ indices: [UInt32]) {
         setIndices(indices: indices)
     }
-    /// Explicit indices from a `[Int]` literal (convenient for example code).
-    public func setIndices(_ indices: [Int]) {
-        setIndices(indices: indices.map { UInt32($0) })
+
+    /// Build a Mesh from vertices already constructed (unlabeled overload).
+    public static func fromVertices(_ vertices: [Vertex]) -> Mesh {
+        return Mesh.fromVertices(vertices: vertices)
     }
 
     /// Build a Mesh from an array of float-array positions.
@@ -69,6 +89,19 @@ extension Mesh {
 }
 
 extension Vertex {
+    /// The attribute key of a vertex normal, `"normal"`.
+    public static let NORMAL = "normal"
+    /// The attribute key of a vertex tangent, `"tangent"`.
+    public static let TANGENT = "tangent"
+    /// The attribute key of the first texture coordinate set, `"uv0"`.
+    public static let UV0 = "uv0"
+    /// The attribute key of the second texture coordinate set, `"uv1"`.
+    public static let UV1 = "uv1"
+    /// The attribute key of the first vertex color, `"color0"`.
+    public static let COLOR0 = "color0"
+    /// The attribute key of the second vertex color, `"color1"`.
+    public static let COLOR1 = "color1"
+
     /// Convenience: construct a Vertex from an unlabeled float array.
     public convenience init(_ position: [Float]) throws {
         try self.init(position: position)
@@ -87,27 +120,67 @@ extension Vertex {
         return try Vertex.pbr(position: position.map { Float($0) })
     }
 
-    /// Set a vertex attribute with a Float array value (dispatches by length).
-    public func set(_ key: String, _ value: [Float]) -> Vertex {
-        let vv: VertexValue
-        switch value.count {
-        case 1:  vv = .f32(value[0])
-        case 2:  vv = .f32x2(value)
-        case 3:  vv = .f32x3(value)
-        case 4:  vv = .f32x4(value)
-        default: vv = .f32x4(Array(value.prefix(4)))
-        }
-        return set(key: key, value: vv)
+    // MARK: - Attributes
+
+    // Each overload only says what kind of number it carries. The shader that
+    // reads the attribute decides its type when the mesh attaches, so `7` fills
+    // an f32, i32 or u32 input. A list holds 1 to 4 numbers, and any other
+    // length throws.
+
+    public func set(_ key: String, _ value: Float) throws -> Vertex {
+        try set(key: key, value: [Double(value)])
     }
 
-    /// Set a vertex attribute with a Double array value (dispatches by length).
-    public func set(_ key: String, _ value: [Double]) -> Vertex {
-        return set(key, value.map { Float($0) })
+    public func set(_ key: String, _ value: Double) throws -> Vertex {
+        try set(key: key, value: [value])
     }
 
-    /// Set a vertex attribute with a Float scalar value.
-    public func set(_ key: String, _ value: Float) -> Vertex {
-        return set(key: key, value: .f32(value))
+    public func set(_ key: String, _ value: Int) throws -> Vertex {
+        try set(key: key, value: [Double(value)])
+    }
+
+    public func set(_ key: String, _ value: Int32) throws -> Vertex {
+        try set(key: key, value: [Double(value)])
+    }
+
+    public func set(_ key: String, _ value: Int64) throws -> Vertex {
+        try set(key: key, value: [Double(value)])
+    }
+
+    public func set(_ key: String, _ value: UInt) throws -> Vertex {
+        try set(key: key, value: [Double(value)])
+    }
+
+    public func set(_ key: String, _ value: UInt32) throws -> Vertex {
+        try set(key: key, value: [Double(value)])
+    }
+
+    public func set(_ key: String, _ values: [Float]) throws -> Vertex {
+        try set(key: key, value: values.map { Double($0) })
+    }
+
+    public func set(_ key: String, _ values: [Double]) throws -> Vertex {
+        try set(key: key, value: values)
+    }
+
+    public func set(_ key: String, _ values: [Int]) throws -> Vertex {
+        try set(key: key, value: values.map { Double($0) })
+    }
+
+    public func set(_ key: String, _ values: [Int32]) throws -> Vertex {
+        try set(key: key, value: values.map { Double($0) })
+    }
+
+    public func set(_ key: String, _ values: [Int64]) throws -> Vertex {
+        try set(key: key, value: values.map { Double($0) })
+    }
+
+    public func set(_ key: String, _ values: [UInt]) throws -> Vertex {
+        try set(key: key, value: values.map { Double($0) })
+    }
+
+    public func set(_ key: String, _ values: [UInt32]) throws -> Vertex {
+        try set(key: key, value: values.map { Double($0) })
     }
 }
 
@@ -119,9 +192,35 @@ extension Mesh {
         addInstance(instance: instance)
     }
 
+    /// Append the per-instance attributes of a vertex, as Rust's `Instance::from(vertex)` does.
+    public func addInstance(_ vertex: Vertex) {
+        addInstance(instance: vertex.createInstance())
+    }
+
+    /// Append an instance from attribute lists, in the order written.
+    /// A list holds 1 to 4 numbers, and any other length throws.
+    public func addInstance(_ attributes: KeyValuePairs<String, [Double]>) throws {
+        addInstance(instance: try attributes.reduce(Instance()) { try $0.set($1.key, $1.value) })
+    }
+
+    /// Append an instance from attribute lists, in the order written.
+    public func addInstance(_ attributes: KeyValuePairs<String, [Float]>) throws {
+        addInstance(instance: try attributes.reduce(Instance()) { try $0.set($1.key, $1.value) })
+    }
+
+    /// Append an instance from attribute lists, in the order written.
+    public func addInstance(_ attributes: KeyValuePairs<String, [Int]>) throws {
+        addInstance(instance: try attributes.reduce(Instance()) { try $0.set($1.key, $1.value) })
+    }
+
     /// Append multiple instances without an argument label.
     public func addInstances(_ instances: [Instance]) {
         addInstances(instances: instances)
+    }
+
+    /// Append the per-instance attributes of each vertex.
+    public func addInstances(_ vertices: [Vertex]) {
+        addInstances(instances: vertices.map { $0.createInstance() })
     }
 
     /// Set the instance draw count without an argument label.
@@ -149,23 +248,66 @@ extension Instance {
         return Instance()
     }
 
-    /// Set a per-instance attribute from a Float array (dispatches by length).
-    @discardableResult
-    public func set(_ key: String, _ value: [Float]) -> Instance {
-        let vv: VertexValue
-        switch value.count {
-        case 1:  vv = .f32(value[0])
-        case 2:  vv = .f32x2(value)
-        case 3:  vv = .f32x3(value)
-        case 4:  vv = .f32x4(value)
-        default: vv = .f32x4(Array(value.prefix(4)))
-        }
-        return set(key: key, value: vv)
+    // MARK: - Attributes
+
+    // Each overload only says what kind of number it carries. The shader that
+    // reads the attribute decides its type when the mesh attaches, so `7` fills
+    // an f32, i32 or u32 input. A list holds 1 to 4 numbers, and any other
+    // length throws.
+
+    public func set(_ key: String, _ value: Float) throws -> Instance {
+        try set(key: key, value: [Double(value)])
     }
 
-    /// Set a per-instance attribute from a Double array.
-    @discardableResult
-    public func set(_ key: String, _ value: [Double]) -> Instance {
-        return set(key, value.map { Float($0) })
+    public func set(_ key: String, _ value: Double) throws -> Instance {
+        try set(key: key, value: [value])
+    }
+
+    public func set(_ key: String, _ value: Int) throws -> Instance {
+        try set(key: key, value: [Double(value)])
+    }
+
+    public func set(_ key: String, _ value: Int32) throws -> Instance {
+        try set(key: key, value: [Double(value)])
+    }
+
+    public func set(_ key: String, _ value: Int64) throws -> Instance {
+        try set(key: key, value: [Double(value)])
+    }
+
+    public func set(_ key: String, _ value: UInt) throws -> Instance {
+        try set(key: key, value: [Double(value)])
+    }
+
+    public func set(_ key: String, _ value: UInt32) throws -> Instance {
+        try set(key: key, value: [Double(value)])
+    }
+
+    public func set(_ key: String, _ values: [Float]) throws -> Instance {
+        try set(key: key, value: values.map { Double($0) })
+    }
+
+    public func set(_ key: String, _ values: [Double]) throws -> Instance {
+        try set(key: key, value: values)
+    }
+
+    public func set(_ key: String, _ values: [Int]) throws -> Instance {
+        try set(key: key, value: values.map { Double($0) })
+    }
+
+    public func set(_ key: String, _ values: [Int32]) throws -> Instance {
+        try set(key: key, value: values.map { Double($0) })
+    }
+
+    public func set(_ key: String, _ values: [Int64]) throws -> Instance {
+        try set(key: key, value: values.map { Double($0) })
+    }
+
+    public func set(_ key: String, _ values: [UInt]) throws -> Instance {
+        try set(key: key, value: values.map { Double($0) })
+    }
+
+    public func set(_ key: String, _ values: [UInt32]) throws -> Instance {
+        try set(key: key, value: values.map { Double($0) })
     }
 }

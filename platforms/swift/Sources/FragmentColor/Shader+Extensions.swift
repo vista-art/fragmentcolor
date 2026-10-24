@@ -17,23 +17,30 @@ extension Shader {
         try self.init(source: source)
     }
 
+    /// Build a Shader from parts: WGSL sources, registry slugs, URLs or file paths.
+    public convenience init(_ parts: [String]) throws {
+        let shader = try Shader.compose(parts: parts)
+        self.init(unsafeFromHandle: shader.uniffiCloneHandle())
+    }
+
     // MARK: - Registry
 
-    /// `Shader.setRegistry(...)` matching the JS / Python static-method
-    /// spelling. Uniffi has no static-method form on `uniffi::Object`, so
-    /// the underlying binding is a constructor that returns a default
-    /// `Shader`; this wrapper discards the dummy instance so callers see
-    /// `Void`.
+    /// Point registry slugs at `baseUrl`, for every Shader in the process.
+    /// Matches the JS / Python static-method spelling.
     public static func setRegistry(_ baseUrl: String) {
-        _ = Shader.setRegistry(baseUrl: baseUrl)
+        _ = Shader.useRegistry(baseUrl: baseUrl)
+    }
+
+    @available(*, deprecated, renamed: "setRegistry(_:)")
+    public static func setRegistry(baseUrl: String) {
+        setRegistry(baseUrl)
     }
 
     // MARK: - Compose (multi-part)
 
-    /// Build a Shader from an array of source strings / registry slugs.
-    /// Matches the JS/Python `Shader.new([parts])` spelling.
+    @available(*, deprecated, message: "Use Shader([...]), as JavaScript and Python do")
     public static func new(_ parts: [String]) throws -> Shader {
-        return try Shader.compose(parts: parts)
+        return try Shader(parts)
     }
 
     // MARK: - Mesh attachment
@@ -60,91 +67,99 @@ extension Shader {
 
     // MARK: - Uniform setters
 
-    /// Set a uniform by key with a typed value. Dispatches to the right
-    /// `UniformData` variant.
+    // Each overload only says what kind of value it carries. Rust shapes it
+    // to the uniform's declared WGSL type, so `3` fits an f32, i32 or u32
+    // uniform and four numbers fit a vec4 or a mat2x2.
+
     public func set(_ key: String, _ value: Float) throws {
-        try set(key: key, value: .float(value))
+        try set(key: key, value: .number(Double(value)))
+    }
+
+    public func set(_ key: String, _ value: Double) throws {
+        try set(key: key, value: .number(value))
+    }
+
+    public func set(_ key: String, _ value: Int) throws {
+        try set(key: key, value: .number(Double(value)))
     }
 
     public func set(_ key: String, _ value: Int32) throws {
-        try set(key: key, value: .int(value))
+        try set(key: key, value: .number(Double(value)))
+    }
+
+    public func set(_ key: String, _ value: Int64) throws {
+        try set(key: key, value: .number(Double(value)))
+    }
+
+    public func set(_ key: String, _ value: UInt) throws {
+        try set(key: key, value: .number(Double(value)))
     }
 
     public func set(_ key: String, _ value: UInt32) throws {
-        try set(key: key, value: .uInt(value))
+        try set(key: key, value: .number(Double(value)))
     }
 
     public func set(_ key: String, _ value: Bool) throws {
         try set(key: key, value: .bool(value))
     }
 
-    /// Float array — dispatches to Float / Vec2..4 / Mat3 / Mat4 by length.
-    public func set(_ key: String, _ value: [Float]) throws {
-        let uniform: UniformData
-        switch value.count {
-        case 1:  uniform = .float(value[0])
-        case 2:  uniform = .vec2(value)
-        case 3:  uniform = .vec3(value)
-        case 4:  uniform = .vec4(value)
-        case 9:  uniform = .mat3(value)
-        case 16: uniform = .mat4(value)
-        default:
-            throw FragmentColorError.Shader("Unsupported float array length: \(value.count) (expected 1/2/3/4/9/16)")
-        }
-        try set(key: key, value: uniform)
+    public func set(_ key: String, _ values: [Float]) throws {
+        try set(key: key, value: .numbers(values.map { Double($0) }))
     }
 
-    /// Double array — converted to Float and dispatched by length.
-    public func set(_ key: String, _ value: [Double]) throws {
-        try set(key, value.map { Float($0) })
+    public func set(_ key: String, _ values: [Double]) throws {
+        try set(key: key, value: .numbers(values))
     }
 
-    /// Int32 array — dispatches to Int / IVec2..4 by length.
-    public func set(_ key: String, _ value: [Int32]) throws {
-        let uniform: UniformData
-        switch value.count {
-        case 1: uniform = .int(value[0])
-        case 2: uniform = .iVec2(value)
-        case 3: uniform = .iVec3(value)
-        case 4: uniform = .iVec4(value)
-        default:
-            throw FragmentColorError.Shader("Unsupported int array length: \(value.count) (expected 1/2/3/4)")
-        }
-        try set(key: key, value: uniform)
+    public func set(_ key: String, _ values: [Int]) throws {
+        try set(key: key, value: .numbers(values.map { Double($0) }))
     }
 
-    /// UInt32 array — dispatches to UInt / UVec2..4 by length.
-    public func set(_ key: String, _ value: [UInt32]) throws {
-        let uniform: UniformData
-        switch value.count {
-        case 1: uniform = .uInt(value[0])
-        case 2: uniform = .uVec2(value)
-        case 3: uniform = .uVec3(value)
-        case 4: uniform = .uVec4(value)
-        default:
-            throw FragmentColorError.Shader("Unsupported uint array length: \(value.count) (expected 1/2/3/4)")
-        }
-        try set(key: key, value: uniform)
+    public func set(_ key: String, _ values: [Int32]) throws {
+        try set(key: key, value: .numbers(values.map { Double($0) }))
+    }
+
+    public func set(_ key: String, _ values: [Int64]) throws {
+        try set(key: key, value: .numbers(values.map { Double($0) }))
+    }
+
+    public func set(_ key: String, _ values: [UInt]) throws {
+        try set(key: key, value: .numbers(values.map { Double($0) }))
+    }
+
+    public func set(_ key: String, _ values: [UInt32]) throws {
+        try set(key: key, value: .numbers(values.map { Double($0) }))
+    }
+
+    /// A matrix as its columns, such as the 4x4 Rust's `Camera::view_proj` returns.
+    public func set(_ key: String, _ columns: [[Float]]) throws {
+        try set(key, columns.flatMap { $0 })
+    }
+
+    /// A matrix as its columns.
+    public func set(_ key: String, _ columns: [[Double]]) throws {
+        try set(key, columns.flatMap { $0 })
+    }
+
+    /// A matrix as its columns.
+    public func set(_ key: String, _ columns: [[Int]]) throws {
+        try set(key, columns.flatMap { $0 })
+    }
+
+    /// Raw bytes for a storage-buffer or push-constant root.
+    public func set(_ key: String, _ bytes: Data) throws {
+        try set(key: key, value: .bytes(bytes))
+    }
+
+    /// Bind a `Texture` created by a `Renderer` to a texture uniform.
+    public func set(_ key: String, _ texture: Texture) throws {
+        try set(key: key, value: .texture(texture.id()))
     }
 
     /// Get the value of a uniform by key (unlabeled overload).
+    /// The `float`, `floats` and `bytes` accessors read the result.
     public func get(_ key: String) throws -> UniformData {
         try get(key: key)
-    }
-
-    /// Pass a `Texture` handle for a sampler/texture binding. Storage merges
-    /// the user-supplied id with the shader-parsed metadata at set time, so
-    /// the placeholder values for `dim` / `arrayed` / `class` / `sampled`
-    /// here are overwritten by the real reflection data.
-    public func set(_ key: String, _ texture: Texture) throws {
-        let meta = TextureMeta(
-            id: texture.id(),
-            dim: .d2,
-            arrayed: false,
-            class: .sampled(kind: .float, multi: false),
-            sampled: true
-        )
-        try set(key: key, value: .texture(meta))
     }
 
     // MARK: - fromVertex / fromMesh (unlabeled overloads)
@@ -165,10 +180,9 @@ extension Shader {
     /// and return a compiled `Shader`. This is the explicit async factory that
     /// mirrors `Shader.fetch(...)` on Web and Python.
     ///
-    /// The underlying uniffi binding exposes `fetch` as an instance method
-    /// (uniffi 0.31 does not support async constructors); this static wrapper
-    /// creates a throw-away default instance to call through, then returns the
-    /// freshly fetched shader.
+    /// The underlying uniffi binding exposes `fetch` as an instance method;
+    /// this static wrapper creates a throw-away default instance to call
+    /// through, then returns the freshly fetched shader.
     ///
     /// Usage:
     /// ```swift
@@ -187,5 +201,43 @@ extension Shader {
     /// ```
     public static func fetch(_ parts: [String]) async throws -> Shader {
         return try await Shader.default().fetchCompose(parts: parts)
+    }
+}
+
+extension UniformData {
+    /// The number a scalar uniform holds, as a `Float`.
+    /// `nil` for anything but a bool, float, int or uint.
+    public var float: Float? {
+        switch self {
+        case let .float(value): return value
+        case let .int(value): return Float(value)
+        case let .uInt(value): return Float(value)
+        case let .bool(flag): return flag ? 1 : 0
+        default: return nil
+        }
+    }
+
+    /// The numbers a scalar, vector or matrix uniform holds, as `Float`s.
+    /// Matrices come column by column. `nil` for textures, samplers and bytes.
+    public var floats: [Float]? {
+        switch self {
+        case let .vec2(values), let .vec3(values), let .vec4(values),
+             let .mat2(values), let .mat3(values), let .mat4(values):
+            return values
+        case let .uVec2(values), let .uVec3(values), let .uVec4(values):
+            return values.map { Float($0) }
+        case let .iVec2(values), let .iVec3(values), let .iVec4(values):
+            return values.map { Float($0) }
+        default:
+            return float.map { [$0] }
+        }
+    }
+
+    /// The bytes of a storage-buffer or push-constant root. `nil` for anything else.
+    public var bytes: Data? {
+        if case let .bytes(data) = self {
+            return data
+        }
+        return nil
     }
 }

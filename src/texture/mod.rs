@@ -21,6 +21,10 @@ pub use usage::TextureUsage;
 pub(crate) mod ktx2_loader;
 
 mod platform;
+#[cfg(python)]
+pub(crate) use platform::{PySamplerOptions, PyTextureId, PyTextureSource, PyTextureUsage};
+#[cfg(wasm)]
+pub(crate) use platform::{read_texture_input, read_usage};
 
 use crate::{RenderContext, Size};
 use image::{DynamicImage, GenericImageView};
@@ -58,12 +62,11 @@ pub enum TextureData {
     Path(std::path::PathBuf),
     CloneOf(Texture),
     Url(String),
-    DynamicImage(DynamicImage),
-    /// In-memory KTX2 container bytes (decoded by the `ktx2` crate). Distinct
-    /// from `Bytes`/`Path`/`Url` because the KTX2 path trusts the file's own
-    /// declared format and skips the JPEG/PNG sRGB-inference + CPU mipmap
-    /// chain. Use this for pre-baked compressed textures (BC7, ASTC, ETC2)
-    /// from your asset pipeline.
+    /// In-memory KTX2 container bytes (decoded by the `ktx2` crate). The KTX2
+    /// path trusts the file's own declared format and skips the JPEG/PNG
+    /// sRGB-inference + CPU mipmap chain. Use this for pre-baked compressed
+    /// textures (BC7, ASTC, ETC2) from your asset pipeline. `Bytes`, `Path`
+    /// and `Url` take the same path when the data starts with the KTX2 identifier.
     Ktx2Bytes(Vec<u8>),
     /// Path to a `.ktx2` file on disk.
     Ktx2Path(std::path::PathBuf),
@@ -73,7 +76,7 @@ pub enum TextureData {
     /// worker thread (or any non-render thread) do the decode + mip
     /// generation, then hand the prepared chain to `Renderer::create_texture`
     /// for a GPU-only upload. The library already runs that prep on a
-    /// background thread for `Bytes`/`Path`/`Url`/`DynamicImage` inputs; reach
+    /// background thread for `Bytes`/`Path`/`Url` inputs; reach
     /// for this only when sharing a chain across textures or when you want
     /// explicit control over which thread does the work. Cross-language
     /// callers typically don't construct this variant directly — they hand a
@@ -126,15 +129,15 @@ impl Mipmap {
     /// Mipmap::build((rgba_bytes, TextureFormat::Rgba8UnormSrgb, [w, h]))?;
     /// ```
     ///
-    /// `build` requires a sync-friendly `data` variant: `Bytes`,
-    /// `DynamicImage`, or `Path` (file IO). `Url` (needs async fetch),
+    /// `build` requires a sync-friendly `data` variant: `Bytes` or
+    /// `Path` (file IO). `Url` (needs async fetch),
     /// `Ktx2*` (already pre-baked), `Prepared` (already a chain),
     /// `CloneOf` (existing texture), and `Empty` (nothing to chain) all
     /// return [`TextureError::InvalidInput`].
     ///
     /// Supported formats for the mipmap chain: `Rgba8Unorm`,
-    /// `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, `R8Unorm`,
-    /// `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`. Other formats
+    /// `Rgba8UnormSrgb`, `Bgra8Unorm`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`,
+    /// `Rg16Unorm`, `Rgba16Unorm`, and the aliases for them. Other formats
     /// return [`TextureError::UnsupportedMipmapFormat`].
     #[lsp_doc("docs/api/texture/mipmap/build.md")]
     pub fn build(input: impl Into<crate::TextureInput>) -> Result<Mipmap, TextureError> {
@@ -173,7 +176,6 @@ impl Mipmap {
                     bytes_as_image(&bytes[..expected], extent.width, extent.height, wfmt)?
                 }
             },
-            TextureData::DynamicImage(image) => image,
             TextureData::Path(path) => image::open(path)?,
             // Async / pre-baked / non-prep variants don't fit the sync CPU
             // mipmap pipeline. Surface a clear typed error so callers can
@@ -253,6 +255,16 @@ impl Mipmap {
         &self.levels
     }
 
+    #[lsp_doc("docs/api/texture/mipmap/level.md")]
+    pub fn level(&self, index: usize) -> Result<&[u8], TextureError> {
+        self.levels.get(index).map(Vec::as_slice).ok_or_else(|| {
+            TextureError::InvalidInput(format!(
+                "level {index} out of range; the chain has {} levels",
+                self.levels.len()
+            ))
+        })
+    }
+
     #[lsp_doc("docs/api/texture/mipmap/count.md")]
     pub fn count(&self) -> usize {
         self.levels.len()
@@ -289,6 +301,26 @@ impl From<&std::path::PathBuf> for TextureData {
         TextureData::Path(p.clone())
     }
 }
+/// A string is a URL when it starts with `http://` or `https://`, and a file path otherwise.
+impl From<&str> for TextureData {
+    fn from(source: &str) -> Self {
+        if source.starts_with("http://") || source.starts_with("https://") {
+            TextureData::Url(source.to_string())
+        } else {
+            TextureData::Path(std::path::PathBuf::from(source))
+        }
+    }
+}
+impl From<String> for TextureData {
+    fn from(source: String) -> Self {
+        TextureData::from(source.as_str())
+    }
+}
+impl From<&String> for TextureData {
+    fn from(source: &String) -> Self {
+        TextureData::from(source.as_str())
+    }
+}
 impl From<&Texture> for TextureData {
     fn from(t: &Texture) -> Self {
         TextureData::CloneOf(t.clone())
@@ -300,16 +332,13 @@ impl From<Mipmap> for TextureData {
     }
 }
 
-/// Uniffi-marshallable mirror of [`TextureInput`]. Drops the `DynamicImage`
-/// variant (the `image` crate's `DynamicImage` isn't an FFI-friendly type;
-/// callers on every non-Rust platform reach the same outcome by passing
-/// `Bytes` and letting the library decode internally) and uses owned types
-/// uniffi can lower across the FFI (`String` for paths, `Arc<Object>` for
-/// handles).
+/// Uniffi mirror of [`TextureData`], which it converts into.
 ///
-/// The Rust core stays on `TextureInput`; this enum exists only so mobile
-/// bindings can carry a concrete variant. Web and Python use their own
-/// dispatch (`TryFrom<JsValue>` / Python kwargs) and never see this type.
+/// It leaves out `Empty`. Paths travel as `String`, handles as `Arc`.
+///
+/// The Rust core stays on `TextureData`. This enum exists only so the mobile
+/// bindings can carry a concrete variant. Web and Python use their own dispatch
+/// (`TryFrom<JsValue>` and Python kwargs) and never see this type.
 #[cfg(mobile)]
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum TextureInputMobile {
@@ -339,53 +368,65 @@ impl From<TextureInputMobile> for TextureData {
     }
 }
 
+/// A texture source decoded from JS.
+/// `ImageData` and canvases carry their pixel size in `options.size`,
+/// so their raw RGBA bytes upload without a size argument.
 #[cfg(wasm)]
-impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
+impl TryFrom<&wasm_bindgen::JsValue> for TextureInput {
     type Error = crate::texture::error::TextureError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
         use js_sys::{Array, ArrayBuffer, Uint8Array, Uint8ClampedArray};
         use wasm_bindgen::JsCast;
 
+        let pixels = |bytes: Vec<u8>, width: u32, height: u32| TextureInput {
+            data: TextureData::Bytes(bytes),
+            options: TextureOptions::from(Size::from([width, height])),
+        };
+
         // Case: Mipmap handle (built off-thread via Mipmap.build).
         // Detected through the branded __fc_kind + __wbg_ptr anchor so it
         // survives bundler renaming. Must come before the Uint8Array / object
         // cases because wasm-bindgen handles also satisfy `is_object()`.
         if let Ok(chain) = Mipmap::try_from(value) {
-            return Ok(TextureData::Prepared(chain));
+            return Ok(TextureData::Prepared(chain).into());
+        }
+
+        // Case: an existing Texture handle, shared as is
+        if let Ok(texture) = Texture::try_from(value) {
+            return Ok(TextureData::CloneOf(texture).into());
         }
 
         // Case: Uint8Array (fast path)
         if let Some(u8a) = value.dyn_ref::<Uint8Array>() {
             let mut bytes = vec![0u8; u8a.length() as usize];
             u8a.copy_to(&mut bytes[..]);
-            return Ok(TextureData::Bytes(bytes));
+            return Ok(TextureData::Bytes(bytes).into());
         }
 
         // Case: Uint8ClampedArray (ImageData.data)
         if let Some(u8c) = value.dyn_ref::<Uint8ClampedArray>() {
             let mut bytes = vec![0u8; u8c.length() as usize];
             u8c.copy_to(&mut bytes[..]);
-            return Ok(TextureData::Bytes(bytes));
+            return Ok(TextureData::Bytes(bytes).into());
         }
 
         // Case: ArrayBuffer
         if let Some(buf) = value.dyn_ref::<ArrayBuffer>() {
             // Guard against detached buffers via byte_length() == 0; safe fallback for empty too.
             if buf.byte_length() == 0 {
-                return Ok(TextureData::Bytes(Vec::new()));
+                return Ok(TextureData::Bytes(Vec::new()).into());
             }
             let u8a = Uint8Array::new(buf);
             let mut bytes = vec![0u8; u8a.length() as usize];
             u8a.copy_to(&mut bytes[..]);
-            return Ok(TextureData::Bytes(bytes));
+            return Ok(TextureData::Bytes(bytes).into());
         }
 
-        // Case: ImageData -> use its backing data (Clamped<Vec<u8>> on wasm)
+        // Case: ImageData -> its RGBA pixels and size
         if let Some(image_data) = value.dyn_ref::<web_sys::ImageData>() {
-            let data = image_data.data();
-            let bytes = data.0;
-            return Ok(TextureData::Bytes(bytes));
+            let bytes = image_data.data().0;
+            return Ok(pixels(bytes, image_data.width(), image_data.height()));
         }
 
         // Case: HTMLCanvasElement -> raw pixel bytes via 2D context
@@ -393,12 +434,9 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
             && let Ok(Some(ctx_js)) = canvas.get_context("2d")
             && let Ok(ctx) = ctx_js.dyn_into::<web_sys::CanvasRenderingContext2d>()
         {
-            let width = canvas.width() as f64;
-            let height = canvas.height() as f64;
-            let img = ctx.get_image_data(0.0, 0.0, width, height)?;
-            let data = img.data();
-            let bytes = data.0;
-            return Ok(TextureData::Bytes(bytes));
+            let (width, height) = (canvas.width(), canvas.height());
+            let image = ctx.get_image_data(0.0, 0.0, width as f64, height as f64)?;
+            return Ok(pixels(image.data().0, width, height));
         }
 
         // Case: OffscreenCanvas -> raw pixel bytes via 2D context
@@ -406,31 +444,23 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
             && let Ok(Some(ctx_js)) = canvas.get_context("2d")
             && let Ok(ctx) = ctx_js.dyn_into::<web_sys::OffscreenCanvasRenderingContext2d>()
         {
-            let width = canvas.width() as f64;
-            let height = canvas.height() as f64;
-            let img = ctx.get_image_data(0.0, 0.0, width, height)?;
-            let data = img.data();
-            let bytes = data.0;
-            return Ok(TextureData::Bytes(bytes));
+            let (width, height) = (canvas.width(), canvas.height());
+            let image = ctx.get_image_data(0.0, 0.0, width as f64, height as f64)?;
+            return Ok(pixels(image.data().0, width, height));
         }
 
         // Case: HTMLImageElement -> pass through as URL
         if let Some(img) = value.dyn_ref::<web_sys::HtmlImageElement>() {
-            return Ok(TextureData::Url(img.src()));
+            return Ok(TextureData::Url(img.src()).into());
         }
 
         // Case: Plain JS Array of numbers
         if Array::is_array(value) {
-            let arr = Array::from(value);
-            let len = arr.length();
-            let mut bytes = Vec::with_capacity(len as usize);
-            for i in 0..len {
-                let n = arr.get(i).as_f64().unwrap_or(0.0);
-                let n = if n.is_nan() { 0.0 } else { n };
-                let b = n.max(0.0).min(255.0) as u8;
-                bytes.push(b);
-            }
-            return Ok(TextureData::Bytes(bytes));
+            let bytes = Array::from(value)
+                .iter()
+                .map(|item| js_to_byte(&item))
+                .collect::<Result<Vec<u8>, TextureError>>()?;
+            return Ok(TextureData::Bytes(bytes).into());
         }
 
         // Case: String -> selector or URL
@@ -454,7 +484,7 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
             } else {
                 s.clone()
             };
-            return Ok(TextureData::Url(url));
+            return Ok(TextureData::Url(url).into());
         }
 
         Err(crate::texture::error::TextureError::Error(
@@ -463,8 +493,30 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
     }
 }
 
+/// One item of a JS byte list: a whole number from 0 to 255.
+#[cfg(wasm)]
+fn js_to_byte(value: &wasm_bindgen::JsValue) -> Result<u8, TextureError> {
+    match value.as_f64() {
+        Some(number) if number.fract() == 0.0 && (0.0..=255.0).contains(&number) => {
+            Ok(number as u8)
+        }
+        _ => Err(TextureError::InvalidInput(format!(
+            "a byte list takes whole numbers from 0 to 255, got {value:?}"
+        ))),
+    }
+}
+
+#[cfg(wasm)]
+impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
+    type Error = crate::texture::error::TextureError;
+
+    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+        TextureInput::try_from(value).map(|input| input.data)
+    }
+}
+
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass(from_py_object))]
+#[cfg_attr(python, pyclass(from_py_object, get_all, eq, hash, frozen))]
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct TextureId {
@@ -476,6 +528,12 @@ pub struct TextureId {
 impl From<u64> for TextureId {
     fn from(value: u64) -> Self {
         TextureId { id: value }
+    }
+}
+
+impl From<&TextureId> for TextureId {
+    fn from(value: &TextureId) -> Self {
+        *value
     }
 }
 
@@ -492,13 +550,17 @@ crate::impl_js_bridge!(TextureId, crate::texture::TextureError);
 pub(crate) fn js_to_texture_id(
     value: &wasm_bindgen::JsValue,
 ) -> Result<TextureId, crate::texture::TextureError> {
+    let invalid = || TextureError::InvalidInput(format!("not a texture id: {value:?}"));
     if let Some(number) = value.as_f64() {
-        if number.is_sign_negative() {
-            return Err(crate::texture::TextureError::Error(
-                "TextureId must be a non-negative number".into(),
-            ));
+        if number.fract() != 0.0 || !(0.0..=u64::MAX as f64).contains(&number) {
+            return Err(invalid());
         }
         return Ok(TextureId { id: number as u64 });
+    }
+    if value.is_bigint() {
+        return u64::try_from(value.clone())
+            .map(TextureId::from)
+            .map_err(|_| invalid());
     }
     TextureId::try_from(value)
 }
@@ -513,42 +575,6 @@ pub(crate) fn js_to_texture_bytes(
             "Expected raw byte data".into(),
         )),
     }
-}
-
-#[cfg(python)]
-pub(crate) fn py_to_texture_id<'py>(
-    any: &pyo3::Bound<'py, pyo3::PyAny>,
-) -> pyo3::PyResult<TextureId> {
-    if let Ok(number) = any.extract::<u64>() {
-        return Ok(TextureId { id: number });
-    }
-    if let Ok(bound) = any.cast::<TextureId>() {
-        return Ok(*bound.borrow());
-    }
-    Err(crate::error::PyFragmentColorError::new_err(
-        "Expected a TextureId or integer id",
-    ))
-}
-
-#[cfg(python)]
-pub(crate) fn py_to_texture_bytes<'py>(
-    any: &pyo3::Bound<'py, pyo3::PyAny>,
-) -> pyo3::PyResult<Vec<u8>> {
-    if let Ok(bytes) = any.extract::<Vec<u8>>() {
-        return Ok(bytes);
-    }
-    if let Ok(array) = any.cast::<numpy::PyArrayDyn<u8>>() {
-        use numpy::PyArrayMethods;
-
-        let view = array.readonly();
-        let bytes = view.as_slice().map_err(|_| {
-            crate::error::PyFragmentColorError::new_err("ndarray must be contiguous")
-        })?;
-        return Ok(bytes.to_vec());
-    }
-    Err(crate::error::PyFragmentColorError::new_err(
-        "Expected raw byte data",
-    ))
 }
 
 impl std::fmt::Display for TextureId {
@@ -726,6 +752,8 @@ impl TextureObject {
         let mipmaps = options.mipmaps;
         let opt_size = options.size;
         let opt_format = options.format;
+        let sampler = options.sampler;
+        let usage = source_usage(options.usage);
 
         // URL variants need an async fetch on the calling thread; everything
         // else runs on the background worker. Pre-fetch and forward the
@@ -742,38 +770,39 @@ impl TextureObject {
         };
 
         crate::renderer::background::run(move || -> Result<Self, TextureError> {
-            match data {
+            let object = match data {
+                TextureData::Bytes(bytes) if ktx2_loader::is_ktx2(&bytes) => {
+                    ktx2_loader::from_ktx2_bytes(context.as_ref(), &bytes, usage)
+                }
+                TextureData::Path(path) if ktx2_loader::is_ktx2_file(&path) => {
+                    read_ktx2_file(context.as_ref(), &path, usage)
+                }
                 TextureData::Bytes(bytes) => {
                     if let Some(sz) = opt_size {
                         let wfmt = format_override
                             .unwrap_or_else(|| wgpu::TextureFormat::from(opt_format));
-                        Self::from_raw_bytes(context.as_ref(), sz.into(), wfmt, &bytes, mipmaps)
+                        Self::from_raw_bytes(
+                            context.as_ref(),
+                            sz.into(),
+                            wfmt,
+                            &bytes,
+                            mipmaps,
+                            usage,
+                        )
                     } else {
                         let image = image::load_from_memory(&bytes)?;
-                        Self::from_image(context.as_ref(), &image, format_override, mipmaps)
+                        Self::from_image(context.as_ref(), &image, format_override, mipmaps, usage)
                     }
                 }
                 TextureData::Path(path) => {
                     let image = image::open(&path)?;
-                    Self::from_image(context.as_ref(), &image, format_override, mipmaps)
+                    Self::from_image(context.as_ref(), &image, format_override, mipmaps, usage)
                 }
-                TextureData::DynamicImage(image) => {
-                    Self::from_image(context.as_ref(), &image, format_override, mipmaps)
-                }
-                TextureData::Prepared(chain) => Self::from_chain(context.as_ref(), chain),
+                TextureData::Prepared(chain) => Self::from_chain(context.as_ref(), chain, usage),
                 TextureData::Ktx2Bytes(bytes) => {
-                    ktx2_loader::from_ktx2_bytes(context.as_ref(), &bytes)
+                    ktx2_loader::from_ktx2_bytes(context.as_ref(), &bytes, usage)
                 }
-                TextureData::Ktx2Path(path) => {
-                    let bytes = std::fs::read(&path).map_err(|e| {
-                        TextureError::CreateTextureError(format!(
-                            "Failed to read KTX2 file {}: {}",
-                            path.display(),
-                            e
-                        ))
-                    })?;
-                    ktx2_loader::from_ktx2_bytes(context.as_ref(), &bytes)
-                }
+                TextureData::Ktx2Path(path) => read_ktx2_file(context.as_ref(), &path, usage),
                 TextureData::Url(_) | TextureData::Ktx2Url(_) => Err(
                     TextureError::InvalidInput(
                         "from_input: URL variant should have been pre-fetched on the calling thread".into(),
@@ -782,7 +811,9 @@ impl TextureObject {
                 TextureData::CloneOf(_) | TextureData::Empty => Err(TextureError::InvalidInput(
                     "from_input: CloneOf and Empty are handled by Renderer::create_texture; do not pass them to the dispatcher".into(),
                 )),
-            }
+            }?;
+            object.set_sampler_options(&context.device, sampler);
+            Ok(object)
         })
         .await
     }
@@ -800,8 +831,8 @@ impl TextureObject {
         format: wgpu::TextureFormat,
         data: &[u8],
         generate_mipmaps: bool,
+        usage: wgpu::TextureUsages,
     ) -> Result<Self, TextureError> {
-        let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
         check_format(context.device.features(), format, usage)?;
         let bpp = bytes_per_pixel(format);
 
@@ -852,6 +883,7 @@ impl TextureObject {
         image: &DynamicImage,
         format_override: Option<wgpu::TextureFormat>,
         generate_mipmaps: bool,
+        usage: wgpu::TextureUsages,
     ) -> Result<Self, TextureError> {
         let label = "Source Texture from Loaded Image";
         let (width, height) = image.dimensions();
@@ -861,7 +893,6 @@ impl TextureObject {
             depth_or_array_layers: 1,
         };
         let format = format_override.unwrap_or_else(|| infer_format(image.color()));
-        let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
         check_format(context.device.features(), format, usage)?;
 
         let want_mips = generate_mipmaps && supports_cpu_mipmaps(format);
@@ -889,7 +920,11 @@ impl TextureObject {
 
     /// Create a TextureObject from a pre-built CPU mip chain. Pure GPU writes —
     /// no decode, no resize. Used by the `TextureInput::Prepared` path.
-    fn from_chain(context: &RenderContext, chain: Mipmap) -> Result<Self, TextureError> {
+    fn from_chain(
+        context: &RenderContext,
+        chain: Mipmap,
+        usage: wgpu::TextureUsages,
+    ) -> Result<Self, TextureError> {
         let (w, h) = chain.base_size;
         if w == 0 || h == 0 {
             return Err(TextureError::CreateTextureError(
@@ -903,7 +938,6 @@ impl TextureObject {
         }
         let levels = chain.levels.as_slice();
         let format = chain.format;
-        let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
         check_format(context.device.features(), format, usage)?;
         let bpp = bytes_per_pixel(format);
         if bpp == 0 {
@@ -1025,34 +1059,46 @@ impl TextureObject {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
         };
         let texture = context.device.create_texture(&descriptor);
-        let sampler = create_sampler(
-            &context.device,
-            SamplerOptions {
-                repeat_x: false,
-                repeat_y: false,
-                smooth: true,
-                compare: Some(CompareFunction::LessEqual),
-            },
-        );
+        let options = SamplerOptions {
+            compare: Some(CompareFunction::LessEqual),
+            ..Default::default()
+        };
+        let sampler = create_sampler(&context.device, options);
 
         Self {
             inner: texture,
             size,
             sampler: RwLock::new(sampler),
-            options: RwLock::new(SamplerOptions::default()),
+            options: RwLock::new(options),
             format,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
         }
     }
 
-    pub fn sampler(&self) -> wgpu::Sampler {
-        self.sampler.read().clone()
+    /// The sampler a `sampler` binding gets from this texture.
+    /// It is the texture's own sampler when the binding's `comparison` matches the options,
+    /// and otherwise a sampler built from the same options with the comparison switched on or off.
+    pub fn sampler_for(&self, device: &wgpu::Device, comparison: bool) -> wgpu::Sampler {
+        let options = self.options.read();
+        if options.compare.is_some() == comparison {
+            return self.sampler.read().clone();
+        }
+        let compare = comparison.then_some(CompareFunction::LessEqual);
+        create_sampler(
+            device,
+            SamplerOptions {
+                compare,
+                ..*options
+            },
+        )
     }
 
     pub fn set_sampler_options(&self, device: &wgpu::Device, options: SamplerOptions) {
         let sampler = create_sampler(device, options);
-        *self.options.write() = options;
+        // Hold the options lock across both writes so `sampler_for` never sees a mismatched pair.
+        let mut current = self.options.write();
         *self.sampler.write() = sampler;
+        *current = options;
     }
 
     pub fn size(&self) -> Size {
@@ -1115,6 +1161,33 @@ impl TextureObject {
             usage,
         }
     }
+}
+
+fn read_ktx2_file(
+    context: &RenderContext,
+    path: &std::path::Path,
+    usage: wgpu::TextureUsages,
+) -> Result<TextureObject, TextureError> {
+    let bytes = std::fs::read(path).map_err(|e| {
+        TextureError::CreateTextureError(format!(
+            "Failed to read KTX2 file {}: {}",
+            path.display(),
+            e
+        ))
+    })?;
+    ktx2_loader::from_ktx2_bytes(context, &bytes, usage)
+}
+
+/// Usage of a texture made from source data.
+/// It always holds `TEXTURE_BINDING | COPY_DST`, since the upload and sampling need them,
+/// plus any bits from `TextureOptions::usage`, such as `COPY_SRC` for `read_texture`.
+pub(crate) fn source_usage(extra: Option<u32>) -> wgpu::TextureUsages {
+    let required = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
+    required
+        | extra.map_or(
+            wgpu::TextureUsages::empty(),
+            wgpu::TextureUsages::from_bits_truncate,
+        )
 }
 
 /// Number of mip levels in a full chain that goes down to 1×1 for the given dimensions.
@@ -1690,6 +1763,18 @@ crate::impl_js_bridge!(Texture, TextureError);
 mod tests {
     use super::*;
 
+    /// Encodes `image` as PNG bytes, the way a file on disk would hold it.
+    fn encode_png(image: &DynamicImage) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        image
+            .write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageFormat::Png,
+            )
+            .expect("encode png");
+        bytes
+    }
+
     // Story: TextureInput conversions from common Rust types produce expected variants.
     #[test]
     fn texture_input_conversions() {
@@ -1708,9 +1793,40 @@ mod tests {
         }
     }
 
-    // Story: Create a texture from a dynamic image and verify aspect.
+    // Story: a string is a URL with an http(s) scheme and a file path otherwise.
     #[test]
-    fn dynamic_image_aspect_smoke() {
+    fn texture_input_from_strings() {
+        assert!(matches!(
+            TextureData::from("https://example.com/logo.png"),
+            TextureData::Url(url) if url == "https://example.com/logo.png"
+        ));
+        assert!(matches!(
+            TextureData::from(String::from("assets/logo.png")),
+            TextureData::Path(path) if path == std::path::Path::new("assets/logo.png")
+        ));
+        let input = TextureInput::from(("logo.png", [2u32, 2]));
+        assert!(matches!(input.data, TextureData::Path(_)));
+        assert_eq!(input.options.size, Some(Size::from([2u32, 2])));
+    }
+
+    // Story: Mipmap::level returns one level and errors past the end.
+    #[test]
+    fn mipmap_level_indexes_the_chain() {
+        let pixels = vec![9u8; 4 * 4 * 4];
+        let chain = Mipmap::build((
+            pixels.as_slice(),
+            crate::TextureFormat::Rgba8Unorm,
+            [4u32, 4],
+        ))
+        .expect("chain");
+        assert_eq!(chain.level(0).expect("level 0").len(), 4 * 4 * 4);
+        assert_eq!(chain.level(2).expect("level 2").len(), 4);
+        assert!(matches!(chain.level(3), Err(TextureError::InvalidInput(_))));
+    }
+
+    // Story: Create a texture from encoded image bytes and verify aspect.
+    #[test]
+    fn encoded_image_aspect_smoke() {
         pollster::block_on(async move {
             // 2x1 image in memory
             let img = image::DynamicImage::ImageRgba8(
@@ -1719,9 +1835,9 @@ mod tests {
 
             let r = crate::Renderer::new();
             let tex = r
-                .create_texture(TextureData::DynamicImage(img))
+                .create_texture(TextureData::Bytes(encode_png(&img)))
                 .await
-                .expect("create texture from dynamic image");
+                .expect("create texture from encoded image");
             assert_eq!(tex.aspect(), 2.0);
 
             // Change sampler options should not panic
@@ -1749,15 +1865,16 @@ mod tests {
 
     // Story: Default options request a mipmap chain; explicit opt-out yields a single level.
     #[test]
-    fn dynamic_image_creates_mipmap_chain_by_default() {
+    fn encoded_image_creates_mipmap_chain_by_default() {
         pollster::block_on(async move {
             // 8x8 solid color image — generates 4 mip levels (8, 4, 2, 1).
             let pixels = vec![200u8; 8 * 8 * 4];
             let img =
                 image::DynamicImage::ImageRgba8(image::RgbaImage::from_vec(8, 8, pixels).unwrap());
+            let png = encode_png(&img);
             let r = crate::Renderer::new();
             let tex = r
-                .create_texture(TextureData::DynamicImage(img.clone()))
+                .create_texture(TextureData::Bytes(png.clone()))
                 .await
                 .expect("create texture with mipmaps");
             assert_eq!(tex.object.inner.mip_level_count(), 4);
@@ -1768,14 +1885,14 @@ mod tests {
                 ..Default::default()
             };
             let tex_no_mip = r
-                .create_texture((TextureData::DynamicImage(img), opts))
+                .create_texture((TextureData::Bytes(png), opts))
                 .await
                 .expect("create texture without mipmaps");
             assert_eq!(tex_no_mip.object.inner.mip_level_count(), 1);
         });
     }
 
-    // Story: Format override is honored on the DynamicImage arm — same RGBA bytes,
+    // Story: Format override is honored on the encoded image arm — same RGBA bytes,
     // reinterpreted as linear instead of sRGB. Mipmap chain is still generated.
     #[test]
     fn format_override_honored_for_image_input() {
@@ -1790,7 +1907,7 @@ mod tests {
                 ..Default::default()
             };
             let tex = r
-                .create_texture((TextureData::DynamicImage(img), opts))
+                .create_texture((TextureData::Bytes(encode_png(&img)), opts))
                 .await
                 .expect("create texture with explicit linear format");
             assert_eq!(tex.object.format, wgpu::TextureFormat::Rgba8Unorm);
@@ -1810,7 +1927,7 @@ mod tests {
 
             let r = crate::Renderer::new();
             let tex = r
-                .create_texture(TextureData::DynamicImage(img))
+                .create_texture(TextureData::Bytes(encode_png(&img)))
                 .await
                 .expect("create R16Unorm texture from Luma16 image");
             assert_eq!(tex.object.format, wgpu::TextureFormat::R16Unorm);
@@ -1828,7 +1945,7 @@ mod tests {
 
             let r = crate::Renderer::new();
             let tex = r
-                .create_texture(TextureData::DynamicImage(img))
+                .create_texture(TextureData::Bytes(encode_png(&img)))
                 .await
                 .expect("create R8Unorm texture from Luma8 image");
             assert_eq!(tex.object.format, wgpu::TextureFormat::R8Unorm);

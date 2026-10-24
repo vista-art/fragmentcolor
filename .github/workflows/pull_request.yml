@@ -90,8 +90,9 @@ jobs:
       - name: Install nextest
         uses: taiki-e/install-action@nextest
 
+      # --workspace covers every fce example, so a broken example fails here.
       - name: Lint
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Format
         run: cargo fmt --check --message-format human
@@ -197,7 +198,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
 
       - name: Run Web healthcheck (Playwright)
         env:

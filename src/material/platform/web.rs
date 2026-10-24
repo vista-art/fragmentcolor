@@ -5,6 +5,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::Shader;
 use crate::material::{AlphaMode, Material};
+use crate::texture::read_texture_input;
 
 #[wasm_bindgen]
 impl Material {
@@ -28,7 +29,10 @@ impl Material {
 
     #[wasm_bindgen(js_name = "baseColor")]
     #[lsp_doc("docs/api/scene/material/base_color.md")]
-    pub fn base_color_js(&self, color: Vec<f32>) -> Result<Material, JsError> {
+    pub fn base_color_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] color: Vec<f32>,
+    ) -> Result<Material, JsError> {
         let arr = vec4_from_vec(&color, "base_color")?;
         Ok(self.base_color(arr))
     }
@@ -59,7 +63,10 @@ impl Material {
 
     #[wasm_bindgen(js_name = "emissive")]
     #[lsp_doc("docs/api/scene/material/emissive.md")]
-    pub fn emissive_js(&self, factor: Vec<f32>) -> Result<Material, JsError> {
+    pub fn emissive_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] factor: Vec<f32>,
+    ) -> Result<Material, JsError> {
         let arr = vec3_from_vec(&factor, "emissive")?;
         Ok(self.emissive(arr))
     }
@@ -74,8 +81,8 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/uv_transform.md")]
     pub fn uv_transform_js(
         &self,
-        offset: Vec<f32>,
-        scale: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] offset: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] scale: Vec<f32>,
         rotation: f32,
     ) -> Result<Material, JsError> {
         let o = vec2_from_vec(&offset, "Material.uvTransform offset")?;
@@ -97,32 +104,52 @@ impl Material {
 
     #[wasm_bindgen(js_name = "baseColorTexture")]
     #[lsp_doc("docs/api/scene/material/base_color_texture.md")]
-    pub fn base_color_texture_js(&self, texture: &crate::texture::Texture) -> Self {
-        self.base_color_texture(texture)
+    pub fn base_color_texture_js(
+        &self,
+        source: &JsValue,
+        options: Option<JsValue>,
+    ) -> Result<Self, JsError> {
+        Ok(self.base_color_texture(read_texture_input(source, options.as_ref())?))
     }
 
     #[wasm_bindgen(js_name = "metallicRoughnessTexture")]
     #[lsp_doc("docs/api/scene/material/metallic_roughness_texture.md")]
-    pub fn metallic_roughness_texture_js(&self, texture: &crate::texture::Texture) -> Self {
-        self.metallic_roughness_texture(texture)
+    pub fn metallic_roughness_texture_js(
+        &self,
+        source: &JsValue,
+        options: Option<JsValue>,
+    ) -> Result<Self, JsError> {
+        Ok(self.metallic_roughness_texture(read_texture_input(source, options.as_ref())?))
     }
 
     #[wasm_bindgen(js_name = "normalTexture")]
     #[lsp_doc("docs/api/scene/material/normal_texture.md")]
-    pub fn normal_texture_js(&self, texture: &crate::texture::Texture) -> Self {
-        self.normal_texture(texture)
+    pub fn normal_texture_js(
+        &self,
+        source: &JsValue,
+        options: Option<JsValue>,
+    ) -> Result<Self, JsError> {
+        Ok(self.normal_texture(read_texture_input(source, options.as_ref())?))
     }
 
     #[wasm_bindgen(js_name = "occlusionTexture")]
     #[lsp_doc("docs/api/scene/material/occlusion_texture.md")]
-    pub fn occlusion_texture_js(&self, texture: &crate::texture::Texture) -> Self {
-        self.occlusion_texture(texture)
+    pub fn occlusion_texture_js(
+        &self,
+        source: &JsValue,
+        options: Option<JsValue>,
+    ) -> Result<Self, JsError> {
+        Ok(self.occlusion_texture(read_texture_input(source, options.as_ref())?))
     }
 
     #[wasm_bindgen(js_name = "emissiveTexture")]
     #[lsp_doc("docs/api/scene/material/emissive_texture.md")]
-    pub fn emissive_texture_js(&self, texture: &crate::texture::Texture) -> Self {
-        self.emissive_texture(texture)
+    pub fn emissive_texture_js(
+        &self,
+        source: &JsValue,
+        options: Option<JsValue>,
+    ) -> Result<Self, JsError> {
+        Ok(self.emissive_texture(read_texture_input(source, options.as_ref())?))
     }
 }
 

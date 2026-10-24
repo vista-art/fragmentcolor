@@ -1,0 +1,51 @@
+---
+title: "v0.12.0: 3D scenes, glTF loading and PBR materials"
+excerpt: "The largest release so far adds a Scene graph, a glTF model loader, and physically based (PBR) materials."
+authors: ["rafaelbeckel"]
+date: 2026-06-08T00:00:28Z
+tags: ["release", "rust", "python", "javascript", "swift", "kotlin", "milestone"]
+---
+
+v0.12.0 is the largest release so far. It adds a [`Scene`](/api/scene/scene/) graph, a glTF model loader, and physically based (PBR) materials.
+
+Full detail is in [`CHANGELOG.md`](https://github.com/vista-art/fragmentcolor/blob/main/CHANGELOG.md).
+
+### 3D scene graph and glTF loading
+
+- **`Scene` top-level container** implementing `Renderable`, with a default `Camera` and `Light` injected at render time.
+- **`Scene::load`, a glTF 2.0 loader** for `.gltf` and `.glb`: mesh primitives, per-node transforms flattened into `Model` matrices, embedded cameras, and `KHR_lights_punctual` lights.
+- **[`Camera`](/api/scene/camera/), [`Light`](/api/scene/light/), and [`Model`](/api/scene/model/) as first-class scene objects**, all absorbed through one generic `Scene::add` / `Pass::add` (the `SceneObject` trait).
+- **Higher-level `Material` + `Model` objects** layered over the existing `Shader` / `Mesh` core.
+- **Unified `Light` type** with directional, point, and spot kind-tagged constructors.
+- **Multi-light arrays plus scene-wide ambient**, with the per-shader light cap raised from 8 to 32.
+- **Loader robustness**: face-normal fallback for `POSITION`-only meshes, and glTF sampler state (wrap modes, filtering) mapped into `SamplerOptions`.
+
+### PBR materials and shading
+
+- **[`Material::pbr()`](/api/scene/material/)** with metallic-roughness factors and all five glTF texture slots (base color, metallic-roughness, normal, occlusion, emissive).
+- **PBR texture sampling** routed through the material uniform binding.
+- **Lazy texture sources**, drained on first render or explicitly via `Renderer::load`.
+- **Alpha modes** (`Opaque` / `Mask` / `Blend`) plus `double_sided`.
+- **Automatic back-to-front depth sort** for `alpha_mode: Blend`, so translucent models compose correctly regardless of insertion order.
+- **Tangent-space normal mapping** via a full TBN transform, with `TANGENT` from the accessor or a fixed-axis fallback.
+- **`KHR_texture_transform`** through `Material::uv_transform(offset, scale, rotation)`.
+- **Per-vertex color (`COLOR_0`) and a second UV set (`TEXCOORD_1`)** as PBR vertex inputs.
+
+### Geometry and shaders
+
+- **[`Vertex::pbr(position)`](/api/geometry/vertex/)** seeds the five-attribute PBR layout with neutral defaults.
+- **`Mesh` indices** for indexed draws.
+- **Vertex attribute name constants** (`Vertex::UV0`, `Vertex::NORMAL`, and the rest).
+
+### Docs
+
+- **Texture group restructure**: `Texture` and [`Mipmap`](/api/texture/mipmap/) move out of `core/` into their own group.
+
+### Upgrading
+
+- **Shaders rendered without a material** draw with blending off, where every pipeline used premultiplied alpha blending before, and both faces render. To blend again, wrap the shader in `Material::custom(shader).alpha_mode(AlphaMode::Blend)`.
+- **`TextureMipChain` becomes `Mipmap`.** `prepare` becomes `build`, `base_size` becomes `size`, and `level_count` becomes `count`; `format` and `levels` keep their names.
+
+Release notes: [GitHub v0.12.0](https://github.com/vista-art/fragmentcolor/releases/tag/v0.12.0).
+
+Rafael

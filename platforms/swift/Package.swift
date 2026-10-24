@@ -5,9 +5,9 @@
 // The `FragmentColor` target is a thin Swift layer on top of the
 // uniffi-generated sources in `Sources/FragmentColor/generated/` plus the
 // pre-built `FragmentColorFFI.xcframework` at `../../build/ios-macos/`. Run
-// `./fc build_ios` at the repo root to regenerate the iOS slices; the macOS
-// slice is assembled automatically from `target/debug/libfragmentcolor.dylib`
-// for local development.
+// `./fc build_ios` at the repo root to build it. Besides the iOS slices, it
+// holds a macOS arm64 slice for `swift build` and `swift run` on a Mac when the
+// `aarch64-apple-darwin` Rust target is installed.
 //
 // The binary target is deliberately named `FragmentColorFFI` so the generated
 // Swift's `#if canImport(FragmentColorFFI); import FragmentColorFFI; #endif`

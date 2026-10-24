@@ -19,7 +19,7 @@ fn star_layer(p: vec2<f32>, density: f32, t: f32) -> f32 {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   let st = centered(in.uv);
-  let m = centered(u.mouse);
+  let m = centered(pointer_uv());
   let t = u.time * 0.05;
 
   // gravity well: pull the sampling domain toward the cursor

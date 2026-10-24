@@ -1,0 +1,27 @@
+---
+title: "v0.10.6: JavaScript support"
+excerpt: "JavaScript support on npm, a lazily loaded renderer with a simpler API, and updated wgpu and dependencies."
+authors: ["rafaelbeckel"]
+date: 2025-08-22
+tags: ["release", "javascript", "rust"]
+---
+
+v0.10.6 adds JavaScript support and publishes the package to npm, as planned in [v0.10.5](/blog/announcing-v0-10-5/). The Rust crate skipped crates.io because the build was unstable, and the next crate release is [v0.10.7](/blog/announcing-v0-10-7/).
+
+### JavaScript
+
+FragmentColor runs in JavaScript, and the package is on npm.
+
+### API
+
+- Constructors no longer return tuples.
+- A lazily loaded `Renderer` comes with a simpler API.
+
+### Tooling and dependencies
+
+- A script bumps the version.
+- `wgpu` and other dependencies move to newer versions.
+
+Release notes: [CHANGELOG](https://github.com/vista-art/fragmentcolor/blob/main/CHANGELOG.md#0106-javascript-support).
+
+Rafael

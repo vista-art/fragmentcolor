@@ -70,6 +70,12 @@ WATCHDOG.unref?.();
   let ok = false;
   const errors = [];
 
+  // Any console.error fails the run, such as a log::error! from the engine.
+  const consoleErrors = (type) => (msg) => {
+    if (msg.type() === 'error') errors.push({ type, message: msg.text() });
+  };
+  page.on('console', consoleErrors('console.error'));
+
   page.on('console', (msg) => {
     const text = msg.text();
     let localLink = '';
@@ -237,6 +243,7 @@ WATCHDOG.unref?.();
     await glPage.addInitScript(() => {
       Object.defineProperty(navigator, 'gpu', { get: () => undefined, configurable: true });
     });
+    glPage.on('console', consoleErrors('console.error:webgl2'));
     glPage.on('console', (msg) => {
       const text = msg.text();
       console.log('[console:webgl2]', text);
@@ -288,7 +295,7 @@ WATCHDOG.unref?.();
   process.exit(0);
 })().catch((err) => {
   // Promote a top-level rejection into an explicit error so the watchdog
-  // isn't the only line of defence.
+  // isn't the only line of defense.
   console.error('[playwright] top-level rejection:', err?.message || String(err));
   if (err?.stack) console.error(err.stack);
   process.exit(3);

@@ -7,13 +7,13 @@ dimmer or tinted lights).
 
 Use this for sun / moon / fill / key lights: anything where every shaded
 surface should receive parallel rays from a fixed direction. For positioned
-sources, see [`Light::point`](https://fragmentcolor.org/api/scene/light/point)
-and [`Light::spot`](https://fragmentcolor.org/api/scene/light/spot).
+sources, see [`Light::point`](https://fragmentcolor.org/api/scene/light#point)
+and [`Light::spot`](https://fragmentcolor.org/api/scene/light#spot).
 
 A directional light carries no position. Calling
-[`set_position`](https://fragmentcolor.org/api/scene/light/set_position),
-[`set_range`](https://fragmentcolor.org/api/scene/light/set_range), or
-[`set_cone_angles`](https://fragmentcolor.org/api/scene/light/set_cone_angles)
+[`set_position`](https://fragmentcolor.org/api/scene/light#set_position),
+[`set_range`](https://fragmentcolor.org/api/scene/light#set_range), or
+[`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles)
 on a directional light returns `LightError::FieldNotApplicable`.
 
 ## Example

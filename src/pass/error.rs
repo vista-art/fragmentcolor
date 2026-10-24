@@ -6,8 +6,10 @@ pub enum PassError {
     InvalidUniformRoot,
     #[error("Alias conflict")]
     AliasConflict,
-    #[error("No compatible shader exists for this mesh")]
-    NoCompatibleShader,
+    #[error("No compatible shader exists for this mesh: {0}")]
+    NoCompatibleShader(crate::ShaderError),
+    #[error("The pass has no shader to attach the mesh to")]
+    NoShader,
     #[error("No pass in the scene matches the target: {0}")]
     PassNotFound(String),
     #[error(
@@ -67,7 +69,7 @@ impl From<wasm_bindgen::JsValue> for PassError {
 #[cfg(wasm)]
 impl From<PassError> for wasm_bindgen::JsValue {
     fn from(error: PassError) -> Self {
-        wasm_bindgen::JsValue::from_str(&error.to_string())
+        js_sys::Error::new(&error.to_string()).into()
     }
 }
 
@@ -80,7 +82,8 @@ mod tests {
     fn formats_shader_error_variants() {
         let a = PassError::InvalidUniformRoot;
         let b = PassError::AliasConflict;
-        let c = PassError::NoCompatibleShader;
+        let c = PassError::NoCompatibleShader(crate::ShaderError::InvalidKey("k".into()));
+        let k = PassError::NoShader;
         let d = PassError::InvalidColorTarget("k".into());
         let e = PassError::SelfDependency;
         let f = PassError::DuplicateDependency("p".into());
@@ -92,7 +95,11 @@ mod tests {
 
         assert!(a.to_string().contains("Invalid uniform root"));
         assert!(b.to_string().contains("Alias conflict"));
-        assert!(c.to_string().contains("No compatible shader"));
+        assert_eq!(
+            c.to_string(),
+            "No compatible shader exists for this mesh: Invalid key: k"
+        );
+        assert!(k.to_string().contains("no shader"));
         assert!(d.to_string().contains("Invalid color target"));
         assert!(e.to_string().contains("Self dependency"));
         assert!(f.to_string().contains("Duplicate dependency"));

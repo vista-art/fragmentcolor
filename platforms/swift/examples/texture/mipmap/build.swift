@@ -1,16 +1,15 @@
 import FragmentColor
 import Foundation
+let encoded_png_bytes = try Data(contentsOf: URL(fileURLWithPath: "examples/assets/logo.png"))
+let raw_rgba = Data(repeating: 200, count: 8 * 8 * 4)
 
-// Raw RGBA path: include the size so build skips decoding.
-let rawRgba = Data(repeating: 200, count: 8 * 8 * 4)
-let chainRaw = try Mipmap.build(
-    bytes: rawRgba,
-    format: .rgba8UnormSrgb,
-    size: Size(width: 8, height: 8, depth: nil)
-)
+// Encoded path: bytes plus the format you want the chain to live in.
+// The dimensions come from the decoded image.
+let chain = try Mipmap.build(encoded_png_bytes, TextureFormat.rgba8UnormSrgb)
 
-// Upload the chain through the regular createTexture entry point.
+// Raw path: include the size so build skips decoding.
+let chain_raw = try Mipmap.build(raw_rgba, TextureFormat.rgba8UnormSrgb, [8, 8])
+
+// Either chain uploads the same way.
 let renderer = Renderer()
-let texture = try await renderer.createTexture(input: .prepared(chainRaw))
-let _ = chainRaw.count()
-let __ = texture.size()
+let texture = try await renderer.createTexture(chain)

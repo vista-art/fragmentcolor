@@ -1,6 +1,6 @@
 ---
 title: Camera
-description: "A `Camera` packages the two things every 3D render needs into one object: a projection (how the view frustum maps to clip space) and a view (where the camera sits and what it looks at). Pass it to [`Pass::add`](/api/core/pass#add) to wire its `camera.view_proj` and `camera.position` into every shader the pass renders; the Camera holds Arc-shared state, so subsequent [`look_at`](/api/scene/camera/look_at) calls propagate to every shader the Camera has been wired into."
+description: "A `Camera` packages the two things every 3D render needs into one object: a projection (how the view frustum maps to clip space) and a view (where the camera sits and what it looks at). Pass it to [`Pass::add`](/api/core/pass#add) to wire its `camera.view_proj` and `camera.position` into every shader the pass renders; the Camera holds Arc-shared state, so subsequent [`look_at`](/api/scene/camera#look_at) calls propagate to every shader the Camera has been wired into."
 category: scene
 categoryLabel: Scene
 sidebar:
@@ -17,17 +17,17 @@ camera sits and what it looks at). Pass it to
 [`Pass::add`](/api/core/pass#add) to wire its
 `camera.view_proj` and `camera.position` into every shader the pass renders;
 the Camera holds Arc-shared state, so subsequent
-[`look_at`](/api/scene/camera/look_at) calls
+[`look_at`](/api/scene/camera#look_at) calls
 propagate to every shader the Camera has been wired into.
 
 Internally a Camera carries:
 
-- A `proj` matrix built by [`Camera::perspective`](/api/scene/camera/perspective)
-  or [`Camera::orthographic`](/api/scene/camera/orthographic).
+- A `proj` matrix built by [`Camera::perspective`](/api/scene/camera#perspective)
+  or [`Camera::orthographic`](/api/scene/camera#orthographic).
   Both use glam's right-handed builders (`Mat4::perspective_rh`,
   `Mat4::orthographic_rh`), which match wgpu's NDC depth range `[0, 1]`.
 - A `view` matrix initialized to identity (eye at origin, looking down `-Z`,
-  with `+Y` up). Call [`look_at`](/api/scene/camera/look_at)
+  with `+Y` up). Call [`look_at`](/api/scene/camera#look_at)
   to position the camera in world space.
 - The world-space `position` of the eye, kept alongside the view matrix so
   shaders that need it (specular highlights, fresnel) don't have to invert
@@ -43,7 +43,7 @@ viewpoint we're using right now".
 
 ---
 
-### Camera::perspective
+### Camera::perspective \{#perspective\}
 
 Construct a Camera with a perspective projection. `fovy_radians` is the
 vertical field of view (use `degrees.to_radians()` if you're starting from
@@ -54,7 +54,7 @@ range `[0, 1]`. Pair with a depth attachment configured for that range
 when you add the Camera to a Pass that does depth testing.
 
 The view component starts at identity: eye at the world origin, looking
-down `-Z`, with `+Y` up. Chain [`look_at`](/api/scene/camera/look_at)
+down `-Z`, with `+Y` up. Chain [`look_at`](/api/scene/camera#look_at)
 to position the camera before binding it.
 
 #### Example
@@ -136,7 +136,7 @@ lang="kotlin"
 
 ---
 
-### Camera::orthographic
+### Camera::orthographic \{#orthographic\}
 
 Construct a Camera with an orthographic projection. The six arguments are
 the frustum planes in view space: `left`, `right`, `bottom`, `top`, `near`,
@@ -149,7 +149,7 @@ range `[0, 1]`. Pair with a depth attachment configured for that range
 when you add the Camera to a Pass that does depth testing.
 
 The view component starts at identity: eye at the world origin, looking
-down `-Z`, with `+Y` up. Chain [`look_at`](/api/scene/camera/look_at)
+down `-Z`, with `+Y` up. Chain [`look_at`](/api/scene/camera#look_at)
 to position the camera before binding it.
 
 #### Example
@@ -210,7 +210,7 @@ lang="python"
 code={`
 import FragmentColor
 
-// A 16:9 viewport, 10 world units tall, depth range 0.1...100.
+// A 16:9 viewport, 10 world units tall, depth range 0.1..100.
 let camera = Camera.orthographic(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0)
 `}
 lang="swift"
@@ -236,7 +236,7 @@ lang="kotlin"
 
 ---
 
-### Camera::set_aspect
+### Camera::set_aspect \{#set_aspect\}
 
 Update the camera's aspect ratio (width / height) in place. The
 projection matrix recomputes and propagates to every shader the Camera
@@ -250,14 +250,14 @@ renders without distortion.
 
 Returns a handle to the same Camera (Arc-shared backing) for chaining.
 
-Behaviour by projection kind:
+Behavior by projection kind:
 
 - **Perspective**: rebuilds from `fovy_radians / near / far` with the
   new aspect. The vertical FOV is preserved, horizontal grows or
   shrinks.
 - **Orthographic**: keeps the current vertical extent and rescales the
   horizontal extents so `(right - left) / (top - bottom)` matches the
-  new aspect, centred on the existing horizontal midpoint. The frustum
+  new aspect, centered on the existing horizontal midpoint. The frustum
   height stays put; the width tracks the window.
 
 #### Example
@@ -347,7 +347,7 @@ lang="kotlin"
 
 ---
 
-### Camera::look_at
+### Camera::look_at \{#look_at\}
 
 Position the camera in world space. `position` is where the camera sits,
 `target` is the point it aims at, and `up` is the world-space up vector
@@ -362,11 +362,11 @@ propagates live to every Material the Pass renders.
 
 Internally builds the view matrix with `glam::Mat4::look_at_rh`. The
 result is a right-handed view matrix that pairs with the right-handed
-projection produced by [`perspective`](/api/scene/camera/perspective)
-and [`orthographic`](/api/scene/camera/orthographic).
+projection produced by [`perspective`](/api/scene/camera#perspective)
+and [`orthographic`](/api/scene/camera#orthographic).
 
 The world-space position is cached on the Camera and exposed via
-[`position`](/api/scene/camera/position) so
+[`position`](/api/scene/camera#position) so
 shaders that need it (specular highlights, fresnel) don't have to invert
 the view matrix on every frame.
 
@@ -447,7 +447,7 @@ lang="kotlin"
 
 ---
 
-### Camera::view_proj
+### Camera::view_proj \{#view_proj\}
 
 Read the combined `proj * view` matrix as a column-major 4x4. Column-major
 matches WGSL's `mat4x4<f32>` storage and glam's `to_cols_array_2d()`, so
@@ -544,10 +544,10 @@ lang="kotlin"
 
 ---
 
-### Camera::position
+### Camera::position \{#position\}
 
 Read the world-space eye position as `[x, y, z]`. This is the value set by
-the most recent [`look_at`](/api/scene/camera/look_at)
+the most recent [`look_at`](/api/scene/camera#look_at)
 call, or `[0, 0, 0]` if the camera has only been constructed (the default
 view is identity, with the eye at the origin).
 

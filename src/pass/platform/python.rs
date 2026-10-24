@@ -1,6 +1,6 @@
 #![cfg(python)]
 
-use crate::{Pass, PassInput, PassObject, PassType, Shader};
+use crate::{Pass, PassObject, PassType, Shader};
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
@@ -50,13 +50,7 @@ impl Pass {
     #[pyo3(name = "load_previous")]
     #[lsp_doc("docs/api/core/pass/load_previous.md")]
     pub fn load_previous_py(&self) {
-        *self.object.input.write() = PassInput::load();
-    }
-
-    #[pyo3(name = "get_input")]
-    #[lsp_doc("docs/api/core/pass/get_input.md")]
-    pub fn get_input_py(&self) -> PassInput {
-        self.object.get_input()
+        self.load_previous();
     }
 
     #[pyo3(name = "add_shader")]
@@ -75,36 +69,33 @@ impl Pass {
     /// new `SceneObject` Rust-side means adding one extra cast arm below.
     #[pyo3(name = "add")]
     #[lsp_doc("docs/api/core/pass/add.md")]
-    pub fn add_py(&self, object: Py<PyAny>) -> Result<(), PyErr> {
-        Python::attach(|py| -> Result<(), PyErr> {
-            let bound = object.bind(py);
-            if let Ok(model) = bound.cast::<crate::Model>() {
-                let m = model.borrow();
-                return self.add(&*m).map(|_| ()).map_err(|e| e.into());
-            }
-            if let Ok(camera) = bound.cast::<crate::scene::Camera>() {
-                let c = camera.borrow();
-                return self.add(&*c).map(|_| ()).map_err(|e| e.into());
-            }
-            if let Ok(light) = bound.cast::<crate::scene::Light>() {
-                let l = light.borrow();
-                return self.add(&*l).map(|_| ()).map_err(|e| e.into());
-            }
-            Err(pyo3::exceptions::PyTypeError::new_err(
+    pub fn add_py<'py>(
+        slf: PyRef<'py, Self>,
+        object: &Bound<'py, PyAny>,
+    ) -> PyResult<PyRef<'py, Self>> {
+        if let Ok(model) = object.cast::<crate::Model>() {
+            slf.add(&*model.borrow())?;
+        } else if let Ok(camera) = object.cast::<crate::scene::Camera>() {
+            slf.add(&*camera.borrow())?;
+        } else if let Ok(light) = object.cast::<crate::scene::Light>() {
+            slf.add(&*light.borrow())?;
+        } else {
+            return Err(pyo3::exceptions::PyTypeError::new_err(
                 "Pass.add: expected a Model, Camera, or Light",
-            ))
-        })
+            ));
+        }
+        Ok(slf)
     }
 
     #[pyo3(name = "set_clear_color")]
     #[lsp_doc("docs/api/core/pass/set_clear_color.md")]
-    pub fn set_clear_color_py(&self, color: [f32; 4]) {
+    pub fn set_clear_color_py(&self, color: PyClearColor) {
         self.object.set_clear_color(color);
     }
 
     #[pyo3(name = "set_viewport")]
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
-    pub fn set_viewport_py(&self, viewport: crate::ScreenRegion) {
+    pub fn set_viewport_py(&self, viewport: PyViewport) {
         self.object.set_viewport(viewport);
     }
 
@@ -174,5 +165,44 @@ impl Pass {
     #[doc(hidden)]
     pub fn renderable_type(&self) -> &'static str {
         "Pass"
+    }
+}
+
+/// A clear color from Python: three channels, opaque, or four with alpha.
+#[derive(FromPyObject)]
+pub enum PyClearColor {
+    #[pyo3(annotation = "Sequence[float]")]
+    Rgba([f32; 4]),
+    #[pyo3(annotation = "Sequence[float]")]
+    Rgb([f32; 3]),
+}
+
+impl From<PyClearColor> for crate::Color {
+    fn from(color: PyClearColor) -> Self {
+        match color {
+            PyClearColor::Rgba(rgba) => rgba.into(),
+            PyClearColor::Rgb(rgb) => rgb.into(),
+        }
+    }
+}
+
+/// A viewport from Python: a `ScreenRegion`, `[x, y, w, h]`, or a size `(w, h)` at the origin.
+#[derive(FromPyObject)]
+pub enum PyViewport {
+    #[pyo3(annotation = "ScreenRegion")]
+    Region(crate::ScreenRegion),
+    #[pyo3(annotation = "Sequence[int]")]
+    Rect([u32; 4]),
+    #[pyo3(annotation = "Sequence[int]")]
+    Size([u32; 2]),
+}
+
+impl From<PyViewport> for crate::ScreenRegion {
+    fn from(viewport: PyViewport) -> Self {
+        match viewport {
+            PyViewport::Region(region) => region,
+            PyViewport::Rect(rect) => rect.into(),
+            PyViewport::Size(size) => size.into(),
+        }
     }
 }

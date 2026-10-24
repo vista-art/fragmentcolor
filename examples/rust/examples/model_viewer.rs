@@ -9,6 +9,10 @@
 //! runs with no external files. To view a real model, swap the `SceneSource`
 //! for a path: `Scene::load(SceneSource::gltf("path/to/model.glb"))`.
 
+// `App::add_state` proves `Viewer: Send + Sync` through the Scene's wgpu
+// resources, a chain deeper than the default limit of 128.
+#![recursion_limit = "256"]
+
 use fragmentcolor::{App, Camera, Renderer, Scene, SceneSource, SetupResult, call};
 use std::sync::Arc;
 use std::time::Instant;

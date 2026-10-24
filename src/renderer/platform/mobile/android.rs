@@ -1,19 +1,15 @@
 //! Android-specific FFI bridge.
 //!
-//! Two paths for creating a `WindowTarget` from an Android `Surface`:
+//! `Renderer.createTarget(surface: Surface)` takes two steps, because uniffi
+//! cannot marshal the `JNIEnv*` that `ANativeWindow_fromSurface` needs:
 //!
-//! 1. **Raw JNI** (`create_window_target_from_surface`): accepts `JNIEnv*` +
-//!    `jobject` directly; uniffi cannot marshal those, so the entry point is
-//!    exposed as a `#[jni_fn]` function that returns an `Arc<WindowTarget>`
-//!    pointer. The Kotlin side reconstructs the `WindowTarget` via
-//!    `WindowTarget(Pointer(ptr))` (the JNA pointer-constructor uniffi emits).
+//! 1. **Raw JNI** (`native_window_from_surface`): turns the `Surface` into an
+//!    acquired `ANativeWindow*`, returned as a `jlong`.
+//! 2. **Uniffi method** (`Renderer.createTarget(nativeWindowPtr:)`): builds the
+//!    `WindowTarget` on the calling `Renderer`, so the surface shares its device.
 //!
-//! 2. **Uniffi method** (`Renderer.createTarget(nativeWindowPtr:)`): accepts a
-//!    pre-acquired `ANativeWindow*` pointer cast to `u64`. The Kotlin extension
-//!    obtains this pointer via `android.view.Surface.acquireNativeHandle()` or
-//!    by calling into the NDK directly, then passes it to the uniffi method.
-//!    This path satisfies the parity audit's `create_target.md:kotlin` gap and
-//!    gives Kotlin callers a first-class uniffi-generated API.
+//! The Kotlin extension in `RendererExtensions.kt` chains the two and then
+//! drops its window reference with `release_native_window`.
 //!
 //! TODO(0.11.x): migrate `jni::JNIEnv` → `jni::EnvUnowned` (FFI-safe entry
 //! points) and `jni::Env` (full API). The deprecation lives behind
@@ -23,7 +19,11 @@
 
 use std::sync::Arc;
 
-use jni::{JNIEnv, objects::JClass, sys::jobject};
+use jni::{
+    JNIEnv,
+    objects::JClass,
+    sys::{jlong, jobject},
+};
 use jni_fn::jni_fn;
 use lsp_doc::lsp_doc;
 use raw_window_handle::{
@@ -45,14 +45,12 @@ unsafe impl Send for AndroidNativeWindow {}
 unsafe impl Sync for AndroidNativeWindow {}
 
 impl AndroidNativeWindow {
-    fn from_surface(env: *mut JNIEnv, surface: jobject) -> Self {
-        // ANativeWindow_fromSurface retains the surface; Drop releases it.
+    /// Acquire the window behind `surface`. Null when the surface has none.
+    fn acquire(env: *mut JNIEnv, surface: jobject) -> *mut ndk_sys::ANativeWindow {
         // Cast surface: jni 0.22 uses jni-sys 0.4's _jobject; ndk-sys 0.6 expects
         // jni-sys 0.3's _jobject. They're both pointer-sized opaque types, so
         // a raw cast through *mut _ is safe.
-        let window =
-            unsafe { ndk_sys::ANativeWindow_fromSurface(env as *mut _, surface as *mut _) };
-        Self { window }
+        unsafe { ndk_sys::ANativeWindow_fromSurface(env as *mut _, surface as *mut _) }
     }
 
     fn width(&self) -> u32 {
@@ -88,44 +86,23 @@ impl HasDisplayHandle for AndroidNativeWindow {
     }
 }
 
-async fn build_window_target(
-    env: *mut JNIEnv<'_>,
-    surface: jobject,
-) -> Option<Arc<MobileWindowTarget>> {
-    let window = AndroidNativeWindow::from_surface(env, surface);
-    let size = wgpu::Extent3d {
-        width: u32::max(window.width(), 1),
-        height: u32::max(window.height(), 1),
-        depth_or_array_layers: 1,
-    };
-
-    let renderer = Renderer::new();
-    let handle: Box<dyn wgpu::WindowHandle> = Box::new(window);
-    let (context, surface, config) = renderer
-        .create_surface(wgpu::SurfaceTarget::Window(handle), size)
-        .await
-        .ok()?;
-    Some(MobileWindowTarget::new(WindowTarget::new(
-        context, surface, config,
-    )))
+/// Acquire the `ANativeWindow` behind an Android `Surface`.
+///
+/// Returns the pointer as a `jlong`, or 0 when the surface has no window.
+/// The caller owns one reference and must pass it to `release_native_window`.
+#[unsafe(no_mangle)]
+#[jni_fn("org.fragmentcolor.SurfaceBridge")]
+pub fn native_window_from_surface(env: *mut JNIEnv, _class: JClass, surface: jobject) -> jlong {
+    AndroidNativeWindow::acquire(env, surface) as jlong
 }
 
-/// Raw JNI entry point. Returns `Arc::into_raw(target)` as an opaque pointer
-/// (cast to `*const MobileWindowTarget` for jlong compatibility). Caller owns
-/// the resulting Arc — the uniffi-generated Kotlin bindings take ownership on
-/// `MobileWindowTarget(Pointer(ptr))`.
-///
-/// Returns `std::ptr::null()` on failure.
+/// Release a window reference from `native_window_from_surface`. Ignores 0.
 #[unsafe(no_mangle)]
-#[jni_fn("org.fragmentcolor.RendererJni")]
-pub fn create_window_target_from_surface(
-    env: *mut JNIEnv,
-    _class: JClass,
-    surface: jobject,
-) -> *const MobileWindowTarget {
-    match pollster::block_on(build_window_target(env, surface)) {
-        Some(target) => Arc::into_raw(target),
-        None => std::ptr::null(),
+#[jni_fn("org.fragmentcolor.SurfaceBridge")]
+pub fn release_native_window(_env: *mut JNIEnv, _class: JClass, window: jlong) {
+    let window = window as *mut ndk_sys::ANativeWindow;
+    if !window.is_null() {
+        unsafe { ndk_sys::ANativeWindow_release(window) }
     }
 }
 
@@ -133,12 +110,10 @@ pub fn create_window_target_from_surface(
 impl Renderer {
     /// Create a `WindowTarget` from a pre-acquired `ANativeWindow` pointer.
     ///
-    /// The Kotlin caller obtains the pointer via
-    /// `android.view.Surface.acquireNativeHandle()` or the NDK's
-    /// `ANativeWindow_fromSurface` helper, then casts it to `Long` before
-    /// passing it here. A Kotlin extension file re-exports this as
-    /// `Renderer.createTarget(surface: Surface)` so the public API reads
-    /// the same as every other platform.
+    /// The target takes its own reference to the window. The
+    /// pointer only has to stay valid for the duration of this call.
+    /// `Renderer.createTarget(surface: Surface)` in the Kotlin extensions
+    /// acquires the pointer over JNI and calls this on the same `Renderer`.
     ///
     /// Exposed as synchronous because `ANativeWindow*` holds a raw pointer
     /// that is not `Send`, so the resulting future cannot satisfy uniffi's
@@ -151,6 +126,11 @@ impl Renderer {
         native_window_ptr: u64,
     ) -> Result<Arc<MobileWindowTarget>, FragmentColorError> {
         let raw = native_window_ptr as *mut ndk_sys::ANativeWindow;
+        if raw.is_null() {
+            return Err(FragmentColorError::Init(
+                "createTarget: the ANativeWindow pointer is null".into(),
+            ));
+        }
         // SAFETY: the caller guarantees the ANativeWindow is alive and valid
         // for the duration of this call. We immediately retain it via
         // ANativeWindow_acquire and release in AndroidNativeWindow::drop.
@@ -161,10 +141,9 @@ impl Renderer {
             height: u32::max(window.height(), 1),
             depth_or_array_layers: 1,
         };
-        let handle: Box<dyn wgpu::WindowHandle> = Box::new(window);
-        let (context, surface, config) =
-            pollster::block_on(self.create_surface(wgpu::SurfaceTarget::Window(handle), size))
-                .map_err(FragmentColorError::from)?;
+        // The instance has no display handle, so wgpu takes it from the window.
+        let (context, surface, config) = pollster::block_on(self.create_surface(window, size))
+            .map_err(FragmentColorError::from)?;
         Ok(MobileWindowTarget::new(WindowTarget::new(
             context, surface, config,
         )))

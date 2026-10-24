@@ -1,7 +1,7 @@
 # Model::visible
 
 Read the current visibility flag. Returns `true` for newly-built Models;
-toggle with [`Model::set_visible`](https://fragmentcolor.org/api/scene/model/set_visible).
+toggle with [`Model::set_visible`](https://fragmentcolor.org/api/scene/model#set_visible).
 
 The renderer reads this every frame. Hidden Models are skipped in both
 the opaque-batched and blend-sorted draw paths without requiring a Pass
@@ -26,5 +26,5 @@ let visible_now = model.visible();
 
 ## See also
 
-- [`Model::set_visible`](https://fragmentcolor.org/api/scene/model/set_visible): the setter side.
+- [`Model::set_visible`](https://fragmentcolor.org/api/scene/model#set_visible): the setter side.
 - [`Model`](https://fragmentcolor.org/api/scene/model): the parent page (full methods table).

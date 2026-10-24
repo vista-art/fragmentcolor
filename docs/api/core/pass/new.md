@@ -1,8 +1,12 @@
 # Pass::new(name: &str) -> Self
 
-## Creates a new Pass
+Creates a new render Pass.
 
-The name property is optional and is used for debugging purposes.
+The name is required. Graphics debuggers show it as the pass label,
+[`Scene::find_pass`](https://fragmentcolor.org/api/scene/scene#find_pass)
+looks passes up by it, and
+[`require`](https://fragmentcolor.org/api/core/pass#require) tells
+dependencies apart by it.
 
 ## Example
 

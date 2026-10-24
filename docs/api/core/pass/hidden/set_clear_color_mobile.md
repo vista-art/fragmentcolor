@@ -1,7 +1,7 @@
 # Pass::setClearColor (mobile)
 
 Mobile binding for `Pass::set_clear_color`. Accepts a `Vec<Float>` of 3 or 4
-components (`[r, g, b]` or `[r, g, b, a]`) in linear 0..1 colour space.
+components (`[r, g, b]` or `[r, g, b, a]`) in linear 0..1 color space.
 
 Uniffi cannot marshal `[f32; 4]` fixed-length arrays across the FFI boundary,
 so the mobile shim takes a `Vec<Float>` and validates the length at runtime.

@@ -1,0 +1,1036 @@
+---
+title: "3D scenes on top of shaders"
+excerpt: "Since 0.12.0, FragmentColor loads glTF 2.0 files, shades them with physically based materials, and lights them. As of 0.12.6, the calls read the same in Rust, JavaScript, Python, Swift, and Kotlin. Here is what each type does, and why the layer sits on top of Shader and Pass."
+authors: ["rafaelbeckel"]
+date: 2026-10-23T00:00:30Z
+tags: ["milestone", "rust", "javascript", "python", "swift", "kotlin", "webgpu"]
+---
+
+import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+FragmentColor draws 3D models. `Scene::load` reads a glTF 2.0 file and returns a `Scene` that holds its meshes, materials, cameras, and lights. `renderer.render(&scene, &target)` turns that scene into a lit frame. Each step takes one call, and as of 0.12.6 the calls look the same in Rust, JavaScript, Python, Swift, and Kotlin.
+
+The 3D layer arrived in June with [v0.12.0](/blog/announcing-v0-12-0/), and the patches since then have filled it out. Before it, FragmentColor drew what your shaders described. You wrote the lighting in WGSL and fed it uniforms by name. That path still works, with one change to blending that [a later section](#if-you-never-draw-a-mesh) covers. The 3D types form a layer above it, assembled from the `Shader`, `Mesh`, and `Pass` objects the library already had. Now that the bindings match, this post looks back at what each type does, how the types fit together, and why the layer has that shape.
+
+<Aside>
+The samples on this page use the 0.12.6 API. Some binding details came after 0.12.0, such as loading `.glb` bytes in Swift and Kotlin. The section on [passes](#a-scene-is-a-list-of-passes) sums up what the patches changed, and the [v0.12.0 changelog](/blog/announcing-v0-12-0/) has the complete list for the original release.
+</Aside>
+
+## From a file to a frame
+
+[`Scene::load`](/api/scene/scene/#load) accepts a path to a `.gltf` file with its buffers and images, a path to a `.glb` container, or the bytes of a `.glb`. It infers the format from the input.
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use fragmentcolor::Scene;
+
+let glb_bytes: Vec<u8> = std::fs::read("path/to/model.glb")?;
+
+// A path to a `.gltf` file with its buffers and images, or to a `.glb` file.
+let scene = Scene::load("path/to/model.gltf")?;
+
+// The bytes of a `.glb` file, read from disk or the network.
+let scene2 = Scene::load(glb_bytes)?;
+```
+
+</TabItem>
+<TabItem label="JavaScript">
+
+```js
+import { Scene } from "fragmentcolor";
+
+// Fetch the `.glb` container as bytes, then load it.
+const response = await fetch("path/to/model.glb");
+const bytes = new Uint8Array(await response.arrayBuffer());
+const scene = Scene.load(bytes);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+from fragmentcolor import Scene
+
+glb_bytes = open("path/to/model.glb", "rb").read()
+
+# A path to a `.gltf` file with its buffers and images, or to a `.glb` file.
+scene = Scene.load("path/to/model.gltf")
+
+# The bytes of a `.glb` file, read from disk or the network.
+scene2 = Scene.load(glb_bytes)
+```
+
+</TabItem>
+<TabItem label="Swift">
+
+```swift
+import FragmentColor
+import Foundation
+
+let glb_bytes = try Data(contentsOf: URL(fileURLWithPath: "path/to/model.glb"))
+
+// A path to a `.gltf` file with its buffers and images, or to a `.glb` file.
+let scene = try Scene.load("path/to/model.gltf")
+
+// The bytes of a `.glb` file, read from disk or the network.
+let scene2 = try Scene.load(glb_bytes)
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import org.fragmentcolor.*
+
+val glb_bytes = java.io.File("path/to/model.glb").readBytes()
+
+// A path to a `.gltf` file with its buffers and images, or to a `.glb` file.
+val scene = Scene.load("path/to/model.gltf")
+
+// The bytes of a `.glb` file, read from disk or the network.
+val scene2 = Scene.load(glb_bytes)
+```
+
+</TabItem>
+</Tabs>
+
+The loader reads the core of a static glTF scene. That covers mesh primitives with their normals, UVs, and indices, every factor and texture slot of the metallic-roughness material, node transforms in matrix or TRS form, perspective and orthographic cameras, and `KHR_lights_punctual` lights. Each node's transform flattens into one matrix per model. Animation, skinning, and morph targets parse without errors, and the loader ignores them.
+
+Files from authoring tools rarely carry every attribute, and the loader fills the gaps. A primitive without normals gets smooth normals computed from its faces. `COLOR_0`, `TEXCOORD_1`, and `TANGENT` come through when the file has them, with a fixed tangent when it doesn't. Every texture keeps the wrap modes and filters of its glTF sampler, and `KHR_texture_transform` on the base color map becomes the material's UV transform.
+
+Drawing the result uses the call that already draws a single shader. `Scene` implements `Renderable`, the trait behind `Renderer::render`, and the renderer walks the scene's passes in order. A file with no camera or light still produces an image. On the first frame, the scene adds a perspective camera at `[0, 0, 5]` aimed at the origin, plus a white directional light. Add a camera or a light of your own and its default stays out.
+
+`Scene::load` is synchronous and needs no `Renderer`. It parses on the calling thread and leaves each texture on its material as a pending upload, which the first render performs on native targets. On the web, `render` can't wait for an upload, so you `await renderer.load(scene)` before the first frame. For a 100 MB `.glb`, call `Scene::load` from a worker thread.
+
+## Five types, five questions
+
+The 3D layer adds five types, and each one answers a single question about the frame.
+
+| Type | Answers | Holds |
+| --- | --- | --- |
+| [`Scene`](/api/scene/scene/) | What goes into this frame? | an ordered list of `Pass` objects |
+| [`Model`](/api/scene/model/) | Where is this object? | a `Mesh`, a `Material`, and a 4×4 transform |
+| [`Material`](/api/scene/material/) | What does its surface look like? | a `Shader` and the glTF PBR fields |
+| [`Camera`](/api/scene/camera/) | Where is the eye? | a projection matrix and a view matrix |
+| [`Light`](/api/scene/light/) | What lights the surfaces? | one directional, point, or spot light |
+
+The split mirrors glTF and USD, where a scene is a flat list of nodes and each node is geometry, a viewpoint, or a light. A material describes how a surface responds to any light from any viewpoint. The camera picks the viewpoint for this frame. Keeping the two apart lets one material serve a hundred models under any number of cameras.
+
+You can build the same structure by hand. This example wraps a mesh in a `Model` with the default material, aims a camera at it, and adds a sun.
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use fragmentcolor::{Camera, Light, Material, Mesh, Model, Scene, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+);
+let model = Model::new(mesh, Material::pbr());
+
+let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)
+    .look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
+
+let scene = Scene::new();
+scene.add(&model)?;
+scene.add(&camera)?;
+scene.add(&sun)?;
+
+// Updating the camera later is enough. Every shader on the scene picks
+// up the new view_proj at the next render.
+camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+```
+
+</TabItem>
+<TabItem label="JavaScript">
+
+```js
+import { Camera, Light, Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]));
+const model = new Model(mesh, Material.pbr());
+
+const camera = Camera.perspective(1.047, 1.0, 0.1, 100.0)
+  .lookAt([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+const sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
+
+const scene = new Scene();
+scene.add(model);
+scene.add(camera);
+scene.add(sun);
+
+// Updating the camera later is enough. Every shader on the scene picks
+// up the new view_proj at the next render.
+camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+from fragmentcolor import Camera, Light, Material, Mesh, Model, Scene, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+)
+model = Model(mesh, Material.pbr())
+
+camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
+
+scene = Scene()
+scene.add(model)
+scene.add(camera)
+scene.add(sun)
+
+# Updating the camera later is enough. Every shader on the scene picks
+# up the new view_proj at the next render.
+camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+```
+
+</TabItem>
+<TabItem label="Swift">
+
+```swift
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
+)
+let model = Model(mesh, Material.pbr())
+
+let camera = try Camera.perspective(1.047, 1.0, 0.1, 100.0)
+    .lookAt([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+let sun = try Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
+
+let scene = Scene()
+try scene.add(model)
+try scene.add(camera)
+try scene.add(sun)
+
+// Updating the camera later is enough. Every shader on the scene picks
+// up the new view_proj at the next render.
+try camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)))
+val model = Model(mesh, Material.pbr())
+
+val camera = Camera.perspective(1.047f, 1.0f, 0.1f, 100.0f)
+    .lookAt(listOf(0.0f, 0.0f, 3.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
+
+val scene = Scene()
+scene.add(model)
+scene.add(camera)
+scene.add(sun)
+
+// Updating the camera later is enough. Every shader on the scene picks
+// up the new view_proj at the next render.
+camera.lookAt(listOf(3.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+```
+
+</TabItem>
+</Tabs>
+
+One method, [`Scene::add`](/api/scene/scene/#add), takes all three kinds of object. In Rust it takes any type that implements the `SceneObject` trait, and your own node types can implement it too. `add` returns a `Result` because a model can fail to attach. When its mesh doesn't supply the vertex inputs that its material's shader declares, the error arrives at `add`, before any frame draws.
+
+The last line of the example carries the idea. A `Camera` holds shared state, and adding it to a scene wires it into every shader the scene draws. A later `look_at` moves the view at the next render without a second `add`. Lights behave the same way: `set_color`, `set_intensity`, and the other setters update every shader that uses the light.
+
+Models own their placement. `translate` moves a model in world space, `rotate` and `scale` work around its own origin, and `set_transform` replaces the whole column-major matrix with one you computed elsewhere, such as a glTF node's. `set_visible(false)` hides a model and keeps it in the scene.
+
+## Physically based materials with working defaults
+
+[`Material::pbr()`](/api/scene/material/#pbr) returns FragmentColor's built-in physically based shader, configured with the field set of glTF 2.0's metallic-roughness model. Its specular term is Cook-Torrance, built from a GGX normal distribution, Smith geometry, and Schlick's Fresnel approximation. Its diffuse term is Lambertian and gives up the share of light that the Fresnel term and the metalness already account for.
+
+The shader library carries each of those terms as a standalone WGSL function, and its previews show what each one contributes on a sphere.
+
+<div class="not-content" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(6rem, 1fr))", gap: "0.75rem", margin: "1.5rem 0 0.5rem" }}>
+  <figure style={{ margin: 0 }}>
+    <img src="/shaders/lighting/lambert.png" alt="A pale blue sphere lit from the lower right, shading smoothly to black on its far side." width="256" height="256" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+    <figcaption style={{ fontSize: "var(--sl-text-xs)", color: "var(--sl-color-gray-3)", marginTop: "0.4rem" }}>Lambert diffuse</figcaption>
+  </figure>
+  <figure style={{ margin: 0 }}>
+    <img src="/shaders/lighting/ggx_d.png" alt="A flat gray-blue disk with one small, sharp white highlight near its lower right." width="256" height="256" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+    <figcaption style={{ fontSize: "var(--sl-text-xs)", color: "var(--sl-color-gray-3)", marginTop: "0.4rem" }}>GGX distribution</figcaption>
+  </figure>
+  <figure style={{ margin: 0 }}>
+    <img src="/shaders/lighting/smith_g.png" alt="A blue sphere, evenly bright across most of its face and darkening only along its upper left edge." width="256" height="256" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+    <figcaption style={{ fontSize: "var(--sl-text-xs)", color: "var(--sl-color-gray-3)", marginTop: "0.4rem" }}>Smith geometry</figcaption>
+  </figure>
+  <figure style={{ margin: 0 }}>
+    <img src="/shaders/lighting/fresnel_schlick.png" alt="A flat blue disk whose rim is slightly brighter than its center." width="256" height="256" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+    <figcaption style={{ fontSize: "var(--sl-text-xs)", color: "var(--sl-color-gray-3)", marginTop: "0.4rem" }}>Schlick Fresnel</figcaption>
+  </figure>
+  <figure style={{ margin: 0 }}>
+    <img src="/shaders/lighting/cook_torrance.png" alt="A dark copper sphere with a bright, soft white highlight at its lower right." width="256" height="256" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+    <figcaption style={{ fontSize: "var(--sl-text-xs)", color: "var(--sl-color-gray-3)", marginTop: "0.4rem" }}>Cook-Torrance, all three</figcaption>
+  </figure>
+</div>
+
+<p style={{ fontSize: "var(--sl-text-sm)", color: "var(--sl-color-gray-3)" }}>Previews from the shader library's <a href="/shaders/lighting/">lighting</a> category, one function per term. <code>Material::pbr()</code> combines the same terms in one shader.</p>
+
+Every factor starts with a value, and every texture slot starts with a stand-in. A fresh `Material::pbr()` is white, non-metallic, and fully rough: `base_color` is `[1, 1, 1, 1]`, `metallic` is `0.0`, and `roughness` is `1.0`. The glTF specification defaults metallic to `1.0`. FragmentColor starts at `0.0` because a new material should read as a clean white surface under the default light, and a fully metallic one reads as dark gunmetal.
+
+The five texture slots (base color, metallic-roughness, normal, occlusion, and emissive) start unbound. At the first render, the renderer fills each empty slot with a 1×1 neutral texture: white for base color, a flat `(128, 128, 255)` for the normal map, and the matching neutral value for the rest. The shader always gets a complete set of bindings, and a material renders from its factors alone before any image loads.
+
+Chained setters adjust the factors. Here is bronze:
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use fragmentcolor::Material;
+
+let bronze = Material::pbr()
+    .base_color([0.8, 0.5, 0.2, 1.0])
+    .metallic(1.0)
+    .roughness(0.3);
+```
+
+</TabItem>
+<TabItem label="JavaScript">
+
+```js
+import { Material } from "fragmentcolor";
+
+const bronze = Material.pbr().baseColor([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+from fragmentcolor import Material
+
+bronze = Material.pbr().base_color([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3)
+```
+
+</TabItem>
+<TabItem label="Swift">
+
+```swift
+import FragmentColor
+
+let bronze = try Material.pbr().baseColor([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3)
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import org.fragmentcolor.*
+
+val bronze = Material.pbr().baseColor(listOf(0.8f, 0.5f, 0.2f, 1.0f)).metallic(1.0f).roughness(0.3f)
+```
+
+</TabItem>
+</Tabs>
+
+The texture setters accept anything `create_texture` accepts: a `Texture` you already uploaded, encoded bytes, a path, a URL, or an image. A source that isn't a texture yet waits on the material until [`Renderer::load`](/api/core/renderer/#load) uploads it. Native targets run `load` for you at the first render. Call it yourself to pay for decoding during a loading screen instead of in the first frame. Base color and emissive maps default to sRGB and the other three to linear, as glTF stores them.
+
+Texture errors surface when the upload happens. A missing file or a failed decode comes back as an error from `Renderer::load`, or from the first `render` on native targets. When you want the error where you set the texture, create the `Texture` first with `renderer.create_texture(path)` and pass it in. One `Texture` handle shared by many materials costs one upload.
+
+The rest of the glTF material model comes along. Normal maps go through a full tangent-space transform, using the mesh's `TANGENT` attribute or a fixed tangent when there is none. Vertex colors tint the albedo, and a second UV set travels with each vertex. `uv_transform(offset, scale, rotation)` applies `KHR_texture_transform` to all five maps at once. For PBR geometry built by hand, [`Vertex::pbr(position)`](/api/geometry/vertex/#pbr) seeds `NORMAL`, `UV0`, `COLOR0`, `UV1`, and `TANGENT` with neutral values, and you `set` the ones your data has.
+
+## Transparency, sorted by the renderer
+
+glTF gives every material an alpha mode, and [`Material::alpha_mode`](/api/scene/material/#alpha_mode) takes the same three values.
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use fragmentcolor::{AlphaMode, Material};
+
+let foliage = Material::pbr()
+    .alpha_mode(AlphaMode::Mask)
+    .alpha_cutoff(0.3);
+
+let glass = Material::pbr()
+    .base_color([0.9, 0.95, 1.0, 0.25])
+    .alpha_mode(AlphaMode::Blend);
+
+let solid = Material::pbr().alpha_mode(AlphaMode::Opaque);
+```
+
+</TabItem>
+<TabItem label="JavaScript">
+
+```js
+import { AlphaMode, Material } from "fragmentcolor";
+
+const foliage = Material.pbr().alphaMode(AlphaMode.Mask).alphaCutoff(0.3);
+
+const glass = Material.pbr().baseColor([0.9, 0.95, 1.0, 0.25]).alphaMode(AlphaMode.Blend);
+
+const solid = Material.pbr().alphaMode(AlphaMode.Opaque);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+from fragmentcolor import AlphaMode, Material
+
+foliage = Material.pbr().alpha_mode(AlphaMode.Mask).alpha_cutoff(0.3)
+
+glass = Material.pbr().base_color([0.9, 0.95, 1.0, 0.25]).alpha_mode(AlphaMode.Blend)
+
+solid = Material.pbr().alpha_mode(AlphaMode.Opaque)
+```
+
+</TabItem>
+<TabItem label="Swift">
+
+```swift
+import FragmentColor
+
+let foliage = Material.pbr().alphaMode(AlphaMode.mask).alphaCutoff(0.3)
+
+let glass = try Material.pbr().baseColor([0.9, 0.95, 1.0, 0.25]).alphaMode(AlphaMode.blend)
+
+let solid = Material.pbr().alphaMode(AlphaMode.opaque)
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import org.fragmentcolor.*
+
+val foliage = Material.pbr().alphaMode(AlphaMode.MASK).alphaCutoff(0.3f)
+
+val glass = Material.pbr().baseColor(listOf(0.9f, 0.95f, 1.0f, 0.25f)).alphaMode(AlphaMode.BLEND)
+
+val solid = Material.pbr().alphaMode(AlphaMode.OPAQUE)
+```
+
+</TabItem>
+</Tabs>
+
+`AlphaMode::Opaque` is the default and the cheapest: depth test and depth writes on, blending off. `AlphaMode::Mask` keeps that profile and discards every fragment whose alpha falls below `alpha_cutoff`, which suits leaves, chain-link fences, and decals with hard edges. `AlphaMode::Blend` turns depth writes off and blends with `SrcAlpha` and `OneMinusSrcAlpha`, for glass, smoke, and fades.
+
+Blended surfaces have to draw from back to front, and the renderer handles the order. Before it draws a pass, it sorts every blended model by depth from the camera, across all the materials in the pass and whatever order you added them in. Opaque and masked models skip the sort and keep their instanced draws. The sort uses the center of each model's bounding box. Two translucent meshes that pass through each other can still show artifacts.
+
+`Material::double_sided` turns back-face culling off. Materials are single-sided by default, as glTF specifies.
+
+## Cameras and lights
+
+[`Camera::perspective`](/api/scene/camera/#perspective) takes a vertical field of view in radians, an aspect ratio, and the near and far planes. [`Camera::orthographic`](/api/scene/camera/#orthographic) takes the six planes of a box. Both build their matrices for wgpu's `[0, 1]` depth range. [`look_at(position, target, up)`](/api/scene/camera/#look_at) places the eye, `set_aspect` follows a window resize and keeps the vertical field of view, and `view_proj` and `position` read the result back.
+
+<div class="not-content" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))", gap: "0.75rem", margin: "1.5rem 0 0.5rem" }}>
+  <figure style={{ margin: 0 }}>
+    <img src="/shaders/camera/perspective.png" alt="A violet and dark checkerboard plane receding toward a horizon line under a dark sky." width="256" height="256" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+    <figcaption style={{ fontSize: "var(--sl-text-xs)", color: "var(--sl-color-gray-3)", marginTop: "0.4rem" }}><code>camera/perspective</code></figcaption>
+  </figure>
+  <figure style={{ margin: 0 }}>
+    <img src="/shaders/camera/look_at.png" alt="A teal cube seen from above and to the left, with its top and two sides visible." width="256" height="256" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+    <figcaption style={{ fontSize: "var(--sl-text-xs)", color: "var(--sl-color-gray-3)", marginTop: "0.4rem" }}><code>camera/look_at</code></figcaption>
+  </figure>
+</div>
+
+<p style={{ fontSize: "var(--sl-text-sm)", color: "var(--sl-color-gray-3)" }}>The library's <a href="/shaders/camera/">camera</a> functions of the same names, for shaders that build their own matrices: a checkerboard plane in perspective, and a cube seen from above and to one side.</p>
+
+[`Light`](/api/scene/light/) is one type with three constructors, matching the three kinds in `KHR_lights_punctual`. `Light::directional` sends parallel rays, for a sun or a sky fill. `Light::point` radiates from a position with inverse-square falloff, for a lamp or a candle. `Light::spot` narrows a point light to a cone with a smooth edge between an inner and an outer angle, for a flashlight or a stage light.
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use fragmentcolor::Light;
+
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7])
+    .set_intensity(5.0)
+    .set_cone_angles(0.15, 0.4)?;
+```
+
+</TabItem>
+<TabItem label="JavaScript">
+
+```js
+import { Light } from "fragmentcolor";
+
+const torch = Light.spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7]).setIntensity(5.0).setConeAngles(0.15, 0.4);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+from fragmentcolor import Light
+
+torch = Light.spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7]).set_intensity(5.0).set_cone_angles(0.15, 0.4)
+```
+
+</TabItem>
+<TabItem label="Swift">
+
+```swift
+import FragmentColor
+
+let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7]).setIntensity(5.0).setConeAngles(0.15, 0.4)
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import org.fragmentcolor.*
+
+val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -0.3f, -1.0f), listOf(1.0f, 0.9f, 0.7f)).setIntensity(5.0f).setConeAngles(0.15f, 0.4f)
+```
+
+</TabItem>
+</Tabs>
+
+One type for three kinds keeps the surface small, with one `add` method and one class per binding. The price is that some fields exist only on some kinds. `set_color` and `set_intensity` work on every light. `set_position`, `set_direction`, `set_range`, and `set_cone_angles` return a `Result`, and calling one on a kind that lacks the field returns `LightError::FieldNotApplicable`. The getters follow suit: a directional light's `position()` is `None`.
+
+<div class="not-content" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))", gap: "0.75rem", margin: "1.5rem 0 0.5rem" }}>
+  <figure style={{ margin: 0 }}>
+    <img src="/shaders/lighting/attenuation_inverse_square.png" alt="A sphere lit by a warm orange light at its lower right, its brightness dropping off quickly away from the hot spot." width="256" height="256" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+    <figcaption style={{ fontSize: "var(--sl-text-xs)", color: "var(--sl-color-gray-3)", marginTop: "0.4rem" }}><code>lighting/attenuation_inverse_square</code></figcaption>
+  </figure>
+  <figure style={{ margin: 0 }}>
+    <img src="/shaders/lighting/attenuation_range.png" alt="A sphere lit by a cool blue light at its lower right, the glow fading to black well before the far edge." width="256" height="256" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+    <figcaption style={{ fontSize: "var(--sl-text-xs)", color: "var(--sl-color-gray-3)", marginTop: "0.4rem" }}><code>lighting/attenuation_range</code></figcaption>
+  </figure>
+</div>
+
+<p style={{ fontSize: "var(--sl-text-sm)", color: "var(--sl-color-gray-3)" }}>Inverse-square falloff, then the same falloff faded to zero at a finite range. <code>set_range</code> gives point and spot lights a similar cutoff.</p>
+
+Shading is forward. Every fragment loops over every active light, and the cost grows with resolution times the number of lights. Each shader holds up to 32 lights, and lights bind to shaders instead of passes. That has one consequence worth knowing: two passes that share a material share its light slots, and a light added to either pass lights both. For two independent lighting setups, give each its own `Material::pbr()`.
+
+`Scene::ambient([r, g, b])` sets a fill term that every PBR shader in the scene adds to its lighting, and faces turned away from every light keep some color. A later example in this post uses it.
+
+## Built from the core
+
+Each 3D type builds on parts that existed before 0.12.0:
+
+- A `Material` holds a `Shader`. `material.shader()` returns it, and `shader.set(...)` sets any uniform the setters don't cover.
+- A `Model` pairs a `Mesh` with a `Material`. Its transform arrives at the vertex stage as four per-instance attributes, `model_0` to `model_3`, the columns of a `mat4x4<f32>`.
+- A `Camera` writes the `camera.view_proj` and `camera.position` uniforms into every shader the scene draws. A `Light` writes its slot of the `lights` uniform array.
+- A `Scene` owns ordinary `Pass` objects and hands them to the renderer in order.
+
+The contract is plain uniforms and vertex inputs, which lets any shader take part. [`Material::custom`](/api/scene/material/#custom) wraps a `Shader` of your own as a material. Declare the `camera` uniform and the `model_0` to `model_3` inputs, and the layer fills them in. This shader paints every model flat green:
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use fragmentcolor::{Material, Shader};
+
+let wireframe = Shader::new(r#"
+    struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    @group(0) @binding(0) var<uniform> camera: Camera;
+
+    @vertex
+    fn vs_main(
+        @location(0) p: vec3<f32>,
+        @location(3) model_0: vec4<f32>,
+        @location(4) model_1: vec4<f32>,
+        @location(5) model_2: vec4<f32>,
+        @location(6) model_3: vec4<f32>,
+    ) -> @builtin(position) vec4<f32> {
+        let model = mat4x4<f32>(model_0, model_1, model_2, model_3);
+        return camera.view_proj * model * vec4<f32>(p, 1.0);
+    }
+    @fragment fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(0.0, 1.0, 0.4, 1.0);
+    }
+"#)?;
+
+let wire_mat = Material::custom(wireframe);
+```
+
+</TabItem>
+<TabItem label="JavaScript">
+
+```js
+import { Material, Shader } from "fragmentcolor";
+
+const wireframe = new Shader(`
+    struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    @group(0) @binding(0) var<uniform> camera: Camera;
+
+    @vertex
+    fn vs_main(
+        @location(0) p: vec3<f32>,
+        @location(3) model_0: vec4<f32>,
+        @location(4) model_1: vec4<f32>,
+        @location(5) model_2: vec4<f32>,
+        @location(6) model_3: vec4<f32>,
+    ) -> @builtin(position) vec4<f32> {
+        let model = mat4x4<f32>(model_0, model_1, model_2, model_3);
+        return camera.view_proj * model * vec4<f32>(p, 1.0);
+    }
+    @fragment fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(0.0, 1.0, 0.4, 1.0);
+    }
+`);
+
+const wire_mat = Material.custom(wireframe);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+from fragmentcolor import Material, Shader
+
+wireframe = Shader("""
+    struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    @group(0) @binding(0) var<uniform> camera: Camera;
+
+    @vertex
+    fn vs_main(
+        @location(0) p: vec3<f32>,
+        @location(3) model_0: vec4<f32>,
+        @location(4) model_1: vec4<f32>,
+        @location(5) model_2: vec4<f32>,
+        @location(6) model_3: vec4<f32>,
+    ) -> @builtin(position) vec4<f32> {
+        let model = mat4x4<f32>(model_0, model_1, model_2, model_3);
+        return camera.view_proj * model * vec4<f32>(p, 1.0);
+    }
+    @fragment fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(0.0, 1.0, 0.4, 1.0);
+    }
+""")
+
+wire_mat = Material.custom(wireframe)
+```
+
+</TabItem>
+<TabItem label="Swift">
+
+```swift
+import FragmentColor
+
+let wireframe = try Shader("""
+    struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    @group(0) @binding(0) var<uniform> camera: Camera;
+
+    @vertex
+    fn vs_main(
+        @location(0) p: vec3<f32>,
+        @location(3) model_0: vec4<f32>,
+        @location(4) model_1: vec4<f32>,
+        @location(5) model_2: vec4<f32>,
+        @location(6) model_3: vec4<f32>,
+    ) -> @builtin(position) vec4<f32> {
+        let model = mat4x4<f32>(model_0, model_1, model_2, model_3);
+        return camera.view_proj * model * vec4<f32>(p, 1.0);
+    }
+    @fragment fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(0.0, 1.0, 0.4, 1.0);
+    }
+""")
+
+let wire_mat = Material.custom(wireframe)
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import org.fragmentcolor.*
+
+val wireframe = Shader("""
+    struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    @group(0) @binding(0) var<uniform> camera: Camera;
+
+    @vertex
+    fn vs_main(
+        @location(0) p: vec3<f32>,
+        @location(3) model_0: vec4<f32>,
+        @location(4) model_1: vec4<f32>,
+        @location(5) model_2: vec4<f32>,
+        @location(6) model_3: vec4<f32>,
+    ) -> @builtin(position) vec4<f32> {
+        let model = mat4x4<f32>(model_0, model_1, model_2, model_3);
+        return camera.view_proj * model * vec4<f32>(p, 1.0);
+    }
+    @fragment fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(0.0, 1.0, 0.4, 1.0);
+    }
+""")
+
+val wire_mat = Material.custom(wireframe)
+```
+
+</TabItem>
+</Tabs>
+
+The PBR setters apply to a custom material wherever its uniforms use the `material.*` names, and log a warning where they don't. Toon shading, unlit color, debug views, or any shading model outside glTF's fit the same slot, and the layer still handles cameras, lights, transforms, and instancing.
+
+Sharing pays off at draw time. On every frame, the renderer packs the transforms of all visible opaque and masked models that share a mesh and a material into one instance buffer and draws them in one instanced call. Cloning a `Material` or a `Mesh` shares the handle and copies nothing. A thousand opaque trees built from one mesh and one material cost a single draw.
+
+The shader library supplies the PBR shader's building blocks, `mesh/transform` and `material/pbr`, behind the `shaders-mesh` and `shaders-material` Cargo features. Your own shaders can compose them by slug through `Shader::new` or `Shader.fetch`, although the playground's picker and the [shader library pages](/shaders/) leave them out.
+
+<figure>
+  <img src="/blog/compose.webp" alt="The FragmentColor playground showing a star, a circle, and a hexagon merged by a smooth union over orange contour bands, with a Library row of sdf2d/star, sdf2d/hexagon, sdf2d/circle, sdf/op_smooth_union, and map/rotate2 above a WGSL editor." loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+  <figcaption style={{ fontSize: "var(--sl-text-sm)", color: "var(--sl-color-gray-3)", marginTop: "0.5rem" }}>Composing library snippets by slug in the playground. <code>Shader::new</code> takes <code>mesh/transform</code> and <code>material/pbr</code> by slug the same way.</figcaption>
+</figure>
+
+## If you never draw a mesh
+
+A fullscreen effect, a 2D sketch, or a compute simulation has no use for cameras or materials, and it never meets them. You build a `Shader`, put it in a `Pass` when you need one, and render. Here is the smallest render from the [`Renderer::render`](/api/core/renderer/#render) docs:
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use fragmentcolor::{Renderer, Shader};
+
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([10, 10]).await?;
+let shader = Shader::default();
+
+renderer.render(&shader, &target)?;
+```
+
+</TabItem>
+<TabItem label="JavaScript">
+
+```js
+import { Renderer, Shader } from "fragmentcolor";
+
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget([10, 10]);
+const shader = Shader.default();
+
+renderer.render(shader, target);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+from fragmentcolor import Renderer, Shader
+
+renderer = Renderer()
+target = renderer.create_texture_target([10, 10])
+shader = Shader.default()
+
+renderer.render(shader, target)
+```
+
+</TabItem>
+<TabItem label="Swift">
+
+```swift
+import FragmentColor
+
+let renderer = Renderer()
+let target = try await renderer.createTextureTarget([10, 10])
+let shader = Shader.default()
+
+try renderer.render(shader, target)
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val target = renderer.createTextureTarget(listOf(10u, 10u))
+val shader = Shader.default()
+
+renderer.render(shader, target)
+```
+
+</TabItem>
+</Tabs>
+
+And here is a small scene with a warm ambient term and one light:
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use fragmentcolor::{Light, Material, Mesh, Model, Renderer, Scene, Vertex};
+
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([64, 64]).await?;
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+);
+
+let scene = Scene::new();
+// A warm dusk ambient. It applies to every Material added below.
+scene.ambient([0.06, 0.04, 0.03]);
+scene.add(&Model::new(mesh, Material::pbr()))?;
+scene.add(&Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]))?;
+
+renderer.render(&scene, &target)?;
+```
+
+</TabItem>
+<TabItem label="JavaScript">
+
+```js
+import { Light, Material, Mesh, Model, Renderer, Scene, Vertex } from "fragmentcolor";
+
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget([64, 64]);
+
+const mesh = new Mesh();
+mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]));
+
+const scene = new Scene();
+// A warm dusk ambient. It applies to every Material added below.
+scene.ambient([0.06, 0.04, 0.03]);
+scene.add(new Model(mesh, Material.pbr()));
+scene.add(Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]));
+
+renderer.render(scene, target);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+from fragmentcolor import Light, Material, Mesh, Model, Renderer, Scene, Vertex
+
+renderer = Renderer()
+target = renderer.create_texture_target([64, 64])
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+)
+
+scene = Scene()
+# A warm dusk ambient. It applies to every Material added below.
+scene.ambient([0.06, 0.04, 0.03])
+scene.add(Model(mesh, Material.pbr()))
+scene.add(Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]))
+
+renderer.render(scene, target)
+```
+
+</TabItem>
+<TabItem label="Swift">
+
+```swift
+import FragmentColor
+
+let renderer = Renderer()
+let target = try await renderer.createTextureTarget([64, 64])
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
+)
+
+let scene = Scene()
+// A warm dusk ambient. It applies to every Material added below.
+try scene.ambient([0.06, 0.04, 0.03])
+try scene.add(Model(mesh, Material.pbr()))
+try scene.add(Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]))
+
+try renderer.render(scene, target)
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val target = renderer.createTextureTarget(listOf(64u, 64u))
+
+val mesh = Mesh()
+mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)))
+
+val scene = Scene()
+// A warm dusk ambient. It applies to every Material added below.
+scene.ambient(listOf(0.06f, 0.04f, 0.03f))
+scene.add(Model(mesh, Material.pbr()))
+scene.add(Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f)))
+
+renderer.render(scene, target)
+```
+
+</TabItem>
+</Tabs>
+
+Both end on the same line. `renderer.render` takes anything `Renderable`, whether that is a `Shader`, a `Pass`, a list of passes, or a `Scene`. The scene adds a light and no camera, and the stock perspective camera fills in at the first render.
+
+The dependency runs one way. The 3D layer reaches down into the core: a scene is made of passes, and a material is made of a shader. Code that only draws shaders never reaches up, and none of the calls it makes take a 3D type. You can ship a 2D app on FragmentColor without learning what a `Model` is.
+
+<figure>
+  <img src="/artworks/monolith.webp" alt="A glossy dark octahedron fused with a torus, floating in a deep blue void beside two small spheres." loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+  <figcaption style={{ fontSize: "var(--sl-text-sm)", color: "var(--sl-color-gray-3)", marginTop: "0.5rem" }}>Monolith raymarches signed distance fields in a single fragment shader, composed from the library's <code>sdf</code>, <code>raymarch</code>, and <code>lighting</code> snippets. It draws in 3D with no <code>Scene</code>, <code>Model</code>, or <code>Material</code>.</figcaption>
+</figure>
+
+Compute work stays on the same footing. The two simulations below run on storage buffers and compute passes, and neither one imports a 3D type.
+
+<div class="not-content" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))", gap: "0.75rem", margin: "1.5rem 0" }}>
+  <figure style={{ margin: 0 }}>
+    <img src="/playground/particles.webp" alt="Blue and violet particles streaming along a looping ribbon across a dark background." loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+    <figcaption style={{ fontSize: "var(--sl-text-sm)", color: "var(--sl-color-gray-3)", marginTop: "0.5rem" }}>One million particles. A compute pass moves them and an instanced render draws them, with <code>Shader</code>, <code>Pass</code>, and <code>Mesh</code>.</figcaption>
+  </figure>
+  <figure style={{ margin: 0 }}>
+    <img src="/playground/life.webp" alt="Clusters of red, cyan, green, and violet particles forming rings and loose cells on a black background." loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+    <figcaption style={{ fontSize: "var(--sl-text-sm)", color: "var(--sl-color-gray-3)", marginTop: "0.5rem" }}>Particle life. Four species follow or flee each other's density in four passes that share storage buffers by name, with <code>Shader</code> and <code>Pass</code> alone.</figcaption>
+  </figure>
+</div>
+
+One change does affect shaders drawn without a material. Through 0.11, every pipeline blended with premultiplied alpha. From 0.12.0 on, a shader rendered on its own draws with blending off and both faces visible. To blend again, wrap it as `Material::custom(shader).alpha_mode(AlphaMode::Blend)`.
+
+## A scene is a list of passes
+
+A scene holds passes, and it accepts passes of your own. [`Scene::add_pass`](/api/scene/scene/#add_pass) appends one to the scene's list. Passes render in list order, and the pass that holds your models joins the list at your first `add`. A pass added before that, such as a backdrop, renders first:
+
+<Tabs syncKey="lang">
+<TabItem label="Rust">
+
+```rust
+use fragmentcolor::{Material, Mesh, Model, Pass, Scene, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+);
+let model = Model::new(mesh, Material::pbr());
+
+// A backdrop pass that clears to a soft blue before the scene's main draw.
+let backdrop = Pass::new("backdrop");
+backdrop.set_clear_color([0.05, 0.08, 0.12, 1.0]);
+
+let scene = Scene::new();
+scene.add_pass(&backdrop);
+scene.add(&model)?;
+```
+
+</TabItem>
+<TabItem label="JavaScript">
+
+```js
+import { Material, Mesh, Model, Pass, Scene, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]));
+const model = new Model(mesh, Material.pbr());
+
+// A backdrop pass that clears to a soft blue before the scene's main draw.
+const backdrop = new Pass("backdrop");
+backdrop.setClearColor([0.05, 0.08, 0.12, 1.0]);
+
+const scene = new Scene();
+scene.addPass(backdrop);
+scene.add(model);
+```
+
+</TabItem>
+<TabItem label="Python">
+
+```python
+from fragmentcolor import Material, Mesh, Model, Pass, Scene, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+)
+model = Model(mesh, Material.pbr())
+
+# A backdrop pass that clears to a soft blue before the scene's main draw.
+backdrop = Pass("backdrop")
+backdrop.set_clear_color([0.05, 0.08, 0.12, 1.0])
+
+scene = Scene()
+scene.add_pass(backdrop)
+scene.add(model)
+```
+
+</TabItem>
+<TabItem label="Swift">
+
+```swift
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
+)
+let model = Model(mesh, Material.pbr())
+
+// A backdrop pass that clears to a soft blue before the scene's main draw.
+let backdrop = Pass("backdrop")
+try backdrop.setClearColor([0.05, 0.08, 0.12, 1.0])
+
+let scene = Scene()
+scene.addPass(backdrop)
+try scene.add(model)
+```
+
+</TabItem>
+<TabItem label="Kotlin">
+
+```kotlin
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)))
+val model = Model(mesh, Material.pbr())
+
+// A backdrop pass that clears to a soft blue before the scene's main draw.
+val backdrop = Pass("backdrop")
+backdrop.setClearColor(listOf(0.05f, 0.08f, 0.12f, 1.0f))
+
+val scene = Scene()
+scene.addPass(backdrop)
+scene.add(model)
+```
+
+</TabItem>
+</Tabs>
+
+That ordering came with a patch. In 0.12.0, `add_pass` always rendered before the geometry. Two days later, [v0.12.2](/blog/announcing-v0-12-2/) opened the whole list, which you read and edit with `list_passes`, `get_pass`, `find_pass`, `add_pass`, `remove_pass`, and `set_passes`. `add_to` puts a model, camera, or light into a chosen pass, and `no_defaults` and its siblings switch off the stock camera and light. A pass added after the geometry renders after it, and a scene loaded from glTF can draw over another pass instead of clearing it.
+
+[v0.12.6](/blog/announcing-v0-12-6/) evened out the bindings. In every language, `Scene.load` takes `.glb` bytes and can skip a file's cameras or lights, and `scene.add(model).add(camera)` chains. A `Model` shares its `Material` in every binding, where a rebuilt copy used to lose its alpha mode. Swift packages before 0.12.6 compiled a stale wrapper that lacked `Scene`, `Model`, and the other 0.12 types. From Swift, depend on 0.12.6 or later.
+
+## What the layer leaves out
+
+The loader reads static scenes. Animation, skinning, and morph targets parse and go unused, and material extensions beyond metallic-roughness, such as clearcoat or transmission, are out of scope. One UV transform covers all five maps, which loses nothing in the common case of a file that transforms only its base color map. Lighting is forward with 32 lights per shader, and the transparency sort works per model. `Scene::load` blocks its thread. On the web it takes bytes only, and to keep the page responsive you fetch them and call `Scene.load` inside a Web Worker.
+
+## Try it
+
+```bash
+cargo add fragmentcolor
+npm install fragmentcolor
+pip install fragmentcolor
+```
+
+Swift uses the package at `https://github.com/vista-art/fragmentcolor`, and Kotlin takes the `.aar` attached to each [GitHub release](https://github.com/vista-art/fragmentcolor/releases).
+
+The API reference has a page for each new type: [`Scene`](/api/scene/scene/), [`Model`](/api/scene/model/), [`Material`](/api/scene/material/), [`Camera`](/api/scene/camera/), and [`Light`](/api/scene/light/). Every method on them carries an example in all five languages, and the [v0.12.0 changelog](/blog/announcing-v0-12-0/) lists the rest of the release, down to the `Mipmap` rename.
+
+<figure>
+  <img src="/blog/playground.webp" alt="The FragmentColor playground on the Cells demo, with a warped cell pattern on the left, uniform sliders below it, and a WGSL editor on the right with tabs for Rust, Python, Swift, and Kotlin." loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+  <figcaption style={{ fontSize: "var(--sl-text-sm)", color: "var(--sl-color-gray-3)", marginTop: "0.5rem" }}>The <a href="/">playground</a> on the home page edits WGSL and JavaScript live and shows the same program in Rust, Python, Swift, and Kotlin.</figcaption>
+</figure>
+
+Rafael
