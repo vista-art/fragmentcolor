@@ -21,6 +21,9 @@
 // constants (which are the same WGSL bytes regardless of the host language)
 // from being mis-highlighted as Rust/JS/Python.
 //
+// `langs` limits the tabs to some languages, such as `langs={["rust", "js"]}`
+// for a tutorial whose code the other transpilers can't follow.
+//
 // Design choice: inner Tabs (rather than stacking host above shader) was
 // selected because it preserves vertical density on the tutorial pages and
 // lets the reader focus on one piece at a time. The inner Tabs use a
@@ -34,9 +37,14 @@ interface Props {
   region?: string;
   regions?: [string, string];
   labels?: [string, string];
+  langs?: Lang[];
 }
 
-const { file, region, regions, labels } = Astro.props;
+type Lang = "rust" | "js" | "py" | "swift" | "kotlin";
+const LANGS: Lang[] = ["rust", "js", "py", "swift", "kotlin"];
+
+const { file, region, regions, labels, langs = LANGS } = Astro.props;
+const shown = (lang: Lang) => langs.includes(lang);
 
 const entry = tutorials[file];
 if (!entry) {
@@ -45,8 +53,6 @@ if (!entry) {
   );
 }
 
-type Lang = "rust" | "js" | "py" | "swift" | "kotlin";
-const LANGS: Lang[] = ["rust", "js", "py", "swift", "kotlin"];
 const LANG_LABEL: Record<Lang, string> = {
   rust: "Rust",
   js: "JavaScript",
@@ -129,7 +135,7 @@ if (regions && regions.length === 2) {
   const secondSlice = pickRegion(regions[1]);
   const firstIsWgsl = isWgslRegion(regions[0], firstSlice);
   const secondIsWgsl = isWgslRegion(regions[1], secondSlice);
-  pairedRows = LANGS.map((lang) => ({
+  pairedRows = LANGS.filter(shown).map((lang) => ({
     lang,
     outerLabel: LANG_LABEL[lang],
     first: pairedSide(firstSlice, lang, firstIsWgsl),
@@ -163,27 +169,27 @@ if (regions && regions.length === 2) {
   </Tabs>
 ) : (
   <Tabs syncKey="lang">
-    {singleSlice?.rust && (
+    {shown("rust") && singleSlice?.rust && (
       <TabItem label="Rust">
         <Code code={singleSlice.rust} lang="rust" />
       </TabItem>
     )}
-    {singleSlice?.js && (
+    {shown("js") && singleSlice?.js && (
       <TabItem label="JavaScript">
         <Code code={singleSlice.js} lang="javascript" />
       </TabItem>
     )}
-    {singleSlice?.py && (
+    {shown("py") && singleSlice?.py && (
       <TabItem label="Python">
         <Code code={singleSlice.py} lang="python" />
       </TabItem>
     )}
-    {singleSlice?.swift && (
+    {shown("swift") && singleSlice?.swift && (
       <TabItem label="Swift">
         <Code code={singleSlice.swift} lang="swift" />
       </TabItem>
     )}
-    {singleSlice?.kotlin && (
+    {shown("kotlin") && singleSlice?.kotlin && (
       <TabItem label="Kotlin">
         <Code code={singleSlice.kotlin} lang="kotlin" />
       </TabItem>
