@@ -48,7 +48,7 @@ Contributions are welcome! This document outlines the current workflow for devel
    It should also refresh launch-facing version references such as the root README, Python example requirements, and the website version badge.
 3. Open a PR and iterate until all checks are green (lint, fmt, tests, healthchecks, docs site build). Keep `main` protected and green.
 4. Merge the PR to `main`.
-5. Run the **Prepare release** workflow (`prepare_release.yml`) on `main`, from the Actions tab or with `gh workflow run prepare_release.yml --ref main`. It:
+5. Merging runs the **Prepare release** workflow (`prepare_release.yml`) on its own, because the merge changes the version in `Cargo.toml` and that version has no tag yet. Run it by hand from the Actions tab or with `gh workflow run prepare_release.yml --ref main` to rebuild the draft. It:
    - Builds the iOS **xcframework** from `main`, and fails if the committed Swift wrapper differs from what `./fc build_ios` generates.
    - Commits the root `Package.swift` pin (`fragmentcolorVersion` / `fragmentcolorChecksum`) on top of that commit and pushes it to `release/vMAJOR.MINOR.PATCH`.
    - Creates a draft GitHub Release `vMAJOR.MINOR.PATCH` that targets the pinned commit, with `FragmentColorFFI.xcframework.zip` attached. The notes are the `CHANGELOG.md` entry followed by GitHub's generated list of changes.

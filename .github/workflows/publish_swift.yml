@@ -30,7 +30,7 @@ jobs:
         run: echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Checkout the tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ steps.vars.outputs.tag }}
 
