@@ -433,7 +433,8 @@ impl Reference {
 
     /// The last iteration the series covers for a view of this radius (log2).
     fn skip(&self, radius: f64) -> usize {
-        let covered = self.reach[..=self.length].partition_point(|&reach| reach > radius);
+        // The last step reads one entry past skip, so skip stops one short of the end.
+        let covered = self.reach[..self.length.max(1)].partition_point(|&reach| reach > radius);
         covered.saturating_sub(1)
     }
 }

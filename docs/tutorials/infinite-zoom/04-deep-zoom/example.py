@@ -379,7 +379,8 @@ TOLERANCE = 1e-7
 
 # The last iteration the series covers for a view of this radius (log2).
 def skip_for(reference, radius):
-    low, high = 0, reference.length
+    # The last step reads one entry past skip, so skip stops one short of the end.
+    low, high = 0, max(reference.length - 1, 0)
     while low < high:
         middle = (low + high + 1) // 2
         if reference.reach[middle] > radius:

@@ -394,7 +394,8 @@ struct Reference {
 
     /// The last iteration the series covers for a view of this radius (log2).
     func skip(_ radius: Double) -> Int {
-        var (low, high) = (0, length)
+        // The last step reads one entry past skip, so skip stops one short of the end.
+        var (low, high) = (0, max(length - 1, 0))
         while low < high {
             let middle = (low + high + 1) / 2
             if reach[middle] > radius {

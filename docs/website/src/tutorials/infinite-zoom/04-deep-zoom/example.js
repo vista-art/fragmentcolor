@@ -371,7 +371,8 @@ const TOLERANCE = 1e-7;
 
 // The last iteration the series covers for a view of this radius (log2).
 function skipFor(reference, radius) {
-  let [low, high] = [0, reference.length];
+  // The last step reads one entry past skip, so skip stops one short of the end.
+  let [low, high] = [0, Math.max(reference.length - 1, 0)];
   while (low < high) {
     const middle = (low + high + 1) >> 1;
     if (reference.reach[middle] > radius) low = middle;

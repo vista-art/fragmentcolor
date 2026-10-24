@@ -395,7 +395,8 @@ class Reference(target: Point, depth: Double) {
     /** The last iteration the series covers for a view of this radius (log2). */
     fun skip(radius: Double): Int {
         var low = 0
-        var high = length
+        // The last step reads one entry past skip, so skip stops one short of the end.
+        var high = maxOf(length - 1, 0)
         while (low < high) {
             val middle = (low + high + 1) / 2
             if (reach[middle] > radius) low = middle else high = middle - 1
