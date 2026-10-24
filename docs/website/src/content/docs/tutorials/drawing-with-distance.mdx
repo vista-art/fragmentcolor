@@ -105,7 +105,7 @@ A box makes the question harder, because the nearest point might lie on an edge 
 
 <Code lang="wgsl" code={region("03-box-and-star", "box").rust} />
 
-This formula comes from [Inigo Quilez](https://iquilezles.org/), who pioneered drawing with distance functions in shaders and published the method in his articles. With Pol Jeremias he also created [Shadertoy](https://www.shadertoy.com/), where a community grew up around it. His page of [2D distance functions](https://iquilezles.org/articles/distfunctions2d/) derives exact formulas for dozens of shapes, each with a live example.
+This formula comes from [Inigo Quilez](https://iquilezles.org/), who popularized drawing with distance functions in shaders and published the method in his articles. The [history](#where-distance-fields-come-from) at the end of this page tells the longer story. With Pol Jeremias he also created [Shadertoy](https://www.shadertoy.com/), where a community grew up around it. His page of [2D distance functions](https://iquilezles.org/articles/distfunctions2d/) derives exact formulas for dozens of shapes, each with a live example.
 
 `q` says how far the point sits past the right edge (`q.x`) and past the top edge (`q.y`). A negative value means it hasn't reached that edge yet.
 
@@ -247,6 +247,18 @@ The playground's Shapes demo is this program with a few changes: a hexagon from 
 
 <Playground demos={["shapes"]} />
 
-Inigo Quilez is the source of the star and box distances and the smooth union. His page on [2D distance functions](https://iquilezles.org/articles/distfunctions2d/) lists dozens more shapes, from arcs to Bézier curves, each with a live example, and most of them carry over to WGSL line for line. Many are already in the shader library under [`sdf2d/`](/shaders/sdf2d/).
-
 `center` stays fixed through all seven steps, and only what follows it changes. A pixel goes in as `p` and comes out as a color, and noise, fractals and lighting fit in the same place.
+
+## Where distance fields come from
+
+Computing every pixel's distance to a shape is older than GPUs by decades.
+
+In 1966, Azriel Rosenfeld and John L. Pfaltz described a pass over a digital image that finds, for every pixel, how far it lies from the nearest pixel of a chosen set ([*Sequential Operations in Digital Picture Processing*](https://doi.org/10.1145/321356.321357)). Their distance transform counted pixels on a grid and carried no sign. The sign came from the study of moving boundaries: Stanley Osher and James A. Sethian's [level set method](https://doi.org/10.1016/0021-9991(88)90002-2) (1988) tracks an interface as the zero level of a function defined all around it, usually a signed distance.
+
+John C. Hart made the distance a way to render. His [sphere tracing](https://doi.org/10.1007/s003710050084) (1996) moves each ray toward a surface in steps as long as the distance to it, which can never overshoot.
+
+Text brought distance fields to everyday screens. At MERL, Sarah F. Frisken, Ronald N. Perry, Alyn P. Rockwood and Thouis R. Jones stored the field finely near edges and coarsely elsewhere ([*Adaptively Sampled Distance Fields*](https://doi.org/10.1145/344779.344899), SIGGRAPH 2000). Perry and Frisken built the Saffron type system on that work, and in 2005 it became the new text renderer of Macromedia Flash Player 8. Two years later, in a SIGGRAPH course, Chris Green of Valve showed that a small distance field texture magnifies into crisp lettering ([*Improved Alpha-Tested Magnification for Vector Textures and Special Effects*](https://cdn.akamai.steamstatic.com/apps/valve/2007/SIGGRAPH2007_AlphaTestedMagnification.pdf)); Team Fortress 2 used the method for the words on its signs and for screen overlays. One distance per texel rounds corners off. Viktor Chlumský's 2015 master's thesis split the field across three channels, and his [msdfgen](https://github.com/Chlumsky/msdfgen) tool keeps the corners of every glyph sharp.
+
+Real-time shaders took up the idea next. Demosceners were raymarching distance fields around 2001, and Keenan Crane ray traced [quaternion Julia sets](https://www.cs.cmu.edu/~kmcrane/Projects/QuaternionJulia/) in a fragment program in 2004. Inigo Quilez carried the technique to a wide audience. His NVScene 2008 talk, [*Rendering Worlds with Two Triangles with raytracing on the GPU in 4096 bytes*](https://iquilezles.org/articles/nvscene2008/), explained how 4 KB demos raymarch whole worlds through distance fields. The articles that followed work out the exact 2D distances and the [smooth minimum](https://iquilezles.org/articles/smin/) on this page, and in 2013 he and Pol Jeremias created [Shadertoy](https://www.shadertoy.com/), where people share shaders drawn this way. His own [account of raymarching distance fields](https://iquilezles.org/articles/raymarchingdf/) credits the work that came before him.
+
+From his catalog this page takes the box and star distances and the smooth minimum. More of his shapes, from the rhombus to the trapezoid, are in the shader library under [`sdf2d/`](/shaders/sdf2d/).
