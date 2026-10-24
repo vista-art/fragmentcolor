@@ -12,7 +12,7 @@ export default {
     "u.rings": 20,
     "u.glow": 10,
     "u.inside_color": [1, 0, 0.514],
-    "u.edge_color": [0.514, 0, 1],
+    "u.rim_color": [0.514, 0, 1],
     "u.outside_color": [0, 0.514, 1],
   },
   frame: { time: "u.time", resolution: "u.resolution", pointer: "u.mouse" },
@@ -28,7 +28,7 @@ struct Params {
   rings: f32, // 5..60
   glow: f32, // 2..30
   inside_color: vec3<f32>,
-  edge_color: vec3<f32>,
+  rim_color: vec3<f32>,
   outside_color: vec3<f32>,
 }
 
@@ -54,7 +54,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   var col = vec3<f32>(0.05, 0.06, 0.08) + u.outside_color * 0.45 * exp(-u.glow * outside);
   let ring = abs(fract(d * u.rings - t * 0.5 + 0.5) - 0.5) / (u.rings * px);
   col = col + u.outside_color * 0.35 * exp(-3.0 * outside) * (1.0 - smoothstep(0.5, 1.5, ring));
-  col = select(col, mix(u.edge_color, u.inside_color, smoothstep(0.0, 0.12, -d)), d < 0.0);
+  col = select(col, mix(u.rim_color, u.inside_color, smoothstep(0.0, 0.12, -d)), d < 0.0);
   col = mix(col, vec3<f32>(1.0), 1.0 - smoothstep(px * 0.5, px * 1.5, abs(d)));
   return vec4<f32>(col, 1.0);
 }
