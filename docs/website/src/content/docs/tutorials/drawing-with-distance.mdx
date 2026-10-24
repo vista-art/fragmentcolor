@@ -43,7 +43,7 @@ Pixels make an awkward unit for drawing. A circle 100 pixels wide spans a third 
 2. Dividing by the shorter side makes that side one unit long, from `-0.5` to `0.5`. Both axes divide by the same number, which keeps a unit along x as long as a unit along y. The longer side gets whatever range is left: `-0.67` to `0.67` across an 800 by 600 canvas.
 3. Negating y makes up positive, the way a math textbook draws its axes.
 
-The result is `p`. The square where both of its coordinates run from `-0.5` to `0.5` is the unit square, and it always fits the canvas exactly along the shorter side. Painted as a color, `p.x` drives red and `p.y` drives green. Inside the unit square the colors run at full strength; past its edges they dim to a third.
+The result is `p`. The square where both of its coordinates run from `-0.5` to `0.5` is the unit square, and it always fits the canvas exactly along the shorter side. Painted as a color, `p.x` drives red and `p.y` drives green. Inside the unit square the colors run at full strength; past its edges they dim to 30 percent.
 
 <Code lang="wgsl" code={region("01-coordinates", "paint").rust} />
 
@@ -124,7 +124,7 @@ Rust, Python, Swift and Kotlin read slugs from a copy of the shader library buil
 
 <Demo file="drawing-with-distance/03-box-and-star/example.rs" />
 
-Next to each shape the stripes copy its outline, pointed around the star and square around the box. Farther out the corners soften, and near the edges of the canvas the rings are almost circles: seen from far enough away, any shape shrinks to a point. Inside the box, the stripes nest as smaller rectangles. Their corners line up along creases that leave each corner of the box at 45 degrees, where two edges are equally close. Between the two shapes, the rings from each side meet along a seam. That seam is where the star becomes the closer of the two.
+Next to each shape the stripes copy its outline, pointed around the star and square around the box. Farther out the corners soften. Seen from far enough away, any shape shrinks to a point, and its rings would round off into circles. Inside the box, the stripes nest as smaller rectangles. Their corners line up along creases that leave each corner of the box at 45 degrees, where two edges are equally close. Between the two shapes, the rings from each side meet along a seam. That seam is where the star becomes the closer of the two.
 
 ## Combining shapes
 
@@ -176,7 +176,7 @@ Each line of the coloring scales or mixes the color from the line above:
 1. `select` picks a tint by sign, as `show` did.
 2. `exp(-8.0 * abs(d))` is `1.0` on the edge and fades to almost nothing a few tenths of a unit away. Multiplying the color by `1.0 - 0.75 * exp(-8.0 * abs(d))` darkens a band on both sides of the outline. Outside, the band fades into the stripes; inside, these shapes are thin enough that the whole interior stays dark.
 3. `6.2831853` is 2π, one full turn of the cosine, which makes `cos(6.2831853 * 40.0 * d)` repeat every `1 / 40` of a unit, as `fract` did in `show`, but with soft edges. Scaled to swing between `0.7` and `1.0`, it draws contour lines. Each one joins points at the same distance from the shapes, like the height lines on a hiking map.
-4. `fwidth(d)` measures how much `d` changes from this pixel to its neighbors, which is the width of one pixel expressed as a distance. `smoothstep(pixel_size, 2.0 * pixel_size, abs(d))` is `0.0` within one pixel of the edge and `1.0` past two, and mixing toward white by one minus that draws a line one or two pixels wide.
+4. `fwidth(d)` measures how much `d` changes from this pixel to its neighbors, which is the width of one pixel expressed as a distance. `smoothstep(pixel_size, 2.0 * pixel_size, abs(d))` is `0.0` within one pixel of the edge and `1.0` past two, and mixing toward white by one minus that draws a line about two pixels wide, with one softer pixel on each side.
 
 <Demo file="drawing-with-distance/05-color/example.rs" />
 
@@ -204,7 +204,7 @@ The contour lines move too. Subtracting time inside the cosine slides each one o
 
 <Code lang="wgsl" code={region("06-time", "ripple").rust} />
 
-A contour sits wherever the cosine's argument holds a fixed value. As `time` grows, `d` has to grow with it to keep that value, and every line drifts away from the shapes.
+A contour sits wherever the cosine's argument holds a fixed value. As `time` grows, `d` has to grow with it to keep that value. Every line drifts outward: inside a shape toward its outline, outside toward the edges of the canvas.
 
 <Demo file="drawing-with-distance/06-time/example.rs" />
 
@@ -214,7 +214,7 @@ The last inputs are the pointer and four settings to tune by hand. That makes se
 
 <Code lang="wgsl" code={region("07-pointer", "params").rust} />
 
-The playground reads a `// min..max` comment after a field, like the ones on `blend` and `bands`, and gives that field a slider with that range. A `vec3<f32>` whose name contains `color` or `tint` gets a color picker. On the GPU the comments do nothing, and in your own program those fields are plain values, set once in `setup`:
+The playground gives a control to every value its `setup` sets and its `frame` leaves alone. A `// min..max` comment after the field, like the ones on `blend` and `bands`, sets the slider's range, and a `vec3<f32>` whose name contains `color` or `tint` gets a color picker instead. On the GPU the comments do nothing, and in your own program those fields are plain values, set once in `setup`:
 
 <Snippet file="drawing-with-distance/07-pointer/example.rs" region="setup" />
 
@@ -234,10 +234,10 @@ Move the pointer across the canvas. The circle follows it, and whenever it comes
 
 ## The Shapes demo
 
-The playground's Shapes demo is this program with a few changes: a hexagon from `sdf2d/hexagon` in place of the box, the star at `x = -0.3`, and the pointer field named `mouse`. It also computes `p` from a value the vertex stage passes down, which gives the same coordinates as `center`. Its sliders come from the same `// min..max` comments: drag `blend` toward `0.4` and the shapes fuse, or drop `bands` to `5` and the contour lines spread wide apart. Every tab is editable. The WGSL rebuilds as you type, and **+ Add** brings in more slugs from the shader library.
+The playground's Shapes demo is this program with a few changes: a hexagon from `sdf2d/hexagon` in place of the box, the two shapes at `x = -0.3` and `x = 0.3`, and the pointer field named `mouse`. It also computes `p` from a value the vertex stage passes down, which gives the same coordinates as `center`. Its sliders take their ranges from the same `// min..max` comments: drag `blend` toward `0.4` and the shapes fuse, or drop `bands` to `5` and the contour lines spread wide apart. The `shader.wgsl` and `main.js` tabs are editable and rebuild as you type, the language tabs follow your edits, and **+ Add** brings in more slugs from the shader library.
 
 <Playground demos={["shapes"]} />
 
 The star and box distances, the smooth union and the contour coloring all come from Inigo Quilez. His page on [2D distance functions](https://iquilezles.org/articles/distfunctions2d/) lists dozens more shapes, from arcs to Bézier curves, each with a live example, and most of them carry over to WGSL line for line. Many already live in the shader library under [`sdf2d/`](/shaders/sdf2d/).
 
-From step to step, `center` stayed put and only the function between it and the coloring changed. Noise, fractals and lighting slot into the same place.
+From step to step, `center` kept its job, and only the function between it and the coloring changed. Noise, fractals and lighting slot into the same place.
