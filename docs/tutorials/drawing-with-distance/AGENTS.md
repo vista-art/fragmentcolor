@@ -17,9 +17,7 @@ them as WGSL with Starlight's `<Code>`. At run time they are ordinary comments.
 
 The host regions, `setup` and `frame`, hold FragmentColor calls and nothing else,
 because `<Snippet>` transpiles them line by line into Python, Swift and Kotlin.
-Window, event and clock code stays outside them. The `pointer` region is the one
-exception: input events differ on every platform, so the page shows it for Rust
-and JavaScript only, through `<MultiCode>`.
+Window, event and clock code, the pointer included, stays outside them.
 
 ## Comments in the WGSL
 
