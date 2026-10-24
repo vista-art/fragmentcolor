@@ -236,7 +236,7 @@ export class LibraryPicker {
         const image = element("img", "", { alt: "", width: "256", height: "256", decoding: "async" });
         image.dataset.src = entry.preview;
         image.addEventListener("load", () => image.classList.add("fcp-picker-loaded"));
-        image.addEventListener("error", () => image.remove());
+        image.addEventListener("error", () => this.retry(image));
         thumb.append(image);
       }
 
@@ -270,6 +270,19 @@ export class LibraryPicker {
   load(image) {
     if (image.dataset.src) image.src = image.dataset.src;
     delete image.dataset.src;
+  }
+
+  // One dropped request would leave a card blank for good, so a preview that
+  // fails loads once more before its card says it has none.
+  retry(image) {
+    if (image.dataset.retried) {
+      image.parentElement?.classList.add("fcp-picker-missing");
+      image.remove();
+      return;
+    }
+    image.dataset.retried = "1";
+    const source = image.getAttribute("src");
+    setTimeout(() => (image.src = `${source}${source.includes("?") ? "&" : "?"}retry=${Date.now()}`), 500);
   }
 
   filterCategory(category) {
@@ -588,6 +601,15 @@ const STYLE = `
 }
 .fcp-picker-thumb img.fcp-picker-loaded {
   opacity: 1;
+}
+.fcp-picker-thumb.fcp-picker-missing {
+  display: grid;
+  place-items: center;
+}
+.fcp-picker-thumb.fcp-picker-missing::before {
+  content: "No preview";
+  color: var(--fcp-picker-muted);
+  font-size: 0.7rem;
 }
 .fcp-picker-card[data-clash] {
   border-style: dashed;
