@@ -6,11 +6,11 @@ date: 2026-09-03
 tags: ["release", "javascript", "webgpu", "bugfix"]
 ---
 
-v0.12.5 is a patch release that makes the WebGL2 fallback work. There are no API changes.
+The WebGL2 fallback works in v0.12.5, a patch release with no API changes.
 
 ### Uniform padding on OpenGL and WebGL2
 
-Shaders with uniform bindings whose size is not a multiple of 16 bytes, such as a bare `f32`, a `vec2<f32>`, or most structs, failed to build a pipeline on OpenGL and WebGL2 because `wgpu` requires 16-byte-aligned bindings on those backends. FragmentColor now pads them for you: on a backend that needs it, each shader compiles a padded module in which uniform structs get a padded copy and bare uniforms a wrapper, with every use rewritten. Uniform names, keys, and offsets stay the same, so no shader source has to change.
+Shaders with a uniform binding whose size is not a multiple of 16 bytes, such as a bare `f32`, a `vec2<f32>`, or most structs, failed to build a pipeline on OpenGL and WebGL2, where `wgpu` requires bindings aligned to 16 bytes. FragmentColor now pads them for you. On a backend that needs it, each shader compiles a variant of its module in which structs get a padded copy and bare values a wrapper, with every use rewritten. Uniform names, keys, and offsets stay the same, and no shader source has to change.
 
 ### Readback on WebGL2
 
@@ -18,11 +18,18 @@ Shaders with uniform bindings whose size is not a multiple of 16 bytes, such as 
 
 ### GPU errors in the browser console
 
-GPU validation errors now reach the browser console. The error handler printed through stdout, which WebAssembly discards; it logs through the console instead. The web healthcheck gained a second pass that runs with `navigator.gpu` removed so the WebGL2 path stays covered.
+The error handler printed GPU validation errors through stdout, which WebAssembly discards. Now it logs them to the browser console. The web healthcheck also gained a second pass that runs with `navigator.gpu` removed, keeping the WebGL2 path covered.
 
 ### A tidier repository
 
-The repository root is tidier for first visitors. The build, run, and check scripts live in `tools/` behind a single `./fc` dispatcher (`./fc` lists them, `./fc test` runs one), the `uniffi-bindgen` helper moved into `src/bin`, the npm and PyPI READMEs sit beside their packages under `platforms/`, and three stale files are gone. CI and the documentation call the new paths.
+Four changes clear the repository root for first visitors:
+
+- Build, run, and check scripts live in `tools/` behind a single `./fc` dispatcher: `./fc` lists them, and `./fc test` runs one.
+- The `uniffi-bindgen` helper moved into `src/bin`.
+- READMEs for npm and PyPI sit beside their packages under `platforms/`.
+- Three stale files are gone.
+
+CI and the documentation call the new paths.
 
 Release notes: [GitHub v0.12.5](https://github.com/vista-art/fragmentcolor/releases/tag/v0.12.5).
 

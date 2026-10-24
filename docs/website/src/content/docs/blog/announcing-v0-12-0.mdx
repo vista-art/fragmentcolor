@@ -16,7 +16,7 @@ Full detail is in [`CHANGELOG.md`](https://github.com/vista-art/fragmentcolor/bl
 - **`Scene::load`, a glTF 2.0 loader** for `.gltf` and `.glb`: mesh primitives, per-node transforms flattened into `Model` matrices, embedded cameras, and `KHR_lights_punctual` lights.
 - **[`Camera`](/api/scene/camera/), [`Light`](/api/scene/light/), and [`Model`](/api/scene/model/) as first-class scene objects**, all absorbed through one generic `Scene::add` / `Pass::add` (the `SceneObject` trait).
 - **Higher-level `Material` + `Model` objects** layered over the existing `Shader` / `Mesh` core.
-- **Unified `Light` type** with directional, point, and spot kind-tagged constructors.
+- **Unified `Light` type** with one constructor per kind: directional, point, and spot.
 - **Multi-light arrays plus scene-wide ambient**, with the per-shader light cap raised from 8 to 32.
 - **Loader robustness**: face-normal fallback for `POSITION`-only meshes, and glTF sampler state (wrap modes, filtering) mapped into `SamplerOptions`.
 
@@ -43,8 +43,8 @@ Full detail is in [`CHANGELOG.md`](https://github.com/vista-art/fragmentcolor/bl
 
 ### Upgrading
 
-- **Shaders rendered without a material** draw with blending off, where every pipeline used premultiplied alpha blending before, and both faces render. To blend again, wrap the shader in `Material::custom(shader).alpha_mode(AlphaMode::Blend)`.
-- **`TextureMipChain` becomes `Mipmap`.** `prepare` becomes `build`, `base_size` becomes `size`, and `level_count` becomes `count`; `format` and `levels` keep their names.
+- **Shaders rendered without a material** draw with blending off and render both faces. Every pipeline used premultiplied alpha blending before. To blend again, wrap the shader in `Material::custom(shader).alpha_mode(AlphaMode::Blend)`.
+- **`TextureMipChain` becomes `Mipmap`.** Its `prepare` turns into `build`, `base_size` into `size`, and `level_count` into `count`, while `format` and `levels` keep their names.
 
 Release notes: [GitHub v0.12.0](https://github.com/vista-art/fragmentcolor/releases/tag/v0.12.0).
 
