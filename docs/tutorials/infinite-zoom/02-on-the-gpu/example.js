@@ -2,7 +2,7 @@
 //
 // A fragment shader runs the escape-time loop for every pixel in parallel, in
 // f32. The view zooms toward a spiral in Seahorse Valley and back out, and the
-// pointer's height picks the depth while it moves. Past 1e-5, f32 rounding
+// pointer's vertical position picks the depth while it moves. Past 1e-5, f32 rounding
 // breaks the picture into blocks.
 
 import { Shader } from "fragmentcolor";
@@ -23,7 +23,7 @@ const LIMIT: u32 = 1000u;
 
 @fragment
 fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
-  // This pixel's c. Rows grow downward, and the imaginary axis points up.
+  // This pixel's c. Screen y counts down while the imaginary axis points up, hence the -1.
   let offset = (position.xy - view.resolution * 0.5) * vec2<f32>(1.0, -1.0);
   let c = view.center + offset * view.height / view.resolution.y;
   var color = vec3<f32>(0.02, 0.02, 0.05);
@@ -82,7 +82,7 @@ fn label(position: vec2<f32>, resolution: vec2<f32>, depth: f32) -> f32 {
   if (cell.x < 0 || cell.y < 0 || cell.y > 4 || cell.x % 4 == 3) {
     return 0.0;
   }
-  let exponent = u32(max(depth, 0.0));
+  let exponent = u32(round(max(depth, 0.0)));
   var digits = 1u;
   var power = 1u;
   while (power * 10u <= exponent) {
@@ -113,9 +113,9 @@ fn label(position: vec2<f32>, resolution: vec2<f32>, depth: f32) -> f32 {
 }`;
 
 // #region: constants
-// A spiral in Seahorse Valley, the point the zoom dives toward.
+// A spiral in Seahorse Valley, the point the zoom approaches.
 const TARGET = [-0.7432918908524302, 0.1312405523087976];
-// The zoom dives until the view is 10^-DEPTH tall, then climbs back.
+// The zoom goes in until the view is 10^-DEPTH tall, then back out.
 const DEPTH = 7;
 // Zoom speed, in doublings per second.
 const SPEED = 2;
@@ -127,15 +127,14 @@ const START = 3;
 export async function setup(renderer, target) {
   const shader = await Shader.fetch(["gradient/palette_iq", LABEL, SHADER]);
   shader.set("view.center", TARGET);
-  const state = { shader, zoom: 0, direction: 1, last: null, pointer: [0.5, 0.5], moved: -Infinity };
-  follow(state);
+  const state = { shader, zoom: 0, direction: 1, last: null, pointer: null, moved: -Infinity };
   return state;
 }
 // #endregion: setup
 
 // #region: frame
-export function frame(state, renderer, target, time, size) {
-  const zoom = steer(state);
+export function frame(state, renderer, target, time, size, pointer) {
+  const zoom = steer(state, time, size, pointer);
   const height = START * 2 ** -zoom;
   state.shader.set("view.resolution", size);
   state.shader.set("view.height", height);
@@ -145,16 +144,19 @@ export function frame(state, renderer, target, time, size) {
 // #endregion: frame
 
 // #region: steer
-// The zoom runs from the whole set down to 10^-DEPTH and back on its own. Moving
-// the pointer takes over for two seconds: its height picks the depth, deepest at
-// the top. Returns the zoom in doublings.
-function steer(state) {
-  const now = performance.now() / 1000;
-  const delta = state.last === null ? 0 : Math.min(now - state.last, 0.1);
-  state.last = now;
+// The zoom runs from the whole set down to 10^-DEPTH and back on its own. While
+// the pointer moves, and for two seconds after, the pointer's vertical position
+// picks the depth, deepest at the top. Returns the zoom in doublings.
+function steer(state, time, size, [x, y]) {
+  // A clock that starts over, as when a paused page resumes, forgets the pointer.
+  if (state.last !== null && time < state.last) state.moved = -Infinity;
+  const delta = state.last === null ? 0 : Math.min(Math.max(time - state.last, 0), 0.1);
+  state.last = time;
   const deepest = DEPTH * Math.log2(10) + Math.log2(START);
-  if (now - state.moved < 2) {
-    const goal = (1 - state.pointer[1]) * deepest;
+  if (state.pointer && (x !== state.pointer[0] || y !== state.pointer[1])) state.moved = time;
+  state.pointer = [x, y];
+  if (time - state.moved < 2) {
+    const goal = (1 - y / size[1]) * deepest;
     state.zoom += (goal - state.zoom) * Math.min(1, delta * 4);
   } else {
     state.zoom += state.direction * SPEED * delta;
@@ -165,14 +167,3 @@ function steer(state) {
   return state.zoom;
 }
 // #endregion: steer
-
-// Keeps the pointer's position over any canvas, as fractions of its size.
-function follow(state) {
-  addEventListener("pointermove", (event) => {
-    const canvas = event.composedPath().find((node) => node instanceof HTMLCanvasElement);
-    if (!canvas) return;
-    const box = canvas.getBoundingClientRect();
-    state.pointer = [(event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height];
-    state.moved = performance.now() / 1000;
-  });
-}

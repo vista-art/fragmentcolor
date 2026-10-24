@@ -5,7 +5,7 @@
 // each difference as w * 2^s, which never leaves the range of an f32, and
 // Martin's series skips the iterations every pixel shares. A render pass colors
 // the counts. The zoom reaches a view 1e-1000 tall and comes back out, and the
-// pointer's height picks the depth while it moves.
+// pointer's vertical position picks the depth while it moves.
 
 import { Pass, Shader } from "fragmentcolor";
 
@@ -109,7 +109,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
       unit = scale(vec2<f32>(1.0), s).x;
       offset = scale(d, e - s);
     } else {
-      // z becomes 2 Z z + z^2 + d, with every term divided by 2^s.
+      // z becomes 2 Z z + z^2 + d * 2^e, with every term divided by 2^s.
       w = 2.0 * mul(reference, w) + mul(w, w) * unit + offset;
     }
     m += 1u;
@@ -132,7 +132,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
       offset = scale(d, e - s);
     }
   }
-  // A smooth count: the distance past ESCAPE adds the fraction.
+  // A smooth count: the distance past ESCAPE sets the fraction.
   var count = -1.0;
   if (n < limit) {
     count = f32(n) + 1.0 - log2(log2(size2) / log2(ESCAPE));
@@ -212,7 +212,7 @@ fn label(position: vec2<f32>, resolution: vec2<f32>, depth: f32) -> f32 {
   if (cell.x < 0 || cell.y < 0 || cell.y > 4 || cell.x % 4 == 3) {
     return 0.0;
   }
-  let exponent = u32(max(depth, 0.0));
+  let exponent = u32(round(max(depth, 0.0)));
   var digits = 1u;
   var power = 1u;
   while (power * 10u <= exponent) {
@@ -246,7 +246,7 @@ fn label(position: vec2<f32>, resolution: vec2<f32>, depth: f32) -> f32 {
 // A Misiurewicz point in Seahorse Valley: the orbit of 0 lands on a cycle of
 // period 2 after 24 steps. Newton's method refines these digits to the precision DEPTH needs.
 const TARGET = { re: "-0.7432918908524302", im: "0.1312405523087976", preperiod: 24, period: 2 };
-// The zoom dives until the view is 10^-DEPTH tall, then climbs back.
+// The zoom goes in until the view is 10^-DEPTH tall, then back out.
 const DEPTH = 1000;
 // Zoom speed, in doublings per second.
 const SPEED = 1.5;
@@ -286,17 +286,16 @@ export async function setup(renderer, target) {
     zoom: 0,
     direction: 1,
     last: null,
-    pointer: [0.5, 0.5],
+    pointer: null,
     moved: -Infinity,
   };
-  follow(state);
   return state;
 }
 // #endregion: setup
 
 // #region: frame
-export function frame(state, renderer, target, time, size) {
-  const zoom = steer(state);
+export function frame(state, renderer, target, time, size, pointer) {
+  const zoom = steer(state, time, size, pointer);
 
   // The compute pass fills at most PIXELS: the canvas, or the canvas with each side divided by a whole number.
   let shrink = 1;
@@ -334,7 +333,7 @@ export function frame(state, renderer, target, time, size) {
 // #region: reference
 // #region: series
 // The orbit of 0 under z^2 + c at full precision, rounded to f32 for the GPU,
-// with Martin's series coefficients A, B and C at every iteration. reach holds
+// with Martin's series coefficients A, B and C at every iteration. The reach array holds
 // the log2 of the widest radius the series still covers at each iteration.
 function computeReference(target, depth) {
   const bits = Math.ceil(depth * Math.log2(10)) + 80;
@@ -350,9 +349,9 @@ function computeReference(target, depth) {
     orbit[2 * n] = re;
     orbit[2 * n + 1] = im;
     series.push([a, b, c]);
-    // The series holds while the first dropped term, D d^4, stays below TOLERANCE * A d.
+    // The series holds while the first dropped term, D * delta^4, stays below TOLERANCE * A * delta.
     if (n > 0) reach[n] = Math.min(reach[n - 1], (Math.log2(TOLERANCE) + log2Size(a) - log2Size(d)) / 3);
-    // Rounding errors in the orbit grow like A, so it stops while they stay below 2^-40.
+    // Rounding errors in the orbit grow like A, so the loop ends before they reach 2^-40.
     if (n === ORBIT - 1 || re * re + im * im > 4 || log2Size(a) > bits - 40) {
       return { orbit, series, reach, length: n };
     }
@@ -462,16 +461,19 @@ function log2Size(a) {
 // #endregion: reference
 
 // #region: steer
-// The zoom runs from the whole set down to 10^-DEPTH and back on its own. Moving
-// the pointer takes over for two seconds: its height picks the depth, deepest at
-// the top. Returns the zoom in doublings.
-function steer(state) {
-  const now = performance.now() / 1000;
-  const delta = state.last === null ? 0 : Math.min(now - state.last, 0.1);
-  state.last = now;
+// The zoom runs from the whole set down to 10^-DEPTH and back on its own. While
+// the pointer moves, and for two seconds after, the pointer's vertical position
+// picks the depth, deepest at the top. Returns the zoom in doublings.
+function steer(state, time, size, [x, y]) {
+  // A clock that starts over, as when a paused page resumes, forgets the pointer.
+  if (state.last !== null && time < state.last) state.moved = -Infinity;
+  const delta = state.last === null ? 0 : Math.min(Math.max(time - state.last, 0), 0.1);
+  state.last = time;
   const deepest = DEPTH * Math.log2(10) + Math.log2(START);
-  if (now - state.moved < 2) {
-    const goal = (1 - state.pointer[1]) * deepest;
+  if (state.pointer && (x !== state.pointer[0] || y !== state.pointer[1])) state.moved = time;
+  state.pointer = [x, y];
+  if (time - state.moved < 2) {
+    const goal = (1 - y / size[1]) * deepest;
     state.zoom += (goal - state.zoom) * Math.min(1, delta * 4);
   } else {
     state.zoom += state.direction * SPEED * delta;
@@ -482,14 +484,3 @@ function steer(state) {
   return state.zoom;
 }
 // #endregion: steer
-
-// Keeps the pointer's position over any canvas, as fractions of its size.
-function follow(state) {
-  addEventListener("pointermove", (event) => {
-    const canvas = event.composedPath().find((node) => node instanceof HTMLCanvasElement);
-    if (!canvas) return;
-    const box = canvas.getBoundingClientRect();
-    state.pointer = [(event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height];
-    state.moved = performance.now() / 1000;
-  });
-}

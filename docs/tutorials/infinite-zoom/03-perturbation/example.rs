@@ -10,7 +10,9 @@ use std::error::Error;
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
-use fragmentcolor::{App, RenderTarget, Renderer, SetupResult, Shader, Target, call};
+use fragmentcolor::{
+    App, RenderTarget, Renderer, RendererError, SetupResult, Shader, SurfaceError, Target, call,
+};
 use num_bigint::BigInt;
 use num_traits::{Signed, ToPrimitive};
 use parking_lot::Mutex;
@@ -107,7 +109,7 @@ fn label(position: vec2<f32>, resolution: vec2<f32>, depth: f32) -> f32 {
   if (cell.x < 0 || cell.y < 0 || cell.y > 4 || cell.x % 4 == 3) {
     return 0.0;
   }
-  let exponent = u32(max(depth, 0.0));
+  let exponent = u32(round(max(depth, 0.0)));
   var digits = 1u;
   var power = 1u;
   while (power * 10u <= exponent) {
@@ -153,7 +155,7 @@ const TARGET: Point = Point {
     preperiod: 24,
     period: 2,
 };
-/// The zoom dives until the view is 10^-DEPTH tall, then climbs back.
+/// The zoom goes in until the view is 10^-DEPTH tall, then back out.
 const DEPTH: f64 = 45.0;
 /// Zoom speed, in doublings per second.
 const SPEED: f64 = 4.0;
@@ -201,9 +203,9 @@ impl Zoom {
 }
 
 // #region: reference
-/// The orbit of 0 under z^2 + c, computed with BigInt at the precision the
-/// deepest view needs and rounded to f32 for the GPU. Rounding errors grow like
-/// the derivative dz/dc, so the orbit stops while they stay below 2^-40.
+/// The orbit of 0 under `z^2 + c`, computed with `BigInt` at the precision the
+/// deepest view needs and rounded to `f32` for the GPU. Rounding errors grow like
+/// the derivative dz/dc, so the loop ends before they reach 2^-40.
 fn reference(target: &Point, depth: f64) -> Result<(Vec<f32>, usize), Failure> {
     let bits = (depth * 10_f64.log2()).ceil() as usize + 80;
     let (cr, ci) = refine(target, bits)?;
@@ -304,8 +306,8 @@ impl Motion {
 
     // #region: steer
     /// The zoom runs from the whole set down to 10^-DEPTH and back on its own.
-    /// Moving the pointer takes over for two seconds: its height picks the depth,
-    /// deepest at the top. Returns the zoom in doublings.
+    /// Moving the pointer takes over for two seconds: the pointer's vertical position
+    /// picks the depth, deepest at the top. Returns the zoom in doublings.
     fn steer(&mut self, now: f64) -> f64 {
         let delta = self.last.map_or(0.0, |last| (now - last).min(0.1));
         self.last = Some(now);
@@ -364,7 +366,14 @@ fn on_redraw(app: &App) {
         zoom.frame(renderer, target)
     });
     if let Some(Err(error)) = rendered {
-        eprintln!("infinite zoom: {error}");
+        // A hidden or minimized window has nothing to draw on, so the frame is skipped.
+        let occluded = matches!(
+            error.downcast_ref::<RendererError>(),
+            Some(RendererError::SurfaceError(SurfaceError::Occluded))
+        );
+        if !occluded {
+            eprintln!("infinite zoom: {error}");
+        }
     }
 }
 

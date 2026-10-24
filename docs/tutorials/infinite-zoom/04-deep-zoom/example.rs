@@ -5,13 +5,16 @@
 //! each difference as w * 2^s, which never leaves the range of an f32, and
 //! Martin's series skips the iterations every pixel shares. A render pass colors
 //! the counts. The zoom reaches a view 1e-1000 tall and comes back out, and the
-//! pointer's height picks the depth while it moves.
+//! pointer's vertical position picks the depth while it moves.
 
 use std::error::Error;
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
-use fragmentcolor::{App, Pass, RenderTarget, Renderer, SetupResult, Shader, Target, call};
+use fragmentcolor::{
+    App, Pass, RenderTarget, Renderer, RendererError, SetupResult, Shader, SurfaceError, Target,
+    call,
+};
 use num_bigint::BigInt;
 use num_traits::{Signed, ToPrimitive};
 use parking_lot::Mutex;
@@ -121,7 +124,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
       unit = scale(vec2<f32>(1.0), s).x;
       offset = scale(d, e - s);
     } else {
-      // z becomes 2 Z z + z^2 + d, with every term divided by 2^s.
+      // z becomes 2 Z z + z^2 + d * 2^e, with every term divided by 2^s.
       w = 2.0 * mul(reference, w) + mul(w, w) * unit + offset;
     }
     m += 1u;
@@ -144,7 +147,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
       offset = scale(d, e - s);
     }
   }
-  // A smooth count: the distance past ESCAPE adds the fraction.
+  // A smooth count: the distance past ESCAPE sets the fraction.
   var count = -1.0;
   if (n < limit) {
     count = f32(n) + 1.0 - log2(log2(size2) / log2(ESCAPE));
@@ -224,7 +227,7 @@ fn label(position: vec2<f32>, resolution: vec2<f32>, depth: f32) -> f32 {
   if (cell.x < 0 || cell.y < 0 || cell.y > 4 || cell.x % 4 == 3) {
     return 0.0;
   }
-  let exponent = u32(max(depth, 0.0));
+  let exponent = u32(round(max(depth, 0.0)));
   var digits = 1u;
   var power = 1u;
   while (power * 10u <= exponent) {
@@ -270,7 +273,7 @@ const TARGET: Point = Point {
     preperiod: 24,
     period: 2,
 };
-/// The zoom dives until the view is 10^-DEPTH tall, then climbs back.
+/// The zoom goes in until the view is 10^-DEPTH tall, then back out.
 const DEPTH: f64 = 1000.0;
 /// Zoom speed, in doublings per second.
 const SPEED: f64 = 1.5;
@@ -370,7 +373,7 @@ impl Zoom {
 
 // #region: reference
 // #region: series
-/// The orbit of 0 under z^2 + c at full precision, rounded to f32 for the GPU,
+/// The orbit of 0 under `z^2 + c` at full precision, rounded to `f32` for the GPU,
 /// with Martin's series coefficients A, B and C at every iteration. `reach` holds
 /// the log2 of the widest radius the series still covers at each iteration.
 struct Reference {
@@ -398,12 +401,12 @@ impl Reference {
             orbit[2 * n] = re as f32;
             orbit[2 * n + 1] = im as f32;
             series.push([a, b, c]);
-            // The series holds while the first dropped term, D d^4, stays below TOLERANCE * A d.
+            // The series holds while the first dropped term, D * delta^4, stays below TOLERANCE * A * delta.
             if n > 0 {
                 let limit = (TOLERANCE.log2() + a.log2_size() - d.log2_size()) / 3.0;
                 reach[n] = reach[n - 1].min(limit);
             }
-            // Rounding errors in the orbit grow like A, so it stops while they stay below 2^-40.
+            // Rounding errors in the orbit grow like A, so the loop ends before they reach 2^-40.
             if n == ORBIT - 1 || re * re + im * im > 4.0 || a.log2_size() > bits as f64 - 40.0 {
                 length = n;
                 break;
@@ -600,8 +603,8 @@ impl Motion {
 
     // #region: steer
     /// The zoom runs from the whole set down to 10^-DEPTH and back on its own.
-    /// Moving the pointer takes over for two seconds: its height picks the depth,
-    /// deepest at the top. Returns the zoom in doublings.
+    /// Moving the pointer takes over for two seconds: the pointer's vertical position
+    /// picks the depth, deepest at the top. Returns the zoom in doublings.
     fn steer(&mut self, now: f64) -> f64 {
         let delta = self.last.map_or(0.0, |last| (now - last).min(0.1));
         self.last = Some(now);
@@ -660,7 +663,14 @@ fn on_redraw(app: &App) {
         zoom.frame(renderer, target)
     });
     if let Some(Err(error)) = rendered {
-        eprintln!("infinite zoom: {error}");
+        // A hidden or minimized window has nothing to draw on, so the frame is skipped.
+        let occluded = matches!(
+            error.downcast_ref::<RendererError>(),
+            Some(RendererError::SurfaceError(SurfaceError::Occluded))
+        );
+        if !occluded {
+            eprintln!("infinite zoom: {error}");
+        }
     }
 }
 

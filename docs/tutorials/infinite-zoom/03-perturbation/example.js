@@ -95,7 +95,7 @@ fn label(position: vec2<f32>, resolution: vec2<f32>, depth: f32) -> f32 {
   if (cell.x < 0 || cell.y < 0 || cell.y > 4 || cell.x % 4 == 3) {
     return 0.0;
   }
-  let exponent = u32(max(depth, 0.0));
+  let exponent = u32(round(max(depth, 0.0)));
   var digits = 1u;
   var power = 1u;
   while (power * 10u <= exponent) {
@@ -129,7 +129,7 @@ fn label(position: vec2<f32>, resolution: vec2<f32>, depth: f32) -> f32 {
 // A Misiurewicz point in Seahorse Valley: the orbit of 0 lands on a cycle of
 // period 2 after 24 steps. Newton's method refines these digits to the precision DEPTH needs.
 const TARGET = { re: "-0.7432918908524302", im: "0.1312405523087976", preperiod: 24, period: 2 };
-// The zoom dives until the view is 10^-DEPTH tall, then climbs back.
+// The zoom goes in until the view is 10^-DEPTH tall, then back out.
 const DEPTH = 45;
 // Zoom speed, in doublings per second.
 const SPEED = 4;
@@ -146,15 +146,14 @@ export async function setup(renderer, target) {
   const { orbit, length } = reference(TARGET, DEPTH);
   shader.set("orbit", new Uint8Array(orbit.buffer));
   shader.set("view.length", length);
-  const state = { shader, zoom: 0, direction: 1, last: null, pointer: [0.5, 0.5], moved: -Infinity };
-  follow(state);
+  const state = { shader, zoom: 0, direction: 1, last: null, pointer: null, moved: -Infinity };
   return state;
 }
 // #endregion: setup
 
 // #region: frame
-export function frame(state, renderer, target, time, size) {
-  const zoom = steer(state);
+export function frame(state, renderer, target, time, size, pointer) {
+  const zoom = steer(state, time, size, pointer);
   const height = START * 2 ** -zoom;
   state.shader.set("view.resolution", size);
   state.shader.set("view.pixel", height / size[1]);
@@ -166,7 +165,7 @@ export function frame(state, renderer, target, time, size) {
 // #region: reference
 // The orbit of 0 under z^2 + c, computed with BigInt at the precision the
 // deepest view needs and rounded to f32 for the GPU. Rounding errors grow like
-// the derivative dz/dc, so the orbit stops while they stay below 2^-40.
+// the derivative dz/dc, so the loop ends before they reach 2^-40.
 function reference(target, depth) {
   const bits = Math.ceil(depth * Math.log2(10)) + 80;
   const shift = BigInt(bits);
@@ -228,16 +227,19 @@ function refine(target, bits) {
 // #endregion: reference
 
 // #region: steer
-// The zoom runs from the whole set down to 10^-DEPTH and back on its own. Moving
-// the pointer takes over for two seconds: its height picks the depth, deepest at
-// the top. Returns the zoom in doublings.
-function steer(state) {
-  const now = performance.now() / 1000;
-  const delta = state.last === null ? 0 : Math.min(now - state.last, 0.1);
-  state.last = now;
+// The zoom runs from the whole set down to 10^-DEPTH and back on its own. While
+// the pointer moves, and for two seconds after, the pointer's vertical position
+// picks the depth, deepest at the top. Returns the zoom in doublings.
+function steer(state, time, size, [x, y]) {
+  // A clock that starts over, as when a paused page resumes, forgets the pointer.
+  if (state.last !== null && time < state.last) state.moved = -Infinity;
+  const delta = state.last === null ? 0 : Math.min(Math.max(time - state.last, 0), 0.1);
+  state.last = time;
   const deepest = DEPTH * Math.log2(10) + Math.log2(START);
-  if (now - state.moved < 2) {
-    const goal = (1 - state.pointer[1]) * deepest;
+  if (state.pointer && (x !== state.pointer[0] || y !== state.pointer[1])) state.moved = time;
+  state.pointer = [x, y];
+  if (time - state.moved < 2) {
+    const goal = (1 - y / size[1]) * deepest;
     state.zoom += (goal - state.zoom) * Math.min(1, delta * 4);
   } else {
     state.zoom += state.direction * SPEED * delta;
@@ -248,14 +250,3 @@ function steer(state) {
   return state.zoom;
 }
 // #endregion: steer
-
-// Keeps the pointer's position over any canvas, as fractions of its size.
-function follow(state) {
-  addEventListener("pointermove", (event) => {
-    const canvas = event.composedPath().find((node) => node instanceof HTMLCanvasElement);
-    if (!canvas) return;
-    const box = canvas.getBoundingClientRect();
-    state.pointer = [(event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height];
-    state.moved = performance.now() / 1000;
-  });
-}

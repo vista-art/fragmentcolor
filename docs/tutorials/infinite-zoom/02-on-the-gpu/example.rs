@@ -2,14 +2,16 @@
 //!
 //! A fragment shader runs the escape-time loop for every pixel in parallel, in
 //! f32. The view zooms toward a spiral in Seahorse Valley and back out, and the
-//! pointer's height picks the depth while it moves. Past 1e-5, f32 rounding
+//! pointer's vertical position picks the depth while it moves. Past 1e-5, f32 rounding
 //! breaks the picture into blocks.
 
 use std::error::Error;
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
-use fragmentcolor::{App, RenderTarget, Renderer, SetupResult, Shader, Target, call};
+use fragmentcolor::{
+    App, RenderTarget, Renderer, RendererError, SetupResult, Shader, SurfaceError, Target, call,
+};
 use parking_lot::Mutex;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::DeviceId;
@@ -33,7 +35,7 @@ const LIMIT: u32 = 1000u;
 
 @fragment
 fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
-  // This pixel's c. Rows grow downward, and the imaginary axis points up.
+  // This pixel's c. Screen y counts down while the imaginary axis points up, hence the -1.
   let offset = (position.xy - view.resolution * 0.5) * vec2<f32>(1.0, -1.0);
   let c = view.center + offset * view.height / view.resolution.y;
   var color = vec3<f32>(0.02, 0.02, 0.05);
@@ -92,7 +94,7 @@ fn label(position: vec2<f32>, resolution: vec2<f32>, depth: f32) -> f32 {
   if (cell.x < 0 || cell.y < 0 || cell.y > 4 || cell.x % 4 == 3) {
     return 0.0;
   }
-  let exponent = u32(max(depth, 0.0));
+  let exponent = u32(round(max(depth, 0.0)));
   var digits = 1u;
   var power = 1u;
   while (power * 10u <= exponent) {
@@ -123,9 +125,9 @@ fn label(position: vec2<f32>, resolution: vec2<f32>, depth: f32) -> f32 {
 }"#;
 
 // #region: constants
-/// A spiral in Seahorse Valley, the point the zoom dives toward.
+/// A spiral in Seahorse Valley, the point the zoom approaches.
 const TARGET: [f64; 2] = [-0.7432918908524302, 0.1312405523087976];
-/// The zoom dives until the view is 10^-DEPTH tall, then climbs back.
+/// The zoom goes in until the view is 10^-DEPTH tall, then back out.
 const DEPTH: f64 = 7.0;
 /// Zoom speed, in doublings per second.
 const SPEED: f64 = 2.0;
@@ -188,8 +190,8 @@ impl Motion {
 
     // #region: steer
     /// The zoom runs from the whole set down to 10^-DEPTH and back on its own.
-    /// Moving the pointer takes over for two seconds: its height picks the depth,
-    /// deepest at the top. Returns the zoom in doublings.
+    /// Moving the pointer takes over for two seconds: the pointer's vertical position
+    /// picks the depth, deepest at the top. Returns the zoom in doublings.
     fn steer(&mut self, now: f64) -> f64 {
         let delta = self.last.map_or(0.0, |last| (now - last).min(0.1));
         self.last = Some(now);
@@ -248,7 +250,14 @@ fn on_redraw(app: &App) {
         zoom.frame(renderer, target)
     });
     if let Some(Err(error)) = rendered {
-        eprintln!("infinite zoom: {error}");
+        // A hidden or minimized window has nothing to draw on, so the frame is skipped.
+        let occluded = matches!(
+            error.downcast_ref::<RendererError>(),
+            Some(RendererError::SurfaceError(SurfaceError::Occluded))
+        );
+        if !occluded {
+            eprintln!("infinite zoom: {error}");
+        }
     }
 }
 
