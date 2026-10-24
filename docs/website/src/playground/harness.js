@@ -37,13 +37,66 @@ function track(event) {
 canvas.addEventListener("pointermove", track);
 canvas.addEventListener("pointerdown", track);
 
+// The wheel, a drag and a two-finger pinch since the last frame: zoom in
+// doublings (positive zooms in) and pan in canvas pixels.
+let gesture = { zoom: 0, pan: [0, 0] };
+const touches = new Map();
+const scale = () => canvas.width / Math.max(canvas.getBoundingClientRect().width, 1);
+const spread = () => {
+  const [a, b] = [...touches.values()];
+  return Math.hypot(a[0] - b[0], a[1] - b[1]);
+};
+const middle = () => {
+  const points = [...touches.values()];
+  return points.reduce(([x, y], [px, py]) => [x + px / points.length, y + py / points.length], [0, 0]);
+};
+canvas.style.touchAction = "none";
+canvas.addEventListener(
+  "wheel",
+  (event) => {
+    event.preventDefault();
+    const lines = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1;
+    // A trackpad pinch arrives as a wheel with ctrlKey and small deltas.
+    gesture.zoom -= (event.deltaY * lines) / (event.ctrlKey ? 100 : 400);
+  },
+  { passive: false },
+);
+canvas.addEventListener("pointerdown", (event) => {
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+  canvas.setPointerCapture(event.pointerId);
+  touches.set(event.pointerId, [event.clientX, event.clientY]);
+});
+canvas.addEventListener("pointermove", (event) => {
+  const last = touches.get(event.pointerId);
+  if (!last) return;
+  const before = touches.size === 2 ? { spread: spread(), middle: middle() } : null;
+  touches.set(event.pointerId, [event.clientX, event.clientY]);
+  const ratio = scale();
+  if (before) {
+    // A pinch zooms around the point between the two fingers.
+    const now = middle();
+    const rect = canvas.getBoundingClientRect();
+    pointer = [(now[0] - rect.left) * ratio, (now[1] - rect.top) * ratio];
+    gesture.zoom += Math.log2(Math.max(spread(), 1) / Math.max(before.spread, 1));
+    gesture.pan[0] += (now[0] - before.middle[0]) * ratio;
+    gesture.pan[1] += (now[1] - before.middle[1]) * ratio;
+  } else if (touches.size === 1) {
+    gesture.pan[0] += (event.clientX - last[0]) * ratio;
+    gesture.pan[1] += (event.clientY - last[1]) * ratio;
+  }
+});
+canvas.addEventListener("pointerup", (event) => touches.delete(event.pointerId));
+canvas.addEventListener("pointercancel", (event) => touches.delete(event.pointerId));
+
 const start = performance.now();
 requestAnimationFrame(function tick(now) {
   requestAnimationFrame(tick);
   if (fit(canvas)) target.resize([canvas.width, canvas.height]);
   const size = [canvas.width, canvas.height];
   const time = (now - start) / 1000;
-  frame(state, renderer, target, time, size, pointer ?? [size[0] / 2, size[1] / 2]);
+  const input = gesture;
+  gesture = { zoom: 0, pan: [0, 0] };
+  frame(state, renderer, target, time, size, pointer ?? [size[0] / 2, size[1] / 2], input);
 });
 
 // Sizes the canvas to its CSS box in device pixels. True when the size changed.
