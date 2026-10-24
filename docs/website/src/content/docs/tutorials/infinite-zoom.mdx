@@ -53,7 +53,7 @@ A color here is three numbers from 0 to 255, for red, green and blue. To turn a 
 
 ![The Mandelbrot set: a black cardioid with a round bulb to its left, both fringed with smaller bulbs and thin filaments, on bands of blue that grow lighter toward the edge.](../../../assets/tutorials/infinite-zoom/one-image.png)
 
-Rust writes the result to `mandelbrot.png`; Python, Swift and Kotlin write `mandelbrot.ppm`, and JavaScript draws into the first `<canvas>` on its page. An optimized Rust build takes about a quarter of a second for these 960,000 pixels. Smooth motion needs thirty to sixty images per second, and deeper views need far more steps per pixel.
+Rust writes the result to `mandelbrot.png`; Python, Swift and Kotlin write `mandelbrot.ppm`, and JavaScript draws into the first `<canvas>` on its page. The CPU handles one still image well enough. Smooth motion needs thirty to sixty of them every second, and deeper views need far more steps per pixel.
 
 ## Step 2: the same loop on the GPU
 
@@ -210,7 +210,7 @@ Both passes declare `counts` with the same size, so FragmentColor binds one buff
 
 With the pointer at the top of the canvas, the view reaches `1e-1000` in about two seconds. The spiral there looks like the one at `1e-10`. That likeness is the reason to aim at a Misiurewicz point.
 
-How close are these pictures to the truth? A slow `BigInt` computation of the same pixels matches the shader's counts to within a hundredth of an iteration at `1e-6`, `1e-45`, `1e-331` and `1e-999`. The only disagreements come from pixels whose count changes, sometimes by hundreds, when they move by a thousandth of a pixel; there, two different precisions rarely agree. On a laptop with an Apple M2, a 1920 by 1080 frame takes 21 to 31 milliseconds at each of a dozen depths from `1e-3` to `1e-999`, or 32 to 48 frames per second, and a smaller canvas runs at 60. Computing the reference for `1e-1000` takes under a second in JavaScript.
+How close are these pictures to the truth? A slow `BigInt` computation of the same pixels matches the shader's counts to within a hundredth of an iteration at `1e-6`, `1e-45`, `1e-331` and `1e-999`. The only disagreements come from pixels whose count changes, sometimes by hundreds, when they move by a thousandth of a pixel; there, two different precisions rarely agree. Speed doesn't fade with depth either. A frame's cost follows the 130 or so steps each pixel runs after the skip, and a view at `1e-999` draws about as fast as one at `1e-3`.
 
 ## Where to go next
 
