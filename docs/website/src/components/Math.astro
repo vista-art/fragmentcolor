@@ -1,0 +1,27 @@
+---
+// <Math tex="z_{n+1} = z_n^2 + c" block />
+//
+// Renders TeX as MathML when the site builds. Browsers draw MathML on their
+// own, so the page loads no script, stylesheet or font for it. `block` puts
+// the formula on a line of its own.
+
+import katex from "katex";
+
+interface Props {
+  tex: string;
+  block?: boolean;
+}
+
+const { tex, block = false } = Astro.props;
+const markup = katex.renderToString(tex, { displayMode: block, output: "mathml", throwOnError: true });
+---
+
+<!-- Starlight spaces the children of page content apart, which would push sub- and superscripts away. -->
+<span class="not-content" set:html={markup} />
+
+<style is:global>
+  math[display="block"] {
+    margin-block: 1.25rem;
+    font-size: 1.15em;
+  }
+</style>
