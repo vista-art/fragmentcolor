@@ -53,7 +53,7 @@ fn box(p: vec2<f32>, half_size: vec2<f32>) -> f32 {
 @fragment
 fn fs_main(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
     let p = center(pixel.xy);
-    let d_box = box(p - vec2<f32>(-0.25, 0.0), vec2<f32>(0.15, 0.1));
+    let d_box = box(p - vec2<f32>(-0.25, 0.0), vec2<f32>(0.2, 0.15));
     let d_star = star(p - vec2<f32>(0.25, 0.0), 0.2, 5u, 3.0);
     let d = min(d_box, d_star);
     return vec4<f32>(show(d), 1.0);
@@ -103,7 +103,7 @@ fn draw(app: &App) {
     app.with_target(app.primary_window_id(), |target| {
         let size = target.size();
         let size = [size.width as f32, size.height as f32];
-        // A frame that fails fails again on every redraw, so only the first error prints.
+        // A failing frame fails again on every redraw, so only the first error prints.
         if let Err(error) = frame(&shader, renderer, target, size) {
             static FAILED: Once = Once::new();
             FAILED.call_once(|| eprintln!("{error}"));

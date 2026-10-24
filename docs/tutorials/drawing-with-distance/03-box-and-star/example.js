@@ -49,7 +49,7 @@ fn box(p: vec2<f32>, half_size: vec2<f32>) -> f32 {
 @fragment
 fn fs_main(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
     let p = center(pixel.xy);
-    let d_box = box(p - vec2<f32>(-0.25, 0.0), vec2<f32>(0.15, 0.1));
+    let d_box = box(p - vec2<f32>(-0.25, 0.0), vec2<f32>(0.2, 0.15));
     let d_star = star(p - vec2<f32>(0.25, 0.0), 0.2, 5u, 3.0);
     let d = min(d_box, d_star);
     return vec4<f32>(show(d), 1.0);

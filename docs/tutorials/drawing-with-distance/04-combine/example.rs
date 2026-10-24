@@ -121,7 +121,7 @@ fn draw(app: &App) {
     app.with_target(app.primary_window_id(), |target| {
         let size = target.size();
         let size = [size.width as f32, size.height as f32];
-        // A frame that fails fails again on every redraw, so only the first error prints.
+        // A failing frame fails again on every redraw, so only the first error prints.
         if let Err(error) = frame(&shader, renderer, target, size) {
             static FAILED: Once = Once::new();
             FAILED.call_once(|| eprintln!("{error}"));
