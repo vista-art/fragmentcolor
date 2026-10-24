@@ -1,3 +1,4 @@
+use crate::pass::PassInput;
 use crate::{PassObject, ShaderHash, Target, TargetFrame, TextureData, TextureTarget, UniformData};
 use crate::{ScreenRegion, Size, WindowTarget};
 use dashmap::DashMap;
@@ -1123,9 +1124,9 @@ impl RenderContext {
         let model_overrides = &pass_draws.opaque_overrides;
         let blend_draws = &pass_draws.blend_draws;
 
-        let load_op = match pass.get_input().load {
-            true => wgpu::LoadOp::Load,
-            false => wgpu::LoadOp::Clear(pass.get_input().color.into()),
+        let load_op = match *pass.input.read() {
+            PassInput::Load => wgpu::LoadOp::Load,
+            PassInput::Clear(color) => wgpu::LoadOp::Clear(color.into()),
         };
 
         // Choose color attachment: per-pass override or default frame view.
@@ -3076,12 +3077,10 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
                 Vertex::new([0.0, 0.5, 0.0]),
             ]);
             // Two instances with different offsets: provide an "offset" property to match the shader
-            use crate::mesh::VertexValue;
+            use crate::mesh::VertexData;
+            mesh.add_instance(Vertex::new([0.0, 0.0]).set("offset", VertexData::F32x2([0.0, 0.0])));
             mesh.add_instance(
-                Vertex::new([0.0, 0.0]).set("offset", VertexValue::F32x2([0.0, 0.0])),
-            );
-            mesh.add_instance(
-                Vertex::new([0.25, 0.0]).set("offset", VertexValue::F32x2([0.25, 0.0])),
+                Vertex::new([0.25, 0.0]).set("offset", VertexData::F32x2([0.25, 0.0])),
             );
 
             pass.add_mesh(&mesh).expect("mesh is compatible");
@@ -3206,24 +3205,23 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return v.tint; }
             let pass = crate::Pass::from_shader("p", &shader);
 
             let mesh = crate::mesh::Mesh::new();
-            use crate::mesh::{Vertex, VertexValue};
+            use crate::mesh::{Vertex, VertexData};
             // Triangle geometry in clip-space
             mesh.add_vertices([
-                Vertex::new([-0.5, -0.5, 0.0])
-                    .set("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])), // vertex-level green (should be ignored)
-                Vertex::new([0.5, -0.5, 0.0]).set("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])),
-                Vertex::new([0.0, 0.5, 0.0]).set("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])),
+                Vertex::new([-0.5, -0.5, 0.0]).set("tint", VertexData::F32x4([0.0, 1.0, 0.0, 1.0])), // vertex-level green (should be ignored)
+                Vertex::new([0.5, -0.5, 0.0]).set("tint", VertexData::F32x4([0.0, 1.0, 0.0, 1.0])),
+                Vertex::new([0.0, 0.5, 0.0]).set("tint", VertexData::F32x4([0.0, 1.0, 0.0, 1.0])),
             ]);
             // Two instances with different offsets and tints
             mesh.add_instance(
                 Vertex::new([-0.6, 0.0])
-                    .set("offset", VertexValue::F32x2([-0.6, 0.0]))
-                    .set("tint", VertexValue::F32x4([1.0, 0.0, 0.0, 1.0])), // red
+                    .set("offset", VertexData::F32x2([-0.6, 0.0]))
+                    .set("tint", VertexData::F32x4([1.0, 0.0, 0.0, 1.0])), // red
             );
             mesh.add_instance(
                 Vertex::new([0.6, 0.0])
-                    .set("offset", VertexValue::F32x2([0.6, 0.0]))
-                    .set("tint", VertexValue::F32x4([0.0, 0.0, 1.0, 1.0])), // blue
+                    .set("offset", VertexData::F32x2([0.6, 0.0]))
+                    .set("tint", VertexData::F32x4([0.0, 0.0, 1.0, 1.0])), // blue
             );
 
             pass.add_mesh(&mesh).expect("mesh is compatible");
@@ -3621,7 +3619,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
             let pass = crate::Pass::from_shader("mesh", &shader);
 
             let mesh = crate::mesh::Mesh::new();
-            use crate::mesh::{Vertex, VertexValue};
+            use crate::mesh::{Vertex, VertexData};
             mesh.add_vertices([
                 Vertex::new([-0.5, -0.5, 0.0]),
                 Vertex::new([0.5, -0.5, 0.0]),
@@ -3629,7 +3627,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
             ]);
             // Add instance with wrong-typed "offset" (vec3 instead of vec2)
             mesh.add_instance(
-                Vertex::new([0.0, 0.0]).set("offset", VertexValue::F32x3([0.0, 0.0, 0.0])),
+                Vertex::new([0.0, 0.0]).set("offset", VertexData::F32x3([0.0, 0.0, 0.0])),
             );
 
             // Expect validation at call site: type mismatch for "offset"

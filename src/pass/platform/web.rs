@@ -2,7 +2,7 @@
 
 use crate::platforms::web::read_unsigned;
 use crate::renderer::platform::web::RenderableList;
-use crate::{Color, Pass, PassInput, Shader, Texture, TextureTarget};
+use crate::{Color, Pass, Shader, Texture, TextureTarget};
 use lsp_doc::lsp_doc;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::*;
@@ -49,13 +49,7 @@ impl Pass {
     #[wasm_bindgen(js_name = "loadPrevious")]
     #[lsp_doc("docs/api/core/pass/load_previous.md")]
     pub fn load_previous_js(&self) {
-        *self.object.input.write() = PassInput::load();
-    }
-
-    #[wasm_bindgen(js_name = "getInput")]
-    #[lsp_doc("docs/api/core/pass/get_input.md")]
-    pub fn get_input_js(&self) -> PassInput {
-        self.object.get_input()
+        self.load_previous();
     }
 
     #[wasm_bindgen(js_name = "addShader")]

@@ -17,6 +17,10 @@ pub use error::*;
 pub mod vertex;
 pub use vertex::*;
 
+mod data;
+pub use data::VertexData;
+pub(crate) use data::{Shape, describe};
+
 pub mod primitives;
 pub use primitives::*;
 
@@ -24,10 +28,7 @@ pub(crate) mod builtins;
 
 mod platform;
 
-#[cfg(python)]
-pub use platform::python::PyVertexValue;
-
-use crate::{PassObject, Renderable, Shader};
+use crate::{PassObject, Renderable, Shader, ShaderError};
 
 #[derive(Clone, Debug)]
 #[cfg_attr(python, pyclass(from_py_object))]
@@ -186,7 +187,7 @@ impl From<&Vertex> for VertexKey {
         let mut props: Vec<(String, PropBits)> = v
             .properties
             .iter()
-            .map(|(k, val)| (k.clone(), PropBits::B(val.to_bytes())))
+            .map(|(k, val)| (k.clone(), PropBits::B(val.to_key())))
             .collect();
         props.sort_by(|a, b| a.0.cmp(&b.0));
         VertexKey {
@@ -213,6 +214,10 @@ pub(crate) struct MeshObject {
     pub(crate) vertex_schema: RwLock<Option<VertexSchema>>, // derived from first vertex
     pub(crate) instance_schema: RwLock<Option<VertexSchema>>, // derived from first instance
 
+    /// The format the first shader to read each untyped attribute gave it.
+    /// A leaf lock: never take another lock while holding this one.
+    pub(crate) types: RwLock<AttributeTypes>,
+
     // Dirty flags
     dirty_vertices: RwLock<bool>,
     dirty_instances: RwLock<bool>,
@@ -236,17 +241,47 @@ pub(crate) struct MeshObject {
     cache_valid: RwLock<bool>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct VertexSchema {
     pub(crate) stride: u64,
     pub(crate) fields: Vec<Field>,
 }
 
-#[derive(Debug, Clone)]
+impl VertexSchema {
+    fn new(fields: Vec<Field>) -> Self {
+        let stride = fields.iter().map(|field| field.size).sum();
+        Self { stride, fields }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Field {
     pub(crate) name: String,
     pub(crate) fmt: wgpu::VertexFormat,
     pub(crate) size: u64,
+}
+
+impl Field {
+    fn new(name: &str, fmt: wgpu::VertexFormat) -> Self {
+        Self {
+            name: name.to_string(),
+            fmt,
+            size: fmt.size(),
+        }
+    }
+}
+
+/// The format a shader gave each untyped attribute, by stream and name.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct AttributeTypes {
+    pub(crate) vertex: HashMap<String, wgpu::VertexFormat>,
+    pub(crate) instance: HashMap<String, wgpu::VertexFormat>,
+}
+
+impl AttributeTypes {
+    fn is_empty(&self) -> bool {
+        self.vertex.is_empty() && self.instance.is_empty()
+    }
 }
 
 #[derive(Debug)]
@@ -269,6 +304,7 @@ impl MeshObject {
             indices_overridden: RwLock::new(false),
             vertex_schema: RwLock::new(None),
             instance_schema: RwLock::new(None),
+            types: RwLock::new(AttributeTypes::default()),
             dirty_vertices: RwLock::new(false),
             dirty_instances: RwLock::new(false),
             override_instances: RwLock::new(None),
@@ -315,6 +351,15 @@ impl MeshObject {
 
     fn clear_instances(&self) {
         self.insts.write().clear();
+        // The next instance sets the layout again, but the model columns stay.
+        let mut schema = self.instance_schema.write();
+        if schema
+            .as_ref()
+            .is_some_and(|schema| *schema != model_schema())
+        {
+            *schema = None;
+        }
+        drop(schema);
         *self.dirty_instances.write() = true;
         // Reset to default state: no buffer, no count override, draws as a single instance.
         *self.override_instances.write() = None;
@@ -353,34 +398,56 @@ impl MeshObject {
         if self.instance_schema.read().is_some() {
             return;
         }
-        let fields = ["model_0", "model_1", "model_2", "model_3"]
-            .into_iter()
-            .map(|name| Field {
-                name: name.to_string(),
-                fmt: wgpu::VertexFormat::Float32x4,
-                size: 16,
-            })
-            .collect::<Vec<_>>();
-        let stride: u64 = fields.iter().map(|f| f.size).sum();
-        *self.instance_schema.write() = Some(VertexSchema { stride, fields });
+        *self.instance_schema.write() = Some(model_schema());
         self.invalidate_cache();
     }
 
-    fn ensure_packed(&self) -> Result<(), MeshError> {
-        // Derive schema from first vertex if missing
-        if self.vertex_schema.read().is_none() {
-            let v = match self.verts.read().first() {
-                Some(v) => v.clone(),
-                None => return Ok(()), // empty mesh; allowed
-            };
-            let s = derive_vertex_schema(&v)?;
-            self.vertex_schema.write().replace(s);
+    /// Records the types a shader gave untyped attributes and repacks what they change.
+    /// Records nothing when another shader has typed one of them another way meanwhile.
+    pub(crate) fn declare(&self, added: AttributeTypes) -> Result<(), ShaderError> {
+        if added.is_empty() {
+            return Ok(());
         }
-        if self.instance_schema.read().is_none()
-            && let Some(first) = self.insts.read().first().cloned()
         {
-            let s = derive_instance_schema(&first)?;
-            self.instance_schema.write().replace(s);
+            let mut types = self.types.write();
+            check_conflicts(&types.vertex, &added.vertex)?;
+            check_conflicts(&types.instance, &added.instance)?;
+            types.vertex.extend(added.vertex.clone());
+            types.instance.extend(added.instance.clone());
+        }
+        if !added.vertex.is_empty() {
+            reset_schema(&self.vertex_schema, &added.vertex);
+            *self.dirty_vertices.write() = true;
+        }
+        if !added.instance.is_empty() {
+            reset_schema(&self.instance_schema, &added.instance);
+            *self.dirty_instances.write() = true;
+        }
+        self.invalidate_cache();
+        Ok(())
+    }
+
+    fn ensure_packed(&self) -> Result<(), MeshError> {
+        // Derive and store each missing schema under its own lock, so a `declare`
+        // either lands before the derive reads `types` or resets the stored schema.
+        {
+            let verts = self.verts.read();
+            let Some(first) = verts.first() else {
+                return Ok(()); // empty mesh; allowed
+            };
+            let mut schema = self.vertex_schema.write();
+            if schema.is_none() {
+                *schema = Some(derive_vertex_schema(first, &self.types.read().vertex));
+            }
+        }
+        {
+            let insts = self.insts.read();
+            let mut schema = self.instance_schema.write();
+            if schema.is_none()
+                && let Some(first) = insts.first()
+            {
+                *schema = Some(derive_instance_schema(first, &self.types.read().instance));
+            }
         }
 
         // Pack vertices if dirty
@@ -391,33 +458,33 @@ impl MeshObject {
             let mut bytes = Vec::new();
             if overridden {
                 // Pack every vertex in insertion order; preserve user-supplied indices.
-                for v in verts.iter() {
+                for (index, v) in verts.iter().enumerate() {
                     let Some(schema_ref) = schema.as_ref() else {
                         return Err(MeshError::NoVertexSchema);
                     };
-                    pack_vertex(&mut bytes, v, schema_ref)?;
+                    pack_vertex(&mut bytes, index, v, schema_ref)?;
                 }
             } else {
                 // Dedup by full equality and derive indices.
                 let mut map: HashMap<VertexKey, u32> = HashMap::new();
-                let mut unique: Vec<&Vertex> = Vec::new();
+                let mut unique: Vec<(usize, &Vertex)> = Vec::new();
                 let mut idx: Vec<u32> = Vec::new();
-                for v in verts.iter() {
+                for (index, v) in verts.iter().enumerate() {
                     let key = VertexKey::from(v);
                     if let Some(&i) = map.get(&key) {
                         idx.push(i);
                     } else {
                         let i = unique.len() as u32;
                         map.insert(key, i);
-                        unique.push(v);
+                        unique.push((index, v));
                         idx.push(i);
                     }
                 }
-                for v in unique.iter() {
+                for (index, v) in unique {
                     let Some(schema_ref) = schema.as_ref() else {
                         return Err(MeshError::NoVertexSchema);
                     };
-                    pack_vertex(&mut bytes, v, schema_ref)?;
+                    pack_vertex(&mut bytes, index, v, schema_ref)?;
                 }
                 *self.indices.write() = idx;
             }
@@ -433,11 +500,11 @@ impl MeshObject {
                 *self.dirty_instances.write() = false;
             } else {
                 let mut bytes = Vec::new();
-                for ins in insts.iter() {
+                for (index, ins) in insts.iter().enumerate() {
                     let Some(schema_ref) = schema.as_ref() else {
                         return Err(MeshError::NoInstanceSchema);
                     };
-                    pack_instance(&mut bytes, ins, schema_ref)?;
+                    pack_instance(&mut bytes, index, ins, schema_ref)?;
                 }
                 *self.packed_insts.write() = bytes;
                 *self.dirty_instances.write() = false;
@@ -651,52 +718,90 @@ impl MeshObject {
     }
 }
 
-fn derive_vertex_schema(vertex: &Vertex) -> Result<VertexSchema, MeshError> {
-    let mut fields: Vec<Field> = Vec::new();
-    // position first; single key with dynamic format
-    match vertex.dimensions {
-        0..=2 => fields.push(Field {
-            name: "position".into(),
-            fmt: wgpu::VertexFormat::Float32x2,
-            size: 8,
-        }),
-        _ => fields.push(Field {
-            name: "position".into(),
-            fmt: wgpu::VertexFormat::Float32x3,
-            size: 12,
-        }),
-    }
-    // remaining properties in sorted order
-    let mut rest: Vec<(&String, &VertexValue)> = vertex.properties.iter().collect();
-    rest.sort_by(|a, b| a.0.cmp(b.0));
-    for (k, val) in rest {
-        fields.push(Field {
-            name: k.clone(),
-            fmt: val.format(),
-            size: val.size(),
-        });
-    }
-    let stride = fields.iter().map(|f| f.size).sum();
-    Ok(VertexSchema { stride, fields })
+/// The instance layout of a `Model`: the four `vec4<f32>` columns of its transform.
+fn model_schema() -> VertexSchema {
+    let fields = ["model_0", "model_1", "model_2", "model_3"]
+        .into_iter()
+        .map(|name| Field::new(name, wgpu::VertexFormat::Float32x4))
+        .collect();
+    VertexSchema::new(fields)
 }
 
-fn derive_instance_schema(i: &Instance) -> Result<VertexSchema, MeshError> {
-    let mut fields: Vec<Field> = Vec::new();
-    // Only explicit per-instance properties; sorted by key
-    let mut rest: Vec<(&String, &VertexValue)> = i.properties.iter().collect();
-    rest.sort_by(|a, b| a.0.cmp(b.0));
-    for (k, val) in rest {
-        fields.push(Field {
-            name: k.clone(),
-            fmt: val.format(),
-            size: val.size(),
-        });
-    }
-    let stride = fields.iter().map(|f| f.size).sum();
-    Ok(VertexSchema { stride, fields })
+fn derive_vertex_schema(
+    vertex: &Vertex,
+    types: &HashMap<String, wgpu::VertexFormat>,
+) -> VertexSchema {
+    let position = match vertex.dimensions {
+        0..=2 => wgpu::VertexFormat::Float32x2,
+        _ => wgpu::VertexFormat::Float32x3,
+    };
+    let mut fields = vec![Field::new("position", position)];
+    fields.extend(derive_fields(&vertex.properties, types));
+    VertexSchema::new(fields)
 }
 
-fn pack_vertex(out: &mut Vec<u8>, v: &Vertex, schema: &VertexSchema) -> Result<(), MeshError> {
+fn derive_instance_schema(
+    instance: &Instance,
+    types: &HashMap<String, wgpu::VertexFormat>,
+) -> VertexSchema {
+    VertexSchema::new(derive_fields(&instance.properties, types))
+}
+
+/// One field per value in key order, in the format each value resolves to.
+fn derive_fields(
+    properties: &HashMap<String, VertexData>,
+    types: &HashMap<String, wgpu::VertexFormat>,
+) -> Vec<Field> {
+    let mut values: Vec<(&String, &VertexData)> = properties.iter().collect();
+    values.sort_by(|left, right| left.0.cmp(right.0));
+    values
+        .into_iter()
+        .map(|(name, value)| Field::new(name, value.resolve(types.get(name).copied())))
+        .collect()
+}
+
+/// Fails on the first attribute `added` types another way than `known` does.
+fn check_conflicts(
+    known: &HashMap<String, wgpu::VertexFormat>,
+    added: &HashMap<String, wgpu::VertexFormat>,
+) -> Result<(), ShaderError> {
+    for (name, format) in added {
+        if let Some(fixed) = known.get(name)
+            && fixed != format
+        {
+            return Err(ShaderError::AttributeConflict {
+                name: name.clone(),
+                fixed: describe(*fixed).to_string(),
+                declared: describe(*format).to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Drops a schema that lists one of `names`, so the next pack derives it with their types.
+fn reset_schema(
+    schema: &RwLock<Option<VertexSchema>>,
+    names: &HashMap<String, wgpu::VertexFormat>,
+) {
+    let mut schema = schema.write();
+    let listed = schema.as_ref().is_some_and(|schema| {
+        schema
+            .fields
+            .iter()
+            .any(|field| names.contains_key(&field.name))
+    });
+    if listed {
+        *schema = None;
+    }
+}
+
+fn pack_vertex(
+    out: &mut Vec<u8>,
+    index: usize,
+    v: &Vertex,
+    schema: &VertexSchema,
+) -> Result<(), MeshError> {
     for f in schema.fields.iter() {
         match f.name.as_str() {
             "position" => {
@@ -716,7 +821,9 @@ fn pack_vertex(out: &mut Vec<u8>, v: &Vertex, schema: &VertexSchema) -> Result<(
                 }
             }
             name => match v.properties.get(name) {
-                Some(value) => out.extend(check_value(value, f, MeshError::InvalidVertex)?),
+                Some(value) => value.write(f.fmt, out).map_err(|misfit| {
+                    MeshError::InvalidVertex(misfit.explain(name, &format!("vertex {index}")))
+                })?,
                 // zero-fill absent optional properties
                 None => out.extend(std::iter::repeat_n(0u8, f.size as usize)),
             },
@@ -725,34 +832,21 @@ fn pack_vertex(out: &mut Vec<u8>, v: &Vertex, schema: &VertexSchema) -> Result<(
     Ok(())
 }
 
-fn pack_instance(out: &mut Vec<u8>, i: &Instance, schema: &VertexSchema) -> Result<(), MeshError> {
+fn pack_instance(
+    out: &mut Vec<u8>,
+    index: usize,
+    i: &Instance,
+    schema: &VertexSchema,
+) -> Result<(), MeshError> {
     for f in schema.fields.iter() {
         match i.properties.get(&f.name) {
-            Some(value) => out.extend(check_value(value, f, MeshError::InvalidInstance)?),
+            Some(value) => value.write(f.fmt, out).map_err(|misfit| {
+                MeshError::InvalidInstance(misfit.explain(&f.name, &format!("instance {index}")))
+            })?,
             None => out.extend(std::iter::repeat_n(0u8, f.size as usize)),
         }
     }
     Ok(())
-}
-
-/// The bytes of a value, if its format and length match its field in the mesh layout.
-fn check_value(
-    value: &VertexValue,
-    field: &Field,
-    invalid: fn(String) -> MeshError,
-) -> Result<Vec<u8>, MeshError> {
-    let bytes = value.to_bytes();
-    if value.format() != field.fmt || bytes.len() as u64 != field.size {
-        return Err(invalid(format!(
-            "\"{}\" is {:?} in {} bytes, but the mesh layout has {:?} in {} bytes",
-            field.name,
-            value.format(),
-            bytes.len(),
-            field.fmt,
-            field.size
-        )));
-    }
-    Ok(bytes)
 }
 
 #[cfg(test)]
@@ -764,7 +858,7 @@ mod tests {
         let v = Vertex::new([0.1f32, 0.2f32])
             .set("uv", [0.3f32, 0.4])
             .set("color", [1.0f32, 1.0, 1.0, 1.0]);
-        let schema = derive_vertex_schema(&v).expect("schema");
+        let schema = derive_vertex_schema(&v, &HashMap::new());
         // position (vec2), color (vec4), uv (vec2) sorted by key name
         assert_eq!(schema.fields.len(), 3);
         assert_eq!(schema.fields[0].name, "position");
@@ -785,10 +879,12 @@ mod tests {
             Vertex::new([0.0f32, 0.0, 0.0]).set("uv", [0.0f32, 0.0, 0.0]),
             Vertex::new([1.0f32, 0.0, 0.0]).set("uv", [1.0f32, 0.0]),
         ]);
-        assert!(matches!(
-            mesh.object.ensure_packed(),
-            Err(MeshError::InvalidVertex(_))
-        ));
+        match mesh.object.ensure_packed() {
+            Err(MeshError::InvalidVertex(text)) => {
+                assert_eq!(text, "uv: expected vec3<f32>, got vec2<f32> at vertex 1");
+            }
+            other => panic!("expected an invalid vertex, got {other:?}"),
+        }
 
         let mesh = Mesh::new();
         mesh.add_vertices([Vertex::new([0.0f32, 0.0, 0.0]), Vertex::new([1.0f32, 0.0])]);
@@ -803,10 +899,108 @@ mod tests {
             Instance::new().set("offset", [0.0f32, 0.0]),
             Instance::new().set("offset", 1.0f32),
         ]);
-        assert!(matches!(
-            mesh.object.ensure_packed(),
-            Err(MeshError::InvalidInstance(_))
-        ));
+        match mesh.object.ensure_packed() {
+            Err(MeshError::InvalidInstance(text)) => {
+                assert_eq!(text, "offset: expected vec2<f32>, got f32 at instance 1");
+            }
+            other => panic!("expected an invalid instance, got {other:?}"),
+        }
+    }
+
+    // Story: a plain number packs as a float until a shader types it, then
+    // the mesh repacks it in that type and keeps it for the mesh's lifetime.
+    #[test]
+    fn untyped_attributes_pack_as_floats_until_declared() {
+        let mesh = Mesh::new();
+        mesh.add_vertices([
+            Vertex::new([0.0f32, 0.0]).set("id", 3),
+            Vertex::new([1.0f32, 0.0]).set("id", 4),
+        ]);
+        let field = |mesh: &Mesh| -> (wgpu::VertexFormat, Vec<u8>, Vec<u8>) {
+            mesh.object.ensure_packed().expect("pack");
+            let schema = mesh.object.vertex_schema.read().clone().expect("schema");
+            let bytes = mesh.object.packed_verts.read().clone();
+            let stride = schema.stride as usize;
+            (
+                schema.fields[1].fmt,
+                bytes[8..12].to_vec(),
+                bytes[stride + 8..stride + 12].to_vec(),
+            )
+        };
+
+        let (format, first, second) = field(&mesh);
+        assert_eq!(format, wgpu::VertexFormat::Float32);
+        assert_eq!(first, 3.0f32.to_ne_bytes());
+        assert_eq!(second, 4.0f32.to_ne_bytes());
+
+        let mut added = AttributeTypes::default();
+        added
+            .vertex
+            .insert("id".to_string(), wgpu::VertexFormat::Uint32);
+        mesh.object.declare(added).expect("declare");
+        assert!(mesh.object.vertex_schema.read().is_none());
+        assert!(*mesh.object.dirty_vertices.read());
+
+        let (format, first, second) = field(&mesh);
+        assert_eq!(format, wgpu::VertexFormat::Uint32);
+        assert_eq!(first, 3u32.to_ne_bytes());
+        assert_eq!(second, 4u32.to_ne_bytes());
+
+        let mut conflict = AttributeTypes::default();
+        conflict
+            .vertex
+            .insert("id".to_string(), wgpu::VertexFormat::Float32);
+        let error = mesh.object.declare(conflict).expect_err("conflict");
+        assert_eq!(
+            error.to_string(),
+            "Mesh attribute id is u32 on this mesh, but the shader declares f32"
+        );
+        assert_eq!(
+            mesh.object.types.read().vertex.get("id"),
+            Some(&wgpu::VertexFormat::Uint32)
+        );
+    }
+
+    // Story: attaching to shaders that agree on every type keeps the packed
+    // bytes and the GPU buffers, since nothing about them changes.
+    #[test]
+    fn declaring_nothing_keeps_the_gpu_cache() {
+        pollster::block_on(async move {
+            let wgsl = r#"
+@vertex
+fn vs_main(@location(0) pos: vec2<f32>, @location(1) id: u32) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(pos, f32(id), 1.0);
+}
+@fragment
+fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+"#;
+            let mesh = Mesh::new();
+            mesh.add_vertices([
+                Vertex::new([-1.0f32, -1.0]).set("id", 1),
+                Vertex::new([3.0f32, -1.0]).set("id", 1),
+                Vertex::new([-1.0f32, 3.0]).set("id", 1),
+            ]);
+            let first = crate::Shader::new(wgsl).expect("shader");
+            first.add_mesh(&mesh).expect("first attach");
+
+            let instance = crate::renderer::platform::all::create_instance().await;
+            let adapter = crate::renderer::platform::all::request_adapter(&instance, None)
+                .await
+                .expect("adapter");
+            let (device, queue) = crate::renderer::platform::all::request_device(&adapter)
+                .await
+                .expect("device");
+            mesh.object
+                .vertex_buffers(&device, &queue)
+                .expect("buffers");
+            assert!(*mesh.object.cache_valid.read());
+
+            let second = crate::Shader::new(wgsl).expect("shader");
+            second.add_mesh(&mesh).expect("second attach");
+            first.validate_mesh(&mesh).expect("validate again");
+            assert!(*mesh.object.cache_valid.read());
+            assert!(!*mesh.object.dirty_vertices.read());
+        });
     }
 
     #[test]

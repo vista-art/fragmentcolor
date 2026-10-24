@@ -9,9 +9,6 @@
 
 import Foundation
 
-@available(*, deprecated, renamed: "PassInput")
-public typealias MobilePassInput = PassInput
-
 extension Pass {
     // MARK: - Convenience initializer
 

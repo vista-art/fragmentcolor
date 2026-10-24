@@ -1,6 +1,6 @@
 #![cfg(python)]
 
-use crate::{Pass, PassInput, PassObject, PassType, Shader};
+use crate::{Pass, PassObject, PassType, Shader};
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
@@ -50,13 +50,7 @@ impl Pass {
     #[pyo3(name = "load_previous")]
     #[lsp_doc("docs/api/core/pass/load_previous.md")]
     pub fn load_previous_py(&self) {
-        *self.object.input.write() = PassInput::load();
-    }
-
-    #[pyo3(name = "get_input")]
-    #[lsp_doc("docs/api/core/pass/get_input.md")]
-    pub fn get_input_py(&self) -> PassInput {
-        self.object.get_input()
+        self.load_previous();
     }
 
     #[pyo3(name = "add_shader")]

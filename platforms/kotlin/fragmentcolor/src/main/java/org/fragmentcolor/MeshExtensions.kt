@@ -120,15 +120,24 @@ fun Mesh.addInstance(vertex: Vertex) {
     addInstance(vertex.createInstance())
 }
 
+/**
+ * Append an instance from attribute lists, in the map's order.
+ * Throws [FragmentColorException] for a list that isn't 1 to 4 numbers.
+ */
+@JvmName("addInstanceDoubles")
+fun Mesh.addInstance(attributes: Map<String, List<Double>>) {
+    addInstance(attributes.entries.fold(Instance()) { instance, (key, value) -> instance.set(key, value) })
+}
+
 /** Append an instance from attribute lists, in the map's order. */
 @JvmName("addInstanceFloats")
 fun Mesh.addInstance(attributes: Map<String, List<Float>>) {
     addInstance(attributes.entries.fold(Instance()) { instance, (key, value) -> instance.set(key, value) })
 }
 
-/** Append an instance from typed attribute values, in the map's order. */
-@JvmName("addInstanceValues")
-fun Mesh.addInstance(attributes: Map<String, VertexValue>) {
+/** Append an instance from attribute lists, in the map's order. */
+@JvmName("addInstanceInts")
+fun Mesh.addInstance(attributes: Map<String, List<Int>>) {
     addInstance(attributes.entries.fold(Instance()) { instance, (key, value) -> instance.set(key, value) })
 }
 

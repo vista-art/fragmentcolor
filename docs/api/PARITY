@@ -85,13 +85,13 @@ docs/api/scene/material/hidden/emissive_source_mobile.md=>docs/api/scene/materia
 
 # ---- Old type names kept as deprecated aliases ----
 #
-# Each binding's window and texture targets, `PassInput` and `TextureRegion`
-# carry the Rust name. The old names stay as aliases so existing code keeps
-# working, and no doc shows them:
+# Each binding's window and texture targets and `TextureRegion` carry the
+# Rust name. The old names stay as aliases so existing code keeps working,
+# and no doc shows them:
 #   JS:     CanvasTarget -> WindowTarget
 #   Python: RenderCanvasTarget -> WindowTarget
 #   Swift/Kotlin: MobileWindowTarget -> WindowTarget, MobileTextureTarget -> TextureTarget,
-#           MobilePassInput -> PassInput, TextureRegionMobile -> TextureRegion
+#           TextureRegionMobile -> TextureRegion
 
 # ---- Trait-level docs (no platform binding required) ----
 #

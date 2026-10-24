@@ -5,6 +5,7 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -64,6 +65,40 @@ class Healthcheck : ExampleCase() {
         shader.set("particles", blob)
         val (bytes) = shader.get("particles") as UniformData.Bytes
         assertContentEquals(blob, bytes)
+    }
+
+    // Vertex and Instance numbers take the type the shader declares when the mesh attaches.
+    // Attaching reads no GPU, so this runs on any emulator.
+    @Test
+    fun vertexNumbersTakeShaderTypes() {
+        val source = """
+            @vertex fn vs_main(
+              @location(0) position: vec2<f32>,
+              @location(1) id: u32,
+              @location(2) cell: vec2<i32>,
+            ) -> @builtin(position) vec4<f32> {
+              return vec4f(position, f32(id) + f32(cell.x), 1.);
+            }
+            @fragment fn main() -> @location(0) vec4<f32> { return vec4f(1., 0., 0., 1.); }
+            """.trimIndent()
+
+        val vertices = Mesh()
+        vertices.addVertex(Vertex(floatArrayOf(0f, 0f)).set("id", 7).set("cell", intArrayOf(-1, 2)))
+        Shader(source).addMesh(vertices)
+
+        val instanced = Mesh()
+        instanced.addVertex(Vertex(floatArrayOf(0f, 0f)).set("cell", intArrayOf(-1, 2)))
+        instanced.addInstance(mapOf("id" to listOf(7)))
+        Shader(source).addMesh(instanced)
+
+        val negative = Mesh()
+        negative.addVertex(Vertex(floatArrayOf(0f, 0f)).set("id", 7).set("cell", intArrayOf(0, 0)))
+        negative.addVertex(Vertex(floatArrayOf(1f, 0f)).set("id", -1).set("cell", intArrayOf(0, 0)))
+        val error = assertFailsWith<FragmentColorException> { Shader(source).addMesh(negative) }
+        assertTrue(error.message.orEmpty().contains("expected u32, got -1 at vertex 1"), error.message)
+
+        assertFailsWith<FragmentColorException> { Instance().set("offset", listOf(1.0, 2.0, 3.0, 4.0, 5.0)) }
+        assertFailsWith<FragmentColorException> { Instance().set("offset", listOf<Double>()) }
     }
 
     private suspend fun runHeadlessRenderSmoke() {

@@ -81,7 +81,7 @@ impl From<Quad> for Mesh {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::VertexValue;
+    use crate::VertexData;
 
     #[test]
     fn quad_vertices_and_uv_layout() {
@@ -104,7 +104,7 @@ mod tests {
         };
         let uv = |i: usize| -> Option<[f32; 2]> {
             match verts[i].properties.get("uv") {
-                Some(VertexValue::F32x2(v)) => Some(*v),
+                Some(VertexData::F32x2(v)) => Some(*v),
                 _ => None,
             }
         };

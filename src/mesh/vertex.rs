@@ -1,4 +1,5 @@
 use super::builtins::VertexPosition;
+use super::data::VertexData;
 use lsp_doc::lsp_doc;
 use std::collections::HashMap;
 
@@ -15,7 +16,7 @@ use wasm_bindgen::prelude::*;
 pub struct Vertex {
     pub(crate) position: VertexPosition,
     pub(crate) dimensions: u8,
-    pub(crate) properties: HashMap<String, VertexValue>,
+    pub(crate) properties: HashMap<String, VertexData>,
     pub(crate) prop_locations: HashMap<String, u32>,
     pub(crate) next_location: u32,
 }
@@ -136,13 +137,13 @@ impl Vertex {
 
     #[lsp_doc("docs/api/geometry/vertex/set.md")]
     #[must_use = "set returns the updated Vertex"]
-    pub fn set<V: Into<VertexValue>>(mut self, key: &str, v: V) -> Self {
+    pub fn set(mut self, key: &str, value: impl Into<VertexData>) -> Self {
         let k = key.to_string();
         if !self.prop_locations.contains_key(&k) {
             self.prop_locations.insert(k.clone(), self.next_location);
             self.next_location = self.next_location.saturating_add(1);
         }
-        self.properties.insert(k, v.into());
+        self.properties.insert(k, value.into());
         self
     }
 
@@ -182,14 +183,18 @@ impl From<[f32; 4]> for Vertex {
         Vertex::new(v)
     }
 }
+/// A vertex with a `"uv"` attribute of plain numbers, which take the shader's type.
 impl From<([f32; 3], [f32; 2])> for Vertex {
     fn from((p, uv): ([f32; 3], [f32; 2])) -> Self {
-        Vertex::new(p).set("uv", uv)
+        Vertex::new(p).set("uv", uv.map(f64::from))
     }
 }
+/// A vertex with `"uv"` and `"color"` attributes of plain numbers, which take the shader's types.
 impl From<([f32; 3], [f32; 2], [f32; 4])> for Vertex {
     fn from((p, uv, c): ([f32; 3], [f32; 2], [f32; 4])) -> Self {
-        Vertex::new(p).set("uv", uv).set("color", c)
+        Vertex::new(p)
+            .set("uv", uv.map(f64::from))
+            .set("color", c.map(f64::from))
     }
 }
 
@@ -206,7 +211,7 @@ impl Eq for Vertex {}
 #[derive(Clone, Debug, Default)]
 #[lsp_doc("docs/api/geometry/instance/instance.md")]
 pub struct Instance {
-    pub(crate) properties: HashMap<String, VertexValue>,
+    pub(crate) properties: HashMap<String, VertexData>,
     pub(crate) prop_locations: HashMap<String, u32>,
     pub(crate) next_location: u32,
 }
@@ -219,21 +224,21 @@ impl Instance {
 
     #[lsp_doc("docs/api/geometry/instance/set.md")]
     #[must_use = "set returns the updated Instance"]
-    pub fn set<V: Into<VertexValue>>(mut self, key: &str, v: V) -> Self {
+    pub fn set(mut self, key: &str, value: impl Into<VertexData>) -> Self {
         let k = key.to_string();
         if !self.prop_locations.contains_key(&k) {
             self.prop_locations.insert(k.clone(), self.next_location);
             self.next_location = self.next_location.saturating_add(1);
         }
-        self.properties.insert(k, v.into());
+        self.properties.insert(k, value.into());
         self
     }
 }
 
 /// An instance from named values, set in key order so attribute locations stay stable.
-impl From<HashMap<String, VertexValue>> for Instance {
-    fn from(values: HashMap<String, VertexValue>) -> Self {
-        let mut entries: Vec<(String, VertexValue)> = values.into_iter().collect();
+impl From<HashMap<String, VertexData>> for Instance {
+    fn from(values: HashMap<String, VertexData>) -> Self {
+        let mut entries: Vec<(String, VertexData)> = values.into_iter().collect();
         entries.sort_by(|a, b| a.0.cmp(&b.0));
         entries
             .into_iter()
@@ -251,183 +256,6 @@ impl From<Vertex> for Instance {
 impl From<&Vertex> for Instance {
     fn from(v: &Vertex) -> Self {
         v.create_instance()
-    }
-}
-
-#[cfg_attr(mobile, derive(uniffi::Enum))]
-#[derive(Clone, Debug, PartialEq)]
-#[lsp_doc("docs/api/geometry/vertex_value/vertex_value.md")]
-pub enum VertexValue {
-    F32(f32),
-    #[cfg(not(mobile))]
-    F32x2([f32; 2]),
-    #[cfg(mobile)]
-    F32x2(Vec<f32>),
-    #[cfg(not(mobile))]
-    F32x3([f32; 3]),
-    #[cfg(mobile)]
-    F32x3(Vec<f32>),
-    #[cfg(not(mobile))]
-    F32x4([f32; 4]),
-    #[cfg(mobile)]
-    F32x4(Vec<f32>),
-    U32(u32),
-    #[cfg(not(mobile))]
-    U32x2([u32; 2]),
-    #[cfg(mobile)]
-    U32x2(Vec<u32>),
-    #[cfg(not(mobile))]
-    U32x3([u32; 3]),
-    #[cfg(mobile)]
-    U32x3(Vec<u32>),
-    #[cfg(not(mobile))]
-    U32x4([u32; 4]),
-    #[cfg(mobile)]
-    U32x4(Vec<u32>),
-    I32(i32),
-    #[cfg(not(mobile))]
-    I32x2([i32; 2]),
-    #[cfg(mobile)]
-    I32x2(Vec<i32>),
-    #[cfg(not(mobile))]
-    I32x3([i32; 3]),
-    #[cfg(mobile)]
-    I32x3(Vec<i32>),
-    #[cfg(not(mobile))]
-    I32x4([i32; 4]),
-    #[cfg(mobile)]
-    I32x4(Vec<i32>),
-}
-
-// Convenient conversions so callers can use plain arrays/scalars
-impl From<f32> for VertexValue {
-    fn from(v: f32) -> Self {
-        VertexValue::F32(v)
-    }
-}
-impl From<[f32; 2]> for VertexValue {
-    fn from(v: [f32; 2]) -> Self {
-        #[cfg(not(mobile))]
-        return VertexValue::F32x2(v);
-        #[cfg(mobile)]
-        return VertexValue::F32x2(v.to_vec());
-    }
-}
-impl From<[f32; 3]> for VertexValue {
-    fn from(v: [f32; 3]) -> Self {
-        #[cfg(not(mobile))]
-        return VertexValue::F32x3(v);
-        #[cfg(mobile)]
-        return VertexValue::F32x3(v.to_vec());
-    }
-}
-impl From<[f32; 4]> for VertexValue {
-    fn from(v: [f32; 4]) -> Self {
-        #[cfg(not(mobile))]
-        return VertexValue::F32x4(v);
-        #[cfg(mobile)]
-        return VertexValue::F32x4(v.to_vec());
-    }
-}
-impl From<u32> for VertexValue {
-    fn from(v: u32) -> Self {
-        VertexValue::U32(v)
-    }
-}
-impl From<[u32; 2]> for VertexValue {
-    fn from(v: [u32; 2]) -> Self {
-        #[cfg(not(mobile))]
-        return VertexValue::U32x2(v);
-        #[cfg(mobile)]
-        return VertexValue::U32x2(v.to_vec());
-    }
-}
-impl From<[u32; 3]> for VertexValue {
-    fn from(v: [u32; 3]) -> Self {
-        #[cfg(not(mobile))]
-        return VertexValue::U32x3(v);
-        #[cfg(mobile)]
-        return VertexValue::U32x3(v.to_vec());
-    }
-}
-impl From<[u32; 4]> for VertexValue {
-    fn from(v: [u32; 4]) -> Self {
-        #[cfg(not(mobile))]
-        return VertexValue::U32x4(v);
-        #[cfg(mobile)]
-        return VertexValue::U32x4(v.to_vec());
-    }
-}
-impl From<i32> for VertexValue {
-    fn from(v: i32) -> Self {
-        VertexValue::I32(v)
-    }
-}
-impl From<[i32; 2]> for VertexValue {
-    fn from(v: [i32; 2]) -> Self {
-        #[cfg(not(mobile))]
-        return VertexValue::I32x2(v);
-        #[cfg(mobile)]
-        return VertexValue::I32x2(v.to_vec());
-    }
-}
-impl From<[i32; 3]> for VertexValue {
-    fn from(v: [i32; 3]) -> Self {
-        #[cfg(not(mobile))]
-        return VertexValue::I32x3(v);
-        #[cfg(mobile)]
-        return VertexValue::I32x3(v.to_vec());
-    }
-}
-impl From<[i32; 4]> for VertexValue {
-    fn from(v: [i32; 4]) -> Self {
-        #[cfg(not(mobile))]
-        return VertexValue::I32x4(v);
-        #[cfg(mobile)]
-        return VertexValue::I32x4(v.to_vec());
-    }
-}
-
-impl VertexValue {
-    pub(crate) fn size(&self) -> u64 {
-        match self {
-            VertexValue::F32(_) | VertexValue::U32(_) | VertexValue::I32(_) => 4,
-            VertexValue::F32x2(_) | VertexValue::U32x2(_) | VertexValue::I32x2(_) => 8,
-            VertexValue::F32x3(_) | VertexValue::U32x3(_) | VertexValue::I32x3(_) => 12,
-            VertexValue::F32x4(_) | VertexValue::U32x4(_) | VertexValue::I32x4(_) => 16,
-        }
-    }
-    pub(crate) fn to_bytes(&self) -> Vec<u8> {
-        match self {
-            VertexValue::F32(v) => bytemuck::bytes_of(v).to_vec(),
-            VertexValue::F32x2(v) => bytemuck::cast_slice(v).to_vec(),
-            VertexValue::F32x3(v) => bytemuck::cast_slice(v).to_vec(),
-            VertexValue::F32x4(v) => bytemuck::cast_slice(v).to_vec(),
-            VertexValue::U32(v) => bytemuck::bytes_of(v).to_vec(),
-            VertexValue::U32x2(v) => bytemuck::cast_slice(v).to_vec(),
-            VertexValue::U32x3(v) => bytemuck::cast_slice(v).to_vec(),
-            VertexValue::U32x4(v) => bytemuck::cast_slice(v).to_vec(),
-            VertexValue::I32(v) => bytemuck::cast_slice(&[*v as u32]).to_vec(),
-            VertexValue::I32x2(v) => bytemuck::cast_slice(v).to_vec(),
-            VertexValue::I32x3(v) => bytemuck::cast_slice(v).to_vec(),
-            VertexValue::I32x4(v) => bytemuck::cast_slice(v).to_vec(),
-        }
-    }
-    pub(crate) fn format(&self) -> wgpu::VertexFormat {
-        match self {
-            VertexValue::F32(_) => wgpu::VertexFormat::Float32,
-            VertexValue::F32x2(_) => wgpu::VertexFormat::Float32x2,
-            VertexValue::F32x3(_) => wgpu::VertexFormat::Float32x3,
-            VertexValue::F32x4(_) => wgpu::VertexFormat::Float32x4,
-            VertexValue::U32(_) => wgpu::VertexFormat::Uint32,
-            VertexValue::U32x2(_) => wgpu::VertexFormat::Uint32x2,
-            VertexValue::U32x3(_) => wgpu::VertexFormat::Uint32x3,
-            VertexValue::U32x4(_) => wgpu::VertexFormat::Uint32x4,
-            VertexValue::I32(_) => wgpu::VertexFormat::Sint32,
-            VertexValue::I32x2(_) => wgpu::VertexFormat::Sint32x2,
-            VertexValue::I32x3(_) => wgpu::VertexFormat::Sint32x3,
-            VertexValue::I32x4(_) => wgpu::VertexFormat::Sint32x4,
-        }
     }
 }
 
@@ -459,8 +287,8 @@ mod tests {
         assert_eq!(Vertex::from([1.0f32, 2.0, 3.0, 4.0]).dimensions, 4);
 
         let mut values = HashMap::new();
-        values.insert("scale".to_string(), VertexValue::from(2.0f32));
-        values.insert("offset".to_string(), VertexValue::from([1.0f32, 0.0]));
+        values.insert("scale".to_string(), VertexData::from(2.0f32));
+        values.insert("offset".to_string(), VertexData::from([1.0f32, 0.0]));
         let instance = Instance::from(values);
         assert_eq!(instance.prop_locations.get("offset"), Some(&0));
         assert_eq!(instance.prop_locations.get("scale"), Some(&1));
@@ -517,71 +345,41 @@ mod tests {
         let inst = v.create_instance();
         assert_eq!(
             inst.properties.get("uv"),
-            Some(&VertexValue::F32x2([0.25, 0.75]))
+            Some(&VertexData::F32x2([0.25, 0.75]))
         );
-        assert_eq!(inst.properties.get("id"), Some(&VertexValue::U32(7)));
+        assert_eq!(inst.properties.get("id"), Some(&VertexData::U32(7)));
         assert_eq!(inst.prop_locations.get("uv"), Some(&1));
         assert_eq!(inst.prop_locations.get("id"), Some(&2));
     }
 
+    // Story: unsuffixed Rust literals, f64, i32 and the tuple forms arrive as
+    // plain numbers, and only an f32 or u32 set by name keeps a type of its own.
     #[test]
-    fn vertex_value_size_format_and_bytes() {
-        let cases = [
-            (VertexValue::F32(1.5), 4usize, wgpu::VertexFormat::Float32),
-            (
-                VertexValue::F32x2([1.0, 2.0]),
-                8,
-                wgpu::VertexFormat::Float32x2,
-            ),
-            (
-                VertexValue::F32x3([1.0, 2.0, 3.0]),
-                12,
-                wgpu::VertexFormat::Float32x3,
-            ),
-            (
-                VertexValue::F32x4([1.0, 2.0, 3.0, 4.0]),
-                16,
-                wgpu::VertexFormat::Float32x4,
-            ),
-            (VertexValue::U32(9), 4, wgpu::VertexFormat::Uint32),
-            (VertexValue::U32x2([9, 10]), 8, wgpu::VertexFormat::Uint32x2),
-            (
-                VertexValue::U32x3([9, 10, 11]),
-                12,
-                wgpu::VertexFormat::Uint32x3,
-            ),
-            (
-                VertexValue::U32x4([9, 10, 11, 12]),
-                16,
-                wgpu::VertexFormat::Uint32x4,
-            ),
-            (VertexValue::I32(-7), 4, wgpu::VertexFormat::Sint32),
-            (VertexValue::I32x2([-1, 2]), 8, wgpu::VertexFormat::Sint32x2),
-            (
-                VertexValue::I32x3([-1, 2, -3]),
-                12,
-                wgpu::VertexFormat::Sint32x3,
-            ),
-            (
-                VertexValue::I32x4([-1, 2, -3, 4]),
-                16,
-                wgpu::VertexFormat::Sint32x4,
-            ),
-        ];
-        for (val, expected_len, fmt) in cases {
-            assert_eq!(val.size() as usize, expected_len);
-            assert_eq!(val.format(), fmt);
-            let bytes = val.to_bytes();
-            assert_eq!(bytes.len(), expected_len);
-        }
+    fn rust_literals_arrive_untyped() {
+        let get = |vertex: &Vertex, key: &str| vertex.properties.get(key).copied();
+        let id: u32 = 7;
+        let vertex = Vertex::new([0.0, 0.0])
+            .set("id", 7)
+            .set("cell", [-1, 2])
+            .set("weight", 1.0)
+            .set("uv", [0.5, 0.0])
+            .set("typed_id", id)
+            .set("typed_uv", [0.5f32, 0.5]);
+        assert_eq!(get(&vertex, "id"), Some(VertexData::Number(7.0)));
+        assert_eq!(get(&vertex, "cell"), Some(VertexData::Number2([-1.0, 2.0])));
+        assert_eq!(get(&vertex, "weight"), Some(VertexData::Number(1.0)));
+        assert_eq!(get(&vertex, "uv"), Some(VertexData::Number2([0.5, 0.0])));
+        assert_eq!(get(&vertex, "typed_id"), Some(VertexData::U32(7)));
+        assert_eq!(
+            get(&vertex, "typed_uv"),
+            Some(VertexData::F32x2([0.5, 0.5]))
+        );
 
-        // Specific byte layout checks for scalar ints
-        let i = VertexValue::I32(-5);
-        let iu = (-5i32 as u32).to_ne_bytes().to_vec();
-        assert_eq!(i.to_bytes(), iu);
-
-        let u = VertexValue::U32(123);
-        let uu = 123u32.to_ne_bytes().to_vec();
-        assert_eq!(u.to_bytes(), uu);
+        let tuple = Vertex::from(([0.0, 0.0, 0.0], [0.5, 0.25], [1.0, 0.0, 0.0, 1.0]));
+        assert_eq!(get(&tuple, "uv"), Some(VertexData::Number2([0.5, 0.25])));
+        assert_eq!(
+            get(&tuple, "color"),
+            Some(VertexData::Number4([1.0, 0.0, 0.0, 1.0]))
+        );
     }
 }

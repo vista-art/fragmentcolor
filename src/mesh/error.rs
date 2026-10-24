@@ -12,6 +12,8 @@ pub enum MeshError {
     NoInstanceSchema,
     #[error("GPU streams not initialized")]
     NoGpuStreams,
+    #[error("A vertex attribute takes 1 to 4 numbers, got {0}")]
+    Length(usize),
     #[cfg(wasm)]
     #[error("WASM Mesh Error: {0}")]
     Error(String),

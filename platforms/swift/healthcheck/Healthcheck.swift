@@ -101,4 +101,47 @@ final class Healthcheck: ExampleCase {
         try shader.set("particles", blob)
         try assertEqual(shader.get("particles"), .bytes(blob), "storage root from Data")
     }
+
+    // Vertex and Instance numbers take the type the shader declares when the mesh attaches.
+    // Attaching reads no GPU, so this runs on any simulator.
+    func testVertexNumbersTakeShaderTypes() throws {
+        let source = """
+            @vertex fn vs_main(
+              @location(0) position: vec2<f32>,
+              @location(1) id: u32,
+              @location(2) cell: vec2<i32>,
+            ) -> @builtin(position) vec4<f32> {
+              return vec4f(position, f32(id) + f32(cell.x), 1.);
+            }
+            @fragment fn main() -> @location(0) vec4<f32> { return vec4f(1., 0., 0., 1.); }
+        """
+
+        let vertices = Mesh()
+        vertices.addVertex(try Vertex([0.0, 0.0]).set("id", 7).set("cell", [-1, 2]))
+        try Shader(source).addMesh(vertices)
+
+        let instanced = Mesh()
+        instanced.addVertex(try Vertex([0.0, 0.0]).set("cell", [-1, 2]))
+        try instanced.addInstance(["id": [7]])
+        try Shader(source).addMesh(instanced)
+
+        let negative = Mesh()
+        negative.addVertex(try Vertex([0.0, 0.0]).set("id", 7).set("cell", [0, 0]))
+        negative.addVertex(try Vertex([1.0, 0.0]).set("id", -1).set("cell", [0, 0]))
+        do {
+            try Shader(source).addMesh(negative)
+            throw HealthcheckError.assertion("attaching id = -1 to a u32 input should throw")
+        } catch FragmentColorError.Shader(let message) {
+            guard message.contains("expected u32, got -1 at vertex 1") else {
+                throw HealthcheckError.assertion("-1 for a u32: unexpected message \(message)")
+            }
+        }
+
+        for (label, values) in [("five numbers", [1.0, 2.0, 3.0, 4.0, 5.0]), ("an empty list", [])] {
+            do {
+                _ = try Instance().set("offset", values)
+                throw HealthcheckError.assertion("Instance.set with \(label) should throw")
+            } catch is FragmentColorError {}
+        }
+    }
 }

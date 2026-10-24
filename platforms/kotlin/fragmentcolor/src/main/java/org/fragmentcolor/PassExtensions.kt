@@ -4,9 +4,6 @@ package org.fragmentcolor
 // Provides natural overloads so callers never have to construct
 // RenderableHandle or TargetHandle variants by hand.
 
-@Deprecated("Use PassInput", ReplaceWith("PassInput"))
-typealias MobilePassInput = PassInput
-
 // ── Dependencies (require) ────────────────────────────────────────────────────
 
 /** Declare a [Shader] as a dependency of this pass. */

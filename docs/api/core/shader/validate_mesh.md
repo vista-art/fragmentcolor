@@ -2,16 +2,18 @@
 
 Validate that a Mesh is compatible with this Shader's vertex inputs.
 
-- Checks presence and type for all @location(...) inputs of the vertex entry point.
-- Matches attributes in the following order:
-  1) Instance attributes by explicit @location index (if the mesh has instances)
-  2) Vertex attributes by explicit @location index (position is assumed at @location(0))
-  3) Fallback by name (tries instance first, then vertex)
-- Returns Ok(()) when all inputs are matched with a compatible wgpu::VertexFormat; returns an error otherwise.
+- Checks that every `@location` input of the vertex entry point finds an attribute, and that every vertex and instance value fits the type the input declares.
+- Matches each input in this order:
+  1) by name, instance attributes first, then vertex attributes (`position` included)
+  2) the position, at `@location(0)`
+  3) by the attribute's own location, instance attributes first, then vertex attributes
+- A number fills a float input unless the shader declares an integer type there. An integer input takes whole numbers that fit its type.
+- Returns `Ok(())` when every input matches; returns the same error `Shader::add_mesh` would otherwise.
 
 ## Notes
 
-- This method is called automatically when adding a Mesh to a Shader or Pass, so you usually don't need to call it manually.
+- `Shader::add_mesh` and `Pass::add_mesh` run the same check. Call `validate_mesh` to test a mesh without attaching it.
+- It changes nothing: the mesh isn't attached and its attributes take no type.
 - If the Shader has no @location inputs (fullscreen/builtin-only), attaching a Mesh is rejected.
 - This method does not allocate GPU buffers; it inspects CPU-side vertex/instance data only.
 

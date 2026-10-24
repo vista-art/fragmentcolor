@@ -15,55 +15,11 @@ use std::sync::Arc;
 
 use lsp_doc::lsp_doc;
 
+use crate::pass::Pass;
 use crate::pass::error::PassError;
-use crate::pass::{Pass, PassInput};
 use crate::renderer::platform::mobile::FragmentColorError;
 use crate::renderer::renderable::{RenderableHandle, SceneObjectHandle, TargetHandle};
 use crate::{Mesh, ScreenRegion, Shader, Texture};
-
-// -----------------------------------------------------------------
-// Mobile-only record types
-// -----------------------------------------------------------------
-
-/// Mobile-serializable mirror of `PassInput`.
-///
-/// `PassInput` stores a `Color(u32)` tuple-newtype which uniffi's `Record`
-/// derive does not support. `MobilePassInput` exposes the same information
-/// as named fields that uniffi can marshal. Swift and Kotlin see it as `PassInput`.
-#[derive(Debug, Clone, uniffi::Record)]
-#[uniffi(name = "PassInput")]
-pub struct MobilePassInput {
-    /// If `true`, the previous frame's contents are loaded (no clear).
-    /// If `false`, the `color_rgba` value is used to clear the attachment.
-    pub load: bool,
-    /// Clear color packed as 0xRRGGBBAA (same bit layout as `Color(u32)`).
-    pub color_rgba: u32,
-}
-
-// The accessors every binding reads a `PassInput` with.
-#[uniffi::export(name = "PassInput")]
-impl MobilePassInput {
-    #[uniffi::method(name = "loadsPrevious")]
-    #[lsp_doc("docs/api/core/pass_input/loads_previous.md")]
-    pub fn loads_previous_mobile(&self) -> bool {
-        self.load
-    }
-
-    #[uniffi::method(name = "color")]
-    #[lsp_doc("docs/api/core/pass_input/color.md")]
-    pub fn color_mobile(&self) -> Vec<f32> {
-        crate::Color(self.color_rgba).to_f32_array().to_vec()
-    }
-}
-
-impl From<PassInput> for MobilePassInput {
-    fn from(pi: PassInput) -> Self {
-        Self {
-            load: pi.load,
-            color_rgba: pi.color.0,
-        }
-    }
-}
 
 // -----------------------------------------------------------------
 // Pass (uniffi bindings)
@@ -238,17 +194,6 @@ impl Pass {
                 .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))?;
         }
         Ok(())
-    }
-
-    /// Return the current input descriptor for this pass.
-    ///
-    /// The mobile binding returns a `MobilePassInput` record because
-    /// `PassInput` contains a `Color(u32)` tuple-newtype that uniffi cannot
-    /// serialize as a `Record`.
-    #[uniffi::method(name = "getInput")]
-    #[lsp_doc("docs/api/core/pass/hidden/get_input_mobile.md")]
-    pub fn get_input_mobile(&self) -> MobilePassInput {
-        self.get_input().into()
     }
 
     /// Return `true` if this is a compute pass; `false` for a render pass.

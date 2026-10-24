@@ -26,7 +26,9 @@ pub mod composer;
 pub use composer::{ShaderInput, ShaderPart};
 
 mod coerce;
-pub(crate) use coerce::UniformInput;
+pub(crate) use coerce::{UniformInput, is_whole_in};
+
+mod attach;
 
 pub(crate) mod registry;
 
@@ -157,7 +159,7 @@ impl Shader {
 
     #[lsp_doc("docs/api/core/shader/validate_mesh.md")]
     pub fn validate_mesh(&self, mesh: &crate::mesh::Mesh) -> Result<(), ShaderError> {
-        self.object.validate_mesh(mesh.object.clone())
+        self.object.validate_mesh(&mesh.object)
     }
 
     #[lsp_doc("docs/api/core/shader/is_compute.md")]
@@ -326,11 +328,17 @@ impl ShaderObject {
         shader
     }
 
-    /// Add a mesh to this shader.
+    /// Add a mesh to this shader, giving its untyped attributes the types this shader declares.
     pub fn add_mesh(&self, mesh: Arc<crate::mesh::MeshObject>) -> Result<(), ShaderError> {
-        self.validate_mesh(mesh.clone())?;
+        let types = self.bind_mesh(&mesh)?;
+        mesh.declare(types)?;
         self.meshes.write().push(mesh);
         Ok(())
+    }
+
+    /// Check that a mesh can attach to this shader, without attaching it or recording any type.
+    pub(crate) fn validate_mesh(&self, mesh: &crate::mesh::MeshObject) -> Result<(), ShaderError> {
+        self.bind_mesh(mesh).map(drop)
     }
 
     /// Remove a mesh from this shader.
@@ -512,182 +520,6 @@ impl ShaderObject {
             .get(key)
             .ok_or(ShaderError::UniformNotFound(key.into()))?;
         Ok(uniform.clone())
-    }
-
-    /// Validate that a Mesh is compatible with this Shader's vertex inputs.
-    pub(crate) fn validate_mesh(
-        &self,
-        mesh: Arc<crate::mesh::MeshObject>,
-    ) -> Result<(), ShaderError> {
-        let inputs = self.reflect_vertex_inputs()?;
-        if inputs.is_empty() {
-            return Err(ShaderError::InvalidKey(
-                "
-                Invalid Mesh: Shader has no vertex inputs and renders fullscreen.\n
-
-                To create a compatible Shader, use Shader::from_vertex() or Shader::from_mesh(),
-                or provide a vertex shader with at least a 'position' input.
-                "
-                .into(),
-            ));
-        }
-
-        use std::collections::HashMap;
-        // Build maps from the first vertex
-        let (pos_fmt_opt, v_loc_map, v_name_map) = {
-            let verts = mesh.verts.read();
-            if let Some(v) = verts.first() {
-                let pos_fmt = if v.dimensions <= 2 {
-                    wgpu::VertexFormat::Float32x2
-                } else {
-                    wgpu::VertexFormat::Float32x3
-                };
-                // location -> (name, fmt) for vertex properties; position is handled specially at loc 0
-                let mut loc: HashMap<u32, (String, wgpu::VertexFormat)> = HashMap::new();
-                for (name, loc_idx) in v.prop_locations.iter() {
-                    if let Some(val) = v.properties.get(name) {
-                        loc.insert(*loc_idx, (name.clone(), val.format()));
-                    }
-                }
-                // name -> fmt, include position under name "position"
-                let mut by_name: HashMap<String, wgpu::VertexFormat> = HashMap::new();
-                by_name.insert("position".to_string(), pos_fmt);
-                for (name, val) in v.properties.iter() {
-                    by_name.insert(name.clone(), val.format());
-                }
-                (Some(pos_fmt), loc, by_name)
-            } else {
-                // No vertices present: cannot satisfy vertex inputs
-                (None, HashMap::new(), HashMap::new())
-            }
-        };
-
-        // Build maps from the first instance (if present), falling back to
-        // the schema declared on the Mesh when no instances are present yet.
-        // `Pass::add_model` declares the model-instance schema (the four vec4
-        // columns of mat4x4) without populating any instances on the Mesh —
-        // the per-Model transforms ride a Pass-owned instance buffer instead.
-        // Without this fall-through, validate_mesh would reject the Material's
-        // PBR shader because `model_0..3` look unprovisioned.
-        let (i_loc_map, i_name_map) = {
-            let insts = mesh.insts.read();
-            if let Some(i) = insts.first() {
-                let mut loc: HashMap<u32, (String, wgpu::VertexFormat)> = HashMap::new();
-                let mut by_name: HashMap<String, wgpu::VertexFormat> = HashMap::new();
-                for (name, loc_idx) in i.prop_locations.iter() {
-                    if let Some(val) = i.properties.get(name) {
-                        loc.insert(*loc_idx, (name.clone(), val.format()));
-                        by_name.insert(name.clone(), val.format());
-                    }
-                }
-                (loc, by_name)
-            } else if let Some(schema) = mesh.instance_schema.read().as_ref() {
-                // Schema-only mode: locations aren't known (no prop_locations
-                // without an Instance), so only the by-name map is populated.
-                // The renderer's vertex_buffer_layouts has the same name-based
-                // fallback and the pipeline layout matches.
-                let mut by_name: HashMap<String, wgpu::VertexFormat> = HashMap::new();
-                for field in schema.fields.iter() {
-                    by_name.insert(field.name.clone(), field.fmt);
-                }
-                (HashMap::new(), by_name)
-            } else {
-                (HashMap::new(), HashMap::new())
-            }
-        };
-
-        // position location is assumed to be 0
-        let pos_loc: u32 = 0;
-
-        // Validate each shader input. Name match wins over location match —
-        // see the parallel comment in `Renderer::vertex_buffer_layouts` for
-        // the why: shader `@location(...)` indices and the mesh's
-        // buffer-local location maps live in different namespaces, so any
-        // shader that mixes fixed locations with the Vertex's
-        // auto-incremented ones (e.g. PBR with `model_0..model_3` at 3..6
-        // alongside `color0` / `uv1` on the vertex side) trips the
-        // location-first matcher.
-        for inp in inputs.iter() {
-            let mut matched = false;
-
-            // 1) Name match against instance (e.g. `model_*`).
-            if let Some(fmt) = i_name_map.get(&inp.name) {
-                if *fmt == inp.format {
-                    matched = true;
-                } else {
-                    return Err(ShaderError::TypeMismatch(format!(
-                        "Type mismatch for shader input '{}' by name: shader expects {:?}, mesh has {:?}",
-                        inp.name, inp.format, fmt
-                    )));
-                }
-            }
-
-            // 2) Name match against vertex (NORMAL / UV0 / UV1 / COLOR0 /
-            //    TANGENT etc.).
-            if !matched && let Some(fmt) = v_name_map.get(&inp.name) {
-                if *fmt == inp.format {
-                    matched = true;
-                } else {
-                    return Err(ShaderError::TypeMismatch(format!(
-                        "Type mismatch for shader input '{}' by name: shader expects {:?}, mesh has {:?}",
-                        inp.name, inp.format, fmt
-                    )));
-                }
-            }
-
-            // 3) Position fallback — the only vertex slot that's commonly
-            //    unnamed on the shader side.
-            if !matched && inp.location == pos_loc {
-                if let Some(pos_fmt) = pos_fmt_opt {
-                    if pos_fmt == inp.format {
-                        matched = true;
-                    } else {
-                        return Err(ShaderError::TypeMismatch(format!(
-                            "Type mismatch for vertex 'position' @location({}): shader expects {:?}, mesh has {:?}",
-                            inp.location, inp.format, pos_fmt
-                        )));
-                    }
-                } else {
-                    return Err(ShaderError::InvalidKey(
-                        "Mesh has no vertices to provide 'position'".into(),
-                    ));
-                }
-            }
-
-            // 4) Instance match by buffer-local location index (raw shaders
-            //    without canonical names).
-            if !matched && let Some((_, f)) = i_loc_map.get(&inp.location) {
-                if *f == inp.format {
-                    matched = true;
-                } else {
-                    return Err(ShaderError::TypeMismatch(format!(
-                        "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                        inp.name, inp.location, inp.format, *f
-                    )));
-                }
-            }
-
-            // 5) Vertex match by buffer-local location index.
-            if !matched && let Some((_, f)) = v_loc_map.get(&inp.location) {
-                if *f == inp.format {
-                    matched = true;
-                } else {
-                    return Err(ShaderError::TypeMismatch(format!(
-                        "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                        inp.name, inp.location, inp.format, *f
-                    )));
-                }
-            }
-
-            if !matched {
-                return Err(ShaderError::InvalidKey(format!(
-                    "Mesh attribute not found for shader input '{}' @location({})",
-                    inp.name, inp.location
-                )));
-            }
-        }
-
-        Ok(())
     }
 
     /// Reflect the vertex entry-point inputs as (name, location, format).
@@ -989,10 +821,13 @@ fn build_wgsl_from_vertex(v: &crate::mesh::Vertex) -> String {
         "vec3<f32>"
     };
 
-    // Optional color: if present and F32x4, capture its location
+    // Optional color: four floats or four plain numbers, at the vertex's own location
     let mut color_decl: Option<(u32, &'static str)> = None;
     if let Some(val) = v.properties.get("color")
-        && matches!(val, crate::mesh::VertexValue::F32x4(_))
+        && matches!(
+            val,
+            crate::mesh::VertexData::F32x4(_) | crate::mesh::VertexData::Number4(_)
+        )
         && let Some(loc) = v.prop_locations.get("color").cloned()
     {
         color_decl = Some((loc, "vec4<f32>"));
@@ -1179,10 +1014,10 @@ fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut 
         let e2 = shader
             .validate_mesh(&m_mismatch)
             .expect_err("mismatch should err");
-        match e2 {
-            ShaderError::TypeMismatch(_) => {}
-            _ => panic!("unexpected error kind: {:?}", e2),
-        }
+        assert_eq!(
+            e2.to_string(),
+            "Mesh attribute offset: expected vec2<f32>, got vec3<f32> at instance 0"
+        );
     }
 
     const SHADER: &str = r#"
@@ -1830,7 +1665,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
         let shader = crate::Shader::new(wgsl).expect("shader");
 
         let mesh = crate::mesh::Mesh::new();
-        use crate::mesh::{Vertex, VertexValue};
+        use crate::mesh::{Vertex, VertexData};
         mesh.add_vertices([
             Vertex::new([-0.5, -0.5, 0.0]),
             Vertex::new([0.5, -0.5, 0.0]),
@@ -1838,13 +1673,110 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
         ]);
         // Add instance with wrong-typed "offset" (vec3 instead of vec2)
         mesh.add_instance(
-            Vertex::new([0.0, 0.0]).set("offset", VertexValue::F32x3([0.0, 0.0, 0.0])),
+            Vertex::new([0.0, 0.0]).set("offset", VertexData::F32x3([0.0, 0.0, 0.0])),
         );
 
         let res = shader.add_mesh(&mesh);
         assert!(res.is_err());
         let s = format!("{}", res.unwrap_err());
-        assert!(s.contains("Type mismatch for shader input 'offset'"));
+        assert_eq!(
+            s,
+            "Mesh attribute offset: expected vec2<f32>, got vec3<f32> at instance 0"
+        );
+
+        // Three plain numbers can't fill a vec2 either.
+        let mesh = crate::mesh::Mesh::new();
+        mesh.add_vertices([
+            Vertex::new([-0.5, -0.5, 0.0]),
+            Vertex::new([0.5, -0.5, 0.0]),
+            Vertex::new([0.0, 0.5, 0.0]),
+        ]);
+        mesh.add_instance(Vertex::new([0.0, 0.0]).set("offset", [0.0, 0.0, 0.0]));
+        let s = shader.add_mesh(&mesh).expect_err("count").to_string();
+        assert_eq!(
+            s,
+            "Mesh attribute offset: expected vec2<f32>, got 3 number(s) at instance 0"
+        );
+    }
+
+    const TYPED_ID: &str = r#"
+struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat) id: u32 };
+@vertex
+fn vs_main(@location(0) pos: vec2<f32>, @location(1) id: u32) -> VOut {
+  var out: VOut;
+  out.pos = vec4<f32>(pos, 0.0, 1.0);
+  out.id = id;
+  return out;
+}
+@fragment
+fn fs_main(v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(f32(v.id)); }
+"#;
+
+    const FLOAT_ID: &str = r#"
+@vertex
+fn vs_main(@location(0) pos: vec2<f32>, @location(1) id: f32) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(pos, id, 1.0);
+}
+@fragment
+fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+"#;
+
+    fn mesh_with_ids(ids: &[f64]) -> crate::mesh::Mesh {
+        let mesh = crate::mesh::Mesh::new();
+        for (index, id) in ids.iter().enumerate() {
+            let x = index as f32;
+            mesh.add_vertex(crate::mesh::Vertex::new([x, 0.0]).set("id", *id));
+        }
+        mesh
+    }
+
+    // Story: validate_mesh is a dry run. It checks the mesh, and a later
+    // shader may still give its plain numbers another type.
+    #[test]
+    fn validate_mesh_commits_nothing() {
+        let unsigned = Shader::new(TYPED_ID).expect("shader");
+        let mesh = mesh_with_ids(&[1.0, 2.0, 3.0]);
+        unsigned.validate_mesh(&mesh).expect("fits");
+        assert!(mesh.object.types.read().vertex.is_empty());
+
+        let float = Shader::new(FLOAT_ID).expect("shader");
+        float.add_mesh(&mesh).expect("still untyped");
+        assert_eq!(
+            mesh.object.types.read().vertex.get("id"),
+            Some(&wgpu::VertexFormat::Float32)
+        );
+    }
+
+    // Story: an attach that fails leaves no type behind, so the next shader gets a clean try.
+    #[test]
+    fn failed_attach_leaves_no_types() {
+        let unsigned = Shader::new(TYPED_ID).expect("shader");
+        let mesh = mesh_with_ids(&[1.0, 2.0, -1.0]);
+        let error = unsigned.add_mesh(&mesh).expect_err("negative u32");
+        assert_eq!(
+            error.to_string(),
+            "Mesh attribute id: expected u32, got -1 at vertex 2"
+        );
+        assert!(mesh.object.types.read().vertex.is_empty());
+        assert!(unsigned.object.meshes.read().is_empty());
+
+        let float = Shader::new(FLOAT_ID).expect("shader");
+        float.add_mesh(&mesh).expect("floats take -1");
+        assert_eq!(float.object.meshes.read().len(), 1);
+    }
+
+    // Story: the shader Shader::from_vertex builds reads a color of four plain numbers.
+    #[test]
+    fn from_vertex_reads_an_untyped_color() {
+        let vertex = crate::mesh::Vertex::new([0.0, 0.0]).set("color", [1.0, 0.0, 0.0, 1.0]);
+        let shader = Shader::from_vertex(&vertex);
+        let inputs = shader.object.reflect_vertex_inputs().expect("inputs");
+        assert!(inputs.iter().any(|input| input.name == "color"
+            && input.format == wgpu::VertexFormat::Float32x4));
+
+        let mesh = crate::mesh::Mesh::new();
+        mesh.add_vertex(vertex);
+        shader.add_mesh(&mesh).expect("color attaches");
     }
 
     // Story: non-blocking set() enqueues while storage is write-locked; flush_pending applies updates

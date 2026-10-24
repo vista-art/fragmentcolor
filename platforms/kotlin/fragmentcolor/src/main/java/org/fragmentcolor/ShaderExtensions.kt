@@ -40,6 +40,7 @@ fun Shader.set(key: String, value: IntArray) =
 fun Shader.set(key: String, value: LongArray) =
     set(key, UniformValue.Numbers(value.map { it.toDouble() }))
 
+@OptIn(ExperimentalUnsignedTypes::class)
 fun Shader.set(key: String, value: UIntArray) =
     set(key, UniformValue.Numbers(value.map { it.toDouble() }))
 

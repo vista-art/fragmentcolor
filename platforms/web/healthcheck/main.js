@@ -1,6 +1,6 @@
 import init, {
   Renderer, Shader, Pass, Mesh, Vertex, Instance, Scene, Model, Material, Camera, Mipmap,
-  TextureFormat, TextureUsage, VertexValue, set_log_level,
+  TextureFormat, TextureUsage, set_log_level,
 } from "fragmentcolor";
 import * as fc from "fragmentcolor";
 
@@ -285,6 +285,78 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
     console.log('mesh.instances image bytes:', img?.length || 0);
 });
 
+// A plain number on a Vertex or Instance takes the type the shader declares at its location.
+// The vertex stage compares the values, so every pixel is exactly green or red.
+await withModule('platforms.web.healthcheck.vertex.types', async () => {
+    const renderer = new Renderer();
+    const typed = `
+struct VOut {
+  @builtin(position) pos: vec4<f32>,
+  @location(0) @interpolate(flat) ok: u32,
+};
+@vertex fn vs_main(
+  @location(0) position: vec2<f32>,
+  @location(1) id: u32,
+  @location(2) cell: vec2<i32>,
+) -> VOut {
+  var out: VOut;
+  out.pos = vec4f(position, 0., 1.);
+  out.ok = select(0u, 1u, id == 16777217u && all(cell == vec2<i32>(-1, 2)));
+  return out;
+}
+@fragment fn fs_main(v: VOut) -> @location(0) vec4<f32> {
+  if (v.ok == 1u) { return vec4f(0., 1., 0., 1.); }
+  return vec4f(1., 0., 0., 1.);
+}
+`;
+    const corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+    const green = async (label, shader) => {
+      const target = await renderer.createTextureTarget([8, 8]);
+      renderer.render(Pass.fromShader(label, shader), target);
+      const image = await target.getImage();
+      const pixel = Array.from(image.slice(0, 4));
+      if (pixel.join() !== '0,255,0,255') throw new Error(`${label}: pixel ${pixel}, want green`);
+    };
+
+    // 2^24 + 1 only survives as an integer, so a float transport would draw red.
+    const vertices = new Mesh();
+    for (const corner of corners) {
+      vertices.addVertex(new Vertex(corner).set('id', 16777217).set('cell', new Int32Array([-1, 2])));
+    }
+    const vertexShader = new Shader(typed);
+    vertexShader.addMesh(vertices);
+    await green('vertex numbers', vertexShader);
+
+    const instanced = new Mesh();
+    for (const corner of corners) instanced.addVertex(new Vertex(corner).set('cell', [-1, 2]));
+    instanced.addInstance({ id: 16777217 });
+    const instanceShader = new Shader(typed);
+    instanceShader.addMesh(instanced);
+    await green('instance numbers', instanceShader);
+
+    // A value that doesn't fit the declared type fails the attach and names it.
+    const rejects = (label, mesh, needle) => {
+      try {
+        new Shader(typed).addMesh(mesh);
+      } catch (e) {
+        if (!(e instanceof Error) || !e.message.includes(needle)) {
+          throw new Error(`${label}: expected an Error naming "${needle}", got ${e?.message ?? e}`);
+        }
+        console.log(`${label} rejected:`, e.message);
+        return;
+      }
+      throw new Error(`${label} should fail to attach`);
+    };
+    const negative = new Mesh();
+    negative.addVertex(new Vertex([0.0, 0.0]).set('id', 7).set('cell', [0, 0]));
+    negative.addVertex(new Vertex([1.0, 0.0]).set('id', -1).set('cell', [0, 0]));
+    rejects('-1 for a u32', negative, 'expected u32, got -1 at vertex 1');
+    const fraction = new Mesh();
+    fraction.addVertex(new Vertex([0.0, 0.0]).set('id', 7).set('cell', [2.5, 0]));
+    rejects('2.5 for an i32', fraction, 'expected vec2<i32>, got 2.5');
+    console.log('Vertex and Instance numbers take the shader types');
+});
+
 // Signal success for Playwright harness if we reached this point
 // Push constants smoke: solid color via var<immediate>
 await withModule('platforms.web.healthcheck.push_constant.smoke', async () => {
@@ -491,11 +563,11 @@ struct Data { items: array<vec4<f32>, 2> };
     shader.set('data', blob.buffer);
     same('storage root from an ArrayBuffer', shader.get('data'), blob);
 
-    // Vertex constants, VertexValue, and vertices given in parts.
+    // Vertex constants, attribute values, and vertices given in parts.
     if (Vertex.UV0 !== 'uv0' || Vertex.NORMAL !== 'normal') fail('Vertex constants are missing');
-    new Vertex([0.0, 0.0]).set('id', VertexValue.u32(7));
-    throws('VertexValue.u32(-1)', () => VertexValue.u32(-1));
     throws('Vertex.set with a string item', () => new Vertex([0.0, 0.0]).set('uv', [1, 'x']));
+    throws('Vertex.set with five numbers', () => new Vertex([0.0, 0.0]).set('uv', [1, 2, 3, 4, 5]));
+    throws('Instance.set with an empty list', () => new Instance().set('offset', []));
     new Mesh().addVertex([[0.0, 0.0, 0.0], [0.0, 1.0]]);
     new Mesh().addVertices([[[1.0, 0.0, 0.0], [1.0, 1.0], [1.0, 1.0, 1.0, 1.0]]]);
 

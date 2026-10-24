@@ -6,9 +6,10 @@ id. The renderer draws the mesh once per instance and feeds each copy its
 own values.
 
 Instance attributes have their own `@location` numbering, separate from the
-vertex attributes, and the shader matches them the same way: by location
-first, then by name. On a name clash, the instance attribute wins over the
-vertex attribute.
+vertex attributes, and the shader matches them the same way: by name first,
+then by location. On a clash, the instance attribute wins over the vertex
+attribute. A number fills a float input unless the shader declares an
+integer type at that location.
 
 Most code doesn't build one by hand.
 [`Vertex::create_instance`](https://fragmentcolor.org/api/geometry/vertex#create_instance)

@@ -22,7 +22,6 @@ from fragmentcolor import (
     TextureFormat,
     TextureUsage,
     Vertex,
-    VertexValue,
     WindowTarget,
 )
 from platforms.python.examples.main import run_all, take_gpu_errors
@@ -329,11 +328,12 @@ def check_stub():
     print("The stub has no passes or renderable_type")
 
 
+# Green when `id` arrives as the u32 16777217 and `cell` as the vec2<i32> (-1, 2), red otherwise.
+# The vertex stage compares the values, so every pixel is exactly green or red.
 INTEGER_ATTRIBUTES_SHADER = """
 struct VOut {
   @builtin(position) pos: vec4<f32>,
-  @location(0) @interpolate(flat) id: u32,
-  @location(1) @interpolate(flat) cell: vec2<i32>,
+  @location(0) @interpolate(flat) ok: u32,
 };
 @vertex fn vs_main(
   @location(0) position: vec2<f32>,
@@ -342,37 +342,67 @@ struct VOut {
 ) -> VOut {
   var out: VOut;
   out.pos = vec4f(position, 0., 1.);
-  out.id = id;
-  out.cell = cell;
+  out.ok = select(0u, 1u, id == 16777217u && all(cell == vec2<i32>(-1, 2)));
   return out;
 }
 @fragment fn fs_main(v: VOut) -> @location(0) vec4<f32> {
-  return vec4f(f32(v.id), f32(v.cell.x), 0., 1.);
+  if (v.ok == 1u) { return vec4f(0., 1., 0., 1.); }
+  return vec4f(1., 0., 0., 1.);
 }
 """
 
+FULLSCREEN = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]
 
-def check_vertex_values():
-    """A VertexValue keeps its integer type through Vertex.set and Instance.set."""
-    mesh = Mesh()
-    mesh.add_vertex(
-        Vertex([0.0, 0.0]).set("id", VertexValue.u32(3)).set("cell", VertexValue.i32x2([-1, 2])))
-    Shader(INTEGER_ATTRIBUTES_SHADER).add_mesh(mesh)
 
-    plain = Mesh()
-    plain.add_vertex(Vertex([0.0, 0.0]).set("id", 3).set("cell", [-1, 2]))
-    try:
-        Shader(INTEGER_ATTRIBUTES_SHADER).add_mesh(plain)
-    except Exception as e:
-        print(f"plain ints read as floats: {e}")
-    else:
-        raise AssertionError("plain Python ints should read as float attributes")
+def check_vertex_values(renderer):
+    """Plain numbers on a Vertex or Instance take the type the shader declares."""
+    def assert_green(label, shader):
+        target = renderer.create_texture_target([8, 8])
+        renderer.render(Pass.from_shader(label, shader), target)
+        pixel = list(target.get_image()[0, 0])
+        assert pixel == [0, 255, 0, 255], f"{label}: pixel {pixel}, want green"
+
+    # 2^24 + 1 only survives as an integer, so a float transport would draw red.
+    vertices = Mesh()
+    for corner in FULLSCREEN:
+        vertices.add_vertex(Vertex(corner).set("id", 16777217).set("cell", np.array([-1, 2], dtype=np.int32)))
+    vertex_shader = Shader(INTEGER_ATTRIBUTES_SHADER)
+    vertex_shader.add_mesh(vertices)
+    assert_green("vertex numbers", vertex_shader)
 
     instanced = Mesh()
-    instanced.add_vertex(Vertex([0.0, 0.0]).set("cell", VertexValue.i32x2([0, 0])))
-    instanced.add_instance(Instance().set("id", VertexValue.u32(7)))
-    Shader(INTEGER_ATTRIBUTES_SHADER).add_mesh(instanced)
-    print("VertexValue keeps integer attribute types")
+    for corner in FULLSCREEN:
+        instanced.add_vertex(Vertex(corner).set("cell", (-1, 2)))
+    instanced.add_instance({"id": 16777217})
+    instance_shader = Shader(INTEGER_ATTRIBUTES_SHADER)
+    instance_shader.add_mesh(instanced)
+    assert_green("instance numbers", instance_shader)
+
+    def rejects(label, mesh, needle):
+        try:
+            Shader(INTEGER_ATTRIBUTES_SHADER).add_mesh(mesh)
+        except FragmentColorError as e:
+            assert needle in str(e), f"{label}: {e!r} does not name {needle!r}"
+            print(f"{label} rejected: {e}")
+            return
+        raise AssertionError(f"{label} should raise FragmentColorError")
+
+    negative = Mesh()
+    negative.add_vertex(Vertex([0.0, 0.0]).set("id", 7).set("cell", [0, 0]))
+    negative.add_vertex(Vertex([1.0, 0.0]).set("id", -1).set("cell", [0, 0]))
+    rejects("-1 for a u32", negative, "expected u32, got -1 at vertex 1")
+    fraction = Mesh()
+    fraction.add_vertex(Vertex([0.0, 0.0]).set("id", 7).set("cell", [2.5, 0]))
+    rejects("2.5 for an i32", fraction, "expected vec2<i32>, got 2.5")
+
+    for label, values in (("five numbers", [1, 2, 3, 4, 5]), ("no numbers", [])):
+        try:
+            Instance().set("offset", values)
+        except FragmentColorError as e:
+            print(f"Instance.set with {label} raised: {e}")
+            continue
+        raise AssertionError(f"Instance.set with {label} should raise FragmentColorError")
+    print("Vertex and Instance numbers take the shader types")
 
 
 INSTANCED_SHADER = """
@@ -575,7 +605,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_image_layout(renderer)
     check_tight_writes(renderer)
     check_error_types(renderer)
-    check_vertex_values()
+    check_vertex_values(renderer)
     check_mesh_inputs()
     check_require_graph(renderer)
     check_value_types()

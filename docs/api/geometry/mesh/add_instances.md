@@ -15,12 +15,9 @@ Adding instances also clears any previously set instance count override
 use fragmentcolor::mesh::{Mesh, Instance};
 
 let m = Mesh::new();
-let red:   [f32; 4] = [1.0, 0.0, 0.0, 1.0];
-let green: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
-let blue:  [f32; 4] = [0.0, 0.0, 1.0, 1.0];
 m.add_instances([
-    Instance::new().set("tint", red),
-    Instance::new().set("tint", green),
-    Instance::new().set("tint", blue),
+    Instance::new().set("tint", [1.0, 0.0, 0.0, 1.0]),
+    Instance::new().set("tint", [0.0, 1.0, 0.0, 1.0]),
+    Instance::new().set("tint", [0.0, 0.0, 1.0, 1.0]),
 ]);
 ```

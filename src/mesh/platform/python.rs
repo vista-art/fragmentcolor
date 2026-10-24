@@ -4,38 +4,36 @@ use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-use crate::mesh::{Instance, Mesh, Vertex, VertexValue};
+use crate::mesh::{Instance, Mesh, MeshError, Vertex, VertexData};
 use lsp_doc::lsp_doc;
 
-/// A vertex or instance attribute value from Python. A `VertexValue`
-/// keeps its type, and a number or 1 to 4 numbers read as floats.
-/// A one-item list is the scalar it holds, as in every binding.
+/// A vertex or instance attribute from Python:
+/// a number, or a sequence of 1 to 4 numbers such as a NumPy array.
+/// Sequences come first, so a NumPy array never passes through `float()`.
+/// The numbers take the type the shader declares when the mesh attaches to it.
 #[derive(FromPyObject)]
 pub enum PyAttributeValue {
-    #[pyo3(annotation = "VertexValue")]
-    Typed(PyVertexValue),
+    #[pyo3(annotation = "Sequence[float]")]
+    Numbers(Vec<f64>),
     #[pyo3(annotation = "float")]
-    X(f32),
-    #[pyo3(annotation = "[x]")]
-    Single([f32; 1]),
-    #[pyo3(annotation = "[x, y]")]
-    Xy([f32; 2]),
-    #[pyo3(annotation = "[x, y, z]")]
-    Xyz([f32; 3]),
-    #[pyo3(annotation = "[x, y, z, w]")]
-    Xyzw([f32; 4]),
+    Number(f64),
 }
 
-impl From<PyAttributeValue> for VertexValue {
-    fn from(value: PyAttributeValue) -> Self {
+impl TryFrom<PyAttributeValue> for VertexData {
+    type Error = MeshError;
+
+    fn try_from(value: PyAttributeValue) -> Result<Self, Self::Error> {
         match value {
-            PyAttributeValue::Typed(typed) => typed.0,
-            PyAttributeValue::X(x) => x.into(),
-            PyAttributeValue::Single([x]) => x.into(),
-            PyAttributeValue::Xy(xy) => xy.into(),
-            PyAttributeValue::Xyz(xyz) => xyz.into(),
-            PyAttributeValue::Xyzw(xyzw) => xyzw.into(),
+            PyAttributeValue::Numbers(numbers) => VertexData::try_from(numbers.as_slice()),
+            PyAttributeValue::Number(number) => Ok(number.into()),
         }
+    }
+}
+
+/// A mesh error raises `FragmentColorError`.
+impl From<MeshError> for PyErr {
+    fn from(error: MeshError) -> Self {
+        crate::error::PyFragmentColorError::new_err(error.to_string())
     }
 }
 
@@ -100,7 +98,7 @@ pub enum PyIntoInstance<'py> {
     Instance(Instance),
     #[pyo3(annotation = "Vertex")]
     Vertex(Vertex),
-    #[pyo3(annotation = "dict[str, VertexValue | float | Sequence[float]]")]
+    #[pyo3(annotation = "dict[str, float | Sequence[float]]")]
     Attributes(Bound<'py, PyDict>),
 }
 
@@ -121,12 +119,12 @@ impl TryFrom<PyIntoInstance<'_>> for Instance {
                 .map_err(|_| PyTypeError::new_err("instance attribute names must be str"))?;
             let value: PyAttributeValue = value.extract().map_err(|cause| {
                 let err = PyTypeError::new_err(format!(
-                    "instance attribute '{key}' must be a VertexValue, a number, or 1 to 4 numbers"
+                    "instance attribute '{key}' must be a number or 1 to 4 numbers"
                 ));
                 err.set_cause(dict.py(), Some(cause));
                 err
             })?;
-            instance = instance.set(&key, VertexValue::from(value));
+            instance = instance.set(&key, VertexData::try_from(value)?);
         }
         Ok(instance)
     }
@@ -197,8 +195,8 @@ impl Vertex {
 
     #[pyo3(name = "set")]
     #[lsp_doc("docs/api/geometry/vertex/set.md")]
-    pub fn set_py(&self, key: &str, value: PyAttributeValue) -> Self {
-        self.clone().set(key, VertexValue::from(value))
+    pub fn set_py(&self, key: &str, value: PyAttributeValue) -> Result<Self, MeshError> {
+        Ok(self.clone().set(key, VertexData::try_from(value)?))
     }
 
     #[pyo3(name = "create_instance")]
@@ -218,8 +216,8 @@ impl Instance {
 
     #[pyo3(name = "set")]
     #[lsp_doc("docs/api/geometry/instance/set.md")]
-    pub fn set_py(&self, key: &str, value: PyAttributeValue) -> Self {
-        self.clone().set(key, VertexValue::from(value))
+    pub fn set_py(&self, key: &str, value: PyAttributeValue) -> Result<Self, MeshError> {
+        Ok(self.clone().set(key, VertexData::try_from(value)?))
     }
 }
 
@@ -304,75 +302,5 @@ impl Mesh {
     pub fn passes_py(&self) -> crate::PyPassIterator {
         let list = <Self as crate::Renderable>::passes(self);
         crate::PyPassIterator(list.iter().cloned().collect())
-    }
-}
-
-/// A vertex attribute value of an exact type, such as `VertexValue.u32(3)`
-/// for a `u32` shader input. Python reads plain numbers and lists as floats.
-#[pyclass(name = "VertexValue", from_py_object)]
-#[derive(Clone)]
-pub struct PyVertexValue(VertexValue);
-
-#[pymethods]
-impl PyVertexValue {
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn f32(x: f32) -> Self {
-        Self(VertexValue::F32(x))
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn f32x2(x: [f32; 2]) -> Self {
-        Self(VertexValue::F32x2(x))
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn f32x3(x: [f32; 3]) -> Self {
-        Self(VertexValue::F32x3(x))
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn f32x4(x: [f32; 4]) -> Self {
-        Self(VertexValue::F32x4(x))
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn u32(x: u32) -> Self {
-        Self(VertexValue::U32(x))
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn u32x2(x: [u32; 2]) -> Self {
-        Self(VertexValue::U32x2(x))
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn u32x3(x: [u32; 3]) -> Self {
-        Self(VertexValue::U32x3(x))
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn u32x4(x: [u32; 4]) -> Self {
-        Self(VertexValue::U32x4(x))
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn i32(x: i32) -> Self {
-        Self(VertexValue::I32(x))
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn i32x2(x: [i32; 2]) -> Self {
-        Self(VertexValue::I32x2(x))
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn i32x3(x: [i32; 3]) -> Self {
-        Self(VertexValue::I32x3(x))
-    }
-    #[doc(hidden)]
-    #[staticmethod]
-    pub fn i32x4(x: [i32; 4]) -> Self {
-        Self(VertexValue::I32x4(x))
     }
 }

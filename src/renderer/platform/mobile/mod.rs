@@ -64,6 +64,12 @@ impl From<crate::texture::TextureError> for FragmentColorError {
     }
 }
 
+impl From<crate::mesh::MeshError> for FragmentColorError {
+    fn from(e: crate::mesh::MeshError) -> Self {
+        FragmentColorError::Render(e.to_string())
+    }
+}
+
 impl From<crate::pass::PassError> for FragmentColorError {
     fn from(e: crate::pass::PassError) -> Self {
         FragmentColorError::Render(e.to_string())

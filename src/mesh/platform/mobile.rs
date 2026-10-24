@@ -15,7 +15,7 @@
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
-use crate::mesh::{Instance, Mesh, Quad, Vertex, VertexValue};
+use crate::mesh::{Instance, Mesh, Quad, Vertex, VertexData};
 use crate::renderer::platform::mobile::FragmentColorError;
 
 // -----------------------------------------------------------------
@@ -57,14 +57,17 @@ impl Vertex {
         Ok(Arc::new(v))
     }
 
-    /// Set a vertex attribute by key. `VertexValue` is a `uniffi::Enum` so
-    /// Swift/Kotlin callers construct the variant directly.
-    ///
-    /// Returns the updated `Vertex` (builder style).
+    /// Set a vertex attribute to 1 to 4 numbers.
+    /// The shader that reads it decides their type when the mesh attaches.
     #[uniffi::method(name = "set")]
     #[lsp_doc("docs/api/geometry/vertex/hidden/set_mobile.md")]
-    pub fn set_mobile(self: Arc<Self>, key: String, value: VertexValue) -> Arc<Self> {
-        Arc::new((*self).clone().set(&key, value))
+    pub fn set_mobile(
+        self: Arc<Self>,
+        key: String,
+        value: Vec<f64>,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        let value = VertexData::try_from(value.as_slice())?;
+        Ok(Arc::new((*self).clone().set(&key, value)))
     }
 
     /// Create an `Instance` seeded from this vertex's per-vertex attributes.
@@ -89,13 +92,17 @@ impl Instance {
         Arc::new(Self::new())
     }
 
-    /// Set a per-instance attribute by key.
-    ///
-    /// Returns the updated `Instance` (builder style).
+    /// Set a per-instance attribute to 1 to 4 numbers.
+    /// The shader that reads it decides their type when the mesh attaches.
     #[uniffi::method(name = "set")]
     #[lsp_doc("docs/api/geometry/instance/hidden/set_mobile.md")]
-    pub fn set_mobile(self: Arc<Self>, key: String, value: VertexValue) -> Arc<Self> {
-        Arc::new((*self).clone().set(&key, value))
+    pub fn set_mobile(
+        self: Arc<Self>,
+        key: String,
+        value: Vec<f64>,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        let value = VertexData::try_from(value.as_slice())?;
+        Ok(Arc::new((*self).clone().set(&key, value)))
     }
 }
 

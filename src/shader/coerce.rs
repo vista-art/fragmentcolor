@@ -123,13 +123,15 @@ fn whole(
     if numbers.len() != n {
         return Err(count_mismatch(key, slot, numbers));
     }
-    match numbers
-        .iter()
-        .find(|&&v| v.fract() != 0.0 || !range.contains(&v))
-    {
+    match numbers.iter().find(|&&v| !is_whole_in(v, &range)) {
         Some(bad) => Err(mismatch(key, slot, &bad.to_string())),
         None => Ok(numbers.to_vec()),
     }
+}
+
+/// Whether `value` is a whole number inside `range`. NaN and infinities never are.
+pub(crate) fn is_whole_in(value: f64, range: &std::ops::RangeInclusive<f64>) -> bool {
+    value.fract() == 0.0 && range.contains(&value)
 }
 
 fn count_mismatch(key: &str, slot: &UniformData, numbers: &[f64]) -> ShaderError {
