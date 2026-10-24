@@ -3,8 +3,8 @@
 import { Shader } from "fragmentcolor";
 
 const SHADER = `
-// The star and box distances, the smooth union
-// and the contour coloring follow Inigo Quilez: https://iquilezles.org/articles/distfunctions2d/
+// The star and box distances and the smooth union
+// follow Inigo Quilez: https://iquilezles.org/articles/distfunctions2d/
 
 // #region: params
 struct Params {
@@ -12,8 +12,10 @@ struct Params {
     pointer: vec2<f32>,
     time: f32,
     blend: f32, // 0..0.4
-    bands: f32, // 5..120
+    rings: f32, // 5..60
+    glow: f32, // 2..30
     inside_color: vec3<f32>,
+    edge_color: vec3<f32>,
     outside_color: vec3<f32>,
 }
 
@@ -50,11 +52,13 @@ fn fs_main(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
     let d_dot = circle(p - pointer, 0.08);
     let d = op_smooth_union(op_smooth_union(d_star, d_box, u.blend), d_dot, u.blend);
 
-    var color = select(u.outside_color, u.inside_color, d < 0.0);
-    color = color * (1.0 - 0.75 * exp(-8.0 * abs(d)));
-    color = color * (0.85 + 0.15 * cos(6.2831853 * (u.bands * d - 0.5 * t)));
+    let outside = max(d, 0.0);
     let pixel_size = fwidth(d);
-    color = mix(color, vec3<f32>(1.0), 1.0 - smoothstep(pixel_size, 2.0 * pixel_size, abs(d)));
+    var color = vec3<f32>(0.05, 0.06, 0.08) + u.outside_color * 0.45 * exp(-u.glow * outside);
+    let ring = abs(fract(d * u.rings - 0.5 * t + 0.5) - 0.5) / (u.rings * pixel_size);
+    color = color + u.outside_color * 0.35 * exp(-3.0 * outside) * (1.0 - smoothstep(0.5, 1.5, ring));
+    color = select(color, mix(u.edge_color, u.inside_color, smoothstep(0.0, 0.12, -d)), d < 0.0);
+    color = mix(color, vec3<f32>(1.0), 1.0 - smoothstep(0.5 * pixel_size, 1.5 * pixel_size, abs(d)));
     return vec4<f32>(color, 1.0);
 }
 // #endregion: paint
@@ -71,9 +75,11 @@ export async function setup(renderer, target) {
         SHADER,
     ]);
     shader.set("u.blend", 0.12);
-    shader.set("u.bands", 40);
-    shader.set("u.inside_color", [0.38, 0.62, 0.92]);
-    shader.set("u.outside_color", [0.92, 0.6, 0.32]);
+    shader.set("u.rings", 20);
+    shader.set("u.glow", 10);
+    shader.set("u.inside_color", [1, 0, 0.51]);
+    shader.set("u.edge_color", [0.51, 0, 1]);
+    shader.set("u.outside_color", [0, 0.51, 1]);
     // #endregion: setup
     return { shader };
 }
