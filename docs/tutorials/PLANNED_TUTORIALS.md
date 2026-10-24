@@ -21,7 +21,7 @@ the rough ideas. A tutorial moves out of here when it ships.
 |---|---|---|---|
 | 10 | Hello, 15000 triangles! | | Draft with locked passages; polish and publish |
 | 20 | Drawing with distance | Shapes | New |
-| 90 | Infinite zoom | Mandelbrot (new) | New |
+| 90 | Infinite zoom | Mandelbrot (new) | Written; reviews passed. Its demos need the site on 0.12.6 |
 
 A fourth tutorial joins the launch only if it says something essential that the
 other three leave out.
@@ -58,22 +58,10 @@ other three leave out.
 
 ### Part 4: past the precision wall
 
-- **90. Infinite zoom.** The Mandelbrot set, deep zoom and perturbation theory.
-  - History: Julia and Fatou's work on iterated functions in the 1910s, Mandelbrot's
-    images at IBM around 1980, and why nobody could see the set before computers.
-    The structure was always there; computers let us look.
-  - The rule, rendered as math: z ↦ z² + c, the escape radius, and the iteration
-    count as a color. A simple rule gives rise to an endless pattern.
-  - Step by step: one still image computed on the CPU to show the algorithm, then the
-    same loop in a FragmentColor fragment shader with pan and zoom, then the wall
-    where `f32`, and later `f64`, runs out of digits and the image breaks into blocks.
-  - Perturbation theory as K. I. Martin introduced it in SuperFractalThing (2013):
-    one reference orbit at high precision, every pixel as a small `f32` difference
-    from it, glitch detection and rebasing, and an exponent range that keeps going.
-    Credit Martin and link his paper. Host a copy only if its license allows it.
-  - The final program computes the reference orbit outside the fragment shader,
-    each frame, and hands it to the GPU in a storage buffer; a compute pass handles
-    what parallelizes. It zooms in real time and ships as the Mandelbrot demo.
+- **90. Infinite zoom.** Written as `tutorials/infinite-zoom`, ending at the Mandelbrot
+  demo: one CPU image, the loop in a fragment shader until `f32` rounding breaks it,
+  K. I. Martin's perturbation with a `BigInt` reference orbit and rebasing, then
+  rescaled iterations, Martin's series and a compute pass down to `1e-1000`.
 
 ### Part 5: light and space
 
