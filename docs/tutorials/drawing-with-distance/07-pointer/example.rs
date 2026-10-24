@@ -1,4 +1,4 @@
-// Drawing with distance, step 7: the pointer, and knobs.
+// Drawing with distance, step 7: the pointer and the knobs.
 
 use std::sync::{Arc, Once, OnceLock};
 use std::time::Instant;
@@ -10,8 +10,8 @@ use winit::event::DeviceId;
 use winit::window::Window;
 
 const SHADER: &str = r#"
-// The star and box distances and the smooth union
-// follow Inigo Quilez: https://iquilezles.org/articles/distfunctions2d/
+// The smooth union follows Inigo Quilez: https://iquilezles.org/articles/smin/
+// The star and box distances follow him too: https://iquilezles.org/articles/distfunctions2d/
 
 // #region: params
 struct Params {
@@ -40,12 +40,14 @@ fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
     return vec4<f32>(corners[i], 0.0, 1.0);
 }
 
+// #region: center
 // Moves the origin to the middle of the canvas,
 // turns y to point up, and scales the shorter side to one unit.
 fn center(pixel: vec2<f32>) -> vec2<f32> {
     let p = (pixel - 0.5 * u.resolution) / min(u.resolution.x, u.resolution.y);
     return vec2<f32>(p.x, -p.y);
 }
+// #endregion: center
 
 // #region: paint
 @fragment
