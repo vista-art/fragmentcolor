@@ -4,7 +4,7 @@ export default {
   id: "shapes",
   title: "Shapes",
   summary:
-    "A star and a hexagon from Inigo Quilez's 2D distance functions and a circle, merged with his smooth union. The distance lights the scene: an azure glow and rings outside, violet to magenta inside. The circle follows the pointer.",
+    "A circle, a star and a hexagon, the last two from Inigo Quilez's 2D distance functions, merged with his smooth union. The distance lights the scene: an azure glow and drifting rings outside, violet to magenta inside. The circle follows the pointer.",
   kind: "fragment",
   library: ["sdf2d/star", "sdf2d/hexagon", "sdf2d/circle", "sdf/op_smooth_union", "map/rotate2"],
   values: {
@@ -17,8 +17,8 @@ export default {
   },
   frame: { time: "u.time", resolution: "u.resolution", pointer: "u.mouse" },
   files: {
-    "shader.wgsl": /* wgsl */ `// The star and hexagon distances and the smooth union
-// follow Inigo Quilez: https://iquilezles.org/articles/distfunctions2d/
+    "shader.wgsl": /* wgsl */ `// The smooth union follows Inigo Quilez: https://iquilezles.org/articles/smin/
+// The star and hexagon distances follow him too: https://iquilezles.org/articles/distfunctions2d/
 
 struct Params {
   resolution: vec2<f32>,
