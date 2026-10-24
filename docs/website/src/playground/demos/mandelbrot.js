@@ -103,7 +103,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
       unit = scale(vec2<f32>(1.0), s).x;
       offset = scale(d, e - s);
     } else {
-      // z becomes 2 Z z + z^2 + d, with every term divided by 2^s.
+      // z becomes 2 Z z + z^2 + d * 2^e, with every term divided by 2^s.
       w = 2.0 * mul(reference, w) + mul(w, w) * unit + offset;
     }
     m += 1u;
@@ -126,7 +126,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
       offset = scale(d, e - s);
     }
   }
-  // A smooth count: the distance past ESCAPE adds the fraction.
+  // A smooth count: the distance past ESCAPE sets the fraction.
   var count = -1.0;
   if (n < limit) {
     count = f32(n) + 1.0 - log2(log2(size2) / log2(ESCAPE));
@@ -200,7 +200,7 @@ fn label(position: vec2<f32>, resolution: vec2<f32>, depth: f32) -> f32 {
   if (cell.x < 0 || cell.y < 0 || cell.y > 4 || cell.x % 4 == 3) {
     return 0.0;
   }
-  let exponent = u32(max(depth, 0.0));
+  let exponent = u32(round(max(depth, 0.0)));
   var digits = 1u;
   var power = 1u;
   while (power * 10u <= exponent) {
@@ -241,7 +241,7 @@ const LIBRARY = ["gradient/palette_iq"];
 // A Misiurewicz point in Seahorse Valley: the orbit of 0 lands on a cycle of
 // period 2 after 24 steps. Newton's method refines these digits to the precision DEPTH needs.
 const TARGET = { re: "-0.7432918908524302", im: "0.1312405523087976", preperiod: 24, period: 2 };
-// The zoom dives until the view is 10^-DEPTH tall, then climbs back.
+// The zoom goes in until the view is 10^-DEPTH tall, then back out.
 const DEPTH = 1000;
 // Zoom speed, in doublings per second.
 const SPEED = 1.5;
@@ -321,10 +321,12 @@ export function frame(state, renderer, target, time, size, pointer) {
   renderer.render(state.passes, target);
 }
 
-// The zoom runs from the whole set down to 10^-DEPTH and back on its own. Moving
-// the pointer takes over for two seconds: its height picks the depth, deepest at
-// the top. Returns the zoom in doublings.
+// The zoom runs from the whole set down to 10^-DEPTH and back on its own. While
+// the pointer moves, and for two seconds after, the pointer's vertical position
+// picks the depth, deepest at the top. Returns the zoom in doublings.
 function steer(state, time, size, [x, y]) {
+  // A clock that starts over, as when a paused page resumes, forgets the pointer.
+  if (state.last !== null && time < state.last) state.moved = -Infinity;
   const delta = state.last === null ? 0 : Math.min(Math.max(time - state.last, 0), 0.1);
   state.last = time;
   const deepest = DEPTH * Math.log2(10) + Math.log2(START);
@@ -356,7 +358,7 @@ function referenceFor(target, depth) {
 }
 
 // The orbit of 0 under z^2 + c at full precision, rounded to f32 for the GPU,
-// with Martin's series coefficients A, B and C at every iteration. reach holds
+// with Martin's series coefficients A, B and C at every iteration. The reach array holds
 // the log2 of the widest radius the series still covers at each iteration.
 function computeReference(target, depth) {
   const bits = Math.ceil(depth * Math.log2(10)) + 80;
@@ -372,9 +374,9 @@ function computeReference(target, depth) {
     orbit[2 * n] = re;
     orbit[2 * n + 1] = im;
     series.push([a, b, c]);
-    // The series holds while the first dropped term, D d^4, stays below TOLERANCE * A d.
+    // The series holds while the first dropped term, D * delta^4, stays below TOLERANCE * A * delta.
     if (n > 0) reach[n] = Math.min(reach[n - 1], (Math.log2(TOLERANCE) + log2Size(a) - log2Size(d)) / 3);
-    // Rounding errors in the orbit grow like A, so it stops while they stay below 2^-40.
+    // Rounding errors in the orbit grow like A, so the loop ends before they reach 2^-40.
     if (n === ORBIT - 1 || re * re + im * im > 4 || log2Size(a) > bits - 40) {
       return { orbit, series, reach, length: n };
     }
@@ -548,7 +550,7 @@ const TARGET: Point = Point {
     preperiod: 24,
     period: 2,
 };
-/// The zoom dives until the view is 10^-DEPTH tall, then climbs back.
+/// The zoom goes in until the view is 10^-DEPTH tall, then back out.
 const DEPTH: f64 = 1000.0;
 /// Zoom speed, in doublings per second.
 const SPEED: f64 = 1.5;
@@ -648,9 +650,9 @@ fn frame(
     Ok(())
 }
 
-/// The zoom runs from the whole set down to 10^-DEPTH and back on its own. Moving
-/// the pointer takes over for two seconds: its height picks the depth, deepest at
-/// the top. Returns the zoom in doublings.
+/// The zoom runs from the whole set down to 10^-DEPTH and back on its own. While
+/// the pointer moves, and for two seconds after, its vertical position picks the
+/// depth, deepest at the top. Returns the zoom in doublings.
 fn steer(state: &mut State, time: f32, size: [f32; 2], pointer: [f32; 2]) -> f64 {
     let delta = state.last.map_or(0.0, |last| f64::from((time - last).clamp(0.0, 0.1)));
     state.last = Some(time);
@@ -675,7 +677,7 @@ fn steer(state: &mut State, time: f32, size: [f32; 2], pointer: [f32; 2]) -> f64
     state.zoom
 }
 
-/// The orbit of 0 under z^2 + c at full precision, rounded to f32 for the GPU,
+/// The orbit of 0 under \`z^2 + c\` at full precision, rounded to \`f32\` for the GPU,
 /// with Martin's series coefficients A, B and C at every iteration. \`reach\` holds
 /// the log2 of the widest radius the series still covers at each iteration.
 struct Reference {
@@ -703,12 +705,12 @@ impl Reference {
             orbit[2 * n] = re as f32;
             orbit[2 * n + 1] = im as f32;
             series.push([a, b, c]);
-            // The series holds while the first dropped term, D d^4, stays below TOLERANCE * A d.
+            // The series holds while the first dropped term, D * delta^4, stays below TOLERANCE * A * delta.
             if n > 0 {
                 let limit = (TOLERANCE.log2() + a.log2_size() - d.log2_size()) / 3.0;
                 reach[n] = reach[n - 1].min(limit);
             }
-            // Rounding errors in the orbit grow like A, so it stops while they stay below 2^-40.
+            // Rounding errors in the orbit grow like A, so the loop ends before they reach 2^-40.
             if n == ORBIT - 1 || re * re + im * im > 4.0 || a.log2_size() > bits as f64 - 40.0 {
                 length = n;
                 break;
@@ -898,7 +900,7 @@ LABEL = Path(__file__).with_name("label.wgsl").read_text()
 # A Misiurewicz point in Seahorse Valley: the orbit of 0 lands on a cycle of
 # period 2 after 24 steps. Newton's method refines these digits to the precision DEPTH needs.
 TARGET = SimpleNamespace(re="-0.7432918908524302", im="0.1312405523087976", preperiod=24, period=2)
-# The zoom dives until the view is 10^-DEPTH tall, then climbs back.
+# The zoom goes in until the view is 10^-DEPTH tall, then back out.
 DEPTH = 1000
 # Zoom speed, in doublings per second.
 SPEED = 1.5
@@ -978,9 +980,9 @@ def frame(state, renderer, target, time, size, pointer):
     renderer.render(state.passes, target)
 
 
-# The zoom runs from the whole set down to 10^-DEPTH and back on its own. Moving
-# the pointer takes over for two seconds: its height picks the depth, deepest at
-# the top. Returns the zoom in doublings.
+# The zoom runs from the whole set down to 10^-DEPTH and back on its own. While
+# the pointer moves, and for two seconds after, its vertical position picks the
+# depth, deepest at the top. Returns the zoom in doublings.
 def steer(state, time, size, pointer):
     delta = 0.0 if state.last is None else min(max(time - state.last, 0.0), 0.1)
     state.last = time
@@ -1002,7 +1004,7 @@ def steer(state, time, size, pointer):
 
 
 # The orbit of 0 under z^2 + c at full precision, rounded to f32 for the GPU,
-# with Martin's series coefficients A, B and C at every iteration. reach holds
+# with Martin's series coefficients A, B and C at every iteration. The reach list holds
 # the log2 of the widest radius the series still covers at each iteration.
 def compute_reference(target, depth):
     bits = math.ceil(depth * math.log2(10)) + 80
@@ -1017,10 +1019,10 @@ def compute_reference(target, depth):
         re, im = to_float(zr, bits), to_float(zi, bits)
         orbit[2 * n], orbit[2 * n + 1] = re, im
         series.append((a, b, c))
-        # The series holds while the first dropped term, D d^4, stays below TOLERANCE * A d.
+        # The series holds while the first dropped term, D * delta^4, stays below TOLERANCE * A * delta.
         if n > 0:
             reach[n] = min(reach[n - 1], (math.log2(TOLERANCE) + log2_size(a) - log2_size(d)) / 3)
-        # Rounding errors in the orbit grow like A, so it stops while they stay below 2^-40.
+        # Rounding errors in the orbit grow like A, so the loop ends before they reach 2^-40.
         if n == ORBIT - 1 or re * re + im * im > 4 or log2_size(a) > bits - 40:
             return SimpleNamespace(orbit=orbit, series=series, reach=reach, length=n)
         # Each new coefficient reads the old values of the ones before it, so D updates first and A last.
@@ -1150,7 +1152,7 @@ struct Point {
 
 /// A spiral in Seahorse Valley. Newton's method refines these digits to the precision DEPTH needs.
 let target = Point(re: "-0.7432918908524302", im: "0.1312405523087976", preperiod: 24, period: 2)
-/// The zoom dives until the view is 10^-depth tall, then climbs back.
+/// The zoom goes in until the view is 10^-depth tall, then back out.
 let depth = 1000.0
 /// Zoom speed, in doublings per second.
 let speed = 1.5
@@ -1246,9 +1248,9 @@ func frame(
     try renderer.render(state.passes, target)
 }
 
-/// The zoom runs from the whole set down to 10^-depth and back on its own. Moving
-/// the pointer takes over for two seconds: its height picks the depth, deepest at
-/// the top. Returns the zoom in doublings.
+/// The zoom runs from the whole set down to 10^-depth and back on its own. While
+/// the pointer moves, and for two seconds after, its vertical position picks the
+/// depth, deepest at the top. Returns the zoom in doublings.
 func steer(_ state: inout State, time: Float, size: [Float], pointer: [Float]) -> Double {
     let delta = state.last.map { Double(min(max(time - $0, 0), 0.1)) } ?? 0
     state.last = time
@@ -1294,11 +1296,11 @@ struct Reference {
             orbit[2 * n] = Float(re)
             orbit[2 * n + 1] = Float(im)
             series.append([a, b, c])
-            // The series holds while the first dropped term, D d^4, stays below tolerance * A d.
+            // The series holds while the first dropped term, D * delta^4, stays below tolerance * A * delta.
             if n > 0 {
                 reach[n] = min(reach[n - 1], (log2(tolerance) + a.log2Size - d.log2Size) / 3)
             }
-            // Rounding errors in the orbit grow like A, so it stops while they stay below 2^-40.
+            // Rounding errors in the orbit grow like A, so the loop ends before they reach 2^-40.
             if n == orbitSize - 1 || re * re + im * im > 4 || a.log2Size > Double(bits - 40) {
                 length = n
                 break
@@ -1454,7 +1456,7 @@ class Point(val re: String, val im: String, val preperiod: Int, val period: Int)
 
 /** A spiral in Seahorse Valley. Newton's method refines these digits to the precision DEPTH needs. */
 private val TARGET = Point("-0.7432918908524302", "0.1312405523087976", preperiod = 24, period = 2)
-/** The zoom dives until the view is 10^-DEPTH tall, then climbs back. */
+/** The zoom goes in until the view is 10^-DEPTH tall, then back out. */
 private const val DEPTH = 1000.0
 /** Zoom speed, in doublings per second. */
 private const val SPEED = 1.5
@@ -1463,7 +1465,7 @@ private const val START = 3.0
 /** Room for the reference orbit, and for the pixels the compute pass iterates. */
 /** A larger view renders at a lower resolution. */
 private const val ORBIT = 1 shl 16
-private const val PIXELS = 1u shl 21
+private val PIXELS = 1u shl 21
 
 class State(val iterate: Shader, val present: Shader, val compute: Pass, val passes: List<Pass>, val reference: Reference) {
     var zoom = 0.0
@@ -1541,9 +1543,9 @@ fun frame(
 }
 
 /**
- * The zoom runs from the whole set down to 10^-DEPTH and back on its own. Moving
- * the pointer takes over for two seconds: its height picks the depth, deepest at
- * the top. Returns the zoom in doublings.
+ * The zoom runs from the whole set down to 10^-DEPTH and back on its own. While
+ * the pointer moves, and for two seconds after, its vertical position picks the
+ * depth, deepest at the top. Returns the zoom in doublings.
  */
 fun steer(state: State, time: Float, size: List<Float>, pointer: List<Float>): Double {
     val delta = state.last?.let { min(max(time - it, 0f), 0.1f).toDouble() } ?: 0.0
@@ -1589,9 +1591,9 @@ class Reference(target: Point, depth: Double) {
             orbit[2 * n] = re.toFloat()
             orbit[2 * n + 1] = im.toFloat()
             series.add(listOf(a, b, c))
-            // The series holds while the first dropped term, D d^4, stays below TOLERANCE * A d.
+            // The series holds while the first dropped term, D * delta^4, stays below TOLERANCE * A * delta.
             if (n > 0) reach[n] = min(reach[n - 1], (log2(TOLERANCE) + a.log2Size() - d.log2Size()) / 3)
-            // Rounding errors in the orbit grow like A, so it stops while they stay below 2^-40.
+            // Rounding errors in the orbit grow like A, so the loop ends before they reach 2^-40.
             if (n == ORBIT - 1 || re * re + im * im > 4 || a.log2Size() > bits - 40) {
                 length = n
                 break
