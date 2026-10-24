@@ -105,6 +105,8 @@ A box makes the question harder, because the nearest point might lie on an edge 
 
 <Code lang="wgsl" code={region("03-box-and-star", "box").rust} />
 
+This formula comes from [Inigo Quilez](https://iquilezles.org/), a graphics programmer whose page of [2D distance functions](https://iquilezles.org/articles/distfunctions2d/) covers dozens of shapes.
+
 `q` says how far the point sits past the right edge (`q.x`) and past the top edge (`q.y`). A negative value means it hasn't reached that edge yet.
 
 - Outside the box, at least one of them is positive. `max(q, vec2<f32>(0.0))` zeroes the negative one, and the `length` of what's left is the distance to the nearest edge, or to the corner when both are positive.
@@ -112,7 +114,7 @@ A box makes the question harder, because the nearest point might lie on an edge 
 
 At any point one of the two terms is zero, and the sum is the other one.
 
-The star repeats the trick twice, around its center into a single arm, then across the middle of it. Inigo Quilez, a graphics programmer who has published distance functions for dozens of shapes, worked it out, and the shader library includes his version as [`sdf2d/star`](/shaders/sdf2d/#star). It takes `star(p, r, n, m)`. `r` is the distance from the center to each tip, and `n` counts the arms as a `u32`, which is why the call below writes `5u`. `m` runs from `2.0` to `n`: at `2.0` the star is a plain pentagon, and larger values carve the valleys deeper.
+The star repeats the trick twice, around its center into a single arm, then across the middle of it. Quilez worked that one out too, and the shader library includes his version as [`sdf2d/star`](/shaders/sdf2d/#star). It takes `star(p, r, n, m)`. `r` is the distance from the center to each tip, and `n` counts the arms as a `u32`, which is why the call below writes `5u`. `m` runs from `2.0` to `n`: at `2.0` the star is a plain pentagon, and larger values carve the valleys deeper.
 
 Keeping the smaller of the two distances draws both shapes at once. The next section shows why `min` works.
 
@@ -134,7 +136,7 @@ Next to each shape the stripes copy its outline, pointed around the star and squ
 
 The shader library names these three `op_union`, `op_intersect` and `op_subtract`. Each one is the single line above. They are in `sdf/`, next to the 3D shapes, because they combine distances of any dimension.
 
-A union leaves a sharp crease where two outlines cross. `op_smooth_union(a, b, k)` replaces it with a curve:
+A union leaves a sharp crease where two outlines cross. `op_smooth_union(a, b, k)`, the quadratic form of Quilez's [smooth minimum](https://iquilezles.org/articles/smin/), replaces it with a curve:
 
 ```wgsl
 fn op_smooth_union(a: f32, b: f32, k: f32) -> f32 {
@@ -170,7 +172,7 @@ The two unions differ where the outlines cross. In the upper left, the circle me
 
 ## Coloring the field
 
-The stripes in `show` are a debugging view. Inigo Quilez colors his fields with four more lines that mark the edge, the falloff and the distance at once. This step draws the star, a box and a small circle set close enough to both that the smooth unions merge all three into one outline. Its `setup` pulls the shapes and the smooth union from the library:
+The stripes in `show` are a debugging view. Quilez colors the fields in [his examples](https://iquilezles.org/articles/distfunctions2d/) with four more lines that mark the edge, the falloff and the distance at once. This step draws the star, a box and a small circle set close enough to both that the smooth unions merge all three into one outline. Its `setup` pulls the shapes and the smooth union from the library:
 
 <Snippet file="drawing-with-distance/05-color/example.rs" region="setup" />
 
