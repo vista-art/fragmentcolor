@@ -4,13 +4,14 @@ use std::sync::{Arc, Once, OnceLock};
 use std::time::Instant;
 
 use fragmentcolor::{App, AppError, Renderer, SetupResult, Shader, Target, call};
+use parking_lot::Mutex;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::DeviceId;
 use winit::window::Window;
 
 const SHADER: &str = r#"
-// The star and box distances, the smooth union and the contour coloring
-// follow Inigo Quilez: https://iquilezles.org/articles/distfunctions2d/
+// The star and box distances, the smooth union
+// and the contour coloring follow Inigo Quilez: https://iquilezles.org/articles/distfunctions2d/
 
 // #region: params
 struct Params {
@@ -90,32 +91,27 @@ fn frame(
     target: &impl Target,
     time: f32,
     size: [f32; 2],
+    pointer: [f32; 2],
 ) -> Result<(), AppError> {
     // #region: frame
     shader.set("u.resolution", size)?;
     shader.set("u.time", time)?;
+    shader.set("u.pointer", pointer)?;
     renderer.render(shader, target)?;
     // #endregion: frame
     Ok(())
 }
 
-// #region: pointer
-fn track(app: &App, _device: DeviceId, position: &PhysicalPosition<f64>) {
-    let Some(shader) = app.get::<Shader>("shader") else {
-        return;
-    };
-    if let Err(error) = shader.set("u.pointer", [position.x as f32, position.y as f32]) {
-        eprintln!("{error}");
-    }
+/// The cursor in window pixels, y down, once it has moved over the window.
+static POINTER: Mutex<Option<[f32; 2]>> = Mutex::new(None);
+
+fn track(_app: &App, _device: DeviceId, position: &PhysicalPosition<f64>) {
+    *POINTER.lock() = Some([position.x as f32, position.y as f32]);
 }
-// #endregion: pointer
 
 async fn start(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
     let shader = setup()?;
     for window in windows {
-        let size = window.inner_size();
-        let middle = [size.width as f32 / 2.0, size.height as f32 / 2.0];
-        shader.set("u.pointer", middle)?;
         let target = app.get_renderer().create_target(window.clone()).await?;
         app.add_target(window.id(), target);
     }
@@ -137,8 +133,9 @@ fn draw(app: &App) {
     app.with_target(app.primary_window_id(), |target| {
         let size = target.size();
         let size = [size.width as f32, size.height as f32];
-        // A frame that fails fails again on every redraw, so only the first error prints.
-        if let Err(error) = frame(&shader, renderer, target, time, size) {
+        let pointer = POINTER.lock().unwrap_or([size[0] / 2.0, size[1] / 2.0]);
+        // A failing frame fails again on every redraw, so only the first error prints.
+        if let Err(error) = frame(&shader, renderer, target, time, size, pointer) {
             static FAILED: Once = Once::new();
             FAILED.call_once(|| eprintln!("{error}"));
         }
