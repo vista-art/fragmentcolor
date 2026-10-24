@@ -60,3 +60,31 @@ path = "../../docs/tutorials/01-hello-triangle/05-particle-trail/example.rs"
 [[example]]
 name = "tutorial_01_hello_triangle_postfx_pass"
 path = "../../docs/tutorials/01-hello-triangle/06-postfx-pass/example.rs"
+
+[[example]]
+name = "tutorial_drawing_with_distance_coordinates"
+path = "../../docs/tutorials/drawing-with-distance/01-coordinates/example.rs"
+
+[[example]]
+name = "tutorial_drawing_with_distance_circle"
+path = "../../docs/tutorials/drawing-with-distance/02-circle/example.rs"
+
+[[example]]
+name = "tutorial_drawing_with_distance_box_and_star"
+path = "../../docs/tutorials/drawing-with-distance/03-box-and-star/example.rs"
+
+[[example]]
+name = "tutorial_drawing_with_distance_combine"
+path = "../../docs/tutorials/drawing-with-distance/04-combine/example.rs"
+
+[[example]]
+name = "tutorial_drawing_with_distance_color"
+path = "../../docs/tutorials/drawing-with-distance/05-color/example.rs"
+
+[[example]]
+name = "tutorial_drawing_with_distance_time"
+path = "../../docs/tutorials/drawing-with-distance/06-time/example.rs"
+
+[[example]]
+name = "tutorial_drawing_with_distance_pointer"
+path = "../../docs/tutorials/drawing-with-distance/07-pointer/example.rs"
