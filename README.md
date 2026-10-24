@@ -171,7 +171,7 @@ Swap the texture target for a window target. Each platform passes its own surfac
 
 ## Compose shaders from the library
 
-Name the functions you need next to your own source. The parts join into one module before it compiles:
+Library functions go in by name, next to your own source. The parts join into one module before it compiles:
 
 ```rust
 let shader = Shader::new([
@@ -181,9 +181,7 @@ let shader = Shader::new([
 ])?;
 ```
 
-Native builds carry the library in the binary and work offline. On the web, `await Shader.fetch([...])` loads the parts from fragmentcolor.org.
-
-The playground's **Library** bar edits that list. Pick a function, call it, and the shader rebuilds with it:
+Native builds carry the library in the binary and work offline. On the web, `await Shader.fetch([...])` loads the parts from fragmentcolor.org. The playground's **Library** bar edits that same list, and each function picked there joins the shader on the next rebuild, ready to call:
 
 <p align="center">
   <img src="docs/media/compose.webp" width="928" alt="Adding sdf2d/equilateral_triangle from the library picker, calling it in place of the star, and removing sdf2d/star">

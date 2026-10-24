@@ -3,8 +3,8 @@
 The tutorials teach FragmentColor and shader programming together, one idea at a
 time, in the spirit of *The Book of Shaders*. Each one builds on the ones before
 it, ends with a working program in every language the site shows, and, where it
-fits, ships its final program as a playground demo. This file holds the order and
-the rough ideas. A tutorial moves out of here when it ships.
+fits, adds its final program to the playground as a demo. This file holds the
+order and the rough ideas. A tutorial moves out of here when it ships.
 
 ## Conventions
 
@@ -37,33 +37,33 @@ other three leave out.
 
 - **20. Drawing with distance.** Pixel coordinates, aspect ratio and the unit
   square; signed distance fields for a circle, a box and a star; smooth union;
-  coloring a distance field by sign and contour; the pointer as an input. Credits
+  coloring a field by sign and contour; the pointer as an input. Credits
   Inigo Quilez, whose distance functions and coloring the Shapes demo uses.
 - **30. Shaping and color.** Shaping functions (`smoothstep`, easing), mixing
   colors, cosine palettes (`palette_iq`), and why a little math beats a lookup table.
-- **40. Noise and cells.** From a hash to value noise, Worley cells and fractal
-  Brownian motion, then domain warping. Ends at the Cells demo.
+- **40. Noise and cells.** A hash first, then value noise, Worley cells and fractal
+  Brownian motion, and finally domain warping. Ends at the Cells demo.
 - **50. Symmetry and folding.** Polar coordinates, kaleidoscope folds and twirls.
-  Ends at the Kaleidoscope demo and explains how Rose Window bends its glass.
+  Builds the Kaleidoscope demo and explains how Rose Window bends its glass.
 - **60. Halftone and dithering.** Sampling a texture, grids of dots, ordered
-  dithering. Ends at the Halftone demo.
+  dithering. The Halftone demo is the last step.
 
 ### Part 3: many things at once
 
 - **70. A million particles.** Compute shaders, storage buffers shared by name,
-  instanced drawing, and the frame loop that ties them together. Ends at the
-  Particles demo.
+  instanced drawing, and the frame loop that ties them together. Its final program
+  is the Particles demo.
 - **80. Life.** Several compute passes in a row, a density grid, `atomicAdd`, and
-  how simple rules between species give rise to colonies. Ends at the Life demo.
+  how simple rules between species grow into colonies. Closes on the Life demo.
 
 ### Part 4: past the precision wall
 
 - **90. Infinite zoom.** The Mandelbrot set, deep zoom and perturbation theory.
   - History: Julia and Fatou's work on iterated functions in the 1910s, Mandelbrot's
-    images at IBM around 1980, and why nobody could see the set before computers.
-    The structure was always there; computers let us look.
+    images at IBM around 1980, and why nobody saw the set before machines could draw
+    it. The structure was always there; computers let us look.
   - The rule, rendered as math: z ↦ z² + c, the escape radius, and the iteration
-    count as a color. A simple rule gives rise to an endless pattern.
+    count as a color. It fits on one line, and the pattern it draws never ends.
   - Step by step: one still image computed on the CPU to show the algorithm, then the
     same loop in a FragmentColor fragment shader with pan and zoom, then the wall
     where `f32`, and later `f64`, runs out of digits and the image breaks into blocks.
@@ -78,9 +78,9 @@ other three leave out.
 ### Part 5: light and space
 
 - **100. Raymarching.** Distance fields in 3D, a camera ray per pixel, normals from
-  the gradient, soft shadows and ambient occlusion. Ends at the Raymarch demo.
+  the gradient, soft shadows and ambient occlusion. Finishes with the Raymarch demo.
 - **110. Post effects.** Rendering to a texture, chaining passes, bloom, grain and
-  chromatic aberration. Ends at the Post Effects demo.
+  chromatic aberration, building up to the Post Effects demo.
 - **120. Scenes and materials.** Loading a glTF file, physically based materials,
   cameras and lights, and how the scene layer is ordinary shaders and passes.
 - **130. Anatomy of an artwork.** Monolith or Nebula taken apart from the shader
