@@ -2,7 +2,8 @@
 
 Runs the escape-time loop for every pixel of a 1200 by 800 image and writes
 `mandelbrot.ppm`, a plain image format most viewers open. No GPU yet: this is
-the whole algorithm. Run it with `python example.py`; it takes a few seconds.
+the whole algorithm. Run it with `python example.py`. Plain Python visits all
+960,000 pixels one at a time, which takes a while.
 """
 
 from math import cos, pi
