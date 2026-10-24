@@ -1,6 +1,9 @@
 // Infinite zoom into the Mandelbrot set. main.js computes one reference orbit
 // with BigInt at full precision, a compute pass iterates every pixel as a small
-// f32 difference from it, and a render pass colors the counts.
+// f32 difference from it, and a render pass colors the counts. The tutorial at
+// docs/tutorials/infinite-zoom walks through the same program.
+
+import { formatValue } from "../codegen.js";
 
 const ITERATE = /* wgsl */ `// Iterates every pixel as a small difference from the reference orbit that
 // main.js computes at full precision. main.js puts ORBIT and PIXELS ahead of
@@ -131,12 +134,12 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
 }
 `;
 
-const PRESENT = /* wgsl */ `// Colors the counts that iterate.wgsl writes, and prints how deep the view is.
+const PRESENT = /* wgsl */ `// Colors the counts that iterate.wgsl writes. label.wgsl prints the depth.
 
 struct Look {
   resolution: vec2<f32>,
   image: vec2<u32>,
-  // The view is 10^-depth tall.
+  // The view is about 10^-depth tall.
   depth: f32,
   density: f32, // 0.002..0.1
   phase: f32, // 0..1
@@ -160,25 +163,42 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
       vec3<f32>(0.0, 0.1, 0.2),
     );
   }
-  let unit = max(floor(look.resolution.y / 160.0), 2.0);
-  color = mix(color, vec3<f32>(0.0), label(position.xy - unit, unit));
-  color = mix(color, vec3<f32>(1.0), label(position.xy, unit));
-  return vec4<f32>(color, 1.0);
+  return vec4<f32>(print_depth(color, position.xy, look.resolution, look.depth), 1.0);
 }
 
-// 1 where "1e-<depth>" covers this pixel, in the bottom left corner. Each glyph
-// is 3 by 5 cells, one bit per cell, top row first: 0 to 9, then "e" and "-".
-fn label(position: vec2<f32>, unit: f32) -> f32 {
+// Fullscreen triangle: three vertices that cover the canvas.
+@vertex
+fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  var corners = array<vec2<f32>, 3>(
+    vec2<f32>(-1.0, -1.0),
+    vec2<f32>(3.0, -1.0),
+    vec2<f32>(-1.0, 3.0),
+  );
+  return vec4<f32>(corners[i], 0.0, 1.0);
+}
+`;
+
+const LABEL = /* wgsl */ `// Prints "1e-<depth>" in the bottom left corner: white with a dark shadow.
+fn print_depth(color: vec3<f32>, position: vec2<f32>, resolution: vec2<f32>, depth: f32) -> vec3<f32> {
+  let unit = max(floor(resolution.y / 160.0), 2.0);
+  let shadow = mix(color, vec3<f32>(0.0), label(position - unit, resolution, depth));
+  return mix(shadow, vec3<f32>(1.0), label(position, resolution, depth));
+}
+
+// 1 where the label covers this pixel. Each glyph is 3 by 5 cells, one bit per
+// cell, top row first: 0 to 9, then "e" and "-".
+fn label(position: vec2<f32>, resolution: vec2<f32>, depth: f32) -> f32 {
   var glyphs = array<u32, 12>(
     0x7B6Fu, 0x2C97u, 0x73E7u, 0x73CFu, 0x5BC9u, 0x79CFu,
     0x79EFu, 0x7249u, 0x7BEFu, 0x7BCFu, 0x2BE3u, 0x01C0u,
   );
-  let origin = vec2<f32>(unit * 4.0, look.resolution.y - unit * 9.0);
+  let unit = max(floor(resolution.y / 160.0), 2.0);
+  let origin = vec2<f32>(unit * 4.0, resolution.y - unit * 9.0);
   let cell = vec2<i32>(floor((position - origin) / unit));
   if (cell.x < 0 || cell.y < 0 || cell.y > 4 || cell.x % 4 == 3) {
     return 0.0;
   }
-  let exponent = u32(max(look.depth, 0.0));
+  let exponent = u32(max(depth, 0.0));
   var digits = 1u;
   var power = 1u;
   while (power * 10u <= exponent) {
@@ -196,9 +216,8 @@ fn label(position: vec2<f32>, unit: f32) -> f32 {
   } else if (slot == 2u && sign == 1u) {
     glyph = 11u;
   } else if (slot < 2u + sign + digits) {
-    let place = 2u + sign + digits - 1u - slot;
     var divisor = 1u;
-    for (var i = 0u; i < place; i++) {
+    for (var i = slot; i < 1u + sign + digits; i++) {
       divisor *= 10u;
     }
     glyph = exponent / divisor % 10u;
@@ -208,22 +227,12 @@ fn label(position: vec2<f32>, unit: f32) -> f32 {
   let bit = 14u - u32(cell.y * 3 + cell.x % 4);
   return f32((glyphs[glyph] >> bit) & 1u);
 }
-
-// Fullscreen triangle: three vertices that cover the canvas.
-@vertex
-fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-  var corners = array<vec2<f32>, 3>(
-    vec2<f32>(-1.0, -1.0),
-    vec2<f32>(3.0, -1.0),
-    vec2<f32>(-1.0, 3.0),
-  );
-  return vec4<f32>(corners[i], 0.0, 1.0);
-}
 `;
 
 const PROGRAM = /* js */ `import { Pass, Shader } from "fragmentcolor";
 import ITERATE from "./iterate.wgsl?raw";
 import PRESENT from "./present.wgsl?raw";
+import LABEL from "./label.wgsl?raw";
 
 const LIBRARY = ["gradient/palette_iq"];
 
@@ -244,13 +253,13 @@ const PIXELS = 1 << 21;
 const BUDGET = 5000;
 
 export async function setup(renderer, target) {
-  const header = [\`const ORBIT: u32 = \${ORBIT}u;\`, \`const PIXELS: u32 = \${PIXELS}u;\`].join("\\n");
+  const header = \`const ORBIT: u32 = \${ORBIT}u;\\nconst PIXELS: u32 = \${PIXELS}u;\`;
 
   const iterate = await prepare("iterate", [header, ITERATE]);
   iterate.shader.set("view.budget", 1000);
 
   // The library brings the palette that present.wgsl calls.
-  const present = await prepare("present", [...LIBRARY, header, PRESENT]);
+  const present = await prepare("present", [...LIBRARY, header, LABEL, PRESENT]);
   present.shader.set("look.density", 0.02);
   present.shader.set("look.phase", 0.6);
   present.shader.set("look.inside_color", [0.02, 0.02, 0.05]);
@@ -278,9 +287,7 @@ export async function setup(renderer, target) {
 export function frame(state, renderer, target, time, size, pointer) {
   // This program draws, so later builds may reuse its shaders.
   for (const stage of state.stages) kept.set(stage.key, stage);
-  const delta = state.last === null ? 0 : Math.min(time - state.last, 0.1);
-  state.last = time;
-  steer(state, time, delta, size, pointer);
+  const zoom = steer(state, time, size, pointer);
 
   // The compute pass fills at most PIXELS: the canvas, or a whole fraction of it.
   let shrink = 1;
@@ -288,7 +295,7 @@ export function frame(state, renderer, target, time, size, pointer) {
   const image = [Math.max(Math.floor(size[0] / shrink), 1), Math.max(Math.floor(size[1] / shrink), 1)];
 
   // A pixel is 2^pixel wide. The series covers every pixel within radius of the target.
-  const pixel = Math.log2(START / image[1]) - state.zoom;
+  const pixel = Math.log2(START / image[1]) - zoom;
   const exponent = Math.floor(pixel);
   const radius = pixel + Math.log2(Math.hypot(image[0], image[1]) / 2);
   const skip = skipFor(state.reference, radius);
@@ -310,13 +317,16 @@ export function frame(state, renderer, target, time, size, pointer) {
 
   state.present.set("look.resolution", size);
   state.present.set("look.image", image);
-  state.present.set("look.depth", state.zoom * Math.log10(2) - Math.log10(START));
+  state.present.set("look.depth", zoom * Math.log10(2) - Math.log10(START));
   renderer.render(state.passes, target);
 }
 
-// The zoom runs from the whole set down to DEPTH and back on its own. Moving the
-// pointer takes over for two seconds: its height picks the depth, deepest at the top.
-function steer(state, time, delta, size, [x, y]) {
+// The zoom runs from the whole set down to 10^-DEPTH and back on its own. Moving
+// the pointer takes over for two seconds: its height picks the depth, deepest at
+// the top. Returns the zoom in doublings.
+function steer(state, time, size, [x, y]) {
+  const delta = state.last === null ? 0 : Math.min(Math.max(time - state.last, 0), 0.1);
+  state.last = time;
   const deepest = DEPTH * Math.log2(10) + Math.log2(START);
   if (state.pointer && (x !== state.pointer[0] || y !== state.pointer[1])) state.moved = time;
   state.pointer = [x, y];
@@ -329,10 +339,11 @@ function steer(state, time, delta, size, [x, y]) {
     if (state.zoom <= 0) state.direction = 1;
   }
   state.zoom = Math.min(Math.max(state.zoom, 0), deepest);
+  return state.zoom;
 }
 
-// The reference takes about a second at 1000 digits, so builds share it while
-// TARGET and DEPTH stay the same.
+// The reference takes a moment at 1000 digits, so builds share it while TARGET
+// and DEPTH stay the same.
 const orbits = (globalThis.mandelbrotOrbits ??= new Map());
 
 function referenceFor(target, depth) {
@@ -378,11 +389,12 @@ function computeReference(target, depth) {
   }
 }
 
+// How far the dropped terms of the series may drift, relative to the first one.
 const TOLERANCE = 1e-7;
 
 // The last iteration the series covers for a view of this radius (log2).
 function skipFor(reference, radius) {
-  let [low, high] = [0, reference.length - 1];
+  let [low, high] = [0, reference.length];
   while (low < high) {
     const middle = (low + high + 1) >> 1;
     if (reference.reach[middle] > radius) low = middle;
@@ -492,17 +504,51 @@ const VALUES = {
 
 const RELEASE = "0.12.6";
 
+// Splits the live values between the two shaders by their uniform root, spelled
+// for each language.
+function describe(model) {
+  const values = model.values ?? Object.entries(VALUES);
+  const library = model.library ?? ["gradient/palette_iq"];
+  const pick = (root) => values.filter(([key]) => key.startsWith(root));
+  return { library, iterate: pick("view."), present: pick("look."), release: RELEASE, formatValue };
+}
+
+function writeRust() {
+  return undefined;
+}
+
+function writePython() {
+  return undefined;
+}
+
+function writeSwift() {
+  return undefined;
+}
+
+function writeKotlin() {
+  return undefined;
+}
+
 export default {
   id: "mandelbrot",
   title: "Mandelbrot",
   summary:
-    "An endless dive into a spiral of the Mandelbrot set, down to 1e-1000. A BigInt reference orbit guides a compute pass that iterates every pixel in f32. Move the pointer up to dive, down to rise.",
+    "A dive into a spiral of the Mandelbrot set, down to 1e-1000 and back. A BigInt reference orbit guides a compute pass that iterates every pixel in f32. The pointer's height picks the depth.",
   kind: "compute",
   requires: "webgpu",
   needs: RELEASE,
   poster: "/playground/mandelbrot.webp",
   library: ["gradient/palette_iq"],
   values: VALUES,
-  files: { "iterate.wgsl": ITERATE, "present.wgsl": PRESENT },
+  files: { "iterate.wgsl": ITERATE, "present.wgsl": PRESENT, "label.wgsl": LABEL },
   js: PROGRAM,
+  code(model) {
+    const spec = describe(model);
+    return {
+      rust: writeRust(spec),
+      python: writePython(spec),
+      swift: writeSwift(spec),
+      kotlin: writeKotlin(spec),
+    };
+  },
 };
