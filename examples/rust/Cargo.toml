@@ -19,6 +19,11 @@ bytemuck = "1"
 # PNG output for the registry-gallery example
 image = { version = "0.25", default-features = false, features = ["png"] }
 
+# Arbitrary precision for the infinite zoom tutorial's reference orbit
+num-bigint = "0.4"
+num-traits = "0.2"
+parking_lot = "0.12"
+
 # CLI examples
 crossterm = "0.29"
 ratatui = "0.29"
@@ -60,3 +65,7 @@ path = "../../docs/tutorials/01-hello-triangle/05-particle-trail/example.rs"
 [[example]]
 name = "tutorial_01_hello_triangle_postfx_pass"
 path = "../../docs/tutorials/01-hello-triangle/06-postfx-pass/example.rs"
+
+[[example]]
+name = "tutorial_infinite_zoom_deep_zoom"
+path = "../../docs/tutorials/infinite-zoom/04-deep-zoom/example.rs"
