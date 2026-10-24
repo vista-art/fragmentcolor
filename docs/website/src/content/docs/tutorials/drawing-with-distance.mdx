@@ -23,7 +23,7 @@ A triangle on the GPU is three corners and a rule for filling the space between 
 
 This tutorial draws shapes the other way around. Every pixel runs the same small function and answers one question for itself: how far am I from the shape? The sign of the answer says inside or outside. Its size says how far. With that one number we draw a circle, a box and a star, merge them, paint them with contour lines, and set them moving with time and the pointer. The last step rebuilds the Shapes demo from the [playground](/welcome/playground/), the live editor on this site.
 
-If you haven't yet, read [Hello, 15000 triangles!](/tutorials/01-hello-triangle/) first. This page assumes you know what `Shader::new`, `set` and `render` do.
+This page builds on [Hello, 15000 triangles!](/tutorials/01-hello-triangle/) and assumes you know what `Shader::new`, `set` and `render` do.
 
 ## Every pixel gets a coordinate
 
@@ -49,7 +49,7 @@ The result is `p`. The square where both of its coordinates run from `-0.5` to `
 
 <Demo file="drawing-with-distance/01-coordinates/example.rs" />
 
-Make the browser window wider or narrower and the bright square keeps its shape. A wide canvas grows dim margins at the sides, and a tall one grows them above and below. Had we divided x by the width and y by the height, the square would stretch with the canvas, the same way the triangle did before the hello triangle tutorial fixed its aspect ratio.
+The bright square keeps its shape at any window size. A wide canvas grows dim margins at the sides, and a tall one grows them above and below. Had we divided x by the width and y by the height, the square would stretch with the canvas, the same way the triangle did before the hello triangle tutorial fixed its aspect ratio.
 
 On the host, `setup` builds the shader once:
 
@@ -65,11 +65,11 @@ Something has to call them. In the Rust programs, a small `winit` loop calls `fr
 cargo run -p fce --example tutorial_drawing_with_distance_coordinates
 ```
 
-Look again at the test in `fs_main`. `max(abs(p.x), abs(p.y))` is the distance from the middle along whichever axis reaches farther, which makes it `0.5` all around the edge of the unit square. Comparing it with `0.5` decides inside or outside. That line holds the whole idea of this tutorial.
+One line of `fs_main` already measures a distance. `max(abs(p.x), abs(p.y))` is the distance from the middle along whichever axis reaches farther, which makes it `0.5` all around the edge of the unit square. Comparing it with `0.5` decides inside or outside. That line holds the whole idea of this tutorial.
 
 ## A circle is a distance
 
-`length(p)` is the distance from `p` to the origin. Subtract a radius and you have a circle:
+`length(p)` is the distance from `p` to the origin. Subtracting a radius from it gives a circle:
 
 <Code lang="wgsl" code={region("02-circle", "paint").rust} />
 
@@ -85,7 +85,7 @@ To see the field, `show` paints the sign and adds a stripe every `0.05` units of
 
 The circle's edge is the line where blue meets orange, at `d = 0`. From that edge to the center there are six dark stripes, one for every `0.05` of the radius. Outside, the rings keep their spacing all the way to the edges of the canvas. From any spot, counting rings back to the edge reads off the distance.
 
-To move the circle, move the point: `length(p - c) - r` is a circle of radius `r` centered on `c`. Every shape on this page moves that way: subtract its position from `p`, then measure. Size works the same way in reverse. Dividing `p` by `2.0` before measuring draws the circle twice as large, and multiplying the result by `2.0` keeps it a true distance: `(length(p / 2.0) - r) * 2.0`.
+A circle moves when the point does: `length(p - c) - r` is a circle of radius `r` centered on `c`. Every shape on this page measures from `p` minus its position. Size works in reverse. Dividing `p` by `2.0` before measuring draws the circle twice as large, and multiplying the result by `2.0` keeps it a true distance: `(length(p / 2.0) - r) * 2.0`.
 
 The shader library ships this function as [`sdf2d/circle`](/shaders/sdf2d/#circle):
 
@@ -112,7 +112,7 @@ At any point one of the two terms is zero, and the sum is the other one.
 
 The star repeats the trick twice, around its center into a single tip and then across the middle of that tip. Inigo Quilez, a graphics programmer who has published distance functions for dozens of shapes, worked it out, and the shader library includes his version as [`sdf2d/star`](/shaders/sdf2d/#star). It takes `star(p, r, n, m)`. `r` is the distance from the center to each tip, and `n` counts the tips as a `u32`, which is why the call below writes `5u`. `m` runs from `2.0` to `n`: at `2.0` the star is a plain pentagon, and larger values cut deeper valleys between the tips.
 
-To draw both shapes at once, keep the smaller of the two distances. The next section shows why `min` works.
+Keeping the smaller of the two distances draws both shapes at once. The next section shows why `min` works.
 
 <Code lang="wgsl" code={region("03-box-and-star", "paint").rust} />
 
@@ -128,7 +128,7 @@ Next to each shape the stripes copy its outline, pointed around the star and squ
 
 ## Combining shapes
 
-`min` works because of what the sign means. A point lies inside the union of two shapes when it lies inside either one, and the smaller of two distances is negative whenever either distance is. Outside both, the smaller distance belongs to the nearer shape, and that's the distance to the union. Swap in `max` and the result goes negative only where both distances are: the intersection. Flip one sign first and `max(a, -b)` keeps the parts of `a` that lie outside `b`, which subtracts `b` from `a`.
+`min` works because of what the sign means. A point lies inside the union of two shapes when it lies inside either one, and the smaller of two distances is negative whenever either distance is. Outside both, the smaller distance belongs to the nearer shape, and that's the distance to the union. With `max`, the result goes negative only where both distances are: the intersection. `max(a, -b)`, with one sign flipped, keeps the parts of `a` that lie outside `b`, which subtracts `b` from `a`.
 
 The shader library names these three `op_union`, `op_intersect` and `op_subtract`. Each one is the single line above. They are in `sdf/`, next to the 3D shapes, because they combine distances of any dimension.
 
@@ -157,7 +157,7 @@ This step imports the circle and the box from the library, along with the operat
 
 <Demo file="drawing-with-distance/04-combine/example.rs" />
 
-Compare the two unions. In the upper left, the circle meets the box at two sharp notches; in the lower right, the notches fill with curves. Inside the bite of the subtraction, the rings circle the center of the missing disc.
+The two unions differ where the outlines cross. In the upper left, the circle meets the box at two sharp notches; in the lower right, the notches fill with curves. Inside the bite of the subtraction, the rings circle the center of the missing disc.
 
 `min`, `max` and `op_subtract` keep the zero line and the sign exact. Away from the edge the number can come out smaller than the true distance, inside a union for instance. An outline reads only the zero line and stays exact. An effect that reads the number itself, like a glow that fades over `0.1` units, can come out slightly off.
 
@@ -230,11 +230,11 @@ Pointer positions count from the top left corner with y growing downward, the sa
 
 <Demo file="drawing-with-distance/07-pointer/example.rs" />
 
-Move the pointer across the canvas. The circle follows it, and whenever it comes within `blend` of the star or the box, the outlines reach for each other.
+The circle follows the pointer across the canvas, and whenever it comes within `blend` of the star or the box, the outlines reach for each other.
 
 ## The Shapes demo
 
-The playground's Shapes demo is this program with a few changes: a hexagon from `sdf2d/hexagon` in place of the box, the two shapes at `x = -0.3` and `x = 0.3`, and the pointer field named `mouse`. It also computes `p` from a value the vertex stage passes down, which gives the same coordinates as `center`. Its sliders take their ranges from the same `// min..max` comments: drag `blend` toward `0.4` and the shapes fuse, or drop `bands` to `5` and the contour lines spread wide apart. The `shader.wgsl` and `main.js` tabs are editable and rebuild as you type, the language tabs follow your edits, and **+ Add** brings in more slugs from the shader library.
+The playground's Shapes demo is this program with a few changes: a hexagon from `sdf2d/hexagon` in place of the box, the two shapes at `x = -0.3` and `x = 0.3`, and the pointer field named `mouse`. It also computes `p` from a value the vertex stage passes down, which gives the same coordinates as `center`. Its sliders take their ranges from the same `// min..max` comments. Near `0.4`, `blend` fuses the shapes; at `5`, `bands` spreads the contour lines wide apart. The `shader.wgsl` and `main.js` tabs are editable and rebuild as you type, the language tabs follow your edits, and **+ Add** brings in more slugs from the shader library.
 
 <Playground demos={["shapes"]} />
 
