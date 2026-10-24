@@ -277,7 +277,7 @@ A timestamp around `renderer.render` measures only the CPU side. `render` record
 
 The **crossover point** is the count where the frame time grows past your budget. To find yours, change `COPIES` at the top of the step's file and measure again: with the command above in Rust, or with the console snippet while your copy of `example.js` plays.
 
-**On a recent laptop, a million of these triangles fit in a 60 Hz budget. A few million don't.**
+**The demo draws a million triangles. Your GPU decides whether all of them fit in your budget.**
 
 Twice the triangles take about twice as long to draw. Shrinking each one to a tenth of its width cuts the frame time by less than half. At four pixels wide, the count sets the length of a frame.
 
