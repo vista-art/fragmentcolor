@@ -1,4 +1,4 @@
-// Drawing with distance, step 6: time.
+// Drawing with distance step 6: time.
 
 import { Shader } from "fragmentcolor";
 
