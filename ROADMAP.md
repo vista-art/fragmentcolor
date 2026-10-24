@@ -29,7 +29,8 @@ Items found while reviewing 0.12.6.
 - [ ] `headless_window` is a free function that only the window-target doctests use. Make it a method on an object, or let those doctests compile without running
 - [ ] Remove `Renderer::create_external_texture` until it works. Every binding returns "not implemented yet", and an API that does nothing doesn't belong in the public surface
 - [ ] Doc comments that describe planned behavior state what the code does: `SceneSource` in `src/scene/loader.rs` and `set_sampler_options` in `src/texture/platform/mobile.rs`
-- [ ] Swift extensions throw where they stop the app with `preconditionFailure` on input they can't read (`TextureRegion.from`, `Vertex.set`, `Instance.set`, `setViewport`), as rule 5 asks
+- [ ] Swift extensions throw where they stop the app with `preconditionFailure` on input they can't read (`TextureRegion.from`, `setViewport`), as rule 5 asks. `Vertex.set` and `Instance.set` throw since 0.12.6
+- [ ] The Swift transpiler picks `try` from the overload a call resolves to, where it merges `throws` across every overload of a name. Today `mesh.addInstance(instance)` gets a `try` that Swift warns about, because the attribute-pair `addInstance` overloads throw
 - [ ] The public `From` conversions between `wgpu::Extent3d` and `ScreenRegion` or `Size` go, as rule 14 asks
 - [ ] The website's Rust tabs hide a doctest's `#` lines
 - [ ] `UniformData` can be named outside the crate, so a helper can forward one value to `Shader::set` on several shaders
@@ -86,9 +87,9 @@ These landed in 0.12.6. JavaScript errors and the JavaScript `Shader` constructo
 - [x] Python exports its window target as `WindowTarget` (0.12.6). `RenderCanvasTarget` stays as an alias until 0.13.0
 - [x] Swift and Kotlin see the texture region record as `TextureRegion`, through a uniffi `name` on `TextureRegionMobile` (0.12.6)
 - [x] `TextureUsage` flags are plain numbers in JavaScript, as in WebGPU's `GPUTextureUsage` (0.12.6)
-- [x] `PassInput` reads through `loads_previous()` and `color()` in Rust, JavaScript and Python, and through `loadsPrevious()` and `color()` in Swift and Kotlin (0.12.6)
+- [x] `PassInput` is internal to the crate, and `get_input` leaves every binding. A pass's settings are write-only, through `load_previous`, `set_clear_color`, `set_viewport` and `set_compute_dispatch` (0.12.6)
 - [x] `create_texture` sends bytes, paths and URLs that start with the KTX2 identifier to the KTX2 loader, so JavaScript and Python load KTX2 too (0.12.6)
-- [x] Swift and Kotlin name the targets `WindowTarget` and `TextureTarget` and the pass input `PassInput`, through uniffi `name`s on the mobile wrappers. The old names stay as deprecated typealiases until 0.13.0, and the empty `WindowTarget` and `TextureTarget` classes that no method returned are gone, since the core targets stop deriving `uniffi::Object` (0.12.6)
+- [x] Swift and Kotlin name the targets `WindowTarget` and `TextureTarget`, through uniffi `name`s on the mobile wrappers. The old names stay as deprecated typealiases until 0.13.0, and the empty `WindowTarget` and `TextureTarget` classes that no method returned are gone, since the core targets stop deriving `uniffi::Object` (0.12.6)
 - [x] `scripts/reflect.rs` reads the names uniffi gives Swift and Kotlin, so the `TextureRegion` stand-in left the transpilers (0.12.6)
 - [x] JavaScript exports its window target as `WindowTarget`, and `CanvasTarget` stays as an alias until 0.13.0 (0.12.6)
 - [x] Every JavaScript method throws an `Error` object, and `new Shader` throws and `Shader.fetch` rejects on bad input, as in the other four languages. A live editor keeps drawing its last good shader by holding its variable (0.12.6)
@@ -172,7 +173,7 @@ Core holds `Renderer`, the targets, `Shader` with `Pipeline`, `Pass`, `Mesh`, `T
 - [ ] Each flexible parameter names an input enum (`#[api(input)]`), so `Shader::new([...])`, `set(key, value)` and `render([...])` read the same in every language
 - [ ] Sizes, regions and colors are arrays in every language, in the generated bindings as well as the extensions. Since 0.12.6 the Swift and Kotlin extensions take `[64, 64]` and `listOf(64u, 64u)` for a size
 - [ ] JavaScript records are plain objects when possible, with TypeScript interfaces generated from the Rust structs. Records FC returns are frozen, and readers also accept today's class instances:
-  - Plain objects: `Pipeline`, the `layout()` family that `Shader`, `Mesh` and `Buffer` return, `Size`, `ScreenRegion`, `Color`, `SamplerOptions`, `TextureOptions` and `HdrInfo`, plus `PassInput`, which `pass.getInput()` returns as a class with `loadsPrevious()` and `color()` today
+  - Plain objects: `Pipeline`, the `layout()` family that `Shader`, `Mesh` and `Buffer` return, `Size`, `ScreenRegion`, `Color`, `SamplerOptions`, `TextureOptions` and `HdrInfo`
   - Plain numbers: `TextureId`, whose class reads its `u64` as a `BigInt` today, and `TextureUsage`, whose flags are already numbers on its class
   - `TextureRegion` stays an array or a plain object in JavaScript and Python, never a class. Swift and Kotlin keep its `from(...).withStride(...)` builder
   - Classes, because they are handles or carry methods: `Camera` and `Light` (`look_at`, `pack`, `sort`), `SceneNode`, `Vertex`, whose chained `set` fills a map the object hides, and the index view that `mesh.instance(7)` returns
@@ -183,9 +184,9 @@ Core holds `Renderer`, the targets, `Shader` with `Pipeline`, `Pass`, `Mesh`, `T
 
 ### Names
 
-0.12.6 gives Swift and Kotlin the core names for the targets, `PassInput` and `TextureRegion`, and gives JavaScript and Python `WindowTarget`, each with an alias for the old name. 0.13.0 removes every alias.
+0.12.6 gives Swift and Kotlin the core names for the targets and `TextureRegion`, and gives JavaScript and Python `WindowTarget`, each with an alias for the old name. 0.13.0 removes every alias.
 
-- [ ] The deprecated Swift and Kotlin typealiases go: `MobileWindowTarget` and `MobileTextureTarget`, `MobilePassInput` and `TextureRegionMobile`
+- [ ] The deprecated Swift and Kotlin typealiases go: `MobileWindowTarget`, `MobileTextureTarget` and `TextureRegionMobile`
 - [ ] The other forms 0.12.6 deprecates go too: Swift's `Shader.new([...])` and `Shader.setRegistry(baseUrl:)`, its one-tuple `createTexture` and `createStorageTexture`, and Kotlin's top-level `ShaderFetch`
 - [ ] JavaScript's `CanvasTarget` alias and Python's `RenderCanvasTarget` alias go
 - [ ] Swift and Kotlin see `TextureData` for `TextureInputMobile`, through a uniffi `name`. `stand_ins` in `scripts/reflect.rs` then drops the pair, so the stand-in rewrite for `TextureData` leaves the transpilers
@@ -225,7 +226,7 @@ Core holds `Renderer`, the targets, `Shader` with `Pipeline`, `Pass`, `Mesh`, `T
 - [ ] Bytes on any key, raw bytes into uniform struct roots included. They must fit the key exactly: the full size of a fixed-size key, or a whole number of elements for a runtime-sized array. Today long input is cut and short input padded with zeros
 - [ ] One key grammar on `Mesh`, `Buffer` and `Shader`. `[7].tint` is one instance, `[200:250].tint` a half-open span and `[200:].tint` runs to the end. `tint` with no index writes every instance and the start value new ones take. `Shader` keys start with the root: `particles[7].pos`, `particles.pos`. Today a key reaches one element at a time (`data.arr[3].field`). `tint`, `pos` and `particles` are example names a shader would declare
 - [ ] A value fills its key exactly: one value, or the span length times the slot size in bytes, and a bare key's one value copies everywhere. `set` never changes a count, an index past the end is a typed error, and instance keys end in a slot name. A bare `get` reads the start value: the identity for a matrix, zero otherwise
-- [ ] A value converts by its slot's WGSL type, so a plain `7` fills a `u32` in JavaScript and Python. Today a JavaScript integer needs a typed array or a `VertexValue`
+- [x] A value converts by its slot's WGSL type, so a plain `7` fills a `u32` in every language. `Shader::set` converts uniforms, and `Vertex::set` and `Instance::set` values convert when the mesh attaches (0.12.6)
 - [ ] `set`, `pack` and the `Mesh` and `Buffer` methods share this conversion
 
 ### Reflection with `layout()` and `pack()`
@@ -276,7 +277,7 @@ Instances live on `Mesh`, and only there. `tint` below is an example slot a shad
 - [ ] `mesh.set(key, value)` and `mesh.get(key)` address instance slots through the key grammar, and `mesh.layout()` describes both stores
 - [ ] Index views, as documented sugar: `mesh.instance(7)` holds the mesh and an index with no tracking, and its `set("tint", v)` is exactly `mesh.set("[7].tint", v)`. `mesh.instances()` iterates the views
 - [ ] `mesh.share()` returns a mesh over the same vertices and indices with a copy of the instances, its own from then on
-- [ ] The shader is the schema. A slot is a `@location` input the vertices don't supply, typed as a `VertexValue` format. Four `vec4<f32>` inputs `name_0` to `name_3` at consecutive locations form one `mat4x4<f32>` slot `name`, column-major, set as `[[f32; 4]; 4]`. The transform keeps the inputs `model_0` to `model_3`
+- [ ] The shader is the schema. A slot is a `@location` input the vertices don't supply, typed by its WGSL declaration. Four `vec4<f32>` inputs `name_0` to `name_3` at consecutive locations form one `mat4x4<f32>` slot `name`, column-major, set as `[[f32; 4]; 4]`. The transform keeps the inputs `model_0` to `model_3`
 - [ ] `position` and the `Vertex` constants never become slots, so a mesh that lacks `tangent` still fails at add time
 - [ ] `joints0` and `weights0` join those constants as documented vertex keys, so meshes built by hand and the 0.13.x skin loader agree
 - [ ] The first check (`pass.add_mesh`, `shader.add_mesh`, `shader.validate_mesh` or `Model::new`) lays the mesh out in location order. Today the first vertex and the first instance set the layout, sorted by name. Later shaders may read a subset of the slots, and any other mismatch is a typed error at add time that names both shaders
@@ -625,7 +626,7 @@ Latest moves:
 - **New in 0.13.x:** the Characters track, with skinned animation and glTF node animation from Later, the 2D layer, `scene.export_triangles`, the Mario walk-through, `integrations/pbrt`, the path tracer integration, unlit and toon presets and frustum culling from Later, depth-only passes, picking, debug lines, GPU timings and the workers fix.
 - **New in 0.14:** PBR lighting with shadow mapping and the glass preset from Later and the area cases of `LightKind`, targets with options with the cube-map `Camera` from Later, texture shapes and formats, stencil from the All bindings list, and `Blend::Custom` from Later.
 - **New goal:** Reference scenes, with M1 to M3.
-- **Landed in 0.12.6:** the exact `[w, h]` `ScreenRegion`, `WindowTarget` in JavaScript and Python, `WindowTarget`, `TextureTarget`, `PassInput` and `TextureRegion` in Swift and Kotlin, with aliases for the old names until 0.13.0, uniffi names in reflect, `TextureUsage` flags as JavaScript numbers, a readable `PassInput`, KTX2 detection by identifier, the `#[lsp_doc]` check on methods, the one-frame JavaScript list render, and, from 0.13.0, JavaScript `Error` objects, the throwing JavaScript `Shader` constructor and the applied viewport.
+- **Landed in 0.12.6:** the exact `[w, h]` `ScreenRegion`, `WindowTarget` in JavaScript and Python, `WindowTarget`, `TextureTarget` and `TextureRegion` in Swift and Kotlin, with aliases for the old names until 0.13.0, uniffi names in reflect, `TextureUsage` flags as JavaScript numbers, vertex and instance attributes typed by the shader, an internal `PassInput`, KTX2 detection by identifier, the `#[lsp_doc]` check on methods, the one-frame JavaScript list render, and, from 0.13.0, JavaScript `Error` objects, the throwing JavaScript `Shader` constructor and the applied viewport.
 
 Moves before that:
 
