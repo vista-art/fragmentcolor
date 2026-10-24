@@ -3,7 +3,7 @@
 //! It calls the step's `setup` once, then its `frame` on every redraw
 //! with the seconds since the window opened. `FC_TUTORIAL_FRAMES=n` skips the
 //! window: it renders `n` frames into a 1280 by 720 texture, prints the average
-//! frame time, and fails if the last frame covers less than 1% of its pixels.
+//! frame time, and fails if less than 1% of the last frame differs from its corner pixel.
 //! `FC_TUTORIAL_IMAGE=path` also saves that frame as a PNG.
 
 use anyhow::{Result, bail};
@@ -106,13 +106,16 @@ where
         frame(&state, &renderer, &target, index as f32 / 60.0)?;
     }
 
-    // A pass clears to transparent black, so any other pixel is one the step drew.
+    // A frame of one flat color means the step drew nothing on top of its background.
     let image = target.get_image().await;
     let (pixels, _) = image.as_chunks::<4>();
+    let Some(corner) = pixels.first() else {
+        bail!("the target returned no pixels");
+    };
     let total = pixels.len();
-    let drawn = pixels.iter().filter(|pixel| **pixel != [0; 4]).count();
+    let drawn = pixels.iter().filter(|pixel| *pixel != corner).count();
     if drawn * 100 < total {
-        bail!("only {drawn} of {total} pixels were drawn");
+        bail!("only {drawn} of {total} pixels differ from the corner");
     }
     let milliseconds = start.elapsed().as_secs_f64() * 1000.0 / f64::from(frames.max(1));
     println!("{frames} frames, {milliseconds:.2} ms each, {drawn} of {total} pixels drawn");

@@ -23,7 +23,7 @@ page.
 `python docs/tutorials/01-hello-triangle/host.py 01-three-lines`. Set
 `FC_TUTORIAL_FRAMES=n` to stop after n frames. In Rust that renders them
 into a 1280 by 720 texture with no window, prints the average frame time,
-and fails if the last frame is blank; `FC_TUTORIAL_IMAGE=path` saves it.
+and fails if the last frame is one flat color; `FC_TUTORIAL_IMAGE=path` saves it.
 The step counts (a million triangles in step 7, 8 million particles in
 step 8) come from those timings on an Apple M2. Swift and Kotlin have no
 host: an app calls `setup` and `frame` from its render loop.

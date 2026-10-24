@@ -1,4 +1,4 @@
-//! Step 8: a compute shader moves 8 million particles and counts them per pixel.
+//! Step 8: a compute shader moves 8 million particles and counts them in a grid.
 
 #[path = "../host.rs"]
 mod host;
@@ -54,6 +54,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
 
     // A new buffer holds zeros, so the first frame places every particle on a
     // circular orbit. After that, about one in 300 starts over on each frame.
+    // Mixing in the bits of time gives each frame its own dice.
     let seed = hash(index ^ bitcast<u32>(time));
     let fresh = all(particle.velocity == vec2<f32>(0.0));
     if (fresh || random(seed) < 0.003) {
@@ -136,12 +137,12 @@ fn setup() -> Result<State, FragmentColorError> {
     let simulate = Shader::new([sizes.as_str(), SIMULATE])?;
     let draw = Shader::new([sizes.as_str(), DRAW])?;
 
-    // One workgroup handles 256 items, as @workgroup_size says.
+    // One workgroup handles 256 items, as `@workgroup_size(256)` declares.
     let clear_pass = Pass::from_shader("clear", &clear);
-    clear_pass.set_compute_dispatch((WIDTH * HEIGHT + 255) / 256, 1, 1);
+    clear_pass.set_compute_dispatch((WIDTH * HEIGHT).div_ceil(256), 1, 1);
 
     let simulate_pass = Pass::from_shader("simulate", &simulate);
-    simulate_pass.set_compute_dispatch((COUNT + 255) / 256, 1, 1);
+    simulate_pass.set_compute_dispatch(COUNT.div_ceil(256), 1, 1);
     simulate_pass.require(&clear_pass)?;
 
     let output = Pass::from_shader("draw", &draw);

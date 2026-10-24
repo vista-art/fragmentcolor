@@ -1,4 +1,4 @@
-// Step 7: a million triangles, each placed by the GPU from nothing but its index.
+// Step 7: the GPU places a million triangles from their instance index alone.
 // Call `setup` once, then call `frame` from each `requestAnimationFrame` callback.
 
 import { Mesh, Shader } from "fragmentcolor";
@@ -38,7 +38,7 @@ fn vs_main(
     let spread = (random(index * 4u + 2u) - 0.5) * (1.2 - radius);
     let brightness = 0.4 + 0.6 * random(index * 4u + 3u);
 
-    // Three arms that curl outward, turning slowly as one disc.
+    // Three spiral arms, turning slowly as one disc.
     let angle = arm + radius * 5.0 + spread - time * 0.15;
     let center = vec2<f32>(cos(angle), sin(angle)) * radius * 0.95;
 

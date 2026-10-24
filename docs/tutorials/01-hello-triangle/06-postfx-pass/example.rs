@@ -32,7 +32,7 @@ fn vs_main(
     if (aspect > 1.0) { shape.x = shape.x / aspect; }
     else              { shape.y = shape.y * aspect; }
 
-    // Each copy loops around its center, out of step with the others.
+    // Each copy loops around its center, offset by its own phase.
     let wobble = vec2<f32>(
         sin(time * 1.3 + phase),
         cos(time * 0.9 + phase * 1.4),

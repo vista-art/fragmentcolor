@@ -1,4 +1,4 @@
-// Step 8: a compute shader moves 8 million particles and counts them per pixel.
+// Step 8: a compute shader moves 8 million particles and counts them in a grid.
 // Call `setup` once, then call `frame` on every display refresh, such as from an `MTKView` delegate.
 
 import FragmentColor
@@ -52,6 +52,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
 
     // A new buffer holds zeros, so the first frame places every particle on a
     // circular orbit. After that, about one in 300 starts over on each frame.
+    // Mixing in the bits of time gives each frame its own dice.
     let seed = hash(index ^ bitcast<u32>(time));
     let fresh = all(particle.velocity == vec2<f32>(0.0));
     if (fresh || random(seed) < 0.003) {
@@ -134,7 +135,7 @@ func setup() throws -> State {
     let simulate = try Shader([sizes, simulateSource])
     let draw = try Shader([sizes, drawSource])
 
-    // One workgroup handles 256 items, as @workgroup_size says.
+    // One workgroup handles 256 items, as `@workgroup_size(256)` declares.
     let clearPass = Pass.fromShader("clear", clear)
     clearPass.setComputeDispatch((width * height + 255) / 256, 1, 1)
 
