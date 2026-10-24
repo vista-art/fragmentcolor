@@ -41,11 +41,11 @@ fn show(d: f32) -> vec3<f32> {
 // #region: pair
 // The two shapes of one pair, measured from the middle of its quarter.
 fn disc(q: vec2<f32>) -> f32 {
-    return circle(q - vec2<f32>(-0.05, 0.03), 0.13);
+    return circle(q - vec2<f32>(-0.07, 0.05), 0.1);
 }
 
 fn square(q: vec2<f32>) -> f32 {
-    return box(q - vec2<f32>(0.06, -0.04), vec2<f32>(0.1));
+    return box(q - vec2<f32>(0.04, -0.03), vec2<f32>(0.11));
 }
 // #endregion: pair
 
