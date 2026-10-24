@@ -1342,7 +1342,7 @@ class Pass:
         mesh.add_vertex([0.0, 1.0, 0.0])
         mesh.add_vertex([1.0, 1.0, 0.0])
         shader = Shader.from_mesh(mesh)
-        rpass = Pass.from_shader("blobs", shader)
+        rpass = Pass.from_shader("meshes", shader)
 
         # Depth test on: closer fragments win, and the pass writes the depth
         # buffer, so later draws in the same pass see it.
@@ -3035,12 +3035,12 @@ class Model:
 
         mesh = Mesh()
         mesh.add_vertex(Vertex.pbr([0.0, 0.5, 0.0]))
-        blob = Model(mesh, Material.pbr())
+        detail = Model(mesh, Material.pbr())
 
-        # At a wide zoom level, skip the detail blobs.
-        blob.set_visible(False)
-        # Zoomed back in, turn them on again.
-        blob.set_visible(True)
+        # Far from the camera, hide the detail Model.
+        detail.set_visible(False)
+        # Closer again, show it.
+        detail.set_visible(True)
         ```
         """
 
@@ -4255,7 +4255,7 @@ class Material:
         # Every Material that points at `albedo` reuses the same uploaded GPU
         # texture; passing the same handle into N Material instances costs one
         # upload and N shader-uniform references.
-        blob = Material.pbr().base_color_texture(albedo)
+        material = Material.pbr().base_color_texture(albedo)
         ```
         """
     def metallic_roughness_texture(self, texture: _PyTextureSource) -> Material:
@@ -4598,7 +4598,7 @@ class Mipmap:
     Typical reasons to build one explicitly:
 
     - Your asset pipeline already runs on a worker (rayon, Swift `Task`, Kotlin `Dispatchers.Default`, Python `ThreadPoolExecutor`, a Web Worker) and you want to fold mip generation into the same hop.
-    - You stream tiles into a paint-canvas or terrain renderer and need each tile's GPU upload to be a single write, not a decode-plus-resize per upload.
+    - You stream tiles into a map or terrain renderer and need each tile's GPU upload to be a single write, with decoding and resizing finished beforehand.
     - You want to share one chain across many textures without rebuilding it.
 
     Build with [Mipmap::build(input)](https://fragmentcolor.org/api/texture/mipmap#build); the input shapes match what [Renderer::create_texture](https://fragmentcolor.org/api/core/renderer#create_texture) accepts. Whether the bytes get decoded depends on whether you pass a `size`:

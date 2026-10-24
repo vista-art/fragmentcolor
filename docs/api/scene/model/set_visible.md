@@ -24,12 +24,12 @@ use fragmentcolor::{Material, Mesh, Model, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertex(Vertex::pbr([0.0, 0.5, 0.0]));
-let blob = Model::new(mesh, Material::pbr());
+let detail = Model::new(mesh, Material::pbr());
 
-// At a wide zoom level, skip the detail blobs.
-blob.set_visible(false);
-// Zoomed back in, turn them on again.
-blob.set_visible(true);
+// Far from the camera, hide the detail Model.
+detail.set_visible(false);
+// Closer again, show it.
+detail.set_visible(true);
 # Ok(())
 # }
 ```

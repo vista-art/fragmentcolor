@@ -46,8 +46,8 @@ let albedo = renderer.create_texture((albedo_bytes, [2, 2])).await?;
 // Every Material that points at `albedo` reuses the same uploaded GPU
 // texture; passing the same handle into N Material instances costs one
 // upload and N shader-uniform references.
-let blob = Material::pbr().base_color_texture(&albedo);
-# let _ = blob;
+let material = Material::pbr().base_color_texture(&albedo);
+# let _ = material;
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

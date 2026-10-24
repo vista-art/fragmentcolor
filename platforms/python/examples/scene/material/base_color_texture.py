@@ -12,4 +12,4 @@ albedo = renderer.create_texture(albedo_bytes, size=[2, 2])
 # Every Material that points at `albedo` reuses the same uploaded GPU
 # texture; passing the same handle into N Material instances costs one
 # upload and N shader-uniform references.
-blob = Material.pbr().base_color_texture(albedo)
+material = Material.pbr().base_color_texture(albedo)
