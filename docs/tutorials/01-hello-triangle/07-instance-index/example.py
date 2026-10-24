@@ -34,7 +34,7 @@ fn vs_main(
     @location(0) position: vec2<f32>,
     @builtin(instance_index) index: u32,
 ) -> VOut {
-    // Four random numbers per copy, drawn from its index.
+    // Four random numbers per copy, taken from its index.
     let radius = random(index * 4u);
     let arm = f32(hash(index * 4u + 1u) % 3u) * 2.094;
     let spread = (random(index * 4u + 2u) - 0.5) * (1.2 - radius);

@@ -56,7 +56,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
 
     // A new buffer holds zeros, so the first frame places every particle on a
     // circular orbit. After that, about one in 300 starts over on each frame.
-    // Mixing in the bits of time gives each frame its own dice.
+    // Mixing in the bit pattern of time gives each frame its own dice.
     let seed = hash(index ^ bitcast<u32>(time));
     let fresh = all(particle.velocity == vec2<f32>(0.0));
     if (fresh || random(seed) < 0.003) {

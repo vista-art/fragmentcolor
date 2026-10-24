@@ -63,13 +63,13 @@ Keep that source in a string called <code><Lang rust="TRIANGLE" js="TRIANGLE" py
 
 <ColorTriangle />
 
-**Congratulations! You just drew your first triangle!** Click the four numbers in the code to pick another color.
+**Congratulations! That's your first triangle!** Click the four numbers in the code to pick another color.
 
 Behind those five lines of <Lang />, FragmentColor validates the WGSL and compiles it for your GPU. It builds a render pipeline, creates a buffer for `color` and copies your four numbers into it. Then it records the draw and submits it.
 
 The shader, from the top:
 
-- `var<uniform> color: vec4<f32>` declares a **uniform**, a value the program sets from outside the shader. `vec4<f32>` is four 32-bit floats, here red, green, blue and alpha. FragmentColor reads the declaration from the source and finds the uniform by its name, which is how `set("color", ...)` knows where the numbers go. The `@group(0) @binding(0)` in front is WGSL bookkeeping: no two bindings in one shader may share the same pair of numbers.
+- `var<uniform> color: vec4<f32>` declares a **uniform**, a value the program sets from outside the shader. Its type, `vec4<f32>`, is four 32-bit floats, here red, green, blue and alpha. FragmentColor reads the declaration from the source and finds the uniform by its name, which is how `set("color", ...)` knows where the numbers go. The `@group(0) @binding(0)` in front is WGSL bookkeeping: no two bindings in one shader may share the same pair of numbers.
 - `vs_main` is the vertex stage. A shader with no geometry attached draws three vertices, so `vs_main` runs three times. Its argument `i`, marked `@builtin(vertex_index)`, tells each run which corner to compute. The corners are in **normalized device coordinates**: `x` goes from -1 on the left edge to 1 on the right, `y` from -1 at the bottom to 1 at the top, whatever the target's size in pixels.
 - `VOut` carries the result in `pos`, the field marked `@builtin(position)`. After `x` and `y` come a depth for sorting overlapping shapes and a divisor for perspective. A flat drawing leaves them at `0.0` and `1.0`.
 - `fs_main`, the fragment stage, returns `color` for every pixel the triangle covers. `@location(0)` on its result sends that color to the target.
@@ -164,7 +164,7 @@ We build three vertices, each with its own color, and attach the mesh to the sha
 
 Each position has a third number, `z`, for depth. Our flat triangle sets it to `0.0`.
 
-The vertex stage now declares two inputs, `position` at `@location(0)` and `color` at `@location(1)`. On a vertex input, `@location` numbers an attribute slot, a set of numbers separate from the ones in `VOut`. When we call <code><Lang rust="add_mesh" js="addMesh" py="add_mesh" swift="addMesh" kotlin="addMesh" /></code>, FragmentColor matches the vertices' positions and `color` attributes to those inputs by name. If the mesh has nothing for an input the shader reads, the call fails with an error that names it.
+The vertex stage now declares two inputs, `position` at `@location(0)` and `color` at `@location(1)`. On a vertex input, `@location` refers to an attribute slot. Attribute slots have a numbering of their own, apart from the one in `VOut`. When we call <code><Lang rust="add_mesh" js="addMesh" py="add_mesh" swift="addMesh" kotlin="addMesh" /></code>, FragmentColor matches the vertices' positions and `color` attributes to those inputs by name. If the mesh has nothing for an input the shader reads, the call fails with an error that names it.
 
 <Snippet file="01-hello-triangle/04-vertex-gradient/example.rs" region="shader" />
 
@@ -218,13 +218,13 @@ Now `frame` renders only `output`:
 
 <Snippet file="01-hello-triangle/06-postfx-pass/example.rs" region="frame" />
 
-Even though the particles draw into the texture, their shader still gets the canvas's size. `output` stretches the 1024 × 1024 texture to fit. Squeezing each triangle by that same aspect ratio beforehand cancels the stretch: the particles keep their shape.
+Even though the particles draw into the texture, their shader still gets the canvas's size. `output` stretches the 1024 × 1024 texture to fit. Squeezing each triangle by that same aspect ratio beforehand undoes the distortion: the particles keep their shape.
 
 The post-processing shader draws one triangle twice as wide and twice as tall as the canvas. Then the GPU discards everything past the edges and runs `fs_main` once for each pixel that remains:
 
 <Snippet file="01-hello-triangle/06-postfx-pass/example.rs" region="postfx-shader" />
 
-`scene` is the particle texture. `textureSample` reads its color at a `uv` position, using `scene_sampler` to blend neighboring pixels. FragmentColor builds that sampler from the texture's own settings. Because textures count their rows from the top, this `uv` runs from 0 at the top edge to 1 at the bottom.
+`scene` is the particle texture. To read its color at a `uv` position, `textureSample` uses `scene_sampler`, which blends neighboring pixels. FragmentColor builds that sampler from the texture's own settings. Because textures count their rows from the top, this `uv` runs from 0 at the top edge to 1 at the bottom.
 
 <Demo file="01-hello-triangle/06-postfx-pass/example.rs" />
 
@@ -232,15 +232,15 @@ The particle shader is the one from step 5, unchanged. Only its target is new.
 
 ## Step 7: A million triangles
 
-Step 5 builds every `Instance` on the CPU with its own `set` calls, then uploads them all. Fifteen thousand copies make a short loop. A million would make a long one, and the GPU can invent the numbers itself.
+Step 5 builds every `Instance` on the CPU with its own `set` calls, then uploads them all. Fifteen thousand copies make a short loop. A million would make a long one. The GPU can invent the numbers itself.
 
 <Snippet file="01-hello-triangle/07-instance-index/example.rs" region="setup" />
 
-A vertex with nothing but a position can go in as a bare list of numbers. Two numbers per vertex are enough for a flat shape. <code><Lang rust="set_instance_count" js="setInstanceCount" py="set_instance_count" swift="setInstanceCount" kotlin="setInstanceCount" /></code> asks for a million copies of the mesh without a single `Instance`. The shader tells them apart by `@builtin(instance_index)`, the copy's number from 0 to 999,999:
+A vertex that has only a position can go in as a bare list of numbers. Two numbers per vertex are enough for a flat shape. <code><Lang rust="set_instance_count" js="setInstanceCount" py="set_instance_count" swift="setInstanceCount" kotlin="setInstanceCount" /></code> asks for a million copies of the mesh without a single `Instance`. The shader tells them apart by `@builtin(instance_index)`, the copy's number from 0 to 999,999:
 
 <Snippet file="01-hello-triangle/07-instance-index/example.rs" region="shader" />
 
-`hash` scrambles the bits of a number. `random` maps the result to a value between 0 and 1. Because an index always hashes to the same values, each triangle keeps its spot in the spiral from one frame to the next. Four values per copy pick a distance from the center, one of three arms, a sideways scatter and a brightness, each from its own seed: the index times four, plus 0 to 3. The angle grows with the distance, which curls each arm into a spiral. `time` rotates the whole disc.
+`hash` scrambles a number, and `random` maps the result to a value between 0 and 1. Because an index always hashes to the same values, each triangle keeps its spot from one frame to the next. Four values per copy pick a distance from the center, one of three arms, a sideways scatter and a brightness, each from its own seed: the index times four, plus 0 to 3. The angle grows with the distance, which curls each arm into a spiral. `time` rotates the whole disc.
 
 A few pieces of WGSL are new:
 
@@ -248,17 +248,17 @@ A few pieces of WGSL are new:
 - Angles are in radians, where a full turn is `6.283`. `2.094` is a third of a turn, one arm's share.
 - `mix(core, rim, radius)` blends from `core` to `rim` as `radius` goes from 0 to 1.
 
-Two lines replace step 2's aspect fix. `fit` divides the shorter side by each side of the canvas: 1 for the short axis, less for the long one. `position * 6.0 / resolution` sizes the triangle in pixels instead. With two units across the canvas, one pixel is `2.0 / resolution` units wide. Each triangle comes out about four pixels across.
+Two lines replace step 2's aspect fix. `fit` divides the shorter side by each side of the canvas: 1 for the short axis, less for the long one. The second line, `position * 6.0 / resolution`, sizes the triangle in pixels instead. With two units across the canvas, one pixel is `2.0 / resolution` units wide. Each triangle comes out about four pixels across.
 
 <Snippet file="01-hello-triangle/07-instance-index/example.rs" region="frame" />
 
 <Demo file="01-hello-triangle/07-instance-index/example.rs" />
 
-`setup` builds three vertices and sets one number, whatever the count. The GPU still sets up every triangle when it draws.
+`setup` builds three vertices and asks for a count, whatever that count is. The GPU still prepares every triangle when it draws.
 
 ### Your frame budget
 
-A display shows a new picture on every refresh. The time between two refreshes is the **frame budget**: 1000 milliseconds divided by the refresh rate, about 16.7 ms at 60 Hz and 8.3 ms at 120 Hz. Your display settings list the rate. In a browser, the gap between `requestAnimationFrame` callbacks tells you the same thing. Paste this into the browser's console:
+A display shows a new picture on every refresh. The time between two refreshes is the **frame budget**: 1000 milliseconds divided by the refresh rate, about 16.7 ms at 60 Hz and 8.3 ms at 120 Hz. Your display settings list the rate. In a browser, the gap between `requestAnimationFrame` callbacks tells you the same thing. Paste this into the console:
 
 ```js
 const stamps = [];
@@ -271,21 +271,21 @@ const gap = (stamps.at(-1) - stamps[0]) / (stamps.length - 1);
 console.log(`${Math.round(1000 / gap)} frames a second, ${gap.toFixed(1)} ms apart`);
 ```
 
-On an idle page it prints your refresh rate. While the demo above plays, it prints the frame time the page really gets. Once the work stops fitting in the budget, the gap jumps to two refreshes.
+With nothing playing, it prints your refresh rate. Run it again while the demo above plays to see how often the page manages a new frame. Once the work stops fitting in the budget, the gap widens to two refreshes or more.
 
-A timestamp around `renderer.render` measures less than it seems. `render` records the work and hands it to the GPU, which finishes later. To time the GPU from Rust, render a batch of frames, wait for the last one by reading its pixels back, and divide. The tutorial's host does exactly that: `FC_TUTORIAL_FRAMES=120 cargo run -p fce --example tutorial_01_hello_triangle_instance_index` prints the average frame time. In a browser, the performance panel shows the same work on its GPU track.
+A timestamp around `renderer.render` measures only the CPU side. `render` records the work and submits it to the GPU, which finishes later. To time the GPU from Rust, render a batch of frames, wait for the last one by reading its pixels back, and divide the elapsed time by how many there were. `host.rs` does that when `FC_TUTORIAL_FRAMES` is set: `FC_TUTORIAL_FRAMES=120 cargo run -p fce --example tutorial_01_hello_triangle_instance_index` renders 120 of them offscreen at 1280 × 720 and prints the average. A browser's performance panel shows the same work on its GPU track.
 
-With a different `COPIES`, the same command finds your **crossover point**: the count where the frame time passes your budget.
+The **crossover point** is the count where the frame time grows past your budget. To find yours, change `COPIES` at the top of the step's file and measure again: with the command above in Rust, or with the console snippet while your copy of `example.js` plays.
 
 **On a recent laptop, a million of these triangles fit in a 60 Hz budget. A few million don't.**
 
-Twice the triangles take about twice as long to draw. Shrinking each one to a tenth of its width saves less than half that time. At four pixels wide, the count sets the length of a frame.
+Twice the triangles take about twice as long to draw. Shrinking each one to a tenth of its width cuts the frame time by less than half. At four pixels wide, the count sets the length of a frame.
 
 ## Step 8: Eight million particles
 
-In this final step, a **compute shader** moves every particle and counts it in a grid of 1280 × 720 cells. One full-screen triangle then colors every pixel by the count in its cell. Every particle adds a little light to the cell under it.
+In this final step, a **compute shader** moves every particle and counts it in a grid of 1280 × 720 cells. One full-screen triangle then colors each pixel by the count in its cell: the more particles a cell holds, the brighter it glows.
 
-A compute shader runs a plain function once per item, in workgroups of 256 here. It reads and writes **storage buffers**: arrays on the GPU that keep their contents from frame to frame. One of them stores our particles, each as a position and a velocity. A second holds a count per grid cell. FragmentColor gives a storage buffer to every shader that declares it under the same name. The clear, simulate and draw shaders all declare `counts` and reach the same cells.
+A compute shader runs a function for every item, in workgroups of 256 here. It reads and writes **storage buffers**: arrays on the GPU that keep their contents from frame to frame. One of them stores our particles, each as a position and a velocity. A second holds a count per grid cell. FragmentColor keeps one storage buffer per name and binds it to every shader that declares it. The clear, simulate and draw shaders all reach the same cells through `counts`.
 
 Each frame runs three passes in a row:
 
@@ -307,9 +307,9 @@ Pass two moves the particles:
 
 The ID is a `vec3<u32>` to match the three dispatch dimensions, and a flat list of particles needs only `id.x`. Rounding the dispatch up can start a few runs past the end. The `if` at the top of each compute shader skips them.
 
-A new storage buffer starts as zeros. A particle standing perfectly still takes that as its cue to pick an orbit. After that, every frame adds the pull of the **attractor**, a moving point near the middle, to the velocity. The particle then moves by that velocity for 1/60 of a second.
+A new storage buffer starts as zeros. A particle standing perfectly still takes that as its cue to pick an orbit. After that, every frame adds the pull of the **attractor**, a moving point near the middle, to the velocity. The particle then moves by that velocity for 1/60 of a second. About one particle in 300 also picks a fresh orbit on each frame, which keeps the attractor from swallowing the disc.
 
-The grid is a flat array, one row after another: the cell in column `x` and row `y` sits at `y * GRID.x + x`. More than a thousand particles can share a cell during one frame. `atomicAdd` makes sure each of them counts, where a plain `+=` from several runs at once could lose some. Like `atomicStore` in the first pass, it takes a pointer to the cell, written with `&`.
+The grid is a flat array, one row after another: the cell in column `x` and row `y` is element `y * GRID.x + x`. More than a thousand particles can share a cell during one frame. `atomicAdd` makes sure each of them counts, where an ordinary `+=` from several runs at once could lose some. Like `atomicStore` in the first pass, it takes a pointer to the cell, written with `&`.
 
 Last, the draw pass reads the counts:
 
@@ -323,7 +323,7 @@ Every demo so far runs on WebGPU, or on WebGL2 where a browser lacks it. This on
 
 <Demo file="01-hello-triangle/08-compute/example.rs" webgpu />
 
-A particle here is one compute thread and one `atomicAdd`, with no shape for the GPU to set up. Item for item, it costs about a sixteenth of what an instanced triangle costs: this step moves eight times as many particles as step 7 draws triangles, in about half the time.
+A particle here is one run of the compute shader and one `atomicAdd`, with no triangle for the GPU to prepare. Item for item, it costs about a sixteenth as much as an instanced triangle: this step moves eight times as many particles as step 7 draws triangles, in about half the time.
 
 ## What just happened
 
@@ -334,6 +334,6 @@ Eight steps, eight objects. Here's what each one does:
 - **`Shader`** is the program the GPU runs. It gets a uniform in step 1, library functions in steps 3, 5 and 6, and a compute stage in step 8.
 - **`Vertex`** and **`Mesh`** (step 4) move the geometry out of the shader and into our program.
 - **`Instance`** gives one triangle 15,000 copies in step 5. Step 7 drops it for a count and an index.
-- **`Pass`** and **`Texture`** chain shaders: a texture between two passes in step 6, two compute passes and a draw pass in step 8.
+- **`Pass`** chains shaders: two render passes with a **`Texture`** between them in step 6, two compute passes and a draw pass in step 8.
 
 Next, [Drawing with distance](/tutorials/drawing-with-distance/) stays inside one fragment shader and draws circles, boxes and stars out of nothing but arithmetic.
