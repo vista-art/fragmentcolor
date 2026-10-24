@@ -256,7 +256,7 @@ Two lines replace step 2's aspect fix. `fit` divides the shorter side by each si
 
 **A million triangles fit in a frame.**
 
-At 60 frames a second, each frame gets 16.7 milliseconds. On a recent laptop GPU, a million of these triangles take about 8 of them. Two million take about 16.5, just past the budget, and the display falls back to every other refresh: 30 frames a second. Each triangle costs about eight nanoseconds however few pixels it covers. With shapes four pixels wide, the number of triangles sets the frame time and their size barely moves it.
+The cost of a draw grows with the number of triangles in it. Each one costs the GPU about the same, however few pixels it covers, so with shapes four pixels wide the count decides how long a frame takes and their size barely matters. A few million of them no longer fit.
 
 ## Step 8: Eight million particles
 
@@ -300,7 +300,7 @@ Every demo so far runs on WebGPU, or on WebGL2 where a browser lacks it. This on
 
 <Demo file="01-hello-triangle/08-compute/example.rs" webgpu />
 
-On that same laptop GPU, all three passes take about 4 milliseconds a frame natively. The browser draws a steady 60 frames a second. That's half a nanosecond per particle, a sixteenth of what a triangle costs in step 7: one compute thread and one `atomicAdd`, with no shape for the GPU to set up.
+A particle here is one compute thread and one `atomicAdd`, with no shape for the GPU to set up. That's how this step moves eight times as many particles as step 7 draws triangles, and still finishes each frame with time to spare.
 
 ## What just happened
 
