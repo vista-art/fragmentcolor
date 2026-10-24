@@ -6,6 +6,9 @@
 // from the example.js module copied under src/tutorials/<...>/example.js, and
 // drives them with WASM-initialized Renderer + canvas Target.
 //
+// `frame` also gets a sixth argument, `pointer`, as the playground harness passes it:
+// canvas pixels with y pointing down, and the canvas center until the pointer first moves.
+//
 // Generalization of the ShaderHero front-page demo. ShaderHero will refactor
 // to use this component once it stabilizes.
 //
@@ -79,6 +82,7 @@ if (!customElements.get('tutorial-demo')) {
     #onOtherStarted;
     #start = performance.now();
     #fcModule;
+    #pointer = null;       // canvas pixels, y down; null until the pointer moves
 
     constructor() {
       super();
@@ -263,6 +267,17 @@ if (!customElements.get('tutorial-demo')) {
       this.#ro.observe(this.#canvas);
       window.addEventListener('resize', () => this.#applySize());
 
+      // The pointer in canvas pixels, y down, from moves and presses on the canvas.
+      const track = (event) => {
+        const rect = this.#canvas.getBoundingClientRect();
+        this.#pointer = [
+          ((event.clientX - rect.left) / rect.width) * this.#canvas.width,
+          ((event.clientY - rect.top) / rect.height) * this.#canvas.height,
+        ];
+      };
+      this.#canvas.addEventListener('pointermove', track);
+      this.#canvas.addEventListener('pointerdown', track);
+
       // 6) RAF loop, stored on `this` so the IntersectionObserver and
       //    the cross-demo coordination can re-arm it.
       this.#loop = (now) => {
@@ -271,7 +286,8 @@ if (!customElements.get('tutorial-demo')) {
         try {
           const t = (now - this.#start) / 1000.0;
           const size = [this.#canvas.width, this.#canvas.height];
-          this.#frame(this.#state, this.#renderer, this.#target, t, size);
+          const pointer = this.#pointer ?? [size[0] / 2, size[1] / 2];
+          this.#frame(this.#state, this.#renderer, this.#target, t, size, pointer);
         } catch (e) {
           console.error('[Demo] frame failed (stopping loop)', e);
           this.#stopped = true;
