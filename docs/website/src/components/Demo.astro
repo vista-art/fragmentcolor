@@ -1,5 +1,5 @@
 ---
-// <Demo file="01-hello-triangle/04-postfx-pass/example.rs" />
+// <Demo file="01-hello-triangle/06-postfx-pass/example.rs" />
 //
 // Renders a live canvas that runs the transpiled JS port of a tutorial step.
 // Picks up `setup(renderer, target)` and `frame(state, renderer, target, time, size)`
@@ -254,7 +254,6 @@ if (!customElements.get('tutorial-demo')) {
     }
 
     async #init() {
-
       // 1) Boot WASM once per page, with slugs resolving against the local /shaders/ tree.
       const { loadFragmentColor } = await import('../runtime.js');
       const fc = await loadFragmentColor();
