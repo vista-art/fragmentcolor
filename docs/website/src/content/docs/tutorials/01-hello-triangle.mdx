@@ -254,9 +254,11 @@ Two lines replace step 2's aspect fix. `fit` divides the shorter side by each si
 
 <Demo file="01-hello-triangle/07-instance-index/example.rs" />
 
-**A million triangles fit in a frame.**
+Setup no longer does any work per copy, and the mesh the GPU receives holds three vertices whatever the count. The draw itself still pays per triangle.
 
-The cost of a draw grows with the number of triangles in it. Each one costs the GPU about the same, however few pixels it covers, so with shapes four pixels wide the count decides how long a frame takes and their size barely matters. A few million of them no longer fit.
+**A million triangles fit in a frame. A few million don't.**
+
+Doubling the count roughly doubles the draw's time, while a triangle ten times smaller still costs more than half as much. At four pixels wide, the count sets the price.
 
 ## Step 8: Eight million particles
 
@@ -300,7 +302,7 @@ Every demo so far runs on WebGPU, or on WebGL2 where a browser lacks it. This on
 
 <Demo file="01-hello-triangle/08-compute/example.rs" webgpu />
 
-A particle here is one compute thread and one `atomicAdd`, with no shape for the GPU to set up. That's how this step moves eight times as many particles as step 7 draws triangles, and still finishes each frame with time to spare.
+A particle here is one compute thread and one `atomicAdd`, with no shape for the GPU to set up. Item for item, it costs about a sixteenth of an instanced triangle: this step moves eight times as many particles as step 7 draws triangles, in about half the time.
 
 ## What just happened
 
