@@ -65,7 +65,7 @@ struct VOut {
 
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
-    // One triangle large enough to cover the whole screen.
+    // One triangle large enough to cover the whole target.
     var corners = array<vec2<f32>, 3>(
         vec2<f32>(-1.0, -1.0), vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0),
     );
@@ -80,7 +80,7 @@ fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
 
 @fragment
 fn fs_main(in: VOut) -> @location(0) vec4<f32> {
-    // Read red, green and blue from three slightly different spots.
+    // Sample each channel at its own offset.
     let offsets = chromatic_offsets(in.uv, 0.006);
     let red = textureSample(scene, scene_sampler, offsets[0]).r;
     let green = textureSample(scene, scene_sampler, offsets[1]).g;
@@ -122,7 +122,7 @@ export async function setup(renderer) {
     }
     particles.addMesh(mesh);
 
-    // The particles draw into this texture, and the postfx shader reads it.
+    // The particle pass draws into this texture for `postfx` to read.
     const scene = await renderer.createTextureTarget([1024, 1024]);
 
     const postfx = await Shader.fetch([

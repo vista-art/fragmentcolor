@@ -1,4 +1,4 @@
-// Step 5: one mesh drawn 15000 times, each copy with its own place, phase and tint.
+// Step 5: the GPU draws one mesh 15000 times, each copy with its own place, phase and tint.
 // Call `setup` once, then call `frame` from each `requestAnimationFrame` callback.
 
 import { Instance, Mesh, Shader, Vertex } from "fragmentcolor";

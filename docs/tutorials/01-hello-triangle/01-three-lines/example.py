@@ -1,4 +1,4 @@
-"""Step 1: a shader with one uniform, drawn every frame in a new color.
+"""Step 1: a shader with one uniform draws the triangle in a new color every frame.
 
 From the repository root, run `python docs/tutorials/01-hello-triangle/host.py 01-three-lines`.
 """

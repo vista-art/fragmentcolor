@@ -1,6 +1,6 @@
 # 01-hello-triangle
 
-This directory holds the **code** for the six steps of the tutorial. The
+This directory holds the **code** for the eight steps of the tutorial. The
 **prose** lives in `docs/website/src/content/docs/tutorials/01-hello-triangle.mdx`.
 
 ## Files
@@ -21,9 +21,11 @@ page.
 `host.rs` and `host.py` open a window and call them. Run a step with
 `cargo run -p fce --example tutorial_01_hello_triangle_three_lines` or
 `python docs/tutorials/01-hello-triangle/host.py 01-three-lines`. Set
-`FC_TUTORIAL_FRAMES=n` to stop after n frames; in Rust it renders them
-into a texture with no window, fails if nothing was drawn, and
-`FC_TUTORIAL_IMAGE=path` saves the last frame. Swift and Kotlin have no
+`FC_TUTORIAL_FRAMES=n` to stop after n frames. In Rust that renders them
+into a 1280 by 720 texture with no window, prints the average frame time,
+and fails if the last frame is blank; `FC_TUTORIAL_IMAGE=path` saves it.
+The step counts (a million triangles in step 7, 8 million particles in
+step 8) come from those timings on an Apple M2. Swift and Kotlin have no
 host: an app calls `setup` and `frame` from its render loop.
 
 ## Region markers

@@ -1,10 +1,10 @@
-//! The program around each step: it opens a window, calls the step's `setup` once,
-//! and calls its `frame` on every redraw with the seconds since the window opened.
+//! Runs one step of the tutorial in a window.
 //!
-//! With `FC_TUTORIAL_FRAMES=n` set, it renders `n` frames into a 1280 by 720 texture,
-//! prints how long a frame took on average, fails if the frames cover less than 1% of
-//! its pixels, and exits without opening a window. `FC_TUTORIAL_IMAGE=path` also saves
-//! the last of those frames as a PNG.
+//! It calls the step's `setup` once, then its `frame` on every redraw
+//! with the seconds since the window opened. `FC_TUTORIAL_FRAMES=n` skips the
+//! window: it renders `n` frames into a 1280 by 720 texture, prints the average
+//! frame time, and fails if the last frame covers less than 1% of its pixels.
+//! `FC_TUTORIAL_IMAGE=path` also saves that frame as a PNG.
 
 use anyhow::{Result, bail};
 use fragmentcolor::{
