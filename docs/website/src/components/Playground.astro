@@ -1,8 +1,9 @@
 ---
 // <Playground /> runs the developer demos: editable WGSL and JS that rebuild as
-// you type, uniform controls generated from the shader, and the same program in
-// Rust, Python, Swift, and Kotlin. mode="landing" fills the screen under the site
-// header, without a frame, and leads with the tagline and an install line.
+// you type, uniform controls for the keys main.js sets, the page code that runs
+// it, and the same program in Rust, Python, Swift, and Kotlin. mode="landing"
+// fills the screen under the site header, without a frame, and leads with the
+// tagline and an install line.
 import { DEMOS } from "../playground/demos/index.js";
 import site from "../../package.json";
 
@@ -651,7 +652,8 @@ const installs = [
     font-size: 12px;
   }
 
-  .fcp-tabs button.generated {
+  .fcp-tabs button.generated,
+  .fcp-tabs button.readonly {
     font-style: italic;
   }
 
@@ -738,7 +740,9 @@ const installs = [
     height: 100%;
   }
 
-  fc-playground[data-tab="generated"] .fcp-editor .cm-content {
+  /* Read-only tabs dim the scroller. Opacity on .cm-content would give the lines
+     a stacking context of their own and lift the current line over the selection. */
+  fc-playground[data-tab="readonly"] .fcp-editor .cm-scroller {
     opacity: 0.92;
   }
 

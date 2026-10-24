@@ -1,10 +1,11 @@
-// Uniform controls generated from what a shader reports about itself:
-// `listKeys()` names every uniform and struct field, `get()` gives the value
-// and its shape, and the WGSL declaration adds the type and an optional
-// `// min..max` range comment.
+// Uniform controls for the keys main.js sets in setup. `listKeys()` confirms
+// the shader declares a key, `get()` gives its value and shape, and the WGSL
+// declaration adds the type and an optional `// min..max` range comment.
 
 const COMPONENTS = ["x", "y", "z", "w"];
 const SCALARS = { f32: "float", f16: "float", i32: "int", u32: "uint" };
+
+const tidy = (n) => Number(n.toPrecision(12));
 
 // Reads `name: type, // comment` struct fields and `var<uniform> name: type; // comment` roots.
 function findDeclaration(sources, key) {
@@ -50,17 +51,46 @@ function defaultRange(numbers, scalar) {
 }
 
 /**
- * Describes one control per leaf key that a slider or color picker can drive.
- * @param {Array<{ shader: any, hidden: Set<string> }>} entries shaders and the keys their frame sets
+ * The range a slider shows for one value of `control`.
+ *
+ * The declared or default range grows to reach the value.
+ * Floats step by 1, 2 or 5 times a power of ten. The steps count
+ * from the end the value stays inside, which keeps that end exact, and
+ * the other end lands on a step at or past the value, so a drag reaches both.
+ * The controls bar and the inline sliders on main.js both read their ranges here.
+ * @param {{ min: number, max: number, scalar: string }} control
+ * @param {number} value
+ * @returns {{ min: number, max: number, step: number }}
+ */
+export function sliderRange(control, value) {
+  const low = Math.min(control.min, value);
+  const high = Math.max(control.max, value);
+  if (control.scalar !== "float") {
+    const min = Math.floor(low);
+    return { min, max: Math.max(Math.ceil(high), min + 1), step: 1 };
+  }
+  const rough = (high - low || 1) / 1000;
+  const power = 10 ** Math.floor(Math.log10(rough));
+  const step = tidy(power * [1, 2, 5, 10].find((n) => n * power >= rough));
+  const span = Math.max(Math.ceil((high - low) / step - 1e-9), 1) * step;
+  if (value < control.min) return { min: tidy(high - span), max: high, step };
+  return { min: low, max: tidy(low + span), step };
+}
+
+/**
+ * Describes one control per key that setup sets and the shader declares,
+ * when a slider or color picker can drive it. Keys frame sets again stay out.
+ * @param {Array<{ shader: any, keys: Set<string>, hidden: Set<string> }>} entries
+ *   shaders, the keys their setup sets, and the keys their frame sets
  * @param {string[]} sources WGSL sources searched for declarations and range comments
  */
 export function describeControls(entries, sources) {
   const controls = [];
-  for (const { shader, hidden } of entries) {
-    const keys = shader.listKeys();
+  for (const { shader, keys, hidden } of entries) {
+    const declared = shader.listKeys();
     for (const key of keys) {
-      if (hidden.has(key)) continue;
-      if (keys.some((other) => other.startsWith(`${key}.`))) continue;
+      if (hidden.has(key) || !declared.includes(key)) continue;
+      if (declared.some((other) => other.startsWith(`${key}.`))) continue;
       let value;
       try {
         value = shader.get(key);
@@ -80,9 +110,10 @@ export function describeControls(entries, sources) {
       const [min, max] = range ? [Number(range[1]), Number(range[2])] : defaultRange(numbers, type.scalar);
       const leaf = key.split(".").pop();
       const color = /colou?r|tint/i.test(leaf) && type.size >= 3 && type.scalar === "float";
-      const step = type.scalar === "float" ? (max - min) / 1000 : 1;
       const order = declaration?.order ?? Infinity;
-      controls.push({ shader, key, color, scalar: type.scalar, size: type.size, min, max, step, value: numbers, order });
+      const control = { shader, key, color, scalar: type.scalar, size: type.size, min, max, value: numbers, order };
+      control.ranges = numbers.map((n) => sliderRange(control, n));
+      controls.push(control);
     }
   }
   return controls.sort((a, b) => a.order - b.order);
@@ -103,9 +134,16 @@ function format(n, step) {
   return step >= 1 ? String(Math.round(n)) : n.toFixed(Math.abs(n) >= 100 ? 1 : 3).replace(/\.?0+$/, "") || "0";
 }
 
+function applyRange(input, { min, max, step }) {
+  input.min = String(min);
+  input.max = String(max);
+  input.step = String(step);
+}
+
 /**
- * Renders the controls into `container` and calls `onInput(control, value)` as they move.
- * Each control gains `update(value)`, which moves it to a value set elsewhere.
+ * Renders the controls into `container` and calls `onInput(control, value)`
+ * as they move. Each control gains `update(value)`, which moves it to a value set
+ * elsewhere, and a slider control gains `setRange(index, range)`, which resizes one slider.
  */
 export function renderControls(container, controls, onInput) {
   container.replaceChildren();
@@ -149,16 +187,14 @@ export function renderControls(container, controls, onInput) {
       field.append(name);
       const input = document.createElement("input");
       input.type = "range";
-      input.min = String(Math.min(control.min, component));
-      input.max = String(Math.max(control.max, component));
-      input.step = String(control.step);
+      applyRange(input, control.ranges[i]);
       input.value = String(component);
       input.setAttribute("aria-label", control.size > 1 ? `${control.key}.${COMPONENTS[i]}` : control.key);
       const readout = document.createElement("output");
-      readout.textContent = format(component, control.step);
+      readout.textContent = format(component, control.ranges[i].step);
       input.addEventListener("input", () => {
         value[i] = Number(input.value);
-        readout.textContent = format(value[i], control.step);
+        readout.textContent = format(value[i], control.ranges[i].step);
         onInput(control, control.size === 1 ? value[0] : [...value]);
       });
       field.append(input, readout);
@@ -171,8 +207,14 @@ export function renderControls(container, controls, onInput) {
         if (!fields[i]) return;
         value[i] = component;
         fields[i].input.value = String(component);
-        fields[i].readout.textContent = format(component, control.step);
+        fields[i].readout.textContent = format(component, control.ranges[i].step);
       });
+    };
+    control.setRange = (i, range) => {
+      if (!fields[i]) return;
+      control.ranges[i] = range;
+      applyRange(fields[i].input, range);
+      fields[i].input.value = String(value[i]);
     };
     row.append(sliders);
     container.append(row);

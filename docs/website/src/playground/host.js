@@ -2,12 +2,13 @@
 //
 // Each demo is a JS program plus WGSL files. The host rebuilds the program as
 // the code changes, keeps the last good build drawing when a build fails,
-// generates uniform controls from the shader's own keys, and keeps the Rust,
+// generates uniform controls for the keys setup sets, and keeps the Rust,
 // Python, Swift, and Kotlin tabs in step with what is running.
 
 import { loadProgram } from "./program.js";
-import { describeControls, renderControls } from "./controls.js";
+import { describeControls, renderControls, sliderRange } from "./controls.js";
 import { LANGUAGES, generateCode, parseLibrary, replaceLibrary } from "./codegen.js";
+import { HARNESS } from "./harness.js";
 import { LibraryPicker } from "./picker.js";
 import { loadFragmentColor } from "../runtime.js";
 
@@ -18,13 +19,15 @@ const DPR_CAP = 2;
 let runtime;
 let instances = 0;
 let recorder = null;
+// Every key the builds set on each shader, read when a later build keeps that shader.
+const written = new WeakMap();
 let gpuCheck;
 
 async function loadRuntime() {
   const fc = await loadFragmentColor();
   globalThis.__fragmentcolor = fc;
 
-  // Records which keys a program sets, so controls skip the ones frame drives.
+  // Records which keys setup and frame set, which decides the controls.
   const set = fc.Shader.prototype.set;
   fc.Shader.prototype.set = function (key, value) {
     recorder?.(this, key);
@@ -70,6 +73,33 @@ async function capturing(run) {
 function shadersIn(state, Shader) {
   const values = state instanceof Shader ? [state] : Object.values(state ?? {}).flat();
   return values.filter((v) => v instanceof Shader);
+}
+
+// A shader that main.js keeps from an earlier build still holds what that build set.
+// Keys this setup leaves alone go back to zero, which is what a new shader holds.
+function clearStale(shaders, setupKeys) {
+  for (const shader of shaders) {
+    const keys = written.get(shader) ?? [];
+    for (const key of keys) {
+      if (setupKeys.get(shader)?.has(key)) continue;
+      keys.delete(key);
+      try {
+        const zero = zeroLike(shader.get(key));
+        if (zero !== null) shader.set(key, zero);
+      } catch {
+        // the key left the shader
+      }
+    }
+  }
+}
+
+// Zeros in the shape and number type of `value`; null for anything but numbers.
+function zeroLike(value) {
+  if (typeof value === "number") return 0;
+  if (ArrayBuffer.isView(value)) return new value.constructor(value.length);
+  if (!Array.isArray(value)) return null;
+  const zeros = value.map(zeroLike);
+  return zeros.includes(null) ? null : zeros;
 }
 
 function plain(value) {
@@ -226,7 +256,8 @@ export class Playground {
     };
   }
 
-  // Editor tabs: the WGSL files and main.js are editable; the other languages are generated.
+  // Editor tabs: the WGSL files and main.js are editable. index.js, the page code
+  // that runs main.js, is read-only, and the other languages are generated.
   loadTabs({ files, js }) {
     // A demo opens on the last language tab the reader picked, main.js at first, never on a shader file.
     const language = this.language ?? "js";
@@ -235,8 +266,12 @@ export class Playground {
       tabs.push({ id: name, label: name, kind: "wgsl", state: this.editorState(text, "wgsl", true) });
     }
     tabs.push({ id: "js", label: "main.js", kind: "js", state: this.editorState(js, "js", true) });
+    // Reading index.js counts as reading JavaScript, so the next demo opens on main.js.
+    const harness = this.editorState(HARNESS, "js", false);
+    tabs.push({ id: "index.js", label: "index.js", kind: "js", language: "js", readonly: true, state: harness });
     for (const lang of LANGUAGES.filter((l) => l.id !== "js")) {
-      tabs.push({ id: lang.id, label: lang.label, file: lang.file, kind: lang.id, generated: true, state: null });
+      const { id, label, file } = lang;
+      tabs.push({ id, label, file, kind: id, generated: true, readonly: true, state: null });
     }
     this.tabs = tabs;
     this.codeStale = true;
@@ -252,6 +287,9 @@ export class Playground {
         if (tab.generated) {
           button.classList.add("generated");
           button.title = `${tab.file}, generated from the running demo. Edit the shader or main.js to change it.`;
+        } else if (tab.readonly) {
+          button.classList.add("readonly");
+          button.title = `${tab.label} calls setup and frame from main.js the way this page does. It is read-only.`;
         }
         button.addEventListener("click", () => this.showTab(tab.id));
         return button;
@@ -340,7 +378,23 @@ export class Playground {
     const value = findSetValues(state.doc.toString()).find((v) => v.from <= from && to <= v.to);
     if (!value) return null;
     const control = this.controls.find((c) => c.key === value.key);
-    return { key: value.key, control };
+    return { key: value.key, control, from: value.from, text: value.text };
+  }
+
+  // An inline slider on a `.set` value takes the range its control shows. A value
+  // typed past that range grows it, and the control resizes along with the slider.
+  rangeAt(state, from, to) {
+    const found = this.setValueAt(state, from, to);
+    const control = found?.control;
+    if (!control || control.color) return null;
+    const index = found.text.slice(0, from - found.from).split(",").length - 1;
+    const value = Number(state.sliceDoc(from, to).replace(/_/g, ""));
+    const shown = control.ranges[index];
+    if (!shown || !Number.isFinite(value)) return null;
+    if (value >= shown.min && value <= shown.max) return shown;
+    const range = sliderRange(control, value);
+    control.setRange?.(index, range);
+    return range;
   }
 
   showTab(id) {
@@ -351,7 +405,7 @@ export class Playground {
     }
     const tab = this.tabs.find((t) => t.id === id) ?? this.tabs[0];
     this.activeTab = tab.id;
-    if (tab.kind !== "wgsl") this.language = tab.id;
+    if (tab.kind !== "wgsl") this.language = tab.language ?? tab.id;
     if (tab.generated && (this.codeStale || !tab.state)) this.refreshCode();
     this.view.setState(tab.state);
     try {
@@ -367,7 +421,7 @@ export class Playground {
       button.tabIndex = active ? 0 : -1;
       if (active) this.ui.editor.setAttribute("aria-labelledby", button.id);
     }
-    this.root.dataset.tab = tab.generated ? "generated" : "source";
+    this.root.dataset.tab = tab.readonly ? "readonly" : "source";
     this.showInstall(tab.kind);
   }
 
@@ -436,8 +490,10 @@ export class Playground {
     const setupKeys = new Map();
     const frameKeys = new Map();
     const note = (map) => (shader, key) => {
-      if (!map.has(shader)) map.set(shader, new Set());
-      map.get(shader).add(key);
+      for (const keys of [map, written]) {
+        if (!keys.has(shader)) keys.set(shader, new Set());
+        keys.get(shader).add(key);
+      }
     };
 
     let module;
@@ -456,14 +512,16 @@ export class Playground {
     if (token !== this.buildToken || this.destroyed || demo !== this.demo) return;
 
     const shaders = shadersIn(state, this.fc.Shader);
+    clearStale(shaders, setupKeys);
+    // A control's value outlives rebuilds for as long as setup still sets its key.
     for (const [key, value] of this.overrides) {
-      for (const shader of shaders) {
-        if (shader.listKeys().includes(key)) {
-          try {
-            shader.set(key, value);
-          } catch {
-            this.overrides.delete(key);
-          }
+      const owners = shaders.filter((shader) => setupKeys.get(shader)?.has(key));
+      if (!owners.length) this.overrides.delete(key);
+      for (const shader of owners) {
+        try {
+          shader.set(key, value);
+        } catch {
+          this.overrides.delete(key);
         }
       }
     }
@@ -485,10 +543,16 @@ export class Playground {
     this.showError(null);
     this.setStatus(`${this.backend} · built in ${Math.round(performance.now() - started)} ms`);
     this.controls = describeControls(
-      shaders.map((shader) => ({ shader, hidden: frameKeys.get(shader) ?? new Set() })),
+      shaders.map((shader) => ({
+        shader,
+        keys: setupKeys.get(shader) ?? new Set(),
+        hidden: frameKeys.get(shader) ?? new Set(),
+      })),
       Object.values(files),
     );
     renderControls(this.ui.controls, this.controls, (control, value) => this.adjust(control, value));
+    // The inline sliders on main.js read their ranges from the new controls.
+    if (this.activeTab === "js") this.view.dispatch({ effects: this.cm.refreshInline.of(null) });
     this.invalidateCode();
   }
 
@@ -524,8 +588,7 @@ export class Playground {
     const program = this.program;
     if (program) {
       for (const shader of program.shaders) {
-        const keys = [...(program.setupKeys.get(shader) ?? []), ...this.overrides.keys()];
-        for (const key of keys) {
+        for (const key of program.setupKeys.get(shader) ?? []) {
           const control = this.controls.find((c) => c.key === key && c.shader === shader);
           if (seen.has(key) || !control) continue;
           seen.add(key);
@@ -764,28 +827,43 @@ async function loadEditor() {
       import("./highlight.js"),
       import("./inline.js"),
     ]);
+  // These rules come before dracula and win where both set a property.
+  // The current line takes dracula's #44475a at 60% and paints at z-index -10,
+  // under the selection layer at -1 or lower, so a selection shows on that line too.
+  const lineHighlight = "rgba(68, 71, 90, 0.6)";
   const extensions = [
     basicSetup,
-    dracula,
     EditorView.theme({
       "&": { height: "100%", fontSize: "13px" },
       ".cm-scroller": { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", lineHeight: "1.55" },
       ".cm-gutters": { border: "none" },
+      ".cm-activeLine": { position: "relative", backgroundColor: "transparent" },
+      ".cm-activeLine::before": {
+        content: '""',
+        position: "absolute",
+        inset: "0",
+        zIndex: "-10",
+        backgroundColor: lineHighlight,
+        pointerEvents: "none",
+      },
+      ".cm-activeLineGutter": { backgroundColor: lineHighlight },
+      ".cm-selectionLayer .cm-selectionBackground": { background: "rgba(165, 180, 252, 0.24)" },
+      "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": {
+        background: "rgba(165, 180, 252, 0.32)",
+      },
     }),
+    dracula,
   ];
   const languages = (kind) => {
     if (kind === "wgsl") return wgsl();
     if (kind === "js") return javascript();
     return highlight(kind);
   };
-  // Inline sliders and swatches; on main.js `.set` values they take the control's range.
+  // Inline sliders and swatches; on main.js `.set` values they share the control's range.
   const inlineFor = (kind, host) =>
     inline.inlineControls({
       language: kind === "wgsl" ? "wgsl" : "js",
-      rangeFor: (state, from, to) => {
-        const control = kind === "js" ? host.setValueAt(state, from, to)?.control : null;
-        return control && !control.color ? { min: control.min, max: control.max, step: control.step } : null;
-      },
+      rangeFor: (state, from, to) => (kind === "js" ? host.rangeAt(state, from, to) : null),
       isColor: (state, from, to) => {
         const found = kind === "js" ? host.setValueAt(state, from, to) : null;
         if (!found) return false;
@@ -794,5 +872,14 @@ async function loadEditor() {
     });
   // Edits from the controls into main.js are tagged so they do not rebuild.
   const synced = Annotation.define();
-  return { EditorView, EditorState, extensions, languages, inline: inlineFor, synced, scrubbed: inline.scrubbed };
+  return {
+    EditorView,
+    EditorState,
+    extensions,
+    languages,
+    inline: inlineFor,
+    synced,
+    scrubbed: inline.scrubbed,
+    refreshInline: inline.refreshInline,
+  };
 }

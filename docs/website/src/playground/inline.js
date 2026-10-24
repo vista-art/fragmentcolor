@@ -441,6 +441,8 @@ function validRange(range) {
   return ok ? { min, max, step } : null;
 }
 
+const sameRange = (a, b) => a === b || Boolean(a && b && a.min === b.min && a.max === b.max && a.step === b.step);
+
 const placesOf = (step) => (step < 1 ? Math.ceil(-Math.log10(step) - 1e-9) : 0);
 
 class Slider extends WidgetType {
@@ -565,7 +567,7 @@ class Controls {
     const parsed = syntaxTree(update.startState) !== syntaxTree(update.state);
     const changed = update.docChanged || refresh || parsed;
     if (changed || update.viewportChanged) this.swatches = this.findSwatches(update.view);
-    if (changed || update.selectionSet) this.slider = this.findSlider(update.view, update);
+    if (changed || update.selectionSet) this.slider = this.findSlider(update.view, update, refresh);
     this.decorations = this.compose();
     if (update.docChanged) {
       update.view.requestMeasure({ key: this, read: () => null, write: () => this.sync(update.view) });
@@ -605,7 +607,7 @@ class Controls {
     return found;
   }
 
-  findSlider(view, update) {
+  findSlider(view, update, refresh = false) {
     const { state } = view;
     const cursor = state.selection.main;
     if (!this.enabled(view) || !cursor.empty || view.composing) return this.drop();
@@ -615,7 +617,8 @@ class Controls {
     if (!literal || !insideCode(state, line.from + literal.from)) return this.drop();
     const from = line.from + literal.from;
     const to = line.from + literal.to;
-    if (this.keeps(update, from)) Object.assign(this.session, { from, to });
+    const kept = this.keeps(update, from) && !(refresh && this.outdated(view, from, to));
+    if (kept) Object.assign(this.session, { from, to });
     else this.session = this.open(state, literal, from, to);
     const widget = new Slider(this.session, literal.value, this);
     return Decoration.widget({ widget, side: 1 }).range(to);
@@ -635,14 +638,24 @@ class Controls {
     return start === from;
   }
 
+  // After a refresh, a slider whose host range changed starts over, unless it is in use.
+  outdated(view, from, to) {
+    if (this.session.dom?.contains(view.root.activeElement)) return false;
+    return !sameRange(this.hostRange(view.state, from, to), this.session.custom);
+  }
+
+  hostRange(state, from, to) {
+    return this.config.rangeFor ? validRange(ask(this.config.rangeFor, state, from, to)) : null;
+  }
+
   open(state, literal, from, to) {
-    const custom = this.config.rangeFor ? validRange(ask(this.config.rangeFor, state, from, to)) : null;
+    const custom = this.hostRange(state, from, to);
     let { min, max, step } = custom ?? suggestRange(literal);
     if (literal.unsigned) min = Math.max(0, min);
     if (max <= min) max = min + step;
     // A host range with a fractional step lets a JS integer such as 7 take decimals.
     const fractional = Boolean(custom) && !Number.isInteger(step) && this.config.language === "js";
-    return { from, to, min, max, step, fractional, decimals: Math.max(3, placesOf(step)), dom: null };
+    return { from, to, min, max, step, custom, fractional, decimals: Math.max(3, placesOf(step)), dom: null };
   }
 
   drop() {
