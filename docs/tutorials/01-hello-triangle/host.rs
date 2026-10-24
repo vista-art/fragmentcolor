@@ -21,6 +21,7 @@ pub type Frame<State> = fn(&State, &Renderer, &RenderTarget, f32) -> Result<(), 
 
 const STATE: &str = "state";
 const CHECK_SIZE: [u32; 2] = [1280, 720];
+const SYNC_EVERY: u32 = 10;
 
 pub fn run<State, Setup>(setup: Setup, frame: Frame<State>)
 where
@@ -101,16 +102,20 @@ where
     let target = RenderTarget::from(texture);
     let state = setup(&renderer).await?;
     // Reading the image back waits for the GPU, so the clock covers every frame.
+    // Waiting every few frames keeps the queue shorter than the readback's timeout.
     let start = Instant::now();
+    let mut image = Vec::new();
     for index in 0..frames {
         frame(&state, &renderer, &target, index as f32 / 60.0)?;
+        if (index + 1) % SYNC_EVERY == 0 || index + 1 == frames {
+            image = target.get_image().await;
+        }
     }
 
     // A frame of one flat color means the step drew nothing on top of its background.
-    let image = target.get_image().await;
     let (pixels, _) = image.as_chunks::<4>();
     let Some(corner) = pixels.first() else {
-        bail!("the target returned no pixels");
+        bail!("the target returned no pixels; the GPU may have timed out on the readback");
     };
     let total = pixels.len();
     let drawn = pixels.iter().filter(|pixel| *pixel != corner).count();
