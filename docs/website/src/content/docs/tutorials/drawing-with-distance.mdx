@@ -124,13 +124,13 @@ Rust, Python, Swift and Kotlin read slugs from a copy of the shader library buil
 
 <Demo file="drawing-with-distance/03-box-and-star/example.rs" />
 
-Next to each shape the stripes copy its outline, pointed around the star and square around the box. Farther out the corners soften. Seen from far enough away, any shape shrinks to a point, and far enough out its rings round off into circles. Inside the box, the stripes nest as smaller rectangles. Each rectangle's corners sit on a 45 degree line from a corner of the box, where two edges are equally close. Between the two shapes, the rings from each side meet along a seam. That seam is where the star becomes the closer of the two.
+Next to each shape the stripes copy its outline, pointed around the star and square around the box. Farther out the corners soften. Seen from far enough away, any shape shrinks to a point, and its rings round off into circles. Inside the box, the stripes nest as smaller rectangles. Each rectangle's corners sit on a 45 degree line from a corner of the box, where two edges are equally close. Between the two shapes, the rings from each side meet along a seam. That seam is where the star becomes the closer of the two.
 
 ## Combining shapes
 
 `min` works because of what the sign means. A point lies inside the union of two shapes when it lies inside either one, and the smaller of two distances is negative whenever either distance is. Outside both, the smaller distance belongs to the nearer shape, and that's the distance to the union. Swap in `max` and the result goes negative only where both distances are: the intersection. Flip one sign first and `max(a, -b)` keeps the parts of `a` that lie outside `b`, which subtracts `b` from `a`.
 
-The shader library names these three `op_union`, `op_intersect` and `op_subtract`. Each one is the single line above. They sit under `sdf/`, next to the 3D shapes, because they combine distances of any dimension.
+The shader library names these three `op_union`, `op_intersect` and `op_subtract`. Each one is the single line above. They are in `sdf/`, next to the 3D shapes, because they combine distances of any dimension.
 
 A union leaves a sharp crease where two outlines cross. `op_smooth_union(a, b, k)` replaces it with a curve:
 
@@ -169,7 +169,7 @@ The stripes in `show` are a debugging view. Inigo Quilez colors his fields with 
 
 <Code lang="wgsl" code={region("05-color", "scene").rust} />
 
-After `select` picks a tint, each line scales or mixes the color:
+Each line after the first scales or mixes the color:
 
 <Code lang="wgsl" code={region("05-color", "color").rust} />
 
