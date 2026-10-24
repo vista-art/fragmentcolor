@@ -18,6 +18,6 @@
   },
   "packageManager": "pnpm@10.15.1",
   "dependencies": {
-    "fragmentcolor": ">=0.12.5 <1.0.0"
+    "fragmentcolor": ">=0.12.6 <1.0.0"
   }
 }
