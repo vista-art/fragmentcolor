@@ -264,7 +264,7 @@ export async function setup(renderer, target) {
   present.shader.set("look.phase", 0.6);
   present.shader.set("look.inside_color", [0.02, 0.02, 0.05]);
 
-  // Compute one orbit at the precision the deepest view needs and send it to the GPU once.
+  // Compute the reference orbit once and send it to the GPU.
   const reference = referenceFor(TARGET, DEPTH);
   iterate.shader.set("orbit", new Uint8Array(reference.orbit.buffer));
 
@@ -585,7 +585,7 @@ fn setup() -> Result<State, Failure> {
     let present = Shader::new([%%LIBRARY_ITEMS%%header.as_str(), LABEL, PRESENT])?;
 %%PRESENT_SETS%%
 
-    // Compute one orbit at the precision the deepest view needs and send it to the GPU once.
+    // Compute the reference orbit once and send it to the GPU.
     let reference = Reference::new(&TARGET, DEPTH)?;
     let bytes: Vec<u8> = reference.orbit.iter().flat_map(|value| value.to_le_bytes()).collect();
     iterate.set("orbit", bytes.as_slice())?;
@@ -923,7 +923,7 @@ def setup():
     present = Shader([*LIBRARY, header, LABEL, PRESENT])
 %%PRESENT_SETS%%
 
-    # Compute one orbit at the precision the deepest view needs and send it to the GPU once.
+    # Compute the reference orbit once and send it to the GPU.
     reference = compute_reference(TARGET, DEPTH)
     iterate.set("orbit", reference.orbit.tobytes())
 
@@ -1192,7 +1192,7 @@ func setup() throws -> State {
     let present = try Shader(library + [header, try source("label"), try source("present")])
 %%PRESENT_SETS%%
 
-    // Compute one orbit at the precision the deepest view needs and send it to the GPU once.
+    // Compute the reference orbit once and send it to the GPU.
     let reference = Reference(target, depth: depth)
     try iterate.set("orbit", reference.orbit.withUnsafeBytes { Data($0) })
 
@@ -1211,7 +1211,7 @@ func frame(
 ) throws {
     let zoom = steer(&state, time: time, size: size, pointer: pointer)
 
-    // The compute pass fills at most pixels: the view, or the view with each side divided by a whole number.
+    // The compute pass fills at most \`pixels\` cells: the view, or the view with each side divided by a whole number.
     let width = max(UInt32(size[0]), 1)
     let height = max(UInt32(size[1]), 1)
     var shrink: UInt32 = 1
@@ -1487,7 +1487,7 @@ fun setup(assets: AssetManager): State {
     val present = Shader(LIBRARY + listOf(header, source("label.wgsl"), source("present.wgsl")))
 %%PRESENT_SETS%%
 
-    // Compute one orbit at the precision the deepest view needs and send it to the GPU once.
+    // Compute the reference orbit once and send it to the GPU.
     val reference = Reference(TARGET, DEPTH)
     val bytes = ByteBuffer.allocate(4 * reference.orbit.size).order(ByteOrder.LITTLE_ENDIAN)
     reference.orbit.forEach { bytes.putFloat(it) }

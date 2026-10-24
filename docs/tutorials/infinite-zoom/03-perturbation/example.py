@@ -150,7 +150,7 @@ ORBIT = 3001
 # #region: setup
 def setup():
     shader = Shader([f"const ORBIT: u32 = {ORBIT}u;", "gradient/palette_iq", LABEL, SHADER])
-    # Compute one orbit at the precision the deepest view needs and send it to the GPU once.
+    # Compute the reference orbit once and send it to the GPU.
     orbit, length = reference(TARGET, DEPTH)
     shader.set("orbit", orbit.tobytes())
     shader.set("view.length", length)

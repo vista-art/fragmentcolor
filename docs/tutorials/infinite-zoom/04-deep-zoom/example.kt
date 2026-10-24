@@ -289,13 +289,13 @@ fun setup(): State {
     val iterate = Shader(listOf(header, ITERATE))
     iterate.set("view.budget", 1000u)
 
-    // `gradient/palette_iq` from the shader library supplies the palette PRESENT calls.
+    // `gradient/palette_iq` from the shader library supplies the palette that `PRESENT` calls.
     val present = Shader(listOf("gradient/palette_iq", header, LABEL, PRESENT))
     present.set("look.density", 0.02f)
     present.set("look.phase", 0.6f)
     present.set("look.inside_color", listOf(0.02f, 0.02f, 0.05f))
 
-    // Compute one orbit at the precision the deepest view needs and send it to the GPU once.
+    // Compute the reference orbit once and send it to the GPU.
     val reference = Reference(TARGET, DEPTH)
     val bytes = ByteBuffer.allocate(4 * reference.orbit.size).order(ByteOrder.LITTLE_ENDIAN)
     reference.orbit.forEach { bytes.putFloat(it) }

@@ -290,13 +290,13 @@ func setup() throws -> State {
     let iterate = try Shader([header, iterateSource])
     try iterate.set("view.budget", 1000)
 
-    // `gradient/palette_iq` from the shader library supplies the palette presentSource calls.
+    // `gradient/palette_iq` from the shader library supplies the palette that `presentSource` calls.
     let present = try Shader(["gradient/palette_iq", header, label, presentSource])
     try present.set("look.density", 0.02)
     try present.set("look.phase", 0.6)
     try present.set("look.inside_color", [0.02, 0.02, 0.05])
 
-    // Compute one orbit at the precision the deepest view needs and send it to the GPU once.
+    // Compute the reference orbit once and send it to the GPU.
     let reference = Reference(target, depth: depth)
     try iterate.set("orbit", reference.orbit.withUnsafeBytes { Data($0) })
 
@@ -312,7 +312,7 @@ func frame(
 ) throws {
     let zoom = steer(&state, time, size, pointer)
 
-    // The compute pass fills at most pixels: the screen, or the screen with each side divided by a whole number.
+    // The compute pass fills at most `pixels` cells: the screen, or the screen with each side divided by a whole number.
     let width = max(UInt32(size[0]), 1)
     let height = max(UInt32(size[1]), 1)
     var shrink: UInt32 = 1

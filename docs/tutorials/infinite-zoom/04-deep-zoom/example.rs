@@ -302,13 +302,13 @@ impl Zoom {
         let iterate = Shader::new([header.as_str(), ITERATE])?;
         iterate.set("view.budget", 1000_u32)?;
 
-        // `gradient/palette_iq` from the shader library supplies the palette PRESENT calls.
+        // `gradient/palette_iq` from the shader library supplies the palette that `PRESENT` calls.
         let present = Shader::new(["gradient/palette_iq", header.as_str(), LABEL, PRESENT])?;
         present.set("look.density", 0.02_f32)?;
         present.set("look.phase", 0.6_f32)?;
         present.set("look.inside_color", [0.02_f32, 0.02, 0.05])?;
 
-        // Compute one orbit at the precision the deepest view needs and send it to the GPU once.
+        // Compute the reference orbit once and send it to the GPU.
         let reference = Reference::new(&TARGET, DEPTH)?;
         iterate.set("orbit", bytemuck::cast_slice::<f32, u8>(&reference.orbit))?;
 
@@ -603,7 +603,7 @@ impl Motion {
 
     // #region: steer
     /// The zoom runs from the whole set down to 10^-DEPTH and back on its own.
-    /// Moving the pointer takes over for two seconds: the pointer's vertical position
+    /// While the pointer moves, and for two seconds after, its vertical position
     /// picks the depth, deepest at the top. Returns the zoom in doublings.
     fn steer(&mut self, now: f64) -> f64 {
         let delta = self.last.map_or(0.0, |last| (now - last).min(0.1));

@@ -175,7 +175,7 @@ impl Zoom {
     fn new() -> Result<Zoom, Failure> {
         let header = format!("const ORBIT: u32 = {ORBIT}u;");
         let shader = Shader::new([header.as_str(), "gradient/palette_iq", LABEL, SHADER])?;
-        // Compute one orbit at the precision the deepest view needs and send it to the GPU once.
+        // Compute the reference orbit once and send it to the GPU.
         let (orbit, length) = reference(&TARGET, DEPTH)?;
         shader.set("orbit", bytemuck::cast_slice::<f32, u8>(&orbit))?;
         shader.set("view.length", length as u32)?;
@@ -306,7 +306,7 @@ impl Motion {
 
     // #region: steer
     /// The zoom runs from the whole set down to 10^-DEPTH and back on its own.
-    /// Moving the pointer takes over for two seconds: the pointer's vertical position
+    /// While the pointer moves, and for two seconds after, its vertical position
     /// picks the depth, deepest at the top. Returns the zoom in doublings.
     fn steer(&mut self, now: f64) -> f64 {
         let delta = self.last.map_or(0.0, |last| (now - last).min(0.1));

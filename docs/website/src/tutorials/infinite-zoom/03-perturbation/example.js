@@ -142,7 +142,7 @@ const ORBIT = 3001;
 // #region: setup
 export async function setup(renderer, target) {
   const shader = await Shader.fetch([`const ORBIT: u32 = ${ORBIT}u;`, "gradient/palette_iq", LABEL, SHADER]);
-  // Compute one orbit at the precision the deepest view needs and send it to the GPU once.
+  // Compute the reference orbit once and send it to the GPU.
   const { orbit, length } = reference(TARGET, DEPTH);
   shader.set("orbit", new Uint8Array(orbit.buffer));
   shader.set("view.length", length);

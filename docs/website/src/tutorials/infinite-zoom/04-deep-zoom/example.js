@@ -265,13 +265,13 @@ export async function setup(renderer, target) {
   const iterate = await Shader.fetch([header, ITERATE]);
   iterate.set("view.budget", 1000);
 
-  // `gradient/palette_iq` from the shader library supplies the palette PRESENT calls.
+  // `gradient/palette_iq` from the shader library supplies the palette that `PRESENT` calls.
   const present = await Shader.fetch(["gradient/palette_iq", header, LABEL, PRESENT]);
   present.set("look.density", 0.02);
   present.set("look.phase", 0.6);
   present.set("look.inside_color", [0.02, 0.02, 0.05]);
 
-  // Compute one orbit at the precision the deepest view needs and send it to the GPU once.
+  // Compute the reference orbit once and send it to the GPU.
   const reference = computeReference(TARGET, DEPTH);
   iterate.set("orbit", new Uint8Array(reference.orbit.buffer));
 

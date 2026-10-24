@@ -163,7 +163,7 @@ struct State {
 // #region: setup
 func setup() throws -> State {
     let shader = try Shader(["const ORBIT: u32 = \(orbitSize)u;", "gradient/palette_iq", label, shaderSource])
-    // Compute one orbit at the precision the deepest view needs and send it to the GPU once.
+    // Compute the reference orbit once and send it to the GPU.
     let (orbit, length) = reference(target, depth: depth)
     try shader.set("orbit", orbit.withUnsafeBytes { Data($0) })
     try shader.set("view.length", UInt32(length))

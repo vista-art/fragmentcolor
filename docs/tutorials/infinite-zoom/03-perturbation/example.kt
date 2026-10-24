@@ -164,7 +164,7 @@ class State(val shader: Shader) {
 // #region: setup
 fun setup(): State {
     val shader = Shader(listOf("const ORBIT: u32 = ${ORBIT}u;", "gradient/palette_iq", LABEL, SHADER))
-    // Compute one orbit at the precision the deepest view needs and send it to the GPU once.
+    // Compute the reference orbit once and send it to the GPU.
     val (orbit, length) = reference(TARGET, DEPTH)
     val bytes = ByteBuffer.allocate(4 * orbit.size).order(ByteOrder.LITTLE_ENDIAN)
     orbit.forEach { bytes.putFloat(it) }
