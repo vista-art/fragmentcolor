@@ -3,8 +3,8 @@
 import { Shader } from "fragmentcolor";
 
 const SHADER = `
-// The star and box distances, the smooth union and the contour coloring
-// follow Inigo Quilez: https://iquilezles.org/articles/distfunctions2d/
+// The star and box distances, the smooth union
+// and the contour coloring follow Inigo Quilez: https://iquilezles.org/articles/distfunctions2d/
 
 // #region: params
 struct Params {
@@ -75,27 +75,14 @@ export async function setup(renderer, target) {
     shader.set("u.inside_color", [0.38, 0.62, 0.92]);
     shader.set("u.outside_color", [0.92, 0.6, 0.32]);
     // #endregion: setup
-    const size = target.size();
-    shader.set("u.pointer", [size.width / 2, size.height / 2]);
-
-    // #region: pointer
-    addEventListener("pointermove", (event) => {
-        const canvas = event.composedPath().find((node) => node instanceof HTMLCanvasElement);
-        if (!canvas) return;
-        const box = canvas.getBoundingClientRect();
-        shader.set("u.pointer", [
-            ((event.clientX - box.left) / box.width) * canvas.width,
-            ((event.clientY - box.top) / box.height) * canvas.height,
-        ]);
-    });
-    // #endregion: pointer
     return { shader };
 }
 
-export function frame({ shader }, renderer, target, time, size) {
+export function frame({ shader }, renderer, target, time, size, pointer) {
     // #region: frame
     shader.set("u.resolution", size);
     shader.set("u.time", time);
+    shader.set("u.pointer", pointer);
     renderer.render(shader, target);
     // #endregion: frame
 }
