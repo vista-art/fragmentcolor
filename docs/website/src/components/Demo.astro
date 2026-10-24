@@ -65,6 +65,15 @@ const moduleKey = `../tutorials/${entry.jsModulePath}`;
 // loaders, Demo would have to guess the URL of each module and bypass Vite.
 const tutorialModules = import.meta.glob('../tutorials/**/example.js');
 
+// Whether this browser can hand out a WebGPU adapter. A browser that throws counts as no.
+async function hasWebGpu() {
+  try {
+    return Boolean(await navigator.gpu?.requestAdapter());
+  } catch {
+    return false;
+  }
+}
+
 if (!customElements.get('tutorial-demo')) {
   class TutorialDemo extends HTMLElement {
     #shadow;
@@ -229,6 +238,11 @@ if (!customElements.get('tutorial-demo')) {
       }
       this.#started = true;
       this.#playBtn?.classList.add('hidden');
+      // Compute shaders need WebGPU; WebGL2 has nothing to run them on.
+      if (this.dataset.webgpu === '1' && !(await hasWebGpu())) {
+        this.#showError('This step runs a compute shader, which needs WebGPU. This browser offers only WebGL2.', 'note');
+        return;
+      }
       this.#start = performance.now();
       document.dispatchEvent(new CustomEvent('tutorial-demo-started', { detail: this }));
       try {
@@ -240,11 +254,6 @@ if (!customElements.get('tutorial-demo')) {
     }
 
     async #init() {
-      // Compute shaders need WebGPU; WebGL2 has nothing to run them on.
-      if (this.dataset.webgpu === '1' && !(await navigator.gpu?.requestAdapter())) {
-        this.#showError('This step runs a compute shader, which needs WebGPU. This browser offers only WebGL2.', 'note');
-        return;
-      }
 
       // 1) Boot WASM once per page, with slugs resolving against the local /shaders/ tree.
       const { loadFragmentColor } = await import('../runtime.js');
