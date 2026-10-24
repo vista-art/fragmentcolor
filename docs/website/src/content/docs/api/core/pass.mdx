@@ -1605,7 +1605,7 @@ mesh.add_vertex([1.0, 0.0, 0.0]);
 mesh.add_vertex([0.0, 1.0, 0.0]);
 mesh.add_vertex([1.0, 1.0, 0.0]);
 let shader = Shader::from_mesh(&mesh);
-let pass = Pass::from_shader("blobs", &shader);
+let pass = Pass::from_shader("meshes", &shader);
 
 // Depth test on: closer fragments win, and the pass writes the depth
 // buffer, so later draws in the same pass see it.
@@ -1638,7 +1638,7 @@ mesh.addVertex([1.0, 0.0, 0.0]);
 mesh.addVertex([0.0, 1.0, 0.0]);
 mesh.addVertex([1.0, 1.0, 0.0]);
 const shader = Shader.fromMesh(mesh);
-const pass = Pass.fromShader("blobs", shader);
+const pass = Pass.fromShader("meshes", shader);
 
 // Depth test on: closer fragments win, and the pass writes the depth
 // buffer, so later draws in the same pass see it.
@@ -1668,7 +1668,7 @@ mesh.add_vertex([1.0, 0.0, 0.0])
 mesh.add_vertex([0.0, 1.0, 0.0])
 mesh.add_vertex([1.0, 1.0, 0.0])
 shader = Shader.from_mesh(mesh)
-rpass = Pass.from_shader("blobs", shader)
+rpass = Pass.from_shader("meshes", shader)
 
 # Depth test on: closer fragments win, and the pass writes the depth
 # buffer, so later draws in the same pass see it.
@@ -1698,7 +1698,7 @@ try mesh.addVertex([1.0, 0.0, 0.0])
 try mesh.addVertex([0.0, 1.0, 0.0])
 try mesh.addVertex([1.0, 1.0, 0.0])
 let shader = Shader.fromMesh(mesh)
-let pass = Pass.fromShader("blobs", shader)
+let pass = Pass.fromShader("meshes", shader)
 
 // Depth test on: closer fragments win, and the pass writes the depth
 // buffer, so later draws in the same pass see it.
@@ -1728,7 +1728,7 @@ mesh.addVertex(listOf(1.0f, 0.0f, 0.0f))
 mesh.addVertex(listOf(0.0f, 1.0f, 0.0f))
 mesh.addVertex(listOf(1.0f, 1.0f, 0.0f))
 val shader = Shader.fromMesh(mesh)
-val pass = Pass.fromShader("blobs", shader)
+val pass = Pass.fromShader("meshes", shader)
 
 // Depth test on: closer fragments win, and the pass writes the depth
 // buffer, so later draws in the same pass see it.

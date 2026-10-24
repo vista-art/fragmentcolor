@@ -12,7 +12,7 @@ mesh.addVertex(listOf(1.0f, 0.0f, 0.0f))
 mesh.addVertex(listOf(0.0f, 1.0f, 0.0f))
 mesh.addVertex(listOf(1.0f, 1.0f, 0.0f))
 val shader = Shader.fromMesh(mesh)
-val pass = Pass.fromShader("blobs", shader)
+val pass = Pass.fromShader("meshes", shader)
 
 // Depth test on: closer fragments win, and the pass writes the depth
 // buffer, so later draws in the same pass see it.

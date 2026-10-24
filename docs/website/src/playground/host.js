@@ -147,9 +147,6 @@ export class Playground {
     this.demos = demos;
     this.canvas = root.querySelector("canvas");
     this.ui = {
-      demos: root.querySelector(".fcp-demos"),
-      picker: root.querySelector(".fcp-demo-select"),
-      summary: root.querySelector(".fcp-summary"),
       status: root.querySelector(".fcp-status"),
       library: root.querySelector(".fcp-library-list"),
       add: root.querySelector(".fcp-add"),
@@ -165,7 +162,11 @@ export class Playground {
     this.edits = new Map();
     this.overrides = new Map();
     this.pointer = null;
+    // Wheel, drag and pinch since the last frame, for demos with `gestures: true`.
+    this.gesture = { zoom: 0, pan: [0, 0] };
+    this.touches = new Map();
     this.program = null;
+    this.pending = null;
     this.buildToken = 0;
     this.timer = 0;
     this.raf = 0;
@@ -194,13 +195,18 @@ export class Playground {
       onToggle: (slug, selected) => this.toggleSlug(slug, selected),
     });
     this.wire();
-    this.select(id);
+    this.select(this.pending ?? id);
     this.raf = requestAnimationFrame((t) => this.tick(t));
   }
 
   // Swaps in another demo. Edits made to the current one stay in memory until reset.
+  // A demo picked while the runtime loads opens when start is done.
   select(id) {
     const demo = this.demos.find((d) => d.id === id) ?? this.demos[0];
+    if (!this.view) {
+      this.pending = demo.id;
+      return;
+    }
     clearTimeout(this.timer);
     this.buildToken++;
     if (this.demo) this.edits.set(this.demo.id, this.snapshot());
@@ -209,12 +215,9 @@ export class Playground {
     this.program = null;
     this.controls = [];
     renderControls(this.ui.controls, [], () => {});
-    for (const button of this.ui.demos?.querySelectorAll("button") ?? []) {
-      button.setAttribute("aria-pressed", String(button.dataset.demo === demo.id));
-    }
-    if (this.ui.picker) this.ui.picker.value = demo.id;
-    if (this.ui.summary) this.ui.summary.textContent = demo.summary;
     this.root.dataset.active = demo.id;
+    // A demo that takes gestures keeps touches on the canvas from scrolling the page.
+    this.canvas.style.touchAction = demo.gestures ? "none" : "";
     this.loadTabs(this.edits.get(demo.id) ?? this.original(demo));
     this.showError(null);
 
@@ -686,7 +689,10 @@ export class Playground {
   draw(program, now) {
     const size = [this.canvas.width, this.canvas.height];
     const pointer = this.pointer ?? [size[0] / 2, size[1] / 2];
-    program.module.frame(program.state, this.renderer, this.target, (now - program.epoch) / 1000, size, pointer);
+    const gesture = this.gesture;
+    this.gesture = { zoom: 0, pan: [0, 0] };
+    const time = (now - program.epoch) / 1000;
+    program.module.frame(program.state, this.renderer, this.target, time, size, pointer, gesture);
   }
 
   tick(now) {
@@ -715,6 +721,62 @@ export class Playground {
     this.target?.resize([w, h]);
   }
 
+  // Turns the wheel, a drag and a two-finger pinch over the canvas into the
+  // gesture frame receives: zoom in doublings (positive zooms in) and pan in
+  // canvas pixels. Only a demo with `gestures: true` takes them; for the rest
+  // the wheel scrolls the page as usual.
+  wireGestures() {
+    const { canvas } = this;
+    const scale = () => canvas.width / Math.max(canvas.getBoundingClientRect().width, 1);
+    const spread = () => {
+      const [a, b] = [...this.touches.values()];
+      return Math.hypot(a[0] - b[0], a[1] - b[1]);
+    };
+    const middle = () => {
+      const points = [...this.touches.values()];
+      return points.reduce(([x, y], [px, py]) => [x + px / points.length, y + py / points.length], [0, 0]);
+    };
+    this.on(
+      canvas,
+      "wheel",
+      (e) => {
+        if (!this.demo?.gestures) return;
+        e.preventDefault();
+        const lines = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? canvas.clientHeight : 1;
+        // A trackpad pinch arrives as a wheel with ctrlKey and small deltas.
+        this.gesture.zoom -= (e.deltaY * lines) / (e.ctrlKey ? 100 : 400);
+      },
+      { passive: false },
+    );
+    this.on(canvas, "pointerdown", (e) => {
+      if (!this.demo?.gestures || (e.pointerType === "mouse" && e.button !== 0)) return;
+      canvas.setPointerCapture(e.pointerId);
+      this.touches.set(e.pointerId, [e.clientX, e.clientY]);
+    });
+    this.on(canvas, "pointermove", (e) => {
+      const last = this.touches.get(e.pointerId);
+      if (!last) return;
+      const before = this.touches.size === 2 ? { spread: spread(), middle: middle() } : null;
+      this.touches.set(e.pointerId, [e.clientX, e.clientY]);
+      const ratio = scale();
+      if (before) {
+        // A pinch zooms around the point between the two fingers.
+        const now = middle();
+        const rect = canvas.getBoundingClientRect();
+        this.pointer = [(now[0] - rect.left) * ratio, (now[1] - rect.top) * ratio];
+        this.gesture.zoom += Math.log2(Math.max(spread(), 1) / Math.max(before.spread, 1));
+        this.gesture.pan[0] += (now[0] - before.middle[0]) * ratio;
+        this.gesture.pan[1] += (now[1] - before.middle[1]) * ratio;
+      } else if (this.touches.size === 1) {
+        this.gesture.pan[0] += (e.clientX - last[0]) * ratio;
+        this.gesture.pan[1] += (e.clientY - last[1]) * ratio;
+      }
+    });
+    const release = (e) => this.touches.delete(e.pointerId);
+    this.on(canvas, "pointerup", release);
+    this.on(canvas, "pointercancel", release);
+  }
+
   wire() {
     const { canvas, ui } = this;
     const track = (e) => {
@@ -726,11 +788,8 @@ export class Playground {
     };
     this.on(canvas, "pointermove", track);
     this.on(canvas, "pointerdown", track);
+    this.wireGestures();
 
-    for (const button of ui.demos?.querySelectorAll("button") ?? []) {
-      this.on(button, "click", () => this.select(button.dataset.demo));
-    }
-    if (ui.picker) this.on(ui.picker, "change", () => this.select(ui.picker.value));
     this.on(ui.add, "click", () => this.picker.open(parseLibrary(this.text("js")) ?? []));
     this.on(ui.reset, "click", () => {
       this.edits.delete(this.demo.id);

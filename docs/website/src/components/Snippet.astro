@@ -5,7 +5,9 @@
 // prop is the path of the example.rs relative to docs/tutorials/. If `region`
 // is omitted the tab shows the full file. Region content is sliced from the
 // canonical Rust source; JS comes from the hand-written example.js companion;
-// Py / Swift / Kotlin are line-level transpilations.
+// Py / Swift / Kotlin come from example.py / .swift / .kt when the step has
+// them, and from line-level transpilation otherwise. A single shader region
+// renders once, as WGSL, without language tabs.
 //
 // Two-region (host + shader) form:
 // <Snippet
@@ -121,6 +123,7 @@ type PairedRow = {
 };
 
 let singleSlice: LangSlice | null = null;
+let wgslOnly: string | null = null;
 let pairedRows: PairedRow[] = [];
 const pairedLabels: [string, string] = labels ?? ["Host", "Shader"];
 
@@ -137,12 +140,16 @@ if (regions && regions.length === 2) {
   })).filter((row) => row.first || row.second);
 } else if (region) {
   singleSlice = pickRegion(region);
+  // A shader region is the same WGSL in every language, so it needs no tabs.
+  if (isWgslRegion(region, singleSlice)) wgslOnly = wgslSourceOf(singleSlice);
 } else {
   singleSlice = entry.full;
 }
 ---
 
-{regions ? (
+{wgslOnly ? (
+  <Code code={wgslOnly} lang="wgsl" />
+) : regions ? (
   <Tabs syncKey="lang">
     {pairedRows.map((row) => (
       <TabItem label={row.outerLabel}>

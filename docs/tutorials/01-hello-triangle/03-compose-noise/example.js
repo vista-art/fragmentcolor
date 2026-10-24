@@ -1,15 +1,10 @@
-// Step 3 — compose with the registry (JS port).
-//
-// Same Shader.fetch constructor as before, but with an array: a registry
-// slug (noise/simplex2) followed by inline WGSL that calls it. The
-// merged source is validated and linked into one program. We carry the
-// `resolution` uniform from step 2 so the triangle keeps its shape on
-// any canvas, plus a `time` uniform driving the noise breath.
+// Step 3: `simplex2` from the shader library makes the color shimmer.
+// Call `setup` once, then call `frame` from each `requestAnimationFrame` callback.
 
 import { Shader } from "fragmentcolor";
 
+const TRIANGLE = `
 // #region: shader
-const NOISY_TRIANGLE_WGSL = `
 struct VOut {
     @builtin(position) pos: vec4<f32>,
     @location(0) uv: vec2<f32>,
@@ -21,51 +16,51 @@ struct VOut {
 
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
-    var p  = array<vec2<f32>, 3>(
-        vec2<f32>(-0.7, -0.4),
-        vec2<f32>( 0.7, -0.4),
-        vec2<f32>( 0.0,  0.8),
+    var corners = array<vec2<f32>, 3>(
+        vec2<f32>(-0.7, -0.404),
+        vec2<f32>( 0.7, -0.404),
+        vec2<f32>( 0.0,  0.808),
     );
-    // Aspect-correct (same trick as step 2) so the triangle keeps shape.
-    let res = max(resolution, vec2<f32>(1.0));
-    let aspect = res.x / res.y;
-    var pos = p[i];
+    let aspect = resolution.x / resolution.y;
+    var pos = corners[i];
     if (aspect > 1.0) { pos.x = pos.x / aspect; }
     else              { pos.y = pos.y * aspect; }
+
     var out: VOut;
     out.pos = vec4<f32>(pos, 0.0, 1.0);
-    // Use the original (pre-correction) positions as the UV input for noise.
-    out.uv = (p[i] + vec2<f32>(1.0)) * 0.5;
+    // The corner before the aspect fix, moved from -1..1 into 0..1.
+    out.uv = (corners[i] + vec2<f32>(1.0)) * 0.5;
     return out;
 }
 
 @fragment
 fn fs_main(in: VOut) -> @location(0) vec4<f32> {
-    let n = simplex2(in.uv * 6.0 + vec2<f32>(time * 0.4)) * 0.5 + 0.5;
-    let breath = 0.55 + 0.45 * n;
-    return vec4<f32>(color.rgb * breath, color.a);
+    // simplex2 comes from noise/simplex2 and returns roughly -1..1.
+    let noise = simplex2(in.uv * 6.0 + vec2<f32>(time * 0.4));
+    let brightness = 0.55 + 0.45 * (noise * 0.5 + 0.5);
+    return vec4<f32>(color.rgb * brightness, color.a);
 }
-`;
 // #endregion: shader
+`;
 
 // #region: setup
-export async function setup(_renderer, _target) {
-    // Shader.fetch is the async builder — slugs and URLs need fetching.
-    const shader = await Shader.fetch(["noise/simplex2", NOISY_TRIANGLE_WGSL]);
+export async function setup() {
+    const shader = await Shader.fetch(["noise/simplex2", TRIANGLE]);
     shader.set("color", [0.95, 0.30, 0.42, 1.0]);
-    shader.set("time", 0.0);
-    return { shader };
+    return shader;
 }
 // #endregion: setup
 
 // #region: frame
-export function frame(state, renderer, target, time, size) {
-    const r = 0.5 + 0.45 * Math.sin(time * 0.7);
-    const g = 0.5 + 0.45 * Math.cos(time * 0.5 + 1.7);
-    const b = 0.5 + 0.45 * Math.sin(time * 0.9 + 3.1);
-    state.shader.set("color", [r, g, b, 1.0]);
-    state.shader.set("resolution", size);
-    state.shader.set("time", time);
-    renderer.render(state.shader, target);
+export function frame(shader, renderer, target, time) {
+    const red = 0.5 + 0.45 * Math.sin(time * 0.7);
+    const green = 0.5 + 0.45 * Math.cos(time * 0.5 + 1.7);
+    const blue = 0.5 + 0.45 * Math.sin(time * 0.9 + 3.1);
+    shader.set("color", [red, green, blue, 1.0]);
+    shader.set("time", time);
+
+    const size = target.size();
+    shader.set("resolution", [size.width, size.height]);
+    renderer.render(shader, target);
 }
 // #endregion: frame

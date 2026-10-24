@@ -554,8 +554,8 @@ let albedo = renderer.create_texture((albedo_bytes, [2, 2])).await?;
 // Every Material that points at \`albedo\` reuses the same uploaded GPU
 // texture; passing the same handle into N Material instances costs one
 // upload and N shader-uniform references.
-let blob = Material::pbr().base_color_texture(&albedo);
-let _ = blob;
+let material = Material::pbr().base_color_texture(&albedo);
+let _ = material;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
@@ -577,7 +577,7 @@ const albedo = await renderer.createTexture(albedo_bytes, [2, 2]);
 // Every Material that points at \`albedo\` reuses the same uploaded GPU
 // texture; passing the same handle into N Material instances costs one
 // upload and N shader-uniform references.
-const blob = Material.pbr().baseColorTexture(albedo);
+const material = Material.pbr().baseColorTexture(albedo);
 `}
 lang="js"
 />
@@ -601,7 +601,7 @@ albedo = renderer.create_texture(albedo_bytes, size=[2, 2])
 # Every Material that points at \`albedo\` reuses the same uploaded GPU
 # texture; passing the same handle into N Material instances costs one
 # upload and N shader-uniform references.
-blob = Material.pbr().base_color_texture(albedo)
+material = Material.pbr().base_color_texture(albedo)
 `}
 lang="python"
 />
@@ -625,7 +625,7 @@ let albedo = try await renderer.createTexture(albedo_bytes, [2, 2])
 // Every Material that points at \`albedo\` reuses the same uploaded GPU
 // texture; passing the same handle into N Material instances costs one
 // upload and N shader-uniform references.
-let blob = Material.pbr().baseColorTexture(albedo)
+let material = Material.pbr().baseColorTexture(albedo)
 `}
 lang="swift"
 />
@@ -644,7 +644,7 @@ val albedo = renderer.createTexture(albedo_bytes, listOf(2u, 2u))
 // Every Material that points at \`albedo\` reuses the same uploaded GPU
 // texture; passing the same handle into N Material instances costs one
 // upload and N shader-uniform references.
-val blob = Material.pbr().baseColorTexture(albedo)
+val material = Material.pbr().baseColorTexture(albedo)
 `}
 lang="kotlin"
 />

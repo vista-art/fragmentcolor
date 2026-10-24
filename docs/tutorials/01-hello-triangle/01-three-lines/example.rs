@@ -1,64 +1,60 @@
-// Step 1 — load, set, render.
-//
-// The smallest meaningful FragmentColor pipeline: a Renderer creates a
-// Target wrapped around a window, and a Shader fetched from a URL exposes
-// one settable uniform. We cycle the `color` uniform every frame to show
-// that the same shader handle is the surface for live updates — no
-// rebuild, no rebind.
-//
-// Outside the `setup` and `frame` regions below is the tiny winit
-// bootstrap that opens a window, drives the redraw loop, and blocks on
-// the OS event loop. It's identical in every step of this tutorial; the
-// FragmentColor API surface lives entirely inside the two regions.
+//! Step 1: a shader with one uniform draws the triangle in a new color every frame.
 
-use fragmentcolor::{App, Renderer, SetupResult, Shader, call};
-use std::sync::{Arc, OnceLock};
-use std::time::Instant;
-use winit::dpi::PhysicalSize;
-use winit::window::Window;
+#[path = "../host.rs"]
+mod host;
+
+use fragmentcolor::{FragmentColorError, Renderer, Shader, Target};
+
+const TRIANGLE: &str = r#"
+// #region: shader
+struct VOut { @builtin(position) pos: vec4<f32> };
+
+@group(0) @binding(0) var<uniform> color: vec4<f32>;
+
+@vertex
+fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+    // Three corners of an equilateral triangle, centered on the origin.
+    var corners = array<vec2<f32>, 3>(
+        vec2<f32>(-0.7, -0.404),
+        vec2<f32>( 0.7, -0.404),
+        vec2<f32>( 0.0,  0.808),
+    );
+    var out: VOut;
+    out.pos = vec4<f32>(corners[i], 0.0, 1.0);
+    return out;
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return color;
+}
+// #endregion: shader
+"#;
 
 // #region: setup
-async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
-    let shader = Shader::new("https://fragmentcolor.org/triangle.wgsl")?;
+fn setup() -> Result<Shader, FragmentColorError> {
+    let shader = Shader::new(TRIANGLE)?;
     shader.set("color", [0.95, 0.30, 0.42, 1.0])?;
-    app.add("shader.main", shader);
-
-    for win in windows {
-        let target = app.get_renderer().create_target(win.clone()).await?;
-        app.add_target(win.id(), target);
-    }
-    Ok(())
+    Ok(shader)
 }
 // #endregion: setup
 
-fn resize(app: &App, new_size: &PhysicalSize<u32>) {
-    app.resize([new_size.width, new_size.height]);
-}
-
 // #region: frame
-fn draw(app: &App) {
-    static START: OnceLock<Instant> = OnceLock::new();
-    let time = START.get_or_init(Instant::now).elapsed().as_secs_f32();
-
-    if let Some(shader) = app.get::<Shader>("shader.main") {
-        let r = 0.5 + 0.45 * (time * 0.7).sin();
-        let g = 0.5 + 0.45 * (time * 0.5 + 1.7).cos();
-        let b = 0.5 + 0.45 * (time * 0.9 + 3.1).sin();
-        let _ = shader.set("color", [r, g, b, 1.0]);
-
-        let id = app.primary_window_id();
-        let renderer = app.get_renderer();
-        let _ = app.with_target(id, |target| renderer.render(&*shader, target));
-    }
+fn frame(
+    shader: &Shader,
+    renderer: &Renderer,
+    target: &impl Target,
+    time: f32,
+) -> Result<(), FragmentColorError> {
+    let red = 0.5 + 0.45 * (time * 0.7).sin();
+    let green = 0.5 + 0.45 * (time * 0.5 + 1.7).cos();
+    let blue = 0.5 + 0.45 * (time * 0.9 + 3.1).sin();
+    shader.set("color", [red, green, blue, 1.0])?;
+    renderer.render(shader, target)?;
+    Ok(())
 }
 // #endregion: frame
 
-fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let renderer = Renderer::new();
-    let mut app = App::new(renderer);
-    app.on_start(call!(setup))
-        .on_resize(resize)
-        .on_redraw_requested(draw);
-    app.run();
-    Ok(())
+fn main() {
+    host::run(async |_: &Renderer| setup(), frame);
 }
