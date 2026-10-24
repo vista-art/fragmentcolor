@@ -11,9 +11,9 @@ export default {
     "u.blend": 0.12,
     "u.rings": 20,
     "u.glow": 10,
-    "u.inside_color": [1, 0, 0.51],
-    "u.edge_color": [0.51, 0, 1],
-    "u.outside_color": [0, 0.51, 1],
+    "u.inside_color": [1, 0, 0.514],
+    "u.edge_color": [0.514, 0, 1],
+    "u.outside_color": [0, 0.514, 1],
   },
   frame: { time: "u.time", resolution: "u.resolution", pointer: "u.mouse" },
   files: {
