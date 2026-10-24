@@ -79,11 +79,11 @@ To see the field, `show` paints the sign and adds a stripe every `0.05` units of
 
 <Code lang="wgsl" code={region("02-circle", "show").rust} />
 
-`select(a, b, condition)` returns `b` where the condition holds and `a` elsewhere, which paints blue where `d` is negative. Every `0.05` units, `fract(d * 20.0)` climbs from `0.0` to `1.0`. `step(0.5, x)` is `0.0` while `x` stays below `0.5` and `1.0` after, and it turns each climb into a dark half and a light half.
+`select(a, b, condition)` returns `b` where the condition holds and `a` elsewhere, which paints magenta where `d` is negative. Every `0.05` units, `fract(d * 20.0)` climbs from `0.0` to `1.0`. `step(0.5, x)` is `0.0` while `x` stays below `0.5` and `1.0` after, and it turns each climb into a dark half and a light half.
 
 <Demo file="drawing-with-distance/02-circle/example.rs" />
 
-Blue meets orange exactly where `d` crosses zero. That line is the circle.
+Magenta meets azure exactly where `d` crosses zero. That line is the circle.
 
 Six dark stripes run from the edge to the center, one for every `0.05` of the radius. Outside, the rings keep their spacing all the way to the borders of the canvas, and counting them back from any spot to the outline reads off that spot's distance.
 
@@ -172,7 +172,7 @@ The two unions differ where the outlines cross. In the upper left, the circle me
 
 ## Coloring the field
 
-The stripes in `show` are a debugging view. This step colors the field the way Quilez colors [his examples](https://iquilezles.org/articles/distfunctions2d/), down to the orange outside and the blue inside. Four more lines mark the edge, the falloff and the distance at once. This step draws the star, a box and a small circle set close enough to both that the smooth unions merge all three into one outline. Its `setup` pulls the shapes and the smooth union from the library:
+The stripes in `show` are a debugging view. Quilez shades [his examples](https://iquilezles.org/articles/distfunctions2d/) with soft contour bands; this page lights the field its own way, in the three colors of the FragmentColor logo: magenta, violet and azure. This step draws the star, a box and a small circle set close enough to both that the smooth unions merge all three into one outline. Its `setup` pulls the shapes and the smooth union from the library:
 
 <Snippet file="drawing-with-distance/05-color/example.rs" region="setup" />
 
@@ -182,14 +182,14 @@ Every line that writes `color` adds one layer:
 
 <Code lang="wgsl" code={region("05-color", "color").rust} />
 
-1. `select` picks a tint by sign, as `show` did.
-2. `exp(-8.0 * abs(d))` is `1.0` on the edge and fades to almost nothing a few tenths of a unit away. Multiplying the color by `1.0 - 0.75 * exp(-8.0 * abs(d))` darkens a band on both sides of the outline. Outside, you can see where the band ends; inside, these shapes are thin enough that the whole interior stays dark.
-3. `6.2831853` is 2π, one full period of the cosine. Times `40.0 * d`, it makes the cosine repeat every `1 / 40` of a unit, as `fract` did in `show`, with soft edges. Scaled to swing between `0.7` and `1.0`, it draws contour lines. Each one joins points at the same distance from the shapes, like the height lines on a hiking map.
-4. `fwidth(d)` measures how much `d` changes from this pixel to its neighbors, which is the width of one pixel expressed as a distance. `smoothstep(pixel_size, 2.0 * pixel_size, abs(d))` is `0.0` within one pixel of the edge and `1.0` past two, and mixing toward white by one minus that draws a line about two pixels wide, with one softer pixel on each side.
+1. The backdrop is the site's near-black. `outside` clamps `d` at zero, and `exp(-10.0 * outside)` is `1.0` on the edge and drops to a tenth of that about `0.23` units out, which wraps every outline in an azure glow.
+2. `fract(d * 20.0 + 0.5) - 0.5` measures how far `d` sits from the nearest multiple of `0.05`, in steps of `0.05`. Dividing by `20.0 * pixel_size` converts that to pixels, and `1.0 - smoothstep(0.5, 1.5, ring)` keeps only the pixels within one of a multiple: a thin ring every `0.05` units, each one joining points at the same distance from the shapes, like the height lines on a hiking map. `exp(-3.0 * outside)` fades the rings more slowly than the glow.
+3. `select` swaps everything inside the shapes for a fill. `smoothstep(0.0, 0.12, -d)` climbs from `0.0` at the edge to `1.0` at a depth of `0.12`, and `mix` turns that into violet by the outline and magenta deep inside.
+4. `fwidth(d)` measures how much `d` changes from this pixel to its neighbors, which is the width of one pixel expressed as a distance. `smoothstep(0.5 * pixel_size, 1.5 * pixel_size, abs(d))` is `0.0` within half a pixel of the edge and `1.0` past one and a half, and mixing toward white by one minus that draws the outline: one solid pixel with a soft pixel on each side.
 
 <Demo file="drawing-with-distance/05-color/example.rs" />
 
-That last line keeps the outline crisp on a phone, on a 4K monitor and at any zoom, and it never reads `resolution`. Every shader that draws a thin line from a distance can borrow it.
+Each layer reads one property of the field. The fill marks inside, the white line marks the edge, and the glow and the rings mark how far away a point sits. Because both the rings and the outline measure in pixels through `fwidth`, they stay thin on a phone, on a 4K monitor and at any zoom, and the shader never reads `resolution` to keep them that way.
 
 ## Time
 
@@ -209,21 +209,21 @@ In the shader, time moves the star and the box:
 
 <Snippet file="drawing-with-distance/06-time/example.rs" region="setup" />
 
-The contour lines move too. Subtracting time inside the cosine slides each one outward:
+The rings move too. Subtracting time inside `fract` slides each one outward:
 
 <Code lang="wgsl" code={region("06-time", "ripple").rust} />
 
-A contour sits wherever the cosine's argument holds a fixed value. As `time` grows, `d` has to grow with it to keep that value. Every line drifts: inside a shape toward its outline, outside toward the edges of the canvas.
+A ring sits wherever `d * 20.0 - 0.5 * time` lands on a whole number. As `time` grows, `d` has to grow with it, and every ring drifts away from the shapes at `0.025` units per second.
 
 <Demo file="drawing-with-distance/06-time/example.rs" />
 
 ## The pointer and the knobs
 
-Two kinds of input remain: the pointer, and four settings to tune by hand. With `resolution` and `time`, that makes seven uniforms, enough to gather into a struct. `shader.set` names a field with a dot: `"u.time"`, `"u.pointer"`.
+Two kinds of input remain: the pointer, and six settings to tune by hand. With `resolution` and `time`, that makes nine uniforms, enough to gather into a struct. `shader.set` names a field with a dot: `"u.time"`, `"u.pointer"`.
 
 <Code lang="wgsl" code={region("07-pointer", "params").rust} />
 
-The playground gives a control to every value its `setup` sets and its `frame` leaves alone. A `// min..max` comment after the field, like the ones on `blend` and `bands`, becomes the slider's range, and a `vec3<f32>` whose name contains `color` or `tint` gets a color picker instead. On the GPU the comments do nothing, and in your own program those fields are plain values, set once in `setup`:
+The playground gives a control to every value its `setup` sets and its `frame` leaves alone. A `// min..max` comment after the field, like the ones on `blend`, `rings` and `glow`, becomes the slider's range, and a `vec3<f32>` whose name contains `color` or `tint` gets a color picker instead. On the GPU the comments do nothing, and in your own program those fields are plain values, set once in `setup`:
 
 <Snippet file="drawing-with-distance/07-pointer/example.rs" region="setup" />
 
@@ -243,10 +243,10 @@ The circle follows the pointer across the canvas, and whenever it comes within `
 
 ## The Shapes demo
 
-The playground's Shapes demo is this program with a few changes: a hexagon from `sdf2d/hexagon` in place of the box, the two shapes at `x = -0.3` and `x = 0.3`, and the pointer field named `mouse`. It also computes `p` from a value the vertex stage passes down, which gives the same coordinates as `center`. Its sliders take their ranges from the same `// min..max` comments. Near `0.4`, `blend` fuses the shapes; at `5`, `bands` spreads the contour lines wide apart. The `shader.wgsl` and `main.js` tabs are editable and rebuild as you type, the language tabs follow your edits, and **+ Add** brings in more slugs from the shader library.
+The playground's Shapes demo is this program with a few changes: a hexagon from `sdf2d/hexagon` in place of the box, the two shapes at `x = -0.3` and `x = 0.3`, and the pointer field named `mouse`. It also computes `p` from a value the vertex stage passes down, which gives the same coordinates as `center`. Its sliders take their ranges from the same `// min..max` comments. Near `0.4`, `blend` fuses the shapes; at `5`, `rings` leaves a fifth of a unit between neighbors, and the three color pickers repaint the gradient. The `shader.wgsl` and `main.js` tabs are editable and rebuild as you type, the language tabs follow your edits, and **+ Add** brings in more slugs from the shader library.
 
 <Playground demos={["shapes"]} />
 
-Inigo Quilez is the source of the star and box distances, the smooth union, and the contour coloring with its palette. His page on [2D distance functions](https://iquilezles.org/articles/distfunctions2d/) lists dozens more shapes, from arcs to Bézier curves, each with a live example, and most of them carry over to WGSL line for line. Many are already in the shader library under [`sdf2d/`](/shaders/sdf2d/).
+Inigo Quilez is the source of the star and box distances and the smooth union. His page on [2D distance functions](https://iquilezles.org/articles/distfunctions2d/) lists dozens more shapes, from arcs to Bézier curves, each with a live example, and most of them carry over to WGSL line for line. Many are already in the shader library under [`sdf2d/`](/shaders/sdf2d/).
 
 `center` stays fixed through all seven steps, and only what follows it changes. A pixel goes in as `p` and comes out as a color, and noise, fractals and lighting fit in the same place.
