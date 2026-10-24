@@ -85,7 +85,7 @@ To see the field, `show` paints the sign and adds a stripe every `0.05` units of
 
 The circle's edge is the line where blue meets orange, at `d = 0`. From that edge to the center there are six dark stripes, one for every `0.05` of the radius. Outside, the rings keep their spacing all the way to the edges of the canvas. From any spot, counting rings back to the edge reads off the distance.
 
-To move the circle, move the point: `length(p - c) - r` is a circle of radius `r` centered on `c`. Every shape on this page moves that way: subtract its position from `p`, then measure. Size works the same way in reverse. Dividing `p` by `2.0` before measuring draws the circle twice as large, and multiplying the result by `2.0` keeps it a true distance.
+To move the circle, move the point: `length(p - c) - r` is a circle of radius `r` centered on `c`. Every shape on this page moves that way: subtract its position from `p`, then measure. Size works the same way in reverse. Dividing `p` by `2.0` before measuring draws the circle twice as large, and multiplying the result by `2.0` keeps it a true distance: `(length(p / 2.0) - r) * 2.0`.
 
 The shader library ships this function as [`sdf2d/circle`](/shaders/sdf2d/#circle):
 
@@ -163,11 +163,11 @@ Compare the two unions. In the upper left, the circle meets the box at two sharp
 
 ## Coloring the field
 
-The stripes in `show` are a debugging view. Inigo Quilez colors his fields with four more lines that show the edge, the falloff and the distance at once. The next scene gives them the star, a box and a small circle between them, close enough that the smooth unions merge all three into one outline:
-
-<Code lang="wgsl" code={region("05-color", "scene").rust} />
+The stripes in `show` are a debugging view. Inigo Quilez colors his fields with four more lines that show the edge, the falloff and the distance at once. The next scene gives them the star, a box and a small circle between them, close enough that the smooth unions merge all three into one outline. It needs four slugs:
 
 <Snippet file="drawing-with-distance/05-color/example.rs" region="setup" />
+
+<Code lang="wgsl" code={region("05-color", "scene").rust} />
 
 Each line of the coloring scales or mixes the color from the line above:
 
@@ -222,7 +222,7 @@ The pointer reaches `frame` the way `time` does, as an argument, and `frame` set
 
 <Snippet file="drawing-with-distance/07-pointer/example.rs" region="frame" />
 
-Where the position comes from depends on the platform. In the Rust program, `winit` reports each cursor move in the window's pixels, and the loop hands the latest one to `frame`. On this page, each demo canvas listens for `pointermove`, subtracts the canvas's position on the page and scales CSS pixels to the canvas's own pixels; the playground's `index.js` tab shows that code. Until the pointer first moves over the canvas, it holds the middle of the canvas. Python, Swift and Kotlin read the pointer from their own windowing toolkits.
+Where the position comes from depends on the platform. In the Rust program, `winit` reports each cursor move in the window's pixels, and the loop hands the latest one to `frame`. On this page, each demo canvas listens for `pointermove`, subtracts the canvas's position on the page and scales CSS pixels to the canvas's own pixels; the playground's `index.js` tab shows that code. In both, `frame` gets the middle of the canvas until the pointer first moves over it. Python, Swift and Kotlin read the pointer from their own windowing toolkits.
 
 Pointer positions count from the top left corner with y growing downward, the same space `@builtin(position)` uses. `center` converts them without a single change, and one subtraction parks the circle under the pointer:
 
