@@ -1,4 +1,4 @@
-// Drawing with distance, step 7: the pointer and the knobs.
+// Drawing with distance step 7: the pointer and the knobs.
 
 import { Shader } from "fragmentcolor";
 
@@ -15,7 +15,7 @@ struct Params {
     rings: f32, // 5..60
     glow: f32, // 2..30
     inside_color: vec3<f32>,
-    edge_color: vec3<f32>,
+    rim_color: vec3<f32>,
     outside_color: vec3<f32>,
 }
 
@@ -59,7 +59,7 @@ fn fs_main(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
     var color = vec3<f32>(0.05, 0.06, 0.08) + u.outside_color * 0.45 * exp(-u.glow * outside);
     let ring = abs(fract(d * u.rings - 0.5 * t + 0.5) - 0.5) / (u.rings * pixel_size);
     color = color + u.outside_color * 0.35 * exp(-3.0 * outside) * (1.0 - smoothstep(0.5, 1.5, ring));
-    color = select(color, mix(u.edge_color, u.inside_color, smoothstep(0.0, 0.12, -d)), d < 0.0);
+    color = select(color, mix(u.rim_color, u.inside_color, smoothstep(0.0, 0.12, -d)), d < 0.0);
     color = mix(color, vec3<f32>(1.0), 1.0 - smoothstep(0.5 * pixel_size, 1.5 * pixel_size, abs(d)));
     return vec4<f32>(color, 1.0);
 }
@@ -80,7 +80,7 @@ export async function setup(renderer, target) {
     shader.set("u.rings", 20);
     shader.set("u.glow", 10);
     shader.set("u.inside_color", [1, 0, 0.514]);
-    shader.set("u.edge_color", [0.514, 0, 1]);
+    shader.set("u.rim_color", [0.514, 0, 1]);
     shader.set("u.outside_color", [0, 0.514, 1]);
     // #endregion: setup
     return { shader };

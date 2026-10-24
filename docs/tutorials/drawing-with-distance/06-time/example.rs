@@ -1,4 +1,4 @@
-// Drawing with distance, step 6: time.
+// Drawing with distance step 6: time.
 
 use std::sync::{Arc, Once, OnceLock};
 use std::time::Instant;
