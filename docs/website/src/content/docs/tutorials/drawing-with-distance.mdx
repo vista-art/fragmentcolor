@@ -51,7 +51,7 @@ That gives `p`. Where both of its coordinates run from `-0.5` to `0.5` lies the 
 
 The bright square keeps its shape at any window size, and only the dim margins grow. Dividing x by the width and y by the height would have stretched it, the way the hello triangle did before its tutorial fixed the aspect ratio.
 
-On the host, `setup` builds the shader once from `SHADER`, the WGSL above held in a string:
+On the host, `setup` builds the shader once from `SHADER`, the string that holds the WGSL above:
 
 <Snippet file="drawing-with-distance/01-coordinates/example.rs" region="setup" />
 
@@ -114,7 +114,7 @@ At any point one of the two terms is zero, and the sum is the other one.
 
 Inigo Quilez publishes this form of the box, with exact distances for dozens of other shapes and a live example for each, on his page of [2D distance functions](https://iquilezles.org/articles/distfunctions2d/). The [history](#where-distance-fields-come-from) at the end of this page tells how the technique reached shaders.
 
-The star repeats the trick twice. Folding around the center brings every point into the wedge of a single arm, and mirroring across that arm's middle line leaves one straight edge to measure. Its exact distance is Quilez's derivation as well, and the shader library includes his version as [`sdf2d/star`](/shaders/sdf2d/#star). It takes `star(p, r, n, m)`. `r` is the distance from the center to each tip, and `n` counts the arms as a `u32`, which is why the call below writes `5u`. `m` runs from `2.0` to `n`: at `2.0` the star is a plain pentagon, and larger values carve the valleys deeper.
+The star repeats the trick twice. Rotating by whole arm angles brings every point into the wedge of a single arm, and mirroring across that arm's middle line leaves one straight edge to measure. Its exact distance is Quilez's own derivation, and the shader library includes his version as [`sdf2d/star`](/shaders/sdf2d/#star). It takes `star(p, r, n, m)`. `r` is the distance from the center to each tip, and `n` counts the arms as a `u32`, which is why the call below writes `5u`. `m` runs from `2.0` to `n`: at `2.0` the star is a plain pentagon, and larger values carve the valleys deeper.
 
 Keeping the smaller of the two distances draws both shapes at once. The next section shows why `min` works.
 
@@ -145,7 +145,7 @@ fn op_smooth_union(a: f32, b: f32, k: f32) -> f32 {
 }
 ```
 
-`h` compares the two distances, and `clamp` keeps it between `0.0` and `1.0`. `mix(b, a, h)` moves from `b` to `a` as `h` grows. When one shape is closer by more than `k`, `h` hits one of its limits and `mix` returns the plain minimum. Inside that margin, `mix` blends them and `k * h * (1.0 - h)` takes away a little more, most of all where the distances are equal. Subtracting from `d` near the corner pushes the zero line outward there, and the corner turns into a curve about `k` units wide.
+`h` compares the two distances, and `clamp` keeps it between `0.0` and `1.0`. `mix(b, a, h)` moves from `b` to `a` as `h` grows. When one shape is closer by more than `k`, `h` hits one of its limits and `mix` returns the plain minimum. Inside that margin, `mix` blends them and `k * h * (1.0 - h)` takes away a little more, most of all where the distances are equal. Subtracting from `d` where the outlines meet pushes the zero line outward there, and the corner turns into a curve about `k` units wide.
 
 The next picture holds one circle and one box in each quarter of the unit square, combined four different ways. `vec2<f32>(0.11)` repeats one value in both components, which makes the box square.
 
@@ -183,13 +183,13 @@ Every line that writes `color` adds one layer:
 <Code lang="wgsl" code={region("05-color", "color").rust} />
 
 1. The backdrop is the site's near-black. `max(d, 0.0)` zeroes `d` inside the shapes and gives `outside`, and `exp(-10.0 * outside)` is `1.0` on the edge and drops to a tenth of that about `0.23` units out, which wraps every outline in an azure glow.
-2. `pixel_size` is `fwidth(d)`, how much `d` changes from this pixel to its neighbors: the width of one pixel, measured as a distance. `fract(d * 20.0 + 0.5) - 0.5` says how far `d` sits from the nearest multiple of `0.05`, in units of `0.05`, and dividing by `20.0 * pixel_size` turns that into pixels. `smoothstep(a, b, x)` is `0.0` below `a`, `1.0` above `b` and a smooth ramp between. `1.0 - smoothstep(0.5, 1.5, ring)` therefore lights only the pixels within about a pixel of a multiple: a thin ring every `0.05` units. Each ring joins points at the same distance from the shapes, like the height lines on a hiking map, and `exp(-3.0 * outside)` fades the rings more slowly than the glow.
+2. `pixel_size` is `fwidth(d)`, how much `d` changes from this pixel to its neighbors: the width of one pixel, measured as a distance. `fract(d * 20.0 + 0.5) - 0.5` says how far `d` sits from the nearest multiple of `0.05`, in units of `0.05`, and dividing by `20.0 * pixel_size` turns that into pixels. `smoothstep(a, b, x)` is `0.0` below `a`, `1.0` above `b` and a smooth ramp between. `1.0 - smoothstep(0.5, 1.5, ring)` therefore keeps only the pixels within about a pixel of a multiple: a thin ring every `0.05` units. Each ring joins points at the same distance from the shapes, like the height lines on a hiking map, and `exp(-3.0 * outside)` fades the rings more slowly than the glow.
 3. `select` swaps everything inside the shapes for a fill. `smoothstep(0.0, 0.12, -d)` rises from `0.0` at the edge to `1.0` at a depth of `0.12`, and `mix` turns that into violet by the outline and magenta deep inside.
-4. `smoothstep(0.5 * pixel_size, 1.5 * pixel_size, abs(d))` is `0.0` within half a pixel of the edge and `1.0` past one and a half. Mixing toward white by one minus that draws the outline, a line about two pixels wide.
+4. Mixing toward white by `1.0 - smoothstep(0.5 * pixel_size, 1.5 * pixel_size, abs(d))` draws the outline: full white within half a pixel of the edge, gone past one and a half, a line about two pixels wide.
 
 <Demo file="drawing-with-distance/05-color/example.rs" />
 
-Each layer reads one property of the field. The fill says inside and its gradient says how deep, the white line traces the edge, and the glow and the rings give the distance outside. Because both the rings and the outline measure in pixels through `fwidth`, they stay thin on a phone, on a 4K monitor and at any zoom, and the shader never reads `resolution` to keep them that way.
+Each layer reads one property of the field. The fill says inside and its gradient how deep, the white line traces the edge, and the glow and the rings give the distance outside. Because both the rings and the outline measure in pixels through `fwidth`, they stay thin on a phone, on a 4K monitor and at any zoom, and the shader never reads `resolution` to keep them that way.
 
 ## Time
 
@@ -205,7 +205,7 @@ In the shader, time moves the star and the box:
 
 <Code lang="wgsl" code={region("06-time", "scene").rust} />
 
-`rotate2(p, a)` from [`map/rotate2`](/shaders/map/#rotate2) turns a point counterclockwise around the origin by `a` radians. Applied to every point with `time * 0.4` as the angle, it turns the coordinates the star measures from, which spins the star itself the other way: clockwise, once around in about 16 seconds. `0.05 * sin(time)` lifts and lowers the box by `0.05` units on a 6.3 second cycle. With `rotate2` in use, the slug list grows by one:
+`rotate2(p, a)` from [`map/rotate2`](/shaders/map/#rotate2) turns a point counterclockwise around the origin by `a` radians. Applied to every point with `time * 0.4` as the angle, it rotates the coordinates the star measures from, which spins the star itself the other way: clockwise, once around in about 16 seconds. `0.05 * sin(time)` lifts and lowers the box by `0.05` units on a 6.3 second cycle. With `rotate2` in use, the slug list grows by one:
 
 <Snippet file="drawing-with-distance/06-time/example.rs" region="setup" />
 
@@ -223,7 +223,7 @@ Two kinds of input remain: the pointer, and six settings to tune by hand. With `
 
 <Code lang="wgsl" code={region("07-pointer", "params").rust} />
 
-Moving `resolution` into the struct changes one word in `center`, which now reads `u.resolution`:
+Moving `resolution` into the struct turns each `resolution` in `center` into `u.resolution`:
 
 <Code lang="wgsl" code={region("07-pointer", "center").rust} />
 
@@ -235,7 +235,7 @@ Like `time`, the pointer arrives in `frame` as an argument, and `frame` sets it 
 
 <Snippet file="drawing-with-distance/07-pointer/example.rs" region="frame" />
 
-Where the position comes from depends on the platform. In the Rust program, `winit` reports each cursor move in the window's physical pixels, and the loop hands the latest one to `frame`. On this page, each demo listens for `pointermove` on its canvas, subtracts the element's position on the page and scales from CSS units to the drawing buffer's own resolution; the playground's `index.js` tab shows that code. Until the pointer first moves over the demo, both supply its middle instead. In Python, Swift and Kotlin the position comes from the platform's own events, such as a `glfw` cursor callback, a UIKit touch or an Android `MotionEvent`, and needs the same conversion to the surface's pixels.
+Where the position comes from depends on the platform. In the Rust program, `winit` reports each cursor move in the window's physical pixels, and the loop hands the latest one to `frame`. On this page, each demo listens for `pointermove` on its canvas, subtracts the element's position on the page and scales from CSS units to the drawing buffer's own resolution; the playground's `index.js` tab shows that code. Until the pointer first moves over the demo, both supply its middle instead. Python, Swift and Kotlin read it from their own events, such as a `glfw` cursor callback, a UIKit touch or an Android `MotionEvent`, and convert it to the surface's pixels the same way.
 
 Pointer positions count from the top left corner with y growing downward, the same space `@builtin(position)` uses. `center` converts them like any pixel, and one subtraction parks the circle under the pointer:
 
@@ -257,12 +257,12 @@ The playground's Shapes demo is this program with a few changes: a hexagon from 
 
 Computing every pixel's distance to a shape is older than GPUs by decades.
 
-In 1966, Azriel Rosenfeld and John L. Pfaltz described two sweeps over a digital image that find, for every pixel, how far it lies from the nearest pixel of a chosen set ([*Sequential Operations in Digital Picture Processing*](https://doi.org/10.1145/321356.321357)). Their distance transform counted pixels on a grid and carried no sign. Signed distances became a standard tool in the study of moving boundaries: Stanley Osher and James A. Sethian's [level set method](https://doi.org/10.1016/0021-9991(88)90002-2) (1988) tracks an interface as the zero level of a function defined all around it, usually a signed distance.
+In 1966, Azriel Rosenfeld and John L. Pfaltz described two sweeps over a digital image that find, for every pixel, how far it lies from the nearest pixel of a chosen set ([*Sequential Operations in Digital Picture Processing*](https://doi.org/10.1145/321356.321357)). Their distance transform counted pixels on a grid and carried no sign. Moving boundaries made signed distances a standard tool: Stanley Osher and James A. Sethian's [level set method](https://doi.org/10.1016/0021-9991(88)90002-2) (1988) tracks an interface as the zero level of a function defined all around it, most often the distance to the interface with a sign attached.
 
-John C. Hart turned it into a way to render. In 1989 he, Daniel Sandin and Louis Kauffman [ray traced 3D fractals](https://doi.org/10.1145/74333.74363) with distance bounds, and his [sphere tracing](https://doi.org/10.1007/s003710050084) (1996) generalized the method: a ray from the eye through each pixel advances in steps as long as the distance to the nearest surface, steps that can never overshoot.
+John C. Hart turned the distance into a way to render. In 1989 he, Daniel Sandin and Louis Kauffman [ray traced 3D fractals](https://doi.org/10.1145/74333.74363), stepping along each ray no farther than a safe estimate of how close the fractal could be, and his [sphere tracing](https://doi.org/10.1007/s003710050084) (1996) generalized the method: a ray from the eye through each pixel advances in steps as long as the distance to the nearest surface, steps that can never overshoot.
 
 Text brought distance fields to everyday screens. At Mitsubishi Electric Research Laboratories (MERL), Sarah F. Frisken, Ronald N. Perry, Alyn P. Rockwood and Thouis R. Jones stored the field finely near edges and coarsely elsewhere ([*Adaptively Sampled Distance Fields*](https://doi.org/10.1145/344779.344899), SIGGRAPH 2000). Perry and Frisken built the Saffron type system on that work, and in 2005 it became the new text renderer of Macromedia Flash Player 8. Two years later, in a SIGGRAPH course, Chris Green of Valve showed that a small distance field texture magnifies into crisp lettering ([*Improved Alpha-Tested Magnification for Vector Textures and Special Effects*](https://cdn.akamai.steamstatic.com/apps/valve/2007/SIGGRAPH2007_AlphaTestedMagnification.pdf)); Team Fortress 2 used the method for the words on its signs and for screen overlays. One distance per texel, the texture's own pixel, blunts the corners. Viktor Chlumský's 2015 master's thesis split the field across three channels, and his [msdfgen](https://github.com/Chlumsky/msdfgen) tool keeps glyph corners almost perfectly sharp.
 
-In the same years, real-time shaders took up the idea. Demoscene programmers, who fit real-time animations into tiny programs, marched rays through distance fields the way sphere tracing does, and in 2004 Keenan Crane ray traced 3D fractals called [quaternion Julia sets](https://www.cs.cmu.edu/~kmcrane/Projects/QuaternionJulia/) in a GPU fragment program. [Inigo Quilez](https://iquilezles.org/) carried the technique to a wide audience. His NVScene 2008 talk, [*Rendering Worlds with Two Triangles with raytracing on the GPU in 4096 bytes*](https://iquilezles.org/articles/nvscene2008/), explained how 4 KB demos raymarch whole worlds through distance fields. The articles that followed work out the exact 2D distances and the [smooth minimum](https://iquilezles.org/articles/smin/) on this page, and in 2013 he and Pol Jeremias created [Shadertoy](https://www.shadertoy.com/), where people share shaders drawn this way. His [article on raymarching distance fields](https://iquilezles.org/articles/raymarchingdf/) traces that earlier work in detail.
+In the same years, real-time shaders took up the idea. Demoscene programmers, who fit whole animations into tiny programs, marched rays through distance fields the way sphere tracing does, and in 2004 Keenan Crane rendered [quaternion Julia sets](https://www.cs.cmu.edu/~kmcrane/Projects/QuaternionJulia/), a family of 3D fractals, in a GPU fragment program. [Inigo Quilez](https://iquilezles.org/) carried the technique to a wide audience. His NVScene 2008 talk, [*Rendering Worlds with Two Triangles with raytracing on the GPU in 4096 bytes*](https://iquilezles.org/articles/nvscene2008/), explained how 4 KB demos raymarch whole worlds through distance fields. The articles that followed work out the exact 2D distances and the [smooth minimum](https://iquilezles.org/articles/smin/) on this page, and in 2013 he and Pol Jeremias created [Shadertoy](https://www.shadertoy.com/), where people share shaders drawn this way. His [article on raymarching distance fields](https://iquilezles.org/articles/raymarchingdf/) traces that earlier work in detail.
 
 From his catalog this page takes the box and star distances and the smooth minimum. More of his shapes, from the rhombus to the trapezoid, are in the shader library under [`sdf2d/`](/shaders/sdf2d/).
