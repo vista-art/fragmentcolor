@@ -85,7 +85,7 @@ export default defineConfig({
           tag: "link",
           attrs: {
             rel: "icon",
-            href: "./favicon.ico",
+            href: "/favicon.ico",
           },
         },
         // Cross-link blog and docs inside the left sidebar (desktop & mobile)
