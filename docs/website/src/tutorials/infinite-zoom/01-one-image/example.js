@@ -50,6 +50,6 @@ context.putImageData(image, 0, 0);
 function color(count) {
   if (count === LIMIT) return [5, 5, 13];
   const t = count * 0.02 + 0.6;
-  return [0, 0.1, 0.2].map((phase) => 255 * (0.5 + 0.5 * Math.cos(2 * Math.PI * (t + phase))));
+  return [0, 0.1, 0.2].map((phase) => Math.floor(255 * (0.5 + 0.5 * Math.cos(2 * Math.PI * (t + phase)))));
 }
 // #endregion: color
