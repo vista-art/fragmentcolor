@@ -20,7 +20,7 @@ the rough ideas. A tutorial moves out of here when it ships.
 | Order | Tutorial | Playground demo | Status |
 |---|---|---|---|
 | 10 | Hello, 15000 triangles! | | Draft with locked passages; polish and publish |
-| 20 | Drawing with distance | Shapes | New |
+| 20 | Drawing with distance | Shapes | Written; student, technical and prose reviews passed |
 | 90 | Infinite zoom | Mandelbrot (new) | New |
 
 A fourth tutorial joins the launch only if it says something essential that the
