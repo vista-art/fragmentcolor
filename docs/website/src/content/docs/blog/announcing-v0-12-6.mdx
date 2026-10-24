@@ -18,7 +18,7 @@ Three fixes cut memory use and per-frame work. FragmentColor frees passes, shade
 - A `render` made only of compute passes acquires no surface frame and keeps running while a window is minimized.
 - A shader with two `@vertex` or `@fragment` functions draws with the first of each. Render pipelines took the last.
 - A mesh whose instance list shrinks draws only the instances it holds instead of the old count.
-- A mesh whose vertices or instances disagree on an attribute's format or length fails with `MeshError`, where later attributes shifted.
+- A mesh whose vertices or instances disagree on an attribute's format or length fails to attach, where later attributes shifted. A value added after the attach fails the render with `MeshError`.
 - `Scene.load` reads glTF files with application attributes such as `_ID`.
 
 ### Shaders and uniforms
@@ -51,17 +51,18 @@ Android `renderer.createTarget(surface)` works again. Every call since [0.12.3](
 - On Swift and Kotlin, and for a list on the web, `Pass.require` links each dependency once. The docs example failed on mobile with `DuplicateDependency: color`. Python `render` runs the passes a `Pass` requires.
 - On the web, `scene.setPasses` copies its handles, where later calls threw `Attempt to use a moved value`. `render` records a list as one frame, where the last item replaced the others, and `load` and `WindowTarget.getImage()` stop throwing.
 - Python `Renderer.create_target` keeps one target per renderer, where it shared a canvas's target across devices.
-- Swift `writeRegion` takes 2, 4, or 6 numbers and throws for other arrays, which it ignored. `TextureRegion.from`, `Vertex.set`, and `Instance.set` trap with a message on an array they can't read, where they misread it.
+- Swift `writeRegion` takes 2, 4, or 6 numbers and throws for other arrays, which it ignored. `Vertex.set` and `Instance.set` throw for a list of other than 1 to 4 numbers, and `TextureRegion.from` traps with a message on an array it can't read, where all three misread it.
 
 ### Parity across languages
 
-Every binding uses Rust's type names, such as `WindowTarget` and `TextureRegion`. `CanvasTarget`, `RenderCanvasTarget`, `TextureRegionMobile`, and the other `Mobile*` names remain aliases.
+Every binding uses Rust's type names, such as `WindowTarget` and `TextureRegion`. `CanvasTarget`, `RenderCanvasTarget`, `TextureRegionMobile`, `MobileWindowTarget`, and `MobileTextureTarget` remain aliases.
 
-- `Pass.add` and the `Scene` builders return the receiver, and `scene.add(model).add(camera)` chains. `Pass.require` takes a `Scene`. Every binding has `ScreenRegion(origin, size)`, `[x, y, w, h]` viewports, `[r, g, b]` clear colors, and a readable [`PassInput`](/api/core/passinput/).
+- `Pass.add` and the `Scene` builders return the receiver, and `scene.add(model).add(camera)` chains. `Pass.require` takes a `Scene`. Every binding has `ScreenRegion(origin, size)`, `[x, y, w, h]` viewports, and `[r, g, b]` clear colors.
 - `Shader.set` takes each platform's number types, matrices flat or as columns, raw bytes for storage and push-constant roots, and bools as 1 or 0. Rust's `set("scale", 2)` fills an `f32`, and `Shader::get` reads matrices and bytes.
 - Swift and Kotlin `createTexture` takes bytes alone or with a format, a `[w, h]` size, or options, and every binding has the `TextureUsage` flags. Rust takes path and URL strings, the web reads every option, and JavaScript and Python load KTX2.
 - Python has one readable `Size` class, and `texture.size.width` no longer raises `AttributeError`. Python also builds `SamplerOptions` and `CompareFunction` and compares value types by value.
-- Every binding has `Vertex.UV0` and the other constants, and `(position, uv, color)` vertices. JavaScript gains [`VertexValue`](/api/geometry/vertexvalue/), Python `render` takes a `Mesh`, and `Scene.load` takes `.glb` bytes and can skip cameras or lights.
+- A number or list of numbers on a `Vertex` or `Instance` takes the type the shader declares at its location when the mesh attaches, as uniforms do. [`vertex.set("id", 7)`](/api/geometry/vertex/#set) fills an `id: u32` input in every language, and a value that doesn't fit fails the attach with an error like `Mesh attribute id: expected u32, got -1 at vertex 2`.
+- Every binding has `Vertex.UV0` and the other constants, and `(position, uv, color)` vertices. Python `render` takes a `Mesh`, and `Scene.load` takes `.glb` bytes and can skip cameras or lights.
 - `Material` texture setters take any `createTexture` source, Kotlin scene types take `Double`, and the TypeScript typings take plain arrays.
 
 ### Docs and generated examples
@@ -70,7 +71,7 @@ The iOS and Android healthchecks run each documented example as a test named aft
 
 Generated examples match their Rust source, and the build removes those of deleted pages. Kotlin gains `createTexture(pixels, listOf(w, h))`. Its examples sent raw pixels to the image decoder and failed.
 
-On this site, method links open their heading instead of a 404, and each method's anchor is its name, as in [`/api/scene/scene#remove_pass`](/api/scene/scene/#remove_pass). [`Instance`](/api/geometry/instance/), `PassInput`, `VertexValue`, and [`Mipmap.level`](/api/texture/mipmap/#level) gain pages, and four missing method pages reach the site. The regenerated Python stub gains `Scene`, `Mipmap`, and the other types it lacked.
+On this site, method links open their heading instead of a 404, and each method's anchor is its name, as in [`/api/scene/scene#remove_pass`](/api/scene/scene/#remove_pass). [`Instance`](/api/geometry/instance/) and [`Mipmap.level`](/api/texture/mipmap/#level) gain pages, and four missing method pages reach the site. The regenerated Python stub gains `Scene`, `Mipmap`, and the other types it lacked.
 
 ### Playground and examples
 
@@ -91,6 +92,8 @@ These changes can break code written against [0.12.5](/blog/announcing-v0-12-5/)
 **Rust**
 
 - `Vertex::set` and `Instance::set` are `#[must_use]`: use their result.
+- `Vertex::set` and `Instance::set` take `impl Into<VertexData>`, a transport type with no page of its own, in place of `VertexValue`. An `f32` or `u32` keeps its type and must match the input, and an unsuffixed literal, `f64`, or `i32` takes the shader's type.
+- `PassError::NoCompatibleShader` carries the reason the pass's last shader gave, and a pass with no shader returns `PassError::NoShader`.
 - Items that were public by accident leave the API: the built-in shader sources, the wgpu device setup helpers, `RenderContext`, the buffer and texture pools, `TextureData::DynamicImage`, and the glam and wgpu conversions of `ScreenRegion` and `UniformData`. Pass `v.to_array()` where code passed a glam vector.
 
 **JavaScript**
@@ -105,7 +108,7 @@ These changes can break code written against [0.12.5](/blog/announcing-v0-12-5/)
 - `get_image` returns a `uint8` array shaped `(height, width, ...)`, layers first for array textures. `TextureTarget` returned the transpose: swap `[x, y]` indices. `Texture` returned flat bytes, which `bytes(image)` still gives.
 - Renderer and texture failures raise `FragmentColorError` or a subclass, where they raised a plain `Exception`, and `read_storage` a `RuntimeError`. Catch `FragmentColorError`. `Scene.load` raises `SceneLoadError`, also a `RuntimeError`, and light setters `LightError`, also a `ValueError`.
 - `Shader`, texture, mesh, and `Pass.require` calls raise `TypeError` for an argument of the wrong type, where most raised `FragmentColorError`. Catch `TypeError` there. `require` rejects a `str`, and `Shader.set` rejects the `TextureMeta` that `Shader.get` returns.
-- `VertexValue.u32(3)` returns a `VertexValue`, and `set` writes integer attributes. A list of one item reads as a float. A position passed as an instance raises `TypeError` instead of adding an empty instance.
+- `Vertex.set` and `Instance.set` raise `FragmentColorError` for a list of other than 1 to 4 numbers. A position passed as an instance raises `TypeError` instead of adding an empty instance.
 - A window target's `depth` is `None` instead of 1, and `create_texture` reads `http(s)` strings as URLs.
 - `usage=` replaces the deprecated `usage_bits=`. The stub drops plumbing such as `passes`, which leaves the bindings in 0.13.
 
@@ -114,13 +117,16 @@ These changes can break code written against [0.12.5](/blog/announcing-v0-12-5/)
 - Where Rust takes a `u32` or `u64`, such as indices, counts, sizes, and regions, Swift takes only `UInt32` or `UInt64` and Kotlin only `UInt` or `ULong`. An `Int` variable fails to compile. Check its sign and convert with `UInt32(n)` or `n.toUInt()`.
 - Swift literals compile as written, as in `createTextureTarget([64, 64])`, and Kotlin writes `64u` and `listOf(64u, 64u)`. The removed `Int` overloads trapped on or wrapped negatives. Byte lists keep their `Int` forms and throw outside 0 to 255.
 - A GPU that fails to start reports `FragmentColorError.Init` from every renderer method, where several said `Render`. Kotlin argument errors throw `FragmentColorException` in place of `IllegalArgumentException`.
-- The generated `set(key:value:)` takes `UniformValue` in place of `UniformData`. Documented `shader.set` calls are unchanged. Swift `addVertex` and `addVertices` don't throw: drop their `try`.
+- The generated `set(key:value:)` takes `UniformValue` in place of `UniformData`. Documented `shader.set` calls are unchanged. Swift `addVertex` and `addVertices` don't throw: drop their `try`. Swift `Vertex.set` and `Instance.set` throw: add `try` before them.
 - Swift `setViewport([x, y, w, h])` reads an origin and size instead of two corners. Swift warns on an unused result from `Instance.set` and from generated builders such as `noDefaults()`.
 - Kotlin `Shader.setRegistry` returns nothing instead of a throwaway `Shader`. Rebuild libraries compiled against 0.12.5.
 - Swift deprecates `Shader.new([...])` for `Shader([...])`, `setRegistry(baseUrl:)` for `setRegistry(_:)`, and the tuple forms of `createTexture` and `createStorageTexture`. Kotlin deprecates `ShaderFetch` for `Shader.fetch`.
 
 **Every language**
 
+- `Pass.get_input` and `PassInput` leave the API, and Swift and Kotlin lose `MobilePassInput`. A pass's settings are write-only: `load_previous`, `set_clear_color`, `set_viewport`, and `set_compute_dispatch`.
+- `VertexValue` leaves every binding: pass numbers. A vertex or instance attribute set from a plain number takes the type the shader declares at its location, where the bindings sent every number as an `f32`. JavaScript `Int32Array` and `Uint32Array` values count as plain numbers too.
+- The attach checks every vertex and instance, where it checked only the first. The first shader that types an attribute fixes it for the mesh, and a shader that declares another type fails to attach.
 - A region built from a size covers exactly that size. `ScreenRegion::from([w, h])` added a pixel per side, which failed `write_region`.
 - `create_target` returns `InitializationError` when the adapter can't present, as on a second WebGL2 canvas, which needs its own `Renderer`. It used to succeed and only log.
 - Samplers with no texture in their group filter linearly instead of picking the nearest texel. glTF textures follow their glTF sampler, and UVs outside 0 to 1 tile unless the file's sampler clamps.

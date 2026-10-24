@@ -360,7 +360,7 @@ Numbers and bytes arrive in each language's native types.
 | Swift | `UInt32`, `UInt64` | `Data`, `[UInt8]` |
 | Kotlin | `UInt`, `ULong` | `ByteArray` |
 
-Type names match everywhere. `WindowTarget`, `TextureTarget`, `TextureRegion`, and `PassInput` are the same classes in Rust, JavaScript, Python, Swift, and Kotlin. The older names that only one binding used, such as `CanvasTarget`, `RenderCanvasTarget`, and `TextureRegionMobile`, remain as aliases.
+Type names match everywhere. `WindowTarget`, `TextureTarget`, and `TextureRegion` are the same classes in Rust, JavaScript, Python, Swift, and Kotlin. The older names that only one binding used, such as `CanvasTarget`, `RenderCanvasTarget`, and `TextureRegionMobile`, remain as aliases.
 
 Return values match as well. A Rust method that returns its receiver returns it in every binding, which lets `scene.add(model).add(camera)` chain. A size comes back as a `Size`, and in Python `texture.size.width` returns the width. Value types such as `Size`, `ScreenRegion`, and `TextureFormat` compare by value in Python, Swift, and Kotlin.
 
@@ -451,6 +451,8 @@ The rule covers bad input too, which several bindings used to absorb without a w
 In 0.12.6, bad input fails where you can see it. JavaScript and Python reject a size, region, or byte value they can't use, unsigned types keep negatives out of Swift and Kotlin, `new Shader` throws, and `Shader.fetch` rejects.
 
 Uniforms follow one set of rules in all five languages. [`Shader.set`](/api/core/shader#set) reads a value against the type the shader declares. An integer uniform takes whole numbers in range, a vector takes exactly as many numbers as it has components, and a `mat2x2`, `mat3x3`, or `mat4x4` takes 4, 9, or 16. Give a `vec2<f32>` three numbers and the error names the problem: `resolution: expected vec2<f32>, got 3 number(s)`.
+
+Vertex and instance attributes take their type the same way, when the mesh attaches to a shader. With `@location(1) id: u32` in the shader, [`vertex.set("id", 7)`](/api/geometry/vertex#set) uploads a `u32` in every language, and a `-1` fails the attach with `Mesh attribute id: expected u32, got -1 at vertex 0`.
 
 A live editor depends on errors like these. When an edit breaks the shader, the constructor throws, the playground prints the message under the editor, and the last shader that built keeps drawing.
 
