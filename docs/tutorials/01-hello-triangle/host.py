@@ -1,8 +1,8 @@
 """Runs one step of the tutorial in a window: `python host.py 01-three-lines`.
 
 It loads the step's example.py, calls its `setup` once, and calls its `frame`
-on every redraw with the seconds since the window opened. With FC_TUTORIAL_FRAMES=n
-set, it closes the window after n frames, so a reviewer can run every step in turn.
+about 60 times a second with the seconds since the window opened. With
+FC_TUTORIAL_FRAMES=n set, it closes the window after n frames.
 It needs `pip install fragmentcolor rendercanvas glfw`.
 """
 
@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 from time import perf_counter
 
-from fragmentcolor import Renderer
+from fragmentcolor import FragmentColorError, Renderer
 from rendercanvas.auto import RenderCanvas, loop
 
 
@@ -27,7 +27,7 @@ def load(step):
 
 def run(step):
     example = load(step)
-    canvas = RenderCanvas(size=(800, 600), title=step, update_mode="continuous")
+    canvas = RenderCanvas(size=(800, 600), title=step)
     renderer = Renderer()
     target = renderer.create_target(canvas)
     takes_renderer = len(inspect.signature(example.setup).parameters) > 0
@@ -37,20 +37,30 @@ def run(step):
     frames = 0
     start = perf_counter()
 
-    @canvas.add_event_handler("resize")
-    def resize(event):
-        ratio = event["pixel_ratio"]
-        target.resize([int(event["width"] * ratio), int(event["height"] * ratio)])
-
-    @canvas.request_draw
-    def draw():
+    # `render` presents each frame itself, so a timer drives the frames.
+    def tick():
         nonlocal frames
-        example.frame(state, renderer, target, perf_counter() - start)
+        if canvas.get_closed():
+            return
+        width, height = canvas.get_physical_size()
+        size = target.size()
+        if (size.width, size.height) != (width, height):
+            target.resize([width, height])
+
+        try:
+            example.frame(state, renderer, target, perf_counter() - start)
+        except FragmentColorError as error:
+            # A hidden or minimized window has nothing to draw on, so the frame is skipped.
+            if "occluded" not in str(error):
+                raise
         frames += 1
         if limit and frames >= limit:
             print(f"{frames} frames rendered")
             canvas.close()
+            return
+        loop.call_later(1 / 60, tick)
 
+    loop.call_soon(tick)
     loop.run()
 
 

@@ -1,5 +1,5 @@
 // Step 4: the program owns the triangle's corners, each with its own color.
-// The page's <Demo> calls setup once and frame on every animation frame.
+// Call setup once, then frame on every animation frame, such as from requestAnimationFrame.
 
 import { Mesh, Shader, Vertex } from "fragmentcolor";
 

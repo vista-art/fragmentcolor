@@ -59,8 +59,8 @@ name = "tutorial_01_hello_triangle_vertex_gradient"
 path = "../../docs/tutorials/01-hello-triangle/04-vertex-gradient/example.rs"
 
 [[example]]
-name = "tutorial_01_hello_triangle_particle_trail"
-path = "../../docs/tutorials/01-hello-triangle/05-particle-trail/example.rs"
+name = "tutorial_01_hello_triangle_instances"
+path = "../../docs/tutorials/01-hello-triangle/05-instances/example.rs"
 
 [[example]]
 name = "tutorial_01_hello_triangle_postfx_pass"

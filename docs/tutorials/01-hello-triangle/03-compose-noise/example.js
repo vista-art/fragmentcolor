@@ -1,5 +1,5 @@
-// Step 3: the shader calls `simplex2` from the shader library to shimmer.
-// The page's <Demo> calls setup once and frame on every animation frame.
+// Step 3: `simplex2` from the shader library makes the color shimmer.
+// Call setup once, then frame on every animation frame, such as from requestAnimationFrame.
 
 import { Shader } from "fragmentcolor";
 

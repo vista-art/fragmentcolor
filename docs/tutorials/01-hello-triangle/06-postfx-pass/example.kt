@@ -27,18 +27,19 @@ fn vs_main(
 ) -> VOut {
     // Shrink the triangle and keep its shape, as in step 2.
     let aspect = resolution.x / resolution.y;
-    var shape = position.xy * 0.018;
+    var shape = position.xy * 0.03;
     if (aspect > 1.0) { shape.x = shape.x / aspect; }
     else              { shape.y = shape.y * aspect; }
 
-    // Each copy circles its center on its own schedule.
+    // Each copy loops around its center, out of step with the others.
     let wobble = vec2<f32>(
         sin(time * 1.3 + phase),
         cos(time * 0.9 + phase * 1.4),
     ) * 0.03;
 
+    // in_out_sine comes from easing/in_out_sine and flattens the wave near 0 and 1.
     let wave = 0.5 + 0.5 * sin(time * 2.0 + phase);
-    let glow = 0.5 + 0.5 * in_out_sine(wave);
+    let glow = 0.75 + 0.75 * in_out_sine(wave);
 
     var out: VOut;
     out.pos = vec4<f32>(center + wobble + shape, 0.0, 1.0);
@@ -87,7 +88,8 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
     let green = textureSample(scene, scene_sampler, offsets[1]).g;
     let blue = textureSample(scene, scene_sampler, offsets[2]).b;
 
-    let graded = tonemap_filmic(vec3<f32>(red, green, blue));
+    // Expose at half brightness, then roll off the highlights like film.
+    let graded = tonemap_filmic(vec3<f32>(red, green, blue) * 0.5);
     let edges = vignette(in.uv, 0.55, 0.40);
     let grain = film_grain(in.uv, time) * 0.05;
     return vec4<f32>(graded * edges + grain, 1.0);
@@ -111,7 +113,7 @@ suspend fun setup(renderer: Renderer): State {
     repeat(COPIES) {
         val center = listOf(Random.nextFloat() * 2f - 1f, Random.nextFloat() * 2f - 1f)
         val phase = Random.nextFloat() * 2f * PI.toFloat()
-        val tint = List(3) { 0.6f + Random.nextFloat() * 0.4f }
+        val tint = List(3) { 0.2f + Random.nextFloat() * 0.8f }
         mesh.addInstance(
             Instance()
                 .set("center", center)
@@ -121,7 +123,7 @@ suspend fun setup(renderer: Renderer): State {
     }
     particles.addMesh(mesh)
 
-    // The texture the particles render into, and the postfx shader reads.
+    // The particles draw into this texture, and the postfx shader reads it.
     val scene = renderer.createTextureTarget(listOf(1024u, 1024u))
 
     val postfx = Shader(listOf(

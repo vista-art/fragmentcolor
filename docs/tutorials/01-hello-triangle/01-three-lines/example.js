@@ -1,5 +1,5 @@
 // Step 1: a shader with one uniform, drawn every frame in a new color.
-// The page's <Demo> calls setup once and frame on every animation frame.
+// Call setup once, then frame on every animation frame, such as from requestAnimationFrame.
 
 import { Shader } from "fragmentcolor";
 

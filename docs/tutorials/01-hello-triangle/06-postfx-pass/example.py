@@ -1,6 +1,6 @@
 """Step 6: the particles render into a texture, and a second pass grades it for the screen.
 
-Run it with `python ../host.py 06-postfx-pass`.
+From the repository root, run `python docs/tutorials/01-hello-triangle/host.py 06-postfx-pass`.
 """
 
 from dataclasses import dataclass
@@ -31,18 +31,19 @@ fn vs_main(
 ) -> VOut {
     // Shrink the triangle and keep its shape, as in step 2.
     let aspect = resolution.x / resolution.y;
-    var shape = position.xy * 0.018;
+    var shape = position.xy * 0.03;
     if (aspect > 1.0) { shape.x = shape.x / aspect; }
     else              { shape.y = shape.y * aspect; }
 
-    // Each copy circles its center on its own schedule.
+    // Each copy loops around its center, out of step with the others.
     let wobble = vec2<f32>(
         sin(time * 1.3 + phase),
         cos(time * 0.9 + phase * 1.4),
     ) * 0.03;
 
+    // in_out_sine comes from easing/in_out_sine and flattens the wave near 0 and 1.
     let wave = 0.5 + 0.5 * sin(time * 2.0 + phase);
-    let glow = 0.5 + 0.5 * in_out_sine(wave);
+    let glow = 0.75 + 0.75 * in_out_sine(wave);
 
     var out: VOut;
     out.pos = vec4<f32>(center + wobble + shape, 0.0, 1.0);
@@ -91,7 +92,8 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
     let green = textureSample(scene, scene_sampler, offsets[1]).g;
     let blue = textureSample(scene, scene_sampler, offsets[2]).b;
 
-    let graded = tonemap_filmic(vec3<f32>(red, green, blue));
+    // Expose at half brightness, then roll off the highlights like film.
+    let graded = tonemap_filmic(vec3<f32>(red, green, blue) * 0.5);
     let edges = vignette(in.uv, 0.55, 0.40);
     let grain = film_grain(in.uv, time) * 0.05;
     return vec4<f32>(graded * edges + grain, 1.0);
@@ -122,7 +124,7 @@ def setup(renderer):
     for _ in range(COPIES):
         center = [uniform(-1.0, 1.0), uniform(-1.0, 1.0)]
         phase = uniform(0.0, tau)
-        tint = [uniform(0.6, 1.0), uniform(0.6, 1.0), uniform(0.6, 1.0)]
+        tint = [uniform(0.2, 1.0), uniform(0.2, 1.0), uniform(0.2, 1.0)]
         mesh.add_instance(
             Instance()
             .set("center", center)
@@ -131,7 +133,7 @@ def setup(renderer):
         )
     particles.add_mesh(mesh)
 
-    # The texture the particles render into, and the postfx shader reads.
+    # The particles draw into this texture, and the postfx shader reads it.
     scene = renderer.create_texture_target([1024, 1024])
 
     postfx = Shader([

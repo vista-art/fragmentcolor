@@ -19,7 +19,7 @@ fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
         vec2<f32>( 0.7, -0.4),
         vec2<f32>( 0.0,  0.8),
     );
-    // Shrink the longer axis so one unit spans the same pixels on both.
+    // Shrink the longer axis so one unit spans as many pixels on x as on y.
     let aspect = resolution.x / resolution.y;
     var pos = corners[i];
     if (aspect > 1.0) { pos.x = pos.x / aspect; }

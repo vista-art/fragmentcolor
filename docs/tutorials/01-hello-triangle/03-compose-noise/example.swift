@@ -1,4 +1,4 @@
-// Step 3: the shader calls `simplex2` from the shader library to shimmer.
+// Step 3: `simplex2` from the shader library makes the color shimmer.
 // Call setup once, then frame on every display refresh, such as from an MTKView delegate.
 
 import FragmentColor

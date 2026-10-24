@@ -1,6 +1,6 @@
-"""Step 3: the shader calls `simplex2` from the shader library to shimmer.
+"""Step 3: `simplex2` from the shader library makes the color shimmer.
 
-Run it with `python ../host.py 03-compose-noise`.
+From the repository root, run `python docs/tutorials/01-hello-triangle/host.py 03-compose-noise`.
 """
 
 from math import cos, sin

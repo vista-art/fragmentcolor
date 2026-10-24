@@ -1,6 +1,6 @@
 """Step 5: one mesh drawn 15000 times, each copy with its own place, phase and tint.
 
-Run it with `python ../host.py 05-particle-trail`.
+From the repository root, run `python docs/tutorials/01-hello-triangle/host.py 05-instances`.
 """
 
 from math import tau
@@ -30,20 +30,19 @@ fn vs_main(
 ) -> VOut {
     // Shrink the triangle and keep its shape, as in step 2.
     let aspect = resolution.x / resolution.y;
-    var shape = position.xy * 0.018;
+    var shape = position.xy * 0.03;
     if (aspect > 1.0) { shape.x = shape.x / aspect; }
     else              { shape.y = shape.y * aspect; }
 
-    // Each copy circles its center on its own schedule.
+    // Each copy loops around its center, out of step with the others.
     let wobble = vec2<f32>(
         sin(time * 1.3 + phase),
         cos(time * 0.9 + phase * 1.4),
     ) * 0.03;
 
-    // in_out_sine comes from easing/in_out_sine. It eases a 0..1 wave
-    // so each triangle lingers at its brightest and its dimmest.
+    // in_out_sine comes from easing/in_out_sine and flattens the wave near 0 and 1.
     let wave = 0.5 + 0.5 * sin(time * 2.0 + phase);
-    let glow = 0.5 + 0.5 * in_out_sine(wave);
+    let glow = 0.75 + 0.75 * in_out_sine(wave);
 
     var out: VOut;
     out.pos = vec4<f32>(center + wobble + shape, 0.0, 1.0);
@@ -73,7 +72,7 @@ def setup():
     for _ in range(COPIES):
         center = [uniform(-1.0, 1.0), uniform(-1.0, 1.0)]
         phase = uniform(0.0, tau)
-        tint = [uniform(0.6, 1.0), uniform(0.6, 1.0), uniform(0.6, 1.0)]
+        tint = [uniform(0.2, 1.0), uniform(0.2, 1.0), uniform(0.2, 1.0)]
         mesh.add_instance(
             Instance()
             .set("center", center)

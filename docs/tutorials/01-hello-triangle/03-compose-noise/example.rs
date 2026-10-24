@@ -1,4 +1,4 @@
-//! Step 3: the shader calls `simplex2` from the shader library to shimmer.
+//! Step 3: `simplex2` from the shader library makes the color shimmer.
 
 #[path = "../host.rs"]
 mod host;

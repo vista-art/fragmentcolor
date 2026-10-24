@@ -1,11 +1,13 @@
 // Step 5: one mesh drawn 15000 times, each copy with its own place, phase and tint.
-// Call setup once, then frame on every display refresh, such as from an MTKView delegate.
+// Call setup once, then frame on every display refresh, such as from a Choreographer callback.
 
-import FragmentColor
+import org.fragmentcolor.*
+import kotlin.math.PI
+import kotlin.random.Random
 
-let copies = 15000
+const val COPIES = 15000
 
-let particles = """
+const val PARTICLES = """
 // #region: shader
 struct VOut {
     @builtin(position) pos: vec4<f32>,
@@ -25,20 +27,19 @@ fn vs_main(
 ) -> VOut {
     // Shrink the triangle and keep its shape, as in step 2.
     let aspect = resolution.x / resolution.y;
-    var shape = position.xy * 0.018;
+    var shape = position.xy * 0.03;
     if (aspect > 1.0) { shape.x = shape.x / aspect; }
     else              { shape.y = shape.y * aspect; }
 
-    // Each copy circles its center on its own schedule.
+    // Each copy loops around its center, out of step with the others.
     let wobble = vec2<f32>(
         sin(time * 1.3 + phase),
         cos(time * 0.9 + phase * 1.4),
     ) * 0.03;
 
-    // in_out_sine comes from easing/in_out_sine. It eases a 0..1 wave
-    // so each triangle lingers at its brightest and its dimmest.
+    // in_out_sine comes from easing/in_out_sine and flattens the wave near 0 and 1.
     let wave = 0.5 + 0.5 * sin(time * 2.0 + phase);
-    let glow = 0.5 + 0.5 * in_out_sine(wave);
+    let glow = 0.75 + 0.75 * in_out_sine(wave);
 
     var out: VOut;
     out.pos = vec4<f32>(center + wobble + shape, 0.0, 1.0);
@@ -54,21 +55,21 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
 """
 
 // #region: setup
-func setup() throws -> Shader {
-    let shader = try Shader(["easing/in_out_sine", particles])
+fun setup(): Shader {
+    val shader = Shader(listOf("easing/in_out_sine", PARTICLES))
 
-    let mesh = Mesh()
-    mesh.addVertices([
-        try Vertex([-0.7, -0.4, 0.0]).set("color", [0.95, 0.30, 0.42]),
-        try Vertex([0.7, -0.4, 0.0]).set("color", [0.30, 0.85, 0.55]),
-        try Vertex([0.0, 0.8, 0.0]).set("color", [0.30, 0.55, 0.95]),
-    ])
+    val mesh = Mesh()
+    mesh.addVertices(listOf(
+        Vertex(listOf(-0.7f, -0.4f, 0.0f)).set("color", listOf(0.95f, 0.30f, 0.42f)),
+        Vertex(listOf(0.7f, -0.4f, 0.0f)).set("color", listOf(0.30f, 0.85f, 0.55f)),
+        Vertex(listOf(0.0f, 0.8f, 0.0f)).set("color", listOf(0.30f, 0.55f, 0.95f)),
+    ))
 
-    for _ in 0..<copies {
-        let center = [Float.random(in: -1...1), Float.random(in: -1...1)]
-        let phase = Float.random(in: 0..<(2 * .pi))
-        let tint = (0..<3).map { _ in Float.random(in: 0.6...1.0) }
-        try mesh.addInstance(
+    repeat(COPIES) {
+        val center = listOf(Random.nextFloat() * 2f - 1f, Random.nextFloat() * 2f - 1f)
+        val phase = Random.nextFloat() * 2f * PI.toFloat()
+        val tint = List(3) { 0.2f + Random.nextFloat() * 0.8f }
+        mesh.addInstance(
             Instance()
                 .set("center", center)
                 .set("phase", phase)
@@ -76,16 +77,16 @@ func setup() throws -> Shader {
         )
     }
 
-    try shader.addMesh(mesh)
+    shader.addMesh(mesh)
     return shader
 }
 // #endregion: setup
 
 // #region: frame
-func frame(_ shader: Shader, _ renderer: Renderer, _ target: WindowTarget, _ time: Float) throws {
-    let size = target.size()
-    try shader.set("resolution", [Float(size.width), Float(size.height)])
-    try shader.set("time", time)
-    try renderer.render(shader, target)
+fun frame(shader: Shader, renderer: Renderer, target: WindowTarget, time: Float) {
+    val size = target.size()
+    shader.set("resolution", listOf(size.width.toFloat(), size.height.toFloat()))
+    shader.set("time", time)
+    renderer.render(shader, target)
 }
 // #endregion: frame

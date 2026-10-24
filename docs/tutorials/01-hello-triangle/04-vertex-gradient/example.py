@@ -1,6 +1,6 @@
 """Step 4: the program owns the triangle's corners, each with its own color.
 
-Run it with `python ../host.py 04-vertex-gradient`.
+From the repository root, run `python docs/tutorials/01-hello-triangle/host.py 04-vertex-gradient`.
 """
 
 from fragmentcolor import Mesh, Shader, Vertex

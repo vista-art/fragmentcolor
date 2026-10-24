@@ -1,6 +1,6 @@
 """Step 2: a second uniform, `resolution`, keeps the triangle's shape on any window.
 
-Run it with `python ../host.py 02-resolution-uniform`.
+From the repository root, run `python docs/tutorials/01-hello-triangle/host.py 02-resolution-uniform`.
 """
 
 from math import cos, sin
@@ -21,7 +21,7 @@ fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
         vec2<f32>( 0.7, -0.4),
         vec2<f32>( 0.0,  0.8),
     );
-    // Shrink the longer axis so one unit spans the same pixels on both.
+    // Shrink the longer axis so one unit spans as many pixels on x as on y.
     let aspect = resolution.x / resolution.y;
     var pos = corners[i];
     if (aspect > 1.0) { pos.x = pos.x / aspect; }

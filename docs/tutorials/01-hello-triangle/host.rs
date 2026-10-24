@@ -1,12 +1,15 @@
 //! The program around each step: it opens a window, calls the step's `setup` once,
 //! and calls its `frame` on every redraw with the seconds since the window opened.
 //!
-//! With `FC_TUTORIAL_FRAMES=n` set, it renders n frames into a 256 by 256 texture,
-//! fails if nothing reached it, and exits. `FC_TUTORIAL_IMAGE=path` saves the last frame
-//! as a PNG. Together they run a step without a display, the way a reviewer checks it.
+//! With `FC_TUTORIAL_FRAMES=n` set, it renders n frames into a 256 by 256 texture
+//! instead, fails if nothing reached it, and exits, so a step runs without a display.
+//! `FC_TUTORIAL_IMAGE=path` also saves the last of those frames as a PNG.
 
 use anyhow::{Result, bail};
-use fragmentcolor::{App, FragmentColorError, RenderTarget, Renderer, SetupResult, Target};
+use fragmentcolor::{
+    App, FragmentColorError, RenderTarget, Renderer, RendererError, SetupResult, SurfaceError,
+    Target,
+};
 use image::ColorType;
 use std::sync::Arc;
 use std::time::Instant;
@@ -75,9 +78,16 @@ where
     let drawn = app.with_target(app.primary_window_id(), |target| {
         frame(&state, renderer, target, time)
     });
-    if let Some(Err(error)) = drawn {
-        eprintln!("frame failed: {error}");
-        std::process::exit(1);
+    match drawn {
+        // A hidden or minimized window has nothing to draw on, so the frame is skipped.
+        Some(Err(FragmentColorError::Renderer(RendererError::SurfaceError(
+            SurfaceError::Occluded,
+        )))) => {}
+        Some(Err(error)) => {
+            eprintln!("frame failed: {error}");
+            std::process::exit(1);
+        }
+        _ => {}
     }
 }
 

@@ -1,6 +1,6 @@
 """Step 1: a shader with one uniform, drawn every frame in a new color.
 
-Run it with `python ../host.py 01-three-lines`.
+From the repository root, run `python docs/tutorials/01-hello-triangle/host.py 01-three-lines`.
 """
 
 from math import cos, sin
