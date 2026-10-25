@@ -6,7 +6,7 @@
 //! dark grid with a soft accent line.
 //!
 //! Run with:
-//!   cargo run --release -p fce --example gallery_easing
+//!   ./fc example --release gallery_easing
 
 use fragmentcolor::{Renderer, Shader, Target};
 

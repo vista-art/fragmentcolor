@@ -7,7 +7,7 @@
 //! straight to the framebuffer.
 //!
 //! Run with:
-//!   cargo run --release -p fce --example gallery_gradient
+//!   ./fc example --release gallery_gradient
 
 use fragmentcolor::{Renderer, Shader, Target};
 

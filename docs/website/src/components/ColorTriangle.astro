@@ -110,12 +110,12 @@ renderer.render(shader, target)`,
     align-items: stretch;
   }
   @container colortri (max-width: 720px) {
-    .ct-grid { grid-template-columns: 1fr; }
+    .ct-grid { grid-template-columns: minmax(0, 1fr); }
     .ct-canvas-wrap { min-height: 260px; }
   }
   @supports not (container-type: inline-size) {
     @media (max-width: 900px) {
-      .ct-grid { grid-template-columns: 1fr; }
+      .ct-grid { grid-template-columns: minmax(0, 1fr); }
       .ct-canvas-wrap { min-height: 260px; }
     }
   }

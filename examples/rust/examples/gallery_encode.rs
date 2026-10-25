@@ -6,7 +6,7 @@
 //! test signal and visualizes the result.
 //!
 //! Run with:
-//!   cargo run --release -p fce --example gallery_encode
+//!   ./fc example --release gallery_encode
 
 use fragmentcolor::{Renderer, Shader, Target};
 

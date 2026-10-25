@@ -6,7 +6,7 @@
 //! field across UV space.
 //!
 //! Run with:
-//!   cargo run --release -p fce --example gallery_math
+//!   ./fc example --release gallery_math
 
 use fragmentcolor::{Renderer, Shader, Target};
 

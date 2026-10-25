@@ -1,5 +1,5 @@
 ---
-title: Infinite zoom
+title: Infinite Mandelbrot zoom
 description: From one CPU image of the Mandelbrot set to a real-time zoom down to 1e-1000, with K. I. Martin's perturbation method and a compute shader.
 draft: false
 tableOfContents: false
@@ -10,6 +10,9 @@ sidebar:
 import Snippet from "../../../components/Snippet.astro";
 import Demo from "../../../components/Demo.astro";
 import Math from "../../../components/Math.astro";
+import Figure from "../../../components/Figure.astro";
+import { Arrow, Dot, Label, Line, Path, Rect, Ring } from "../../../components/figure";
+import { blocks, captures, ladder, orbits, palette, passes, perturbation, pixels, printout, series } from "../../../figures/infinite-zoom";
 
 The Mandelbrot set comes from one rule. It takes a complex number <Math tex="c" />, starts from <Math tex="z_0 = 0" />, and repeats
 
@@ -19,6 +22,26 @@ over and over. The numbers it produces form the **orbit** of 0 for that <Math te
 
 A complex number is a point in the plane: <Math tex="x + yi" /> is the point <Math tex="(x, y)" />. Squaring it gives <Math tex="(x^2 - y^2) + 2xy\,i" />, which turns one step of the rule into two lines of ordinary arithmetic. For some values of <Math tex="c" /> the orbit stays small forever. Others grow without limit, and any orbit that gets farther than 2 from the origin never returns. Every <Math tex="c" /> whose orbit stays small belongs to the **Mandelbrot set**.
 
+<Figure height={460} alt="The complex plane with the Mandelbrot set in gray and a dashed circle of radius 2 around the origin. From 0, the orbit of c = 0.42 + 0.13i, just outside the set, spirals outward, and its eighth step leaves the circle through the top left. The orbit of c = 0.33 - 0.2i, just inside the set, spirals inward toward one point and stays there." caption="Two orbits from `0`. The one for a point just outside the set spirals out and leaves the disk on step 8, while the one for a point just inside spirals in and stays.">
+  <g class="tone-ink"><path class="fig-fill" d={orbits.set} /></g>
+  <Line from={[16, orbits.origin[1]]} to={[704, orbits.origin[1]]} tone="muted" />
+  <Line from={[orbits.origin[0], 14]} to={[orbits.origin[0], 446]} tone="muted" />
+  <Label at={[700, orbits.origin[1] - 16]} anchor="end" tone="muted" small>Re</Label>
+  <Label at={[orbits.origin[0] + 10, 24]} anchor="start" tone="muted" small>Im</Label>
+  {orbits.ticks.map(({ value, x }) => <Label at={[x + (value < 0 ? -12 : 12), orbits.origin[1] + 18]} tone="muted" small code>{String(value)}</Label>)}
+  <Ring at={orbits.origin} r={orbits.radius} tone="muted" dashed />
+  <Label at={[588, 410]} anchor="start" tone="muted" small code>|z| = 2</Label>
+  <Path d={orbits.staying.path} tone="inside" />
+  {orbits.staying.points.map((point) => <Dot at={point} tone="inside" r={3} />)}
+  <Path d={orbits.leaving.path} tone="outside" />
+  <Arrow from={orbits.exit[0]} to={orbits.exit[1]} tone="outside" />
+  <Label at={[orbits.exit[1][0] + 16, 30]} anchor="start" tone="outside" small>step 8</Label>
+  {orbits.leaving.points.map((point) => <Dot at={point} tone="outside" />)}
+  <Label at={[orbits.leavingC[0] + 6, orbits.leavingC[1] + 20]} anchor="start" tone="outside" code>c</Label>
+  <Label at={[orbits.stayingC[0] + 16, orbits.stayingC[1] + 6]} anchor="start" tone="inside" code>c</Label>
+  <Label at={[orbits.origin[0] - 10, orbits.origin[1] + 18]} anchor="end" small code>0</Label>
+</Figure>
+
 Coloring each point of the plane by how many steps its orbit takes to escape draws a coastline of bulbs, spirals and filaments, with small, slightly distorted copies of the whole set at every magnification.
 
 This tutorial builds a viewer for it in four steps. A single picture on the CPU comes first. Next, the same computation moves to the GPU, where rounding breaks the picture near `1e-6`. K. I. Martin's perturbation method then gets to `1e-35`, and a final step reaches `1e-1000` in real time. Those numbers measure the height of the view: at `1e-1000`, the canvas shows a strip of the plane <Math tex="10^{-1000}" /> units tall.
@@ -27,13 +50,21 @@ This tutorial builds a viewer for it in four steps. A single picture on the CPU 
 
 Around 1918, Pierre Fatou and Gaston Julia studied what repeating a function like this one does to each starting point. They had proofs and pencils. A picture was out of reach: a single image of the set takes millions of these steps, and a person with paper might manage a few dozen points in an afternoon.
 
-Robert Brooks and Peter Matelski printed a rough picture of the set in 1978, one character at a time.
+Robert Brooks and Peter Matelski printed [a rough picture of the set](https://doi.org/10.1515/9781400881550-007) in 1978, one character at a time.
 
-Two years later, computer plots by Benoit Mandelbrot made it famous, and Adrien Douady and John Hubbard, who proved that the set is connected, named it after him. Yet the shape is older than everyone in this story. Its spirals follow from <Math tex="z^2 + c" /> the way the primes follow from multiplication, so they existed before anyone wrote the rule down. People discovered the set; computers made it visible.
+<Figure height={printout.height} alt="A re-creation of Brooks and Matelski's 1978 printout: the Mandelbrot set drawn as rows of asterisks. A rough cardioid sits on the right with a round bulb on its left, and a few separate specks of asterisks lie around them, where the coarse grid catches small copies of the set." caption="A re-creation, in the style of the first picture of the set: an asterisk for every `c` whose orbit settles on a stable cycle. The original is Figure 2 of Brooks and Matelski's paper.">
+  {printout.runs.map(({ x, y, text, width }) => <text x={x} y={y} textLength={width} lengthAdjust="spacing" style="fill: var(--fig-ink); font-family: var(--__sl-font-mono, ui-monospace, monospace); font-size: 15px">{text}</text>)}
+</Figure>
+
+Two years later, [computer plots](https://doi.org/10.1111/j.1749-6632.1980.tb29690.x) by Benoit Mandelbrot made it famous, and Adrien Douady and John Hubbard, who proved that the set is connected, named it after him. Yet the shape is older than everyone in this story. Its spirals follow from <Math tex="z^2 + c" /> the way the primes follow from multiplication, so they existed before anyone wrote the rule down. People discovered the set; computers made it visible.
+
+<Figure src="/tutorials/infinite-zoom/benoit-mandelbrot.webp" width={600} height={799} narrow alt="Benoit Mandelbrot speaking at TED in 2010: an older man with white hair and wire-rimmed glasses, in a dark jacket and white shirt, raising one hand as he talks." caption="Benoit Mandelbrot at TED in 2010.">
+  <span slot="credit">Photo by <a href="https://www.flickr.com/photos/jurvetson/4770047266/">Steve Jurvetson</a>, cropped and resized, <a href="https://creativecommons.org/licenses/by/2.0/">CC BY 2.0</a>.</span>
+</Figure>
 
 ## Running the code
 
-Each step is a complete program in five languages, in [`docs/tutorials/infinite-zoom`](https://github.com/vista-art/fragmentcolor/tree/main/docs/tutorials/infinite-zoom). The Rust versions are examples of the repository's `fce` crate, so `cargo run --release -p fce --example tutorial_infinite_zoom_one_image` runs the first one. In a project of your own they need `fragmentcolor` with its `winit` feature, plus `winit` 0.30, `parking_lot`, `env_logger`, `bytemuck`, `image`, `num-bigint` and `num-traits`.
+Each step is a complete program in five languages, in [`docs/tutorials/infinite-zoom`](https://github.com/vista-art/fragmentcolor/tree/main/docs/tutorials/infinite-zoom). The Rust versions are examples of the repository's `fce` crate, so `./fc example --release tutorial_infinite_zoom_one_image` runs the first one. In a project of your own they need `fragmentcolor` with its `winit` feature, plus `winit` 0.30, `parking_lot`, `env_logger`, `bytemuck`, `image`, `num-bigint` and `num-traits`.
 
 From step 2 on, the other four languages split each program into two functions: `setup`, called once, and `frame`, called on every display refresh with the time, the canvas size and the pointer position in pixels. The canvases on this page call the JavaScript ones, and the [playground](/welcome/playground/)'s `index.js` tab shows a page that does the same. For Python, `docs/tutorials/infinite-zoom/host.py` opens a window (`pip install fragmentcolor rendercanvas glfw`). Swift and Kotlin apps call the two functions from their render loop; steps 3 and 4 in Swift also need the [BigInt](https://github.com/attaswift/BigInt) package.
 
@@ -47,9 +78,39 @@ Mapping each pixel to its <Math tex="c" />, and each count to a color, takes a f
 
 <Snippet file="infinite-zoom/01-one-image/example.rs" region="image" />
 
+<Figure height={400} alt="Step 1's view drawn as a coarse grid of 12 by 8 pixels over the complex plane, with the Mandelbrot set in gray. Pixel coordinates start at (0, 0) in the top left corner, with x growing right and y growing down. The plane's axes cross at 0 inside the view, with the imaginary axis pointing up. The view spans -2.6 to 1.3 along the real axis and -1.3 to 1.3 along the imaginary one. One highlighted pixel sits at c = 0.33 + 0.65i." caption="Step 1's view, drawn as 12 by 8 pixels. Pixel `(x, y)` counts from the top left corner with `y` growing down, and its `c` counts from the view's center with the imaginary part growing up.">
+  <g class="tone-ink"><path class="fig-fill" d={pixels.set} /></g>
+  <g class="tone-muted"><path class="fig-stroke" d={pixels.grid} style="stroke-width: 1px" /></g>
+  <Rect at={pixels.view.at} size={pixels.view.size} tone="muted" />
+  <Line from={[pixels.view.at[0], pixels.origin[1]]} to={[pixels.view.at[0] + pixels.view.size[0], pixels.origin[1]]} tone="muted" dashed />
+  <Line from={[pixels.origin[0], pixels.view.at[1]]} to={[pixels.origin[0], pixels.view.at[1] + pixels.view.size[1]]} tone="muted" dashed />
+  <Rect at={pixels.pixel} size={[pixels.cell, pixels.cell]} fill />
+  <Dot at={pixels.pixel} tone="mark" />
+  <Label at={[pixels.pixel[0] + pixels.cell + 10, pixels.pixel[1] + 2]} anchor="start" tone="mark" code>c</Label>
+  <Arrow from={pixels.view.at} to={[pixels.view.at[0] + 110, pixels.view.at[1]]} label="x" labelAt="end" tone="accent" code />
+  <Arrow from={pixels.view.at} to={[pixels.view.at[0], pixels.view.at[1] + 110]} label="y" labelAt="end" tone="accent" code />
+  <Label at={[pixels.view.at[0], 22]} anchor="start" small code>(0, 0)</Label>
+  <Dot at={pixels.origin} />
+  <Label at={[pixels.origin[0] - 10, pixels.origin[1] + 18]} anchor="end" small code>0</Label>
+  <Label at={[pixels.view.at[0], 382]} anchor="start" tone="muted" small code>-2.6</Label>
+  <Label at={[pixels.view.at[0] + pixels.view.size[0], 382]} anchor="end" tone="muted" small code>1.3</Label>
+  <Label at={[pixels.view.at[0] + pixels.view.size[0] + 12, pixels.view.at[1] + 6]} anchor="start" tone="muted" small code>1.3i</Label>
+  <Label at={[pixels.view.at[0] + pixels.view.size[0] + 12, pixels.view.at[1] + pixels.view.size[1] - 6]} anchor="start" tone="muted" small code>-1.3i</Label>
+</Figure>
+
 A color here is three numbers from 0 to 255, for red, green and blue. To turn a count into one, the program feeds it to a **cosine palette**, <Math tex="0.5 + 0.5\cos\big(2\pi(t + d)\big)" />, once per channel. <Math tex="t" /> grows by 0.02 with every step of the orbit; the phase <Math tex="d" /> is 0, 0.1 and 0.2 for the three channels. Each cosine sweeps between dark and bright as <Math tex="t" /> grows, and the offsets keep the channels from peaking together, which yields a cycle of hues. Pixels with equal counts share a color, so the picture shows one stripe around the set for each count:
 
 <Snippet file="infinite-zoom/01-one-image/example.rs" region="color" />
+
+<Figure height={300} alt="Three cosine curves for red, green and blue, plotted against the escape count from 0 to 100. Each swings between 0 and 1 once every 50 counts, and their phases bring the blue peak first, then green, then red. Below, a strip shows the color each count gets, with pale and warm tones between deep blues and purples." caption="The first 100 counts through step 1's palette. Each channel is one cosine, and the strip shows the color each count gets.">
+  {palette.levels.map(({ y }) => <Line from={[palette.left, y]} to={[palette.right, y]} tone="muted" dashed />)}
+  {palette.levels.map(({ value, y }) => <Label at={[palette.left - 10, y]} anchor="end" tone="muted" small code>{String(value)}</Label>)}
+  {palette.curves.map((d, i) => <path d={d} fill="none" stroke={["hsl(0, 80%, 58%)", "hsl(140, 60%, 42%)", "hsl(215, 90%, 58%)"][i]} stroke-width="2.5" vector-effect="non-scaling-stroke" />)}
+  {["red", "green", "blue"].map((name, i) => <text class="fig-label fig-small" style={`--tone: ${["hsl(0, 80%, 58%)", "hsl(140, 60%, 42%)", "hsl(215, 90%, 58%)"][i]}`} x={palette.ends[i][0]} y={palette.ends[i][1]}>{name}</text>)}
+  {palette.strip.cells.map(({ x, color }) => <rect x={x} y={palette.strip.y} width={palette.strip.width + 0.4} height={palette.strip.height} fill={color} />)}
+  {palette.ticks.map(({ count, x }) => <Label at={[x, palette.strip.y + palette.strip.height + 16]} tone="muted" small code>{String(count)}</Label>)}
+  <Label at={[(palette.left + palette.right) / 2, 288]} tone="muted" small>escape count</Label>
+</Figure>
 
 ![The Mandelbrot set: a black cardioid with a round bulb to its left, both fringed with smaller bulbs and thin filaments, on bands of blue that grow lighter toward the edge.](../../../assets/tutorials/infinite-zoom/one-image.png)
 
@@ -72,6 +133,13 @@ Constants at the top set the target and the pace. `TARGET` is a spiral in Seahor
 
 <Snippet file="infinite-zoom/02-on-the-gpu/example.rs" region="constants" />
 
+<Figure src="/tutorials/infinite-zoom/target.webp" height={420} alt="Step 2's first frame: the whole Mandelbrot set, a black cardioid with a round bulb on its left, fringed with bands of color. A ring marks the center of the canvas, in the crease between the cardioid and the bulb, and an arrow labeled Seahorse Valley points at it." caption="The first frame of step 2, centered on `TARGET`.">
+  <Ring at={[360, 210]} r={12} />
+  <Arrow from={[236, 104]} to={[351, 202]} label="Seahorse Valley" labelAt="start" />
+  <Label at={captures.overview([-0.2, 0])} small>cardioid</Label>
+  <Label at={captures.overview([-1, 0])} small>bulb</Label>
+</Figure>
+
 The host builds the shader from a list of sources and joins them into one program. `"gradient/palette_iq"` is a **slug**: the name of a function in FragmentColor's [shader library](/shaders/). `LABEL` holds `print_depth`, and `SHADER` is the code above. Rust's `Shader::new` finds slugs in a copy of the library inside the crate, while JavaScript's `Shader.fetch` may download them and returns a promise. `set` finds a uniform by name: `view.center` is the `center` field of the `var<uniform>` called `view`.
 
 <Snippet file="infinite-zoom/02-on-the-gpu/example.rs" region="setup" />
@@ -88,9 +156,24 @@ On its own, `steer` runs the zoom from the whole set down to a view <Math tex="1
 
 The spiral turns grainy near `1e-5`. By `1e-6`, it has fallen apart into rectangles.
 
+<Figure src="/tutorials/infinite-zoom/blocks.webp" height={420} alt="Step 2 at a view 1e-6 tall. The spiral is gone: the canvas is a grid of flat rectangles, each much wider than it is tall. One rectangle at the center is outlined, and an arrow labels it one f32 value of c." caption="At `1e-6`, every pixel inside the outlined block rounds to the same `c`.">
+  <Rect at={captures.blockAt6.at} size={captures.blockAt6.size} />
+  <Arrow from={[492, 110]} to={[365, 205]} label="one f32 value of c" labelAt="start" />
+</Figure>
+
 ### Seven digits
 
 An `f32` stores a number as 24 significant bits, about seven decimal digits, times a power of two, <Math tex="2^e" />, where the integer <Math tex="e" /> is its **exponent**. Ordinary values have exponents from <Math tex="-126" /> to <Math tex="127" />, which covers everything from about <Math tex="10^{-38}" /> to <Math tex="10^{38}" />. Seven digits are all it ever has, though. Near <Math tex="-0.74" />, neighboring `f32` values are about `6e-8` apart along the real axis, and near <Math tex="0.13" /> about `1.5e-8` apart along the imaginary one. In a view `1e-6` tall, a pixel is far smaller than either gap. Blocks of pixels, dozens wide and a quarter as tall, round to the same <Math tex="c" /> and get the same color.
+
+<Figure height={250} alt={`A patch of pixels around TARGET in a view 1e-6 tall on an 800 pixel canvas, each pixel a small square shaded by the f32 value its c rounds to. The shades form a checkerboard of blocks, each about ${blocks.block.pixels[0]} pixels wide and ${blocks.block.pixels[1]} tall. One block is outlined, with arrows measuring its width and height.`} caption={`Pixels around \`TARGET\` in a view \`1e-6\` tall on 800 pixels, shaded by the \`f32\` value of their \`c\`. The outlined block is one value: ${blocks.block.pixels[0]} pixels wide and ${blocks.block.pixels[1]} tall.`}>
+  <g class="tone-ink"><path class="fig-fill" d={blocks.runs[0]} style="fill-opacity: 0.32" /></g>
+  <g class="tone-ink"><path class="fig-fill" d={blocks.runs[1]} style="fill-opacity: 0.1" /></g>
+  <g class="tone-muted"><path class="fig-stroke" d={blocks.grid} style="stroke-width: 0.5px; stroke-opacity: 0.6" /></g>
+  <Rect at={blocks.frame.at} size={blocks.frame.size} tone="muted" />
+  <Rect at={blocks.block.at} size={blocks.block.size} tone="accent" />
+  <Arrow from={[blocks.block.at[0], blocks.frame.at[1] + blocks.frame.size[1] + 18]} to={[blocks.block.at[0] + blocks.block.size[0], blocks.frame.at[1] + blocks.frame.size[1] + 18]} both label={`${blocks.block.pixels[0]} pixels`} offset={[0, 34]} tone="accent" />
+  <Arrow from={[blocks.block.at[0] + blocks.block.size[0] + 18, blocks.block.at[1]]} to={[blocks.block.at[0] + blocks.block.size[0] + 18, blocks.block.at[1] + blocks.block.size[1]]} both label={String(blocks.block.pixels[1])} offset={[36, 0]} tone="accent" />
+</Figure>
 
 Multiplying keeps all seven digits: <Math tex="3 \times 10^{-30} \cdot 0.74" /> is as precise as its inputs. Adding a tiny number to a large one is where digits vanish, and in <Math tex="-0.74 + 3 \times 10^{-30}" /> the small part disappears completely.
 
@@ -110,7 +193,22 @@ Subtracting the second line from the first leaves the rule for the difference:
 
 <Math block tex="z_{n+1} = 2 Z_n z_n + z_n^2 + \delta" />
 
+<Figure height={340} alt="The first six steps of a reference orbit, from Z0 = 0 through Z1 = c, drawn as dark points that curve up and to the left. A pixel's orbit starts at the same 0, takes c + delta as its first point and follows a dashed path that curves a little wider. Arrows from each point of the reference to the pixel's point at the same step show the difference z_n, which grows longer at every step." caption="The reference orbit and one pixel's orbit, both from `0`. Each arrow is the pixel's difference `z` at one step.">
+  <Path d={perturbation.reference.path} />
+  <Path d={perturbation.pixel.path} tone="accent" dashed />
+  {perturbation.differences.map(([from, to]) => <Arrow from={from} to={to} tone="accent" />)}
+  {perturbation.reference.points.map((point) => <Dot at={point} />)}
+  <Label at={[perturbation.reference.points[0][0] - 12, perturbation.reference.points[0][1]]} anchor="end" code>0</Label>
+  <Label at={[perturbation.reference.points[1][0] - 2, perturbation.reference.points[1][1] + 22]} anchor="middle" code>c</Label>
+  <Label at={[perturbation.pixel.points[1][0] + 16, perturbation.pixel.points[1][1] - 6]} anchor="start" tone="accent" code>c + δ</Label>
+</Figure>
+
 Every sum in this rule adds small numbers to small numbers. <Math tex="Z_n" /> enters it as a factor of <Math tex="z_n" />, and a product keeps all seven digits. The shader adds <Math tex="Z_n + z_n" /> only to test whether the pixel escaped, where a little rounding doesn't change the answer. Each pixel needs two inputs: its offset and the reference orbit. All the precision goes into that one orbit, computed once.
+
+<Figure src="/tutorials/infinite-zoom/perturbed.webp" height={420} alt="Step 3 at a view 1e-7 tall, with the spiral in full detail. A dashed rectangle, about a third of the canvas wide and a seventh as tall, marks the area that one f32 value of c covered in step 2." caption="Step 3 at `1e-7`. The dashed block covers what was a single `f32` value of `c` in step 2.">
+  <Rect at={captures.blockAt7.at} size={captures.blockAt7.size} dashed />
+  <Label at={[captures.blockAt7.at[0] + captures.blockAt7.size[0] / 2, captures.blockAt7.at[1] - 18]}>one f32 value in step 2</Label>
+</Figure>
 
 ### The reference
 
@@ -140,6 +238,31 @@ Programs used it to find glitched pixels and render them again from a second ref
 
 In 2021, Zhuoran proposed a simpler fix, **rebasing**. As soon as the pixel is closer to 0 than to the reference, the shader sets `z` to the pixel's full value and `m` to 0. The difference rule only needs a point of the reference orbit that the pixel is close to, and at <Math tex="Z_0 = 0" /> the difference equals the full value. From there the pixel follows the start of the same orbit with its digits intact. That is the last `if` in the shader, which also catches a pixel that reaches the end of the reference orbit before it escapes. Rebasing costs one comparison per step and makes Pauldelbrot's test unnecessary, which is why the test appears here only as history.
 
+<Figure height={280} alt="Two panels. Before: the reference point Z_m sits far away in the top right, the pixel sits close to 0 in the bottom left, and a long arrow z runs from Z_m to the pixel. After: z is a short arrow from Z0 = 0 to the pixel, m is 0, and the pixel goes on near Z1 and Z2, the start of the reference orbit." caption="Before and after a rebase, which happens once `|Z + z| < |z|`: the pixel sits closer to `0` than to the reference.">
+  <Rect at={[16, 16]} size={[334, 248]} tone="muted" />
+  <Label at={[32, 42]} anchor="start" tone="muted" small>before</Label>
+  <Line from={[70, 222]} to={[112, 186]} tone="muted" dashed />
+  <Dot at={[70, 222]} />
+  <Label at={[84, 240]} anchor="start" small code>0</Label>
+  <Dot at={[302, 72]} />
+  <Label at={[302, 48]} code>Zₘ</Label>
+  <Arrow from={[302, 72]} to={[116, 183]} tone="accent" label="z" code />
+  <Dot at={[112, 186]} tone="accent" />
+  <Label at={[100, 168]} anchor="end" tone="accent" small>pixel</Label>
+  <Rect at={[370, 16]} size={[334, 248]} tone="muted" />
+  <Label at={[386, 42]} anchor="start" tone="muted" small>after</Label>
+  <Path d="M 466 186 L 554 150 L 632 100" tone="accent" dashed />
+  <Dot at={[424, 222]} />
+  <Label at={[438, 240]} anchor="start" small code>Z₀ = 0</Label>
+  <Arrow from={[424, 222]} to={[462, 189]} tone="accent" label="z" code />
+  <Dot at={[466, 186]} tone="accent" />
+  <Dot at={[560, 160]} />
+  <Label at={[570, 178]} anchor="start" code>Z₁</Label>
+  <Dot at={[640, 108]} />
+  <Label at={[652, 120]} anchor="start" code>Z₂</Label>
+  <Label at={[560, 230]} anchor="start" small code>m = 0</Label>
+</Figure>
+
 <Demo file="infinite-zoom/03-perturbation/example.rs" />
 
 This zoom moves twice as fast as the last one. Perturbation takes it past `1e-15` and on past `1e-30`; somewhere around `1e-35`, the whole canvas fills with one color.
@@ -149,6 +272,28 @@ This zoom moves twice as fast as the last one. Perturbation takes it past `1e-15
 The smallest ordinary `f32` is <Math tex="2^{-126}" />, about `1.2e-38`. Below it come **denormal** values, which trade digits for range down to about `1.4e-45`, and many GPUs flush them to 0 for speed. A view `1e-35` tall on a canvas about 800 pixels high has pixels near `1e-38` wide. Once one pixel spans less than `1.2e-38`, `view.pixel` reads as 0 on such a GPU, every <Math tex="\delta" /> is 0, and every pixel follows the reference.
 
 Here the exponent sets the limit; the digits still have room. An `f64` would extend the range to about `1e-308`, yet the spiral continues far beyond that.
+
+<Figure height={390} alt="A vertical scale of view heights on an 800 pixel canvas, from 1 at the top down to 1e-1000 at the bottom, broken after 1e-50 and again after 1e-310. Three bars show how deep each step reaches: step 2 stops near 1e-6, where f32 runs out of digits; step 3 stops near 1e-35, where a pixel shrinks below the smallest normal f32; step 4 reaches 1e-1000. Marks show where f32 denormals end, near 1e-42, and where f64 would end, near 1e-305." caption="View heights on a canvas 800 pixels tall, with the axis broken twice. Each bar shows how deep one step reaches.">
+  {ladder.segments.map(([top, bottom]) => <Line from={[340, top]} to={[340, bottom]} />)}
+  {ladder.breaks.map((y) => <Path d={`M 330 ${y + 5} l 20 -8 M 330 ${y + 11} l 20 -8`} tone="muted" />)}
+  {ladder.ticks.map(({ y }) => <Line from={[334, y]} to={[346, y]} tone="muted" />)}
+  {ladder.ticks.map(({ decades, y }) => <Label at={[326, y]} anchor="end" tone="muted" small code>{decades ? `1e-${decades}` : "1"}</Label>)}
+  <Label at={[186, 22]} tone="muted" small>step</Label>
+  <Rect at={[138, ladder.top]} size={[16, ladder.digits - ladder.top]} tone="accent" fill />
+  <Label at={[146, ladder.digits + 18]} tone="accent" code>2</Label>
+  <Rect at={[178, ladder.top]} size={[16, ladder.normal - ladder.top]} tone="accent" fill />
+  <Label at={[186, ladder.normal + 18]} tone="accent" code>3</Label>
+  {ladder.segments.map(([top, bottom]) => <Rect at={[218, top]} size={[16, bottom - top]} tone="accent" fill />)}
+  <Label at={[226, ladder.target + 16]} tone="accent" code>4</Label>
+  <Dot at={[340, ladder.digits]} tone="accent" />
+  <Label at={[358, ladder.digits]} anchor="start">f32 runs out of digits</Label>
+  <Dot at={[340, ladder.normal]} tone="accent" />
+  <Label at={[358, ladder.normal]} anchor="start">pixels pass the smallest f32</Label>
+  <Dot at={[340, ladder.denormal]} tone="muted" />
+  <Label at={[358, ladder.denormal]} anchor="start" tone="muted" small>f32 denormals end</Label>
+  <Dot at={[340, ladder.double]} tone="muted" />
+  <Label at={[358, ladder.double]} anchor="start" tone="muted" small>f64 would end</Label>
+</Figure>
 
 ## Step 4: past every exponent
 
@@ -188,6 +333,19 @@ The series holds while the first term it drops, <Math tex="D_n \delta^4" />, sta
 
 At draw time, the host looks up the last iteration whose radius covers every pixel on screen. Every pixel starts there: the compute shader evaluates <Math tex="A\delta + B\delta^2 + C\delta^3" /> for its own <Math tex="\delta" /> and iterates the rest.
 
+<Figure height={350} alt={`A line chart. The horizontal axis counts the iterations of step 4's reference orbit, from 0 to ${series.length.toLocaleString("en-US")}. The vertical axis is the widest radius the series still covers, from 1 down to 1e-1100 in powers of ten. The curve falls almost in a straight line. Dashed lines mark the radius of views 1e-100, 1e-500 and 1e-1000 tall on a 1280 by 800 canvas, and they meet the curve at iterations ${series.views.map(({ skip }) => skip.toLocaleString("en-US")).join(", ")}: the iterations each view skips.`} caption="The widest radius the series covers at each iteration of the reference orbit, and the radius of three views on a 1280 by 800 canvas. Each view skips to where its line meets the curve.">
+  <Rect at={[series.frame.left, series.frame.top]} size={[series.frame.right - series.frame.left, series.frame.bottom - series.frame.top]} tone="muted" />
+  {series.levels.map(({ y }) => <Line from={[series.frame.left, y]} to={[series.frame.right, y]} tone="muted" dashed />)}
+  {series.levels.map(({ decades, y }) => <Label at={[series.frame.left - 10, y]} anchor="end" tone="muted" small code>{decades ? `1e${decades}` : "1"}</Label>)}
+  {series.iterations.map(({ n, x }) => <Label at={[x, series.frame.bottom + 18]} tone="muted" small code>{n.toLocaleString("en-US")}</Label>)}
+  <Path d={series.curve} />
+  {series.views.map(({ at }) => <Line from={[series.frame.left, at[1]]} to={at} tone="accent" dashed />)}
+  {series.views.map(({ at }) => <Dot at={at} tone="accent" />)}
+  <Label at={[series.views[0].at[0] + 14, series.views[0].at[1] - 8]} anchor="start" tone="accent" small>{`1e-100 skips ${series.views[0].skip.toLocaleString("en-US")}`}</Label>
+  <Label at={[series.frame.left + 12, series.views[1].at[1] - 14]} anchor="start" tone="accent" small>{`1e-500 skips ${series.views[1].skip.toLocaleString("en-US")}`}</Label>
+  <Label at={[series.frame.left + 12, series.views[2].at[1] - 14]} anchor="start" tone="accent" small>{`1e-1000 skips ${series.views[2].skip.toLocaleString("en-US")}`}</Label>
+</Figure>
+
 <Snippet file="infinite-zoom/04-deep-zoom/example.rs" region="frame" />
 
 Near `1e-1000`, the series skips about 32,140 of roughly 32,270 steps. A typical pixel iterates the last 130 or so on its own, and that number barely changes at any measured depth deeper than `1e-6`.
@@ -197,6 +355,27 @@ Near `1e-1000`, the series skips about 32,140 of roughly 32,270 steps. A typical
 The iteration moves into a **compute shader**: GPU code that runs as a grid of invocations and writes its results to memory, with no triangles involved. Splitting the work this way lets the expensive part run at a lower resolution on a large screen, while a cheap second shader turns its results into colors. `@workgroup_size(8, 8)` groups the invocations into tiles of 8 by 8, `global_invocation_id` tells each one which pixel it handles, and the host's `set_compute_dispatch` (`setComputeDispatch` in JavaScript) asks for enough tiles to cover the image. Each invocation writes one smooth count into a storage buffer, `counts`.
 
 FragmentColor runs shaders in **passes**. A `Pass` holds shaders that draw or compute together, and `render` takes a list of passes and runs them in order; steps 2 and 3 handed `render` a lone `Shader`, which acts as a pass of its own. Any pass whose shader has a `@compute` entry point runs as a compute pass. The second pass reads `counts` and colors each pixel, with the palette's density and phase and the inside color as its uniforms. Comments such as `// 100..5000` give the playground's sliders their ranges.
+
+<Figure height={270} alt="A flow from left to right. The compute pass, iterate.wgsl, runs one invocation per pixel, drawn as a grid of small squares grouped into workgroups of 8 by 8. An arrow leads to the storage buffer counts, which holds one number per pixel. A second arrow leads to the render pass, present.wgsl, and an arrow down from it reaches the canvas." caption="`iterate.wgsl` writes one smooth count per pixel into `counts`, and `present.wgsl` reads the same buffer to color the canvas.">
+  <Rect at={[20, 30]} size={[210, 200]} tone="accent" />
+  <Label at={[125, 58]}>compute pass</Label>
+  <g class="tone-muted"><path class="fig-stroke" d={passes.invocations} style="stroke-width: 0.6px" /></g>
+  <g class="tone-ink"><path class="fig-stroke" d={passes.workgroups} style="stroke-width: 1.5px" /></g>
+  <Label at={[125, 210]} tone="muted" small code>iterate.wgsl</Label>
+  <Arrow from={[234, 125]} to={[282, 125]} />
+  <Label at={[363, 52]} code>counts</Label>
+  <g class="tone-muted"><path class="fig-stroke" d={passes.counts} style="stroke-width: 1px" /></g>
+  <Rect at={[288, 70]} size={[150, 110]} tone="muted" />
+  <Label at={[363, 202]} tone="muted" small>one per pixel</Label>
+  <Arrow from={[442, 125]} to={[490, 125]} />
+  <Rect at={[496, 30]} size={[204, 120]} tone="accent" />
+  <Label at={[598, 66]}>render pass</Label>
+  <Label at={[598, 104]} tone="muted" small code>present.wgsl</Label>
+  <Arrow from={[598, 154]} to={[598, 188]} />
+  {palette.strip.cells.filter((_, i) => i % 4 === 0).map(({ color }, i) => <rect x={520 + i * 6.24} y={194} width={6.6} height={56} fill={color} />)}
+  <Rect at={[520, 194]} size={[156, 56]} tone="muted" />
+  <Label at={[598, 222]} small>canvas</Label>
+</Figure>
 
 <Snippet file="infinite-zoom/04-deep-zoom/example.rs" regions={["shader", "present-shader"]} labels={["Compute", "Render"]} />
 
@@ -209,6 +388,11 @@ Both passes declare `counts` with the same size, so FragmentColor binds one buff
 <Demo file="infinite-zoom/04-deep-zoom/example.rs" />
 
 With the pointer at the top of the canvas, the view reaches `1e-1000` in about two seconds. The spiral there looks like the one at `1e-10`. That likeness is the reason to aim at a Misiurewicz point.
+
+<Figure height={219} alt="Two captures of step 4 side by side, labeled 1e-10 on the left and 1e-1000 on the right. Both show the same shape: a spiral wound around the center, with smaller spirals branching off its arms." caption="The spiral at `1e-10` and at `1e-1000`.">
+  <image href="/tutorials/infinite-zoom/spiral-10.webp" x="8" y="8" width="348" height="203" />
+  <image href="/tutorials/infinite-zoom/spiral-1000.webp" x="364" y="8" width="348" height="203" />
+</Figure>
 
 How close are these pictures to the truth? A slow `BigInt` computation of the same pixels matches the shader's counts to within a hundredth of an iteration at `1e-6`, `1e-45`, `1e-331` and `1e-999`. The only disagreements come from pixels whose count changes, sometimes by hundreds, when they move by a thousandth of a pixel; there, two different precisions rarely agree. Speed doesn't fade with depth either. A frame's cost follows the 130 or so steps each pixel runs after the skip, and a view at `1e-999` draws about as fast as one at `1e-3`.
 

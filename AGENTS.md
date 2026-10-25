@@ -15,7 +15,7 @@ Common commands
   - Test (single):
     - Unit/integration by name: `cargo test -p fragmentcolor <name> -- --exact --nocapture`
     - Specific integration file: `cargo test -p fragmentcolor --test e2e <name>`
-  - Examples: interactive runner `./fc example`, or directly `cargo run -p fce --example triangle`
+  - Examples: `./fc example` opens a picker and `./fc example triangle` runs one by name; `--release` builds it optimized, and arguments after the name go to the example
 - Lint & format
   - Fast check: `cargo clippy --all-targets --all-features -- -D warnings`
   - Preferred flow: `./fc clippy` (formats first); autofix: `./fc clippy fix`
@@ -153,7 +153,7 @@ How the system works (so you understand what you're respecting):
 
 - `docs/website/integrations/locks.ts` is the Astro integration that owns the lock store. It runs in two places: `astro:server:setup` does an initial scan and then watches `docs/website/src/content/docs/**/*.{md,mdx}` via Vite's file watcher (re-scans only the changed file on save); `astro:build:start` does a full scan on production builds. Either path hashes the inner content of every `<Lock>` block (SHA-256), upserts into `docs/website/.locks/locks.json` (co-located with the website, gitignored, `chmod 600`), and bumps a per-block version when content changes. An unpaired or nested `<Lock>` fails the production build with a clear error; on the dev server the same error logs as a warning so the page still renders.
 - The Rust build pipeline does NOT touch the lock store. Editing prose should never trigger a `cargo build`.
-- `cargo run --release -p fce --example locks -- status | history | diff` is a thin Rust CLI that READS the JSON and surfaces history + colored diffs. Read-only.
+- `./fc example --release locks status | history | diff` is a thin Rust CLI that READS the JSON and surfaces history + colored diffs. Read-only.
 - The hash store is convention-protected, not enforced — any process running as the user can write to it. The protection is that you (the agent) are reading this and choosing to respect the marker.
 
 You **can** add new content **outside** locked regions, and you can re-format / restructure unlocked content normally. If you create new lock blocks of your own, that's also fine — the build script will pick them up and start a version history.

@@ -1,13 +1,13 @@
-// Step 8: a compute shader moves 8 million particles and counts them in a grid.
-// Call `setup` once, then call `frame` on every display refresh, such as from an `MTKView` delegate.
+// Eight million particles: a compute shader moves them and counts them in a grid.
+// Call `setup` once, then call `frame` from each `requestAnimationFrame` callback.
 
-import FragmentColor
+import { Pass, Shader } from "fragmentcolor";
 
-let count: UInt32 = 8_000_000
-let width: UInt32 = 1280
-let height: UInt32 = 720
+const COUNT = 8_000_000;
+const WIDTH = 1280;
+const HEIGHT = 720;
 
-let clearSource = """
+const CLEAR = `
 // #region: clear-shader
 @group(0) @binding(0) var<storage, read_write> counts: array<atomic<u32>, CELLS>;
 
@@ -18,9 +18,9 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 }
 // #endregion: clear-shader
-"""
+`;
 
-let simulateSource = """
+const SIMULATE = `
 // #region: simulate-shader
 struct Particle {
     position: vec2<f32>,
@@ -50,8 +50,8 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     var particle = particles[index];
 
-    // A new buffer holds zeros, so the first frame places every particle on a
-    // circular orbit. After that, about one in 300 starts over on each frame.
+    // A new buffer holds zeros, so the first frame starts every particle
+    // circling the center. After that, about one in 300 starts over on each frame.
     // Mixing in the bit pattern of time gives each frame its own dice.
     let seed = hash(index ^ bitcast<u32>(time));
     let fresh = all(particle.velocity == vec2<f32>(0.0));
@@ -64,7 +64,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 
     // An attractor wanders through the middle and pulls every particle.
-    // The pull weakens with distance; 0.05 keeps it finite at the center.
+    // The pull weakens with distance; 0.05 keeps it finite right at the attractor.
     let attractor = vec2<f32>(cos(time * 0.37), sin(time * 0.61)) * 0.4;
     let offset = attractor - particle.position;
     let pull = offset / (dot(offset, offset) + 0.05);
@@ -84,9 +84,9 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 }
 // #endregion: simulate-shader
-"""
+`;
 
-let drawSource = """
+const DRAW = `
 // #region: draw-shader
 @group(0) @binding(0) var<storage, read> counts: array<u32, CELLS>;
 @group(0) @binding(1) var<uniform> resolution: vec2<f32>;
@@ -114,49 +114,40 @@ fn fs_main(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
     return vec4<f32>(mix(night, ember, heat) + heat * heat * 0.5, 1.0);
 }
 // #endregion: draw-shader
-"""
-
-/// What `frame` needs from `setup`.
-struct State {
-    let simulate: Shader
-    let draw: Shader
-    let output: Pass
-}
+`;
 
 // #region: setup
-func setup() throws -> State {
-    // All three shaders size their buffers with these WGSL constants.
-    let sizes = """
-        const COUNT: u32 = \(count)u;
-        const GRID = vec2<u32>(\(width)u, \(height)u);
-        const CELLS: u32 = \(width)u * \(height)u;
-        """
-    let clear = try Shader([sizes, clearSource])
-    let simulate = try Shader([sizes, simulateSource])
-    let draw = try Shader([sizes, drawSource])
+export function setup() {
+    // All three shaders take their sizes from these WGSL constants.
+    const sizes = `const COUNT: u32 = ${COUNT}u;
+         const GRID = vec2<u32>(${WIDTH}u, ${HEIGHT}u);
+         const CELLS: u32 = ${WIDTH}u * ${HEIGHT}u;`;
+    const clear = new Shader([sizes, CLEAR]);
+    const simulate = new Shader([sizes, SIMULATE]);
+    const draw = new Shader([sizes, DRAW]);
 
     // One workgroup handles 256 items, as `@workgroup_size(256)` declares.
-    let clearPass = Pass.fromShader("clear", clear)
-    clearPass.setComputeDispatch((width * height + 255) / 256, 1, 1)
+    const clearPass = Pass.fromShader("clear", clear);
+    clearPass.setComputeDispatch(Math.ceil((WIDTH * HEIGHT) / 256), 1, 1);
 
-    let simulatePass = Pass.fromShader("simulate", simulate)
-    simulatePass.setComputeDispatch((count + 255) / 256, 1, 1)
-    try simulatePass.require(clearPass)
+    const simulatePass = Pass.fromShader("simulate", simulate);
+    simulatePass.setComputeDispatch(Math.ceil(COUNT / 256), 1, 1);
+    simulatePass.require(clearPass);
 
-    let output = Pass.fromShader("draw", draw)
-    try output.require(simulatePass)
+    const output = Pass.fromShader("draw", draw);
+    output.require(simulatePass);
 
-    return State(simulate: simulate, draw: draw, output: output)
+    return { simulate, draw, output };
 }
 // #endregion: setup
 
 // #region: frame
-func frame(_ state: State, _ renderer: Renderer, _ target: WindowTarget, _ time: Float) throws {
-    let size = target.size()
-    let resolution = [Float(size.width), Float(size.height)]
-    try state.simulate.set("resolution", resolution)
-    try state.simulate.set("time", time)
-    try state.draw.set("resolution", resolution)
-    try renderer.render(state.output, target)
+export function frame(state, renderer, target, time) {
+    const size = target.size();
+    const resolution = [size.width, size.height];
+    state.simulate.set("resolution", resolution);
+    state.simulate.set("time", time);
+    state.draw.set("resolution", resolution);
+    renderer.render(state.output, target);
 }
 // #endregion: frame

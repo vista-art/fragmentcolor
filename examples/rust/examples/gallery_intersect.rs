@@ -6,7 +6,7 @@
 //! from a fixed camera and shades by hit distance / normal / slab depths.
 //!
 //! Run with:
-//!   cargo run --release -p fce --example gallery_intersect
+//!   ./fc example --release gallery_intersect
 
 use fragmentcolor::{Renderer, Shader, Target};
 

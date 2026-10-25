@@ -24,6 +24,7 @@ dispatcher at the root, which lists everything when called without arguments:
 | `run_web` | Serves the web examples (`gallery`, `repl`, or `visual`) |
 | `run_py` | Builds the wheel into a venv and runs a Python example |
 | `run_docs` | Serves the documentation website (`preview` for the built site) |
+| `capture` | Captures tutorial figures and playground thumbnails as WebP, and records the README's playground animations |
 | `example` | Interactive picker for the Rust examples |
 | `bump_version` | Bumps the crate version across every manifest and badge |
 

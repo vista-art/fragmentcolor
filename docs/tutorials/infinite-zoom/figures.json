@@ -1,0 +1,7 @@
+[
+  { "name": "target", "step": "02-on-the-gpu", "size": [720, 420], "time": 0 },
+  { "name": "blocks", "step": "02-on-the-gpu", "size": [720, 420], "time": 10.758265535022665 },
+  { "name": "perturbed", "step": "03-perturbation", "size": [720, 420], "time": 6.209614791233173 },
+  { "name": "spiral-10", "step": "04-deep-zoom", "size": [720, 420], "time": 23.20282896639652 },
+  { "name": "spiral-1000", "step": "04-deep-zoom", "size": [720, 420], "time": 2216 }
+]

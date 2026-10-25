@@ -12,6 +12,9 @@ import Snippet from "../../../components/Snippet.astro";
 import Demo from "../../../components/Demo.astro";
 import LangSelector from "../../../components/LangSelector.astro";
 import Playground from "../../../components/Playground.astro";
+import Figure from "../../../components/Figure.astro";
+import { Arrow, Dot, Label, Line, Path, Rect, Ring } from "../../../components/figure";
+import { blend, circleEdge, pixel, rotation } from "../../../figures/drawing-with-distance";
 import { tutorials } from "../../../generated/tutorials";
 
 export const region = (step, name) =>
@@ -23,7 +26,7 @@ A triangle on the GPU is three corners and a rule for filling the space between 
 
 This tutorial draws shapes the other way around. Every pixel runs the same small function and answers one question for itself: how far am I from the shape? The sign of the answer says inside or outside. Its size says how far. With that one number we draw a circle, a box and a star, merge them, paint them with contour lines, and set them moving with time and the pointer. The last step rebuilds the Shapes demo from the [playground](/welcome/playground/), the live editor on this site.
 
-The [Hello, a million triangles!](/tutorials/hello-triangle/) page comes first, and this one assumes you know what `Shader::new`, `set` and `render` do.
+The [Hello, million triangles!](/tutorials/hello-triangle/) page comes first, and this one assumes you know what `Shader::new`, `set` and `render` do.
 
 ## Every pixel gets a coordinate
 
@@ -42,6 +45,28 @@ Pixels make an awkward unit for drawing. A circle 100 pixels wide spans a third 
 1. Subtracting half of `resolution` moves the origin to the middle of the canvas.
 2. Dividing by the shorter side makes that side one unit long, from `-0.5` to `0.5`. Both axes divide by the same number, which keeps a unit along x as long as a unit along y. The longer side gets whatever range is left: `-0.67` to `0.67` across an 800 by 600 canvas.
 3. Negating y makes up positive, the way a math textbook draws its axes.
+
+<Figure height={310} alt="Two copies of an 800 by 600 canvas. On the left, pixel coordinates start at the top left corner with y pointing down, and the middle pixel is (400, 300). On the right, after center, the origin sits in the middle with y pointing up, a square one unit wide fills the height, and x runs from -0.67 to 0.67." caption="The same 800 by 600 canvas in pixels and after `center`.">
+  <Rect at={[30, 50]} size={[300, 225]} tone="muted" />
+  <Arrow from={[30, 50]} to={[140, 50]} label="x" labelAt="end" tone="accent" />
+  <Arrow from={[30, 50]} to={[30, 150]} label="y" labelAt="end" tone="accent" />
+  <Dot at={[30, 50]} />
+  <Label at={[30, 30]} anchor="start" code>(0, 0)</Label>
+  <Dot at={[180, 162.5]} />
+  <Label at={[180, 185]} code small>(400, 300)</Label>
+  <Label at={[330, 295]} anchor="end" code small>(800, 600)</Label>
+  <Arrow from={[340, 162.5]} to={[380, 162.5]} label="center" code />
+  <Rect at={[390, 50]} size={[300, 225]} tone="muted" />
+  <Rect at={[427.5, 50]} size={[225, 225]} tone="inside" fill dashed />
+  <Arrow from={[540, 162.5]} to={[650, 162.5]} label="x" labelAt="end" tone="accent" />
+  <Arrow from={[540, 162.5]} to={[540, 60]} label="y" labelAt="end" tone="accent" />
+  <Dot at={[540, 162.5]} />
+  <Label at={[548, 178]} anchor="start" code small>(0, 0)</Label>
+  <Label at={[548, 78]} anchor="start" code small>0.5</Label>
+  <Label at={[548, 262]} anchor="start" code small>-0.5</Label>
+  <Label at={[390, 295]} anchor="start" code small>-0.67</Label>
+  <Label at={[690, 295]} anchor="end" code small>0.67</Label>
+</Figure>
 
 That gives `p`. Where both of its coordinates run from `-0.5` to `0.5` lies the unit square, which always fits the canvas exactly along the shorter side. Painted as a color, `p.x` drives red and `p.y` drives green, at full strength inside the unit square and at 30 percent past its edges.
 
@@ -62,7 +87,7 @@ and `frame` runs on every redraw, with `size` holding the canvas size in pixels 
 Something has to call them. In the Rust programs, a small `winit` loop calls `frame` whenever the window needs a new image, and on this page each demo canvas does the same. The playground's programs use this layout too. From step to step, the shader changes and the list of uniforms grows, while the loop stays put. Each step's complete Rust program and its JavaScript port are in [`docs/tutorials/drawing-with-distance`](https://github.com/vista-art/fragmentcolor/tree/main/docs/tutorials/drawing-with-distance), and this command runs the first one:
 
 ```bash
-cargo run -p fce --example tutorial_drawing_with_distance_coordinates
+./fc example tutorial_drawing_with_distance_coordinates
 ```
 
 One line of `fs_main` already measures a distance. `max(abs(p.x), abs(p.y))` is the distance from the middle along whichever axis reaches farther, which makes it `0.5` all around the edge of the unit square. Comparing it with `0.5` decides inside or outside. That line holds the whole idea of this tutorial.
@@ -86,6 +111,16 @@ To see the field, `show` paints the sign and adds a stripe every `0.05` units of
 Magenta meets azure exactly where `d` crosses zero. That line is the circle.
 
 Six dark stripes run from the edge to the center, one for every `0.05` of the radius. Outside, the rings keep their spacing all the way to the borders of the canvas, and counting them back from any spot to the outline reads off that spot's distance.
+
+<Figure src="/tutorials/drawing-with-distance/circle-field.webp" height={420} alt="The circle's distance field in stripes, with three points marked. A point outside the circle has an arrow to the nearest point of the edge, labeled d = 0.19. A point inside has an arrow out to the edge, labeled d = -0.14. A callout marks the edge itself as d = 0, and the center reads d = -0.3." caption="Each value is the length of its arrow to the circle's edge, negative inside.">
+  <Dot at={pixel([0.45, 0.2])} />
+  <Arrow from={pixel([0.45, 0.2])} to={circleEdge([0.45, 0.2], 0.3)} label="d = 0.19" labelAt="start" code />
+  <Dot at={pixel([-0.12, -0.1])} />
+  <Arrow from={pixel([-0.12, -0.1])} to={circleEdge([-0.12, -0.1], 0.3)} label="d = -0.14" labelAt="start" code />
+  <Dot at={[360, 210]} />
+  <Label at={[372, 196]} anchor="start" code small>d = -0.3</Label>
+  <Arrow from={[150, 70]} to={circleEdge([-0.6, 0.6], 0.3)} label="d = 0" labelAt="start" tone="mark" code />
+</Figure>
 
 A circle moves when the point does: `length(p - c) - r` is a circle of radius `r` centered on `c`. Every shape on this page measures from `p` minus its position. Size works in reverse. Dividing `p` by `2.0` before measuring draws the circle twice as large, and multiplying the result by `2.0` keeps it a true distance: `(length(p / 2.0) - r) * 2.0`.
 
@@ -111,6 +146,22 @@ A box makes the question harder, because the nearest point might lie on an edge 
 - Inside, both are negative. The nearest edge is the one with the larger value, `max(q.x, q.y)`, and wrapping it in `min(..., 0.0)` silences that term outside the box.
 
 At any point one of the two terms is zero, and the sum is the other one.
+
+<Figure height={330} alt="A box with three sample points. One sits to the right of the box, and its distance is a horizontal arrow to the right edge, labeled q.x. A second lies beyond the top right corner, with a diagonal arrow to the corner labeled length(q). The third, inside near the top, has a short arrow up to the top edge labeled max(q.x, q.y). Dashed lines extend the right and top edges, marking off the corner region, and the top right quarter is shaded." caption="The three cases, all in the top right quarter.">
+  <Rect at={[360, 10]} size={[350, 155]} tone="accent" fill dashed />
+  <Line from={[20, 165]} to={[700, 165]} tone="muted" dashed />
+  <Line from={[360, 10]} to={[360, 320]} tone="muted" dashed />
+  <Rect at={[210, 75]} size={[300, 180]} tone="inside" fill />
+  <Line from={[510, 75]} to={[510, 12]} tone="muted" dashed />
+  <Line from={[510, 75]} to={[700, 75]} tone="muted" dashed />
+  <Dot at={[615, 130]} />
+  <Arrow from={[615, 130]} to={[512, 130]} label="q.x" code />
+  <Dot at={[615, 30]} />
+  <Arrow from={[615, 30]} to={[512, 73]} />
+  <Label at={[603, 30]} anchor="end" code>length(q)</Label>
+  <Dot at={[430, 112]} />
+  <Arrow from={[430, 112]} to={[430, 78]} label="max(q.x, q.y)" code labelAt="start" offset={[0, 6]} />
+</Figure>
 
 Inigo Quilez publishes this form of the box, with exact distances for dozens of other shapes and a live example for each, on his page of [2D distance functions](https://iquilezles.org/articles/distfunctions2d/). The [history](#where-distance-fields-come-from) at the end of this page tells how the technique reached shaders.
 
@@ -147,6 +198,21 @@ fn op_smooth_union(a: f32, b: f32, k: f32) -> f32 {
 
 `h` compares the two distances, and `clamp` keeps it between `0.0` and `1.0`. `mix(b, a, h)` moves from `b` to `a` as `h` grows. When one shape is closer by more than `k`, `h` hits one of its limits and `mix` returns the plain minimum. Inside that margin, `mix` blends them and `k * h * (1.0 - h)` takes away a little more, most of all where the distances are equal. Subtracting from `d` where the outlines meet pushes the zero line outward, and the corner turns into a curve about `k` units wide.
 
+<Figure height={290} alt="A graph along a line that crosses two shapes. Distance a rises from left to right and distance b falls, and they cross a little above the zero line. Their minimum has a sharp peak at the crossing. Inside a shaded band where the two differ by less than k, the smooth union rounds the peak and lowers it below zero." caption="Distances along a line through two nearby shapes. Within the band, the smooth union dips below zero and joins them.">
+  <Rect at={[blend.band[0], 34]} size={[blend.band[1] - blend.band[0], 236]} tone="accent" fill dashed />
+  <Label at={[(blend.band[0] + blend.band[1]) / 2, 22]} small tone="accent" code>|a - b| &lt; k</Label>
+  <Line from={[blend.left, blend.zero]} to={[blend.right, blend.zero]} tone="muted" dashed />
+  <Label at={[blend.left + 4, blend.zero - 14]} anchor="start" small tone="muted" code>d = 0</Label>
+  <Path d={blend.a} tone="muted" dashed />
+  <Path d={blend.b} tone="muted" dashed />
+  <Label at={[blend.aEnd[0] + 8, blend.aEnd[1]]} anchor="start" code>a</Label>
+  <Label at={[blend.bEnd[0] - 8, blend.bEnd[1]]} anchor="end" code>b</Label>
+  <Path d={blend.min} tone="ink" />
+  <Path d={blend.smooth} tone="inside" />
+  <Arrow from={[blend.crease[0] - 120, blend.crease[1] - 75]} to={[blend.crease[0] - 4, blend.crease[1] - 4]} label="min(a, b)" labelAt="start" code />
+  <Arrow from={[blend.dip[0] + 50, blend.dip[1] + 88]} to={[blend.dip[0] + 3, blend.dip[1] + 5]} label="op_smooth_union" labelAt="start" tone="inside" code />
+</Figure>
+
 The next picture holds one circle and one box in each quarter of the unit square, combined four different ways. `vec2<f32>(0.11)` repeats one value in both components, which makes the box square.
 
 <Code lang="wgsl" code={region("04-combine", "pair").rust} />
@@ -182,6 +248,13 @@ Every line that writes `color` adds one layer:
 
 <Code lang="wgsl" code={region("05-color", "color").rust} />
 
+<Figure src="/tutorials/drawing-with-distance/coloring-layers.webp" height={420} alt="The colored scene of a star, a small circle and a box, with four numbered callouts: 1 points at the azure glow just outside the box, 2 at one of the thin rings farther out, 3 at the magenta fill in the middle of the star, and 4 at the white outline at the star's top tip." caption="The four layers, numbered as in the list below.">
+  <Arrow from={[590, 372]} to={[532, 278]} label="1 glow" labelAt="start" tone="mark" />
+  <Arrow from={[585, 48]} to={[480, 91]} label="2 rings" labelAt="start" tone="mark" />
+  <Arrow from={[120, 360]} to={[245, 228]} label="3 fill" labelAt="start" tone="mark" />
+  <Arrow from={[110, 70]} to={[248, 128]} label="4 edge" labelAt="start" tone="mark" />
+</Figure>
+
 1. The backdrop is the site's near-black. `max(d, 0.0)` zeroes `d` inside the shapes and gives `outside`, and `exp(-10.0 * outside)` is `1.0` on the edge and drops to a tenth of that about `0.23` units out, which wraps every outline in an azure glow.
 2. `pixel_size` is `fwidth(d)`, how much `d` changes from this pixel to its neighbors: the width of one pixel, measured as a distance. `fract(d * 20.0 + 0.5) - 0.5` says how far `d` sits from the nearest multiple of `0.05`, in units of `0.05`, and dividing by `20.0 * pixel_size` turns that into pixels. `smoothstep(a, b, x)` is `0.0` below `a`, `1.0` above `b` and a smooth ramp between. `1.0 - smoothstep(0.5, 1.5, ring)` therefore keeps only the pixels within about a pixel of a multiple: a thin ring every `0.05` units. Each ring joins points at the same distance from the shapes, like the height lines on a hiking map, and `exp(-3.0 * outside)` fades the rings more slowly than the glow.
 3. `select` swaps everything inside the shapes for a fill. `smoothstep(0.0, 0.12, -d)` rises from `0.0` at the edge to `1.0` at a depth of `0.12`, and `mix` turns that into violet by the outline and magenta deep inside.
@@ -206,6 +279,19 @@ In the shader, time moves the star and the box:
 <Code lang="wgsl" code={region("06-time", "scene").rust} />
 
 `rotate2(p, a)` from [`map/rotate2`](/shaders/map/#rotate2) turns a point counterclockwise around the origin by `a` radians. Applied to every point with `time * 0.4` as the angle, it rotates the coordinates the star measures from, which spins the star itself the other way: clockwise, once around in about 16 seconds. `0.05 * sin(time)` lifts and lowers the box by `0.05` units on a 6.3 second cycle. With `rotate2` in use, the slug list grows by one:
+
+<Figure height={340} alt="A five-pointed star drawn twice around one center. The dashed one stands upright; the solid one is turned clockwise. A point p sits on the top tip of the turned star, and an arc arrow carries it counterclockwise by the angle a to the point q on the top tip of the upright star." caption="`star` receives `q`, the pixel `p` rotated counterclockwise by `a`, and the star on screen comes out turned clockwise.">
+  <Path d={rotation.upright} tone="muted" dashed />
+  <Path d={rotation.turned} tone="inside" fill />
+  <Path d={rotation.arc} tone="accent" />
+  <Arrow from={rotation.arrowFrom} to={rotation.arrowTo} tone="accent" />
+  <Label at={rotation.arcLabel} tone="accent" code>a</Label>
+  <Dot at={rotation.p} tone="inside" />
+  <Label at={[rotation.p[0] + 14, rotation.p[1] + 6]} anchor="start" code>p</Label>
+  <Dot at={rotation.q} />
+  <Label at={[rotation.q[0] - 14, rotation.q[1] - 4]} anchor="end" code>q = rotate2(p, a)</Label>
+  <Dot at={rotation.center} tone="muted" r={3} />
+</Figure>
 
 <Snippet file="drawing-with-distance/06-time/example.rs" region="setup" />
 

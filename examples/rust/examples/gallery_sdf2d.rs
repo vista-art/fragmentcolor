@@ -6,7 +6,7 @@
 //! against a muted background.
 //!
 //! Run with:
-//!   cargo run --release -p fce --example gallery_sdf2d
+//!   ./fc example --release gallery_sdf2d
 
 use fragmentcolor::{Renderer, Shader, Target};
 

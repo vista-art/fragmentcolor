@@ -97,6 +97,9 @@ async fn check<State, Setup>(setup: Setup, frame: Frame<State>, frames: u32) -> 
 where
     Setup: AsyncFnOnce(&Renderer) -> Result<State, FragmentColorError>,
 {
+    if frames == 0 {
+        bail!("FC_TUTORIAL_FRAMES needs at least 1 frame to check");
+    }
     let renderer = Renderer::new();
     let texture = renderer.create_texture_target(CHECK_SIZE).await?;
     let target = RenderTarget::from(texture);

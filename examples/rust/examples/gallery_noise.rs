@@ -6,7 +6,7 @@
 //! as a grayscale (or RGB, for vector outputs) image.
 //!
 //! Run with:
-//!   cargo run --release -p fce --example gallery_noise
+//!   ./fc example --release gallery_noise
 
 use fragmentcolor::{Renderer, Shader, Target};
 

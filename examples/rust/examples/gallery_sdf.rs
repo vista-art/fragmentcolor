@@ -6,7 +6,7 @@
 //! sphere-trace + Lambert shade against a muted background.
 //!
 //! Run with:
-//!   cargo run --release -p fce --example gallery_sdf
+//!   ./fc example --release gallery_sdf
 
 use fragmentcolor::{Renderer, Shader, Target};
 

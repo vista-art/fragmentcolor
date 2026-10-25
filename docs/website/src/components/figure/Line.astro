@@ -1,0 +1,18 @@
+---
+// A straight line, solid or dashed, for axes, guides and distances.
+import type { Point, Tone } from "./types";
+
+interface Props {
+  from: Point;
+  to: Point;
+  tone?: Tone;
+  dashed?: boolean;
+}
+
+const { from, to, tone = "ink", dashed = false } = Astro.props;
+---
+
+<g class={`tone-${tone}`}>
+  <line class="fig-halo" x1={from[0]} y1={from[1]} x2={to[0]} y2={to[1]} />
+  <line class:list={["fig-stroke", dashed && "fig-dashed"]} x1={from[0]} y1={from[1]} x2={to[0]} y2={to[1]} />
+</g>
