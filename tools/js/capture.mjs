@@ -178,7 +178,7 @@ async function captureDemo(browser, origin, { file, size, time, pointer, scale, 
   const tutorial = file.split("/")[0];
   const step = path.posix.dirname(file);
   const page = await browser.newPage({ viewport: { width: Math.max(1280, width + 400), height: 1000 }, deviceScaleFactor: scale });
-  const errors = watchErrors(page);
+  const errors = watchErrors(page, (url) => isCaptureOf(tutorial, url));
   try {
     await page.goto(`${origin}/tutorials/${tutorial}/`, { waitUntil: "load" });
     await page.waitForFunction(() => customElements.get("tutorial-demo"));
@@ -256,13 +256,26 @@ async function captureThumbs(browser, origin, ids, options) {
   }
 }
 
-function watchErrors(page) {
+// Collects page errors. `allow` passes a console error by the URL it came from.
+function watchErrors(page, allow = () => false) {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => {
-    if (message.type() === "error") errors.push(message.text());
+    if (message.type() !== "error") return;
+    const url = message.location()?.url ?? "";
+    if (!allow(url)) errors.push(url ? `${message.text()} (${url})` : message.text());
   });
   return errors;
+}
+
+// A tutorial page shows the captures this tool writes, so they 404 until the first run makes them.
+function isCaptureOf(tutorial, url) {
+  try {
+    const { pathname } = new URL(url);
+    return pathname.startsWith(`/tutorials/${tutorial}/`) && /\.(webp|png|jpe?g)$/.test(pathname);
+  } catch {
+    return false;
+  }
 }
 
 async function writeWebp(png, out, { quality, resize }) {
