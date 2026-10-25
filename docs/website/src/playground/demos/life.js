@@ -121,6 +121,7 @@ const DT: f32 = 1.0 / 60.0;
 const FORCE: f32 = 60.0; // acceleration per unit of density slope
 const COHESION: f32 = 0.6; // added to every attraction, which gathers crowds into colonies
 const PRESSURE: f32 = 0.3; // how hard crowds push back, relative to FORCE
+const PACKED: f32 = 12.0; // crowd density, in multiples of the mean, where cohesion turns into a push
 const FRICTION: f32 = 4.0; // velocity decay per second
 const TOP_SPEED: f32 = 40.0; // cells per second
 const REACH: f32 = 16.0; // pointer reach in cells
@@ -200,8 +201,11 @@ fn cs_main(
     particle = Particle(random(i, 0xfffffffeu), (random(i, 0xffffffffu) - 0.5) * 4.0);
   }
   let pos = particle.pos * size;
-  let here = sample(pos);
-  let follow = attraction(species) + COHESION;
+  // Sampling a little off the particle keeps crowds from locking onto the grid.
+  let here = sample(pos + random(i, params.frame ^ 0x9e3779b9u) - 0.5);
+  // Cohesion fades as a crowd packs in, and pushes it apart past PACKED.
+  let packed = here.crowd.z / PACKED;
+  let follow = attraction(species) + COHESION * (1.0 - packed * packed);
   let slope = vec2<f32>(dot(follow, here.slope_x), dot(follow, here.slope_y));
   var accel = FORCE * (slope - PRESSURE * here.crowd.xy);
 
