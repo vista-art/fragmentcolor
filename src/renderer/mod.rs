@@ -796,6 +796,7 @@ impl RenderContext {
         // a rewind per pass makes every pass read the last pass's uniforms.
         self.buffer_pool.write().reset();
         self.storage_pool.write().reset();
+        self.texture_pool.write().start_render();
 
         // Apple's Metal driver does not reliably flush tile-based storage-texture writes between
         // two compute passes recorded in the same command buffer, so a subsequent sampled
@@ -1165,26 +1166,15 @@ impl RenderContext {
                 frame.view()
             };
 
-        // Keep MSAA resources alive for the duration of the pass
-        let mut msaa_texture: Option<(wgpu::Texture, TextureKey)> = None;
-        let mut _msaa_view: Option<wgpu::TextureView> = None;
-        if pass_texture_view.is_none() && sample_count > 1 {
-            let key = TextureKey::new(
-                size,
-                color_format,
-                sample_count,
-                wgpu::TextureUsages::RENDER_ATTACHMENT,
-            );
-            let texture = {
-                let mut pool = self.texture_pool.write();
-                pool.acquire(&self.device, key)
-            };
-            _msaa_view = Some(texture.create_view(&wgpu::TextureViewDescriptor::default()));
-            msaa_texture = Some((texture, key));
-            texture_view = match _msaa_view.as_ref() {
-                Some(v) => v,
-                None => return Err(RendererError::MsaaViewMissing),
-            };
+        // With MSAA the pass draws into a pooled multisampled texture and resolves
+        // into the frame. The lease outlives the render pass and returns it on drop.
+        let msaa = (pass_texture_view.is_none() && sample_count > 1).then(|| {
+            let usage = wgpu::TextureUsages::RENDER_ATTACHMENT;
+            let key = TextureKey::new(size, color_format, sample_count, usage);
+            Lease::take(&self.texture_pool, &self.device, key)
+        });
+        if let Some(lease) = msaa.as_ref() {
+            texture_view = lease.view();
             resolve_target = Some(frame.view());
         }
 
@@ -1250,7 +1240,6 @@ impl RenderContext {
             // leaves the pass its clear and no draws.
             let scissor = region.clip(extent.width, extent.height);
             if scissor.width() == 0 || scissor.height() == 0 {
-                self.release_msaa(msaa_texture);
                 return Ok(());
             }
             let (x, y, width, height) =
@@ -1648,16 +1637,7 @@ impl RenderContext {
             }
         }
 
-        self.release_msaa(msaa_texture);
-
         Ok(())
-    }
-
-    /// Hands a pass's transient MSAA texture back to the pool.
-    fn release_msaa(&self, msaa: Option<(wgpu::Texture, TextureKey)>) {
-        if let Some((texture, key)) = msaa {
-            self.texture_pool.write().release(key, texture);
-        }
     }
 
     fn process_compute_pass(
@@ -3457,6 +3437,36 @@ struct VOut { @builtin(position) pos: vec4<f32> };
                 "padded uniform should render red, got {:?}",
                 &img[..4]
             );
+        });
+    }
+
+    // Story: a lease returns its texture to the pool, and a texture no recent
+    // render used leaves the pool, so a target that changed size frees the old one.
+    #[test]
+    fn texture_pool_frees_idle_entries() {
+        pollster::block_on(async move {
+            let (_adapter, device, queue) = create_device_and_queue().await;
+            let ctx = RenderContext::new(device, queue);
+            let size = wgpu::Extent3d {
+                width: 4,
+                height: 4,
+                depth_or_array_layers: 1,
+            };
+            let usage = wgpu::TextureUsages::RENDER_ATTACHMENT;
+            let key = TextureKey::new(size, wgpu::TextureFormat::Rgba8Unorm, 1, usage);
+            let pooled = || ctx.texture_pool.read().keys().count();
+
+            let lease = Lease::take(&ctx.texture_pool, &ctx.device, key);
+            assert_eq!(pooled(), 0, "a leased texture is out of the pool");
+            drop(lease);
+            assert_eq!(pooled(), 1, "dropping the lease returns it");
+
+            for _ in 0..8 {
+                ctx.texture_pool.write().start_render();
+            }
+            assert_eq!(pooled(), 1, "a few idle renders keep it");
+            ctx.texture_pool.write().start_render();
+            assert_eq!(pooled(), 0, "a longer idle stretch frees it");
         });
     }
 

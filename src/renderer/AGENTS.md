@@ -15,7 +15,8 @@ Render targets & present
 - A pass viewport goes to wgpu as given, within wgpu's limits, and the scissor rect is the viewport clipped to the pass's color attachment. Output past the attachment is cropped, never squeezed. A viewport that clips to nothing keeps the pass's clear and skips its draws, because Metal can't take an empty scissor.
 
 MSAA & resolves
-- Use transient MSAA textures from the texture pool and resolve into the target view; return them to the pool after use.
+- Use transient MSAA textures from the texture pool and resolve into the target view. Take them with `Lease::take`, which returns the texture to the pool when the lease drops, error paths included.
+- `RenderContext::render` calls `TexturePool::start_render` once, which frees entries no render used for `IDLE_RENDERS` renders, so a target that changed size doesn't keep its old textures.
 - Sample count is negotiated per adapter/format via `pick_sample_count` and cached in `RenderContext`.
 
 Bind groups & alignment

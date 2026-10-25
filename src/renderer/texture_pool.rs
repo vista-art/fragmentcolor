@@ -1,11 +1,16 @@
-//! Texture pool for transient GPU textures (e.g., MSAA resolve attachments).
+//! Texture pool for transient GPU textures, such as MSAA color attachments.
 //!
 //! Keyed by (width, height, depth_or_array_layers, format, sample_count, usage_bits).
-//! Simple global LRU by entry count: acquire() searches for a matching entry and returns it,
-//! otherwise creates a new texture. release() returns the texture to the pool and evicts LRU when
-//! capacity is exceeded.
+//! `acquire` takes a matching texture or creates one, and `release` returns it,
+//! evicting the least recently used entry past the capacity. `start_render` frees
+//! the entries no recent render used, so a target that changes size doesn't keep
+//! its old textures alive. A `Lease` releases its texture when it drops.
 
+use parking_lot::RwLock;
 use std::collections::VecDeque;
+
+/// Renders an entry may sit unused before the pool frees it.
+const IDLE_RENDERS: u64 = 8;
 
 /// The shape and use that make two pooled textures interchangeable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -49,28 +54,46 @@ impl TextureKey {
     }
 }
 
+#[derive(Debug)]
+struct Entry {
+    key: TextureKey,
+    texture: wgpu::Texture,
+    /// The render that last released it.
+    used: u64,
+}
+
 /// Reuses transient textures, such as MSAA attachments.
 #[derive(Debug)]
 pub(crate) struct TexturePool {
     entry_limit: usize,
-    entries: VecDeque<(TextureKey, wgpu::Texture)>, // front = LRU, back = MRU
+    render: u64,
+    entries: VecDeque<Entry>, // front = LRU, back = MRU
 }
 
 impl TexturePool {
     pub fn new(entry_limit: usize) -> Self {
         Self {
             entry_limit: entry_limit.max(1),
+            render: 0,
             entries: VecDeque::new(),
         }
     }
 
+    /// Starts a render, and frees the entries no recent render used.
+    pub fn start_render(&mut self) {
+        self.render += 1;
+        let render = self.render;
+        self.entries
+            .retain(|entry| render - entry.used <= IDLE_RENDERS);
+    }
+
     pub fn acquire(&mut self, device: &wgpu::Device, key: TextureKey) -> wgpu::Texture {
         // search best (any) matching entry (first fit)
-        if let Some(idx) = self.entries.iter().position(|(k, _)| *k == key)
-            && let Some((_k, tex)) = self.entries.remove(idx)
+        if let Some(idx) = self.entries.iter().position(|entry| entry.key == key)
+            && let Some(entry) = self.entries.remove(idx)
         {
             // move to MRU happens by pushing when we release; on acquire we just return it
-            return tex;
+            return entry.texture;
         }
         device.create_texture(&wgpu::TextureDescriptor {
             label: Some("TexturePool entry"),
@@ -84,10 +107,55 @@ impl TexturePool {
         })
     }
 
-    pub fn release(&mut self, key: TextureKey, tex: wgpu::Texture) {
-        self.entries.push_back((key, tex));
+    pub fn release(&mut self, key: TextureKey, texture: wgpu::Texture) {
+        self.entries.push_back(Entry {
+            key,
+            texture,
+            used: self.render,
+        });
         if self.entries.len() > self.entry_limit {
             let _ = self.entries.pop_front();
         }
+    }
+
+    #[cfg(test)]
+    pub fn keys(&self) -> impl Iterator<Item = &TextureKey> {
+        self.entries.iter().map(|entry| &entry.key)
+    }
+}
+
+/// A pooled texture and its view, back in the pool when dropped.
+pub(crate) struct Lease<'pool> {
+    pool: &'pool RwLock<TexturePool>,
+    key: TextureKey,
+    texture: wgpu::Texture,
+    view: wgpu::TextureView,
+}
+
+impl<'pool> Lease<'pool> {
+    /// Takes a texture shaped like `key` from `pool`, or creates one.
+    pub(crate) fn take(
+        pool: &'pool RwLock<TexturePool>,
+        device: &wgpu::Device,
+        key: TextureKey,
+    ) -> Self {
+        let texture = pool.write().acquire(device, key);
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        Self {
+            pool,
+            key,
+            texture,
+            view,
+        }
+    }
+
+    pub(crate) fn view(&self) -> &wgpu::TextureView {
+        &self.view
+    }
+}
+
+impl Drop for Lease<'_> {
+    fn drop(&mut self) {
+        self.pool.write().release(self.key, self.texture.clone());
     }
 }
