@@ -76,6 +76,10 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
         "MalformedImageError",
         py.get_type::<crate::error::MalformedImageError>(),
     )?;
+    m.add(
+        "OccludedSurfaceError",
+        py.get_type::<crate::error::OccludedSurfaceError>(),
+    )?;
     m.add("SceneLoadError", PythonError::SceneLoad.class(py)?)?;
     m.add("LightError", PythonError::Light.class(py)?)?;
 

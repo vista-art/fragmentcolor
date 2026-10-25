@@ -9,6 +9,7 @@
 ### Python
 
 - Draws fire with rendercanvas 2.7, where `canvas.request_draw` never called the draw function and `examples/python/main.py` showed nothing. `Renderer.create_target` registers a rendercanvas context on the canvas, and `render` presents each window frame itself, from a draw function or a timer.
+- A hidden or minimized window raises `OccludedSurfaceError`, a subclass of `FragmentColorError`, so a render loop can skip the frame without reading the message. Rust reports it as `SurfaceError::Occluded`.
 
 ### Breaking and behavior changes
 

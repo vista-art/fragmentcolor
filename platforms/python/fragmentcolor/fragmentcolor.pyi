@@ -11,6 +11,7 @@ __all__ = [
     "InvalidInputError",
     "UnsupportedMipmapFormatError",
     "MalformedImageError",
+    "OccludedSurfaceError",
     "SceneLoadError",
     "LightError",
     "Renderer",
@@ -56,6 +57,8 @@ class InvalidInputError(FragmentColorError): ...
 class UnsupportedMipmapFormatError(FragmentColorError): ...
 
 class MalformedImageError(FragmentColorError): ...
+
+class OccludedSurfaceError(FragmentColorError): ...
 
 class SceneLoadError(FragmentColorError): ...
 
@@ -298,6 +301,8 @@ class Renderer:
         Renders the given object to the given [Target](https://fragmentcolor.org/api/targets/target).
 
         `renderable` can be a `Shader`, a `Pass`, a `Mesh`, a `Scene`, or any iterable of `Pass` (`Vec<Pass>`, `&[Pass]`, `&[&Pass]`). Passes in an iterable are rendered in order.
+
+        A window that is hidden or minimized has no frame to draw on. `render` then returns `RendererError::SurfaceError(SurfaceError::Occluded)`, which Python raises as `OccludedSurfaceError`, a `FragmentColorError`. Skip that frame and draw the next one.
 
         Example:
 

@@ -67,6 +67,9 @@ impl From<RendererError> for pyo3::PyErr {
     fn from(e: RendererError) -> Self {
         match e {
             RendererError::TextureError(texture) => texture.into(),
+            RendererError::SurfaceError(crate::target::SurfaceError::Occluded) => {
+                crate::error::OccludedSurfaceError::new_err(e.to_string())
+            }
             other => crate::PyFragmentColorError::new_err(other.to_string()),
         }
     }

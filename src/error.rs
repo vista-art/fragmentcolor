@@ -53,6 +53,13 @@ create_exception!(
     PyFragmentColorError,
     "Image bytes that can't be decoded."
 );
+#[cfg(python)]
+create_exception!(
+    fragment_color,
+    OccludedSurfaceError,
+    PyFragmentColorError,
+    "A window that is hidden or minimized, so render skips the frame."
+);
 
 /// Python exceptions with two bases, `FragmentColorError` and a builtin,
 /// so an `except` clause for either one catches them.

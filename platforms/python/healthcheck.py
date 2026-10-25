@@ -9,6 +9,7 @@ from fragmentcolor import (
     Instance,
     MalformedImageError,
     Mesh,
+    OccludedSurfaceError,
     Mipmap,
     Pass,
     RenderCanvasTarget,
@@ -234,6 +235,8 @@ def check_error_types(renderer):
     raises("Texture.write with 4 of 16 bytes", lambda: texture.write(bytes(4)))
     renderer.unregister_texture(texture.id())
     raises("a second unregister_texture", lambda: renderer.unregister_texture(texture.id()))
+    # A hidden window can't be made headless, so only the class is checked.
+    assert issubclass(OccludedSurfaceError, FragmentColorError)
 
 
 SOLID_SHADER = """
