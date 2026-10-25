@@ -11,8 +11,7 @@ use wasm_bindgen::prelude::*;
 #[lsp_doc("docs/api/targets/texture_target/texture_target.md")]
 pub struct TextureTarget {
     pub(crate) context: Arc<RenderContext>,
-    pub(crate) texture: Arc<TextureObject>,
-    pub(crate) registration: Arc<parking_lot::RwLock<Option<Arc<Registration>>>>,
+    pub(crate) registration: Arc<Registration>,
 }
 
 crate::impl_fc_kind!(TextureTarget, "TextureTarget");
@@ -28,18 +27,19 @@ impl TextureTarget {
             size.into(),
             format,
         ));
+        let registration = Registration::create(&context, texture);
         Self {
-            context: context.clone(),
-            texture,
-            registration: Arc::new(parking_lot::RwLock::new(None)),
+            context,
+            registration,
         }
     }
 }
 
 impl crate::target::FrameSource for TextureTarget {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
-        let view = self.texture.create_view();
-        let format = self.texture.format();
+        let texture = self.registration.object();
+        let view = texture.create_view();
+        let format = texture.format();
         Ok(Box::new(TextureFrame { view, format }))
     }
 }
@@ -47,21 +47,21 @@ impl crate::target::FrameSource for TextureTarget {
 impl Target for TextureTarget {
     #[lsp_doc("docs/api/targets/target/size.md")]
     fn size(&self) -> Size {
-        self.texture.size()
+        self.registration.object().size()
     }
 
     #[lsp_doc("docs/api/targets/target/resize.md")]
     fn resize(&mut self, size: impl Into<Size>) {
-        let new_texture = Arc::new(TextureObject::create_destination_texture(
-            self.context.as_ref(),
-            size.into().into(),
-            self.texture.format(),
-        ));
-        self.texture = new_texture.clone();
-        // Repoint the registered id so Pass color attachments and shader
-        // bindings holding it draw into and sample the live texture.
-        if let Some(registration) = self.registration.read().as_ref() {
-            self.context.update_texture(*registration.id(), new_texture);
+        let extent = size.into().into();
+        // Swapping the registration's texture repoints every pass attachment,
+        // shader binding, clone and texture() handle that holds it.
+        let resized = self.registration.replace(|current| {
+            let format = current.format();
+            let texture = TextureObject::create_destination_texture(&self.context, extent, format);
+            Ok(Some(texture))
+        });
+        if let Err(error) = resized {
+            log::warn!("TextureTarget::resize kept the old texture: {error}");
         }
     }
 
@@ -71,8 +71,9 @@ impl Target for TextureTarget {
     /// (browser `fetch`/`mapAsync`, native `device.poll(Wait)`, etc.).
     #[lsp_doc("docs/api/targets/target/get_image.md")]
     async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
-        let mut pixels = crate::texture::read_pixels(&self.context, &self.texture).await?;
-        swap_bgra_to_rgba(&mut pixels, self.texture.format());
+        let texture = self.registration.object();
+        let mut pixels = crate::texture::read_pixels(&self.context, &texture).await?;
+        swap_bgra_to_rgba(&mut pixels, texture.format());
         Ok(pixels)
     }
 }
@@ -80,12 +81,7 @@ impl Target for TextureTarget {
 impl TextureTarget {
     #[lsp_doc("docs/api/targets/texture_target/texture.md")]
     pub fn texture(&self) -> crate::texture::Texture {
-        let registration = self
-            .registration
-            .write()
-            .get_or_insert_with(|| Registration::create(&self.context, self.texture.clone()))
-            .clone();
-        crate::texture::Texture::new(self.context.clone(), self.texture.clone(), registration)
+        crate::texture::Texture::new(self.context.clone(), self.registration.clone())
     }
 }
 

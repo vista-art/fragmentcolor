@@ -157,7 +157,7 @@ pub(crate) async fn read_pixels(
 }
 
 pub(super) async fn get_image(texture: &Texture) -> Result<Vec<u8>, TextureError> {
-    read_pixels(&texture.context, &texture.object).await
+    read_pixels(&texture.context, &texture.object()).await
 }
 
 /// Drives the device until the map callback fires. WebGPU resolves the map

@@ -436,9 +436,11 @@ impl Texture {
     #[lsp_doc("docs/api/texture/texture/get_image.md")]
     pub fn get_image_py(&self) -> pyo3::PyResult<Py<numpy::PyArrayDyn<u8>>> {
         use numpy::PyArrayMethods;
-        let data = pollster::block_on(self.get_image())?;
-        let extent = self.object.size;
-        let bpp = crate::texture::bytes_per_pixel(self.object.format) as usize;
+        // One snapshot reads the pixels and their shape, even across a resize.
+        let object = self.object();
+        let data = pollster::block_on(crate::texture::read_pixels(&self.context, &object))?;
+        let extent = object.size;
+        let bpp = crate::texture::bytes_per_pixel(object.format) as usize;
         let (width, height) = (extent.width as usize, extent.height as usize);
         let layers = extent.depth_or_array_layers.max(1) as usize;
         let shape = match layers {

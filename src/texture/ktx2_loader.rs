@@ -409,8 +409,8 @@ mod tests {
                 .create_texture(crate::texture::TextureData::Ktx2Bytes(bytes))
                 .await
                 .expect("load uncompressed KTX2");
-            assert_eq!(tex.object.format, wgpu::TextureFormat::Rgba8Unorm);
-            assert_eq!(tex.object.inner.mip_level_count(), 1);
+            assert_eq!(tex.object().format, wgpu::TextureFormat::Rgba8Unorm);
+            assert_eq!(tex.object().inner.mip_level_count(), 1);
             assert_eq!(tex.size().width, 4);
             assert_eq!(tex.size().height, 4);
         });
@@ -436,7 +436,7 @@ mod tests {
                 .create_texture(bytes.clone())
                 .await
                 .expect("KTX2 as plain bytes");
-            assert_eq!(tex.object.format, wgpu::TextureFormat::Rgba8Unorm);
+            assert_eq!(tex.object().format, wgpu::TextureFormat::Rgba8Unorm);
 
             let path = std::env::temp_dir().join("fc_detects_ktx2_by_content.bin");
             std::fs::write(&path, &bytes).expect("write temp KTX2");
@@ -470,8 +470,8 @@ mod tests {
                 .create_texture(crate::texture::TextureData::Ktx2Bytes(bytes))
                 .await
                 .expect("load mipped KTX2");
-            assert_eq!(tex.object.format, wgpu::TextureFormat::Rgba8UnormSrgb);
-            assert_eq!(tex.object.inner.mip_level_count(), 3);
+            assert_eq!(tex.object().format, wgpu::TextureFormat::Rgba8UnormSrgb);
+            assert_eq!(tex.object().inner.mip_level_count(), 3);
         });
     }
 

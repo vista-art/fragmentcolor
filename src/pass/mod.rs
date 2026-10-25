@@ -243,13 +243,14 @@ impl TryFrom<&crate::texture::Texture> for ColorTarget {
 
     /// Validate usage and format for color attachment
     fn try_from(tex: &crate::texture::Texture) -> Result<Self, Self::Error> {
-        let usage = tex.object.usage;
+        let object = tex.object();
+        let usage = object.usage;
         if !usage.contains(wgpu::TextureUsages::RENDER_ATTACHMENT) {
             return Err(PassError::InvalidColorTarget(
                 "texture was not created with RENDER_ATTACHMENT usage".into(),
             ));
         }
-        let fmt = tex.object.format;
+        let fmt = object.format;
         match fmt {
             wgpu::TextureFormat::Depth32Float
             | wgpu::TextureFormat::Depth16Unorm
@@ -293,13 +294,14 @@ impl TryFrom<&crate::texture::Texture> for DepthTarget {
 
     /// Validate usage and format for depth/stencil attachment
     fn try_from(tex: &crate::texture::Texture) -> Result<Self, Self::Error> {
-        let usage = tex.object.usage;
+        let object = tex.object();
+        let usage = object.usage;
         if !usage.contains(wgpu::TextureUsages::RENDER_ATTACHMENT) {
             return Err(PassError::InvalidColorTarget(
                 "depth texture was not created with RENDER_ATTACHMENT usage".into(),
             ));
         }
-        let format = tex.object.format;
+        let format = object.format;
         match format {
             wgpu::TextureFormat::Depth32Float
             | wgpu::TextureFormat::Depth16Unorm

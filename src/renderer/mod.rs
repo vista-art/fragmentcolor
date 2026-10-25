@@ -177,8 +177,8 @@ impl Renderer {
         let context = self.context(None).await?;
         let object = crate::TextureObject::from_input(context.clone(), input).await?;
         let object = std::sync::Arc::new(object);
-        let registration = crate::texture::Registration::create(&context, object.clone());
-        Ok(crate::texture::Texture::new(context, object, registration))
+        let registration = crate::texture::Registration::create(&context, object);
+        Ok(crate::texture::Texture::new(context, registration))
     }
 
     /// Create a storage-class texture from a [`crate::TextureInput`], the
@@ -283,8 +283,8 @@ impl Renderer {
             );
         }
         let obj = std::sync::Arc::new(obj);
-        let registration = crate::texture::Registration::create(&context, obj.clone());
-        Ok(crate::texture::Texture::new(context, obj, registration))
+        let registration = crate::texture::Registration::create(&context, obj);
+        Ok(crate::texture::Texture::new(context, registration))
     }
 
     /// Create a depth texture (Depth32Float).
@@ -301,8 +301,8 @@ impl Renderer {
             sample_count,
         );
         let obj = std::sync::Arc::new(obj);
-        let registration = crate::texture::Registration::create(&context, obj.clone());
-        Ok(crate::texture::Texture::new(context, obj, registration))
+        let registration = crate::texture::Registration::create(&context, obj);
+        Ok(crate::texture::Texture::new(context, registration))
     }
 
     #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
@@ -924,15 +924,17 @@ impl RenderContext {
         self.textures.get(id).map(|texture| texture.clone())
     }
 
-    /// Point an already registered id at a new texture object.
-    /// Keeps a resized target's id valid for every Pass attachment
-    /// and shader binding that resolves textures at render time.
+    /// Points a resized texture's id at its new object, so every pass target
+    /// and shader binding that resolves the id at render time draws the new one.
+    /// An id that `unregister_texture` removed stays removed.
     pub(crate) fn update_texture(
         &self,
         id: crate::texture::TextureId,
         texture: Arc<crate::TextureObject>,
     ) {
-        self.textures.insert(id, texture);
+        if let Some(mut entry) = self.textures.get_mut(&id) {
+            *entry = texture;
+        }
     }
 
     pub(crate) fn set_sample_count(&self, count: u32) {

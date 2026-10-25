@@ -592,7 +592,6 @@ impl std::fmt::Display for TextureId {
 #[lsp_doc("docs/api/texture/texture/texture.md")]
 pub struct Texture {
     pub(crate) context: Arc<RenderContext>,
-    pub(crate) object: Arc<TextureObject>,
     pub(crate) registration: Arc<Registration>,
 }
 
@@ -600,16 +599,16 @@ crate::impl_fc_kind!(Texture, "Texture");
 
 impl Texture {
     /// Creates a new Texture from a RenderContext.
-    pub(crate) fn new(
-        context: Arc<RenderContext>,
-        object: Arc<TextureObject>,
-        registration: Arc<Registration>,
-    ) -> Self {
+    pub(crate) fn new(context: Arc<RenderContext>, registration: Arc<Registration>) -> Self {
         Self {
             context,
-            object,
             registration,
         }
+    }
+
+    /// The texture this handle names now. A resize swaps it for every handle.
+    pub(crate) fn object(&self) -> Arc<TextureObject> {
+        self.registration.object()
     }
 
     /// Return the stable TextureId for this texture.
@@ -621,18 +620,18 @@ impl Texture {
 
     #[lsp_doc("docs/api/texture/texture/size.md")]
     pub fn size(&self) -> crate::Size {
-        self.object.size()
+        self.object().size()
     }
 
     #[lsp_doc("docs/api/texture/texture/aspect.md")]
     pub fn aspect(&self) -> f32 {
-        self.object.aspect()
+        self.object().aspect()
     }
 
     #[lsp_doc("docs/api/texture/texture/set_sampler_options.md")]
     pub fn set_sampler_options(&self, options: SamplerOptions) {
-        self.object
-            .set_sampler_options(&self.context.device, options);
+        self.registration
+            .apply(|object| object.set_sampler_options(&self.context.device, options));
     }
 
     #[lsp_doc("docs/api/texture/texture/write.md")]
@@ -1879,7 +1878,7 @@ mod tests {
                 .create_texture(TextureData::Bytes(png.clone()))
                 .await
                 .expect("create texture with mipmaps");
-            assert_eq!(tex.object.inner.mip_level_count(), 4);
+            assert_eq!(tex.object().inner.mip_level_count(), 4);
 
             // Opt-out: only mip 0
             let opts = TextureOptions {
@@ -1890,7 +1889,7 @@ mod tests {
                 .create_texture((TextureData::Bytes(png), opts))
                 .await
                 .expect("create texture without mipmaps");
-            assert_eq!(tex_no_mip.object.inner.mip_level_count(), 1);
+            assert_eq!(tex_no_mip.object().inner.mip_level_count(), 1);
         });
     }
 
@@ -1912,8 +1911,8 @@ mod tests {
                 .create_texture((TextureData::Bytes(encode_png(&img)), opts))
                 .await
                 .expect("create texture with explicit linear format");
-            assert_eq!(tex.object.format, wgpu::TextureFormat::Rgba8Unorm);
-            assert_eq!(tex.object.inner.mip_level_count(), 3); // 4, 2, 1
+            assert_eq!(tex.object().format, wgpu::TextureFormat::Rgba8Unorm);
+            assert_eq!(tex.object().inner.mip_level_count(), 3); // 4, 2, 1
         });
     }
 
@@ -1932,8 +1931,8 @@ mod tests {
                 .create_texture(TextureData::Bytes(encode_png(&img)))
                 .await
                 .expect("create R16Unorm texture from Luma16 image");
-            assert_eq!(tex.object.format, wgpu::TextureFormat::R16Unorm);
-            assert_eq!(tex.object.inner.mip_level_count(), 3); // 4, 2, 1
+            assert_eq!(tex.object().format, wgpu::TextureFormat::R16Unorm);
+            assert_eq!(tex.object().inner.mip_level_count(), 3); // 4, 2, 1
         });
     }
 
@@ -1950,8 +1949,8 @@ mod tests {
                 .create_texture(TextureData::Bytes(encode_png(&img)))
                 .await
                 .expect("create R8Unorm texture from Luma8 image");
-            assert_eq!(tex.object.format, wgpu::TextureFormat::R8Unorm);
-            assert_eq!(tex.object.inner.mip_level_count(), 3); // 4, 2, 1
+            assert_eq!(tex.object().format, wgpu::TextureFormat::R8Unorm);
+            assert_eq!(tex.object().inner.mip_level_count(), 3); // 4, 2, 1
         });
     }
 
@@ -2096,8 +2095,8 @@ mod tests {
                 .create_texture(TextureData::Prepared(chain.clone()))
                 .await
                 .expect("create_texture from Prepared chain");
-            assert_eq!(tex.object.format, wgpu::TextureFormat::Rgba8UnormSrgb);
-            assert_eq!(tex.object.inner.mip_level_count(), level_count);
+            assert_eq!(tex.object().format, wgpu::TextureFormat::Rgba8UnormSrgb);
+            assert_eq!(tex.object().inner.mip_level_count(), level_count);
             let sz = tex.size();
             assert_eq!(sz.width, 8);
             assert_eq!(sz.height, 8);
@@ -2108,8 +2107,8 @@ mod tests {
                 .create_texture(chain)
                 .await
                 .expect("create_texture from chain");
-            assert_eq!(tex2.object.format, wgpu::TextureFormat::Rgba8UnormSrgb);
-            assert_eq!(tex2.object.inner.mip_level_count(), level_count);
+            assert_eq!(tex2.object().format, wgpu::TextureFormat::Rgba8UnormSrgb);
+            assert_eq!(tex2.object().inner.mip_level_count(), level_count);
         });
     }
 
@@ -2134,8 +2133,8 @@ mod tests {
                 .create_texture((&bytes[..], opts))
                 .await
                 .expect("create R16Unorm texture from raw bytes");
-            assert_eq!(tex.object.format, wgpu::TextureFormat::R16Unorm);
-            assert_eq!(tex.object.inner.mip_level_count(), 3); // 4, 2, 1
+            assert_eq!(tex.object().format, wgpu::TextureFormat::R16Unorm);
+            assert_eq!(tex.object().inner.mip_level_count(), 3); // 4, 2, 1
         });
     }
 

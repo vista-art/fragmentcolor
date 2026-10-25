@@ -5,15 +5,17 @@ pub(super) fn write(
     data: &[u8],
     mut region: TextureRegion,
 ) -> Result<(), TextureError> {
+    // One snapshot of the texture drives the checks and the write, even across a resize.
+    let object = tex.object();
     // Validate usage supports COPY_DST
-    if !tex.object.usage.contains(wgpu::TextureUsages::COPY_DST) {
+    if !object.usage.contains(wgpu::TextureUsages::COPY_DST) {
         return Err(TextureError::Error(
             "Texture usage does not allow writes (missing COPY_DST)".into(),
         ));
     }
 
-    let size = tex.object.size;
-    let format = tex.object.format;
+    let size = object.size;
+    let format = object.format;
     let bpp = super::bytes_per_pixel(format);
 
     // Infer per-dimension size when caller used the "whole texture" defaults
@@ -96,7 +98,7 @@ pub(super) fn write(
     tex.context.queue.write_texture(
         wgpu::TexelCopyTextureInfo {
             aspect: wgpu::TextureAspect::All,
-            texture: &tex.object.inner,
+            texture: &object.inner,
             mip_level: 0,
             origin: wgpu::Origin3d {
                 x: region.origin[0],

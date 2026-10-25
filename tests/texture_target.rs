@@ -132,3 +132,35 @@ fn sampled_binding_reads_resized_texture() {
         );
     });
 }
+
+// Story: a texture() handle and a clone of the target both follow a resize,
+// so they read the new size and the pixels drawn after it.
+#[test]
+fn handles_and_clones_follow_resize() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let mut target = renderer
+            .create_texture_target([8, 8])
+            .await
+            .expect("create_texture_target failed");
+        let handle = target.texture();
+        let copy = target.clone();
+
+        target.resize([24, 16]);
+        let fill = Shader::new(FILL).expect("fill shader failed");
+        fill.set("color", [1.0, 0.0, 0.0, 1.0]).expect("set failed");
+        renderer.render(&fill, &target).expect("render failed");
+
+        let size: [u32; 2] = handle.size().into();
+        assert_eq!(size, [24, 16], "the handle reads the new size");
+        let size: [u32; 2] = copy.size().into();
+        assert_eq!(size, [24, 16], "the clone reads the new size");
+        let img = handle.get_image().await.expect("read back");
+        assert_eq!(img.len(), 24 * 16 * 4, "the handle reads the new texture");
+        assert!(
+            img[0] > 200,
+            "the handle sees the fill, got {:?}",
+            &img[..4]
+        );
+    });
+}
