@@ -129,7 +129,7 @@ class Renderer:
 
         In Rust, we officially support Winit. Check the examples folder for details.
 
-        A window with no area yet gets a target of one pixel, and `resize` gives it the real size later. A side past the device limit returns `TextureError::InvalidInput`, the error `resize` returns.
+        A window with no area yet gets one pixel on that side, and `resize` gives it the real size later. A side past the device limit is an error, the one `resize` returns: `TextureError::InvalidInput` inside `InitializationError::TextureError` in Rust, a thrown `Error` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
 
         Example:
 
@@ -150,7 +150,7 @@ class Renderer:
 
         This is useful for tests, server-side rendering, or running examples in CI.
 
-        A width or height of zero, or a side past the device limit, returns `TextureError::InvalidInput`, the error `resize` returns.
+        A width or height of zero, a side past the device limit, or a depth other than 1 is an error, the one `resize` returns: `TextureError::InvalidInput` inside `InitializationError::TextureError` in Rust, a thrown `Error` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
 
         Example:
 
@@ -325,6 +325,8 @@ class Renderer:
         Create a depth texture using `Depth32Float`.
 
         A pass that draws models gets a depth buffer without one. Create a depth texture to read depth in a later pass, or to give depth to a pass of plain meshes.
+
+        A width or height of zero, a side past the device limit, or a depth other than 1 is an error, the one `resize` returns: `TextureError::InvalidInput` inside `InitializationError::TextureError` in Rust.
 
         The created depth texture inherits the renderer's current sample count:
         - If you called `create_target(window)` (surface-backed), it matches the negotiated MSAA (e.g., 2×/4×) for that surface.

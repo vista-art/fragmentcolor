@@ -40,7 +40,7 @@ pub enum FragmentColorError {
 impl From<crate::InitializationError> for FragmentColorError {
     fn from(e: crate::InitializationError) -> Self {
         match e {
-            crate::InitializationError::Texture(texture) => texture.into(),
+            crate::InitializationError::TextureError(texture) => texture.into(),
             other => FragmentColorError::Init(other.to_string()),
         }
     }

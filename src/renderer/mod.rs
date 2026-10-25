@@ -141,7 +141,7 @@ impl Renderer {
         let context = self.context(None).await?;
         let size = size.into();
         let limit = context.device.limits().max_texture_dimension_2d;
-        crate::texture::check_size(size.width, size.height, limit)?;
+        crate::texture::check_plane(size, limit)?;
         // For offscreen texture targets on Web, force sample_count = 1 to avoid MSAA resolve issues.
         // Canvas targets may still use MSAA via the surface path.
         context.set_sample_count(1);
@@ -298,12 +298,12 @@ impl Renderer {
         size: impl Into<crate::Size>,
     ) -> Result<crate::texture::Texture, InitializationError> {
         let context = self.context(None).await?;
+        let size = size.into();
+        let limit = context.device.limits().max_texture_dimension_2d;
+        crate::texture::check_plane(size, limit)?;
         let sample_count = context.sample_count();
-        let obj = crate::TextureObject::create_depth_texture(
-            context.as_ref(),
-            size.into().into(),
-            sample_count,
-        );
+        let obj =
+            crate::TextureObject::create_depth_texture(context.as_ref(), size.into(), sample_count);
         let obj = std::sync::Arc::new(obj);
         let registration = crate::texture::Registration::create(&context, obj);
         Ok(crate::texture::Texture::new(context, registration))

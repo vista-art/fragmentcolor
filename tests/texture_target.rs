@@ -218,12 +218,14 @@ fn resize_refuses_an_empty_size_and_keeps_the_pixels() {
 fn create_texture_target_checks_the_size() {
     pollster::block_on(async move {
         let renderer = Renderer::new();
-        for size in [[100_000, 8], [0, 8]] {
+        for size in [[u32::MAX, 8, 1], [0, 8, 1], [8, 8, 0], [8, 8, 2]] {
             let refused = renderer.create_texture_target(size).await;
             assert!(
                 matches!(
                     refused,
-                    Err(InitializationError::Texture(TextureError::InvalidInput(_)))
+                    Err(InitializationError::TextureError(
+                        TextureError::InvalidInput(_)
+                    ))
                 ),
                 "{size:?} should be refused"
             );

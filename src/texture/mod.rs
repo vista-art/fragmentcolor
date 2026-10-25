@@ -46,7 +46,7 @@ pub use region::TextureRegion;
 #[cfg(mobile)]
 pub use region::TextureRegionMobile;
 pub(crate) use registration::Registration;
-pub(crate) use resize::{check_size, resize};
+pub(crate) use resize::{check_plane, check_size, resize};
 
 pub mod meta;
 pub use meta::{

@@ -46,10 +46,9 @@ impl<W: Write> TerminalRenderer<W> {
         let rows = sz.height;
 
         let renderer = Renderer::new();
-        let target = pollster::block_on(
-            // texture is double height for half-block mapping
-            renderer.create_texture_target([cols as u32, (rows as u32) * 2]),
-        )?;
+        // The texture is double height for half-block mapping, and at least one pixel each way.
+        let size = [(cols as u32).max(1), (rows as u32 * 2).max(1)];
+        let target = pollster::block_on(renderer.create_texture_target(size))?;
 
         Ok(Self {
             term,

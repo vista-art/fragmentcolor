@@ -39,11 +39,13 @@ fn create_target_checks_the_size() {
     pollster::block_on(async move {
         let renderer = Renderer::new();
         let refused = renderer
-            .create_target(fragmentcolor::headless_window([100_000, 8]))
+            .create_target(fragmentcolor::headless_window([u32::MAX, 8]))
             .await;
         assert!(matches!(
             refused,
-            Err(InitializationError::Texture(TextureError::InvalidInput(_)))
+            Err(InitializationError::TextureError(
+                TextureError::InvalidInput(_)
+            ))
         ));
 
         let target = renderer

@@ -24,6 +24,17 @@ pub(crate) fn check_size(width: u32, height: u32, limit: u32) -> Result<(), Text
     )))
 }
 
+/// Checks a size for a texture of one layer, such as a target or a depth attachment:
+/// a depth of 1 or none, and each side in 1 to `limit`.
+pub(crate) fn check_plane(size: Size, limit: u32) -> Result<(), TextureError> {
+    if let Some(depth) = size.depth.filter(|depth| *depth != 1) {
+        return Err(TextureError::InvalidInput(format!(
+            "a target or depth texture has one layer, got {depth}"
+        )));
+    }
+    check_size(size.width, size.height, limit)
+}
+
 /// The texture to swap in for `current` at `size`, or `None` when the size stays.
 fn rebuild(
     context: &RenderContext,
@@ -113,6 +124,16 @@ mod tests {
             check_size(8, 8193, 8192),
             Err(TextureError::InvalidInput(_))
         ));
+    }
+
+    // Story: a plane has one layer, and its sides pass the same check.
+    #[test]
+    fn check_plane_takes_one_layer() {
+        assert!(check_plane(Size::new(8, 8, None), 8192).is_ok());
+        assert!(check_plane(Size::new(8, 8, Some(1)), 8192).is_ok());
+        assert!(check_plane(Size::new(8, 8, Some(0)), 8192).is_err());
+        assert!(check_plane(Size::new(8, 8, Some(2)), 8192).is_err());
+        assert!(check_plane(Size::new(0, 8, None), 8192).is_err());
     }
 
     // Story: only a texture a pass draws into resizes, and only to a size the device takes.
