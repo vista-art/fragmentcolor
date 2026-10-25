@@ -244,7 +244,7 @@ if (!customElements.get('tutorial-demo')) {
       this.#playBtn?.classList.add('hidden');
       // Compute shaders need WebGPU; WebGL2 has nothing to run them on.
       if (this.dataset.webgpu === '1' && !(await hasWebGpu())) {
-        this.#showError('This step runs a compute shader, which needs WebGPU. This browser offers only WebGL2.', 'note');
+        this.#showError('This demo runs a compute shader, which needs WebGPU. This browser offers only WebGL2.', 'note');
         return;
       }
       this.#start = performance.now();
