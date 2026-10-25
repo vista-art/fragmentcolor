@@ -171,15 +171,18 @@ function fit(state, [width, height]) {
 }
 
 // Each shader holds a copy of every buffer it declares, tens of megabytes for
-// update.wgsl. A build reuses the shader and pass that an earlier program
-// made from the same sources, if that one drew.
+// update.wgsl. A build reuses the shader and pass of the last program that drew,
+// stage by stage, where its sources match. A stage with new sources replaces
+// the kept one once its program draws, which lets the old shader go.
 const kept = (globalThis.swarmShaders ??= new Map());
 
 async function prepare(name, sources) {
-  const key = JSON.stringify([name, ...sources]);
-  if (kept.has(key)) return kept.get(key);
+  const key = \`\${name}:\${COUNT}\`;
+  const source = JSON.stringify(sources);
+  const last = kept.get(key);
+  if (last?.source === source) return last;
   const shader = await Shader.fetch(sources);
-  return { key, shader, pass: Pass.fromShader(name, shader) };
+  return { key, source, shader, pass: Pass.fromShader(name, shader) };
 }
 `;
 }
