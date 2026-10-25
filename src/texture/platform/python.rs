@@ -384,11 +384,9 @@ impl Texture {
         self.id
     }
 
-    /// Python property: size -> returns a Size object
-    #[getter]
     #[pyo3(name = "size")]
     #[lsp_doc("docs/api/texture/texture/size.md")]
-    pub fn size_prop(&self) -> crate::Size {
+    pub fn size_py(&self) -> crate::Size {
         self.size()
     }
 

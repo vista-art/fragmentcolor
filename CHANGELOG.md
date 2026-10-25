@@ -11,10 +11,12 @@
 
 - Draws fire with rendercanvas 2.7, where `canvas.request_draw` never called the draw function and `examples/python/main.py` showed nothing. `Renderer.create_target` registers a rendercanvas context on the canvas, and `render` presents each window frame itself, from a draw function or a timer.
 - A hidden or minimized window raises `OccludedSurfaceError`, a subclass of `FragmentColorError`, so a render loop can skip the frame without reading the message. Rust reports it as `SurfaceError::Occluded`.
+- `size()` is a method on `Texture`, `TextureTarget` and `WindowTarget`, as in every other language and like every other Python getter. `TextureTarget.size` and `Texture.size` were properties, and `WindowTarget.size()` the one method among them.
 
 ### Breaking and behavior changes
 
 - `get_image` on a target returns an error where it returned an empty array. A `WindowTarget` always does, because a frame on screen can't be read back, and a `TextureTarget` does when its readback fails or times out. JavaScript throws an `Error`, Python, Swift and Kotlin throw `FragmentColorError`, and Rust's `Target::get_image` returns `Result<Vec<u8>, TextureError>`.
+- Python reads sizes with a call: `texture.size.width` from the 0.12.6 notes is now `texture.size().width`, and `target.size` is `target.size()` on a texture target.
 
 ## 0.12.6: Binding and renderer fixes
 

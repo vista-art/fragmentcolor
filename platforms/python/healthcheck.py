@@ -117,14 +117,14 @@ def check_sampler_options(texture):
 
 def check_size(renderer, texture):
     """Size reads its fields, and every Size parameter takes a Size back."""
-    assert (texture.size.width, texture.size.height) == (2, 2)
+    assert (texture.size().width, texture.size().height) == (2, 2)
     target = renderer.create_texture_target([16, 8])
-    size = target.size
+    size = target.size()
     assert isinstance(size, Size)
     assert (size.width, size.height, size.depth) == (16, 8, 1)
     size.width = 32
     target.resize(size)
-    assert (target.size.width, target.size.height) == (32, 8)
+    assert (target.size().width, target.size().height) == (32, 8)
     print("Size reads its fields and passes back in")
 
 
@@ -191,7 +191,7 @@ def check_image_layout(renderer):
     assert np.array_equal(texels, image), "Texture.get_image differs from TextureTarget.get_image"
 
     texture = renderer.create_texture(image, format=TextureFormat.Rgba)
-    assert (texture.size.width, texture.size.height) == (3, 2)
+    assert (texture.size().width, texture.size().height) == (3, 2)
     shader = Shader(LOAD_TEXELS_SHADER)
     shader.set("tex", texture)
     copy = renderer.create_texture_target([3, 2])

@@ -164,7 +164,6 @@ pub struct PyTextureTarget {
 #[pymethods]
 impl PyTextureTarget {
     #[lsp_doc("docs/api/targets/texture_target/size.md")]
-    #[getter]
     pub fn size(&self) -> Size {
         <Self as Target>::size(self)
     }
