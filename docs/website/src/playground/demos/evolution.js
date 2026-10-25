@@ -1,8 +1,9 @@
 // Evolution: a swarm like Life's whose creatures live, eat, die, and split in
 // two. Four groups hunt one another in a circle, and every creature carries
 // genes for which groups it follows or flees and how much armor it wears.
-// Children mix their genes with a mate's and mutate, so lineages drift and
-// new kinds of creatures appear. The host program and code tabs are Life's.
+// Children take a parent's genes, sometimes mixed with a mate's, and mutate,
+// so lineages drift and new kinds of creatures appear. The host program and
+// code tabs come from swarm.js.
 
 import { CLEAR, PRESENT, RELEASE, swarm } from "./swarm.js";
 
@@ -72,17 +73,17 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
 // The renderer keeps one storage buffer per name, and Life's swarm buffer has
 // another size. update.wgsl calls its buffer creatures, so a visit to Life
 // leaves the population alone.
-const UPDATE = /* wgsl */ `// Lives one step of every creature: it moves along the density slopes its genes
-// follow, eats the group it hunts, is bitten by the group that hunts it, and
-// splits in two once it has enough energy. Each child mixes its genes with a
-// mate's and mutates a little. field.wgsl declares Field the same way, and
-// clear.wgsl and present.wgsl read counts and image as plain u32.
+const UPDATE = /* wgsl */ `// Advances every creature one frame: it moves along the density slopes its genes
+// follow, eats the group it hunts, loses energy to the group that hunts it, and
+// splits in two once it has enough energy. A child takes its parent's genes,
+// sometimes mixed with a mate's, and mutates a little. field.wgsl declares Field
+// the same way, and clear.wgsl and present.wgsl read counts and image as plain u32.
 
 // A creature's place, motion, energy, and genes.
 struct Creature {
   pos: vec2<f32>, // in [0, 1) across the canvas
   vel: vec2<f32>, // in cells per second
-  follow: vec4<f32>, // how it follows (+) or flees (-) each group: its senses
+  follow: vec4<f32>, // how it follows (+) or flees (-) each group
   energy: f32,
   armor: f32, // 0..0.9: blunts bites, and costs energy to carry
   group: u32, // 0..3: hunts group + 1, and group + 3 hunts it
@@ -145,7 +146,7 @@ const SPLIT: f32 = 2.0; // energy at which a creature splits in two
 const LITTER: f32 = 0.45; // share of the energy that each of the two keeps after a split
 const LIFESPAN: f32 = 40.0; // seconds a creature lives at most, give or take a quarter
 const SWITCH: f32 = 0.01; // chance per birth, at full mutation, that a child joins another group
-const ANCESTORS: u32 = 16u; // picks the genes each group starts from, as Life's seed does
+const ANCESTORS: u32 = 16u; // picks the genes each group starts from
 
 // The index of a grid cell, wrapping around the edges.
 fn index(x: i32, y: i32) -> u32 {
@@ -298,7 +299,7 @@ fn cs_main(
   c.pos = fract((pos + c.vel * DT) / size);
 
   // It eats the group after its own and feeds the group before it. Armor blunts
-  // bites but costs upkeep, and running costs energy too.
+  // bites at a cost in upkeep, and running burns energy too.
   let prey = min(here.density[(c.group + 1u) % GROUPS], FULL_MEAL);
   let hunters = here.density[(c.group + GROUPS - 1u) % GROUPS];
   let effort = speed / TOP_SPEED;
@@ -320,6 +321,7 @@ fn cs_main(
     let seed = pcg2d(vec2<u32>(i, params.frame));
     if (atomicCompareExchangeWeak(&slots[seed.x % COUNT], EMPTY, NEWBORN).exchanged) {
       // The creature in another random slot mates with it if it shares its group.
+      // Otherwise the child takes the parent's genes alone.
       var mate = creatures[seed.y % COUNT];
       if (mate.group != c.group || atomicLoad(&slots[seed.y % COUNT]) != ALIVE) {
         mate = c;
@@ -358,7 +360,7 @@ export default {
   id: "evolution",
   title: "Evolution",
   summary:
-    "Creatures eat, die, and split in two. Four groups hunt each other in a circle, and each creature's genes decide which groups it follows or flees and how much armor it wears. Children mix their parents' genes and mutate, so lineages drift. The pointer feeds the creatures under it.",
+    "Creatures eat, die, and split in two. Four groups hunt each other in a circle, and each creature's genes decide which groups it follows or flees and how much armor it wears. Children take a parent's genes, sometimes mixed with a mate's, and mutate, so lineages drift. A moving pointer draws creatures in and feeds them.",
   category: "Compute",
   thumbnail: "/playground/thumbs/evolution.webp",
   chip: { x: 0.82, y: 0.47, zoom: 4 },
