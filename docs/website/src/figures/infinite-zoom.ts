@@ -53,6 +53,49 @@ function silhouette(
   return parts.join("");
 }
 
+/**
+ * Brooks and Matelski's test: the orbit of 0 under z^2 + c settles on a cycle, and the cycle is
+ * stable, its multiplier (the product of 2z around it) smaller than 1.
+ */
+function settles([cr, ci]: Complex): boolean {
+  let [zr, zi] = [0, 0];
+  for (let n = 0; n < 2000; n++) {
+    [zr, zi] = [zr * zr - zi * zi + cr, 2 * zr * zi + ci];
+    if (zr * zr + zi * zi > 4) return false;
+  }
+  const [startR, startI] = [zr, zi];
+  let [mr, mi] = [1, 0];
+  for (let period = 1; period <= 64; period++) {
+    [mr, mi] = [2 * (mr * zr - mi * zi), 2 * (mr * zi + mi * zr)];
+    [zr, zi] = [zr * zr - zi * zi + cr, 2 * zr * zi + ci];
+    if (Math.hypot(zr - startR, zi - startI) < 1e-6) return Math.hypot(mr, mi) < 1;
+  }
+  return false;
+}
+
+// A re-creation of their 1978 printout: one asterisk for every c that passes, on a coarse grid of characters.
+const PRINT = { columns: 71, rows: 23, left: -2, top: 0.88, step: [2.5 / 70, 0.08], x: 40.5, y: 36, advance: 9, line: 16 };
+
+export const printout = {
+  height: PRINT.y + (PRINT.rows - 1) * PRINT.line + 28,
+  // Each run of asterisks is placed on its own, so the columns line up in any monospace font.
+  runs: Array.from({ length: PRINT.rows }, (_, row) => {
+    const ci = PRINT.top - row * PRINT.step[1];
+    const marks = Array.from({ length: PRINT.columns }, (_, column) => settles([PRINT.left + column * PRINT.step[0], ci]));
+    const runs: { x: number; y: number; text: string; width: number }[] = [];
+    let start = -1;
+    marks.concat(false).forEach((mark, column) => {
+      if (mark && start < 0) start = column;
+      if (!mark && start >= 0) {
+        const count = column - start;
+        runs.push({ x: PRINT.x + start * PRINT.advance, y: PRINT.y + row * PRINT.line, text: "*".repeat(count), width: count * PRINT.advance });
+        start = -1;
+      }
+    });
+    return runs;
+  }).flat(),
+};
+
 // Two orbits on the plane, 120 figure units per unit. The circle of radius 2 runs past the top and bottom edges.
 const ORBITS = { origin: [400, 230] as Point, scale: 120 };
 const onPlane = ([re, im]: Complex): Point => [ORBITS.origin[0] + re * ORBITS.scale, ORBITS.origin[1] - im * ORBITS.scale];
