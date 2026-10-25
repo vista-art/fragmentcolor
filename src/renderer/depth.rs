@@ -69,14 +69,18 @@ impl PassDepth<'_> {
         })
     }
 
-    /// How a shader's pipeline uses this attachment.
-    /// A fullscreen shader ignores a scene depth, so a backdrop drawn first hides no model.
-    pub(super) fn pick(&self, fullscreen: bool) -> DepthUse {
-        match self {
-            Self::Off => DepthUse::Off,
-            Self::Target { format, .. } => DepthUse::Test(*format),
-            Self::Scene(_) if fullscreen => DepthUse::Ignore(TextureObject::DEPTH_FORMAT),
-            Self::Scene(_) => DepthUse::Test(TextureObject::DEPTH_FORMAT),
+    /// How a shader's pipeline uses this attachment. In a pass that draws models,
+    /// `ignores` marks a shader that draws none, such as a backdrop or an overlay:
+    /// it draws in order and writes no depth, so it hides no model.
+    pub(super) fn pick(&self, ignores: bool) -> DepthUse {
+        let format = match self {
+            Self::Off => return DepthUse::Off,
+            Self::Target { format, .. } => *format,
+            Self::Scene(_) => TextureObject::DEPTH_FORMAT,
+        };
+        match ignores {
+            true => DepthUse::Ignore(format),
+            false => DepthUse::Test(format),
         }
     }
 }

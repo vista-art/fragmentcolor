@@ -799,7 +799,11 @@ impl RenderContext {
         // a rewind per pass makes every pass read the last pass's uniforms.
         self.buffer_pool.write().reset();
         self.storage_pool.write().reset();
-        self.texture_pool.write().start_render();
+        // Only a render that draws ages the texture pool,
+        // so compute steps between frames don't free a frame's textures.
+        if frame.is_some() {
+            self.texture_pool.write().start_render();
+        }
 
         // Apple's Metal driver does not reliably flush tile-based storage-texture writes between
         // two compute passes recorded in the same command buffer, so a subsequent sampled
@@ -825,7 +829,7 @@ impl RenderContext {
             if pass.is_compute() {
                 self.process_compute_pass(&mut encoder, pass)?
             } else if let Some(frame) = frame.as_deref() {
-                self.process_render_pass(&mut encoder, pass, frame, target.size().into())?
+                self.process_render_pass(&mut encoder, pass, frame)?
             }
         }
 
@@ -1125,8 +1129,9 @@ impl RenderContext {
         encoder: &mut wgpu::CommandEncoder,
         pass: &PassObject,
         frame: &dyn TargetFrame,
-        size: wgpu::Extent3d,
     ) -> Result<(), RendererError> {
+        // The frame's own size, which a resize on another thread can't change mid-render.
+        let size = frame.size();
         // Snapshot per-Model transforms for this Pass into GPU instance
         // buffers BEFORE begin_render_pass — the wgpu::Buffer handles need
         // to outlive the render_pass. Opaque/Mask entries collapse to one
@@ -1241,6 +1246,15 @@ impl RenderContext {
         }
         let mut shader_states: HashMap<usize, ShaderRenderState> = HashMap::new();
 
+        // The shaders that draw this pass's models. In a pass with models,
+        // the other shaders ignore the depth attachment.
+        let model_shaders: Vec<usize> = pass
+            .model_entries
+            .read()
+            .iter()
+            .map(|entry| Arc::as_ptr(&entry.shader) as usize)
+            .collect();
+
         for shader in pass.shaders.read().iter() {
             shader.flush_pending();
             let shader_meshes = shader.meshes.read().clone();
@@ -1258,7 +1272,8 @@ impl RenderContext {
             // we don't hold them across the pipeline build.
             let alpha_mode = *shader.alpha_mode.read();
             let double_sided = *shader.double_sided.read();
-            let depth_use = depth.pick(shader_meshes.is_empty());
+            let model = model_shaders.contains(&(Arc::as_ptr(shader) as usize));
+            let depth_use = depth.pick(!model_shaders.is_empty() && !model);
             let pipeline_key = RenderPipelineKey {
                 shader_hash: shader.hash,
                 color_format,
@@ -2723,6 +2738,7 @@ mod tests {
     struct TestFrame {
         view: wgpu::TextureView,
         format: wgpu::TextureFormat,
+        size: wgpu::Extent3d,
     }
 
     impl TargetFrame for TestFrame {
@@ -2731,6 +2747,9 @@ mod tests {
         }
         fn format(&self) -> wgpu::TextureFormat {
             self.format
+        }
+        fn size(&self) -> wgpu::Extent3d {
+            self.size
         }
         fn present(self: Box<Self>, _queue: &wgpu::Queue) {}
         fn auto_present(&self) -> bool {
@@ -3359,7 +3378,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.1,0.9,0.1,1.0);
         let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
         // Keep texture alive by capturing it in the view's lifetime (wgpu keeps texture alive internally)
         // Explicit binding not necessary here.
-        TestFrame { view, format }
+        TestFrame { view, format, size }
     }
 
     // Story: with padding forced on, a bare f32 uniform still renders the
@@ -3467,7 +3486,7 @@ struct VOut { @builtin(position) pos: vec4<f32> };
         let mut encoder = ctx
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        ctx.process_render_pass(&mut encoder, pass, &frame, size)
+        ctx.process_render_pass(&mut encoder, pass, &frame)
             .expect("render pass failed");
         ctx.queue.submit(Some(encoder.finish()));
         scope.pop().await
@@ -3492,6 +3511,19 @@ struct VOut { @builtin(position) pos: vec4<f32> };
                 assert!(draw(&ctx, &pass, 32).await.is_none(), "invalid pass");
             }
             assert_eq!(pooled_depths(&ctx), [(32, 32)], "the old size left");
+        });
+    }
+
+    // Story: a model pass whose viewport clips to nothing still returns its pooled depth.
+    #[test]
+    fn an_empty_viewport_returns_the_pooled_depth() {
+        pollster::block_on(async move {
+            let (_adapter, device, queue) = create_device_and_queue().await;
+            let ctx = RenderContext::new(device, queue);
+            let pass = model_pass();
+            *pass.viewport.write() = Some(crate::ScreenRegion::new((100, 100), (4, 4)));
+            assert!(draw(&ctx, &pass, 16).await.is_none(), "invalid pass");
+            assert_eq!(pooled_depths(&ctx), [(16, 16)], "the lease went back");
         });
     }
 
@@ -3624,7 +3656,7 @@ struct VOut { @builtin(position) pos: vec4<f32> };
                     .device
                     .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-                let res = ctx.process_render_pass(&mut encoder, &first_pass, &frame, size);
+                let res = ctx.process_render_pass(&mut encoder, &first_pass, &frame);
                 assert!(
                     res.is_ok(),
                     "msaa depth render should succeed: {:?}",
@@ -3819,6 +3851,9 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
             }
             fn format(&self) -> wgpu::TextureFormat {
                 wgpu::TextureFormat::Rgba8Unorm
+            }
+            fn size(&self) -> wgpu::Extent3d {
+                wgpu::Extent3d::default()
             }
             fn present(self: Box<Self>, _queue: &wgpu::Queue) {}
             fn auto_present(&self) -> bool {
@@ -4015,7 +4050,7 @@ fn main() -> @location(0) vec4<f32> {
             let mut encoder = ctx
                 .device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-            let res = ctx.process_render_pass(&mut encoder, &first_pass, &frame, size);
+            let res = ctx.process_render_pass(&mut encoder, &first_pass, &frame);
             assert!(res.is_err());
             let s = format!("{}", res.unwrap_err());
             assert!(s.contains("sample_count"), "unexpected error: {s}");

@@ -133,6 +133,23 @@ fn sampled_binding_reads_resized_texture() {
     });
 }
 
+// Story: resizing a target's texture() handle resizes the target itself.
+#[test]
+fn a_texture_handle_resizes_its_target() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let target = renderer
+            .create_texture_target([8, 8])
+            .await
+            .expect("create_texture_target failed");
+        target.texture().resize([24, 16]).expect("resize failed");
+        let size: [u32; 2] = target.size().into();
+        assert_eq!(size, [24, 16]);
+        let img = target.get_image().await.expect("read back");
+        assert_eq!(img.len(), 24 * 16 * 4);
+    });
+}
+
 // Story: a texture() handle and a clone of the target both follow a resize,
 // so they read the new size and the pixels drawn after it.
 #[test]

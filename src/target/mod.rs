@@ -108,6 +108,9 @@ pub trait Target: FrameSource {
 pub(crate) trait TargetFrame {
     fn view(&self) -> &wgpu::TextureView;
     fn format(&self) -> wgpu::TextureFormat;
+    /// The size of the texture this frame draws into, which can differ from the
+    /// target's `size()` after a resize the target hasn't applied yet.
+    fn size(&self) -> wgpu::Extent3d;
     fn present(self: Box<Self>, queue: &wgpu::Queue);
     fn auto_present(&self) -> bool {
         true

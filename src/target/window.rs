@@ -112,6 +112,10 @@ impl TargetFrame for WindowFrame {
         self.format
     }
 
+    fn size(&self) -> wgpu::Extent3d {
+        self.surface_texture.texture.size()
+    }
+
     fn present(self: Box<Self>, queue: &wgpu::Queue) {
         queue.present(self.surface_texture);
     }

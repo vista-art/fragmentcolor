@@ -11,7 +11,8 @@ Core invariants
 
 Depth
 - `RenderContext::resolve_depth` picks each render pass's depth attachment. A depth target the pass set wins, and its sample count must match the color attachment (`DepthSampleCountMismatch`). Otherwise a pass with Models takes a pooled `Depth32Float` sized and sampled like its color attachment, cleared to 1.0 and discarded at the end. Any other pass draws without depth, in order.
-- In a pass with the pooled depth, a fullscreen shader (no meshes) uses `DepthUse::Ignore`: it passes every fragment and writes no depth, so a backdrop drawn first stays behind the models. Every pipeline in a pass declares the attachment's format, so ignoring depth is a pipeline state, never a missing attachment.
+- In a pass that draws Models, a shader that draws none of them (a fullscreen backdrop, an overlay mesh) uses `DepthUse::Ignore`, with the pooled depth or a depth target the pass set: it passes every fragment and writes no depth, so it draws in order and hides no model. In a pass without Models, an explicit depth target makes every shader test depth. Every pipeline in a pass declares the attachment's format, so ignoring depth is a pipeline state, never a missing attachment.
+- A render pass takes its size from `TargetFrame::size`, never `Target::size`. A resize can land between acquiring the frame and drawing, and every attachment must match the frame.
 - Blend draws test depth and never write it.
 
 Render targets & present
@@ -21,7 +22,7 @@ Render targets & present
 
 MSAA & resolves
 - Use transient MSAA textures from the texture pool and resolve into the target view. Take them with `Lease::take`, which returns the texture to the pool when the lease drops, error paths included.
-- `RenderContext::render` calls `TexturePool::start_render` once, which frees entries no render used for `IDLE_RENDERS` renders, so a target that changed size doesn't keep its old textures.
+- `RenderContext::render` calls `TexturePool::start_render` once when it acquires a frame (compute-only renders don't count), which frees entries no render used for `IDLE_RENDERS` renders, so a target that changed size doesn't keep its old textures.
 - Sample count is negotiated per adapter/format via `pick_sample_count` and cached in `RenderContext`.
 
 Bind groups & alignment

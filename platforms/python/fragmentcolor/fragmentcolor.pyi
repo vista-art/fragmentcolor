@@ -1335,7 +1335,7 @@ class Pass:
 
         The target must be a depth `Texture` (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](https://fragmentcolor.org/api/core/renderer#create_depth_texture). A `TextureTarget` always has a color format, so passing one returns an error. The depth attachment's sample count must match the color attachments'. Mixing 1× and 4× MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
 
-        A pass that draws a `Model` and has no depth target gets a depth buffer from the renderer. It matches the pass's color attachment in size and sample count and clears at the start of the pass. Fullscreen shaders in that pass ignore it, so a backdrop drawn first stays behind the models. Any other pass draws without depth unless you call `set_depth_target`, and later draws win.
+        A pass that draws a `Model` and has no depth target gets a depth buffer from the renderer. It matches the pass's color attachment in size and sample count and clears at the start of the pass. In a pass that draws models, the shaders that draw none, such as a fullscreen backdrop or an overlay, ignore depth and draw in order, with that buffer or a depth target you set. A pass without models draws without depth unless you call `set_depth_target`, and then every shader in it tests depth.
 
         Example:
 
@@ -4581,7 +4581,8 @@ class Texture:
         The pixels start blank at the new size. Asking for the current size keeps the texture as it is.
 
         Only a texture a pass can draw into resizes: one from `create_depth_texture`, the `texture()` of a
-        `TextureTarget`, or a storage texture made with `RENDER_ATTACHMENT` usage. Resizing a target's
+        `TextureTarget`, or a texture made with `RENDER_ATTACHMENT` in its usage by `create_storage_texture`
+        or `create_texture`. A texture made from an image loses that image when it resizes. Resizing a target's
         `texture()` resizes the target. Any other texture returns `TextureError::FixedSize`, and a side of
         zero, or one past the device limit, returns `TextureError::InvalidInput`. Both keep the old size.
 

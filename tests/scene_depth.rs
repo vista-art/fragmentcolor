@@ -1,7 +1,8 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use fragmentcolor::{
-    Camera, Material, Mesh, Model, Pass, Renderer, Scene, Shader, Target, TextureTarget, Vertex,
+    AlphaMode, Camera, Material, Mesh, Model, Pass, Renderer, Scene, Shader, Target, TextureTarget,
+    Vertex,
 };
 
 const SIZE: u32 = 16;
@@ -39,8 +40,8 @@ fn fs_main(v: VOut) -> @location(0) vec4<f32> { return v.color; }
 const RED: [f32; 3] = [1.0, 0.0, 0.0];
 const BLUE: [f32; 3] = [0.0, 0.0, 1.0];
 
-/// A one-meter square facing the camera at depth `z`, glowing in `color`.
-fn glow(color: [f32; 3], z: f32) -> Model {
+/// A one-meter square facing the camera at depth `z`, drawn with `material`.
+fn square(material: Material, z: f32) -> Model {
     let mesh = Mesh::new();
     let corners = [
         [-0.5, -0.5, 0.0],
@@ -53,12 +54,26 @@ fn glow(color: [f32; 3], z: f32) -> Model {
     mesh.add_vertices(
         corners.map(|corner| Vertex::pbr(corner).set(Vertex::NORMAL, [0.0, 0.0, 1.0])),
     );
-    let material = Material::pbr()
-        .base_color([0.0, 0.0, 0.0, 1.0])
-        .emissive(color);
     let model = Model::new(mesh, material);
     model.translate([0.0, 0.0, z]);
     model
+}
+
+/// A square at depth `z` glowing in `color`.
+fn glow(color: [f32; 3], z: f32) -> Model {
+    let material = Material::pbr()
+        .base_color([0.0, 0.0, 0.0, 1.0])
+        .emissive(color);
+    square(material, z)
+}
+
+/// A square at depth `z` of half-clear glass glowing in `color`.
+fn glass(color: [f32; 3], z: f32) -> Model {
+    let material = Material::pbr()
+        .base_color([0.0, 0.0, 0.0, 0.5])
+        .emissive(color)
+        .alpha_mode(AlphaMode::Blend);
+    square(material, z)
 }
 
 fn camera() -> Camera {
@@ -202,6 +217,82 @@ fn an_explicit_depth_target_still_works() {
         assert!(
             red > 200 && blue < 50,
             "the depth target didn't sort: {red}, {blue}"
+        );
+    });
+}
+
+// Story: a shader in a model pass that draws no model, such as an overlay,
+// ignores the depth buffer and draws in order, so one added after the models covers them.
+#[test]
+fn an_overlay_in_a_model_pass_draws_in_order() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let pass = Pass::new("world");
+        pass.add(&glow(RED, 0.0)).expect("add failed");
+        pass.add(&camera()).expect("add failed");
+        let overlay = Shader::new(PAINT).expect("Shader::new failed");
+        let mesh = Mesh::new();
+        let cover = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+        mesh.add_vertices(
+            cover.map(|[x, y]| Vertex::new([x, y, 0.99]).set("color", [0.0, 0.0, 1.0, 1.0])),
+        );
+        overlay.add_mesh(&mesh).expect("mesh is compatible");
+        pass.add_shader(&overlay);
+        let frame = target(&renderer, SIZE).await;
+        renderer.render(&pass, &frame).expect("render failed");
+        let image = frame.get_image().await.expect("read back");
+        let [red, _, blue, _] = pixel(&image, SIZE, SIZE / 2, SIZE / 2);
+        assert!(
+            blue > 200 && red < 50,
+            "the overlay tested depth: {red}, {blue}"
+        );
+    });
+}
+
+// Story: with a depth target of its own, a model pass still keeps its backdrop
+// behind the models.
+#[test]
+fn a_backdrop_stays_behind_the_models_with_a_depth_target() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let backdrop = Shader::new(BACKDROP).expect("Shader::new failed");
+        let pass = Pass::from_shader("world", &backdrop);
+        pass.add(&glow(RED, 0.0)).expect("add failed");
+        pass.add(&camera()).expect("add failed");
+        let depth = renderer
+            .create_depth_texture([SIZE, SIZE])
+            .await
+            .expect("create_depth_texture failed");
+        pass.set_depth_target(&depth)
+            .expect("set_depth_target failed");
+        let frame = target(&renderer, SIZE).await;
+        renderer.render(&pass, &frame).expect("render failed");
+        let image = frame.get_image().await.expect("read back");
+        let [red, green, _, _] = pixel(&image, SIZE, SIZE / 2, SIZE / 2);
+        assert!(
+            red > 200 && green < 50,
+            "the backdrop hid the model: {red}, {green}"
+        );
+    });
+}
+
+// Story: blended models test depth without writing it, so glass behind an
+// opaque model stays hidden.
+#[test]
+fn glass_behind_an_opaque_model_stays_hidden() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let scene = Scene::new();
+        scene.add(&glow(RED, 0.0)).expect("add failed");
+        scene.add(&glass(BLUE, -2.0)).expect("add failed");
+        scene.add(&camera()).expect("add failed");
+        let frame = target(&renderer, SIZE).await;
+        renderer.render(&scene, &frame).expect("render failed");
+        let image = frame.get_image().await.expect("read back");
+        let [red, _, blue, _] = pixel(&image, SIZE, SIZE / 2, SIZE / 2);
+        assert!(
+            red > 200 && blue < 50,
+            "the glass drew over the near model: {red}, {blue}"
         );
     });
 }

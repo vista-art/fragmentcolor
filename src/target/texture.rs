@@ -40,7 +40,8 @@ impl crate::target::FrameSource for TextureTarget {
         let texture = self.registration.object();
         let view = texture.create_view();
         let format = texture.format();
-        Ok(Box::new(TextureFrame { view, format }))
+        let size = texture.size;
+        Ok(Box::new(TextureFrame { view, format, size }))
     }
 }
 
@@ -94,6 +95,7 @@ fn swap_bgra_to_rgba(pixels: &mut [u8], format: wgpu::TextureFormat) {
 struct TextureFrame {
     view: wgpu::TextureView,
     format: wgpu::TextureFormat,
+    size: wgpu::Extent3d,
 }
 
 impl TargetFrame for TextureFrame {
@@ -103,6 +105,10 @@ impl TargetFrame for TextureFrame {
 
     fn format(&self) -> wgpu::TextureFormat {
         self.format
+    }
+
+    fn size(&self) -> wgpu::Extent3d {
+        self.size
     }
 
     fn present(self: Box<Self>, _queue: &wgpu::Queue) {
