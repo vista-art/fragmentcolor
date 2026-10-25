@@ -274,7 +274,8 @@ fun refine(target: Point, bits: Int): Pair<BigInteger, BigInteger> {
 fun steer(state: State, time: Float, size: List<Float>, pointer: List<Float>): Double {
     // A clock that starts over forgets the pointer.
     if (state.last != null && time < state.last!!) state.moved = Float.NEGATIVE_INFINITY
-    val delta = state.last?.let { min(max(time - it, 0f), 0.1f).toDouble() } ?: 0.0
+    // The first frame counts the whole clock, so a frame drawn at time t shows the dive at t.
+    val delta = state.last?.let { min(max(time - it, 0f), 0.1f).toDouble() } ?: time.toDouble()
     state.last = time
     val deepest = DEPTH * log2(10.0) + log2(START)
     if (state.pointer != null && state.pointer != pointer) state.moved = time

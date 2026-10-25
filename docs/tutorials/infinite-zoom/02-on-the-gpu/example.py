@@ -157,7 +157,8 @@ def steer(state, time, size, pointer):
     # A clock that starts over forgets the pointer.
     if state.last is not None and time < state.last:
         state.moved = -math.inf
-    delta = 0.0 if state.last is None else min(max(time - state.last, 0.0), 0.1)
+    # The first frame counts the whole clock, so a frame drawn at time t shows the dive at t.
+    delta = time if state.last is None else min(max(time - state.last, 0.0), 0.1)
     state.last = time
     deepest = DEPTH * math.log2(10) + math.log2(START)
     if state.pointer is not None and list(pointer) != state.pointer:
