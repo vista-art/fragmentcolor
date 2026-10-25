@@ -429,6 +429,13 @@ impl Texture {
         Ok(())
     }
 
+    #[pyo3(name = "resize")]
+    #[lsp_doc("docs/api/texture/texture/resize.md")]
+    pub fn resize_py(&self, size: crate::PySize) -> pyo3::PyResult<()> {
+        self.resize(crate::Size::try_from(size)?)?;
+        Ok(())
+    }
+
     /// Read back mip 0 as a uint8 ndarray shaped (height, width, bytes per pixel),
     /// with a leading layer axis for array textures. The bytes keep the native
     /// format, so a float texture reads as floats through `image.view(numpy.float32)`.

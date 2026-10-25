@@ -4233,6 +4233,11 @@ public protocol TextureProtocol: AnyObject, Sendable {
     func id()  -> TextureId
     
     /**
+     * Recreates the texture at `size`. Its pixels start blank.
+     */
+    func resize(size: Size) throws 
+    
+    /**
      * Update the texture sampler options (filtering, wrapping, optional
      * depth-compare). Mirrors the Web `setSamplerOptions` and Python
      * `set_sampler_options` entry points; foreign bindings see this
@@ -4363,6 +4368,18 @@ open func id() -> TextureId  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Recreates the texture at `size`. Its pixels start blank.
+     */
+open func resize(size: Size)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_texture_resize(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeSize_lower(size),uniffiCallStatus
+    )
+}
 }
     
     /**
@@ -9338,6 +9355,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_texture_id() != 15416) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_texture_resize() != 42509) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_texture_setsampleroptions() != 62541) {

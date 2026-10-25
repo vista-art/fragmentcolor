@@ -45,6 +45,11 @@ fun Texture.writeRegion(bytes: List<Int>, region: ScreenRegion) {
     writeRegion(byteArray(bytes, "writeRegion"), region)
 }
 
+/** Resize the texture from a `[width, height]` list. */
+fun Texture.resize(size: List<UInt>) {
+    resize(sizeRecord(size, "resize"))
+}
+
 // ── Targets ──────────────────────────────────────────────────────────────────
 
 /** Resize the target to [size], such as another target's `size()`. */

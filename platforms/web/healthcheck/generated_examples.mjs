@@ -164,6 +164,7 @@ const EXAMPLES = [
   '../examples/texture/texture/aspect.js',
   '../examples/texture/texture/get_image.js',
   '../examples/texture/texture/id.js',
+  '../examples/texture/texture/resize.js',
   '../examples/texture/texture/set_sampler_options.js',
   '../examples/texture/texture/size.js',
   '../examples/texture/texture/write.js',

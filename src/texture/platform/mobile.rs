@@ -76,6 +76,13 @@ impl Texture {
             .map_err(FragmentColorError::from)
     }
 
+    /// Recreates the texture at `size`. Its pixels start blank.
+    #[uniffi::method(name = "resize")]
+    #[lsp_doc("docs/api/texture/texture/resize.md")]
+    pub fn resize_mobile(&self, size: Size) -> Result<(), FragmentColorError> {
+        self.resize(size).map_err(FragmentColorError::from)
+    }
+
     /// Read back the mip-0 contents of this texture as tightly-packed bytes
     /// in the texture's native format. Uniffi exposes this as a Swift
     /// `suspend fun` / Kotlin `suspend fun` automatically. Foreign callers

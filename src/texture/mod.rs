@@ -656,6 +656,11 @@ impl Texture {
     pub async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
         read::get_image(self).await
     }
+
+    #[lsp_doc("docs/api/texture/texture/resize.md")]
+    pub fn resize(&self, size: impl Into<Size>) -> Result<(), TextureError> {
+        resize::resize(&self.context, &self.registration, size.into())
+    }
 }
 
 // Metadata for textures parsed from shader source; users do not construct directly.

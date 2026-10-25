@@ -4571,6 +4571,32 @@ class Texture:
         texture.write_region(bytes_data, {"x": 0, "y": 0, "width": 64, "height": 32, "bytes_per_row": 256, "rows_per_image": 32})
         ```
         """
+    def resize(self, size: _PySize) -> None:
+        """
+        Gives the texture a new size, with the same format, usage and sample count.
+        Every clone of the handle follows, and so do the passes and shaders that hold it,
+        so a depth texture or an offscreen image can follow a window without being created again.
+        The pixels start blank at the new size. Asking for the current size keeps the texture as it is.
+
+        Only a texture a pass can draw into resizes: one from `create_depth_texture`, the `texture()` of a
+        `TextureTarget`, or a storage texture made with `RENDER_ATTACHMENT` usage. Resizing a target's
+        `texture()` resizes the target. Any other texture returns `TextureError::FixedSize`, and a side of
+        zero, or one past the device limit, returns `TextureError::InvalidInput`. Both keep the old size.
+
+        Example:
+
+        ```python
+        from fragmentcolor import Pass, Renderer
+
+        renderer = Renderer()
+        depth = renderer.create_depth_texture([800, 600])
+        rpass = Pass("scene")
+        rpass.set_depth_target(depth)
+
+        # The window grew. The pass keeps the same depth texture at the new size.
+        depth.resize([1024, 768])
+        ```
+        """
     def get_image(self) -> npt.NDArray[numpy.uint8]:
         """
         Read back the mip-0 contents of this texture as tightly-packed bytes in the texture's native format.

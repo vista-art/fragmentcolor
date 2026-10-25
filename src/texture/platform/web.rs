@@ -138,6 +138,17 @@ impl Texture {
         Ok(())
     }
 
+    #[wasm_bindgen(js_name = "resize")]
+    #[lsp_doc("docs/api/texture/texture/resize.md")]
+    pub fn resize_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number> | Size")] size: &JsValue,
+    ) -> Result<(), JsError> {
+        let size: Size = size.try_into()?;
+        self.resize(size)?;
+        Ok(())
+    }
+
     #[wasm_bindgen(js_name = "getImage")]
     #[lsp_doc("docs/api/texture/texture/get_image.md")]
     pub async fn get_image_js(&self) -> Result<js_sys::Uint8Array, JsError> {

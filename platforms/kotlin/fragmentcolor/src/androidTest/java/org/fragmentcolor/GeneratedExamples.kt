@@ -1735,6 +1735,17 @@ class GeneratedExamples : ExampleCase() {
     }
 
     @Test
+    fun texture_texture_resize() = example("docs/api/texture/texture/resize.md") {
+        val renderer = Renderer()
+        val depth = renderer.createDepthTexture(listOf(800u, 600u))
+        val pass = Pass("scene")
+        pass.setDepthTarget(depth)
+
+        // The window grew. The pass keeps the same depth texture at the new size.
+        depth.resize(listOf(1024u, 768u))
+    }
+
+    @Test
     fun texture_texture_set_sampler_options() = example("docs/api/texture/texture/set_sampler_options.md") {
         val renderer = Renderer()
         // 1x1 RGBA (white) raw pixel bytes

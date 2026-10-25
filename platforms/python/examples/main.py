@@ -188,6 +188,7 @@ def run_all():
         ('texture/texture/aspect.py', 'docs/api/texture/texture/aspect.md'),
         ('texture/texture/get_image.py', 'docs/api/texture/texture/get_image.md'),
         ('texture/texture/id.py', 'docs/api/texture/texture/id.md'),
+        ('texture/texture/resize.py', 'docs/api/texture/texture/resize.md'),
         ('texture/texture/set_sampler_options.py', 'docs/api/texture/texture/set_sampler_options.md'),
         ('texture/texture/size.py', 'docs/api/texture/texture/size.md'),
         ('texture/texture/write.py', 'docs/api/texture/texture/write.md'),

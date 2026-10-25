@@ -86,6 +86,18 @@ extension Texture {
         setSamplerOptions(opts: opts)
     }
 
+    // MARK: - resize convenience
+
+    /// Resize the texture from a `[width, height]` array. Throws for any other length.
+    public func resize(_ size: [UInt32]) throws {
+        try resize(size: try sizeRecord(size, "resize"))
+    }
+
+    /// Resize the texture to `size`, such as a target's `size()`.
+    public func resize(_ size: Size) throws {
+        try resize(size: size)
+    }
+
     // MARK: - id convenience
 
     /// Return the raw UInt64 numeric id (convenience over `.id().id`).

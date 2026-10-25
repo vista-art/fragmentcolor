@@ -916,3 +916,123 @@ lang="kotlin"
 </TabItem>
 
 </Tabs>
+
+
+---
+
+### Texture::resize(size) \{#resize\}
+
+Gives the texture a new size, with the same format, usage and sample count.
+Every clone of the handle follows, and so do the passes and shaders that hold it,
+so a depth texture or an offscreen image can follow a window without being created again.
+The pixels start blank at the new size. Asking for the current size keeps the texture as it is.
+
+Only a texture a pass can draw into resizes: one from `create_depth_texture`, the `texture()` of a
+`TextureTarget`, or a storage texture made with `RENDER_ATTACHMENT` usage. Resizing a target's
+`texture()` resizes the target. Any other texture returns `TextureError::FixedSize`, and a side of
+zero, or one past the device limit, returns `TextureError::InvalidInput`. Both keep the old size.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Pass, Renderer};
+
+let renderer = Renderer::new();
+let depth = renderer.create_depth_texture([800, 600]).await?;
+let pass = Pass::new("scene");
+pass.set_depth_target(&depth)?;
+
+// The window grew. The pass keeps the same depth texture at the new size.
+depth.resize([1024, 768])?;
+
+let size: [u32; 2] = depth.size().into();
+assert_eq!(size, [1024, 768]);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 12-16}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Pass, Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+const depth = await renderer.createDepthTexture([800, 600]);
+const pass = new Pass("scene");
+pass.setDepthTarget(depth);
+
+// The window grew. The pass keeps the same depth texture at the new size.
+depth.resize([1024, 768]);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Pass, Renderer
+
+renderer = Renderer()
+depth = renderer.create_depth_texture([800, 600])
+rpass = Pass("scene")
+rpass.set_depth_target(depth)
+
+# The window grew. The pass keeps the same depth texture at the new size.
+depth.resize([1024, 768])
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+let depth = try await renderer.createDepthTexture([800, 600])
+let pass = Pass("scene")
+try pass.setDepthTarget(depth)
+
+// The window grew. The pass keeps the same depth texture at the new size.
+try depth.resize([1024, 768])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val depth = renderer.createDepthTexture(listOf(800u, 600u))
+val pass = Pass("scene")
+pass.setDepthTarget(depth)
+
+// The window grew. The pass keeps the same depth texture at the new size.
+depth.resize(listOf(1024u, 768u))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>

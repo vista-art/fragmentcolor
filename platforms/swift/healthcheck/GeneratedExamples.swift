@@ -1728,7 +1728,7 @@ final class GeneratedExamples: ExampleCase {
             let renderer = Renderer()
             let target = try await renderer.createTextureTarget([64, 32])
 
-            target.resize([128, 64])
+            try target.resize([128, 64])
         }
     }
 
@@ -1770,7 +1770,7 @@ final class GeneratedExamples: ExampleCase {
             let renderer = Renderer()
             let target = try await renderer.createTextureTarget([64, 64])
 
-            target.resize([128, 32])
+            try target.resize([128, 32])
         }
     }
 
@@ -1845,7 +1845,7 @@ final class GeneratedExamples: ExampleCase {
             let renderer = Renderer()
             let target = try await renderer.createTarget(canvas)
 
-            target.resize([1024, 768])
+            try target.resize([1024, 768])
         }
     }
 
@@ -1992,6 +1992,18 @@ final class GeneratedExamples: ExampleCase {
             let renderer = Renderer()
             let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.rgba)
             let id = texture.id()
+        }
+    }
+
+    func test_texture_texture_resize() async {
+        await example("docs/api/texture/texture/resize.md") {
+            let renderer = Renderer()
+            let depth = try await renderer.createDepthTexture([800, 600])
+            let pass = Pass("scene")
+            try pass.setDepthTarget(depth)
+
+            // The window grew. The pass keeps the same depth texture at the new size.
+            try depth.resize([1024, 768])
         }
     }
 
