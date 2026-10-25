@@ -185,7 +185,8 @@ const STYLE = `
 .fcp-picker-card:hover {
   border-color: var(--fcp-picker-muted);
 }
-.fcp-picker-card[aria-pressed="true"] {
+.fcp-picker-card[aria-pressed="true"],
+.fcp-picker-card[aria-current="true"] {
   border-color: var(--fcp-picker-accent);
   background: var(--fcp-picker-accent-low);
   box-shadow: inset 0 0 0 1px var(--fcp-picker-accent);
@@ -224,6 +225,7 @@ const STYLE = `
   border-style: dashed;
 }
 .fcp-picker-card[aria-pressed="true"] .fcp-picker-thumb::after,
+.fcp-picker-card[aria-current="true"] .fcp-picker-thumb::after,
 .fcp-picker-card[data-clash] .fcp-picker-thumb::after {
   content: "";
   position: absolute;
@@ -249,6 +251,31 @@ const STYLE = `
 .fcp-picker-prefix {
   display: block;
   color: var(--fcp-picker-muted);
+}
+.fcp-picker-title {
+  display: block;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  color: var(--fcp-picker-strong);
+}
+.fcp-picker-title .fcp-picker-prefix {
+  font-size: 0.6875rem;
+}
+/* The demo picker drops down from its button and fits the room below it.
+   Its cards show wide thumbnails over the demo titles. */
+.fcp-picker.fcp-demo-picker {
+  top: calc(100% + 4px);
+  left: 0;
+  right: auto;
+  margin: 0;
+  width: min(var(--fcp-picker-width, 46rem), var(--fcp-picker-room-x, 100vw));
+  max-height: min(36rem, var(--fcp-picker-room-y, 78vh));
+}
+.fcp-demo-picker .fcp-picker-grid {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+.fcp-demo-picker .fcp-picker-thumb {
+  aspect-ratio: 16 / 10;
 }
 .fcp-picker-chip:focus-visible,
 .fcp-picker-card:focus-visible,
@@ -277,6 +304,9 @@ const STYLE = `
   }
   .fcp-picker-grid {
     grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  }
+  .fcp-demo-picker .fcp-picker-grid {
+    grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
   }
 }
 @media (prefers-reduced-motion: reduce) {
