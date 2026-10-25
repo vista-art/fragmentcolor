@@ -1,8 +1,8 @@
 # WindowTarget::get_image()
 
-Returns an error for a [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget): a frame on screen can't be read back. JavaScript throws an `Error`, and Python, Swift and Kotlin throw a `FragmentColorError`.
+Returns an error for a [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget): a frame on screen can't be read back. JavaScript throws an `Error`, Python and Swift throw a `FragmentColorError`, and Kotlin throws a `FragmentColorException`.
 
-To read the pixels of a frame, draw it into a [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) of the same size and call `get_image` there, as the example does.
+To read the pixels of a frame, draw it into a [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) and call `get_image` there, as the example does.
 
 ## Example
 

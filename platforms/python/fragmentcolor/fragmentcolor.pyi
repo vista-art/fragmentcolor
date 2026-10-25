@@ -4839,7 +4839,7 @@ class TextureTarget:
 
         Python returns a NumPy array of shape `(height, width, 4)`, indexed `image[y, x]`. That is the layout `Renderer.create_texture` reads, so `renderer.create_texture(target.get_image())` uploads the same image.
 
-        A readback that fails or times out returns an error, a thrown `Error` in JavaScript and a `FragmentColorError` in Python, Swift and Kotlin.
+        A readback that fails or times out returns an error: a thrown `Error` in JavaScript, a `FragmentColorError` in Python and Swift, and a `FragmentColorException` in Kotlin.
 
         Example:
 
@@ -4949,9 +4949,9 @@ class WindowTarget:
         """
     def get_image(self) -> npt.NDArray[numpy.uint8]:
         """
-        Returns an error for a [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget): a frame on screen can't be read back. JavaScript throws an `Error`, and Python, Swift and Kotlin throw a `FragmentColorError`.
+        Returns an error for a [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget): a frame on screen can't be read back. JavaScript throws an `Error`, Python and Swift throw a `FragmentColorError`, and Kotlin throws a `FragmentColorException`.
 
-        To read the pixels of a frame, draw it into a [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) of the same size and call `get_image` there, as the example does.
+        To read the pixels of a frame, draw it into a [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) and call `get_image` there, as the example does.
 
         Example:
 
