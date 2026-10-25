@@ -499,13 +499,14 @@ A wgpu major that brings video without a copy can ride along. 0.14 does not wait
 
 ## Reference scenes
 
-Real content tests the layers harder than synthetic cases. Three milestones tie this goal to the releases that ship what they need.
+Real content tests the layers harder than synthetic cases. Four milestones tie this goal to the releases that ship what they need.
 
 | Milestone | Release | What it proves |
 | --- | --- | --- |
 | M1. The Mario walk-through on libsm64 | 0.13.x | `write_vertices`, `export_triangles`, custom WGSL, and a host that owns the clock |
 | M2. A pbrt-v4 subset, rasterized | 0.14, as its acceptance test | Light and surfaces |
 | M3. A compute path tracer that matches pbrt's reference images | Any time after 0.13.0 | `Buffer`, runtime-sized arrays, `submit` and float textures carry a full renderer with no new core API |
+| M4. Bruno Simon's Three.js portfolio, reproduced | 0.13.x | What a complete interactive Three.js scene needs that FragmentColor lacks |
 
 Two rules hold throughout. No scene file, reference image, ROM or game asset enters the repository, a release, CI artifacts or the website: tests read a local checkout of `mmp/pbrt-v4-scenes` at a pinned commit, named by `FC_PBRT_SCENES`, or a cached sparse checkout on the snapshot track's macOS CI step, and skip when neither exists. Loaders, harnesses and renderers built for the goal are integrations or examples, native Rust first, outside the five-language rule, and every FC call they need ships in all five languages.
 
@@ -542,6 +543,14 @@ First set: `bmw-m6` and `contemporary-bathroom`, then `pbrt-book`, `killeroos`, 
 - [ ] Later: hardware ray queries, native only, inside the integration through host interop (Open decisions), and volumes, hair and subsurface scattering
 
 **Test.** At `maxdepth 1` the tracer matches M2's references, which checks rasterizer against tracer. At full depth, the relative mean squared error against the shipped EXR, after a fixed sample count and a 4x downsample, stays under a per-scene bound.
+
+### M4. A Three.js portfolio, reproduced (0.13.x)
+
+Bruno Simon's portfolio is a driveable 3D scene built on Three.js, with its code, music and models published under the MIT license. Rebuilding it one to one with FragmentColor measures the distance to Three.js on a real project. Three.js is higher level and runs only on the web, so the goal is a list of what FragmentColor should offer for 3D work in every language, not a copy of Three.js's API.
+
+- [ ] Confirm the license of the version to port, models and music included
+- [ ] `examples/folio`, desktop Rust first, reading the assets from a local checkout under the rule above
+- [ ] A gap list kept beside the port: each Three.js feature it needs that FragmentColor lacks, such as loaders, materials, physics hooks, audio, post-processing and input, with a ROADMAP item or a reason it stays out
 
 ### Licensing
 
@@ -910,6 +919,17 @@ Higher-level 3D features build on the 3D layer in the main crate and follow the 
 - [ ] A `Sprite` handle or a 2D camera, on request
 - [ ] A storage to uniform rewrite on WebGL2, only if data textures fall short
 - [ ] Blending two libsm64 ticks on the GPU, from two vertex streams and a uniform `t`, if the harness's CPU blend falls short
+- [ ] The walkable world playground demo loads its trees and props from glTF models, as a showcase of the loader
+
+## Later: ready-made parts
+
+Shaders compose from slugs today, as in `Shader::new("sdf/circle")`. Meshes, materials and models could come by name the same way, so a project, or an agent writing one, asks for a part instead of spelling out its geometry and shading. One call in place of a page of vertices saves tokens, and the program stays short enough to read. The M4 port shows which parts pay off first.
+
+- [ ] Meshes by name, such as `Mesh::new("cube")`, with parameters for size and detail. `Mesh::new()` takes no argument today, so the call shape is decided when the work starts
+- [ ] Procedural materials by name, such as `Material::new("metal")`, `"wood"` and `"water"`, built from registry WGSL and tuned through `set`
+- [ ] Models by name, such as `Model::new("robot")`, assembled from parts that can be configured, and characters with names of their own, such as `Model::new("john_doe")`
+- [ ] Prefabs that combine meshes, materials and shaders into one reusable piece, composable the way registry shaders are
+- [ ] A study of what makes a 3D library easy for agents to drive: the calls and defaults that save the most tokens and still leave full control
 
 ## Backlog
 
