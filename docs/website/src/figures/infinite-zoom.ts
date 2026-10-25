@@ -1,4 +1,4 @@
-// Geometry for the Infinite zoom figures, computed from the same formulas as the steps.
+// Geometry for the Infinite Mandelbrot zoom figures, computed from the same formulas as the steps.
 
 type Point = [number, number];
 type Complex = [number, number];

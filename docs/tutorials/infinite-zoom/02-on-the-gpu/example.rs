@@ -1,4 +1,4 @@
-//! Infinite zoom, step 2: the same loop on the GPU.
+//! Infinite Mandelbrot zoom, step 2: the same loop on the GPU.
 //!
 //! A fragment shader runs the escape-time loop for every pixel in parallel, in
 //! f32. The view zooms toward a spiral in Seahorse Valley and back out, and the

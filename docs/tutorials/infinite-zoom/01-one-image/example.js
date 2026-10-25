@@ -1,4 +1,4 @@
-// Infinite zoom, step 1: one image on the CPU.
+// Infinite Mandelbrot zoom, step 1: one image on the CPU.
 //
 // Runs the escape-time loop for every pixel of a 1200 by 800 image and draws it
 // into a 2D canvas. Load it as a module on a page with a <canvas>. No GPU yet:

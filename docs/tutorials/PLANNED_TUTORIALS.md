@@ -22,7 +22,7 @@ order and the rough ideas. A tutorial moves out of here when it ships.
 | 10 | Hello, million triangles! | | Written; student, technical and prose reviews passed |
 | 20 | Drawing with distance | Shapes | Written; student, technical and prose reviews passed |
 | 70 | Eight million particles | | Written; student, technical and prose reviews passed |
-| 90 | Infinite zoom | Mandelbrot (new) | Written; reviews passed |
+| 90 | Infinite Mandelbrot zoom | Mandelbrot (new) | Written; reviews passed |
 
 A fourth tutorial joins the launch only if it says something essential that the
 other three leave out.
@@ -59,7 +59,7 @@ other three leave out.
 
 ### Part 4: past the precision wall
 
-- **90. Infinite zoom.** Written as `tutorials/infinite-zoom`, ending at the Mandelbrot
+- **90. Infinite Mandelbrot zoom.** Written as `tutorials/infinite-zoom`, ending at the Mandelbrot
   demo: one CPU image, the loop in a fragment shader until `f32` rounding breaks it,
   K. I. Martin's perturbation with a `BigInt` reference orbit and rebasing, then
   rescaled iterations, Martin's series and a compute pass down to `1e-1000`.

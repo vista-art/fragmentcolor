@@ -1,4 +1,4 @@
-// Infinite zoom, step 4: past every exponent.
+// Infinite Mandelbrot zoom, step 4: past every exponent.
 //
 // A compute pass iterates every pixel as a small f32 difference from one
 // reference orbit, which the host computes once with BigInteger. The shader

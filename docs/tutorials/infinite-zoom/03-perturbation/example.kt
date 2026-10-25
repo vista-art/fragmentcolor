@@ -1,4 +1,4 @@
-// Infinite zoom, step 3: perturbation.
+// Infinite Mandelbrot zoom, step 3: perturbation.
 //
 // One reference orbit, computed once with BigInteger at the precision the
 // deepest view needs, sits in a storage buffer. Each pixel iterates only its
