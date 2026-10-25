@@ -16,6 +16,9 @@ import LangSelector from "../../../components/LangSelector.astro";
 import MultiCode from "../../../components/MultiCode.astro";
 import ColorTriangle from "../../../components/ColorTriangle.astro";
 import Lock from "../../../components/Lock.astro";
+import Figure from "../../../components/Figure.astro";
+import { Arrow, Dot, Label, Line, Path, Rect } from "../../../components/figure";
+import { disk, fullscreen, gradient, instances, ndc, passes, raster } from "../../../figures/01-hello-triangle";
 
 <LangSelector />
 
@@ -55,6 +58,18 @@ The `canvas` is whatever your platform draws into: a `<canvas>` element on the w
 
 Now, what do we draw? A **`Shader`**: a small program that runs on the GPU, the graphics chip in your computer or phone. Drawing takes two stages. The **vertex** stage runs once per corner of a shape and decides where that corner lands on the screen. Every pixel inside the shape then gets one run of the **fragment** stage, which picks its color. FragmentColor takes its name from that second stage.
 
+<Figure height={340} alt={`A triangle over a canvas 18 pixels wide and 11 tall. Its three corners are dots, marked as the three runs of vs_main. Every pixel shows its center as a dot. The ${raster.runs} pixels whose centers lie inside it are shaded, marked as the ${raster.runs} runs of fs_main, and some of them reach past its edges.`} caption="The vertex stage runs at each corner. The fragment stage runs once for every pixel whose center lies inside the shape.">
+  <Path d={raster.covered} tone="inside" fill />
+  <Path d={raster.outside} tone="muted" />
+  <Path d={raster.outline} />
+  <Path d={raster.inside} />
+  {raster.corners.map((corner) => <Dot at={corner} tone="accent" r={6} />)}
+  <Arrow from={[560, 280]} to={[raster.corners[1][0] + 10, raster.corners[1][1] + 4]} label="vs_main" labelAt="start" tone="accent" code />
+  <Label at={[572, 312]} anchor="start" tone="accent" small>3 runs</Label>
+  <Arrow from={[560, 110]} to={[raster.sample[0] + 4, raster.sample[1] - 2]} label="fs_main" labelAt="start" tone="inside" code />
+  <Label at={[572, 136]} anchor="start" tone="inside" small>{`${raster.runs} runs`}</Label>
+</Figure>
+
 We write shaders in WGSL, the shading language of WebGPU. Here's ours:
 
 <Snippet file="01-hello-triangle/01-three-lines/example.rs" region="shader" />
@@ -73,6 +88,26 @@ The shader, from the top:
 - `vs_main` is the vertex stage. A shader with no geometry attached draws three vertices, so `vs_main` runs three times. Its argument `i`, marked `@builtin(vertex_index)`, tells each run which corner to compute. The corners are in **normalized device coordinates**: `x` goes from -1 on the left edge to 1 on the right, `y` from -1 at the bottom to 1 at the top, whatever the target's size in pixels.
 - `VOut` carries the result in `pos`, the field marked `@builtin(position)`. After `x` and `y` come a depth for sorting overlapping shapes and a divisor for perspective. A flat drawing leaves them at `0.0` and `1.0`.
 - `fs_main`, the fragment stage, returns `color` for every pixel the triangle covers. `@location(0)` on its result sends that color to the target.
+
+<Figure height={375} alt="A square of normalized device coordinates, from -1 to 1 along x and along y, with the origin in the middle. The triangle's corners sit at (-0.7, -0.404) for i = 0, (0.7, -0.404) for i = 1 and (0, 0.808) for i = 2." caption="The corners `vs_main` returns, in normalized device coordinates. The square stretches to fill the target.">
+  <Rect at={[ndc.low[0], ndc.high[1]]} size={[ndc.high[0] - ndc.low[0], ndc.low[1] - ndc.high[1]]} tone="muted" />
+  <Line from={ndc.axis.left} to={ndc.origin} tone="muted" dashed />
+  <Line from={ndc.axis.down} to={ndc.origin} tone="muted" dashed />
+  <Arrow from={ndc.origin} to={ndc.axis.right} label="x" labelAt="end" tone="accent" />
+  <Arrow from={ndc.origin} to={ndc.axis.up} label="y" labelAt="end" tone="accent" />
+  <Label at={[ndc.high[0] + 8, ndc.origin[1] + 16]} anchor="start" tone="muted" code small>1</Label>
+  <Label at={[ndc.low[0] - 8, ndc.origin[1] + 16]} anchor="end" tone="muted" code small>-1</Label>
+  <Label at={[ndc.origin[0] - 10, ndc.high[1] + 14]} anchor="end" tone="muted" code small>1</Label>
+  <Label at={[ndc.origin[0] - 10, ndc.low[1] - 14]} anchor="end" tone="muted" code small>-1</Label>
+  <Path d={ndc.outline} tone="inside" fill />
+  {ndc.corners.map((corner) => <Dot at={corner} />)}
+  <Label at={[ndc.low[0] - 10, ndc.corners[0][1]]} anchor="end" code>{ndc.labels[0]}</Label>
+  <Label at={[ndc.low[0] - 10, ndc.corners[0][1] + 26]} anchor="end" tone="muted" code small>i = 0</Label>
+  <Label at={[ndc.high[0] + 10, ndc.corners[1][1]]} anchor="start" code>{ndc.labels[1]}</Label>
+  <Label at={[ndc.high[0] + 10, ndc.corners[1][1] + 26]} anchor="start" tone="muted" code small>i = 1</Label>
+  <Label at={[ndc.corners[2][0] + 14, ndc.corners[2][1] - 8]} anchor="start" code>{ndc.labels[2]}</Label>
+  <Label at={[ndc.corners[2][0] + 14, ndc.corners[2][1] + 18]} anchor="start" tone="muted" code small>i = 2</Label>
+</Figure>
 
 Our triangle covers about a fifth of the canvas, some 440,000 pixels at 1920 × 1080. The GPU works through thousands of them at once.
 
@@ -174,6 +209,16 @@ The vertex stage now declares two inputs, `position` at `@location(0)` and `colo
 
 Pink, green and blue sit at the three corners. The GPU blends the vertex colors as it blends `uv` in step 3: a pixel near the pink corner comes out mostly pink, while one in the middle gets equal parts of all three. Our program only ever sets the corners.
 
+<Figure src="/tutorials/01-hello-triangle/vertex-colors.webp" height={420} alt={`Step 4's triangle with each corner labeled by its color: ${gradient.colors[0]} at the pink corner, ${gradient.colors[1]} at the green one and ${gradient.colors[2]} at the blue one. A dot in the middle reads ${gradient.middle.color}, and a dot near the pink corner reads ${gradient.pinkish.color}.`} caption="The colors `fs_main` receives. The middle pixel gets a third of each corner's color.">
+  <Label at={[gradient.corners[0][0], gradient.corners[0][1] + 24]} code small>{gradient.colors[0]}</Label>
+  <Label at={[gradient.corners[1][0], gradient.corners[1][1] + 24]} code small>{gradient.colors[1]}</Label>
+  <Label at={[gradient.corners[2][0] + 18, gradient.corners[2][1]]} anchor="start" code small>{gradient.colors[2]}</Label>
+  <Dot at={gradient.middle.at} />
+  <Label at={[gradient.middle.at[0], gradient.middle.at[1] - 20]} code small>{gradient.middle.color}</Label>
+  <Dot at={gradient.pinkish.at} />
+  <Label at={[gradient.pinkish.at[0], gradient.pinkish.at[1] + 22]} code small>{gradient.pinkish.color}</Label>
+</Figure>
+
 ## Step 5: Fifteen thousand triangles
 
 One triangle is a warm-up. **Let's draw 15,000.**
@@ -187,6 +232,20 @@ The mesh from step 4 is all we need: the GPU repeats it 15,000 times, each copy 
 <Snippet file="01-hello-triangle/05-instances/example.rs" region="shader" />
 
 Each copy traces a small curve around its `center`. `phase` gives every copy a head start along its sine waves, which spreads their peaks across time. The library's `easing/in_out_sine` shapes the brightness. It flattens the wave at its top and bottom: each triangle holds its brightest and dimmest moments a little longer.
+
+<Figure height={330} alt="On the left, the mesh: one triangle with three vertices. An arrow marked times 15,000 leads to a field of small copies of it in four tints. One copy's center is a dot, and an arrow marked wobble points from that center to the copy. A dashed loop around the center shows the path the wobble takes. An arrow marked tint points at another copy's color." caption="One mesh, drawn once per instance. All three corners of a copy share its `center`, `phase` and `tint`. Over time, `wobble` moves the copy along the dashed loop.">
+  <Path d={instances.mesh} tone="accent" fill />
+  {instances.meshCorners.map((corner) => <Dot at={corner} />)}
+  <Label at={[instances.meshCenter[0], 252]} code>Mesh</Label>
+  <Label at={[instances.meshCenter[0], 280]} tone="muted" small>3 vertices</Label>
+  <Arrow from={[238, 175]} to={[340, 175]} label="× 15,000" />
+  {instances.copies.map((copy) => <Path d={copy.path} tone={copy.tone} fill />)}
+  <Path d={instances.followed.loop} tone="ink" dashed />
+  <Arrow from={instances.followed.center} to={instances.followed.copy} label="wobble" tone="mark" code />
+  <Dot at={instances.followed.center} />
+  <Arrow from={[instances.followed.center[0], 44]} to={[instances.followed.center[0], instances.followed.center[1] - 7]} label="center" labelAt="start" code />
+  <Arrow from={[instances.tinted[0] + 64, 300]} to={[instances.tinted[0] + 6, instances.tinted[1] + 10]} label="tint" labelAt="start" code />
+</Figure>
 
 The program sends only two values per frame, `time` and `resolution`. With those and the instance data already on the GPU, the vertex stage places all 15,000 triangles:
 
@@ -214,6 +273,19 @@ Two more objects hand the picture from the first shader to the second:
 
 <code><Lang rust="set_target" js="setTarget" py="set_target" swift="setTarget" kotlin="setTarget" /></code> points the particle pass at the texture. Each frame, the pass fills it with the blue-black from <code><Lang rust="set_clear_color" js="setClearColor" py="set_clear_color" swift="setClearColor" kotlin="setClearColor" /></code> before the particles draw. With no target set, `output` draws to the canvas that `render` receives. Calling `require` on `output` runs the particle pass first.
 
+<Figure height={215} alt="Four boxes in a row. The particles pass draws into the scene texture, 1024 by 1024. The postfx pass reads scene and draws into the target, the canvas. An arch from postfx back to particles is marked require." caption="`output` is the `postfx` pass. Its `require` runs the particle pass first, which fills `scene` for `postfx` to read.">
+  {passes.boxes.map((box, i) => <Rect at={box.at} size={passes.size} tone={i === 1 ? "mark" : i === 3 ? "muted" : "accent"} fill={i !== 3} />)}
+  {passes.boxes.map((box) => <Label at={[box.middle, passes.top + 27]} code>{box.name}</Label>)}
+  {passes.boxes.map((box) => <Label at={[box.middle, passes.top + 55]} tone="muted" small>{box.note}</Label>)}
+  {passes.links.map(([from, to]) => <Arrow from={from} to={to} />)}
+  <Label at={[(passes.links[0][0][0] + passes.links[0][1][0]) / 2, passes.bottom + 26]} tone="muted" small>draws into</Label>
+  <Label at={[(passes.links[1][0][0] + passes.links[1][1][0]) / 2, passes.bottom + 26]} tone="muted" small>is read by</Label>
+  <Label at={[(passes.links[2][0][0] + passes.links[2][1][0]) / 2, passes.bottom + 26]} tone="muted" small>draws into</Label>
+  <Path d={passes.require} tone="ink" dashed />
+  <Arrow from={[passes.requireTip[0], passes.requireTip[1] - 14]} to={passes.requireTip} />
+  <Label at={passes.requireLabel} code>require</Label>
+</Figure>
+
 Now `frame` renders only `output`:
 
 <Snippet file="01-hello-triangle/06-postfx-pass/example.rs" region="frame" />
@@ -225,6 +297,25 @@ The post-processing shader draws one triangle twice as wide and twice as tall as
 <Snippet file="01-hello-triangle/06-postfx-pass/example.rs" region="postfx-shader" />
 
 `scene` is the particle texture. To read its color at a `uv` position, `textureSample` uses `scene_sampler`, which blends neighboring pixels. FragmentColor builds that sampler from the texture's own settings. Because textures count their rows from the top, this `uv` runs from 0 at the top edge to 1 at the bottom.
+
+<Figure height={355} alt="The target as a square from (-1, -1) to (1, 1), inside a triangle with corners at (-1, -1), (3, -1) and (-1, 3). Those corners carry the uv values (0, 1), (2, 1) and (0, -1). The triangle's long side passes through the square's corner at (1, 1). Inside the square, uv runs from (0, 0) at the top left corner to (1, 1) at the bottom right. Arrows mark the parts of the triangle right of the square and above it as discarded." caption="The full-screen triangle. Its long side runs through the target's corner. The GPU discards everything outside the target.">
+  <Path d={fullscreen.triangle} tone="accent" fill dashed />
+  <Rect at={fullscreen.target.at} size={fullscreen.target.size} tone="inside" fill />
+  <Label at={[fullscreen.target.at[0] + fullscreen.target.size[0] / 2, fullscreen.target.at[1] + fullscreen.target.size[1] / 2]} tone="inside">target</Label>
+  <Label at={[fullscreen.target.at[0] + 6, fullscreen.target.at[1] + 16]} anchor="start" code small>uv (0, 0)</Label>
+  <Label at={[fullscreen.target.at[0] + fullscreen.target.size[0] - 6, fullscreen.target.at[1] + fullscreen.target.size[1] - 16]} anchor="end" code small>uv (1, 1)</Label>
+  {fullscreen.corners.map((corner) => <Dot at={corner} />)}
+  <Label at={[fullscreen.corners[0][0] - 10, fullscreen.corners[0][1] + 18]} anchor="end" code>{fullscreen.labels[0]}</Label>
+  <Label at={[fullscreen.corners[0][0] - 10, fullscreen.corners[0][1] + 44]} anchor="end" tone="muted" code small>{fullscreen.uvs[0]}</Label>
+  <Label at={[fullscreen.corners[1][0] + 10, fullscreen.corners[1][1] + 18]} anchor="start" code>{fullscreen.labels[1]}</Label>
+  <Label at={[fullscreen.corners[1][0] + 10, fullscreen.corners[1][1] + 44]} anchor="start" tone="muted" code small>{fullscreen.uvs[1]}</Label>
+  <Label at={[fullscreen.corners[2][0] - 10, fullscreen.corners[2][1] + 6]} anchor="end" code>{fullscreen.labels[2]}</Label>
+  <Label at={[fullscreen.corners[2][0] - 10, fullscreen.corners[2][1] + 32]} anchor="end" tone="muted" code small>{fullscreen.uvs[2]}</Label>
+  <Dot at={fullscreen.corner} />
+  <Label at={[fullscreen.corner[0] + 12, fullscreen.corner[1] - 12]} anchor="start" code>(1, 1)</Label>
+  <Arrow from={[580, 150]} to={[fullscreen.discarded[0][0] + 4, fullscreen.discarded[0][1] - 2]} label="discarded" labelAt="start" tone="accent" />
+  <Arrow from={[580, 150]} to={[fullscreen.discarded[1][0] + 6, fullscreen.discarded[1][1]]} tone="accent" />
+</Figure>
 
 <Demo file="01-hello-triangle/06-postfx-pass/example.rs" />
 
@@ -241,6 +332,15 @@ A vertex that has only a position can go in as a bare list of numbers. Two numbe
 <Snippet file="01-hello-triangle/07-instance-index/example.rs" region="shader" />
 
 `hash` scrambles a number, and `random` maps the result to a value between 0 and 1. Because an index always hashes to the same values, each triangle keeps its spot from one frame to the next. Four values per copy pick a distance from the center, one of three arms, a sideways scatter and a brightness, each from its own seed: the index times four, plus 0 to 3. The angle grows with the distance, which curls each arm into a spiral. `time` rotates the whole disk.
+
+<Figure height={390} alt={`Copy number ${disk.traced.index} takes the seeds ${disk.seeds[0]} to ${disk.seeds[3]}. ${disk.steps.map((step) => `${step.spoken} sets the ${step.name} to ${step.value}`).join(", ")}. An arrow leads from these numbers to the copy's spot in a disk of dots, where the first 1,200 indices trace three spiral arms.`} caption={`Copy ${disk.traced.index} from its four seeds to its spot. The dots are the first 1,200 copies at time 0.`}>
+  <Path d={disk.dots} tone="muted" />
+  <Label at={[24, 110]} anchor="start" tone="mark" code>{`instance_index = ${disk.traced.index}`}</Label>
+  {disk.steps.map((step, i) => <Label at={[24, 156 + i * 32]} anchor="start" tone="muted" code small>{step.code}</Label>)}
+  {disk.steps.map((step, i) => <Label at={[166, 156 + i * 32]} anchor="start" code small>{`${step.name} = ${step.value}`}</Label>)}
+  <Dot at={disk.traced.at} tone="mark" r={6} />
+  <Arrow from={[300, 110]} to={[disk.traced.at[0] - 8, disk.traced.at[1] - 6]} tone="mark" />
+</Figure>
 
 Three pieces of WGSL need explaining:
 
