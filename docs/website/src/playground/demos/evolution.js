@@ -101,9 +101,9 @@ struct Field {
 struct Params {
   mouse: vec2<f32>, // pointer in [0, 1) across the canvas
   grip: f32, // 1 while the pointer moves, fading to 0 once it rests
-  feed: f32, // 0..40, energy per second the pointer gives the creatures under it
+  feed: f32, // 0..40, energy per second a moving pointer gives the creatures under it
   heat: f32, // 0..200, strength of random kicks
-  mutation: f32, // 0..1, how far a child's genes stray from its parents'
+  mutation: f32, // 0..1, how far a child's genes stray from its parent's
   mode: u32, // 0..2, colors by group, lineage, or energy
   columns: u32, // grid columns in use
   frame: u32,
@@ -283,7 +283,7 @@ fn cs_main(
   let slope = vec2<f32>(dot(follow, here.slope_x), dot(follow, here.slope_y));
   var accel = FORCE * (slope - PRESSURE * here.crowd.xy);
 
-  // The pointer draws creatures in while it moves, and feeds the ones it reaches.
+  // While the pointer moves, it draws creatures in and feeds the ones it reaches.
   var toward = (params.mouse - c.pos) * size;
   toward -= round(toward / size) * size; // the short way around the wrapped world
   let distance = length(toward);

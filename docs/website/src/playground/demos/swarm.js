@@ -47,7 +47,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   let pixel = min(vec2<u32>(in.uv * vec2<f32>(image_size)), image_size - 1u);
   let slot = (pixel.y * image_size.x + pixel.x) * 3u;
   let light = vec3<f32>(f32(image[slot]), f32(image[slot + 1u]), f32(image[slot + 2u])) / 255.0;
-  // Exposure falls as COUNT per pixel grows, so any swarm size looks alike.
+  // Exposure falls as COUNT per pixel grows and keeps any swarm size looking alike.
   let exposure = 1.5 / (1.0 + f32(COUNT) / f32(image_size.x * image_size.y));
   // Tone-map the brightest channel and scale the others with it, so crowds keep their hue.
   let peak = max(max(light.r, light.g), max(light.b, 1e-6));
