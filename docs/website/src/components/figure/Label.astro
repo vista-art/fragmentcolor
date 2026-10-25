@@ -1,0 +1,19 @@
+---
+// Text at a point, with a halo that keeps it readable over a capture.
+import type { Point, Tone } from "./types";
+
+interface Props {
+  at: Point;
+  tone?: Tone;
+  anchor?: "start" | "middle" | "end";
+  /** Smaller, lighter text for secondary notes. */
+  small?: boolean;
+  /** Monospace text for code, like `d = 0`. */
+  code?: boolean;
+}
+
+const { at, tone = "ink", anchor = "middle", small = false, code = false } = Astro.props;
+const classes = ["fig-label", small && "fig-small", code && "fig-code"].filter(Boolean).join(" ");
+---
+
+<text class:list={[classes, `tone-${tone}`]} x={at[0]} y={at[1]} text-anchor={anchor}><slot /></text>

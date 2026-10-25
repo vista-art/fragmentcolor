@@ -1,0 +1,16 @@
+---
+// A small filled point, such as a sample position or the origin.
+import type { Point, Tone } from "./types";
+
+interface Props {
+  at: Point;
+  tone?: Tone;
+  r?: number;
+}
+
+const { at, tone = "ink", r = 4.5 } = Astro.props;
+---
+
+<g class={`tone-${tone}`}>
+  <circle class="fig-head" cx={at[0]} cy={at[1]} r={r} />
+</g>

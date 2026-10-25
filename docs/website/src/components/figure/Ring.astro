@@ -1,0 +1,21 @@
+---
+// A circle drawn around something to point it out, or a circle in a diagram.
+import type { Point, Tone } from "./types";
+
+interface Props {
+  at: Point;
+  r: number;
+  tone?: Tone;
+  dashed?: boolean;
+  /** Tints the inside of the circle. */
+  fill?: boolean;
+}
+
+const { at, r, tone = "mark", dashed = false, fill = false } = Astro.props;
+---
+
+<g class={`tone-${tone}`}>
+  {fill && <circle class="fig-fill" cx={at[0]} cy={at[1]} r={r} />}
+  <circle class="fig-halo" cx={at[0]} cy={at[1]} r={r} />
+  <circle class:list={["fig-stroke", dashed && "fig-dashed"]} cx={at[0]} cy={at[1]} r={r} />
+</g>
