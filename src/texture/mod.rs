@@ -37,12 +37,14 @@ pub use options::*;
 
 pub(crate) mod read;
 pub mod region;
+mod registration;
 mod write;
 
 pub(crate) use read::read_pixels;
 pub use region::TextureRegion;
 #[cfg(mobile)]
 pub use region::TextureRegionMobile;
+pub(crate) use registration::Registration;
 
 pub mod meta;
 pub use meta::{
@@ -591,7 +593,7 @@ impl std::fmt::Display for TextureId {
 pub struct Texture {
     pub(crate) context: Arc<RenderContext>,
     pub(crate) object: Arc<TextureObject>,
-    pub(crate) id: TextureId,
+    pub(crate) registration: Arc<Registration>,
 }
 
 crate::impl_fc_kind!(Texture, "Texture");
@@ -601,12 +603,12 @@ impl Texture {
     pub(crate) fn new(
         context: Arc<RenderContext>,
         object: Arc<TextureObject>,
-        id: TextureId,
+        registration: Arc<Registration>,
     ) -> Self {
         Self {
             context,
             object,
-            id,
+            registration,
         }
     }
 
@@ -614,7 +616,7 @@ impl Texture {
     /// The id is valid within the Renderer that created it.
     #[lsp_doc("docs/api/texture/texture/id.md")]
     pub fn id(&self) -> &TextureId {
-        &self.id
+        self.registration.id()
     }
 
     #[lsp_doc("docs/api/texture/texture/size.md")]
@@ -690,7 +692,7 @@ impl TextureMeta {
 impl From<&Texture> for UniformData {
     fn from(texture: &Texture) -> Self {
         // Provide a placeholder meta; storage.update will merge with shader-parsed meta at set time.
-        let meta = TextureMeta::with_id_only(texture.id);
+        let meta = TextureMeta::with_id_only(*texture.id());
         UniformData::Texture(meta)
     }
 }

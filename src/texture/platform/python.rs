@@ -381,7 +381,7 @@ impl Texture {
     #[pyo3(name = "id")]
     #[lsp_doc("docs/api/texture/texture/id.md")]
     pub fn id_py(&self) -> TextureId {
-        self.id
+        *self.id()
     }
 
     #[pyo3(name = "size")]

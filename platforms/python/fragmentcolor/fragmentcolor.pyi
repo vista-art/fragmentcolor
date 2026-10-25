@@ -366,10 +366,15 @@ class Renderer:
         """
     def unregister_texture(self, texture_id: int | TextureId) -> None:
         """
-        Explicitly remove a texture from the renderer’s registry.
+        Remove a texture from the renderer’s registry now.
 
-        - Call this when you replace a texture, stop a video stream, or tear down a scene, to release GPU memory.
-        - If the texture is still referenced elsewhere, it will remain alive until all strong references are dropped.
+        The renderer releases a texture on its own when the last thing holding it
+        drops: every `Texture` handle, the `TextureTarget` that owns it, and each
+        shader uniform or pass target that binds it. Call this to release one sooner,
+        for example when a video stream stops.
+
+        - After the call, the id names no texture, and shaders and passes that bind it can't draw it.
+        - A `Texture` handle you still hold keeps its GPU memory until it drops.
 
         Example:
 
@@ -4424,8 +4429,9 @@ class Texture:
         """
         Return the stable `TextureId` for this texture. The id is valid within
         the `Renderer` that created it and is the handle uniforms use to refer to
-        the texture, so you can keep one around to bind, look up, or unregister
-        the texture without holding the full `Texture` value.
+        the texture. It names the texture while something holds it: a `Texture`
+        handle, the `TextureTarget` that owns it, or a shader uniform or pass target
+        that binds it. An id on its own doesn't keep the texture in the registry.
 
         Example:
 

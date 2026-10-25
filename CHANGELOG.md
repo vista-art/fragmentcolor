@@ -6,6 +6,7 @@
 
 - `Shader.add_mesh` fails when a later vertex or instance lacks an attribute the shader reads, and the error names the attribute and the index: `color: expected vec4<f32>, got no value at vertex 3`. Only the first vertex and instance were checked, and a later one drew with zeros.
 - `Material::pbr` writes light the target can show. On the `Rgba8Unorm` and `Bgra8Unorm` targets FragmentColor creates, which hold display values, it encodes as sRGB, so PBR scenes, docs images and goldens drawn there get brighter: they rendered dark and harsh. An sRGB target encodes on write and a float target keeps linear light, so both get linear light, and nothing encodes twice. The renderer sets the shader's `override ENCODE_SRGB: bool` from the target's format, and a custom shader that declares it gets the same value.
+- The renderer releases a texture when the last thing holding it drops: every `Texture` handle, the `TextureTarget` that owns it, and each shader uniform or pass target that binds it. It kept every texture until `unregister_texture`, so a demo that made a new texture on each resize leaked the old ones. Texture ids are unique across renderers.
 - PBR materials light a `Model` scaled differently along each axis, or mirrored, the way its surfaces face. The registry's `mesh_transform_normal` uses the inverse transpose of the model matrix, where the plain matrix tilted normals toward the stretched axis.
 
 ### JavaScript
@@ -25,6 +26,7 @@
 ### Breaking and behavior changes
 
 - `get_image` on a target returns an error where it returned an empty array. A `WindowTarget` always does, because a frame on screen can't be read back, and a `TextureTarget` does when its readback fails or times out. JavaScript throws an `Error`, Python, Swift and Kotlin throw `FragmentColorError`, and Rust's `Target::get_image` returns `Result<Vec<u8>, TextureError>`.
+- A `TextureId` on its own doesn't keep its texture. Once the last handle, shader uniform and pass target holding a texture drop, `read_texture` and `unregister_texture` report its id as not found.
 - Python reads sizes with a call: `texture.size.width` from the 0.12.6 notes is now `texture.size().width`, and `target.size` is `target.size()` on a texture target.
 
 ## 0.12.6: Binding and renderer fixes

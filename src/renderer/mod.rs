@@ -174,8 +174,8 @@ impl Renderer {
         let context = self.context(None).await?;
         let object = crate::TextureObject::from_input(context.clone(), input).await?;
         let object = std::sync::Arc::new(object);
-        let id = context.register_texture(object.clone());
-        Ok(crate::texture::Texture::new(context, object, id))
+        let registration = crate::texture::Registration::create(&context, object.clone());
+        Ok(crate::texture::Texture::new(context, object, registration))
     }
 
     /// Create a storage-class texture from a [`crate::TextureInput`], the
@@ -280,8 +280,8 @@ impl Renderer {
             );
         }
         let obj = std::sync::Arc::new(obj);
-        let id = context.register_texture(obj.clone());
-        Ok(crate::texture::Texture::new(context, obj, id))
+        let registration = crate::texture::Registration::create(&context, obj.clone());
+        Ok(crate::texture::Texture::new(context, obj, registration))
     }
 
     /// Create a depth texture (Depth32Float).
@@ -298,8 +298,8 @@ impl Renderer {
             sample_count,
         );
         let obj = std::sync::Arc::new(obj);
-        let id = context.register_texture(obj.clone());
-        Ok(crate::texture::Texture::new(context, obj, id))
+        let registration = crate::texture::Registration::create(&context, obj.clone());
+        Ok(crate::texture::Texture::new(context, obj, registration))
     }
 
     #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
@@ -622,12 +622,12 @@ pub(crate) struct RenderContext {
     pub(crate) readback_pool: RwLock<ReadbackBufferPool>,
     pub(crate) texture_pool: RwLock<TexturePool>,
 
-    // Texture registry: id -> TextureObject
+    // Texture registry: id -> TextureObject. An entry stays while its
+    // `Registration` lives, so it goes with the last handle to the texture.
     textures: DashMap<crate::texture::TextureId, Arc<crate::TextureObject>>,
     /// True on backends that reject uniform bindings not aligned to 16
     /// bytes (OpenGL, WebGL2); shaders then compile a padded module.
     aligned_uniform_bindings: AtomicBool,
-    next_id: AtomicU64,
 
     // Persistent storage buffer registry: root name -> (buffer, span)
     storage_registry: DashMap<String, (wgpu::Buffer, u64)>,
@@ -703,7 +703,6 @@ impl RenderContext {
 
             textures: DashMap::new(),
             aligned_uniform_bindings: AtomicBool::new(false),
-            next_id: AtomicU64::new(1),
             storage_registry: DashMap::new(),
             sample_count: AtomicU32::new(1),
             pbr_defaults: RwLock::new(None),
@@ -896,14 +895,22 @@ impl RenderContext {
         buffer
     }
 
+    /// Adds `texture` under a new id. Ids are unique across renderers, so a
+    /// shader binding finds the one texture its id names. A `Registration`
+    /// calls this and removes the entry when the last handle drops.
     pub(crate) fn register_texture(
         &self,
         texture: Arc<crate::TextureObject>,
     ) -> crate::texture::TextureId {
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+        let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
         let texture_id = crate::texture::TextureId { id };
         self.textures.insert(texture_id, texture);
         texture_id
+    }
+
+    pub(crate) fn release_texture(&self, id: &crate::texture::TextureId) {
+        self.textures.remove(id);
     }
 
     pub(crate) fn get_texture(
@@ -1137,7 +1144,8 @@ impl RenderContext {
         let mut color_format = frame.format();
         let mut extent = size;
         let mut pass_texture_view = None;
-        if let Some(id) = *pass.color_target.read() {
+        let color_target = pass.color_target.read().as_ref().map(|target| *target.id());
+        if let Some(id) = color_target {
             if let Some(texture) = self.get_texture(&id) {
                 pass_texture_view = Some(texture.create_view());
                 color_format = texture.format();
@@ -1191,19 +1199,19 @@ impl RenderContext {
         })];
 
         // Optional depth attachment if the pass has a depth target
-        let (depth_view, depth_format, depth_sc_opt) =
-            if let Some(depth_id) = *pass.depth_target.read() {
-                if let Some(texture) = self.get_texture(&depth_id) {
-                    let depth_view = texture.create_view();
-                    let depth_format = texture.format();
-                    let depth_sc = texture.inner.sample_count();
-                    (Some(depth_view), Some(depth_format), Some(depth_sc))
-                } else {
-                    (None, None, None)
-                }
+        let depth_target = pass.depth_target.read().as_ref().map(|target| *target.id());
+        let (depth_view, depth_format, depth_sc_opt) = if let Some(depth_id) = depth_target {
+            if let Some(texture) = self.get_texture(&depth_id) {
+                let depth_view = texture.create_view();
+                let depth_format = texture.format();
+                let depth_sc = texture.inner.sample_count();
+                (Some(depth_view), Some(depth_format), Some(depth_sc))
             } else {
                 (None, None, None)
-            };
+            }
+        } else {
+            (None, None, None)
+        };
 
         // Validate depth sample count matches the pass sample count, if present
         if let Some(sc) = depth_sc_opt
@@ -3472,7 +3480,7 @@ struct VOut { @builtin(position) pos: vec4<f32> };
     fn depth_msaa_sample_count_matches() {
         pollster::block_on(async move {
             let (adapter, device, queue) = create_device_and_queue().await;
-            let ctx = RenderContext::new(device, queue);
+            let ctx = Arc::new(RenderContext::new(device, queue));
 
             let color_format = wgpu::TextureFormat::Rgba8Unorm;
             let size = wgpu::Extent3d {
@@ -3497,7 +3505,7 @@ struct VOut { @builtin(position) pos: vec4<f32> };
                 // Create a matching-sample depth texture and register it
                 let depth_obj = crate::TextureObject::create_depth_texture(&ctx, size, sc);
                 let depth_obj = std::sync::Arc::new(depth_obj);
-                let depth_id = ctx.register_texture(depth_obj.clone());
+                let depth = crate::texture::Registration::create(&ctx, depth_obj.clone());
 
                 let shader = Shader::default();
                 let pass = Pass::from_shader("msaa-depth", &shader);
@@ -3506,7 +3514,7 @@ struct VOut { @builtin(position) pos: vec4<f32> };
                     let passes = pass.passes();
                     passes.first().cloned().expect("pass")
                 };
-                first_pass.set_depth_target(depth_id);
+                first_pass.set_depth_target(depth);
 
                 let mut encoder = ctx
                     .device
@@ -3876,7 +3884,7 @@ fn main() -> @location(0) vec4<f32> {
     fn depth_msaa_sample_count_mismatch_errors() {
         pollster::block_on(async move {
             let (_adapter, device, queue) = create_device_and_queue().await;
-            let ctx = RenderContext::new(device, queue);
+            let ctx = Arc::new(RenderContext::new(device, queue));
 
             let color_format = wgpu::TextureFormat::Rgba8Unorm;
             let size = wgpu::Extent3d {
@@ -3890,7 +3898,7 @@ fn main() -> @location(0) vec4<f32> {
             ctx.set_sample_count(4);
             let depth_obj = crate::TextureObject::create_depth_texture(&ctx, size, 1);
             let depth_obj = std::sync::Arc::new(depth_obj);
-            let depth_id = ctx.register_texture(depth_obj.clone());
+            let depth = crate::texture::Registration::create(&ctx, depth_obj.clone());
 
             let shader = Shader::default();
             let pass = Pass::from_shader("msaa-depth-mismatch", &shader);
@@ -3898,7 +3906,7 @@ fn main() -> @location(0) vec4<f32> {
                 let passes = pass.passes();
                 passes.first().cloned().expect("pass")
             };
-            first_pass.set_depth_target(depth_id);
+            first_pass.set_depth_target(depth);
 
             let mut encoder = ctx
                 .device

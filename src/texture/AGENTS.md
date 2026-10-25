@@ -3,6 +3,8 @@
 Lifecycle & creation
 - `TextureTarget` is always created by the `Renderer` (direct construction is crate-private) so usage flags and format negotiation stay correct.
 - Prefer the `Renderer::create_texture*` helpers — they wire up the proper `wgpu::TextureUsages`, register the texture with the context, and hand back a typed `Texture` / `TextureId` handle.
+- A registry entry lives as long as its `Registration` (`src/texture/registration.rs`). Every `Texture` handle shares one, the owning `TextureTarget` holds it, and so do a pass target (`ColorTarget`, `DepthTarget`) and a shader uniform (`ShaderObject::bound_textures`). The last one to drop removes the entry. Anything new that keeps a texture to draw later holds the registration too, never a bare `TextureId`: an id alone doesn't keep the texture.
+- Texture ids are unique across renderers, because a shader binding finds the registration to hold from its id.
 
 Binding & sampling
 - Texture views are created per bind. Each texture keeps one sampler built from its `SamplerOptions` and rebuilds it in `set_sampler_options`.

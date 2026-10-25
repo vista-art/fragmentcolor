@@ -1,4 +1,5 @@
 pub mod error;
+use crate::texture::{Registration, TextureId};
 use crate::{PassObject, Renderable};
 use dashmap::DashMap;
 pub use error::ShaderError;
@@ -214,6 +215,9 @@ pub(crate) struct ShaderObject {
     /// surface; each entry becomes a real GPU texture + a
     /// `UniformData::Texture` write under the recorded key.
     pub(crate) pending_textures: RwLock<Vec<PendingTexture>>,
+    /// The textures bound to texture uniforms, by uniform name. Holding their
+    /// registrations keeps them in the registry after their handles drop.
+    pub(crate) bound_textures: DashMap<String, Arc<Registration>>,
 }
 
 /// A `set` queued while the storage was busy, applied by `flush_pending`.
@@ -253,31 +257,55 @@ impl ShaderObject {
     /// Non-blocking: applies immediately when storage is available, otherwise enqueues a last-wins update.
     pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
         let val: UniformData = value.into();
+        let texture = match &val {
+            UniformData::Texture(meta) if meta.id.id != 0 => Some(meta.id),
+            _ => None,
+        };
         if let Some(mut storage) = self.storage.try_write() {
             self.pending.remove(key);
-            storage.update(key, &val)
+            storage.update(key, &val)?;
         } else {
             self.pending
                 .insert(key.to_string(), PendingUpdate::Value(val));
-            Ok(())
         }
+        if let Some(id) = texture {
+            self.bind_texture(key, id);
+        }
+        Ok(())
     }
 
     /// Sets a uniform from a loose value, shaped to the key's declared WGSL type.
     /// Never blocks: when the storage is busy the update is queued, already shaped
     /// when a read lock is free, so a type error still surfaces here in the common case.
     pub(crate) fn set_input(&self, key: &str, input: UniformInput) -> Result<(), ShaderError> {
+        let texture = match &input {
+            UniformInput::Texture(id) => Some(*id),
+            _ => None,
+        };
         if let Some(mut storage) = self.storage.try_write() {
             let value = input.resolve(key, storage.shape(key)?)?;
             self.pending.remove(key);
-            return storage.update(key, &value);
+            storage.update(key, &value)?;
+        } else {
+            let update = match self.storage.try_read() {
+                Some(storage) => PendingUpdate::Value(input.resolve(key, storage.shape(key)?)?),
+                None => PendingUpdate::Input(input),
+            };
+            self.pending.insert(key.to_string(), update);
         }
-        let update = match self.storage.try_read() {
-            Some(storage) => PendingUpdate::Value(input.resolve(key, storage.shape(key)?)?),
-            None => PendingUpdate::Input(input),
-        };
-        self.pending.insert(key.to_string(), update);
+        if let Some(id) = texture {
+            self.bind_texture(key, id);
+        }
         Ok(())
+    }
+
+    /// Holds the texture `id` names for `key`, releasing the one bound before.
+    fn bind_texture(&self, key: &str, id: TextureId) {
+        if let Some(registration) = Registration::find(id) {
+            self.bound_textures.insert(key.to_string(), registration);
+        } else {
+            self.bound_textures.remove(key);
+        }
     }
 
     // getters
@@ -444,6 +472,7 @@ impl ShaderObject {
             double_sided: RwLock::new(true),
             pending_textures: RwLock::new(Vec::new()),
             user_lights_attached: RwLock::new(0),
+            bound_textures: DashMap::new(),
         })
     }
 

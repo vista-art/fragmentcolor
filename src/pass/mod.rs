@@ -1,3 +1,4 @@
+use crate::texture::Registration;
 use crate::{Color, Mesh, Renderable, ScreenRegion, Shader, ShaderObject};
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
@@ -139,7 +140,7 @@ impl Pass {
         T: TryInto<ColorTarget, Error = PassError>,
     {
         let ct = target.try_into()?;
-        self.object.set_color_target(ct.id);
+        self.object.set_color_target(ct.registration);
         Ok(())
     }
 
@@ -149,7 +150,7 @@ impl Pass {
         T: TryInto<DepthTarget, Error = PassError>,
     {
         let dt = target.try_into()?;
-        self.object.set_depth_target(dt.id);
+        self.object.set_depth_target(dt.registration);
         Ok(())
     }
 
@@ -227,14 +228,14 @@ impl Renderable for Vec<Arc<PassObject>> {
 /// (same device/context) with usage including RENDER_ATTACHMENT and a color-capable format.
 #[derive(Clone, Debug)]
 pub struct ColorTarget {
-    pub(crate) id: crate::texture::TextureId,
+    pub(crate) registration: Arc<Registration>,
 }
 
 /// A reference to a depth render target texture (Depth32Float or similar).
 /// Must be a stable texture created by the Renderer (same device/context) with RENDER_ATTACHMENT usage and a depth/stencil format.
 #[derive(Clone, Debug)]
 pub struct DepthTarget {
-    pub(crate) id: crate::texture::TextureId,
+    pub(crate) registration: Arc<Registration>,
 }
 
 impl TryFrom<&crate::texture::Texture> for ColorTarget {
@@ -261,7 +262,9 @@ impl TryFrom<&crate::texture::Texture> for ColorTarget {
             }
             _ => {}
         }
-        Ok(ColorTarget { id: *tex.id() })
+        Ok(ColorTarget {
+            registration: tex.registration.clone(),
+        })
     }
 }
 
@@ -302,7 +305,9 @@ impl TryFrom<&crate::texture::Texture> for DepthTarget {
             | wgpu::TextureFormat::Depth16Unorm
             | wgpu::TextureFormat::Depth24Plus
             | wgpu::TextureFormat::Depth24PlusStencil8
-            | wgpu::TextureFormat::Depth32FloatStencil8 => Ok(DepthTarget { id: *tex.id() }),
+            | wgpu::TextureFormat::Depth32FloatStencil8 => Ok(DepthTarget {
+                registration: tex.registration.clone(),
+            }),
             _ => Err(PassError::InvalidColorTarget(
                 "texture format is not a depth/stencil format".into(),
             )),
@@ -377,10 +382,11 @@ pub struct PassObject {
     pub(crate) camera_snapshot: RwLock<Option<CameraSnapshot>>,
     // For compute passes: dispatch size (defaults to 1,1,1)
     pub(crate) compute_dispatch: RwLock<(u32, u32, u32)>,
-    // Milestone A: optional per-pass color target
-    pub(crate) color_target: RwLock<Option<crate::texture::TextureId>>,
+    // Optional per-pass color target. Holding its registration keeps the
+    // texture in the registry after the caller drops its handle.
+    pub(crate) color_target: RwLock<Option<Arc<Registration>>>,
     // Optional per-pass depth attachment (Depth32Float for now)
-    pub(crate) depth_target: RwLock<Option<crate::texture::TextureId>>,
+    pub(crate) depth_target: RwLock<Option<Arc<Registration>>>,
     // DAG metadata and cached traversal
     pub(crate) dependencies: RwLock<Vec<Arc<PassObject>>>,
     pub(crate) dependency_names: RwLock<std::collections::HashSet<Arc<str>>>,
@@ -455,13 +461,12 @@ impl PassObject {
         }
     }
 
-    pub fn set_color_target(&self, id: crate::texture::TextureId) {
-        *self.color_target.write() = Some(id);
+    pub(crate) fn set_color_target(&self, target: Arc<Registration>) {
+        *self.color_target.write() = Some(target);
     }
 
-    /// Set per-pass depth attachment by TextureId.
-    pub fn set_depth_target(&self, id: crate::texture::TextureId) {
-        *self.depth_target.write() = Some(id);
+    pub(crate) fn set_depth_target(&self, target: Arc<Registration>) {
+        *self.depth_target.write() = Some(target);
     }
 
     /// Add a mesh to the last shader in this pass that accepts it.

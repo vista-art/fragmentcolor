@@ -98,7 +98,7 @@ impl Texture {
     #[wasm_bindgen(js_name = "id")]
     #[lsp_doc("docs/api/texture/texture/id.md")]
     pub fn id_js(&self) -> TextureId {
-        self.id
+        *self.id()
     }
 
     #[wasm_bindgen(js_name = "size")]

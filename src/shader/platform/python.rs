@@ -176,7 +176,7 @@ impl PyUniformValue<'_> {
     /// A memoryview is copied out with `tobytes`, whatever its item format.
     fn into_input(self) -> PyResult<UniformInput> {
         Ok(match self {
-            Self::Texture(texture) => UniformInput::Texture(texture.id),
+            Self::Texture(texture) => UniformInput::Texture(*texture.id()),
             Self::Bool(flag) => UniformInput::Bool(flag),
             Self::Bytes(bytes) => UniformInput::Bytes(bytes.as_bytes().to_vec()),
             Self::ByteArray(bytes) => UniformInput::Bytes(bytes.to_vec()),

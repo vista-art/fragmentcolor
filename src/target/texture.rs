@@ -1,4 +1,4 @@
-use crate::texture::TextureError;
+use crate::texture::{Registration, TextureError};
 use crate::{RenderContext, Size, Target, TargetFrame, TextureObject};
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
@@ -12,7 +12,7 @@ use wasm_bindgen::prelude::*;
 pub struct TextureTarget {
     pub(crate) context: Arc<RenderContext>,
     pub(crate) texture: Arc<TextureObject>,
-    pub(crate) id: Arc<parking_lot::RwLock<Option<crate::texture::TextureId>>>,
+    pub(crate) registration: Arc<parking_lot::RwLock<Option<Arc<Registration>>>>,
 }
 
 crate::impl_fc_kind!(TextureTarget, "TextureTarget");
@@ -31,7 +31,7 @@ impl TextureTarget {
         Self {
             context: context.clone(),
             texture,
-            id: Arc::new(parking_lot::RwLock::new(None)),
+            registration: Arc::new(parking_lot::RwLock::new(None)),
         }
     }
 }
@@ -60,8 +60,8 @@ impl Target for TextureTarget {
         self.texture = new_texture.clone();
         // Repoint the registered id so Pass color attachments and shader
         // bindings holding it draw into and sample the live texture.
-        if let Some(id) = *self.id.read() {
-            self.context.update_texture(id, new_texture);
+        if let Some(registration) = self.registration.read().as_ref() {
+            self.context.update_texture(*registration.id(), new_texture);
         }
     }
 
@@ -80,12 +80,12 @@ impl Target for TextureTarget {
 impl TextureTarget {
     #[lsp_doc("docs/api/targets/texture_target/texture.md")]
     pub fn texture(&self) -> crate::texture::Texture {
-        if let Some(id) = *self.id.read() {
-            return crate::texture::Texture::new(self.context.clone(), self.texture.clone(), id);
-        }
-        let id = self.context.register_texture(self.texture.clone());
-        *self.id.write() = Some(id);
-        crate::texture::Texture::new(self.context.clone(), self.texture.clone(), id)
+        let registration = self
+            .registration
+            .write()
+            .get_or_insert_with(|| Registration::create(&self.context, self.texture.clone()))
+            .clone();
+        crate::texture::Texture::new(self.context.clone(), self.texture.clone(), registration)
     }
 }
 

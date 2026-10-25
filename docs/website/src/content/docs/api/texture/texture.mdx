@@ -189,8 +189,9 @@ lang="kotlin"
 
 Return the stable `TextureId` for this texture. The id is valid within
 the `Renderer` that created it and is the handle uniforms use to refer to
-the texture, so you can keep one around to bind, look up, or unregister
-the texture without holding the full `Texture` value.
+the texture. It names the texture while something holds it: a `Texture`
+handle, the `TextureTarget` that owns it, or a shader uniform or pass target
+that binds it. An id on its own doesn't keep the texture in the registry.
 
 #### Example
 
