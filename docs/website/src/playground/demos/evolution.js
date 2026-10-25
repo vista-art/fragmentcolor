@@ -144,7 +144,6 @@ const FULL: f32 = 4.0; // the most energy a creature can store
 const SPLIT: f32 = 2.0; // energy at which a creature splits in two
 const LITTER: f32 = 0.45; // share of the energy that each of the two keeps after a split
 const LIFESPAN: f32 = 40.0; // seconds a creature lives at most, give or take a quarter
-const TRIES: u32 = 4u; // empty slots a creature tries per frame to place its child in
 const SWITCH: f32 = 0.01; // chance per birth, at full mutation, that a child joins another group
 const ANCESTORS: u32 = 16u; // picks the genes each group starts from, as Life's seed does
 
@@ -314,21 +313,17 @@ fn cs_main(
     return;
   }
 
-  // With enough energy it splits, if its crowd has room and one of a few random slots is empty.
+  // With enough energy it splits, if its crowd has room and a random slot is empty.
   if (c.energy >= SPLIT && here.crowd.z < PACKED) {
     let seed = pcg2d(vec2<u32>(i, params.frame));
-    // A random creature of its own group mates with it. With none, it mates with itself.
-    var partner = creatures[seed.x % COUNT];
-    if (partner.group != c.group || atomicLoad(&slots[seed.x % COUNT]) != ALIVE) {
-      partner = c;
-    }
-    for (var t = 0u; t < TRIES; t++) {
-      let j = pcg2d(vec2<u32>(seed.y, t)).x % COUNT;
-      if (atomicCompareExchangeWeak(&slots[j], EMPTY, NEWBORN).exchanged) {
-        creatures[j] = child(c, partner, vec2<u32>(seed.y, t));
-        c.energy *= LITTER;
-        break;
+    if (atomicCompareExchangeWeak(&slots[seed.x % COUNT], EMPTY, NEWBORN).exchanged) {
+      // The creature in another random slot mates with it if it shares its group.
+      var mate = creatures[seed.y % COUNT];
+      if (mate.group != c.group || atomicLoad(&slots[seed.y % COUNT]) != ALIVE) {
+        mate = c;
       }
+      creatures[seed.x % COUNT] = child(c, mate, seed);
+      c.energy *= LITTER;
     }
   }
   creatures[i] = c;
