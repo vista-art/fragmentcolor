@@ -90,14 +90,14 @@ export function wireMenu(root, demos, onPick) {
     grid.scrollTop = 0;
   };
 
-  // The panel hangs from the end of the demo row, where its button sits, and can
-  // reach back as far as the playground's left edge. It runs down to the bottom
-  // of the playground or of the window, whichever comes first.
+  // The panel hangs from its button at the end of the demo row and can reach back
+  // to where the row starts. It runs down to the bottom of the playground or of
+  // the window, whichever comes first.
   const fit = () => {
     const box = root.getBoundingClientRect();
-    const anchor = strip.parentElement.getBoundingClientRect();
-    const width = anchor.right - box.left - (box.right - anchor.right);
-    const height = Math.min(box.bottom, window.innerHeight) - anchor.bottom - GAP;
+    const menu = strip.parentElement.getBoundingClientRect();
+    const width = button.getBoundingClientRect().right - menu.left;
+    const height = Math.min(box.bottom, window.innerHeight) - menu.bottom - GAP;
     panel.style.setProperty("--fcp-picker-room-x", `${Math.max(width, 0)}px`);
     panel.style.setProperty("--fcp-picker-room-y", `${Math.max(height, MIN_HEIGHT)}px`);
   };

@@ -522,13 +522,14 @@ const installs = [
   }
 
   /* Every demo has a chip in one row, which scrolls sideways once it runs past
-     the toolbar. The button at its end opens the demo picker over the panes. */
+     the toolbar. The button at its end opens the demo picker over the panes.
+     The menu ends at that button, so the picker hangs right under it. */
   .fcp-menu {
     position: relative;
     display: flex;
     align-items: center;
     gap: 8px;
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-width: 0;
   }
 
