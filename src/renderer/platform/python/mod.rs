@@ -30,10 +30,22 @@ fn cached_target(canvas: &Bound<'_, PyAny>, renderer: &Renderer) -> Option<Py<Re
     same.then(|| target.clone().unbind())
 }
 
+/// The screen handles of `canvas`, read through the context FragmentColor
+/// registers on it, since rendercanvas draws only for a canvas with a context.
+/// A rendercanvas without contexts, or a canvas that already has another
+/// context, which then does the drawing, hands them over directly.
 fn get_screen_info<'py>(
     canvas: &pyo3::Bound<'py, PyAny>,
 ) -> Result<pyo3::Bound<'py, PyDict>, PyErr> {
-    let info = canvas.call_method1("_rc_get_present_info", (vec!["screen"],))?;
+    let context = canvas
+        .py()
+        .import("fragmentcolor._context")
+        .and_then(|module| module.getattr("FragmentColorContext"))
+        .and_then(|class| canvas.call_method1("get_context", (class,)));
+    let info = match context {
+        Ok(context) => context.getattr("_present_info")?,
+        Err(_) => canvas.call_method1("_rc_get_present_info", (vec!["screen"],))?,
+    };
     if info.is_none() {
         return Err(crate::error::PyFragmentColorError::new_err(
             "Object can't render to screen",

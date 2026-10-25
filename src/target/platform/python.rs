@@ -7,7 +7,6 @@ use lsp_doc::lsp_doc;
 use numpy::PyArrayMethods;
 use numpy::pyo3::Python;
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
 use std::sync::Arc;
 
 #[pyfunction]
@@ -84,44 +83,11 @@ impl RenderCanvasTarget {
         Err(crate::target::window::unreadable().into())
     }
 
-    // We can't export a impl Trait block with Pyo3, so this is a
-    // duck-typed interface that a context must implement, to be usable with RenderCanvas.
-    // Upstream documentation: https://rendercanvas.readthedocs.io/stable/contextapi.html
-    //
-    // fn canvas(&self) -> Py<PyAny>;
-    // fn present(&self) -> Result<Py<PyDict>, PyErr>;
-
-    // Internal RenderCanvas protocol property — not a public documented method.
+    // The canvas this target draws on. Not a public documented method.
     #[doc(hidden)]
     #[getter]
     pub fn canvas(&self) -> Py<PyAny> {
         Python::attach(|py| self.canvas.clone_ref(py))
-    }
-
-    // Internal RenderCanvas protocol method — not a public documented method.
-    #[doc(hidden)]
-    pub fn present(&self) -> Result<Py<PyDict>, PyErr> {
-        Python::attach(|py| -> PyResult<Py<PyDict>> {
-            let dict = PyDict::new(py);
-
-            if let Some(target) = &self.target {
-                match target.get_current_frame() {
-                    Ok(frame) => {
-                        frame.present(&target.context.queue);
-                        dict.set_item("method", "screen")?;
-                    }
-                    Err(e) => {
-                        dict.set_item("method", "fail")?;
-                        dict.set_item("message", e.to_string())?;
-                    }
-                }
-            } else {
-                dict.set_item("method", "fail")?;
-                dict.set_item("message", "Target not initialized")?;
-            };
-
-            Ok(dict.unbind())
-        })
     }
 }
 
@@ -184,12 +150,6 @@ impl TargetFrame for RenderCanvasFrame {
 
     fn present(self: Box<Self>, queue: &wgpu::Queue) {
         queue.present(self.surface_texture);
-    }
-
-    /// Prevents the Renderer to call present() automatically
-    /// to allow RenderCanvas to control the presentation
-    fn auto_present(&self) -> bool {
-        false
     }
 }
 
