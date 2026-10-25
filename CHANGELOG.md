@@ -5,6 +5,7 @@
 ### Renderer and meshes
 
 - `Shader.add_mesh` fails when a later vertex or instance lacks an attribute the shader reads, and the error names the attribute and the index: `color: expected vec4<f32>, got no value at vertex 3`. Only the first vertex and instance were checked, and a later one drew with zeros.
+- PBR materials light a `Model` scaled differently along each axis, or mirrored, the way its surfaces face. The registry's `mesh_transform_normal` uses the inverse transpose of the model matrix, where the plain matrix tilted normals toward the stretched axis.
 
 ### Python
 

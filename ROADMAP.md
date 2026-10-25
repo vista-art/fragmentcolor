@@ -78,7 +78,7 @@ Items found while reviewing 0.12.6.
 - [ ] `Scene::passes` lists each pass once. Today a member that another member `require`s is listed twice
 - [ ] The glTF loader checks `primitive.mode()` and skips line and point primitives with one warning. Today it reads them as triangles
 - [x] Turn on the `gltf` crate's `extras` feature, so `Scene::load` reads files that carry application attributes such as `_ID` (0.12.6). The loader ignores the extras until 0.13.0
-- [ ] PBR normals, in `src/material/pbr_main.wgsl` and the registry's `mesh/transform` shader, take the model matrix's upper 3x3, so `Model::scale` with unequal factors skews the lighting. The vertex stage builds the normal matrix from the cofactor columns `cross(m1, m2)`, `cross(m2, m0)` and `cross(m0, m1)`
+- [x] PBR normals follow the cofactor of the model matrix's upper 3x3, `cross(m1, m2)`, `cross(m2, m0)` and `cross(m0, m1)`, so `Model::scale` with unequal factors lights the way the surfaces face (0.12.7)
 
 ### Binding parity
 
