@@ -109,10 +109,9 @@ extension Texture {
 extension TextureTarget {
     // MARK: - resize convenience
 
-    /// Resize the target from a `[width, height]` array.
-    /// A length other than 2 or 3 stops the program.
-    public func resize(_ size: [UInt32]) {
-        resize(targetSize(size))
+    /// Resize the target from a `[width, height]` array. Throws for any other length.
+    public func resize(_ size: [UInt32]) throws {
+        resize(try sizeRecord(size, "resize"))
     }
 
     /// Resize the target to `size`, such as another target's `size()`.
@@ -124,10 +123,9 @@ extension TextureTarget {
 extension WindowTarget {
     // MARK: - resize convenience
 
-    /// Resize the target from a `[width, height]` array.
-    /// A length other than 2 or 3 stops the program.
-    public func resize(_ size: [UInt32]) {
-        resize(targetSize(size))
+    /// Resize the target from a `[width, height]` array. Throws for any other length.
+    public func resize(_ size: [UInt32]) throws {
+        resize(try sizeRecord(size, "resize"))
     }
 
     /// Resize the target to `size`, such as another target's `size()`.
@@ -182,15 +180,5 @@ extension TextureUsage {
     /// Both sets of flags, as Rust's `|` combines them.
     public static func | (lhs: TextureUsage, rhs: TextureUsage) -> TextureUsage {
         TextureUsage(bits: lhs.bits | rhs.bits)
-    }
-}
-
-/// The `Size` a resize array names. A bad array stops the program,
-/// since the resize methods return nothing to throw through.
-private func targetSize(_ size: [UInt32]) -> Size {
-    do {
-        return try sizeRecord(size, "resize")
-    } catch {
-        preconditionFailure("\(error)")
     }
 }

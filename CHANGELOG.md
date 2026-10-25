@@ -22,11 +22,13 @@
 
 ### Swift
 
+- `TextureTarget.resize([w, h])` and `WindowTarget.resize([w, h])` throw `FragmentColorError` for an array that isn't 2 or 3 numbers long, where they stopped the app.
 - The `Camera`, `Light` and `Material` setters that return their receiver, such as `lookAt`, `setAspect` and `setDirection`, are `@discardableResult`, as `Scene` and `Pass` were. A per-frame update no longer needs `_ =` in front.
 
 ### Breaking and behavior changes
 
 - `get_image` on a target returns an error where it returned an empty array. A `WindowTarget` always does, because a frame on screen can't be read back, and a `TextureTarget` does when its readback fails or times out. JavaScript throws an `Error`, Python and Swift throw `FragmentColorError`, Kotlin throws `FragmentColorException`, and Rust's `Target::get_image` returns `Result<Vec<u8>, TextureError>`.
+- Swift calls to `TextureTarget.resize` and `WindowTarget.resize` with an array need `try`.
 - Overlapping models draw with depth. A model behind another stays hidden where, added last, it drew on top.
 - A `TextureId` on its own doesn't keep its texture. Once the last handle, shader uniform and pass target holding a texture drop, `read_texture` and `unregister_texture` report its id as not found.
 - Python reads sizes with a call: `texture.size.width` from the 0.12.6 notes is now `texture.size().width`, and `target.size` is `target.size()` on a texture target.
