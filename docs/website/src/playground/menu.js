@@ -178,7 +178,7 @@ export function wireMenu(root, demos, onPick) {
     strip,
     "wheel",
     (e) => {
-      if (Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+      if (e.ctrlKey || e.metaKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
       const max = strip.scrollWidth - strip.clientWidth;
       if ((e.deltaY < 0 && strip.scrollLeft <= 0) || (e.deltaY > 0 && strip.scrollLeft >= max - 1)) return;
       e.preventDefault();
