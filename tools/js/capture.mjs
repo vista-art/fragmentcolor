@@ -252,28 +252,37 @@ async function captureThumbs(browser, origin, ids, options) {
   const scale = Number(options.scale ?? 1);
   const wait = Number(options.wait ?? 2.5) * 1000;
   const dir = options.dir ? path.resolve(options.dir) : path.join(SITE, "public/playground/thumbs");
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: scale * 2 });
-  const errors = watchErrors(page);
-  try {
-    await page.goto(`${origin}/welcome/playground/`, { waitUntil: "load" });
-    // Buttons and notes drawn over the canvas stay out of the picture.
-    const hideOverlays = () => page.addStyleTag({ content: ".fcp-canvas > :not(canvas) { visibility: hidden !important; }" });
-    const all = await page.evaluate(() => document.querySelector("fc-playground")?.dataset.demos?.split(",") ?? []);
-    const chosen = ids.length ? ids : all;
-    for (const id of chosen) {
-      if (!all.includes(id)) throw new Error(`the playground has no demo "${id}"`);
+  const all = await listDemos(browser, origin);
+  const chosen = ids.length ? ids : all;
+  for (const id of chosen) {
+    if (!all.includes(id)) throw new Error(`the playground has no demo "${id}"`);
+    // A fresh page per demo, so no navigation cuts off a page that is still loading.
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: scale * 2 });
+    const errors = watchErrors(page);
+    try {
       await page.goto(`${origin}/welcome/playground/#${id}`, { waitUntil: "load" });
-      await page.reload({ waitUntil: "load" });
       await page.waitForFunction((id) => document.querySelector("fc-playground")?.dataset.active === id, id, {
         timeout: 60_000,
       });
-      await hideOverlays();
+      // Buttons and notes drawn over the canvas stay out of the picture.
+      await page.addStyleTag({ content: ".fcp-canvas > :not(canvas) { visibility: hidden !important; }" });
       await sleep(wait);
       if (errors.length) throw new Error(`${id}: ${errors.join("; ")}`);
       const png = await page.locator("fc-playground canvas").first().screenshot({ type: "png" });
       const out = path.join(dir, `${id}.webp`);
       await writeWebp(png, out, { quality: 80, resize: THUMB_SIZE.map((value) => value * scale) });
+    } finally {
+      await page.close();
     }
+  }
+}
+
+// The playground's demo ids, read from the page's markup before any demo needs to load.
+async function listDemos(browser, origin) {
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${origin}/welcome/playground/`, { waitUntil: "domcontentloaded" });
+    return await page.evaluate(() => document.querySelector("fc-playground")?.dataset.demos?.split(",") ?? []);
   } finally {
     await page.close();
   }
