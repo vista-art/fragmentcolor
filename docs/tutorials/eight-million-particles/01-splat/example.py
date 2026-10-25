@@ -54,8 +54,8 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     var particle = particles[index];
 
-    // A new buffer holds zeros, so the first frame places every particle on a
-    // circular orbit. After that, about one in 300 starts over on each frame.
+    // A new buffer holds zeros, so the first frame starts every particle
+    // circling the center. After that, about one in 300 starts over on each frame.
     // Mixing in the bit pattern of time gives each frame its own dice.
     let seed = hash(index ^ bitcast<u32>(time));
     let fresh = all(particle.velocity == vec2<f32>(0.0));
@@ -68,7 +68,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 
     // An attractor wanders through the middle and pulls every particle.
-    // The pull weakens with distance; 0.05 keeps it finite at the center.
+    // The pull weakens with distance; 0.05 keeps it finite right at the attractor.
     let attractor = vec2<f32>(cos(time * 0.37), sin(time * 0.61)) * 0.4;
     let offset = attractor - particle.position;
     let pull = offset / (dot(offset, offset) + 0.05);
@@ -132,7 +132,7 @@ class State:
 
 # #region: setup
 def setup():
-    # All three shaders size their buffers with these WGSL constants.
+    # All three shaders take their sizes from these WGSL constants.
     sizes = f"""const COUNT: u32 = {COUNT}u;
          const GRID = vec2<u32>({WIDTH}u, {HEIGHT}u);
          const CELLS: u32 = {WIDTH}u * {HEIGHT}u;"""

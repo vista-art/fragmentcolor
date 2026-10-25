@@ -1,4 +1,4 @@
-"""Runs one step of the tutorial in a window: `python host.py 01-splat`.
+"""Runs a tutorial program in a window: `python host.py 01-splat`.
 
 It loads the step's `example.py`, calls its `setup` once, then its `frame` about
 60 times a second with the seconds since the window opened. With `FC_TUTORIAL_FRAMES=n`

@@ -1,4 +1,4 @@
-//! Runs one step of the tutorial in a window.
+//! Runs a tutorial program in a window.
 //!
 //! It calls the step's `setup` once, then its `frame` on every redraw
 //! with the seconds since the window opened. `FC_TUTORIAL_FRAMES=n` skips the
