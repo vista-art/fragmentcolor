@@ -68,9 +68,11 @@ extension Camera {
 
     // MARK: - Methods
 
+    @discardableResult
     public func lookAt(_ position: [Float], _ target: [Float], _ up: [Float]) throws -> Camera {
         return try lookAt(position: position, target: target, up: up)
     }
+    @discardableResult
     public func lookAt(_ position: [Double], _ target: [Double], _ up: [Double]) throws -> Camera {
         return try lookAt(
             position: position.map { Float($0) },
@@ -79,9 +81,11 @@ extension Camera {
         )
     }
 
+    @discardableResult
     public func setAspect(_ aspect: Float) -> Camera {
         return setAspect(aspect: aspect)
     }
+    @discardableResult
     public func setAspect(_ aspect: Double) -> Camera {
         return setAspect(aspect: Float(aspect))
     }
