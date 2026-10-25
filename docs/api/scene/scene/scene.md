@@ -62,6 +62,13 @@ from the host can suppress them with
 per-kind `no_default_camera` / `no_default_light`), or swap the stock values
 out with `set_default_camera` / `set_default_light`.
 
+## Depth
+
+Models in a pass hide each other by distance, whatever order you add them in.
+A pass that draws models and has no depth target gets a `Depth32Float` texture from the renderer,
+sized and sampled like the pass's color attachment, reused from frame to frame and cleared at the start of each pass.
+To read the depth in a later pass, create a texture with `Renderer::create_depth_texture` and set it with `Pass::set_depth_target`.
+
 ## Methods
 
 | name                 | what it does                                                |

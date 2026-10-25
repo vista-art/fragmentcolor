@@ -2,6 +2,8 @@
 
 Create a depth texture using `Depth32Float`.
 
+A pass that draws models gets a depth buffer without one. Create a depth texture to read depth in a later pass, or to give depth to a pass of plain meshes.
+
 The created depth texture inherits the renderer's current sample count:
 - If you called `create_target(window)` (surface-backed), it matches the negotiated MSAA (e.g., 2×/4×) for that surface.
 - If you are rendering offscreen via `create_texture_target`, it defaults to 1.

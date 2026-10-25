@@ -320,6 +320,8 @@ class Renderer:
         """
         Create a depth texture using `Depth32Float`.
 
+        A pass that draws models gets a depth buffer without one. Create a depth texture to read depth in a later pass, or to give depth to a pass of plain meshes.
+
         The created depth texture inherits the renderer's current sample count:
         - If you called `create_target(window)` (surface-backed), it matches the negotiated MSAA (e.g., 2×/4×) for that surface.
         - If you are rendering offscreen via `create_texture_target`, it defaults to 1.
@@ -1333,7 +1335,7 @@ class Pass:
 
         The target must be a depth `Texture` (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](https://fragmentcolor.org/api/core/renderer#create_depth_texture). A `TextureTarget` always has a color format, so passing one returns an error. The depth attachment's sample count must match the color attachments'. Mixing 1× and 4× MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
 
-        To **opt out** of depth testing, simply don't call `set_depth_target`. The pass then renders without depth-state, painter's-algorithm style (later draws win).
+        A pass that draws a `Model` and has no depth target gets a depth buffer from the renderer. It matches the pass's color attachment in size and sample count and clears at the start of the pass. Fullscreen shaders in that pass ignore it, so a backdrop drawn first stays behind the models. Any other pass draws without depth unless you call `set_depth_target`, and later draws win.
 
         Example:
 
@@ -2031,6 +2033,13 @@ class Scene:
     per-kind `no_default_camera` / `no_default_light`), or swap the stock values
     out with `set_default_camera` / `set_default_light`.
 
+    ## Depth
+
+    Models in a pass hide each other by distance, whatever order you add them in.
+    A pass that draws models and has no depth target gets a `Depth32Float` texture from the renderer,
+    sized and sampled like the pass's color attachment, reused from frame to frame and cleared at the start of each pass.
+    To read the depth in a later pass, create a texture with `Renderer::create_depth_texture` and set it with `Pass::set_depth_target`.
+
     ## Methods
 
     | name                 | what it does                                                |
@@ -2246,6 +2255,9 @@ class Scene:
           contents around (the wgpu `LoadOp::Load` equivalent).
         - Or call `pass.set_clear_color([r, g, b, a])` to choose a specific clear
           value (still a clear, just a different color).
+
+        Depth clears at the start of every pass too, so `load_previous` keeps an
+        earlier pass's colors but not its depth.
 
         `Scene::add_pass` stores each pass independently. There's no automatic
         chaining of their attachments. To share a target between two passes, route
@@ -3102,8 +3114,8 @@ class Camera:
         degrees); `aspect` is width / height; `near` and `far` clip the depth range.
 
         Built on `glam::Mat4::perspective_rh`, which targets wgpu's NDC depth
-        range `[0, 1]`. Pair with a depth attachment configured for that range
-        when you add the Camera to a Pass that does depth testing.
+        range `[0, 1]`. A pass that draws models gets a depth buffer for that
+        range on its own.
 
         The view component starts at identity: eye at the world origin, looking
         down `-Z`, with `+Y` up. Chain [`look_at`](https://fragmentcolor.org/api/scene/camera#look_at)
@@ -3127,8 +3139,8 @@ class Camera:
         parallel projection.
 
         Built on `glam::Mat4::orthographic_rh`, which targets wgpu's NDC depth
-        range `[0, 1]`. Pair with a depth attachment configured for that range
-        when you add the Camera to a Pass that does depth testing.
+        range `[0, 1]`. A pass that draws models gets a depth buffer for that
+        range on its own.
 
         The view component starts at identity: eye at the world origin, looking
         down `-Z`, with `+Y` up. Chain [`look_at`](https://fragmentcolor.org/api/scene/camera#look_at)

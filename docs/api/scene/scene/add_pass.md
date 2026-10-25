@@ -29,6 +29,9 @@ downstream Pass clears the upstream Pass's output unless you opt out:
 - Or call `pass.set_clear_color([r, g, b, a])` to choose a specific clear
   value (still a clear, just a different color).
 
+Depth clears at the start of every pass too, so `load_previous` keeps an
+earlier pass's colors but not its depth.
+
 `Scene::add_pass` stores each pass independently. There's no automatic
 chaining of their attachments. To share a target between two passes, route
 them through the same `set_target(...)` and use `load_previous` to compose.

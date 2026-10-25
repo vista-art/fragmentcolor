@@ -36,6 +36,7 @@ Items found while reviewing 0.12.6.
 - [ ] `UniformData` can be named outside the crate, so a helper can forward one value to `Shader::set` on several shaders
 - [ ] uniffi warns that `uniffi.toml` looks like an old-style config file; move it to the current layout
 - [ ] The Kotlin transpiler flattens a multi-line list of shader slugs into `SHADER,))`. It compiles, but the generated tab reads wrong; `scripts/convert.rs` keeps each item on its own line
+- [x] A pass that draws models and sets no depth target draws with a pooled depth buffer that matches its color attachment, and a depth target the app sets wins
 - [ ] A push that changes only the website reruns every healthcheck. The `paths` filter on `pull_request` compares the whole PR with its base, not the last push. Skip a check when the files it reads match a commit where it already passed, for example with a cache key built from the tree hash of those paths, and keep the skipped job reporting success for branch protection
 
 ### First, because 0.13.0 needs them
@@ -380,7 +381,7 @@ Today the app fills these names and core fills nothing.
 
 - [ ] `Scene` keeps one pass, reached through `scene.pass()`, plus `add`, `remove`, `models`, `cameras`, `lights`, `nodes`, `set_ambient` (was `ambient`) and `skip_defaults` (was `no_defaults`). `add_to`, `PassRef`, the six pass list methods and the other four default methods go
 - [ ] The typed lists read what the pass reaches, through nodes too, and `scene.nodes()` returns the root nodes the pass keeps. The stock camera and light follow the target's aspect and stay out of them
-- [ ] The scene's pass draws with a pooled depth target that matches the render target's size and sample count, and a depth target the app sets wins. Today it has none
+- [x] The scene's pass draws with a pooled depth target that matches the render target's size and sample count, and a depth target the app sets wins (0.12.7)
 - [ ] `SceneNode` is a handle that holds a local transform, a visibility flag, a name, glTF `extras`, models, cameras, lights and child nodes: `SceneNode::new()`, `add(&object)` and `remove(&object)` for a `Model`, `Camera`, `Light` or `SceneNode`, `models()`, `cameras()`, `lights()`, `nodes()`, `parent()`, `transform()`, `set_transform`, `translate`, `rotate`, `scale`, `world()`, `visible()`, `set_visible`, `name()`, `extras()` and `share()`. `name()` and `extras()` return `""` and `"{}"` on a node built by hand
 - [ ] Each instance under a node draws at `node.world() * model.transform() * slot`, where `world()` multiplies the transforms from the root down, parent on the left, as glTF composes nodes. A camera under a node sees through its own view matrix times the inverse of `node.world()`, a point or spot light sits at `node.world()` times its position, and a directional or spot light's direction turns with the node
 - [ ] A node has one parent. `add` returns a `SceneError` that names the node when it already has a parent or when the add would close a cycle. `SceneError` is `#[non_exhaustive]` and lifts into the binding errors with `#[from]`

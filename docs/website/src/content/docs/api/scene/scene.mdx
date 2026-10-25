@@ -73,6 +73,13 @@ from the host can suppress them with
 per-kind `no_default_camera` / `no_default_light`), or swap the stock values
 out with `set_default_camera` / `set_default_light`.
 
+## Depth
+
+Models in a pass hide each other by distance, whatever order you add them in.
+A pass that draws models and has no depth target gets a `Depth32Float` texture from the renderer,
+sized and sampled like the pass's color attachment, reused from frame to frame and cleared at the start of each pass.
+To read the depth in a later pass, create a texture with `Renderer::create_depth_texture` and set it with `Pass::set_depth_target`.
+
 
 ## Methods
 
@@ -1241,6 +1248,9 @@ downstream Pass clears the upstream Pass's output unless you opt out:
   contents around (the wgpu `LoadOp::Load` equivalent).
 - Or call `pass.set_clear_color([r, g, b, a])` to choose a specific clear
   value (still a clear, just a different color).
+
+Depth clears at the start of every pass too, so `load_previous` keeps an
+earlier pass's colors but not its depth.
 
 `Scene::add_pass` stores each pass independently. There's no automatic
 chaining of their attachments. To share a target between two passes, route
