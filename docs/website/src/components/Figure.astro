@@ -28,12 +28,14 @@ interface Props {
   height: number;
   /** A capture to draw under the annotations, as a URL under `public/`. */
   src?: string;
-  /** A short caption under the figure. */
+  /** A short caption under the figure. Text between backticks renders as code. */
   caption?: string;
 }
 
 const { alt, width = 720, height, src, caption } = Astro.props;
 const viewBox = `0 0 ${width} ${height}`;
+// Odd pieces of the caption sat between backticks.
+const captionParts = caption?.split("`") ?? [];
 ---
 
 <figure class="fc-figure not-content">
@@ -51,7 +53,7 @@ const viewBox = `0 0 ${width} ${height}`;
       )
     }
   </div>
-  {caption && <figcaption>{caption}</figcaption>}
+  {caption && <figcaption>{captionParts.map((part, i) => (i % 2 ? <code>{part}</code> : part))}</figcaption>}
 </figure>
 
 <style is:global>
@@ -126,8 +128,8 @@ const viewBox = `0 0 ${width} ${height}`;
   /* Phones show the same coordinates at half the width or less, so labels grow. */
   @media (max-width: 40rem) {
     .fc-figure {
-      --fig-text: 24px;
-      --fig-small: 20px;
+      --fig-text: 22px;
+      --fig-small: 18.5px;
     }
   }
 
