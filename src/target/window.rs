@@ -39,11 +39,24 @@ impl Target for WindowTarget {
     }
 
     #[lsp_doc("docs/api/targets/target/resize.md")]
-    fn resize(&mut self, size: impl Into<Size>) {
+    fn resize(&mut self, size: impl Into<Size>) -> Result<(), TextureError> {
         let size = size.into();
+        // A minimized window reports a size with no area. The surface keeps its
+        // last configuration and draws again on the next resize that has one.
+        if size.width == 0 || size.height == 0 {
+            return Ok(());
+        }
+        let limit = self.context.device.limits().max_texture_dimension_2d;
+        if size.width > limit || size.height > limit {
+            return Err(TextureError::InvalidInput(format!(
+                "can't resize a window target to {}x{}, each side must be at most {limit}",
+                size.width, size.height
+            )));
+        }
         self.config.width = size.width;
         self.config.height = size.height;
         self.surface.configure(&self.context.device, &self.config);
+        Ok(())
     }
 
     #[lsp_doc("docs/api/targets/target/get_image.md")]

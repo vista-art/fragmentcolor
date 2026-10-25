@@ -353,7 +353,9 @@ fn report(result: Result<(), ShaderError>) {
 }
 
 fn on_resize(app: &App, size: &PhysicalSize<u32>) {
-    app.resize([size.width, size.height]);
+    if let Err(error) = app.resize([size.width, size.height]) {
+        eprintln!("resize failed: {error}");
+    }
     if let Some(life) = app.get_state::<Life>("life") {
         report(life.resize(size));
     }

@@ -128,7 +128,9 @@ async fn start(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
 }
 
 fn resize(app: &App, size: &PhysicalSize<u32>) {
-    app.resize([size.width, size.height]);
+    if let Err(error) = app.resize([size.width, size.height]) {
+        eprintln!("resize failed: {error}");
+    }
 }
 
 fn draw(app: &App) {

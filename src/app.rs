@@ -1,5 +1,6 @@
 #![cfg(not(wasm))]
 
+use crate::texture::TextureError;
 use crate::{Renderer, Size, Target};
 use parking_lot::RwLock;
 use std::any::Any;
@@ -331,9 +332,9 @@ impl App {
     }
 
     /// Convenience helper for single-window apps: resize the primary window target.
-    pub fn resize(&self, size: impl Into<Size>) {
+    pub fn resize(&self, size: impl Into<Size>) -> Result<(), TextureError> {
         let id = self.primary_window_id();
-        self.resize_target(id, size);
+        self.resize_target(id, size)
     }
 
     pub fn window(&self, id: WindowId) -> Option<Arc<Window>> {
@@ -358,9 +359,11 @@ impl App {
         map.get(&id).map(f)
     }
 
-    pub fn resize_target(&self, id: WindowId, size: impl Into<Size>) {
-        if let Some(target) = self.targets.write().get_mut(&id) {
-            target.resize(size);
+    /// Resizes the target of window `id`. A window without a target has nothing to resize.
+    pub fn resize_target(&self, id: WindowId, size: impl Into<Size>) -> Result<(), TextureError> {
+        match self.targets.write().get_mut(&id) {
+            Some(target) => target.resize(size),
+            None => Ok(()),
         }
     }
 
@@ -843,7 +846,7 @@ mod tests {
             let s1 = app.window_size(id).expect("size present");
             assert_eq!([s1.width, s1.height], [5, 6]);
 
-            app.resize_target(id, [9u32, 11u32]);
+            app.resize_target(id, [9u32, 11u32]).expect("resize failed");
             let s2 = app.window_size(id).expect("size present after");
             assert_eq!([s2.width, s2.height], [9, 11]);
         });

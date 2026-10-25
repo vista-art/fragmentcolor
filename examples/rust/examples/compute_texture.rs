@@ -44,7 +44,9 @@ fn fs_main(v: VOut) -> @location(0) vec4<f32> {
 "#;
 
 fn on_resize(app: &App, sz: &PhysicalSize<u32>) {
-    app.resize([sz.width, sz.height]);
+    if let Err(error) = app.resize([sz.width, sz.height]) {
+        eprintln!("resize failed: {error}");
+    }
 }
 
 fn draw(app: &App) {

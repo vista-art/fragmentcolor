@@ -111,12 +111,13 @@ extension TextureTarget {
 
     /// Resize the target from a `[width, height]` array. Throws for any other length.
     public func resize(_ size: [UInt32]) throws {
-        resize(try sizeRecord(size, "resize"))
+        try resize(try sizeRecord(size, "resize"))
     }
 
     /// Resize the target to `size`, such as another target's `size()`.
-    public func resize(_ size: Size) {
-        resize(width: size.width, height: size.height)
+    /// Throws when the target can't take it.
+    public func resize(_ size: Size) throws {
+        try resize(width: size.width, height: size.height)
     }
 }
 
@@ -125,12 +126,13 @@ extension WindowTarget {
 
     /// Resize the target from a `[width, height]` array. Throws for any other length.
     public func resize(_ size: [UInt32]) throws {
-        resize(try sizeRecord(size, "resize"))
+        try resize(try sizeRecord(size, "resize"))
     }
 
     /// Resize the target to `size`, such as another target's `size()`.
-    public func resize(_ size: Size) {
-        resize(width: size.width, height: size.height)
+    /// Throws when the target can't take it.
+    public func resize(_ size: Size) throws {
+        try resize(width: size.width, height: size.height)
     }
 }
 

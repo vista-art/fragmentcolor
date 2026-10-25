@@ -79,7 +79,7 @@ fn pass_target_draws_into_resized_texture() {
         pass.set_target(&target).expect("set_target failed");
 
         renderer.render(&pass, &scratch).expect("render failed");
-        target.resize([32, 8]);
+        target.resize([32, 8]).expect("resize failed");
         renderer.render(&pass, &scratch).expect("render failed");
 
         let img = target.get_image().await.expect("read back");
@@ -119,7 +119,7 @@ fn sampled_binding_reads_resized_texture() {
         renderer.render(&draw, &probe).expect("render failed");
 
         // repaint at a new size, then sample through the pre-resize binding
-        target.resize([24, 24]);
+        target.resize([24, 24]).expect("resize failed");
         fill.set("color", [0.0, 1.0, 0.0, 1.0]).expect("set failed");
         renderer.render(&draw, &probe).expect("render failed");
         renderer.render(&post, &probe).expect("render failed");
@@ -163,7 +163,7 @@ fn handles_and_clones_follow_resize() {
         let handle = target.texture();
         let copy = target.clone();
 
-        target.resize([24, 16]);
+        target.resize([24, 16]).expect("resize failed");
         let fill = Shader::new(FILL).expect("fill shader failed");
         fill.set("color", [1.0, 0.0, 0.0, 1.0]).expect("set failed");
         renderer.render(&fill, &target).expect("render failed");
@@ -177,6 +177,35 @@ fn handles_and_clones_follow_resize() {
         assert!(
             img[0] > 200,
             "the handle sees the fill, got {:?}",
+            &img[..4]
+        );
+    });
+}
+
+// Story: a texture target refuses a size with no area and keeps its own,
+// and the size it already has keeps its pixels.
+#[test]
+fn resize_refuses_an_empty_size_and_keeps_the_pixels() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let mut target = renderer
+            .create_texture_target([8, 8])
+            .await
+            .expect("create_texture_target failed");
+        let fill = Shader::new(FILL).expect("fill shader failed");
+        fill.set("color", [1.0, 0.0, 0.0, 1.0]).expect("set failed");
+        renderer.render(&fill, &target).expect("render failed");
+
+        let refused = target.resize([0, 8]);
+        assert!(refused.is_err(), "a width of zero is an error");
+        let size: [u32; 2] = target.size().into();
+        assert_eq!(size, [8, 8], "a refused resize keeps the size");
+
+        target.resize([8, 8]).expect("resize failed");
+        let img = target.get_image().await.expect("read back");
+        assert!(
+            img[0] > 200,
+            "the current size keeps the pixels, got {:?}",
             &img[..4]
         );
     });

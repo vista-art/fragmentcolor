@@ -91,7 +91,7 @@ pub(crate) trait FrameSource {
 pub trait Target: FrameSource {
     fn size(&self) -> Size;
 
-    fn resize(&mut self, size: impl Into<Size>);
+    fn resize(&mut self, size: impl Into<Size>) -> Result<(), TextureError>;
 
     /// Read back the target's current contents as packed RGBA8 bytes
     /// (row-major, top-left origin). Async because GPU readback is

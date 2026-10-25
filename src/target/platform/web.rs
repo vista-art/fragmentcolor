@@ -50,7 +50,7 @@ impl CanvasTarget {
         let sz: Size = size
             .try_into()
             .map_err(|e: crate::size::error::SizeError| JsError::new(&format!("{e}")))?;
-        Target::resize(self, sz);
+        Target::resize(self, sz)?;
         Ok(())
     }
 
@@ -79,8 +79,8 @@ impl Target for CanvasTarget {
         self.inner.lock().size()
     }
 
-    fn resize(&mut self, size: impl Into<Size>) {
-        self.inner.lock().resize(size);
+    fn resize(&mut self, size: impl Into<Size>) -> Result<(), TextureError> {
+        self.inner.lock().resize(size)
     }
 
     async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
@@ -94,7 +94,7 @@ impl TextureTarget {
     #[lsp_doc("docs/api/targets/texture_target/resize.md")]
     pub fn resize_js(&mut self, size: &JsValue) -> Result<(), JsError> {
         let size: Size = size.try_into()?;
-        self.resize(size);
+        self.resize(size)?;
         Ok(())
     }
 

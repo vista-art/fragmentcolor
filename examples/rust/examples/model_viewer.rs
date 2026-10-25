@@ -66,7 +66,9 @@ fn draw(app: &App) {
 /// Keep the projection square when the window is resized. Same Arc-shared
 /// camera backing — no Scene rebuild.
 fn resize(app: &App, size: &PhysicalSize<u32>) {
-    app.resize([size.width, size.height]);
+    if let Err(error) = app.resize([size.width, size.height]) {
+        eprintln!("resize failed: {error}");
+    }
     if let Some(viewer) = app.get_state::<Viewer>("viewer") {
         let aspect = size.width as f32 / size.height.max(1) as f32;
         viewer.camera.set_aspect(aspect);

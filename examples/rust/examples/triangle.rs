@@ -6,7 +6,9 @@ use winit::window::Window;
 const TRIANGLE_SOURCE: &str = include_str!("shaders/hello_triangle.wgsl");
 
 pub fn resize(app: &App, new_size: &PhysicalSize<u32>) {
-    app.resize([new_size.width, new_size.height]);
+    if let Err(error) = app.resize([new_size.width, new_size.height]) {
+        eprintln!("resize failed: {error}");
+    }
 }
 
 pub fn draw(app: &App) {

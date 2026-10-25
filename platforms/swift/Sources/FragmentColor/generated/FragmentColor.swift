@@ -4515,7 +4515,7 @@ public protocol TextureTargetProtocol: AnyObject, Sendable {
      * pixel data is lost. Uniffi cannot express `&mut self` on an
      * `Arc`-wrapped object, so this method acquires the inner write-lock.
      */
-    func resize(width: UInt32, height: UInt32) 
+    func resize(width: UInt32, height: UInt32) throws 
     
     /**
      * Returns the current size of the offscreen texture in pixels.
@@ -4620,7 +4620,7 @@ open func getImage()async throws  -> Data  {
      * pixel data is lost. Uniffi cannot express `&mut self` on an
      * `Arc`-wrapped object, so this method acquires the inner write-lock.
      */
-open func resize(width: UInt32, height: UInt32)  {try! rustCall() {
+open func resize(width: UInt32, height: UInt32)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_texturetarget_resize(
             self.uniffiCloneHandle(),
@@ -4897,7 +4897,7 @@ public protocol WindowTargetProtocol: AnyObject, Sendable {
      * Uniffi cannot express `&mut self` on an `Arc`-wrapped object, so this
      * method acquires the inner mutex, applies the resize, and releases it.
      */
-    func resize(width: UInt32, height: UInt32) 
+    func resize(width: UInt32, height: UInt32) throws 
     
     /**
      * Returns the current size of the window surface in pixels.
@@ -4987,7 +4987,7 @@ open func getImage()async throws  -> Data  {
      * Uniffi cannot express `&mut self` on an `Arc`-wrapped object, so this
      * method acquires the inner mutex, applies the resize, and releases it.
      */
-open func resize(width: UInt32, height: UInt32)  {try! rustCall() {
+open func resize(width: UInt32, height: UInt32)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_windowtarget_resize(
             self.uniffiCloneHandle(),
@@ -9315,7 +9315,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_texturetarget_getimage() != 24276) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texturetarget_resize() != 10714) {
+    if (uniffi_fragmentcolor_checksum_method_texturetarget_resize() != 60665) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_texturetarget_size() != 13445) {
@@ -9327,7 +9327,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_windowtarget_getimage() != 57956) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_windowtarget_resize() != 41290) {
+    if (uniffi_fragmentcolor_checksum_method_windowtarget_resize() != 44576) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_windowtarget_size() != 26325) {

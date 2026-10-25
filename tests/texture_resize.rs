@@ -127,7 +127,7 @@ fn a_depth_target_follows_its_texture() {
             .expect("set_depth_target failed");
         renderer.render(&pass, &target).expect("render failed");
 
-        target.resize([32, 8]);
+        target.resize([32, 8]).expect("resize failed");
         depth.resize([32, 8]).expect("resize failed");
         renderer.render(&pass, &target).expect("render failed");
         let image = target.get_image().await.expect("read back");

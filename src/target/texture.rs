@@ -52,13 +52,10 @@ impl Target for TextureTarget {
     }
 
     #[lsp_doc("docs/api/targets/target/resize.md")]
-    fn resize(&mut self, size: impl Into<Size>) {
+    fn resize(&mut self, size: impl Into<Size>) -> Result<(), TextureError> {
         // The swap reaches every pass attachment, shader binding, clone and
         // texture() handle that holds the registration.
-        let resized = crate::texture::resize(&self.context, &self.registration, size.into());
-        if let Err(error) = resized {
-            log::warn!("TextureTarget::resize kept the old texture: {error}");
-        }
+        crate::texture::resize(&self.context, &self.registration, size.into())
     }
 
     /// Read back the offscreen texture contents as packed RGBA8 bytes

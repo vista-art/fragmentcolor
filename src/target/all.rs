@@ -45,7 +45,7 @@ impl Target for RenderTarget {
         }
     }
 
-    fn resize(&mut self, size: impl Into<Size>) {
+    fn resize(&mut self, size: impl Into<Size>) -> Result<(), TextureError> {
         match self {
             RenderTarget::Window(w) => w.resize(size),
             RenderTarget::Texture(t) => t.resize(size),
@@ -75,7 +75,7 @@ mod tests {
             let s = any.size();
             assert_eq!([s.width, s.height], [8, 6]);
 
-            any.resize([4, 4]);
+            any.resize([4, 4]).expect("resize failed");
             let s2 = any.size();
             assert_eq!([s2.width, s2.height], [4, 4]);
 

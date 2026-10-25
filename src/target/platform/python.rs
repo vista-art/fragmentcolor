@@ -74,7 +74,7 @@ impl RenderCanvasTarget {
 
     #[lsp_doc("docs/api/targets/window_target/resize.md")]
     pub fn resize(&mut self, size: crate::PySize) -> PyResult<()> {
-        <Self as Target>::resize(self, Size::try_from(size)?);
+        <Self as Target>::resize(self, Size::try_from(size)?)?;
         Ok(())
     }
 
@@ -128,9 +128,10 @@ impl Target for RenderCanvasTarget {
         }
     }
 
-    fn resize(&mut self, size: impl Into<Size>) {
-        if let Some(target) = &mut self.target {
-            target.resize(size.into());
+    fn resize(&mut self, size: impl Into<Size>) -> Result<(), TextureError> {
+        match &mut self.target {
+            Some(target) => target.resize(size.into()),
+            None => Ok(()),
         }
     }
 
@@ -174,7 +175,7 @@ impl PyTextureTarget {
 
     #[lsp_doc("docs/api/targets/texture_target/resize.md")]
     pub fn resize(&mut self, size: crate::PySize) -> PyResult<()> {
-        <Self as Target>::resize(self, Size::try_from(size)?);
+        <Self as Target>::resize(self, Size::try_from(size)?)?;
         Ok(())
     }
 
@@ -260,8 +261,8 @@ impl Target for PyTextureTarget {
         self.inner.size()
     }
 
-    fn resize(&mut self, size: impl Into<Size>) {
-        <crate::TextureTarget as Target>::resize(&mut self.inner, size);
+    fn resize(&mut self, size: impl Into<Size>) -> Result<(), TextureError> {
+        <crate::TextureTarget as Target>::resize(&mut self.inner, size)
     }
 
     async fn get_image(&self) -> Result<Vec<u8>, TextureError> {

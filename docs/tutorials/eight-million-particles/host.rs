@@ -50,7 +50,11 @@ where
     let start = Instant::now();
     let mut app = App::new(Renderer::new());
     app.on_start(move |app, windows| pollster::block_on(start_app(app, windows, setup)))
-        .on_resize(|app, size| app.resize([size.width, size.height]))
+        .on_resize(|app, size| {
+            if let Err(error) = app.resize([size.width, size.height]) {
+                eprintln!("resize failed: {error}");
+            }
+        })
         .on_redraw_requested(move |app| draw(app, frame, start.elapsed().as_secs_f32()));
     app.run();
 }

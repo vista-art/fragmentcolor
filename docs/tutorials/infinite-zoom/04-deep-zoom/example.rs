@@ -653,7 +653,9 @@ fn on_cursor_moved(app: &App, _device: DeviceId, position: &PhysicalPosition<f64
 }
 
 fn on_resize(app: &App, size: &PhysicalSize<u32>) {
-    app.resize([size.width, size.height]);
+    if let Err(error) = app.resize([size.width, size.height]) {
+        eprintln!("resize failed: {error}");
+    }
 }
 
 fn on_redraw(app: &App) {

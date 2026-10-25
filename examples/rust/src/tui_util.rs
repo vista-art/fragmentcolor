@@ -67,7 +67,7 @@ impl<W: Write> TerminalRenderer<W> {
             self.cols = sz.width;
             self.rows = sz.height;
             self.target
-                .resize([self.cols as u32, (self.rows as u32) * 2]);
+                .resize([self.cols as u32, (self.rows as u32) * 2])?;
         }
         Ok(())
     }

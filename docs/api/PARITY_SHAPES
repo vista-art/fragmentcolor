@@ -34,10 +34,10 @@ docs/api/scene/model/set_transform.md swift Model.setTransform: (floats) -> unit
 docs/api/scene/model/transform.md kotlin Model.transform: () -> floats | rust () -> matrix
 docs/api/scene/model/transform.md swift Model.transform: () -> floats | rust () -> matrix
 docs/api/scene/model/transform.md web Model.transform: () -> floats | rust () -> matrix
-docs/api/targets/texture_target/resize.md kotlin TextureTarget.resize: (int, int) -> unit | rust (into Size) -> unit
-docs/api/targets/texture_target/resize.md swift TextureTarget.resize: (int, int) -> unit | rust (into Size) -> unit
-docs/api/targets/window_target/resize.md kotlin WindowTarget.resize: (int, int) -> unit | rust (into Size) -> unit
-docs/api/targets/window_target/resize.md swift WindowTarget.resize: (int, int) -> unit | rust (into Size) -> unit
+docs/api/targets/texture_target/resize.md kotlin TextureTarget.resize: (int, int) -> unit throws | rust (into Size) -> unit throws
+docs/api/targets/texture_target/resize.md swift TextureTarget.resize: (int, int) -> unit throws | rust (into Size) -> unit throws
+docs/api/targets/window_target/resize.md kotlin WindowTarget.resize: (int, int) -> unit throws | rust (into Size) -> unit throws
+docs/api/targets/window_target/resize.md swift WindowTarget.resize: (int, int) -> unit throws | rust (into Size) -> unit throws
 docs/api/texture/mipmap/build.md kotlin Mipmap.build: (bytes, TextureFormat, Size?) -> self throws | rust (into TextureInput) -> self throws
 docs/api/texture/mipmap/build.md python Mipmap.build: (PyTextureBytes, TextureFormat, PySize?) -> self throws | rust (into TextureInput) -> self throws
 docs/api/texture/mipmap/build.md swift Mipmap.build: (bytes, TextureFormat, Size?) -> self throws | rust (into TextureInput) -> self throws

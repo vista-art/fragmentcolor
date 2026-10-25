@@ -62,8 +62,8 @@ impl MobileWindowTarget {
     /// method acquires the inner mutex, applies the resize, and releases it.
     #[uniffi::method(name = "resize")]
     #[lsp_doc("docs/api/targets/window_target/resize.md")]
-    pub fn resize_mobile(&self, width: u32, height: u32) {
-        Target::resize(&mut *self.inner.lock(), [width, height]);
+    pub fn resize_mobile(&self, width: u32, height: u32) -> Result<(), FragmentColorError> {
+        Target::resize(&mut *self.inner.lock(), [width, height]).map_err(FragmentColorError::from)
     }
 
     #[uniffi::method(name = "getImage")]
@@ -85,8 +85,8 @@ impl Target for MobileWindowTarget {
         Target::size(&*self.inner.lock())
     }
 
-    fn resize(&mut self, size: impl Into<Size>) {
-        Target::resize(&mut *self.inner.lock(), size.into());
+    fn resize(&mut self, size: impl Into<Size>) -> Result<(), TextureError> {
+        Target::resize(&mut *self.inner.lock(), size.into())
     }
 
     async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
@@ -141,8 +141,8 @@ impl MobileTextureTarget {
     /// `Arc`-wrapped object, so this method acquires the inner write-lock.
     #[uniffi::method(name = "resize")]
     #[lsp_doc("docs/api/targets/texture_target/resize.md")]
-    pub fn resize_mobile(&self, width: u32, height: u32) {
-        Target::resize(&mut *self.inner.write(), [width, height]);
+    pub fn resize_mobile(&self, width: u32, height: u32) -> Result<(), FragmentColorError> {
+        Target::resize(&mut *self.inner.write(), [width, height]).map_err(FragmentColorError::from)
     }
 
     /// Returns the current offscreen texture contents as a packed RGBA8
@@ -180,8 +180,8 @@ impl Target for MobileTextureTarget {
         Target::size(&*self.inner.read())
     }
 
-    fn resize(&mut self, size: impl Into<Size>) {
-        Target::resize(&mut *self.inner.write(), size.into());
+    fn resize(&mut self, size: impl Into<Size>) -> Result<(), TextureError> {
+        Target::resize(&mut *self.inner.write(), size.into())
     }
 
     async fn get_image(&self) -> Result<Vec<u8>, TextureError> {

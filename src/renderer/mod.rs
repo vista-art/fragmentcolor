@@ -2770,7 +2770,12 @@ mod tests {
         fn size(&self) -> crate::Size {
             crate::Size::from((1u32, 1u32))
         }
-        fn resize(&mut self, _size: impl Into<crate::Size>) {}
+        fn resize(
+            &mut self,
+            _size: impl Into<crate::Size>,
+        ) -> Result<(), crate::texture::TextureError> {
+            Ok(())
+        }
         async fn get_image(&self) -> Result<Vec<u8>, crate::texture::TextureError> {
             Ok(Vec::new())
         }
@@ -3889,7 +3894,12 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
             fn size(&self) -> crate::Size {
                 self.size
             }
-            fn resize(&mut self, _s: impl Into<crate::Size>) {}
+            fn resize(
+                &mut self,
+                _s: impl Into<crate::Size>,
+            ) -> Result<(), crate::texture::TextureError> {
+                Ok(())
+            }
             async fn get_image(&self) -> Result<Vec<u8>, crate::texture::TextureError> {
                 Ok(Vec::new())
             }
