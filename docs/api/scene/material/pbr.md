@@ -25,6 +25,13 @@ The shader uses:
 - **glTF 2.0 PBR-MR texture sampling**: five sampled maps (`base_color_map`,
   `metallic_roughness_map`, `normal_map`, `occlusion_map`, `emissive_map`)
   combined with their matching factors per the spec.
+- **Output for the target**: lighting is computed in linear light. On the
+  `Rgba8Unorm` and `Bgra8Unorm` targets FragmentColor creates, which hold
+  colors encoded for display, the shader encodes it as sRGB. An sRGB target
+  encodes on write and a float target keeps linear light for the passes after
+  it, so both get linear light. The renderer picks per pipeline from the
+  target's format, through the shader's `override ENCODE_SRGB: bool`. A custom
+  shader that declares the same override gets the same value.
 
 The vertex inputs the shader expects, in this order:
 

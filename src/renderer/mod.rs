@@ -2289,6 +2289,57 @@ fn create_bind_group_layouts(
     layouts
 }
 
+/// The override a shader declares to learn whether its target stores colors
+/// encoded for display. `Material::pbr` encodes its linear light when it does.
+const ENCODE_SRGB: &str = "ENCODE_SRGB";
+
+/// Whether `format` stores colors encoded for display without encoding them
+/// on write, which a shader that works in linear light has to do itself.
+fn stores_display_values(format: wgpu::TextureFormat) -> bool {
+    matches!(
+        format,
+        wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Bgra8Unorm
+    )
+}
+
+/// `module` with its `ENCODE_SRGB` override set for a target of `format`.
+/// FragmentColor resolves it here, because the WGSL that wgpu writes for the
+/// browser from a naga module doesn't carry overrides. A module without that
+/// override, or one whose overrides fail to resolve, comes back unchanged.
+fn set_encoding(module: &naga::Module, format: wgpu::TextureFormat) -> naga::Module {
+    let declared = module
+        .overrides
+        .iter()
+        .any(|(_, item)| item.name.as_deref() == Some(ENCODE_SRGB));
+    if !declared {
+        return module.clone();
+    }
+    let flags = naga::valid::ValidationFlags::all();
+    let info = match naga::valid::Validator::new(flags, naga::valid::Capabilities::all())
+        .validate(module)
+    {
+        Ok(info) => info,
+        Err(error) => {
+            log::error!("{ENCODE_SRGB} stays at its default: {error}");
+            return module.clone();
+        }
+    };
+    let mut constants = naga::back::PipelineConstants::default();
+    let encode = if stores_display_values(format) {
+        1.0
+    } else {
+        0.0
+    };
+    constants.insert(ENCODE_SRGB.to_string(), encode);
+    match naga::back::pipeline_constants::process_overrides(module, &info, None, &constants) {
+        Ok((resolved, _)) => resolved.into_owned(),
+        Err(error) => {
+            log::error!("{ENCODE_SRGB} stays at its default: {error}");
+            module.clone()
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn create_render_pipeline(
     device: &wgpu::Device,
@@ -2354,7 +2405,10 @@ fn create_render_pipeline(
                 size: *sz,
             });
         }
-        let module = Cow::Owned(shader.module_for_pipeline(pad_uniforms).clone());
+        let module = Cow::Owned(set_encoding(
+            shader.module_for_pipeline(pad_uniforms),
+            format,
+        ));
         device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
             source: wgpu::ShaderSource::Naga(module),
@@ -2430,7 +2484,7 @@ fn create_render_pipeline(
         });
 
         // Build module
-        let module = Cow::Owned(module);
+        let module = Cow::Owned(set_encoding(&module, format));
         device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader (fallback push->uniform)"),
             source: wgpu::ShaderSource::Naga(module),

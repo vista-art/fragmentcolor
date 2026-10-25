@@ -38,12 +38,12 @@ mod platform;
 /// helper functions, so they slot in cleanly alongside this main body.
 const PBR_MAIN: &str = include_str!("pbr_main.wgsl");
 
-/// The two registry snippets the built-in PBR shader composes from, baked in
+/// The registry snippets the built-in PBR shader composes from, baked in
 /// directly rather than resolved through the shader registry. They power the
 /// engine's own `Material::pbr()`, so they must be present on every platform
 /// regardless of which `shaders-<category>` features the consumer enabled —
 /// including the slim web build (`--no-default-features`), whose synchronous
-/// constructor cannot fetch them over the network. Embedding the two files
+/// constructor cannot fetch them over the network. Embedding the three files
 /// (a few KB) keeps `Material::pbr()` infallible and offline everywhere
 /// without dragging the rest of the registry into the wasm bundle.
 const MESH_TRANSFORM: &str = include_str!(concat!(
@@ -53,6 +53,10 @@ const MESH_TRANSFORM: &str = include_str!(concat!(
 const MATERIAL_PBR: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/docs/website/public/shaders/material/pbr.wgsl"
+));
+const LINEAR_TO_SRGB: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/docs/website/public/shaders/color/linear_to_srgb.wgsl"
 ));
 
 #[cfg_attr(wasm, wasm_bindgen)]
@@ -69,8 +73,8 @@ crate::impl_fc_kind!(Material, "Material");
 impl Material {
     /// Build a Material with FragmentColor's default physically-based shader.
     ///
-    /// Infallible on every supported build configuration. The two snippets the
-    /// shader composes from (`mesh/transform` and `material/pbr`) are baked
+    /// Infallible on every supported build configuration. The snippets the shader
+    /// composes from (`mesh/transform`, `material/pbr` and `color/linear_to_srgb`) are baked
     /// into the binary directly, so construction needs no shader registry and
     /// no network — it works the same on native, mobile, and the slim web
     /// build (`--no-default-features`), whose synchronous constructor cannot
@@ -80,7 +84,7 @@ impl Material {
         // SAFETY-justified expect: the three parts are WGSL source compiled into the binary at build
         // time. The only way this fails is a malformed shader file in the repo, which is a build-time
         // programmer error caught by the doctests and healthchecks, not a runtime fault.
-        let shader = Shader::new([MESH_TRANSFORM, MATERIAL_PBR, PBR_MAIN]).expect("SAFETY: built-in PBR shader parts are compiled-in WGSL source; a parse failure is a build-time error, not a runtime fault");
+        let shader = Shader::new([MESH_TRANSFORM, MATERIAL_PBR, LINEAR_TO_SRGB, PBR_MAIN]).expect("SAFETY: built-in PBR shader parts are compiled-in WGSL source; a parse failure is a build-time error, not a runtime fault");
         let material = Self { shader };
         material.apply_defaults();
         // Seed the ShaderObject. The default ShaderObject double_sided is

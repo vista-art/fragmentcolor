@@ -5,6 +5,7 @@
 ### Renderer and meshes
 
 - `Shader.add_mesh` fails when a later vertex or instance lacks an attribute the shader reads, and the error names the attribute and the index: `color: expected vec4<f32>, got no value at vertex 3`. Only the first vertex and instance were checked, and a later one drew with zeros.
+- `Material::pbr` writes light the target can show. On the `Rgba8Unorm` and `Bgra8Unorm` targets FragmentColor creates, which hold display values, it encodes as sRGB, so PBR scenes, docs images and goldens drawn there get brighter: they rendered dark and harsh. An sRGB target encodes on write and a float target keeps linear light, so both get linear light, and nothing encodes twice. The renderer sets the shader's `override ENCODE_SRGB: bool` from the target's format, and a custom shader that declares it gets the same value.
 - PBR materials light a `Model` scaled differently along each axis, or mirrored, the way its surfaces face. The registry's `mesh_transform_normal` uses the inverse transpose of the model matrix, where the plain matrix tilted normals toward the stretched axis.
 
 ### JavaScript

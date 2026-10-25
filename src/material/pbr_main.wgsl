@@ -1,7 +1,7 @@
 // Material::pbr default complete shader.
 //
-// Composes the `mesh/transform` and `material/pbr` registry snippets with
-// this main body. Bindings (overridable via shader.set):
+// Composes the `mesh/transform`, `material/pbr` and `color/linear_to_srgb`
+// registry snippets with this main body. Bindings (overridable via shader.set):
 //   group 0 binding 0 — camera   (view_proj, position)
 //   group 0 binding 1 — lights   (LightArray: count + ambient + up to
 //                                 PBR_MAX_LIGHTS KHR_lights_punctual lights)
@@ -87,6 +87,12 @@ struct Light {
 // becomes the bottleneck; a clustered / storage-buffer path is on the
 // roadmap for scenes that need hundreds.
 const PBR_MAX_LIGHTS: u32 = 32u;
+
+// Whether the target stores colors encoded for display. The renderer sets it
+// from the target's format: true for Rgba8Unorm and Bgra8Unorm, false for an
+// sRGB format, which encodes on write, and for a float format, which keeps
+// linear light for the passes after it.
+override ENCODE_SRGB: bool = true;
 
 struct LightArray {
   count: u32,
@@ -256,5 +262,5 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   // replace this branch.
   let ambient = albedo * lights.ambient;
   let color = (lit_total + ambient) * ao + emissive_color;
-  return vec4<f32>(color, alpha);
+  return vec4<f32>(select(color, linear_to_srgb(color), ENCODE_SRGB), alpha);
 }
