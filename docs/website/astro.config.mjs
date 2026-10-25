@@ -245,6 +245,11 @@ export default defineConfig({
   adapter: vercel(),
 
   vite: {
+    build: {
+      // FragmentColor's JS bindings recognize a Vertex, an Instance or a Quad
+      // by its class name, so the minifier keeps class and function names.
+      rolldownOptions: { output: { keepNames: true } },
+    },
     optimizeDeps: {
       // These packages break Vite's dep pre-bundler in this Astro+Vite combo:
       // optimize step claims success but the bundled file never lands in
