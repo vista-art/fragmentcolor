@@ -18,9 +18,10 @@ import headingIds from "./integrations/heading-ids";
 // https://astro.build/config
 export default defineConfig({
   site: "https://fragmentcolor.org",
-  // The demos live on the landing page; the old page keeps its links working.
+  // Old addresses of moved pages keep their links working.
   redirects: {
     "/demos": "/",
+    "/blog/one-program-five-languages": "/blog/playground-on-the-home-page",
   },
   integrations: [
     locks(),
@@ -38,6 +39,7 @@ export default defineConfig({
         SiteTitle: "./src/components/SiteTitle.astro",
         Footer: "./src/components/Footer.astro",
         SocialIcons: "./src/components/SocialIcons.astro",
+        Header: "./src/components/Header.astro",
       },
       customCss: ["./src/assets/styles/override.css"],
       // @TODO set up a system for automatic translation
@@ -85,7 +87,7 @@ export default defineConfig({
           tag: "link",
           attrs: {
             rel: "icon",
-            href: "./favicon.ico",
+            href: "/favicon.ico",
           },
         },
         // Cross-link blog and docs inside the left sidebar (desktop & mobile)

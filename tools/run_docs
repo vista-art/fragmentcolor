@@ -160,10 +160,10 @@ trap cleanup EXIT
 
 if [ "$CMD" = "preview" ]; then
   pnpm --dir "$SITE_DIR" build
-  pnpm --dir "$SITE_DIR" preview -- --port "$PORT" &
+  pnpm --dir "$SITE_DIR" preview --port "$PORT" &
   SERVER_PID=$!
 else
-  pnpm --dir "$SITE_DIR" dev -- --port "$PORT" &
+  pnpm --dir "$SITE_DIR" dev --port "$PORT" &
   SERVER_PID=$!
 fi
 

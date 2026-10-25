@@ -197,7 +197,7 @@ final class GeneratedExamples: ExampleCase {
             try mesh.addVertex([0.0, 1.0, 0.0])
             try mesh.addVertex([1.0, 1.0, 0.0])
             let shader = Shader.fromMesh(mesh)
-            let pass = Pass.fromShader("blobs", shader)
+            let pass = Pass.fromShader("meshes", shader)
 
             // Depth test on: closer fragments win, and the pass writes the depth
             // buffer, so later draws in the same pass see it.
@@ -1133,7 +1133,7 @@ final class GeneratedExamples: ExampleCase {
             // Every Material that points at `albedo` reuses the same uploaded GPU
             // texture; passing the same handle into N Material instances costs one
             // upload and N shader-uniform references.
-            let blob = Material.pbr().baseColorTexture(albedo)
+            let material = Material.pbr().baseColorTexture(albedo)
         }
     }
 
@@ -1370,12 +1370,12 @@ final class GeneratedExamples: ExampleCase {
         await example("docs/api/scene/model/set_visible.md") {
             let mesh = Mesh()
             try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]))
-            let blob = Model(mesh, Material.pbr())
+            let detail = Model(mesh, Material.pbr())
 
-            // At a wide zoom level, skip the detail blobs.
-            blob.setVisible(false)
-            // Zoomed back in, turn them on again.
-            blob.setVisible(true)
+            // Far from the camera, hide the detail Model.
+            detail.setVisible(false)
+            // Closer again, show it.
+            detail.setVisible(true)
         }
     }
 

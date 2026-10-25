@@ -10,7 +10,7 @@ To **opt out** of depth testing, simply don't call `set_depth_target`. The pass 
 
 ## Example
 
-A 3D-blob-over-quad render: the painting quad goes first, then 3D blobs with depth-test on so they occlude each other.
+A pass that draws 3D meshes with the depth test on, so nearer surfaces hide farther ones.
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -28,7 +28,7 @@ mesh.add_vertex([1.0, 0.0, 0.0]);
 mesh.add_vertex([0.0, 1.0, 0.0]);
 mesh.add_vertex([1.0, 1.0, 0.0]);
 let shader = Shader::from_mesh(&mesh);
-let pass = Pass::from_shader("blobs", &shader);
+let pass = Pass::from_shader("meshes", &shader);
 
 // Depth test on: closer fragments win, and the pass writes the depth
 // buffer, so later draws in the same pass see it.

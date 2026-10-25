@@ -833,8 +833,18 @@ const theme = EditorView.baseTheme({
   ".cm-inline-swatch input::-webkit-color-swatch-wrapper": { padding: "0" },
   ".cm-inline-swatch input::-webkit-color-swatch": { border: "none", borderRadius: "2px" },
   ".cm-inline-swatch input::-moz-color-swatch": { border: "none", borderRadius: "2px" },
+  "&light .cm-inline-slider": {
+    backgroundColor: "rgba(61, 80, 245, 0.06)",
+    boxShadow: "inset 0 0 0 1px rgba(61, 80, 245, 0.25)",
+  },
+  "&light .cm-inline-slider input": { accentColor: "#3d50f5" },
   "&light .cm-inline-slider input::-webkit-slider-runnable-track": { background: "rgba(0, 0, 0, 0.25)" },
+  "&light .cm-inline-slider input::-webkit-slider-thumb": { background: "#3d50f5" },
   "&light .cm-inline-slider input::-moz-range-track": { background: "rgba(0, 0, 0, 0.25)" },
+  "&light .cm-inline-slider input::-moz-range-thumb": { background: "#3d50f5" },
+  "&light .cm-inline-slider input:focus-visible::-webkit-slider-thumb": {
+    boxShadow: "0 0 0 3px rgba(61, 80, 245, 0.3)",
+  },
   "&light .cm-inline-swatch input": { borderColor: "rgba(0, 0, 0, 0.35)" },
 });
 

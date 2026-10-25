@@ -1,46 +1,46 @@
-// Step 5 — cinematic postfx (JS port).
-//
-// Same particles as step 4, but they pass through an intermediate
-// texture and then a postfx shader composed from four registry slugs:
-//   postfx/chromatic_offsets — three UVs for an RGB channel split
-//   color/tonemap_filmic     — Hejl/Burgess-Dawson highlight roll-off
-//   postfx/vignette          — multiplier that darkens the edges
-//   postfx/film_grain        — per-frame additive grain
+// Step 6: the particles render into a texture, and a second pass grades it for the screen.
+// Call `setup` once, then call `frame` from each `requestAnimationFrame` callback.
 
-import { Mesh, Pass, Shader, Vertex } from "fragmentcolor";
+import { Instance, Mesh, Pass, Shader, Vertex } from "fragmentcolor";
 
-const PARTICLE_COUNT = 1500;
-const SCENE_SIZE = 1024;
+const COPIES = 15000;
 
+const PARTICLES = `
 // #region: particle-shader
-const PARTICLE_WGSL = `
 struct VOut {
     @builtin(position) pos: vec4<f32>,
     @location(0) color: vec3<f32>,
 };
 
-@group(0) @binding(0) var<uniform> time: f32;
+@group(0) @binding(0) var<uniform> resolution: vec2<f32>;
+@group(0) @binding(1) var<uniform> time: f32;
 
 @vertex
 fn vs_main(
-    @location(0) position: vec3<f32>,    // per-vertex
-    @location(1) center: vec2<f32>,       // per-instance
-    @location(2) phase: f32,               // per-instance
-    @location(3) tint: vec3<f32>,          // per-instance
-    @location(4) color: vec3<f32>,         // per-vertex
+    @location(0) position: vec3<f32>, // per vertex
+    @location(1) color: vec3<f32>,    // per vertex
+    @location(2) center: vec2<f32>,   // per instance
+    @location(3) phase: f32,          // per instance
+    @location(4) tint: vec3<f32>,     // per instance
 ) -> VOut {
-    let scale = 0.045;
+    // Shrink the triangle and keep its shape, as in step 2.
+    let aspect = resolution.x / resolution.y;
+    var shape = position.xy * 0.03;
+    if (aspect > 1.0) { shape.x = shape.x / aspect; }
+    else              { shape.y = shape.y * aspect; }
+
+    // Each copy loops around its center, offset by its own phase.
     let wobble = vec2<f32>(
-        sin(time * 1.3 + phase) * 0.05,
-        cos(time * 0.9 + phase * 1.4) * 0.05,
-    );
-    let world = position.xy * scale + center + wobble;
-    // Same easing-driven pulse as step 4.
-    let raw = 0.5 + 0.5 * sin(time * 2.0 + phase);
-    let glow = 0.4 + 0.6 * in_out_sine(raw);
+        sin(time * 1.3 + phase),
+        cos(time * 0.9 + phase * 1.4),
+    ) * 0.03;
+
+    // The library's in_out_sine flattens the wave near 0 and 1.
+    let wave = 0.5 + 0.5 * sin(time * 2.0 + phase);
+    let glow = 0.75 + 0.75 * in_out_sine(wave);
 
     var out: VOut;
-    out.pos = vec4<f32>(world, 0.0, 1.0);
+    out.pos = vec4<f32>(center + wobble + shape, 0.0, 1.0);
     out.color = color * tint * glow;
     return out;
 }
@@ -49,129 +49,108 @@ fn vs_main(
 fn fs_main(in: VOut) -> @location(0) vec4<f32> {
     return vec4<f32>(in.color, 1.0);
 }
-`;
 // #endregion: particle-shader
+`;
 
+const POSTFX = `
 // #region: postfx-shader
-const POSTFX_MAIN_WGSL = `
 struct VOut {
     @builtin(position) pos: vec4<f32>,
     @location(0) uv: vec2<f32>,
 };
 
+@group(0) @binding(0) var scene: texture_2d<f32>;
+@group(0) @binding(1) var scene_sampler: sampler;
+@group(0) @binding(2) var<uniform> time: f32;
+
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
-    var p  = array<vec2<f32>, 3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.));
-    var uv = array<vec2<f32>, 3>(vec2<f32>(0., 1.), vec2<f32>(2., 1.), vec2<f32>(0.,-1.));
+    // One triangle large enough to cover the whole target.
+    var corners = array<vec2<f32>, 3>(
+        vec2<f32>(-1.0, -1.0), vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0),
+    );
+    var uvs = array<vec2<f32>, 3>(
+        vec2<f32>(0.0, 1.0), vec2<f32>(2.0, 1.0), vec2<f32>(0.0, -1.0),
+    );
     var out: VOut;
-    out.pos = vec4<f32>(p[i], 0., 1.);
-    out.uv = uv[i];
+    out.pos = vec4<f32>(corners[i], 0.0, 1.0);
+    out.uv = uvs[i];
     return out;
 }
 
-@group(0) @binding(0) var scene: texture_2d<f32>;
-@group(0) @binding(1) var samp: sampler;
-@group(0) @binding(2) var<uniform> time: f32;
-
 @fragment
 fn fs_main(in: VOut) -> @location(0) vec4<f32> {
-    // Sample the same texture three times at slightly offset UVs — one
-    // sample per channel — for a subtle film-style chromatic split.
-    let off = chromatic_offsets(in.uv, 0.006);
-    let r = textureSample(scene, samp, off[0]).r;
-    let g = textureSample(scene, samp, off[1]).g;
-    let b = textureSample(scene, samp, off[2]).b;
-    var color = vec3<f32>(r, g, b);
+    // Sample each channel at its own offset.
+    let offsets = chromatic_offsets(in.uv, 0.006);
+    let red = textureSample(scene, scene_sampler, offsets[0]).r;
+    let green = textureSample(scene, scene_sampler, offsets[1]).g;
+    let blue = textureSample(scene, scene_sampler, offsets[2]).b;
 
-    // Hejl/Burgess-Dawson filmic curve to roll off highlights.
-    color = tonemap_filmic(color);
-
-    // Edge darkening + a touch of frame-correlated grain.
-    let v_mask = vignette(in.uv, 0.55, 0.40);
-    let grain  = film_grain(in.uv, time) * 0.05;
-
-    return vec4<f32>(color * v_mask + grain, 1.0);
+    // Halve the exposure, then compress the highlights.
+    let graded = tonemap_filmic(vec3<f32>(red, green, blue) * 0.5);
+    let edges = vignette(in.uv, 0.55, 0.40);
+    let grain = film_grain(in.uv, time) * 0.05;
+    return vec4<f32>(graded * edges + grain, 1.0);
 }
-`;
 // #endregion: postfx-shader
+`;
 
 // #region: setup
-export async function setup(renderer, _target) {
-    // Particle shader and mesh — same as step 4.
-    const particleShader = await Shader.fetch(["easing/in_out_sine", PARTICLE_WGSL]);
-    particleShader.set("time", 0.0);
+export async function setup(renderer) {
+    const particles = await Shader.fetch(["easing/in_out_sine", PARTICLES]);
 
     const mesh = new Mesh();
     mesh.addVertices([
-        new Vertex([-0.7, -0.4, 0.0]).set("color", [0.95, 0.30, 0.42]),
-        new Vertex([ 0.7, -0.4, 0.0]).set("color", [0.30, 0.85, 0.55]),
-        new Vertex([ 0.0,  0.8, 0.0]).set("color", [0.30, 0.55, 0.95]),
+        new Vertex([-0.7, -0.404, 0.0]).set("color", [0.95, 0.30, 0.42]),
+        new Vertex([0.7, -0.404, 0.0]).set("color", [0.30, 0.85, 0.55]),
+        new Vertex([0.0, 0.808, 0.0]).set("color", [0.30, 0.55, 0.95]),
     ]);
-
-    const TAU = Math.PI * 2;
-    const instances = [];
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-        // Use a Vertex template so instance properties get auto-incrementing
-        // locations starting at 1 — clear of the vertex `position` slot at
-        // @location(0). The Vertex's position is dropped on conversion.
-        instances.push(
-            new Vertex([0.0, 0.0])
-                .set("center", [Math.random() * 1.8 - 0.9, Math.random() * 1.8 - 0.9])
-                .set("phase", Math.random() * TAU)
-                .set("tint", [
-                    0.6 + Math.random() * 0.4,
-                    0.6 + Math.random() * 0.4,
-                    0.6 + Math.random() * 0.4,
-                ]),
+    for (let copy = 0; copy < COPIES; copy++) {
+        const center = [Math.random() * 2 - 1, Math.random() * 2 - 1];
+        const phase = Math.random() * 2 * Math.PI;
+        const tint = [
+            0.2 + Math.random() * 0.8,
+            0.2 + Math.random() * 0.8,
+            0.2 + Math.random() * 0.8,
+        ];
+        mesh.addInstance(
+            new Instance()
+                .set("center", center)
+                .set("phase", phase)
+                .set("tint", tint),
         );
     }
-    mesh.addInstances(instances);
+    particles.addMesh(mesh);
 
-    // Bind the mesh to the particle shader so the renderer knows the
-    // vertex layout. Pass.addMesh below registers the mesh with the
-    // pass; this call registers it with the shader so the slug-composed
-    // shader picks up the per-vertex/per-instance attribute layout.
-    particleShader.addMesh(mesh);
+    // The particle pass draws into this texture for `postfx` to read.
+    const scene = await renderer.createTextureTarget([1024, 1024]);
 
-    // Intermediate texture target — the bridge between the two passes.
-    const intermediate = await renderer.createTextureTarget([SCENE_SIZE, SCENE_SIZE]);
-    const sceneTexture = intermediate.texture();
-
-    // Postfx shader composed from four registry slugs and a main source.
-    const postfxShader = await Shader.fetch([
+    const postfx = await Shader.fetch([
         "postfx/chromatic_offsets",
         "color/tonemap_filmic",
         "postfx/vignette",
         "postfx/film_grain",
-        POSTFX_MAIN_WGSL,
+        POSTFX,
     ]);
-    postfxShader.set("scene", sceneTexture);
-    postfxShader.set("time", 0.0);
+    postfx.set("scene", scene.texture());
 
-    // Pass 1: render the particles INTO the intermediate texture.
-    const particlePass = Pass.fromShader("particles", particleShader);
-    particlePass.addMesh(mesh);
-    particlePass.addTarget(intermediate);
+    const particlePass = Pass.fromShader("particles", particles);
+    particlePass.setTarget(scene);
     particlePass.setClearColor([0.04, 0.05, 0.08, 1.0]);
 
-    // Pass 2: sample the intermediate, apply postfx, render to the canvas.
-    const postfxPass = Pass.fromShader("postfx", postfxShader);
+    const output = Pass.fromShader("postfx", postfx);
+    output.require(particlePass);
 
-    return {
-        particleShader,
-        postfxShader,
-        particlePass,
-        postfxPass,
-        mesh,
-        intermediate,
-    };
+    return { particles, postfx, output };
 }
 // #endregion: setup
 
 // #region: frame
-export function frame(state, renderer, target, time, _size) {
-    state.particleShader.set("time", time);
-    state.postfxShader.set("time", time);
-    renderer.render([state.particlePass, state.postfxPass], target);
+export function frame(state, renderer, target, time) {
+    const size = target.size();
+    state.particles.set("resolution", [size.width, size.height]);
+    state.particles.set("time", time);
+    state.postfx.set("time", time);
+    renderer.render(state.output, target);
 }
 // #endregion: frame

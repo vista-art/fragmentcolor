@@ -12,7 +12,7 @@ mesh.add_vertex([1.0, 0.0, 0.0])
 mesh.add_vertex([0.0, 1.0, 0.0])
 mesh.add_vertex([1.0, 1.0, 0.0])
 shader = Shader.from_mesh(mesh)
-rpass = Pass.from_shader("blobs", shader)
+rpass = Pass.from_shader("meshes", shader)
 
 # Depth test on: closer fragments win, and the pass writes the depth
 # buffer, so later draws in the same pass see it.

@@ -1,0 +1,52 @@
+"""Step 1: a shader with one uniform draws the triangle in a new color every frame.
+
+From the repository root, run `python docs/tutorials/01-hello-triangle/host.py 01-three-lines`.
+"""
+
+from math import cos, sin
+
+from fragmentcolor import Shader
+
+TRIANGLE = """
+// #region: shader
+struct VOut { @builtin(position) pos: vec4<f32> };
+
+@group(0) @binding(0) var<uniform> color: vec4<f32>;
+
+@vertex
+fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+    // Three corners of an equilateral triangle, centered on the origin.
+    var corners = array<vec2<f32>, 3>(
+        vec2<f32>(-0.7, -0.404),
+        vec2<f32>( 0.7, -0.404),
+        vec2<f32>( 0.0,  0.808),
+    );
+    var out: VOut;
+    out.pos = vec4<f32>(corners[i], 0.0, 1.0);
+    return out;
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return color;
+}
+// #endregion: shader
+"""
+
+
+# #region: setup
+def setup():
+    shader = Shader(TRIANGLE)
+    shader.set("color", [0.95, 0.30, 0.42, 1.0])
+    return shader
+# #endregion: setup
+
+
+# #region: frame
+def frame(shader, renderer, target, time):
+    red = 0.5 + 0.45 * sin(time * 0.7)
+    green = 0.5 + 0.45 * cos(time * 0.5 + 1.7)
+    blue = 0.5 + 0.45 * sin(time * 0.9 + 3.1)
+    shader.set("color", [red, green, blue, 1.0])
+    renderer.render(shader, target)
+# #endregion: frame

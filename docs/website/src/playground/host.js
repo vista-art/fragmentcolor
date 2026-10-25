@@ -10,7 +10,7 @@ import { describeControls, renderControls, sliderRange } from "./controls.js";
 import { LANGUAGES, generateCode, parseLibrary, replaceLibrary } from "./codegen.js";
 import { HARNESS } from "./harness.js";
 import { LibraryPicker } from "./picker.js";
-import { loadFragmentColor } from "../runtime.js";
+import { loadFragmentColor, supports } from "../runtime.js";
 
 const BUILD_DELAY = 250;
 const SCRUB_DELAY = 40;
@@ -49,12 +49,17 @@ export function detectBackend() {
 }
 
 // FragmentColor 0.12.5 logs shader errors and returns a default shader; later
-// releases throw. Capturing console.error covers both.
+// releases throw them and log only the GPU errors no error scope caught.
+// Capturing console.error covers both, and from 0.12.6 it keeps only GPU
+// errors, so a stray error elsewhere on the page can't fail a build.
+const isBuildError = supports("0.12.6") ? (text) => text.includes("==== GPU error") : () => true;
+
 async function capturing(run) {
   const errors = [];
   const original = console.error;
   console.error = (...args) => {
-    errors.push(args.map((a) => (a instanceof Error ? a.message : String(a))).join(" "));
+    const text = args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ");
+    if (isBuildError(text)) errors.push(text);
     original.apply(console, args);
   };
   try {
@@ -147,9 +152,6 @@ export class Playground {
     this.demos = demos;
     this.canvas = root.querySelector("canvas");
     this.ui = {
-      demos: root.querySelector(".fcp-demos"),
-      picker: root.querySelector(".fcp-demo-select"),
-      summary: root.querySelector(".fcp-summary"),
       status: root.querySelector(".fcp-status"),
       library: root.querySelector(".fcp-library-list"),
       add: root.querySelector(".fcp-add"),
@@ -165,8 +167,13 @@ export class Playground {
     this.edits = new Map();
     this.overrides = new Map();
     this.pointer = null;
+    // Wheel, drag and pinch since the last frame, for demos with `gestures: true`.
+    this.gesture = { zoom: 0, pan: [0, 0] };
+    this.touches = new Map();
     this.program = null;
+    this.pending = null;
     this.buildToken = 0;
+    this.attempts = 0;
     this.timer = 0;
     this.raf = 0;
     this.offscreen = false;
@@ -194,27 +201,30 @@ export class Playground {
       onToggle: (slug, selected) => this.toggleSlug(slug, selected),
     });
     this.wire();
-    this.select(id);
+    this.select(this.pending ?? id);
     this.raf = requestAnimationFrame((t) => this.tick(t));
   }
 
   // Swaps in another demo. Edits made to the current one stay in memory until reset.
+  // A demo picked while the runtime loads opens when start is done.
   select(id) {
     const demo = this.demos.find((d) => d.id === id) ?? this.demos[0];
+    if (!this.view) {
+      this.pending = demo.id;
+      return;
+    }
     clearTimeout(this.timer);
     this.buildToken++;
+    this.attempts = 0;
     if (this.demo) this.edits.set(this.demo.id, this.snapshot());
     this.demo = demo;
     this.overrides.clear();
     this.program = null;
     this.controls = [];
     renderControls(this.ui.controls, [], () => {});
-    for (const button of this.ui.demos?.querySelectorAll("button") ?? []) {
-      button.setAttribute("aria-pressed", String(button.dataset.demo === demo.id));
-    }
-    if (this.ui.picker) this.ui.picker.value = demo.id;
-    if (this.ui.summary) this.ui.summary.textContent = demo.summary;
     this.root.dataset.active = demo.id;
+    // A demo that takes gestures keeps touches on the canvas from scrolling the page.
+    this.canvas.style.touchAction = demo.gestures ? "none" : "";
     this.loadTabs(this.edits.get(demo.id) ?? this.original(demo));
     this.showError(null);
 
@@ -306,6 +316,7 @@ export class Playground {
       doc: text,
       extensions: [
         extensions,
+        this.cm.theme.of(),
         languages(kind),
         EditorState.readOnly.of(!editable),
         EditorView.editable.of(editable),
@@ -325,6 +336,18 @@ export class Playground {
         }),
       ],
     });
+  }
+
+  // Each tab keeps its own editor state, so a site theme switch reaches every one.
+  applyTheme() {
+    for (const tab of this.tabs ?? []) {
+      if (tab.id === this.activeTab) {
+        this.view.dispatch({ effects: this.cm.theme.reconfigure() });
+        tab.state = this.view.state;
+      } else if (tab.state) {
+        tab.state = tab.state.update({ effects: this.cm.theme.reconfigure() }).state;
+      }
+    }
   }
 
   // An inline slider on a `.set` value applies it at once, with no rebuild.
@@ -504,7 +527,7 @@ export class Playground {
       recorder = note(setupKeys);
       state = await capturing(() => module.setup(this.renderer, this.target));
     } catch (err) {
-      if (token === this.buildToken && demo === this.demo) this.fail(err);
+      this.retryOrFail(err, token, demo);
       return;
     } finally {
       recorder = null;
@@ -532,13 +555,14 @@ export class Playground {
       recorder = note(frameKeys);
       await capturing(() => this.draw(program, performance.now()));
     } catch (err) {
-      if (token === this.buildToken && demo === this.demo) this.fail(err);
+      this.retryOrFail(err, token, demo);
       return;
     } finally {
       recorder = null;
     }
 
     this.program = program;
+    this.attempts = 0;
     this.canvas.style.visibility = "";
     this.showError(null);
     this.setStatus(`${this.backend} · built in ${Math.round(performance.now() - started)} ms`);
@@ -665,6 +689,20 @@ export class Playground {
     this.scheduleBuild();
   }
 
+  // A first build also claims the GPU and fetches the library cold, which can
+  // fail once on a slow phone. With nothing drawn yet, it tries twice more.
+  retryOrFail(err, token, demo) {
+    if (token !== this.buildToken || demo !== this.demo) return;
+    if (!this.program && this.attempts < 2) {
+      this.attempts++;
+      this.setStatus(`${this.backend} · retrying`);
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => this.build(), 300 * this.attempts);
+      return;
+    }
+    this.fail(err);
+  }
+
   // A failed build leaves the last good one drawing. With none, the canvas goes blank.
   fail(err) {
     if (this.program) return this.showError(err);
@@ -686,7 +724,10 @@ export class Playground {
   draw(program, now) {
     const size = [this.canvas.width, this.canvas.height];
     const pointer = this.pointer ?? [size[0] / 2, size[1] / 2];
-    program.module.frame(program.state, this.renderer, this.target, (now - program.epoch) / 1000, size, pointer);
+    const gesture = this.gesture;
+    this.gesture = { zoom: 0, pan: [0, 0] };
+    const time = (now - program.epoch) / 1000;
+    program.module.frame(program.state, this.renderer, this.target, time, size, pointer, gesture);
   }
 
   tick(now) {
@@ -697,8 +738,12 @@ export class Playground {
     this.resize();
     try {
       this.draw(program, now);
+      program.misses = 0;
     } catch (err) {
-      // A frame that throws after its build hands the canvas back to the build before it.
+      // A frame that throws after its build hands the canvas back to the build
+      // before it. With none to go back to, it takes three misses in a row.
+      program.misses = (program.misses ?? 0) + 1;
+      if (!program.previous && program.misses < 3) return;
       program.failed = true;
       this.program = program.previous;
       this.showError(err, this.program ? "Back to the last version that drew." : "Drawing stopped.");
@@ -715,6 +760,62 @@ export class Playground {
     this.target?.resize([w, h]);
   }
 
+  // Turns the wheel, a drag and a two-finger pinch over the canvas into the
+  // gesture frame receives: zoom in doublings (positive zooms in) and pan in
+  // canvas pixels. Only a demo with `gestures: true` takes them; for the rest
+  // the wheel scrolls the page as usual.
+  wireGestures() {
+    const { canvas } = this;
+    const scale = () => canvas.width / Math.max(canvas.getBoundingClientRect().width, 1);
+    const spread = () => {
+      const [a, b] = [...this.touches.values()];
+      return Math.hypot(a[0] - b[0], a[1] - b[1]);
+    };
+    const middle = () => {
+      const points = [...this.touches.values()];
+      return points.reduce(([x, y], [px, py]) => [x + px / points.length, y + py / points.length], [0, 0]);
+    };
+    this.on(
+      canvas,
+      "wheel",
+      (e) => {
+        if (!this.demo?.gestures) return;
+        e.preventDefault();
+        const lines = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? canvas.clientHeight : 1;
+        // A trackpad pinch arrives as a wheel with ctrlKey and small deltas.
+        this.gesture.zoom -= (e.deltaY * lines) / (e.ctrlKey ? 100 : 400);
+      },
+      { passive: false },
+    );
+    this.on(canvas, "pointerdown", (e) => {
+      if (!this.demo?.gestures || (e.pointerType === "mouse" && e.button !== 0)) return;
+      canvas.setPointerCapture(e.pointerId);
+      this.touches.set(e.pointerId, [e.clientX, e.clientY]);
+    });
+    this.on(canvas, "pointermove", (e) => {
+      const last = this.touches.get(e.pointerId);
+      if (!last) return;
+      const before = this.touches.size === 2 ? { spread: spread(), middle: middle() } : null;
+      this.touches.set(e.pointerId, [e.clientX, e.clientY]);
+      const ratio = scale();
+      if (before) {
+        // A pinch zooms around the point between the two fingers.
+        const now = middle();
+        const rect = canvas.getBoundingClientRect();
+        this.pointer = [(now[0] - rect.left) * ratio, (now[1] - rect.top) * ratio];
+        this.gesture.zoom += Math.log2(Math.max(spread(), 1) / Math.max(before.spread, 1));
+        this.gesture.pan[0] += (now[0] - before.middle[0]) * ratio;
+        this.gesture.pan[1] += (now[1] - before.middle[1]) * ratio;
+      } else if (this.touches.size === 1) {
+        this.gesture.pan[0] += (e.clientX - last[0]) * ratio;
+        this.gesture.pan[1] += (e.clientY - last[1]) * ratio;
+      }
+    });
+    const release = (e) => this.touches.delete(e.pointerId);
+    this.on(canvas, "pointerup", release);
+    this.on(canvas, "pointercancel", release);
+  }
+
   wire() {
     const { canvas, ui } = this;
     const track = (e) => {
@@ -726,11 +827,9 @@ export class Playground {
     };
     this.on(canvas, "pointermove", track);
     this.on(canvas, "pointerdown", track);
+    this.wireGestures();
+    this.cleanups.push(this.cm.watchSiteTheme(() => this.applyTheme()));
 
-    for (const button of ui.demos?.querySelectorAll("button") ?? []) {
-      this.on(button, "click", () => this.select(button.dataset.demo));
-    }
-    if (ui.picker) this.on(ui.picker, "change", () => this.select(ui.picker.value));
     this.on(ui.add, "click", () => this.picker.open(parseLibrary(this.text("js")) ?? []));
     this.on(ui.reset, "click", () => {
       this.edits.delete(this.demo.id);
@@ -797,7 +896,7 @@ export class Playground {
 
     // Hidden tabs get no animation frames, so only scrolling away needs a pause.
     if (typeof IntersectionObserver !== "undefined") {
-      const io = new IntersectionObserver(([entry]) => (this.offscreen = !entry.isIntersecting), { threshold: 0.05 });
+      const io = new IntersectionObserver((entries) => (this.offscreen = !entries.at(-1).isIntersecting), { threshold: 0.05 });
       io.observe(canvas);
       this.cleanups.push(() => io.disconnect());
     }
@@ -817,20 +916,18 @@ export class Playground {
 
 // CodeMirror loads with the playground, never with the page.
 async function loadEditor() {
-  const [{ EditorView, basicSetup }, { EditorState, Annotation }, { javascript }, { dracula }, { wgsl }, { highlight }, inline] =
+  const [{ EditorView, basicSetup }, { EditorState, Annotation }, { javascript }, { wgsl }, { highlight }, inline, theme] =
     await Promise.all([
       import("codemirror"),
       import("@codemirror/state"),
       import("@codemirror/lang-javascript"),
-      import("thememirror"),
       import("./wgsl.js"),
       import("./highlight.js"),
       import("./inline.js"),
+      import("./theme.js"),
     ]);
-  // These rules come before dracula and win where both set a property.
-  // The current line takes dracula's #44475a at 60% and paints at z-index -10,
-  // under the selection layer at -1 or lower, so a selection shows on that line too.
-  const lineHighlight = "rgba(68, 71, 90, 0.6)";
+  // These rules come before the theme and win where both set a property.
+  // The current line takes its color from the theme and paints behind the text.
   const extensions = [
     basicSetup,
     EditorView.theme({
@@ -843,16 +940,9 @@ async function loadEditor() {
         position: "absolute",
         inset: "0",
         zIndex: "-10",
-        backgroundColor: lineHighlight,
         pointerEvents: "none",
       },
-      ".cm-activeLineGutter": { backgroundColor: lineHighlight },
-      ".cm-selectionLayer .cm-selectionBackground": { background: "rgba(165, 180, 252, 0.24)" },
-      "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": {
-        background: "rgba(165, 180, 252, 0.32)",
-      },
     }),
-    dracula,
   ];
   const languages = (kind) => {
     if (kind === "wgsl") return wgsl();
@@ -876,6 +966,8 @@ async function loadEditor() {
     EditorView,
     EditorState,
     extensions,
+    theme: theme.editorTheme(),
+    watchSiteTheme: theme.watchSiteTheme,
     languages,
     inline: inlineFor,
     synced,

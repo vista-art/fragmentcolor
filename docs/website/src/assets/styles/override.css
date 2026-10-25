@@ -2,10 +2,15 @@
   display: grid !important;
 }
 
-/* The landing page is the playground. It fills the width under a header that
- * shares its dark surface in both site themes. The hero stays only for screen
- * readers, since the header logo names the project. */
+/* The landing page is the playground, and it fills the width.
+ * The light site theme keeps the docs' palette. In the dark one,
+ * the header and the playground share a surface darker than the docs.
+ * Only screen readers get the hero, since the header logo names the project. */
 html[data-has-hero][data-theme] {
+  --sl-content-width: 100%;
+}
+
+html[data-has-hero][data-theme="dark"] {
   --sl-color-white: hsl(0, 0%, 100%);
   --sl-color-gray-1: hsl(224, 20%, 94%);
   --sl-color-gray-2: hsl(224, 6%, 77%);
@@ -24,16 +29,7 @@ html[data-has-hero][data-theme] {
   --sl-color-bg-accent: var(--sl-color-accent-high);
   --sl-color-hairline-light: var(--sl-color-gray-5);
   --sl-color-hairline-shade: rgba(255, 255, 255, 0.09);
-  --sl-content-width: 100%;
   color-scheme: dark;
-}
-
-html[data-has-hero] .site-title .light\:sl-hidden {
-  display: initial;
-}
-
-html[data-has-hero] .site-title .dark\:sl-hidden {
-  display: none;
 }
 
 html[data-has-hero] .content-panel {
@@ -109,4 +105,34 @@ html[data-has-hero] main {
 .sl-markdown-content > tutorial-demo + h2,
 .sl-markdown-content > .color-triangle + h2 {
   margin-top: 5.5rem;
+}
+
+/* A blog preview shows only the excerpt. It says so, and the whole card opens
+   the post, while its tags and any link inside the excerpt keep their own targets. */
+article.preview {
+  position: relative;
+}
+
+article.preview h2 a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+article.preview .sl-markdown-content::after {
+  content: "Read the post →";
+  display: block;
+  margin-top: 1rem;
+  color: var(--sl-color-text-accent);
+  font-weight: 600;
+}
+
+article.preview:hover .sl-markdown-content::after {
+  text-decoration: underline;
+}
+
+article.preview .sl-markdown-content a,
+article.preview footer {
+  position: relative;
+  z-index: 1;
 }

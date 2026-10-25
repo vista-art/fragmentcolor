@@ -1,10 +1,13 @@
 ---
-// <Demo file="01-hello-triangle/04-postfx-pass/example.rs" />
+// <Demo file="01-hello-triangle/06-postfx-pass/example.rs" />
 //
 // Renders a live canvas that runs the transpiled JS port of a tutorial step.
 // Picks up `setup(renderer, target)` and `frame(state, renderer, target, time, size)`
 // from the example.js module copied under src/tutorials/<...>/example.js, and
 // drives them with WASM-initialized Renderer + canvas Target.
+//
+// `frame` also gets a sixth argument, `pointer`, as the playground harness passes it:
+// canvas pixels with y pointing down, and the canvas center until the pointer first moves.
 //
 // Generalization of the ShaderHero front-page demo. ShaderHero will refactor
 // to use this component once it stabilizes.
@@ -29,9 +32,11 @@ interface Props {
   height?: string;
   /** If true, the demo boots WASM immediately instead of waiting for a click. */
   autoplay?: boolean;
+  /** If true, the demo needs WebGPU and shows a note instead of running on WebGL2. */
+  webgpu?: boolean;
 }
 
-const { file, height = "420px", autoplay = false } = Astro.props;
+const { file, height = "420px", autoplay = false, webgpu = false } = Astro.props;
 
 const entry = tutorials[file];
 if (!entry) {
@@ -49,6 +54,7 @@ const moduleKey = `../tutorials/${entry.jsModulePath}`;
   data-module-key={moduleKey}
   data-canvas-height={height}
   data-autoplay={autoplay ? "1" : "0"}
+  data-webgpu={webgpu ? "1" : "0"}
   style="display: block; margin: 1.5rem 0;">
 </tutorial-demo>
 
@@ -58,6 +64,15 @@ const moduleKey = `../tutorials/${entry.jsModulePath}`;
 // dynamic imports below resolve to bundled chunks. Without the `eager: false`
 // loaders, Demo would have to guess the URL of each module and bypass Vite.
 const tutorialModules = import.meta.glob('../tutorials/**/example.js');
+
+// Whether this browser can hand out a WebGPU adapter. A browser that throws counts as no.
+async function hasWebGpu() {
+  try {
+    return Boolean(await navigator.gpu?.requestAdapter());
+  } catch {
+    return false;
+  }
+}
 
 if (!customElements.get('tutorial-demo')) {
   class TutorialDemo extends HTMLElement {
@@ -79,6 +94,7 @@ if (!customElements.get('tutorial-demo')) {
     #onOtherStarted;
     #start = performance.now();
     #fcModule;
+    #pointer = null;       // canvas pixels, y down; null until the pointer moves
 
     constructor() {
       super();
@@ -117,6 +133,7 @@ if (!customElements.get('tutorial-demo')) {
             display: none;
           }
           .err.visible { display: flex; }
+          .err.note { color: #cbd5e1; font-family: inherit; font-size: 0.95rem; }
           .play {
             position: absolute;
             inset: 0;
@@ -221,6 +238,11 @@ if (!customElements.get('tutorial-demo')) {
       }
       this.#started = true;
       this.#playBtn?.classList.add('hidden');
+      // Compute shaders need WebGPU; WebGL2 has nothing to run them on.
+      if (this.dataset.webgpu === '1' && !(await hasWebGpu())) {
+        this.#showError('This step runs a compute shader, which needs WebGPU. This browser offers only WebGL2.', 'note');
+        return;
+      }
       this.#start = performance.now();
       document.dispatchEvent(new CustomEvent('tutorial-demo-started', { detail: this }));
       try {
@@ -263,6 +285,17 @@ if (!customElements.get('tutorial-demo')) {
       this.#ro.observe(this.#canvas);
       window.addEventListener('resize', () => this.#applySize());
 
+      // The pointer in canvas pixels, y down, from moves and presses on the canvas.
+      const track = (event) => {
+        const rect = this.#canvas.getBoundingClientRect();
+        this.#pointer = [
+          ((event.clientX - rect.left) / rect.width) * this.#canvas.width,
+          ((event.clientY - rect.top) / rect.height) * this.#canvas.height,
+        ];
+      };
+      this.#canvas.addEventListener('pointermove', track);
+      this.#canvas.addEventListener('pointerdown', track);
+
       // 6) RAF loop, stored on `this` so the IntersectionObserver and
       //    the cross-demo coordination can re-arm it.
       this.#loop = (now) => {
@@ -271,7 +304,8 @@ if (!customElements.get('tutorial-demo')) {
         try {
           const t = (now - this.#start) / 1000.0;
           const size = [this.#canvas.width, this.#canvas.height];
-          this.#frame(this.#state, this.#renderer, this.#target, t, size);
+          const pointer = this.#pointer ?? [size[0] / 2, size[1] / 2];
+          this.#frame(this.#state, this.#renderer, this.#target, t, size, pointer);
         } catch (e) {
           console.error('[Demo] frame failed (stopping loop)', e);
           this.#stopped = true;
@@ -323,11 +357,12 @@ if (!customElements.get('tutorial-demo')) {
       } catch {}
     }
 
-    #showError(msg) {
+    #showError(msg, kind) {
       const div = this.#shadow.querySelector('.err');
       if (!div) return;
       div.textContent = msg;
       div.classList.add('visible');
+      if (kind) div.classList.add(kind);
     }
   }
   customElements.define('tutorial-demo', TutorialDemo);

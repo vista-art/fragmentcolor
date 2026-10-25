@@ -10,6 +10,10 @@ mod tutorials {
     //! different from a human-written port (no `await Shader.fetch`, no per-step
     //! ergonomic shifts) — easier to maintain by hand at this scale.
     //!
+    //! An `example.py`, `example.swift` or `example.kt` next to `example.rs`
+    //! replaces that language's transpiled tab the same way. A shader region
+    //! in a port must match the Rust one, or the build prints a warning.
+    //!
     //! Output:
     //! - `docs/website/src/generated/tutorials.ts` — manifest module
     //! - `docs/website/src/tutorials/<rel>/example.js` — copies for Vite to bundle
@@ -118,12 +122,31 @@ mod tutorials {
             slice.kotlin = Some(super::convert::to_kotlin(&items));
         }
 
+        // Hand-written ports replace the transpiled text, region by region.
+        for port in PORTS {
+            let abs_port = abs_rust.with_file_name(port.file);
+            let Ok(port_text) = fs::read_to_string(&abs_port) else {
+                continue;
+            };
+            let port_regions = extract_regions(&port_text);
+            warn_on_shader_drift(&abs_port, &rust_regions, &port_regions);
+            *port.pick(&mut entry.full) = Some(port_text);
+            for slice in entry.regions.values_mut() {
+                *port.pick(slice) = None;
+            }
+            for (name, body) in port_regions {
+                *port.pick(entry.regions.entry(name).or_default()) = Some(body);
+            }
+        }
+
         // JS source (hand-written, alongside example.rs)
         let abs_js = abs_rust.with_file_name("example.js");
         if abs_js.exists() {
             let js_text = fs::read_to_string(&abs_js).unwrap_or_default();
             entry.full.js = Some(js_text.clone());
-            for (name, body) in extract_regions(&js_text) {
+            let js_regions = extract_regions(&js_text);
+            warn_on_shader_drift(&abs_js, &rust_regions, &js_regions);
+            for (name, body) in js_regions {
                 let slice = entry.regions.entry(name).or_default();
                 slice.js = Some(body);
             }
@@ -136,6 +159,54 @@ mod tutorials {
         entry.js_copy_rel = parent_rel.join("example.js");
 
         entry
+    }
+
+    /// A language whose tab comes from a hand-written file next to `example.rs`.
+    struct Port {
+        file: &'static str,
+        pick: fn(&mut LangSlice) -> &mut Option<String>,
+    }
+
+    impl Port {
+        fn pick<'slice>(&self, slice: &'slice mut LangSlice) -> &'slice mut Option<String> {
+            (self.pick)(slice)
+        }
+    }
+
+    const PORTS: [Port; 3] = [
+        Port {
+            file: "example.py",
+            pick: |slice| &mut slice.py,
+        },
+        Port {
+            file: "example.swift",
+            pick: |slice| &mut slice.swift,
+        },
+        Port {
+            file: "example.kt",
+            pick: |slice| &mut slice.kotlin,
+        },
+    ];
+
+    /// Every tab shows the Rust copy of a shader region as WGSL,
+    /// so a port that runs different WGSL would run something the page doesn't show.
+    fn warn_on_shader_drift(
+        port: &Path,
+        rust: &BTreeMap<String, String>,
+        regions: &BTreeMap<String, String>,
+    ) {
+        for (name, body) in regions {
+            let lowered = name.to_lowercase();
+            if !(lowered.contains("shader") || lowered.contains("wgsl")) {
+                continue;
+            }
+            if rust.get(name).is_some_and(|wgsl| wgsl != body) {
+                println!(
+                    "cargo::warning=tutorials: region `{name}` in {} differs from example.rs",
+                    port.display()
+                );
+            }
+        }
     }
 
     /// Parse `// #region: NAME` ... `// #endregion: NAME` markers (also `# #region:` for Python).

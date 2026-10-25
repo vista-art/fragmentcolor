@@ -15,9 +15,14 @@ env_logger = "0.11"
 pollster = "0.4"
 fastrand = "2"
 bytemuck = "1"
+parking_lot = "0.12"
 
 # PNG output for the registry-gallery example
 image = { version = "0.25", default-features = false, features = ["png"] }
+
+# Arbitrary precision for the infinite zoom tutorial's reference orbit
+num-bigint = "0.4"
+num-traits = "0.2"
 
 # CLI examples
 crossterm = "0.29"
@@ -54,9 +59,61 @@ name = "tutorial_01_hello_triangle_vertex_gradient"
 path = "../../docs/tutorials/01-hello-triangle/04-vertex-gradient/example.rs"
 
 [[example]]
-name = "tutorial_01_hello_triangle_particle_trail"
-path = "../../docs/tutorials/01-hello-triangle/05-particle-trail/example.rs"
+name = "tutorial_01_hello_triangle_instances"
+path = "../../docs/tutorials/01-hello-triangle/05-instances/example.rs"
 
 [[example]]
 name = "tutorial_01_hello_triangle_postfx_pass"
 path = "../../docs/tutorials/01-hello-triangle/06-postfx-pass/example.rs"
+
+[[example]]
+name = "tutorial_01_hello_triangle_instance_index"
+path = "../../docs/tutorials/01-hello-triangle/07-instance-index/example.rs"
+
+[[example]]
+name = "tutorial_01_hello_triangle_compute"
+path = "../../docs/tutorials/01-hello-triangle/08-compute/example.rs"
+
+[[example]]
+name = "tutorial_drawing_with_distance_coordinates"
+path = "../../docs/tutorials/drawing-with-distance/01-coordinates/example.rs"
+
+[[example]]
+name = "tutorial_drawing_with_distance_circle"
+path = "../../docs/tutorials/drawing-with-distance/02-circle/example.rs"
+
+[[example]]
+name = "tutorial_drawing_with_distance_box_and_star"
+path = "../../docs/tutorials/drawing-with-distance/03-box-and-star/example.rs"
+
+[[example]]
+name = "tutorial_drawing_with_distance_combine"
+path = "../../docs/tutorials/drawing-with-distance/04-combine/example.rs"
+
+[[example]]
+name = "tutorial_drawing_with_distance_color"
+path = "../../docs/tutorials/drawing-with-distance/05-color/example.rs"
+
+[[example]]
+name = "tutorial_drawing_with_distance_time"
+path = "../../docs/tutorials/drawing-with-distance/06-time/example.rs"
+
+[[example]]
+name = "tutorial_drawing_with_distance_pointer"
+path = "../../docs/tutorials/drawing-with-distance/07-pointer/example.rs"
+
+[[example]]
+name = "tutorial_infinite_zoom_one_image"
+path = "../../docs/tutorials/infinite-zoom/01-one-image/example.rs"
+
+[[example]]
+name = "tutorial_infinite_zoom_on_the_gpu"
+path = "../../docs/tutorials/infinite-zoom/02-on-the-gpu/example.rs"
+
+[[example]]
+name = "tutorial_infinite_zoom_perturbation"
+path = "../../docs/tutorials/infinite-zoom/03-perturbation/example.rs"
+
+[[example]]
+name = "tutorial_infinite_zoom_deep_zoom"
+path = "../../docs/tutorials/infinite-zoom/04-deep-zoom/example.rs"

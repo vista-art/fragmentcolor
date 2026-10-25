@@ -85,18 +85,28 @@ const installs = [
     )
   }
   <div class="fcp-toolbar">
-    <div class="fcp-demos" role="group" aria-label="Demos">
-      {
-        list.map((d) => (
-          <button type="button" data-demo={d.id} aria-pressed={d.id === first.id ? "true" : "false"}>
-            {d.title}
-          </button>
-        ))
-      }
+    <div class="fcp-menu">
+      <div
+        class="fcp-menu-button"
+        role="combobox"
+        tabindex="0"
+        aria-label="Demo"
+        aria-haspopup="listbox"
+        aria-expanded="false"
+      >
+        <span class="fcp-menu-label" aria-hidden="true">Demo</span>
+        <span class="fcp-menu-value">{first.title}</span>
+      </div>
+      <div class="fcp-menu-list" role="listbox" aria-label="Demos" hidden>
+        {
+          list.map((d) => (
+            <div role="option" data-demo={d.id} aria-selected={d.id === first.id ? "true" : "false"}>
+              {d.title}
+            </div>
+          ))
+        }
+      </div>
     </div>
-    <select class="fcp-demo-select" aria-label="Demo">
-      {list.map((d) => <option value={d.id} selected={d.id === first.id}>{d.title}</option>)}
-    </select>
     <span class="fcp-status">Loading</span>
   </div>
   <p class="fcp-summary">{first.summary}</p>
@@ -187,6 +197,17 @@ const installs = [
     overflow: hidden;
   }
 
+  /* The light site theme gives the playground the docs' light palette. */
+  :root[data-theme="light"] fc-playground {
+    --fcp-bg: var(--sl-color-black);
+    --fcp-panel: var(--sl-color-gray-7);
+    --fcp-line: hsla(224, 10%, 10%, 0.12);
+    --fcp-ink: var(--sl-color-gray-1);
+    --fcp-dim: var(--sl-color-gray-3);
+    --fcp-accent: var(--sl-color-text-accent);
+    --fcp-accent-bg: hsla(234, 90%, 60%, 0.12);
+  }
+
   /* The landing playground fills the screen under the site header, with no frame. */
   fc-playground.landing {
     display: flex;
@@ -258,6 +279,10 @@ const installs = [
     font-size: 12px;
     cursor: pointer;
     appearance: none;
+  }
+
+  :root[data-theme="light"] .fcp-install-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%233d50f5' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
 
   .fcp-install-select option {
@@ -358,7 +383,7 @@ const installs = [
     }
   }
 
-  /* the playground is dark in both site themes, and so is its library picker */
+  /* The library picker takes the playground's palette in each site theme. */
   fc-playground .fcp-picker {
     --fcp-picker-bg: #181b25;
     --fcp-picker-field: #0d0f14;
@@ -369,6 +394,18 @@ const installs = [
     --fcp-picker-accent: #a5b4fc;
     --fcp-picker-accent-low: rgba(165, 180, 252, 0.16);
     --fcp-picker-accent-high: #c7d2fe;
+  }
+
+  :root[data-theme="light"] fc-playground .fcp-picker {
+    --fcp-picker-bg: var(--sl-color-black);
+    --fcp-picker-field: var(--sl-color-gray-7);
+    --fcp-picker-line: var(--fcp-line);
+    --fcp-picker-text: var(--sl-color-gray-2);
+    --fcp-picker-strong: var(--sl-color-white);
+    --fcp-picker-muted: var(--sl-color-gray-3);
+    --fcp-picker-accent: var(--sl-color-accent);
+    --fcp-picker-accent-low: var(--fcp-accent-bg);
+    --fcp-picker-accent-high: var(--sl-color-accent-high);
   }
 
   fc-playground button {
@@ -395,47 +432,135 @@ const installs = [
     border-bottom: 1px solid var(--fcp-line);
   }
 
-  .fcp-demos {
+  /* The minimum width keeps the chevron in place as the title changes.
+     The list opens over the panes and scrolls once it runs long. */
+  .fcp-menu {
+    position: relative;
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
+  .fcp-menu-button {
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .fcp-demos button {
-    flex: none;
-    padding: 5px 12px;
-    border: 1px solid var(--fcp-line);
-    border-radius: 999px;
-    background: transparent;
-    color: var(--fcp-dim);
-  }
-
-  .fcp-demos button:hover {
-    color: var(--fcp-ink);
-  }
-
-  .fcp-demos button[aria-pressed="true"] {
-    color: var(--fcp-ink);
-    background: var(--fcp-accent-bg);
-    border-color: var(--fcp-accent);
-  }
-
-  .fcp-demo-select {
-    display: none;
-    flex: 1;
-    min-width: 0;
-    padding: 6px 10px;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 13rem;
+    padding: 5px 10px 5px 12px;
     border: 1px solid var(--fcp-line);
     border-radius: 8px;
     background: var(--fcp-panel);
+    white-space: nowrap;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .fcp-menu-button:hover,
+  .fcp-menu-button[aria-expanded="true"] {
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  :root[data-theme="light"] .fcp-menu-button:hover,
+  :root[data-theme="light"] .fcp-menu-button[aria-expanded="true"] {
+    border-color: hsla(224, 10%, 10%, 0.24);
+  }
+
+  .fcp-menu-button:focus-visible {
+    outline: 2px solid var(--fcp-accent);
+    outline-offset: 1px;
+  }
+
+  .fcp-menu-button::after {
+    content: "";
+    flex: none;
+    align-self: center;
+    width: 12px;
+    height: 12px;
+    margin-left: auto;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%23a5b4fc' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+      no-repeat center / contain;
+    transition: transform 0.15s;
+  }
+
+  :root[data-theme="light"] .fcp-menu-button::after {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%233d50f5' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+
+  .fcp-menu-button[aria-expanded="true"]::after {
+    transform: rotate(180deg);
+  }
+
+  .fcp-menu-label {
+    flex: none;
+    color: var(--fcp-dim);
+    font-size: 12px;
+  }
+
+  .fcp-menu-value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     color: var(--fcp-ink);
-    font: inherit;
+  }
+
+  .fcp-menu-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 30;
+    box-sizing: border-box;
+    min-width: 100%;
+    max-width: calc(100vw - 32px);
+    max-height: min(26rem, 60vh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 4px;
+    border: 1px solid var(--fcp-line);
+    border-radius: 8px;
+    background: #181b25;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+    color-scheme: dark;
+  }
+
+  :root[data-theme="light"] .fcp-menu-list {
+    background: var(--sl-color-black);
+    box-shadow: var(--sl-shadow-lg);
+    color-scheme: light;
+  }
+
+  .fcp-menu-list[hidden] {
+    display: none;
+  }
+
+  /* The current demo carries a check; the option under the pointer or the keys is lit. */
+  .fcp-menu-list [role="option"] {
+    padding: 6px 12px 6px 30px;
+    border-radius: 5px;
+    color: var(--fcp-dim);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .fcp-menu-list [role="option"].active {
+    background-color: var(--fcp-accent-bg);
+    color: var(--fcp-ink);
+  }
+
+  .fcp-menu-list [role="option"][aria-selected="true"] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='%23a5b4fc' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: left 10px center;
+    background-size: 12px;
+    color: var(--fcp-ink);
+  }
+
+  :root[data-theme="light"] .fcp-menu-list [role="option"][aria-selected="true"] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='%233d50f5' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
 
   .fcp-status {
     flex: none;
+    margin-left: auto;
     color: var(--fcp-dim);
     font-size: 12px;
     font-variant-numeric: tabular-nums;
@@ -525,6 +650,11 @@ const installs = [
     background: #282a36;
   }
 
+  /* The code pane takes the color of the editor's gutter in each theme. */
+  :root[data-theme="light"] .fcp-code {
+    background: #ffffff;
+  }
+
   .fcp-stage {
     display: flex;
     flex-direction: column;
@@ -558,6 +688,11 @@ const installs = [
     background: #050608;
   }
 
+  /* The poster stands in for the canvas and stays black like it. */
+  :root[data-theme="light"] .fcp-fallback {
+    background: var(--sl-color-gray-6);
+  }
+
   .fcp-poster[hidden],
   .fcp-fallback[hidden] {
     display: none;
@@ -580,6 +715,11 @@ const installs = [
     color: var(--fcp-ink);
     background: #0b0d12;
     border-top: 1px solid var(--fcp-line);
+  }
+
+  :root[data-theme="light"] .fcp-poster p,
+  :root[data-theme="light"] .fcp-fallback p {
+    background: var(--fcp-panel);
   }
 
   .fcp-controls {
@@ -790,6 +930,16 @@ const installs = [
     border-color: rgba(255, 255, 255, 0.2);
   }
 
+  :root[data-theme="light"] .fcp-actions button,
+  :root[data-theme="light"] .fcp-fullscreen {
+    background: hsla(224, 19%, 97%, 0.85);
+  }
+
+  :root[data-theme="light"] .fcp-actions button:hover,
+  :root[data-theme="light"] .fcp-fullscreen:hover {
+    border-color: hsla(224, 10%, 10%, 0.24);
+  }
+
   .fcp-fullscreen {
     position: absolute;
     right: 8px;
@@ -815,6 +965,10 @@ const installs = [
   .fcp-copy.done .icon-done {
     display: block;
     color: #86efac;
+  }
+
+  :root[data-theme="light"] .fcp-copy.done .icon-done {
+    color: var(--sl-color-green-high);
   }
 
   .fcp-editor {
@@ -845,6 +999,12 @@ const installs = [
     line-height: 1.5;
     white-space: pre-wrap;
     border-radius: 0;
+  }
+
+  :root[data-theme="light"] .fcp-error {
+    border-top-color: var(--sl-color-red);
+    background: var(--sl-color-red-low);
+    color: var(--sl-color-red-high);
   }
 
   .fcp-error[hidden] {
@@ -912,13 +1072,17 @@ const installs = [
       height: min(440px, 70vh);
     }
 
-    .fcp-status,
-    .fcp-demos {
-      display: none;
+    /* A build error shows right under the canvas, not past the editor. */
+    .fcp-error {
+      order: -1;
     }
 
-    .fcp-demo-select {
-      display: block;
+    .fcp-menu {
+      flex: 1;
+    }
+
+    .fcp-menu-button {
+      min-width: 0;
     }
   }
 </style>
@@ -926,14 +1090,16 @@ const installs = [
 <script>
   import { DEMOS } from "../playground/demos/index.js";
   import { wireDivider } from "../playground/divider.js";
+  import { wireMenu } from "../playground/menu.js";
 
   if (!customElements.get("fc-playground")) {
     class PlaygroundElement extends HTMLElement {
-      #playground: { start(id?: string): Promise<void>; destroy(): void } | undefined;
+      #playground: { start(id?: string): Promise<void>; select(id: string): void; destroy(): void } | undefined;
+      #menu: { show(id: string): void; unwire(): void } | undefined;
       #unwire: (() => void) | undefined;
 
       connectedCallback() {
-        // The divider works before the runtime loads, and when it fails to.
+        // The divider and the demo menu work before the runtime loads, and when it fails to.
         this.#unwire = wireDivider(this);
         const ids = (this.dataset.demos ?? "").split(",");
         const demos = ids.flatMap((id) => DEMOS.filter((d) => d.id === id));
@@ -943,23 +1109,19 @@ const installs = [
         } catch {
           // a malformed escape just matches no demo
         }
-        const first = this.dataset.mode === "full" && ids.includes(hash) ? hash : this.dataset.demo;
+        let first = this.dataset.mode === "full" && ids.includes(hash) ? hash : this.dataset.demo;
+        // A demo picked before the playground starts is the one it starts on.
+        this.#menu = wireMenu(this, demos, (id) => {
+          if (this.dataset.mode === "full") history.replaceState(null, "", `#${id}`);
+          first = id;
+          this.#playground?.select(id);
+        });
+        if (first) this.#menu.show(first);
 
         import("../playground/host.js")
           .then(({ Playground }) => {
             const playground = new Playground(this, demos);
             this.#playground = playground;
-            if (this.dataset.mode === "full") {
-              this.addEventListener("click", (e) => {
-                const target = e.target instanceof Element ? e.target : null;
-                const button = target?.closest<HTMLElement>(".fcp-demos button");
-                if (button) history.replaceState(null, "", `#${button.dataset.demo}`);
-              });
-              this.querySelector<HTMLSelectElement>(".fcp-demo-select")?.addEventListener("change", (e) => {
-                const select = e.currentTarget as HTMLSelectElement;
-                history.replaceState(null, "", `#${select.value}`);
-              });
-            }
             return playground.start(first);
           })
           .catch((err) => {
@@ -973,6 +1135,7 @@ const installs = [
 
       disconnectedCallback() {
         this.#unwire?.();
+        this.#menu?.unwire();
         this.#playground?.destroy();
       }
     }

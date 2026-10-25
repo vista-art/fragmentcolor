@@ -18,7 +18,7 @@ Reach for `Mipmap` when you want to drive the decode and resize work yourself: o
 Typical reasons to build one explicitly:
 
 - Your asset pipeline already runs on a worker (rayon, Swift `Task`, Kotlin `Dispatchers.Default`, Python `ThreadPoolExecutor`, a Web Worker) and you want to fold mip generation into the same hop.
-- You stream tiles into a paint-canvas or terrain renderer and need each tile's GPU upload to be a single write, not a decode-plus-resize per upload.
+- You stream tiles into a map or terrain renderer and need each tile's GPU upload to be a single write, with decoding and resizing finished beforehand.
 - You want to share one chain across many textures without rebuilding it.
 
 Build with [Mipmap::build(input)](/api/texture/mipmap#build); the input shapes match what [Renderer::create_texture](/api/core/renderer#create_texture) accepts. Whether the bytes get decoded depends on whether you pass a `size`:

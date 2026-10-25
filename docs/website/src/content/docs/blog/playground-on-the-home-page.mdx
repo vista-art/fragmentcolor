@@ -1,0 +1,95 @@
+---
+title: "A playground on the home page"
+excerpt: "fragmentcolor.org now opens on a live editor. Fifteen demos ship with it, and the newest dives into the Mandelbrot set down to 1e-1000."
+authors: ["rafaelbeckel"]
+date: 2026-10-25
+tags: ["website", "playground", "demos", "webgpu"]
+---
+
+[fragmentcolor.org](/) has opened on the playground since October 23. From September until then, the home page cycled through six of our shader artworks behind the title. Now the canvas fills the first screen, with its code in an editor alongside.
+
+The [0.12.6 notes](/blog/announcing-v0-12-6/) announced it in passing. Since that release, the playground has gained a demo dropdown, a dive into the Mandelbrot set, and gestures to steer it.
+
+[How it works](/welcome/playground/#how-it-works) describes the editor: the rebuild on each edit, the sliders that follow `main.js`, the inline sliders and swatches, the **Library** bar, the generated Rust, Python, Swift, and Kotlin tabs, and the `index.js` tab that runs the same files as a Vite project.
+
+**+ Add** on that bar opens a searchable picker over the whole [shader library](/shaders/).
+
+Those language tabs are full programs. Only the fragment demos share a template. The compute ones bring their own in every language, and Mandelbrot's Rust tab even asks for the `num-bigint` and `num-traits` crates. On the home page, the install line follows the tab you pick. The canvas also has a fullscreen button in its lower right corner, and the divider beside it keeps its place across reloads.
+
+## Fifteen demos
+
+- [**Cells**](/welcome/playground/#cells): Worley noise under a fractal warp.
+- [**Particles**](/welcome/playground/#particles): a million particles that a compute pass moves and an instanced draw renders.
+- [**Life**](/welcome/playground/#life): four species of particles that chase or avoid one another.
+- [**Mandelbrot**](/welcome/playground/#mandelbrot): the deep zoom [below](#down-to-1e-1000).
+- [**Shapes**](/welcome/playground/#shapes): a circle, a star, and a hexagon blended by Inigo Quilez's smooth union and colored by distance in the logo's palette.
+- [**Kaleidoscope**](/welcome/playground/#kaleidoscope): a Truchet tiling bent through mirror segments and a twirl.
+- [**Halftone**](/welcome/playground/#halftone): a lit sphere printed in dots of varying size on a rotated grid.
+- [**Raymarch**](/welcome/playground/#raymarch): a twisted box that melts into a torus, sphere traced under Blinn-Phong and rim light.
+- [**Post Effects**](/welcome/playground/#postfx): six screen effects over a test card, from curvature to grain, with the raw card left of the pointer.
+- Nebula, Swirl, Rose Window, Plankton, Monolith, and Signal, [shown below](#the-artworks).
+
+Particles, Life, and Mandelbrot run compute shaders. Without WebGPU, they play a recording.
+
+<div class="not-content" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; margin-top: 1.5rem;">
+  <figure style="margin: 0;">
+    <img src="/playground/particles.webp" width="640" height="356" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="A million blue and pink particles streaming in loops across a dark canvas." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><strong>Particles.</strong> Both passes read one storage buffer, which they share by name.</figcaption>
+  </figure>
+  <figure style="margin: 0;">
+    <img src="/playground/life.webp" width="640" height="356" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="Particle life: red, cyan, lime, and violet particles gather into small rings and trailing arcs on a black background." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><strong>Life.</strong> Colonies of small rings and trailing arcs.</figcaption>
+  </figure>
+</div>
+
+A demo can also name the FragmentColor release it needs, and the picker leaves it out while the site loads an older one. The page never has to explain a version gap. Life asks for [0.12.6](/blog/announcing-v0-12-6/). It counts particles with `atomicAdd` and gives each of its four passes separate uniforms, two things 0.12.5 couldn't do.
+
+## Down to 1e-1000
+
+Mandelbrot is the newest demo. It dives into a spiral in Seahorse Valley until the view is 1e-1000 tall, then zooms back out, with the depth printed in the bottom left corner. The [Infinite zoom](/tutorials/infinite-zoom/) tutorial builds it step by step.
+
+The first scroll, drag, or pinch ends the dive.
+
+From then on, the center of the view is a `BigInt` whose precision rises with the zoom. Wherever you head, a fresh reference orbit grows a little on each frame and takes over once it covers the screen. When nothing moves, only the render pass runs.
+
+<figure>
+  <img src="/playground/mandelbrot.webp" width="640" height="356" loading="lazy" alt="A spiral of the Mandelbrot set in blue, cream, and brown, ringed by smaller spirals, with a depth label near 1e-1000 in the bottom left corner." />
+  <figcaption>The recording a WebGL2 browser plays, near the zoom's deepest point.</figcaption>
+</figure>
+
+Gestures came to the playground with Mandelbrot. They reach only the demos that ask for them, and everywhere else the wheel scrolls the page as usual.
+
+## The artworks
+
+The dropdown ends with the artworks from the old home page and the `/demos` gallery. Holding, clicking, dragging, and scrolling drove them there. Those inputs are now their `press`, `pulse`, `drag`, and `zoom` sliders. Monolith opens at 60% of every slider, and Rose Window in full bloom.
+
+<div class="not-content" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 1rem; margin-top: 1.5rem;">
+  <figure style="margin: 0;">
+    <img src="/artworks/nebula.webp" width="1280" height="945" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="Nebula: clouds of violet, blue, and amber gas twisting over a black sky." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><strong>Nebula.</strong> Fractal noise folded into glowing gas around a gravity well.</figcaption>
+  </figure>
+  <figure style="margin: 0;">
+    <img src="/artworks/swirl.webp" width="1280" height="945" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="Swirl: bright rings of red, yellow, violet, and cyan winding into a spiral." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><strong>Swirl.</strong> A cosine palette wound into rings and radar arms.</figcaption>
+  </figure>
+  <figure style="margin: 0;">
+    <img src="/artworks/rosewindow.webp" width="1280" height="945" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="Rose Window: concentric rings of amber, blue, and red glass around a petaled center." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><strong>Rose Window.</strong> Stained glass that changes its symmetry as you move across it.</figcaption>
+  </figure>
+  <figure style="margin: 0;">
+    <img src="/artworks/plankton.webp" width="1280" height="945" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="Plankton: glowing teal cell walls over a dark blue background." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><strong>Plankton.</strong> Bioluminescent cells that drift out of your way.</figcaption>
+  </figure>
+  <figure style="margin: 0;">
+    <img src="/artworks/monolith.webp" width="1280" height="945" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="Monolith: a dark octahedron ringed by a glossy torus, with small spheres floating beside it." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><strong>Monolith.</strong> Signed distance fields carved into obsidian, with three moons in orbit.</figcaption>
+  </figure>
+  <figure style="margin: 0;">
+    <img src="/artworks/signal.webp" width="1280" height="945" loading="lazy" style="width: 100%; height: auto; border-radius: 0.5rem;" alt="Signal: amber contour lines snaking across a curved, dark screen like an old broadcast." />
+    <figcaption style="margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3);"><strong>Signal.</strong> An old broadcast in amber contour lines, bent across curved glass.</figcaption>
+  </figure>
+</div>
+
+Pick a demo on [fragmentcolor.org](/) and change a number.
+
+Rafael

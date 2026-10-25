@@ -1,12 +1,12 @@
 ---
 title: "v0.11.1: Embedded shader registry by default"
-excerpt: "A patch release that embeds the shader library in every native build and moves network fetches behind a Cargo feature, which unblocks the Linux PyPI wheels."
+excerpt: "Native builds embed the shader library. Network fetches move behind a Cargo feature, which unblocks the Linux PyPI wheels."
 authors: ["rafaelbeckel"]
 date: 2026-05-05T15:25:46Z
 tags: ["release", "rust", "python", "bugfix"]
 ---
 
-v0.11.1 is a patch release that unblocks the Linux PyPI publish path. [v0.11.0](/blog/announcing-v0-11-0/) shipped to crates.io, npm, the Swift xcframework, and the Android AAR, but the PyPI wheels never landed. The release also reframes the underlying decision: a graphics library should not drag a TLS stack into every consumer's dep tree.
+[v0.11.0](/blog/announcing-v0-11-0/) shipped to crates.io, npm, the Swift xcframework, and the Android AAR, but its PyPI wheels never landed. v0.11.1 is the patch release that unblocks the Linux publish path, and it reframes the decision underneath: a graphics library should not drag a TLS stack into every consumer's dep tree.
 
 ### Defaults
 
@@ -31,7 +31,7 @@ v0.11.1 is a patch release that unblocks the Linux PyPI publish path. [v0.11.0](
 
 ### Migration
 
-Most call sites need no changes. Registry URLs (`https://fragmentcolor.org/shaders/<category>/<name>.wgsl`) now resolve from the embedded library on native, with no network needed and no code changes required.
+Most call sites need no changes. On native, registry URLs (`https://fragmentcolor.org/shaders/<category>/<name>.wgsl`) resolve from the embedded library without touching the network.
 
 Off-registry URLs (anything that doesn't match `<registry-base>/<category>/<name>.wgsl`) on native:
 
