@@ -23,6 +23,8 @@ be redone from its step when the code changes, so a tool makes it, never a hand-
 `docs/website/src/components/Figure.astro` holds every illustration. With `src` it shows a capture and
 draws its slot over it; without `src` the slot is the whole diagram, on a panel that follows the theme.
 `width` and `height` set the SVG coordinate system, 720 units wide by default, and `alt` is required.
+`narrow` keeps a figure at most 320px wide and centered, for a portrait or another small picture that
+would stand far too tall at the full width of the text.
 
 ```mdx
 import Figure from "../../../components/Figure.astro";

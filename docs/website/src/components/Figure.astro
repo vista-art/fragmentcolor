@@ -30,15 +30,17 @@ interface Props {
   src?: string;
   /** A short caption under the figure. Text between backticks renders as code. */
   caption?: string;
+  /** At most 320px wide and centered, for a portrait or another small picture. */
+  narrow?: boolean;
 }
 
-const { alt, width = 720, height, src, caption } = Astro.props;
+const { alt, width = 720, height, src, caption, narrow = false } = Astro.props;
 const viewBox = `0 0 ${width} ${height}`;
 // Odd pieces of the caption sat between backticks.
 const captionParts = caption?.split("`") ?? [];
 ---
 
-<figure class="fc-figure not-content">
+<figure class:list={["fc-figure not-content", narrow && "fc-figure-narrow"]}>
   <div class={src ? "fc-figure-frame fc-figure-capture" : "fc-figure-frame fc-figure-diagram"}>
     {src && <img src={src} alt={alt} width={width} height={height} loading="lazy" decoding="async" />}
     {
@@ -69,6 +71,11 @@ const captionParts = caption?.split("`") ?? [];
     --fig-text: 15px;
     --fig-small: 12.5px;
     margin: 1.5rem 0;
+  }
+
+  .fc-figure-narrow {
+    max-width: 320px;
+    margin-inline: auto;
   }
 
   :root[data-theme="light"] .fc-figure {
