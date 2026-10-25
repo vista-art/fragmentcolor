@@ -1,5 +1,5 @@
 // A glTF model loaded with the scene layer and lit by two lights. A drag turns it,
-// and the wheel or a pinch moves the camera closer. The scene draws into an
+// and the wheel or a pinch moves the camera closer. The scene draws into a float
 // image with a depth buffer, and a present pass turns its light values into
 // screen colors over a water gradient.
 
@@ -51,7 +51,7 @@ fn vs_main(@builtin(vertex_index) i: u32) -> VertexOutput {
 }
 `;
 
-const PROGRAM = /* js */ `import { Camera, Light, Pass, Scene, Shader } from "fragmentcolor";
+const PROGRAM = /* js */ `import { Camera, Light, Pass, Scene, Shader, TextureFormat, TextureUsage } from "fragmentcolor";
 import PRESENT_SOURCE from "./present.wgsl?raw";
 
 const LIBRARY = ["color/tonemap_aces", "color/linear_to_srgb"];
@@ -78,42 +78,37 @@ export async function setup(renderer, target) {
   const rim = Light.directional(RIM, [0.6, 0.7, 1]).setIntensity(1);
   scene.add(camera).add(key).add(rim).ambient([0.1, 0.1, 0.12]);
 
-  // The fish draws light values into an image, and present.wgsl turns them into screen colors.
-  // Its depth buffer keeps the near side of the fish in front of the far side.
-  const { width, height } = target.size();
-  const size = [width, height];
-  const image = await renderer.createTextureTarget(size);
-  const depth = await renderer.createDepthTexture(size);
+  // The fish pass clears to transparent, so present.wgsl can lay the fish over the water.
   const fish = scene.getPass(0);
-  fish.setTarget(image);
-  fish.setDepthTarget(depth);
   fish.setClearColor([0, 0, 0, 0]);
 
   const present = await Shader.fetch([...LIBRARY, PRESENT_SOURCE]);
   present.set("look.exposure", 1.5);
   present.set("look.surface_color", [0.25, 0.58, 0.68]);
   present.set("look.deep_color", [0.02, 0.12, 0.2]);
-  present.set("image", image.texture());
   scene.addPass(Pass.fromShader("present", present));
 
   // The playground gives a control to each value setup sets on a shader it returns.
-  return {
+  const state = {
     scene,
     present,
     camera,
     key,
     rim,
     fish,
-    image,
-    depth,
-    size,
-    wanted: size,
+    image: null,
+    depth: null,
+    size: null,
+    wanted: null,
     yaw: 1,
     pitch: 0.25,
     distance: DISTANCE,
     turning: true,
     last: null,
   };
+  const { width, height } = target.size();
+  await fit(state, renderer, [width, height]);
+  return state;
 }
 
 export function frame(state, renderer, target, time, size, pointer, gesture = { zoom: 0, pan: [0, 0] }) {
@@ -142,20 +137,27 @@ export function frame(state, renderer, target, time, size, pointer, gesture = { 
   renderer.render(state.scene, target);
 }
 
-// A depth texture can't change size, so a new canvas size gets a new one, and the
-// renderer lets go of the old one. The image keeps its size until the new one is ready.
+// The fish draws into a 16-bit float image, so light brighter than white reaches
+// the tone map, and a depth buffer keeps its far side behind its near side.
+// Neither can change size, so a new canvas size gets new ones, and the fish
+// keeps drawing at the old size until they are ready.
 async function fit(state, renderer, size) {
   state.wanted = size;
+  const usage = TextureUsage.RENDER_ATTACHMENT | TextureUsage.TEXTURE_BINDING;
+  const image = await renderer.createStorageTexture(size, TextureFormat.Rgba16Float, null, usage);
   const depth = await renderer.createDepthTexture(size);
+  // The renderer keeps every texture until it is unregistered. When a newer size
+  // came in during the wait, these two are already out of date.
   if (state.wanted !== size) {
+    renderer.unregisterTexture(image.id());
     renderer.unregisterTexture(depth.id());
     return;
   }
-  renderer.unregisterTexture(state.depth.id());
-  state.image.resize(size);
+  for (const old of [state.image, state.depth]) if (old) renderer.unregisterTexture(old.id());
+  state.fish.setTarget(image);
   state.fish.setDepthTarget(depth);
-  state.depth = depth;
-  state.size = size;
+  state.present.set("image", image);
+  Object.assign(state, { image, depth, size });
 }
 
 // Turns a direction around the vertical axis by yaw radians.
@@ -211,7 +213,10 @@ function writeRust({ library, values }) {
     "use std::error::Error;",
     "use std::f32::consts::PI;",
     "",
-    "use fragmentcolor::{Camera, Light, Pass, Renderer, Scene, Shader, Target, Texture, TextureTarget};",
+    "use fragmentcolor::{",
+    "    Camera, Light, Pass, Renderer, Scene, Shader, Target, Texture, TextureData, TextureFormat,",
+    "    TextureInput, TextureOptions, TextureUsage,",
+    "};",
     "",
     'const PRESENT_SOURCE: &str = include_str!("present.wgsl");',
     "",
@@ -236,12 +241,13 @@ function writeRust({ library, values }) {
     "",
     "struct State {",
     "    scene: Scene,",
+    "    present: Shader,",
     "    camera: Camera,",
     "    key: Light,",
     "    rim: Light,",
     "    fish: Pass,",
-    "    image: TextureTarget,",
-    "    depth: Texture,",
+    "    image: Option<Texture>,",
+    "    depth: Option<Texture>,",
     "    size: Option<[f32; 2]>,",
     "    yaw: f32,",
     "    pitch: f32,",
@@ -259,31 +265,30 @@ function writeRust({ library, values }) {
     "    let camera = Camera::perspective(0.6, 1.0, 0.01, 10.0);",
     "    let key = Light::directional(KEY, [1.0, 0.96, 0.9]).set_intensity(3.0);",
     "    let rim = Light::directional(RIM, [0.6, 0.7, 1.0]).set_intensity(1.0);",
-    "    scene.add(&camera)?.add(&key)?.add(&rim)?.ambient([0.1, 0.1, 0.12]);",
+    "    scene",
+    "        .add(&camera)?",
+    "        .add(&key)?",
+    "        .add(&rim)?",
+    "        .ambient([0.1, 0.1, 0.12]);",
     "",
-    "    // The fish draws light values into an image, and present.wgsl turns them into screen colors.",
-    "    // Its depth buffer keeps the near side of the fish in front of the far side.",
-    "    // The first frame sizes both to the window.",
-    "    let image = renderer.create_texture_target([1, 1]).await?;",
-    "    let depth = renderer.create_depth_texture([1, 1]).await?;",
+    "    // The fish pass clears to transparent, so present.wgsl can lay the fish over the water.",
+    "    // The first frame gives it an image and a depth buffer the size of the window.",
     '    let fish = scene.get_pass(0).ok_or("the model loaded no pass")?;',
-    "    fish.set_target(&image)?;",
-    "    fish.set_depth_target(&depth)?;",
     "    fish.set_clear_color([0.0, 0.0, 0.0, 0.0]);",
     "",
     ...wrap("    ", "let present = Shader::new([", [...library.map(quote), "PRESENT_SOURCE"], "])?;", 100),
     ...setCalls("rust", values, { after: "?;" }),
-    '    present.set("image", &image.texture())?;',
     '    scene.add_pass(&Pass::from_shader("present", &present));',
     "",
     "    Ok(State {",
     "        scene,",
+    "        present,",
     "        camera,",
     "        key,",
     "        rim,",
     "        fish,",
-    "        image,",
-    "        depth,",
+    "        image: None,",
+    "        depth: None,",
     "        size: None,",
     "        yaw: 1.0,",
     "        pitch: 0.25,",
@@ -337,15 +342,34 @@ function writeRust({ library, values }) {
     "    Ok(())",
     "}",
     "",
-    "/// A depth texture can't change size, so a new window size gets a new one,",
-    "/// and the renderer lets go of the old one. The image resizes along with it.",
+    "/// The fish draws into a 16-bit float image, so light brighter than white reaches",
+    "/// the tone map, and a depth buffer keeps its far side behind its near side.",
+    "/// Neither can change size, so a new window size gets new ones.",
     "async fn fit(state: &mut State, renderer: &Renderer, size: [f32; 2]) -> Result<(), Box<dyn Error>> {",
     "    let pixels = [size[0].max(1.0) as u32, size[1].max(1.0) as u32];",
+    "    let options = TextureOptions {",
+    "        size: Some(pixels.into()),",
+    "        format: TextureFormat::Rgba16Float,",
+    "        ..Default::default()",
+    "    }",
+    "    .with_usage(TextureUsage::RENDER_ATTACHMENT | TextureUsage::TEXTURE_BINDING);",
+    "    let input = TextureInput {",
+    "        data: TextureData::Empty,",
+    "        options,",
+    "    };",
+    "    let image = renderer.create_storage_texture(input).await?;",
     "    let depth = renderer.create_depth_texture(pixels).await?;",
-    "    renderer.unregister_texture(state.depth.id())?;",
-    "    state.image.resize(pixels);",
+    "",
+    "    // The renderer keeps every texture until it is unregistered.",
+    "    let stale = [state.image.take(), state.depth.take()];",
+    "    for old in stale.into_iter().flatten() {",
+    "        renderer.unregister_texture(old.id())?;",
+    "    }",
+    "    state.fish.set_target(&image)?;",
     "    state.fish.set_depth_target(&depth)?;",
-    "    state.depth = depth;",
+    '    state.present.set("image", &image)?;',
+    "    state.image = Some(image);",
+    "    state.depth = Some(depth);",
     "    state.size = Some(size);",
     "    Ok(())",
     "}",
@@ -367,7 +391,15 @@ function writePython({ library, values }) {
     "from pathlib import Path",
     "from types import SimpleNamespace",
     "",
-    "from fragmentcolor import Camera, Light, Pass, Scene, Shader",
+    "from fragmentcolor import (",
+    "    Camera,",
+    "    Light,",
+    "    Pass,",
+    "    Scene,",
+    "    Shader,",
+    "    TextureFormat,",
+    "    TextureUsage,",
+    ")",
     "",
     ...wrap("", "LIBRARY = [", library.map(quote), "]", 88),
     'PRESENT_SOURCE = Path(__file__).with_name("present.wgsl").read_text()',
@@ -377,7 +409,8 @@ function writePython({ library, values }) {
     "# The middle of the fish and how far the camera starts from it, in meters.",
     "CENTER = [0.0, 0.143, 0.0]",
     "DISTANCE = 1.3",
-    "# The key light shines from above and left of the camera, the rim light from behind the fish.",
+    "# The key light shines from above and left of the camera,",
+    "# the rim light from behind the fish.",
     "KEY = [-0.5, -0.6, -1.0]",
     "RIM = [0.6, 0.2, 1.0]",
     "# How fast the fish turns before the first drag, in radians per second.",
@@ -397,29 +430,25 @@ function writePython({ library, values }) {
     "    rim = Light.directional(RIM, [0.6, 0.7, 1.0]).set_intensity(1.0)",
     "    scene.add(camera).add(key).add(rim).ambient([0.1, 0.1, 0.12])",
     "",
-    "    # The fish draws light values into an image, and present.wgsl turns them into screen colors.",
-    "    # Its depth buffer keeps the near side of the fish in front of the far side.",
-    "    # The first frame sizes both to the canvas.",
-    "    image = renderer.create_texture_target([1, 1])",
-    "    depth = renderer.create_depth_texture([1, 1])",
+    "    # The fish pass clears to transparent, so present.wgsl can lay the fish",
+    "    # over the water. The first frame gives it an image and a depth buffer",
+    "    # the size of the canvas.",
     "    fish = scene.get_pass(0)",
-    "    fish.set_target(image)",
-    "    fish.set_depth_target(depth)",
     "    fish.set_clear_color([0.0, 0.0, 0.0, 0.0])",
     "",
     "    present = Shader([*LIBRARY, PRESENT_SOURCE])",
     ...setCalls("python", values),
-    '    present.set("image", image.texture())',
     '    scene.add_pass(Pass.from_shader("present", present))',
     "",
     "    return SimpleNamespace(",
     "        scene=scene,",
+    "        present=present,",
     "        camera=camera,",
     "        key=key,",
     "        rim=rim,",
     "        fish=fish,",
-    "        image=image,",
-    "        depth=depth,",
+    "        image=None,",
+    "        depth=None,",
     "        size=None,",
     "        yaw=1.0,",
     "        pitch=0.25,",
@@ -444,7 +473,9 @@ function writePython({ library, values }) {
     "    # A drag the height of the canvas turns the camera half a circle.",
     "    state.yaw -= gesture.pan[0] / size[1] * math.pi",
     "    state.pitch = min(max(state.pitch + gesture.pan[1] / size[1] * math.pi, -1.4), 1.4)",
-    "    state.distance = min(max(state.distance / 2**gesture.zoom, DISTANCE / 3), DISTANCE * 3)",
+    "    state.distance = min(",
+    "        max(state.distance / 2**gesture.zoom, DISTANCE / 3), DISTANCE * 3",
+    "    )",
     "",
     "    reach = state.distance * math.cos(state.pitch)",
     "    eye = [",
@@ -459,16 +490,25 @@ function writePython({ library, values }) {
     "    renderer.render(state.scene, target)",
     "",
     "",
-    "# A depth texture can't change size, so a new canvas size gets a new one,",
-    "# and the renderer lets go of the old one. The image resizes along with it.",
+    "# The fish draws into a 16-bit float image, so light brighter than white reaches",
+    "# the tone map, and a depth buffer keeps its far side behind its near side.",
+    "# Neither can change size, so a new canvas size gets new ones.",
     "def fit(state, renderer, size):",
     "    pixels = [max(int(size[0]), 1), max(int(size[1]), 1)]",
+    "    usage = TextureUsage.RENDER_ATTACHMENT | TextureUsage.TEXTURE_BINDING",
+    "    image = renderer.create_storage_texture(",
+    "        pixels, TextureFormat.Rgba16Float, usage=usage",
+    "    )",
     "    depth = renderer.create_depth_texture(pixels)",
-    "    renderer.unregister_texture(state.depth.id())",
-    "    state.image.resize(pixels)",
+    "",
+    "    # The renderer keeps every texture until it is unregistered.",
+    "    for old in (state.image, state.depth):",
+    "        if old is not None:",
+    "            renderer.unregister_texture(old.id())",
+    "    state.fish.set_target(image)",
     "    state.fish.set_depth_target(depth)",
-    "    state.depth = depth",
-    "    state.size = list(size)",
+    '    state.present.set("image", image)',
+    "    state.image, state.depth, state.size = image, depth, list(size)",
     "",
     "",
     "# Turns a direction around the vertical axis by yaw radians.",
@@ -512,12 +552,13 @@ function writeSwift({ library, values }) {
     "",
     "struct State {",
     "    let scene: Scene",
+    "    let present: Shader",
     "    let camera: Camera",
     "    let key: Light",
     "    let rim: Light",
     "    let fish: Pass",
-    "    let image: TextureTarget",
-    "    var depth: Texture",
+    "    var image: Texture?",
+    "    var depth: Texture?",
     "    var size: [Float]?",
     "    var yaw: Float = 1",
     "    var pitch: Float = 0.25",
@@ -538,23 +579,17 @@ function writeSwift({ library, values }) {
     "    let rim = try Light.directional(rimDirection, [0.6, 0.7, 1]).setIntensity(1)",
     "    try scene.add(camera).add(key).add(rim).ambient([0.1, 0.1, 0.12])",
     "",
-    "    // The fish draws light values into an image, and present.wgsl turns them into screen colors.",
-    "    // Its depth buffer keeps the near side of the fish in front of the far side.",
-    "    // The first frame sizes both to the view.",
-    "    let image = try await renderer.createTextureTarget([1, 1])",
-    "    let depth = try await renderer.createDepthTexture([1, 1])",
+    "    // The fish pass clears to transparent, so present.wgsl can lay the fish over the water.",
+    "    // The first frame gives it an image and a depth buffer the size of the view.",
     "    let fish = scene.getPass(0)!",
-    "    try fish.setTarget(image)",
-    "    try fish.setDepthTarget(depth)",
     "    try fish.setClearColor([0, 0, 0, 0])",
     "",
     '    let presentURL = Bundle.main.url(forResource: "present", withExtension: "wgsl")!',
     "    let present = try Shader(library + [String(contentsOf: presentURL, encoding: .utf8)])",
     ...setCalls("swift", values, { before: "try " }),
-    '    try present.set("image", image.texture())',
     '    scene.addPass(Pass.fromShader("present", present))',
     "",
-    "    return State(scene: scene, camera: camera, key: key, rim: rim, fish: fish, image: image, depth: depth)",
+    "    return State(scene: scene, present: present, camera: camera, key: key, rim: rim, fish: fish)",
     "}",
     "",
     "func frame(",
@@ -582,7 +617,8 @@ function writeSwift({ library, values }) {
     "    // A drag the height of the view turns the camera half a circle.",
     "    state.yaw -= gesture.pan[0] / size[1] * .pi",
     "    state.pitch = min(max(state.pitch + gesture.pan[1] / size[1] * .pi, -1.4), 1.4)",
-    "    state.distance = min(max(state.distance / pow(2, gesture.zoom), startDistance / 3), startDistance * 3)",
+    "    let zoomed = state.distance / pow(2, gesture.zoom)",
+    "    state.distance = min(max(zoomed, startDistance / 3), startDistance * 3)",
     "",
     "    let reach = state.distance * cos(state.pitch)",
     "    let eye = [",
@@ -597,14 +633,23 @@ function writeSwift({ library, values }) {
     "    try renderer.render(state.scene, target)",
     "}",
     "",
-    "/// A depth texture can't change size, so a new view size gets a new one,",
-    "/// and the renderer lets go of the old one. The image resizes along with it.",
+    "/// The fish draws into a 16-bit float image, so light brighter than white reaches",
+    "/// the tone map, and a depth buffer keeps its far side behind its near side.",
+    "/// Neither can change size, so a new view size gets new ones.",
     "func fit(_ state: inout State, _ renderer: Renderer, _ size: [Float]) async throws {",
     "    let pixels = [UInt32(max(size[0], 1)), UInt32(max(size[1], 1))]",
+    "    let usage = TextureUsage.RENDER_ATTACHMENT | TextureUsage.TEXTURE_BINDING",
+    "    let image = try await renderer.createStorageTexture(pixels, .rgba16Float, nil, usage)",
     "    let depth = try await renderer.createDepthTexture(pixels)",
-    "    try renderer.unregisterTexture(state.depth.id())",
-    "    state.image.resize(pixels)",
+    "",
+    "    // The renderer keeps every texture until it is unregistered.",
+    "    for old in [state.image, state.depth].compactMap({ $0 }) {",
+    "        try renderer.unregisterTexture(old.id())",
+    "    }",
+    "    try state.fish.setTarget(image)",
     "    try state.fish.setDepthTarget(depth)",
+    '    try state.present.set("image", image)',
+    "    state.image = image",
     "    state.depth = depth",
     "    state.size = size",
     "}",
@@ -654,13 +699,14 @@ function writeKotlin({ library, values }) {
     "",
     "class State(",
     "    val scene: Scene,",
+    "    val present: Shader,",
     "    val camera: Camera,",
     "    val key: Light,",
     "    val rim: Light,",
     "    val fish: Pass,",
-    "    val image: TextureTarget,",
-    "    var depth: Texture,",
     ") {",
+    "    var image: Texture? = null",
+    "    var depth: Texture? = null",
     "    var size: List<Float>? = null",
     "    var yaw = 1.0",
     "    var pitch = 0.25",
@@ -680,23 +726,17 @@ function writeKotlin({ library, values }) {
     "    val rim = Light.directional(RIM, listOf(0.6, 0.7, 1.0)).setIntensity(1.0)",
     "    scene.add(camera).add(key).add(rim).ambient(listOf(0.1, 0.1, 0.12))",
     "",
-    "    // The fish draws light values into an image, and present.wgsl turns them into screen colors.",
-    "    // Its depth buffer keeps the near side of the fish in front of the far side.",
-    "    // The first frame sizes both to the view.",
-    "    val image = renderer.createTextureTarget(listOf(1u, 1u))",
-    "    val depth = renderer.createDepthTexture(listOf(1u, 1u))",
+    "    // The fish pass clears to transparent, so present.wgsl can lay the fish over the water.",
+    "    // The first frame gives it an image and a depth buffer the size of the view.",
     "    val fish = scene.getPass(0u)!!",
-    "    fish.setTarget(image)",
-    "    fish.setDepthTarget(depth)",
     "    fish.setClearColor(listOf(0f, 0f, 0f, 0f))",
     "",
     '    val presentSource = assets.open("present.wgsl").bufferedReader().use { it.readText() }',
     "    val present = Shader(LIBRARY + presentSource)",
     ...setCalls("kotlin", values),
-    '    present.set("image", image.texture())',
     '    scene.addPass(Pass.fromShader("present", present))',
     "",
-    "    return State(scene, camera, key, rim, fish, image, depth)",
+    "    return State(scene, present, camera, key, rim, fish)",
     "}",
     "",
     "suspend fun frame(",
@@ -735,15 +775,22 @@ function writeKotlin({ library, values }) {
     "}",
     "",
     "/**",
-    " * A depth texture can't change size, so a new view size gets a new one,",
-    " * and the renderer lets go of the old one. The image resizes along with it.",
+    " * The fish draws into a 16-bit float image, so light brighter than white reaches",
+    " * the tone map, and a depth buffer keeps its far side behind its near side.",
+    " * Neither can change size, so a new view size gets new ones.",
     " */",
     "suspend fun fit(state: State, renderer: Renderer, size: List<Float>) {",
     "    val pixels = listOf(maxOf(size[0].toUInt(), 1u), maxOf(size[1].toUInt(), 1u))",
+    "    val usage = TextureUsage.RENDER_ATTACHMENT or TextureUsage.TEXTURE_BINDING",
+    "    val image = renderer.createStorageTexture(pixels, TextureFormat.RGBA16_FLOAT, usage = usage)",
     "    val depth = renderer.createDepthTexture(pixels)",
-    "    renderer.unregisterTexture(state.depth.id())",
-    "    state.image.resize(pixels)",
+    "",
+    "    // The renderer keeps every texture until it is unregistered.",
+    "    listOfNotNull(state.image, state.depth).forEach { renderer.unregisterTexture(it.id()) }",
+    "    state.fish.setTarget(image)",
     "    state.fish.setDepthTarget(depth)",
+    '    state.present.set("image", image)',
+    "    state.image = image",
     "    state.depth = depth",
     "    state.size = size",
     "}",
