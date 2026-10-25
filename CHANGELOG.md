@@ -40,6 +40,7 @@
 - Resizing a `TextureTarget` to its current size keeps its pixels, and a width or height of zero logs a warning and keeps the texture.
 - A `TextureId` on its own doesn't keep its texture. Once the last handle, shader uniform and pass target holding a texture drop, `read_texture` and `unregister_texture` report its id as not found.
 - Python reads sizes with a call: `texture.size.width` from the 0.12.6 notes is now `texture.size().width`, and `target.size` is `target.size()` on a texture target.
+- `RendererError::MsaaViewMissing` is gone. No code returned it.
 
 ## 0.12.6: Binding and renderer fixes
 

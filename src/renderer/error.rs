@@ -24,8 +24,6 @@ pub enum RendererError {
         "Storage binding '{0}' not found — either the shader doesn't declare it or no render pass has uploaded it yet"
     )]
     StorageBindingNotFound(String),
-    #[error("MSAA texture view missing")]
-    MsaaViewMissing,
     #[error("Depth sample_count mismatch: depth={depth} pass={pass}")]
     DepthSampleCountMismatch { depth: u32, pass: u32 },
     #[error("initialization error: {0}")]
