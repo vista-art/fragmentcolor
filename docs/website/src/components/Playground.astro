@@ -604,12 +604,12 @@ const installs = [
     margin: 0;
   }
 
-  .fcp-strip-item:hover {
+  .fcp-strip-item:not([aria-pressed="true"]):hover {
     color: var(--fcp-ink);
     border-color: rgba(255, 255, 255, 0.2);
   }
 
-  :root[data-theme="light"] .fcp-strip-item:hover {
+  :root[data-theme="light"] .fcp-strip-item:not([aria-pressed="true"]):hover {
     border-color: hsla(224, 10%, 10%, 0.24);
   }
 
