@@ -5,6 +5,7 @@ A GPU texture resource. Public API wrapper that holds a shareable reference to t
 - Construct via [Renderer::create_texture(input)](https://fragmentcolor.org/api/core/renderer#create_texture). `input` accepts bytes, `(bytes, [w, h])`, `(bytes, format)`, a path, a URL, a KTX2 container, or a prepared chain.
 - Bind to a shader with `shader.set("key", &texture)`.
 - The texture owns its sampler; tweak filtering and wrapping via `set_sampler_options`.
+- A texture a pass draws into, such as a depth texture, takes a new size with `resize`, and every clone of the handle follows.
 
 ## How to use
 

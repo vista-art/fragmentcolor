@@ -37,6 +37,7 @@ Items found while reviewing 0.12.6.
 - [ ] uniffi warns that `uniffi.toml` looks like an old-style config file; move it to the current layout
 - [ ] The Kotlin transpiler flattens a multi-line list of shader slugs into `SHADER,))`. It compiles, but the generated tab reads wrong; `scripts/convert.rs` keeps each item on its own line
 - [x] A pass that draws models and sets no depth target draws with a pooled depth buffer that matches its color attachment, and a depth target the app sets wins
+- [x] `Texture::resize` for textures a pass draws into, in every binding. Clones, pass targets, shader uniforms and `TextureTarget::texture()` handles follow it and `TextureTarget::resize`
 - [ ] A push that changes only the website reruns every healthcheck. The `paths` filter on `pull_request` compares the whole PR with its base, not the last push. Skip a check when the files it reads match a commit where it already passed, for example with a cache key built from the tree hash of those paths, and keep the skipped job reporting success for branch protection
 
 ### First, because 0.13.0 needs them

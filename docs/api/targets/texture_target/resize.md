@@ -2,6 +2,9 @@
 
 Resizes the [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) to the given width and height.
 
+Passes that draw into the target, shaders that sample it and every `texture()` handle use the new texture.
+Its pixels start blank, and the current size keeps them. A width or height of zero logs a warning and keeps the texture.
+
 ## Example
 
 ```rust

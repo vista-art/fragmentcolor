@@ -4409,6 +4409,7 @@ class Texture:
     - Construct via [Renderer::create_texture(input)](https://fragmentcolor.org/api/core/renderer#create_texture). `input` accepts bytes, `(bytes, [w, h])`, `(bytes, format)`, a path, a URL, a KTX2 container, or a prepared chain.
     - Bind to a shader with `shader.set("key", &texture)`.
     - The texture owns its sampler; tweak filtering and wrapping via `set_sampler_options`.
+    - A texture a pass draws into, such as a depth texture, takes a new size with `resize`, and every clone of the handle follows.
 
     ## How to use
 
@@ -4460,7 +4461,8 @@ class Texture:
         Return the texture's dimensions as a `Size` (`width`, `height`, and
         `depth`, which is 1 for a 2D texture and the layer count for 3D or array
         textures). The size reflects the
-        allocated GPU resource and is constant for the lifetime of the texture.
+        allocated GPU resource. It changes when `resize` gives the texture a new
+        size, and every clone of the handle reads the new size.
 
         Example:
 
@@ -4858,6 +4860,9 @@ class TextureTarget:
         """
         Resizes the [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) to the given width and height.
 
+        Passes that draw into the target, shaders that sample it and every `texture()` handle use the new texture.
+        Its pixels start blank, and the current size keeps them. A width or height of zero logs a warning and keeps the texture.
+
         Example:
 
         ```python
@@ -4899,10 +4904,9 @@ class TextureTarget:
         multi-pass pipelines: render into the `TextureTarget`, then bind the
         returned `Texture` as a shader uniform on the next pass to read it back.
 
-        The first call registers the underlying texture object with the renderer
-        and caches the resulting `TextureId`; subsequent calls return a fresh
-        `Texture` handle pointing at the same registered id (no duplicate
-        registration). The returned handle is `Clone`; pass it around freely.
+        Every call returns a handle to the target's own texture, under one
+        `TextureId`. The handle follows `TextureTarget::resize`, and resizing the
+        handle resizes the target. It is `Clone`; pass it around freely.
 
         Example:
 

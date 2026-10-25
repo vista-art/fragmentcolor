@@ -3,7 +3,8 @@
 Return the texture's dimensions as a `Size` (`width`, `height`, and
 `depth`, which is 1 for a 2D texture and the layer count for 3D or array
 textures). The size reflects the
-allocated GPU resource and is constant for the lifetime of the texture.
+allocated GPU resource. It changes when `resize` gives the texture a new
+size, and every clone of the handle reads the new size.
 
 ## Example
 
