@@ -47,12 +47,7 @@ impl Target for WindowTarget {
             return Ok(());
         }
         let limit = self.context.device.limits().max_texture_dimension_2d;
-        if size.width > limit || size.height > limit {
-            return Err(TextureError::InvalidInput(format!(
-                "can't resize a window target to {}x{}, each side must be at most {limit}",
-                size.width, size.height
-            )));
-        }
+        crate::texture::check_size(size.width, size.height, limit)?;
         self.config.width = size.width;
         self.config.height = size.height;
         self.surface.configure(&self.context.device, &self.config);

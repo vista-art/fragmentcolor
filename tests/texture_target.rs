@@ -1,6 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use fragmentcolor::{Pass, Renderer, Shader, Target};
+use fragmentcolor::texture::TextureError;
+use fragmentcolor::{InitializationError, Pass, Renderer, Shader, Target};
 
 const FILL: &str = r#"
 struct VertexOutput { @builtin(position) position: vec4<f32> }
@@ -208,5 +209,24 @@ fn resize_refuses_an_empty_size_and_keeps_the_pixels() {
             "the current size keeps the pixels, got {:?}",
             &img[..4]
         );
+    });
+}
+
+// Story: a texture target past the device limit, or with no area, is refused at
+// creation with the error resize returns, before it reaches wgpu.
+#[test]
+fn create_texture_target_checks_the_size() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        for size in [[100_000, 8], [0, 8]] {
+            let refused = renderer.create_texture_target(size).await;
+            assert!(
+                matches!(
+                    refused,
+                    Err(InitializationError::Texture(TextureError::InvalidInput(_)))
+                ),
+                "{size:?} should be refused"
+            );
+        }
     });
 }

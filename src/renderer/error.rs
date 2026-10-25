@@ -47,6 +47,9 @@ pub enum InitializationError {
     DeviceError(#[from] wgpu::RequestDeviceError),
     #[error("Failed to create surface")]
     SurfaceError(#[from] wgpu::CreateSurfaceError),
+    /// The target's size doesn't fit the device, the error `resize` returns too.
+    #[error(transparent)]
+    Texture(#[from] crate::texture::TextureError),
     #[error("Initialization error: {0}")]
     Error(String),
 }
@@ -83,7 +86,10 @@ impl From<pyo3::PyErr> for InitializationError {
 #[cfg(python)]
 impl From<InitializationError> for pyo3::PyErr {
     fn from(e: InitializationError) -> Self {
-        crate::PyFragmentColorError::new_err(e.to_string())
+        match e {
+            InitializationError::Texture(texture) => texture.into(),
+            other => crate::PyFragmentColorError::new_err(other.to_string()),
+        }
     }
 }
 

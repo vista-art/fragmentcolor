@@ -149,12 +149,15 @@ pub(crate) fn configure_surface(
         .first()
         .copied()
         .unwrap_or(wgpu::CompositeAlphaMode::Auto);
+    // A window with no area yet gets one pixel, and one past the device limit is an error.
+    let (width, height) = (size.width.max(1), size.height.max(1));
+    crate::texture::check_size(width, height, device.limits().max_texture_dimension_2d)?;
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         format,
         color_space: wgpu::SurfaceColorSpace::Auto,
-        width: u32::max(size.width, 1),
-        height: u32::max(size.height, 1),
+        width,
+        height,
         present_mode: wgpu::PresentMode::AutoVsync,
         alpha_mode,
         desired_maximum_frame_latency: 2,

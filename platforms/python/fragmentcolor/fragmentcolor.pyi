@@ -129,6 +129,8 @@ class Renderer:
 
         In Rust, we officially support Winit. Check the examples folder for details.
 
+        A window with no area yet gets a target of one pixel, and `resize` gives it the real size later. A side past the device limit returns `TextureError::InvalidInput`, the error `resize` returns.
+
         Example:
 
         ```python
@@ -147,6 +149,8 @@ class Renderer:
         Render to an offscreen texture without a Window or Canvas.
 
         This is useful for tests, server-side rendering, or running examples in CI.
+
+        A width or height of zero, or a side past the device limit, returns `TextureError::InvalidInput`, the error `resize` returns.
 
         Example:
 

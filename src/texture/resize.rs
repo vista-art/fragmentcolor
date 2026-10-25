@@ -12,6 +12,18 @@ pub(crate) fn resize(
     registration.replace(|current| rebuild(context, current, size))
 }
 
+/// Checks that a texture `width` × `height` fits the device, each side in 1 to `limit`,
+/// the device's largest side for the texture's dimension.
+pub(crate) fn check_size(width: u32, height: u32, limit: u32) -> Result<(), TextureError> {
+    let fits = |side: u32| (1..=limit).contains(&side);
+    if fits(width) && fits(height) {
+        return Ok(());
+    }
+    Err(TextureError::InvalidInput(format!(
+        "can't use a size of {width}x{height}, each side must lie in 1 to {limit}"
+    )))
+}
+
 /// The texture to swap in for `current` at `size`, or `None` when the size stays.
 fn rebuild(
     context: &RenderContext,
@@ -43,13 +55,7 @@ fn rebuild(
         wgpu::TextureDimension::D3 => limits.max_texture_dimension_3d,
         _ => limits.max_texture_dimension_2d,
     };
-    let fits = |side: u32| (1..=limit).contains(&side);
-    if !fits(extent.width) || !fits(extent.height) {
-        return Err(TextureError::InvalidInput(format!(
-            "can't resize to {}x{}, each side must lie in 1 to {limit}",
-            extent.width, extent.height
-        )));
-    }
+    check_size(extent.width, extent.height, limit)?;
     Ok(Some(current.resized(context, extent)))
 }
 
@@ -93,6 +99,20 @@ mod tests {
                 "an unregistered id stays gone"
             );
         });
+    }
+
+    // Story: a size fits when each side lies in 1 to the limit.
+    #[test]
+    fn check_size_takes_sides_from_one_to_the_limit() {
+        assert!(check_size(1, 8192, 8192).is_ok());
+        assert!(matches!(
+            check_size(0, 8, 8192),
+            Err(TextureError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            check_size(8, 8193, 8192),
+            Err(TextureError::InvalidInput(_))
+        ));
     }
 
     // Story: only a texture a pass draws into resizes, and only to a size the device takes.

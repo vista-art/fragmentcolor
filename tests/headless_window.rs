@@ -1,6 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use fragmentcolor::{Renderer, Target};
+use fragmentcolor::texture::TextureError;
+use fragmentcolor::{InitializationError, Renderer, Target};
 
 // Story: Creating a target from a headless window should fall back to a texture-backed target
 // and allow image readback for validation in CI.
@@ -27,5 +28,29 @@ fn creates_texture_backed_target_from_headless_window() {
             !img.is_empty(),
             "headless window target should be texture-backed and readable"
         );
+    });
+}
+
+// Story: a window past the device limit is refused with the size error, on the
+// texture fallback a headless run takes too, and a window with no area yet still
+// gets a target of one pixel.
+#[test]
+fn create_target_checks_the_size() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let refused = renderer
+            .create_target(fragmentcolor::headless_window([100_000, 8]))
+            .await;
+        assert!(matches!(
+            refused,
+            Err(InitializationError::Texture(TextureError::InvalidInput(_)))
+        ));
+
+        let target = renderer
+            .create_target(fragmentcolor::headless_window([0, 8]))
+            .await
+            .expect("a window with no area still gets a target");
+        let size = target.size();
+        assert_eq!([size.width, size.height], [1, 8]);
     });
 }

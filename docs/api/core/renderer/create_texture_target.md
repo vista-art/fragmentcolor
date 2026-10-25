@@ -4,6 +4,8 @@ Render to an offscreen texture without a Window or Canvas.
 
 This is useful for tests, server-side rendering, or running examples in CI.
 
+A width or height of zero, or a side past the device limit, returns `TextureError::InvalidInput`, the error `resize` returns.
+
 ## Example
 
 ```rust

@@ -123,8 +123,9 @@ impl Renderer {
                     "create_target: surface creation failed ({}). Falling back to TextureTarget.",
                     e
                 );
+                // A window with no area yet gets one pixel, as a surface does.
                 let tex = self
-                    .create_texture_target([size.width, size.height])
+                    .create_texture_target([size.width.max(1), size.height.max(1)])
                     .await?;
                 Ok(crate::RenderTarget::from(tex))
             }
@@ -138,10 +139,13 @@ impl Renderer {
         size: impl Into<Size>,
     ) -> Result<TextureTarget, InitializationError> {
         let context = self.context(None).await?;
+        let size = size.into();
+        let limit = context.device.limits().max_texture_dimension_2d;
+        crate::texture::check_size(size.width, size.height, limit)?;
         // For offscreen texture targets on Web, force sample_count = 1 to avoid MSAA resolve issues.
         // Canvas targets may still use MSAA via the surface path.
         context.set_sample_count(1);
-        let texture = TextureTarget::new(context, size.into(), wgpu::TextureFormat::Rgba8Unorm);
+        let texture = TextureTarget::new(context, size, wgpu::TextureFormat::Rgba8Unorm);
 
         Ok(texture)
     }
