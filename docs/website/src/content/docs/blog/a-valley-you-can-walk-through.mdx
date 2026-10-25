@@ -2,7 +2,7 @@
 title: "A valley you can walk through"
 excerpt: "The playground has a 3D demo you walk through with the keyboard or a touch stick: a valley with a pond, pines and lamps, where the afternoon turns into night. It is built from the scene layer, and 0.12.7 brings the fixes it needed."
 authors: ["rafaelbeckel"]
-date: 2026-10-25T00:00:00Z
+date: 2026-10-25T00:00:00Z # placeholder: set to the day 0.12.7 publishes on npm
 tags: ["demo", "playground", "rust", "javascript", "python", "swift", "kotlin", "webgpu"]
 draft: true
 ---
@@ -39,7 +39,7 @@ Playground demos got the pointer and gestures, never the keyboard. A demo that s
 
 Five fixes in 0.12.7 matter for a scene like this one, and each lands in all five languages at once.
 
-- **Colors for the screen.** PBR materials computed light correctly and wrote it to the screen unencoded, which made every lit scene dark and harsh. They encode it as sRGB now, so the valley needs no pass of its own to fix its colors.
+- **Colors for the screen.** PBR materials computed light correctly and wrote it to the screen unencoded, which made every lit scene dark and harsh. They now encode it as sRGB for a target that holds display values, as the canvas does, and keep linear light for an sRGB or float target. The valley needs no pass of its own to fix its colors.
 - **Stretched rocks.** PBR materials transformed normals by the model matrix itself, which tilts them toward a stretched axis. A boulder scaled unevenly lit as if it faced elsewhere. Normals now go through the inverse transpose.
 - **Meshes built by hand.** `add_mesh` checks every vertex and instance for the attributes the shader reads, and its error names the first one missing. A later vertex without a color used to attach and draw black.
 - **Reading a frame back.** Rendering the valley offscreen and reading the pixels is a quick way to check a port. `get_image` returns an error when the readback fails, where it returned an empty array, and on a window target it always fails, since a frame on screen can't be read back.
