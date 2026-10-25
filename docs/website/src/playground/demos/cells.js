@@ -4,6 +4,8 @@ export default {
   id: "cells",
   title: "Cells",
   summary: "Worley noise warped by fractal noise. The pointer magnifies the cells under it.",
+  category: "Shaders",
+  thumbnail: "/playground/thumbs/cells.webp",
   kind: "fragment",
   library: ["noise/worley2", "noise/fbm2", "gradient/palette_iq"],
   values: {

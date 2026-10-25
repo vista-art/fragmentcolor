@@ -1,8 +1,9 @@
 name: Prepare release
 
-# Starts a release from the dispatched commit on `main`.
-# Builds the iOS xcframework and pins its URL and checksum in `Package.swift`.
-# The pin is committed on top of the dispatched commit and pushed to `release/vX.Y.Z`.
+# Drafts the release of the crate version on `main`.
+# It runs when a push to `main` changes `Cargo.toml` and that version has no tag
+# yet, and by hand from the Actions tab. It builds the iOS xcframework and pins its
+# URL and checksum in `Package.swift`, on a commit on top of `main` that it pushes to `release/vX.Y.Z`.
 # A draft GitHub Release targets that commit, with `FragmentColorFFI.xcframework.zip` attached.
 #
 # Publishing the draft creates the tag on the pinned commit, so the tagged
@@ -13,6 +14,9 @@ name: Prepare release
 # uploaded zip is the only binary that matches the pinned checksum.
 
 on:
+  push:
+    branches: [main]
+    paths: [Cargo.toml]
   workflow_dispatch:
 
 permissions:
@@ -23,7 +27,36 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # A push that changes Cargo.toml without a new version has nothing to release.
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.version.outputs.release }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Find an unreleased version
+        id: version
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          VERSION=$(grep '^version = ' Cargo.toml | head -n1 | cut -d'"' -f2)
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
+            if [ "$EVENT" = "push" ]; then
+              echo "v$VERSION is already released, so there is nothing to prepare."
+              echo "release=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::Tag v$VERSION already exists. Bump the version before preparing another release."
+            exit 1
+          fi
+          echo "release=true" >> "$GITHUB_OUTPUT"
+
   swift:
+    needs: check
+    if: needs.check.outputs.release == 'true'
     runs-on: macos-15
     env:
       RUSTC_WRAPPER: ""
@@ -35,7 +68,7 @@ jobs:
           exit 1
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: "recursive"
 

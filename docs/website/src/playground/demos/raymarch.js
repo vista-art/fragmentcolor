@@ -4,6 +4,8 @@ export default {
   id: "raymarch",
   title: "Raymarch",
   summary: "A twisted box melts into a torus through a smooth union, sphere traced and lit with Blinn-Phong and rim light. Move the pointer to orbit.",
+  category: "Shaders",
+  thumbnail: "/playground/thumbs/raymarch.webp",
   kind: "fragment",
   library: [
     "sdf/rounded_box",

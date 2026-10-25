@@ -79,7 +79,7 @@ Big‑picture architecture (how things fit together)
   - In-flight version branches are named `vMAJOR.MINOR.PATCH-dev` (e.g. `v0.12.0-dev`); the GitHub Release tag drops the `-dev` suffix (e.g. `v0.12.0`). Without the suffix the branch name collides with the tag and one of them has to be renamed at release time. See `CONTRIBUTING.md` ("Starting a new version" / "Release process") for the full flow.
   - `release/vX.Y.Z` branches hold the one-commit `Package.swift` pin that the tag points at. `prepare_release.yml` force-pushes them and `post_publish_update.yml` deletes them, so don't commit to them by hand.
 - Release gates
-  - `prepare_release.yml` is the only way to start a release. Run it on `main` after the release PR merges. It builds the xcframework, commits the root `Package.swift` version + checksum pin on `release/vX.Y.Z`, and drafts the GitHub Release on that commit with `FragmentColorFFI.xcframework.zip` attached. Publishing the draft creates the tag there, so every tag's `Package.swift` pins the binary built from its own sources.
+  - `prepare_release.yml` is the only way to start a release. It runs when a push to `main` changes the version in `Cargo.toml` to one with no tag, and by hand from the Actions tab. It builds the xcframework, commits the root `Package.swift` version + checksum pin on `release/vX.Y.Z`, and drafts the GitHub Release on that commit with `FragmentColorFFI.xcframework.zip` attached. Publishing the draft creates the tag there, so every tag's `Package.swift` pins the binary built from its own sources.
   - On release published (PyPI on the tag push it creates):
     - `publish_crates.yml` → crates.io.
     - `publish_npm.yml` → npm.

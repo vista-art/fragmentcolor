@@ -1,32 +1,50 @@
-// The demo menu names the running demo and opens the list of demos.
-// It follows the WAI-ARIA select-only combobox, so focus stays on the button
-// while the arrow keys, Home, End, Page Up, Page Down, and typed letters move
-// through the list. Enter, Space, and Tab pick a demo, and Escape closes the list.
+// The demo picker names the running demo, and its button opens a panel of
+// demo cards like the shader library's: a thumbnail per demo, category chips,
+// and a search box. The panel is a dialog that keeps the page usable. The
+// arrow keys walk the cards, typed letters go to the search, Enter picks a
+// demo, and Escape closes the panel.
 
-// Letters typed within this many milliseconds of each other build one search.
-const SEARCH_DELAY = 500;
-// Page Up and Page Down move this many demos.
-const PAGE = 10;
+import { injectStyle } from "./panel.js";
 
-let menus = 0;
+const ALL = "";
+// The panel keeps this much room under it, and never gets shorter than MIN_HEIGHT.
+const GAP = 8;
+const MIN_HEIGHT = 240;
+
+let pickers = 0;
 
 /**
  * @param {HTMLElement} root the <fc-playground> element
- * @param {{ id: string, title: string, summary: string }[]} demos the demos the list offers, in its order
+ * @param {{ id: string, title: string, summary: string }[]} demos the demos the panel offers
  * @param {(id: string) => void} onPick called with the demo the reader picks
  * @returns {{ show(id: string): void, unwire(): void }} `show` names a demo without calling `onPick`
  */
 export function wireMenu(root, demos, onPick) {
-  const button = root.querySelector(".fcp-menu-button");
-  const list = root.querySelector(".fcp-menu-list");
+  const button = root.querySelector("button.fcp-menu-button");
+  const panel = root.querySelector(".fcp-demo-picker");
   const value = root.querySelector(".fcp-menu-value");
   const summary = root.querySelector(".fcp-summary");
-  if (!button || !list || !value) return { show() {}, unwire() {} };
-  const options = [...list.querySelectorAll('[role="option"]')];
-  const uid = `fcp-menu-${++menus}`;
-  list.id = `${uid}-list`;
-  options.forEach((option, index) => (option.id = `${uid}-${index}`));
-  button.setAttribute("aria-controls", list.id);
+  const cards = [...(panel?.querySelectorAll(".fcp-picker-card") ?? [])];
+
+  const show = (id) => {
+    const demo = demos.find((d) => d.id === id);
+    if (!demo) return;
+    for (const card of cards) {
+      if (card.dataset.demo === id) card.setAttribute("aria-current", "true");
+      else card.removeAttribute("aria-current");
+    }
+    if (value) value.textContent = demo.title;
+    if (summary) summary.textContent = demo.summary;
+  };
+  if (!button || !panel) return { show, unwire() {} };
+
+  injectStyle();
+  const search = panel.querySelector(".fcp-picker-search");
+  const chips = [...panel.querySelectorAll(".fcp-picker-chip")];
+  const status = panel.querySelector(".fcp-picker-status");
+  const grid = panel.querySelector(".fcp-picker-grid");
+  panel.id = `fcp-demos-${++pickers}`;
+  button.setAttribute("aria-controls", panel.id);
 
   const cleanups = [];
   const on = (target, type, fn, capture = false) => {
@@ -34,142 +52,174 @@ export function wireMenu(root, demos, onPick) {
     cleanups.push(() => target.removeEventListener(type, fn, capture));
   };
 
-  // The option with visual focus while the list is open, and the letters typed so far.
-  let active = -1;
-  let search = "";
-  let timer = 0;
+  let category = ALL;
+  const visible = () => cards.filter((card) => !card.hidden);
+  const current = () => cards.find((card) => card.getAttribute("aria-current") === "true");
 
-  const current = () => options.findIndex((option) => option.getAttribute("aria-selected") === "true");
-  const optionAt = (e) => options.indexOf(e.target.closest('[role="option"]'));
-
-  const show = (id) => {
-    const demo = demos.find((d) => d.id === id);
-    if (!demo) return;
-    for (const option of options) option.setAttribute("aria-selected", String(option.dataset.demo === id));
-    value.textContent = demo.title;
-    if (summary) summary.textContent = demo.summary;
+  const filter = () => {
+    for (const chip of chips) chip.setAttribute("aria-pressed", String(chip.dataset.category === category));
+    const terms = search.value.toLowerCase().split(/\s+/).filter(Boolean);
+    for (const card of cards) {
+      const inCategory = category === ALL || card.dataset.category === category;
+      card.hidden = !inCategory || !terms.every((term) => card.dataset.search.includes(term));
+    }
+    const shown = visible().length;
+    status.textContent =
+      shown === 0 ? "No demos match." : shown === cards.length ? `${shown} demos` : `${shown} of ${cards.length} demos`;
+    grid.scrollTop = 0;
   };
 
-  // Moves visual focus to `index` and scrolls the list just enough to show it.
-  const focus = (index, scroll = true) => {
-    active = Math.max(0, Math.min(options.length - 1, index));
-    const option = options[active];
-    for (const other of options) other.classList.toggle("active", other === option);
-    button.setAttribute("aria-activedescendant", option.id);
-    if (!scroll) return;
-    const pad = parseFloat(getComputedStyle(list).paddingTop) || 0;
-    const top = option.offsetTop - pad;
-    const bottom = option.offsetTop + option.offsetHeight + pad;
-    if (top < list.scrollTop) list.scrollTop = top;
-    else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
+  // The panel spans from its button to the playground's right edge, and down to
+  // the bottom of the playground or of the window, whichever comes first.
+  const fit = () => {
+    const box = root.getBoundingClientRect();
+    const anchor = button.getBoundingClientRect();
+    const width = box.right - anchor.left - (anchor.left - box.left);
+    const height = Math.min(box.bottom, window.innerHeight) - anchor.bottom - GAP;
+    panel.style.setProperty("--fcp-picker-room-x", `${Math.max(width, 0)}px`);
+    panel.style.setProperty("--fcp-picker-room-y", `${Math.max(height, MIN_HEIGHT)}px`);
   };
 
-  // The list opens scrolled to the top, or as little past it as `index` needs.
-  const open = (index = current()) => {
-    list.hidden = false;
-    list.scrollTop = 0;
+  // Focuses a card and scrolls the grid, not the page, to show it.
+  const focus = (card, center = false) => {
+    if (!card) return;
+    card.focus({ preventScroll: true });
+    const top = card.offsetTop - grid.offsetTop;
+    const room = grid.clientHeight - card.offsetHeight;
+    if (center) grid.scrollTop = top - room / 2;
+    else if (top < grid.scrollTop) grid.scrollTop = top;
+    else if (top > grid.scrollTop + room) grid.scrollTop = top - room;
+  };
+
+  const isOpen = () => !panel.hidden;
+
+  // Each opening shows every demo, with the running one in focus.
+  const open = () => {
+    if (isOpen()) return;
+    search.value = "";
+    category = ALL;
+    fit();
+    panel.hidden = false;
     button.setAttribute("aria-expanded", "true");
-    focus(index);
+    filter();
+    focus(current() ?? visible()[0], true);
   };
 
-  const close = () => {
-    list.hidden = true;
+  const close = (restoreFocus = false) => {
+    if (!isOpen()) return;
+    panel.hidden = true;
     button.setAttribute("aria-expanded", "false");
-    button.removeAttribute("aria-activedescendant");
-    for (const option of options) option.classList.remove("active");
-    active = -1;
-    search = "";
+    if (restoreFocus) button.focus();
   };
 
-  // Closes the list, and picks the option at `index` when it names another demo.
-  const pick = (index) => {
-    const id = options[index]?.dataset.demo;
-    close();
-    if (!id || index === current()) return;
+  const pick = (card) => {
+    const id = card?.dataset.demo;
+    if (!id) return;
+    const changed = card !== current();
+    close(true);
+    if (!changed) return;
     show(id);
     onPick(id);
   };
 
-  // Focuses the next title that starts with the letters typed so far.
-  // Typing one letter again and again steps through the titles that start with it.
-  const find = (key) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => (search = ""), SEARCH_DELAY);
-    search += key.toLowerCase();
-    const repeated = [...search].every((letter) => letter === search[0]);
-    const start = repeated ? active + 1 : active;
-    const ordered = [...options.slice(start), ...options.slice(0, start)];
-    const starts = (prefix) => ordered.find((o) => o.textContent.trim().toLowerCase().startsWith(prefix));
-    const match = starts(search) ?? (repeated ? starts(search[0]) : undefined);
-    if (match) focus(options.indexOf(match));
-  };
+  // A key that types a character. Space is left out, as it presses a card.
+  // Moving the focus to the search box on such a key types the character there.
+  const typed = (e) => e.key.length === 1 && e.key !== " " && !e.ctrlKey && !e.metaKey && !e.altKey;
 
+  on(button, "click", () => (isOpen() ? close(true) : open()));
   on(button, "keydown", (e) => {
-    if (e.ctrlKey || e.metaKey) return;
-    const last = options.length - 1;
-    // Space is a letter while a search is under way, as titles have spaces too.
-    const typed = e.key.length === 1 && (e.key !== " " || search !== "");
-    if (list.hidden) {
-      const from = { ArrowDown: current(), ArrowUp: current(), Enter: current(), " ": current(), Home: 0, End: last }[e.key];
-      if (from === undefined && !typed) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
-      open(from);
-      if (typed) find(e.key);
+      open();
+    } else if (!isOpen() && typed(e)) {
+      open();
+      search.focus();
+    }
+  });
+
+  on(panel, "keydown", (e) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    e.stopPropagation();
+    close(true);
+  });
+  on(panel.querySelector(".fcp-picker-close"), "click", () => close(true));
+  for (const chip of chips) {
+    on(chip, "click", () => {
+      category = chip.dataset.category;
+      filter();
+    });
+  }
+
+  on(search, "input", filter);
+  on(search, "keydown", (e) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      focus(visible()[0]);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      pick(visible()[0]);
+    }
+  });
+
+  on(grid, "click", (e) => pick(e.target.closest(".fcp-picker-card")));
+  // Arrow keys walk the grid, Home and End jump to its ends, and Up from the top row returns to the search.
+  on(grid, "keydown", (e) => {
+    const shown = visible();
+    const index = shown.indexOf(document.activeElement);
+    if (index < 0) return;
+    const columns = Math.max(1, getComputedStyle(grid).gridTemplateColumns.split(" ").filter(Boolean).length);
+    const to = {
+      ArrowLeft: index - 1,
+      ArrowRight: index + 1,
+      ArrowUp: index - columns,
+      ArrowDown: index + columns,
+      Home: 0,
+      End: shown.length - 1,
+    }[e.key];
+    if (to === undefined) {
+      if (typed(e)) search.focus();
       return;
     }
-    const to = {
-      ArrowDown: active + 1,
-      ArrowUp: active - 1,
-      PageDown: active + PAGE,
-      PageUp: active - PAGE,
-      Home: 0,
-      End: last,
-    }[e.key];
-    if (e.key === "Tab") {
-      // Tab picks the focused demo and lets the focus move on.
-      pick(active);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      close();
-    } else if (e.key === "Enter" || (e.key === " " && !typed) || (e.altKey && e.key === "ArrowUp")) {
-      e.preventDefault();
-      pick(active);
-    } else if (to !== undefined) {
-      e.preventDefault();
-      focus(to);
-    } else if (typed) {
-      e.preventDefault();
-      find(e.key);
-    }
+    e.preventDefault();
+    if (to < 0) search.focus();
+    else focus(shown[Math.min(to, shown.length - 1)]);
   });
-  on(button, "click", () => (list.hidden ? open() : close()));
-  on(button, "blur", close);
-  // Presses on the list leave the focus on the button.
-  on(list, "mousedown", (e) => e.preventDefault());
-  on(list, "pointermove", (e) => {
-    const index = optionAt(e);
-    if (index >= 0 && index !== active) focus(index, false);
+
+  // Focus that leaves the panel would land on what it covers.
+  on(panel, "focusout", (e) => {
+    const next = e.relatedTarget;
+    if (next instanceof Node && (panel.contains(next) || button.contains(next))) return;
+    if (next) close();
   });
-  on(list, "click", (e) => {
-    const index = optionAt(e);
-    if (index >= 0) pick(index);
-  });
-  // A tap outside closes the list where a tap does not move the focus, as on iOS.
+  // A press outside closes the panel, also where a press does not move the focus, as on iOS.
   on(
     document,
     "pointerdown",
     (e) => {
-      if (!list.hidden && !button.contains(e.target) && !list.contains(e.target)) close();
+      const path = e.composedPath();
+      if (isOpen() && !path.includes(panel) && !path.includes(button)) close();
     },
     true,
   );
+  on(window, "resize", () => isOpen() && fit());
+
+  // A thumbnail fades in once it loads. One that fails leaves its card saying it has no preview.
+  for (const image of panel.querySelectorAll(".fcp-picker-thumb img")) {
+    const loaded = () => image.classList.add("fcp-picker-loaded");
+    if (image.complete && image.naturalWidth) loaded();
+    on(image, "load", loaded);
+    on(image, "error", () => {
+      image.parentElement?.classList.add("fcp-picker-missing");
+      image.remove();
+    });
+  }
 
   return {
     show,
     unwire() {
-      for (const fn of cleanups) fn();
-      clearTimeout(timer);
       close();
+      for (const fn of cleanups) fn();
     },
   };
 }

@@ -25,6 +25,8 @@ export const ARTWORK_DEMOS = ARTWORKS.map((artwork) => ({
   id: artwork.id,
   title: artwork.title,
   summary: SUMMARIES[artwork.id] ?? artwork.caption,
+  category: "Artworks",
+  thumbnail: `/playground/thumbs/${artwork.id}.webp`,
   kind: "fragment",
   library: artwork.slugs,
   values: { "u.drag": [0.55, 0.32], "u.zoom": 1, "u.press": 0, "u.pulse": 0, ...VALUES[artwork.id] },

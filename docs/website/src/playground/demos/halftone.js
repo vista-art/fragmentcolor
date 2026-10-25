@@ -4,6 +4,8 @@ export default {
   id: "halftone",
   title: "Halftone",
   summary: "The dots pattern on a rotated grid, each dot sized by the tone of the image under it. The light circles the sphere and follows the pointer.",
+  category: "Shaders",
+  thumbnail: "/playground/thumbs/halftone.webp",
   kind: "fragment",
   library: ["pattern/dots", "map/rotate2", "lighting/lambert"],
   values: {

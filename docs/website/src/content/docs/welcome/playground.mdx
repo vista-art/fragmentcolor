@@ -22,6 +22,6 @@ Sliders follow `main.js`. A key gets one when `setup` sets it, the shader declar
 
 A click on a number in the code brings up a slider beside it, and a color literal such as `vec3<f32>(0.55, 0.5, 0.48)` gets a swatch that opens a picker. On a `shader.set` value in `main.js`, the inline slider and the generated control stay in step without a rebuild, and changing the generated one rewrites that value in the code. The two share one range. A typed value past either end stretches both sliders to reach it.
 
-The last six demos, from Nebula to Signal, are longer shaders built from the library. As in the other demos, the pointer steers them, and their `press`, `pulse`, `drag`, and `zoom` uniforms are sliders.
+The six demos under Artworks, from Nebula to Signal, are longer shaders built from the library. As in the other demos, the pointer steers them, and their `press`, `pulse`, `drag`, and `zoom` uniforms are sliders.
 
 Rust, Python, Swift, and Kotlin each have a tab with the same program, written against that language's binding. Those tabs track the library, the shader files, and the current slider values. Edit the WGSL or `main.js` to change them.

@@ -33,12 +33,12 @@ jobs:
       NDK_VERSION: "27.2.12479018"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: "recursive"
 
       - name: Setup JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: "temurin"
           java-version: "17"
@@ -50,7 +50,7 @@ jobs:
       # NOTE: `packages` must be a single space-separated string — a YAML
       # block scalar (`|`) hands sdkmanager one name with embedded newlines.
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
           packages: "platforms;android-${{ env.API_LEVEL }} ndk;${{ env.NDK_VERSION }} platform-tools"
 
@@ -78,7 +78,7 @@ jobs:
       # `setup-gradle@v3` defaults to the newest stable, which is 9.4.1
       # at the moment and breaks `:debugAndroidTestRuntimeClasspath`.
       - name: Gradle cache
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: "8.10"
 
@@ -127,7 +127,7 @@ jobs:
 
       - name: Upload generated Kotlin bindings (for inspection)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: kotlin-bindings
           path: platforms/kotlin/fragmentcolor/src/main/java/org/fragmentcolor/generated/
@@ -158,7 +158,7 @@ jobs:
 
       - name: Upload test reports
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: android-test-reports
           path: |

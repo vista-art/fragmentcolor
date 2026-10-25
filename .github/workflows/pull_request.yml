@@ -25,9 +25,9 @@ jobs:
       web: ${{ steps.changes.outputs.web }}
       python: ${{ steps.changes.outputs.python }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: ${{ github.event_name == 'push' }}
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: changes
         with:
           filters: |
@@ -63,7 +63,7 @@ jobs:
           comment_on_pr: false
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: "recursive"
           lfs: true
@@ -103,7 +103,7 @@ jobs:
       # @TODO Implement image diffs
       # - name: Upload artifacts (on failure)
       #   if: failure()
-      #   uses: actions/upload-artifact@v4
+      #   uses: actions/upload-artifact@v6
       #   with:
       #     name: image-diffs
       #     overwrite: true
@@ -142,7 +142,7 @@ jobs:
           comment_on_pr: false
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: "recursive"
 
@@ -153,9 +153,9 @@ jobs:
 
 
       - name: Setup wasm-pack
-        uses: jetli/wasm-pack-action@v0.4.0
+        uses: taiki-e/install-action@v2
         with:
-          version: "latest"
+          tool: wasm-pack
 
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
@@ -163,11 +163,11 @@ jobs:
           cache-directories: ${{ github.workspace }}/build
           cache-all-crates: true
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           version: 10
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: "pnpm"
@@ -192,11 +192,11 @@ jobs:
           chmod +x ./tools/build_web
           ./tools/build_web
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           version: 10
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 24
 
@@ -210,7 +210,7 @@ jobs:
 
       - name: Upload Playwright artifacts (on failure)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: web-healthcheck-artifacts
           path: platforms/web/healthcheck/playwright-artifacts

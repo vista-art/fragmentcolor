@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install system dependencies for headless GPU
         run: |
@@ -42,11 +42,11 @@ jobs:
           chmod +x ./tools/build_web
           ./tools/build_web
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           version: 10
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 24
 
@@ -76,7 +76,7 @@ jobs:
 
       - name: Upload Playwright artifacts (on failure)
         if: always() && steps.healthcheck.outcome != 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: web-healthcheck-artifacts
           path: platforms/web/healthcheck/playwright-artifacts
