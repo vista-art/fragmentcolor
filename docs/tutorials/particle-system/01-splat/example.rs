@@ -1,13 +1,15 @@
-// Eight million particles: a compute shader moves them and counts them in a grid.
-// Call `setup` once, then call `frame` on every display refresh, such as from a `Choreographer` callback.
+//! A particle system: a compute shader moves eight million particles and counts them in a grid.
 
-import org.fragmentcolor.*
+#[path = "../host.rs"]
+mod host;
 
-const val COUNT = 8_000_000u
-const val WIDTH = 1280u
-const val HEIGHT = 720u
+use fragmentcolor::{FragmentColorError, Pass, Renderer, Shader, Target};
 
-const val CLEAR = """
+const COUNT: u32 = 8_000_000;
+const WIDTH: u32 = 1280;
+const HEIGHT: u32 = 720;
+
+const CLEAR: &str = r#"
 // #region: clear-shader
 @group(0) @binding(0) var<storage, read_write> counts: array<atomic<u32>, CELLS>;
 
@@ -18,9 +20,9 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 }
 // #endregion: clear-shader
-"""
+"#;
 
-const val SIMULATE = """
+const SIMULATE: &str = r#"
 // #region: simulate-shader
 struct Particle {
     position: vec2<f32>,
@@ -84,9 +86,9 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 }
 // #endregion: simulate-shader
-"""
+"#;
 
-const val DRAW = """
+const DRAW: &str = r#"
 // #region: draw-shader
 @group(0) @binding(0) var<storage, read> counts: array<u32, CELLS>;
 @group(0) @binding(1) var<uniform> resolution: vec2<f32>;
@@ -114,45 +116,63 @@ fn fs_main(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
     return vec4<f32>(mix(night, ember, heat) + heat * heat * 0.5, 1.0);
 }
 // #endregion: draw-shader
-"""
+"#;
 
-/** What `frame` needs from `setup`. */
-class State(val simulate: Shader, val draw: Shader, val output: Pass)
+/// What `frame` needs from `setup`.
+struct State {
+    simulate: Shader,
+    draw: Shader,
+    output: Pass,
+}
 
 // #region: setup
-fun setup(): State {
+fn setup() -> Result<State, FragmentColorError> {
     // All three shaders take their sizes from these WGSL constants.
-    val sizes = """
-        const COUNT: u32 = ${COUNT}u;
-        const GRID = vec2<u32>(${WIDTH}u, ${HEIGHT}u);
-        const CELLS: u32 = ${WIDTH}u * ${HEIGHT}u;
-    """
-    val clear = Shader(listOf(sizes, CLEAR))
-    val simulate = Shader(listOf(sizes, SIMULATE))
-    val draw = Shader(listOf(sizes, DRAW))
+    let sizes = format!(
+        "const COUNT: u32 = {COUNT}u;
+         const GRID = vec2<u32>({WIDTH}u, {HEIGHT}u);
+         const CELLS: u32 = {WIDTH}u * {HEIGHT}u;"
+    );
+    let clear = Shader::new([sizes.as_str(), CLEAR])?;
+    let simulate = Shader::new([sizes.as_str(), SIMULATE])?;
+    let draw = Shader::new([sizes.as_str(), DRAW])?;
 
     // One workgroup handles 256 items, as `@workgroup_size(256)` declares.
-    val clearPass = Pass.fromShader("clear", clear)
-    clearPass.setComputeDispatch((WIDTH * HEIGHT + 255u) / 256u, 1u, 1u)
+    let clear_pass = Pass::from_shader("clear", &clear);
+    clear_pass.set_compute_dispatch((WIDTH * HEIGHT).div_ceil(256), 1, 1);
 
-    val simulatePass = Pass.fromShader("simulate", simulate)
-    simulatePass.setComputeDispatch((COUNT + 255u) / 256u, 1u, 1u)
-    simulatePass.require(clearPass)
+    let simulate_pass = Pass::from_shader("simulate", &simulate);
+    simulate_pass.set_compute_dispatch(COUNT.div_ceil(256), 1, 1);
+    simulate_pass.require(&clear_pass)?;
 
-    val output = Pass.fromShader("draw", draw)
-    output.require(simulatePass)
+    let output = Pass::from_shader("draw", &draw);
+    output.require(&simulate_pass)?;
 
-    return State(simulate, draw, output)
+    Ok(State {
+        simulate,
+        draw,
+        output,
+    })
 }
 // #endregion: setup
 
 // #region: frame
-fun frame(state: State, renderer: Renderer, target: WindowTarget, time: Float) {
-    val size = target.size()
-    val resolution = listOf(size.width.toFloat(), size.height.toFloat())
-    state.simulate.set("resolution", resolution)
-    state.simulate.set("time", time)
-    state.draw.set("resolution", resolution)
-    renderer.render(state.output, target)
+fn frame(
+    state: &State,
+    renderer: &Renderer,
+    target: &impl Target,
+    time: f32,
+) -> Result<(), FragmentColorError> {
+    let size = target.size();
+    let resolution = [size.width as f32, size.height as f32];
+    state.simulate.set("resolution", resolution)?;
+    state.simulate.set("time", time)?;
+    state.draw.set("resolution", resolution)?;
+    renderer.render(&state.output, target)?;
+    Ok(())
 }
 // #endregion: frame
+
+fn main() {
+    host::run(async |_: &Renderer| setup(), frame);
+}

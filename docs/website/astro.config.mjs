@@ -22,6 +22,7 @@ export default defineConfig({
   redirects: {
     "/demos": "/",
     "/blog/one-program-five-languages": "/blog/playground-on-the-home-page",
+    "/tutorials/eight-million-particles": "/tutorials/particle-system",
   },
   integrations: [
     locks(),
