@@ -33,11 +33,11 @@
 ### Breaking and behavior changes
 
 - `get_image` on a target returns an error where it returned an empty array. A `WindowTarget` always does, because a frame on screen can't be read back, and a `TextureTarget` does when its readback fails or times out. JavaScript throws an `Error`, Python and Swift throw `FragmentColorError`, Kotlin throws `FragmentColorException`, and Rust's `Target::get_image` returns `Result<Vec<u8>, TextureError>`.
-- Swift calls to `TextureTarget.resize` and `WindowTarget.resize` with an array need `try`.
 - Overlapping models draw with depth. A model behind another stays hidden where, added last, it drew on top.
 - In a pass that draws models, a shader that draws none, such as a fullscreen backdrop, ignores the depth target the pass sets, where it tested and wrote it and could hide every model.
 - Texture ids are unique across renderers, so a second renderer's first texture no longer gets id 1.
-- Resizing a `TextureTarget` to its current size keeps its pixels, and a width or height of zero logs a warning and keeps the texture.
+- `resize` on a target can fail. Rust's `Target::resize` returns `Result<(), TextureError>`, JavaScript throws an `Error`, Python raises `FragmentColorError`, Swift calls need `try`, and Kotlin calls can throw `FragmentColorException`. A width or height of zero on a `TextureTarget` is an error that keeps its size. A `WindowTarget` accepts 0×0, the size a minimized window reports, without an error: it keeps its last size and draws again once the window has one, where it handed the surface a size of zero. `App::resize` and `App::resize_target` return the same `Result`.
+- Resizing a `TextureTarget` to its current size keeps its pixels.
 - A `TextureId` on its own doesn't keep its texture. Once the last handle, shader uniform and pass target holding a texture drop, `read_texture` and `unregister_texture` report its id as not found.
 - Python reads sizes with a call: `texture.size.width` from the 0.12.6 notes is now `texture.size().width`, and `target.size` is `target.size()` on a texture target.
 - `RendererError::MsaaViewMissing` is gone. No code returned it.

@@ -20,7 +20,7 @@ renderer.render(&shader, &target)?;
 let image = target.get_image().await?;
 
 # assert_eq!(image.len(), 64 * 64 * 4); // RGBA8
-# target.resize([128, 128]);
+# target.resize([128, 128])?;
 # assert_eq!(target.size().width, 128);
 # assert_eq!(target.size().height, 128);
 # Ok(())
