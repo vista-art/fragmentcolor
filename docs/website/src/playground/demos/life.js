@@ -252,5 +252,5 @@ export default {
   library: ["gradient/palette_iq", "gradient/turbo", "hash/pcg2d"],
   values: VALUES,
   files: { "field.wgsl": FIELD, "clear.wgsl": CLEAR, "update.wgsl": UPDATE, "present.wgsl": PRESENT },
-  ...swarm({ count: COUNT, values: VALUES, unsigned: UNSIGNED }),
+  ...swarm({ id: "life", count: COUNT, values: VALUES, unsigned: UNSIGNED }),
 };

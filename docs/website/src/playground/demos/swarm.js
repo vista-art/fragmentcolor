@@ -58,13 +58,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 /**
  * A swarm demo's main.js and its Rust, Python, Swift, and Kotlin tabs.
  * @param {object} options
+ * @param {string} options.id the demo's id, which names its map of kept shaders
  * @param {number} options.count slots in the swarm buffer
  * @param {Record<string, number>} options.values the values main.js sets on update.wgsl, in order
  * @param {Set<string>} options.unsigned the keys among them that update.wgsl declares as u32
  */
-export function swarm({ count, values, unsigned }) {
+export function swarm({ id, count, values, unsigned }) {
   return {
-    js: writeProgram(count, Object.entries(values)),
+    js: writeProgram(id, count, Object.entries(values)),
     code(model) {
       const spec = describe(model, { count, values, unsigned });
       return {
@@ -78,7 +79,7 @@ export function swarm({ count, values, unsigned }) {
 }
 
 // main.js: setup builds the four passes, and frame feeds them the pointer.
-function writeProgram(count, values) {
+function writeProgram(id, count, values) {
   return /* js */ `import { Pass, Shader } from "fragmentcolor";
 import FIELD from "./field.wgsl?raw";
 import CLEAR from "./clear.wgsl?raw";
@@ -136,7 +137,7 @@ ${values.map(([key, value]) => `  update.shader.set(${quote(key)}, ${formatValue
 
 export function frame(state, renderer, target, time, size, pointer) {
   // This program draws, so later builds may reuse its shaders.
-  for (const stage of state.stages) kept.set(stage.key, stage);
+  for (const stage of state.stages) kept.set(stage.name, stage);
   const resized = size[0] !== state.size?.[0] || size[1] !== state.size?.[1];
   if (resized) fit(state, size);
 
@@ -172,17 +173,17 @@ function fit(state, [width, height]) {
 
 // Each shader holds a copy of every buffer it declares, tens of megabytes for
 // update.wgsl. A build reuses the shader and pass of the last program that drew,
-// stage by stage, where its sources match. A stage with new sources replaces
-// the kept one once its program draws, which lets the old shader go.
-const kept = (globalThis.swarmShaders ??= new Map());
+// stage by stage, where its sources match. The map belongs to this demo and keys
+// a stage by its name alone: a build with new sources or another COUNT replaces
+// the kept stage once its program draws, and never adds one more.
+const kept = (globalThis.${id}Shaders ??= new Map());
 
 async function prepare(name, sources) {
-  const key = \`\${name}:\${COUNT}\`;
   const source = JSON.stringify(sources);
-  const last = kept.get(key);
+  const last = kept.get(name);
   if (last?.source === source) return last;
   const shader = await Shader.fetch(sources);
-  return { key, source, shader, pass: Pass.fromShader(name, shader) };
+  return { name, source, shader, pass: Pass.fromShader(name, shader) };
 }
 `;
 }
