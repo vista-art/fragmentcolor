@@ -17,9 +17,15 @@ const markup = katex.renderToString(tex, { displayMode: block, output: "mathml",
 ---
 
 <!-- Starlight spaces the children of page content apart, which would push sub- and superscripts away. -->
-<span class="not-content" set:html={markup} />
+{block ? <div class="math-block not-content" set:html={markup} /> : <span class="not-content" set:html={markup} />}
 
 <style is:global>
+  /* A formula wider than the column scrolls on its own instead of widening the page. */
+  .math-block {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
   math[display="block"] {
     margin-block: 1.25rem;
     font-size: 1.15em;
