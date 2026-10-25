@@ -1,6 +1,6 @@
 ---
-title: Hello, a million triangles!
-description: Draw a triangle in five lines, climb to a million of them, then move 8 million particles with a compute shader, one idea at a time.
+title: Hello, million triangles!
+description: Draw a triangle in five lines and climb to a million of them, one idea at a time.
 slug: tutorials/hello-triangle
 sidebar:
   order: 10
@@ -275,65 +275,21 @@ With nothing playing, it prints your refresh rate. Run it again while the demo a
 
 A timestamp around `renderer.render` measures only the CPU side. `render` records the work and submits it to the GPU, which finishes later. To time the GPU from Rust, render a batch of frames, wait for the last one by reading its pixels back, and divide the elapsed time by how many there were. `host.rs` does that whenever you set `FC_TUTORIAL_FRAMES`: `FC_TUTORIAL_FRAMES=120 cargo run -p fce --example tutorial_01_hello_triangle_instance_index` renders 120 of them offscreen at 1280 × 720 and prints the average. A browser's performance panel shows the same work on its GPU track.
 
-The **crossover point** is the count where the frame time grows past your budget. To find yours, change `COPIES` at the top of the step's file and measure again: with the command above in Rust, or with the console snippet while your copy of `example.js` plays.
+Every GPU has a **crossover point**: the count where the frame time grows past your budget. To find yours, change `COPIES` at the top of the step's file and measure again: with the command above in Rust, or with the console snippet while your copy of `example.js` plays.
 
 **The demo draws a million triangles. Your GPU decides whether all of them fit in your budget.**
 
 Twice the triangles take about twice as long to draw. Shrinking each one to a tenth of its width cuts the frame time by less than half. At four pixels wide, the count sets the length of a frame.
 
-## Step 8: Eight million particles
-
-In this final step, a **compute shader** moves every particle and counts it in a grid of 1280 × 720 cells. One full-screen triangle then colors each pixel by the count in its cell: the more particles a cell holds, the brighter it glows.
-
-A compute shader runs a function for every item, in workgroups of 256 here. It reads and writes **storage buffers**: arrays on the GPU that keep their contents from frame to frame. One of them stores our particles, each as a position and a velocity. A second holds a count per grid cell. FragmentColor keeps one storage buffer per name and binds it to every shader that declares it. The clear, simulate and draw shaders all reach the same cells through `counts`.
-
-Each frame runs three passes in a row:
-
-<Snippet file="01-hello-triangle/08-compute/example.rs" region="setup" />
-
-The `sizes` string holds three WGSL constants, formatted from <Lang /> numbers. Each list puts them ahead of the shader's own source, as step 3 does with `noise/simplex2`. `COUNT` makes the particle buffer 8 million entries of 16 bytes, 128 MB in all. That's just under 128 MiB (134,217,728 bytes), the largest storage buffer binding every WebGPU device must allow.
-
-A `Pass` made from a compute shader dispatches workgroups instead of drawing. <code><Lang rust="set_compute_dispatch" js="setComputeDispatch" py="set_compute_dispatch" swift="setComputeDispatch" kotlin="setComputeDispatch" /></code> says how many, in up to three dimensions: enough groups of 256 along the first to cover every item, and 1 along the other two.
-
-The first pass sets every count back to zero:
-
-<Snippet file="01-hello-triangle/08-compute/example.rs" region="clear-shader" />
-
-Pass two moves the particles:
-
-<Snippet file="01-hello-triangle/08-compute/example.rs" region="simulate-shader" />
-
-`global_invocation_id` numbers the runs as `instance_index` numbers the copies in step 7.
-
-The ID is a `vec3<u32>` to match the three dispatch dimensions, and a flat list of particles needs only `id.x`. Rounding the dispatch up can start a few runs past the end. The `if` at the top of each compute shader skips them.
-
-A new storage buffer starts as zeros. A particle standing perfectly still takes that as its cue to pick an orbit. After that, every frame adds the pull of the **attractor**, a moving point near the middle, to the velocity. The particle then moves by that velocity for 1/60 of a second. About one particle in 300 also picks a fresh orbit on each frame, which keeps the attractor from swallowing the disk.
-
-The grid is a flat array, one row after another: the cell in column `x` and row `y` is element `y * GRID.x + x`. More than a thousand particles can share a cell during one frame. `atomicAdd` makes sure each of them counts, where an ordinary `+=` from several runs at once could lose some. Like `atomicStore` in the first pass, it takes a pointer to the cell, written with `&`.
-
-Last comes the picture:
-
-<Snippet file="01-hello-triangle/08-compute/example.rs" region="draw-shader" />
-
-The draw shader only reads, so it declares `counts` as plain `u32` with `read` access: the same bytes without the `atomic` wrapper. In a fragment stage, `@builtin(position)` holds the pixel's coordinates in the target, counted from the top-left corner, which is why `fs_main` flips `y` before it looks up a cell. The grid stretches to fill the canvas. Only at 1280 × 720 does a cell match exactly one pixel.
-
-<Snippet file="01-hello-triangle/08-compute/example.rs" region="frame" />
-
-Every demo so far runs on WebGPU, or on WebGL2 where a browser lacks it. This one needs WebGPU, since WebGL2 has no compute shaders, and shows a note instead where it's missing.
-
-<Demo file="01-hello-triangle/08-compute/example.rs" webgpu />
-
-A particle here is one run of the compute shader and one `atomicAdd`, with no triangle for the GPU to prepare. Item for item, it costs about a sixteenth as much as an instanced triangle: this step moves eight times as many particles as step 7 draws triangles, in about half the time.
-
 ## What just happened
 
-Eight steps, eight objects. Here's what each one does:
+Seven steps, eight objects. Here's what each one does:
 
 - **`Renderer`** draws. Every `frame` ends in a call to `render`.
 - **`Target`** receives the picture: a window or canvas in every step, plus a texture in step 6.
-- **`Shader`** is the program the GPU runs. It gets a uniform in step 1, library functions in steps 3, 5 and 6, and a compute stage in step 8.
+- **`Shader`** is the program the GPU runs. It gets a uniform in step 1 and library functions in steps 3, 5 and 6.
 - **`Vertex`** and **`Mesh`** (step 4) move the geometry out of the shader and into our program.
 - **`Instance`** gives one triangle 15,000 copies in step 5. Step 7 drops it for a count and an index.
-- **`Pass`** chains shaders: two render passes with a **`Texture`** between them in step 6, two compute passes and a draw pass in step 8.
+- **`Pass`** chains shaders: two render passes with a **`Texture`** between them in step 6.
 
-Next, [Drawing with distance](/tutorials/drawing-with-distance/) stays inside one fragment shader and draws circles, boxes and stars out of nothing but arithmetic.
+Next, [Drawing with distance](/tutorials/drawing-with-distance/) stays inside one fragment shader and draws circles, boxes and stars out of nothing but arithmetic. Later, [Eight million particles](/tutorials/eight-million-particles/) picks up where step 7 stops and trades the triangles for a compute shader.
