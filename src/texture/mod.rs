@@ -38,6 +38,7 @@ pub use options::*;
 pub(crate) mod read;
 pub mod region;
 mod registration;
+mod resize;
 mod write;
 
 pub(crate) use read::read_pixels;
@@ -45,6 +46,7 @@ pub use region::TextureRegion;
 #[cfg(mobile)]
 pub use region::TextureRegionMobile;
 pub(crate) use registration::Registration;
+pub(crate) use resize::resize;
 
 pub mod meta;
 pub use meta::{
@@ -1117,6 +1119,35 @@ impl TextureObject {
     pub fn create_view(&self) -> wgpu::TextureView {
         self.inner
             .create_view(&wgpu::TextureViewDescriptor::default())
+    }
+
+    /// This texture at `size`, with the same format, usage, sample count and
+    /// sampler, and as many of its mip levels as fit. Its pixels start blank.
+    pub(crate) fn resized(&self, context: &RenderContext, size: wgpu::Extent3d) -> Self {
+        let label = match self.format.is_depth_stencil_format() {
+            true => "Depth Texture",
+            false => "Render Target Texture",
+        };
+        let levels = mip_level_count_for(size.width, size.height);
+        let descriptor = wgpu::TextureDescriptor {
+            label: Some(label),
+            size,
+            mip_level_count: self.inner.mip_level_count().min(levels),
+            sample_count: self.inner.sample_count(),
+            dimension: self.inner.dimension(),
+            format: self.format,
+            view_formats: &[],
+            usage: self.usage,
+        };
+        let options = self.options.read();
+        Self {
+            inner: context.device.create_texture(&descriptor),
+            size,
+            sampler: RwLock::new(self.sampler.read().clone()),
+            options: RwLock::new(*options),
+            format: self.format,
+            usage: self.usage,
+        }
     }
 
     /// Creates a texture descriptor for a Target Texture

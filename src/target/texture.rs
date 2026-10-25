@@ -52,14 +52,9 @@ impl Target for TextureTarget {
 
     #[lsp_doc("docs/api/targets/target/resize.md")]
     fn resize(&mut self, size: impl Into<Size>) {
-        let extent = size.into().into();
-        // Swapping the registration's texture repoints every pass attachment,
-        // shader binding, clone and texture() handle that holds it.
-        let resized = self.registration.replace(|current| {
-            let format = current.format();
-            let texture = TextureObject::create_destination_texture(&self.context, extent, format);
-            Ok(Some(texture))
-        });
+        // The swap reaches every pass attachment, shader binding, clone and
+        // texture() handle that holds the registration.
+        let resized = crate::texture::resize(&self.context, &self.registration, size.into());
         if let Err(error) = resized {
             log::warn!("TextureTarget::resize kept the old texture: {error}");
         }

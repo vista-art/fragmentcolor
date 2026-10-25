@@ -32,6 +32,9 @@ pub enum TextureError {
 
     #[error("Texture readback failed: {0}")]
     Readback(String),
+    /// Only a texture with `RENDER_ATTACHMENT` usage, one a pass can draw into, resizes.
+    #[error("Only a texture a pass can draw into resizes. Create it with RENDER_ATTACHMENT usage.")]
+    FixedSize,
     /// The active device doesn't have the wgpu feature required to use the
     /// requested format with the requested usage. Common case: `R16Unorm`
     /// (and its Rg/Rgba/Snorm cousins) need
