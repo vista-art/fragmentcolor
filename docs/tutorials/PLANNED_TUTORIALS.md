@@ -52,8 +52,7 @@ other three leave out.
 ### Part 3: many things at once
 
 - **70. Eight million particles.** Compute shaders, storage buffers shared by name,
-  `atomicAdd`, and a full-screen draw that turns a count per cell into light. Picks
-  up where *Hello, million triangles!* stops.
+  `atomicAdd`, and a full-screen draw that turns a count per cell into light.
 - **80. Life.** Several compute passes in a row, a density grid, `atomicAdd`, and
   how simple rules between species grow into colonies. Closes on the Life demo.
 
