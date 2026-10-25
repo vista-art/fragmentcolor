@@ -571,6 +571,8 @@ export default {
   title: "Particles",
   summary:
     "One million particles, moved by a compute shader and drawn by an instanced render pass. The pointer pulls them in; when it rests, an orbit takes over.",
+  category: "Compute",
+  thumbnail: "/playground/thumbs/particles.webp",
   kind: "compute",
   requires: "webgpu",
   poster: "/playground/particles.webp",

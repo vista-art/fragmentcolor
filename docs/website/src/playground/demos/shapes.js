@@ -5,6 +5,8 @@ export default {
   title: "Shapes",
   summary:
     "A circle, a star and a hexagon, the last two from Inigo Quilez's 2D distance functions, merged with his smooth union. The distance lights the scene: an azure glow and drifting rings outside, violet to magenta inside. The circle follows the pointer.",
+  category: "Shaders",
+  thumbnail: "/playground/thumbs/shapes.webp",
   kind: "fragment",
   library: ["sdf2d/star", "sdf2d/hexagon", "sdf2d/circle", "sdf/op_smooth_union", "map/rotate2"],
   values: {

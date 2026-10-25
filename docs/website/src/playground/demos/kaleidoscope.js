@@ -4,6 +4,8 @@ export default {
   id: "kaleidoscope",
   title: "Kaleidoscope",
   summary: "Map functions bend the coordinates before any pattern is drawn. The pointer sets the twirl center, repeated in every mirror segment.",
+  category: "Shaders",
+  thumbnail: "/playground/thumbs/kaleidoscope.webp",
   kind: "fragment",
   library: ["map/kaleidoscope", "map/twirl", "map/rotate2", "pattern/truchet", "gradient/palette_iq"],
   values: {

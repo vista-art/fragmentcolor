@@ -2591,6 +2591,8 @@ export default {
   title: "Mandelbrot",
   summary:
     "A dive into a spiral of the Mandelbrot set, down to 1e-1000 and back. Scroll or pinch to zoom and drag to look around: a BigInt reference orbit follows the view, and a compute pass iterates every pixel in f32.",
+  category: "Compute",
+  thumbnail: "/playground/thumbs/mandelbrot.webp",
   kind: "compute",
   requires: "webgpu",
   needs: RELEASE,
