@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.7 (unreleased)
+
+### Renderer and meshes
+
+- `Shader.add_mesh` fails when a later vertex or instance lacks an attribute the shader reads, and the error names the attribute and the index: `color: expected vec4<f32>, got no value at vertex 3`. Only the first vertex and instance were checked, and a later one drew with zeros.
+
 ## 0.12.6: Binding and renderer fixes
 
 A patch release that fixes crashes, memory leaks, and wrong output, and closes parity gaps between the bindings. Every documented example now compiles and runs in Rust, JavaScript, Python, Swift, and Kotlin. Changes that can break code come last.

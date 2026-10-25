@@ -2,7 +2,7 @@
 
 Validate that a Mesh is compatible with this Shader's vertex inputs.
 
-- Checks that every `@location` input of the vertex entry point finds an attribute, and that every vertex and instance value fits the type the input declares.
+- Checks that every `@location` input of the vertex entry point finds an attribute, that every vertex and instance holds each attribute the shader reads, and that every value fits the type the input declares.
 - Matches each input in this order:
   1) by name, instance attributes first, then vertex attributes (`position` included)
   2) the position, at `@location(0)`

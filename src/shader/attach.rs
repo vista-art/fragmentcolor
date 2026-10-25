@@ -1,11 +1,11 @@
 use super::{ShaderError, ShaderObject, VertexInputDesc};
 use crate::mesh::{AttributeTypes, Instance, MeshObject, Shape, Vertex, VertexData, describe};
-use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
 use wgpu::VertexFormat;
 
 /// The two streams a mesh feeds a vertex shader.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Stream {
     Vertex,
     Instance,
@@ -92,6 +92,7 @@ impl ShaderObject {
         };
 
         let mut added = AttributeTypes::default();
+        let mut read = HashSet::new();
         for input in &inputs {
             match find_source(input, position, vertex.as_ref(), instance.as_ref())? {
                 Source::Position(format) if format == input.format => {}
@@ -104,12 +105,13 @@ impl ShaderObject {
                 }
                 Source::Attribute(stream, name, attribute) => {
                     bind_attribute(stream, name, attribute.shape, input, &known, &mut added)?;
+                    read.insert((stream, name));
                 }
             }
         }
 
-        check_vertices(&verts, &known, &added)?;
-        check_instances(&insts, &known, &added)?;
+        check_vertices(&verts, &known, &added, &read)?;
+        check_instances(&insts, &known, &added, &read)?;
         Ok(added)
     }
 }
@@ -206,12 +208,14 @@ fn bind_attribute(
     }
 }
 
-/// Checks every vertex: its position against the first one's, and each value
-/// the first vertex also holds against the format that attribute takes.
+/// Checks every vertex: its position against the first one's, each value the
+/// first vertex also holds against the format that attribute takes, and that
+/// it holds every attribute the shader reads.
 fn check_vertices(
     verts: &[Vertex],
     known: &AttributeTypes,
     added: &AttributeTypes,
+    read: &HashSet<(Stream, &str)>,
 ) -> Result<(), ShaderError> {
     let Some(first) = verts.first() else {
         return Ok(());
@@ -224,23 +228,31 @@ fn check_vertices(
             let found = format!("{} at vertex {index}", describe(own));
             return Err(mismatch("position", position, found));
         }
-        check_values(&vertex.properties, &formats, Stream::Vertex, index)?;
+        check_values(&vertex.properties, &formats, Stream::Vertex, index, read)?;
     }
     Ok(())
 }
 
-/// Checks each value of every instance that the first instance also holds.
+/// Checks each value of every instance that the first instance also holds,
+/// and that every instance holds each attribute the shader reads.
 fn check_instances(
     insts: &[Instance],
     known: &AttributeTypes,
     added: &AttributeTypes,
+    read: &HashSet<(Stream, &str)>,
 ) -> Result<(), ShaderError> {
     let Some(first) = insts.first() else {
         return Ok(());
     };
     let formats = resolve_formats(&first.properties, &known.instance, &added.instance);
     for (index, instance) in insts.iter().enumerate() {
-        check_values(&instance.properties, &formats, Stream::Instance, index)?;
+        check_values(
+            &instance.properties,
+            &formats,
+            Stream::Instance,
+            index,
+            read,
+        )?;
     }
     Ok(())
 }
@@ -262,21 +274,31 @@ fn resolve_formats<'item>(
     formats
 }
 
+/// Checks one item's values. An attribute the shader reads must be there,
+/// since the GPU would read zeros in its place.
 fn check_values(
     properties: &HashMap<String, VertexData>,
     formats: &[(&str, VertexFormat)],
     stream: Stream,
     index: usize,
+    read: &HashSet<(Stream, &str)>,
 ) -> Result<(), ShaderError> {
     for &(name, format) in formats {
-        if let Some(value) = properties.get(name)
-            && let Err(misfit) = value.check(format)
-        {
-            return Err(ShaderError::AttributeMismatch {
-                name: name.to_string(),
-                expected: misfit.expected.to_string(),
-                found: format!("{} at {} {index}", misfit.found, stream.label()),
-            });
+        match properties.get(name) {
+            Some(value) => {
+                if let Err(misfit) = value.check(format) {
+                    return Err(ShaderError::AttributeMismatch {
+                        name: name.to_string(),
+                        expected: misfit.expected.to_string(),
+                        found: format!("{} at {} {index}", misfit.found, stream.label()),
+                    });
+                }
+            }
+            None if read.contains(&(stream, name)) => {
+                let found = format!("no value at {} {index}", stream.label());
+                return Err(mismatch(name, format, found));
+            }
+            None => {}
         }
     }
     Ok(())

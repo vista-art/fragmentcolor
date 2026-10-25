@@ -1747,6 +1747,60 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
         );
     }
 
+    // Story: a later vertex that lacks an attribute the shader reads fails the
+    // attach and names both, where it would otherwise draw with zeros.
+    #[test]
+    fn a_later_vertex_without_an_attribute_fails() {
+        let shader = Shader::new(FLOAT_ID).expect("shader");
+        let mesh = mesh_with_ids(&[1.0, 2.0]);
+        mesh.add_vertex(crate::mesh::Vertex::new([2.0, 0.0]));
+        let error = shader.add_mesh(&mesh).expect_err("vertex 2 has no id");
+        assert_eq!(
+            error.to_string(),
+            "Mesh attribute id: expected f32, got no value at vertex 2"
+        );
+        assert!(shader.object.meshes.read().is_empty());
+
+        // An attribute the shader doesn't read may come and go.
+        let mesh = mesh_with_ids(&[1.0, 2.0]);
+        mesh.add_vertex(
+            crate::mesh::Vertex::new([2.0, 0.0])
+                .set("id", 3.0)
+                .set("extra", 1.0),
+        );
+        shader.add_mesh(&mesh).expect("extra is not read");
+    }
+
+    // Story: the same holds for instances.
+    #[test]
+    fn a_later_instance_without_an_attribute_fails() {
+        let wgsl = r#"
+@vertex
+fn vs_main(@location(0) pos: vec2<f32>, @location(1) offset: vec2<f32>) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(pos + offset, 0.0, 1.0);
+}
+@fragment
+fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+"#;
+        use crate::mesh::{Instance, Vertex};
+        let shader = Shader::new(wgsl).expect("shader");
+        let mesh = crate::mesh::Mesh::new();
+        mesh.add_vertices([
+            Vertex::new([0.0, 0.0]),
+            Vertex::new([1.0, 0.0]),
+            Vertex::new([0.0, 1.0]),
+        ]);
+        mesh.add_instance(Instance::new().set("offset", [0.0, 0.0]));
+        mesh.add_instance(Instance::new().set("scale", 2.0));
+        let error = shader
+            .add_mesh(&mesh)
+            .expect_err("instance 1 has no offset");
+        assert_eq!(
+            error.to_string(),
+            "Mesh attribute offset: expected vec2<f32>, got no value at instance 1"
+        );
+    }
+
     // Story: an attach that fails leaves no type behind, so the next shader gets a clean try.
     #[test]
     fn failed_attach_leaves_no_types() {

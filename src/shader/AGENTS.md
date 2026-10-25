@@ -4,7 +4,7 @@ Ownership & validation
 - `Shader` owns `Mesh` attachments; validate at attach time and reject incompatible meshes with a typed `ShaderError`.
 - No invalid mesh may be attached to a shader under any circumstance.
 - If the shader has no `@location` vertex inputs (fullscreen / builtin-only), attaching a mesh must be rejected.
-- Attach checks every vertex and instance value, not only the first. A failed attach records nothing on the mesh, so `Pass::add_mesh` can try the next shader.
+- Attach checks every vertex and instance value, not only the first, and each one must hold every attribute the shader reads. A failed attach records nothing on the mesh, so `Pass::add_mesh` can try the next shader.
 
 Constructors
 - `Shader::new(source: &str) -> Result<Self, ShaderError>` — WGSL or GLSL source; the core Rust entry point.
