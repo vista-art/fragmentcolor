@@ -95,11 +95,10 @@ export async function setup(renderer, target) {
   sky.set("sky.sunset", [1.6, 0.55, 0.15]);
   sky.set("sky.night", [0.002, 0.004, 0.012]);
 
-  // The valley draws over the sky, and the depth texture keeps the nearest surface at each pixel.
-  const depth = await renderer.createDepthTexture(size);
+  // The valley draws over the sky. A pass that draws models gets a depth buffer,
+  // so the nearest surface wins at each pixel.
   const world = new Pass("world");
   world.loadPrevious();
-  world.setDepthTarget(depth);
 
   const scene = new Scene();
   scene.addPass(Pass.fromShader("sky", sky)).addPass(world);
@@ -169,11 +168,10 @@ export async function setup(renderer, target) {
   add(camera);
 
   return {
-    scene, world, depth, sky, sun, moon, lamps, bulb, camera, obstacles, size,
+    scene, sky, sun, moon, lamps, bulb, camera, obstacles, size,
     walker: { x: 0, z: 3, y: height(0, 3) + EYE, rise: 0, yaw: -0.7, pitch: -0.05, walked: 0 },
     clock: 0.28 * DAY,
     time: 0,
-    pending: null,
   };
 }
 
@@ -183,21 +181,16 @@ export function frame(state, renderer, target, time, size, pointer, gesture = { 
   state.clock += delta * (keys.down.has("KeyT") ? 20 : 1);
   walk(state, delta, gesture, keys);
   light(state);
-  if (resizing(state, renderer, size)) return;
+  fit(state, size);
   state.sky.set("sky.resolution", size);
   renderer.render(state.scene, target);
 }
 
-// A new canvas size needs a depth texture to match, and the frames wait for it.
-function resizing(state, renderer, size) {
-  if (size[0] === state.size[0] && size[1] === state.size[1]) return false;
-  state.pending ??= renderer.createDepthTexture(size).then((depth) => {
-    state.world.setDepthTarget(depth);
-    renderer.unregisterTexture(state.depth.id());
-    state.camera.setAspect(size[0] / size[1]);
-    Object.assign(state, { depth, size, pending: null });
-  });
-  return true;
+// A new canvas size changes the camera's aspect.
+function fit(state, size) {
+  if (size[0] === state.size[0] && size[1] === state.size[1]) return;
+  state.camera.setAspect(size[0] / size[1]);
+  state.size = size;
 }
 
 function walk(state, delta, gesture, keys) {
@@ -423,7 +416,8 @@ const VALUES = {
   "sky.night": [0.002, 0.004, 0.012],
 };
 
-// From 0.12.7, Material::pbr encodes its colors for display and lights the unevenly scaled rocks the way they face.
+// From 0.12.7, Material::pbr encodes its colors for display and lights the unevenly scaled rocks the way they face,
+// and a pass that draws models gets a depth buffer of its own.
 const NEEDS = "Needs FragmentColor 0.12.7 or later.";
 
 function quote(text) {
@@ -457,8 +451,7 @@ use std::error::Error;
 use std::f32::consts::TAU;
 
 use fragmentcolor::{
-    AlphaMode, Camera, Light, Material, Mesh, Model, Pass, Renderer, Scene, Shader, Target,
-    Texture, Vertex,
+    AlphaMode, Camera, Light, Material, Mesh, Model, Pass, Renderer, Scene, Shader, Target, Vertex,
 };
 
 const SKY_SOURCE: &str = include_str!("sky.wgsl");
@@ -520,8 +513,6 @@ struct Walker {
 
 struct State {
     scene: Scene,
-    world: Pass,
-    depth: Option<Texture>,
     sky: Shader,
     sun: Light,
     moon: Light,
@@ -535,13 +526,13 @@ struct State {
     last: Option<f32>,
 }
 
-// Call setup once, then await frame on every redraw of your window.
+// Call setup once, then frame on every redraw of your window.
 fn setup() -> Result<State, Box<dyn Error>> {
 ${shader}
 ${setCalls("rust", "sky", sky, { after: "?;" })}
 
-    // The valley draws over the sky, and a depth texture keeps the nearest surface at each
-    // pixel. frame sizes it to the window.
+    // The valley draws over the sky. A pass that draws models gets a depth buffer,
+    // so the nearest surface wins at each pixel.
     let world = Pass::new("world");
     world.load_previous();
 
@@ -629,8 +620,6 @@ ${setCalls("rust", "sky", sky, { after: "?;" })}
 
     Ok(State {
         scene,
-        world,
-        depth: None,
         sky,
         sun,
         moon,
@@ -654,7 +643,7 @@ ${setCalls("rust", "sky", sky, { after: "?;" })}
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn frame(
+fn frame(
     state: &mut State,
     renderer: &Renderer,
     target: &impl Target,
@@ -668,14 +657,9 @@ async fn frame(
     state.last = Some(time);
     state.clock += delta * if keys.down.contains("KeyT") { 20.0 } else { 1.0 };
 
-    // A new window size needs a depth texture to match.
+    // A new window size changes the camera's aspect.
     let size = [size[0].max(1.0) as u32, size[1].max(1.0) as u32];
     if size != state.size {
-        let depth = renderer.create_depth_texture(size).await?;
-        state.world.set_depth_target(&depth)?;
-        if let Some(old) = state.depth.replace(depth) {
-            renderer.unregister_texture(old.id())?;
-        }
         state.camera.set_aspect(size[0] as f32 / size[1] as f32);
         state.size = size;
     }
@@ -1030,8 +1014,8 @@ def setup():
     sky = Shader([*LIBRARY, SKY_SOURCE])
 ${setCalls("python", "sky", sky)}
 
-    # The valley draws over the sky, and a depth texture keeps the nearest surface at each
-    # pixel. frame sizes it to the canvas.
+    # The valley draws over the sky. A pass that draws models gets a depth buffer,
+    # so the nearest surface wins at each pixel.
     world = Pass("world")
     world.load_previous()
 
@@ -1106,8 +1090,6 @@ ${setCalls("python", "sky", sky)}
     walker = SimpleNamespace(x=0.0, y=height(0.0, 3.0) + EYE, z=3.0, rise=0.0, yaw=-0.7, pitch=-0.05, walked=0.0)
     return SimpleNamespace(
         scene=scene,
-        world=world,
-        depth=None,
         sky=sky,
         sun=sun,
         moon=moon,
@@ -1129,15 +1111,11 @@ def frame(state, renderer, target, time, size, pointer, gesture=None, keys=None)
     state.last = time
     state.clock += delta * (20 if "KeyT" in keys.down else 1)
 
-    # A new canvas size needs a depth texture to match.
+    # A new canvas size changes the camera's aspect.
     size = [max(int(size[0]), 1), max(int(size[1]), 1)]
     if size != state.size:
-        depth = renderer.create_depth_texture(size)
-        state.world.set_depth_target(depth)
-        if state.depth is not None:
-            renderer.unregister_texture(state.depth.id())
         state.camera.set_aspect(size[0] / size[1])
-        state.depth, state.size = depth, size
+        state.size = size
     walk(state, delta, gesture, keys)
     light(state)
     state.sky.set("sky.resolution", [float(state.size[0]), float(state.size[1])])
@@ -1450,8 +1428,6 @@ struct Walker {
 
 struct State {
     let scene: Scene
-    let world: Pass
-    var depth: Texture?
     let sky: Shader
     let sun: Light
     let moon: Light
@@ -1465,14 +1441,14 @@ struct State {
     var last: Float?
 }
 
-// Call setup once, then await frame from your MTKView or CADisplayLink callback.
+// Call setup once, then frame from your MTKView or CADisplayLink callback.
 func setup() throws -> State {
     let skyURL = Bundle.main.url(forResource: "sky", withExtension: "wgsl")!
     let sky = try Shader(library + [String(contentsOf: skyURL, encoding: .utf8)])
 ${setCalls("swift", "sky", sky, { before: "try " })}
 
-    // The valley draws over the sky, and a depth texture keeps the nearest surface at each
-    // pixel. frame sizes it to the view.
+    // The valley draws over the sky. A pass that draws models gets a depth buffer,
+    // so the nearest surface wins at each pixel.
     let world = Pass("world")
     world.loadPrevious()
 
@@ -1549,7 +1525,7 @@ ${setCalls("swift", "sky", sky, { before: "try " })}
     try scene.addTo("world", sun).addTo("world", moon).addTo("world", camera)
 
     return State(
-        scene: scene, world: world, sky: sky, sun: sun,
+        scene: scene, sky: sky, sun: sun,
         moon: moon, lamps: lamps, bulb: bulb, camera: camera, obstacles: obstacles
     )
 }
@@ -1563,21 +1539,15 @@ func frame(
     pointer: [Float],
     gesture: Gesture = Gesture(),
     keys: Keys = Keys()
-) async throws {
+) throws {
     let delta = state.last.map { min(max(time - $0, 0), 0.1) } ?? 0
     state.last = time
     state.clock += delta * (keys.down.contains("KeyT") ? 20 : 1)
 
-    // A new view size needs a depth texture to match.
+    // A new view size changes the camera's aspect.
     let pixels = [UInt32(max(size[0], 1)), UInt32(max(size[1], 1))]
     if pixels != state.size {
-        let depth = try await renderer.createDepthTexture(pixels)
-        try state.world.setDepthTarget(depth)
-        if let old = state.depth {
-            try renderer.unregisterTexture(old.id())
-        }
         state.camera.setAspect(Float(pixels[0]) / Float(pixels[1]))
-        state.depth = depth
         state.size = pixels
     }
     try walk(&state, delta, gesture, keys)
@@ -1913,7 +1883,6 @@ class Walker {
 
 class State(
     val scene: Scene,
-    val world: Pass,
     val sky: Shader,
     val sun: Light,
     val moon: Light,
@@ -1922,21 +1891,20 @@ class State(
     val camera: Camera,
     val obstacles: List<List<Float>>,
 ) {
-    var depth: Texture? = null
     var size = listOf(0u, 0u)
     val walker = Walker()
     var clock = 0.28f * DAY
     var last: Float? = null
 }
 
-// Call setup once, then frame from a coroutine on each Choreographer callback.
+// Call setup once, then frame on each Choreographer callback.
 fun setup(assets: AssetManager): State {
     val skySource = assets.open("sky.wgsl").bufferedReader().use { it.readText() }
     val sky = Shader(LIBRARY + listOf(skySource))
 ${setCalls("kotlin", "sky", sky)}
 
-    // The valley draws over the sky, and a depth texture keeps the nearest surface at each
-    // pixel. frame sizes it to the view.
+    // The valley draws over the sky. A pass that draws models gets a depth buffer,
+    // so the nearest surface wins at each pixel.
     val world = Pass("world")
     world.loadPrevious()
 
@@ -2008,10 +1976,10 @@ ${setCalls("kotlin", "sky", sky)}
     val camera = Camera.perspective(FOV, 1f, 0.05f, 200f)
     scene.addTo("world", sun).addTo("world", moon).addTo("world", camera)
 
-    return State(scene, world, sky, sun, moon, lamps, bulb, camera, obstacles)
+    return State(scene, sky, sun, moon, lamps, bulb, camera, obstacles)
 }
 
-suspend fun frame(
+fun frame(
     state: State,
     renderer: Renderer,
     target: WindowTarget,
@@ -2025,14 +1993,10 @@ suspend fun frame(
     state.last = time
     state.clock += delta * (if ("KeyT" in keys.down) 20f else 1f)
 
-    // A new view size needs a depth texture to match.
+    // A new view size changes the camera's aspect.
     val pixels = listOf(size[0].coerceAtLeast(1f).toUInt(), size[1].coerceAtLeast(1f).toUInt())
     if (pixels != state.size) {
-        val depth = renderer.createDepthTexture(pixels)
-        state.world.setDepthTarget(depth)
-        state.depth?.let { renderer.unregisterTexture(it.id()) }
         state.camera.setAspect(pixels[0].toFloat() / pixels[1].toFloat())
-        state.depth = depth
         state.size = pixels
     }
     walk(state, delta, gesture, keys)
