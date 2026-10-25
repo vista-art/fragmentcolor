@@ -47,7 +47,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   let pixel = min(vec2<u32>(in.uv * vec2<f32>(image_size)), image_size - 1u);
   let slot = (pixel.y * image_size.x + pixel.x) * 3u;
   let light = vec3<f32>(f32(image[slot]), f32(image[slot + 1u]), f32(image[slot + 2u])) / 255.0;
-  // Exposure for the mean particles per pixel keeps any count looking alike.
+  // Exposure falls as COUNT per pixel grows, so any swarm size looks alike.
   let exposure = 1.5 / (1.0 + f32(COUNT) / f32(image_size.x * image_size.y));
   // Tone-map the brightest channel and scale the others with it, so crowds keep their hue.
   let peak = max(max(light.r, light.g), max(light.b, 1e-6));
@@ -188,7 +188,7 @@ async function prepare(name, sources) {
 }
 
 // FragmentColor 0.12.5 rejects atomic<u32> storage buffers and shares uniforms
-// across passes in one render call. The playground runs this demo from 0.12.6 on,
+// across passes in one render call. The playground runs these demos from 0.12.6 on,
 // and every generated program names that release.
 export const RELEASE = "0.12.6";
 const NEEDS = `Needs FragmentColor ${RELEASE} or later.`;
@@ -480,7 +480,7 @@ function writeSwift({ library, update, present, count }) {
     ...libraryLine,
     "",
     "// Every shader sizes the shared buffers with these.",
-    `let particleCount: UInt32 = ${digits(count)}`,
+    `let swarmSize: UInt32 = ${digits(count)}`,
     "let gridRows: UInt32 = 96",
     "// Grid columns for the widest window, 4:1. A narrower one uses fewer.",
     "let gridColumns: UInt32 = gridRows * 4",
@@ -508,7 +508,7 @@ function writeSwift({ library, update, present, count }) {
     "// Call setup once, then frame from your MTKView or CADisplayLink callback.",
     "func setup() throws -> State {",
     '    let header = """',
-    "        const COUNT: u32 = \\(particleCount)u;",
+    "        const COUNT: u32 = \\(swarmSize)u;",
     "        const ROWS: u32 = \\(gridRows)u;",
     "        const COLUMNS: u32 = \\(gridColumns)u;",
     "        const CELLS: u32 = ROWS * COLUMNS;",
@@ -529,7 +529,7 @@ function writeSwift({ library, update, present, count }) {
     '    let clearPass = Pass.fromShader("clear", clear)',
     "    // 256 matches @workgroup_size in update.wgsl. A row holds at most 65535 groups.",
     '    let updatePass = Pass.fromShader("update", update)',
-    "    let groups = (particleCount + 255) / 256",
+    "    let groups = (swarmSize + 255) / 256",
     "    updatePass.setComputeDispatch(min(groups, 65535), (groups + 65534) / 65535, 1)",
     '    let presentPass = Pass.fromShader("present", present)',
     "",
