@@ -514,8 +514,8 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     const windowTarget = await renderer.createTarget(canvas);
     if (!(windowTarget instanceof fc.WindowTarget)) fail('createTarget should return a WindowTarget');
     if (fc.CanvasTarget !== fc.WindowTarget) fail('CanvasTarget should alias WindowTarget');
-    const empty = await windowTarget.getImage();
-    if (!(empty instanceof Uint8Array) || empty.length !== 0) fail('WindowTarget.getImage should resolve empty');
+    // A frame on screen can't be read back, so getImage rejects with an Error.
+    await rejects('WindowTarget.getImage', () => windowTarget.getImage());
 
     // createTexture takes an ImageData's size, and reads sampler and usage.
     const image = new ImageData(new Uint8ClampedArray([255, 0, 0, 255, 0, 255, 0, 255]), 2, 1);
