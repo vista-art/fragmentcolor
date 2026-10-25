@@ -108,14 +108,14 @@ where
     for index in 0..frames {
         frame(&state, &renderer, &target, index as f32 / 60.0)?;
         if (index + 1) % SYNC_EVERY == 0 || index + 1 == frames {
-            image = target.get_image().await;
+            image = target.get_image().await?;
         }
     }
 
     // A frame of one flat color means the step drew nothing on top of its background.
     let (pixels, _) = image.as_chunks::<4>();
     let Some(corner) = pixels.first() else {
-        bail!("the target returned no pixels; the GPU may have timed out on the readback");
+        bail!("the target returned no pixels");
     };
     let total = pixels.len();
     let drawn = pixels.iter().filter(|pixel| *pixel != corner).count();
