@@ -1,16 +1,20 @@
 // Captures canvases from the docs site as small WebP files: the still frames
-// that tutorial figures annotate, and the playground's demo thumbnails.
+// that tutorial figures annotate, the playground's demo thumbnails, and the
+// animated recordings of the playground that the README shows.
 //
 // Usage:
 //   ./fc capture figures <tutorial>     every capture in docs/tutorials/<tutorial>/figures.json
 //   ./fc capture demo <step file> --out <file.webp> [--size 720x420] [--time 1.5] [--pointer 360,210]
 //   ./fc capture thumbs [demo ids...]   playground thumbnails, all demos by default
+//   ./fc capture record <script>        a scripted interaction as an animated WebP (see record.mjs)
 //
 // Options:
 //   --url <origin>   a running docs server; without it the tool starts one and stops it after
 //   --scale <n>      device pixels per figure unit (2 by default, 1 for thumbnails)
 //   --wait <s>       seconds a thumbnail demo runs before its capture (2.5 by default)
 //   --dir <folder>   where thumbnails go (docs/website/public/playground/thumbs by default)
+//   --fps <n>        frames a recording tries to take each second (10 by default)
+//   --quality <n>    WebP quality of a recording (72 by default)
 //
 // Sizes, pointers and annotations share one coordinate system: the figure's own
 // units, 720 wide by default. A capture at --scale 2 is twice that in pixels.
@@ -25,6 +29,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { record } from "./record.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SITE = path.join(ROOT, "docs/website");
@@ -50,6 +55,7 @@ async function main() {
     if (command === "figures") await captureFigures(browser, server.origin, positional[0], options);
     else if (command === "demo") await captureDemoCommand(browser, server.origin, positional[0], options);
     else if (command === "thumbs") await captureThumbs(browser, server.origin, positional, options);
+    else if (command === "record") await recordCommand(browser, server.origin, positional, options);
     else throw new Error(`unknown command "${command}"`);
   } finally {
     await browser.close();
@@ -64,11 +70,14 @@ function printHelp() {
     "  figures <tutorial>   every capture in docs/tutorials/<tutorial>/figures.json",
     "  demo <step file>     one tutorial step: --out <file.webp> [--size WxH] [--time s] [--pointer x,y]",
     "  thumbs [ids...]      playground thumbnails in docs/website/public/playground/thumbs/",
+    "  record <scripts...>  scripted playground interactions as animated WebP, such as docs/media/*.record.mjs",
     "",
     "  --url <origin>       use a running docs server instead of starting one",
     "  --scale <n>          device pixels per figure unit (default 2, thumbnails 1)",
     "  --wait <s>           seconds a thumbnail demo runs first (default 2.5)",
     "  --dir <folder>       where thumbnails go (default docs/website/public/playground/thumbs)",
+    "  --fps <n>            frames per second a recording aims for (default 10)",
+    "  --quality <n>        WebP quality of a recording (default 72)",
   ];
   console.log(text.join("\n"));
 }
@@ -158,6 +167,11 @@ async function captureFigures(browser, origin, tutorial, options) {
       out,
     });
   }
+}
+
+async function recordCommand(browser, origin, scripts, options) {
+  if (!scripts.length) throw new Error("record needs a recording script, such as docs/media/playground.record.mjs");
+  for (const script of scripts) await record(browser, origin, script, { ...options, root: ROOT, site: SITE });
 }
 
 async function captureDemoCommand(browser, origin, file, options) {
