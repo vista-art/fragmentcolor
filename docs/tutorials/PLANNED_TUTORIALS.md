@@ -32,7 +32,7 @@ other three leave out.
 ### Part 1: first pixels
 
 - **10. Hello, million triangles!** From a five-line triangle to a post-processing pass
-  and a million instanced triangles. A tour of the whole library in one sitting.
+  and a million instanced triangles. A tour of the core objects in one sitting.
 
 ### Part 2: thinking in fragments
 
@@ -52,7 +52,7 @@ other three leave out.
 ### Part 3: many things at once
 
 - **70. Eight million particles.** Compute shaders, storage buffers shared by name,
-  `atomicAdd`, and a full-screen draw that turns a count per pixel into light. Picks
+  `atomicAdd`, and a full-screen draw that turns a count per cell into light. Picks
   up where *Hello, million triangles!* stops.
 - **80. Life.** Several compute passes in a row, a density grid, `atomicAdd`, and
   how simple rules between species grow into colonies. Closes on the Life demo.

@@ -275,7 +275,7 @@ With nothing playing, it prints your refresh rate. Run it again while the demo a
 
 A timestamp around `renderer.render` measures only the CPU side. `render` records the work and submits it to the GPU, which finishes later. To time the GPU from Rust, render a batch of frames, wait for the last one by reading its pixels back, and divide the elapsed time by how many there were. `host.rs` does that whenever you set `FC_TUTORIAL_FRAMES`: `FC_TUTORIAL_FRAMES=120 cargo run -p fce --example tutorial_01_hello_triangle_instance_index` renders 120 of them offscreen at 1280 × 720 and prints the average. A browser's performance panel shows the same work on its GPU track.
 
-Every GPU has a **crossover point**: the count where the frame time grows past your budget. To find yours, change `COPIES` at the top of the step's file and measure again: with the command above in Rust, or with the console snippet while your copy of `example.js` plays.
+Each GPU's **crossover point** is the count where the frame time grows past your budget. To find yours, change `COPIES` at the top of the step's file and measure again: with the command above in Rust, or with the console snippet while your copy of `example.js` plays.
 
 **The demo draws a million triangles. Your GPU decides whether all of them fit in your budget.**
 
@@ -292,4 +292,4 @@ Seven steps, eight objects. Here's what each one does:
 - **`Instance`** gives one triangle 15,000 copies in step 5. Step 7 drops it for a count and an index.
 - **`Pass`** chains shaders: two render passes with a **`Texture`** between them in step 6.
 
-Next, [Drawing with distance](/tutorials/drawing-with-distance/) stays inside one fragment shader and draws circles, boxes and stars out of nothing but arithmetic. Later, [Eight million particles](/tutorials/eight-million-particles/) picks up where step 7 stops and trades the triangles for a compute shader.
+Next, [Drawing with distance](/tutorials/drawing-with-distance/) stays inside one fragment shader and draws circles, boxes and stars out of nothing but arithmetic. Step 7 has a sequel in [Eight million particles](/tutorials/eight-million-particles/), where a compute shader takes over from the million triangles.

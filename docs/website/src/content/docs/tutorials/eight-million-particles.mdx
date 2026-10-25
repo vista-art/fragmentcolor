@@ -1,6 +1,6 @@
 ---
 title: Eight million particles
-description: Move 8 million particles with a compute shader, count them into a grid of cells and light every pixel by its count.
+description: Move eight million particles with a compute shader, count them into a grid of cells and light every pixel by its count.
 draft: true
 tableOfContents: false
 sidebar:
@@ -15,27 +15,27 @@ import LangSelector from "../../../components/LangSelector.astro";
 
 <LangSelector />
 
-[Hello, million triangles!](/tutorials/hello-triangle/) comes first. It ends with a million triangles, each placed by the GPU from nothing more than its instance index, and this tutorial assumes you know the `Shader`, `Pass` and `require` it uses along the way.
+[Hello, million triangles!](/tutorials/hello-triangle/) comes first. It ends with a million triangles, each placed by the GPU from nothing more than its `instance_index`. This tutorial assumes you know the `Shader`, `Pass` and `require` calls and the full-screen triangle from that page, and it reuses the `hash`, `random` and `fit` lines of its step 7 unchanged.
 
-Past a few million, triangles stop paying for themselves. Each one costs the GPU about the same however small it is, and at four pixels wide most of that cost is setup.
+Somewhere past a million, triangles stop paying for themselves. Shrinking one saves little, because at four pixels wide most of its cost goes into preparing it, before any pixel gets a color.
 
 **Here, eight million particles move every frame, and none of them is a triangle.**
 
 <Aside title="Run it yourself">
-The program is in [`docs/tutorials/eight-million-particles/01-splat`](https://github.com/vista-art/fragmentcolor/tree/main/docs/tutorials/eight-million-particles/01-splat) as a `setup` and a `frame` function, in all five languages. From a checkout of the repository, `cargo run -p fce --example tutorial_eight_million_particles_splat` opens it in a window. Python does the same with `python docs/tutorials/eight-million-particles/host.py 01-splat`. In JavaScript, the loop from the first tutorial's "Run the steps yourself" plays it on a `<canvas>`.
+The program is in [`docs/tutorials/eight-million-particles/01-splat`](https://github.com/vista-art/fragmentcolor/tree/main/docs/tutorials/eight-million-particles/01-splat) as a `setup` and a `frame` function, in all five languages. From a checkout of the repository, `cargo run -p fce --example tutorial_eight_million_particles_splat` opens it in a window. Python does the same with `python docs/tutorials/eight-million-particles/host.py 01-splat`, after `pip install fragmentcolor rendercanvas glfw`. Swift and Kotlin apps call `setup` once and `frame` from their render loop. In JavaScript, the loop under [Make it move](/tutorials/hello-triangle/#make-it-move) in the first tutorial plays it on a `<canvas>`.
 </Aside>
 
 ## Compute shaders and storage buffers
 
 In this program, a **compute shader** moves every particle and counts it in a grid of 1280 × 720 cells. One full-screen triangle then colors each pixel by the count in its cell: the more particles a cell holds, the brighter it glows.
 
-A compute shader runs a function for every item, in workgroups of 256 here. It reads and writes **storage buffers**: arrays on the GPU that keep their contents from frame to frame. One of them stores our particles, each as a position and a velocity. A second holds a count per grid cell. FragmentColor keeps one storage buffer per name and binds it to every shader that declares it. The clear, simulate and draw shaders all reach the same cells through `counts`.
+A compute shader runs a function for every item, in workgroups of 256 here. It reads and writes **storage buffers**: arrays on the GPU that keep their contents from frame to frame. One of them stores our particles, each as a position and a velocity. A second holds a count per grid cell. FragmentColor keeps one storage buffer per name and binds it to every shader that declares it. The `clear`, `simulate` and `draw` shaders all reach the same cells through `counts`.
 
 ## Three passes per frame
 
 <Snippet file="eight-million-particles/01-splat/example.rs" region="setup" />
 
-The `sizes` string holds three WGSL constants, formatted from <Lang /> numbers. Each list puts them ahead of the shader's own source, the way a library name such as `noise/simplex2` goes ahead of a triangle's source. `COUNT` makes the particle buffer 8 million entries of 16 bytes, 128 MB in all. That's just under 128 MiB (134,217,728 bytes), the largest storage buffer binding every WebGPU device must allow.
+The `sizes` string holds three WGSL constants, formatted from <Lang /> numbers. Each `Shader` list puts them ahead of the shader's own source, as the first tutorial's step 3 does with `noise/simplex2`. `COUNT` makes the particle buffer eight million entries of 16 bytes, 128 MB in all. That's just under 128 MiB (134,217,728 bytes), and every WebGPU device must allow a storage buffer binding up to that size.
 
 A `Pass` made from a compute shader dispatches workgroups instead of drawing. <code><Lang rust="set_compute_dispatch" js="setComputeDispatch" py="set_compute_dispatch" swift="setComputeDispatch" kotlin="setComputeDispatch" /></code> says how many, in up to three dimensions: enough groups of 256 along the first to cover every item, and 1 along the other two. Each `require` puts one pass ahead of another, and `frame` renders only the last.
 
@@ -49,21 +49,23 @@ The first pass sets every count back to zero:
 
 <Snippet file="eight-million-particles/01-splat/example.rs" region="simulate-shader" />
 
-`global_invocation_id` numbers the runs the way `instance_index` numbered the copies of a mesh.
+`global_invocation_id` numbers the runs, as `instance_index` numbers the copies of a mesh.
 
 The ID is a `vec3<u32>` to match the three dispatch dimensions, and a flat list of particles needs only `id.x`. Rounding the dispatch up can start a few runs past the end. The `if` at the top of each compute shader skips them.
 
-A new storage buffer starts as zeros. A particle standing perfectly still takes that as its cue to pick an orbit. After that, every frame adds the pull of the **attractor**, a moving point near the middle, to the velocity. The particle then moves by that velocity for 1/60 of a second. About one particle in 300 also picks a fresh orbit on each frame, which keeps the attractor from swallowing the disk.
+Every new storage buffer starts as zeros. A particle standing perfectly still takes that as its cue to pick an orbit. After that, every frame adds the pull of the **attractor**, a moving point near the middle, to the velocity. The particle then moves by that velocity for 1/60 of a second. About one particle in 300 also starts over on each frame, which keeps the attractor from swallowing them all.
 
-The grid is a flat array, one row after another: the cell in column `x` and row `y` is element `y * GRID.x + x`. More than a thousand particles can share a cell during one frame. `atomicAdd` makes sure each of them counts, where an ordinary `+=` from several runs at once could lose some. Like `atomicStore` in the first pass, it takes a pointer to the cell, written with `&`.
+The grid is a flat array, one row after another: the cell in column `x` and row `y` is element `y * GRID.x + x`.
+
+More than a thousand particles can share a cell during one frame. `atomicAdd` makes sure each of them counts, where an ordinary `+=` from several runs at once could lose some. Like `atomicStore` in the first pass, it takes a pointer to the cell, written with `&`.
 
 ## Drawing the counts
 
 <Snippet file="eight-million-particles/01-splat/example.rs" region="draw-shader" />
 
-The draw shader only reads, so it declares `counts` as plain `u32` with `read` access: the same bytes without the `atomic` wrapper. In a fragment stage, `@builtin(position)` holds the pixel's coordinates in the target, counted from the top-left corner, which is why `fs_main` flips `y` before it looks up a cell. The grid stretches to fill the canvas. Only at 1280 × 720 does a cell match exactly one pixel.
+The draw shader just reads, so it declares `counts` as plain `u32` with `read` access: the same bytes without the `atomic` wrapper. In a fragment stage, `@builtin(position)` holds the pixel's coordinates in the target, counted from the top-left corner, which is why `fs_main` flips `y` before it looks up a cell. The grid stretches to fill the canvas, while `fit` in the simulate shader keeps the swirl round. Only at 1280 × 720 does a cell match exactly one pixel.
 
-On every frame, the program sets the time and the canvas size and renders the last pass:
+On every frame, the program sets the time and the canvas size and renders `output`:
 
 <Snippet file="eight-million-particles/01-splat/example.rs" region="frame" />
 
@@ -73,7 +75,7 @@ The demos in the earlier tutorials run on WebGPU, or on WebGL2 where a browser l
 
 ## Where the time goes
 
-A particle here is one run of the compute shader and one `atomicAdd`, with no triangle for the GPU to prepare. Item for item, it costs about a sixteenth as much as an instanced triangle. This program moves eight times as many particles as the first tutorial draws triangles at its end, in about half the time.
+A particle here is one run of the compute shader and one `atomicAdd`, with no triangle for the GPU to prepare. Item for item, it costs about a sixteenth as much as an instanced triangle. This program moves eight times as many particles as step 7 of the first tutorial draws triangles, in about half the time.
 
 Your own numbers depend on your GPU. The [frame budget](/tutorials/hello-triangle/#your-frame-budget) section of the first tutorial shows how to measure them, and `FC_TUTORIAL_FRAMES=120 cargo run -p fce --example tutorial_eight_million_particles_splat` prints this program's average frame time.
 
@@ -81,5 +83,5 @@ Your own numbers depend on your GPU. The [frame budget](/tutorials/hello-triangl
 
 - A **compute shader** runs a function per item and needs no geometry.
 - **Storage buffers** keep their data on the GPU between frames, and every shader that declares one by name shares it.
-- `atomicAdd` lets thousands of runs count into the same cell without losing any.
+- `atomicAdd` lets many runs count into the same cell without losing any.
 - One full-screen draw turns the counts into a picture.
