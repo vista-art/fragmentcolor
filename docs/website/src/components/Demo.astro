@@ -9,6 +9,10 @@
 // `frame` also gets a sixth argument, `pointer`, as the playground harness passes it:
 // canvas pixels with y pointing down, and the canvas center until the pointer first moves.
 //
+// `tools/capture` pins both for a still image: `data-time="2.5"` fixes the time in seconds,
+// and `data-pointer="640,360"` fixes the pointer in canvas pixels. Either attribute can change
+// while the demo runs, and the next frame reads it.
+//
 // Generalization of the ShaderHero front-page demo. ShaderHero will refactor
 // to use this component once it stabilizes.
 //
@@ -302,9 +306,12 @@ if (!customElements.get('tutorial-demo')) {
         if (this.#stopped || this.#paused || this.#userPaused) return;
         this.#raf = requestAnimationFrame(this.#loop);
         try {
-          const t = (now - this.#start) / 1000.0;
+          // `data-time` and `data-pointer` pin the clock and the pointer for a capture.
+          const pinned = this.dataset.time;
+          const t = pinned === undefined ? (now - this.#start) / 1000.0 : Number(pinned);
           const size = [this.#canvas.width, this.#canvas.height];
-          const pointer = this.#pointer ?? [size[0] / 2, size[1] / 2];
+          const held = this.dataset.pointer?.split(',').map(Number);
+          const pointer = held ?? this.#pointer ?? [size[0] / 2, size[1] / 2];
           this.#frame(this.#state, this.#renderer, this.#target, t, size, pointer);
         } catch (e) {
           console.error('[Demo] frame failed (stopping loop)', e);
