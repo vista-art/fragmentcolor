@@ -29,7 +29,7 @@ async fn first_pixel(renderer: &Renderer, mesh: &Mesh) -> Vec<u8> {
     renderer
         .render(&Pass::from_shader("draw", &shader), &target)
         .expect("render failed");
-    target.get_image().await[..4].to_vec()
+    target.get_image().await.expect("read back")[..4].to_vec()
 }
 
 // Story: Shaders with the same source get their own pipeline when their meshes lay out vertices differently.

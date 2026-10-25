@@ -53,7 +53,7 @@ fn renders_to_texture_and_reads_back() {
         renderer.render(&shader, &target).expect("render failed");
 
         // Assert
-        let img = target.get_image().await;
+        let img = target.get_image().await.expect("read back");
         assert!(!img.is_empty(), "image readback should not be empty");
     });
 }
@@ -82,7 +82,7 @@ fn pass_target_draws_into_resized_texture() {
         target.resize([32, 8]);
         renderer.render(&pass, &scratch).expect("render failed");
 
-        let img = target.get_image().await;
+        let img = target.get_image().await.expect("read back");
         assert_eq!(img.len(), 32 * 8 * 4, "readback should match the new size");
         assert!(
             img[0] > 200 && img[1] < 50 && img[3] == 255,
@@ -124,7 +124,7 @@ fn sampled_binding_reads_resized_texture() {
         renderer.render(&draw, &probe).expect("render failed");
         renderer.render(&post, &probe).expect("render failed");
 
-        let img = probe.get_image().await;
+        let img = probe.get_image().await.expect("read back");
         assert!(
             img[1] > 200 && img[0] < 50,
             "sampled binding should see the repainted resized texture, got {:?}",

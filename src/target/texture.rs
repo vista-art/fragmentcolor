@@ -1,3 +1,4 @@
+use crate::texture::TextureError;
 use crate::{RenderContext, Size, Target, TargetFrame, TextureObject};
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
@@ -69,15 +70,10 @@ impl Target for TextureTarget {
     /// are async-only so the readback path is identical on every backend
     /// (browser `fetch`/`mapAsync`, native `device.poll(Wait)`, etc.).
     #[lsp_doc("docs/api/targets/target/get_image.md")]
-    async fn get_image(&self) -> Vec<u8> {
-        let mut pixels = crate::texture::read_pixels(&self.context, &self.texture)
-            .await
-            .unwrap_or_else(|e| {
-                log::error!("TextureTarget::get_image failed: {:?}", e);
-                Vec::new()
-            });
+    async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
+        let mut pixels = crate::texture::read_pixels(&self.context, &self.texture).await?;
         swap_bgra_to_rgba(&mut pixels, self.texture.format());
-        pixels
+        Ok(pixels)
     }
 }
 

@@ -6,6 +6,8 @@ Rows run from top to bottom with no padding, so the pixel at `(x, y)` starts at 
 
 Python returns a NumPy array of shape `(height, width, 4)`, indexed `image[y, x]`. That is the layout `Renderer.create_texture` reads, so `renderer.create_texture(target.get_image())` uploads the same image.
 
+A readback that fails or times out returns an error, a thrown `Error` in JavaScript and a `FragmentColorError` in Python, Swift and Kotlin.
+
 ## Example
 
 ```rust
@@ -17,7 +19,7 @@ let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
 renderer.render(&Shader::default(), &target)?;
 
-let image = target.get_image().await;
+let image = target.get_image().await?;
 
 # Ok(())
 # }

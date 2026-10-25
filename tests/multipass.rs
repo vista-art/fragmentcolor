@@ -72,8 +72,8 @@ fn render_passes_keep_their_own_uniforms() {
             .expect("render failed");
 
         // Assert
-        let first_pixels = side.get_image().await;
-        let second_pixels = probe.get_image().await;
+        let first_pixels = side.get_image().await.expect("read back");
+        let second_pixels = probe.get_image().await.expect("read back");
         assert_eq!(&first_pixels[..4], &[255, 0, 0, 255], "first pass color");
         assert_eq!(&second_pixels[..4], &[0, 255, 0, 255], "second pass color");
     });
@@ -109,7 +109,7 @@ fn compute_pass_keeps_its_uniform_before_a_render_pass() {
             .await
             .expect("read_storage failed");
         assert_eq!(floats(&bytes), vec![0.25, 0.5, 0.75, 1.0]);
-        let pixels = probe.get_image().await;
+        let pixels = probe.get_image().await.expect("read back");
         assert_eq!(&pixels[..4], &[0, 255, 0, 255], "render pass color");
     });
 }

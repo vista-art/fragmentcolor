@@ -734,7 +734,7 @@ mod tests {
             let scene = Scene::new();
             scene.add(&model).expect("add model");
             renderer.render(&scene, &target).expect("render scene");
-            let image = target.get_image().await;
+            let image = target.get_image().await.expect("read back");
             assert_eq!(image.len(), 64 * 64 * 4);
         });
     }

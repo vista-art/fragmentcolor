@@ -1,3 +1,4 @@
+use crate::texture::TextureError;
 use crate::{RenderContext, Size, SurfaceError, Target, TargetFrame};
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
@@ -45,14 +46,17 @@ impl Target for WindowTarget {
         self.surface.configure(&self.context.device, &self.config);
     }
 
-    /// Reading back from a presentable surface needs `COPY_SRC` on the
-    /// swapchain config, which we don't request yet. Returns an empty
-    /// `Vec` for now; render to a [`TextureTarget`] instead when readback
-    /// is required (CI image comparison, screenshot tooling).
     #[lsp_doc("docs/api/targets/target/get_image.md")]
-    async fn get_image(&self) -> Vec<u8> {
-        Vec::new()
+    async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
+        Err(unreadable())
     }
+}
+
+/// What `get_image` returns for every window target, in each binding.
+pub(crate) fn unreadable() -> TextureError {
+    TextureError::Readback(
+        "a window target can't be read back. Render to a TextureTarget to read its pixels".into(),
+    )
 }
 
 impl WindowTarget {

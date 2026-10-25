@@ -80,7 +80,7 @@ fn renders_two_blend_quads_at_different_depths() {
             .expect("sun");
 
         renderer.render(&scene, &target).expect("render");
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_eq!(image.len(), 32 * 32 * 4);
 
         // Sample the center pixel. The PBR shader applies Cook-Torrance
@@ -163,7 +163,7 @@ fn cross_shader_blend_sorts_globally() {
         }
 
         renderer.render(&scene, &target).expect("render");
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_eq!(image.len(), 16 * 16 * 4);
 
         let center_idx = ((8 * 16 + 8) * 4) as usize;
@@ -220,7 +220,7 @@ fn opaque_and_blend_in_same_pass_render_without_panic() {
             .expect("sun");
 
         renderer.render(&scene, &target).expect("render");
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_eq!(image.len(), 16 * 16 * 4);
     });
 }

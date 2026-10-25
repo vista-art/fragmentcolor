@@ -6,6 +6,10 @@
 
 - `Shader.add_mesh` fails when a later vertex or instance lacks an attribute the shader reads, and the error names the attribute and the index: `color: expected vec4<f32>, got no value at vertex 3`. Only the first vertex and instance were checked, and a later one drew with zeros.
 
+### Breaking and behavior changes
+
+- `get_image` on a target returns an error where it returned an empty array. A `WindowTarget` always does, because a frame on screen can't be read back, and a `TextureTarget` does when its readback fails or times out. JavaScript throws an `Error`, Python, Swift and Kotlin throw `FragmentColorError`, and Rust's `Target::get_image` returns `Result<Vec<u8>, TextureError>`.
+
 ## 0.12.6: Binding and renderer fixes
 
 A patch release that fixes crashes, memory leaks, and wrong output, and closes parity gaps between the bindings. Every documented example now compiles and runs in Rust, JavaScript, Python, Swift, and Kotlin. Changes that can break code come last.

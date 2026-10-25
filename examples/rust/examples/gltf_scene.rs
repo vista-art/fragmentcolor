@@ -21,7 +21,7 @@ fn main() {
             .await
             .expect("texture target");
         renderer.render(&scene, &target).expect("render");
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         println!(
             "rendered {} bytes from glTF scene — first pixel: ({}, {}, {}, {})",
             image.len(),

@@ -92,7 +92,7 @@ async fn draw(renderer: &Renderer, shader: &Shader) -> Vec<u8> {
     renderer
         .render(&Pass::from_shader("vertex types", shader), &target)
         .expect("render failed");
-    target.get_image().await
+    target.get_image().await.expect("read back")
 }
 
 fn assert_green(image: &[u8]) {

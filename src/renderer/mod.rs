@@ -2749,8 +2749,8 @@ mod tests {
             crate::Size::from((1u32, 1u32))
         }
         fn resize(&mut self, _size: impl Into<crate::Size>) {}
-        async fn get_image(&self) -> Vec<u8> {
-            Vec::new()
+        async fn get_image(&self) -> Result<Vec<u8>, crate::texture::TextureError> {
+            Ok(Vec::new())
         }
     }
 
@@ -2937,7 +2937,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
             // Render should succeed without panicking
             renderer.render(&shader, &target).expect("render ok");
 
-            let image: Vec<u8> = target.get_image().await;
+            let image: Vec<u8> = target.get_image().await.expect("read back");
 
             assert_eq!(image.len(), 8 * 8 * 4);
         });
@@ -3227,7 +3227,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return v.tint; }
             pass.add_mesh(&mesh).expect("mesh is compatible");
             renderer.render(&pass, &target).expect("render ok");
 
-            let img = target.get_image().await;
+            let img = target.get_image().await.expect("read back");
             let w = size[0];
             // Helper: map NDC [-1,1] to pixel coordinate [0..w-1]
             let ndc_to_px = |x_ndc: f32, w: u32| -> u32 {
@@ -3389,7 +3389,7 @@ struct VOut { @builtin(position) pos: vec4<f32> };
             shader.set("k", 1.0f32).expect("set");
             renderer.render(&shader, &target).expect("render");
 
-            let img = target.get_image().await;
+            let img = target.get_image().await.expect("read back");
             assert!(
                 img[0] > 250 && img[1] < 5 && img[3] == 255,
                 "padded uniform should render red, got {:?}",
@@ -3511,7 +3511,7 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
 
             renderer.render(&pass, &target).expect("render ok");
 
-            let image = target.get_image().await;
+            let image = target.get_image().await.expect("read back");
             let pixel = |x: usize, y: usize| {
                 let start = (y * 16 + x) * 4;
                 [
@@ -3689,8 +3689,8 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
                 self.size
             }
             fn resize(&mut self, _s: impl Into<crate::Size>) {}
-            async fn get_image(&self) -> Vec<u8> {
-                Vec::new()
+            async fn get_image(&self) -> Result<Vec<u8>, crate::texture::TextureError> {
+                Ok(Vec::new())
             }
         }
 

@@ -361,9 +361,9 @@ lang="kotlin" meta="collapse={2-3, 9-9}"
 
 ### WindowTarget::get_image() \{#get_image\}
 
-This operation returns an empty array for [WindowTarget](/api/targets/windowtarget).
+Returns an error for a [WindowTarget](/api/targets/windowtarget): a frame on screen can't be read back. JavaScript throws an `Error`, and Python, Swift and Kotlin throw a `FragmentColorError`.
 
-Use a [TextureTarget](/api/targets/texturetarget) instead.
+To read the pixels of a frame, draw it into a [TextureTarget](/api/targets/texturetarget) of the same size and call `get_image` there, as the example does.
 
 #### Example
 
@@ -378,15 +378,19 @@ use fragmentcolor::{Renderer, Shader, Target};
 
 let renderer = Renderer::new();
 let target = renderer.create_target(canvas).await?;
-renderer.render(&Shader::default(), &target)?;
+let shader = Shader::default();
+renderer.render(&shader, &target)?;
 
-let image = target.get_image().await;
-_ = image;
+// The same frame, drawn where it can be read back.
+let offscreen = renderer.create_texture_target([800, 600]).await?;
+renderer.render(&shader, &offscreen)?;
+let image = offscreen.get_image().await?;
+assert_eq!(image.len(), 800 * 600 * 4);
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 10-13}"
+lang="rust" meta="collapse={1-2, 14-17}"
 />
 
 </TabItem>
@@ -399,9 +403,13 @@ const canvas = document.createElement("canvas");
 
 const renderer = new Renderer();
 const target = await renderer.createTarget(canvas);
-renderer.render(Shader.default(), target);
+const shader = Shader.default();
+renderer.render(shader, target);
 
-const image = await target.getImage();
+// The same frame, drawn where it can be read back.
+const offscreen = await renderer.createTextureTarget([800, 600]);
+renderer.render(shader, offscreen);
+const image = await offscreen.getImage();
 `}
 lang="js" meta="collapse={2-2}"
 />
@@ -421,9 +429,13 @@ canvas = RenderCanvas(size=(800, 600))
 
 renderer = Renderer()
 target = renderer.create_target(canvas)
-renderer.render(Shader.default(), target)
+shader = Shader.default()
+renderer.render(shader, target)
 
-image = target.get_image()
+# The same frame, drawn where it can be read back.
+offscreen = renderer.create_texture_target([800, 600])
+renderer.render(shader, offscreen)
+image = offscreen.get_image()
 `}
 lang="python" meta="collapse={2-7}"
 />
@@ -439,9 +451,13 @@ let canvas = CAMetalLayer()
 
 let renderer = Renderer()
 let target = try await renderer.createTarget(canvas)
-try renderer.render(Shader.default(), target)
+let shader = Shader.default()
+try renderer.render(shader, target)
 
-let image = try await target.getImage()
+// The same frame, drawn where it can be read back.
+let offscreen = try await renderer.createTextureTarget([800, 600])
+try renderer.render(shader, offscreen)
+let image = try await offscreen.getImage()
 `}
 lang="swift" meta="collapse={2-3}"
 />
@@ -457,12 +473,16 @@ val canvas = android.view.Surface(surfaceTexture)
 
 val renderer = Renderer()
 val target = renderer.createTarget(canvas)
-renderer.render(Shader.default(), target)
+val shader = Shader.default()
+renderer.render(shader, target)
 
-val image = target.getImage()
+// The same frame, drawn where it can be read back.
+val offscreen = renderer.createTextureTarget(listOf(800u, 600u))
+renderer.render(shader, offscreen)
+val image = offscreen.getImage()
 surfaceTexture.release()
 `}
-lang="kotlin" meta="collapse={2-3, 10-10}"
+lang="kotlin" meta="collapse={2-3, 14-14}"
 />
 
 </TabItem>

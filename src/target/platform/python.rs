@@ -1,6 +1,7 @@
 #![cfg(python)]
 
 use crate::target::FrameSource;
+use crate::texture::TextureError;
 use crate::{RenderContext, Size, Target, TargetFrame, WindowTarget};
 use lsp_doc::lsp_doc;
 use numpy::PyArrayMethods;
@@ -78,13 +79,9 @@ impl RenderCanvasTarget {
         Ok(())
     }
 
-    /// Returns an empty byte array.
-    ///
-    /// Window-backed targets are not readable across all GPU backends.
-    /// Use a `TextureTarget` and call `get_image()` there instead.
     #[lsp_doc("docs/api/targets/window_target/get_image.md")]
-    pub fn get_image(&self) -> Vec<u8> {
-        Vec::new()
+    pub fn get_image(&self) -> Result<Py<numpy::PyArray3<u8>>, PyErr> {
+        Err(crate::target::window::unreadable().into())
     }
 
     // We can't export a impl Trait block with Pyo3, so this is a
@@ -171,8 +168,8 @@ impl Target for RenderCanvasTarget {
         }
     }
 
-    async fn get_image(&self) -> Vec<u8> {
-        Vec::new()
+    async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
+        Err(crate::target::window::unreadable())
     }
 }
 
@@ -235,7 +232,7 @@ impl PyTextureTarget {
     #[lsp_doc("docs/api/targets/texture_target/get_image.md")]
     pub fn get_image(&self) -> Result<Py<numpy::PyArray3<u8>>, PyErr> {
         const BPP: usize = 4; // Bytes per pixel (RGBA8)
-        let data = pollster::block_on(self.inner.get_image());
+        let data = pollster::block_on(self.inner.get_image())?;
         let width = self.size().width as usize;
         let height = self.size().height as usize;
 
@@ -304,7 +301,7 @@ impl Target for PyTextureTarget {
         <crate::TextureTarget as Target>::resize(&mut self.inner, size);
     }
 
-    async fn get_image(&self) -> Vec<u8> {
+    async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
         self.inner.get_image().await
     }
 }

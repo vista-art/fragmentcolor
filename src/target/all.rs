@@ -1,4 +1,5 @@
 use crate::target::FrameSource;
+use crate::texture::TextureError;
 use crate::{Size, SurfaceError, Target, TargetFrame, TextureTarget, WindowTarget};
 
 pub enum RenderTarget {
@@ -51,7 +52,7 @@ impl Target for RenderTarget {
         }
     }
 
-    async fn get_image(&self) -> Vec<u8> {
+    async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
         match self {
             RenderTarget::Window(w) => w.get_image().await,
             RenderTarget::Texture(t) => t.get_image().await,
@@ -80,7 +81,7 @@ mod tests {
 
             let fr = any.get_current_frame().expect("frame");
             let _fmt = fr.format();
-            let img = any.get_image().await;
+            let img = any.get_image().await.expect("read back");
             assert_eq!(img.len() as u32, 4 * 4 * 4);
         });
     }
@@ -95,7 +96,7 @@ mod tests {
 
             let size = target.size();
             assert_eq!([size.width, size.height], [10, 12]);
-            let image = target.get_image().await;
+            let image = target.get_image().await.expect("read back");
             assert_eq!(image.len() as u32, 10 * 12 * 4);
         });
     }

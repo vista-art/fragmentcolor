@@ -84,7 +84,7 @@ fn main() {
 
         renderer.render(&scene, &target).expect("render");
 
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_eq!(image.len(), 512 * 512 * 4);
 
         // Count pixels where the color is "obviously translucent": any

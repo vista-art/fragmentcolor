@@ -12,7 +12,7 @@ Binding & sampling
 
 Updates & readback
 - `Texture::write(&bytes)` uploads a whole-texture frame; `Texture::write_region(&bytes, region)` handles sub-rectangles, layered/3D textures, and explicit source layout. The `region` arg accepts `[w,h]`, `[x,y,w,h]`, `[x,y,z,w,h,d]`, a `ScreenRegion` (its pixel rectangle at `z = 0`, one layer deep), or a `TextureRegion` constructed with `.with_stride(...)` / `.with_rows(...)`.
-- `TextureTarget::get_image()` reads back RGBA8 bytes for CI / snapshot tests — window-backed targets return an empty vec because readback is not portable.
+- `TextureTarget::get_image()` reads back RGBA8 bytes for CI / snapshot tests and returns `TextureError::Readback` when the readback fails. A window target's `get_image()` always returns that error, because a frame on screen can't be read back.
 
 MSAA & resolve
 - For MSAA render passes, render to transient MSAA textures from the pool and resolve into the target view; release to the pool after use.

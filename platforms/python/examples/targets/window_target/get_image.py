@@ -8,6 +8,10 @@ canvas = RenderCanvas(size=(800, 600))
 
 renderer = Renderer()
 target = renderer.create_target(canvas)
-renderer.render(Shader.default(), target)
+shader = Shader.default()
+renderer.render(shader, target)
 
-image = target.get_image()
+# The same frame, drawn where it can be read back.
+offscreen = renderer.create_texture_target([800, 600])
+renderer.render(shader, offscreen)
+image = offscreen.get_image()

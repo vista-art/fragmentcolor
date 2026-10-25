@@ -21,6 +21,8 @@ use std::sync::Arc;
 use lsp_doc::lsp_doc;
 use parking_lot::{Mutex, RwLock};
 
+use crate::renderer::platform::mobile::FragmentColorError;
+use crate::texture::TextureError;
 use crate::{Size, SurfaceError, Target, TargetFrame, TextureTarget, WindowTarget};
 
 // ── WindowTarget wrapper ────────────────────────────────────────────────────
@@ -28,8 +30,8 @@ use crate::{Size, SurfaceError, Target, TargetFrame, TextureTarget, WindowTarget
 /// Mobile-facing wrapper around [`WindowTarget`].
 ///
 /// Exposes `size()`, `resize(width, height)`, and `get_image()` to Swift and
-/// Kotlin. `get_image()` returns an empty byte array, because a window surface
-/// can't be read back. Render to a `TextureTarget` to read pixels.
+/// Kotlin. `get_image()` throws, because a window surface can't be read back.
+/// Render to a `TextureTarget` to read pixels.
 #[derive(Debug, uniffi::Object)]
 #[uniffi(name = "WindowTarget")]
 pub struct MobileWindowTarget {
@@ -64,14 +66,10 @@ impl MobileWindowTarget {
         Target::resize(&mut *self.inner.lock(), [width, height]);
     }
 
-    /// Returns an empty byte array.
-    ///
-    /// Window-backed surfaces are not readable across all GPU backends.
-    /// Use a [`MobileTextureTarget`] and call `get_image()` there instead.
     #[uniffi::method(name = "getImage")]
     #[lsp_doc("docs/api/targets/window_target/get_image.md")]
-    pub async fn get_image_mobile(&self) -> Vec<u8> {
-        Vec::new()
+    pub async fn get_image_mobile(&self) -> Result<Vec<u8>, FragmentColorError> {
+        Err(crate::target::window::unreadable().into())
     }
 }
 
@@ -91,8 +89,8 @@ impl Target for MobileWindowTarget {
         Target::resize(&mut *self.inner.lock(), size.into());
     }
 
-    async fn get_image(&self) -> Vec<u8> {
-        Vec::new()
+    async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
+        Err(crate::target::window::unreadable())
     }
 }
 
@@ -153,10 +151,10 @@ impl MobileTextureTarget {
     /// `TextureTarget::get_image` async.
     #[uniffi::method(name = "getImage")]
     #[lsp_doc("docs/api/targets/texture_target/get_image.md")]
-    pub async fn get_image_mobile(&self) -> Vec<u8> {
+    pub async fn get_image_mobile(&self) -> Result<Vec<u8>, FragmentColorError> {
         // Inner is a TextureTarget; clone to release the read-lock before await.
         let inner = self.inner.read().clone();
-        inner.get_image().await
+        Ok(inner.get_image().await?)
     }
 
     /// Return a sampleable [`Texture`](crate::texture::Texture) handle that
@@ -186,7 +184,7 @@ impl Target for MobileTextureTarget {
         Target::resize(&mut *self.inner.write(), size.into());
     }
 
-    async fn get_image(&self) -> Vec<u8> {
+    async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
         // Snapshot the inner TextureTarget so we can release the read-lock
         // before awaiting the GPU readback.
         let inner = self.inner.read().clone();

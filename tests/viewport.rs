@@ -62,7 +62,7 @@ fn draws_inside_the_viewport_only() {
 
         renderer.render(&pass, &target).expect("render failed");
 
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_pixels(
             &image,
             16,
@@ -84,7 +84,7 @@ fn clips_a_viewport_larger_than_the_target() {
 
         let past = fill_pass([10, 6, 100, 100], [1.0, 0.0, 0.0, 1.0]);
         renderer.render(&past, &target).expect("render failed");
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_pixels(
             &image,
             16,
@@ -94,7 +94,7 @@ fn clips_a_viewport_larger_than_the_target() {
 
         let whole = fill_pass([64, 64], [1.0, 0.0, 0.0, 1.0]);
         renderer.render(&whole, &target).expect("render failed");
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_pixels(&image, 16, 16, |_, _| RED);
     });
 }
@@ -134,7 +134,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
 
         renderer.render(&pass, &target).expect("render failed");
 
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_pixels(&image, 16, 8, |x, _| if x < 8 { BLUE } else { RED });
     });
 }
@@ -152,7 +152,7 @@ fn skips_draws_for_a_viewport_outside_the_target() {
 
         renderer.render(&pass, &target).expect("render failed");
 
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_pixels(&image, 16, 16, |_, _| BLUE);
     });
 }
@@ -175,7 +175,7 @@ fn clips_to_the_pass_target() {
 
         renderer.render(&pass, &probe).expect("render failed");
 
-        let image = side.get_image().await;
+        let image = side.get_image().await.expect("read back");
         assert_pixels(&image, 8, 8, red_inside(ScreenRegion::new((4, 0), (4, 8))));
     });
 }
@@ -197,7 +197,7 @@ fn splits_the_target_between_two_passes() {
             .render(&vec![&left, &right], &target)
             .expect("render failed");
 
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_pixels(&image, 16, 8, |x, _| if x < 8 { RED } else { GREEN });
     });
 }

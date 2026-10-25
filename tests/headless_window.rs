@@ -22,7 +22,7 @@ fn creates_texture_backed_target_from_headless_window() {
         assert_eq!([s.width, s.height], [32, 24]);
 
         // Should provide a readable image buffer (texture-backed path)
-        let img = target.get_image().await;
+        let img = target.get_image().await.expect("read back");
         assert!(
             !img.is_empty(),
             "headless window target should be texture-backed and readable"

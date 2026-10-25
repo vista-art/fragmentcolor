@@ -1,5 +1,6 @@
 #![cfg(wasm)]
 
+use crate::texture::TextureError;
 use crate::{RenderContext, ShaderError, Size, Target, TargetFrame, TextureTarget, WindowTarget};
 use lsp_doc::lsp_doc;
 use parking_lot::Mutex;
@@ -61,8 +62,9 @@ impl CanvasTarget {
 
     #[wasm_bindgen(js_name = "getImage")]
     #[lsp_doc("docs/api/targets/window_target/get_image.md")]
-    pub async fn get_image_js(&self) -> js_sys::Uint8Array {
-        js_sys::Uint8Array::from(Target::get_image(self).await.as_slice())
+    pub async fn get_image_js(&self) -> Result<js_sys::Uint8Array, TextureError> {
+        let data = Target::get_image(self).await?;
+        Ok(js_sys::Uint8Array::from(data.as_slice()))
     }
 }
 
@@ -81,8 +83,8 @@ impl Target for CanvasTarget {
         self.inner.lock().resize(size);
     }
 
-    async fn get_image(&self) -> Vec<u8> {
-        Vec::new()
+    async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
+        Err(crate::target::window::unreadable())
     }
 }
 
@@ -104,9 +106,9 @@ impl TextureTarget {
 
     #[wasm_bindgen(js_name = "getImage")]
     #[lsp_doc("docs/api/targets/texture_target/get_image.md")]
-    pub async fn get_image_js(&self) -> js_sys::Uint8Array {
-        let data = self.get_image().await;
-        js_sys::Uint8Array::from(data.as_slice())
+    pub async fn get_image_js(&self) -> Result<js_sys::Uint8Array, TextureError> {
+        let data = self.get_image().await?;
+        Ok(js_sys::Uint8Array::from(data.as_slice()))
     }
 
     /// Get a sampleable Texture handle for binding in a shader uniform.

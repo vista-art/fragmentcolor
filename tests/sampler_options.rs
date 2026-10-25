@@ -52,7 +52,7 @@ async fn sample(renderer: &Renderer, shader: &Shader, u: f32) -> Vec<u8> {
     renderer
         .render(&Pass::from_shader("sample", shader), &target)
         .expect("render failed");
-    target.get_image().await[..4].to_vec()
+    target.get_image().await.expect("read back")[..4].to_vec()
 }
 
 // Story: Turning on repeat makes the bound sampler wrap past the edge instead of clamping.

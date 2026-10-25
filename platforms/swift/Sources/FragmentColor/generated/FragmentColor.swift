@@ -4489,7 +4489,7 @@ public protocol TextureTargetProtocol: AnyObject, Sendable {
      * Swift / Kotlin `suspend fun`; the underlying readback runs through
      * `TextureTarget::get_image` async.
      */
-    func getImage() async  -> Data
+    func getImage() async throws  -> Data
     
     /**
      * Resizes the offscreen texture to `width` × `height` pixels.
@@ -4580,9 +4580,9 @@ open class TextureTarget: TextureTargetProtocol, @unchecked Sendable {
      * Swift / Kotlin `suspend fun`; the underlying readback runs through
      * `TextureTarget::get_image` async.
      */
-open func getImage()async  -> Data  {
+open func getImage()async throws  -> Data  {
     return
-        try!  await uniffiRustCallAsync(
+        try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_fragmentcolor_fn_method_texturetarget_getimage(
                         self.uniffiCloneHandle()
@@ -4592,8 +4592,7 @@ open func getImage()async  -> Data  {
             completeFunc: ffi_fragmentcolor_rust_future_complete_rust_buffer,
             freeFunc: ffi_fragmentcolor_rust_future_free_rust_buffer,
             liftFunc: FfiConverterData.lift,
-            errorHandler: nil
-            
+            errorHandler: FfiConverterTypeFragmentColorError_lift
         )
 }
     
@@ -4868,18 +4867,12 @@ public func FfiConverterTypeVertex_lower(_ value: Vertex) -> UInt64 {
  * Mobile-facing wrapper around [`WindowTarget`].
  *
  * Exposes `size()`, `resize(width, height)`, and `get_image()` to Swift and
- * Kotlin. `get_image()` returns an empty byte array, because a window surface
- * can't be read back. Render to a `TextureTarget` to read pixels.
+ * Kotlin. `get_image()` throws, because a window surface can't be read back.
+ * Render to a `TextureTarget` to read pixels.
  */
 public protocol WindowTargetProtocol: AnyObject, Sendable {
     
-    /**
-     * Returns an empty byte array.
-     *
-     * Window-backed surfaces are not readable across all GPU backends.
-     * Use a [`MobileTextureTarget`] and call `get_image()` there instead.
-     */
-    func getImage() async  -> Data
+    func getImage() async throws  -> Data
     
     /**
      * Resizes the window surface to `width` × `height` pixels.
@@ -4899,8 +4892,8 @@ public protocol WindowTargetProtocol: AnyObject, Sendable {
  * Mobile-facing wrapper around [`WindowTarget`].
  *
  * Exposes `size()`, `resize(width, height)`, and `get_image()` to Swift and
- * Kotlin. `get_image()` returns an empty byte array, because a window surface
- * can't be read back. Render to a `TextureTarget` to read pixels.
+ * Kotlin. `get_image()` throws, because a window surface can't be read back.
+ * Render to a `TextureTarget` to read pixels.
  */
 open class WindowTarget: WindowTargetProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
@@ -4955,15 +4948,9 @@ open class WindowTarget: WindowTargetProtocol, @unchecked Sendable {
     
 
     
-    /**
-     * Returns an empty byte array.
-     *
-     * Window-backed surfaces are not readable across all GPU backends.
-     * Use a [`MobileTextureTarget`] and call `get_image()` there instead.
-     */
-open func getImage()async  -> Data  {
+open func getImage()async throws  -> Data  {
     return
-        try!  await uniffiRustCallAsync(
+        try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_fragmentcolor_fn_method_windowtarget_getimage(
                         self.uniffiCloneHandle()
@@ -4973,8 +4960,7 @@ open func getImage()async  -> Data  {
             completeFunc: ffi_fragmentcolor_rust_future_complete_rust_buffer,
             freeFunc: ffi_fragmentcolor_rust_future_free_rust_buffer,
             liftFunc: FfiConverterData.lift,
-            errorHandler: nil
-            
+            errorHandler: FfiConverterTypeFragmentColorError_lift
         )
 }
     
@@ -9309,7 +9295,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_shader_validatemesh() != 2752) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texturetarget_getimage() != 37264) {
+    if (uniffi_fragmentcolor_checksum_method_texturetarget_getimage() != 24276) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_texturetarget_resize() != 10714) {
@@ -9321,7 +9307,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_texturetarget_texture() != 22004) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_windowtarget_getimage() != 18017) {
+    if (uniffi_fragmentcolor_checksum_method_windowtarget_getimage() != 57956) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_windowtarget_resize() != 41290) {

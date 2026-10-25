@@ -392,7 +392,7 @@ mod tests {
             scene.add(&model).expect("add");
             renderer.render(&scene, &target).expect("render");
             use crate::Target;
-            let image = target.get_image().await;
+            let image = target.get_image().await.expect("read back");
             // Hidden Model + clear-color background. Every pixel's RGB
             // should be the clear color's RGB (default black, [0, 0, 0]);
             // the triangle's purple [0.6, 0.2, 0.8] never lands in the

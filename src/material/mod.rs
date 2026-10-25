@@ -455,7 +455,7 @@ mod tests {
             renderer
                 .render(&pass, &target)
                 .expect("render with all default textures");
-            let img = target.get_image().await;
+            let img = target.get_image().await.expect("read back");
             assert_eq!(img.len(), 8 * 8 * 4);
         });
     }
@@ -509,7 +509,7 @@ mod tests {
             renderer
                 .render(&pass, &target)
                 .expect("render textured triangle");
-            let img = target.get_image().await;
+            let img = target.get_image().await.expect("read back");
             assert_eq!(img.len(), 16 * 16 * 4);
 
             let mut has_red = false;
@@ -572,7 +572,7 @@ mod tests {
                 mat.shader.object.pending_textures.read().is_empty(),
                 "expected pending list to be drained by render"
             );
-            let img = target.get_image().await;
+            let img = target.get_image().await.expect("read back");
             assert_eq!(img.len(), 8 * 8 * 4);
         });
     }

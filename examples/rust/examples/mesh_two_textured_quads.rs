@@ -58,7 +58,7 @@ fn fs_main(v: VOut) -> @location(0) vec4<f32> {
         renderer.render(&pass, &target).expect("render ok");
 
         // Optionally: read back image; here we just assert size
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_eq!(image.len(), 256 * 256 * 4);
     });
 }

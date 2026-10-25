@@ -15,6 +15,7 @@ mod platform;
 pub use platform::*;
 
 use crate::size::Size;
+use crate::texture::TextureError;
 use lsp_doc::lsp_doc;
 
 pub mod error;
@@ -97,16 +98,11 @@ pub trait Target: FrameSource {
     /// asynchronous on every backend (browser `mapAsync` / native
     /// `device.poll(Wait)`).
     ///
-    /// The shape is uniform across all `Target` implementations so callers
-    /// can write portable code (`target.get_image().await`). What each
-    /// impl actually returns:
-    /// - `TextureTarget` — the offscreen texture's pixels.
-    /// - `WindowTarget` — empty `Vec` for now; screen capture from a
-    ///   presentable surface needs `COPY_SRC` on the swapchain config and
-    ///   isn't yet wired up. Use a `TextureTarget` when readback is
-    ///   required (CI image comparison, screenshot tooling).
+    /// A `TextureTarget` returns its pixels, or `TextureError::Readback`
+    /// when the readback fails. A `WindowTarget` always returns that error,
+    /// since a frame on screen can't be read back.
     #[allow(async_fn_in_trait)]
-    async fn get_image(&self) -> Vec<u8>;
+    async fn get_image(&self) -> Result<Vec<u8>, TextureError>;
 }
 
 pub(crate) trait TargetFrame {

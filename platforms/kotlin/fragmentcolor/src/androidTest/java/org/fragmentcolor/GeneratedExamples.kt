@@ -1583,9 +1583,13 @@ class GeneratedExamples : ExampleCase() {
 
         val renderer = Renderer()
         val target = renderer.createTarget(canvas)
-        renderer.render(Shader.default(), target)
+        val shader = Shader.default()
+        renderer.render(shader, target)
 
-        val image = target.getImage()
+        // The same frame, drawn where it can be read back.
+        val offscreen = renderer.createTextureTarget(listOf(800u, 600u))
+        renderer.render(shader, offscreen)
+        val image = offscreen.getImage()
         surfaceTexture.release()
     }
 

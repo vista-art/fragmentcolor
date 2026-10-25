@@ -34,7 +34,6 @@ docs/api/scene/model/set_transform.md swift Model.setTransform: (floats) -> unit
 docs/api/scene/model/transform.md kotlin Model.transform: () -> floats | rust () -> matrix
 docs/api/scene/model/transform.md swift Model.transform: () -> floats | rust () -> matrix
 docs/api/scene/model/transform.md web Model.transform: () -> floats | rust () -> matrix
-docs/api/targets/texture_target/get_image.md python TextureTarget.get_image: () -> bytes throws | rust () -> bytes async
 docs/api/targets/texture_target/resize.md kotlin TextureTarget.resize: (int, int) -> unit | rust (into Size) -> unit
 docs/api/targets/texture_target/resize.md swift TextureTarget.resize: (int, int) -> unit | rust (into Size) -> unit
 docs/api/targets/window_target/resize.md kotlin WindowTarget.resize: (int, int) -> unit | rust (into Size) -> unit

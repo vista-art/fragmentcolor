@@ -19,7 +19,7 @@ async fn first_pixel(renderer: &Renderer, shader: &Shader) -> Vec<u8> {
     renderer
         .render(&Pass::from_shader("mat3", shader), &target)
         .expect("render failed");
-    target.get_image().await[..4].to_vec()
+    target.get_image().await.expect("read back")[..4].to_vec()
 }
 
 // Story: A mat3x3 uniform reaches the GPU as three padded columns and reads back as 9 values.

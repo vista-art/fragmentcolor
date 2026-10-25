@@ -54,7 +54,7 @@ fn main() {
             .expect("sun");
         renderer.render(&scene, &target).expect("render");
 
-        let image = target.get_image().await;
+        let image = target.get_image().await.expect("read back");
         assert_eq!(image.len(), 256 * 256 * 4);
         println!(
             "rendered {} bytes — first pixel: ({}, {}, {}, {})",

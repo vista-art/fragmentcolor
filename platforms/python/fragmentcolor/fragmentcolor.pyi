@@ -4823,6 +4823,8 @@ class TextureTarget:
 
         Python returns a NumPy array of shape `(height, width, 4)`, indexed `image[y, x]`. That is the layout `Renderer.create_texture` reads, so `renderer.create_texture(target.get_image())` uploads the same image.
 
+        A readback that fails or times out returns an error, a thrown `Error` in JavaScript and a `FragmentColorError` in Python, Swift and Kotlin.
+
         Example:
 
         ```python
@@ -4929,11 +4931,11 @@ class WindowTarget:
         target.resize([1024, 768])
         ```
         """
-    def get_image(self) -> bytes:
+    def get_image(self) -> npt.NDArray[numpy.uint8]:
         """
-        This operation returns an empty array for [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget).
+        Returns an error for a [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget): a frame on screen can't be read back. JavaScript throws an `Error`, and Python, Swift and Kotlin throw a `FragmentColorError`.
 
-        Use a [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) instead.
+        To read the pixels of a frame, draw it into a [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) of the same size and call `get_image` there, as the example does.
 
         Example:
 
@@ -4948,9 +4950,13 @@ class WindowTarget:
 
         renderer = Renderer()
         target = renderer.create_target(canvas)
-        renderer.render(Shader.default(), target)
+        shader = Shader.default()
+        renderer.render(shader, target)
 
-        image = target.get_image()
+        # The same frame, drawn where it can be read back.
+        offscreen = renderer.create_texture_target([800, 600])
+        renderer.render(shader, offscreen)
+        image = offscreen.get_image()
         ```
         """
 
