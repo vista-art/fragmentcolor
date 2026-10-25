@@ -25,7 +25,7 @@ A lamp is a post, a glowing bulb and a [`Light::point`](/api/scene/light/#point)
 
 ## Two passes in one scene
 
-A [`Scene`](/api/scene/scene/#an-open-composable-pass-graph) keeps an ordered list of passes, and this valley needs two. The first paints the sky in a fullscreen triangle: a gradient, a warm glow around a low sun, stars after dark. The second draws the models over it, with `load_previous` keeping the sky and a depth texture keeping the nearest surface. Both work in linear light and encode it for the screen on the way out.
+A [`Scene`](/api/scene/scene/#an-open-composable-pass-graph) keeps an ordered list of passes, and this valley needs two. The first paints the sky in a fullscreen triangle: a gradient, a warm glow around a low sun, stars after dark. The second draws the models over it, with `load_previous` keeping the sky. Because that pass draws models, the renderer gives it a depth buffer the size of the canvas, and the nearest surface wins at each pixel. Both passes work in linear light and encode it for the screen on the way out.
 
 Sliders under the canvas hold the sky's colors.
 
@@ -37,8 +37,9 @@ Playground demos got the pointer and gestures, never the keyboard. A demo that s
 
 ## What 0.12.7 fixes for it
 
-Five fixes in 0.12.7 matter for a scene like this one, and each lands in all five languages at once.
+Six fixes in 0.12.7 matter for a scene like this one, and each lands in all five languages at once.
 
+- **Depth for every scene.** Models hid each other only after the program created a depth texture, set it on the pass and made a new one whenever the window changed size. A pass that draws models now gets a depth buffer that follows the canvas, so the valley sets none.
 - **Colors for the screen.** PBR materials computed light correctly and wrote it to the screen unencoded, which made every lit scene dark and harsh. They now encode it as sRGB for a target that holds display values, as the canvas does, and keep linear light for an sRGB or float target. The valley needs no pass of its own to fix its colors.
 - **Stretched rocks.** PBR materials transformed normals by the model matrix itself, which tilts them toward a stretched axis. A boulder scaled unevenly lit as if it faced elsewhere. Normals now go through the inverse transpose.
 - **Meshes built by hand.** `add_mesh` checks every vertex and instance for the attributes the shader reads, and its error names the first one missing. A later vertex without a color used to attach and draw black.
