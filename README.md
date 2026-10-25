@@ -217,12 +217,6 @@ The `examples/rust` crate holds runnable examples, from a single triangle to a m
 
 ## Platform support
 
-<p align="center">
-  <img src="docs/website/public/playground/two-platforms.webp" width="800" alt="The Cells shader running natively in a Rust window on macOS and in a Swift app on iOS">
-</p>
-
-Above, one shader runs natively in a Rust window on macOS and in a Swift app on iOS, from the same WGSL and the same calls.
-
 Platform support follows upstream [wgpu](https://github.com/gfx-rs/wgpu):
 
 | API    | Windows      | Linux/Android   | macOS/iOS | Web (wasm)  |
