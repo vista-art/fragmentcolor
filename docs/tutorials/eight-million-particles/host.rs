@@ -111,7 +111,7 @@ where
     for index in 0..frames {
         frame(&state, &renderer, &target, index as f32 / 60.0)?;
         if (index + 1) % SYNC_EVERY == 0 || index + 1 == frames {
-            image = target.get_image().await;
+            image = target.get_image().await?;
         }
     }
 
