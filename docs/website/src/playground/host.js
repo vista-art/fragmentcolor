@@ -309,6 +309,7 @@ export class Playground {
       doc: text,
       extensions: [
         extensions,
+        this.cm.theme.of(),
         languages(kind),
         EditorState.readOnly.of(!editable),
         EditorView.editable.of(editable),
@@ -328,6 +329,18 @@ export class Playground {
         }),
       ],
     });
+  }
+
+  // Each tab keeps its own editor state, so a site theme switch reaches every one.
+  applyTheme() {
+    for (const tab of this.tabs ?? []) {
+      if (tab.id === this.activeTab) {
+        this.view.dispatch({ effects: this.cm.theme.reconfigure() });
+        tab.state = this.view.state;
+      } else if (tab.state) {
+        tab.state = tab.state.update({ effects: this.cm.theme.reconfigure() }).state;
+      }
+    }
   }
 
   // An inline slider on a `.set` value applies it at once, with no rebuild.
@@ -789,6 +802,7 @@ export class Playground {
     this.on(canvas, "pointermove", track);
     this.on(canvas, "pointerdown", track);
     this.wireGestures();
+    this.cleanups.push(this.cm.watchSiteTheme(() => this.applyTheme()));
 
     this.on(ui.add, "click", () => this.picker.open(parseLibrary(this.text("js")) ?? []));
     this.on(ui.reset, "click", () => {
@@ -876,20 +890,18 @@ export class Playground {
 
 // CodeMirror loads with the playground, never with the page.
 async function loadEditor() {
-  const [{ EditorView, basicSetup }, { EditorState, Annotation }, { javascript }, { dracula }, { wgsl }, { highlight }, inline] =
+  const [{ EditorView, basicSetup }, { EditorState, Annotation }, { javascript }, { wgsl }, { highlight }, inline, theme] =
     await Promise.all([
       import("codemirror"),
       import("@codemirror/state"),
       import("@codemirror/lang-javascript"),
-      import("thememirror"),
       import("./wgsl.js"),
       import("./highlight.js"),
       import("./inline.js"),
+      import("./theme.js"),
     ]);
-  // These rules come before dracula and win where both set a property.
-  // The current line takes dracula's #44475a at 60% and paints at z-index -10,
-  // under the selection layer at -1 or lower, so a selection shows on that line too.
-  const lineHighlight = "rgba(68, 71, 90, 0.6)";
+  // These rules come before the theme and win where both set a property.
+  // The current line takes its color from the theme and paints behind the text.
   const extensions = [
     basicSetup,
     EditorView.theme({
@@ -902,16 +914,9 @@ async function loadEditor() {
         position: "absolute",
         inset: "0",
         zIndex: "-10",
-        backgroundColor: lineHighlight,
         pointerEvents: "none",
       },
-      ".cm-activeLineGutter": { backgroundColor: lineHighlight },
-      ".cm-selectionLayer .cm-selectionBackground": { background: "rgba(165, 180, 252, 0.24)" },
-      "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": {
-        background: "rgba(165, 180, 252, 0.32)",
-      },
     }),
-    dracula,
   ];
   const languages = (kind) => {
     if (kind === "wgsl") return wgsl();
@@ -935,6 +940,8 @@ async function loadEditor() {
     EditorView,
     EditorState,
     extensions,
+    theme: theme.editorTheme(),
+    watchSiteTheme: theme.watchSiteTheme,
     languages,
     inline: inlineFor,
     synced,

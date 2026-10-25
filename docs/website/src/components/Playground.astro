@@ -197,6 +197,17 @@ const installs = [
     overflow: hidden;
   }
 
+  /* The light site theme gives the playground the docs' light palette. */
+  :root[data-theme="light"] fc-playground {
+    --fcp-bg: var(--sl-color-black);
+    --fcp-panel: var(--sl-color-gray-7);
+    --fcp-line: hsla(224, 10%, 10%, 0.12);
+    --fcp-ink: var(--sl-color-gray-1);
+    --fcp-dim: var(--sl-color-gray-3);
+    --fcp-accent: var(--sl-color-text-accent);
+    --fcp-accent-bg: hsla(234, 90%, 60%, 0.12);
+  }
+
   /* The landing playground fills the screen under the site header, with no frame. */
   fc-playground.landing {
     display: flex;
@@ -268,6 +279,10 @@ const installs = [
     font-size: 12px;
     cursor: pointer;
     appearance: none;
+  }
+
+  :root[data-theme="light"] .fcp-install-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%233d50f5' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
 
   .fcp-install-select option {
@@ -368,7 +383,7 @@ const installs = [
     }
   }
 
-  /* the playground is dark in both site themes, and so is its library picker */
+  /* The library picker takes the playground's palette in each site theme. */
   fc-playground .fcp-picker {
     --fcp-picker-bg: #181b25;
     --fcp-picker-field: #0d0f14;
@@ -379,6 +394,18 @@ const installs = [
     --fcp-picker-accent: #a5b4fc;
     --fcp-picker-accent-low: rgba(165, 180, 252, 0.16);
     --fcp-picker-accent-high: #c7d2fe;
+  }
+
+  :root[data-theme="light"] fc-playground .fcp-picker {
+    --fcp-picker-bg: var(--sl-color-black);
+    --fcp-picker-field: var(--sl-color-gray-7);
+    --fcp-picker-line: var(--fcp-line);
+    --fcp-picker-text: var(--sl-color-gray-2);
+    --fcp-picker-strong: var(--sl-color-white);
+    --fcp-picker-muted: var(--sl-color-gray-3);
+    --fcp-picker-accent: var(--sl-color-accent);
+    --fcp-picker-accent-low: var(--fcp-accent-bg);
+    --fcp-picker-accent-high: var(--sl-color-accent-high);
   }
 
   fc-playground button {
@@ -433,6 +460,11 @@ const installs = [
     border-color: rgba(255, 255, 255, 0.2);
   }
 
+  :root[data-theme="light"] .fcp-menu-button:hover,
+  :root[data-theme="light"] .fcp-menu-button[aria-expanded="true"] {
+    border-color: hsla(224, 10%, 10%, 0.24);
+  }
+
   .fcp-menu-button:focus-visible {
     outline: 2px solid var(--fcp-accent);
     outline-offset: 1px;
@@ -448,6 +480,10 @@ const installs = [
     background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%23a5b4fc' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
       no-repeat center / contain;
     transition: transform 0.15s;
+  }
+
+  :root[data-theme="light"] .fcp-menu-button::after {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%233d50f5' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
 
   .fcp-menu-button[aria-expanded="true"]::after {
@@ -486,6 +522,12 @@ const installs = [
     color-scheme: dark;
   }
 
+  :root[data-theme="light"] .fcp-menu-list {
+    background: var(--sl-color-black);
+    box-shadow: var(--sl-shadow-lg);
+    color-scheme: light;
+  }
+
   .fcp-menu-list[hidden] {
     display: none;
   }
@@ -510,6 +552,10 @@ const installs = [
     background-position: left 10px center;
     background-size: 12px;
     color: var(--fcp-ink);
+  }
+
+  :root[data-theme="light"] .fcp-menu-list [role="option"][aria-selected="true"] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='%233d50f5' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
 
   .fcp-status {
@@ -604,6 +650,11 @@ const installs = [
     background: #282a36;
   }
 
+  /* The code pane takes the color of the editor's gutter in each theme. */
+  :root[data-theme="light"] .fcp-code {
+    background: #ffffff;
+  }
+
   .fcp-stage {
     display: flex;
     flex-direction: column;
@@ -637,6 +688,11 @@ const installs = [
     background: #050608;
   }
 
+  :root[data-theme="light"] .fcp-poster,
+  :root[data-theme="light"] .fcp-fallback {
+    background: var(--sl-color-gray-6);
+  }
+
   .fcp-poster[hidden],
   .fcp-fallback[hidden] {
     display: none;
@@ -659,6 +715,11 @@ const installs = [
     color: var(--fcp-ink);
     background: #0b0d12;
     border-top: 1px solid var(--fcp-line);
+  }
+
+  :root[data-theme="light"] .fcp-poster p,
+  :root[data-theme="light"] .fcp-fallback p {
+    background: var(--fcp-panel);
   }
 
   .fcp-controls {
@@ -869,6 +930,16 @@ const installs = [
     border-color: rgba(255, 255, 255, 0.2);
   }
 
+  :root[data-theme="light"] .fcp-actions button,
+  :root[data-theme="light"] .fcp-fullscreen {
+    background: hsla(224, 19%, 97%, 0.85);
+  }
+
+  :root[data-theme="light"] .fcp-actions button:hover,
+  :root[data-theme="light"] .fcp-fullscreen:hover {
+    border-color: hsla(224, 10%, 10%, 0.24);
+  }
+
   .fcp-fullscreen {
     position: absolute;
     right: 8px;
@@ -894,6 +965,10 @@ const installs = [
   .fcp-copy.done .icon-done {
     display: block;
     color: #86efac;
+  }
+
+  :root[data-theme="light"] .fcp-copy.done .icon-done {
+    color: var(--sl-color-green-high);
   }
 
   .fcp-editor {
@@ -924,6 +999,12 @@ const installs = [
     line-height: 1.5;
     white-space: pre-wrap;
     border-radius: 0;
+  }
+
+  :root[data-theme="light"] .fcp-error {
+    border-top-color: var(--sl-color-red);
+    background: var(--sl-color-red-low);
+    color: var(--sl-color-red-high);
   }
 
   .fcp-error[hidden] {

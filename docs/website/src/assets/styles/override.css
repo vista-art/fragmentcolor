@@ -2,10 +2,15 @@
   display: grid !important;
 }
 
-/* The landing page is the playground. It fills the width under a header that
- * shares its dark surface in both site themes. The hero stays only for screen
- * readers, since the header logo names the project. */
+/* The landing page is the playground, and it fills the width.
+ * The light site theme keeps the docs' palette. In the dark one,
+ * the header and the playground share a surface darker than the docs.
+ * Only screen readers get the hero, since the header logo names the project. */
 html[data-has-hero][data-theme] {
+  --sl-content-width: 100%;
+}
+
+html[data-has-hero][data-theme="dark"] {
   --sl-color-white: hsl(0, 0%, 100%);
   --sl-color-gray-1: hsl(224, 20%, 94%);
   --sl-color-gray-2: hsl(224, 6%, 77%);
@@ -24,16 +29,7 @@ html[data-has-hero][data-theme] {
   --sl-color-bg-accent: var(--sl-color-accent-high);
   --sl-color-hairline-light: var(--sl-color-gray-5);
   --sl-color-hairline-shade: rgba(255, 255, 255, 0.09);
-  --sl-content-width: 100%;
   color-scheme: dark;
-}
-
-html[data-has-hero] .site-title .light\:sl-hidden {
-  display: initial;
-}
-
-html[data-has-hero] .site-title .dark\:sl-hidden {
-  display: none;
 }
 
 html[data-has-hero] .content-panel {
