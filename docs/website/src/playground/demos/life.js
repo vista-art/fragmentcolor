@@ -915,8 +915,9 @@ export default {
   summary:
     "Four species follow or flee each other's density and gather into colonies that chase, split, and swirl. The pointer draws them close, and seed reshuffles who follows whom.",
   category: "Compute",
+  // A held pointer gathers the swarm into a ball: ./fc capture thumbs life --hold 0.5,0.5 --wait 10
   thumbnail: "/playground/thumbs/life.webp",
-  chip: { x: 0.62, y: 0.78, zoom: 3.5 },
+  chip: { x: 0.49, y: 0.49, zoom: 6 },
   kind: "compute",
   requires: "webgpu",
   needs: RELEASE,
