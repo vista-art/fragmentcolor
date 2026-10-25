@@ -25,6 +25,8 @@ draws its slot over it; without `src` the slot is the whole diagram, on a panel 
 `width` and `height` set the SVG coordinate system, 720 units wide by default, and `alt` is required.
 `narrow` keeps a figure at most 320px wide and centered, for a portrait or another small picture that
 would stand far too tall at the full width of the text.
+A caption that needs links, such as the credit a CC BY image requires, goes in the `credit` slot
+(`<span slot="credit">Photo by <a href="...">...</a></span>`), after the `caption` string if there is one.
 
 ```mdx
 import Figure from "../../../components/Figure.astro";

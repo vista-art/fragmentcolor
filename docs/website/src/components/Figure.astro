@@ -28,7 +28,10 @@ interface Props {
   height: number;
   /** A capture to draw under the annotations, as a URL under `public/`. */
   src?: string;
-  /** A short caption under the figure. Text between backticks renders as code. */
+  /**
+   * A short caption under the figure. Text between backticks renders as code.
+   * A `credit` slot can follow it with markup, such as an image credit with links.
+   */
   caption?: string;
   /** At most 320px wide and centered, for a portrait or another small picture. */
   narrow?: boolean;
@@ -38,6 +41,7 @@ const { alt, width = 720, height, src, caption, narrow = false } = Astro.props;
 const viewBox = `0 0 ${width} ${height}`;
 // Odd pieces of the caption sat between backticks.
 const captionParts = caption?.split("`") ?? [];
+const credit = Astro.slots.has("credit");
 ---
 
 <figure class:list={["fc-figure not-content", narrow && "fc-figure-narrow"]}>
@@ -55,7 +59,15 @@ const captionParts = caption?.split("`") ?? [];
       )
     }
   </div>
-  {caption && <figcaption>{captionParts.map((part, i) => (i % 2 ? <code>{part}</code> : part))}</figcaption>}
+  {
+    (caption || credit) && (
+      <figcaption>
+        {captionParts.map((part, i) => (i % 2 ? <code>{part}</code> : part))}
+        {caption && credit && " "}
+        {credit && <slot name="credit" />}
+      </figcaption>
+    )
+  }
 </figure>
 
 <style is:global>
@@ -130,6 +142,10 @@ const captionParts = caption?.split("`") ?? [];
     color: var(--sl-color-gray-3);
     font-size: var(--sl-text-sm);
     line-height: 1.45;
+  }
+
+  .fc-figure figcaption a {
+    color: var(--sl-color-text-accent);
   }
 
   /* Phones show the same coordinates at half the width or less, so labels grow. */
