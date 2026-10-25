@@ -1,0 +1,54 @@
+---
+title: "A valley you can walk through"
+excerpt: "The playground has a 3D demo you walk through with the keyboard or a touch stick: a valley with a pond, pines and lamps, where the afternoon turns into night. It is built from the scene layer, and 0.12.7 brings the fixes it needed."
+authors: ["rafaelbeckel"]
+date: 2026-10-25T00:00:00Z
+tags: ["demo", "playground", "rust", "javascript", "python", "swift", "kotlin", "webgpu"]
+draft: true
+---
+
+The newest playground demo is [a small valley](/welcome/playground/#walk) with a pond, a forest of pines, a few boulders and a ring of lamps. Click the canvas to start walking. WASD or the arrow keys move you, a drag turns your head, Space jumps and Shift runs. Phones get a stick in the lower corner, and a drag anywhere else looks around.
+
+<img src="/blog/walkable-world-day.webp" alt="A low-poly valley in afternoon light: a grassy clearing with two black lamp posts, a pond with gray boulders, pine trees, and snow-capped mountains under a pale blue sky." width="768" height="480" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+
+The afternoon is short. Every three minutes the sun crosses the sky, and at dusk the lamps light up and stars come out. Holding T makes the hours fly.
+
+<img src="/blog/walkable-world-night.webp" alt="The same valley at night: yellow lamp bulbs glow over dark grass and pines, the pond lies dark, and moonlit mountains stand under a starry navy sky." width="768" height="480" loading="lazy" style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }} />
+
+## Models all the way down
+
+Everything in the valley is a [`Model`](/api/scene/model/), a mesh and a material placed by a transform. The ground is a single mesh of about ten thousand triangles. Each triangle carries its own face normal for the faceted look, plus a color picked from its height and slope: sand at the waterline, grass on the flats, rock on the cliffs, snow on the peaks.
+
+The forest costs one draw call. Its 140 pines share one `Mesh` and one `Material`, and their transforms ride one instance buffer. So do the boulders.
+
+A lamp is a post, a glowing bulb and a [`Light::point`](/api/scene/light/#point). A directional sun and a dim blue moon complete the lighting. On every frame the program swings the sun along its arc, dims or brightens the lamps, and moves the [`Camera`](/api/scene/camera/) with `look_at` to wherever your eyes are.
+
+## Two passes in one scene
+
+A [`Scene`](/api/scene/scene/#an-open-composable-pass-graph) keeps an ordered list of passes, and this valley needs two. The first paints the sky in a fullscreen triangle: a gradient, a warm glow around a low sun, stars after dark. The second draws the models over it, with `load_previous` keeping the sky and a depth texture keeping the nearest surface. Both work in linear light and encode it for the screen on the way out.
+
+Sliders under the canvas hold the sky's colors.
+
+## Keys for the playground
+
+Playground demos got the pointer and gestures, never the keyboard. A demo that sets `keys: true` now receives an eighth argument to `frame()`: the `KeyboardEvent.code` of every key held down, and the stick's position from -1 to 1. Keys count only while the canvas has focus. The editor, the page's scrolling and the site's shortcuts keep working, and the read-only `index.js` tab carries the same code for your own page.
+
+<img src="/blog/walkable-world-phone.webp" alt="The valley on a phone screen, with a translucent round stick in the lower left corner of the canvas and a fullscreen button in the lower right." width="341" height="256" loading="lazy" style={{ maxWidth: "100%", height: "auto", borderRadius: "0.5rem" }} />
+
+## What 0.12.7 fixes for it
+
+Five fixes in 0.12.7 matter for a scene like this one, and each lands in all five languages at once.
+
+- **Colors for the screen.** PBR materials computed light correctly and wrote it to the screen unencoded, which made every lit scene dark and harsh. They encode it as sRGB now, so the valley needs no pass of its own to fix its colors.
+- **Stretched rocks.** PBR materials transformed normals by the model matrix itself, which tilts them toward a stretched axis. A boulder scaled unevenly lit as if it faced elsewhere. Normals now go through the inverse transpose.
+- **Meshes built by hand.** `add_mesh` checks every vertex and instance for the attributes the shader reads, and its error names the first one missing. A later vertex without a color used to attach and draw black.
+- **Reading a frame back.** Rendering the valley offscreen and reading the pixels is a quick way to check a port. `get_image` returns an error when the readback fails, where it returned an empty array, and on a window target it always fails, since a frame on screen can't be read back.
+- **Python windows.** With rendercanvas 2.7, draw callbacks never fired, because FragmentColor registered no context on the canvas. It does now. A minimized window raises `OccludedSurfaceError`, which a render loop can catch to skip the frame.
+
+Every other change in the release is in the [changelog](https://github.com/vista-art/fragmentcolor/blob/main/CHANGELOG.md).
+
+## One valley in five languages
+
+The Rust, Python, Swift and Kotlin tabs hold the same program, with `frame` taking the gestures and keys as records spelled the way each language spells them. Trees and rocks land in the same spots in all five, because their placement comes from a 32-bit integer hash that every language computes bit for bit.
+
+Edits to `sky.wgsl` reach the sky while you walk.
