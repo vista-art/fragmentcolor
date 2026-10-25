@@ -38,6 +38,7 @@ export default defineConfig({
         SiteTitle: "./src/components/SiteTitle.astro",
         Footer: "./src/components/Footer.astro",
         SocialIcons: "./src/components/SocialIcons.astro",
+        Header: "./src/components/Header.astro",
       },
       customCss: ["./src/assets/styles/override.css"],
       // @TODO set up a system for automatic translation

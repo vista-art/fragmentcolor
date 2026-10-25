@@ -1,0 +1,10 @@
+---
+import Default from "@astrojs/starlight/components/Header.astro";
+import MobileMenu from "./MobileMenu.astro";
+
+// Starlight's menu button lives in the sidebar, so a page without one gets its own.
+const { hasSidebar } = Astro.locals.starlightRoute;
+---
+
+<Default><slot /></Default>
+{!hasSidebar && <MobileMenu />}
