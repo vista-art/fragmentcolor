@@ -509,7 +509,9 @@ const installs = [
     outline-offset: 1px;
   }
 
-  fc-playground .fcp-tabs button:focus-visible {
+  /* Rows that clip what overflows them keep the focus ring inside each button. */
+  fc-playground .fcp-tabs button:focus-visible,
+  fc-playground .fcp-strip-item:focus-visible {
     outline-offset: -2px;
   }
 
