@@ -77,6 +77,7 @@ const DAY = 180;
 const TREES = 140;
 const ROCKS = 36;
 const LAMPS = 8;
+const GRASS = 4000;
 const WATER = -1.2;
 
 // Meters per second (Shift runs), eye height in meters, and radians of turn per pixel dragged.
@@ -127,6 +128,20 @@ export async function setup(renderer, target) {
     const stretch = [scale * (1 + random(i, 5)), scale * 0.7, scale];
     add(place(rock, stone, [x, height(x, z) - 0.15 * scale, z], random(i, 6) * TAU, stretch));
     obstacles.push([x, z, scale]);
+  }
+
+  // Of GRASS random spots, grass takes the gentle slopes between the water and the
+  // rocks and leaves bare patches. Its tufts share one mesh as well.
+  const blades = tuft();
+  const grass = Material.pbr().roughness(0.9);
+  for (let i = 0; i < GRASS; i++) {
+    const [x, z] = spot(i + 9000, SIZE * 0.4);
+    const floor = height(x, z);
+    const slope = Math.hypot(height(x + 0.5, z) - floor, height(x, z + 0.5) - floor);
+    const bare = Math.sin(x * 0.4 + 1) + Math.cos(z * 0.33) < -0.6;
+    if (floor < WATER + 0.4 || floor > 5 || slope > 0.25 || bare) continue;
+    const scale = 0.6 + random(i, 10) * 0.8;
+    add(place(blades, grass, [x, floor - 0.02, z], random(i, 11) * TAU, [scale, scale, scale]));
   }
 
   // Lamps ring the clearing where the walk starts. Each one carries a point light.
@@ -299,6 +314,21 @@ function pine() {
   return facets([...trunk, ...crown]);
 }
 
+// A tuft: five blades fanned around one root. Each blade has a face on both
+// sides, because the material draws front faces only.
+function tuft() {
+  const triangles = [];
+  for (let blade = 0; blade < 5; blade++) {
+    const angle = (blade / 5) * TAU;
+    const [cos, sin] = [Math.cos(angle), Math.sin(angle)];
+    const tip = [cos * 0.2, 0.5 + (blade % 2) * 0.15, -sin * 0.2];
+    const [left, right] = [[sin * 0.04, 0, cos * 0.04], [-sin * 0.04, 0, -cos * 0.04]];
+    const color = blade % 2 ? [0.1, 0.27, 0.04, 1] : [0.07, 0.21, 0.03, 1];
+    triangles.push([left, right, tip, color], [right, left, tip, color]);
+  }
+  return facets(triangles);
+}
+
 // A cone, or with \`prism\` set, a prism with the same sides.
 function cone(radius, bottom, top, sides, prism = false) {
   const rim = (angle, y) => [Math.cos(angle) * radius, y, -Math.sin(angle) * radius];
@@ -439,6 +469,7 @@ const DAY: f32 = 180.0;
 const TREES: usize = 140;
 const ROCKS: u32 = 36;
 const LAMPS: u32 = 8;
+const GRASS: u32 = 4000;
 const WATER: f32 = -1.2;
 
 /// Meters per second (Shift runs), eye height in meters, and radians of turn per pixel dragged.
@@ -552,6 +583,23 @@ ${setCalls("rust", "sky", sky, { after: "?;" })}
         let turn = random(index, 6) * TAU;
         scene.add_to("world", &place(&rock, &stone, position, turn, stretch))?;
         obstacles.push([x, z, scale]);
+    }
+
+    // Of \`GRASS\` random spots, grass takes the gentle slopes between the water and the
+    // rocks and leaves bare patches. Its tufts share one mesh as well.
+    let blades = tuft();
+    let grass = Material::pbr().roughness(0.9);
+    for index in 0..GRASS {
+        let [x, z] = spot(index + 9000, SIZE * 0.4);
+        let floor = height(x, z);
+        let slope = (height(x + 0.5, z) - floor).hypot(height(x, z + 0.5) - floor);
+        let bare = (x * 0.4 + 1.0).sin() + (z * 0.33).cos() < -0.6;
+        if floor < WATER + 0.4 || floor > 5.0 || slope > 0.25 || bare {
+            continue;
+        }
+        let scale = 0.6 + random(index, 10) * 0.8;
+        let turn = random(index, 11) * TAU;
+        scene.add_to("world", &place(&blades, &grass, [x, floor - 0.02, z], turn, [scale; 3]))?;
     }
 
     // Lamps ring the clearing where the walk starts. Each one carries a point light.
@@ -801,6 +849,25 @@ fn pine() -> Mesh {
     facets(&trunk.chain(crown).collect::<Vec<_>>())
 }
 
+/// A tuft: five blades fanned around one root. Each blade has a face on both
+/// sides, because the material draws front faces only.
+fn tuft() -> Mesh {
+    let mut triangles = Vec::new();
+    for blade in 0..5 {
+        let (sin, cos) = (blade as f32 / 5.0 * TAU).sin_cos();
+        let tip = [cos * 0.2, 0.5 + (blade % 2) as f32 * 0.15, -sin * 0.2];
+        let (left, right) = ([sin * 0.04, 0.0, cos * 0.04], [-sin * 0.04, 0.0, -cos * 0.04]);
+        let color = if blade % 2 == 1 {
+            [0.1, 0.27, 0.04, 1.0]
+        } else {
+            [0.07, 0.21, 0.03, 1.0]
+        };
+        triangles.push(([left, right, tip], color));
+        triangles.push(([right, left, tip], color));
+    }
+    facets(&triangles)
+}
+
 /// A cone, or with \`prism\` set, a prism with the same sides.
 fn cone(radius: f32, bottom: f32, top: f32, sides: u32, prism: bool) -> Vec<[Point; 3]> {
     let rim = |angle: f32, y: f32| [angle.cos() * radius, y, -angle.sin() * radius];
@@ -944,6 +1011,7 @@ DAY = 180.0
 TREES = 140
 ROCKS = 36
 LAMPS = 8
+GRASS = 4000
 WATER = -1.2
 
 # Meters per second (Shift runs), eye height in meters, and radians of turn per pixel dragged.
@@ -998,6 +1066,21 @@ ${setCalls("python", "sky", sky)}
         position = [x, height(x, z) - 0.15 * scale, z]
         scene.add_to("world", place(rock, stone, position, random(index, 6) * math.tau, stretch))
         obstacles.append([x, z, scale])
+
+    # Of GRASS random spots, grass takes the gentle slopes between the water and the
+    # rocks and leaves bare patches. Its tufts share one mesh as well.
+    blades = tuft()
+    grass = Material.pbr().roughness(0.9)
+    for index in range(GRASS):
+        x, z = spot(index + 9000, SIZE * 0.4)
+        floor = height(x, z)
+        slope = math.hypot(height(x + 0.5, z) - floor, height(x, z + 0.5) - floor)
+        bare = math.sin(x * 0.4 + 1) + math.cos(z * 0.33) < -0.6
+        if floor < WATER + 0.4 or floor > 5 or slope > 0.25 or bare:
+            continue
+        scale = 0.6 + random(index, 10) * 0.8
+        turn = random(index, 11) * math.tau
+        scene.add_to("world", place(blades, grass, [x, floor - 0.02, z], turn, [scale, scale, scale]))
 
     # Lamps ring the clearing where the walk starts. Each one carries a point light.
     post = column([0.02, 0.018, 0.016, 1.0])
@@ -1189,6 +1272,20 @@ def pine():
     return facets(trunk + crown)
 
 
+# A tuft: five blades fanned around one root. Each blade has a face on both
+# sides, because the material draws front faces only.
+def tuft():
+    triangles = []
+    for blade in range(5):
+        angle = blade / 5 * math.tau
+        cos, sin = math.cos(angle), math.sin(angle)
+        tip = [cos * 0.2, 0.5 + blade % 2 * 0.15, -sin * 0.2]
+        left, right = [sin * 0.04, 0.0, cos * 0.04], [-sin * 0.04, 0.0, -cos * 0.04]
+        color = [0.1, 0.27, 0.04, 1.0] if blade % 2 else [0.07, 0.21, 0.03, 1.0]
+        triangles += [[left, right, tip, color], [right, left, tip, color]]
+    return facets(triangles)
+
+
 # A cone, or with prism set, a prism with the same sides.
 def cone(radius, bottom, top, sides, prism=False):
     def rim(angle, y):
@@ -1309,6 +1406,7 @@ let dayLength: Float = 180
 let treeCount = 140
 let rockCount: UInt32 = 36
 let lampCount: UInt32 = 8
+let grassSpots: UInt32 = 4000
 let water: Float = -1.2
 
 /// Meters per second (Shift runs), eye height in meters, and radians of turn per point dragged.
@@ -1409,6 +1507,23 @@ ${setCalls("swift", "sky", sky, { before: "try " })}
         let position = [x, height(x, z) - 0.15 * scale, z]
         try scene.addTo("world", place(rock, stone, position, random(index, 6) * tau, stretch))
         obstacles.append([x, z, scale])
+    }
+
+    // Of \`grassSpots\` random spots, grass takes the gentle slopes between the water and
+    // the rocks and leaves bare patches. Its tufts share one mesh as well.
+    let blades = try tuft()
+    let grass = Material.pbr().roughness(0.9)
+    for index in 0..<grassSpots {
+        let (x, z) = spot(index + 9000, valleySize * 0.4)
+        let floor = height(x, z)
+        let slope = hypot(height(x + 0.5, z) - floor, height(x, z + 0.5) - floor)
+        let bare = sin(x * 0.4 + 1) + cos(z * 0.33) < -0.6
+        if floor < water + 0.4 || floor > 5 || slope > 0.25 || bare {
+            continue
+        }
+        let scale = 0.6 + random(index, 10) * 0.8
+        let turn = random(index, 11) * tau
+        try scene.addTo("world", place(blades, grass, [x, floor - 0.02, z], turn, [scale, scale, scale]))
     }
 
     // Lamps ring the clearing where the walk starts. Each one carries a point light.
@@ -1613,6 +1728,22 @@ func pine() throws -> Mesh {
     return try facets(trunk + crown)
 }
 
+/// A tuft: five blades fanned around one root. Each blade has a face on both
+/// sides, because the material draws front faces only.
+func tuft() throws -> Mesh {
+    var triangles: [([[Float]], [Float])] = []
+    for blade in 0..<5 {
+        let angle = Float(blade) / 5 * tau
+        let tip: [Float] = [cos(angle) * 0.2, 0.5 + Float(blade % 2) * 0.15, -sin(angle) * 0.2]
+        let left: [Float] = [sin(angle) * 0.04, 0, cos(angle) * 0.04]
+        let right: [Float] = [-sin(angle) * 0.04, 0, -cos(angle) * 0.04]
+        let color: [Float] = blade % 2 == 1 ? [0.1, 0.27, 0.04, 1] : [0.07, 0.21, 0.03, 1]
+        triangles.append(([left, right, tip], color))
+        triangles.append(([right, left, tip], color))
+    }
+    return try facets(triangles)
+}
+
 /// A cone, or with \`prism\` set, a prism with the same sides.
 func cone(_ radius: Float, _ bottom: Float, _ top: Float, _ sides: Int, prism: Bool = false) -> [[[Float]]] {
     let rim = { (angle: Float, y: Float) in [cos(angle) * radius, y, -sin(angle) * radius] }
@@ -1746,6 +1877,7 @@ private const val DAY = 180f
 private const val TREES = 140
 private const val ROCKS = 36u
 private const val LAMPS = 8u
+private const val GRASS = 4000u
 private const val WATER = -1.2f
 
 // Meters per second (Shift runs), eye height in meters, and radians of turn per pixel dragged.
@@ -1837,6 +1969,21 @@ ${setCalls("kotlin", "sky", sky)}
         val position = listOf(x, height(x, z) - 0.15f * scale, z)
         scene.addTo("world", place(rock, stone, position, random(index, 6u) * TAU, stretch))
         obstacles.add(listOf(x, z, scale))
+    }
+
+    // Of GRASS random spots, grass takes the gentle slopes between the water and the
+    // rocks and leaves bare patches. Its tufts share one mesh as well.
+    val blades = tuft()
+    val grass = Material.pbr().roughness(0.9f)
+    for (index in 0u until GRASS) {
+        val (x, z) = spot(index + 9000u, SIZE * 0.4f)
+        val floor = height(x, z)
+        val slope = hypot(height(x + 0.5f, z) - floor, height(x, z + 0.5f) - floor)
+        val bare = sin(x * 0.4f + 1f) + cos(z * 0.33f) < -0.6f
+        if (floor < WATER + 0.4f || floor > 5f || slope > 0.25f || bare) continue
+        val scale = 0.6f + random(index, 10u) * 0.8f
+        val turn = random(index, 11u) * TAU
+        scene.addTo("world", place(blades, grass, listOf(x, floor - 0.02f, z), turn, listOf(scale, scale, scale)))
     }
 
     // Lamps ring the clearing where the walk starts. Each one carries a point light.
@@ -2031,6 +2178,22 @@ private fun pine(): Mesh {
     val trunk = cone(0.18f, 0f, 1.3f, 5, prism = true).map { it to listOf(0.12f, 0.06f, 0.03f, 1f) }
     val crown = (cone(1.2f, 1f, 3.2f, 7) + cone(0.85f, 2.2f, 4.3f, 7)).map { it to listOf(0.02f, 0.09f, 0.035f, 1f) }
     return facets(trunk + crown)
+}
+
+// A tuft: five blades fanned around one root. Each blade has a face on both
+// sides, because the material draws front faces only.
+private fun tuft(): Mesh {
+    val triangles = mutableListOf<Triangle>()
+    for (blade in 0 until 5) {
+        val angle = blade / 5f * TAU
+        val tip = listOf(cos(angle) * 0.2f, 0.5f + (blade % 2) * 0.15f, -sin(angle) * 0.2f)
+        val left = listOf(sin(angle) * 0.04f, 0f, cos(angle) * 0.04f)
+        val right = listOf(-sin(angle) * 0.04f, 0f, -cos(angle) * 0.04f)
+        val color = if (blade % 2 == 1) listOf(0.1f, 0.27f, 0.04f, 1f) else listOf(0.07f, 0.21f, 0.03f, 1f)
+        triangles.add(listOf(left, right, tip) to color)
+        triangles.add(listOf(right, left, tip) to color)
+    }
+    return facets(triangles)
 }
 
 // A cone, or with prism set, a prism with the same sides.
