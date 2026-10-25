@@ -1211,17 +1211,17 @@ const installs = [
       order: -1;
     }
 
-    /* The demo row takes the toolbar's full width, and the status goes under it. */
+    /* A demo row takes the toolbar's full width, and the status goes under it. */
     .fcp-toolbar {
       flex-wrap: wrap;
       row-gap: 6px;
     }
 
-    .fcp-menu {
+    .fcp-menu:has(.fcp-strip) {
       flex-basis: 100%;
     }
 
-    .fcp-status {
+    .fcp-menu:has(.fcp-strip) + .fcp-status {
       margin-left: 0;
     }
   }
