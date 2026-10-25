@@ -6,6 +6,8 @@
 //     page: "/welcome/playground/#cells",  // path on the docs server
 //     element: "fc-playground",            // what the frames show
 //     width: 928,                          // the element's width in pixels
+//     viewportHeight: 760,                 // the playground sizes itself to the window
+//     height: 600,                         // crops the frames to this height
 //     out: "playground.webp",              // next to the script unless absolute
 //     async play(r) {
 //       await r.click(".fcp-menu-button");
@@ -39,8 +41,12 @@ const CURSOR = `
   addEventListener("mouseup", () => (cursor.style.scale = "1"), true);
 `;
 
-// Dev-only overlays that shouldn't appear in a recording.
-const HIDDEN = "astro-dev-toolbar, .dev-editor-trigger { display: none !important; }";
+// The site header and dev-only overlays stay out of a recording, and the page
+// holds still while the editor scrolls.
+const HIDDEN = [
+  "astro-dev-toolbar, .dev-editor-trigger, header.header { display: none !important; }",
+  "html { overflow: hidden !important; }",
+].join("\n");
 
 /**
  * Records the take a script describes.
@@ -68,14 +74,18 @@ export async function record(browser, origin, scriptPath, options) {
     await page.evaluate(CURSOR);
     const element = page.locator(take.element ?? "fc-playground").first();
     await element.waitFor();
+    await element.evaluate((node) => node.scrollIntoView({ block: "start" }));
     if (take.ready) await take.ready(page);
     else await sleep(2500);
 
-    const recorder = new Recorder(page);
-    const frames = [];
-    let running = true;
     // One box for the whole take, so every frame has the same size even when panels open.
     const box = await element.boundingBox();
+    if (take.height) box.height = Math.min(box.height, take.height);
+    // The cursor starts over the code, away from a canvas that follows the pointer.
+    const recorder = new Recorder(page, [box.x + box.width * 0.78, box.y + box.height * 0.7]);
+    await page.mouse.move(...recorder.mouse);
+    const frames = [];
+    let running = true;
     const capture = (async () => {
       while (running) {
         const started = Date.now();
@@ -109,9 +119,9 @@ async function writeAnimation(sharp, frames, out, { fps, quality }) {
 
 // The actions a recording script can take, each moving the visible cursor.
 class Recorder {
-  constructor(page) {
+  constructor(page, start) {
     this.page = page;
-    this.mouse = [0, 0];
+    this.mouse = start;
   }
 
   /** Waits this many seconds. */
@@ -120,7 +130,7 @@ class Recorder {
   }
 
   /** Glides the cursor to a selector, a `{ text }` in the editor, or an `[x, y]` point. */
-  async move(target, { duration = 0.6 } = {}) {
+  async move(target, { duration = 0.5 } = {}) {
     const [x, y] = await this.locate(target);
     const [fromX, fromY] = this.mouse;
     const steps = Math.max(2, Math.round(duration * 30));
@@ -139,12 +149,36 @@ class Recorder {
     await this.page.mouse.down();
     await sleep(90);
     await this.page.mouse.up();
-    await sleep(250);
+    await sleep(200);
   }
 
   /** Clicks a code tab by its label, such as "shader.wgsl" or "Rust". */
   tab(label) {
     return this.click(`fc-playground [role=tab]:text-is("${label}"), fc-playground button:text-is("${label}")`);
+  }
+
+  /** Scrolls the editor with the wheel until the first line holding `text` sits near the middle. */
+  async reveal(text, { duration = 0.8 } = {}) {
+    const view = await this.page.evaluate((text) => {
+      const line = [...document.querySelectorAll("fc-playground .cm-line")].find((l) => l.textContent.includes(text));
+      if (!line) return null;
+      const element = line.closest(".cm-scroller");
+      const scroller = element.getBoundingClientRect();
+      const box = line.getBoundingClientRect();
+      const room = element.scrollHeight - element.clientHeight - element.scrollTop;
+      return {
+        delta: Math.max(-element.scrollTop, Math.min(room, box.top - (scroller.top + scroller.height * 0.45))),
+        point: [scroller.left + scroller.width * 0.55, scroller.top + scroller.height * 0.5],
+      };
+    }, text);
+    if (!view) throw new Error(`the editor shows no "${text}"`);
+    await this.move(view.point, { duration: 0.4 });
+    const steps = 10;
+    for (let i = 0; i < steps; i++) {
+      await this.page.mouse.wheel(0, view.delta / steps);
+      await sleep((duration * 1000) / steps);
+    }
+    await sleep(200);
   }
 
   /** Puts the editor caret at the start or end of the first visible `text`. */

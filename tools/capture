@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fc: Capture tutorial figures and playground thumbnails as WebP (Playwright + sharp)
+# fc: Capture tutorial figures, playground thumbnails and README recordings as WebP
 set -euo pipefail
 
 # Renders a docs page's canvas in headless Chromium with WebGPU and writes a WebP.

@@ -53,6 +53,9 @@ project's running dev server, or starts one and stops it after.
   its frontmatter sets one. `size` and `pointer` are in figure units.
 - `./fc capture demo <step file> --out <file.webp>` captures one step with `--size`, `--time` and `--pointer`.
 - `./fc capture thumbs [ids...]` redoes the playground thumbnails, 384 by 240.
+- `./fc capture record <script>` plays a scripted interaction on the playground and writes an animated WebP.
+  The README's recordings keep their scripts beside them, as `docs/media/*.record.mjs`; `tools/js/record.mjs`
+  lists the steps a script can take: click, type, select text in the editor, scroll it, drag a slider, switch tabs.
 
 Captures are twice the figure size in pixels (`--scale 2`), so the annotations line up at any width.
 The `<Demo>` component reads `data-time` and `data-pointer` for this, and the tool sets them.
