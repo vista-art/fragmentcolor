@@ -69,6 +69,9 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
+// The renderer keeps one storage buffer per name, and Life's swarm buffer has
+// another size. update.wgsl calls its buffer creatures, so a visit to Life
+// leaves the population alone.
 const UPDATE = /* wgsl */ `// Lives one step of every creature: it moves along the density slopes its genes
 // follow, eats the group it hunts, is bitten by the group that hunts it, and
 // splits in two once it has enough energy. Each child mixes its genes with a
@@ -113,7 +116,7 @@ const ALIVE: u32 = 1u;
 const NEWBORN: u32 = 2u;
 
 @group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var<storage, read_write> swarm: array<Creature, COUNT>;
+@group(0) @binding(1) var<storage, read_write> creatures: array<Creature, COUNT>;
 @group(0) @binding(2) var<storage, read_write> slots: array<atomic<u32>, COUNT>;
 @group(0) @binding(3) var<storage, read> field: array<Field, CELLS>;
 @group(0) @binding(4) var<storage, read_write> counts: array<atomic<u32>, CELLS * GROUPS>;
@@ -128,7 +131,7 @@ const FRICTION: f32 = 4.0; // velocity decay per second
 const TOP_SPEED: f32 = 40.0; // cells per second
 const REACH: f32 = 16.0; // pointer reach in cells
 const PULL: f32 = 200.0; // how hard a moving pointer draws creatures in
-const START: f32 = 0.5; // share of the slots alive on the first frame
+const START: f32 = 0.5; // share of the slots that start with a creature
 
 const GRAZE: f32 = 0.8; // energy per second a creature finds where grazing is best
 const FORAGE: f32 = 4.0; // crowd density, in multiples of the mean, that leaves nothing to graze
@@ -245,22 +248,29 @@ fn cs_main(
     return;
   }
 
-  // The first frame fills part of the slots with creatures of all four groups.
-  let state = atomicLoad(&slots[i]);
-  if (state == EMPTY) {
-    if (params.frame == 0u && random(i, 0xfffffff0u).x < START) {
-      swarm[i] = spawn(i);
-      atomicStore(&slots[i], ALIVE);
-    }
-    return;
-  }
   // A parent may still be writing a newborn, so it moves from the next frame on.
+  let state = atomicLoad(&slots[i]);
   if (state == NEWBORN) {
     atomicStore(&slots[i], ALIVE);
     return;
   }
+  // A stored creature always has energy, so a record with none was never written.
+  // Part of those slots start with a creature and the rest start empty. Births
+  // claim only empty slots, so emptying one here never undoes a birth.
+  if (creatures[i].energy == 0.0) {
+    if (random(i, 0xfffffff0u).x < START) {
+      creatures[i] = spawn(i);
+      atomicStore(&slots[i], ALIVE);
+    } else if (state != EMPTY) {
+      atomicStore(&slots[i], EMPTY);
+    }
+    return;
+  }
+  if (state == EMPTY) {
+    return;
+  }
 
-  var c = swarm[i];
+  var c = creatures[i];
   let size = vec2<f32>(f32(params.columns), f32(ROWS));
   let pos = c.pos * size;
   // Sampling a little off the creature keeps crowds from locking onto the grid.
@@ -305,23 +315,23 @@ fn cs_main(
   }
 
   // With enough energy it splits, if its crowd has room and one of a few random slots is empty.
-  if (c.energy >= SPLIT && here.crowd.z < PACKED && params.frame > 0u) {
+  if (c.energy >= SPLIT && here.crowd.z < PACKED) {
     let seed = pcg2d(vec2<u32>(i, params.frame));
     // A random creature of its own group mates with it. With none, it mates with itself.
-    var partner = swarm[seed.x % COUNT];
+    var partner = creatures[seed.x % COUNT];
     if (partner.group != c.group || atomicLoad(&slots[seed.x % COUNT]) != ALIVE) {
       partner = c;
     }
     for (var t = 0u; t < TRIES; t++) {
       let j = pcg2d(vec2<u32>(seed.y, t)).x % COUNT;
       if (atomicCompareExchangeWeak(&slots[j], EMPTY, NEWBORN).exchanged) {
-        swarm[j] = child(c, partner, vec2<u32>(seed.y, t));
+        creatures[j] = child(c, partner, vec2<u32>(seed.y, t));
         c.energy *= LITTER;
         break;
       }
     }
   }
-  swarm[i] = c;
+  creatures[i] = c;
 
   // Count into one of the four nearest cells, picked with bilinear odds, so crowds stay round.
   let home = floor(c.pos * size - 0.5 + random(params.frame, i));
@@ -344,7 +354,7 @@ const VALUES = {
   "params.mode": 0,
 };
 
-// Slots in the swarm buffer. Creatures fill part of them and leave the rest for children.
+// Slots in the creatures buffer. Creatures fill part of them and leave the rest for children.
 const COUNT = 1 << 18;
 
 export default {
