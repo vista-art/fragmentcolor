@@ -13,6 +13,8 @@ const GAP = 8;
 const MIN_HEIGHT = 240;
 // The width of the fade at each end of the demo row, which a chip in focus stays clear of.
 const FADE = 48;
+// Wheel events closer together than this, in milliseconds, belong to one gesture.
+const LATCH = 300;
 
 let pickers = 0;
 
@@ -175,11 +177,25 @@ export function wireMenu(root, demos, onPick) {
     item.focus({ preventScroll: true });
     reveal(item);
   });
+  // A wheel that scrolls the page keeps scrolling it while the row passes under the pointer.
+  let scrolled = -Infinity;
+  on(
+    window,
+    "wheel",
+    (e) => {
+      if (!strip.contains(e.target)) scrolled = e.timeStamp;
+    },
+    { passive: true },
+  );
   // A wheel turned over the row scrolls it sideways until it reaches an end.
   on(
     strip,
     "wheel",
     (e) => {
+      if (e.timeStamp - scrolled < LATCH) {
+        scrolled = e.timeStamp;
+        return;
+      }
       if (e.ctrlKey || e.metaKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
       const max = strip.scrollWidth - strip.clientWidth;
       if ((e.deltaY < 0 && strip.scrollLeft <= 0) || (e.deltaY > 0 && strip.scrollLeft >= max - 1)) return;
