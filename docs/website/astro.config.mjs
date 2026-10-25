@@ -18,9 +18,10 @@ import headingIds from "./integrations/heading-ids";
 // https://astro.build/config
 export default defineConfig({
   site: "https://fragmentcolor.org",
-  // The demos live on the landing page; the old page keeps its links working.
+  // Old addresses of moved pages keep their links working.
   redirects: {
     "/demos": "/",
+    "/blog/one-program-five-languages": "/blog/playground-on-the-home-page",
   },
   integrations: [
     locks(),
