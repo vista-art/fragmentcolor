@@ -4,6 +4,8 @@ export default {
   id: "postfx",
   title: "Post Effects",
   summary: "Curvature, chromatic offsets, posterize, scanlines, vignette and grain over a test card. Left of the pointer is the raw image.",
+  category: "Shaders",
+  thumbnail: "/playground/thumbs/postfx.webp",
   kind: "fragment",
   library: [
     "postfx/crt_curvature",

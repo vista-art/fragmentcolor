@@ -21,6 +21,10 @@ const list = demos ? demos.flatMap((id) => DEMOS.filter((d) => d.id === id)) : D
 const first = list.find((d) => d.id === demo) ?? list[0];
 if (!first) throw new Error(`<Playground>: no demo matches ${JSON.stringify(demos)}.`);
 
+// The picker's category chips, in the order each category first appears, with their demo counts.
+const categories = new Map<string, number>();
+for (const d of list) categories.set(d.category, (categories.get(d.category) ?? 0) + 1);
+
 // The install line follows the language tab the reader has open.
 const RELEASES = "https://github.com/vista-art/fragmentcolor/releases/latest";
 const installs = [
@@ -86,26 +90,78 @@ const installs = [
   }
   <div class="fcp-toolbar">
     <div class="fcp-menu">
-      <div
-        class="fcp-menu-button"
-        role="combobox"
-        tabindex="0"
-        aria-label="Demo"
-        aria-haspopup="listbox"
-        aria-expanded="false"
-      >
-        <span class="fcp-menu-label" aria-hidden="true">Demo</span>
-        <span class="fcp-menu-value">{first.title}</span>
-      </div>
-      <div class="fcp-menu-list" role="listbox" aria-label="Demos" hidden>
-        {
-          list.map((d) => (
-            <div role="option" data-demo={d.id} aria-selected={d.id === first.id ? "true" : "false"}>
-              {d.title}
+      {
+        list.length > 1 ? (
+          <button type="button" class="fcp-menu-button" aria-haspopup="dialog" aria-expanded="false">
+            <span class="fcp-menu-label">Demo</span>
+            <span class="fcp-menu-value">{first.title}</span>
+          </button>
+        ) : (
+          <div class="fcp-menu-button fcp-menu-single">
+            <span class="fcp-menu-label">Demo</span>
+            <span class="fcp-menu-value">{first.title}</span>
+          </div>
+        )
+      }
+      {
+        list.length > 1 && (
+          <div class="fcp-picker fcp-demo-picker" role="dialog" aria-label="Demos" hidden>
+            <div class="fcp-picker-head">
+              <input
+                class="fcp-picker-search"
+                type="search"
+                placeholder="Search the demos"
+                aria-label="Search the demos"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button type="button" class="fcp-picker-close" aria-label="Close the demos">
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
+              </button>
             </div>
-          ))
-        }
-      </div>
+            {categories.size > 1 && (
+              <div class="fcp-picker-chips" role="group" aria-label="Filter by category">
+                <button type="button" class="fcp-picker-chip" data-category="" aria-pressed="true" title={`All ${list.length} demos`}>
+                  All
+                </button>
+                {[...categories].map(([category, count]) => (
+                  <button
+                    type="button"
+                    class="fcp-picker-chip"
+                    data-category={category}
+                    aria-pressed="false"
+                    title={`${category} (${count})`}
+                  >
+                    {category}
+                  </button>
+                ))}
+              </div>
+            )}
+            <p class="fcp-picker-status" aria-live="polite">{list.length} demos</p>
+            <div class="fcp-picker-grid" role="group" aria-label="Demos">
+              {list.map((d) => (
+                <button
+                  type="button"
+                  class="fcp-picker-card"
+                  data-demo={d.id}
+                  data-category={d.category}
+                  data-search={`${d.title} ${d.category} ${d.summary}`.toLowerCase()}
+                  aria-current={d.id === first.id ? "true" : undefined}
+                  title={d.summary}
+                >
+                  <span class="fcp-picker-thumb">
+                    <img src={d.thumbnail} alt="" width="384" height="240" loading="lazy" decoding="async" />
+                  </span>
+                  <span class="fcp-picker-title">
+                    <span class="fcp-picker-prefix" aria-hidden="true">{d.category}</span>
+                    {d.title}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )
+      }
     </div>
     <span class="fcp-status">Loading</span>
   </div>
@@ -383,7 +439,7 @@ const installs = [
     }
   }
 
-  /* The library picker takes the playground's palette in each site theme. */
+  /* The library and demo pickers take the playground's palette in each site theme. */
   fc-playground .fcp-picker {
     --fcp-picker-bg: #181b25;
     --fcp-picker-field: #0d0f14;
@@ -433,7 +489,7 @@ const installs = [
   }
 
   /* The minimum width keeps the chevron in place as the title changes.
-     The list opens over the panes and scrolls once it runs long. */
+     The demo picker opens over the panes. */
   .fcp-menu {
     position: relative;
     flex: 0 1 auto;
@@ -444,25 +500,38 @@ const installs = [
     display: flex;
     align-items: baseline;
     gap: 8px;
+    box-sizing: border-box;
+    width: 100%;
     min-width: 13rem;
+    margin: 0;
     padding: 5px 10px 5px 12px;
     border: 1px solid var(--fcp-line);
     border-radius: 8px;
     background: var(--fcp-panel);
+    text-align: left;
     white-space: nowrap;
     cursor: pointer;
     -webkit-user-select: none;
     user-select: none;
   }
 
-  .fcp-menu-button:hover,
+  button.fcp-menu-button:hover,
   .fcp-menu-button[aria-expanded="true"] {
     border-color: rgba(255, 255, 255, 0.2);
   }
 
-  :root[data-theme="light"] .fcp-menu-button:hover,
+  :root[data-theme="light"] button.fcp-menu-button:hover,
   :root[data-theme="light"] .fcp-menu-button[aria-expanded="true"] {
     border-color: hsla(224, 10%, 10%, 0.24);
+  }
+
+  /* A playground with one demo names it without a picker. */
+  .fcp-menu-single {
+    cursor: default;
+  }
+
+  .fcp-menu-single::after {
+    display: none;
   }
 
   .fcp-menu-button:focus-visible {
@@ -501,61 +570,6 @@ const installs = [
     overflow: hidden;
     text-overflow: ellipsis;
     color: var(--fcp-ink);
-  }
-
-  .fcp-menu-list {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    z-index: 30;
-    box-sizing: border-box;
-    min-width: 100%;
-    max-width: calc(100vw - 32px);
-    max-height: min(26rem, 60vh);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    padding: 4px;
-    border: 1px solid var(--fcp-line);
-    border-radius: 8px;
-    background: #181b25;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
-    color-scheme: dark;
-  }
-
-  :root[data-theme="light"] .fcp-menu-list {
-    background: var(--sl-color-black);
-    box-shadow: var(--sl-shadow-lg);
-    color-scheme: light;
-  }
-
-  .fcp-menu-list[hidden] {
-    display: none;
-  }
-
-  /* The current demo carries a check; the option under the pointer or the keys is lit. */
-  .fcp-menu-list [role="option"] {
-    padding: 6px 12px 6px 30px;
-    border-radius: 5px;
-    color: var(--fcp-dim);
-    white-space: nowrap;
-    cursor: pointer;
-  }
-
-  .fcp-menu-list [role="option"].active {
-    background-color: var(--fcp-accent-bg);
-    color: var(--fcp-ink);
-  }
-
-  .fcp-menu-list [role="option"][aria-selected="true"] {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='%23a5b4fc' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: left 10px center;
-    background-size: 12px;
-    color: var(--fcp-ink);
-  }
-
-  :root[data-theme="light"] .fcp-menu-list [role="option"][aria-selected="true"] {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='%233d50f5' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
 
   .fcp-status {
