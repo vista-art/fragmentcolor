@@ -19,7 +19,7 @@ which runs on every refresh. Only those two, and the shader, appear on the
 page.
 
 `host.rs` and `host.py` open a window and call them. Run a step with
-`cargo run -p fce --example tutorial_01_hello_triangle_three_lines` or
+`./fc example tutorial_01_hello_triangle_three_lines` or
 `python docs/tutorials/01-hello-triangle/host.py 01-three-lines`. Set
 `FC_TUTORIAL_FRAMES=n` to stop after n frames. In Rust that renders them
 into a 1280 by 720 texture with no window, prints the average frame time,

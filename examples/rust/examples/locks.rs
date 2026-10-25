@@ -4,19 +4,19 @@
 //! Astro integration at `docs/website/integrations/locks.ts`) and
 //! surfaces it for review:
 //!
-//!   cargo run --release -p fce --example locks -- status
+//!   ./fc example --release locks status
 //!     One line per (post, lock_id), with current version + last
 //!     updated time + drift indicator. Quick scan after a sub-agent
 //!     run: anything bumped to a new version is something they
 //!     touched inside a lock.
 //!
-//!   cargo run --release -p fce --example locks -- history <post> [<lock_id>]
+//!   ./fc example --release locks history <post> [<lock_id>]
 //!     Full version trail for one or every lock in a post. <post> is
 //!     the path under the repo root, or just the bare filename
 //!     (matched by suffix). Shows version, hash, save time, and the
 //!     description/comments that were live at that version.
 //!
-//!   cargo run --release -p fce --example locks -- diff <post> <lock_id> [<vA>] [<vB>]
+//!   ./fc example --release locks diff <post> <lock_id> [<vA>] [<vB>]
 //!     Unified diff between two versions. With no version args, diffs
 //!     the most recent two. With one, diffs that one against the
 //!     current version.

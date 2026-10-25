@@ -7,7 +7,7 @@
 //! RGB for vec2/vec3 outputs.
 //!
 //! Run with:
-//!   cargo run --release -p fce --example gallery_hash
+//!   ./fc example --release gallery_hash
 
 use fragmentcolor::{Renderer, Shader, Target};
 

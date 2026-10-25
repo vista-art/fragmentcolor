@@ -12,7 +12,7 @@
 //! definition (here, a single sphere of radius 0.7 at the origin).
 //!
 //! Run with:
-//!   cargo run --release -p fce --example gallery_raymarch
+//!   ./fc example --release gallery_raymarch
 
 use fragmentcolor::{Renderer, Shader, Target};
 

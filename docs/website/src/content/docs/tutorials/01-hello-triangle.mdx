@@ -87,7 +87,7 @@ Three sine waves at different speeds push red, green and blue up and down. Press
 <Demo file="01-hello-triangle/01-three-lines/example.rs" />
 
 <Aside title="Run the steps yourself">
-Every step is in [`docs/tutorials/01-hello-triangle`](https://github.com/vista-art/fragmentcolor/tree/main/docs/tutorials/01-hello-triangle) as a `setup` and a `frame` function, in all five languages. From a checkout of the repository, `cargo run -p fce --example tutorial_01_hello_triangle_three_lines` opens step 1 in a window. Python does the same with `python docs/tutorials/01-hello-triangle/host.py 01-three-lines`, after `pip install fragmentcolor rendercanvas glfw`. Swift and Kotlin apps call `setup` once and `frame` from their render loop, such as an `MTKView` delegate or a `Choreographer` callback. In JavaScript, a loop like this one plays a step on a `<canvas>`:
+Every step is in [`docs/tutorials/01-hello-triangle`](https://github.com/vista-art/fragmentcolor/tree/main/docs/tutorials/01-hello-triangle) as a `setup` and a `frame` function, in all five languages. From a checkout of the repository, `./fc example tutorial_01_hello_triangle_three_lines` opens step 1 in a window. Python does the same with `python docs/tutorials/01-hello-triangle/host.py 01-three-lines`, after `pip install fragmentcolor rendercanvas glfw`. Swift and Kotlin apps call `setup` once and `frame` from their render loop, such as an `MTKView` delegate or a `Choreographer` callback. In JavaScript, a loop like this one plays a step on a `<canvas>`:
 
 ```js
 import init, { Renderer } from "fragmentcolor";
@@ -273,7 +273,7 @@ console.log(`${Math.round(1000 / gap)} frames a second, ${gap.toFixed(1)} ms apa
 
 With nothing playing, it prints your refresh rate. Run it again while the demo above plays to see how often the page manages a new frame. Once the work stops fitting in the budget, the gap widens to two refreshes or more.
 
-A timestamp around `renderer.render` measures only the CPU side. `render` records the work and submits it to the GPU, which finishes later. To time the GPU from Rust, render a batch of frames, wait for the last one by reading its pixels back, and divide the elapsed time by how many there were. `host.rs` does that whenever you set `FC_TUTORIAL_FRAMES`: `FC_TUTORIAL_FRAMES=120 cargo run -p fce --example tutorial_01_hello_triangle_instance_index` renders 120 of them offscreen at 1280 × 720 and prints the average. A browser's performance panel shows the same work on its GPU track.
+A timestamp around `renderer.render` measures only the CPU side. `render` records the work and submits it to the GPU, which finishes later. To time the GPU from Rust, render a batch of frames, wait for the last one by reading its pixels back, and divide the elapsed time by how many there were. `host.rs` does that whenever you set `FC_TUTORIAL_FRAMES`: `FC_TUTORIAL_FRAMES=120 ./fc example tutorial_01_hello_triangle_instance_index` renders 120 of them offscreen at 1280 × 720 and prints the average. A browser's performance panel shows the same work on its GPU track.
 
 Each GPU's **crossover point** is the count where the frame time grows past your budget. To find yours, change `COPIES` at the top of the step's file and measure again: with the command above in Rust, or with the console snippet while your copy of `example.js` plays.
 

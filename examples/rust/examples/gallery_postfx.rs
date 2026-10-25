@@ -6,7 +6,7 @@
 //! applies the postfx so the effect is visible in isolation.
 //!
 //! Run with:
-//!   cargo run --release -p fce --example gallery_postfx
+//!   ./fc example --release gallery_postfx
 
 use fragmentcolor::{Renderer, Shader, Target};
 

@@ -87,7 +87,7 @@ and `frame` runs on every redraw, with `size` holding the canvas size in pixels 
 Something has to call them. In the Rust programs, a small `winit` loop calls `frame` whenever the window needs a new image, and on this page each demo canvas does the same. The playground's programs use this layout too. From step to step, the shader changes and the list of uniforms grows, while the loop stays put. Each step's complete Rust program and its JavaScript port are in [`docs/tutorials/drawing-with-distance`](https://github.com/vista-art/fragmentcolor/tree/main/docs/tutorials/drawing-with-distance), and this command runs the first one:
 
 ```bash
-cargo run -p fce --example tutorial_drawing_with_distance_coordinates
+./fc example tutorial_drawing_with_distance_coordinates
 ```
 
 One line of `fs_main` already measures a distance. `max(abs(p.x), abs(p.y))` is the distance from the middle along whichever axis reaches farther, which makes it `0.5` all around the edge of the unit square. Comparing it with `0.5` decides inside or outside. That line holds the whole idea of this tutorial.

@@ -56,7 +56,7 @@ Two years later, computer plots by Benoit Mandelbrot made it famous, and Adrien 
 
 ## Running the code
 
-Each step is a complete program in five languages, in [`docs/tutorials/infinite-zoom`](https://github.com/vista-art/fragmentcolor/tree/main/docs/tutorials/infinite-zoom). The Rust versions are examples of the repository's `fce` crate, so `cargo run --release -p fce --example tutorial_infinite_zoom_one_image` runs the first one. In a project of your own they need `fragmentcolor` with its `winit` feature, plus `winit` 0.30, `parking_lot`, `env_logger`, `bytemuck`, `image`, `num-bigint` and `num-traits`.
+Each step is a complete program in five languages, in [`docs/tutorials/infinite-zoom`](https://github.com/vista-art/fragmentcolor/tree/main/docs/tutorials/infinite-zoom). The Rust versions are examples of the repository's `fce` crate, so `./fc example --release tutorial_infinite_zoom_one_image` runs the first one. In a project of your own they need `fragmentcolor` with its `winit` feature, plus `winit` 0.30, `parking_lot`, `env_logger`, `bytemuck`, `image`, `num-bigint` and `num-traits`.
 
 From step 2 on, the other four languages split each program into two functions: `setup`, called once, and `frame`, called on every display refresh with the time, the canvas size and the pointer position in pixels. The canvases on this page call the JavaScript ones, and the [playground](/welcome/playground/)'s `index.js` tab shows a page that does the same. For Python, `docs/tutorials/infinite-zoom/host.py` opens a window (`pip install fragmentcolor rendercanvas glfw`). Swift and Kotlin apps call the two functions from their render loop; steps 3 and 4 in Swift also need the [BigInt](https://github.com/attaswift/BigInt) package.
 

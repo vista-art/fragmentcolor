@@ -22,7 +22,7 @@ Somewhere past a million, triangles stop paying for themselves. Shrinking one sa
 **Here, eight million particles move every frame, and none of them is a triangle.**
 
 <Aside title="Run it yourself">
-The program is in [`docs/tutorials/eight-million-particles/01-splat`](https://github.com/vista-art/fragmentcolor/tree/main/docs/tutorials/eight-million-particles/01-splat) as a `setup` and a `frame` function, in all five languages. From a checkout of the repository, `cargo run -p fce --example tutorial_eight_million_particles_splat` opens it in a window. Python does the same with `python docs/tutorials/eight-million-particles/host.py 01-splat`, after `pip install fragmentcolor rendercanvas glfw`. Swift and Kotlin apps call `setup` once and `frame` from their render loop. In JavaScript, the loop under [Make it move](/tutorials/hello-triangle/#make-it-move) in the first tutorial plays it on a `<canvas>`.
+The program is in [`docs/tutorials/eight-million-particles/01-splat`](https://github.com/vista-art/fragmentcolor/tree/main/docs/tutorials/eight-million-particles/01-splat) as a `setup` and a `frame` function, in all five languages. From a checkout of the repository, `./fc example tutorial_eight_million_particles_splat` opens it in a window. Python does the same with `python docs/tutorials/eight-million-particles/host.py 01-splat`, after `pip install fragmentcolor rendercanvas glfw`. Swift and Kotlin apps call `setup` once and `frame` from their render loop. In JavaScript, the loop under [Make it move](/tutorials/hello-triangle/#make-it-move) in the first tutorial plays it on a `<canvas>`.
 </Aside>
 
 ## Compute shaders and storage buffers
@@ -77,7 +77,7 @@ The demos in the earlier tutorials run on WebGPU, or on WebGL2 where a browser l
 
 A particle here is one run of the compute shader and one `atomicAdd`, with no triangle for the GPU to prepare. Item for item, it costs about a sixteenth as much as an instanced triangle. This program moves eight times as many particles as step 7 of the first tutorial draws triangles, in about half the time.
 
-Your own numbers depend on your GPU. The [frame budget](/tutorials/hello-triangle/#your-frame-budget) section of the first tutorial shows how to measure them, and `FC_TUTORIAL_FRAMES=120 cargo run -p fce --example tutorial_eight_million_particles_splat` prints this program's average frame time.
+Your own numbers depend on your GPU. The [frame budget](/tutorials/hello-triangle/#your-frame-budget) section of the first tutorial shows how to measure them, and `FC_TUTORIAL_FRAMES=120 ./fc example tutorial_eight_million_particles_splat` prints this program's average frame time.
 
 ## What just happened
 

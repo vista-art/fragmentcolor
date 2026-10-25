@@ -7,7 +7,7 @@
 //! of applying the helper.
 //!
 //! Run with:
-//!   cargo run --release -p fce --example gallery_camera
+//!   ./fc example --release gallery_camera
 
 use fragmentcolor::{Renderer, Shader, Target};
 

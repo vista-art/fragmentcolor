@@ -107,7 +107,7 @@ cargo build
 `./fc example` lists the examples in `examples/rust` and runs the one you pick. To run one directly:
 
 ```bash
-cargo run -p fce --example triangle
+./fc example triangle
 ```
 
 ### Web (WASM)

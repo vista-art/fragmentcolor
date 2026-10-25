@@ -6,7 +6,7 @@
 //! the resulting mask between a muted background and a single accent.
 //!
 //! Run with:
-//!   cargo run --release -p fce --example gallery_pattern
+//!   ./fc example --release gallery_pattern
 
 use fragmentcolor::{Renderer, Shader, Target};
 

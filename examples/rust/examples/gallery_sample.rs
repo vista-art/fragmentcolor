@@ -12,7 +12,7 @@
 //!     projected to 2D).
 //!
 //! Run with:
-//!   cargo run --release -p fce --example gallery_sample
+//!   ./fc example --release gallery_sample
 //!
 //! Skipped silently on systems without a wgpu-compatible adapter; this is
 //! a visual smoke test, not a CI gate.
