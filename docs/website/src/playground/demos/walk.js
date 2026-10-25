@@ -77,8 +77,13 @@ const DAY = 180;
 const TREES = 140;
 const ROCKS = 36;
 const LAMPS = 8;
-const GRASS = 4000;
+const GRASS = 8000;
 const WATER = -1.2;
+
+// Blade colors from the soil to the tip, in three steps, for three kinds of tuft.
+const LUSH = [[0.04, 0.12, 0.02, 1], [0.07, 0.2, 0.03, 1], [0.13, 0.29, 0.05, 1]];
+const DRY = [[0.05, 0.12, 0.02, 1], [0.13, 0.21, 0.04, 1], [0.26, 0.3, 0.09, 1]];
+const SHORT = [[0.035, 0.1, 0.02, 1], [0.055, 0.16, 0.025, 1], [0.09, 0.23, 0.04, 1]];
 
 // Meters per second (Shift runs), eye height in meters, and radians of turn per pixel dragged.
 const SPEED = 3.5;
@@ -129,18 +134,21 @@ export async function setup(renderer, target) {
     obstacles.push([x, z, scale]);
   }
 
-  // Of GRASS random spots, grass takes the gentle slopes between the water and the
-  // rocks and leaves bare patches. Its tufts share one mesh as well.
-  const blades = tuft();
-  const grass = Material.pbr().roughness(0.9);
+  // Grass grows in meadows on the gentle slopes between the water and the rocks,
+  // thicker where two slow waves meet. Its three kinds of tuft share one material.
+  const kinds = [tuft(9, 0.55, LUSH), tuft(6, 0.85, DRY), tuft(12, 0.3, SHORT)];
+  const grass = Material.pbr().roughness(0.85);
   for (let i = 0; i < GRASS; i++) {
     const [x, z] = spot(i + 9000, SIZE * 0.4);
     const floor = height(x, z);
     const slope = Math.hypot(height(x + 0.5, z) - floor, height(x, z + 0.5) - floor);
-    const bare = Math.sin(x * 0.4 + 1) + Math.cos(z * 0.33) < -0.6;
-    if (floor < WATER + 0.4 || floor > 5 || slope > 0.25 || bare) continue;
-    const scale = 0.6 + random(i, 10) * 0.8;
-    add(place(blades, grass, [x, floor - 0.02, z], random(i, 11) * TAU, [scale, scale, scale]));
+    const waves = Math.sin(x * 0.23 + 1.7) * Math.cos(z * 0.19 - 0.6);
+    const meadow = 0.55 + 0.35 * waves + 0.2 * Math.sin((x + z) * 0.51);
+    if (floor < WATER + 0.4 || floor > 5 || slope > 0.25 || random(i, 10) > meadow) continue;
+    const kind = random(i, 13) < 0.12 ? 1 : meadow > 0.7 ? 0 : 2;
+    const size = 0.7 + random(i, 11) * 0.6;
+    const stretch = [size, size * (0.8 + random(i, 14) * 0.5), size];
+    add(place(kinds[kind], grass, [x, floor - 0.02, z], random(i, 12) * TAU, stretch));
   }
 
   // Lamps ring the clearing where the walk starts. Each one carries a point light.
@@ -307,19 +315,33 @@ function pine() {
   return facets([...trunk, ...crown]);
 }
 
-// A tuft: five blades fanned around one root. Each blade has a face on both
-// sides, because the material draws front faces only.
-function tuft() {
-  const triangles = [];
-  for (let blade = 0; blade < 5; blade++) {
-    const angle = (blade / 5) * TAU;
-    const [cos, sin] = [Math.cos(angle), Math.sin(angle)];
-    const tip = [cos * 0.2, 0.5 + (blade % 2) * 0.15, -sin * 0.2];
-    const [left, right] = [[sin * 0.04, 0, cos * 0.04], [-sin * 0.04, 0, -cos * 0.04]];
-    const color = blade % 2 ? [0.1, 0.27, 0.04, 1] : [0.07, 0.21, 0.03, 1];
-    triangles.push([left, right, tip, color], [right, left, tip, color]);
+// A tuft: blades fanned around one root, each bending outward in three steps that
+// taper to a tip and lighten from the soil up. A blade has a face on each side,
+// since the material draws front faces only, and its normals lean toward the sky,
+// so it takes the light the way the ground does.
+function tuft(blades, tall, colors) {
+  const mesh = new Mesh();
+  for (let blade = 0; blade < blades; blade++) {
+    const [cos, sin] = [Math.cos(blade * 2.4), Math.sin(blade * 2.4)];
+    const top = tall * (0.7 + random(blade, 20) * 0.6);
+    const lean = 0.12 + random(blade, 21) * 0.25;
+    // From the root up: how far out, how high, and half the width.
+    const rings = [[0, 0, 0.035], [lean * 0.25, top * 0.45, 0.028], [lean * 0.65, top * 0.8, 0.016], [lean, top, 0]];
+    const corner = ([out, y, half], side) => [cos * out + sin * half * side, y, -sin * out + cos * half * side];
+    for (let step = 0; step < 3; step++) {
+      const [low, high] = [rings[step], rings[step + 1]];
+      const faces = [[corner(low, -1), corner(low, 1), corner(high, 1)]];
+      if (step < 2) faces.push([corner(low, -1), corner(high, 1), corner(high, -1)]);
+      for (const face of faces) {
+        for (const side of [face, [...face].reverse()]) {
+          const normal = normalize(cross(minus(side[1], side[0]), minus(side[2], side[0])));
+          const up = normalize([normal[0] * 0.4, normal[1] * 0.4 + 1, normal[2] * 0.4]);
+          mesh.addVertices(side.map((point) => Vertex.pbr(point).set(Vertex.NORMAL, up).set(Vertex.COLOR0, colors[step])));
+        }
+      }
+    }
   }
-  return facets(triangles);
+  return mesh;
 }
 
 // A cone, or with \`prism\` set, a prism with the same sides.
@@ -462,8 +484,13 @@ const DAY: f32 = 180.0;
 const TREES: usize = 140;
 const ROCKS: u32 = 36;
 const LAMPS: u32 = 8;
-const GRASS: u32 = 4000;
+const GRASS: u32 = 8000;
 const WATER: f32 = -1.2;
+
+/// Blade colors from the soil to the tip, in three steps, for three kinds of tuft.
+const LUSH: [Color; 3] = [[0.04, 0.12, 0.02, 1.0], [0.07, 0.2, 0.03, 1.0], [0.13, 0.29, 0.05, 1.0]];
+const DRY: [Color; 3] = [[0.05, 0.12, 0.02, 1.0], [0.13, 0.21, 0.04, 1.0], [0.26, 0.3, 0.09, 1.0]];
+const SHORT: [Color; 3] = [[0.035, 0.1, 0.02, 1.0], [0.055, 0.16, 0.025, 1.0], [0.09, 0.23, 0.04, 1.0]];
 
 /// Meters per second (Shift runs), eye height in meters, and radians of turn per pixel dragged.
 const SPEED: f32 = 3.5;
@@ -576,21 +603,30 @@ ${setCalls("rust", "sky", sky, { after: "?;" })}
         obstacles.push([x, z, scale]);
     }
 
-    // Of \`GRASS\` random spots, grass takes the gentle slopes between the water and the
-    // rocks and leaves bare patches. Its tufts share one mesh as well.
-    let blades = tuft();
-    let grass = Material::pbr().roughness(0.9);
+    // Grass grows in meadows on the gentle slopes between the water and the rocks,
+    // thicker where two slow waves meet. Its three kinds of tuft share one material.
+    let kinds = [tuft(9, 0.55, LUSH), tuft(6, 0.85, DRY), tuft(12, 0.3, SHORT)];
+    let grass = Material::pbr().roughness(0.85);
     for index in 0..GRASS {
         let [x, z] = spot(index + 9000, SIZE * 0.4);
         let floor = height(x, z);
         let slope = (height(x + 0.5, z) - floor).hypot(height(x, z + 0.5) - floor);
-        let bare = (x * 0.4 + 1.0).sin() + (z * 0.33).cos() < -0.6;
-        if floor < WATER + 0.4 || floor > 5.0 || slope > 0.25 || bare {
+        let waves = (x * 0.23 + 1.7).sin() * (z * 0.19 - 0.6).cos();
+        let meadow = 0.55 + 0.35 * waves + 0.2 * ((x + z) * 0.51).sin();
+        if floor < WATER + 0.4 || floor > 5.0 || slope > 0.25 || random(index, 10) > meadow {
             continue;
         }
-        let scale = 0.6 + random(index, 10) * 0.8;
-        let turn = random(index, 11) * TAU;
-        scene.add_to("world", &place(&blades, &grass, [x, floor - 0.02, z], turn, [scale; 3]))?;
+        let kind = if random(index, 13) < 0.12 {
+            1
+        } else if meadow > 0.7 {
+            0
+        } else {
+            2
+        };
+        let size = 0.7 + random(index, 11) * 0.6;
+        let stretch = [size, size * (0.8 + random(index, 14) * 0.5), size];
+        let turn = random(index, 12) * TAU;
+        scene.add_to("world", &place(&kinds[kind], &grass, [x, floor - 0.02, z], turn, stretch))?;
     }
 
     // Lamps ring the clearing where the walk starts. Each one carries a point light.
@@ -833,23 +869,46 @@ fn pine() -> Mesh {
     facets(&trunk.chain(crown).collect::<Vec<_>>())
 }
 
-/// A tuft: five blades fanned around one root. Each blade has a face on both
-/// sides, because the material draws front faces only.
-fn tuft() -> Mesh {
-    let mut triangles = Vec::new();
-    for blade in 0..5 {
-        let (sin, cos) = (blade as f32 / 5.0 * TAU).sin_cos();
-        let tip = [cos * 0.2, 0.5 + (blade % 2) as f32 * 0.15, -sin * 0.2];
-        let (left, right) = ([sin * 0.04, 0.0, cos * 0.04], [-sin * 0.04, 0.0, -cos * 0.04]);
-        let color = if blade % 2 == 1 {
-            [0.1, 0.27, 0.04, 1.0]
-        } else {
-            [0.07, 0.21, 0.03, 1.0]
+/// A tuft: blades fanned around one root, each bending outward in three steps that
+/// taper to a tip and lighten from the soil up. A blade has a face on each side,
+/// since the material draws front faces only, and its normals lean toward the sky,
+/// so it takes the light the way the ground does.
+fn tuft(blades: u32, tall: f32, colors: [Color; 3]) -> Mesh {
+    let mesh = Mesh::new();
+    for blade in 0..blades {
+        let (sin, cos) = (blade as f32 * 2.4).sin_cos();
+        let top = tall * (0.7 + random(blade, 20) * 0.6);
+        let lean = 0.12 + random(blade, 21) * 0.25;
+        // From the root up: how far out, how high, and half the width.
+        let rings = [
+            [0.0, 0.0, 0.035],
+            [lean * 0.25, top * 0.45, 0.028],
+            [lean * 0.65, top * 0.8, 0.016],
+            [lean, top, 0.0],
+        ];
+        let corner = |[out, y, half]: Point, side: f32| {
+            [cos * out + sin * half * side, y, -sin * out + cos * half * side]
         };
-        triangles.push(([left, right, tip], color));
-        triangles.push(([right, left, tip], color));
+        for step in 0..3 {
+            let (low, high) = (rings[step], rings[step + 1]);
+            let mut faces = vec![[corner(low, -1.0), corner(low, 1.0), corner(high, 1.0)]];
+            if step < 2 {
+                faces.push([corner(low, -1.0), corner(high, 1.0), corner(high, -1.0)]);
+            }
+            for [first, second, third] in faces {
+                for side in [[first, second, third], [third, second, first]] {
+                    let [x, y, z] = face_normal(&side);
+                    let up = normalize([x * 0.4, y * 0.4 + 1.0, z * 0.4]);
+                    mesh.add_vertices(side.map(|point| {
+                        Vertex::pbr(point)
+                            .set(Vertex::NORMAL, up)
+                            .set(Vertex::COLOR0, colors[step])
+                    }));
+                }
+            }
+        }
     }
-    facets(&triangles)
+    mesh
 }
 
 /// A cone, or with \`prism\` set, a prism with the same sides.
@@ -995,8 +1054,13 @@ DAY = 180.0
 TREES = 140
 ROCKS = 36
 LAMPS = 8
-GRASS = 4000
+GRASS = 8000
 WATER = -1.2
+
+# Blade colors from the soil to the tip, in three steps, for three kinds of tuft.
+LUSH = [[0.04, 0.12, 0.02, 1.0], [0.07, 0.2, 0.03, 1.0], [0.13, 0.29, 0.05, 1.0]]
+DRY = [[0.05, 0.12, 0.02, 1.0], [0.13, 0.21, 0.04, 1.0], [0.26, 0.3, 0.09, 1.0]]
+SHORT = [[0.035, 0.1, 0.02, 1.0], [0.055, 0.16, 0.025, 1.0], [0.09, 0.23, 0.04, 1.0]]
 
 # Meters per second (Shift runs), eye height in meters, and radians of turn per pixel dragged.
 SPEED = 3.5
@@ -1051,20 +1115,23 @@ ${setCalls("python", "sky", sky)}
         scene.add_to("world", place(rock, stone, position, random(index, 6) * math.tau, stretch))
         obstacles.append([x, z, scale])
 
-    # Of GRASS random spots, grass takes the gentle slopes between the water and the
-    # rocks and leaves bare patches. Its tufts share one mesh as well.
-    blades = tuft()
-    grass = Material.pbr().roughness(0.9)
+    # Grass grows in meadows on the gentle slopes between the water and the rocks,
+    # thicker where two slow waves meet. Its three kinds of tuft share one material.
+    kinds = [tuft(9, 0.55, LUSH), tuft(6, 0.85, DRY), tuft(12, 0.3, SHORT)]
+    grass = Material.pbr().roughness(0.85)
     for index in range(GRASS):
         x, z = spot(index + 9000, SIZE * 0.4)
         floor = height(x, z)
         slope = math.hypot(height(x + 0.5, z) - floor, height(x, z + 0.5) - floor)
-        bare = math.sin(x * 0.4 + 1) + math.cos(z * 0.33) < -0.6
-        if floor < WATER + 0.4 or floor > 5 or slope > 0.25 or bare:
+        waves = math.sin(x * 0.23 + 1.7) * math.cos(z * 0.19 - 0.6)
+        meadow = 0.55 + 0.35 * waves + 0.2 * math.sin((x + z) * 0.51)
+        if floor < WATER + 0.4 or floor > 5 or slope > 0.25 or random(index, 10) > meadow:
             continue
-        scale = 0.6 + random(index, 10) * 0.8
-        turn = random(index, 11) * math.tau
-        scene.add_to("world", place(blades, grass, [x, floor - 0.02, z], turn, [scale, scale, scale]))
+        kind = 1 if random(index, 13) < 0.12 else 0 if meadow > 0.7 else 2
+        size = 0.7 + random(index, 11) * 0.6
+        stretch = [size, size * (0.8 + random(index, 14) * 0.5), size]
+        turn = random(index, 12) * math.tau
+        scene.add_to("world", place(kinds[kind], grass, [x, floor - 0.02, z], turn, stretch))
 
     # Lamps ring the clearing where the walk starts. Each one carries a point light.
     post = column([0.02, 0.018, 0.016, 1.0])
@@ -1250,18 +1317,34 @@ def pine():
     return facets(trunk + crown)
 
 
-# A tuft: five blades fanned around one root. Each blade has a face on both
-# sides, because the material draws front faces only.
-def tuft():
-    triangles = []
-    for blade in range(5):
-        angle = blade / 5 * math.tau
-        cos, sin = math.cos(angle), math.sin(angle)
-        tip = [cos * 0.2, 0.5 + blade % 2 * 0.15, -sin * 0.2]
-        left, right = [sin * 0.04, 0.0, cos * 0.04], [-sin * 0.04, 0.0, -cos * 0.04]
-        color = [0.1, 0.27, 0.04, 1.0] if blade % 2 else [0.07, 0.21, 0.03, 1.0]
-        triangles += [[left, right, tip, color], [right, left, tip, color]]
-    return facets(triangles)
+# A tuft: blades fanned around one root, each bending outward in three steps that
+# taper to a tip and lighten from the soil up. A blade has a face on each side,
+# since the material draws front faces only, and its normals lean toward the sky,
+# so it takes the light the way the ground does.
+def tuft(blades, tall, colors):
+    mesh = Mesh()
+    for blade in range(blades):
+        cos, sin = math.cos(blade * 2.4), math.sin(blade * 2.4)
+        top = tall * (0.7 + random(blade, 20) * 0.6)
+        lean = 0.12 + random(blade, 21) * 0.25
+        # From the root up: how far out, how high, and half the width.
+        rings = [[0.0, 0.0, 0.035], [lean * 0.25, top * 0.45, 0.028], [lean * 0.65, top * 0.8, 0.016], [lean, top, 0.0]]
+
+        def corner(ring, side, cos=cos, sin=sin):
+            out, y, half = ring
+            return [cos * out + sin * half * side, y, -sin * out + cos * half * side]
+
+        for step in range(3):
+            low, high = rings[step], rings[step + 1]
+            faces = [[corner(low, -1), corner(low, 1), corner(high, 1)]]
+            if step < 2:
+                faces.append([corner(low, -1), corner(high, 1), corner(high, -1)])
+            for face in faces:
+                for side in (face, face[::-1]):
+                    x, y, z = normalize(cross(minus(side[1], side[0]), minus(side[2], side[0])))
+                    up = normalize([x * 0.4, y * 0.4 + 1, z * 0.4])
+                    mesh.add_vertices([Vertex.pbr(point).set(Vertex.NORMAL, up).set(Vertex.COLOR0, colors[step]) for point in side])
+    return mesh
 
 
 # A cone, or with prism set, a prism with the same sides.
@@ -1384,7 +1467,7 @@ let dayLength: Float = 180
 let treeCount = 140
 let rockCount: UInt32 = 36
 let lampCount: UInt32 = 8
-let grassSpots: UInt32 = 4000
+let grassSpots: UInt32 = 8000
 let water: Float = -1.2
 
 /// Meters per second (Shift runs), eye height in meters, and radians of turn per point dragged.
@@ -1396,6 +1479,11 @@ let tau = Float.pi * 2
 
 /// Three corners and the color the triangle carries.
 typealias Triangle = ([[Float]], [Float])
+
+/// Blade colors from the soil to the tip, in three steps, for three kinds of tuft.
+let lushColors: [[Float]] = [[0.04, 0.12, 0.02, 1], [0.07, 0.2, 0.03, 1], [0.13, 0.29, 0.05, 1]]
+let dryColors: [[Float]] = [[0.05, 0.12, 0.02, 1], [0.13, 0.21, 0.04, 1], [0.26, 0.3, 0.09, 1]]
+let shortColors: [[Float]] = [[0.035, 0.1, 0.02, 1], [0.055, 0.16, 0.025, 1], [0.09, 0.23, 0.04, 1]]
 
 /// What the wheel, a drag and a pinch did since the last frame: zoom in doublings
 /// (positive zooms in) and pan in view points.
@@ -1485,21 +1573,24 @@ ${setCalls("swift", "sky", sky, { before: "try " })}
         obstacles.append([x, z, scale])
     }
 
-    // Of \`grassSpots\` random spots, grass takes the gentle slopes between the water and
-    // the rocks and leaves bare patches. Its tufts share one mesh as well.
-    let blades = try tuft()
-    let grass = Material.pbr().roughness(0.9)
+    // Grass grows in meadows on the gentle slopes between the water and the rocks,
+    // thicker where two slow waves meet. Its three kinds of tuft share one material.
+    let kinds = try [tuft(9, 0.55, lushColors), tuft(6, 0.85, dryColors), tuft(12, 0.3, shortColors)]
+    let grass = Material.pbr().roughness(0.85)
     for index in 0..<grassSpots {
         let (x, z) = spot(index + 9000, valleySize * 0.4)
         let floor = height(x, z)
         let slope = hypot(height(x + 0.5, z) - floor, height(x, z + 0.5) - floor)
-        let bare = sin(x * 0.4 + 1) + cos(z * 0.33) < -0.6
-        if floor < water + 0.4 || floor > 5 || slope > 0.25 || bare {
+        let waves = sin(x * 0.23 + 1.7) * cos(z * 0.19 - 0.6)
+        let meadow = 0.55 + 0.35 * waves + 0.2 * sin((x + z) * 0.51)
+        if floor < water + 0.4 || floor > 5 || slope > 0.25 || random(index, 10) > meadow {
             continue
         }
-        let scale = 0.6 + random(index, 10) * 0.8
-        let turn = random(index, 11) * tau
-        try scene.addTo("world", place(blades, grass, [x, floor - 0.02, z], turn, [scale, scale, scale]))
+        let kind = random(index, 13) < 0.12 ? 1 : meadow > 0.7 ? 0 : 2
+        let size = 0.7 + random(index, 11) * 0.6
+        let stretch = [size, size * (0.8 + random(index, 14) * 0.5), size]
+        let turn = random(index, 12) * tau
+        try scene.addTo("world", place(kinds[kind], grass, [x, floor - 0.02, z], turn, stretch))
     }
 
     // Lamps ring the clearing where the walk starts. Each one carries a point light.
@@ -1698,20 +1789,38 @@ func pine() throws -> Mesh {
     return try facets(trunk + crown)
 }
 
-/// A tuft: five blades fanned around one root. Each blade has a face on both
-/// sides, because the material draws front faces only.
-func tuft() throws -> Mesh {
-    var triangles: [([[Float]], [Float])] = []
-    for blade in 0..<5 {
-        let angle = Float(blade) / 5 * tau
-        let tip: [Float] = [cos(angle) * 0.2, 0.5 + Float(blade % 2) * 0.15, -sin(angle) * 0.2]
-        let left: [Float] = [sin(angle) * 0.04, 0, cos(angle) * 0.04]
-        let right: [Float] = [-sin(angle) * 0.04, 0, -cos(angle) * 0.04]
-        let color: [Float] = blade % 2 == 1 ? [0.1, 0.27, 0.04, 1] : [0.07, 0.21, 0.03, 1]
-        triangles.append(([left, right, tip], color))
-        triangles.append(([right, left, tip], color))
+/// A tuft: blades fanned around one root, each bending outward in three steps that
+/// taper to a tip and lighten from the soil up. A blade has a face on each side,
+/// since the material draws front faces only, and its normals lean toward the sky,
+/// so it takes the light the way the ground does.
+func tuft(_ blades: UInt32, _ tall: Float, _ colors: [[Float]]) throws -> Mesh {
+    let mesh = Mesh()
+    for blade in 0..<blades {
+        let angle = Float(blade) * 2.4
+        let top = tall * (0.7 + random(blade, 20) * 0.6)
+        let lean = 0.12 + random(blade, 21) * 0.25
+        // From the root up: how far out, how high, and half the width.
+        let rings: [[Float]] = [[0, 0, 0.035], [lean * 0.25, top * 0.45, 0.028], [lean * 0.65, top * 0.8, 0.016], [lean, top, 0]]
+        let corner = { (ring: [Float], side: Float) -> [Float] in
+            let (out, half) = (ring[0], ring[2] * side)
+            return [cos(angle) * out + sin(angle) * half, ring[1], -sin(angle) * out + cos(angle) * half]
+        }
+        for step in 0..<3 {
+            let (low, high) = (rings[step], rings[step + 1])
+            var faces = [[corner(low, -1), corner(low, 1), corner(high, 1)]]
+            if step < 2 {
+                faces.append([corner(low, -1), corner(high, 1), corner(high, -1)])
+            }
+            for face in faces {
+                for side in [face, Array(face.reversed())] {
+                    let normal = faceNormal(side)
+                    let up = normalize([normal[0] * 0.4, normal[1] * 0.4 + 1, normal[2] * 0.4])
+                    mesh.addVertices(try side.map { try Vertex.pbr($0).set(Vertex.NORMAL, up).set(Vertex.COLOR0, colors[step]) })
+                }
+            }
+        }
     }
-    return try facets(triangles)
+    return mesh
 }
 
 /// A cone, or with \`prism\` set, a prism with the same sides.
@@ -1847,7 +1956,7 @@ private const val DAY = 180f
 private const val TREES = 140
 private const val ROCKS = 36u
 private const val LAMPS = 8u
-private const val GRASS = 4000u
+private const val GRASS = 8000u
 private const val WATER = -1.2f
 
 // Meters per second (Shift runs), eye height in meters, and radians of turn per pixel dragged.
@@ -1859,6 +1968,11 @@ private const val TAU = (PI * 2).toFloat()
 
 // Three corners and the color the triangle carries.
 private typealias Triangle = Pair<List<List<Float>>, List<Float>>
+
+// Blade colors from the soil to the tip, in three steps, for three kinds of tuft.
+private val LUSH = listOf(listOf(0.04f, 0.12f, 0.02f, 1f), listOf(0.07f, 0.2f, 0.03f, 1f), listOf(0.13f, 0.29f, 0.05f, 1f))
+private val DRY = listOf(listOf(0.05f, 0.12f, 0.02f, 1f), listOf(0.13f, 0.21f, 0.04f, 1f), listOf(0.26f, 0.3f, 0.09f, 1f))
+private val SHORT = listOf(listOf(0.035f, 0.1f, 0.02f, 1f), listOf(0.055f, 0.16f, 0.025f, 1f), listOf(0.09f, 0.23f, 0.04f, 1f))
 
 // What the wheel, a drag and a pinch did since the last frame: zoom in doublings
 // (positive zooms in) and pan in view pixels.
@@ -1939,19 +2053,22 @@ ${setCalls("kotlin", "sky", sky)}
         obstacles.add(listOf(x, z, scale))
     }
 
-    // Of GRASS random spots, grass takes the gentle slopes between the water and the
-    // rocks and leaves bare patches. Its tufts share one mesh as well.
-    val blades = tuft()
-    val grass = Material.pbr().roughness(0.9f)
+    // Grass grows in meadows on the gentle slopes between the water and the rocks,
+    // thicker where two slow waves meet. Its three kinds of tuft share one material.
+    val kinds = listOf(tuft(9u, 0.55f, LUSH), tuft(6u, 0.85f, DRY), tuft(12u, 0.3f, SHORT))
+    val grass = Material.pbr().roughness(0.85f)
     for (index in 0u until GRASS) {
         val (x, z) = spot(index + 9000u, SIZE * 0.4f)
         val floor = height(x, z)
         val slope = hypot(height(x + 0.5f, z) - floor, height(x, z + 0.5f) - floor)
-        val bare = sin(x * 0.4f + 1f) + cos(z * 0.33f) < -0.6f
-        if (floor < WATER + 0.4f || floor > 5f || slope > 0.25f || bare) continue
-        val scale = 0.6f + random(index, 10u) * 0.8f
-        val turn = random(index, 11u) * TAU
-        scene.addTo("world", place(blades, grass, listOf(x, floor - 0.02f, z), turn, listOf(scale, scale, scale)))
+        val waves = sin(x * 0.23f + 1.7f) * cos(z * 0.19f - 0.6f)
+        val meadow = 0.55f + 0.35f * waves + 0.2f * sin((x + z) * 0.51f)
+        if (floor < WATER + 0.4f || floor > 5f || slope > 0.25f || random(index, 10u) > meadow) continue
+        val kind = if (random(index, 13u) < 0.12f) 1 else if (meadow > 0.7f) 0 else 2
+        val size = 0.7f + random(index, 11u) * 0.6f
+        val stretch = listOf(size, size * (0.8f + random(index, 14u) * 0.5f), size)
+        val turn = random(index, 12u) * TAU
+        scene.addTo("world", place(kinds[kind], grass, listOf(x, floor - 0.02f, z), turn, stretch))
     }
 
     // Lamps ring the clearing where the walk starts. Each one carries a point light.
@@ -2144,20 +2261,39 @@ private fun pine(): Mesh {
     return facets(trunk + crown)
 }
 
-// A tuft: five blades fanned around one root. Each blade has a face on both
-// sides, because the material draws front faces only.
-private fun tuft(): Mesh {
-    val triangles = mutableListOf<Triangle>()
-    for (blade in 0 until 5) {
-        val angle = blade / 5f * TAU
-        val tip = listOf(cos(angle) * 0.2f, 0.5f + (blade % 2) * 0.15f, -sin(angle) * 0.2f)
-        val left = listOf(sin(angle) * 0.04f, 0f, cos(angle) * 0.04f)
-        val right = listOf(-sin(angle) * 0.04f, 0f, -cos(angle) * 0.04f)
-        val color = if (blade % 2 == 1) listOf(0.1f, 0.27f, 0.04f, 1f) else listOf(0.07f, 0.21f, 0.03f, 1f)
-        triangles.add(listOf(left, right, tip) to color)
-        triangles.add(listOf(right, left, tip) to color)
+// A tuft: blades fanned around one root, each bending outward in three steps that
+// taper to a tip and lighten from the soil up. A blade has a face on each side,
+// since the material draws front faces only, and its normals lean toward the sky,
+// so it takes the light the way the ground does.
+private fun tuft(blades: UInt, tall: Float, colors: List<List<Float>>): Mesh {
+    val mesh = Mesh()
+    for (blade in 0u until blades) {
+        val angle = blade.toFloat() * 2.4f
+        val top = tall * (0.7f + random(blade, 20u) * 0.6f)
+        val lean = 0.12f + random(blade, 21u) * 0.25f
+        // From the root up: how far out, how high, and half the width.
+        val rings = listOf(
+            listOf(0f, 0f, 0.035f), listOf(lean * 0.25f, top * 0.45f, 0.028f),
+            listOf(lean * 0.65f, top * 0.8f, 0.016f), listOf(lean, top, 0f),
+        )
+        fun corner(ring: List<Float>, side: Float): List<Float> {
+            val (out, half) = ring[0] to ring[2] * side
+            return listOf(cos(angle) * out + sin(angle) * half, ring[1], -sin(angle) * out + cos(angle) * half)
+        }
+        for (step in 0 until 3) {
+            val (low, high) = rings[step] to rings[step + 1]
+            val faces = mutableListOf(listOf(corner(low, -1f), corner(low, 1f), corner(high, 1f)))
+            if (step < 2) faces.add(listOf(corner(low, -1f), corner(high, 1f), corner(high, -1f)))
+            for (face in faces) {
+                for (side in listOf(face, face.reversed())) {
+                    val normal = faceNormal(side)
+                    val up = normalize(listOf(normal[0] * 0.4f, normal[1] * 0.4f + 1f, normal[2] * 0.4f))
+                    mesh.addVertices(side.map { Vertex.pbr(it).set(Vertex.NORMAL, up).set(Vertex.COLOR0, colors[step]) })
+                }
+            }
+        }
     }
-    return facets(triangles)
+    return mesh
 }
 
 // A cone, or with prism set, a prism with the same sides.
