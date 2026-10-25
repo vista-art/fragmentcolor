@@ -1,4 +1,4 @@
-// Infinite zoom, step 3: perturbation.
+// Infinite Mandelbrot zoom, step 3: perturbation.
 //
 // One reference orbit, computed once with BigInt at the precision the deepest
 // view needs, sits in a storage buffer. Each pixel iterates only its small f32
@@ -263,7 +263,8 @@ func steer(_ state: inout State, _ time: Float, _ size: [Float], _ pointer: [Flo
     if let last = state.last, time < last {
         state.moved = -.infinity
     }
-    let delta = state.last.map { Double(min(max(time - $0, 0), 0.1)) } ?? 0
+    // The first frame counts the whole clock, so a frame drawn at time t shows the dive at t.
+    let delta = state.last.map { Double(min(max(time - $0, 0), 0.1)) } ?? Double(time)
     state.last = time
     let deepest = depth * log2(10) + log2(start)
     if let last = state.pointer, last != pointer {

@@ -1,4 +1,4 @@
-// Infinite zoom, step 4: past every exponent.
+// Infinite Mandelbrot zoom, step 4: past every exponent.
 //
 // A compute pass iterates every pixel as a small f32 difference from one
 // reference orbit, which the host computes once with BigInt. The shader keeps
@@ -468,7 +468,8 @@ function log2Size(a) {
 function steer(state, time, size, [x, y]) {
   // A clock that starts over, as when a paused page resumes, forgets the pointer.
   if (state.last !== null && time < state.last) state.moved = -Infinity;
-  const delta = state.last === null ? 0 : Math.min(Math.max(time - state.last, 0), 0.1);
+  // The first frame counts the whole clock, so a frame drawn at time t shows the dive at t.
+  const delta = state.last === null ? time : Math.min(Math.max(time - state.last, 0), 0.1);
   state.last = time;
   const deepest = DEPTH * Math.log2(10) + Math.log2(START);
   if (state.pointer && (x !== state.pointer[0] || y !== state.pointer[1])) state.moved = time;

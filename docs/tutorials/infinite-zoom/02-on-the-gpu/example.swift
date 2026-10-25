@@ -1,4 +1,4 @@
-// Infinite zoom, step 2: the same loop on the GPU.
+// Infinite Mandelbrot zoom, step 2: the same loop on the GPU.
 //
 // A fragment shader runs the escape-time loop for every pixel in parallel, in
 // f32. The view zooms toward a spiral in Seahorse Valley and back out, and the
@@ -165,7 +165,8 @@ func steer(_ state: inout State, _ time: Float, _ size: [Float], _ pointer: [Flo
     if let last = state.last, time < last {
         state.moved = -.infinity
     }
-    let delta = state.last.map { Double(min(max(time - $0, 0), 0.1)) } ?? 0
+    // The first frame counts the whole clock, so a frame drawn at time t shows the dive at t.
+    let delta = state.last.map { Double(min(max(time - $0, 0), 0.1)) } ?? Double(time)
     state.last = time
     let deepest = depth * log2(10) + log2(start)
     if let last = state.pointer, last != pointer {

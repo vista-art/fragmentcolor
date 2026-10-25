@@ -1,4 +1,4 @@
-//! Infinite zoom, step 3: perturbation.
+//! Infinite Mandelbrot zoom, step 3: perturbation.
 //!
 //! One reference orbit, computed once with BigInt at the precision the deepest
 //! view needs, sits in a storage buffer. Each pixel iterates only its small f32
@@ -309,7 +309,8 @@ impl Motion {
     /// While the pointer moves, and for two seconds after, its vertical position
     /// picks the depth, deepest at the top. Returns the zoom in doublings.
     fn steer(&mut self, now: f64) -> f64 {
-        let delta = self.last.map_or(0.0, |last| (now - last).min(0.1));
+        // The first frame counts the whole clock, so a frame drawn at `now` shows the dive at `now`.
+        let delta = self.last.map_or(now, |last| (now - last).min(0.1));
         self.last = Some(now);
         let deepest = DEPTH * 10_f64.log2() + START.log2();
         if now - self.moved < 2.0 {

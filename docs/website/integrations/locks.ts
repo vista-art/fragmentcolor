@@ -15,8 +15,8 @@
 //   * `astro:build:start` — full scan on production builds. Parse
 //     errors fail the build (unpaired/nested `<Lock>`, missing `id`).
 //
-// Companion CLI lives in Rust: `cargo run --release -p fce --example
-// locks -- status | history | diff`. It reads the same JSON; the hash
+// Companion CLI lives in Rust: `./fc example --release locks
+// status | history | diff`. It reads the same JSON; the hash
 // scheme is SHA-256 hex on both sides so values round-trip.
 
 import type { AstroIntegration } from "astro";

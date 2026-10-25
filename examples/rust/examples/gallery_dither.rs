@@ -7,7 +7,7 @@
 //! the source gradient on the top 1/4 of the frame.
 //!
 //! Run with:
-//!   cargo run --release -p fce --example gallery_dither
+//!   ./fc example --release gallery_dither
 
 use fragmentcolor::{Renderer, Shader, Target};
 

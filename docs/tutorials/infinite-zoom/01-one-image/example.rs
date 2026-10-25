@@ -1,4 +1,4 @@
-//! Infinite zoom, step 1: one image on the CPU.
+//! Infinite Mandelbrot zoom, step 1: one image on the CPU.
 //!
 //! Runs the escape-time loop for every pixel of a 1200 by 800 image, in f64,
 //! and writes `mandelbrot.png`. No GPU yet: this is the whole algorithm.

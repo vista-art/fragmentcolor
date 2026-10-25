@@ -5,7 +5,7 @@
 //! pixels back, and writes a PNG to `out/registry-gallery/<name>.png`.
 //!
 //! Run with:
-//!   cargo run --release -p fce --example registry_gallery
+//!   ./fc example --release registry_gallery
 //!
 //! Skipped silently on systems without a wgpu-compatible adapter; this is a
 //! visual smoke test, not a CI gate.

@@ -6,7 +6,7 @@
 //! the helper, against a muted background.
 //!
 //! Run with:
-//!   cargo run --release -p fce --example gallery_lighting
+//!   ./fc example --release gallery_lighting
 
 use fragmentcolor::{Renderer, Shader, Target};
 

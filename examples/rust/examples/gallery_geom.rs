@@ -6,7 +6,7 @@
 //! result over a muted background.
 //!
 //! Run with:
-//!   cargo run --release -p fce --example gallery_geom
+//!   ./fc example --release gallery_geom
 
 use fragmentcolor::{Renderer, Shader, Target};
 

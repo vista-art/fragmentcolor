@@ -1,13 +1,15 @@
-// Step 8: a compute shader moves 8 million particles and counts them in a grid.
-// Call `setup` once, then call `frame` from each `requestAnimationFrame` callback.
+//! Eight million particles: a compute shader moves them and counts them in a grid.
 
-import { Pass, Shader } from "fragmentcolor";
+#[path = "../host.rs"]
+mod host;
 
-const COUNT = 8_000_000;
-const WIDTH = 1280;
-const HEIGHT = 720;
+use fragmentcolor::{FragmentColorError, Pass, Renderer, Shader, Target};
 
-const CLEAR = `
+const COUNT: u32 = 8_000_000;
+const WIDTH: u32 = 1280;
+const HEIGHT: u32 = 720;
+
+const CLEAR: &str = r#"
 // #region: clear-shader
 @group(0) @binding(0) var<storage, read_write> counts: array<atomic<u32>, CELLS>;
 
@@ -18,9 +20,9 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 }
 // #endregion: clear-shader
-`;
+"#;
 
-const SIMULATE = `
+const SIMULATE: &str = r#"
 // #region: simulate-shader
 struct Particle {
     position: vec2<f32>,
@@ -50,8 +52,8 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     var particle = particles[index];
 
-    // A new buffer holds zeros, so the first frame places every particle on a
-    // circular orbit. After that, about one in 300 starts over on each frame.
+    // A new buffer holds zeros, so the first frame starts every particle
+    // circling the center. After that, about one in 300 starts over on each frame.
     // Mixing in the bit pattern of time gives each frame its own dice.
     let seed = hash(index ^ bitcast<u32>(time));
     let fresh = all(particle.velocity == vec2<f32>(0.0));
@@ -64,7 +66,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 
     // An attractor wanders through the middle and pulls every particle.
-    // The pull weakens with distance; 0.05 keeps it finite at the center.
+    // The pull weakens with distance; 0.05 keeps it finite right at the attractor.
     let attractor = vec2<f32>(cos(time * 0.37), sin(time * 0.61)) * 0.4;
     let offset = attractor - particle.position;
     let pull = offset / (dot(offset, offset) + 0.05);
@@ -84,9 +86,9 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 }
 // #endregion: simulate-shader
-`;
+"#;
 
-const DRAW = `
+const DRAW: &str = r#"
 // #region: draw-shader
 @group(0) @binding(0) var<storage, read> counts: array<u32, CELLS>;
 @group(0) @binding(1) var<uniform> resolution: vec2<f32>;
@@ -114,40 +116,63 @@ fn fs_main(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
     return vec4<f32>(mix(night, ember, heat) + heat * heat * 0.5, 1.0);
 }
 // #endregion: draw-shader
-`;
+"#;
+
+/// What `frame` needs from `setup`.
+struct State {
+    simulate: Shader,
+    draw: Shader,
+    output: Pass,
+}
 
 // #region: setup
-export function setup() {
-    // All three shaders size their buffers with these WGSL constants.
-    const sizes = `const COUNT: u32 = ${COUNT}u;
-         const GRID = vec2<u32>(${WIDTH}u, ${HEIGHT}u);
-         const CELLS: u32 = ${WIDTH}u * ${HEIGHT}u;`;
-    const clear = new Shader([sizes, CLEAR]);
-    const simulate = new Shader([sizes, SIMULATE]);
-    const draw = new Shader([sizes, DRAW]);
+fn setup() -> Result<State, FragmentColorError> {
+    // All three shaders take their sizes from these WGSL constants.
+    let sizes = format!(
+        "const COUNT: u32 = {COUNT}u;
+         const GRID = vec2<u32>({WIDTH}u, {HEIGHT}u);
+         const CELLS: u32 = {WIDTH}u * {HEIGHT}u;"
+    );
+    let clear = Shader::new([sizes.as_str(), CLEAR])?;
+    let simulate = Shader::new([sizes.as_str(), SIMULATE])?;
+    let draw = Shader::new([sizes.as_str(), DRAW])?;
 
     // One workgroup handles 256 items, as `@workgroup_size(256)` declares.
-    const clearPass = Pass.fromShader("clear", clear);
-    clearPass.setComputeDispatch(Math.ceil((WIDTH * HEIGHT) / 256), 1, 1);
+    let clear_pass = Pass::from_shader("clear", &clear);
+    clear_pass.set_compute_dispatch((WIDTH * HEIGHT).div_ceil(256), 1, 1);
 
-    const simulatePass = Pass.fromShader("simulate", simulate);
-    simulatePass.setComputeDispatch(Math.ceil(COUNT / 256), 1, 1);
-    simulatePass.require(clearPass);
+    let simulate_pass = Pass::from_shader("simulate", &simulate);
+    simulate_pass.set_compute_dispatch(COUNT.div_ceil(256), 1, 1);
+    simulate_pass.require(&clear_pass)?;
 
-    const output = Pass.fromShader("draw", draw);
-    output.require(simulatePass);
+    let output = Pass::from_shader("draw", &draw);
+    output.require(&simulate_pass)?;
 
-    return { simulate, draw, output };
+    Ok(State {
+        simulate,
+        draw,
+        output,
+    })
 }
 // #endregion: setup
 
 // #region: frame
-export function frame(state, renderer, target, time) {
-    const size = target.size();
-    const resolution = [size.width, size.height];
-    state.simulate.set("resolution", resolution);
-    state.simulate.set("time", time);
-    state.draw.set("resolution", resolution);
-    renderer.render(state.output, target);
+fn frame(
+    state: &State,
+    renderer: &Renderer,
+    target: &impl Target,
+    time: f32,
+) -> Result<(), FragmentColorError> {
+    let size = target.size();
+    let resolution = [size.width as f32, size.height as f32];
+    state.simulate.set("resolution", resolution)?;
+    state.simulate.set("time", time)?;
+    state.draw.set("resolution", resolution)?;
+    renderer.render(&state.output, target)?;
+    Ok(())
 }
 // #endregion: frame
+
+fn main() {
+    host::run(async |_: &Renderer| setup(), frame);
+}

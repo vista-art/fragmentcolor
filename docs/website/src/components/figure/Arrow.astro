@@ -1,0 +1,92 @@
+---
+// An arrow from one point to another, with an optional label.
+// `both` puts a head at each end, for a measured length.
+import type { Point, Tone } from "./types";
+
+interface Props {
+  from: Point;
+  to: Point;
+  label?: string;
+  tone?: Tone;
+  dashed?: boolean;
+  both?: boolean;
+  /** Where the label sits: beside the middle, past the tip, or behind the tail. */
+  labelAt?: "middle" | "end" | "start";
+  /** Moves the label by this much, in figure units. */
+  offset?: Point;
+  /** Monospace label, for code. */
+  code?: boolean;
+}
+
+const {
+  from,
+  to,
+  label,
+  tone = "ink",
+  dashed = false,
+  both = false,
+  labelAt = "middle",
+  offset = [0, 0],
+  code = false,
+} = Astro.props;
+
+const HEAD = 11;
+const dx = to[0] - from[0];
+const dy = to[1] - from[1];
+const length = Math.hypot(dx, dy) || 1;
+const ux = dx / length;
+const uy = dy / length;
+
+// A head is a triangle whose tip sits on the end point.
+function head(tip: Point, ax: number, ay: number): string {
+  const baseX = tip[0] - ax * HEAD;
+  const baseY = tip[1] - ay * HEAD;
+  const half = HEAD * 0.45;
+  return [
+    [tip[0], tip[1]],
+    [baseX - ay * half, baseY + ax * half],
+    [baseX + ay * half, baseY - ax * half],
+  ]
+    .map((point) => point.join(","))
+    .join(" ");
+}
+
+const start: Point = both ? [from[0] + ux * HEAD * 0.8, from[1] + uy * HEAD * 0.8] : from;
+const end: Point = [to[0] - ux * HEAD * 0.8, to[1] - uy * HEAD * 0.8];
+
+let labelPoint: Point;
+let anchor: "start" | "middle" | "end" = "middle";
+if (labelAt === "end") {
+  labelPoint = [to[0] + ux * 16, to[1] + uy * 16];
+  anchor = ux > 0.3 ? "start" : ux < -0.3 ? "end" : "middle";
+} else if (labelAt === "start") {
+  // A callout: the text sits behind the tail and the arrow points away from it.
+  labelPoint = [from[0] - ux * 12, from[1] - uy * 12];
+  anchor = ux > 0.3 ? "end" : ux < -0.3 ? "start" : "middle";
+} else {
+  // Beside the middle, on the side that faces up, or left of a vertical arrow.
+  let px = -uy;
+  let py = ux;
+  if (py > 0 || (py === 0 && px > 0)) {
+    px = -px;
+    py = -py;
+  }
+  labelPoint = [(from[0] + to[0]) / 2 + px * 16, (from[1] + to[1]) / 2 + py * 16];
+  if (Math.abs(px) > 0.7) anchor = px < 0 ? "end" : "start";
+}
+labelPoint = [labelPoint[0] + offset[0], labelPoint[1] + offset[1]];
+---
+
+<g class={`tone-${tone}`}>
+  <line class="fig-halo" x1={start[0]} y1={start[1]} x2={end[0]} y2={end[1]} />
+  <line class:list={["fig-stroke", dashed && "fig-dashed"]} x1={start[0]} y1={start[1]} x2={end[0]} y2={end[1]} />
+  <polygon class="fig-head" points={head(to, ux, uy)} />
+  {both && <polygon class="fig-head" points={head(from, -ux, -uy)} />}
+  {
+    label && (
+      <text class:list={["fig-label", code && "fig-code"]} x={labelPoint[0]} y={labelPoint[1]} text-anchor={anchor}>
+        {label}
+      </text>
+    )
+  }
+</g>

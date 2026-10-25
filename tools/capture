@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# fc: Capture tutorial figures, playground thumbnails and README recordings as WebP
+set -euo pipefail
+
+# Renders a docs page's canvas in headless Chromium with WebGPU and writes a WebP.
+# Run `./fc capture help` for the commands. The first run needs the dependencies
+# of the web healthcheck and the website:
+#   (cd platforms/web/healthcheck && pnpm install) && (cd docs/website && pnpm install)
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec node "$ROOT_DIR/tools/js/capture.mjs" "$@"

@@ -1,0 +1,20 @@
+---
+// A rectangle that frames or tints a region, given its top left corner and size.
+import type { Point, Tone } from "./types";
+
+interface Props {
+  at: Point;
+  size: Point;
+  tone?: Tone;
+  dashed?: boolean;
+  fill?: boolean;
+}
+
+const { at, size, tone = "mark", dashed = false, fill = false } = Astro.props;
+---
+
+<g class={`tone-${tone}`}>
+  {fill && <rect class="fig-fill" x={at[0]} y={at[1]} width={size[0]} height={size[1]} />}
+  <rect class="fig-halo" x={at[0]} y={at[1]} width={size[0]} height={size[1]} />
+  <rect class:list={["fig-stroke", dashed && "fig-dashed"]} x={at[0]} y={at[1]} width={size[0]} height={size[1]} />
+</g>

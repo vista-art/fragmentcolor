@@ -1,42 +1,43 @@
 #!/bin/bash
-# fc: Interactive picker for the Rust examples
+# fc: Run a Rust example by name or number, or pick one from a menu
 
 # FragmentColor Example Runner
 # ============================
-# 
-# This script allows you to easily run FragmentColor examples:
-# 
+#
 # Usage:
-#   ./fc example                    # Show interactive menu
-#   ./fc example triangle           # Run example by name
-#   ./fc example 1                  # Run first example (alphabetical order)
-#   ./fc example 999                # Run last example (out-of-bounds becomes last)
-# 
+#   ./fc example                          # Show interactive menu
+#   ./fc example triangle                 # Run example by name
+#   ./fc example 1                        # Run first example (alphabetical order)
+#   ./fc example 999                      # Run last example (out-of-bounds becomes last)
+#   ./fc example --release gallery_noise  # Build it optimized
+#   ./fc example --release locks status   # Arguments after the name go to the example
+#
 # In interactive mode:
 #   - Type example name or number and press Enter
 #   - Type 'q' or 'quit' to exit
-# 
-# Examples are located in: examples/rust/examples/
+#
+# Examples are the files in examples/rust/examples/ and the [[example]]
+# entries in examples/rust/Cargo.toml, which hold the tutorial steps.
 
 set -e
 
 EXAMPLES_DIR="examples/rust/examples"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+MANIFEST="$SCRIPT_DIR/examples/rust/Cargo.toml"
+
+# Options for cargo, and the arguments the example itself receives.
+PROFILE=()
+EXAMPLE_ARGS=()
 
 # Change to the examples/rust directory for cargo commands
 cd "$SCRIPT_DIR/examples/rust"
 
-# Function to get all example files (without .rs extension) in alphabetical order
+# Function to get all example names in alphabetical order
 get_examples() {
-    if [ ! -d "$EXAMPLES_DIR" ]; then
-        # Try from script directory if relative path doesn't work
-        find "$SCRIPT_DIR/$EXAMPLES_DIR" -name "*.rs" -type f 2>/dev/null | sed 's|.*/||; s|\.rs$||' | sort || {
-            echo "Error: Could not find examples directory" >&2
-            exit 1
-        }
-    else
-        find "$EXAMPLES_DIR" -name "*.rs" -type f | sed 's|.*/||; s|\.rs$||' | sort
-    fi
+    {
+        find "$SCRIPT_DIR/$EXAMPLES_DIR" -name "*.rs" -type f | sed 's|.*/||; s|\.rs$||'
+        awk '/^\[\[example\]\]/ { entry = 1; next } entry && /^name = / { gsub(/^name = "|"$/, ""); print; entry = 0 }' "$MANIFEST"
+    } | sort -u
 }
 
 # Function to list examples with numbers
@@ -51,47 +52,59 @@ list_examples() {
     echo
 }
 
+usage() {
+    echo "Usage: ./fc example [--release] [example_name|example_number] [args...]"
+    echo "       ./fc example                          # Interactive menu"
+    echo "       ./fc example triangle                 # Run triangle example"
+    echo "       ./fc example 1                        # Run first example"
+    echo "       ./fc example --release locks status   # Optimized, with arguments for the example"
+    echo
+}
+
 # Function to run an example by name
 run_example() {
     local example_name="$1"
+    local command=(cargo run "${PROFILE[@]}" --example "$example_name")
+    if [ ${#EXAMPLE_ARGS[@]} -gt 0 ]; then
+        command+=(-- "${EXAMPLE_ARGS[@]}")
+    fi
     echo "Running example: $example_name"
-    echo "Command: cargo run --example $example_name"
+    echo "Command: ${command[*]}"
     echo "================================="
-    cargo run --example "$example_name"
+    "${command[@]}"
 }
 
 # Function to get example by number
 get_example_by_number() {
     local number="$1"
     local examples_array=()
-    
+
     # Read examples into array (compatible with older bash)
     while IFS= read -r line; do
         examples_array+=("$line")
     done < <(get_examples)
-    
+
     local total=${#examples_array[@]}
-    
+
     # Handle out of bounds - use last example
     if [ "$number" -gt "$total" ]; then
         number=$total
         echo "Number $1 is out of bounds. Using last example (#$total)." >&2
     fi
-    
+
     # Handle invalid number (less than 1)
     if [ "$number" -lt 1 ]; then
         echo "Invalid number. Using first example." >&2
         number=1
     fi
-    
+
     # Array is 0-indexed, so subtract 1
     echo "${examples_array[$((number-1))]}"
 }
 
 # Function to check if example exists
 example_exists() {
-    local example_name="$1"
-    [ -f "$EXAMPLES_DIR/$example_name.rs" ] || [ -f "$SCRIPT_DIR/$EXAMPLES_DIR/$example_name.rs" ]
+    get_examples | grep -qx -- "$1"
 }
 
 # Function to handle interactive menu
@@ -100,18 +113,18 @@ interactive_menu() {
         list_examples
         echo -n "Enter example name, number, 'q'/'quit' to quit: "
         read -r input
-        
+
         # Handle empty input (just Enter pressed)
         if [[ -z "$input" ]]; then
             continue
         fi
-        
+
         # Handle quit commands
         if [[ "$input" == "q" || "$input" == "quit" ]]; then
             echo "Exiting..."
             exit 0
         fi
-        
+
         # Check if input is a number
         if [[ "$input" =~ ^[0-9]+$ ]]; then
             local example_name
@@ -138,38 +151,37 @@ interactive_menu() {
     done
 }
 
-# Main script logic
+# Main script logic: options first, then the example, then its arguments.
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --release) PROFILE=(--release); shift ;;
+        -h|--help) usage; list_examples; exit 0 ;;
+        *) break ;;
+    esac
+done
+
 if [ $# -eq 0 ]; then
-    # No arguments - show interactive menu
+    # No example given - show interactive menu
     interactive_menu
-elif [ $# -eq 1 ]; then
-    # One argument - could be name or number
-    if [[ "$1" =~ ^[0-9]+$ ]]; then
-        # It's a number
-        example_name=$(get_example_by_number "$1")
-        if [ -n "$example_name" ]; then
-            run_example "$example_name"
-        else
-            echo "Error: Could not find example for number $1"
-            exit 1
-        fi
-    else
-        # It's a name
-        if example_exists "$1"; then
-            run_example "$1"
-        else
-            echo "Error: Example '$1' not found."
-            echo
-            list_examples
-            exit 1
-        fi
-    fi
+    exit 0
+fi
+
+target="$1"
+shift
+EXAMPLE_ARGS=("$@")
+
+if [[ "$target" =~ ^[0-9]+$ ]]; then
+    example_name=$(get_example_by_number "$target")
 else
-    echo "Usage: $0 [example_name|example_number]"
-    echo "       $0              # Interactive menu"
-    echo "       $0 triangle     # Run triangle example"
-    echo "       $0 1            # Run first example"
+    example_name="$target"
+fi
+
+if [ -n "$example_name" ] && example_exists "$example_name"; then
+    run_example "$example_name"
+else
+    echo "Error: Example '$target' not found."
     echo
+    usage
     list_examples
     exit 1
 fi

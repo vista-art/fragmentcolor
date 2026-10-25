@@ -6,7 +6,7 @@
 //! input pattern, applies the map, and renders the warped result.
 //!
 //! Run with:
-//!   cargo run --release -p fce --example gallery_map
+//!   ./fc example --release gallery_map
 
 use fragmentcolor::{Renderer, Shader, Target};
 

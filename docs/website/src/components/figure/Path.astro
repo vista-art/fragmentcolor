@@ -1,0 +1,19 @@
+---
+// Any SVG path, for curves and outlines the other helpers don't cover.
+import type { Tone } from "./types";
+
+interface Props {
+  d: string;
+  tone?: Tone;
+  dashed?: boolean;
+  fill?: boolean;
+}
+
+const { d, tone = "ink", dashed = false, fill = false } = Astro.props;
+---
+
+<g class={`tone-${tone}`}>
+  {fill && <path class="fig-fill" d={d} />}
+  <path class="fig-halo" d={d} />
+  <path class:list={["fig-stroke", dashed && "fig-dashed"]} d={d} />
+</g>

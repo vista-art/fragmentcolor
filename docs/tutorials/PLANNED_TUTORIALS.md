@@ -19,9 +19,10 @@ order and the rough ideas. A tutorial moves out of here when it ships.
 
 | Order | Tutorial | Playground demo | Status |
 |---|---|---|---|
-| 10 | Hello, a million triangles! | | Written; student, technical and prose reviews passed |
+| 10 | Hello, million triangles! | | Written; student, technical and prose reviews passed |
 | 20 | Drawing with distance | Shapes | Written; student, technical and prose reviews passed |
-| 90 | Infinite zoom | Mandelbrot (new) | Written; reviews passed |
+| 70 | Eight million particles | | Written; student, technical and prose reviews passed |
+| 90 | Infinite Mandelbrot zoom | Mandelbrot (new) | Written; reviews passed |
 
 A fourth tutorial joins the launch only if it says something essential that the
 other three leave out.
@@ -30,9 +31,8 @@ other three leave out.
 
 ### Part 1: first pixels
 
-- **10. Hello, a million triangles!** From a five-line triangle to a million instanced
-  triangles, a post-processing pass and 8 million particles moved by a compute shader.
-  A tour of the whole library in one sitting.
+- **10. Hello, million triangles!** From a five-line triangle to a post-processing pass
+  and a million instanced triangles. A tour of the core objects in one sitting.
 
 ### Part 2: thinking in fragments
 
@@ -51,15 +51,14 @@ other three leave out.
 
 ### Part 3: many things at once
 
-- **70. A million particles.** Compute shaders, storage buffers shared by name,
-  instanced drawing, and the frame loop that ties them together. Its final program
-  is the Particles demo.
+- **70. Eight million particles.** Compute shaders, storage buffers shared by name,
+  `atomicAdd`, and a full-screen draw that turns a count per cell into light.
 - **80. Life.** Several compute passes in a row, a density grid, `atomicAdd`, and
   how simple rules between species grow into colonies. Closes on the Life demo.
 
 ### Part 4: past the precision wall
 
-- **90. Infinite zoom.** Written as `tutorials/infinite-zoom`, ending at the Mandelbrot
+- **90. Infinite Mandelbrot zoom.** Written as `tutorials/infinite-zoom`, ending at the Mandelbrot
   demo: one CPU image, the loop in a fragment shader until `f32` rounding breaks it,
   K. I. Martin's perturbation with a `BigInt` reference orbit and rebasing, then
   rescaled iterations, Martin's series and a compute pass down to `1e-1000`.

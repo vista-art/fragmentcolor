@@ -7,7 +7,7 @@
 //! transformed output, with a 2-pixel separator.
 //!
 //! Run with:
-//!   cargo run --release -p fce --example gallery_color
+//!   ./fc example --release gallery_color
 
 use fragmentcolor::{Renderer, Shader, Target};
 

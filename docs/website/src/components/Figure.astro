@@ -1,0 +1,223 @@
+---
+// <Figure> holds a tutorial illustration: an SVG diagram, or a canvas capture with
+// SVG annotations drawn on top in the capture's own coordinates.
+//
+//   <Figure src="/tutorials/drawing-with-distance/circle.webp" width={720} height={420}
+//           alt="..." caption="...">
+//     <Ring at={[360, 210]} r={126} />
+//     <Arrow from={[360, 210]} to={[486, 210]} label="r" />
+//   </Figure>
+//
+// Without `src` the slot is the whole picture, drawn on a panel that follows the
+// site theme. With `src` the image comes first and the slot draws over it. Either
+// way `width` and `height` set the SVG coordinate system. Captures from
+// `tools/capture` use their logical size, 720 units wide by default, and diagrams
+// use the same width so arrows and labels keep one size across the page.
+//
+// The helpers in `./figure/` (Arrow, Label, Ring, Dot, Line, Rect, Path) draw the
+// annotations. Each one takes a `tone`: ink, muted, accent, mark, inside or outside.
+// Labels are real SVG text with a halo. On a diagram the tones follow the site theme.
+// A capture looks the same in both themes, so its annotations keep one light palette.
+
+interface Props {
+  /** Alt text: what the figure shows, for readers who can't see it. */
+  alt: string;
+  /** Width of the SVG coordinate system. Default 720. */
+  width?: number;
+  /** Height of the SVG coordinate system. */
+  height: number;
+  /** A capture to draw under the annotations, as a URL under `public/`. */
+  src?: string;
+  /**
+   * A short caption under the figure. Text between backticks renders as code.
+   * A `credit` slot can follow it with markup, such as an image credit with links.
+   */
+  caption?: string;
+  /** At most 320px wide and centered, for a portrait or another small picture. */
+  narrow?: boolean;
+}
+
+const { alt, width = 720, height, src, caption, narrow = false } = Astro.props;
+const viewBox = `0 0 ${width} ${height}`;
+// Odd pieces of the caption sat between backticks.
+const captionParts = caption?.split("`") ?? [];
+const credit = Astro.slots.has("credit");
+---
+
+<figure class:list={["fc-figure not-content", narrow && "fc-figure-narrow"]}>
+  <div class={src ? "fc-figure-frame fc-figure-capture" : "fc-figure-frame fc-figure-diagram"}>
+    {src && <img src={src} alt={alt} width={width} height={height} loading="lazy" decoding="async" />}
+    {
+      src ? (
+        <svg class="fc-figure-art" viewBox={viewBox} aria-hidden="true">
+          <slot />
+        </svg>
+      ) : (
+        <svg class="fc-figure-art" viewBox={viewBox} role="img" aria-label={alt}>
+          <slot />
+        </svg>
+      )
+    }
+  </div>
+  {
+    (caption || credit) && (
+      <figcaption>
+        {captionParts.map((part, i) => (i % 2 ? <code>{part}</code> : part))}
+        {caption && credit && " "}
+        {credit && <slot name="credit" />}
+      </figcaption>
+    )
+  }
+</figure>
+
+<style is:global>
+  .fc-figure {
+    --fig-ink: var(--sl-color-white);
+    --fig-muted: var(--sl-color-gray-3);
+    --fig-accent: var(--sl-color-text-accent);
+    --fig-mark: #f5b400;
+    --fig-inside: #ff0083;
+    --fig-outside: #0083ff;
+    --fig-halo: var(--sl-color-black);
+    --fig-panel: var(--sl-color-gray-6);
+    --fig-text: 15px;
+    --fig-small: 12.5px;
+    margin: 1.5rem 0;
+  }
+
+  .fc-figure-narrow {
+    max-width: 320px;
+    margin-inline: auto;
+  }
+
+  :root[data-theme="light"] .fc-figure {
+    --fig-mark: #b07a00;
+    --fig-inside: #d4006d;
+    --fig-outside: #006fd6;
+  }
+
+  /* A capture keeps its own colors in both themes, so its annotations do too. */
+  .fc-figure .fc-figure-capture {
+    --fig-ink: #ffffff;
+    --fig-muted: hsl(224, 12%, 78%);
+    --fig-accent: hsl(224, 100%, 85%);
+    --fig-mark: #ffc21a;
+    --fig-inside: #ff5fae;
+    --fig-outside: #5fb0ff;
+    --fig-halo: #0d0f14;
+  }
+
+  .fc-figure-frame {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    line-height: 0;
+  }
+
+  .fc-figure-frame img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .fc-figure-frame img + .fc-figure-art {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .fc-figure-diagram {
+    background: var(--fig-panel);
+  }
+
+  .fc-figure-diagram .fc-figure-art {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .fc-figure figcaption {
+    margin-top: 0.5rem;
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-sm);
+    line-height: 1.45;
+  }
+
+  .fc-figure figcaption a {
+    color: var(--sl-color-text-accent);
+  }
+
+  /* Phones show the same coordinates at half the width or less, so labels grow. */
+  @media (max-width: 40rem) {
+    .fc-figure {
+      --fig-text: 22px;
+      --fig-small: 18.5px;
+    }
+  }
+
+  .fc-figure-art .tone-ink { --tone: var(--fig-ink); }
+  .fc-figure-art .tone-muted { --tone: var(--fig-muted); }
+  .fc-figure-art .tone-accent { --tone: var(--fig-accent); }
+  .fc-figure-art .tone-mark { --tone: var(--fig-mark); }
+  .fc-figure-art .tone-inside { --tone: var(--fig-inside); }
+  .fc-figure-art .tone-outside { --tone: var(--fig-outside); }
+
+  .fc-figure-art .fig-stroke,
+  .fc-figure-art .fig-halo {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .fc-figure-art .fig-stroke {
+    stroke: var(--tone);
+    stroke-width: 2px;
+  }
+
+  .fc-figure-art .fig-halo {
+    stroke: var(--fig-halo);
+    stroke-width: 5px;
+    stroke-opacity: 0.7;
+  }
+
+  .fc-figure-art .fig-dashed {
+    stroke-dasharray: 6 5;
+  }
+
+  .fc-figure-art .fig-head {
+    fill: var(--tone);
+    stroke: var(--fig-halo);
+    stroke-width: 1.5px;
+    stroke-opacity: 0.7;
+    paint-order: stroke;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .fc-figure-art .fig-fill {
+    fill: var(--tone);
+    fill-opacity: 0.18;
+  }
+
+  .fc-figure-art .fig-label {
+    fill: var(--tone);
+    font-family: var(--sl-font, system-ui, sans-serif);
+    font-size: var(--fig-text);
+    font-weight: 600;
+    stroke: var(--fig-halo);
+    stroke-width: 4.5px;
+    stroke-linejoin: round;
+    paint-order: stroke;
+    dominant-baseline: middle;
+  }
+
+  .fc-figure-art .fig-label.fig-small {
+    font-size: var(--fig-small);
+    font-weight: 500;
+  }
+
+  .fc-figure-art .fig-label.fig-code {
+    font-family: var(--__sl-font-mono, ui-monospace, monospace);
+  }
+</style>
