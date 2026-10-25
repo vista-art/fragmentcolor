@@ -7,6 +7,7 @@ Role
 Targets
 - `Pass::set_target(target)` attaches an offscreen color target for intermediate rendering (one per pass; subsequent calls overwrite).
 - `Pass::set_depth_target(target)` attaches an offscreen depth target; sample counts must match the color target.
+- A pass that draws Models and has no depth target gets a pooled depth attachment from the renderer, matching its color attachment. `set_depth_target` replaces it. Passes without Models draw without depth.
 - There is no explicit `present(pass)` API — the last render pass in the executed DAG presents to the final frame by default.
 
 Compute vs render

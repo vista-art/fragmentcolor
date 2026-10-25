@@ -32,6 +32,9 @@ pub(crate) use buffer_pool::*;
 
 mod texture_pool;
 pub(crate) use texture_pool::*;
+
+mod depth;
+use depth::DepthUse;
 pub(crate) mod background;
 mod external_texture;
 mod sampler_pairs;
@@ -578,7 +581,7 @@ struct PassDraws {
 struct RenderPipelineKey {
     shader_hash: ShaderHash,
     color_format: wgpu::TextureFormat,
-    depth_format: Option<wgpu::TextureFormat>,
+    depth: DepthUse,
     sample_count: u32,
     /// `Material::alpha_mode` bakes into the pipeline: `Opaque`/`Mask`
     /// turn blending off, `Blend` flips on standard alpha-over and disables
@@ -1188,47 +1191,14 @@ impl RenderContext {
             depth_slice: None,
         })];
 
-        // Optional depth attachment if the pass has a depth target
-        let depth_target = pass.depth_target.read().as_ref().map(|target| *target.id());
-        let (depth_view, depth_format, depth_sc_opt) = if let Some(depth_id) = depth_target {
-            if let Some(texture) = self.get_texture(&depth_id) {
-                let depth_view = texture.create_view();
-                let depth_format = texture.format();
-                let depth_sc = texture.inner.sample_count();
-                (Some(depth_view), Some(depth_format), Some(depth_sc))
-            } else {
-                (None, None, None)
-            }
-        } else {
-            (None, None, None)
-        };
-
-        // Validate depth sample count matches the pass sample count, if present
-        if let Some(sc) = depth_sc_opt
-            && sc != sample_count
-        {
-            return Err(RendererError::DepthSampleCountMismatch {
-                depth: sc,
-                pass: sample_count,
-            });
-        }
-
-        let depth_stencil_attachment =
-            depth_view
-                .as_ref()
-                .map(|depth_view| wgpu::RenderPassDepthStencilAttachment {
-                    view: depth_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                });
+        // The depth target the pass set, a pooled one for a pass that draws
+        // models, or none. Like the MSAA lease, it outlives the render pass.
+        let depth = self.resolve_depth(pass, extent, sample_count)?;
 
         let descriptor = wgpu::RenderPassDescriptor {
             label: Some(&format!("Render Pass: {}", pass.name.clone())),
             color_attachments,
-            depth_stencil_attachment,
+            depth_stencil_attachment: depth.attachment(),
             timestamp_writes: None,
             occlusion_query_set: None,
             multiview_mask: None,
@@ -1286,10 +1256,11 @@ impl RenderContext {
             // we don't hold them across the pipeline build.
             let alpha_mode = *shader.alpha_mode.read();
             let double_sided = *shader.double_sided.read();
+            let depth_use = depth.pick(shader_meshes.is_empty());
             let pipeline_key = RenderPipelineKey {
                 shader_hash: shader.hash,
                 color_format,
-                depth_format,
+                depth: depth_use,
                 sample_count,
                 alpha_mode,
                 double_sided,
@@ -1305,7 +1276,7 @@ impl RenderContext {
                         color_format,
                         sample_count,
                         layouts.as_ref(),
-                        depth_format,
+                        depth_use,
                         alpha_mode,
                         double_sided,
                         self.aligned_uniform_bindings.load(Ordering::Relaxed),
@@ -2335,7 +2306,7 @@ fn create_render_pipeline(
     format: wgpu::TextureFormat,
     sample_count: u32,
     vertex_layouts: Option<&VertexLayouts>,
-    depth_format: Option<wgpu::TextureFormat>,
+    depth: DepthUse,
     alpha_mode: crate::material::AlphaMode,
     double_sided: bool,
     pad_uniforms: bool,
@@ -2564,19 +2535,7 @@ fn create_render_pipeline(
             },
             ..wgpu::PrimitiveState::default()
         },
-        depth_stencil: depth_format.map(|format| wgpu::DepthStencilState {
-            format,
-            // Blend disables depth-write so translucent fragments don't
-            // occlude later geometry in the same pass. Opaque / Mask keep
-            // depth-write on.
-            depth_write_enabled: Some(matches!(
-                alpha_mode,
-                crate::material::AlphaMode::Opaque | crate::material::AlphaMode::Mask
-            )),
-            depth_compare: Some(wgpu::CompareFunction::LessEqual),
-            stencil: wgpu::StencilState::default(),
-            bias: wgpu::DepthBiasState::default(),
-        }),
+        depth_stencil: depth.state(alpha_mode),
         multisample: wgpu::MultisampleState {
             count: sample_count,
             mask: !0,
@@ -3467,6 +3426,139 @@ struct VOut { @builtin(position) pos: vec4<f32> };
             assert_eq!(pooled(), 1, "a few idle renders keep it");
             ctx.texture_pool.write().start_render();
             assert_eq!(pooled(), 0, "a longer idle stretch frees it");
+        });
+    }
+
+    /// A pass that draws one PBR triangle, the kind of pass that gets a default depth.
+    fn model_pass() -> Arc<PassObject> {
+        let mesh = crate::Mesh::new();
+        let corners = [[-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0]];
+        mesh.add_vertices(
+            corners.map(|corner| {
+                crate::Vertex::pbr(corner).set(crate::Vertex::NORMAL, [0.0, 0.0, 1.0])
+            }),
+        );
+        let pass = Pass::new("models");
+        pass.add(&crate::Model::new(mesh, crate::Material::pbr()))
+            .expect("add failed");
+        pass.passes().first().cloned().expect("pass")
+    }
+
+    /// The sizes of the depth textures waiting in the pool.
+    fn pooled_depths(ctx: &RenderContext) -> Vec<(u32, u32)> {
+        let pool = ctx.texture_pool.read();
+        pool.keys()
+            .filter(|key| key.format == crate::TextureObject::DEPTH_FORMAT)
+            .map(|key| (key.width, key.height))
+            .collect()
+    }
+
+    /// Records `pass` into a square frame and submits it, returning any validation error.
+    async fn draw(ctx: &RenderContext, pass: &PassObject, side: u32) -> Option<wgpu::Error> {
+        let size = wgpu::Extent3d {
+            width: side,
+            height: side,
+            depth_or_array_layers: 1,
+        };
+        let frame = create_test_frame(&ctx.device, size, wgpu::TextureFormat::Rgba8Unorm);
+        let scope = ctx.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let mut encoder = ctx
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        ctx.process_render_pass(&mut encoder, pass, &frame, size)
+            .expect("render pass failed");
+        ctx.queue.submit(Some(encoder.finish()));
+        scope.pop().await
+    }
+
+    // Story: a pass that draws models gets a depth texture from the pool, reuses
+    // it from frame to frame, and lets the old one go after the frame resizes.
+    #[test]
+    fn model_pass_reuses_a_pooled_depth() {
+        pollster::block_on(async move {
+            let (_adapter, device, queue) = create_device_and_queue().await;
+            let ctx = RenderContext::new(device, queue);
+            let pass = model_pass();
+            for _ in 0..3 {
+                ctx.texture_pool.write().start_render();
+                assert!(draw(&ctx, &pass, 16).await.is_none(), "invalid pass");
+            }
+            assert_eq!(pooled_depths(&ctx), [(16, 16)], "one depth, reused");
+
+            for _ in 0..9 {
+                ctx.texture_pool.write().start_render();
+                assert!(draw(&ctx, &pass, 32).await.is_none(), "invalid pass");
+            }
+            assert_eq!(pooled_depths(&ctx), [(32, 32)], "the old size left");
+        });
+    }
+
+    // Story: passes without models, and passes with a depth target of their own,
+    // take no depth from the pool.
+    #[test]
+    fn only_model_passes_take_a_pooled_depth() {
+        pollster::block_on(async move {
+            let (_adapter, device, queue) = create_device_and_queue().await;
+            let ctx = Arc::new(RenderContext::new(device, queue));
+            let plain = Pass::from_shader("plain", &Shader::default());
+            let plain = plain.passes().first().cloned().expect("pass");
+            assert!(draw(&ctx, &plain, 8).await.is_none(), "invalid pass");
+            assert!(
+                pooled_depths(&ctx).is_empty(),
+                "a plain pass draws in order"
+            );
+
+            let size = wgpu::Extent3d {
+                width: 8,
+                height: 8,
+                depth_or_array_layers: 1,
+            };
+            let object = Arc::new(crate::TextureObject::create_depth_texture(&ctx, size, 1));
+            let depth = crate::texture::Registration::create(&ctx, object);
+            let pass = model_pass();
+            pass.set_depth_target(depth);
+            assert!(draw(&ctx, &pass, 8).await.is_none(), "invalid pass");
+            assert!(pooled_depths(&ctx).is_empty(), "its own depth target wins");
+        });
+    }
+
+    // Story: the default depth takes the color attachment's sample count, from a
+    // multisampled frame or from a single-sampled pass target alike.
+    #[test]
+    fn default_depth_matches_the_color_attachment() {
+        pollster::block_on(async move {
+            let (adapter, device, queue) = create_device_and_queue().await;
+            let ctx = Arc::new(RenderContext::new(device, queue));
+            let supports = |format: wgpu::TextureFormat| {
+                let flags = adapter.get_texture_format_features(format).flags;
+                flags.sample_count_supported(4)
+            };
+            if !supports(wgpu::TextureFormat::Rgba8Unorm)
+                || !supports(crate::TextureObject::DEPTH_FORMAT)
+            {
+                return;
+            }
+            ctx.set_sample_count(4);
+            let pass = model_pass();
+            assert!(draw(&ctx, &pass, 8).await.is_none(), "multisampled frame");
+
+            let size = crate::Size::from([16, 16]);
+            let target =
+                crate::TextureTarget::new(ctx.clone(), size, wgpu::TextureFormat::Rgba8Unorm);
+            let pass = Pass::new("into a target");
+            let mesh = crate::Mesh::new();
+            let corners = [[-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0]];
+            mesh.add_vertices(corners.map(|corner| {
+                crate::Vertex::pbr(corner).set(crate::Vertex::NORMAL, [0.0, 0.0, 1.0])
+            }));
+            pass.add(&crate::Model::new(mesh, crate::Material::pbr()))
+                .expect("add failed");
+            pass.set_target(&target).expect("set_target failed");
+            let pass = pass.passes().first().cloned().expect("pass");
+            assert!(
+                draw(&ctx, &pass, 8).await.is_none(),
+                "single-sampled target"
+            );
         });
     }
 
