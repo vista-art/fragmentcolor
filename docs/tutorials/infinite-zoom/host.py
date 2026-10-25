@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 from time import perf_counter
 
-from fragmentcolor import FragmentColorError, Renderer
+from fragmentcolor import OccludedSurfaceError, Renderer
 from rendercanvas.auto import RenderCanvas, loop
 
 
@@ -59,10 +59,9 @@ def run(step):
         try:
             here = pointer or [width / 2, height / 2]
             example.frame(state, renderer, target, perf_counter() - start, [width, height], here)
-        except FragmentColorError as error:
+        except OccludedSurfaceError:
             # A hidden or minimized window has nothing to draw on, so the frame is skipped.
-            if "occluded" not in str(error):
-                raise
+            pass
         frames += 1
         if limit and frames >= limit:
             print(f"{frames} frames rendered")
