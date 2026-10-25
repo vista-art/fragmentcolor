@@ -21,6 +21,12 @@ const list = demos ? demos.flatMap((id) => DEMOS.filter((d) => d.id === id)) : D
 const first = list.find((d) => d.id === demo) ?? list[0];
 if (!first) throw new Error(`<Playground>: no demo matches ${JSON.stringify(demos)}.`);
 
+// A chip's crop of its demo's thumbnail, as the custom properties its CSS reads.
+function chipCrop(demo: (typeof list)[number]) {
+  const chip = "chip" in demo ? demo.chip : undefined;
+  return chip && `--chip-x: ${chip.x}; --chip-y: ${chip.y}; --chip-zoom: ${chip.zoom}`;
+}
+
 // The picker's category chips, in the order each category first appears, with their demo counts.
 const categories = new Map<string, number>();
 for (const d of list) categories.set(d.category, (categories.get(d.category) ?? 0) + 1);
@@ -103,7 +109,9 @@ const installs = [
                   tabindex={d.id === first.id ? 0 : -1}
                   title={d.summary}
                 >
-                  <img src={d.thumbnail} alt="" width="384" height="240" loading="lazy" decoding="async" />
+                  <span class="fcp-strip-thumb" style={chipCrop(d)}>
+                    <img src={d.thumbnail} alt="" width="384" height="240" loading="lazy" decoding="async" />
+                  </span>
                   <span>{d.title}</span>
                 </button>
               ))}
@@ -567,14 +575,30 @@ const installs = [
     white-space: nowrap;
   }
 
-  .fcp-strip-item img {
+  /* A circle cut from the demo's 16:10 thumbnail. --chip-x and --chip-y center it,
+     as fractions of the thumbnail, --chip-zoom magnifies it, and the clamps keep
+     the thumbnail over the whole circle. */
+  .fcp-strip-thumb {
+    --size: 24px;
+    position: relative;
     flex: none;
-    width: 24px;
-    height: 24px;
-    margin: 0;
+    width: var(--size);
+    height: var(--size);
+    overflow: hidden;
     border-radius: 50%;
-    object-fit: cover;
     background: var(--fcp-panel);
+  }
+
+  .fcp-strip-thumb img {
+    --height: calc(var(--size) * var(--chip-zoom, 1));
+    --width: calc(var(--height) * 1.6);
+    position: absolute;
+    left: clamp(var(--size) - var(--width), var(--size) / 2 - var(--chip-x, 0.5) * var(--width), 0px);
+    top: clamp(var(--size) - var(--height), var(--size) / 2 - var(--chip-y, 0.5) * var(--height), 0px);
+    width: var(--width);
+    height: var(--height);
+    max-width: none;
+    margin: 0;
   }
 
   .fcp-strip-item:hover {

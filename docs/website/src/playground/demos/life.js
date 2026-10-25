@@ -916,6 +916,7 @@ export default {
     "Four species follow or flee each other's density and gather into colonies that chase, split, and swirl. The pointer draws them close, and seed reshuffles who follows whom.",
   category: "Compute",
   thumbnail: "/playground/thumbs/life.webp",
+  chip: { x: 0.62, y: 0.78, zoom: 3.5 },
   kind: "compute",
   requires: "webgpu",
   needs: RELEASE,

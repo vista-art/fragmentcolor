@@ -1,4 +1,7 @@
 // Demos the playground offers, in picker order, grouped by category.
+// The toolbar shows each demo as a chip with a round crop of its thumbnail.
+// An optional chip field moves that crop: x and y center it, as fractions of
+// the thumbnail's width and height, and zoom magnifies it.
 
 import cells from "./cells.js";
 import shapes from "./shapes.js";
