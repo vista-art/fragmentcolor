@@ -1,4 +1,4 @@
-// Step 8: a compute shader moves 8 million particles and counts them in a grid.
+// Eight million particles: a compute shader moves them and counts them in a grid.
 // Call `setup` once, then call `frame` from each `requestAnimationFrame` callback.
 
 import { Pass, Shader } from "fragmentcolor";

@@ -1,17 +1,13 @@
-"""Step 8: a compute shader moves 8 million particles and counts them in a grid.
+// Eight million particles: a compute shader moves them and counts them in a grid.
+// Call `setup` once, then call `frame` on every display refresh, such as from an `MTKView` delegate.
 
-From the repository root, run `python docs/tutorials/01-hello-triangle/host.py 08-compute`.
-"""
+import FragmentColor
 
-from dataclasses import dataclass
+let count: UInt32 = 8_000_000
+let width: UInt32 = 1280
+let height: UInt32 = 720
 
-from fragmentcolor import Pass, Shader
-
-COUNT = 8_000_000
-WIDTH = 1280
-HEIGHT = 720
-
-CLEAR = """
+let clearSource = """
 // #region: clear-shader
 @group(0) @binding(0) var<storage, read_write> counts: array<atomic<u32>, CELLS>;
 
@@ -24,7 +20,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
 // #endregion: clear-shader
 """
 
-SIMULATE = """
+let simulateSource = """
 // #region: simulate-shader
 struct Particle {
     position: vec2<f32>,
@@ -90,7 +86,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
 // #endregion: simulate-shader
 """
 
-DRAW = """
+let drawSource = """
 // #region: draw-shader
 @group(0) @binding(0) var<storage, read> counts: array<u32, CELLS>;
 @group(0) @binding(1) var<uniform> resolution: vec2<f32>;
@@ -120,47 +116,47 @@ fn fs_main(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
 // #endregion: draw-shader
 """
 
+/// What `frame` needs from `setup`.
+struct State {
+    let simulate: Shader
+    let draw: Shader
+    let output: Pass
+}
 
-@dataclass
-class State:
-    """What `frame` needs from `setup`."""
+// #region: setup
+func setup() throws -> State {
+    // All three shaders size their buffers with these WGSL constants.
+    let sizes = """
+        const COUNT: u32 = \(count)u;
+        const GRID = vec2<u32>(\(width)u, \(height)u);
+        const CELLS: u32 = \(width)u * \(height)u;
+        """
+    let clear = try Shader([sizes, clearSource])
+    let simulate = try Shader([sizes, simulateSource])
+    let draw = try Shader([sizes, drawSource])
 
-    simulate: Shader
-    draw: Shader
-    output: Pass
+    // One workgroup handles 256 items, as `@workgroup_size(256)` declares.
+    let clearPass = Pass.fromShader("clear", clear)
+    clearPass.setComputeDispatch((width * height + 255) / 256, 1, 1)
 
+    let simulatePass = Pass.fromShader("simulate", simulate)
+    simulatePass.setComputeDispatch((count + 255) / 256, 1, 1)
+    try simulatePass.require(clearPass)
 
-# #region: setup
-def setup():
-    # All three shaders size their buffers with these WGSL constants.
-    sizes = f"""const COUNT: u32 = {COUNT}u;
-         const GRID = vec2<u32>({WIDTH}u, {HEIGHT}u);
-         const CELLS: u32 = {WIDTH}u * {HEIGHT}u;"""
-    clear = Shader([sizes, CLEAR])
-    simulate = Shader([sizes, SIMULATE])
-    draw = Shader([sizes, DRAW])
+    let output = Pass.fromShader("draw", draw)
+    try output.require(simulatePass)
 
-    # One workgroup handles 256 items, as `@workgroup_size(256)` declares.
-    clear_pass = Pass.from_shader("clear", clear)
-    clear_pass.set_compute_dispatch((WIDTH * HEIGHT + 255) // 256, 1, 1)
+    return State(simulate: simulate, draw: draw, output: output)
+}
+// #endregion: setup
 
-    simulate_pass = Pass.from_shader("simulate", simulate)
-    simulate_pass.set_compute_dispatch((COUNT + 255) // 256, 1, 1)
-    simulate_pass.require(clear_pass)
-
-    output = Pass.from_shader("draw", draw)
-    output.require(simulate_pass)
-
-    return State(simulate, draw, output)
-# #endregion: setup
-
-
-# #region: frame
-def frame(state, renderer, target, time):
-    size = target.size()
-    resolution = [size.width, size.height]
-    state.simulate.set("resolution", resolution)
-    state.simulate.set("time", time)
-    state.draw.set("resolution", resolution)
-    renderer.render(state.output, target)
-# #endregion: frame
+// #region: frame
+func frame(_ state: State, _ renderer: Renderer, _ target: WindowTarget, _ time: Float) throws {
+    let size = target.size()
+    let resolution = [Float(size.width), Float(size.height)]
+    try state.simulate.set("resolution", resolution)
+    try state.simulate.set("time", time)
+    try state.draw.set("resolution", resolution)
+    try renderer.render(state.output, target)
+}
+// #endregion: frame

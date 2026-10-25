@@ -1,4 +1,4 @@
-//! Step 8: a compute shader moves 8 million particles and counts them in a grid.
+//! Eight million particles: a compute shader moves them and counts them in a grid.
 
 #[path = "../host.rs"]
 mod host;
