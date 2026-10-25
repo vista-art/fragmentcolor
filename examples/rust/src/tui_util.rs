@@ -63,12 +63,15 @@ impl<W: Write> TerminalRenderer<W> {
 
     pub fn handle_resize(&mut self) -> anyhow::Result<()> {
         let sz = self.term.size()?;
-        if sz.width != self.cols || sz.height != self.rows {
-            self.cols = sz.width;
-            self.rows = sz.height;
-            self.target
-                .resize([self.cols as u32, (self.rows as u32) * 2])?;
+        // A terminal with no rows or columns has nothing to draw into, so the target keeps its size.
+        let empty = sz.width == 0 || sz.height == 0;
+        if empty || (sz.width == self.cols && sz.height == self.rows) {
+            return Ok(());
         }
+        self.target
+            .resize([sz.width as u32, (sz.height as u32) * 2])?;
+        self.cols = sz.width;
+        self.rows = sz.height;
         Ok(())
     }
 

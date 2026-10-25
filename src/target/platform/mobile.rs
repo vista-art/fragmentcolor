@@ -56,14 +56,15 @@ impl MobileWindowTarget {
         Target::size(&*self.inner.lock())
     }
 
-    /// Resizes the window surface to `width` × `height` pixels.
+    /// Resizes the window surface to `size`. A width or height of zero, such as
+    /// a minimized window's, keeps the last size. Throws for a side past the device limit.
     ///
     /// Uniffi cannot express `&mut self` on an `Arc`-wrapped object, so this
     /// method acquires the inner mutex, applies the resize, and releases it.
     #[uniffi::method(name = "resize")]
     #[lsp_doc("docs/api/targets/window_target/resize.md")]
-    pub fn resize_mobile(&self, width: u32, height: u32) -> Result<(), FragmentColorError> {
-        Target::resize(&mut *self.inner.lock(), [width, height]).map_err(FragmentColorError::from)
+    pub fn resize_mobile(&self, size: Size) -> Result<(), FragmentColorError> {
+        Ok(Target::resize(&mut *self.inner.lock(), size)?)
     }
 
     #[uniffi::method(name = "getImage")]
@@ -134,15 +135,16 @@ impl MobileTextureTarget {
         Target::size(&*self.inner.read())
     }
 
-    /// Resizes the offscreen texture to `width` × `height` pixels.
+    /// Resizes the offscreen texture to `size`. A new size starts with blank pixels,
+    /// and the current size keeps them. Throws when the target can't take the size,
+    /// such as a width or height of zero.
     ///
-    /// The underlying GPU texture is recreated; any previously-rendered
-    /// pixel data is lost. Uniffi cannot express `&mut self` on an
-    /// `Arc`-wrapped object, so this method acquires the inner write-lock.
+    /// Uniffi cannot express `&mut self` on an `Arc`-wrapped object, so this
+    /// method acquires the inner write-lock.
     #[uniffi::method(name = "resize")]
     #[lsp_doc("docs/api/targets/texture_target/resize.md")]
-    pub fn resize_mobile(&self, width: u32, height: u32) -> Result<(), FragmentColorError> {
-        Target::resize(&mut *self.inner.write(), [width, height]).map_err(FragmentColorError::from)
+    pub fn resize_mobile(&self, size: Size) -> Result<(), FragmentColorError> {
+        Ok(Target::resize(&mut *self.inner.write(), size)?)
     }
 
     /// Returns the current offscreen texture contents as a packed RGBA8

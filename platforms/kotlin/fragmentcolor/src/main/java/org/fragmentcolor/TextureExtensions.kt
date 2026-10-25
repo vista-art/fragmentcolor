@@ -52,19 +52,9 @@ fun Texture.resize(size: List<UInt>) {
 
 // ── Targets ──────────────────────────────────────────────────────────────────
 
-/** Resize the target to [size], such as another target's `size()`. */
-fun TextureTarget.resize(size: Size) {
-    resize(size.width, size.height)
-}
-
 /** Resize the target from a `[width, height]` list. */
 fun TextureTarget.resize(size: List<UInt>) {
     resize(sizeRecord(size, "resize"))
-}
-
-/** Resize the target to [size], such as another target's `size()`. */
-fun WindowTarget.resize(size: Size) {
-    resize(size.width, size.height)
 }
 
 /** Resize the target from a `[width, height]` list. */

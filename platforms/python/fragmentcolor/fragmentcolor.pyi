@@ -4862,7 +4862,8 @@ class TextureTarget:
         Resizes the [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) to the given width and height.
 
         Passes that draw into the target, shaders that sample it and every `texture()` handle use the new texture.
-        Its pixels start blank, and the current size keeps them. A width or height of zero returns `TextureError::InvalidInput` and keeps the texture.
+        Its pixels start blank, and the current size keeps them. A width or height of zero, a side past the device limit, or a layer count other than 1 returns
+        `TextureError::InvalidInput` and keeps the texture.
 
         Example:
 
@@ -4973,8 +4974,9 @@ class WindowTarget:
         Resizes the [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget) to the given width and height.
         Call it when the window or canvas changes size.
 
-        A minimized window reports 0×0. The target accepts it and keeps its last size, then draws at the new
-        size once the window has an area again. A side past the device limit returns an error.
+        A width or height of zero, such as the 0×0 a minimized window reports, is no error: the target keeps
+        its last size and draws at the new one once the window has an area again. A side past the device limit
+        returns an error.
 
         Example:
 
