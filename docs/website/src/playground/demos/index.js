@@ -9,10 +9,11 @@ import kaleidoscope from "./kaleidoscope.js";
 import halftone from "./halftone.js";
 import raymarch from "./raymarch.js";
 import postfx from "./postfx.js";
+import model from "./model.js";
 import { ARTWORK_DEMOS } from "./artworks.js";
 import { supports } from "../../runtime.js";
 
 // A demo that needs a newer FragmentColor than the site loads stays out of the picker.
-export const DEMOS = [cells, particles, life, mandelbrot, shapes, kaleidoscope, halftone, raymarch, postfx, ...ARTWORK_DEMOS].filter(
+export const DEMOS = [cells, particles, life, mandelbrot, shapes, kaleidoscope, halftone, raymarch, postfx, model, ...ARTWORK_DEMOS].filter(
   (demo) => !demo.needs || supports(demo.needs),
 );
