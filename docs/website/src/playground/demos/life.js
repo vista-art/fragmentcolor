@@ -921,7 +921,7 @@ export default {
   category: "Compute",
   // A held pointer gathers the swarm into a ball: ./fc capture thumbs life --hold 0.5,0.5 --wait 10
   thumbnail: "/playground/thumbs/life.webp",
-  chip: { x: 0.49, y: 0.49, zoom: 6 },
+  chip: { x: 0.5, y: 0.48, zoom: 3 },
   kind: "compute",
   requires: "webgpu",
   needs: RELEASE,
