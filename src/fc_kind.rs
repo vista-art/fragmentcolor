@@ -9,6 +9,23 @@ pub trait FcKind {
     const KIND: &'static str;
 }
 
+/// Whether two kind strings match, in a const context.
+#[doc(hidden)]
+pub const fn same_kind(left: &str, right: &str) -> bool {
+    let (left, right) = (left.as_bytes(), right.as_bytes());
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut index = 0;
+    while index < left.len() {
+        if left[index] != right[index] {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
 /// Implement FcKind for a type and expose a platform getter/property.
 ///
 /// Usage:

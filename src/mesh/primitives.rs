@@ -18,6 +18,8 @@ pub struct Quad {
     object: Arc<MeshObject>,
 }
 
+crate::impl_fc_kind!(Quad, "Quad");
+
 impl Quad {
     #[lsp_doc("docs/api/geometry/quad/new.md")]
     pub fn new(min: [f32; 2], max: [f32; 2]) -> Self {

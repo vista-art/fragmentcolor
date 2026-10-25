@@ -125,42 +125,16 @@ macro_rules! impl_tryfrom_js_ref_anchor {
                 use js_sys::Reflect;
                 use wasm_bindgen::convert::RefFromWasmAbi;
 
-                // Prefer a branded property for robust type checks across bundlers
-                let expected: &str = $name;
-                let mut ok = false;
-                if let Ok(brand_value) =
-                    Reflect::get(value, &wasm_bindgen::JsValue::from_str("__fc_kind"))
-                {
-                    if let Some(bs) = brand_value.as_string() {
-                        if bs == expected {
-                            ok = true;
-                        }
-                    }
-                }
-
-                // Fallback: constructor.name (tolerate leading underscores added by bundlers)
-                if !ok {
-                    let ctor = Reflect::get(value, &wasm_bindgen::JsValue::from_str("constructor"))
-                        .map_err(|_| <$err>::Error(format!("Missing constructor on {}", $name)))?;
-                    let cname = Reflect::get(&ctor, &wasm_bindgen::JsValue::from_str("name"))
-                        .map_err(|_| {
-                            <$err>::Error(format!("Missing constructor.name on {}", $name))
-                        })?
-                        .as_string()
-                        .ok_or_else(|| {
-                            <$err>::Error(format!("Invalid constructor.name for {}", $name))
-                        })?;
-                    let normalized = cname.trim_start_matches('_');
-                    if normalized == expected {
-                        ok = true;
-                    }
-                }
-
-                if !ok {
+                // The brand survives minifiers, which rename classes. A check by
+                // constructor name passed in development builds and failed in production.
+                let brand = Reflect::get(value, &wasm_bindgen::JsValue::from_str("__fc_kind"))
+                    .ok()
+                    .and_then(|brand| brand.as_string());
+                if brand.as_deref() != Some($name) {
                     return Err(<$err>::Error(format!("Type mismatch: expected {}", $name)));
                 }
 
-                // Safe to anchor now that the JS runtime class name matches
+                // Safe to anchor now that the brand matches
                 let key = wasm_bindgen::JsValue::from_str("__wbg_ptr");
                 let ptr = Reflect::get(value, &key)
                     .map_err(|_| <$err>::Error(format!("Missing __wbg_ptr on {}", $name)))?;
@@ -180,11 +154,14 @@ macro_rules! impl_tryfrom_js_ref_anchor {
 #[macro_export]
 macro_rules! impl_js_bridge {
     ($t:ty, $err:ty) => {
-        $crate::impl_tryfrom_js_ref_anchor!($t, $err, stringify!($t));
-        #[cfg(wasm)]
-        $crate::impl_tryfrom_owned_via_ref!($t, wasm_bindgen::JsValue, $err);
+        $crate::impl_js_bridge!($t, $err, stringify!($t));
     };
     ($t:ty, $err:ty, $name:expr) => {
+        // A bridged type must carry the brand its check reads, in every build.
+        const _: () = assert!(
+            $crate::fc_kind::same_kind(<$t as $crate::FcKind>::KIND, $name),
+            "a type that goes through impl_js_bridge! needs impl_fc_kind! with the same name",
+        );
         $crate::impl_tryfrom_js_ref_anchor!($t, $err, $name);
         #[cfg(wasm)]
         $crate::impl_tryfrom_owned_via_ref!($t, wasm_bindgen::JsValue, $err);

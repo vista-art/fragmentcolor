@@ -198,6 +198,8 @@ impl From<([f32; 3], [f32; 2], [f32; 4])> for Vertex {
     }
 }
 
+crate::impl_fc_kind!(Vertex, "Vertex");
+
 impl PartialEq for Vertex {
     fn eq(&self, other: &Self) -> bool {
         self.position == other.position && self.properties == other.properties
@@ -215,6 +217,8 @@ pub struct Instance {
     pub(crate) prop_locations: HashMap<String, u32>,
     pub(crate) next_location: u32,
 }
+
+crate::impl_fc_kind!(Instance, "Instance");
 
 impl Instance {
     #[lsp_doc("docs/api/geometry/instance/new.md")]

@@ -543,7 +543,7 @@ impl From<TextureId> for u64 {
     }
 }
 
-#[cfg(wasm)]
+crate::impl_fc_kind!(TextureId, "TextureId");
 crate::impl_js_bridge!(TextureId, crate::texture::TextureError);
 
 #[cfg(wasm)]

@@ -7,6 +7,10 @@
 - `Shader.add_mesh` fails when a later vertex or instance lacks an attribute the shader reads, and the error names the attribute and the index: `color: expected vec4<f32>, got no value at vertex 3`. Only the first vertex and instance were checked, and a later one drew with zeros.
 - PBR materials light a `Model` scaled differently along each axis, or mirrored, the way its surfaces face. The registry's `mesh_transform_normal` uses the inverse transpose of the model matrix, where the plain matrix tilted normals toward the stretched axis.
 
+### JavaScript
+
+- `Vertex`, `Instance`, `Quad` and `TextureId` carry the `__fc_kind` brand the other classes have. Minifiers rename classes, and the checks that passed these objects into the library fell back to the class name, so a production build failed where a development build worked: `mesh.addVertices` rejected its `Vertex` objects. The checks read only the brand now, and a build fails when a type that crosses into the library has none. A site that keeps class names in its build to work around this, as the FragmentColor website does with `keepNames` in `docs/website/astro.config.mjs`, can drop that once it loads 0.12.7.
+
 ### Python
 
 - Draws fire with rendercanvas 2.7, where `canvas.request_draw` never called the draw function and `examples/python/main.py` showed nothing. `Renderer.create_target` registers a rendercanvas context on the canvas, and `render` presents each window frame itself, from a draw function or a timer.
