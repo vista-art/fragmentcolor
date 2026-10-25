@@ -12,6 +12,9 @@ import Snippet from "../../../components/Snippet.astro";
 import Demo from "../../../components/Demo.astro";
 import Lang from "../../../components/Lang.astro";
 import LangSelector from "../../../components/LangSelector.astro";
+import Figure from "../../../components/Figure.astro";
+import { Arrow, Dot, Label, Path, Rect, Ring } from "../../../components/figure";
+import { flip, frame, grid, step } from "../../../figures/eight-million-particles";
 
 <LangSelector />
 
@@ -39,6 +42,27 @@ The `sizes` string holds three WGSL constants, formatted from <Lang /> numbers. 
 
 A `Pass` made from a compute shader dispatches workgroups instead of drawing. <code><Lang rust="set_compute_dispatch" js="setComputeDispatch" py="set_compute_dispatch" swift="setComputeDispatch" kotlin="setComputeDispatch" /></code> says how many, in up to three dimensions: enough groups of 256 along the first to cover every item, and 1 along the other two. The `require` calls chain the passes in order, and `frame` hands only the last one to `render`.
 
+<Figure height={345} alt="Three boxes in a row: clear and simulate, both compute, then draw, a render pass. Below them sit two storage buffers, particles and counts. Clear writes zeros into counts with atomicStore. Simulate reads and writes particles and adds to counts with atomicAdd. Draw reads counts." caption="One frame. The passes run left to right, and each one reaches the buffers it declares by name.">
+  {frame.passes.map((pass) => <Rect at={pass.at} size={frame.size} tone={pass.stage === "render" ? "inside" : "accent"} fill />)}
+  {frame.passes.map((pass) => <Label at={[pass.middle, pass.at[1] + 19]} code>{pass.name}</Label>)}
+  {frame.passes.map((pass) => <Label at={[pass.middle, pass.at[1] + 46]} tone="muted" small>{pass.stage}</Label>)}
+  {frame.links.map(([from, to]) => <Arrow from={from} to={to} />)}
+  <Rect at={frame.particles.at} size={frame.particles.size} tone="mark" fill />
+  <Label at={[frame.particles.at[0] + frame.particles.size[0] / 2, frame.particles.at[1] + 17]} code>particles</Label>
+  <Label at={[frame.particles.at[0] + frame.particles.size[0] / 2, frame.particles.at[1] + 44]} tone="muted" small>{frame.particles.note}</Label>
+  <Rect at={frame.counts.at} size={frame.counts.size} tone="mark" fill />
+  <Label at={[frame.counts.at[0] + frame.counts.size[0] / 2, frame.counts.at[1] + 17]} code>counts</Label>
+  <Label at={[frame.counts.at[0] + frame.counts.size[0] / 2, frame.counts.at[1] + 44]} tone="muted" small>{frame.counts.note}</Label>
+  <Arrow from={[frame.wires.store, frame.bottom + 4]} to={[frame.wires.store, frame.counts.at[1] - 4]} tone="accent" />
+  <Label at={[frame.wires.store + 10, 248]} anchor="start" code small>atomicStore</Label>
+  <Arrow from={[frame.wires.both, frame.bottom + 4]} to={[frame.wires.both, frame.particles.at[1] - 4]} tone="accent" both />
+  <Label at={[frame.wires.both - 10, 138]} anchor="end" tone="muted" small>read, write</Label>
+  <Arrow from={[frame.wires.add, frame.bottom + 4]} to={[frame.wires.add, frame.counts.at[1] - 4]} tone="accent" />
+  <Label at={[frame.wires.add + 10, 215]} anchor="start" code small>atomicAdd</Label>
+  <Arrow from={[frame.wires.read, frame.counts.at[1] - 4]} to={[frame.wires.read, frame.bottom + 4]} tone="inside" />
+  <Label at={[frame.wires.read + 10, 185]} anchor="start" tone="muted" small>read</Label>
+</Figure>
+
 ## Clearing the grid
 
 The first pass sets every count back to zero:
@@ -55,15 +79,59 @@ The ID is a `vec3<u32>` to match the three dispatch dimensions, and a flat list 
 
 Every new storage buffer holds zeros. A particle standing perfectly still takes that as its cue to pick an orbit. After that, every frame adds the pull of the **attractor**, a moving point near the middle, to the velocity. The particle then moves by that velocity for 1/60 of a second. About one particle in 300 also starts over on each frame, which keeps the attractor from swallowing them all.
 
+<Figure height={310} alt="One particle on the canvas with two arrows: its velocity, pointing around the center of the canvas, and its pull, pointing toward the attractor. A solid line shows its path over the next two seconds, curving toward the attractor and past it. A dashed curve shows where the attractor wanders over twelve seconds." caption="One particle's next two seconds. Its `velocity` carries it around the center while the `pull` bends its path toward the attractor. The attractor itself wanders along the dashed curve.">
+  <Path d={step.wander} tone="muted" dashed />
+  <Dot at={step.center} tone="muted" r={3} />
+  <Label at={[step.center[0] - 10, step.center[1] - 14]} anchor="end" tone="muted" small>center</Label>
+  <Path d={step.path} />
+  <Arrow from={step.ending[0]} to={step.ending[1]} />
+  <Ring at={step.attractor} r={9} />
+  <Label at={[step.attractor[0] + 16, step.attractor[1] - 16]} anchor="start" tone="mark" code>attractor</Label>
+  <Arrow from={step.particle} to={step.velocity} label="velocity" labelAt="end" tone="accent" code />
+  <Arrow from={step.particle} to={step.pull} label="pull" labelAt="end" offset={[0, 26]} tone="inside" code />
+  <Dot at={step.particle} r={6} />
+</Figure>
+
 The grid is a flat array, one row after another: the cell in column `x` and row `y` is element `y * GRID.x + x`.
 
 More than a thousand particles can share a cell during one frame. `atomicAdd` makes sure each of them counts, where an ordinary `+=` from several runs at once could lose some. Like `atomicStore` in the first pass, it takes a pointer to the cell, written with `&`.
+
+<Figure height={350} alt={`A grid 8 cells wide and 4 tall, with row 0 at the bottom and ${grid.dots.length} particles scattered over it. Each occupied cell shows how many particles it holds. The cell in column 5 and row 2 holds ${grid.highlight.count} and is marked as counts[${grid.highlight.sum}], element ${grid.highlight.element}.`} caption={`A grid with \`GRID.x\` set to 8. Every particle adds 1 to the cell under it. The marked cell is \`counts[${grid.highlight.element}]\`.`}>
+  {grid.cells.map((corner) => <Rect at={corner} size={[grid.cell, grid.cell]} tone="muted" />)}
+  <Rect at={grid.highlight.at} size={[grid.cell, grid.cell]} tone="mark" fill />
+  {grid.counts.map((cell) => <Label at={cell.at} anchor="start" tone="muted" code small>{cell.count}</Label>)}
+  {grid.dots.map((dot) => <Dot at={dot} r={3.5} />)}
+  {grid.columns.map((x, column) => <Label at={[x, grid.bottom + 20]} tone="muted" code small>{column}</Label>)}
+  {grid.rows.map((y, row) => <Label at={[grid.left - 14, y]} anchor="end" tone="muted" code small>{row}</Label>)}
+  <Label at={[grid.columns[grid.columns.length - 1] + grid.cell / 2 + 16, grid.bottom + 20]} anchor="start" code small>x</Label>
+  <Label at={[grid.left - 14, grid.rows[grid.rows.length - 1] - grid.cell / 2 - 14]} anchor="end" code small>y</Label>
+  <Arrow from={[grid.highlight.lane, 36]} to={[grid.highlight.lane, grid.highlight.at[1] - 4]} label={`counts[${grid.highlight.sum}]`} labelAt="start" tone="mark" code />
+</Figure>
 
 ## Drawing the counts
 
 <Snippet file="eight-million-particles/01-splat/example.rs" region="draw-shader" />
 
 The `draw` shader just reads, so it declares `counts` as plain `u32` with `read` access: the same bytes without the `atomic` wrapper. In a fragment stage, `@builtin(position)` holds the pixel's coordinates in the target, counted from the top-left corner, which is why `fs_main` flips `y` before it looks up a cell. The grid stretches to fill the canvas, while `fit` in the `simulate` shader keeps the swirl round. Only at 1280 × 720 does a cell match exactly one pixel.
+
+<Figure height={265} alt={`Two copies of a ${flip.canvas} canvas. On the left, pixel coordinates start at the top left corner with y pointing down, and a pixel's center reads ${flip.pixelLabel}. On the right, grid rows start at the bottom left corner with y pointing up, and the same pixel lands in cell ${flip.cellLabel}.`} caption={`One pixel on a ${flip.canvas} canvas. \`@builtin(position)\` holds its center and counts rows from the top. The grid counts them from the bottom.`}>
+  <Rect at={flip.left} size={flip.size} tone="muted" />
+  <Rect at={flip.right} size={flip.size} tone="muted" />
+  <Label at={[flip.left[0] + flip.size[0] / 2, 28]} code small>pixel</Label>
+  <Label at={[flip.right[0] + flip.size[0] / 2, 28]} code small>cell</Label>
+  <Arrow from={flip.left} to={[flip.left[0] + 100, flip.left[1]]} label="x" tone="accent" />
+  <Arrow from={flip.left} to={[flip.left[0], flip.left[1] + 100]} label="y" tone="accent" />
+  <Dot at={flip.left} />
+  <Label at={[flip.left[0] + 10, flip.left[1] + 18]} anchor="start" code small>(0, 0)</Label>
+  <Arrow from={[flip.right[0], flip.bottom]} to={[flip.right[0] + 100, flip.bottom]} label="x" tone="accent" />
+  <Arrow from={[flip.right[0], flip.bottom]} to={[flip.right[0], flip.bottom - 100]} label="y" tone="accent" />
+  <Dot at={[flip.right[0], flip.bottom]} />
+  <Label at={[flip.right[0], flip.bottom + 16]} anchor="start" code small>(0, 0)</Label>
+  <Dot at={flip.pixel} tone="mark" r={5} />
+  <Label at={[flip.pixel[0] + 12, flip.pixel[1] + 18]} anchor="start" tone="mark" code small>{flip.pixelLabel}</Label>
+  <Dot at={flip.cell} tone="mark" r={5} />
+  <Label at={[flip.cell[0] + 12, flip.cell[1] + 18]} anchor="start" tone="mark" code small>{flip.cellLabel}</Label>
+</Figure>
 
 On every frame, the program sets the time and the canvas size and renders `output`:
 
