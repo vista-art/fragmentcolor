@@ -21,7 +21,7 @@ order and the rough ideas. A tutorial moves out of here when it ships.
 |---|---|---|---|
 | 10 | Hello, million triangles! | | Written; student, technical and prose reviews passed |
 | 20 | Drawing with distance | Shapes | Written; student, technical and prose reviews passed |
-| 70 | Eight million particles | | Draft; reviews pending |
+| 70 | Eight million particles | | Written; student, technical and prose reviews passed |
 | 90 | Infinite zoom | Mandelbrot (new) | Written; reviews passed |
 
 A fourth tutorial joins the launch only if it says something essential that the
