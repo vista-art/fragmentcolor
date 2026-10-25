@@ -157,9 +157,11 @@ export function wireMenu(root, demos, onPick) {
     const end = strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 1;
     strip.dataset.more = start && end ? "both" : start ? "start" : end ? "end" : "";
   };
-  shade();
   on(strip, "scroll", shade);
-  on(window, "resize", shade);
+  // The row also changes width with the toolbar, as when the status text grows.
+  const resize = new ResizeObserver(shade);
+  resize.observe(strip);
+  cleanups.push(() => resize.disconnect());
 
   on(strip, "click", (e) => choose(e.target.closest(".fcp-strip-item")?.dataset.demo));
   // The arrow keys, Home, and End move the focus along the row, and Enter or Space runs a demo.
