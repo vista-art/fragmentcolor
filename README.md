@@ -54,7 +54,7 @@ Add the crate to `Cargo.toml`:
 
 ```toml
 [dependencies]
-fragmentcolor = "0.12.6"
+fragmentcolor = "0.12.7"
 ```
 
 Then render a shader. Its one uniform, `color`, is ready to set as soon as the shader builds:

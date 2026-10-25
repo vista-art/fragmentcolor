@@ -9,7 +9,7 @@ features = ["python", "pyo3/extension-module"]
 
 [project]
 name = "fragmentcolor"
-version = "0.12.6"
+version = "0.12.7"
 description = "Universal GPU abstraction for Rust, JavaScript, Python, Swift, and Kotlin."
 readme = "platforms/python/README.md"
 requires-python = ">=3.9"
