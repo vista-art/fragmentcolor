@@ -688,7 +688,7 @@ const installs = [
     background: #050608;
   }
 
-  :root[data-theme="light"] .fcp-poster,
+  /* The poster stands in for the canvas and stays black like it. */
   :root[data-theme="light"] .fcp-fallback {
     background: var(--sl-color-gray-6);
   }
@@ -1072,12 +1072,17 @@ const installs = [
       height: min(440px, 70vh);
     }
 
-    .fcp-status {
-      display: none;
+    /* A build error shows right under the canvas, not past the editor. */
+    .fcp-error {
+      order: -1;
     }
 
     .fcp-menu {
       flex: 1;
+    }
+
+    .fcp-menu-button {
+      min-width: 0;
     }
   }
 </style>

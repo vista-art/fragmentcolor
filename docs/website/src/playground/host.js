@@ -10,7 +10,7 @@ import { describeControls, renderControls, sliderRange } from "./controls.js";
 import { LANGUAGES, generateCode, parseLibrary, replaceLibrary } from "./codegen.js";
 import { HARNESS } from "./harness.js";
 import { LibraryPicker } from "./picker.js";
-import { loadFragmentColor } from "../runtime.js";
+import { loadFragmentColor, supports } from "../runtime.js";
 
 const BUILD_DELAY = 250;
 const SCRUB_DELAY = 40;
@@ -49,12 +49,17 @@ export function detectBackend() {
 }
 
 // FragmentColor 0.12.5 logs shader errors and returns a default shader; later
-// releases throw. Capturing console.error covers both.
+// releases throw them and log only the GPU errors no error scope caught.
+// Capturing console.error covers both, and from 0.12.6 it keeps only GPU
+// errors, so a stray error elsewhere on the page can't fail a build.
+const isBuildError = supports("0.12.6") ? (text) => text.includes("==== GPU error") : () => true;
+
 async function capturing(run) {
   const errors = [];
   const original = console.error;
   console.error = (...args) => {
-    errors.push(args.map((a) => (a instanceof Error ? a.message : String(a))).join(" "));
+    const text = args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ");
+    if (isBuildError(text)) errors.push(text);
     original.apply(console, args);
   };
   try {
@@ -168,6 +173,7 @@ export class Playground {
     this.program = null;
     this.pending = null;
     this.buildToken = 0;
+    this.attempts = 0;
     this.timer = 0;
     this.raf = 0;
     this.offscreen = false;
@@ -209,6 +215,7 @@ export class Playground {
     }
     clearTimeout(this.timer);
     this.buildToken++;
+    this.attempts = 0;
     if (this.demo) this.edits.set(this.demo.id, this.snapshot());
     this.demo = demo;
     this.overrides.clear();
@@ -520,7 +527,7 @@ export class Playground {
       recorder = note(setupKeys);
       state = await capturing(() => module.setup(this.renderer, this.target));
     } catch (err) {
-      if (token === this.buildToken && demo === this.demo) this.fail(err);
+      this.retryOrFail(err, token, demo);
       return;
     } finally {
       recorder = null;
@@ -548,13 +555,14 @@ export class Playground {
       recorder = note(frameKeys);
       await capturing(() => this.draw(program, performance.now()));
     } catch (err) {
-      if (token === this.buildToken && demo === this.demo) this.fail(err);
+      this.retryOrFail(err, token, demo);
       return;
     } finally {
       recorder = null;
     }
 
     this.program = program;
+    this.attempts = 0;
     this.canvas.style.visibility = "";
     this.showError(null);
     this.setStatus(`${this.backend} · built in ${Math.round(performance.now() - started)} ms`);
@@ -681,6 +689,20 @@ export class Playground {
     this.scheduleBuild();
   }
 
+  // A first build also claims the GPU and fetches the library cold, which can
+  // fail once on a slow phone. With nothing drawn yet, it tries twice more.
+  retryOrFail(err, token, demo) {
+    if (token !== this.buildToken || demo !== this.demo) return;
+    if (!this.program && this.attempts < 2) {
+      this.attempts++;
+      this.setStatus(`${this.backend} · retrying`);
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => this.build(), 300 * this.attempts);
+      return;
+    }
+    this.fail(err);
+  }
+
   // A failed build leaves the last good one drawing. With none, the canvas goes blank.
   fail(err) {
     if (this.program) return this.showError(err);
@@ -716,8 +738,12 @@ export class Playground {
     this.resize();
     try {
       this.draw(program, now);
+      program.misses = 0;
     } catch (err) {
-      // A frame that throws after its build hands the canvas back to the build before it.
+      // A frame that throws after its build hands the canvas back to the build
+      // before it. With none to go back to, it takes three misses in a row.
+      program.misses = (program.misses ?? 0) + 1;
+      if (!program.previous && program.misses < 3) return;
       program.failed = true;
       this.program = program.previous;
       this.showError(err, this.program ? "Back to the last version that drew." : "Drawing stopped.");
@@ -870,7 +896,7 @@ export class Playground {
 
     // Hidden tabs get no animation frames, so only scrolling away needs a pause.
     if (typeof IntersectionObserver !== "undefined") {
-      const io = new IntersectionObserver(([entry]) => (this.offscreen = !entry.isIntersecting), { threshold: 0.05 });
+      const io = new IntersectionObserver((entries) => (this.offscreen = !entries.at(-1).isIntersecting), { threshold: 0.05 });
       io.observe(canvas);
       this.cleanups.push(() => io.disconnect());
     }
