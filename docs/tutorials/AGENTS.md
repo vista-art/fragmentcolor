@@ -49,7 +49,8 @@ project's running dev server, or starts one and stops it after.
 - `./fc capture figures <tutorial>` redoes every capture listed in `docs/tutorials/<tutorial>/figures.json`
   into `docs/website/public/tutorials/<tutorial>/`. Each entry names a step and pins what moves:
   `{ "name": "circle", "step": "02-circle", "size": [720, 420], "time": 0, "pointer": [360, 210] }`.
-  The step needs a `<Demo>` on the tutorial's page, and `size` and `pointer` are in figure units.
+  The step needs a `<Demo>` on the tutorial's page, which the tool finds through the page's `slug` when
+  its frontmatter sets one. `size` and `pointer` are in figure units.
 - `./fc capture demo <step file> --out <file.webp>` captures one step with `--size`, `--time` and `--pointer`.
 - `./fc capture thumbs [ids...]` redoes the playground thumbnails, 384 by 240.
 

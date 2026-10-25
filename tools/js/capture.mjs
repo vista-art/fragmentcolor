@@ -176,11 +176,12 @@ async function captureDemoCommand(browser, origin, file, options) {
 async function captureDemo(browser, origin, { file, size, time, pointer, scale, out }) {
   const [width, height] = size;
   const tutorial = file.split("/")[0];
+  const address = await findAddress(tutorial);
   const step = path.posix.dirname(file);
   const page = await browser.newPage({ viewport: { width: Math.max(1280, width + 400), height: 1000 }, deviceScaleFactor: scale });
   const errors = watchErrors(page, (url) => isCaptureOf(tutorial, url));
   try {
-    await page.goto(`${origin}/tutorials/${tutorial}/`, { waitUntil: "load" });
+    await page.goto(`${origin}${address}`, { waitUntil: "load" });
     await page.waitForFunction(() => customElements.get("tutorial-demo"));
     const found = await page.evaluate(
       ({ step, width, height, time, pointer, scale }) => {
@@ -201,7 +202,7 @@ async function captureDemo(browser, origin, { file, size, time, pointer, scale, 
       },
       { step, width, height, time, pointer, scale },
     );
-    if (!found) throw new Error(`no <Demo> for ${file} on /tutorials/${tutorial}/`);
+    if (!found) throw new Error(`no <Demo> for ${file} on ${address}`);
 
     // Wait for the canvas to reach the requested size, then for a few more frames.
     await page.waitForFunction(
@@ -222,6 +223,14 @@ async function captureDemo(browser, origin, { file, size, time, pointer, scale, 
   } finally {
     await page.close();
   }
+}
+
+// A tutorial's page sits at the `slug` in its frontmatter, or else at tutorials/<folder>/.
+async function findAddress(tutorial) {
+  const source = await readFile(path.join(SITE, "src/content/docs/tutorials", `${tutorial}.mdx`), "utf8");
+  const frontmatter = source.split(/^---$/m)[1] ?? "";
+  const slug = frontmatter.match(/^slug:\s*["']?([^"'\s]+)["']?\s*$/m)?.[1] ?? `tutorials/${tutorial}`;
+  return `/${slug.replace(/^\/+|\/+$/g, "")}/`;
 }
 
 // Playground demos, each running for --wait seconds before a 384x240 capture.
