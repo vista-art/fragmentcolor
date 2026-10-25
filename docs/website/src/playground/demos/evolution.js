@@ -209,8 +209,10 @@ fn child(parent: Creature, mate: Creature, seed: vec2<u32>) -> Creature {
   kid.energy = parent.energy * LITTER;
   kid.age = 0.0;
   kid.vel = parent.vel + noise.xy * 2.0;
-  if (random(seed.y, seed.x ^ 0x68e31da4u).x < SWITCH * stray) {
-    kid.group = (parent.group + 1u + u32(more.x * 2.0 + 1.0)) % GROUPS;
+  // A rare child joins one of the three other groups.
+  let roll = random(seed.y, seed.x ^ 0x68e31da4u);
+  if (roll.x < SWITCH * stray) {
+    kid.group = (parent.group + 1u + u32(roll.y * 3.0)) % GROUPS;
   }
   return kid;
 }
