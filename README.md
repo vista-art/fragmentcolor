@@ -37,7 +37,7 @@ It runs on Vulkan, Metal, DirectX 12, OpenGL, WebGL2, and WebGPU through [wgpu](
 ## Why FragmentColor
 
 <p align="center">
-  <img src="docs/media/playground.webp" width="928" alt="The FragmentColor playground: a shader edit rebuilds the canvas as it is typed, a generated slider changes a uniform, and the Rust tab shows the same program">
+  <img src="docs/media/playground.webp" width="928" alt="The FragmentColor playground: the Cells demo picked from the demo cards, a shader edit that rebuilds the canvas as it is typed, a generated slider that changes a uniform, and the Rust tab showing the same program">
 </p>
 
 In the [playground](https://fragmentcolor.org), the canvas rebuilds as you type, the sliders come from the shader's own uniforms, and every demo shows the same program in all five languages.
