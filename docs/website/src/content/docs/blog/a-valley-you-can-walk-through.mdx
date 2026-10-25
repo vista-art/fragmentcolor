@@ -19,7 +19,7 @@ The afternoon is short. Every three minutes the sun crosses the sky, and at dusk
 
 Everything in the valley is a [`Model`](/api/scene/model/), a mesh and a material placed by a transform. The ground is a single mesh of about ten thousand triangles. Each triangle carries its own face normal for the faceted look, plus a color picked from its height and slope: sand at the waterline, grass on the flats, rock on the cliffs, snow on the peaks.
 
-The forest costs one draw call. Its 140 pines share one `Mesh` and one `Material`, and their transforms ride one instance buffer. So do the boulders. The meadow costs one more call for about two thousand tufts of grass, each a fan of five blades.
+The forest costs one draw call. Its 140 pines share one `Mesh` and one `Material`, and their transforms ride one instance buffer. So do the boulders. The meadow adds three calls for about 3,300 tufts in three kinds, lush, dry and short, whose blades bend outward and lighten toward the tip. Their normals lean toward the sky, so the grass takes the light the way the ground does.
 
 A lamp is a post, a glowing bulb and a [`Light::point`](/api/scene/light/#point). A directional sun and a dim blue moon complete the lighting. On every frame the program swings the sun along its arc, dims or brightens the lamps, and moves the [`Camera`](/api/scene/camera/) with `look_at` to wherever your eyes are.
 
