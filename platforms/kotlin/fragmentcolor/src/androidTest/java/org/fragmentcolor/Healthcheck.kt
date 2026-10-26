@@ -33,8 +33,6 @@ class Healthcheck : ExampleCase() {
         Unit
     }
 
-    // Shader.set shapes each Kotlin value to the uniform's declared WGSL type.
-    // Setting and reading uniforms touches no GPU, so this runs on any emulator.
     // A region or viewport with a side of 0, or a far edge past UInt.MAX_VALUE,
     // throws instead of shrinking, and a clear color is a list of floats or doubles.
     @Test
@@ -50,6 +48,8 @@ class Healthcheck : ExampleCase() {
         pass.setClearColor(listOf(0.1, 0.2, 0.3))
     }
 
+    // Shader.set shapes each Kotlin value to the uniform's declared WGSL type.
+    // Setting and reading uniforms touches no GPU, so this runs on any emulator.
     @Test
     fun shaderSetShapesValues() {
         val shader = Shader(

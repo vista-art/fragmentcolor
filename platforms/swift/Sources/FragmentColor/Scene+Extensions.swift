@@ -38,6 +38,7 @@ extension Scene {
     }
 
     @discardableResult
+    @_disfavoredOverload
     public func ambient(_ color: [Double]) throws -> Scene {
         try ambient(color: color.map { Float($0) })
     }

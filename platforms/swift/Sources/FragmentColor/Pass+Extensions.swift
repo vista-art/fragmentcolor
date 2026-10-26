@@ -135,6 +135,7 @@ extension Pass {
     }
 
     /// Set the clear color from `[r, g, b]` or `[r, g, b, a]` as doubles.
+    @_disfavoredOverload
     public func setClearColor(_ rgba: [Double]) throws {
         try self.setClearColor(color: rgba.map { Float($0) })
     }

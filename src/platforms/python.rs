@@ -1,12 +1,15 @@
+use std::fmt::Display;
+
+use numpy::{PyArrayDescrMethods, PyArrayDyn, dtype};
 use pyo3::exceptions::{PyOverflowError, PyTypeError};
 use pyo3::prelude::*;
-use pyo3::types::{PyByteArray, PyBytes};
+use pyo3::types::{PyBool, PyByteArray, PyBytes, PyMemoryView};
 use pyo3::wrap_pyfunction;
 
 use crate::error::{InvalidInputError, PythonError};
 
 use crate::{
-    Pass, Renderer, ScreenRegion, Shader, Size,
+    Color, Pass, Renderer, ScreenRegion, Shader, Size,
     target::{PyTextureTarget, RenderCanvasFrame, RenderCanvasTarget, rendercanvas_context_hook},
 };
 
@@ -114,24 +117,45 @@ pub(crate) fn read_list(items: &[PyUnsigned<'_>], label: &str) -> PyResult<Vec<u
         .enumerate()
         .map(
             |(index, PyUnsigned::Int(item))| match item.extract::<u32>() {
-                Ok(number) => Ok(number),
-                Err(_) => read_unsigned(item, &format!("{label}: item {index}")),
+                Ok(number) if !item.is_instance_of::<PyBool>() => Ok(number),
+                _ => read_unsigned(item, &format!("{label}: item {index}")),
             },
         )
         .collect()
 }
 
-/// Reads a Python int as an unsigned 32-bit integer, such as a count, an index or a size.
-/// An object with `__index__`, such as a NumPy integer, counts as an int, and any other type
-/// raises `TypeError`. An int below 0 or past `u32::MAX` raises `InvalidInputError`, however large.
-pub(crate) fn read_unsigned(value: &Bound<'_, PyAny>, label: &str) -> PyResult<u32> {
+/// An unsigned integer type that [`read_unsigned`] fills from a Python int.
+pub(crate) trait Unsigned:
+    for<'a, 'py> FromPyObject<'a, 'py, Error = PyErr> + Display
+{
+    /// The largest value, which the range error names.
+    const MAX: Self;
+}
+
+impl Unsigned for u32 {
+    const MAX: Self = u32::MAX;
+}
+
+impl Unsigned for u64 {
+    const MAX: Self = u64::MAX;
+}
+
+/// Reads a Python int as an unsigned integer, such as a count, an index, a size or an id.
+/// An object with `__index__`, such as a NumPy integer, counts as an int, and a `bool` or any other
+/// type raises `TypeError`. An int below 0 or past the type's range raises `InvalidInputError`.
+pub(crate) fn read_unsigned<T: Unsigned>(value: &Bound<'_, PyAny>, label: &str) -> PyResult<T> {
     let py = value.py();
-    match value.extract::<u32>() {
+    if value.is_instance_of::<PyBool>() {
+        return Err(PyTypeError::new_err(format!(
+            "{label} must be an int, got bool"
+        )));
+    }
+    match value.extract::<T>() {
         Ok(number) => Ok(number),
         Err(error) if error.is_instance_of::<PyOverflowError>(py) => {
             Err(InvalidInputError::new_err(format!(
                 "{label} must be a whole number from 0 to {}, got {}",
-                u32::MAX,
+                T::MAX,
                 show(value)
             )))
         }
@@ -142,8 +166,8 @@ pub(crate) fn read_unsigned(value: &Bound<'_, PyAny>, label: &str) -> PyResult<u
     }
 }
 
-/// A color or other list of channels from Python: any sequence of numbers, NumPy arrays
-/// included, except a bytes object. [`PyChannels::read`] names the parameter in its errors.
+/// A color, a vector or another list of floats from Python: any sequence of numbers, NumPy arrays
+/// included, except the bytes forms. [`PyChannels::read`] names the parameter in its errors.
 #[derive(FromPyObject)]
 pub enum PyChannels<'py> {
     #[pyo3(annotation = "Sequence[float]")]
@@ -151,11 +175,11 @@ pub enum PyChannels<'py> {
 }
 
 impl PyChannels<'_> {
-    /// Each channel as an `f32`. A bytes object or a value that isn't a number raises
+    /// Each item as an `f32`. A bytes form, a `bool` or a value that isn't a number raises
     /// `TypeError`, and a number past the 32-bit float range raises `InvalidInputError`.
     pub(crate) fn read(&self, label: &str) -> PyResult<Vec<f32>> {
         let PyChannels::Numbers(value) = self;
-        if value.is_instance_of::<PyBytes>() || value.is_instance_of::<PyByteArray>() {
+        if is_bytes(value) {
             return Err(PyTypeError::new_err(format!(
                 "{label} takes numbers, got {}",
                 type_name(value)
@@ -169,7 +193,7 @@ impl PyChannels<'_> {
             .collect()
     }
 
-    /// Exactly `N` channels, read as [`PyChannels::read`] reads them.
+    /// Exactly `N` items, read as [`PyChannels::read`] reads them.
     pub(crate) fn read_array<const N: usize>(&self, label: &str) -> PyResult<[f32; N]> {
         let channels = self.read(label)?;
         match <[f32; N]>::try_from(channels.as_slice()) {
@@ -180,11 +204,44 @@ impl PyChannels<'_> {
             ))),
         }
     }
+
+    /// A color from `[r, g, b]` with an opaque alpha or `[r, g, b, a]`, read as [`PyChannels::read`] reads them.
+    pub(crate) fn read_color(&self, label: &str) -> PyResult<Color> {
+        let channels = self.read(label)?;
+        match Color::try_from(channels.as_slice()) {
+            Ok(color) => Ok(color),
+            Err(_) => Err(InvalidInputError::new_err(format!(
+                "{label} takes 3 or 4 numbers, got {}",
+                channels.len()
+            ))),
+        }
+    }
 }
 
-/// One channel as an `f32`. NaN and infinity pass, and the call decides what to do with them.
+/// Whether the value is one of the bytes forms: `bytes`, `bytearray`, `memoryview` or a uint8 ndarray.
+fn is_bytes(value: &Bound<'_, PyAny>) -> bool {
+    value.is_instance_of::<PyBytes>()
+        || value.is_instance_of::<PyByteArray>()
+        || value.is_instance_of::<PyMemoryView>()
+        || value.is_instance_of::<PyArrayDyn<u8>>()
+}
+
+/// Whether the value is a Python `bool` or a NumPy `bool_`, which read as numbers but aren't.
+fn is_bool(value: &Bound<'_, PyAny>) -> bool {
+    value.is_instance_of::<PyBool>()
+        || value
+            .is_instance(&dtype::<bool>(value.py()).typeobj())
+            .unwrap_or(false)
+}
+
+/// One item as an `f32`. NaN and infinity pass, and the call decides what to do with them.
 fn read_float(value: &Bound<'_, PyAny>, label: &str, index: usize) -> PyResult<f32> {
     let py = value.py();
+    if is_bool(value) {
+        return Err(PyTypeError::new_err(format!(
+            "{label}: item {index} must be a number, got bool"
+        )));
+    }
     let number = match value.extract::<f64>() {
         Ok(number) => number,
         Err(error) if error.is_instance_of::<PyOverflowError>(py) => {

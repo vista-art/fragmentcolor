@@ -45,20 +45,23 @@ impl Model {
 
     #[pyo3(name = "translate")]
     #[lsp_doc("docs/api/scene/model/translate.md")]
-    pub fn translate_py(&self, offset: [f32; 3]) {
-        self.translate(offset);
+    pub fn translate_py(&self, offset: PyChannels<'_>) -> PyResult<()> {
+        self.translate(offset.read_array("Model.translate")?);
+        Ok(())
     }
 
     #[pyo3(name = "rotate")]
     #[lsp_doc("docs/api/scene/model/rotate.md")]
-    pub fn rotate_py(&self, axis: [f32; 3], radians: f32) {
-        self.rotate(axis, radians);
+    pub fn rotate_py(&self, axis: PyChannels<'_>, radians: f32) -> PyResult<()> {
+        self.rotate(axis.read_array("Model.rotate: axis")?, radians);
+        Ok(())
     }
 
     #[pyo3(name = "scale")]
     #[lsp_doc("docs/api/scene/model/scale.md")]
-    pub fn scale_py(&self, factor: [f32; 3]) {
-        self.scale(factor);
+    pub fn scale_py(&self, factor: PyChannels<'_>) -> PyResult<()> {
+        self.scale(factor.read_array("Model.scale")?);
+        Ok(())
     }
 
     #[pyo3(name = "visible")]
@@ -99,8 +102,17 @@ impl Camera {
 
     #[pyo3(name = "look_at")]
     #[lsp_doc("docs/api/scene/camera/look_at.md")]
-    pub fn look_at_py(&self, position: [f32; 3], target: [f32; 3], up: [f32; 3]) -> PyResult<Self> {
-        Ok(self.look_at(position, target, up)?)
+    pub fn look_at_py(
+        &self,
+        position: PyChannels<'_>,
+        target: PyChannels<'_>,
+        up: PyChannels<'_>,
+    ) -> PyResult<Self> {
+        Ok(self.look_at(
+            position.read_array("Camera.look_at: position")?,
+            target.read_array("Camera.look_at: target")?,
+            up.read_array("Camera.look_at: up")?,
+        )?)
     }
 
     #[pyo3(name = "set_aspect")]
@@ -192,9 +204,9 @@ impl Light {
     #[staticmethod]
     #[pyo3(name = "directional")]
     #[lsp_doc("docs/api/scene/light/directional.md")]
-    pub fn directional_py(direction: [f32; 3], color: PyChannels<'_>) -> PyResult<Self> {
+    pub fn directional_py(direction: PyChannels<'_>, color: PyChannels<'_>) -> PyResult<Self> {
         Ok(Light::directional(
-            direction,
+            direction.read_array("Light.directional: direction")?,
             color.read_array("Light.directional: color")?,
         ))
     }
@@ -202,9 +214,9 @@ impl Light {
     #[staticmethod]
     #[pyo3(name = "point")]
     #[lsp_doc("docs/api/scene/light/point.md")]
-    pub fn point_py(position: [f32; 3], color: PyChannels<'_>) -> PyResult<Self> {
+    pub fn point_py(position: PyChannels<'_>, color: PyChannels<'_>) -> PyResult<Self> {
         Ok(Light::point(
-            position,
+            position.read_array("Light.point: position")?,
             color.read_array("Light.point: color")?,
         ))
     }
@@ -213,13 +225,13 @@ impl Light {
     #[pyo3(name = "spot")]
     #[lsp_doc("docs/api/scene/light/spot.md")]
     pub fn spot_py(
-        position: [f32; 3],
-        direction: [f32; 3],
+        position: PyChannels<'_>,
+        direction: PyChannels<'_>,
         color: PyChannels<'_>,
     ) -> PyResult<Self> {
         Ok(Light::spot(
-            position,
-            direction,
+            position.read_array("Light.spot: position")?,
+            direction.read_array("Light.spot: direction")?,
             color.read_array("Light.spot: color")?,
         ))
     }
@@ -290,14 +302,14 @@ impl Light {
 
     #[pyo3(name = "set_position")]
     #[lsp_doc("docs/api/scene/light/set_position.md")]
-    pub fn set_position_py(&self, position: [f32; 3]) -> Result<Self, PyErr> {
-        Ok(self.set_position(position)?)
+    pub fn set_position_py(&self, position: PyChannels<'_>) -> Result<Self, PyErr> {
+        Ok(self.set_position(position.read_array("Light.set_position")?)?)
     }
 
     #[pyo3(name = "set_direction")]
     #[lsp_doc("docs/api/scene/light/set_direction.md")]
-    pub fn set_direction_py(&self, direction: [f32; 3]) -> Result<Self, PyErr> {
-        Ok(self.set_direction(direction)?)
+    pub fn set_direction_py(&self, direction: PyChannels<'_>) -> Result<Self, PyErr> {
+        Ok(self.set_direction(direction.read_array("Light.set_direction")?)?)
     }
 
     #[pyo3(name = "set_range")]
@@ -406,7 +418,8 @@ impl Scene {
         let target = match target.extract::<String>() {
             Ok(name) => crate::scene::PassRef::Name(name),
             Err(_) => {
-                crate::scene::PassRef::Index(read_unsigned(target, "Scene.add_to: target")? as usize)
+                let index: u32 = read_unsigned(target, "Scene.add_to: target")?;
+                crate::scene::PassRef::Index(index as usize)
             }
         };
         if let Ok(model) = object.cast::<Model>() {

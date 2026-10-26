@@ -4,6 +4,7 @@ import importlib
 from pathlib import Path
 import numpy as np
 from fragmentcolor import (
+    Camera,
     CompareFunction,
     FragmentColorError,
     Instance,
@@ -334,10 +335,20 @@ def check_number_errors(renderer):
     for name, call in calls.items():
         for bad in (-1, 2**32, 2**128, 10**400):
             raises(InvalidInputError, f"{name}({bad})", lambda: call(bad))
-        # A float is the wrong type, even a whole one.
+        # A float or a bool is the wrong type, even a whole one.
         raises(TypeError, f"{name}(1.5)", lambda: call(1.5))
         raises(TypeError, f"{name}(2.0)", lambda: call(2.0))
+        raises(TypeError, f"{name}(True)", lambda: call(True))
     assert issubclass(InvalidInputError, FragmentColorError)
+
+    # A texture id reads as a u64, so past that range it is a value error too.
+    for bad in (-1, 2**64, 10**400):
+        raises(InvalidInputError, f"Renderer.read_texture({bad})", lambda: renderer.read_texture(bad))
+        raises(InvalidInputError, f"Renderer.unregister_texture({bad})", lambda: renderer.unregister_texture(bad))
+    raises(TypeError, "Renderer.read_texture(1.5)", lambda: renderer.read_texture(1.5))
+    raises(TypeError, "Renderer.read_texture(True)", lambda: renderer.read_texture(True))
+    readable = renderer.create_texture(bytes(64), size=[4, 4], usage=TextureUsage.COPY_SRC)
+    assert len(renderer.read_texture(readable.id().id)) == len(renderer.read_texture(readable.id())) == 64
     raises(InvalidInputError, "Pass.set_viewport([0, 0, 4])", lambda: rpass.set_viewport([0, 0, 4]))
 
     # A UV set past 1 fits a u32, but no texture can sample it.
@@ -411,6 +422,9 @@ def check_labels(renderer):
     assert "Size: height" in message(lambda: Size(4, -1))
     assert "Pass.set_viewport: item 2" in message(lambda: Pass("p").set_viewport([0, 0, -4, 4]))
     assert "Pass.set_clear_color: item 1" in message(lambda: Pass("p").set_clear_color([0, 10**400, 0]))
+    assert "Pass.set_clear_color takes 3 or 4 numbers, got 5" in message(lambda: Pass("p").set_clear_color([0.5] * 5))
+    assert "Light.point: position takes 3 numbers, got 2" in message(lambda: Light.point([0, 1], [1, 1, 1]))
+    assert "Renderer.read_texture: texture_id" in message(lambda: renderer.read_texture(-1))
     texture = renderer.create_texture(bytes(64), size=[4, 4])
     for count in (3, 5):
         raises_invalid(f"Texture.write_region with {count} numbers", lambda: texture.write_region(bytes(4), [0] * count))
@@ -436,7 +450,7 @@ def raises_type(label, call):
 
 
 def check_colors(renderer):
-    """Every color setter takes a number sequence, refuses bytes, and refuses a channel past float range."""
+    """Every color setter takes a number sequence, refuses bytes and bools, and refuses a channel past float range."""
     rpass, light, scene, material = Pass("colors"), Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]), Scene(), Material.pbr()
     setters = {
         "Pass.set_clear_color": (rpass.set_clear_color, 4),
@@ -452,9 +466,11 @@ def check_colors(renderer):
         setter([0.5] * count)
         setter(tuple([0.5] * count))
         setter(np.full(count, 0.5, dtype=np.float32))
-        raises_type(f"{name}(bytes)", lambda: setter(bytes(count)))
-        raises_type(f"{name}(bytearray)", lambda: setter(bytearray(count)))
+        for bytes_form in (bytes(count), bytearray(count), memoryview(bytes(count)), np.zeros(count, dtype=np.uint8)):
+            raises_type(f"{name}({type(bytes_form).__name__})", lambda: setter(bytes_form))
         raises_type(f"{name} with a string channel", lambda: setter(["1"] + [0] * (count - 1)))
+        raises_type(f"{name} with a bool channel", lambda: setter([True] + [0] * (count - 1)))
+        raises_type(f"{name} with a NumPy bool channel", lambda: setter(np.ones(count, dtype=np.bool_)))
         raises_invalid(f"{name} with 10**400", lambda: setter([10**400] + [0] * (count - 1)))
         raises_invalid(f"{name} with 1e39", lambda: setter([1e39] + [0] * (count - 1)))
         raises_invalid(f"{name} with too many channels", lambda: setter([0.5] * 5))
@@ -464,6 +480,38 @@ def check_colors(renderer):
     raises_invalid("create_storage_texture(usage=10**400)",
                    lambda: renderer.create_storage_texture([4, 4], TextureFormat.Rgba8Unorm, usage=10**400))
     print("Color setters take number sequences and refuse bytes and out-of-range channels")
+
+
+def check_vectors():
+    """Every position, direction, axis and scale takes three numbers the way a color takes its channels."""
+    light, model, camera = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]), Model(Mesh(), Material.pbr()), Camera.perspective(1.0, 1.0, 0.1, 100.0)
+    vectors = {
+        "Light.point: position": lambda v: Light.point(v, [1.0, 1.0, 1.0]),
+        "Light.directional: direction": lambda v: Light.directional(v, [1.0, 1.0, 1.0]),
+        "Light.spot: position": lambda v: Light.spot(v, [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]),
+        "Light.spot: direction": lambda v: Light.spot([0.0, 1.0, 0.0], v, [1.0, 1.0, 1.0]),
+        "Light.set_position": lambda v: light.set_position(v),
+        "Light.set_direction": lambda v: Light.spot([0.0, 1.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).set_direction(v),
+        "Model.translate": lambda v: model.translate(v),
+        "Model.scale": lambda v: model.scale(v),
+        "Model.rotate: axis": lambda v: model.rotate(v, 0.5),
+        "Camera.look_at: position": lambda v: camera.look_at(v, [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
+        "Camera.look_at: target": lambda v: camera.look_at([0.0, 0.0, 5.0], v, [0.0, 1.0, 0.0]),
+        "Camera.look_at: up": lambda v: camera.look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], v),
+    }
+    for name, apply in vectors.items():
+        apply([1, 2, 3])
+        apply((1.0, 2.0, 3.0))
+        apply(np.array([1.0, 2.0, 3.0], dtype=np.float32))
+        for bytes_form in (bytes(3), bytearray(3), memoryview(bytes(3)), np.zeros(3, dtype=np.uint8)):
+            raises_type(f"{name}({type(bytes_form).__name__})", lambda: apply(bytes_form))
+        raises_type(f"{name} with a bool", lambda: apply([True, 1, 0]))
+        raises_type(f"{name} with a string", lambda: apply(["0", 1, 0]))
+        raises_invalid(f"{name} with 2 numbers", lambda: apply([0.0, 1.0]))
+        raises_invalid(f"{name} with 10**400", lambda: apply([10**400, 1, 0]))
+        raises_invalid(f"{name} with 1e39", lambda: apply([1e39, 1, 0]))
+    assert light.set_position(np.array([1.0, 2.0, 3.0])).position() == [1.0, 2.0, 3.0]
+    print("Vectors take three numbers and refuse bytes, bools and out-of-range items")
 
 
 RESOLUTION_SHADER = """
@@ -494,15 +542,10 @@ def check_example_resize(renderer):
 
 
 def check_clear_color():
-    """A clear color keeps its numbers, raises FragmentColorError for NaN, and TypeError for a string."""
+    """A clear color keeps its numbers, raises InvalidInputError for NaN, and TypeError for a string."""
     rpass = Pass("clear")
     for label, color in (("NaN", [float("nan"), 0, 0]), ("infinity", [0, 0, float("inf"), 1]), ("two channels", [0, 0])):
-        try:
-            rpass.set_clear_color(color)
-        except FragmentColorError as e:
-            print(f"set_clear_color with {label} raised FragmentColorError: {e}")
-        else:
-            raise AssertionError(f"set_clear_color with {label} should raise FragmentColorError")
+        raises_invalid(f"set_clear_color with {label}", lambda: rpass.set_clear_color(color))
     try:
         rpass.set_clear_color(["1", 0, 0])
     except TypeError:
@@ -883,6 +926,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_empty_regions()
     check_labels(renderer)
     check_colors(renderer)
+    check_vectors()
     check_example_resize(renderer)
     check_clear_color()
     check_texture_inputs(renderer)

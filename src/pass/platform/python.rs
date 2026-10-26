@@ -1,7 +1,7 @@
 #![cfg(python)]
 
 use crate::platforms::python::{PyChannels, PyUnsigned, read_list};
-use crate::{Color, Pass, PassObject, PassType, ScreenRegion, Shader};
+use crate::{Pass, PassObject, PassType, ScreenRegion, Shader};
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
@@ -91,9 +91,8 @@ impl Pass {
     #[pyo3(name = "set_clear_color")]
     #[lsp_doc("docs/api/core/pass/set_clear_color.md")]
     pub fn set_clear_color_py(&self, color: PyChannels<'_>) -> PyResult<()> {
-        let channels = color.read("Pass.set_clear_color")?;
         self.object
-            .set_clear_color(Color::try_from(channels.as_slice())?)?;
+            .set_clear_color(color.read_color("Pass.set_clear_color")?)?;
         Ok(())
     }
 

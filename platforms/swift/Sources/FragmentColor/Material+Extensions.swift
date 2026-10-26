@@ -80,6 +80,7 @@ extension Material {
         return try baseColor(color: color)
     }
     @discardableResult
+    @_disfavoredOverload
     public func baseColor(_ color: [Double]) throws -> Material {
         return try baseColor(color: color.map { Float($0) })
     }
@@ -89,6 +90,7 @@ extension Material {
         return try emissive(factor: factor)
     }
     @discardableResult
+    @_disfavoredOverload
     public func emissive(_ factor: [Double]) throws -> Material {
         return try emissive(factor: factor.map { Float($0) })
     }
@@ -103,6 +105,7 @@ extension Material {
         return try uvTransform(offset: offset, scale: scale, rotation: rotation)
     }
     @discardableResult
+    @_disfavoredOverload
     public func uvTransform(_ offset: [Double], _ scale: [Double], _ rotation: Double) throws -> Material {
         return try uvTransform(
             offset: offset.map { Float($0) },
@@ -123,6 +126,7 @@ extension Material {
         return try textureTransform(slot: slot, offset: offset, scale: scale, rotation: rotation)
     }
     @discardableResult
+    @_disfavoredOverload
     public func textureTransform(
         _ slot: TextureSlot, _ offset: [Double], _ scale: [Double], _ rotation: Double
     ) throws -> Material {
