@@ -497,16 +497,16 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     throws('Pass.setComputeDispatch(-1, 1, 1)', () => first.setComputeDispatch(-1, 1, 1));
 
     // Size fields take only the numbers the constructor takes, and ScreenRegion has no setters.
-    const size = new fc.Size(64, 64);
-    throws('Size.width = 2 ** 32 + 64', () => { size.width = 2 ** 32 + 64; });
-    throws('Size.height = -1', () => { size.height = -1; });
-    throws('Size.depth = NaN', () => { size.depth = NaN; });
-    if (size.width !== 64 || size.height !== 64 || size.depth !== undefined) fail('a refused write changed the Size');
-    size.width = 32;
-    size.depth = 2;
-    if (size.width !== 32 || size.depth !== 2) fail('Size fields did not take valid numbers');
-    size.depth = undefined;
-    if (size.depth !== undefined) fail('Size.depth = undefined did not clear the depth');
+    const extent = new fc.Size(64, 64);
+    throws('Size.width = 2 ** 32 + 64', () => { extent.width = 2 ** 32 + 64; });
+    throws('Size.height = -1', () => { extent.height = -1; });
+    throws('Size.depth = NaN', () => { extent.depth = NaN; });
+    if (extent.width !== 64 || extent.height !== 64 || extent.depth !== undefined) fail('a refused write changed the Size');
+    extent.width = 32;
+    extent.depth = 2;
+    if (extent.width !== 32 || extent.depth !== 2) fail('Size fields did not take valid numbers');
+    extent.depth = undefined;
+    if (extent.depth !== undefined) fail('Size.depth = undefined did not clear the depth');
     const region = new fc.ScreenRegion([0, 0], [64, 64]);
     region.max_x = -1;
     if (region.maxX !== 64) fail(`ScreenRegion.max_x wrote ${region.maxX} past the checks`);
