@@ -42,19 +42,6 @@ impl ScreenRegion {
         Self::from_region(x, y, w, h)
     }
 
-    pub fn from_region_i32(x: i32, y: i32, width: i32, height: i32) -> Self {
-        let a = (x, y);
-        let b = (x.saturating_add(width), y.saturating_add(height));
-        let (min, max) = ((a.0.min(b.0), a.1.min(b.1)), (a.0.max(b.0), a.1.max(b.1)));
-
-        Self {
-            min_x: min.0.max(0) as u32,
-            min_y: min.1.max(0) as u32,
-            max_x: max.0.max(0) as u32,
-            max_y: max.1.max(0) as u32,
-        }
-    }
-
     pub fn from_region(x: u32, y: u32, width: u32, height: u32) -> Self {
         let a: (u32, u32) = (x, y);
         let b = (x.saturating_add(width), y.saturating_add(height));
@@ -66,13 +53,6 @@ impl ScreenRegion {
             max_x: max.0,
             max_y: max.1,
         }
-    }
-
-    pub fn from_tuples_i32(a: (i32, i32), b: (i32, i32)) -> Self {
-        Self::from_tuples(
-            (a.0.max(0) as u32, a.1.max(0) as u32),
-            (b.0.max(0) as u32, b.1.max(0) as u32),
-        )
     }
 
     /// A region of exactly `size` pixels at the origin, the same as [`ScreenRegion::from_size`].
@@ -94,10 +74,6 @@ impl ScreenRegion {
             max_x: max.0,
             max_y: max.1,
         }
-    }
-
-    pub fn from_arrays_i32(a: [i32; 2], b: [i32; 2]) -> Self {
-        Self::from_tuples_i32((a[0], a[1]), (b[0], b[1]))
     }
 
     pub fn to_array(&self) -> [f32; 4] {
@@ -601,32 +577,6 @@ impl From<&((u32, u32), (u32, u32))> for ScreenRegion {
     }
 }
 
-impl From<(i32, i32, i32, i32)> for ScreenRegion {
-    #[inline]
-    fn from(t: (i32, i32, i32, i32)) -> Self {
-        ScreenRegion::from_region_i32(t.0, t.1, t.2, t.3)
-    }
-}
-impl From<&(i32, i32, i32, i32)> for ScreenRegion {
-    #[inline]
-    fn from(t: &(i32, i32, i32, i32)) -> Self {
-        ScreenRegion::from_region_i32(t.0, t.1, t.2, t.3)
-    }
-}
-
-impl From<([i32; 2], [i32; 2])> for ScreenRegion {
-    #[inline]
-    fn from(p: ([i32; 2], [i32; 2])) -> Self {
-        ScreenRegion::from_arrays_i32(p.0, p.1)
-    }
-}
-impl From<&([i32; 2], [i32; 2])> for ScreenRegion {
-    #[inline]
-    fn from(p: &([i32; 2], [i32; 2])) -> Self {
-        ScreenRegion::from_arrays_i32(p.0, p.1)
-    }
-}
-
 // Outbound conversions for convenience
 impl From<&ScreenRegion> for [f32; 4] {
     #[inline]
@@ -706,8 +656,8 @@ mod tests {
             (0, 0),
             (0, 0),
             (5, 5),
-            ScreenRegion::from_region_i32(0, 0, 5, 5),
-            ScreenRegion::from_region_i32(0, 0, 5, 5),
+            ScreenRegion::from_region(0, 0, 5, 5),
+            ScreenRegion::from_region(0, 0, 5, 5),
         );
 
         test(
@@ -716,8 +666,8 @@ mod tests {
             (-1, -1),
             (100, 100),
             (5, 5),
-            ScreenRegion::from_region_i32(0, 0, 4, 4),
-            ScreenRegion::from_region_i32(101, 101, 4, 4),
+            ScreenRegion::from_region(0, 0, 4, 4),
+            ScreenRegion::from_region(101, 101, 4, 4),
         );
 
         test(
@@ -726,8 +676,8 @@ mod tests {
             (-1, -1),
             (100, 100),
             (15, 15),
-            ScreenRegion::from_region_i32(0, 0, 10, 10),
-            ScreenRegion::from_region_i32(101, 101, 10, 10),
+            ScreenRegion::from_region(0, 0, 10, 10),
+            ScreenRegion::from_region(101, 101, 10, 10),
         );
 
         test(
@@ -736,8 +686,8 @@ mod tests {
             (15, 5),
             (0, 0),
             (15, 15),
-            ScreenRegion::from_region_i32(15, 10, 15, 10),
-            ScreenRegion::from_region_i32(0, 5, 15, 10),
+            ScreenRegion::from_region(15, 10, 15, 10),
+            ScreenRegion::from_region(0, 5, 15, 10),
         );
 
         test(
@@ -746,8 +696,8 @@ mod tests {
             (400, 440),
             (40, 0),
             (40, 40),
-            ScreenRegion::from_region_i32(400, 440, 40, 40),
-            ScreenRegion::from_region_i32(40, 0, 40, 40),
+            ScreenRegion::from_region(400, 440, 40, 40),
+            ScreenRegion::from_region(40, 0, 40, 40),
         );
 
         test(
@@ -756,8 +706,8 @@ mod tests {
             (-1, 0),
             (0, 0),
             (240, 180),
-            ScreenRegion::from_region_i32(0, 0, 237, 164),
-            ScreenRegion::from_region_i32(1, 0, 237, 164),
+            ScreenRegion::from_region(0, 0, 237, 164),
+            ScreenRegion::from_region(1, 0, 237, 164),
         );
 
         test(
@@ -766,9 +716,18 @@ mod tests {
             (15, 0),
             (0, 15),
             (100, 100),
-            ScreenRegion::from_region_i32(0, 0, 0, 0),
-            ScreenRegion::from_region_i32(0, 0, 0, 0),
+            ScreenRegion::from_region(0, 0, 0, 0),
+            ScreenRegion::from_region(0, 0, 0, 0),
         );
+    }
+
+    // Story: a region tuple reads as unsigned, so a negative number fails to
+    // compile and a number past i32::MAX keeps its value.
+    #[test]
+    fn tuples_read_as_unsigned() {
+        let region = ScreenRegion::from((3_000_000_000, 0, 10, 10));
+        assert_eq!(region.min_x, 3_000_000_000);
+        assert_eq!(region.width(), 10);
     }
 
     // Story: a size alone covers exactly that many pixels, while two corners

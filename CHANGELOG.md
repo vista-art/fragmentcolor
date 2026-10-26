@@ -45,6 +45,7 @@
 - A `TextureId` on its own doesn't keep its texture. Once the last handle, shader uniform and pass target holding a texture drop, `read_texture` and `unregister_texture` report its id as not found.
 - Python reads sizes with a call: `texture.size.width` from the 0.12.6 notes is now `texture.size().width`, and `target.size` is `target.size()` on a texture target.
 - `RendererError::MsaaViewMissing` is gone. No code returned it.
+- `ScreenRegion` loses its `i32` conversions, along with `from_region_i32`, `from_tuples_i32` and `from_arrays_i32`. They moved a negative origin to 0 and shrank the region to match, so `set_viewport((-100, -100, 400, 300))` drew a different rectangle. A tuple such as `(10, 10, 100, 100)` now reads as `u32`, and a negative number fails to compile, as it does in Swift and Kotlin.
 
 ## 0.12.6: Binding and renderer fixes
 
