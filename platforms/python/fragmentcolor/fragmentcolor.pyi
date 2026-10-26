@@ -310,6 +310,10 @@ class Renderer:
 
         A window that is hidden or minimized has no frame to draw on. `render` then returns `RendererError::SurfaceError(SurfaceError::Occluded)`, which Python raises as `OccludedSurfaceError`, a `FragmentColorError`. Skip that frame and draw the next one.
 
+        A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input.
+
+        `render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail validation, it returns `RendererError::ValidationError`, labeled with the render pipeline, the compute pipeline or the frame, and presents nothing from that frame. A pipeline that failed is never kept, and the next frame returns the same error. On the web these errors go to the browser console instead: WebGPU reports them asynchronously, and `render` is synchronous.
+
         Example:
 
         ```python
@@ -1622,6 +1626,9 @@ class Mesh:
 
         The override is automatically cleared if you later call `add_instance` /
         `add_instances` (those carry their own count) or `clear_instances`.
+
+        When the shader reads instance attributes, `Renderer.render` returns
+        `MeshError::InvalidInstance` for a count past the instances the mesh holds.
 
         Example:
 

@@ -9,6 +9,9 @@ simulations and large particle systems.
 The override is automatically cleared if you later call `add_instance` /
 `add_instances` (those carry their own count) or `clear_instances`.
 
+When the shader reads instance attributes, `Renderer.render` returns
+`MeshError::InvalidInstance` for a count past the instances the mesh holds.
+
 ## Example
 
 ```rust
