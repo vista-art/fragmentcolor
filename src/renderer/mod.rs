@@ -2680,7 +2680,7 @@ fn create_render_pipeline(
                 // the roadmap's "Custom blending" item — Material's
                 // AlphaMode covers the three glTF 2.0 modes; anything more
                 // exotic will ride on a separate per-Material slot.
-                write_mask: wgpu::ColorWrites::ALL,
+                write_mask: checks::pick_color_writes(shader),
             })],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),

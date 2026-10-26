@@ -169,28 +169,42 @@ impl RenderContext {
         for plan in draws.shaders.iter() {
             check_output(pass, &plan.shader, color.format)?;
             if *plan.shader.alpha_mode.read() == AlphaMode::Blend {
-                self.check_blend(pass, color.format)?;
+                self.check_blend(pass, &plan.shader, color.format)?;
             }
             self.add_bindings(&mut accesses, &plan.shader)?;
         }
         Ok(())
     }
 
-    /// Refuses `AlphaMode::Blend` into a `format` this device can't blend.
+    /// Refuses `AlphaMode::Blend` into a `format` this device can't blend,
+    /// and from a `shader` whose `@location(0)` output has no alpha channel.
+    ///
+    /// `AlphaMode::Blend` uses `BlendState::ALPHA_BLENDING`, whose factors read the source alpha.
+    /// The WebGPU spec ("validating GPUFragmentState") refuses a blend factor that reads
+    /// the source alpha when the output isn't a `vec4`. wgpu-core doesn't check that rule,
+    /// and the browser does, so the check runs everywhere.
     fn check_blend(
         &self,
         pass: &PassObject,
+        shader: &ShaderObject,
         format: wgpu::TextureFormat,
     ) -> Result<(), RendererError> {
         let flags = crate::texture::format_features(self, format).flags;
-        if flags.contains(wgpu::TextureFormatFeatureFlags::BLENDABLE) {
-            return Ok(());
+        if !flags.contains(wgpu::TextureFormatFeatureFlags::BLENDABLE) {
+            return Err(PassError::InvalidColorTarget(format!(
+                "pass '{}' draws into {format:?}, which this device can't blend, and a shader uses AlphaMode::Blend",
+                pass.name
+            ))
+            .into());
         }
-        Err(PassError::InvalidColorTarget(format!(
-            "pass '{}' draws into {format:?}, which this device can't blend, and a shader uses AlphaMode::Blend",
-            pass.name
-        ))
-        .into())
+        match read_output(shader) {
+            Some(output) if output.count < 4 => Err(PassError::InvalidColorTarget(format!(
+                "pass '{}' blends a shader that writes {output} at @location(0), and AlphaMode::Blend reads an alpha channel; write a vec4",
+                pass.name
+            ))
+            .into()),
+            _ => Ok(()),
+        }
     }
 
     /// Records each registered texture `shader` binds, in binding order.
@@ -270,23 +284,42 @@ fn check_output(
     .into())
 }
 
-/// The type the fragment entry point writes at `@location(0)`,
+/// The color writes of the pipeline that runs `shader`: every channel, or none
+/// when its fragment entry point writes nothing at `@location(0)`.
+///
+/// The WebGPU spec ("validating GPUFragmentState") takes a color target with no
+/// fragment output at its location only with a `writeMask` of 0. wgpu-core accepts
+/// any mask there, and the browser refuses the pipeline.
+pub(super) fn pick_color_writes(shader: &ShaderObject) -> wgpu::ColorWrites {
+    match find_output(shader) {
+        Some(_) => wgpu::ColorWrites::ALL,
+        None => wgpu::ColorWrites::empty(),
+    }
+}
+
+/// The type of what the fragment entry point writes at `@location(0)`,
 /// or `None` when it writes nothing there.
-fn read_output(shader: &ShaderObject) -> Option<Channels> {
+fn find_output(shader: &ShaderObject) -> Option<naga::Handle<naga::Type>> {
     let entry = shader.find_entry_point(naga::ShaderStage::Fragment)?;
     let result = entry.function.result.as_ref()?;
-    let types = &shader.module.types;
     let first = |binding: &Option<naga::Binding>| {
         matches!(binding, Some(naga::Binding::Location { location: 0, .. }))
     };
-    let ty = match (&result.binding, &types[result.ty].inner) {
-        (binding, _) if first(binding) => result.ty,
-        (None, naga::TypeInner::Struct { members, .. }) => {
-            members.iter().find(|member| first(&member.binding))?.ty
-        }
-        _ => return None,
-    };
-    match types[ty].inner {
+    match (&result.binding, &shader.module.types[result.ty].inner) {
+        (binding, _) if first(binding) => Some(result.ty),
+        (None, naga::TypeInner::Struct { members, .. }) => members
+            .iter()
+            .find(|member| first(&member.binding))
+            .map(|member| member.ty),
+        _ => None,
+    }
+}
+
+/// The scalar type and channel count the fragment entry point writes at `@location(0)`,
+/// or `None` when it writes nothing there.
+fn read_output(shader: &ShaderObject) -> Option<Channels> {
+    let ty = find_output(shader)?;
+    match shader.module.types[ty].inner {
         naga::TypeInner::Scalar(scalar) => Some(Channels { scalar, count: 1 }),
         naga::TypeInner::Vector { size, scalar } => Some(Channels {
             scalar,
@@ -313,4 +346,32 @@ fn read_channels(format: wgpu::TextureFormat) -> Option<Channels> {
         scalar: naga::Scalar { kind, width },
         count: format.components(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Shader;
+
+    // Story: a pipeline writes every color channel when its shader writes `@location(0)`,
+    // directly or through a struct, and none when it writes no color.
+    #[test]
+    fn color_writes_follow_the_fragment_output() {
+        let vertex =
+            "@vertex fn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(0.0); }";
+        let pick = |fragment: &str| {
+            let source = format!("{vertex}\n{fragment}");
+            let shader = Shader::new(source.as_str()).expect("a shader");
+            pick_color_writes(&shader.object)
+        };
+        let direct =
+            pick("@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }");
+        let member = pick(
+            "struct Out { @location(0) color: vec4<f32> };\n@fragment fn fs_main() -> Out { return Out(vec4<f32>(1.0)); }",
+        );
+        let none = pick("@fragment fn fs_main() {}");
+        assert_eq!(direct, wgpu::ColorWrites::ALL);
+        assert_eq!(member, wgpu::ColorWrites::ALL);
+        assert_eq!(none, wgpu::ColorWrites::empty());
+    }
 }

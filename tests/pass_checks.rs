@@ -304,6 +304,25 @@ fn an_output_the_target_cannot_take_errors() {
     });
 }
 
+/// A fullscreen shader that writes `output` at `@location(0)`, drawn with `AlphaMode::Blend`.
+fn blended(output: &str, value: &str) -> Shader {
+    let source = format!(
+        r#"
+@vertex
+fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {{
+    let corner = vec2<f32>(f32((index << 1u) & 2u), f32(index & 2u));
+    return vec4<f32>(corner * 2.0 - 1.0, 0.0, 1.0);
+}}
+
+@fragment
+fn fs_main() -> @location(0) {output} {{ return {value}; }}
+"#
+    );
+    let shader = Shader::new(source.as_str()).expect("blended shader");
+    let _ = Material::custom(shader.clone()).alpha_mode(AlphaMode::Blend);
+    shader
+}
+
 // Story: AlphaMode::Blend into a target the device can't blend is refused before
 // the frame, where the pipeline failed to build. The device requests no float32 blending.
 #[test]
@@ -332,6 +351,67 @@ fn blending_into_a_target_that_cannot_blend_errors() {
         renderer
             .render(&pass, &frame)
             .expect("a half float target blends");
+    });
+}
+
+// Story: AlphaMode::Blend reads the source alpha, so a shader that writes fewer than four
+// channels is refused, as the WebGPU spec and the browser require, while a vec4 blends.
+#[test]
+fn blending_needs_an_alpha_channel() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let frame = target(&renderer, 8).await;
+        let red = drawable(&renderer, 8, TextureFormat::R8Unorm).await;
+        let pass = Pass::from_shader("red", &blended("f32", "0.5"));
+        pass.set_target(&red).expect("set_target");
+
+        let result = renderer.render(&pass, &frame);
+        assert!(
+            matches!(
+                &result,
+                Err(RendererError::PassError(PassError::InvalidColorTarget(message)))
+                    if message.contains("reads an alpha channel")
+            ),
+            "{result:?}"
+        );
+
+        let full = Pass::from_shader("full", &blended("vec4<f32>", "vec4<f32>(0.5)"));
+        full.set_target(&red).expect("set_target");
+        renderer.render(&full, &frame).expect("a vec4 blends");
+    });
+}
+
+// Story: a shader that writes no color, such as a depth-only pass, keeps the target's
+// clear color, since its pipeline writes no color channel.
+#[test]
+fn a_shader_without_color_output_keeps_the_clear() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let frame = target(&renderer, 4).await;
+        let shader = Shader::new(
+            r#"
+@vertex
+fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
+    let corner = vec2<f32>(f32((index << 1u) & 2u), f32(index & 2u));
+    return vec4<f32>(corner * 2.0 - 1.0, 0.0, 1.0);
+}
+
+@fragment
+fn fs_main() {}
+"#,
+        )
+        .expect("depth-only shader");
+        let pass = Pass::from_shader("depth only", &shader);
+        pass.set_clear_color([1.0, 0.0, 0.0, 1.0])
+            .expect("set_clear_color");
+        renderer.render(&pass, &frame).expect("render");
+
+        let image = frame.get_image().await.expect("read back");
+        let (pixels, _) = image.as_chunks::<4>();
+        assert!(
+            pixels.iter().all(|pixel| *pixel == [255, 0, 0, 255]),
+            "{pixels:?}"
+        );
     });
 }
 
