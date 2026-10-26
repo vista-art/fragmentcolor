@@ -574,6 +574,48 @@ mod tests {
     }
 
     #[test]
+    fn the_lowered_pbr_shader_writes_webgl2_glsl() {
+        // WebGL2 compiles GLSL ES 3.0, which the lowered PBR fragment stage must become.
+        let pbr = crate::Material::pbr();
+        let object = &pbr.shader().object;
+        let roots = object.light_roots.clone().expect("roots");
+        let lowered = lower_roots(object.module_for_pipeline(true), &roots, 253).expect("lowered");
+        let flags = naga::valid::ValidationFlags::all();
+        let mut validator =
+            naga::valid::Validator::new(flags, naga::valid::Capabilities::empty());
+        let info = validator.validate(&lowered).expect("valid");
+        let constants = naga::back::PipelineConstants::default();
+        let (resolved, info) =
+            naga::back::pipeline_constants::process_overrides(&lowered, &info, None, &constants)
+                .expect("overrides");
+        let options = naga::back::glsl::Options {
+            version: naga::back::glsl::Version::Embedded {
+                version: 300,
+                is_webgl: true,
+            },
+            ..Default::default()
+        };
+        let pipeline = naga::back::glsl::PipelineOptions {
+            shader_stage: ShaderStage::Fragment,
+            entry_point: "fs_main".into(),
+            multiview: None,
+        };
+        let mut glsl = String::new();
+        naga::back::glsl::Writer::new(
+            &mut glsl,
+            &resolved,
+            &info,
+            &options,
+            &pipeline,
+            naga::proc::BoundsCheckPolicies::default(),
+        )
+        .and_then(|mut writer| writer.write())
+        .expect("GLSL ES 3.0");
+        assert!(glsl.contains("uniform"), "lights become a uniform block");
+        assert!(!glsl.contains("buffer "), "no storage buffer remains:\n{glsl}");
+    }
+
+    #[test]
     fn the_custom_page_reference_compiles() {
         // The roots and the reference functions on the Material::custom page.
         let page = include_str!("../../docs/api/scene/material/custom.md");
