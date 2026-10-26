@@ -240,7 +240,9 @@ fn failed_compute_pipeline_returns_an_error_each_frame() {
         let shader = Shader::new(OVERSIZED_WORKGROUP).expect("naga checks no device limit");
         // `check_shader` refuses this workgroup before any GPU work, so mark it
         // checked to reach the pipeline build and its error scopes.
-        context.checked.insert(shader.object.hash, ());
+        context
+            .checked
+            .insert(shader.object.hash, super::shader_checks::Verdict::Passed);
 
         // Act
         let first = renderer.render(&shader, &target);

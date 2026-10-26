@@ -3,15 +3,16 @@
 //! The device checks and the pipeline builds read the same `Layout`, so what a
 //! check passes is what the pipeline binds.
 
-use super::PushMode;
 use super::lights::{self, LightPath};
+use super::{PushMode, RenderContext};
 use crate::shader::{PushEntry, StorageEntry, Uniform, UniformData};
-use crate::shader::{create_validator, lower_immediates, write_layouts};
+use crate::shader::{create_validator, list_explicit, lower_immediates, write_layouts};
 use crate::texture::{TextureClass, TextureDim, TextureMeta, TextureScalarKind};
 use crate::{ShaderError, ShaderObject};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::num::NonZeroU64;
+use std::sync::atomic::Ordering;
 
 /// Bind group layout entries by group index, each group sorted by binding.
 pub(super) type BindGroupEntries = BTreeMap<u32, Vec<wgpu::BindGroupLayoutEntry>>;
@@ -45,11 +46,11 @@ impl Layout {
     }
 }
 
-/// Lays out `shader` on `device`. A render pipeline passes the device's `lights` path,
-/// which adds the light roots, and a compute pipeline passes `None`.
+/// Lays out `shader` on the device of `context`. A render pipeline passes the device's
+/// `lights` path, which adds the light roots, and a compute pipeline passes `None`.
 pub(super) fn plan_layout(
     shader: &ShaderObject,
-    device: &wgpu::Device,
+    context: &RenderContext,
     lights: Option<LightPath>,
 ) -> Layout {
     let mut slots = reflect_slots(shader);
@@ -63,7 +64,7 @@ pub(super) fn plan_layout(
             });
         }
     }
-    let push = plan_push(shader, device, &mut slots);
+    let push = plan_push(shader, context, &mut slots);
     Layout { slots, push }
 }
 
@@ -92,9 +93,9 @@ fn reflect_slots(shader: &ShaderObject) -> Vec<Slot> {
     slots
 }
 
-/// The stages `uniform` is visible to: the stages that use it.
-/// A global no entry point uses is visible to the compute stage, where a render
-/// pipeline counts it against no limit and no stage asks a feature of it.
+/// The stages `uniform` is visible to: the stages that use it. A global no entry point
+/// uses is visible to the compute stage, which asks no downlevel flag or feature of a
+/// binding. wgpu still counts it against the compute stage's limits in every pipeline.
 fn pick_visibility(uniform: &Uniform) -> wgpu::ShaderStages {
     match uniform.stages.is_empty() {
         true => wgpu::ShaderStages::COMPUTE,
@@ -183,14 +184,16 @@ pub(super) fn texture_binding(meta: &TextureMeta) -> wgpu::BindingType {
     }
 }
 
-/// Decides where the immediate roots of `shader` go on `device`, adding their slots in fallback.
+/// Decides where the immediate roots of `shader` go on the device of `context`,
+/// adding their slots in fallback.
 ///
 /// One root that fits the device's immediates takes native immediates. On the web, without
-/// the `IMMEDIATES` feature, with more than one root or with a root past `max_immediate_size`,
-/// each root becomes a uniform in the lowest group no other slot uses.
+/// the `IMMEDIATES` feature, with more than one root, with a root past `max_immediate_size`,
+/// and on a backend that pads its uniform bindings, each root becomes a uniform in the
+/// lowest group no other slot uses.
 fn plan_push(
     shader: &ShaderObject,
-    device: &wgpu::Device,
+    context: &RenderContext,
     slots: &mut Vec<Slot>,
 ) -> Option<PushMode> {
     let mut roots: Vec<(String, u32, wgpu::ShaderStages)> = shader
@@ -212,7 +215,7 @@ fn plan_push(
     let [first, ..] = roots.as_slice() else {
         return None;
     };
-    if takes_native(device, &roots) {
+    if takes_native(context, &roots) {
         return Some(PushMode::Native {
             root: first.0.clone(),
             size: first.1,
@@ -238,16 +241,18 @@ fn plan_push(
     Some(PushMode::Fallback { group, bindings })
 }
 
-/// Whether one immediate root fits the device's native immediates. The web never takes them.
-fn takes_native(device: &wgpu::Device, roots: &[(String, u32, wgpu::ShaderStages)]) -> bool {
-    if cfg!(wasm) {
+/// Whether one immediate root fits the device's native immediates. The web never takes
+/// them, and neither does a backend that pads its uniform bindings to 16 bytes, where
+/// the padded module pads the immediate roots it lowers too.
+fn takes_native(context: &RenderContext, roots: &[(String, u32, wgpu::ShaderStages)]) -> bool {
+    if cfg!(wasm) || context.aligned_uniform_bindings.load(Ordering::Relaxed) {
         return false;
     }
     let [(_, span, _)] = roots else {
         return false;
     };
-    device.features().contains(wgpu::Features::IMMEDIATES)
-        && *span <= device.limits().max_immediate_size
+    context.features.contains(wgpu::Features::IMMEDIATES)
+        && *span <= context.limits.max_immediate_size
 }
 
 /// The module a pipeline for `shader` compiles: the padded module when `pad_uniforms` is set,
@@ -272,7 +277,8 @@ pub(super) fn pick_source(
     module: naga::Module,
     writes_wgsl: bool,
 ) -> Result<wgpu::ShaderSource<'static>, ShaderError> {
-    if writes_wgsl {
+    // Validating costs a pass over the module, so only a module with explicit layouts pays it.
+    if writes_wgsl && !list_explicit(&module)?.is_empty() {
         let info = create_validator().validate(&module).map_err(Box::new)?;
         if let Some(text) = write_layouts(&module, &info)? {
             return Ok(wgpu::ShaderSource::Wgsl(Cow::Owned(text)));

@@ -546,10 +546,17 @@ impl Renderer {
             for shader in shaders {
                 let mut failed = Vec::new();
                 for entry in shader.drain_pending_textures() {
-                    match self.create_texture(entry.input.clone()).await {
+                    let created = self.create_texture(entry.input.clone()).await;
+                    // A setter call for the key while this upload ran wins over it.
+                    if !shader.is_latest(&entry) {
+                        continue;
+                    }
+                    match created {
                         Ok(texture) => {
                             let meta = crate::texture::TextureMeta::with_id_only(*texture.id());
-                            shader.set(&entry.key, UniformData::Texture(meta))?;
+                            if let Err(error) = shader.set(&entry.key, UniformData::Texture(meta)) {
+                                first.get_or_insert(error.into());
+                            }
                         }
                         Err(error) => {
                             first.get_or_insert(error);
@@ -663,6 +670,8 @@ impl Renderer {
             let (device, queue) = platform::all::request_device(&adapter).await?;
             let mut context = RenderContext::new(device, queue);
             context.adapter = Some(adapter.clone());
+            context.downlevel = adapter.get_downlevel_capabilities().flags;
+            context.backend = adapter.get_info().backend;
             let context = Arc::new(context);
             let flags = adapter.get_downlevel_capabilities().flags;
             context.aligned_uniform_bindings.store(
@@ -836,7 +845,16 @@ pub(crate) struct RenderContext {
     // Persistent storage buffer registry: root name -> (buffer, span)
     storage_registry: DashMap<String, (wgpu::Buffer, u64)>,
     /// The shader sources that passed `check_shader` on this device.
-    checked: DashMap<ShaderHash, ()>,
+    /// What `check_shader` decided for each shader source on this device,
+    /// so a source is checked once, whether it passed or not.
+    checked: DashMap<ShaderHash, shader_checks::Verdict>,
+    /// The device's features, limits and downlevel flags, read once,
+    /// since each read crosses into JavaScript on the browser's WebGPU.
+    features: wgpu::Features,
+    limits: wgpu::Limits,
+    downlevel: wgpu::DownlevelFlags,
+    /// The adapter's backend, which decides what the GL path can keep.
+    backend: wgpu::Backend,
 
     // MSAA sample count negotiated for current target/format
     sample_count: AtomicU32,
@@ -926,6 +944,7 @@ impl RenderContext {
         let storage_pool = StorageBufferPool::new("Storage Buffer Pool", &device);
         let readback_pool = ReadbackBufferPool::new("Readback Buffer Pool", 8);
         let limits = device.limits();
+        let features = device.features();
         let storage_limit = limits
             .max_storage_buffer_binding_size
             .min(limits.max_buffer_size);
@@ -948,6 +967,10 @@ impl RenderContext {
             writes_wgsl: AtomicBool::new(false),
             storage_registry: DashMap::new(),
             checked: DashMap::new(),
+            features,
+            limits: limits.clone(),
+            downlevel: wgpu::DownlevelFlags::all(),
+            backend: wgpu::Backend::Noop,
             sample_count: AtomicU32::new(1),
             pbr_defaults: RwLock::new(None),
             scratch: RwLock::new(RenderScratch::default()),
@@ -1755,7 +1778,7 @@ impl RenderContext {
                 pipeline_key,
                 "render pipeline",
                 || {
-                    let layout = plan_layout(shader, &self.device, Some(self.light_path()));
+                    let layout = plan_layout(shader, self, Some(self.light_path()));
                     create_render_pipeline(
                         &self.device,
                         shader,
@@ -2127,7 +2150,7 @@ impl RenderContext {
         // Similar resource binding as render pass, but no target
         for (shader_index, shader) in pass.shaders.read().iter().enumerate() {
             shader.flush_pending();
-            let layout = plan_layout(shader, &self.device, None);
+            let layout = plan_layout(shader, self, None);
             let key = ComputePipelineKey {
                 shader_hash: shader.hash,
                 bind_group_entries: layout.entries(),
@@ -2135,7 +2158,8 @@ impl RenderContext {
             let cached =
                 self.fetch_pipeline(&self.compute_pipelines, key, "compute pipeline", || {
                     let writes_wgsl = self.writes_wgsl.load(Ordering::Relaxed);
-                    create_compute_pipeline(&self.device, shader, &layout, writes_wgsl)
+                    let pad = self.aligned_uniform_bindings.load(Ordering::Relaxed);
+                    create_compute_pipeline(&self.device, shader, &layout, writes_wgsl, pad)
                 })?;
             #[derive(Default)]
             struct BindGroupResources {
@@ -2308,7 +2332,11 @@ impl RenderContext {
 /// one never set, or one `unregister_texture` removed.
 fn report_missing(name: &str, meta: &crate::texture::TextureMeta) -> RendererError {
     match meta.id.id {
-        0 => RendererError::BindGroupLayoutError(format!("texture '{name}' is not set")),
+        0 => RendererError::BindingError {
+            name: name.to_string(),
+            expected: "a texture".into(),
+            found: "none, since it was never set".into(),
+        },
         _ => RendererError::TextureNotFoundError(meta.id),
     }
 }
@@ -2795,15 +2823,18 @@ fn create_render_pipeline(
 }
 
 /// Builds the compute pipeline for `shader` from its `layout`.
-/// `writes_wgsl` is true on the browser's WebGPU, as `pick_source` takes it.
+/// `writes_wgsl` is true on the browser's WebGPU, as `pick_source` takes it,
+/// and `pad_uniforms` on a backend that pads its uniform bindings to 16 bytes.
 fn create_compute_pipeline(
     device: &wgpu::Device,
     shader: &crate::ShaderObject,
     layout: &Layout,
     writes_wgsl: bool,
+    pad_uniforms: bool,
 ) -> Result<ComputePipeline, RendererError> {
     let cs_entry = find_entry(shader, naga::ShaderStage::Compute)?;
-    let source = pick_source(build_module(shader, layout, false, None)?, writes_wgsl)?;
+    let module = build_module(shader, layout, pad_uniforms, None)?;
+    let source = pick_source(module, writes_wgsl)?;
     let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Compute Shader"),
         source,

@@ -637,6 +637,51 @@ mod tests {
         });
     }
 
+    // Story: a map the shader doesn't declare fails the render that uploads it,
+    // and the maps it does declare still bind on that first try.
+    #[test]
+    fn an_undeclared_map_leaves_the_others_bound() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8u32, 8u32])
+                .await
+                .expect("texture target");
+            let shader = crate::Shader::new(
+                r#"
+@group(0) @binding(0) var base_color_map: texture_2d<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  var p = array<vec2<f32>, 3>(vec2<f32>(-1.0, -1.0), vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0));
+  return vec4<f32>(p[i], 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(base_color_map, vec2<i32>(0), 0); }
+"#,
+            )
+            .expect("shader");
+            let pixel: Vec<u8> = [255u8, 0, 0, 255].repeat(4);
+            let mat = Material::custom(shader)
+                .normal_texture((pixel.clone(), [2u32, 2u32]))
+                .base_color_texture((pixel, [2u32, 2u32]));
+
+            let first = renderer.render(mat.shader(), &target);
+
+            assert!(first.is_err(), "the undeclared normal map fails the render");
+            let slot = mat
+                .shader
+                .object
+                .get_uniform("base_color_map")
+                .expect("slot");
+            let UniformData::Texture(meta) = slot.data else {
+                panic!("base_color_map is a texture slot, got {:?}", slot.data);
+            };
+            assert_ne!(meta.id.id, 0, "the declared map bound on the same render");
+            assert!(mat.shader.object.pending_textures.read().is_empty());
+            renderer
+                .render(mat.shader(), &target)
+                .expect("the next render draws");
+        });
+    }
+
     // Story: the latest setter call for a map wins, so a fixed input replaces a failing one.
     #[test]
     fn latest_map_setter_wins() {
