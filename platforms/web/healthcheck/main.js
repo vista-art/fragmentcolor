@@ -717,6 +717,65 @@ struct Data { items: array<vec4<f32>, 2> };
       renderer.createStorageTexture([4, 4], TextureFormat.Rgba, null, 32));
 });
 
+// The checks render runs before any GPU work throw from the render call that broke
+// the rule, where WebGPU would report the error after render returned. A readback
+// right after finds no late error, and a late one would fail the run through console.error.
+await withModule('platforms.web.healthcheck.pass_checks', async () => {
+    const fail = (message) => { throw new Error(message); };
+    const refuses = (label, words, run) => {
+      try { run(); } catch (e) {
+        if (!(e instanceof Error)) fail(`${label} threw a ${typeof e}, not an Error`);
+        if (!e.message.includes(words)) fail(`${label} threw: ${e.message}`);
+        return console.log(`${label} threw:`, e.message);
+      }
+      fail(`${label} should throw`);
+    };
+    const solid = () => new Shader(`
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  return vec4<f32>(p[i], 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
+`);
+    const renderer = new Renderer();
+    const target = await renderer.createTextureTarget([8, 8]);
+
+    const feedback = new Shader(`
+@group(0) @binding(0) var source: texture_2d<f32>;
+@group(0) @binding(1) var soft: sampler;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  return vec4<f32>(p[i], 0.0, 1.0);
+}
+@fragment fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+  return textureSample(source, soft, pos.xy / 8.0);
+}
+`);
+    feedback.set('source', target.texture());
+    refuses('sampling the render target', 'Texture conflict', () => renderer.render(feedback, target));
+
+    const depth = await renderer.createDepthTexture([4, 4]);
+    const deep = new Pass('depth');
+    deep.addShader(solid());
+    deep.setDepthTarget(depth);
+    refuses('a depth target of another size', 'Depth size mismatch', () => renderer.render(deep, target));
+
+    const foreign = await new Renderer().createTextureTarget([8, 8]);
+    refuses('a target from another Renderer', 'another Renderer', () => renderer.render(solid(), foreign));
+
+    // WebGL2 runs no compute shaders, so only WebGPU checks the dispatch.
+    const adapter = navigator.gpu ? await navigator.gpu.requestAdapter() : null;
+    if (adapter) {
+      const compute = Pass.compute('big');
+      compute.addShader(new Shader('@compute @workgroup_size(1)\nfn cs_main() {}\n'));
+      compute.setComputeDispatch(4294967295, 1, 1);
+      refuses('a dispatch past the device limit', 'dispatches', () => renderer.render(compute, target));
+    }
+
+    renderer.render(solid(), target);
+    await target.getImage();
+});
+
 // A shader the device can't run, or a texture its slot can't take, throws from render
 // itself, before any GPU work, so no late error or console.error follows.
 await withModule('platforms.web.healthcheck.device_checks', async () => {
@@ -775,7 +834,8 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
       () => renderer.render(wide, target));
     const integer = new Shader(`${vertex}
 @fragment fn fs_main() -> @location(0) vec4<u32> { return vec4<u32>(1u); }`);
-    refuses('render of integer output into a float target', /can't store/, () => renderer.render(integer, target));
+    refuses('render of integer output into a float target', /writes vec4<u32> at @location\(0\)/,
+      () => renderer.render(integer, target));
 
     // Each refusal ran no GPU work, so the next frame draws and reads back with no late error.
     renderer.render(Shader.default(), target);

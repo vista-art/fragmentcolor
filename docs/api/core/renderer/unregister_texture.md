@@ -7,7 +7,7 @@ drops: every `Texture` handle, the `TextureTarget` that owns it, and each
 shader uniform or pass target that binds it. Call this to release one sooner,
 for example when a video stream stops.
 
-- After the call, the id names no texture, and shaders and passes that bind it can't draw it.
+- After the call, the id names no texture, and shaders and passes that bind it can't draw it. A pass that keeps it as its color or depth target makes `render` return `TextureNotFoundError`.
 - A `Texture` handle you still hold keeps its GPU memory until it drops.
 
 ## Example

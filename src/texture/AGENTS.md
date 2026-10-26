@@ -28,4 +28,6 @@ Updates & readback
 
 MSAA & resolve
 - For MSAA render passes, render to transient MSAA textures from the pool and resolve into the target view; release to the pool after use.
-- Sample count must match between color and depth attachments within a pass — `RendererError::DepthSampleCountMismatch` surfaces the violation.
+- Sample count must match between color and depth attachments within a pass — `RendererError::DepthSampleCountMismatch` surfaces the violation. So must the width and height, with `RendererError::DepthSizeMismatch`.
+- A pass target holds one mip level of one layer, so `set_target` and `set_depth_target` refuse a texture with a mip chain or layers.
+- A pass never binds a texture it draws into, and a usage scope never reads a texture it writes (`renderer/access.rs`).

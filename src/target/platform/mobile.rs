@@ -23,7 +23,7 @@ use parking_lot::{Mutex, RwLock};
 
 use crate::renderer::platform::mobile::FragmentColorError;
 use crate::texture::TextureError;
-use crate::{Size, SurfaceError, Target, TargetFrame, TextureTarget, WindowTarget};
+use crate::{RenderContext, Size, SurfaceError, Target, TargetFrame, TextureTarget, WindowTarget};
 
 // ── WindowTarget wrapper ────────────────────────────────────────────────────
 
@@ -77,6 +77,10 @@ impl MobileWindowTarget {
 impl crate::target::FrameSource for MobileWindowTarget {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
         self.inner.lock().get_current_frame()
+    }
+
+    fn owner(&self) -> Option<Arc<RenderContext>> {
+        self.inner.lock().owner()
     }
 }
 
@@ -173,6 +177,10 @@ impl MobileTextureTarget {
 impl crate::target::FrameSource for MobileTextureTarget {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
         self.inner.read().get_current_frame()
+    }
+
+    fn owner(&self) -> Option<Arc<RenderContext>> {
+        self.inner.read().owner()
     }
 }
 

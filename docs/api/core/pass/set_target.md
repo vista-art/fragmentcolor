@@ -4,6 +4,14 @@ Attach a per-pass color render target. When set, this pass renders into the prov
 
 A Pass has at most one color target. Call `set_target` again to swap it. Use this to render intermediate results (e.g., a shadow map) that later passes can sample.
 
+The texture needs `RENDER_ATTACHMENT` usage, a color format, one mip level and one layer. A pass draws into one level of one layer, so a texture with a mip chain or with layers returns `PassError::InvalidColorTarget`, and so does a depth format. `create_texture` builds a mip chain unless `mipmaps` is false.
+
+`render` checks the pass against its target before it takes a frame:
+
+- Each shader writes at `@location(0)` the values the format takes: the same scalar type, in at least as many channels. An `Rgba32Uint` target takes `vec4<u32>`, so a shader that writes `vec4<f32>` returns `PassError::InvalidColorTarget`.
+- A shader with `AlphaMode::Blend` needs a format the device blends. `Rgba32Float` and the integer formats don't, and return the same error.
+- The pass can't bind the texture it draws into. A shader that samples it returns `PassError::TextureConflict`. Sample it in a later pass.
+
 ## Example
 
 ```rust

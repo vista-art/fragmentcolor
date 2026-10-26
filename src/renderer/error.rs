@@ -64,6 +64,15 @@ pub enum RendererError {
     StorageBindingNotFound(String),
     #[error("Depth sample_count mismatch: depth={depth} pass={pass}")]
     DepthSampleCountMismatch { depth: u32, pass: u32 },
+    /// A depth target whose width and height differ from the color attachment's.
+    #[error(
+        "Depth size mismatch: depth={}x{} pass={}x{}",
+        .depth[0], .depth[1], .pass[0], .pass[1]
+    )]
+    DepthSizeMismatch { depth: [u32; 2], pass: [u32; 2] },
+    /// A target that another Renderer created, whose frames work on another device.
+    #[error("The target belongs to another Renderer; render it with the Renderer that created it")]
+    ForeignTarget,
     #[error("initialization error: {0}")]
     InitializationError(#[from] InitializationError),
     #[cfg(not(wasm))]

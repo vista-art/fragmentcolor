@@ -36,8 +36,11 @@ pub(crate) use buffer_pool::*;
 mod texture_pool;
 pub(crate) use texture_pool::*;
 
+mod access;
 mod checks;
+use checks::{Attachment, PassTargets};
 mod depth;
+mod shader_checks;
 use depth::DepthUse;
 mod layout;
 use layout::{Layout, build_module, create_bind_group_layouts, create_pipeline_layout};
@@ -644,6 +647,8 @@ struct PassDraws {
     shaders: Vec<ShaderDraw>,
     /// Whether the pass holds Models, so its other shaders ignore the depth attachment.
     has_models: bool,
+    /// The color and depth targets the pass set.
+    targets: PassTargets,
 }
 
 /// What one shader of a render pass draws, decided before the frame is acquired.
@@ -988,6 +993,7 @@ impl RenderContext {
         // Compute passes never draw into the target, so a
         // render made only of compute passes acquires no frame.
         if pass_list.iter().any(|pass| !pass.is_compute()) {
+            self.check_owner(target)?;
             *acquired = Some(self.acquire_frame(target)?);
         }
         let frame = acquired.as_deref();
@@ -1037,14 +1043,16 @@ impl RenderContext {
         Ok(())
     }
 
-    /// Checks each shader of a compute pass against the device, before any frame is acquired.
+    /// Checks a compute pass before any frame is acquired: each shader against the
+    /// device and its textures (`check_shader`, `check_textures`), then its dispatch and
+    /// texture accesses (`check_compute`).
     fn plan_compute(&self, pass: &PassObject) -> Result<(), RendererError> {
         for shader in pass.shaders.read().iter() {
             shader.flush_pending();
             self.check_shader(shader)?;
             self.check_textures(shader)?;
         }
-        Ok(())
+        self.check_compute(pass)
     }
 
     /// Decides what a render pass draws, before any frame is acquired.
@@ -1052,11 +1060,14 @@ impl RenderContext {
     /// The checks that need no frame run here. The target keeps its last frame
     /// when a lit shader holds more lights than the device takes, a shader reads
     /// vertex inputs with no mesh, a mesh is asked for more instances than it holds,
-    /// a shader asks for more than the device has (`check_shader`), or a texture
-    /// uniform has no texture, or one its slot can't take (`check_textures`).
+    /// a shader asks for more than the device has (`check_shader`), a texture uniform
+    /// has no texture or one its slot can't take (`check_textures`), or a target the
+    /// pass set is missing. A pass with a target of its own checks its attachments
+    /// here too, and a pass that draws into the frame checks them once it has one.
     /// The draw loop takes each shader's layouts and buffers from the plan.
     fn plan_pass(&self, pass: &PassObject) -> Result<PassDraws, RendererError> {
         self.check_light_cap(pass)?;
+        let targets = self.find_targets(pass)?;
         let mut draws = self.build_pass_draws(pass);
         let model_shaders = find_model_shaders(pass);
         draws.has_models = !model_shaders.is_empty();
@@ -1065,6 +1076,10 @@ impl RenderContext {
             let model = model_shaders.contains(&(Arc::as_ptr(&shader) as usize));
             let plan = self.plan_shader(shader, model, &draws.opaque_overrides)?;
             draws.shaders.push(plan);
+        }
+        draws.targets = targets;
+        if let Some(color) = draws.targets.color.as_deref() {
+            self.check_attachment(pass, &draws, &Attachment::from_target(color))?;
         }
         Ok(draws)
     }
@@ -1508,13 +1523,6 @@ impl RenderContext {
         // `pass_draws` holds this pass's plan and its per-Model GPU instance
         // buffers, built before the frame was acquired so they outlive the render pass.
         let blend_draws = &pass_draws.blend_draws;
-        // Light buffers for every lit shader, binned before the render pass begins.
-        let light_buffers = self.prepare_lights(encoder, pass)?;
-
-        let load_op = match *pass.input.read() {
-            PassInput::Load => wgpu::LoadOp::Load,
-            PassInput::Clear(color) => wgpu::LoadOp::Clear(color.to_wgpu()),
-        };
 
         // Choose color attachment: per-pass override or default frame view.
         // Offscreen color targets are bound single-sampled; surface targets may use MSAA.
@@ -1524,17 +1532,27 @@ impl RenderContext {
         let mut color_format = frame.format();
         let mut extent = size;
         let mut pass_texture_view = None;
-        let color_target = pass.color_target.read().as_ref().map(|target| *target.id());
-        if let Some(id) = color_target {
-            if let Some(texture) = self.get_texture(&id) {
+        // The plan checked the pass against a color target it set, and the frame is checked here.
+        match pass_draws.targets.color.as_deref() {
+            Some(texture) => {
                 pass_texture_view = Some(texture.create_view());
                 color_format = texture.format();
                 sample_count = texture.inner.sample_count();
                 extent = texture.inner.size();
-            } else {
-                return Err(RendererError::TextureNotFoundError(id));
+            }
+            None => {
+                let attachment = Attachment::from_frame(frame, sample_count);
+                self.check_attachment(pass, pass_draws, &attachment)?;
             }
         }
+
+        // Light buffers for every lit shader, binned before the render pass begins.
+        let light_buffers = self.prepare_lights(encoder, pass)?;
+
+        let load_op = match *pass.input.read() {
+            PassInput::Load => wgpu::LoadOp::Load,
+            PassInput::Clear(color) => wgpu::LoadOp::Clear(color.to_wgpu()),
+        };
 
         let viewport = *pass.viewport.read();
 
@@ -1569,7 +1587,8 @@ impl RenderContext {
 
         // The depth target the pass set, a pooled one for a pass that draws
         // models, or none. Like the MSAA lease, it outlives the render pass.
-        let depth = self.resolve_depth(pass, extent, sample_count)?;
+        let depth_target = pass_draws.targets.depth.as_deref();
+        let depth = self.resolve_depth(pass, depth_target, extent, sample_count);
 
         let descriptor = wgpu::RenderPassDescriptor {
             label: Some(&format!("Render Pass: {}", pass.name.clone())),
@@ -2570,47 +2589,6 @@ fn set_encoding(module: &naga::Module, format: wgpu::TextureFormat) -> naga::Mod
     }
 }
 
-/// Refuses a fragment entry point whose `@location(0)` output a target of `format` can't store:
-/// a float output into an integer target, or an integer output into a float or other integer one.
-fn check_output(shader: &ShaderObject, format: wgpu::TextureFormat) -> Result<(), RendererError> {
-    let Some(entry) = shader.find_entry_point(naga::ShaderStage::Fragment) else {
-        return Ok(());
-    };
-    let Some(result) = entry.function.result.as_ref() else {
-        return Ok(());
-    };
-    let types = &shader.module.types;
-    let output = match (&result.binding, &types[result.ty].inner) {
-        (Some(naga::Binding::Location { location: 0, .. }), inner) => Some(inner),
-        (_, naga::TypeInner::Struct { members, .. }) => members
-            .iter()
-            .find(|member| {
-                matches!(
-                    member.binding,
-                    Some(naga::Binding::Location { location: 0, .. })
-                )
-            })
-            .map(|member| &types[member.ty].inner),
-        _ => None,
-    };
-    let Some(kind) = output.and_then(|inner| inner.scalar_kind()) else {
-        return Ok(());
-    };
-    let fits = match format.sample_type(None, None) {
-        Some(wgpu::TextureSampleType::Float { .. }) => kind == naga::ScalarKind::Float,
-        Some(wgpu::TextureSampleType::Sint) => kind == naga::ScalarKind::Sint,
-        Some(wgpu::TextureSampleType::Uint) => kind == naga::ScalarKind::Uint,
-        _ => true,
-    };
-    match fits {
-        true => Ok(()),
-        false => Err(RendererError::Error(format!(
-            "`{}` writes {kind:?} values to @location(0), which a {format:?} target can't store",
-            entry.name
-        ))),
-    }
-}
-
 /// The name of the entry point a pipeline runs for `stage`.
 fn find_entry(shader: &ShaderObject, stage: naga::ShaderStage) -> Result<&str, ShaderError> {
     shader
@@ -2639,7 +2617,6 @@ fn create_render_pipeline(
     writes_wgsl: bool,
 ) -> Result<RenderPipeline, RendererError> {
     // Every CPU check comes before the first wgpu call, so a refusal builds nothing.
-    check_output(shader, format)?;
     let vs_entry = find_entry(shader, naga::ShaderStage::Vertex)?;
     let fs_entry = find_entry(shader, naga::ShaderStage::Fragment)?;
     let module = build_module(shader, layout, pad_uniforms, light_path.uniform_lights())?;
@@ -2958,6 +2935,10 @@ mod tests {
     impl crate::target::FrameSource for FramelessTarget {
         fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
             Err(crate::SurfaceError::Occluded)
+        }
+
+        fn owner(&self) -> Option<Arc<RenderContext>> {
+            None
         }
     }
 
@@ -4563,6 +4544,10 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat)
                     .write()
                     .pop_front()
                     .unwrap_or_else(|| Ok(Box::new(DummyFrame)))
+            }
+
+            fn owner(&self) -> Option<Arc<RenderContext>> {
+                None
             }
         }
         impl crate::Target for DummyTarget {

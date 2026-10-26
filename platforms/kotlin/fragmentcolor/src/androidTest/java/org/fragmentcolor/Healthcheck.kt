@@ -58,6 +58,44 @@ class Healthcheck : ExampleCase() {
         Unit
     }
 
+    // render refuses a pass that samples its own target, and a target another
+    // Renderer created, before any GPU work. The foreign target stopped the app inside wgpu.
+    @Test
+    fun passChecksThrow() = runBlocking {
+        val renderer = Renderer()
+        val target = renderer.createTextureTarget(listOf(8u, 8u))
+        val feedback = Shader(
+            """
+            @group(0) @binding(0) var source: texture_2d<f32>;
+            @group(0) @binding(1) var soft: sampler;
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+              let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+              return vec4f(p[i], 0., 1.);
+            }
+            @fragment fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+              return textureSample(source, soft, pos.xy / 8.0);
+            }
+            """.trimIndent()
+        )
+        feedback.set("source", target.texture())
+        val conflict = assertFailsWith<FragmentColorException.Render> { renderer.render(feedback, target) }
+        assertTrue(conflict.toString().contains("Texture conflict"), conflict.toString())
+
+        val solid = Shader(
+            """
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+              let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+              return vec4f(p[i], 0., 1.);
+            }
+            @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4f(1., 0., 0., 1.); }
+            """.trimIndent()
+        )
+        val foreign = Renderer().createTextureTarget(listOf(8u, 8u))
+        val owner = assertFailsWith<FragmentColorException.Render> { renderer.render(solid, foreign) }
+        assertTrue(owner.toString().contains("another Renderer"), owner.toString())
+        renderer.render(solid, target)
+    }
+
     // A region or viewport with a side of 0, or a far edge past UInt.MAX_VALUE,
     // throws instead of shrinking, and a clear color is a list of floats or doubles.
     @Test

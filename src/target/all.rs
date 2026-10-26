@@ -1,6 +1,7 @@
 use crate::target::FrameSource;
 use crate::texture::TextureError;
-use crate::{Size, SurfaceError, Target, TargetFrame, TextureTarget, WindowTarget};
+use crate::{RenderContext, Size, SurfaceError, Target, TargetFrame, TextureTarget, WindowTarget};
+use std::sync::Arc;
 
 pub enum RenderTarget {
     Window(WindowTarget),
@@ -33,6 +34,13 @@ impl FrameSource for RenderTarget {
         match self {
             RenderTarget::Window(w) => w.get_current_frame(),
             RenderTarget::Texture(t) => t.get_current_frame(),
+        }
+    }
+
+    fn owner(&self) -> Option<Arc<RenderContext>> {
+        match self {
+            RenderTarget::Window(window) => window.owner(),
+            RenderTarget::Texture(texture) => texture.owner(),
         }
     }
 }

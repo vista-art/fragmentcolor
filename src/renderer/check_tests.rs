@@ -1,7 +1,7 @@
 // Tests that render refuses, before any GPU work, what the device can't run.
-use super::checks::check_texture;
 use super::layout::{plan_layout, texture_binding};
 use super::scope_tests::{SpyTarget, Uncaptured, setup};
+use super::shader_checks::check_texture;
 use super::*;
 use crate::texture::{Registration, Texture, TextureObject};
 use crate::{Material, Shader};
@@ -225,7 +225,8 @@ fn slots_past_the_limits_fail() {
                 .slots
                 .iter()
                 .find_map(|slot| {
-                    super::checks::check_slot(&format!("'{}'", slot.name), slot, &limits).err()
+                    super::shader_checks::check_slot(&format!("'{}'", slot.name), slot, &limits)
+                        .err()
                 })
                 .expect("a slot past the limits")
                 .to_string()
@@ -442,29 +443,6 @@ fn missing_entry_points_fail() {
         RendererError::ShaderError(ShaderError::ParseError(_)),
         "the shader has no @fragment entry point"
     );
-}
-
-// Story: integer output into the float target fails before the pipeline is built.
-#[test]
-fn integer_output_into_a_float_target_fails() {
-    pollster::block_on(async move {
-        let (renderer, context, uncaptured) = setup().await.expect("render context");
-        let target = SpyTarget::new(&context, wgpu::TextureUsages::RENDER_ATTACHMENT);
-        let shader = fullscreen(
-            "@fragment fn fs_main() -> @location(0) vec4<u32> { return vec4<u32>(1u); }",
-        )
-        .expect("shader");
-
-        let error = renderer.render(&shader, &target).expect_err("refused");
-
-        assert_refused!(
-            error,
-            RendererError::Error(_),
-            "`fs_main` writes Uint values to @location(0), which a Rgba8Unorm target can't store"
-        );
-        assert!(context.render_pipelines.is_empty(), "nothing was cached");
-        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
-    });
 }
 
 // Story: every texture a slot can't take fails before the frame with an error naming the

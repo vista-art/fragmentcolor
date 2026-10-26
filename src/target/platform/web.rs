@@ -72,6 +72,10 @@ impl crate::target::FrameSource for CanvasTarget {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
         self.inner.lock().get_current_frame()
     }
+
+    fn owner(&self) -> Option<Arc<RenderContext>> {
+        self.inner.lock().owner()
+    }
 }
 
 impl Target for CanvasTarget {
