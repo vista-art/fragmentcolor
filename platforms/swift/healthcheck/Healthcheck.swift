@@ -217,6 +217,18 @@ final class Healthcheck: ExampleCase {
                 }
             }
         }
+        // A [Double] item prints the way the shared Rust message prints it.
+        let shown: [(Double, String)] = [(1e39, "1e39"), (-1e39, "-1e39"), (.nan, "NaN"), (.infinity, "inf")]
+        for (value, text) in shown {
+            do {
+                _ = try Light.point([value, 0, 0], [1, 1, 1] as [Double])
+                throw HealthcheckError.assertion("Light.point with \(text) should throw")
+            } catch let error as FragmentColorError {
+                guard "\(error)".hasSuffix("got \(text)") else {
+                    throw HealthcheckError.assertion("\(text) printed as \(error)")
+                }
+            }
+        }
     }
 
     // A region of 3 numbers throws, as in Kotlin, where it stopped the app.
