@@ -37,6 +37,18 @@ pub(crate) async fn request_adapter(
     Ok(adapter)
 }
 
+/// The features a device may open with, when the adapter offers them.
+/// `Shader::new` refuses a shader that needs any other feature.
+pub(crate) const CANDIDATES: wgpu::Features = wgpu::Features::IMMEDIATES
+    .union(wgpu::Features::TEXTURE_COMPRESSION_BC)
+    .union(wgpu::Features::TEXTURE_COMPRESSION_BC_SLICED_3D)
+    .union(wgpu::Features::TEXTURE_COMPRESSION_ETC2)
+    .union(wgpu::Features::TEXTURE_COMPRESSION_ASTC)
+    .union(wgpu::Features::TEXTURE_COMPRESSION_ASTC_SLICED_3D)
+    .union(wgpu::Features::TEXTURE_COMPRESSION_ASTC_HDR)
+    .union(wgpu::Features::TEXTURE_FORMAT_16BIT_NORM)
+    .union(wgpu::Features::FLOAT32_FILTERABLE);
+
 /// Opens the device with the stable features the adapter offers.
 pub(crate) async fn request_device(
     adapter: &wgpu::Adapter,
@@ -60,16 +72,7 @@ pub(crate) async fn request_device(
     // `VK_ERROR_FEATURE_NOT_PRESENT` we hit before — but with an empty
     // wgpu-hal "Missing features:" log line because the constraint is on
     // limits, not features.
-    let candidates = wgpu::Features::IMMEDIATES
-        | wgpu::Features::TEXTURE_COMPRESSION_BC
-        | wgpu::Features::TEXTURE_COMPRESSION_BC_SLICED_3D
-        | wgpu::Features::TEXTURE_COMPRESSION_ETC2
-        | wgpu::Features::TEXTURE_COMPRESSION_ASTC
-        | wgpu::Features::TEXTURE_COMPRESSION_ASTC_SLICED_3D
-        | wgpu::Features::TEXTURE_COMPRESSION_ASTC_HDR
-        | wgpu::Features::TEXTURE_FORMAT_16BIT_NORM
-        | wgpu::Features::FLOAT32_FILTERABLE;
-    let requested_features = adapter.features() & candidates;
+    let requested_features = adapter.features() & CANDIDATES;
     let requested_limits = adapter.limits();
 
     let (device, queue) = adapter

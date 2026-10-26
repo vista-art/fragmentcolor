@@ -1,9 +1,11 @@
 pub mod error;
+use crate::renderer::platform::all::CANDIDATES;
 use crate::texture::{Registration, TextureId};
 use crate::{PassObject, Renderable};
 use dashmap::DashMap;
 pub use error::ShaderError;
 use lsp_doc::lsp_doc;
+use naga::front::wgsl::{Frontend, Options};
 use naga::{
     AddressSpace, Module,
     valid::{Capabilities, ValidationFlags, Validator},
@@ -12,6 +14,8 @@ use parking_lot::RwLock;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
+use wgpu::DownlevelFlags;
+use wgpu_naga_bridge::features_to_naga_capabilities;
 
 #[cfg(python)]
 use pyo3::prelude::*;
@@ -470,9 +474,8 @@ impl ShaderObject {
 
     /// Create a Shader object from a WGSL source.
     pub fn wgsl(source: &str) -> Result<Self, ShaderError> {
-        let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
-        let module = naga::front::wgsl::parse_str(source)?;
-        let info = validator.validate(&module).map_err(Box::new)?;
+        let module = create_parser().parse(source)?;
+        let info = create_validator().validate(&module).map_err(Box::new)?;
 
         let light_roots = light_roots::find_roots(&module, &info)?;
         let filled = light_roots
@@ -696,6 +699,24 @@ impl ShaderObject {
             }
         }
     }
+}
+
+/// The naga capabilities of the features a device may open with, on any backend.
+fn read_capabilities() -> Capabilities {
+    features_to_naga_capabilities(CANDIDATES, DownlevelFlags::all())
+}
+
+/// A WGSL parser that takes only what a device may support.
+fn create_parser() -> Frontend {
+    let mut options = Options::new();
+    options.capabilities = read_capabilities();
+    Frontend::new_with_options(options)
+}
+
+/// A validator that refuses what no device FragmentColor opens can run,
+/// such as `f16`, subgroups, `texture_external` or texture atomics.
+pub(crate) fn create_validator() -> Validator {
+    Validator::new(ValidationFlags::all(), read_capabilities())
 }
 
 fn hash(source: &str) -> ShaderHash {
@@ -2199,6 +2220,30 @@ struct U { items: array<Item, 4096> };
             &bytes[4095 * 32 + 16..4095 * 32 + 20],
             &2.5f32.to_le_bytes()
         );
+    }
+
+    // Story: a shader that needs a feature no device opens with fails at Shader::new.
+    #[test]
+    fn features_no_device_opens_fail_at_new() {
+        let frag = |body: &str| {
+            format!(
+                "@vertex fn vs_main() -> @builtin(position) vec4<f32> {{ return vec4<f32>(0.0); }}\n{body}"
+            )
+        };
+        let sources = [
+            frag("enable f16;\n@fragment fn fs_main() -> @location(0) vec4<f32> { let h: f16 = 1.0h; return vec4<f32>(f32(h)); }"),
+            frag("@fragment fn fs_main(@builtin(primitive_index) index: u32) -> @location(0) vec4<f32> { return vec4<f32>(f32(index)); }"),
+            frag("@group(0) @binding(0) var video: texture_external;\n@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(video, vec2<u32>(0u)); }"),
+            "enable subgroups;\n@compute @workgroup_size(64) fn cs_main(@builtin(subgroup_size) size: u32) { }".to_string(),
+        ];
+        for source in sources {
+            assert!(Shader::new(source.as_str()).is_err(), "{source}");
+        }
+        // Immediate data is one of the features a device may open with.
+        let immediate = frag(
+            "var<immediate> pc: vec4<f32>;\n@fragment fn fs_main() -> @location(0) vec4<f32> { return pc; }",
+        );
+        assert!(Shader::new(immediate.as_str()).is_ok());
     }
 
     // Story: two globals on one slot fail at Shader::new, used by different entry points or not used at all.

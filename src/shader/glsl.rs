@@ -1,3 +1,4 @@
+use super::create_validator;
 use crate::{ShaderError, ShaderObject};
 
 impl ShaderObject {
@@ -5,23 +6,16 @@ impl ShaderObject {
     pub fn glsl(vertex_source: &str, fragment_source: &str) -> Result<Self, ShaderError> {
         use naga::back::wgsl;
         use naga::front::glsl;
-        use naga::valid::{
-            Capabilities, ShaderStages, SubgroupOperationSet, ValidationFlags, Validator,
-        };
 
         let mut parser = glsl::Frontend::default();
-        let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
+        let mut validator = create_validator();
 
         let wgsl_vertex_source = {
             let vertex_module = parser.parse(
                 &glsl::Options::from(naga::ShaderStage::Vertex),
                 vertex_source,
             )?;
-            let vertex_module_info = validator
-                .subgroup_stages(ShaderStages::VERTEX)
-                .subgroup_operations(SubgroupOperationSet::all())
-                .validate(&vertex_module)
-                .map_err(Box::new)?;
+            let vertex_module_info = validator.validate(&vertex_module).map_err(Box::new)?;
 
             wgsl::write_string(
                 &vertex_module,
@@ -36,11 +30,7 @@ impl ShaderObject {
                 &glsl::Options::from(naga::ShaderStage::Fragment),
                 fragment_source,
             )?;
-            let fragment_module_info = validator
-                .subgroup_stages(ShaderStages::FRAGMENT)
-                .subgroup_operations(SubgroupOperationSet::all())
-                .validate(&fragment_module)
-                .map_err(Box::new)?;
+            let fragment_module_info = validator.validate(&fragment_module).map_err(Box::new)?;
 
             wgsl::write_string(
                 &fragment_module,
