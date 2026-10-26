@@ -5,9 +5,11 @@ Every clone of the handle follows, and so do the passes and shaders that hold it
 so a depth texture or an offscreen image can follow a window without being created again.
 The pixels start blank at the new size. Asking for the current size keeps the texture as it is.
 
-Only a texture a pass can draw into resizes: one from `create_depth_texture`, the `texture()` of a
+Only a texture made to be drawn into resizes: one from `create_depth_texture`, the `texture()` of a
 `TextureTarget`, or a texture made with `RENDER_ATTACHMENT` in its usage by `create_storage_texture`
-or `create_texture`. A texture made from an image loses that image when it resizes. Resizing a target's
+or `create_texture`. A resize keeps the mip chain `create_texture` builds by default, and a pass draws
+only into a texture of one level, so create one for `set_target` with `mipmaps` false. A texture made
+from an image loses that image when it resizes. Resizing a target's
 `texture()` resizes the target. Any other texture returns `TextureError::FixedSize`, and a side of
 zero, or one past the device limit, returns `TextureError::InvalidInput`. Both keep the old size.
 

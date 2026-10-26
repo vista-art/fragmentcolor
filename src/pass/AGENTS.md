@@ -13,6 +13,7 @@ Targets
 
 Viewport
 - `Pass::set_viewport` refuses a region with a width or height of 0 with `PassError::Viewport`, whatever form it comes in, a region built field by field included. A pass with no viewport draws on the whole target.
+- `render` refuses a viewport side past the device's `max_texture_dimension_2d` with `PassError::ViewportLimit`, since the pass has no device. A region within it keeps its size, past the target too.
 
 Clear color
 - `Pass::set_clear_color` hands each channel to wgpu as given. A float target keeps values past 0 to 1, and a unorm target clamps them on the GPU. Never clamp or quantize a clear color on the CPU.
@@ -20,7 +21,7 @@ Clear color
 
 Compute vs render
 - `Pass::is_compute()` reflects whether every attached shader is compute; a pass adopts the kind of the first attached shader.
-- `set_compute_dispatch` stores the counts, and `render` refuses one past the device's `max_compute_workgroups_per_dimension` with `PassError::DispatchLimit`, since the pass has no device.
+- `set_compute_dispatch` stores the counts as given, and a 0 dispatches nothing. `render` refuses one past the device's `max_compute_workgroups_per_dimension` with `PassError::DispatchLimit`, since the pass has no device.
 
 Mesh handling
 - `Pass::add_mesh(mesh)` delegates to the last compatible shader. For per-shader attachment, callers use `Shader::add_mesh(mesh)` directly. `Pass` never owns mesh validation itself.

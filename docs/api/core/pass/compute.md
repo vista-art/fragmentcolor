@@ -8,6 +8,10 @@ The first shader added decides the pass kind, whichever constructor made the
 pass. After that, `add_shader` returns `PassError::ShaderKind` for a shader of
 the other kind and leaves the pass as it was.
 
+Each shader of a compute pass dispatches on its own. A shader that reads a
+texture through one binding and writes it through another makes `render` return
+`PassError::TextureConflict`, so read the result in a later pass.
+
 ## Example
 
 ```rust

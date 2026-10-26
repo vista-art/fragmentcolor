@@ -110,7 +110,8 @@ extension Pass {
         try self.setTarget(target: .texture(target))
     }
 
-    /// Render into a `Texture`, such as one from `Renderer.createTexture`.
+    /// Render into a `Texture` with `RENDER_ATTACHMENT` usage and one mip level, such as
+    /// one from `Renderer.createStorageTexture` or `createTexture` with `mipmaps: false`.
     public func setTarget(_ texture: Texture) throws {
         try self.setTargetTexture(texture: texture)
     }

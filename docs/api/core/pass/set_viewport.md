@@ -8,7 +8,7 @@ The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `
 
 A width or height of 0 is an error that leaves the pass's viewport as it was, and so is a far edge past `u32::MAX`, the largest pixel coordinate. To draw on the whole target, leave the viewport unset.
 
-A region that reaches past the target keeps its size and loses the part outside, and a region wholly outside the target draws nothing. When the pass has its own target from `set_target`, the region is measured against that target.
+A region that reaches past the target keeps its size and loses the part outside, and a region wholly outside the target draws nothing. When the pass has its own target from `set_target`, the region is measured against that target. A side past the device's largest 2D texture, `max_texture_dimension_2d`, makes `render` return `PassError::ViewportLimit`, which names the size and the limit, before it takes a frame.
 
 The clear color still fills the whole target. To split one target between passes, call `load_previous` on each pass after the first. In the fragment stage, `@builtin(position)` counts pixels from the target's corner, not the region's.
 

@@ -55,7 +55,10 @@ fun Pass.setTarget(target: TextureTarget) {
     setTarget(TargetHandle.Texture(target))
 }
 
-/** Render into a [Texture], such as one from `Renderer.createTexture`. */
+/**
+ * Render into a [Texture] with `RENDER_ATTACHMENT` usage and one mip level, such as
+ * one from `Renderer.createStorageTexture` or `createTexture` with `mipmaps = false`.
+ */
 fun Pass.setTarget(texture: Texture) {
     setTargetTexture(texture)
 }

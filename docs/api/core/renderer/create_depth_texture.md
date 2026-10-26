@@ -11,8 +11,10 @@ The created depth texture inherits the renderer's current sample count:
 - If you are rendering offscreen via `create_texture_target`, it defaults to 1.
 
 This ensures the depth attachment `sample_count` matches the pass sample count.
-If you attach a depth texture with a different `sample_count` than the pass,
-rendering will return a descriptive validation error.
+A depth texture with a different `sample_count` than the pass makes `render` return
+`RendererError::DepthSampleCountMismatch`, and one whose width or height differs from
+the pass's color attachment returns `RendererError::DepthSizeMismatch`, before it takes
+a frame. A window that resizes needs a depth texture of the new size, or a `resize` of this one.
 
 ## Example
 
