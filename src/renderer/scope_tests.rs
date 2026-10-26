@@ -51,6 +51,11 @@ fn is_validation(result: &Result<(), RendererError>, expected: &str) -> bool {
 
 /// Raises one validation error outside any renderer scope.
 fn raise_uncaptured(context: &RenderContext) {
+    raise_named(context, "missing its uniform");
+}
+
+/// Raises one validation error whose message names the bind group `name`.
+fn raise_named(context: &RenderContext, name: &str) {
     let layout = context
         .device
         .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -69,7 +74,7 @@ fn raise_uncaptured(context: &RenderContext) {
     let _ = context
         .device
         .create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("missing its uniform"),
+            label: Some(name),
             layout: &layout,
             entries: &[],
         });
@@ -379,6 +384,56 @@ fn instance_count_past_the_rows_acquires_no_frame() {
             "got {result:?}"
         );
         assert_eq!(target.counts.acquired(), 0, "no frame was acquired");
+    });
+}
+
+// Story: when an inner scope fails because of an error the outer scope caught
+// first, validate reports that first error, under the outer label.
+#[test]
+fn outer_error_reports_the_root_cause() {
+    pollster::block_on(async move {
+        // Arrange
+        let (_renderer, context, uncaptured) = setup().await.expect("render context");
+
+        // Act
+        let result = context.validate("outer", || {
+            raise_named(&context, "the cause");
+            context.validate("inner", || {
+                raise_named(&context, "the symptom");
+                Ok(())
+            })
+        });
+
+        // Assert
+        assert!(
+            matches!(&result, Err(RendererError::ValidationError { label, message })
+                if label == "outer" && message.contains("the cause")),
+            "got {result:?}"
+        );
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+// Story: a CPU error from the operation still wins over a GPU error the scope caught,
+// since it names the input to fix.
+#[test]
+fn cpu_error_wins_over_the_scope() {
+    pollster::block_on(async move {
+        // Arrange
+        let (_renderer, context, uncaptured) = setup().await.expect("render context");
+
+        // Act
+        let result: Result<(), RendererError> = context.validate("outer", || {
+            raise_named(&context, "the gpu error");
+            Err(crate::ShaderError::UniformNotFound("tint".into()).into())
+        });
+
+        // Assert
+        assert!(
+            matches!(result, Err(RendererError::ShaderError(_))),
+            "got {result:?}"
+        );
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
     });
 }
 

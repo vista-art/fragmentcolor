@@ -1069,12 +1069,13 @@ impl RenderContext {
 
     /// Runs `op` inside error scopes for validation, internal and out of memory errors.
     ///
-    /// A wgpu error that `op` causes returns as `ValidationError`
-    /// instead of reaching the device's uncaptured error handler.
-    /// Pipeline builds, bind groups, views and each frame go through here.
-    /// The scopes are popped on every path. When `op` fails, its own error wins,
-    /// and a GPU error the scopes also caught goes to the log as a warning. On wasm
-    /// the scopes resolve after `render` returns, so the error waits in `late` for the next call.
+    /// A wgpu error that `op` causes returns as `ValidationError` instead of
+    /// reaching the device's uncaptured error handler. Pipeline builds, bind groups,
+    /// views and each frame go through here. The scopes are popped on every path.
+    /// When `op` fails with a GPU error of its own, such as an inner scope's, the error
+    /// these scopes caught came first and wins. When `op` fails on the CPU, its error wins,
+    /// and the GPU error goes to the log as a warning. On wasm the scopes resolve after
+    /// `render` returns, so the error waits in `late`.
     fn validate<T>(
         &self,
         label: &str,
@@ -1090,6 +1091,13 @@ impl RenderContext {
         let caught = async move { validation.await.or(internal.await).or(memory.await) };
         #[cfg(not(wasm))]
         match (result, futures::executor::block_on(caught)) {
+            (Err(error), Some(gpu)) if error.is_gpu() => {
+                log::warn!("{label} failed: {gpu}. It then caused: {error}");
+                Err(RendererError::ValidationError {
+                    label: label.to_string(),
+                    message: gpu.to_string(),
+                })
+            }
             (Err(error), Some(gpu)) => {
                 log::warn!("{label} failed: {error}. The GPU also reported: {gpu}");
                 Err(error)
