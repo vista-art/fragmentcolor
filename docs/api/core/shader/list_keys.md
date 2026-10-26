@@ -1,6 +1,6 @@
 # Shader::list_keys() -> [string]
 
-Returns a list of all keys in the [Shader](https://fragmentcolor.org/api/core/shader), including uniform names and struct fields using the dot notation.
+Returns a list of all keys in the [Shader](https://fragmentcolor.org/api/core/shader), including uniform names and struct fields using the dot notation. Array elements aren't listed, and `set` and `get` still take them by index, as in `u.items[2].v`.
 
 `list_keys` never blocks. When another thread holds the shader's storage, it returns an empty list and logs a warning.
 

@@ -4,6 +4,8 @@ The [Shader](https://fragmentcolor.org/api/core/shader) object is the main build
 
 It takes a WGSL or GLSL shader source as input, parses it, validates it, and exposes the uniforms as keys.
 
+`Shader::new` refuses a source that no device FragmentColor opens can run, with a `ShaderError` that names the problem: a feature outside the set FragmentColor requests (`f16`, subgroups, `texture_external`, texture atomics), two globals on one `@group` and `@binding`, writable storage in a `@vertex` entry point, an immediate root that breaks the uniform layout rules, and two vertex inputs with one name, which would read one mesh attribute.
+
 `Shader::new` accepts a source string, a registry slug like `"sdf2d/circle"`, an `https://` URL, a local file path, or an array mixing any of those. Array parts are deduplicated by hash and concatenated in order, so you can pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](https://fragmentcolor.org/api/core/shader#set_registry).
 
 To draw your shader, you must use your [Shader](https://fragmentcolor.org/api/core/shader) instance as input to a [Renderer](https://fragmentcolor.org/api/core/renderer).
@@ -108,7 +110,7 @@ Access flags are preserved from WGSL and mapped to the device:
 @group(0) @binding(0) var img: texture_storage_2d<rgba8unorm, write>;
 ```
 
-The declared storage format flows through to the binding layout untouched. You're responsible for picking a format and access mode the adapter supports.
+Every storage format binds as the format the shader declares. A format or access the device can't bind fails in `Renderer::render` before any GPU work, and so does a bound texture of another format, one without `STORAGE_BINDING` usage, or one with more than one mip level.
 
 ## Storage Buffers
 
@@ -123,16 +125,18 @@ struct Buf { a: vec4<f32> };
 @group(0) @binding(0) var<storage, read> ssbo: Buf;
 ```
 
-Read-only buffers bind with `read-only` storage access; `read_write` allows writes where the device supports it. CPU-side updates use the same `shader.set("path", value)` API as uniforms, with array indexing (e.g. `buf.items[2].v`). Buffer byte spans are computed from the WGSL shape (arrays and structs honor stride and alignment automatically) and large buffers are pooled internally.
+Read-only buffers bind with `read-only` storage access; `read_write` allows writes where the device supports it. Each binding is visible to the stages whose entry points use it, so a fragment entry point can write a storage buffer or texture on a device with writable fragment storage. CPU-side updates use the same `shader.set("path", value)` API as uniforms, with array indexing (e.g. `buf.items[2].v`). Buffer byte spans are computed from the WGSL shape (arrays and structs honor stride and alignment automatically) and large buffers are pooled internally.
 
-## Push Constants
+## Explicit layouts
 
-Push constants are supported with `var<push_constants>` in all platforms.
+`@size` and `@align` on the members of a uniform, storage or immediate struct keep their layout on every platform. The WGSL that wgpu writes for the browser's WebGPU drops both attributes, so FragmentColor hands the browser WGSL with a `@size` on each member of such a struct, which pins every offset and the struct's size.
 
-They will fallback to regular uniform buffers when:
+## Immediate data
 
-- push_constants are not natively supported (ex. on Web),
-- multiple push-constant roots are declared, or
-- the total push-constant size exceeds the device limit.
+Immediate data, declared with `var<immediate>`, works on every platform, in render and compute shaders. One root that fits the device's `max_immediate_size` takes native immediates. It becomes a classic uniform buffer instead on the web, on a device without immediates, and when the shader declares more than one root, with one binding per root in the lowest bind group the shader leaves free. A root must therefore also follow the uniform layout rules, such as a 16-byte array stride, and `Shader::new` refuses one that doesn't. An entry point reads at most one root.
 
-In fallback mode, push constants are rewritten as classic uniform buffers in a newly allocated bind group (one binding per push-constant root). The fallback group goes into the next free slot (`max_existing_group + 1`); FragmentColor does not check the device's `max_bind_groups` limit, so a shader that already uses many bind groups *and* push constants can exceed it. Only render pipelines fall back. A compute shader needs native push constants.
+A root that isn't a struct takes its bytes whole through `set`, as a storage root does. A struct root also takes each field by name, as in `pc.color`.
+
+## Device limits
+
+`Renderer::render` checks each shader against the device before it takes a frame, so every platform returns the same error from the call that caused it, the web included. It refuses a group past `max_bind_groups`, a binding past `max_bindings_per_bind_group`, more bindings of a kind in one stage than the device takes, a uniform or storage buffer past its binding size limit, a render shader without its `@vertex` or `@fragment` entry point, a compute shader on a device without compute or with a workgroup past the limits, and anything else the device's shader validator refuses. A texture uniform with no texture, or with a texture its slot can't take by format, usage, dimension or sample count, fails the same way.

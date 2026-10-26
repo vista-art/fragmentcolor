@@ -599,6 +599,70 @@ mod tests {
         });
     }
 
+    // Story: a map that fails to upload stays queued and fails every render,
+    // while the other maps upload and bind on the first try.
+    #[test]
+    fn failed_maps_stay_queued_and_the_rest_bind() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8u32, 8u32])
+                .await
+                .expect("texture target");
+            let normal: Vec<u8> = [128u8, 128, 255, 255].repeat(4);
+            let mat = Material::pbr()
+                .base_color_texture("tests/assets/missing.png")
+                .normal_texture((normal, [2u32, 2u32]));
+            let model = crate::scene::Model::new(pbr_triangle_mesh(), mat.clone());
+            let pass = Pass::new("partial-upload");
+            pass.add(&model).expect("add_model");
+
+            let first = renderer.render(&pass, &target);
+            let second = renderer.render(&pass, &target);
+
+            assert!(first.is_err(), "the missing map fails the first render");
+            assert!(second.is_err(), "and every render after it");
+            let normal_map = mat.shader.object.get_uniform("normal_map").expect("slot");
+            let UniformData::Texture(meta) = normal_map.data else {
+                panic!("normal_map is a texture slot, got {:?}", normal_map.data);
+            };
+            assert_ne!(meta.id.id, 0, "the good map bound on the first render");
+            let queue = mat.shader.object.pending_textures.read();
+            let keys: Vec<&str> = queue.iter().map(|entry| entry.key.as_str()).collect();
+            assert_eq!(
+                keys,
+                ["base_color_map"],
+                "only the failing map stays queued"
+            );
+        });
+    }
+
+    // Story: the latest setter call for a map wins, so a fixed input replaces a failing one.
+    #[test]
+    fn latest_map_setter_wins() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8u32, 8u32])
+                .await
+                .expect("texture target");
+            let pixels: Vec<u8> = [255u8, 0, 0, 255].repeat(4);
+            let mat = Material::pbr()
+                .base_color_texture("tests/assets/missing.png")
+                .base_color_texture((pixels, [2u32, 2u32]));
+            assert_eq!(mat.shader.object.pending_textures.read().len(), 1);
+            let model = crate::scene::Model::new(pbr_triangle_mesh(), mat.clone());
+            let pass = Pass::new("replaced-upload");
+            pass.add(&model).expect("add_model");
+
+            renderer
+                .render(&pass, &target)
+                .expect("the replaced map uploads");
+
+            assert!(mat.shader.object.pending_textures.read().is_empty());
+        });
+    }
+
     #[test]
     fn texture_setter_with_existing_texture_skips_pending_queue() {
         // The eager path: passing `&Texture` flows through

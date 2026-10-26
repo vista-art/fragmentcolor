@@ -1,0 +1,566 @@
+// Tests that render refuses, before any GPU work, what the device can't run.
+use super::layout::{plan_layout, texture_binding};
+use super::scope_tests::{SpyTarget, Uncaptured, setup};
+use super::shader_checks::check_texture;
+use super::*;
+use crate::texture::{Registration, Texture, TextureObject};
+use crate::{Material, Shader};
+
+const VERTEX: &str = r#"
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  return vec4<f32>(p[i], 0.0, 1.0);
+}
+"#;
+
+/// A render shader: the fullscreen vertex stage, then `rest`.
+fn fullscreen(rest: &str) -> Result<Shader, ShaderError> {
+    Shader::new(format!("{VERTEX}\n{rest}").as_str())
+}
+
+/// Renders `shader` into a spy target and returns the error, or `None` when it renders.
+/// Render must acquire no frame, build no pipeline and leave no GPU error uncaptured.
+fn refuse(
+    renderer: &Renderer,
+    context: &RenderContext,
+    uncaptured: &Uncaptured,
+    shader: &Shader,
+) -> Option<RendererError> {
+    let target = SpyTarget::new(context, wgpu::TextureUsages::RENDER_ATTACHMENT);
+    let error = renderer.render(shader, &target).err()?;
+    assert_eq!(
+        target.counts.acquired(),
+        0,
+        "a frame was acquired for {error}"
+    );
+    assert!(
+        context.render_pipelines.is_empty(),
+        "a pipeline was built for {error}"
+    );
+    assert!(
+        context.compute_pipelines.is_empty(),
+        "a pipeline was built for {error}"
+    );
+    assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    Some(error)
+}
+
+/// Renders `shader` on a fresh renderer and returns the error, as `refuse` checks it.
+fn refuse_alone(shader: &Shader) -> Option<RendererError> {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.ok()?;
+        refuse(&renderer, &context, &uncaptured, shader)
+    })
+}
+
+/// A 4x4 texture of `format` with `usage`, made past the creation helpers.
+fn create_texture(
+    context: &Arc<RenderContext>,
+    format: wgpu::TextureFormat,
+    usage: wgpu::TextureUsages,
+) -> Result<Texture, crate::texture::TextureError> {
+    let size = wgpu::Extent3d {
+        width: 4,
+        height: 4,
+        depth_or_array_layers: 1,
+    };
+    let object = TextureObject::new(context, size, format, usage, Default::default())?;
+    let registration = Registration::create(context, Arc::new(object));
+    Ok(Texture::new(context.clone(), registration))
+}
+
+/// Asserts that `error` is the variant `pattern` names and that its text holds `text`.
+macro_rules! assert_refused {
+    ($error:expr, $pattern:pat, $text:expr) => {{
+        let error = $error;
+        assert!(matches!(error, $pattern), "got {error:?}");
+        assert!(error.to_string().contains($text), "got {error}");
+    }};
+}
+
+// Story: a group past the device's bind groups fails before the frame, on every platform alike.
+#[test]
+fn group_past_the_device_fails() {
+    let groups = pollster::block_on(async {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        context.device.limits().max_bind_groups
+    });
+    let shader = fullscreen(&format!(
+        "@group({groups}) @binding(0) var<uniform> tint: vec4<f32>;
+@fragment fn fs_main() -> @location(0) vec4<f32> {{ return tint; }}"
+    ))
+    .expect("shader");
+    let error = refuse_alone(&shader).expect("refused");
+    assert_refused!(
+        error,
+        RendererError::BindGroupLayoutError(_),
+        &format!(
+            "'tint' at @group({groups}) @binding(0) is past the device's {groups} bind groups"
+        )
+    );
+}
+
+// Story: the group that holds immediate roots on a device without native immediates
+// takes the lowest free index, so a shader that leaves a gap still fits.
+#[test]
+fn lowered_immediates_take_the_lowest_free_group() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let last = context.device.limits().max_bind_groups - 1;
+        let target = renderer
+            .create_texture_target([4, 4])
+            .await
+            .expect("texture target");
+        // Two immediate roots never take native immediates. An entry point reads one at most.
+        let shader = fullscreen(&format!(
+            "var<immediate> red: f32;
+var<immediate> spare: f32;
+@group(0) @binding(0) var<uniform> blue: f32;
+@group({last}) @binding(0) var<uniform> alpha: f32;
+@fragment fn fs_main() -> @location(0) vec4<f32> {{ return vec4<f32>(red, 0.0, blue, alpha); }}"
+        ))
+        .expect("shader");
+        // A bare immediate root takes its bytes whole.
+        for key in ["red", "spare"] {
+            shader
+                .set(key, 1.0f32.to_le_bytes().as_slice())
+                .expect("set");
+        }
+        shader.set("blue", 1.0).expect("blue");
+        shader.set("alpha", 1.0).expect("alpha");
+
+        renderer.render(&shader, &target).expect("render");
+        let image = target.get_image().await.expect("read back");
+
+        assert_eq!(image[..4], [255, 0, 255, 255]);
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+// Story: more bindings of one kind in a stage than the device takes fail before the frame,
+// and the same bindings split across two stages fit, since each counts only where it is used.
+#[test]
+fn stage_counts_follow_the_stages_that_use_each_binding() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let max = context.device.limits().max_samplers_per_shader_stage;
+        let declare = |count: u32| -> String {
+            (0..count)
+                .map(|index| format!("@group(0) @binding({index}) var s{index}: sampler;\n"))
+                .collect()
+        };
+        let sample = |range: std::ops::Range<u32>| -> String {
+            range
+                .map(|index| format!("textureSampleLevel(image, s{index}, vec2<f32>(0.5), 0.0)"))
+                .collect::<Vec<_>>()
+                .join(" + ")
+        };
+        let image = "@group(1) @binding(0) var image: texture_2d<f32>;";
+        let crowded = Shader::new(
+            format!(
+                "{}{image}
+{VERTEX}
+@fragment fn fs_main() -> @location(0) vec4<f32> {{ return {}; }}",
+                declare(max + 1),
+                sample(0..max + 1)
+            )
+            .as_str(),
+        )
+        .expect("shader");
+        let texture = create_texture(
+            &context,
+            wgpu::TextureFormat::Rgba8Unorm,
+            wgpu::TextureUsages::TEXTURE_BINDING,
+        )
+        .expect("texture");
+        crowded.set("image", &texture).expect("image");
+        let error = refuse(&renderer, &context, &uncaptured, &crowded).expect("refused");
+        assert_refused!(
+            error,
+            RendererError::BindGroupLayoutError(_),
+            &format!(
+                "{} samplers in the fragment stage, past the device's max_samplers_per_shader_stage of {max}",
+                max + 1
+            )
+        );
+
+        let half = (max + 1).div_ceil(2);
+        let split = Shader::new(
+            format!(
+                "{}{image}
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {{
+  return {} * f32(i);
+}}
+@fragment fn fs_main() -> @location(0) vec4<f32> {{ return {}; }}",
+                declare(max + 1),
+                sample(0..half),
+                sample(half..max + 1)
+            )
+            .as_str(),
+        )
+        .expect("shader");
+        split.set("image", &texture).expect("image");
+        let target = renderer
+            .create_texture_target([4, 4])
+            .await
+            .expect("texture target");
+        renderer
+            .render(&split, &target)
+            .expect("split samplers fit");
+    });
+}
+
+// Story: a binding past the device's bindings, a uniform past its size limit and a storage
+// buffer past its size limit each fail with an error that names the root and the limit.
+#[test]
+fn slots_past_the_limits_fail() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        // The WebGPU defaults, which the web's devices give.
+        let limits = wgpu::Limits::default();
+        let check = |source: String| {
+            let shader = fullscreen(&source).expect("shader");
+            let layout = plan_layout(&shader.object, &context.device, None);
+            layout
+                .slots
+                .iter()
+                .find_map(|slot| {
+                    super::shader_checks::check_slot(&format!("'{}'", slot.name), slot, &limits)
+                        .err()
+                })
+                .expect("a slot past the limits")
+                .to_string()
+        };
+        let binding = check(
+            "@group(0) @binding(1000) var<uniform> tint: vec4<f32>;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return tint; }"
+                .into(),
+        );
+        assert!(
+            binding.contains("'tint' is past the device's 1000 bindings in a group"),
+            "{binding}"
+        );
+        let uniform = check(
+            "@group(0) @binding(0) var<uniform> big: array<vec4<f32>, 8192>;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return big[0]; }"
+                .into(),
+        );
+        assert!(
+            uniform.contains("'big' binds 131072 bytes, past the device's max_uniform_buffer_binding_size of 65536"),
+            "{uniform}"
+        );
+        let storage = check(
+            "@group(0) @binding(0) var<storage, read> big: array<vec4<f32>, 16777216>;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return big[0]; }"
+                .into(),
+        );
+        assert!(
+            storage.contains("'big' binds 268435456 bytes, past the device's max_storage_buffer_binding_size of 134217728"),
+            "{storage}"
+        );
+    });
+}
+
+// Story: a storage texture binds in the format the shader declares,
+// including the formats outside the old table, such as r32float.
+#[test]
+fn storage_textures_bind_their_declared_format() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let shader = Shader::new(
+            r#"
+@group(0) @binding(0) var image: texture_storage_2d<r32float, write>;
+@compute @workgroup_size(1)
+fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
+  textureStore(image, id.xy, vec4<f32>(0.5));
+}
+"#,
+        )
+        .expect("shader");
+        let usage = wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC;
+        let texture =
+            create_texture(&context, wgpu::TextureFormat::R32Float, usage).expect("texture");
+        shader.set("image", &texture).expect("image");
+        let pass = crate::Pass::from_shader("store", &shader);
+        pass.set_compute_dispatch(4, 4, 1);
+        let target = renderer
+            .create_texture_target([4, 4])
+            .await
+            .expect("texture target");
+
+        renderer.render(&pass, &target).expect("render");
+        let bytes = renderer
+            .read_texture(*texture.id())
+            .await
+            .expect("read back");
+
+        assert_eq!(bytes[..4], 0.5f32.to_le_bytes());
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+// Story: a fragment entry point writes a storage texture, and the pass draws.
+#[test]
+fn fragment_writes_a_storage_texture() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let shader = fullscreen(
+            "@group(0) @binding(0) var marks: texture_storage_2d<rgba8unorm, write>;
+@fragment fn fs_main(@builtin(position) at: vec4<f32>) -> @location(0) vec4<f32> {
+  textureStore(marks, vec2<u32>(at.xy), vec4<f32>(1.0, 0.0, 0.0, 1.0));
+  return vec4<f32>(1.0);
+}",
+        )
+        .expect("shader");
+        let usage = wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC;
+        let marks =
+            create_texture(&context, wgpu::TextureFormat::Rgba8Unorm, usage).expect("texture");
+        shader.set("marks", &marks).expect("marks");
+        let target = renderer
+            .create_texture_target([4, 4])
+            .await
+            .expect("texture target");
+
+        renderer.render(&shader, &target).expect("render");
+        let bytes = renderer.read_texture(*marks.id()).await.expect("read back");
+
+        assert_eq!(bytes[..4], [255, 0, 0, 255]);
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+// Story: a compute shader that leaves group 0 empty still dispatches,
+// with an empty group in the gap as a render pipeline has.
+#[test]
+fn compute_fills_group_gaps() {
+    pollster::block_on(async move {
+        let (renderer, _context, uncaptured) = setup().await.expect("render context");
+        let shader = Shader::new(
+            r#"
+@group(1) @binding(0) var<storage, read_write> gap_values: array<f32, 4>;
+@compute @workgroup_size(4)
+fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) { gap_values[id.x] = 1.0; }
+"#,
+        )
+        .expect("shader");
+        let target = renderer
+            .create_texture_target([4, 4])
+            .await
+            .expect("texture target");
+
+        renderer.render(&shader, &target).expect("render");
+        let bytes = renderer
+            .read_storage(&shader, "gap_values")
+            .await
+            .expect("read back");
+
+        assert_eq!(bytes, [1.0f32; 4].map(f32::to_le_bytes).concat());
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+// Story: a compute shader reads its immediate data, natively for one root that fits
+// and through the uniform group when it declares two roots.
+#[test]
+fn compute_reads_immediates() {
+    pollster::block_on(async move {
+        let (renderer, _context, uncaptured) = setup().await.expect("render context");
+        let target = renderer
+            .create_texture_target([4, 4])
+            .await
+            .expect("texture target");
+        let one = Shader::new(
+            r#"
+var<immediate> params: vec4<f32>;
+@group(0) @binding(0) var<storage, read_write> one_root: vec4<f32>;
+@compute @workgroup_size(1) fn cs_main() { one_root = params; }
+"#,
+        )
+        .expect("shader");
+        let two = Shader::new(
+            r#"
+var<immediate> spare: vec2<f32>;
+var<immediate> params: vec4<f32>;
+@group(0) @binding(0) var<storage, read_write> two_roots: vec4<f32>;
+@compute @workgroup_size(1) fn cs_main() { two_roots = params; }
+"#,
+        )
+        .expect("shader");
+        // A bare immediate root takes its bytes whole.
+        let expected = [1.0f32, 2.0, 3.0, 4.0].map(f32::to_le_bytes).concat();
+        one.set("params", expected.as_slice()).expect("params");
+        two.set("spare", [0u8; 8].as_slice()).expect("spare");
+        two.set("params", expected.as_slice()).expect("params");
+
+        for (shader, root) in [(&one, "one_root"), (&two, "two_roots")] {
+            renderer.render(shader, &target).expect("render");
+            let bytes = renderer
+                .read_storage(shader, root)
+                .await
+                .expect("read back");
+            assert_eq!(bytes, expected, "{root}");
+        }
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
+// Story: a workgroup past the device's limits fails before any GPU work,
+// also when an override sizes it.
+#[test]
+fn workgroup_past_the_device_fails() {
+    let wide = Shader::new("@compute @workgroup_size(4096) fn cs_main() {}").expect("shader");
+    assert_refused!(
+        refuse_alone(&wide).expect("refused"),
+        RendererError::Error(_),
+        "`cs_main` has a workgroup 4096 wide on x, past the device's max_compute_workgroup_size_x of"
+    );
+    let crowded = Shader::new(
+        "override side: u32 = 64;
+@compute @workgroup_size(side, side) fn cs_main() {}",
+    )
+    .expect("shader");
+    assert_refused!(
+        refuse_alone(&crowded).expect("refused"),
+        RendererError::Error(_),
+        "`cs_main` runs 4096 invocations per workgroup, past the device's max_compute_invocations_per_workgroup of"
+    );
+}
+
+// Story: a render shader without a vertex or a fragment entry point fails before any GPU work.
+#[test]
+fn missing_entry_points_fail() {
+    let fragment =
+        Shader::new("@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }")
+            .expect("a lone fragment stage parses");
+    assert_refused!(
+        refuse_alone(&fragment).expect("refused"),
+        RendererError::ShaderError(ShaderError::ParseError(_)),
+        "the shader has no @vertex entry point"
+    );
+    let vertex = Shader::new(VERTEX).expect("a lone vertex stage parses");
+    assert_refused!(
+        refuse_alone(&vertex).expect("refused"),
+        RendererError::ShaderError(ShaderError::ParseError(_)),
+        "the shader has no @fragment entry point"
+    );
+}
+
+// Story: every texture a slot can't take fails before the frame with an error naming the
+// slot and the mismatch, the same on the web, where no error scope resolves in time.
+#[test]
+fn textures_their_slots_cannot_take_fail() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let sampled = "@group(0) @binding(0) var image: texture_2d<f32>;
+@group(0) @binding(1) var linear: sampler;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return textureSample(image, linear, vec2<f32>(0.5)); }";
+        let storage = "@group(0) @binding(0) var image: texture_storage_2d<rgba8unorm, write>;
+@fragment fn fs_main() -> @location(0) vec4<f32> {
+  textureStore(image, vec2<u32>(0u), vec4<f32>(1.0));
+  return vec4<f32>(1.0);
+}";
+        let depth = renderer
+            .create_depth_texture([4, 4])
+            .await
+            .expect("depth texture");
+        let volume = renderer
+            .create_texture((vec![0u8; 4 * 4 * 4 * 4], [4u32, 4, 4]))
+            .await
+            .expect("3D texture");
+        let plain = renderer
+            .create_texture((vec![0u8; 4 * 4 * 4], [4u32, 4]))
+            .await
+            .expect("2D texture");
+        let cases: [(&str, &Texture, &str); 3] = [
+            (
+                sampled,
+                &depth,
+                "Depth32Float, which samples as Some(Depth), in a slot that samples as Float { filterable: true }",
+            ),
+            (sampled, &volume, "a D3 texture in a D2 slot"),
+            (storage, &plain, "a texture without STORAGE_BINDING usage"),
+        ];
+        for (source, texture, problem) in cases {
+            let shader = fullscreen(source).expect("shader");
+            shader.set("image", texture).expect("set");
+            let error = refuse(&renderer, &context, &uncaptured, &shader).expect("refused");
+            assert_refused!(
+                error,
+                RendererError::BindGroupLayoutError(_),
+                &format!("texture 'image' can't take {problem}")
+            );
+        }
+
+        let unset = fullscreen(sampled).expect("shader");
+        assert_refused!(
+            refuse(&renderer, &context, &uncaptured, &unset).expect("refused"),
+            RendererError::BindGroupLayoutError(_),
+            "texture 'image' is not set"
+        );
+        let removed = fullscreen(sampled).expect("shader");
+        removed.set("image", &plain).expect("set");
+        renderer
+            .unregister_texture(*plain.id())
+            .expect("unregister");
+        assert_refused!(
+            refuse(&renderer, &context, &uncaptured, &removed).expect("refused"),
+            RendererError::TextureNotFoundError(_),
+            "not found"
+        );
+    });
+}
+
+// Story: a Material map given a texture its slot can't take fails at render, the same
+// on every platform, instead of drawing a broken frame on the web.
+#[test]
+fn material_maps_check_their_textures() {
+    pollster::block_on(async move {
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let depth = renderer
+            .create_depth_texture([4, 4])
+            .await
+            .expect("depth texture");
+        let material = Material::pbr().base_color_texture(&depth);
+
+        let error = refuse(&renderer, &context, &uncaptured, material.shader()).expect("refused");
+
+        assert_refused!(
+            error,
+            RendererError::BindGroupLayoutError(_),
+            "texture 'base_color_map' can't take Depth32Float"
+        );
+    });
+}
+
+// Story: the bind-time texture check follows wgpu's rules: an unfilterable float slot takes
+// filterable floats and depth, and a multisampled slot takes only a multisampled texture.
+#[test]
+fn texture_checks_follow_wgpu_rules() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let usage = wgpu::TextureUsages::TEXTURE_BINDING;
+        let color =
+            create_texture(&context, wgpu::TextureFormat::Rgba8Unorm, usage).expect("texture");
+        let meta = |sampled: bool| crate::texture::TextureMeta {
+            sampled,
+            ..crate::texture::TextureMeta::with_id_only(*color.id())
+        };
+        let features = context.device.features();
+        let loaded = texture_binding(&meta(false));
+        assert!(check_texture("t", &loaded, &color.object(), features).is_ok());
+        let filtered = texture_binding(&meta(true));
+        assert!(check_texture("t", &filtered, &color.object(), features).is_ok());
+        let multi = wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: true,
+        };
+        let error = check_texture("t", &multi, &color.object(), features).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("1 samples in a slot that is multisampled"),
+            "{error}"
+        );
+    });
+}

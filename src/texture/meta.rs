@@ -81,8 +81,7 @@ impl From<TextureScalarKind> for naga::ScalarKind {
 
 /// Storage-texture format. Mirrors `naga::StorageFormat`.
 ///
-/// Variants outside of the set the renderer translates to `wgpu::TextureFormat`
-/// fall through to the renderer's `Rgba8Unorm` fallback.
+/// Every variant binds as the `wgpu::TextureFormat` of the same name.
 #[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -188,6 +187,55 @@ impl From<naga::StorageFormat> for TextureStorageFormat {
 impl From<TextureStorageFormat> for naga::StorageFormat {
     fn from(value: TextureStorageFormat) -> Self {
         use naga::StorageFormat as F;
+        match value {
+            TextureStorageFormat::R8Unorm => F::R8Unorm,
+            TextureStorageFormat::R8Snorm => F::R8Snorm,
+            TextureStorageFormat::R8Uint => F::R8Uint,
+            TextureStorageFormat::R8Sint => F::R8Sint,
+            TextureStorageFormat::R16Uint => F::R16Uint,
+            TextureStorageFormat::R16Sint => F::R16Sint,
+            TextureStorageFormat::R16Float => F::R16Float,
+            TextureStorageFormat::Rg8Unorm => F::Rg8Unorm,
+            TextureStorageFormat::Rg8Snorm => F::Rg8Snorm,
+            TextureStorageFormat::Rg8Uint => F::Rg8Uint,
+            TextureStorageFormat::Rg8Sint => F::Rg8Sint,
+            TextureStorageFormat::R32Uint => F::R32Uint,
+            TextureStorageFormat::R32Sint => F::R32Sint,
+            TextureStorageFormat::R32Float => F::R32Float,
+            TextureStorageFormat::Rg16Uint => F::Rg16Uint,
+            TextureStorageFormat::Rg16Sint => F::Rg16Sint,
+            TextureStorageFormat::Rg16Float => F::Rg16Float,
+            TextureStorageFormat::Rgba8Unorm => F::Rgba8Unorm,
+            TextureStorageFormat::Rgba8Snorm => F::Rgba8Snorm,
+            TextureStorageFormat::Rgba8Uint => F::Rgba8Uint,
+            TextureStorageFormat::Rgba8Sint => F::Rgba8Sint,
+            TextureStorageFormat::Bgra8Unorm => F::Bgra8Unorm,
+            TextureStorageFormat::Rgb10a2Uint => F::Rgb10a2Uint,
+            TextureStorageFormat::Rgb10a2Unorm => F::Rgb10a2Unorm,
+            TextureStorageFormat::Rg11b10Ufloat => F::Rg11b10Ufloat,
+            TextureStorageFormat::R64Uint => F::R64Uint,
+            TextureStorageFormat::Rg32Uint => F::Rg32Uint,
+            TextureStorageFormat::Rg32Sint => F::Rg32Sint,
+            TextureStorageFormat::Rg32Float => F::Rg32Float,
+            TextureStorageFormat::Rgba16Uint => F::Rgba16Uint,
+            TextureStorageFormat::Rgba16Sint => F::Rgba16Sint,
+            TextureStorageFormat::Rgba16Float => F::Rgba16Float,
+            TextureStorageFormat::Rgba32Uint => F::Rgba32Uint,
+            TextureStorageFormat::Rgba32Sint => F::Rgba32Sint,
+            TextureStorageFormat::Rgba32Float => F::Rgba32Float,
+            TextureStorageFormat::R16Unorm => F::R16Unorm,
+            TextureStorageFormat::R16Snorm => F::R16Snorm,
+            TextureStorageFormat::Rg16Unorm => F::Rg16Unorm,
+            TextureStorageFormat::Rg16Snorm => F::Rg16Snorm,
+            TextureStorageFormat::Rgba16Unorm => F::Rgba16Unorm,
+            TextureStorageFormat::Rgba16Snorm => F::Rgba16Snorm,
+        }
+    }
+}
+
+impl From<TextureStorageFormat> for wgpu::TextureFormat {
+    fn from(value: TextureStorageFormat) -> Self {
+        use wgpu::TextureFormat as F;
         match value {
             TextureStorageFormat::R8Unorm => F::R8Unorm,
             TextureStorageFormat::R8Snorm => F::R8Snorm,

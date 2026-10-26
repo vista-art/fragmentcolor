@@ -13,6 +13,15 @@ Constructors
 - `Shader::from_vertex(v: &Vertex) -> Self` — same idea from a single vertex (pos dim + common properties).
 - Mobile uniffi: `Shader::new_mobile(source: String) -> Result<Arc<Self>, FragmentColorError>` in `platform/mobile.rs` (owned `String` + `Arc<Self>` as uniffi requires). Swift / Kotlin extensions re-expose it as `Shader(source)`.
 
+Creation checks (`Shader::wgsl`, which every constructor reaches)
+- Parse and validate with `create_validator` / `create_parser`: the naga capabilities of `CANDIDATES` (`renderer/platform/all.rs`), the features a device may open with. A shader that needs another feature (`f16`, subgroups, `texture_external`, texture atomics) fails here, never at render.
+- `parse_uniforms` refuses two globals on one `@group`/`@binding` (`claim_slot`) and writable storage that a `@vertex` entry point uses. It records each global's `Uniform::stages` from naga's `ModuleInfo`; the renderer makes each binding visible to those stages, and a global no entry point uses to the compute stage.
+- `immediates::check_immediates` lowers the immediate roots to uniforms on a copy and validates it, since the web and devices without immediates bind them that way. `lower_immediates` is the one rewrite, shared with the renderer.
+- `layouts::write_layouts` refuses a buffer struct whose `@size`/`@align` layout the browser's WGSL wouldn't keep. The renderer calls it on the browser's WebGPU to get that WGSL.
+- `reflect_vertex_inputs` runs once at creation and refuses two inputs with one name.
+- Raw bytes for a storage or immediate root must be exactly its size (`UniformInput::resolve`, `set_storage_bytes`, `set_push_bytes`).
+- Array elements get no keys of their own; `locate_key` resolves `u.items[2].v` by walking the shape.
+
 Reflection & mapping
 - Vertex input mapping order (`attach.rs` and `Renderer::vertex_buffer_layouts` follow the same one):
   1. by name, instance first, then vertex (`position` included)

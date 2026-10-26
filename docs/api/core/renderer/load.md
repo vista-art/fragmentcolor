@@ -10,6 +10,12 @@ visits, drains its pending list, calls
 [`Renderer::create_texture`](https://fragmentcolor.org/api/core/renderer#create_texture)
 for each, and writes the resulting `Texture` into the matching uniform.
 
+An upload that fails stays pending and the others still bind, so a good
+normal map binds even when the base color path is missing. `load` returns
+the first failure, and so does every later `load`, and every native
+`render`, until the input is fixed or replaced. The latest setter call for
+a map wins, so setting a map again replaces the pending upload.
+
 On native targets, [`Renderer::render`](https://fragmentcolor.org/api/core/renderer)
 runs `load` first whenever the renderable has pending uploads, so an
 explicit `load` is optional there. Reach for it when you want to pay the

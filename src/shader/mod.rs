@@ -1,17 +1,21 @@
 pub mod error;
+use crate::renderer::platform::all::CANDIDATES;
 use crate::texture::{Registration, TextureId};
 use crate::{PassObject, Renderable};
 use dashmap::DashMap;
 pub use error::ShaderError;
 use lsp_doc::lsp_doc;
+use naga::front::wgsl::{Frontend, Options};
 use naga::{
     AddressSpace, Module,
-    valid::{Capabilities, ValidationFlags, Validator},
+    valid::{Capabilities, ModuleInfo, ValidationFlags, Validator},
 };
 use parking_lot::RwLock;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
+use wgpu::DownlevelFlags;
+use wgpu_naga_bridge::features_to_naga_capabilities;
 
 #[cfg(python)]
 use pyo3::prelude::*;
@@ -36,6 +40,10 @@ pub(crate) mod registry;
 pub(crate) mod embedded;
 
 mod glsl;
+mod immediates;
+pub(crate) use immediates::lower_immediates;
+mod layouts;
+pub(crate) use layouts::write_layouts;
 mod input;
 pub(crate) mod light_roots;
 use light_roots::LightRoots;
@@ -470,17 +478,19 @@ impl ShaderObject {
 
     /// Create a Shader object from a WGSL source.
     pub fn wgsl(source: &str) -> Result<Self, ShaderError> {
-        let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
-        let module = naga::front::wgsl::parse_str(source)?;
-        let info = validator.validate(&module).map_err(Box::new)?;
+        let module = create_parser().parse(source)?;
+        let info = create_validator().validate(&module).map_err(Box::new)?;
+        immediates::check_immediates(&module)?;
+        // The web gets WGSL that keeps explicit layouts, so one it would lose fails here everywhere.
+        write_layouts(&module, &info)?;
 
         let light_roots = light_roots::find_roots(&module, &info)?;
         let filled = light_roots
             .as_ref()
             .map(LightRoots::handles)
             .unwrap_or_default();
-        let uniforms = parse_uniforms(&module, &filled)?;
-        let storage = RwLock::new(UniformStorage::new(&uniforms));
+        let uniforms = parse_uniforms(&module, &info, &filled)?;
+        let storage = RwLock::new(UniformStorage::new(&uniforms)?);
         let hash = hash(source);
 
         let mut total_bytes = 0;
@@ -490,7 +500,7 @@ impl ShaderObject {
             total_bytes += aligned;
         }
 
-        Ok(Self {
+        let object = Self {
             hash,
             module,
             source: source.to_string(),
@@ -512,7 +522,10 @@ impl ShaderObject {
             lights: RwLock::new(ShaderLights::default()),
             lowered: RwLock::new(HashMap::new()),
             bound_textures: DashMap::new(),
-        })
+        };
+        // Refuses vertex inputs no mesh can feed, such as two with one name.
+        object.reflect_vertex_inputs()?;
+        Ok(object)
     }
 
     /// The module a pipeline compiles on a device that takes lights through a
@@ -581,6 +594,10 @@ impl ShaderObject {
         use crate::shader::UniformData;
         use crate::texture::TextureMeta;
         let key = key.into();
+        // The latest setter call wins, so an upload queued before can't overwrite it.
+        self.pending_textures
+            .write()
+            .retain(|entry| entry.key != key);
         if let crate::TextureData::CloneOf(ref tex) = input.data {
             let meta = TextureMeta::with_id_only(*tex.id());
             return self.set(&key, UniformData::Texture(meta));
@@ -594,6 +611,17 @@ impl ShaderObject {
     /// Take the current pending-texture queue, leaving the slot empty.
     pub(crate) fn drain_pending_textures(&self) -> Vec<PendingTexture> {
         std::mem::take(&mut *self.pending_textures.write())
+    }
+
+    /// Puts the uploads that `failed` back at the front of the queue, so the next
+    /// `load` or `render` tries them again. A key queued again in the meantime keeps its newer entry.
+    pub(crate) fn requeue_textures(&self, failed: Vec<PendingTexture>) {
+        let mut queue = self.pending_textures.write();
+        let kept: Vec<PendingTexture> = failed
+            .into_iter()
+            .filter(|entry| queue.iter().all(|queued| queued.key != entry.key))
+            .collect();
+        queue.splice(0..0, kept);
     }
 
     /// Get a uniform value as Uniform struct.
@@ -661,6 +689,13 @@ impl ShaderObject {
         };
         let format = naga_ty_to_vertex_format(&self.module.types[ty])?;
         let name = name.clone().unwrap_or_else(|| format!("attr{location}"));
+        // Each input reads the mesh attribute of its name, so two inputs can't share one.
+        if let Some(first) = inputs.iter().find(|input| input.name == name) {
+            return Err(ShaderError::ParseError(format!(
+                "the vertex inputs at @location({}) and @location({location}) are both named `{name}`, and each input reads the mesh attribute of its name",
+                first.location
+            )));
+        }
         inputs.push(VertexInputDesc {
             name,
             location: *location,
@@ -696,6 +731,24 @@ impl ShaderObject {
             }
         }
     }
+}
+
+/// The naga capabilities of the features a device may open with, on any backend.
+fn read_capabilities() -> Capabilities {
+    features_to_naga_capabilities(CANDIDATES, DownlevelFlags::all())
+}
+
+/// A WGSL parser that takes only what a device may support.
+fn create_parser() -> Frontend {
+    let mut options = Options::new();
+    options.capabilities = read_capabilities();
+    Frontend::new_with_options(options)
+}
+
+/// A validator that refuses what no device FragmentColor opens can run,
+/// such as `f16`, subgroups, `texture_external` or texture atomics.
+pub(crate) fn create_validator() -> Validator {
+    Validator::new(ValidationFlags::all(), read_capabilities())
 }
 
 fn hash(source: &str) -> ShaderHash {
@@ -756,18 +809,73 @@ fn sampled_image_globals(
     sampled
 }
 
+/// Records that `name` holds the slot `binding` names, refusing a slot another global holds.
+/// naga only refuses two globals on one slot when one entry point uses both.
+fn claim_slot(
+    slots: &mut HashMap<(u32, u32), String>,
+    binding: &naga::ResourceBinding,
+    name: &str,
+) -> Result<(), ShaderError> {
+    let slot = (binding.group, binding.binding);
+    match slots.insert(slot, name.to_string()) {
+        Some(first) => Err(ShaderError::ParseError(format!(
+            "`{first}` and `{name}` both use @group({}) @binding({})",
+            binding.group, binding.binding
+        ))),
+        None => Ok(()),
+    }
+}
+
+/// The stages whose entry points use the global `handle`.
+fn find_stages(
+    module: &Module,
+    info: &ModuleInfo,
+    handle: naga::Handle<naga::GlobalVariable>,
+) -> wgpu::ShaderStages {
+    let mut stages = wgpu::ShaderStages::NONE;
+    for (index, entry) in module.entry_points.iter().enumerate() {
+        if info.get_entry_point(index)[handle].is_empty() {
+            continue;
+        }
+        stages |= match entry.stage {
+            naga::ShaderStage::Vertex => wgpu::ShaderStages::VERTEX,
+            naga::ShaderStage::Fragment => wgpu::ShaderStages::FRAGMENT,
+            naga::ShaderStage::Compute => wgpu::ShaderStages::COMPUTE,
+            _ => wgpu::ShaderStages::NONE,
+        };
+    }
+    stages
+}
+
+/// Whether the global writes to its storage, as a `read_write` buffer or a writable storage texture.
+fn writes_storage(module: &Module, variable: &naga::GlobalVariable) -> bool {
+    match variable.space {
+        AddressSpace::Storage { access } => access.contains(naga::StorageAccess::STORE),
+        _ => matches!(
+            module.types[variable.ty].inner,
+            naga::TypeInner::Image {
+                class: naga::ImageClass::Storage { access, .. },
+                ..
+            } if access.contains(naga::StorageAccess::STORE)
+        ),
+    }
+}
+
 /// Reflects the module's bindings, leaving out the `filled` globals, which the renderer fills.
 fn parse_uniforms(
     module: &Module,
+    info: &ModuleInfo,
     filled: &[naga::Handle<naga::GlobalVariable>],
 ) -> Result<HashMap<String, Uniform>, ShaderError> {
     let mut uniforms = HashMap::new();
+    let mut slots: HashMap<(u32, u32), String> = HashMap::new();
     let sampled_set = sampled_image_globals(module);
 
     for (handle, variable) in module.global_variables.iter() {
         if filled.contains(&handle) {
             continue;
         }
+        let stages = find_stages(module, info, handle);
         // Handle WorkGroup specially: ignore unbound; error on bound (unexpected)
         match variable.space {
             AddressSpace::WorkGroup => {
@@ -795,6 +903,7 @@ fn parse_uniforms(
                         name: uniform_name,
                         group: 0,
                         binding: 0,
+                        stages,
                         data: UniformData::PushConstant(vec![crate::shader::uniform::PushEntry {
                             inner: vec![inner],
                             span,
@@ -823,6 +932,13 @@ fn parse_uniforms(
             .binding
             .as_ref()
             .ok_or(ShaderError::ParseError("Missing binding".into()))?;
+        claim_slot(&mut slots, binding, &uniform_name)?;
+        // No device FragmentColor opens takes writable storage in the vertex stage.
+        if stages.contains(wgpu::ShaderStages::VERTEX) && writes_storage(module, variable) {
+            return Err(ShaderError::ParseError(format!(
+                "`{uniform_name}` is writable storage, which a @vertex entry point can't use"
+            )));
+        }
 
         let ty = &module.types[variable.ty];
 
@@ -853,6 +969,7 @@ fn parse_uniforms(
                 name: uniform_name,
                 group: binding.group,
                 binding: binding.binding,
+                stages,
                 data,
             },
         );
@@ -2151,6 +2268,176 @@ struct Arr { arr: array<vec4<f32>, 2> };
         let bytes = UniformInput::Bytes(vec![0; 8]);
         assert!(shader.object.set_input("cell", bytes.clone()).is_err());
         assert!(shader.object.set_input("buf.items[0].v", bytes).is_err());
+    }
+
+    // Story: an array of structs costs one key per field, not one per element, and its elements still resolve.
+    #[test]
+    fn array_elements_resolve_without_keys() {
+        let shader = Shader::new(
+            r#"
+struct Item { v: vec4<f32>, w: f32 };
+struct U { items: array<Item, 4096> };
+@group(0) @binding(0) var<uniform> u: U;
+@vertex fn vs_main() -> @builtin(position) vec4<f32> { return u.items[0].v; }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(u.items[1].w); }
+"#,
+        )
+        .expect("shader");
+        let mut keys = shader.list_keys();
+        keys.sort();
+        assert_eq!(keys, ["u", "u.items"]);
+        shader.set("u.items[4095].w", 2.5).expect("last element");
+        assert_eq!(shader.get::<f32>("u.items[4095].w").expect("get"), 2.5);
+        let err = shader.set("u.items[4096].w", 1.0).unwrap_err();
+        assert!(matches!(err, ShaderError::IndexOutOfBounds { .. }), "{err}");
+        // The element sits at its stride: 4095 elements of 32 bytes, then `w` after `v`.
+        let bytes: Vec<u8> = shader.get::<Vec<u8>>("u").expect("bytes");
+        assert_eq!(bytes.len(), 4096 * 32);
+        assert_eq!(
+            &bytes[4095 * 32 + 16..4095 * 32 + 20],
+            &2.5f32.to_le_bytes()
+        );
+    }
+
+    // Story: a shader that needs a feature no device opens with fails at Shader::new.
+    #[test]
+    fn features_no_device_opens_fail_at_new() {
+        let frag = |body: &str| {
+            format!(
+                "@vertex fn vs_main() -> @builtin(position) vec4<f32> {{ return vec4<f32>(0.0); }}\n{body}"
+            )
+        };
+        let sources = [
+            frag("enable f16;\n@fragment fn fs_main() -> @location(0) vec4<f32> { let h: f16 = 1.0h; return vec4<f32>(f32(h)); }"),
+            frag("@fragment fn fs_main(@builtin(primitive_index) index: u32) -> @location(0) vec4<f32> { return vec4<f32>(f32(index)); }"),
+            frag("@group(0) @binding(0) var video: texture_external;\n@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(video, vec2<u32>(0u)); }"),
+            "enable subgroups;\n@compute @workgroup_size(64) fn cs_main(@builtin(subgroup_size) size: u32) { }".to_string(),
+        ];
+        for source in sources {
+            assert!(Shader::new(source.as_str()).is_err(), "{source}");
+        }
+        // Immediate data is one of the features a device may open with.
+        let immediate = frag(
+            "var<immediate> pc: vec4<f32>;\n@fragment fn fs_main() -> @location(0) vec4<f32> { return pc; }",
+        );
+        assert!(Shader::new(immediate.as_str()).is_ok());
+    }
+
+    // Story: an immediate root a uniform can't hold fails at Shader::new on every device,
+    // since a device without native immediates binds it as a uniform.
+    #[test]
+    fn immediates_follow_uniform_rules() {
+        let shader = |declaration: &str| {
+            format!(
+                "{declaration}
+@vertex fn vs_main() -> @builtin(position) vec4<f32> {{ return vec4<f32>(0.0); }}
+@fragment fn fs_main() -> @location(0) vec4<f32> {{ return vec4<f32>(read()); }}"
+            )
+        };
+        let array = shader("var<immediate> pc: array<f32, 4>;\nfn read() -> f32 { return pc[1]; }");
+        let field = shader(
+            "struct Weights { weights: array<f32, 4> };\nvar<immediate> pc: Weights;\nfn read() -> f32 { return pc.weights[1]; }",
+        );
+        for source in [array, field] {
+            let err = Shader::new(source.as_str()).unwrap_err().to_string();
+            assert!(
+                err.contains("immediate roots pc must also follow the uniform layout rules"),
+                "{err}"
+            );
+        }
+        let vector = shader("var<immediate> pc: vec4<f32>;\nfn read() -> f32 { return pc.y; }");
+        assert!(Shader::new(vector.as_str()).is_ok());
+    }
+
+    // Story: two vertex inputs with one name fail at Shader::new, since both would read
+    // one mesh attribute: members of two structs, or a member and a plain argument.
+    #[test]
+    fn vertex_inputs_with_one_name_fail() {
+        let structs = r#"
+struct VertexIn { @location(0) position: vec2<f32> };
+struct InstanceIn { @location(1) position: vec2<f32> };
+@vertex fn vs_main(v: VertexIn, i: InstanceIn) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(v.position + i.position, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+"#;
+        let mixed = r#"
+struct VertexIn { @location(0) position: vec2<f32>, @location(1) uv: vec2<f32> };
+@vertex fn vs_main(v: VertexIn, @location(3) uv: vec2<f32>) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(v.position + v.uv + uv, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+"#;
+        for (source, first, second, name) in [(structs, 0, 1, "position"), (mixed, 1, 3, "uv")] {
+            let err = Shader::new(source).unwrap_err().to_string();
+            let expected = format!(
+                "the vertex inputs at @location({first}) and @location({second}) are both named `{name}`"
+            );
+            assert!(err.contains(&expected), "{err}");
+        }
+    }
+
+    // Story: two globals on one slot fail at Shader::new, used by different entry points or not used at all.
+    #[test]
+    fn two_globals_on_one_slot_fail() {
+        let split = r#"
+@group(0) @binding(0) var<uniform> a: vec4<f32>;
+@group(0) @binding(0) var<uniform> b: vec4<f32>;
+@vertex fn vs_main() -> @builtin(position) vec4<f32> { return a; }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return b; }
+"#;
+        let unused = r#"
+@group(1) @binding(2) var<uniform> a: vec4<f32>;
+@group(1) @binding(2) var tex: texture_2d<f32>;
+@vertex fn vs_main() -> @builtin(position) vec4<f32> { return a; }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+"#;
+        for (source, slot) in [
+            (split, "@group(0) @binding(0)"),
+            (unused, "@group(1) @binding(2)"),
+        ] {
+            let err = Shader::new(source).unwrap_err().to_string();
+            assert!(err.contains(&format!("both use {slot}")), "{err}");
+        }
+        let parts = Shader::new([
+            "@group(0) @binding(0) var<uniform> a: vec4<f32>;",
+            "@group(0) @binding(0) var<uniform> b: vec4<f32>;\n@vertex fn vs_main() -> @builtin(position) vec4<f32> { return b; }\n@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+        ]);
+        assert!(parts.is_err());
+        // An immediate root never takes a binding slot.
+        let immediate = r#"
+var<immediate> pc: vec4<f32>;
+@group(0) @binding(0) var<uniform> a: vec4<f32>;
+@vertex fn vs_main() -> @builtin(position) vec4<f32> { return a + pc; }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+"#;
+        assert!(Shader::new(immediate).is_ok());
+    }
+
+    // Story: raw bytes of any other length than the root's leave the root as it was.
+    #[test]
+    fn set_refuses_bytes_that_miss_the_root_size() {
+        let shader = Shader::new(TYPED).expect("shader");
+        let blob: Vec<u8> = (0..48).collect();
+        shader.set("buf", blob.as_slice()).expect("exact bytes");
+        for length in [3, 47, 49, 96] {
+            let err = shader.set("buf", vec![9u8; length]).unwrap_err();
+            assert!(
+                err.to_string()
+                    .ends_with(&format!("buf: expected 48 bytes, got {length}")),
+                "{err}"
+            );
+        }
+        let err = shader
+            .object
+            .set("buf", UniformData::Bytes(vec![9; 3]))
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("expected 48 bytes, got 3"),
+            "{err}"
+        );
+        let storage = shader.object.storage.read();
+        assert_eq!(storage.get_bytes("buf").expect("blob"), &blob[..]);
     }
 
     // Story: get on a struct root reads the bytes as they are now, not the reflected defaults.

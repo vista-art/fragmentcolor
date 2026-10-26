@@ -82,13 +82,13 @@ fn raise_named(context: &RenderContext, name: &str) {
 
 /// How often a `SpyTarget` handed out a frame, and how often one was presented.
 #[derive(Default)]
-struct Counts {
+pub(super) struct Counts {
     acquired: AtomicUsize,
     presented: AtomicUsize,
 }
 
 impl Counts {
-    fn acquired(&self) -> usize {
+    pub(super) fn acquired(&self) -> usize {
         self.acquired.load(Ordering::SeqCst)
     }
 
@@ -122,9 +122,9 @@ impl TargetFrame for SpyFrame {
 }
 
 /// A target whose frames count how often they are acquired and presented.
-struct SpyTarget {
+pub(super) struct SpyTarget {
     view: wgpu::TextureView,
-    counts: Arc<Counts>,
+    pub(super) counts: Arc<Counts>,
 }
 
 const SPY_SIZE: wgpu::Extent3d = wgpu::Extent3d {
@@ -135,7 +135,7 @@ const SPY_SIZE: wgpu::Extent3d = wgpu::Extent3d {
 
 impl SpyTarget {
     /// A target that draws into an `Rgba8Unorm` texture with `usage`.
-    fn new(context: &RenderContext, usage: wgpu::TextureUsages) -> Self {
+    pub(super) fn new(context: &RenderContext, usage: wgpu::TextureUsages) -> Self {
         let texture = context.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Spy frame"),
             size: SPY_SIZE,
@@ -182,10 +182,11 @@ impl Target for SpyTarget {
 }
 
 /// The GPU errors the device reported outside an error scope.
-type Uncaptured = Arc<Mutex<Vec<String>>>;
+pub(super) type Uncaptured = Arc<Mutex<Vec<String>>>;
 
 /// A renderer with a context and a sink for the GPU errors no scope catches.
-async fn setup() -> Result<(Renderer, Arc<RenderContext>, Uncaptured), InitializationError> {
+pub(super) async fn setup()
+-> Result<(Renderer, Arc<RenderContext>, Uncaptured), InitializationError> {
     let renderer = Renderer::new();
     let context = renderer.context(None).await?;
     let uncaptured = record_uncaptured(&context);
@@ -237,6 +238,9 @@ fn failed_compute_pipeline_returns_an_error_each_frame() {
         let context = renderer.context(None).await.expect("render context");
         let uncaptured = record_uncaptured(&context);
         let shader = Shader::new(OVERSIZED_WORKGROUP).expect("naga checks no device limit");
+        // `check_shader` refuses this workgroup before any GPU work, so mark it
+        // checked to reach the pipeline build and its error scopes.
+        context.checked.insert(shader.object.hash, ());
 
         // Act
         let first = renderer.render(&shader, &target);

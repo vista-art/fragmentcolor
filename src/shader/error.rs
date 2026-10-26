@@ -54,6 +54,18 @@ pub enum ShaderError {
     Error(String),
 }
 
+/// `error` and each error under it, joined into one line.
+pub(crate) fn describe(error: &dyn std::error::Error) -> String {
+    let mut text = error.to_string();
+    let mut cause = error.source();
+    while let Some(inner) = cause {
+        text.push_str(": ");
+        text.push_str(&inner.to_string());
+        cause = inner.source();
+    }
+    text
+}
+
 // Python-specific conversions
 
 #[cfg(python)]
