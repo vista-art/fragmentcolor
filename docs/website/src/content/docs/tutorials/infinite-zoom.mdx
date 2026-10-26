@@ -24,7 +24,7 @@ Around 1918, Pierre Fatou and Gaston Julia studied what repeating a function lik
 
 Robert Brooks and Peter Matelski printed [a rough picture of the set](https://doi.org/10.1515/9781400881550-007) in 1978, one character at a time.
 
-<Figure height={printout.height} alt="A re-creation of Brooks and Matelski's 1978 printout: the Mandelbrot set drawn as rows of asterisks. A rough cardioid sits on the right with a round bulb on its left, and a few separate specks of asterisks lie around them, where the coarse grid catches small copies of the set." caption="A re-creation, in the style of the first picture of the set: an asterisk for every point whose sequence settles into a repeating cycle. The original is Figure 2 of Brooks and Matelski's paper.">
+<Figure height={printout.height} alt="A re-creation of Brooks and Matelski's 1978 printout: the Mandelbrot set drawn as rows of asterisks." caption="A re-creation of Brooks and Matelski's 1978 printout of the Mandelbrot set, drawn as rows of asterisks (Figure 2 of their paper).">
   {printout.runs.map(({ x, y, text, width }) => <text x={x} y={y} textLength={width} lengthAdjust="spacing" style="fill: var(--fig-ink); font-family: var(--__sl-font-mono, ui-monospace, monospace); font-size: 15px">{text}</text>)}
 </Figure>
 
