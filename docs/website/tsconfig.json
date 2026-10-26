@@ -12,6 +12,7 @@
 	},
 	"include": [
 		"src",
+		"tests",
 		"astro.config.mjs",
 		"ec.config.mjs",
 		".astro/types.d.ts"
