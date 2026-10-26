@@ -1526,17 +1526,10 @@ pub(crate) fn array_pixels(
     };
     let side = |value: usize| u32::try_from(value).ok().ok_or_else(invalid);
     let size = Size::new(side(width)?, side(height)?, None);
-    let rgba = matches!(
-        format,
-        wgpu::TextureFormat::Rgba8Unorm
-            | wgpu::TextureFormat::Rgba8UnormSrgb
-            | wgpu::TextureFormat::Bgra8Unorm
-            | wgpu::TextureFormat::Bgra8UnormSrgb
-    );
     if channels == texel_size(format)? as usize {
         return Ok((read(), size));
     }
-    if !rgba || !matches!(channels, 1 | 3) {
+    if !holds_rgba8(format) || !matches!(channels, 1 | 3) {
         return Err(invalid());
     }
     let length = width
@@ -1552,6 +1545,39 @@ pub(crate) fn array_pixels(
         }
     }
     Ok((pixels, size))
+}
+
+/// Checks texture options against a source that brings its own RGBA8 pixels
+/// at the size `own`, such as a JavaScript `ImageData` or canvas.
+/// A different size, or a format other than 8-bit RGBA or BGRA, would misread them.
+#[cfg(any(wasm, test))]
+pub(crate) fn check_pixels(own: Size, options: &TextureOptions) -> Result<(), TextureError> {
+    let flat = |size: Size| (size.width, size.height, size.depth.unwrap_or(1));
+    if let Some(size) = options.size.filter(|size| flat(*size) != flat(own)) {
+        return Err(TextureError::InvalidInput(format!(
+            "size {size:?} differs from the source's {}x{}",
+            own.width, own.height
+        )));
+    }
+    let format = wgpu::TextureFormat::from(options.format);
+    match holds_rgba8(format) {
+        true => Ok(()),
+        false => Err(TextureError::InvalidInput(format!(
+            "the source holds RGBA8 pixels, which a {format:?} texture can't take"
+        ))),
+    }
+}
+
+/// True for the formats that store 8-bit RGBA or BGRA texels.
+#[cfg(any(python, wasm, test))]
+fn holds_rgba8(format: wgpu::TextureFormat) -> bool {
+    matches!(
+        format,
+        wgpu::TextureFormat::Rgba8Unorm
+            | wgpu::TextureFormat::Rgba8UnormSrgb
+            | wgpu::TextureFormat::Bgra8Unorm
+            | wgpu::TextureFormat::Bgra8UnormSrgb
+    )
 }
 
 /// Swaps red and blue in 4-byte `pixels` when `format` stores BGRA.
@@ -2002,6 +2028,40 @@ mod tests {
                     Err(TextureError::InvalidInput(_))
                 ),
                 "{shape:?} as {format:?}"
+            );
+        }
+    }
+
+    // Story: options for a source with its own RGBA8 pixels keep its size and an
+    // 8-bit RGBA or BGRA format, and anything else is refused, where it misread them.
+    #[test]
+    fn check_pixels_keeps_the_source_layout() {
+        let own = Size::new(2, 1, None);
+        let options = |size: Option<Size>, format| TextureOptions {
+            size,
+            format,
+            ..Default::default()
+        };
+        for format in [
+            crate::TextureFormat::Rgba,
+            crate::TextureFormat::Rgba8UnormSrgb,
+            crate::TextureFormat::Bgra8Unorm,
+        ] {
+            check_pixels(own, &options(None, format)).expect("an RGBA8 format");
+        }
+        check_pixels(own, &options(Some(Size::new(2, 1, Some(1))), Default::default()))
+            .expect("the source's own size");
+        for (size, format) in [
+            (Some(Size::new(1, 1, None)), crate::TextureFormat::Rgba),
+            (None, crate::TextureFormat::R8Unorm),
+            (None, crate::TextureFormat::Rgba32Float),
+        ] {
+            assert!(
+                matches!(
+                    check_pixels(own, &options(size, format)),
+                    Err(TextureError::InvalidInput(_))
+                ),
+                "{size:?} {format:?}"
             );
         }
     }

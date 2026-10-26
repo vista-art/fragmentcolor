@@ -235,8 +235,8 @@ pub(crate) fn js_to_sampler_options(value: &JsValue) -> Result<SamplerOptions, J
 
 /// Reads a texture source and its options, as `createTexture` and the Material
 /// texture setters take them. An `ImageData` or canvas source carries its own
-/// size, which applies when the options don't set one, and RGBA pixels, which
-/// a `Bgra8Unorm` format stores blue first.
+/// size and RGBA pixels: the options may repeat the size and pick an 8-bit RGBA
+/// or BGRA format, which stores blue first.
 pub(crate) fn read_texture_input(
     source: &JsValue,
     options: Option<&JsValue>,
@@ -245,21 +245,33 @@ pub(crate) fn read_texture_input(
     if let Some(options) = options.filter(|options| !options.is_undefined() && !options.is_null()) {
         let source_size = input.options.size;
         input.options = read_texture_options(options)?;
-        input.options.size = input.options.size.or(source_size);
-        if let (Some(_), TextureData::Bytes(pixels)) = (source_size, &mut input.data) {
+        if let (Some(own), TextureData::Bytes(pixels)) = (source_size, &mut input.data) {
+            crate::texture::check_pixels(own, &input.options)?;
             crate::texture::swap_bgra(pixels, input.options.format.into());
         }
+        input.options.size = input.options.size.or(source_size);
     }
     Ok(input)
 }
 
+/// The keys of a texture options object.
+const OPTION_KEYS: [&str; 5] = ["size", "format", "mipmaps", "sampler", "usage"];
+
 /// Reads texture options: a bare `TextureFormat`, a bare size such as `[w, h]`,
-/// or an object `{ size?, format?, mipmaps?, sampler?, usage? }`.
+/// or an object `{ size?, format?, mipmaps?, sampler?, usage? }`. An object with
+/// an option key reads as options, and then a `width` beside it is an error.
 fn read_texture_options(value: &JsValue) -> Result<TextureOptions, JsError> {
     if let Some(code) = value.as_f64() {
         return Ok(TextureOptions::from(read_format(code)?));
     }
-    if let Ok(size) = Size::try_from(value) {
+    let given = |keys: &[&str]| keys.iter().any(|key| read_field(value, key).is_some());
+    let options = value.is_object() && given(&OPTION_KEYS);
+    if options && given(&["width", "height", "depth"]) {
+        return Err(JsError::new(
+            "texture options take the size under `size`, as in { size: [w, h] }",
+        ));
+    }
+    if !options && let Ok(size) = Size::try_from(value) {
         return Ok(TextureOptions::from(size));
     }
     if !value.is_object() {

@@ -532,6 +532,20 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     });
     same('readTexture after usage: COPY_SRC', (await renderer.readTexture(readable.id())).slice(0, 4), [1, 2, 3, 255]);
 
+    // An ImageData keeps its size and RGBA pixels, and Bgra8Unorm stores them blue first.
+    await rejects('createTexture(ImageData) with another size', () =>
+      renderer.createTexture(image, { size: [1, 1] }));
+    await rejects('createTexture(ImageData) as R8Unorm', () =>
+      renderer.createTexture(image, { format: TextureFormat.R8Unorm }));
+    const red = new ImageData(new Uint8ClampedArray([255, 0, 0, 255]), 1, 1);
+    const bgra = await renderer.createTexture(red, {
+      format: TextureFormat.Bgra8Unorm, mipmaps: false, usage: TextureUsage.COPY_SRC,
+    });
+    same('ImageData into Bgra8Unorm', await renderer.readTexture(bgra.id()), [0, 0, 255, 255]);
+    // An options object keeps its size under `size`, so a width beside format is an error.
+    await rejects('createTexture options with width and format', () =>
+      renderer.createTexture(new Uint8Array(4), { width: 1, height: 1, format: TextureFormat.Rgba8Unorm }));
+
     // Material texture setters take any texture source.
     Material.pbr().baseColorTexture(new Uint8Array([255, 0, 0, 255]), { size: [1, 1] });
     Material.pbr().baseColorTexture(fromImage);
