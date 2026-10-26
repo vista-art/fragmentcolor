@@ -122,7 +122,9 @@ var<immediate> spare: f32;
         .expect("shader");
         // A bare immediate root takes its bytes whole.
         for key in ["red", "spare"] {
-            shader.set(key, 1.0f32.to_le_bytes().as_slice()).expect("set");
+            shader
+                .set(key, 1.0f32.to_le_bytes().as_slice())
+                .expect("set");
         }
         shader.set("blue", 1.0).expect("blue");
         shader.set("alpha", 1.0).expect("alpha");
@@ -542,8 +544,7 @@ fn material_maps_check_their_textures() {
             .expect("depth texture");
         let material = Material::pbr().base_color_texture(&depth);
 
-        let error =
-            refuse(&renderer, &context, &uncaptured, material.shader()).expect("refused");
+        let error = refuse(&renderer, &context, &uncaptured, material.shader()).expect("refused");
 
         assert_refused!(
             error,
