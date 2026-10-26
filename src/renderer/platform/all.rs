@@ -47,7 +47,8 @@ pub(crate) const CANDIDATES: wgpu::Features = wgpu::Features::IMMEDIATES
     .union(wgpu::Features::TEXTURE_COMPRESSION_ASTC_SLICED_3D)
     .union(wgpu::Features::TEXTURE_COMPRESSION_ASTC_HDR)
     .union(wgpu::Features::TEXTURE_FORMAT_16BIT_NORM)
-    .union(wgpu::Features::FLOAT32_FILTERABLE);
+    .union(wgpu::Features::FLOAT32_FILTERABLE)
+    .union(wgpu::Features::FLOAT32_BLENDABLE);
 
 /// Opens the device with the stable features the adapter offers.
 pub(crate) async fn request_device(

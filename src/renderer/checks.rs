@@ -351,7 +351,70 @@ fn read_channels(format: wgpu::TextureFormat) -> Option<Channels> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Shader;
+    use crate::renderer::platform::all::{create_instance, request_adapter};
+    use crate::{PassType, Shader};
+
+    /// A context on a device that opens with exactly `features`,
+    /// or `None` when the adapter doesn't offer them.
+    async fn open(features: wgpu::Features) -> Option<RenderContext> {
+        let instance = create_instance().await;
+        let adapter = request_adapter(&instance, None).await.ok()?;
+        if !adapter.features().contains(features) {
+            return None;
+        }
+        let descriptor = wgpu::DeviceDescriptor {
+            required_features: features,
+            required_limits: adapter.limits(),
+            ..Default::default()
+        };
+        let (device, queue) = adapter.request_device(&descriptor).await.ok()?;
+        let mut context = RenderContext::new(device, queue);
+        context.adapter = Some(adapter);
+        Some(context)
+    }
+
+    // Story: AlphaMode::Blend into Rgba32Float is refused on a device without
+    // FLOAT32_BLENDABLE and blends on one that has it.
+    #[test]
+    fn rgba32float_blends_where_the_device_can() {
+        pollster::block_on(async move {
+            let pass = PassObject::new("glass", PassType::Render);
+            let shader = Shader::default();
+            let float = wgpu::TextureFormat::Rgba32Float;
+
+            let plain = open(wgpu::Features::empty()).await.expect("a device");
+            let refused = plain.check_blend(&pass, &shader.object, float);
+            assert!(
+                matches!(
+                    refused,
+                    Err(RendererError::PassError(PassError::InvalidColorTarget(_)))
+                ),
+                "{refused:?}"
+            );
+
+            match open(wgpu::Features::FLOAT32_BLENDABLE).await {
+                Some(blending) => blending
+                    .check_blend(&pass, &shader.object, float)
+                    .expect("Rgba32Float blends with FLOAT32_BLENDABLE"),
+                None => eprintln!("the adapter offers no FLOAT32_BLENDABLE"),
+            }
+        });
+    }
+
+    // Story: a Renderer opens its device with FLOAT32_BLENDABLE whenever the adapter offers it.
+    #[test]
+    fn the_device_takes_float32_blending_when_offered() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let context = renderer.context(None).await.expect("a context");
+            let adapter = context.adapter.as_ref().expect("an adapter");
+            let blending = wgpu::Features::FLOAT32_BLENDABLE;
+            assert_eq!(
+                context.device.features().contains(blending),
+                adapter.features().contains(blending)
+            );
+        });
+    }
 
     // Story: a pipeline writes every color channel when its shader writes `@location(0)`,
     // directly or through a struct, and none when it writes no color.

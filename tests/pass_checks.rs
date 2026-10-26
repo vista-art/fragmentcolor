@@ -323,18 +323,16 @@ fn fs_main() -> @location(0) {output} {{ return {value}; }}
     shader
 }
 
-// Story: AlphaMode::Blend into a target the device can't blend is refused before
-// the frame, where the pipeline failed to build. The device requests no float32 blending.
+// Story: AlphaMode::Blend into a format no device blends, an integer one, is refused
+// before the frame, where the pipeline failed to build, while a half float target blends.
 #[test]
 fn blending_into_a_target_that_cannot_blend_errors() {
     pollster::block_on(async move {
         let renderer = Renderer::new();
         let frame = target(&renderer, 8).await;
-        let float = drawable(&renderer, 8, TextureFormat::Rgba32Float).await;
-        let pass = Pass::new("glass");
-        pass.add(&cover(Material::pbr().alpha_mode(AlphaMode::Blend)))
-            .expect("add");
-        pass.set_target(&float).expect("set_target");
+        let integer = drawable(&renderer, 8, TextureFormat::Rgba32Uint).await;
+        let pass = Pass::from_shader("integer", &blended("vec4<u32>", "vec4<u32>(1u)"));
+        pass.set_target(&integer).expect("set_target");
 
         let result = renderer.render(&pass, &frame);
         assert!(
@@ -346,10 +344,14 @@ fn blending_into_a_target_that_cannot_blend_errors() {
             "{result:?}"
         );
 
+        let glass = Pass::new("glass");
+        glass
+            .add(&cover(Material::pbr().alpha_mode(AlphaMode::Blend)))
+            .expect("add");
         let half = drawable(&renderer, 8, TextureFormat::Rgba16Float).await;
-        pass.set_target(&half).expect("set_target");
+        glass.set_target(&half).expect("set_target");
         renderer
-            .render(&pass, &frame)
+            .render(&glass, &frame)
             .expect("a half float target blends");
     });
 }
