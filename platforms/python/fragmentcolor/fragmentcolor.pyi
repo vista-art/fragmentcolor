@@ -409,6 +409,7 @@ class Renderer:
         - Works on native and on the web; the call awaits the GPU readback mapping.
         - Equivalent to calling [`Texture::get_image`] on the texture handle. Use this entry point when you only kept the `TextureId` around.
         - The texture must have `COPY_SRC` usage. Creation helpers like `create_storage_texture` enable it by default.
+        - GLES and WebGL2 can't copy a depth texture to a buffer, so reading one back there returns `TextureError::Readback`.
 
         Example:
 
@@ -4540,6 +4541,7 @@ class Texture:
         ## Notes
         - Any format with a fixed size per pixel works, from 1-byte `R8Unorm` to 16-byte `Rgba32Float`.
         - The texture must have COPY_DST usage.
+        - A depth texture such as `Depth32Float` takes no uploaded pixels, so writing into one is an `InvalidInput` error. Draw into it instead.
 
         Example:
 
@@ -4619,6 +4621,7 @@ class Texture:
         - Works on native and on the web; the call awaits the GPU readback mapping.
         - For multi-layer textures, layers come first in the byte layout (layer-major).
         - The texture must have `COPY_SRC` usage. Creation helpers like `create_storage_texture` enable it by default.
+        - GLES and WebGL2 can't copy a depth texture to a buffer, so reading one back there returns `TextureError::Readback`.
         - Python returns the same bytes as a uint8 NumPy array shaped `(height, width, bytes per pixel)`, with a leading layer axis for array textures. A float format reads as floats through `image.view(numpy.float32)`.
 
         Example:

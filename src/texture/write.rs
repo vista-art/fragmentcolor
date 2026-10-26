@@ -13,6 +13,7 @@ pub(super) fn write(
             "Texture usage does not allow writes (missing COPY_DST)".into(),
         ));
     }
+    super::check_upload(object.format)?;
 
     let size = object.size;
     let format = object.format;

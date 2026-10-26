@@ -9,6 +9,7 @@ Efficiently upload raw pixel data into an existing texture. Ideal for video play
 ## Notes
 - Any format with a fixed size per pixel works, from 1-byte `R8Unorm` to 16-byte `Rgba32Float`.
 - The texture must have COPY_DST usage.
+- A depth texture such as `Depth32Float` takes no uploaded pixels, so writing into one is an `InvalidInput` error. Draw into it instead.
 
 ## Example
 ```rust

@@ -95,3 +95,33 @@ fn storage_textures_check_their_format() {
             .expect("a flat depth texture without storage is made");
     });
 }
+
+// Story: a buffer copy can't fill a depth texture, so raw pixels, seed bytes
+// and a write into Depth32Float are refused before they reach wgpu.
+#[test]
+fn depth_textures_take_no_uploads() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let bytes = vec![0; 4 * 4 * 4];
+        let result = renderer
+            .create_texture((bytes.clone(), TextureFormat::Depth32Float, [4, 4]))
+            .await;
+        assert!(refused(&result), "raw pixels into a depth texture");
+
+        let usage = (TextureUsage::TEXTURE_BINDING | TextureUsage::COPY_DST).bits;
+        let mut seeded = storage_with_usage(TextureFormat::Depth32Float, Some(usage));
+        seeded.data = bytes.clone().into();
+        let result = renderer.create_storage_texture(seeded).await;
+        assert!(refused(&result), "seed bytes into a depth texture");
+
+        let input = storage_with_usage(TextureFormat::Depth32Float, Some(usage));
+        let depth = renderer
+            .create_storage_texture(input)
+            .await
+            .expect("an empty depth texture with COPY_DST is made");
+        assert!(matches!(
+            depth.write(&bytes),
+            Err(TextureError::InvalidInput(_))
+        ));
+    });
+}

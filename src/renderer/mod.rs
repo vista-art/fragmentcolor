@@ -241,6 +241,7 @@ impl Renderer {
         };
 
         if let Some(ref bytes) = bytes_opt {
+            crate::texture::check_upload(wgpu_format)?;
             if !usage.contains(wgpu::TextureUsages::COPY_DST) {
                 return Err(RendererError::CreateTextureError(
                     "create_storage_texture with seed data requires COPY_DST in the usage mask"

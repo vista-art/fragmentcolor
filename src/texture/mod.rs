@@ -841,6 +841,7 @@ impl TextureObject {
         usage: wgpu::TextureUsages,
     ) -> Result<Self, TextureError> {
         check_format(context, format, usage, dimension(size))?;
+        check_upload(format)?;
         check_extent(&context.device.limits(), size, dimension(size))?;
         let bpp = bytes_per_pixel(format);
 
@@ -904,6 +905,7 @@ impl TextureObject {
         };
         let format = format_override.unwrap_or_else(|| infer_format(image.color()));
         check_format(context, format, usage, dimension(size))?;
+        check_upload(format)?;
         check_extent(&context.device.limits(), size, dimension(size))?;
 
         let want_mips = generate_mipmaps && supports_cpu_mipmaps(format);
@@ -1303,6 +1305,17 @@ pub(crate) fn check_feature(
         format,
         missing_feature: missing,
     })
+}
+
+/// Checks that a copy can fill a texture of `format` with pixels.
+/// wgpu takes no buffer copy into a depth format, so such a texture is drawn into instead.
+pub(crate) fn check_upload(format: wgpu::TextureFormat) -> Result<(), TextureError> {
+    match format.is_depth_stencil_format() {
+        true => Err(TextureError::InvalidInput(format!(
+            "{format:?} takes no uploaded pixels, render into it instead"
+        ))),
+        false => Ok(()),
+    }
 }
 
 /// Checks `usage` against the usages `allowed` for `format`,

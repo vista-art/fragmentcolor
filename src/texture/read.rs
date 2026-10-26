@@ -25,6 +25,10 @@ fn prepare_readback(
     }
 
     let format = texture.format;
+    let flags = context.adapter.as_ref().map_or(wgpu::DownlevelFlags::all(), |adapter| {
+        adapter.get_downlevel_capabilities().flags
+    });
+    check_copy(format, flags)?;
     let bpp = super::bytes_per_pixel(format);
     if bpp == 0 {
         return Err(TextureError::Error(
@@ -86,6 +90,18 @@ fn prepare_readback(
         depth,
         bpp,
     })
+}
+
+/// Checks that a backend with the downlevel `flags` copies a texture of `format` to a buffer.
+/// GLES and WebGL2 copy no depth texture.
+fn check_copy(format: wgpu::TextureFormat, flags: wgpu::DownlevelFlags) -> Result<(), TextureError> {
+    let copies = flags.contains(wgpu::DownlevelFlags::DEPTH_TEXTURE_AND_BUFFER_COPIES);
+    if format.is_depth_stencil_format() && !copies {
+        return Err(TextureError::Readback(format!(
+            "this backend can't copy a {format:?} texture to a buffer"
+        )));
+    }
+    Ok(())
 }
 
 fn extract_pixels(plan: &ReadbackPlan) -> Result<Vec<u8>, TextureError> {
@@ -178,4 +194,21 @@ pub(crate) async fn await_map_on_web(
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Story: a backend without depth copies, such as GLES or WebGL2, refuses to
+    // read a depth texture back, and still reads color textures. Pure, no GPU.
+    #[test]
+    fn check_copy_refuses_depth_without_depth_copies() {
+        let depth = wgpu::TextureFormat::Depth32Float;
+        let color = wgpu::TextureFormat::Rgba8Unorm;
+        let gles = wgpu::DownlevelFlags::all() - wgpu::DownlevelFlags::DEPTH_TEXTURE_AND_BUFFER_COPIES;
+        assert!(matches!(check_copy(depth, gles), Err(TextureError::Readback(_))));
+        check_copy(color, gles).expect("color copies everywhere");
+        check_copy(depth, wgpu::DownlevelFlags::all()).expect("depth copies on WebGPU");
+    }
 }
