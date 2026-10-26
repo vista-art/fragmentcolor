@@ -1,5 +1,4 @@
 use crate::pass::PassInput;
-use crate::shader::Uniform;
 use crate::{PassObject, ShaderError, ShaderHash, ShaderObject, Target, TargetFrame};
 use crate::{ScreenRegion, Size, WindowTarget};
 use crate::{TextureData, TextureTarget, UniformData};
@@ -9,7 +8,7 @@ use dashmap::mapref::one::RefMut;
 use lsp_doc::lsp_doc;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
@@ -38,8 +37,12 @@ pub(crate) use buffer_pool::*;
 mod texture_pool;
 pub(crate) use texture_pool::*;
 
+mod checks;
 mod depth;
 use depth::DepthUse;
+mod layout;
+use layout::{Layout, build_module, create_bind_group_layouts, create_pipeline_layout};
+use layout::{plan_layout, read_immediate_size};
 pub(crate) mod background;
 mod external_texture;
 pub(crate) mod lights;
@@ -56,6 +59,8 @@ use scope::Origin;
 use scope::{Caught, SCOPES};
 
 #[cfg(test)]
+mod check_tests;
+#[cfg(test)]
 mod scope_tests;
 
 /// The Renderer accepts a generic window handle as input
@@ -64,7 +69,7 @@ pub trait HasDisplaySize {
     fn size(&self) -> Size;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum PushMode {
     // Use native push constants (only supported on native, single root for now)
     Native {
@@ -91,6 +96,7 @@ struct RenderPipeline {
 struct ComputePipeline {
     pipeline: wgpu::ComputePipeline,
     bind_group_layouts: std::collections::HashMap<u32, wgpu::BindGroupLayout>,
+    push_mode: Option<PushMode>,
 }
 
 #[derive(Debug, Default)]
@@ -678,7 +684,7 @@ struct RenderPipelineKey {
 struct ComputePipelineKey {
     shader_hash: ShaderHash,
     /// The layout entries the pipeline's bind group layouts are built from.
-    bind_group_entries: BindGroupEntries,
+    bind_group_entries: layout::BindGroupEntries,
 }
 
 #[derive(Debug)]
@@ -714,6 +720,8 @@ pub(crate) struct RenderContext {
 
     // Persistent storage buffer registry: root name -> (buffer, span)
     storage_registry: DashMap<String, (wgpu::Buffer, u64)>,
+    /// The shader sources that passed `check_shader` on this device.
+    checked: DashMap<ShaderHash, ()>,
 
     // MSAA sample count negotiated for current target/format
     sample_count: AtomicU32,
@@ -772,6 +780,18 @@ pub(crate) struct PbrDefaults {
 }
 
 impl PbrDefaults {
+    /// Whether `uniform_name` is a PBR map slot, which takes a default when no texture is set.
+    fn has_slot(uniform_name: &str) -> bool {
+        matches!(
+            uniform_name,
+            "base_color_map"
+                | "metallic_roughness_map"
+                | "normal_map"
+                | "occlusion_map"
+                | "emissive_map"
+        )
+    }
+
     fn slot(&self, uniform_name: &str) -> Option<&wgpu::TextureView> {
         match uniform_name {
             "base_color_map" => Some(&self.base_color),
@@ -811,6 +831,7 @@ impl RenderContext {
             textures: DashMap::new(),
             aligned_uniform_bindings: AtomicBool::new(false),
             storage_registry: DashMap::new(),
+            checked: DashMap::new(),
             sample_count: AtomicU32::new(1),
             pbr_defaults: RwLock::new(None),
             scratch: RwLock::new(RenderScratch::default()),
@@ -939,7 +960,7 @@ impl RenderContext {
         let draws = pass_list
             .iter()
             .map(|pass| match pass.is_compute() {
-                true => Ok(PassDraws::default()),
+                true => self.plan_compute(pass).map(|()| PassDraws::default()),
                 false => self.plan_pass(pass),
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -996,11 +1017,23 @@ impl RenderContext {
         Ok(())
     }
 
+    /// Checks each shader of a compute pass against the device, before any frame is acquired.
+    fn plan_compute(&self, pass: &PassObject) -> Result<(), RendererError> {
+        for shader in pass.shaders.read().iter() {
+            shader.flush_pending();
+            self.check_shader(shader)?;
+            self.check_textures(shader)?;
+        }
+        Ok(())
+    }
+
     /// Decides what a render pass draws, before any frame is acquired.
     ///
     /// The checks that need no frame run here. The target keeps its last frame
     /// when a lit shader holds more lights than the device takes, a shader reads
-    /// vertex inputs with no mesh, or a mesh is asked for more instances than it holds.
+    /// vertex inputs with no mesh, a mesh is asked for more instances than it holds,
+    /// a shader asks for more than the device has (`check_shader`), or a texture
+    /// uniform has no texture, or one its slot can't take (`check_textures`).
     /// The draw loop takes each shader's layouts and buffers from the plan.
     fn plan_pass(&self, pass: &PassObject) -> Result<PassDraws, RendererError> {
         self.check_light_cap(pass)?;
@@ -1024,6 +1057,9 @@ impl RenderContext {
         model: bool,
         overrides: &HashMap<(usize, usize), (wgpu::Buffer, u32)>,
     ) -> Result<ShaderDraw, RendererError> {
+        shader.flush_pending();
+        self.check_shader(&shader)?;
+        self.check_textures(&shader)?;
         let meshes = shader.meshes.read().clone();
         let layouts = self.read_layouts(&shader, &meshes)?;
         let draws = if meshes.is_empty() {
@@ -1585,9 +1621,11 @@ impl RenderContext {
                 pipeline_key,
                 "render pipeline",
                 || {
+                    let layout = plan_layout(shader, &self.device, Some(self.light_path()));
                     create_render_pipeline(
                         &self.device,
                         shader,
+                        &layout,
                         color_format,
                         sample_count,
                         layouts.as_ref(),
@@ -1653,19 +1691,14 @@ impl RenderContext {
                             // don't pair with one.
                             let defaults =
                                 pbr_defaults_handle.get_or_insert_with(|| self.pbr_defaults());
-                            if let Some(view) = defaults.slot(name) {
-                                groups
-                                    .entry(uniform.group)
-                                    .or_default()
-                                    .views
-                                    .push((uniform.binding, view.clone()));
-                            } else {
-                                log::warn!(
-                                    "Texture handle {:?} not found for uniform {}",
-                                    meta.id,
-                                    name
-                                );
-                            }
+                            let Some(view) = defaults.slot(name) else {
+                                return Err(report_missing(name, meta));
+                            };
+                            groups
+                                .entry(uniform.group)
+                                .or_default()
+                                .views
+                                .push((uniform.binding, view.clone()));
                         }
                     }
                     UniformData::Sampler(info) => {
@@ -1692,26 +1725,14 @@ impl RenderContext {
                         }
                     }
                     UniformData::PushConstant(_) => {
-                        // Fallback mode: each push constant root became a classic uniform buffer in rewritten module.
-                        if let Some(PushMode::Fallback { group, bindings }) =
-                            &cached_pipeline.push_mode
-                            && let Some(binding) = bindings.get(name)
+                        if let Some((group, binding, location)) =
+                            self.upload_push(shader, name, cached_pipeline.push_mode.as_ref())?
                         {
-                            let storage = shader.storage.read();
-                            let bytes = storage
-                                .get_bytes(name)
-                                .ok_or(crate::ShaderError::UniformNotFound(name.clone()))?;
-
-                            let buffer_location = {
-                                let mut buffer_pool = self.buffer_pool.write();
-                                buffer_pool.upload(bytes, &self.queue, &self.device)
-                            };
-
                             groups
-                                .entry(*group)
+                                .entry(group)
                                 .or_default()
                                 .uniform_buffers
-                                .push((*binding, buffer_location));
+                                .push((binding, location));
                         }
                     }
                     _ => {
@@ -1736,7 +1757,6 @@ impl RenderContext {
 
             // Build bind groups per layout (by group index)
             let mut bind_groups: Vec<(u32, wgpu::BindGroup)> = Vec::new();
-            use std::collections::HashSet;
             let mut present_groups: HashSet<u32> = HashSet::new();
 
             for (group_index, resources) in groups.into_iter() {
@@ -1813,21 +1833,9 @@ impl RenderContext {
                 bind_groups.push((group_index, bind_group));
             }
 
-            // Ensure empty bind groups are set for placeholder layouts the pipeline expects
-            for (group, layout) in cached_pipeline.bind_group_layouts.iter() {
-                if !present_groups.contains(group) {
-                    // Create an empty bind group (layout is expected to have zero entries for placeholders)
-                    let label = format!("Empty Bind Group for group: {}", group);
-                    let empty = self.validate_step(&label, || {
-                        Ok(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                            layout,
-                            entries: &[],
-                            label: Some(&label),
-                        }))
-                    })?;
-                    bind_groups.push((*group, empty));
-                }
-            }
+            let empty =
+                self.create_empty_groups(&cached_pipeline.bind_group_layouts, &present_groups)?;
+            bind_groups.extend(empty);
 
             // Sort by group index to match pipeline layout order
             bind_groups.sort_by_key(|(g, _)| *g);
@@ -1926,6 +1934,56 @@ impl RenderContext {
         Ok(())
     }
 
+    /// Uploads the immediate root `name` when `push` lowers it to a uniform, and
+    /// returns the group, binding and pool location it binds at. Native immediates upload nothing.
+    fn upload_push(
+        &self,
+        shader: &ShaderObject,
+        name: &str,
+        push: Option<&PushMode>,
+    ) -> Result<Option<(u32, u32, buffer_pool::BufferLocation)>, RendererError> {
+        let Some(PushMode::Fallback { group, bindings }) = push else {
+            return Ok(None);
+        };
+        let Some(binding) = bindings.get(name) else {
+            return Ok(None);
+        };
+        let storage = shader.storage.read();
+        let bytes = storage
+            .get_bytes(name)
+            .ok_or_else(|| ShaderError::UniformNotFound(name.to_string()))?;
+        let location = self
+            .buffer_pool
+            .write()
+            .upload(bytes, &self.queue, &self.device);
+        Ok(Some((*group, *binding, location)))
+    }
+
+    /// An empty bind group for each group of `layouts` that no binding fills,
+    /// so each group index the pipeline layout holds gets a group.
+    fn create_empty_groups(
+        &self,
+        layouts: &HashMap<u32, wgpu::BindGroupLayout>,
+        present: &HashSet<u32>,
+    ) -> Result<Vec<(u32, wgpu::BindGroup)>, RendererError> {
+        let mut groups = Vec::new();
+        for (group, layout) in layouts.iter() {
+            if present.contains(group) {
+                continue;
+            }
+            let label = format!("Empty Bind Group for group: {}", group);
+            let empty = self.validate_step(&label, || {
+                Ok(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    layout,
+                    entries: &[],
+                    label: Some(&label),
+                }))
+            })?;
+            groups.push((*group, empty));
+        }
+        Ok(groups)
+    }
+
     fn process_compute_pass(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -1934,14 +1992,14 @@ impl RenderContext {
         // Similar resource binding as render pass, but no target
         for (shader_index, shader) in pass.shaders.read().iter().enumerate() {
             shader.flush_pending();
-            let entries = bind_group_entries(shader);
+            let layout = plan_layout(shader, &self.device, None);
             let key = ComputePipelineKey {
                 shader_hash: shader.hash,
-                bind_group_entries: entries.clone(),
+                bind_group_entries: layout.entries(),
             };
             let cached =
                 self.fetch_pipeline(&self.compute_pipelines, key, "compute pipeline", || {
-                    Ok(create_compute_pipeline(&self.device, shader, &entries))
+                    create_compute_pipeline(&self.device, shader, &layout)
                 })?;
             #[derive(Default)]
             struct BindGroupResources {
@@ -1967,6 +2025,8 @@ impl RenderContext {
                                     .sampler_sources
                                     .add_texture(uniform.binding, tex);
                             }
+                        } else {
+                            return Err(report_missing(name, meta));
                         }
                     }
                     UniformData::Sampler(info) => {
@@ -1975,6 +2035,17 @@ impl RenderContext {
                             .or_default()
                             .sampler_sources
                             .add_sampler(uniform.binding, info.comparison);
+                    }
+                    UniformData::PushConstant(_) => {
+                        if let Some((group, binding, location)) =
+                            self.upload_push(shader, name, cached.push_mode.as_ref())?
+                        {
+                            groups
+                                .entry(group)
+                                .or_default()
+                                .buffers
+                                .push((binding, location));
+                        }
                     }
                     UniformData::Storage(data) => {
                         if let Some(crate::shader::uniform::StorageEntry {
@@ -2011,6 +2082,7 @@ impl RenderContext {
             }
 
             let mut bind_groups: Vec<(u32, wgpu::BindGroup)> = Vec::new();
+            let mut present_groups: HashSet<u32> = HashSet::new();
             for (group, owned) in groups.into_iter() {
                 let Some(layout) = cached.bind_group_layouts.get(&group) else {
                     return Err(RendererError::BindGroupLayoutError(format!(
@@ -2062,8 +2134,11 @@ impl RenderContext {
                         label: Some(&label),
                     }))
                 })?;
+                present_groups.insert(group);
                 bind_groups.push((group, bind_group));
             }
+            let empty = self.create_empty_groups(&cached.bind_group_layouts, &present_groups)?;
+            bind_groups.extend(empty);
             bind_groups.sort_by_key(|(group_index, _)| *group_index);
 
             let mut ccompute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -2079,12 +2154,26 @@ impl RenderContext {
             for (index, bind_group) in bind_groups.iter() {
                 ccompute_pass.set_bind_group(*index, bind_group, &[]);
             }
+            if let Some(PushMode::Native { root, .. }) = &cached.push_mode
+                && let Some(bytes) = shader.storage.read().get_bytes(root)
+            {
+                ccompute_pass.set_immediates(0, bytes);
+            }
 
             let (x, y, z) = pass.compute_dispatch();
             ccompute_pass.dispatch_workgroups(x, y, z);
         }
 
         Ok(())
+    }
+}
+
+/// The error for a texture uniform whose texture the registry doesn't hold:
+/// one never set, or one `unregister_texture` removed.
+fn report_missing(name: &str, meta: &crate::texture::TextureMeta) -> RendererError {
+    match meta.id.id {
+        0 => RendererError::BindGroupLayoutError(format!("texture '{name}' is not set")),
+        _ => RendererError::TextureNotFoundError(meta.id),
     }
 }
 
@@ -2397,10 +2486,6 @@ fn vertex_buffer_layouts(
     Ok(Some(VertexLayouts { vertex, instance }))
 }
 
-/// Bind group layout entries by group index, each group sorted by binding.
-type BindGroupEntries = std::collections::BTreeMap<u32, Vec<wgpu::BindGroupLayoutEntry>>;
-
-/// Layout entries for the shader's bind groups, derived from its reflected uniforms.
 /// The viewport for `region` within the bounds wgpu accepts:
 /// a size up to `max_dimension`, and a far edge below twice that.
 fn viewport_rect(region: &ScreenRegion, max_dimension: u32) -> (f32, f32, f32, f32) {
@@ -2410,231 +2495,6 @@ fn viewport_rect(region: &ScreenRegion, max_dimension: u32) -> (f32, f32, f32, f
     let x = (region.min_x.min(region.max_x) as f32).min(range - width);
     let y = (region.min_y.min(region.max_y) as f32).min(range - height);
     (x, y, width, height)
-}
-
-/// Every stage, the visibility of a global no entry point uses.
-const EVERY_STAGE: wgpu::ShaderStages = wgpu::ShaderStages::VERTEX
-    .union(wgpu::ShaderStages::FRAGMENT)
-    .union(wgpu::ShaderStages::COMPUTE);
-
-/// The stages `uniform` is visible to: the stages that use it,
-/// or `unused` for a global no entry point uses.
-fn pick_visibility(uniform: &Uniform, unused: wgpu::ShaderStages) -> wgpu::ShaderStages {
-    match uniform.stages.is_empty() {
-        true => unused,
-        false => uniform.stages,
-    }
-}
-
-fn bind_group_entries(shader: &crate::ShaderObject) -> BindGroupEntries {
-    let uniforms = &shader.storage.read().uniforms;
-    let mut group_entries = BindGroupEntries::new();
-    for (_, size, uniform) in uniforms.values() {
-        if uniform.name.contains('.') {
-            continue;
-        }
-        // Push constants never occupy a bind group in native mode; skip here.
-        if let UniformData::PushConstant(_) = &uniform.data {
-            continue;
-        }
-
-        // WebGPU/Dawn is stricter about uniform binding sizes; ensure a safe minimum.
-        let min_size = {
-            let sz = *size as u64;
-            let padded = wgpu::util::align_to(sz, 16).max(16);
-            // padded is non-zero due to max(16)
-            unsafe { std::num::NonZeroU64::new_unchecked(padded) }
-        };
-
-        // Decide entry type based on UniformData shape
-        use crate::shader::uniform::UniformData;
-        let entry = match &uniform.data {
-            UniformData::Texture(meta) => {
-                use crate::texture::{
-                    TextureClass, TextureDim, TextureScalarKind, TextureStorageFormat,
-                };
-                // Map our uniffi-friendly metadata to wgpu binding types
-                let view_dimension = match (meta.dim, meta.arrayed) {
-                    (TextureDim::D2, false) => wgpu::TextureViewDimension::D2,
-                    (TextureDim::D2, true) => wgpu::TextureViewDimension::D2Array,
-                    (TextureDim::D3, _) => wgpu::TextureViewDimension::D3,
-                    (TextureDim::Cube, false) => wgpu::TextureViewDimension::Cube,
-                    (TextureDim::Cube, true) => wgpu::TextureViewDimension::CubeArray,
-                    _ => wgpu::TextureViewDimension::D2,
-                };
-                match &meta.class {
-                    TextureClass::Depth { .. } => wgpu::BindGroupLayoutEntry {
-                        binding: uniform.binding,
-                        visibility: pick_visibility(uniform, EVERY_STAGE),
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Depth,
-                            view_dimension,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    TextureClass::Sampled { kind, multi } => {
-                        let sample_type = match kind {
-                            TextureScalarKind::Sint => wgpu::TextureSampleType::Sint,
-                            TextureScalarKind::Uint => wgpu::TextureSampleType::Uint,
-                            _ => wgpu::TextureSampleType::Float {
-                                filterable: meta.sampled,
-                            },
-                        };
-                        wgpu::BindGroupLayoutEntry {
-                            binding: uniform.binding,
-                            visibility: pick_visibility(uniform, EVERY_STAGE),
-                            ty: wgpu::BindingType::Texture {
-                                sample_type,
-                                view_dimension,
-                                multisampled: *multi,
-                            },
-                            count: None,
-                        }
-                    }
-                    TextureClass::Storage { format, access } => {
-                        let access = if access.load && access.store {
-                            wgpu::StorageTextureAccess::ReadWrite
-                        } else if access.load {
-                            wgpu::StorageTextureAccess::ReadOnly
-                        } else if access.store {
-                            wgpu::StorageTextureAccess::WriteOnly
-                        } else {
-                            wgpu::StorageTextureAccess::ReadOnly
-                        };
-                        let format = match format {
-                            TextureStorageFormat::R8Unorm => wgpu::TextureFormat::R8Unorm,
-                            TextureStorageFormat::R8Snorm => wgpu::TextureFormat::R8Snorm,
-                            TextureStorageFormat::R8Uint => wgpu::TextureFormat::R8Uint,
-                            TextureStorageFormat::R8Sint => wgpu::TextureFormat::R8Sint,
-                            TextureStorageFormat::R16Uint => wgpu::TextureFormat::R16Uint,
-                            TextureStorageFormat::R16Sint => wgpu::TextureFormat::R16Sint,
-                            TextureStorageFormat::R16Float => wgpu::TextureFormat::R16Float,
-                            TextureStorageFormat::Rg8Unorm => wgpu::TextureFormat::Rg8Unorm,
-                            TextureStorageFormat::Rg8Snorm => wgpu::TextureFormat::Rg8Snorm,
-                            TextureStorageFormat::Rg8Uint => wgpu::TextureFormat::Rg8Uint,
-                            TextureStorageFormat::Rg8Sint => wgpu::TextureFormat::Rg8Sint,
-                            TextureStorageFormat::Rg16Uint => wgpu::TextureFormat::Rg16Uint,
-                            TextureStorageFormat::Rg16Sint => wgpu::TextureFormat::Rg16Sint,
-                            TextureStorageFormat::Rg16Float => wgpu::TextureFormat::Rg16Float,
-                            TextureStorageFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
-                            TextureStorageFormat::Rgba8Snorm => wgpu::TextureFormat::Rgba8Snorm,
-                            TextureStorageFormat::Rgba8Uint => wgpu::TextureFormat::Rgba8Uint,
-                            TextureStorageFormat::Rgba8Sint => wgpu::TextureFormat::Rgba8Sint,
-                            TextureStorageFormat::Bgra8Unorm => wgpu::TextureFormat::Bgra8Unorm,
-                            TextureStorageFormat::Rgb10a2Unorm => wgpu::TextureFormat::Rgb10a2Unorm,
-                            TextureStorageFormat::Rg11b10Ufloat => {
-                                wgpu::TextureFormat::Rg11b10Ufloat
-                            }
-                            TextureStorageFormat::Rgba16Uint => wgpu::TextureFormat::Rgba16Uint,
-                            TextureStorageFormat::Rgba16Sint => wgpu::TextureFormat::Rgba16Sint,
-                            TextureStorageFormat::Rgba16Float => wgpu::TextureFormat::Rgba16Float,
-                            TextureStorageFormat::Rgba32Uint => wgpu::TextureFormat::Rgba32Uint,
-                            TextureStorageFormat::Rgba32Sint => wgpu::TextureFormat::Rgba32Sint,
-                            TextureStorageFormat::Rgba32Float => wgpu::TextureFormat::Rgba32Float,
-                            _ => wgpu::TextureFormat::Rgba8Unorm,
-                        };
-                        wgpu::BindGroupLayoutEntry {
-                            binding: uniform.binding,
-                            visibility: pick_visibility(uniform, wgpu::ShaderStages::COMPUTE),
-                            ty: wgpu::BindingType::StorageTexture {
-                                access,
-                                format,
-                                view_dimension,
-                            },
-                            count: None,
-                        }
-                    }
-                    // External textures (Web): bind as ExternalTexture when available.
-                    TextureClass::External() => wgpu::BindGroupLayoutEntry {
-                        binding: uniform.binding,
-                        visibility: pick_visibility(uniform, wgpu::ShaderStages::FRAGMENT),
-                        ty: wgpu::BindingType::ExternalTexture,
-                        count: None,
-                    },
-                }
-            }
-            UniformData::Sampler(info) => wgpu::BindGroupLayoutEntry {
-                binding: uniform.binding,
-                visibility: pick_visibility(uniform, EVERY_STAGE),
-                ty: wgpu::BindingType::Sampler(if info.comparison {
-                    wgpu::SamplerBindingType::Comparison
-                } else {
-                    wgpu::SamplerBindingType::Filtering
-                }),
-                count: None,
-            },
-            UniformData::Storage(data) => {
-                if let Some(crate::shader::uniform::StorageEntry { span, access, .. }) =
-                    data.first()
-                {
-                    let min = if *span == 0 { 16 } else { *span as u64 };
-                    let min = unsafe { std::num::NonZeroU64::new_unchecked(min) };
-
-                    wgpu::BindGroupLayoutEntry {
-                        binding: uniform.binding,
-                        visibility: if access.is_readonly() {
-                            pick_visibility(uniform, EVERY_STAGE)
-                        } else {
-                            pick_visibility(uniform, wgpu::ShaderStages::COMPUTE)
-                        },
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage {
-                                read_only: access.is_readonly(),
-                            },
-                            has_dynamic_offset: false,
-                            min_binding_size: Some(min),
-                        },
-                        count: None,
-                    }
-                } else {
-                    wgpu::BindGroupLayoutEntry {
-                        binding: uniform.binding,
-                        visibility: pick_visibility(uniform, EVERY_STAGE),
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: Some(min_size),
-                        },
-                        count: None,
-                    }
-                }
-            }
-            _ => wgpu::BindGroupLayoutEntry {
-                binding: uniform.binding,
-                visibility: pick_visibility(uniform, EVERY_STAGE),
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: Some(min_size),
-                },
-                count: None,
-            },
-        };
-
-        group_entries.entry(uniform.group).or_default().push(entry);
-    }
-
-    for entries in group_entries.values_mut() {
-        entries.sort_by_key(|entry| entry.binding);
-    }
-    group_entries
-}
-
-fn create_bind_group_layouts(
-    device: &wgpu::Device,
-    group_entries: &BindGroupEntries,
-) -> HashMap<u32, wgpu::BindGroupLayout> {
-    let mut layouts = HashMap::new();
-    for (group, entries) in group_entries {
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some(&format!("Bind Group Layout for group: {}", group)),
-            entries: entries.as_slice(),
-        });
-        layouts.insert(*group, layout);
-    }
-
-    layouts
 }
 
 /// The override a shader declares to learn whether its target stores colors
@@ -2688,10 +2548,64 @@ fn set_encoding(module: &naga::Module, format: wgpu::TextureFormat) -> naga::Mod
     }
 }
 
+/// Refuses a fragment entry point whose `@location(0)` output a target of `format` can't store:
+/// a float output into an integer target, or an integer output into a float or other integer one.
+fn check_output(shader: &ShaderObject, format: wgpu::TextureFormat) -> Result<(), RendererError> {
+    let Some(entry) = shader.find_entry_point(naga::ShaderStage::Fragment) else {
+        return Ok(());
+    };
+    let Some(result) = entry.function.result.as_ref() else {
+        return Ok(());
+    };
+    let types = &shader.module.types;
+    let output = match (&result.binding, &types[result.ty].inner) {
+        (Some(naga::Binding::Location { location: 0, .. }), inner) => Some(inner),
+        (_, naga::TypeInner::Struct { members, .. }) => members
+            .iter()
+            .find(|member| {
+                matches!(
+                    member.binding,
+                    Some(naga::Binding::Location { location: 0, .. })
+                )
+            })
+            .map(|member| &types[member.ty].inner),
+        _ => None,
+    };
+    let Some(kind) = output.and_then(|inner| inner.scalar_kind()) else {
+        return Ok(());
+    };
+    let fits = match format.sample_type(None, None) {
+        Some(wgpu::TextureSampleType::Float { .. }) => kind == naga::ScalarKind::Float,
+        Some(wgpu::TextureSampleType::Sint) => kind == naga::ScalarKind::Sint,
+        Some(wgpu::TextureSampleType::Uint) => kind == naga::ScalarKind::Uint,
+        _ => true,
+    };
+    match fits {
+        true => Ok(()),
+        false => Err(RendererError::Error(format!(
+            "`{}` writes {kind:?} values to @location(0), which a {format:?} target can't store",
+            entry.name
+        ))),
+    }
+}
+
+/// The name of the entry point a pipeline runs for `stage`.
+fn find_entry(shader: &ShaderObject, stage: naga::ShaderStage) -> Result<&str, ShaderError> {
+    shader
+        .find_entry_point(stage)
+        .map(|entry_point| entry_point.name.as_str())
+        .ok_or_else(|| {
+            ShaderError::ParseError(format!(
+                "the shader has no {stage:?} entry point, which this pipeline runs"
+            ))
+        })
+}
+
 #[allow(clippy::too_many_arguments)]
 fn create_render_pipeline(
     device: &wgpu::Device,
     shader: &crate::ShaderObject,
+    layout: &Layout,
     format: wgpu::TextureFormat,
     sample_count: u32,
     vertex_layouts: Option<&VertexLayouts>,
@@ -2701,184 +2615,21 @@ fn create_render_pipeline(
     pad_uniforms: bool,
     light_path: LightPath,
 ) -> Result<RenderPipeline, RendererError> {
-    let mut entries = bind_group_entries(shader);
-    let mut light_groups: Vec<u32> = Vec::new();
-    if let Some(roots) = shader.light_roots.as_ref() {
-        for (group, entry) in lights::layout_entries(roots, light_path) {
-            light_groups.push(group);
-            let list = entries.entry(group).or_default();
-            list.push(entry);
-            list.sort_by_key(|entry| entry.binding);
-        }
-    }
-    let base_module = shader.module_for_device(pad_uniforms, light_path.uniform_lights())?;
-    let mut layouts = create_bind_group_layouts(device, &entries);
+    // Every CPU check comes before the first wgpu call, so a refusal builds nothing.
+    check_output(shader, format)?;
+    let vs_entry = find_entry(shader, naga::ShaderStage::Vertex)?;
+    let fs_entry = find_entry(shader, naga::ShaderStage::Fragment)?;
+    let module = build_module(shader, layout, pad_uniforms, light_path.uniform_lights())?;
+    let module = Cow::Owned(set_encoding(&module, format));
 
-    let vs_entry = shader
-        .find_entry_point(naga::ShaderStage::Vertex)
-        .map(|entry_point| entry_point.name.as_str());
-    let fs_entry = shader
-        .find_entry_point(naga::ShaderStage::Fragment)
-        .map(|entry_point| entry_point.name.as_str());
-
-    // Determine push-constant roots
-    let storage = shader.storage.read();
-    let mut push_roots: Vec<(String, u32)> = Vec::new();
-    for (name, (_ofs, _size, u)) in storage.uniforms.iter() {
-        if name.contains('.') {
-            continue;
-        }
-        if let UniformData::PushConstant(data) = &u.data
-            && let Some(crate::shader::uniform::PushEntry { span, .. }) = data.first()
-        {
-            push_roots.push((name.clone(), *span));
-        }
-    }
-    drop(storage);
-
-    #[cfg(wasm)]
-    let fallback_required = true;
-
-    #[cfg(not(wasm))]
-    let fallback_required = {
-        let mut fallback_required = false;
-
-        if push_roots.len() > 1 {
-            fallback_required = true;
-        } else if let Some((_, sz)) = push_roots.first() {
-            let lim = device.limits();
-            if *sz > lim.max_immediate_size {
-                fallback_required = true;
-            }
-        }
-
-        fallback_required
-    };
-
-    // Build shader module possibly rewriting push constants to uniforms in fallback mode
-    let mut push_mode: Option<PushMode> = None;
-
-    let shader_module = if push_roots.is_empty() || !fallback_required {
-        if let Some((name, sz)) = push_roots.first() {
-            push_mode = Some(PushMode::Native {
-                root: name.clone(),
-                size: *sz,
-            });
-        }
-        let module = Cow::Owned(set_encoding(&base_module, format));
-        device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Shader"),
-            source: wgpu::ShaderSource::Naga(module),
-        })
-    } else {
-        // Fallback push-constants mode: rewrite push constants to uniform buffers
-
-        // Let's add a new new binding group id (beyond current ones)
-        let mut max_group: u32 = light_groups.iter().copied().max().unwrap_or(0);
-        for (_, _, u) in shader.storage.read().uniforms.values() {
-            if !u.name.contains('.') {
-                max_group = max_group.max(u.group);
-            }
-        }
-        let fallback_group = max_group + 1;
-
-        // Assign bindings following the discovered push_roots order.
-        // push_roots preserves the order we collected from storage.uniforms / naga globals.
-        let mut module = base_module.into_owned();
-
-        // Map root name -> binding index according to push_roots sequence
-        let mut ordered_map: std::collections::HashMap<String, u32> =
-            std::collections::HashMap::new();
-        for (i, (name, _span)) in push_roots.iter().enumerate() {
-            ordered_map.insert(name.clone(), i as u32);
-        }
-
-        // Apply rewrite on globals matching immediate/push-constant address space
-        for (_handle, gv) in module.global_variables.iter_mut() {
-            if matches!(gv.space, naga::AddressSpace::Immediate)
-                && let Some(name) = gv.name.clone()
-                && let Some(binding) = ordered_map.get(&name)
-            {
-                gv.space = naga::AddressSpace::Uniform;
-                gv.binding = Some(naga::ResourceBinding {
-                    group: fallback_group,
-                    binding: *binding,
-                });
-            }
-        }
-        let bindings_map = ordered_map;
-
-        // Create layout for the fallback group with uniform buffers
-        let mut entries: Vec<wgpu::BindGroupLayoutEntry> = Vec::new();
-        for (name, binding) in bindings_map.iter() {
-            // Find span from storage metadata
-            if let Some((_, span, _u)) = shader.storage.read().uniforms.get(name) {
-                let min = {
-                    let padded = wgpu::util::align_to(*span as u64, 16).max(16);
-                    unsafe { std::num::NonZeroU64::new_unchecked(padded) }
-                };
-                entries.push(wgpu::BindGroupLayoutEntry {
-                    binding: *binding,
-                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: Some(min),
-                    },
-                    count: None,
-                });
-            }
-        }
-        entries.sort_by_key(|e| e.binding);
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Bind Group Layout (fallback push)"),
-            entries: &entries,
-        });
-        layouts.insert(fallback_group, layout);
-        push_mode = Some(PushMode::Fallback {
-            group: fallback_group,
-            bindings: bindings_map,
-        });
-
-        // Build module
-        let module = Cow::Owned(set_encoding(&module, format));
-        device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Shader (fallback push->uniform)"),
-            source: wgpu::ShaderSource::Naga(module),
-        })
-    };
-
-    // Ensure placeholder empty layouts for missing lower-index groups so that the positional
-    // indices of the pipeline layout match shader @group() numbers (important for fallback).
-    if let Some(max_g) = layouts.keys().max().copied() {
-        for g in 0..=max_g {
-            layouts.entry(g).or_insert_with(|| {
-                device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some("Empty Bind Group Layout (placeholder)"),
-                    entries: &[],
-                })
-            });
-        }
-    }
-
-    let mut sorted_groups: Vec<_> = layouts.keys().collect();
-    sorted_groups.sort();
-    let mut sorted_layouts: Vec<Option<&wgpu::BindGroupLayout>> = Vec::new();
-    for g in sorted_groups.into_iter() {
-        sorted_layouts.push(layouts.get(g));
-    }
-
-    // Pipeline layout with optional immediate (push-constant) size
-    let immediate_size = match &push_mode {
-        Some(PushMode::Native { size, .. }) => *size,
-        _ => 0,
-    };
-
-    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("Default Pipeline Layout"),
-        bind_group_layouts: &sorted_layouts,
-        immediate_size,
+    let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("Shader"),
+        source: wgpu::ShaderSource::Naga(module),
     });
+    let layouts = create_bind_group_layouts(device, &layout.entries());
+    let immediate_size = read_immediate_size(layout.push.as_ref());
+    let pipeline_layout =
+        create_pipeline_layout(device, "Default Pipeline Layout", &layouts, immediate_size);
 
     let vertex_buffers: Vec<Option<wgpu::VertexBufferLayout>> = vertex_layouts
         .map(VertexLayouts::buffers)
@@ -2889,16 +2640,16 @@ fn create_render_pipeline(
 
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("Default Render Pipeline"),
-        layout: Some(&layout),
+        layout: Some(&pipeline_layout),
         vertex: wgpu::VertexState {
             module: &shader_module,
-            entry_point: Some(vs_entry.unwrap_or("vs_main")),
+            entry_point: Some(vs_entry),
             buffers: &vertex_buffers,
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
             module: &shader_module,
-            entry_point: Some(fs_entry.unwrap_or("fs_main")),
+            entry_point: Some(fs_entry),
             targets: &[Some(wgpu::ColorTargetState {
                 format,
                 // Blend state baked from Material::alpha_mode:
@@ -2945,54 +2696,42 @@ fn create_render_pipeline(
 
     Ok(RenderPipeline {
         pipeline,
-        bind_group_layouts: layouts.clone(),
-        push_mode,
+        bind_group_layouts: layouts,
+        push_mode: layout.push.clone(),
     })
 }
 
-/// Builds the compute pipeline for `shader` with one layout per group in `entries`.
+/// Builds the compute pipeline for `shader` from its `layout`.
 fn create_compute_pipeline(
     device: &wgpu::Device,
     shader: &crate::ShaderObject,
-    entries: &BindGroupEntries,
-) -> ComputePipeline {
-    let layouts = create_bind_group_layouts(device, entries);
-    let mut sorted_groups: Vec<_> = layouts.keys().cloned().collect();
-    sorted_groups.sort();
-    let sorted_layouts: Vec<Option<&wgpu::BindGroupLayout>> = sorted_groups
-        .iter()
-        .map(|group| layouts.get(group))
-        .collect();
-
-    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("Compute Pipeline Layout"),
-        bind_group_layouts: &sorted_layouts,
-        immediate_size: 0,
-    });
-
-    let module = Cow::Owned(shader.module.clone());
+    layout: &Layout,
+) -> Result<ComputePipeline, RendererError> {
+    let cs_entry = find_entry(shader, naga::ShaderStage::Compute)?;
+    let module = Cow::Owned(build_module(shader, layout, false, None)?);
     let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Compute Shader"),
         source: wgpu::ShaderSource::Naga(module),
     });
-
-    let cs_entry = shader
-        .find_entry_point(naga::ShaderStage::Compute)
-        .map(|entry_point| entry_point.name.as_str());
+    let layouts = create_bind_group_layouts(device, &layout.entries());
+    let immediate_size = read_immediate_size(layout.push.as_ref());
+    let pipeline_layout =
+        create_pipeline_layout(device, "Compute Pipeline Layout", &layouts, immediate_size);
 
     let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
         label: Some("Compute Pipeline"),
-        layout: Some(&layout),
+        layout: Some(&pipeline_layout),
         module: &shader_module,
-        entry_point: Some(cs_entry.unwrap_or("cs_main")),
+        entry_point: Some(cs_entry),
         compilation_options: wgpu::PipelineCompilationOptions::default(),
         cache: None,
     });
 
-    ComputePipeline {
+    Ok(ComputePipeline {
         pipeline,
         bind_group_layouts: layouts,
-    }
+        push_mode: layout.push.clone(),
+    })
 }
 
 fn schema_offsets(
