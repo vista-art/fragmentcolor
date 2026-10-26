@@ -394,9 +394,10 @@ impl ShaderObject {
     }
 
     /// Add a mesh to this shader, giving its untyped attributes the types this shader declares.
+    /// Every vertex and instance the mesh takes later must hold the attributes this shader reads.
     pub fn add_mesh(&self, mesh: Arc<crate::mesh::MeshObject>) -> Result<(), ShaderError> {
-        let types = self.bind_mesh(&mesh)?;
-        mesh.declare(types)?;
+        let binding = self.bind_mesh(&mesh)?;
+        mesh.declare(binding)?;
         self.meshes.write().push(mesh);
         Ok(())
     }

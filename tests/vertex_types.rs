@@ -162,6 +162,51 @@ fn vertices_added_after_the_attach_convert_too() {
     });
 }
 
+// Story: a vertex or an instance added after the attach holds every attribute the
+// shader reads, or render fails naming the attribute, where the GPU read zeros.
+#[test]
+fn values_added_after_the_attach_hold_what_the_shader_reads() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let target = renderer
+            .create_texture_target([8, 8])
+            .await
+            .expect("create_texture_target failed");
+        let shader = Shader::new(TYPED).expect("shader failed");
+        let vertices = Mesh::new();
+        vertices.add_vertices(FULLSCREEN.map(|position| {
+            Vertex::new(position)
+                .set("id", 16_777_217)
+                .set("cell", [-1, 2])
+        }));
+        shader.add_mesh(&vertices).expect("attach");
+        vertices.add_vertex(Vertex::new([0.5, 0.5]).set("id", 16_777_217));
+        let instances = Mesh::new();
+        instances
+            .add_vertices(FULLSCREEN.map(|position| Vertex::new(position).set("cell", [-1, 2])));
+        instances.add_instance(Instance::new().set("id", 16_777_217));
+        let other = Shader::new(TYPED).expect("shader failed");
+        other.add_mesh(&instances).expect("attach");
+        instances.add_instance(Instance::new());
+
+        let vertex = renderer.render(&shader, &target);
+        let instance = renderer.render(&other, &target);
+
+        let message = |result: Result<(), fragmentcolor::RendererError>| match result {
+            Err(fragmentcolor::RendererError::MeshError(error)) => error.to_string(),
+            other => panic!("expected a mesh error, got {other:?}"),
+        };
+        assert_eq!(
+            message(vertex),
+            "Invalid vertex: cell: expected vec2<i32>, got no value at vertex 3"
+        );
+        assert_eq!(
+            message(instance),
+            "Invalid instance: id: expected u32, got no value at instance 1"
+        );
+    });
+}
+
 // Story: an f32 or u32 from Rust keeps its type, so it must match the shader exactly.
 #[test]
 fn typed_rust_values_must_match() {

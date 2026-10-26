@@ -4499,7 +4499,7 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat)
     const COVER: [[f32; 3]; 3] = [[-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0]];
 
     // Story: instances with no properties draw when the shader reads no instance
-    // attribute. One draws once, and a count of three draws the third one last.
+    // attribute. One draws once, and three draw three times, the third one last.
     #[test]
     fn instances_without_properties_draw() {
         pollster::block_on(async move {
@@ -4515,7 +4515,6 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat)
             let triple = crate::Mesh::new();
             triple.add_vertices(COVER.map(crate::Vertex::new));
             triple.add_instances([(); 3].map(|_| crate::Instance::new()));
-            triple.set_instance_count(3);
 
             let mut pixels = Vec::new();
             for mesh in [single, triple] {

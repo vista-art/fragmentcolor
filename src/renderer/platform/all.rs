@@ -92,6 +92,27 @@ pub(crate) async fn request_device(
     Ok((device, queue))
 }
 
+/// A device that takes buffers of at most `limit` bytes, for tests of the buffer limit.
+#[cfg(test)]
+pub(crate) async fn request_small_device(limit: u64) -> (wgpu::Device, wgpu::Queue) {
+    let instance = create_instance().await;
+    let adapter = request_adapter(&instance, None).await.expect("adapter");
+    let adapter_limits = adapter.limits();
+    let limits = wgpu::Limits {
+        max_buffer_size: limit,
+        max_uniform_buffer_binding_size: adapter_limits.max_uniform_buffer_binding_size.min(limit),
+        max_storage_buffer_binding_size: adapter_limits.max_storage_buffer_binding_size.min(limit),
+        ..adapter_limits
+    };
+    adapter
+        .request_device(&wgpu::DeviceDescriptor {
+            required_limits: limits,
+            ..Default::default()
+        })
+        .await
+        .expect("device")
+}
+
 /// The variable that names the file collecting uncaptured GPU errors.
 #[cfg(not(wasm))]
 const ERROR_LOG: &str = "FC_GPU_ERROR_LOG";

@@ -8,6 +8,16 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
+/// The built-in position attribute, a name no property takes.
+pub(crate) const POSITION: &str = "position";
+
+/// Why vertex `index`, which sets a property named `position`, is refused.
+pub(crate) fn explain_position(index: usize) -> String {
+    format!(
+        "vertex {index} sets a property named '{POSITION}', and a vertex takes its position from Vertex::new"
+    )
+}
+
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Object))]

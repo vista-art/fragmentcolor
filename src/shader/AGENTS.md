@@ -6,6 +6,8 @@ Ownership & validation
 - If the shader has no `@location` vertex inputs (fullscreen / builtin-only), attaching a mesh must be rejected.
 - `reflect_vertex_inputs` is the one list of vertex inputs. It holds each `@location` argument of the vertex entry point and each `@location` member of a struct argument, under the member's name, so `bind_mesh`, the renderer's vertex layouts and its no-mesh check read struct members as they read arguments. A struct of built-ins only adds nothing and stays a fullscreen input.
 - Attach checks every vertex and instance value, not only the first, and each one must hold every attribute the shader reads. A failed attach records nothing on the mesh, so `Pass::add_mesh` can try the next shader.
+- `bind_mesh` returns a `Binding`: the types it gives untyped attributes and the attributes it reads. `MeshObject::declare` keeps both, so a vertex or instance added later must hold what the shader reads.
+- A vertex that sets a property named `position` fails the attach with `ShaderError::InvalidKey` (`check_position`), since its position comes from `Vertex::new`.
 
 Constructors
 - `Shader::new(source: &str) -> Result<Self, ShaderError>` — WGSL or GLSL source; the core Rust entry point.

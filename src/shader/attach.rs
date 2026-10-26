@@ -1,5 +1,7 @@
 use super::{ShaderError, ShaderObject, VertexInputDesc};
-use crate::mesh::{AttributeTypes, Instance, MeshObject, Shape, Vertex, VertexData, describe};
+use crate::mesh::vertex::{POSITION, explain_position};
+use crate::mesh::{AttributeNames, AttributeTypes, Binding, Instance, MeshObject, Shape};
+use crate::mesh::{Vertex, VertexData, describe};
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use wgpu::VertexFormat;
@@ -32,6 +34,13 @@ impl Stream {
             Self::Instance => &mut types.instance,
         }
     }
+
+    fn pick(self, names: &mut AttributeNames) -> &mut HashSet<String> {
+        match self {
+            Self::Vertex => &mut names.vertex,
+            Self::Instance => &mut names.instance,
+        }
+    }
 }
 
 /// An attribute of a stream's first item: its location in the mesh's own buffer and its shape.
@@ -49,10 +58,11 @@ enum Source<'mesh> {
 impl ShaderObject {
     /// Matches the mesh to this shader's vertex inputs and checks every value it holds.
     ///
-    /// Returns the types this shader gives untyped attributes no shader typed before.
-    /// It records nothing: `Shader::add_mesh` hands the result to `MeshObject::declare`,
-    /// so a mesh that fails here, or one only validated, keeps its types and its buffers.
-    pub(crate) fn bind_mesh(&self, mesh: &MeshObject) -> Result<AttributeTypes, ShaderError> {
+    /// Returns the types this shader gives untyped attributes no shader typed before,
+    /// and the attributes it reads. It records nothing: `Shader::add_mesh` hands the
+    /// result to `MeshObject::declare`, so a mesh that fails here, or one only validated,
+    /// keeps its types and its buffers.
+    pub(crate) fn bind_mesh(&self, mesh: &MeshObject) -> Result<Binding, ShaderError> {
         let inputs = self.reflect_vertex_inputs()?;
         if inputs.is_empty() {
             return Err(ShaderError::InvalidKey(
@@ -69,6 +79,7 @@ impl ShaderObject {
         let known = mesh.types.read().clone();
         let verts = mesh.verts.read();
         let insts = mesh.insts.read();
+        check_position(&verts)?;
         let first = verts.first();
         let position = first.map(|vertex| position_format(vertex.dimensions));
         let vertex =
@@ -98,7 +109,7 @@ impl ShaderObject {
                 Source::Position(format) if format == input.format => {}
                 Source::Position(format) => {
                     return Err(mismatch(
-                        "position",
+                        POSITION,
                         input.format,
                         format!("{} at vertex 0", describe(format)),
                     ));
@@ -112,7 +123,14 @@ impl ShaderObject {
 
         check_vertices(&verts, &known, &added, &read)?;
         check_instances(&insts, &known, &added, &read)?;
-        Ok(added)
+        let mut names = AttributeNames::default();
+        for (stream, name) in read {
+            stream.pick(&mut names).insert(name.to_string());
+        }
+        Ok(Binding {
+            types: added,
+            read: names,
+        })
     }
 }
 
@@ -143,7 +161,7 @@ fn find_source<'mesh>(
         return Ok(source);
     }
     if let Some(format) = position
-        && (input.name == "position" || input.location == 0)
+        && (input.name == POSITION || input.location == 0)
     {
         return Ok(Source::Position(format));
     }
@@ -208,6 +226,18 @@ fn bind_attribute(
     }
 }
 
+/// Refuses a vertex that sets a property named `position`. Its position comes from
+/// `Vertex::new`, so the value set would never reach the shader.
+fn check_position(verts: &[Vertex]) -> Result<(), ShaderError> {
+    match verts
+        .iter()
+        .position(|vertex| vertex.properties.contains_key(POSITION))
+    {
+        Some(index) => Err(ShaderError::InvalidKey(explain_position(index))),
+        None => Ok(()),
+    }
+}
+
 /// Checks every vertex: its position against the first one's, each value the
 /// first vertex also holds against the format that attribute takes, and that
 /// it holds every attribute the shader reads.
@@ -226,7 +256,7 @@ fn check_vertices(
         let own = position_format(vertex.dimensions);
         if own != position {
             let found = format!("{} at vertex {index}", describe(own));
-            return Err(mismatch("position", position, found));
+            return Err(mismatch(POSITION, position, found));
         }
         check_values(&vertex.properties, &formats, Stream::Vertex, index, read)?;
     }
