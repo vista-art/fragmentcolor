@@ -3,8 +3,11 @@
 use super::RendererError;
 #[cfg(wasm)]
 use super::scope::Caught;
+#[cfg(wasm)]
+use crate::platforms::web::yield_to_event_loop;
 use crate::texture::TextureError;
 use parking_lot::Mutex;
+use std::collections::BTreeSet;
 #[cfg(wasm)]
 use std::future::Future;
 #[cfg(wasm)]
@@ -46,7 +49,7 @@ pub(crate) struct ErrorSlot {
 #[derive(Debug, Default)]
 struct OpenScopes {
     next: u64,
-    open: std::collections::BTreeSet<u64>,
+    open: BTreeSet<u64>,
 }
 
 /// Turns of the event loop `settle` waits for open scopes, about ten seconds.
@@ -73,16 +76,16 @@ impl ErrorSlot {
     pub(crate) async fn settle(&self) -> Result<(), LateError> {
         let before = self.scopes.lock().next;
         for _ in 0..SETTLE_ROUNDS {
-            if self.landed(before) {
+            if self.has_landed(before) {
                 break;
             }
-            crate::platforms::web::yield_to_event_loop().await;
+            yield_to_event_loop().await;
         }
         self.take()
     }
 
     /// Whether every scope with a ticket below `before` has landed.
-    fn landed(&self, before: u64) -> bool {
+    fn has_landed(&self, before: u64) -> bool {
         let scopes = self.scopes.lock();
         scopes.open.first().is_none_or(|ticket| *ticket >= before)
     }
@@ -202,11 +205,11 @@ mod tests {
         let later = slot.open();
 
         // Act
-        let waiting = slot.landed(before);
+        let waiting = slot.has_landed(before);
         slot.close(second);
-        let still_waiting = slot.landed(before);
+        let still_waiting = slot.has_landed(before);
         slot.close(first);
-        let done = slot.landed(before);
+        let done = slot.has_landed(before);
 
         // Assert
         assert!(!waiting && !still_waiting, "earlier scopes are still open");

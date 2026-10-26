@@ -9,6 +9,7 @@ use lsp_doc::lsp_doc;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
@@ -1225,7 +1226,7 @@ impl RenderContext {
         build: impl FnOnce() -> V,
     ) -> Result<RefMut<'cache, K, V>, RendererError>
     where
-        K: Eq + std::hash::Hash + Clone + 'static,
+        K: Eq + Hash + Clone + 'static,
         V: 'static,
     {
         match cache.entry(key) {
