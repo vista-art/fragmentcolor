@@ -1070,12 +1070,12 @@ impl RenderContext {
     /// Runs `op` inside error scopes for validation, internal and out of memory errors.
     ///
     /// A wgpu error that `op` causes returns as `ValidationError` instead of
-    /// reaching the device's uncaptured error handler. Pipeline builds, bind groups,
-    /// views and each frame go through here. The scopes are popped on every path.
-    /// When `op` fails with a GPU error of its own, such as an inner scope's, the error
-    /// these scopes caught came first and wins. When `op` fails on the CPU, its error wins,
-    /// and the GPU error goes to the log as a warning. On wasm the scopes resolve after
-    /// `render` returns, so the error waits in `late`.
+    /// reaching the device's uncaptured error handler. Pipeline builds and each frame
+    /// go through here, and on native so does each bind group and view inside a frame.
+    /// The scopes are popped on every path. When `op` fails with a GPU error of its own,
+    /// such as an inner scope's, the error these scopes caught came first and wins. When
+    /// `op` fails on the CPU, its error wins, and the GPU error goes to the log as a warning.
+    /// On wasm the scopes resolve after `render` returns, so the error waits in `late`.
     fn validate<T>(
         &self,
         label: &str,
@@ -1113,6 +1113,24 @@ impl RenderContext {
             let failure = result.as_ref().err().map(ToString::to_string);
             self.late.watch(label, caught, failure);
             result
+        }
+    }
+
+    /// Runs one step inside a frame, such as a bind group, in scopes of its own on native,
+    /// so its error carries the step's label. On wasm the frame's scopes cover it.
+    fn validate_step<T>(
+        &self,
+        label: &str,
+        op: impl FnOnce() -> Result<T, RendererError>,
+    ) -> Result<T, RendererError> {
+        #[cfg(not(wasm))]
+        {
+            self.validate(label, op)
+        }
+        #[cfg(wasm)]
+        {
+            let _ = label;
+            op()
         }
     }
 
@@ -1448,7 +1466,7 @@ impl RenderContext {
                 match &uniform.data {
                     UniformData::Texture(meta) => {
                         if let Some(tex) = self.get_texture(&meta.id) {
-                            let view = self.validate(
+                            let view = self.validate_step(
                                 &format!("texture view for binding '{}'", name),
                                 || Ok(tex.create_view()),
                             )?;
@@ -1610,7 +1628,7 @@ impl RenderContext {
                 entries.sort_by_key(|e| e.binding);
 
                 let label = format!("Bind Group for group: {}", group_index);
-                let bind_group = self.validate(&label, || {
+                let bind_group = self.validate_step(&label, || {
                     Ok(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                         layout,
                         entries: &entries,
@@ -1626,7 +1644,7 @@ impl RenderContext {
                 if !present_groups.contains(group) {
                     // Create an empty bind group (layout is expected to have zero entries for placeholders)
                     let label = format!("Empty Bind Group for group: {}", group);
-                    let empty = self.validate(&label, || {
+                    let empty = self.validate_step(&label, || {
                         Ok(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                             layout,
                             entries: &[],
@@ -1785,7 +1803,7 @@ impl RenderContext {
                 match &uniform.data {
                     UniformData::Texture(meta) => {
                         if let Some(tex) = self.get_texture(&meta.id) {
-                            let view = self.validate(
+                            let view = self.validate_step(
                                 &format!("texture view for binding '{}'", name),
                                 || Ok(tex.create_view()),
                             )?;
@@ -1884,7 +1902,7 @@ impl RenderContext {
                 }
                 entries.sort_by_key(|e| e.binding);
                 let label = format!("Compute Bind Group for group: {}", group);
-                let bind_group = self.validate(&label, || {
+                let bind_group = self.validate_step(&label, || {
                     Ok(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                         layout,
                         entries: &entries,
