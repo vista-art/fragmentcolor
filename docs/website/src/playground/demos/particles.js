@@ -295,7 +295,7 @@ function writeRust({ library, compute, render }) {
     '    let simulate = Pass::from_shader("simulate", &compute);',
     "    simulate.set_compute_dispatch(COUNT.div_ceil(256), 1, 1);",
     '    let draw = Pass::from_shader("draw", &render);',
-    "    draw.set_clear_color([0.02, 0.02, 0.04, 1.0]);",
+    "    draw.set_clear_color([0.02, 0.02, 0.04, 1.0])?;",
     "",
     "    Ok(State {",
     "        compute,",

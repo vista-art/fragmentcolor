@@ -3716,7 +3716,8 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
             "#;
             let shader = Shader::new(wgsl).expect("shader");
             let pass = Pass::from_shader("msaa-viewport", &shader);
-            pass.set_clear_color([0.0, 0.0, 1.0, 1.0]);
+            pass.set_clear_color([0.0, 0.0, 1.0, 1.0])
+                .expect("set_clear_color failed");
             pass.set_viewport(crate::ScreenRegion::new((4, 4), (8, 8)));
 
             renderer.render(&pass, &target).expect("render ok");

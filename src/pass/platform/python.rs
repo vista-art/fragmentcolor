@@ -2,7 +2,7 @@
 
 use crate::platforms::python::read_unsigned;
 use crate::region::error::ScreenRegionError;
-use crate::{Pass, PassObject, PassType, ScreenRegion, Shader};
+use crate::{Color, Pass, PassObject, PassType, ScreenRegion, Shader};
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
@@ -91,8 +91,10 @@ impl Pass {
 
     #[pyo3(name = "set_clear_color")]
     #[lsp_doc("docs/api/core/pass/set_clear_color.md")]
-    pub fn set_clear_color_py(&self, color: PyClearColor) {
-        self.object.set_clear_color(color);
+    pub fn set_clear_color_py(&self, color: Vec<f32>) -> PyResult<()> {
+        self.object
+            .set_clear_color(Color::try_from(color.as_slice())?)?;
+        Ok(())
     }
 
     #[pyo3(name = "set_viewport")]
@@ -172,24 +174,6 @@ impl Pass {
     #[doc(hidden)]
     pub fn renderable_type(&self) -> &'static str {
         "Pass"
-    }
-}
-
-/// A clear color from Python: three channels, opaque, or four with alpha.
-#[derive(FromPyObject)]
-pub enum PyClearColor {
-    #[pyo3(annotation = "Sequence[float]")]
-    Rgba([f32; 4]),
-    #[pyo3(annotation = "Sequence[float]")]
-    Rgb([f32; 3]),
-}
-
-impl From<PyClearColor> for crate::Color {
-    fn from(color: PyClearColor) -> Self {
-        match color {
-            PyClearColor::Rgba(rgba) => rgba.into(),
-            PyClearColor::Rgb(rgb) => rgb.into(),
-        }
     }
 }
 

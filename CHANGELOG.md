@@ -9,6 +9,7 @@
 - The renderer releases a texture when the last thing holding it drops: every `Texture` handle, the `TextureTarget` that owns it, and each shader uniform or pass target that binds it. It kept every texture until `unregister_texture`, so a demo that made a new texture on each resize leaked the old ones.
 - A pass that draws `Model`s and sets no depth target draws with a depth buffer, so overlapping scenes now draw with depth: the nearest surface shows whatever order the models were added in, where a far model added last covered a near one. The buffer matches the pass's color attachment in size and sample count. The renderer reuses it from frame to frame and frees it a few renders after the target changes size. The shaders in that pass that draw no model, such as a fullscreen backdrop or an overlay, ignore depth and draw in order, so a backdrop drawn first stays behind the models. `Pass.set_depth_target` still sets a pass's own depth texture, and passes without models, such as 2D and fullscreen passes, draw without depth.
 - PBR materials light a `Model` scaled differently along each axis, or mirrored, the way its surfaces face. The registry's `mesh_transform_normal` uses the inverse transpose of the model matrix, where the plain matrix tilted normals toward the stretched axis.
+- `Pass.set_clear_color` hands each channel to the GPU as given, in every language. A float target such as `Rgba16Float` clears to `[4.0, -1.0, 0.25, 1.0]`, and a unorm target clamps on the GPU. Every channel was clamped to 0 to 1 and rounded to 8 bits first.
 
 ### Textures
 
@@ -19,6 +20,7 @@
 
 - `Vertex`, `Instance`, `Quad` and `TextureId` carry the `__fc_kind` brand the other classes have. Minifiers rename classes, and the checks that passed these objects into the library fell back to the class name, so a production build failed where a development build worked: `mesh.addVertices` rejected its `Vertex` objects. The checks read only the brand now, and a build fails when a type that crosses into the library has none. A site that keeps class names in its build to work around this, as the FragmentColor website does with `keepNames` in `docs/website/astro.config.mjs`, can drop that once it loads 0.12.7.
 - Setting `size.width`, `size.height` or `size.depth` checks the number as `new Size` does and throws an `Error` for a negative, NaN or out-of-range one, keeping the old value. The setters wrapped it modulo 2^32, so `size.width = 2 ** 32 + 64` made a 64-pixel-wide target.
+- `Pass.setClearColor([1.2, 0.5, 0.25])` clears to the color every other language gets. One channel above 1 switched all of them to a 0 to 255 scale, so this color cleared near black. A channel that isn't a number, such as `undefined` or `'1'`, throws an `Error` where it became 0, and an `{ r, g, b, a }` object needs `a` to be a number or left out. `Int32Array` and `Uint32Array` colors are gone.
 
 ### Python
 
@@ -26,6 +28,7 @@
 - A hidden or minimized window raises `OccludedSurfaceError`, a subclass of `FragmentColorError`, so a render loop can skip the frame without reading the message. Rust reports it as `SurfaceError::Occluded`.
 - `size()` is a method on `Texture`, `TextureTarget` and `WindowTarget`, as in every other language and like every other Python getter. `TextureTarget.size` and `Texture.size` were properties, and `WindowTarget.size()` the one method among them.
 - Counts, indices, sizes and regions raise `FragmentColorError` for a number they can't hold, as JavaScript throws for one. That covers a negative number, one past `2**32 - 1`, and a fractional count or index, in `Pass.set_compute_dispatch`, `Mesh.set_instance_count`, `Mesh.set_indices`, `Pass.set_viewport`, `Size(...)` and its fields, and `ScreenRegion(...)` with `from_region` and `from_tuple`. They raised `OverflowError`, or a `TypeError` about a failed enum for a list. A viewport list of the wrong length raises `FragmentColorError` as well, and a string still raises `TypeError`. The stub hints these parameters as `float`, the plain number JavaScript takes.
+- `Pass.set_clear_color` raises `FragmentColorError` for a list that isn't 3 or 4 numbers long, where it raised a `TypeError` about a failed enum.
 
 ### Swift
 
@@ -48,6 +51,8 @@
 - Python reads sizes with a call: `texture.size.width` from the 0.12.6 notes is now `texture.size().width`, and `target.size` is `target.size()` on a texture target.
 - `RendererError::MsaaViewMissing` is gone. No code returned it.
 - `ScreenRegion` loses its `i32` conversions, along with `from_region_i32`, `from_tuples_i32` and `from_arrays_i32`. They moved a negative origin to 0 and shrank the region to match, so `set_viewport((-100, -100, 400, 300))` drew a different rectangle. A tuple such as `(10, 10, 100, 100)` now reads as `u32`, and a negative number fails to compile, as it does in Swift and Kotlin.
+- `Pass::set_clear_color` returns `Result<(), PassError>`, and a channel that is NaN or infinite fails with the new `PassError::Color` and leaves the pass unchanged. It became 0. JavaScript throws an `Error`, Python raises `FragmentColorError`, Swift throws `FragmentColorError`, and Kotlin throws `FragmentColorException`.
+- `Color` holds four `f32` channels where it packed four bytes into a public `u32`, so `Color(0xFF0000FF)` and `u32::from(color)` are gone. `Color::from(0xFF0000FFu32)` still reads bytes. `Color` no longer implements `Hash`.
 - JavaScript's `ScreenRegion` drops its `min_x`, `min_y`, `max_x` and `max_y` properties, whose setters skipped every check. Read `minX`, `minY`, `maxX` and `maxY`, which stay. A plain `{ min_x, ... }` object still converts.
 
 ## 0.12.6: Binding and renderer fixes

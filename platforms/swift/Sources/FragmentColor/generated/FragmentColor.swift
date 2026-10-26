@@ -2516,7 +2516,7 @@ public protocol PassProtocol: AnyObject, Sendable {
     func require(deps: [RenderableHandle]) throws 
     
     /**
-     * Set the clear color for this pass (as `[r, g, b, a]` in linear 0..1 space).
+     * Set the clear color for this pass as linear `[r, g, b]` or `[r, g, b, a]`.
      *
      * Switching from load to clear mode: after calling this the pass will
      * clear its color attachment to `color` at the start of each frame.
@@ -2744,7 +2744,7 @@ open func require(deps: [RenderableHandle])throws   {try rustCallWithError(FfiCo
 }
     
     /**
-     * Set the clear color for this pass (as `[r, g, b, a]` in linear 0..1 space).
+     * Set the clear color for this pass as linear `[r, g, b]` or `[r, g, b, a]`.
      *
      * Switching from load to clear mode: after calling this the pass will
      * clear its color attachment to `color` at the start of each frame.
@@ -9086,7 +9086,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_pass_require() != 26754) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_setclearcolor() != 35533) {
+    if (uniffi_fragmentcolor_checksum_method_pass_setclearcolor() != 51774) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_pass_setcomputedispatch() != 59690) {

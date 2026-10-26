@@ -325,6 +325,26 @@ def check_number_errors():
     print("Counts, indices, sizes and regions refuse numbers they can't hold")
 
 
+def check_clear_color():
+    """A clear color keeps its numbers, raises FragmentColorError for NaN, and TypeError for a string."""
+    rpass = Pass("clear")
+    for label, color in (("NaN", [float("nan"), 0, 0]), ("infinity", [0, 0, float("inf"), 1]), ("two channels", [0, 0])):
+        try:
+            rpass.set_clear_color(color)
+        except FragmentColorError as e:
+            print(f"set_clear_color with {label} raised FragmentColorError: {e}")
+        else:
+            raise AssertionError(f"set_clear_color with {label} should raise FragmentColorError")
+    try:
+        rpass.set_clear_color(["1", 0, 0])
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("set_clear_color with a string should raise TypeError")
+    rpass.set_clear_color([4.0, -1.0, 0.25])
+    print("Clear colors keep their numbers and refuse NaN")
+
+
 def check_texture_inputs(renderer):
     """create_texture takes usage, bytearray, memoryview, tuples and Textures."""
     pixels = bytes(range(16))
@@ -650,6 +670,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_require_graph(renderer)
     check_value_types()
     check_number_errors()
+    check_clear_color()
     check_texture_inputs(renderer)
     check_scene_errors()
     check_stub()

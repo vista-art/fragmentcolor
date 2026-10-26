@@ -523,6 +523,19 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     renderer.render([Shader.default(), Shader.default()], target);
     throws('render with a string item', () => renderer.render([Shader.default(), 'x'], target));
 
+    // A clear color takes numbers as given, as in every other language, and refuses anything else.
+    throws('Pass.setClearColor([undefined, 0, 0])', () => first.setClearColor([undefined, 0, 0]));
+    throws("Pass.setClearColor(['1', 0, 0])", () => first.setClearColor(['1', 0, 0]));
+    throws('Pass.setClearColor([NaN, 0, 0])', () => first.setClearColor([NaN, 0, 0]));
+    throws("Pass.setClearColor({ r: 1, g: 0, b: 0, a: 'x' })", () => first.setClearColor({ r: 1, g: 0, b: 0, a: 'x' }));
+    throws('Pass.setClearColor([0, 0])', () => first.setClearColor([0, 0]));
+    const clear = Pass.fromShader('clear', Shader.default());
+    clear.setViewport([0, 0, 1, 1]);
+    clear.setClearColor([1.2, 0.5, 0.25]);
+    renderer.render(clear, target);
+    const corner = Array.from((await target.getImage()).slice(252, 255));
+    if (Math.max(...corner) !== 255 || Math.min(...corner) < 50) fail(`[1.2, 0.5, 0.25] cleared to ${corner}`);
+
     // The window target is WindowTarget, and CanvasTarget names the same class.
     const canvas = document.createElement('canvas');
     canvas.width = 8; canvas.height = 8;

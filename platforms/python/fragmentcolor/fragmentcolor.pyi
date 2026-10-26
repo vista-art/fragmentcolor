@@ -1256,6 +1256,10 @@ class Pass:
 
         When the pass is configured to clear, the render target is cleared to the given RGBA color before drawing.
 
+        The color is linear, as `[r, g, b, a]` or as `[r, g, b]` with an opaque alpha. Each channel reaches the GPU as given. A float target such as `Rgba16Float` keeps a value above 1 or below 0, and a unorm target such as `Rgba8Unorm` clamps it to the 0 to 1 range when it clears.
+
+        A channel that is NaN or infinite is an error that leaves the pass unchanged.
+
         Example:
 
         ```python
