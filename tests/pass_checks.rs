@@ -335,6 +335,30 @@ fn blending_into_a_target_that_cannot_blend_errors() {
     });
 }
 
+// Story: a render refused for a foreign target leaves the meshes it would draw to their
+// owner, where it uploaded them to its own device and the owner's next render panicked.
+#[test]
+fn a_refused_render_leaves_the_mesh_to_its_owner() {
+    pollster::block_on(async move {
+        let owner = Renderer::new();
+        let frame = target(&owner, 8).await;
+        let other = Renderer::new();
+        let _context = target(&other, 8).await;
+        let mesh = Mesh::new();
+        mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
+        let shader = Shader::from_mesh(&mesh);
+
+        let result = other.render(&shader, &frame);
+        assert!(
+            matches!(result, Err(RendererError::ForeignTarget)),
+            "{result:?}"
+        );
+        owner
+            .render(&shader, &frame)
+            .expect("the owner draws its mesh");
+    });
+}
+
 // Story: a shader that samples the texture its pass draws into is refused, for the
 // frame of a TextureTarget and for a pass target alike, while a later pass reads it.
 #[test]

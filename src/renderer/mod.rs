@@ -982,6 +982,13 @@ impl RenderContext {
             });
 
         let pass_list = renderable.passes();
+        // Compute passes never draw into the target, so a render made only of
+        // compute passes neither checks the target nor acquires a frame.
+        let draws_frame = pass_list.iter().any(|pass| !pass.is_compute());
+        // Planning uploads mesh buffers to this device, so a foreign target is refused first.
+        if draws_frame {
+            self.check_owner(target)?;
+        }
         let draws = pass_list
             .iter()
             .map(|pass| match pass.is_compute() {
@@ -990,10 +997,7 @@ impl RenderContext {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        // Compute passes never draw into the target, so a
-        // render made only of compute passes acquires no frame.
-        if pass_list.iter().any(|pass| !pass.is_compute()) {
-            self.check_owner(target)?;
+        if draws_frame {
             *acquired = Some(self.acquire_frame(target)?);
         }
         let frame = acquired.as_deref();
