@@ -4,7 +4,7 @@ use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
 use crate::Shader;
-use crate::material::{AlphaMode, Material};
+use crate::material::{AlphaMode, Material, TextureSlot};
 use crate::texture::read_texture_input;
 
 #[wasm_bindgen]
@@ -88,6 +88,31 @@ impl Material {
         let o = vec2_from_vec(&offset, "Material.uvTransform offset")?;
         let s = vec2_from_vec(&scale, "Material.uvTransform scale")?;
         Ok(self.uv_transform(o, s, rotation))
+    }
+
+    #[wasm_bindgen(js_name = "textureUv")]
+    #[lsp_doc("docs/api/scene/material/texture_uv.md")]
+    pub fn texture_uv_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "TextureSlot")] slot: &JsValue,
+        set: f64,
+    ) -> Result<Material, JsError> {
+        let set = crate::platforms::web::read_unsigned(set, "set")?;
+        Ok(self.texture_uv(read_texture_slot(slot)?, set)?)
+    }
+
+    #[wasm_bindgen(js_name = "textureTransform")]
+    #[lsp_doc("docs/api/scene/material/texture_transform.md")]
+    pub fn texture_transform_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "TextureSlot")] slot: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] offset: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] scale: Vec<f32>,
+        rotation: f32,
+    ) -> Result<Material, JsError> {
+        let o = vec2_from_vec(&offset, "textureTransform offset")?;
+        let s = vec2_from_vec(&scale, "textureTransform scale")?;
+        Ok(self.texture_transform(read_texture_slot(slot)?, o, s, rotation))
     }
 
     #[wasm_bindgen(js_name = "alphaMode")]
@@ -195,4 +220,17 @@ fn read_alpha_mode(value: &JsValue) -> Result<AlphaMode, JsError> {
         2 => Ok(AlphaMode::Blend),
         _ => Err(JsError::new(&format!("{code} is not an AlphaMode"))),
     }
+}
+
+/// Maps a `TextureSlot` from JS, a number in variant order, to the slot.
+/// Anything else is an error, which wasm-bindgen would read as `BaseColor`.
+fn read_texture_slot(value: &JsValue) -> Result<TextureSlot, JsError> {
+    let code = value
+        .as_f64()
+        .ok_or_else(|| JsError::new(&format!("slot must be a TextureSlot, got {value:?}")))?;
+    let index = crate::platforms::web::read_unsigned(code, "slot")?;
+    TextureSlot::ALL
+        .get(index as usize)
+        .copied()
+        .ok_or_else(|| JsError::new(&format!("{code} is not a TextureSlot")))
 }

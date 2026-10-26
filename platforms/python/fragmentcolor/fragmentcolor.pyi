@@ -15,6 +15,7 @@ __all__ = [
     "SceneLoadError",
     "LightError",
     "CameraError",
+    "MaterialError",
     "Renderer",
     "Shader",
     "Pass",
@@ -31,6 +32,7 @@ __all__ = [
     "LightKind",
     "Material",
     "AlphaMode",
+    "TextureSlot",
     "Texture",
     "TextureId",
     "TextureFormat",
@@ -66,6 +68,8 @@ class SceneLoadError(FragmentColorError): ...
 class LightError(FragmentColorError): ...
 
 class CameraError(FragmentColorError): ...
+
+class MaterialError(FragmentColorError): ...
 
 @final
 class Renderer:
@@ -3867,6 +3871,13 @@ class Material:
       `normal_map`, `occlusion_map`, `emissive_map`) and sampled by the default
       shader. Unset slots resolve to the renderer's 1×1 defaults so the shader's
       bind group is always complete.
+    - **UV sources**: each texture slot samples its own UV set (`UV0` or `UV1`)
+      through its own `KHR_texture_transform`. The PBR shader keeps them in
+      `material.uv`, five entries in
+      [`TextureSlot`](https://fragmentcolor.org/api/scene/textureslot) order,
+      each with `uv_set`, `offset`, `scale` and `rotation`.
+      `Material::texture_uv`, `Material::texture_transform` and
+      `Material::uv_transform` set them.
     - **Per-Model transform** rides the **per-instance vertex attribute** stream
       as `model_0` to `model_3` (four `vec4<f32>` columns of a `mat4x4<f32>`, at
       locations 3 to 6 in the PBR shader). The renderer fills it from each
@@ -4210,22 +4221,24 @@ class Material:
         """
     def uv_transform(self, offset: Sequence[float], scale: Sequence[float], rotation: float) -> Material:
         """
-        Set a global UV transform applied to every map sample. Matches glTF's
+        Set one UV transform on all five texture slots, the transform glTF's
         [`KHR_texture_transform`](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_texture_transform)
-        composition: scale → rotate → offset, with the result fed to every
-        `textureSample` in the PBR fragment shader.
+        describes. Each slot's UV is scaled first, then rotated, then offset:
 
-        - `offset` translates the UV after scale + rotation (`[0, 0]` is no translation)
-        - `scale` multiplies the UV first (`[1, 1]` is no scale)
-        - `rotation` rotates the scaled UV in radians (positive = counter-clockwise
-          in WGSL's `(u, v)` convention)
+        - `scale` multiplies the UV (`[1, 1]` keeps it)
+        - `rotation` turns the scaled UV around the origin, in radians. A positive
+          angle turns the UVs counter-clockwise in texture space, where `v` points
+          down, so the image itself turns clockwise
+        - `offset` moves the result, in fractions of the texture (`[0, 0]` keeps it)
 
-        Defaults to identity (scale `[1, 1]`, rotation `0`, offset `[0, 0]`) so an
-        unset Material samples textures untransformed. The transform is shared
-        across all five texture slots; per-map transforms (and the per-map
-        `texCoord` selector that picks `UV0` vs `UV1`) are out of scope for the
-        built-in PBR shader. For glTFs that carry `KHR_texture_transform` only on
-        the base-color map (the most common case), the global path is lossless.
+        Every slot starts with the identity transform: scale `[1, 1]`, rotation
+        `0` and offset `[0, 0]`.
+        [`texture_transform`](https://fragmentcolor.org/api/scene/material#texture_transform)
+        sets the transform of one slot, so a call after `uv_transform` replaces
+        that slot's transform and keeps the other four. Each slot applies its
+        transform to the UV set that
+        [`texture_uv`](https://fragmentcolor.org/api/scene/material#texture_uv)
+        picks for it.
 
         Example:
 
@@ -4234,6 +4247,76 @@ class Material:
 
         # Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
         brick = Material.pbr().uv_transform([0.5, 0.0], [4.0, 4.0], 0.785) # 45° in radians
+        ```
+        """
+    def texture_uv(self, slot: TextureSlot, set: float) -> Material:
+        """
+        Pick the vertex UV set one texture slot samples: `0` reads `Vertex::UV0`
+        and `1` reads `Vertex::UV1`. glTF calls this choice `texCoord`. Baked
+        lighting and occlusion often live on a second UV layout, apart from the
+        tiled UVs of the color maps. Every slot starts on set 0.
+
+        A set other than 0 or 1 returns `MaterialError::UvSet` and keeps the
+        slot's set. JavaScript throws an `Error`, Python raises `MaterialError`, a
+        `FragmentColorError` that is also a `ValueError`, Swift throws
+        `FragmentColorError`, and Kotlin throws `FragmentColorException`.
+
+        The PBR shader reads `UV1` from every vertex, and a mesh whose vertices
+        lack it fails to attach with an error that names `uv1`. `Vertex::pbr`
+        seeds `UV1` at `[0, 0]`, so a slot on set 1 reads that one point until
+        the mesh sets its own. `Scene::load` gives a primitive without
+        `TEXCOORD_1` its `TEXCOORD_0` values as `UV1`, so set 1 reads the same UVs
+        as set 0 there.
+
+        The slot's
+        [`texture_transform`](https://fragmentcolor.org/api/scene/material#texture_transform)
+        applies to whichever set it reads.
+
+        Example:
+
+        ```python
+        from fragmentcolor import Material, Mesh, TextureSlot, Vertex
+
+        mesh = Mesh()
+        mesh.add_vertex(
+            Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]).set(Vertex.UV1, [0.25, 0.75]),
+        )
+
+        # The occlusion map follows the second UV layout.
+        material = Material.pbr().texture_uv(TextureSlot.Occlusion, 1)
+        ```
+        """
+    def texture_transform(self, slot: TextureSlot, offset: Sequence[float], scale: Sequence[float], rotation: float) -> Material:
+        """
+        Give one texture slot its own UV transform, the one glTF's
+        [`KHR_texture_transform`](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_texture_transform)
+        describes. The slot's UV is scaled first, then rotated, then offset:
+
+        - `scale` multiplies the UV (`[1, 1]` keeps it)
+        - `rotation` turns the scaled UV around the origin, in radians. A positive
+          angle turns the UVs counter-clockwise in texture space, where `v` points
+          down, so the image itself turns clockwise
+        - `offset` moves the result, in fractions of the texture (`[0, 0]` keeps it)
+
+        Every slot starts with the identity transform. The transform applies to
+        the UV set that
+        [`texture_uv`](https://fragmentcolor.org/api/scene/material#texture_uv)
+        picks for the slot.
+        [`uv_transform`](https://fragmentcolor.org/api/scene/material#uv_transform)
+        sets one transform on all five slots, and a `texture_transform` after it
+        replaces the transform of its slot alone.
+
+        Whether a UV past 0 to 1 repeats the texture depends on the sampler. The
+        PBR shader samples every slot with the sampler options of the base color
+        texture.
+
+        Example:
+
+        ```python
+        from fragmentcolor import Material, TextureSlot
+
+        # Every map spans the surface twice, and the normal map eight times.
+        tiles = Material.pbr().uv_transform([0.0, 0.0], [2.0, 2.0], 0.0).texture_transform(TextureSlot.Normal, [0.0, 0.0], [8.0, 8.0], 0.0)
         ```
         """
     def alpha_mode(self, mode: AlphaMode) -> Material:
@@ -4472,6 +4555,39 @@ class AlphaMode:
     Opaque: ClassVar[AlphaMode]
     Mask: ClassVar[AlphaMode]
     Blend: ClassVar[AlphaMode]
+
+@final
+class TextureSlot:
+    """
+    Names one of the five texture slots of a PBR `Material`, the maps glTF 2.0
+    defines for metallic-roughness materials:
+
+    - `BaseColor`, which `Material::base_color_texture` binds
+    - `MetallicRoughness`, which `Material::metallic_roughness_texture` binds
+    - `Normal`, which `Material::normal_texture` binds
+    - `Occlusion`, which `Material::occlusion_texture` binds
+    - `Emissive`, which `Material::emissive_texture` binds
+
+    Each slot samples its own UV set through its own transform.
+    [`Material::texture_uv`](https://fragmentcolor.org/api/scene/material#texture_uv)
+    picks the set, and
+    [`Material::texture_transform`](https://fragmentcolor.org/api/scene/material#texture_transform)
+    sets the transform. A glTF file loaded with `Scene::load` sets both from
+    each texture's `texCoord` and `KHR_texture_transform`.
+
+    Example:
+
+    ```python
+    from fragmentcolor import Material, TextureSlot
+
+    material = Material.pbr().texture_uv(TextureSlot.Occlusion, 1).texture_transform(TextureSlot.Normal, [0.0, 0.0], [4.0, 4.0], 0.0)
+    ```
+    """
+    BaseColor: ClassVar[TextureSlot]
+    MetallicRoughness: ClassVar[TextureSlot]
+    Normal: ClassVar[TextureSlot]
+    Occlusion: ClassVar[TextureSlot]
+    Emissive: ClassVar[TextureSlot]
 
 @final
 class Texture:

@@ -40,6 +40,7 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<crate::scene::LightKind>()?;
     m.add_class::<crate::material::Material>()?;
     m.add_class::<crate::material::AlphaMode>()?;
+    m.add_class::<crate::material::TextureSlot>()?;
 
     // Texture handle + format
     m.add_class::<crate::texture::Texture>()?;
@@ -83,6 +84,7 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("SceneLoadError", PythonError::SceneLoad.class(py)?)?;
     m.add("LightError", PythonError::Light.class(py)?)?;
     m.add("CameraError", PythonError::Camera.class(py)?)?;
+    m.add("MaterialError", PythonError::Material.class(py)?)?;
 
     Ok(())
 }

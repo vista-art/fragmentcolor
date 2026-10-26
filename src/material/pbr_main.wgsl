@@ -5,7 +5,8 @@
 //   group 0 binding 0 — camera   (view_proj, position)
 //   group 0 binding 1 — lights   (LightArray: count + ambient + up to
 //                                 PBR_MAX_LIGHTS KHR_lights_punctual lights)
-//   group 1 binding 0 — material (PBR factors + alpha_mode flag)
+//   group 1 binding 0 — material (PBR factors, alpha_mode flag, and the UV
+//                                 set and transform of each texture slot)
 //   group 2 bindings 0..5 — five glTF PBR-MR maps + shared sampler
 //
 // Per-Model transform comes through the **per-instance** vertex attribute
@@ -19,10 +20,8 @@
 //   @location(1) normal   : vec3<f32>
 //   @location(2) uv0      : vec2<f32>
 //   @location(7) color0   : vec4<f32>  — glTF COLOR_0 vertex tint (white default)
-//   @location(8) uv1      : vec2<f32>  — glTF TEXCOORD_1, used by maps that
-//                                        opt into the second UV set (the
-//                                        per-map `texCoord` selector lands
-//                                        with KHR_texture_transform)
+//   @location(8) uv1      : vec2<f32>  — glTF TEXCOORD_1, sampled by the
+//                                        texture slots set to UV set 1
 //   @location(9) tangent  : vec4<f32>  — glTF TANGENT; `xyz` is the tangent
 //                                        direction in object space, `w` is
 //                                        the bitangent sign (±1) for the
@@ -46,14 +45,30 @@ struct PbrMaterial {
   // `Blend` ignore the flag — their behavior is pipeline-state
   // (depth-write, blend equation) rather than fragment-shader logic.
   alpha_mode_flag: u32,
-  // KHR_texture_transform — single global UV transform applied to every
-  // map's sampling UV. Spec-correct per-map transforms are a follow-up;
-  // most glTF assets only carry KHR_texture_transform on `base_color`
-  // anyway, and the global path covers that case losslessly when the
-  // other maps share the same transform (or are absent).
-  uv_offset: vec2<f32>,
-  uv_scale: vec2<f32>,
-  uv_rotation: f32,
+  // The UV source of each texture slot, in the order base color,
+  // metallic-roughness, normal, occlusion, emissive.
+  @align(16) uv: array<TextureUv, 5>,
+}
+
+// The UVs a texture slot samples: the vertex UV set `uv_set` names (0 or 1),
+// through its KHR_texture_transform. The struct spans 32 bytes, a stride
+// a uniform array can take.
+struct TextureUv {
+  offset: vec2<f32>,
+  scale: vec2<f32>,
+  rotation: f32,
+  @size(12) uv_set: u32,
+}
+
+// A slot's sampling UV. KHR_texture_transform scales the UV, rotates it,
+// then offsets it. A positive rotation turns the UVs counter-clockwise in
+// texture space, where v points down, as the extension's example and the
+// Khronos sample renderer do.
+fn slot_uv(slot: TextureUv, uv0: vec2<f32>, uv1: vec2<f32>) -> vec2<f32> {
+  let uv = select(uv0, uv1, slot.uv_set == 1u) * slot.scale;
+  let s = sin(slot.rotation);
+  let c = cos(slot.rotation);
+  return vec2<f32>(c * uv.x + s * uv.y, c * uv.y - s * uv.x) + slot.offset;
 }
 
 // glTF KHR_lights_punctual model. Each entry in `lights.lights[i]` is one
@@ -119,7 +134,7 @@ struct VsOut {
   @builtin(position) clip: vec4<f32>,
   @location(0) world: vec3<f32>,
   @location(1) world_normal: vec3<f32>,
-  @location(2) uv: vec2<f32>,
+  @location(2) uv0: vec2<f32>,
   @location(3) vertex_color: vec4<f32>,
   @location(4) uv1: vec2<f32>,
   // World-space tangent in .xyz; bitangent sign in .w (the spec's
@@ -146,7 +161,7 @@ fn vs_main(
   out.clip = camera.view_proj * world;
   out.world = world.xyz;
   out.world_normal = mesh_transform_normal(normal, model);
-  out.uv = uv0;
+  out.uv0 = uv0;
   out.vertex_color = color0;
   out.uv1 = uv1;
   // Tangents are direction vectors, transformed by the model matrix's
@@ -159,21 +174,18 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-  // KHR_texture_transform — single global UV transform applied to every
-  // map sample. Scale → rotate → offset matches the spec's transform
-  // composition. Defaults (scale = [1,1], rotation = 0, offset = [0,0])
-  // map every UV to itself so unset materials sample as before.
-  let scaled = in.uv * material.uv_scale;
-  let s = sin(material.uv_rotation);
-  let c = cos(material.uv_rotation);
-  let rotated = vec2<f32>(scaled.x * c - scaled.y * s, scaled.x * s + scaled.y * c);
-  let uv = rotated + material.uv_offset;
+  // Each slot samples its own UV set through its own transform.
+  let base_color_uv = slot_uv(material.uv[0], in.uv0, in.uv1);
+  let metallic_roughness_uv = slot_uv(material.uv[1], in.uv0, in.uv1);
+  let normal_uv = slot_uv(material.uv[2], in.uv0, in.uv1);
+  let occlusion_uv = slot_uv(material.uv[3], in.uv0, in.uv1);
+  let emissive_uv = slot_uv(material.uv[4], in.uv0, in.uv1);
 
   // Base color (albedo / F0 source) = factor × map sample × vertex tint.
   // glTF `COLOR_0` is a per-vertex linear-RGB(A) multiplier, defaults to
   // white so the existing factor × map product is preserved when the
   // mesh doesn't carry vertex colors.
-  let base_color_sample = textureSample(base_color_map, pbr_sampler, uv);
+  let base_color_sample = textureSample(base_color_map, pbr_sampler, base_color_uv);
   let albedo = material.base_color.rgb * base_color_sample.rgb * in.vertex_color.rgb;
   let alpha = material.base_color.a * base_color_sample.a * in.vertex_color.a;
 
@@ -191,7 +203,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   // by the spec; some authoring tools stash ambient occlusion in it (the
   // "ORM" texture packing convention) — we read it from `occlusion_map`
   // instead, so the unused channel here is harmless.
-  let mr = textureSample(metallic_roughness_map, pbr_sampler, uv).bgr;
+  let mr = textureSample(metallic_roughness_map, pbr_sampler, metallic_roughness_uv).bgr;
   let metallic = material.metallic * mr.r;
   let roughness = material.roughness * mr.g;
 
@@ -203,7 +215,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   // collapses to the geometric `N`, so unset maps don't perturb shading.
   // glTF spec: `B = cross(N, T) * tangent.w` (handedness preserved
   // through model transform + the `tangent.w` sign).
-  let n_sample = textureSample(normal_map, pbr_sampler, uv).xyz * 2.0 - 1.0;
+  let n_sample = textureSample(normal_map, pbr_sampler, normal_uv).xyz * 2.0 - 1.0;
   let tn = vec3<f32>(n_sample.xy * material.normal_scale, n_sample.z);
   let n = normalize(in.world_normal);
   let t = normalize(in.world_tangent.xyz);
@@ -212,11 +224,11 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 
   // Occlusion. glTF reads only the red channel; blend toward `1.0` by the
   // strength factor so `strength = 0` ignores the map entirely.
-  let ao_sample = textureSample(occlusion_map, pbr_sampler, uv).r;
+  let ao_sample = textureSample(occlusion_map, pbr_sampler, occlusion_uv).r;
   let ao = mix(1.0, ao_sample, material.occlusion_strength);
 
   // Emissive = factor * map sample.
-  let emissive_sample = textureSample(emissive_map, pbr_sampler, uv).rgb;
+  let emissive_sample = textureSample(emissive_map, pbr_sampler, emissive_uv).rgb;
   let emissive_color = material.emissive * emissive_sample;
 
   let v = normalize(camera.position - in.world);

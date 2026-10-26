@@ -73,6 +73,8 @@ pub(crate) enum PythonError {
     Light,
     /// Camera parameters that build no finite matrix, also a `ValueError`.
     Camera,
+    /// A material setter value the material can't use, also a `ValueError`.
+    Material,
 }
 
 #[cfg(python)]
@@ -83,6 +85,7 @@ impl PythonError {
             PythonError::SceneLoad => "SceneLoadError",
             PythonError::Light => "LightError",
             PythonError::Camera => "CameraError",
+            PythonError::Material => "MaterialError",
         }
     }
 
@@ -95,10 +98,12 @@ impl PythonError {
         static SCENE_LOAD: PyOnceLock<Py<PyType>> = PyOnceLock::new();
         static LIGHT: PyOnceLock<Py<PyType>> = PyOnceLock::new();
         static CAMERA: PyOnceLock<Py<PyType>> = PyOnceLock::new();
+        static MATERIAL: PyOnceLock<Py<PyType>> = PyOnceLock::new();
         let (cell, builtin) = match self {
             PythonError::SceneLoad => (&SCENE_LOAD, py.get_type::<PyRuntimeError>()),
             PythonError::Light => (&LIGHT, py.get_type::<PyValueError>()),
             PythonError::Camera => (&CAMERA, py.get_type::<PyValueError>()),
+            PythonError::Material => (&MATERIAL, py.get_type::<PyValueError>()),
         };
         let class = cell.get_or_try_init(py, || -> PyResult<Py<PyType>> {
             let bases = PyTuple::new(py, [py.get_type::<PyFragmentColorError>(), builtin])?;

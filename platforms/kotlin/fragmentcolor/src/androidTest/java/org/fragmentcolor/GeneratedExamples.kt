@@ -1118,6 +1118,21 @@ class GeneratedExamples : ExampleCase() {
     }
 
     @Test
+    fun scene_material_texture_transform() = example("docs/api/scene/material/texture_transform.md") {
+        // Every map spans the surface twice, and the normal map eight times.
+        val tiles = Material.pbr().uvTransform(listOf(0.0f, 0.0f), listOf(2.0f, 2.0f), 0.0f).textureTransform(TextureSlot.NORMAL, listOf(0.0f, 0.0f), listOf(8.0f, 8.0f), 0.0f)
+    }
+
+    @Test
+    fun scene_material_texture_uv() = example("docs/api/scene/material/texture_uv.md") {
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)).set(Vertex.UV1, listOf(0.25f, 0.75f)), )
+
+        // The occlusion map follows the second UV layout.
+        val material = Material.pbr().textureUv(TextureSlot.OCCLUSION, 1u)
+    }
+
+    @Test
     fun scene_material_uv_transform() = example("docs/api/scene/material/uv_transform.md") {
         // Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
         val brick = Material.pbr().uvTransform(listOf(0.5f, 0.0f), listOf(4.0f, 4.0f), 0.785f) // 45° in radians
@@ -1456,6 +1471,11 @@ class GeneratedExamples : ExampleCase() {
 
         // Swap in a deliberate order: shadow map, then geometry, then overlay.
         scene.setPasses(arrayOf(Pass("shadow"), Pass("geometry"), Pass("overlay"),))
+    }
+
+    @Test
+    fun scene_texture_slot_TextureSlot() = example("docs/api/scene/texture_slot/texture_slot.md") {
+        val material = Material.pbr().textureUv(TextureSlot.OCCLUSION, 1u).textureTransform(TextureSlot.NORMAL, listOf(0.0f, 0.0f), listOf(4.0f, 4.0f), 0.0f)
     }
 
     @Test

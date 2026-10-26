@@ -1278,6 +1278,25 @@ final class GeneratedExamples: ExampleCase {
         }
     }
 
+    func test_scene_material_texture_transform() async {
+        await example("docs/api/scene/material/texture_transform.md") {
+            // Every map spans the surface twice, and the normal map eight times.
+            let tiles = try Material.pbr().uvTransform([0.0, 0.0], [2.0, 2.0], 0.0).textureTransform(TextureSlot.normal, [0.0, 0.0], [8.0, 8.0], 0.0)
+        }
+    }
+
+    func test_scene_material_texture_uv() async {
+        await example("docs/api/scene/material/texture_uv.md") {
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]).set(Vertex.UV1, [0.25, 0.75])
+            )
+
+            // The occlusion map follows the second UV layout.
+            let material = try Material.pbr().textureUv(TextureSlot.occlusion, 1)
+        }
+    }
+
     func test_scene_material_uv_transform() async {
         await example("docs/api/scene/material/uv_transform.md") {
             // Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
@@ -1695,6 +1714,12 @@ final class GeneratedExamples: ExampleCase {
                 Pass("geometry"),
                 Pass("overlay"),
             ])
+        }
+    }
+
+    func test_scene_texture_slot_TextureSlot() async {
+        await example("docs/api/scene/texture_slot/texture_slot.md") {
+            let material = try Material.pbr().textureUv(TextureSlot.occlusion, 1).textureTransform(TextureSlot.normal, [0.0, 0.0], [4.0, 4.0], 0.0)
         }
     }
 

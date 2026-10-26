@@ -25,6 +25,7 @@ docs/api/scene/light/kind.md kotlin Light.kind: () -> text | rust () -> LightKin
 docs/api/scene/light/kind.md python Light.kind: () -> text | rust () -> LightKind
 docs/api/scene/light/kind.md swift Light.kind: () -> text | rust () -> LightKind
 docs/api/scene/light/kind.md web Light.kind: () -> text | rust () -> LightKind
+docs/api/scene/material/texture_uv.md python Material.texture_uv: (TextureSlot, float) -> self throws | rust (TextureSlot, int) -> self throws
 docs/api/scene/model/set_transform.md kotlin Model.setTransform: (floats) -> unit throws | rust (matrix) -> unit
 docs/api/scene/model/set_transform.md swift Model.setTransform: (floats) -> unit throws | rust (matrix) -> unit
 docs/api/scene/model/transform.md kotlin Model.transform: () -> floats | rust () -> matrix
