@@ -979,7 +979,8 @@ the caller drops its handle.
 
 Returns `Result<&Pass, PassError>`. A Model fails at attach time when
 the Mesh layout doesn't match the Material's shader, and with
-`PassError::ShaderKind` on a pass of compute shaders. Cameras always
+`PassError::ShaderKind` on a pass of compute shaders. A Model that fails
+leaves the pass and its mesh as they were. Cameras always
 succeed. A Light fails with `PassError::LightCapReached { cap }` when a
 shader on the pass already holds as many lights as it takes on this
 device, and a Model fails the same way when its shader would take more
