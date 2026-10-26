@@ -504,11 +504,12 @@ impl LightSet {
         if words > budget {
             // Promote the largest boxes until every index list fits one binding.
             kept.sort_by_key(|(index, _, cells)| (std::cmp::Reverse(cells.volume()), *index));
-            while words > budget && !kept.is_empty() {
-                let largest = kept.remove(0);
-                words = words + 1 - u64::from(largest.2.volume());
-                promoted.push(largest);
+            let mut cut = 0;
+            while words > budget && cut < kept.len() {
+                words = words + 1 - u64::from(kept[cut].2.volume());
+                cut += 1;
             }
+            promoted.extend(kept.drain(..cut));
             kept.sort_by_key(|(index, _, _)| *index);
         }
         promoted.sort_by_key(|(index, _, _)| *index);

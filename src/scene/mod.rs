@@ -32,7 +32,7 @@ mod scene;
 
 pub use camera::*;
 pub use light::*;
-pub(crate) use light::{GpuLight, LightObject, bump_epoch, current_epoch};
+pub(crate) use light::{GpuLight, LightObject, PassLights, bump_epoch, current_epoch};
 pub use loader::{GltfSource, SceneLoadError, SceneSource};
 pub use object::SceneObject;
 pub use scene::{PassRef, Scene};

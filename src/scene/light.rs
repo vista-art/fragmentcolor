@@ -13,6 +13,7 @@
 use glam::Vec3;
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -437,14 +438,32 @@ impl Light {
     }
 }
 
+/// The lights a pass holds, in add order, each once.
+#[derive(Debug, Default)]
+pub(crate) struct PassLights {
+    list: Vec<Light>,
+    ids: HashSet<u64>,
+}
+
+impl PassLights {
+    /// Holds `light`, unless the pass already does.
+    pub(crate) fn push(&mut self, light: &Light) {
+        if self.ids.insert(light.object.id) {
+            self.list.push(light.clone());
+        }
+    }
+
+    /// The lights in add order.
+    pub(crate) fn iter(&self) -> std::slice::Iter<'_, Light> {
+        self.list.iter()
+    }
+}
+
 impl SceneObject for Light {
     fn attach(&self, pass: &crate::Pass) -> Result<(), crate::PassError> {
         self.object.attach_to_pass(pass)?;
         // The pass holds the light, so it lights after the caller drops its handle.
-        let mut lights = pass.object.lights.write();
-        if !lights.iter().any(|light| light.object.id == self.object.id) {
-            lights.push(self.clone());
-        }
+        pass.object.lights.write().push(self);
         Ok(())
     }
 
@@ -690,6 +709,44 @@ mod tests {
             material.shader().object.gpu_lights(),
             [GpuLight::placeholder()]
         );
+    }
+
+    #[test]
+    fn dropped_lights_leave_room_under_the_cap() {
+        // The list keeps dropped lights until it prunes, and the cap counts live ones.
+        crate::shader::lower_test_cap(4);
+        let material = Material::pbr();
+        let first = crate::Pass::new("first");
+        first
+            .add(&crate::scene::Model::new(
+                pbr_triangle_mesh(),
+                material.clone(),
+            ))
+            .expect("model");
+        for index in 0..4 {
+            first
+                .add(&Light::point([index as f32, 0.0, 0.0], [1.0; 3]))
+                .expect("under the cap");
+        }
+        drop(first);
+        let second = crate::Pass::new("second");
+        second
+            .add(&crate::scene::Model::new(
+                pbr_triangle_mesh(),
+                material.clone(),
+            ))
+            .expect("model");
+        for index in 0..4 {
+            second
+                .add(&Light::point([index as f32, 1.0, 0.0], [1.0; 3]))
+                .expect("the dropped lights leave room");
+        }
+        let fifth = second.add(&Light::point([0.0, 2.0, 0.0], [1.0; 3]));
+        assert!(matches!(
+            fifth,
+            Err(crate::PassError::LightCapReached { cap: 4 })
+        ));
+        assert_eq!(material.shader().object.gpu_lights().len(), 4);
     }
 
     #[test]

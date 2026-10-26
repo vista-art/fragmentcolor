@@ -381,7 +381,7 @@ pub struct PassObject {
     /// The lights added to this pass, in add order. Holding them keeps them
     /// lighting after the caller drops its handles, and a shader that joins
     /// the pass later takes every one.
-    pub(crate) lights: RwLock<Vec<crate::scene::Light>>,
+    pub(crate) lights: RwLock<crate::scene::PassLights>,
     pub(crate) viewport: RwLock<Option<ScreenRegion>>,
     pub(crate) required_buffer_size: RwLock<u64>,
     /// Snapshot of the most recently attached Camera's `(view, position)`,
@@ -423,7 +423,7 @@ impl PassObject {
             shaders: RwLock::new(Vec::new()),
             model_entries: RwLock::new(Vec::new()),
             scene_objects: RwLock::new(Vec::new()),
-            lights: RwLock::new(Vec::new()),
+            lights: RwLock::new(crate::scene::PassLights::default()),
             viewport: RwLock::new(None),
             input: RwLock::new(PassInput::Clear(Color::transparent())),
             required_buffer_size: RwLock::new(0),
