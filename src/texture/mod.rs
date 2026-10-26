@@ -118,6 +118,10 @@ crate::impl_fc_kind!(Mipmap, "Mipmap");
 // __fc_kind brand) and route it as TextureInput::Prepared.
 crate::impl_js_bridge!(Mipmap, crate::texture::TextureError);
 
+/// The side limit a chain decodes with. It has no device yet,
+/// and `create_texture` checks its size against the device when it uploads.
+const ANY_SIDE: u32 = u32::MAX;
+
 impl Mipmap {
     /// Build a mip chain from a [`TextureInput`]. Pure CPU work — call from
     /// any thread (worker, thread pool, async task), then hand the chain to
@@ -161,7 +165,7 @@ impl Mipmap {
             // Encoded bytes path. If `options.size` is present, treat as raw
             // pixel data; otherwise decode internally.
             TextureData::Bytes(bytes) => match options.size {
-                None => image::load_from_memory(&bytes)?,
+                None => decode(&bytes, ANY_SIDE)?,
                 Some(size) => {
                     let extent: wgpu::Extent3d = size.into();
                     if extent.width == 0 || extent.height == 0 {
@@ -190,7 +194,7 @@ impl Mipmap {
                     bytes_as_image(&bytes, extent.width, extent.height, wfmt)?
                 }
             },
-            TextureData::Path(path) => image::open(path)?,
+            TextureData::Path(path) => decode(&read_file(&path)?, ANY_SIDE)?,
             // Async / pre-baked / non-prep variants don't fit the sync CPU
             // mipmap pipeline. Surface a clear typed error so callers can
             // match on the same `InvalidInput` variant they already match
@@ -807,12 +811,14 @@ impl TextureObject {
                             usage,
                         )
                     } else {
-                        let image = decode(&bytes, &context.device.limits())?;
+                        let limit = context.device.limits().max_texture_dimension_2d;
+                        let image = decode(&bytes, limit)?;
                         Self::from_image(context.as_ref(), &image, format_override, mipmaps, usage)
                     }
                 }
                 TextureData::Path(path) => {
-                    let image = decode(&read_file(&path)?, &context.device.limits())?;
+                    let limit = context.device.limits().max_texture_dimension_2d;
+                    let image = decode(&read_file(&path)?, limit)?;
                     Self::from_image(context.as_ref(), &image, format_override, mipmaps, usage)
                 }
                 TextureData::Prepared(chain) => Self::from_chain(context.as_ref(), chain, usage),
@@ -1246,13 +1252,14 @@ fn check_source(data: &TextureData, size: Option<Size>) -> Result<(), TextureErr
     }
 }
 
-/// Decodes an encoded image once its header's size fits the device's `limits`,
-/// so an image too large to upload is refused before its pixels take any memory.
-fn decode(bytes: &[u8], limits: &wgpu::Limits) -> Result<DynamicImage, TextureError> {
+/// Decodes an encoded image, its format guessed from the bytes, once each side
+/// its header declares fits `limit`, so an image too large to upload is refused
+/// before its pixels take any memory. `create_texture` and `Mipmap::build` share it.
+fn decode(bytes: &[u8], limit: u32) -> Result<DynamicImage, TextureError> {
     let format = image::guess_format(bytes)?;
     let reader = || image::ImageReader::with_format(std::io::Cursor::new(bytes), format);
     let (width, height) = reader().into_dimensions()?;
-    check_size(width, height, limits.max_texture_dimension_2d)?;
+    check_size(width, height, limit)?;
     Ok(reader().decode()?)
 }
 

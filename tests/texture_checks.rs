@@ -365,6 +365,27 @@ fn sizes_come_with_raw_bytes_only() {
     });
 }
 
+// Story: Mipmap::build reads a file's format from its bytes, as create_texture
+// does, so a PNG saved without an extension builds a chain, where the extension
+// decided the format and the file failed to decode.
+#[test]
+fn mip_chains_read_files_like_create_texture() {
+    pollster::block_on(async move {
+        let folder = tempfile::tempdir().expect("temp folder");
+        let path = folder.path().join("3f9a2c");
+        let pixel = image::RgbaImage::from_raw(2, 2, vec![255; 16]).expect("pixels");
+        std::fs::write(&path, encode(pixel.into(), image::ImageFormat::Png)).expect("write");
+
+        let chain = Mipmap::build((path.as_path(), TextureFormat::Rgba8Unorm))
+            .expect("Mipmap::build reads a PNG without an extension");
+        assert_eq!(chain.size(), (2, 2));
+        Renderer::new()
+            .create_texture(path.as_path())
+            .await
+            .expect("create_texture reads it too");
+    });
+}
+
 // Story: a buffer copy can't fill a depth texture, so raw pixels, seed bytes
 // and a write into Depth32Float are refused before they reach wgpu.
 #[test]
