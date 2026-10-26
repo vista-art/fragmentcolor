@@ -24,8 +24,8 @@ mesh.add_vertex(
 let scene = Scene::new();
 scene.add(&Model::new(mesh, Material::pbr()))?;
 
-let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)
-    .look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)?
+    .look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
 scene.set_default_camera(&camera);
 # Ok(())
 # }

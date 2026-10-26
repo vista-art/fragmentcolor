@@ -929,13 +929,13 @@ final class GeneratedExamples: ExampleCase {
     func test_scene_camera_orthographic() async {
         await example("docs/api/scene/camera/orthographic.md") {
             // A 16:9 viewport, 10 world units tall, depth range 0.1..100.
-            let camera = Camera.orthographic(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0)
+            let camera = try Camera.orthographic(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0)
         }
     }
 
     func test_scene_camera_perspective() async {
         await example("docs/api/scene/camera/perspective.md") {
-            let camera = Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0)
+            let camera = try Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0)
         }
     }
 
@@ -949,10 +949,10 @@ final class GeneratedExamples: ExampleCase {
 
     func test_scene_camera_set_aspect() async {
         await example("docs/api/scene/camera/set_aspect.md") {
-            let camera = Camera.perspective(1.047, 1.0, 0.1, 100.0)
+            let camera = try Camera.perspective(1.047, 1.0, 0.1, 100.0)
 
             // Window resize: 1920×1080 → wide-screen aspect.
-            camera.setAspect(1920.0 / 1080.0)
+            try camera.setAspect(1920.0 / 1080.0)
         }
     }
 
@@ -1505,7 +1505,7 @@ final class GeneratedExamples: ExampleCase {
             // runs once.
             for camera in scene.cameras() {
                 try camera.lookAt([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
-                camera.setAspect(16.0 / 9.0)
+                try camera.setAspect(16.0 / 9.0)
             }
         }
     }

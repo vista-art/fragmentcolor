@@ -17,8 +17,8 @@ extension Camera {
         _ aspect: Float,
         _ near: Float,
         _ far: Float
-    ) -> Camera {
-        return Camera.perspective(fovyRadians: fovyRadians, aspect: aspect, near: near, far: far)
+    ) throws -> Camera {
+        return try Camera.perspective(fovyRadians: fovyRadians, aspect: aspect, near: near, far: far)
     }
 
     public static func perspective(
@@ -26,8 +26,8 @@ extension Camera {
         _ aspect: Double,
         _ near: Double,
         _ far: Double
-    ) -> Camera {
-        return Camera.perspective(
+    ) throws -> Camera {
+        return try Camera.perspective(
             fovyRadians: Float(fovyRadians),
             aspect: Float(aspect),
             near: Float(near),
@@ -42,8 +42,8 @@ extension Camera {
         _ top: Float,
         _ near: Float,
         _ far: Float
-    ) -> Camera {
-        return Camera.orthographic(
+    ) throws -> Camera {
+        return try Camera.orthographic(
             left: left, right: right, bottom: bottom, top: top, near: near, far: far
         )
     }
@@ -55,8 +55,8 @@ extension Camera {
         _ top: Double,
         _ near: Double,
         _ far: Double
-    ) -> Camera {
-        return Camera.orthographic(
+    ) throws -> Camera {
+        return try Camera.orthographic(
             left: Float(left),
             right: Float(right),
             bottom: Float(bottom),
@@ -82,11 +82,11 @@ extension Camera {
     }
 
     @discardableResult
-    public func setAspect(_ aspect: Float) -> Camera {
-        return setAspect(aspect: aspect)
+    public func setAspect(_ aspect: Float) throws -> Camera {
+        return try setAspect(aspect: aspect)
     }
     @discardableResult
-    public func setAspect(_ aspect: Double) -> Camera {
-        return setAspect(aspect: Float(aspect))
+    public func setAspect(_ aspect: Double) throws -> Camera {
+        return try setAspect(aspect: Float(aspect))
     }
 }

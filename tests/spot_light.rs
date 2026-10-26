@@ -33,7 +33,9 @@ async fn render(inner: f32, outer: f32) -> Vec<u8> {
         .await
         .expect("texture target");
     let camera = Camera::perspective(1.0, 1.0, 0.1, 100.0)
-        .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        .expect("camera")
+        .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+        .expect("camera");
     let spot = Light::spot([0.0, 0.0, 2.0], [0.0, 0.0, -1.0], [1.0, 1.0, 1.0])
         .set_intensity(20.0)
         .set_cone_angles(inner, outer)

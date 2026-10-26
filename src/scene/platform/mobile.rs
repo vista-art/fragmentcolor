@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::renderer::platform::mobile::FragmentColorError;
 use crate::renderer::renderable::SceneObjectHandle;
-use crate::scene::{Camera, Light, LightKind, Model, Scene, SceneSource};
+use crate::scene::{Camera, CameraError, Light, LightKind, Model, Scene, SceneSource};
 use crate::{Material, Mesh, Pass};
 
 /// Mobile-marshallable target for [`Scene::add_to`]: a pass index or a pass
@@ -21,6 +21,13 @@ use crate::{Material, Mesh, Pass};
 pub enum PassTarget {
     Index(u32),
     Name(String),
+}
+
+/// Camera parameters without a finite matrix reach Swift and Kotlin as a render error.
+impl From<CameraError> for FragmentColorError {
+    fn from(error: CameraError) -> Self {
+        FragmentColorError::Render(error.to_string())
+    }
 }
 
 #[uniffi::export]
@@ -120,8 +127,18 @@ impl Model {
 impl Camera {
     #[uniffi::constructor(name = "perspective")]
     #[lsp_doc("docs/api/scene/camera/perspective.md")]
-    pub fn perspective_mobile(fovy_radians: f32, aspect: f32, near: f32, far: f32) -> Arc<Self> {
-        Arc::new(Camera::perspective(fovy_radians, aspect, near, far))
+    pub fn perspective_mobile(
+        fovy_radians: f32,
+        aspect: f32,
+        near: f32,
+        far: f32,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(Camera::perspective(
+            fovy_radians,
+            aspect,
+            near,
+            far,
+        )?))
     }
 
     #[uniffi::constructor(name = "orthographic")]
@@ -133,8 +150,10 @@ impl Camera {
         top: f32,
         near: f32,
         far: f32,
-    ) -> Arc<Self> {
-        Arc::new(Camera::orthographic(left, right, bottom, top, near, far))
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(Camera::orthographic(
+            left, right, bottom, top, near, far,
+        )?))
     }
 
     #[uniffi::method(name = "lookAt")]
@@ -148,13 +167,16 @@ impl Camera {
         let pos = take_vec3(&position, "Camera.lookAt position")?;
         let target = take_vec3(&target, "Camera.lookAt target")?;
         let up = take_vec3(&up, "Camera.lookAt up")?;
-        Ok(Arc::new(self.look_at(pos, target, up)))
+        Ok(Arc::new(self.look_at(pos, target, up)?))
     }
 
     #[uniffi::method(name = "setAspect")]
     #[lsp_doc("docs/api/scene/camera/set_aspect.md")]
-    pub fn set_aspect_mobile(self: Arc<Self>, aspect: f32) -> Arc<Self> {
-        Arc::new(self.set_aspect(aspect))
+    pub fn set_aspect_mobile(
+        self: Arc<Self>,
+        aspect: f32,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(self.set_aspect(aspect)?))
     }
 
     #[uniffi::method(name = "viewProj")]

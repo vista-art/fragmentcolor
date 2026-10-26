@@ -49,11 +49,14 @@ fn draw(app: &App) {
     // Orbit the camera around the origin — one full turn every ~6.3 seconds.
     let t = viewer.start.elapsed().as_secs_f32();
     let radius = 3.0_f32;
-    viewer.camera.look_at(
-        [t.cos() * radius, 1.0, t.sin() * radius],
-        [0.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0],
-    );
+    viewer
+        .camera
+        .look_at(
+            [t.cos() * radius, 1.0, t.sin() * radius],
+            [0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        )
+        .expect("the orbit never looks straight down");
 
     let renderer = app.get_renderer();
     let _ = app.with_target(id, |target| renderer.render(&viewer.scene, target));
@@ -70,8 +73,12 @@ fn resize(app: &App, size: &PhysicalSize<u32>) {
         eprintln!("resize failed: {error}");
     }
     if let Some(viewer) = app.get_state::<Viewer>("viewer") {
+        // A minimized window reports a width of 0, which has no aspect, so the
+        // camera keeps its last one.
         let aspect = size.width as f32 / size.height.max(1) as f32;
-        viewer.camera.set_aspect(aspect);
+        if let Err(error) = viewer.camera.set_aspect(aspect) {
+            eprintln!("aspect not applied: {error}");
+        }
     }
 }
 
@@ -86,11 +93,10 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // so it doesn't need to wait for the window. The Scene injects a default
     // light at render time, so the model reads as lit without us adding one.
     let scene = Scene::load(SceneSource::gltf(build_minimal_triangle_glb())).expect("Scene::load");
-    let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
-        [0.0, 1.0, 3.0],
-        [0.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0],
-    );
+    let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
+        .expect("camera")
+        .look_at([0.0, 1.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+        .expect("camera");
     scene.add(&camera).expect("scene.add(camera)");
     app.add_state(
         "viewer",

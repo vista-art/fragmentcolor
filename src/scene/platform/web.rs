@@ -104,8 +104,13 @@ impl Model {
 impl Camera {
     #[wasm_bindgen(js_name = "perspective")]
     #[lsp_doc("docs/api/scene/camera/perspective.md")]
-    pub fn perspective_js(fovy_radians: f32, aspect: f32, near: f32, far: f32) -> Camera {
-        Camera::perspective(fovy_radians, aspect, near, far)
+    pub fn perspective_js(
+        fovy_radians: f32,
+        aspect: f32,
+        near: f32,
+        far: f32,
+    ) -> Result<Camera, JsError> {
+        Ok(Camera::perspective(fovy_radians, aspect, near, far)?)
     }
 
     #[wasm_bindgen(js_name = "orthographic")]
@@ -117,8 +122,8 @@ impl Camera {
         top: f32,
         near: f32,
         far: f32,
-    ) -> Camera {
-        Camera::orthographic(left, right, bottom, top, near, far)
+    ) -> Result<Camera, JsError> {
+        Ok(Camera::orthographic(left, right, bottom, top, near, far)?)
     }
 
     #[wasm_bindgen(js_name = "lookAt")]
@@ -132,13 +137,13 @@ impl Camera {
         let pos = vec3(&position, "Camera.lookAt position")?;
         let target = vec3(&target, "Camera.lookAt target")?;
         let up = vec3(&up, "Camera.lookAt up")?;
-        Ok(self.look_at(pos, target, up))
+        Ok(self.look_at(pos, target, up)?)
     }
 
     #[wasm_bindgen(js_name = "setAspect")]
     #[lsp_doc("docs/api/scene/camera/set_aspect.md")]
-    pub fn set_aspect_js(&self, aspect: f32) -> Camera {
-        self.set_aspect(aspect)
+    pub fn set_aspect_js(&self, aspect: f32) -> Result<Camera, JsError> {
+        Ok(self.set_aspect(aspect)?)
     }
 
     #[wasm_bindgen(js_name = "viewProj")]

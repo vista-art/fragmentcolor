@@ -14,6 +14,10 @@ The view component starts at identity: eye at the world origin, looking
 down `-Z`, with `+Y` up. Chain [`look_at`](https://fragmentcolor.org/api/scene/camera#look_at)
 to position the camera before binding it.
 
+All six planes must be finite, and `left` and `right`, `bottom` and `top`,
+and `near` and `far` must differ. Planes that close the frustum to nothing
+return `Err(CameraError::Orthographic)`.
+
 ## Example
 
 ```rust
@@ -21,7 +25,7 @@ to position the camera before binding it.
 use fragmentcolor::Camera;
 
 // A 16:9 viewport, 10 world units tall, depth range 0.1..100.
-let camera = Camera::orthographic(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0);
+let camera = Camera::orthographic(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0)?;
 
 # let m = camera.view_proj();
 # // Orthographic preserves parallel lines: the bottom-right corner is the

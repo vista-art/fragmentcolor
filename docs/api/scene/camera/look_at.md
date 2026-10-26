@@ -11,6 +11,11 @@ cleanly off a `perspective` or `orthographic` constructor and can be
 called again after the Camera has been added to a Pass. The new view
 propagates live to every Material the Pass renders.
 
+The vectors must be finite, `target` must differ from `position`, and
+`up` can't be zero or point along the view. Any of those leaves no way to
+orient the camera, so the call returns `Err(CameraError::View)` and the
+Camera keeps its view.
+
 Internally builds the view matrix with `glam::Mat4::look_at_rh`. The
 result is a right-handed view matrix that pairs with the right-handed
 projection produced by [`perspective`](https://fragmentcolor.org/api/scene/camera#perspective)
@@ -27,8 +32,8 @@ the view matrix on every frame.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
-let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)
-    .look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)?
+    .look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
 
 # assert_eq!(camera.position(), [0.0, 1.0, 5.0]);
 # Ok(())

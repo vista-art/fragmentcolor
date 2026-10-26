@@ -82,6 +82,7 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     )?;
     m.add("SceneLoadError", PythonError::SceneLoad.class(py)?)?;
     m.add("LightError", PythonError::Light.class(py)?)?;
+    m.add("CameraError", PythonError::Camera.class(py)?)?;
 
     Ok(())
 }

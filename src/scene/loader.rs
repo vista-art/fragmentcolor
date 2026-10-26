@@ -204,6 +204,8 @@ pub enum SceneLoadError {
     Material(#[from] crate::ShaderError),
     #[error("invalid glTF data: {0}")]
     Invalid(String),
+    #[error("glTF camera: {0}. Load with cameras(false) to skip the file's cameras")]
+    Camera(#[from] crate::scene::CameraError),
 }
 
 /// Entry point invoked by `Scene::load`. Dispatches on the format tag.
@@ -322,7 +324,7 @@ fn visit_node(
     if options.cameras
         && let Some(gltf_camera) = node.camera()
     {
-        let camera = build_camera(&gltf_camera, world);
+        let camera = build_camera(&gltf_camera, world)?;
         scene
             .add(&camera)
             .map_err(|e| SceneLoadError::Invalid(format!("attaching glTF Camera to Scene: {e}")))?;
@@ -418,7 +420,6 @@ fn check_primitive(
 }
 
 /// Check one accessor's type, count and byte range.
-///
 /// An empty `accepted` list marks an attribute the loader never reads, so
 /// only its count is checked. The arithmetic is checked too, because a huge
 /// count would otherwise overflow inside the reader.
@@ -482,7 +483,6 @@ fn check_accessor(
 }
 
 /// Check that `count` elements of `size` bytes fit their buffer view.
-///
 /// The view's stride must hold one element, the last element must end inside
 /// the view, and the view must end inside its buffer. Every sum is checked.
 fn check_range(
@@ -524,7 +524,6 @@ fn check_range(
 }
 
 /// Turn a reader's `None` for a declared accessor into an error.
-///
 /// The reader returns `None` both for an absent attribute and for one whose
 /// bytes it can't reach, and only the first case may fall back to defaults.
 fn require<Items>(
@@ -652,7 +651,6 @@ fn build_mesh(
 }
 
 /// Turn a primitive's draw mode into triangle list indices.
-///
 /// A triangle list keeps its indices. A strip or a fan expands its index
 /// list, or every vertex in order when it has none, into one triangle per
 /// step. Points and lines have no triangles, so the loader refuses them.
@@ -905,7 +903,6 @@ fn image_to_texture_input(
 }
 
 /// Decode imported glTF pixels into RGBA8.
-///
 /// The importer stores 16-bit and float pixels in native byte order,
 /// so those formats read their channels back with `from_ne_bytes`.
 fn decode_image(image: &gltf::image::Data) -> Result<image::RgbaImage, SceneLoadError> {
@@ -955,22 +952,32 @@ fn decode_image(image: &gltf::image::Data) -> Result<image::RgbaImage, SceneLoad
 /// Lift a glTF camera node into a FragmentColor [`Camera`]. The node's
 /// world matrix gives the eye position + view orientation; the camera's
 /// projection comes from the glTF camera projection block.
-fn build_camera(gltf_camera: &gltf::Camera<'_>, world: Mat4) -> Camera {
+fn build_camera(gltf_camera: &gltf::Camera<'_>, world: Mat4) -> Result<Camera, SceneLoadError> {
+    let (near, far) = match gltf_camera.projection() {
+        // glTF's zfar is optional for a perspective camera; map "infinite"
+        // to a large finite value the depth buffer can still represent.
+        gltf::camera::Projection::Perspective(p) => (p.znear(), p.zfar().unwrap_or(1.0e6)),
+        gltf::camera::Projection::Orthographic(o) => (o.znear(), o.zfar()),
+    };
+    // A Camera takes far < near as reverse-Z, but glTF requires zfar > znear.
+    if far <= near {
+        return Err(SceneLoadError::Invalid(format!(
+            "glTF camera {} has zfar {far} at or before znear {near}",
+            gltf_camera.index()
+        )));
+    }
     let camera = match gltf_camera.projection() {
         gltf::camera::Projection::Perspective(p) => {
             // glTF's aspectRatio is optional; fall back to 1.0 (a common
             // default that gets overridden when the user retargets to a
             // specific render target).
             let aspect = p.aspect_ratio().unwrap_or(1.0);
-            // glTF's zfar is optional too; map "infinite" to a large
-            // finite value the depth buffer can still represent.
-            let far = p.zfar().unwrap_or(1.0e6);
-            Camera::perspective(p.yfov(), aspect, p.znear(), far)
+            Camera::perspective(p.yfov(), aspect, near, far)?
         }
         gltf::camera::Projection::Orthographic(o) => {
             let half_w = o.xmag();
             let half_h = o.ymag();
-            Camera::orthographic(-half_w, half_w, -half_h, half_h, o.znear(), o.zfar())
+            Camera::orthographic(-half_w, half_w, -half_h, half_h, near, far)?
         }
     };
 
@@ -982,7 +989,7 @@ fn build_camera(gltf_camera: &gltf::Camera<'_>, world: Mat4) -> Camera {
     let forward = rotation * Vec3::new(0.0, 0.0, -1.0);
     let up = rotation * Vec3::new(0.0, 1.0, 0.0);
     let target_v = translation + forward;
-    camera.look_at(eye, target_v.into(), up.into())
+    Ok(camera.look_at(eye, target_v.into(), up.into())?)
 }
 
 /// Lift a `KHR_lights_punctual` node into the unified [`Light`] type and
@@ -1127,6 +1134,39 @@ mod tests {
     fn load_refuses_a_negative_light_range() {
         let json = CAMERA_LIGHT_JSON.replace(DIRECTIONAL_LIGHT, r#"{"type":"point","range":-5.0}"#);
         assert_invalid(build_camera_light_glb(&json), "non-negative number, got -5");
+    }
+
+    /// Load a variant of the camera file and expect `SceneLoadError::Camera`.
+    fn assert_camera_error(json: &str) {
+        match Scene::load(build_camera_light_glb(json)) {
+            Err(SceneLoadError::Camera(error)) => {
+                assert!(error.to_string().contains("Camera::"), "{error}")
+            }
+            Err(other) => panic!("expected SceneLoadError::Camera, got {other:?}"),
+            Ok(_) => panic!("expected SceneLoadError::Camera, got a Scene"),
+        }
+    }
+
+    #[test]
+    fn load_refuses_a_camera_with_no_field_of_view() {
+        assert_camera_error(&CAMERA_LIGHT_JSON.replace(r#""yfov":1.0"#, r#""yfov":0.0"#));
+    }
+
+    #[test]
+    fn load_refuses_a_camera_node_with_zero_scale() {
+        let json =
+            CAMERA_LIGHT_JSON.replace(r#"{"camera":0}"#, r#"{"camera":0,"scale":[0.0,0.0,0.0]}"#);
+        assert_camera_error(&json);
+    }
+
+    #[test]
+    fn load_refuses_a_camera_whose_far_plane_is_nearer() {
+        let json =
+            CAMERA_LIGHT_JSON.replace(r#""znear":0.1,"zfar":100.0"#, r#""znear":10.0,"zfar":1.0"#);
+        assert_invalid(
+            build_camera_light_glb(&json),
+            "camera 0 has zfar 1 at or before znear 10",
+        );
     }
 
     #[test]

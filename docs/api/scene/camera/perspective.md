@@ -12,13 +12,19 @@ The view component starts at identity: eye at the world origin, looking
 down `-Z`, with `+Y` up. Chain [`look_at`](https://fragmentcolor.org/api/scene/camera#look_at)
 to position the camera before binding it.
 
+Every value must be finite, `fovy_radians` must lie between 0 and π,
+`aspect` can't be 0, and `near` and `far` must be positive and different.
+Anything else returns `Err(CameraError::Perspective)`, since it would put
+infinities or NaN in the matrix and every model drawn through the camera
+would vanish.
+
 ## Example
 
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
-let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0);
+let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)?;
 
 # // Perspective collapses the depth axis into a non-trivial matrix; the
 # // [2][3] term encodes the -1 wgpu uses for the homogeneous w divide.

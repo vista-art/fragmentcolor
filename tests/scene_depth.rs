@@ -77,11 +77,10 @@ fn glass(color: [f32; 3], z: f32) -> Model {
 }
 
 fn camera() -> Camera {
-    Camera::perspective(1.0, 1.0, 0.1, 100.0).look_at(
-        [0.0, 0.0, 3.0],
-        [0.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0],
-    )
+    Camera::perspective(1.0, 1.0, 0.1, 100.0)
+        .expect("camera")
+        .look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+        .expect("camera")
 }
 
 async fn target(renderer: &Renderer, side: u32) -> TextureTarget {
