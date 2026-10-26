@@ -807,7 +807,10 @@ impl RenderContext {
     }
 
     /// Renders any `Renderable` (Shader, Pass, or iterable of Pass) to a Target.
-    /// A frame whose commands fail validation returns the error and is never presented.
+    ///
+    /// A frame that acquired a surface texture presents it on every path, failed
+    /// frames included, since Vulkan takes an acquired image back only through a present.
+    /// wgpu clears a texture that no valid submit drew into, so a failed frame shows a cleared image.
     fn render(
         &self,
         renderable: &impl Renderable,
@@ -815,22 +818,25 @@ impl RenderContext {
     ) -> Result<(), RendererError> {
         #[cfg(wasm)]
         self.late.take()?;
-        let frame = self.validate("frame", || self.submit(renderable, target))?;
-        if let Some(frame) = frame
+        let mut acquired = None;
+        let result = self.validate("frame", || self.submit(renderable, target, &mut acquired));
+        if let Some(frame) = acquired
             && frame.auto_present()
         {
             frame.present(&self.queue);
         }
-        Ok(())
+        result
     }
 
     /// Records every pass of `renderable` and submits the commands.
-    /// Returns the frame they drew into, when a pass draws.
+    /// The frame they draw into, when a pass draws, goes in `acquired`,
+    /// so the caller presents it whether recording succeeds or not.
     fn submit(
         &self,
         renderable: &impl Renderable,
         target: &impl Target,
-    ) -> Result<Option<Box<dyn TargetFrame>>, RendererError> {
+        acquired: &mut Option<Box<dyn TargetFrame>>,
+    ) -> Result<(), RendererError> {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -838,13 +844,21 @@ impl RenderContext {
             });
 
         let pass_list = renderable.passes();
+        let draws: Vec<PassDraws> = pass_list
+            .iter()
+            .map(|pass| match pass.is_compute() {
+                true => PassDraws::default(),
+                false => self.build_pass_draws(pass),
+            })
+            .collect();
+        self.check_passes(&pass_list, &draws)?;
 
         // Compute passes never draw into the target, so a
         // render made only of compute passes acquires no frame.
-        let frame = match pass_list.iter().any(|pass| !pass.is_compute()) {
-            true => Some(self.acquire_frame(target)?),
-            false => None,
-        };
+        if pass_list.iter().any(|pass| !pass.is_compute()) {
+            *acquired = Some(self.acquire_frame(target)?);
+        }
+        let frame = acquired.as_deref();
 
         // Uploads land at the next submit, so every pass recorded
         // before it needs its own pool offsets. Rewind once per render:
@@ -864,7 +878,7 @@ impl RenderContext {
         // tile memory. Render passes are unaffected (encoder-end already syncs there).
         #[cfg(apple)]
         let mut prev_was_compute = false;
-        for pass in pass_list.iter() {
+        for (pass, draws) in pass_list.iter().zip(&draws) {
             let pass = pass.as_ref();
             #[cfg(apple)]
             {
@@ -880,14 +894,65 @@ impl RenderContext {
             }
             if pass.is_compute() {
                 self.process_compute_pass(&mut encoder, pass)?
-            } else if let Some(frame) = frame.as_deref() {
-                self.process_render_pass(&mut encoder, pass, frame)?
+            } else if let Some(frame) = frame {
+                self.process_render_pass(&mut encoder, pass, frame, draws)?
             }
         }
 
         self.queue.submit(Some(encoder.finish()));
 
-        Ok(frame)
+        Ok(())
+    }
+
+    /// Runs the checks each render pass makes on the CPU, before any frame is acquired,
+    /// so a shader that reads vertex inputs with no mesh, or a mesh asked for more
+    /// instances than it holds, fails without drawing and the target keeps its last frame.
+    fn check_passes(
+        &self,
+        passes: &[Arc<PassObject>],
+        draws: &[PassDraws],
+    ) -> Result<(), RendererError> {
+        for (pass, draws) in passes.iter().zip(draws) {
+            if pass.is_compute() {
+                continue;
+            }
+            for shader in pass.shaders.read().iter() {
+                let meshes = shader.meshes.read().clone();
+                let layouts = self.shader_layouts(shader, &meshes)?;
+                if *shader.alpha_mode.read() == crate::material::AlphaMode::Blend {
+                    continue;
+                }
+                for mesh in meshes.iter() {
+                    let (refs, counts) = mesh.vertex_buffers(&self.device, &self.queue)?;
+                    let key = (Arc::as_ptr(shader) as usize, Arc::as_ptr(mesh) as usize);
+                    let models = draws.opaque_overrides.get(&key);
+                    let own = refs.instance_buffer.as_ref();
+                    mesh_instances(models, own, mesh, layouts.as_ref(), counts)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The vertex layouts a shader reads from its first mesh,
+    /// or `None` for a shader that reads no vertex input.
+    fn shader_layouts(
+        &self,
+        shader: &crate::ShaderObject,
+        meshes: &[Arc<crate::mesh::MeshObject>],
+    ) -> Result<Option<VertexLayouts>, RendererError> {
+        if let Some(first) = meshes.first() {
+            // Derive the schemas (and pack the buffers) before reading the layouts.
+            first.vertex_buffers(&self.device, &self.queue)?;
+            return vertex_buffer_layouts(shader, first.as_ref());
+        }
+        match first_vertex_input(shader) {
+            Some((name, location)) => Err(crate::ShaderError::InvalidKey(format!(
+                "shader input '{name}' @location({location}) has no mesh to read from; attach one with add_mesh"
+            ))
+            .into()),
+            None => Ok(None),
+        }
     }
 
     /// Try to get a frame once, and on Lost/Outdated, retry exactly once.
@@ -1181,16 +1246,12 @@ impl RenderContext {
         encoder: &mut wgpu::CommandEncoder,
         pass: &PassObject,
         frame: &dyn TargetFrame,
+        pass_draws: &PassDraws,
     ) -> Result<(), RendererError> {
         // The frame's own size, which a resize on another thread can't change mid-render.
         let size = frame.size();
-        // Snapshot per-Model transforms for this Pass into GPU instance
-        // buffers BEFORE begin_render_pass — the wgpu::Buffer handles need
-        // to outlive the render_pass. Opaque/Mask entries collapse to one
-        // batched buffer per `(shader_ptr, mesh_ptr)` (auto-instancing);
-        // Blend entries get one buffer each, kept in a sorted Vec so the
-        // blend phase can walk them back-to-front by eye-space depth.
-        let pass_draws = self.build_pass_draws(pass);
+        // `pass_draws` holds this pass's per-Model GPU instance buffers, built
+        // before the frame was acquired so they outlive the render pass.
         let model_overrides = &pass_draws.opaque_overrides;
         let blend_draws = &pass_draws.blend_draws;
 
@@ -1310,19 +1371,7 @@ impl RenderContext {
         for shader in pass.shaders.read().iter() {
             shader.flush_pending();
             let shader_meshes = shader.meshes.read().clone();
-            let layouts = if let Some(first_mesh) = shader_meshes.first() {
-                // Ensure schemas are derived (and buffers packed) before pipeline creation
-                first_mesh.vertex_buffers(&self.device, &self.queue)?;
-                // Now derive vertex buffer layouts; propagate any mapping error
-                vertex_buffer_layouts(shader, first_mesh.as_ref())?
-            } else if let Some((name, location)) = first_vertex_input(shader) {
-                return Err(crate::ShaderError::InvalidKey(format!(
-                    "shader input '{name}' @location({location}) has no mesh to read from; attach one with add_mesh"
-                ))
-                .into());
-            } else {
-                None
-            };
+            let layouts = self.shader_layouts(shader, &shader_meshes)?;
 
             // Snapshot the Material-owned pipeline-state flags from the
             // shader's back-references. Drop the read locks immediately so
@@ -1613,44 +1662,24 @@ impl RenderContext {
                         for mesh_object in shader_meshes.iter() {
                             let (refs, counts) =
                                 mesh_object.vertex_buffers(&self.device, &self.queue)?;
-                            // An empty index list draws nothing, like an instance count of 0.
-                            if counts.index_count == 0 {
-                                continue;
-                            }
-
-                            // Per-Pass Model override takes precedence over the
-                            // Mesh's own instance buffer. The override carries N
-                            // model matrices (one per Model::add_model call that
-                            // referenced this shader+mesh); the fall-through path
-                            // is for Meshes whose instances came from a direct
-                            // `Mesh::add_instance` call (crowd rendering, etc.).
                             let override_key = (shader_ptr, Arc::as_ptr(mesh_object) as usize);
-                            let overridden = model_overrides.get(&override_key);
-                            let instance_count = match (overridden, &refs.instance_buffer) {
-                                (Some((buffer, count)), _) => {
-                                    render_pass.set_vertex_buffer(1, buffer.slice(..));
-                                    *count
-                                }
-                                // A Model mesh with no visible Model in this pass has nothing to draw,
-                                // and slot 1 may still hold the buffer an earlier mesh bound.
-                                (None, None) if mesh_object.instance_schema.read().is_some() => {
-                                    continue;
-                                }
-                                (None, buffer) => {
-                                    check_instance_count(layouts.as_ref(), counts)?;
-                                    if let Some(buffer) = buffer {
-                                        render_pass.set_vertex_buffer(1, buffer.slice(..));
-                                    }
-                                    counts.instance_count
-                                }
+                            let models = model_overrides.get(&override_key);
+                            let own = refs.instance_buffer.as_ref();
+                            let Some(instances) =
+                                mesh_instances(models, own, mesh_object, layouts.as_ref(), counts)?
+                            else {
+                                continue;
                             };
+                            if let Some(buffer) = instances.buffer {
+                                render_pass.set_vertex_buffer(1, buffer.slice(..));
+                            }
 
                             render_pass.set_vertex_buffer(0, refs.vertex_buffer.slice(..));
                             render_pass.set_index_buffer(
                                 refs.index_buffer.slice(..),
                                 wgpu::IndexFormat::Uint32,
                             );
-                            render_pass.draw_indexed(0..counts.index_count, 0, 0..instance_count);
+                            render_pass.draw_indexed(0..counts.index_count, 0, 0..instances.count);
                         }
                     }
                     crate::material::AlphaMode::Blend => {
@@ -1894,6 +1923,46 @@ impl VertexLayouts {
                 attributes: &stream.attributes,
             })
             .collect()
+    }
+}
+
+/// The instances a mesh draws, and the buffer slot 1 steps through for them.
+struct Instances<'draw> {
+    buffer: Option<&'draw wgpu::Buffer>,
+    count: u32,
+}
+
+/// The instances one mesh of an opaque or masked shader draws, or `None` when it draws nothing.
+///
+/// The pass's Models win over the mesh's own instance buffer: `models` holds one matrix
+/// for each visible Model that draws this mesh through this shader. Otherwise the mesh
+/// draws its own instances, such as a crowd built with `Mesh::add_instance`.
+fn mesh_instances<'draw>(
+    models: Option<&'draw (wgpu::Buffer, u32)>,
+    own: Option<&'draw wgpu::Buffer>,
+    mesh: &crate::mesh::MeshObject,
+    layouts: Option<&VertexLayouts>,
+    counts: crate::mesh::DrawCounts,
+) -> Result<Option<Instances<'draw>>, RendererError> {
+    // An empty index list draws nothing, like an instance count of 0.
+    if counts.index_count == 0 {
+        return Ok(None);
+    }
+    match (models, own) {
+        (Some((buffer, count)), _) => Ok(Some(Instances {
+            buffer: Some(buffer),
+            count: *count,
+        })),
+        // A Model mesh with no visible Model in this pass has nothing to draw,
+        // and slot 1 may still hold the buffer an earlier mesh bound.
+        (None, None) if mesh.instance_schema.read().is_some() => Ok(None),
+        (None, buffer) => {
+            check_instance_count(layouts, counts)?;
+            Ok(Some(Instances {
+                buffer,
+                count: counts.instance_count,
+            }))
+        }
     }
 }
 
@@ -3615,7 +3684,7 @@ struct VOut { @builtin(position) pos: vec4<f32> };
         let mut encoder = ctx
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        ctx.process_render_pass(&mut encoder, pass, &frame)
+        ctx.process_render_pass(&mut encoder, pass, &frame, &ctx.build_pass_draws(pass))
             .expect("render pass failed");
         ctx.queue.submit(Some(encoder.finish()));
         scope.pop().await
@@ -3785,7 +3854,8 @@ struct VOut { @builtin(position) pos: vec4<f32> };
                     .device
                     .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-                let res = ctx.process_render_pass(&mut encoder, &first_pass, &frame);
+                let draws = ctx.build_pass_draws(&first_pass);
+                let res = ctx.process_render_pass(&mut encoder, &first_pass, &frame, &draws);
                 assert!(
                     res.is_ok(),
                     "msaa depth render should succeed: {:?}",
@@ -4448,7 +4518,8 @@ fn main() -> @location(0) vec4<f32> {
             let mut encoder = ctx
                 .device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-            let res = ctx.process_render_pass(&mut encoder, &first_pass, &frame);
+            let draws = ctx.build_pass_draws(&first_pass);
+            let res = ctx.process_render_pass(&mut encoder, &first_pass, &frame, &draws);
             assert!(res.is_err());
             let s = format!("{}", res.unwrap_err());
             assert!(s.contains("sample_count"), "unexpected error: {s}");
