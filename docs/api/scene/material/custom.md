@@ -21,7 +21,10 @@ Optional but recommended:
   the Model's transform. The renderer fills them at draw time from each
   Model's `set_transform`, `translate`, `rotate` and `scale`. The PBR shader
   reads them at locations 3 to 6. Any free locations work, since the renderer
-  matches these inputs by name.
+  matches these inputs by name. It fills them only for the Models a pass
+  holds, through each Model's Material. A shader that reads them for a Mesh
+  with no Model behind it in the pass, such as one attached with `add_mesh`,
+  makes `Renderer::render` return `MeshError::InvalidInstance`.
 
 Without these the Material still draws. The factor setters do nothing, and
 every Model draws at its Mesh's own coordinates, whatever its transform.

@@ -1,6 +1,7 @@
 use crate::pass::PassInput;
-use crate::{PassObject, ShaderHash, Target, TargetFrame, TextureData, TextureTarget, UniformData};
+use crate::{PassObject, ShaderError, ShaderHash, ShaderObject, Target, TargetFrame};
 use crate::{ScreenRegion, Size, WindowTarget};
+use crate::{TextureData, TextureTarget, UniformData};
 use dashmap::DashMap;
 use dashmap::mapref::entry::Entry;
 use dashmap::mapref::one::RefMut;
@@ -935,18 +936,20 @@ impl RenderContext {
             if pass.is_compute() {
                 continue;
             }
+            let model_shaders = find_model_shaders(pass);
             for shader in pass.shaders.read().iter() {
                 let meshes = shader.meshes.read().clone();
                 let layouts = self.shader_layouts(shader, &meshes)?;
                 if *shader.alpha_mode.read() == crate::material::AlphaMode::Blend {
                     continue;
                 }
+                let model = model_shaders.contains(&(Arc::as_ptr(shader) as usize));
                 for mesh in meshes.iter() {
                     let (refs, counts) = mesh.vertex_buffers(&self.device, &self.queue)?;
                     let key = (Arc::as_ptr(shader) as usize, Arc::as_ptr(mesh) as usize);
                     let models = draws.opaque_overrides.get(&key);
                     let own = refs.instance_buffer.as_ref();
-                    mesh_instances(models, own, mesh, layouts.as_ref(), counts)?;
+                    mesh_instances(models, own, mesh, model, layouts.as_ref(), counts)?;
                 }
             }
         }
@@ -965,13 +968,8 @@ impl RenderContext {
             first.vertex_buffers(&self.device, &self.queue)?;
             return vertex_buffer_layouts(shader, first.as_ref());
         }
-        match first_vertex_input(shader) {
-            Some((name, location)) => Err(crate::ShaderError::InvalidKey(format!(
-                "shader input '{name}' @location({location}) has no mesh to read from; attach one with add_mesh"
-            ))
-            .into()),
-            None => Ok(None),
-        }
+        require_mesh(shader)?;
+        Ok(None)
     }
 
     /// Try to get a frame once, and on Lost/Outdated, retry exactly once.
@@ -1454,14 +1452,8 @@ impl RenderContext {
         }
         let mut shader_states: HashMap<usize, ShaderRenderState> = HashMap::new();
 
-        // The shaders that draw this pass's models. In a pass with models,
-        // the other shaders ignore the depth attachment.
-        let model_shaders: Vec<usize> = pass
-            .model_entries
-            .read()
-            .iter()
-            .map(|entry| Arc::as_ptr(&entry.shader) as usize)
-            .collect();
+        // In a pass with models, the shaders that draw none ignore the depth attachment.
+        let model_shaders = find_model_shaders(pass);
 
         for shader in pass.shaders.read().iter() {
             shader.flush_pending();
@@ -1760,8 +1752,14 @@ impl RenderContext {
                             let override_key = (shader_ptr, Arc::as_ptr(mesh_object) as usize);
                             let models = model_overrides.get(&override_key);
                             let own = refs.instance_buffer.as_ref();
-                            let Some(instances) =
-                                mesh_instances(models, own, mesh_object, layouts.as_ref(), counts)?
+                            let Some(instances) = mesh_instances(
+                                models,
+                                own,
+                                mesh_object,
+                                model,
+                                layouts.as_ref(),
+                                counts,
+                            )?
                             else {
                                 continue;
                             };
@@ -2028,11 +2026,13 @@ struct Instances<'draw> {
 ///
 /// The pass's Models win over the mesh's own instance buffer: `models` holds one matrix
 /// for each visible Model that draws this mesh through this shader. Otherwise the mesh
-/// draws its own instances, such as a crowd built with `Mesh::add_instance`.
+/// draws its own instances, such as a crowd built with `Mesh::add_instance`. `model` is
+/// true for a shader that draws the pass's Models, hidden ones included.
 fn mesh_instances<'draw>(
     models: Option<&'draw (wgpu::Buffer, u32)>,
     own: Option<&'draw wgpu::Buffer>,
     mesh: &crate::mesh::MeshObject,
+    model: bool,
     layouts: Option<&VertexLayouts>,
     counts: crate::mesh::DrawCounts,
 ) -> Result<Option<Instances<'draw>>, RendererError> {
@@ -2045,11 +2045,11 @@ fn mesh_instances<'draw>(
             buffer: Some(buffer),
             count: *count,
         })),
-        // A Model mesh with no visible Model in this pass has nothing to draw,
-        // and slot 1 may still hold the buffer an earlier mesh bound.
-        (None, None) if mesh.instance_schema.read().is_some() => Ok(None),
+        // A shader that draws this pass's Models skips a Model mesh whose Model
+        // is hidden or in another pass. Slot 1 may hold an earlier mesh's buffer.
+        (None, None) if model && mesh.awaits_models() => Ok(None),
         (None, buffer) => {
-            check_instance_count(layouts, counts)?;
+            check_instance_count(layouts, counts, mesh)?;
             Ok(Some(Instances {
                 buffer,
                 count: counts.instance_count,
@@ -2060,46 +2060,47 @@ fn mesh_instances<'draw>(
 
 /// Refuses to draw more instances than the mesh holds
 /// when the pipeline reads instance attributes from its buffer.
+/// A Model's mesh holds none, and only its Models fill the columns.
 fn check_instance_count(
     layouts: Option<&VertexLayouts>,
     counts: crate::mesh::DrawCounts,
+    mesh: &crate::mesh::MeshObject,
 ) -> Result<(), RendererError> {
     let rows = counts.instance_rows.unwrap_or(0);
     let stepped = layouts.is_some_and(|layouts| layouts.instance.is_some());
-    if stepped && counts.instance_count > rows {
-        return Err(crate::mesh::MeshError::InvalidInstance(format!(
+    if !stepped || counts.instance_count <= rows {
+        return Ok(());
+    }
+    let message = if mesh.awaits_models() {
+        "the shader reads the Model columns, and no Model in this pass draws this mesh through it"
+            .to_string()
+    } else {
+        format!(
             "instance count {} exceeds the {rows} instances the mesh holds",
             counts.instance_count
-        ))
-        .into());
-    }
-    Ok(())
+        )
+    };
+    Err(crate::mesh::MeshError::InvalidInstance(message).into())
 }
 
-/// The lowest `@location` input of the shader's vertex entry point, as its name and location.
-/// It looks inside a struct argument too, since its members carry the locations then.
-fn first_vertex_input(shader: &crate::ShaderObject) -> Option<(String, u32)> {
-    let entry_point = shader.find_entry_point(naga::ShaderStage::Vertex)?;
-    let mut inputs = Vec::new();
-    for argument in entry_point.function.arguments.iter() {
-        match &shader.module.types[argument.ty].inner {
-            naga::TypeInner::Struct { members, .. } if argument.binding.is_none() => inputs.extend(
-                members
-                    .iter()
-                    .map(|member| (member.name.clone(), member.binding.clone())),
-            ),
-            _ => inputs.push((argument.name.clone(), argument.binding.clone())),
-        }
-    }
-    inputs
-        .into_iter()
-        .filter_map(|(name, binding)| match binding {
-            Some(naga::Binding::Location { location, .. }) => {
-                Some((name.unwrap_or_else(|| format!("attr{location}")), location))
-            }
-            _ => None,
-        })
-        .min_by_key(|(_, location)| *location)
+/// The shaders that draw the pass's Models, hidden ones included.
+fn find_model_shaders(pass: &PassObject) -> Vec<usize> {
+    let entries = pass.model_entries.read();
+    entries
+        .iter()
+        .map(|entry| Arc::as_ptr(&entry.shader) as usize)
+        .collect()
+}
+
+/// Refuses a shader with no mesh when it reads vertex inputs, naming the first one.
+fn require_mesh(shader: &ShaderObject) -> Result<(), ShaderError> {
+    let Some(input) = shader.reflect_vertex_inputs()?.into_iter().next() else {
+        return Ok(());
+    };
+    Err(ShaderError::InvalidKey(format!(
+        "shader input '{}' @location({}) has no mesh to read from; attach one with add_mesh",
+        input.name, input.location
+    )))
 }
 
 // @TODO the Shader should provide this
@@ -4141,9 +4142,9 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
     }
 
     // Story: a shader that reads its vertex inputs through a struct argument
-    // and has no mesh returns the same error as one with plain arguments.
+    // can't take a mesh, and render and add_mesh both name the struct member.
     #[test]
-    fn struct_vertex_inputs_without_a_mesh_error() {
+    fn struct_vertex_inputs_error() {
         pollster::block_on(async move {
             let renderer = Renderer::new();
             let target = renderer
@@ -4152,7 +4153,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
                 .expect("texture target");
             let shader = crate::Shader::new(
                 r#"
-struct VIn { @location(0) pos: vec2<f32> };
+struct VIn { @builtin(vertex_index) index: u32, @location(0) pos: vec2<f32> };
 @vertex fn vs_main(input: VIn) -> @builtin(position) vec4<f32> {
   return vec4<f32>(input.pos, 0.0, 1.0);
 }
@@ -4160,12 +4161,20 @@ struct VIn { @location(0) pos: vec2<f32> };
 "#,
             )
             .expect("shader");
+            let mesh = crate::Mesh::new();
+            mesh.add_vertices(TRIANGLE.map(crate::Vertex::new));
 
-            let res = renderer.render(&shader, &target);
+            let rendered = renderer.render(&shader, &target);
+            let attached = shader.add_mesh(&mesh);
 
+            let member = "'pos' @location(0) is a struct member";
             assert!(
-                matches!(&res, Err(RendererError::ShaderError(crate::ShaderError::InvalidKey(message))) if message.contains("'pos' @location(0) has no mesh")),
-                "got {res:?}"
+                matches!(&rendered, Err(RendererError::ShaderError(crate::ShaderError::InvalidKey(message))) if message.contains(member) && !message.contains("add_mesh")),
+                "got {rendered:?}"
+            );
+            assert!(
+                matches!(&attached, Err(crate::ShaderError::InvalidKey(message)) if message.contains(member)),
+                "got {attached:?}"
             );
         });
     }
@@ -4311,6 +4320,83 @@ struct VIn { @location(0) pos: vec2<f32> };
         });
     }
 
+    /// Draws its mesh's positions in green and reads no instance attribute.
+    const PLAIN_SHADER: &str = r#"
+@vertex fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(position, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(0.0, 1.0, 0.0, 1.0); }
+"#;
+
+    // Story: a shader that draws a hidden Model's mesh, and no Model, still draws it,
+    // in a pass of its own or in the Model's pass, and so does the mesh's quick view.
+    #[test]
+    fn a_plain_shader_draws_a_model_mesh() {
+        pollster::block_on(async move {
+            use crate::Target;
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([SIDE, SIDE])
+                .await
+                .expect("texture target");
+            let model = strip(&red_glow(), -1.0, -0.2);
+            let pass = Pass::new("models");
+            pass.set_clear_color(BLUE).expect("set clear color");
+            pass.add(&model).expect("add model");
+            pass.add(&camera()).expect("add camera");
+            model.set_visible(false);
+            let plain = crate::Shader::new(PLAIN_SHADER).expect("shader");
+            plain.add_mesh(model.mesh()).expect("mesh attaches");
+            let own = Pass::new("plain");
+            own.set_clear_color(BLUE).expect("set clear color");
+            own.add_shader(&plain);
+
+            renderer.render(&own, &target).expect("render its own pass");
+            let alone = target.get_image().await.expect("read back");
+            pass.add_shader(&plain);
+            renderer
+                .render(&pass, &target)
+                .expect("render the Model's pass");
+            let shared = target.get_image().await.expect("read back");
+            renderer
+                .render(model.mesh(), &target)
+                .expect("render the quick view");
+            let quick = target.get_image().await.expect("read back");
+
+            let green = [0, 255, 0, 255];
+            assert_eq!(pixel(&alone, LEFT), green, "a pass of its own");
+            assert_eq!(pixel(&shared, LEFT), green, "the Model's pass");
+            assert!(
+                is_blue(pixel(&shared, RIGHT)),
+                "the Model's pass, off the strip"
+            );
+            assert_eq!(pixel(&quick, LEFT), [255, 255, 255, 255], "the quick view");
+        });
+    }
+
+    // Story: a Material's shader rendered without its Models reads Model columns
+    // that nothing fills, and render says so where it drew nothing.
+    #[test]
+    fn model_columns_without_a_model_error() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([SIDE, SIDE])
+                .await
+                .expect("texture target");
+            let model = strip(&red_glow(), -1.0, -0.2);
+            let pass = Pass::new("models");
+            pass.add(&model).expect("add model");
+
+            let res = renderer.render(model.material().shader(), &target);
+
+            assert!(
+                matches!(&res, Err(RendererError::MeshError(crate::mesh::MeshError::InvalidInstance(message))) if message.contains("no Model in this pass")),
+                "got {res:?}"
+            );
+        });
+    }
+
     const OFFSET_SHADER: &str = r#"
 struct VOut { @builtin(position) pos: vec4<f32> };
 @vertex fn vs_main(@location(0) pos: vec2<f32>, @location(1) offset: vec2<f32>) -> VOut {
@@ -4361,6 +4447,88 @@ struct VOut { @builtin(position) pos: vec4<f32> };
                 "got {past:?}"
             );
             assert!(indexed.is_ok(), "got {indexed:?}");
+        });
+    }
+
+    /// Colors each instance by its index: green for 0, yellow for 2.
+    const INDEX_COLOR: &str = r#"
+struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat) index: u32 };
+@vertex fn vs_main(@location(0) pos: vec3<f32>, @builtin(instance_index) index: u32) -> VOut {
+  return VOut(vec4<f32>(pos, 1.0), index);
+}
+@fragment fn fs_main(v: VOut) -> @location(0) vec4<f32> {
+  return vec4<f32>(f32(v.index) / 2.0, 1.0, 0.0, 1.0);
+}
+"#;
+
+    /// A triangle that covers the whole view.
+    const COVER: [[f32; 3]; 3] = [[-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0]];
+
+    // Story: instances with no properties draw when the shader reads no instance
+    // attribute. One draws once, and a count of three draws the third one last.
+    #[test]
+    fn instances_without_properties_draw() {
+        pollster::block_on(async move {
+            use crate::Target;
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([SIDE, SIDE])
+                .await
+                .expect("texture target");
+            let single = crate::Mesh::new();
+            single.add_vertices(COVER.map(crate::Vertex::new));
+            single.add_instance(crate::Instance::new());
+            let triple = crate::Mesh::new();
+            triple.add_vertices(COVER.map(crate::Vertex::new));
+            triple.add_instances([(); 3].map(|_| crate::Instance::new()));
+            triple.set_instance_count(3);
+
+            let mut pixels = Vec::new();
+            for mesh in [single, triple] {
+                let shader = crate::Shader::new(INDEX_COLOR).expect("shader");
+                shader.add_mesh(&mesh).expect("mesh attaches");
+                let pass = Pass::new("instances");
+                pass.set_clear_color(BLUE).expect("set clear color");
+                pass.add_shader(&shader);
+                renderer.render(&pass, &target).expect("render");
+                pixels.push(pixel(&target.get_image().await.expect("read back"), LEFT));
+            }
+
+            assert_eq!(pixels[0], [0, 255, 0, 255], "one instance");
+            assert_eq!(pixels[1], [255, 255, 0, 255], "three instances");
+        });
+    }
+
+    // Story: a Material's shader that also draws a mesh with instances of its own
+    // draws them, though they hold no properties and no Model drives that mesh.
+    #[test]
+    fn a_material_shader_draws_its_own_instances() {
+        pollster::block_on(async move {
+            use crate::Target;
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([SIDE, SIDE])
+                .await
+                .expect("texture target");
+            let shader = crate::Shader::new(INDEX_COLOR).expect("shader");
+            let model = strip(&crate::Material::custom(shader.clone()), 0.2, 1.0);
+            let pass = Pass::new("models");
+            pass.set_clear_color(BLUE).expect("set clear color");
+            pass.add(&model).expect("add model");
+            let crowd = crate::Mesh::new();
+            crowd.add_vertices(COVER.map(crate::Vertex::pbr));
+            crowd.add_instances([(); 3].map(|_| crate::Instance::new()));
+            crowd.set_instance_count(3);
+            shader.add_mesh(&crowd).expect("mesh attaches");
+
+            renderer.render(&pass, &target).expect("render");
+            let image = target.get_image().await.expect("read back");
+
+            assert_eq!(
+                pixel(&image, LEFT),
+                [255, 255, 0, 255],
+                "the third instance"
+            );
         });
     }
 
