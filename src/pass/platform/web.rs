@@ -103,9 +103,8 @@ impl Pass {
     #[wasm_bindgen(js_name = "setViewport")]
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
     pub fn set_viewport_js(&self, region: &JsValue) -> Result<(), JsError> {
-        let r: crate::ScreenRegion = region.try_into()?;
-        self.set_viewport(r);
-        Ok(())
+        let region: crate::ScreenRegion = region.try_into()?;
+        Ok(self.set_viewport(region)?)
     }
 
     #[wasm_bindgen(js_name = "setTarget")]

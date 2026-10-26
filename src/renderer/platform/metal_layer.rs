@@ -7,7 +7,7 @@ use crate::renderer::error::InitializationError;
 
 /// Fails unless `object` is a `CAMetalLayer` or a subclass of one.
 /// It reads the class chain and sends the object no message.
-pub(crate) fn check_metal_layer(object: &AnyObject) -> Result<(), InitializationError> {
+pub(crate) fn check_layer(object: &AnyObject) -> Result<(), InitializationError> {
     let Some(expected) = AnyClass::get(c"CAMetalLayer") else {
         return Err(InitializationError::Error(
             "createTarget: the CAMetalLayer class isn't loaded".into(),
@@ -28,14 +28,15 @@ pub(crate) fn check_metal_layer(object: &AnyObject) -> Result<(), Initialization
 }
 
 /// One side of the layer's drawable in pixels, at least 1.
+/// The system reports it as a float, so a fraction rounds down.
 /// A side that is negative, NaN or past `u32::MAX` fails.
 pub(crate) fn read_side(pixels: f64) -> Result<u32, InitializationError> {
-    let side = crate::size::read_dimension(pixels).ok_or_else(|| {
-        InitializationError::Error(format!(
-            "createTarget: the CAMetalLayer's drawableSize has a side of {pixels}"
-        ))
-    })?;
-    Ok(side.max(1))
+    if pixels.is_finite() && (0.0..=u32::MAX as f64).contains(&pixels) {
+        return Ok((pixels as u32).max(1));
+    }
+    Err(InitializationError::Error(format!(
+        "createTarget: the CAMetalLayer's drawableSize has a side of {pixels}"
+    )))
 }
 
 #[cfg(test)]
@@ -55,15 +56,15 @@ mod tests {
     // with an error, where a plain CALayer aborted the app.
     #[test]
     fn accepts_only_a_metal_layer() {
-        assert!(check_metal_layer(&create(c"CAMetalLayer")).is_ok());
-        let error = check_metal_layer(&create(c"CALayer"))
+        assert!(check_layer(&create(c"CAMetalLayer")).is_ok());
+        let error = check_layer(&create(c"CALayer"))
             .err()
             .map(|error| error.to_string());
         assert_eq!(
             error.as_deref(),
             Some("Initialization error: createTarget: expected a CAMetalLayer, got CALayer")
         );
-        assert!(check_metal_layer(&create(c"NSObject")).is_err());
+        assert!(check_layer(&create(c"NSObject")).is_err());
     }
 
     // Story: a drawable side of zero becomes 1 pixel, and a negative or NaN one fails.

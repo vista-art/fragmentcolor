@@ -507,6 +507,20 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     if (extent.width !== 32 || extent.depth !== 2) fail('Size fields did not take valid numbers');
     extent.depth = undefined;
     if (extent.depth !== undefined) fail('Size.depth = undefined did not clear the depth');
+
+    // A size or region takes whole numbers, as counts do, and a fraction throws.
+    throws('new Size(1.5, 2)', () => new fc.Size(1.5, 2));
+    throws('Size.width = 1.5', () => { extent.width = 1.5; });
+    throws('new ScreenRegion([0, 0], [1.5, 2])', () => new fc.ScreenRegion([0, 0], [1.5, 2]));
+    throws('Pass.setViewport([0, 0, 1.5, 2])', () => first.setViewport([0, 0, 1.5, 2]));
+    await rejects('createTextureTarget([1.5, 2])', () => renderer.createTextureTarget([1.5, 2]));
+
+    // A region or viewport with a width or height of 0 throws.
+    throws('new ScreenRegion([0, 0], [0, 4])', () => new fc.ScreenRegion([0, 0], [0, 4]));
+    throws('Pass.setViewport([0, 0, 0, 4])', () => first.setViewport([0, 0, 0, 4]));
+    throws('Pass.setViewport([4, 0])', () => first.setViewport([4, 0]));
+    throws('Pass.setViewport({ minX: 2, minY: 2, maxX: 2, maxY: 6 })',
+      () => first.setViewport({ minX: 2, minY: 2, maxX: 2, maxY: 6 }));
     const region = new fc.ScreenRegion([0, 0], [64, 64]);
     region.max_x = -1;
     if (region.maxX !== 64) fail(`ScreenRegion.max_x wrote ${region.maxX} past the checks`);
@@ -527,7 +541,8 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     throws('Pass.setClearColor([undefined, 0, 0])', () => first.setClearColor([undefined, 0, 0]));
     throws("Pass.setClearColor(['1', 0, 0])", () => first.setClearColor(['1', 0, 0]));
     throws('Pass.setClearColor([NaN, 0, 0])', () => first.setClearColor([NaN, 0, 0]));
-    throws("Pass.setClearColor({ r: 1, g: 0, b: 0, a: 'x' })", () => first.setClearColor({ r: 1, g: 0, b: 0, a: 'x' }));
+    throws("Pass.setClearColor({ r: 1, g: 0, b: 0 })", () => first.setClearColor({ r: 1, g: 0, b: 0 }));
+    throws("Pass.setClearColor('#ff8800')", () => first.setClearColor('#ff8800'));
     throws('Pass.setClearColor([0, 0])', () => first.setClearColor([0, 0]));
     const clear = Pass.fromShader('clear', Shader.default());
     clear.setViewport([0, 0, 1, 1]);

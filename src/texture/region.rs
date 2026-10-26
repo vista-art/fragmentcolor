@@ -290,7 +290,7 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
                 .and_then(crate::size::read_dimension)
                 .ok_or_else(|| {
                     TextureError::InvalidInput(format!(
-                        "a region takes numbers from 0 up, got {item:?}"
+                        "a region takes whole numbers from 0 up, got {item:?}"
                     ))
                 })
         };

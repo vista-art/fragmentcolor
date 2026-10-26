@@ -12,8 +12,6 @@ use error::ColorError;
 #[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
 pub struct Color([f32; 4]);
 
-const GAMMA: f32 = 2.2;
-
 /// Channel names in the order a color stores them.
 const CHANNELS: [&str; 4] = ["red", "green", "blue", "alpha"];
 
@@ -87,10 +85,6 @@ impl Color {
 
     pub fn to_f32_array(self) -> [f32; 4] {
         self.0
-    }
-
-    pub fn into_vec4_gamma(self) -> [f32; 4] {
-        self.0.map(|channel| channel.powf(GAMMA))
     }
 
     /// The color, or an error naming the first channel that is NaN or infinite.
@@ -174,53 +168,33 @@ impl TryFrom<&[f32]> for Color {
     }
 }
 
-/// Reads a CSS string, an `{ r, g, b, a }` object, or `[r, g, b]` and `[r, g, b, a]`
-/// as a plain array or a `Float32Array`. Numbers keep their value, and a missing alpha is 1.
+/// Reads `[r, g, b]` or `[r, g, b, a]` as a plain array or a `Float32Array`, the
+/// lists every binding takes. Numbers keep their value, and a missing alpha is 1.
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for Color {
     type Error = ColorError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
-        use js_sys::{Array, Float32Array, Reflect};
+        use js_sys::{Array, Float32Array};
 
-        if let Some(css) = value.as_string() {
-            return Ok(Color::from_css(&css)?);
+        if !(Array::is_array(value) || value.is_instance_of::<Float32Array>()) {
+            return Err(ColorError::TypeMismatch(format!(
+                "a color takes [r, g, b] or [r, g, b, a] as an array or a Float32Array, got {value:?}"
+            )));
         }
-
-        if Array::is_array(value) || value.is_instance_of::<Float32Array>() {
-            let items = Array::from(value);
-            if !(3..=4).contains(&items.length()) {
-                return Err(ColorError::TypeMismatch(format!(
-                    "a color takes 3 or 4 channels, got {}",
-                    items.length()
-                )));
-            }
-            let channels = items
-                .iter()
-                .zip(CHANNELS)
-                .map(|(item, channel)| read_channel(channel, &item))
-                .collect::<Result<Vec<f32>, ColorError>>()?;
-            return Color::try_from(channels.as_slice());
+        let items = Array::from(value);
+        if !(3..=4).contains(&items.length()) {
+            return Err(ColorError::TypeMismatch(format!(
+                "a color takes 3 or 4 channels, got {}",
+                items.length()
+            )));
         }
-
-        if value.is_object() {
-            let field = |name: &str| {
-                Reflect::get(value, &JsValue::from_str(name)).unwrap_or(JsValue::UNDEFINED)
-            };
-            let mut channels = Vec::with_capacity(4);
-            for (name, channel) in ["r", "g", "b"].into_iter().zip(CHANNELS) {
-                channels.push(read_channel(channel, &field(name))?);
-            }
-            let alpha = field("a");
-            if !alpha.is_undefined() {
-                channels.push(read_channel("alpha", &alpha)?);
-            }
-            return Color::try_from(channels.as_slice());
-        }
-
-        Err(ColorError::TypeMismatch(
-            "a color takes [r, g, b], [r, g, b, a], a CSS string, or { r, g, b, a }".into(),
-        ))
+        let channels = items
+            .iter()
+            .zip(CHANNELS)
+            .map(|(item, channel)| read_channel(channel, &item))
+            .collect::<Result<Vec<f32>, ColorError>>()?;
+        Color::try_from(channels.as_slice())
     }
 }
 

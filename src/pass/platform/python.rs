@@ -1,7 +1,6 @@
 #![cfg(python)]
 
 use crate::platforms::python::read_unsigned;
-use crate::region::error::ScreenRegionError;
 use crate::{Color, Pass, PassObject, PassType, ScreenRegion, Shader};
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
@@ -99,19 +98,21 @@ impl Pass {
 
     #[pyo3(name = "set_viewport")]
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
-    pub fn set_viewport_py(&self, viewport: PyViewport) -> PyResult<()> {
-        self.object.set_viewport(ScreenRegion::try_from(viewport)?);
+    pub fn set_viewport_py(&self, viewport: PyViewport<'_>) -> PyResult<()> {
+        self.object
+            .set_viewport(ScreenRegion::try_from(viewport)?)?;
         Ok(())
     }
 
     #[pyo3(name = "set_compute_dispatch")]
     #[lsp_doc("docs/api/core/pass/set_compute_dispatch.md")]
-    pub fn set_compute_dispatch_py(&self, x: f64, y: f64, z: f64) -> PyResult<()> {
-        let x = read_unsigned(x, "Pass.set_compute_dispatch: x")?;
-        let y = read_unsigned(y, "Pass.set_compute_dispatch: y")?;
-        let z = read_unsigned(z, "Pass.set_compute_dispatch: z")?;
+    pub fn set_compute_dispatch_py(
+        &self,
+        #[pyo3(from_py_with = read_unsigned)] x: u32,
+        #[pyo3(from_py_with = read_unsigned)] y: u32,
+        #[pyo3(from_py_with = read_unsigned)] z: u32,
+    ) {
         self.object.set_compute_dispatch(x, y, z);
-        Ok(())
     }
 
     #[pyo3(name = "set_target")]
@@ -179,21 +180,27 @@ impl Pass {
 
 /// A viewport from Python: a `ScreenRegion`, `[x, y, w, h]`, or a size `(w, h)` at the origin.
 #[derive(FromPyObject)]
-pub enum PyViewport {
+pub enum PyViewport<'py> {
     #[pyo3(annotation = "ScreenRegion")]
     Region(ScreenRegion),
-    #[pyo3(annotation = "Sequence[float]")]
-    Numbers(Vec<f64>),
+    #[pyo3(annotation = "Sequence[int]")]
+    Numbers(Vec<Bound<'py, PyAny>>),
 }
 
-/// Checks each number the way JavaScript's `setViewport` does.
-impl TryFrom<PyViewport> for ScreenRegion {
-    type Error = ScreenRegionError;
+/// Reads each number as an int that [`read_unsigned`] checks.
+impl TryFrom<PyViewport<'_>> for ScreenRegion {
+    type Error = PyErr;
 
-    fn try_from(viewport: PyViewport) -> Result<Self, Self::Error> {
+    fn try_from(viewport: PyViewport<'_>) -> Result<Self, Self::Error> {
         match viewport {
             PyViewport::Region(region) => Ok(region),
-            PyViewport::Numbers(numbers) => ScreenRegion::from_numbers(&numbers),
+            PyViewport::Numbers(items) => {
+                let dimensions = items
+                    .iter()
+                    .map(read_unsigned)
+                    .collect::<PyResult<Vec<u32>>>()?;
+                Ok(ScreenRegion::from_dimensions(&dimensions)?)
+            }
         }
     }
 }

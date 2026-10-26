@@ -12,6 +12,6 @@ pub enum SizeError {
 #[cfg(python)]
 impl From<SizeError> for pyo3::PyErr {
     fn from(error: SizeError) -> Self {
-        crate::error::PyFragmentColorError::new_err(error.to_string())
+        crate::error::InvalidInputError::new_err(error.to_string())
     }
 }

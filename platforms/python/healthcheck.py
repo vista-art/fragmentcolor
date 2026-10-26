@@ -9,9 +9,11 @@ from fragmentcolor import (
     Instance,
     InvalidInputError,
     MalformedImageError,
+    Material,
     Mesh,
     OccludedSurfaceError,
     Mipmap,
+    Model,
     Pass,
     RenderCanvasTarget,
     Renderer,
@@ -289,41 +291,84 @@ def check_value_types():
     print("Value types compare by value")
 
 
-def check_number_errors():
-    """Counts, indices, sizes and regions raise FragmentColorError for numbers they can't hold."""
-    def raises(label, call):
+def check_number_errors(renderer):
+    """Counts, indices, sizes and regions take ints and raise InvalidInputError for one they can't hold."""
+    def raises(kind, label, call):
         try:
             call()
-        except FragmentColorError as e:
-            print(f"{label} raised FragmentColorError: {e}")
+        except kind as e:
+            print(f"{label} raised {kind.__name__}: {e}")
             return
-        raise AssertionError(f"{label} should raise FragmentColorError")
+        raise AssertionError(f"{label} should raise {kind.__name__}")
 
-    rpass, mesh = Pass("numbers"), Mesh()
-    for bad in (-1, 2**32):
-        raises(f"Pass.set_compute_dispatch({bad}, 1, 1)", lambda: rpass.set_compute_dispatch(bad, 1, 1))
-        raises(f"Mesh.set_instance_count({bad})", lambda: mesh.set_instance_count(bad))
-        raises(f"Mesh.set_indices([{bad}])", lambda: mesh.set_indices([bad]))
-        raises(f"Pass.set_viewport([0, 0, {bad}, 4])", lambda: rpass.set_viewport([0, 0, bad, 4]))
-        raises(f"Size({bad}, 2)", lambda: Size(bad, 2))
-        raises(f"ScreenRegion((0, 0), ({bad}, 4))", lambda: ScreenRegion((0, 0), (bad, 4)))
-        raises(f"ScreenRegion.from_region(0, 0, {bad}, 4)", lambda: ScreenRegion.from_region(0, 0, bad, 4))
-        raises(f"ScreenRegion.from_tuple(({bad}, 4))", lambda: ScreenRegion.from_tuple((bad, 4)))
-    raises("Pass.set_compute_dispatch(1.5, 1, 1)", lambda: rpass.set_compute_dispatch(1.5, 1, 1))
-    raises("Pass.set_viewport([0, 0, 4])", lambda: rpass.set_viewport([0, 0, 4]))
+    rpass, mesh, scene = Pass("numbers"), Mesh(), Scene()
+    scene.add_pass(rpass)
+    chain = Mipmap.build(bytes(4 * 4 * 4), TextureFormat.Rgba8Unorm, [4, 4])
+    texture = renderer.create_texture(bytes(4 * 4 * 4), size=[4, 4])
+    target = renderer.create_texture_target([4, 4])
+    model = Model(Mesh(), Material.pbr())
+    calls = {
+        "Pass.set_compute_dispatch": lambda n: rpass.set_compute_dispatch(n, 1, 1),
+        "Pass.set_viewport": lambda n: rpass.set_viewport([0, 0, n, 4]),
+        "Mesh.set_instance_count": lambda n: mesh.set_instance_count(n),
+        "Mesh.set_indices": lambda n: mesh.set_indices([0, n]),
+        "Scene.get_pass": lambda n: scene.get_pass(n),
+        "Scene.add_to": lambda n: scene.add_to(n, model),
+        "Mipmap.level": lambda n: chain.level(n),
+        "Texture.write_region": lambda n: texture.write_region(bytes(4), [n, 0, 1, 1]),
+        "Texture.write_region dict": lambda n: texture.write_region(bytes(4), {"min_x": n, "max_x": 1, "max_y": 1}),
+        "Size": lambda n: Size(n, 2),
+        "Size.depth": lambda n: setattr(Size(4, 2), "depth", n),
+        "TextureTarget.resize": lambda n: target.resize([n, 4]),
+        "create_texture_target": lambda n: renderer.create_texture_target({"width": n, "height": 4}),
+        "ScreenRegion": lambda n: ScreenRegion((0, 0), (n, 4)),
+        "ScreenRegion.from_region": lambda n: ScreenRegion.from_region(0, 0, n, 4),
+        "ScreenRegion.from_tuple": lambda n: ScreenRegion.from_tuple((n, 4)),
+    }
+    # An int of any size outside 0 to 2**32 - 1 is a value error, never OverflowError.
+    for name, call in calls.items():
+        for bad in (-1, 2**32, 2**128, 10**400):
+            raises(InvalidInputError, f"{name}({bad})", lambda: call(bad))
+        # A float is the wrong type, even a whole one.
+        raises(TypeError, f"{name}(1.5)", lambda: call(1.5))
+        raises(TypeError, f"{name}(2.0)", lambda: call(2.0))
+    assert issubclass(InvalidInputError, FragmentColorError)
+    raises(InvalidInputError, "Pass.set_viewport([0, 0, 4])", lambda: rpass.set_viewport([0, 0, 4]))
 
     size = Size(4, 2)
-    for field, bad in (("width", -1), ("height", 2**32), ("depth", float("nan"))):
-        raises(f"Size.{field} = {bad}", lambda: setattr(size, field, bad))
+    for field in ("width", "height", "depth"):
+        raises(InvalidInputError, f"Size.{field} = -1", lambda: setattr(size, field, -1))
     assert (size.width, size.height, size.depth) == (4, 2, None), "a refused write changed the Size"
     size.depth = 3
     size.depth = None
     assert size.depth is None
 
-    rpass.set_viewport([0, 0, 4, 4])
-    rpass.set_compute_dispatch(64, 1, 1)
+    # NumPy integers count as ints.
+    rpass.set_viewport([0, 0, np.uint32(4), 4])
+    rpass.set_compute_dispatch(np.int64(64), 1, 1)
     mesh.set_indices(np.array([0, 1, 2], dtype=np.uint32))
-    print("Counts, indices, sizes and regions refuse numbers they can't hold")
+    assert Size(np.uint32(4), 2).width == 4
+    print("Counts, indices, sizes and regions take ints and refuse ones they can't hold")
+
+
+def check_empty_regions():
+    """A region or viewport with a width or height of 0 raises FragmentColorError."""
+    rpass = Pass("empty")
+    for label, call in (
+        ("ScreenRegion((0, 0), (0, 4))", lambda: ScreenRegion((0, 0), (0, 4))),
+        ("ScreenRegion.from_region(1, 1, 4, 0)", lambda: ScreenRegion.from_region(1, 1, 4, 0)),
+        ("ScreenRegion.from_tuple((0, 0))", lambda: ScreenRegion.from_tuple((0, 0))),
+        ("Pass.set_viewport([0, 0, 0, 4])", lambda: rpass.set_viewport([0, 0, 0, 4])),
+        ("Pass.set_viewport([4, 0])", lambda: rpass.set_viewport([4, 0])),
+    ):
+        try:
+            call()
+        except FragmentColorError as e:
+            print(f"{label} raised {type(e).__name__}: {e}")
+        else:
+            raise AssertionError(f"{label} should raise FragmentColorError")
+    rpass.set_viewport([0, 0, 1, 1])
+    print("Regions and viewports refuse a side of 0")
 
 
 def check_clear_color():
@@ -709,7 +754,8 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_mesh_inputs()
     check_require_graph(renderer)
     check_value_types()
-    check_number_errors()
+    check_number_errors(renderer)
+    check_empty_regions()
     check_clear_color()
     check_texture_inputs(renderer)
     check_invalid_textures(renderer)

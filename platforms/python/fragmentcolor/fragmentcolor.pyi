@@ -44,7 +44,7 @@ __all__ = [
     "rendercanvas_context_hook",
 ]
 
-_PySize: TypeAlias = Size | Sequence[float] | Sequence[int] | dict[str, float] | dict[str, int]
+_PySize: TypeAlias = Sequence[int] | Size | dict[str, Any]
 _PyTextureBytes: TypeAlias = bytes | npt.NDArray[numpy.uint8] | Sequence[int]
 _PyTextureSource: TypeAlias = str | bytearray | bytes | memoryview[Any] | Mipmap | Texture | list[int] | npt.NDArray[numpy.uint8] | tuple[Any, ...]
 _PyVertexPosition: TypeAlias = float | Vertex | Sequence[float]
@@ -1292,13 +1292,15 @@ class Pass:
         renderer.render(rpass, target)
         ```
         """
-    def set_viewport(self, viewport: ScreenRegion | Sequence[float]) -> None:
+    def set_viewport(self, viewport: ScreenRegion | Sequence[int]) -> None:
         """
         Sets the viewport region for this [Pass](https://fragmentcolor.org/api/core/pass).
 
         The pass's shaders draw only inside this rectangle of the [Target](https://fragmentcolor.org/api/targets/target), and each shader's output scales to fill it.
 
         The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly. Pixels count from the top-left corner of the target.
+
+        A width or height of 0 is an error that leaves the pass's viewport as it was. To draw on the whole target, leave the viewport unset.
 
         A region that reaches past the target keeps its size and loses the part outside, and a region wholly outside the target draws nothing. When the pass has its own target from `set_target`, the region is measured against that target.
 
@@ -1321,7 +1323,7 @@ class Pass:
         renderer.render(rpass, target)
         ```
         """
-    def set_compute_dispatch(self, x: float, y: float, z: float) -> None:
+    def set_compute_dispatch(self, x: int, y: int, z: int) -> None:
         """
         Set the workgroup-grid size for a compute pass. The three numbers are the
         number of workgroups to dispatch in each dimension; total invocations are
@@ -1455,19 +1457,19 @@ class Pass:
 
 @final
 class Size:
-    def __new__(cls, width: float, height: float, depth: float | None = ...) -> Size: ...
+    def __new__(cls, width: int, height: int, depth: int | None = ...) -> Size: ...
     @property
     def width(self) -> int: ...
     @width.setter
-    def width(self, value: float) -> None: ...
+    def width(self, value: int) -> None: ...
     @property
     def height(self) -> int: ...
     @height.setter
-    def height(self, value: float) -> None: ...
+    def height(self, value: int) -> None: ...
     @property
     def depth(self) -> int | None: ...
     @depth.setter
-    def depth(self, value: float | None) -> None: ...
+    def depth(self, value: int | None) -> None: ...
 
 @final
 class ScreenRegion:
@@ -1479,11 +1481,11 @@ class ScreenRegion:
     def max_x(self) -> int: ...
     @property
     def max_y(self) -> int: ...
-    def __new__(cls, origin: tuple[float, float], size: tuple[float, float]) -> ScreenRegion: ...
+    def __new__(cls, origin: tuple[int, int], size: tuple[int, int]) -> ScreenRegion: ...
     @staticmethod
-    def from_region(x: float, y: float, width: float, height: float) -> ScreenRegion: ...
+    def from_region(x: int, y: int, width: int, height: int) -> ScreenRegion: ...
     @staticmethod
-    def from_tuple(size: tuple[float, float]) -> ScreenRegion: ...
+    def from_tuple(size: tuple[int, int]) -> ScreenRegion: ...
     def width(self) -> int: ...
     def height(self) -> int: ...
 
@@ -1640,7 +1642,7 @@ class Mesh:
         m.clear_instances() # back to a single uninstanced draw
         ```
         """
-    def set_instance_count(self, n: float) -> None:
+    def set_instance_count(self, n: int) -> None:
         """
         Override how many instances to draw without providing per-instance attributes.
 
@@ -1668,7 +1670,7 @@ class Mesh:
         m.set_instance_count(1_000_000)
         ```
         """
-    def set_indices(self, indices: Sequence[float]) -> None:
+    def set_indices(self, indices: Sequence[int]) -> None:
         """
         Provide the index buffer directly, bypassing the mesh's automatic vertex
         dedup pass. Use this when an asset already carries its own indexing: glTF
@@ -4631,7 +4633,7 @@ class Texture:
         texture.write(frame)
         ```
         """
-    def write_region(self, data: _PyTextureBytes, region: ScreenRegion | dict[str, Any] | Sequence[int] | None) -> None:
+    def write_region(self, data: _PyTextureBytes, region: ScreenRegion | Sequence[int] | dict[str, Any] | None) -> None:
         """
         Same as `Texture::write`, but writes into a sub-region of the texture and/or with explicit source data layout.
 

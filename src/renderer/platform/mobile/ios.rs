@@ -12,7 +12,7 @@ use objc2::msg_send;
 use objc2::runtime::AnyObject;
 
 use crate::MobileWindowTarget;
-use crate::renderer::platform::metal_layer::{check_metal_layer, read_side};
+use crate::renderer::platform::metal_layer::{check_layer, read_side};
 use crate::{Renderer, WindowTarget};
 
 use super::FragmentColorError;
@@ -64,7 +64,7 @@ impl Renderer {
             ));
         };
         // Only a CAMetalLayer answers drawableSize, so check the class before asking.
-        check_metal_layer(object)?;
+        check_layer(object)?;
         let size: CGSize = unsafe { msg_send![layer, drawableSize] };
         let extent = wgpu::Extent3d {
             width: read_side(size.width)?,
