@@ -1,8 +1,14 @@
 //! GPU errors that a wasm frame reports after `render` has returned.
 
 use super::RendererError;
+#[cfg(wasm)]
+use super::scope::Caught;
 use crate::texture::TextureError;
 use parking_lot::Mutex;
+#[cfg(wasm)]
+use std::future::Future;
+#[cfg(wasm)]
+use std::sync::Arc;
 
 /// A GPU error that an error scope caught after its call returned.
 #[derive(Debug, Clone, PartialEq)]
@@ -81,17 +87,17 @@ impl ErrorSlot {
         scopes.open.first().is_none_or(|ticket| *ticket >= before)
     }
 
-    /// Reports the error that `caught` resolves to, when it resolves.
+    /// Reports what `caught` resolves to, when it resolves.
     ///
     /// Every error that lands goes to the log as an error, which the browser
     /// shows as a `console.error`, so a frame no later call follows still reports it.
-    /// It also runs `on_error`, and waits in the slot for the next call unless
-    /// `failure` says the call already failed and returned its own error.
+    /// It also runs `on_error`, and the cause waits in the slot for the next call unless
+    /// `failure` says the call already failed and returned its own error. The errors the cause led to only log.
     #[cfg(wasm)]
     pub(crate) fn watch(
-        self: &std::sync::Arc<Self>,
+        self: &Arc<Self>,
         label: &str,
-        caught: impl std::future::Future<Output = Option<wgpu::Error>> + 'static,
+        caught: impl Future<Output = Option<Caught>> + 'static,
         failure: Option<String>,
         on_error: impl FnOnce() + 'static,
     ) {
@@ -99,12 +105,13 @@ impl ErrorSlot {
         let label = label.to_string();
         let ticket = self.open();
         wasm_bindgen_futures::spawn_local(async move {
-            if let Some(gpu) = caught.await {
+            if let Some(Caught { cause, symptoms }) = caught.await {
                 on_error();
-                let error = LateError {
-                    label,
-                    message: gpu.to_string(),
+                let late = |error: wgpu::Error| LateError {
+                    label: label.clone(),
+                    message: error.to_string(),
                 };
+                let error = late(cause);
                 match failure {
                     Some(failure) => log::error!(
                         "{}. The call had already failed: {failure}",
@@ -114,6 +121,10 @@ impl ErrorSlot {
                         log::error!("{}", RendererError::from(error.clone()));
                         slot.store(error);
                     }
+                }
+                for symptom in symptoms {
+                    let symptom = RendererError::from(late(symptom));
+                    log::error!("{symptom}. It follows from the error before it");
                 }
             }
             slot.close(ticket);

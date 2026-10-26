@@ -46,16 +46,11 @@ mod unregister;
 
 #[cfg(any(wasm, test))]
 mod late;
+mod scope;
+use scope::{Caught, SCOPES};
 
 #[cfg(test)]
 mod scope_tests;
-
-/// The kinds of GPU error each error scope catches, outermost first.
-const SCOPES: [wgpu::ErrorFilter; 3] = [
-    wgpu::ErrorFilter::OutOfMemory,
-    wgpu::ErrorFilter::Internal,
-    wgpu::ErrorFilter::Validation,
-];
 
 /// The Renderer accepts a generic window handle as input
 /// that must report its display size.
@@ -1077,15 +1072,20 @@ impl RenderContext {
         self.sample_count.load(Ordering::Relaxed).max(1)
     }
 
-    /// Runs `op` inside error scopes for validation, internal and out of memory errors.
+    /// Runs `op` inside error scopes for out of memory, internal and validation errors.
     ///
-    /// A wgpu error that `op` causes returns as `ValidationError` instead of
-    /// reaching the device's uncaptured error handler. Pipeline builds and each frame
-    /// go through here, and on native so does each bind group and view inside a frame.
-    /// The scopes are popped on every path. When `op` fails with a GPU error of its own,
-    /// such as an inner scope's, the error these scopes caught came first and wins. When
-    /// `op` fails on the CPU, its error wins, and the GPU error goes to the log as a warning.
-    /// On wasm the scopes resolve after `render` returns, so the error waits in `late`.
+    /// A wgpu error that `op` causes returns as `ValidationError` instead of reaching the
+    /// device's uncaptured error handler. Pipeline builds and each frame go through here,
+    /// and on native so does each bind group and view inside a frame. The scopes pop on every path.
+    /// Of the errors they catch, the cause returns: out of memory, then internal, then validation.
+    ///
+    /// On native the scopes resolve before this returns. When `op` fails with a GPU error
+    /// of its own, such as an inner scope's, the cause these scopes caught came first and wins.
+    /// When `op` fails on the CPU, its error wins. Every error that doesn't return goes to the log as a warning.
+    ///
+    /// On wasm the scopes resolve after `render` returns, so `op`'s own result always returns.
+    /// `ErrorSlot::watch` logs each error that lands at error level, and keeps the cause in `late`
+    /// for the next call only when `op` succeeded. When `op` failed, the cause is logged and dropped.
     fn validate<T>(
         &self,
         label: &str,
@@ -1108,27 +1108,30 @@ impl RenderContext {
         let validation = validation.pop();
         let internal = internal.pop();
         let memory = memory.pop();
-        let caught = async move { validation.await.or(internal.await).or(memory.await) };
+        let caught = async move { Caught::split([memory.await, internal.await, validation.await]) };
         #[cfg(not(wasm))]
         {
             let _ = on_error;
-            match (result, futures::executor::block_on(caught)) {
-                (Err(error), Some(gpu)) if error.is_gpu() => {
-                    log::warn!("{label} failed: {gpu}. It then caused: {error}");
-                    Err(RendererError::ValidationError {
-                        label: label.to_string(),
-                        message: gpu.to_string(),
-                    })
+            let Some(Caught { cause, symptoms }) = futures::executor::block_on(caught) else {
+                return result;
+            };
+            for symptom in symptoms {
+                log::warn!("{label}: the GPU then reported: {symptom}");
+            }
+            let scoped = RendererError::ValidationError {
+                label: label.to_string(),
+                message: cause.to_string(),
+            };
+            match result {
+                Err(error) if error.is_gpu() => {
+                    log::warn!("{label} failed: {cause}. It then caused: {error}");
+                    Err(scoped)
                 }
-                (Err(error), Some(gpu)) => {
-                    log::warn!("{label} failed: {error}. The GPU also reported: {gpu}");
+                Err(error) => {
+                    log::warn!("{label} failed: {error}. The GPU also reported: {cause}");
                     Err(error)
                 }
-                (Ok(_), Some(gpu)) => Err(RendererError::ValidationError {
-                    label: label.to_string(),
-                    message: gpu.to_string(),
-                }),
-                (result, None) => result,
+                Ok(_) => Err(scoped),
             }
         }
         #[cfg(wasm)]
