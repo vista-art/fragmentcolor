@@ -11,6 +11,12 @@ Core invariants
 - A mesh with an empty index list draws nothing. A Model mesh with no visible Model in the pass draws nothing either, which covers a hidden Model and a Model added to another pass through a shared Material. Drawing it would read whatever buffer an earlier mesh left in slot 1.
 - When the pipeline reads instance attributes, a mesh draws no more instances than it holds. A larger `set_instance_count` returns `MeshError::InvalidInstance`.
 
+Error scopes & the pipeline cache
+- `RenderContext::validate(label, op)` is the one place GPU work runs in a validation error scope. It pops the scope on every path, `op`'s own errors included, and a captured error returns as `RendererError::ValidationError { label, .. }`.
+- Each render and compute pipeline builds inside `validate` and enters its cache through `or_try_insert_with`, so a pipeline that failed is never cached and the next frame reports the same error.
+- Each frame records its passes and submits them inside one `validate("frame", ..)`. A frame that fails is not presented.
+- On wasm `validate` runs `op` without a scope, because a scope resolves asynchronously and `render` is synchronous. A wasm mechanism belongs there. A check that has to work on the web runs on the CPU before any wgpu call.
+
 Depth
 - `RenderContext::resolve_depth` picks each render pass's depth attachment. A depth target the pass set wins, and its sample count must match the color attachment (`DepthSampleCountMismatch`). Otherwise a pass with Models takes a pooled `Depth32Float` sized and sampled like its color attachment, cleared to 1.0 and discarded at the end. Any other pass draws without depth, in order.
 - In a pass that draws Models, a shader that draws none of them (a fullscreen backdrop, an overlay mesh) uses `DepthUse::Ignore`, with the pooled depth or a depth target the pass set: it passes every fragment and writes no depth, so it draws in order and hides no model. In a pass without Models, an explicit depth target makes every shader test depth. Every pipeline in a pass declares the attachment's format, so ignoring depth is a pipeline state, never a missing attachment.

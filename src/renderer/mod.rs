@@ -41,6 +41,9 @@ mod sampler_pairs;
 mod storage_read;
 mod unregister;
 
+#[cfg(test)]
+mod scope_tests;
+
 /// The Renderer accepts a generic window handle as input
 /// that must report its display size.
 pub trait HasDisplaySize {
@@ -781,11 +784,28 @@ impl RenderContext {
     }
 
     /// Renders any `Renderable` (Shader, Pass, or iterable of Pass) to a Target.
+    /// A frame whose commands fail validation returns the error and is never presented.
     fn render(
         &self,
         renderable: &impl Renderable,
         target: &impl Target,
     ) -> Result<(), RendererError> {
+        let frame = self.validate("frame", || self.submit(renderable, target))?;
+        if let Some(frame) = frame
+            && frame.auto_present()
+        {
+            frame.present(&self.queue);
+        }
+        Ok(())
+    }
+
+    /// Records every pass of `renderable` and submits the commands.
+    /// Returns the frame they drew into, when a pass draws.
+    fn submit(
+        &self,
+        renderable: &impl Renderable,
+        target: &impl Target,
+    ) -> Result<Option<Box<dyn TargetFrame>>, RendererError> {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -842,13 +862,7 @@ impl RenderContext {
 
         self.queue.submit(Some(encoder.finish()));
 
-        if let Some(frame) = frame
-            && frame.auto_present()
-        {
-            frame.present(&self.queue);
-        }
-
-        Ok(())
+        Ok(frame)
     }
 
     /// Try to get a frame once, and on Lost/Outdated, retry exactly once.
@@ -956,33 +970,42 @@ impl RenderContext {
         self.sample_count.load(Ordering::Relaxed).max(1)
     }
 
-    /// Run a wgpu operation inside a validation error scope so that any
-    /// validation failure surfaces as a typed
-    /// `RendererError::ValidationError` instead of being swallowed by the
-    /// device's `on_uncaptured_error` handler. Wrap any wgpu call whose
-    /// failure mode would otherwise leak to stderr — `create_bind_group`,
-    /// `Texture::create_view`, etc.
+    /// Runs `op` inside a validation error scope.
     ///
-    /// On wasm, `pop_error_scope` resolves asynchronously and cannot be
-    /// awaited from this sync render path; the closure runs and its
-    /// result is returned unwrapped, matching the prior behavior.
-    fn validate<T>(&self, label: &str, op: impl FnOnce() -> T) -> Result<T, RendererError> {
+    /// A wgpu error that `op` causes returns as `ValidationError`
+    /// instead of reaching the device's uncaptured error handler.
+    /// Pipeline builds, bind groups, views and each frame go through here.
+    /// The scope is popped on every path. When `op` fails, its own error wins,
+    /// because wasm returns that same error, and a GPU error the scope also caught
+    /// goes to the log. On wasm a scope can only be read asynchronously, and `render`
+    /// is synchronous, so `op` runs there without one.
+    fn validate<T>(
+        &self,
+        label: &str,
+        op: impl FnOnce() -> Result<T, RendererError>,
+    ) -> Result<T, RendererError> {
         #[cfg(not(wasm))]
         {
             let scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
-            let value = op();
-            if let Some(err) = futures::executor::block_on(scope.pop()) {
-                return Err(RendererError::ValidationError {
+            let result = op();
+            let caught = futures::executor::block_on(scope.pop());
+            match (result, caught) {
+                (Err(error), Some(gpu)) => {
+                    log::error!("{label} failed: {error}. The GPU also reported: {gpu}");
+                    Err(error)
+                }
+                (Err(error), None) => Err(error),
+                (Ok(_), Some(gpu)) => Err(RendererError::ValidationError {
                     label: label.to_string(),
-                    message: err.to_string(),
-                });
+                    message: gpu.to_string(),
+                }),
+                (Ok(value), None) => Ok(value),
             }
-            Ok(value)
         }
         #[cfg(wasm)]
         {
             let _ = label;
-            Ok(op())
+            op()
         }
     }
 
@@ -1298,19 +1321,21 @@ impl RenderContext {
             let cached_pipeline = self
                 .render_pipelines
                 .entry(pipeline_key)
-                .or_insert_with(|| {
-                    create_render_pipeline(
-                        &self.device,
-                        shader,
-                        color_format,
-                        sample_count,
-                        layouts.as_ref(),
-                        depth_use,
-                        alpha_mode,
-                        double_sided,
-                        self.aligned_uniform_bindings.load(Ordering::Relaxed),
-                    )
-                });
+                .or_try_insert_with(|| {
+                    self.validate("render pipeline", || {
+                        Ok(create_render_pipeline(
+                            &self.device,
+                            shader,
+                            color_format,
+                            sample_count,
+                            layouts.as_ref(),
+                            depth_use,
+                            alpha_mode,
+                            double_sided,
+                            self.aligned_uniform_bindings.load(Ordering::Relaxed),
+                        ))
+                    })
+                })?;
 
             // Collect resources per bind group to build entries safely with owned views/samplers
             #[derive(Default)]
@@ -1334,7 +1359,7 @@ impl RenderContext {
                         if let Some(tex) = self.get_texture(&meta.id) {
                             let view = self.validate(
                                 &format!("texture view for binding '{}'", name),
-                                || tex.create_view(),
+                                || Ok(tex.create_view()),
                             )?;
                             let group_entry = groups.entry(uniform.group).or_default();
                             group_entry.views.push((uniform.binding, view));
@@ -1495,11 +1520,11 @@ impl RenderContext {
 
                 let label = format!("Bind Group for group: {}", group_index);
                 let bind_group = self.validate(&label, || {
-                    self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    Ok(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                         layout,
                         entries: &entries,
                         label: Some(&label),
-                    })
+                    }))
                 })?;
                 present_groups.insert(group_index);
                 bind_groups.push((group_index, bind_group));
@@ -1511,11 +1536,11 @@ impl RenderContext {
                     // Create an empty bind group (layout is expected to have zero entries for placeholders)
                     let label = format!("Empty Bind Group for group: {}", group);
                     let empty = self.validate(&label, || {
-                        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        Ok(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                             layout,
                             entries: &[],
                             label: Some(&label),
-                        })
+                        }))
                     })?;
                     bind_groups.push((*group, empty));
                 }
@@ -1671,51 +1696,11 @@ impl RenderContext {
                     shader_hash: shader.hash,
                     bind_group_entries: entries.clone(),
                 })
-                .or_insert_with(|| {
-                    let layouts = create_bind_group_layouts(&self.device, &entries);
-                    let mut sorted_groups: Vec<_> = layouts.keys().cloned().collect();
-                    sorted_groups.sort();
-                    let mut sorted_layouts: Vec<Option<&wgpu::BindGroupLayout>> = Vec::new();
-                    for g in sorted_groups.into_iter() {
-                        sorted_layouts.push(layouts.get(&g));
-                    }
-
-                    let layout =
-                        self.device
-                            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                                label: Some("Compute Pipeline Layout"),
-                                bind_group_layouts: &sorted_layouts,
-                                immediate_size: 0,
-                            });
-
-                    let module = Cow::Owned(shader.module.clone());
-                    let shader_module =
-                        self.device
-                            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                                label: Some("Compute Shader"),
-                                source: wgpu::ShaderSource::Naga(module),
-                            });
-
-                    let cs_entry = shader
-                        .find_entry_point(naga::ShaderStage::Compute)
-                        .map(|entry_point| entry_point.name.as_str());
-
-                    let pipeline =
-                        self.device
-                            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                                label: Some("Compute Pipeline"),
-                                layout: Some(&layout),
-                                module: &shader_module,
-                                entry_point: Some(cs_entry.unwrap_or("cs_main")),
-                                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                                cache: None,
-                            });
-
-                    ComputePipeline {
-                        pipeline,
-                        bind_group_layouts: layouts,
-                    }
-                });
+                .or_try_insert_with(|| {
+                    self.validate("compute pipeline", || {
+                        Ok(create_compute_pipeline(&self.device, shader, &entries))
+                    })
+                })?;
             #[derive(Default)]
             struct BindGroupResources {
                 buffers: Vec<(u32, buffer_pool::BufferLocation)>,
@@ -1731,7 +1716,7 @@ impl RenderContext {
                         if let Some(tex) = self.get_texture(&meta.id) {
                             let view = self.validate(
                                 &format!("texture view for binding '{}'", name),
-                                || tex.create_view(),
+                                || Ok(tex.create_view()),
                             )?;
                             let group_entry = groups.entry(uniform.group).or_default();
                             group_entry.views.push((uniform.binding, view));
@@ -1829,11 +1814,11 @@ impl RenderContext {
                 entries.sort_by_key(|e| e.binding);
                 let label = format!("Compute Bind Group for group: {}", group);
                 let bind_group = self.validate(&label, || {
-                    self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    Ok(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                         layout,
                         entries: &entries,
                         label: Some(&label),
-                    })
+                    }))
                 })?;
                 bind_groups.push((group, bind_group));
             }
@@ -2641,6 +2626,51 @@ fn create_render_pipeline(
     }
 }
 
+/// Builds the compute pipeline for `shader` with one layout per group in `entries`.
+fn create_compute_pipeline(
+    device: &wgpu::Device,
+    shader: &crate::ShaderObject,
+    entries: &BindGroupEntries,
+) -> ComputePipeline {
+    let layouts = create_bind_group_layouts(device, entries);
+    let mut sorted_groups: Vec<_> = layouts.keys().cloned().collect();
+    sorted_groups.sort();
+    let sorted_layouts: Vec<Option<&wgpu::BindGroupLayout>> = sorted_groups
+        .iter()
+        .map(|group| layouts.get(group))
+        .collect();
+
+    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("Compute Pipeline Layout"),
+        bind_group_layouts: &sorted_layouts,
+        immediate_size: 0,
+    });
+
+    let module = Cow::Owned(shader.module.clone());
+    let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("Compute Shader"),
+        source: wgpu::ShaderSource::Naga(module),
+    });
+
+    let cs_entry = shader
+        .find_entry_point(naga::ShaderStage::Compute)
+        .map(|entry_point| entry_point.name.as_str());
+
+    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("Compute Pipeline"),
+        layout: Some(&layout),
+        module: &shader_module,
+        entry_point: Some(cs_entry.unwrap_or("cs_main")),
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+        cache: None,
+    });
+
+    ComputePipeline {
+        pipeline,
+        bind_group_layouts: layouts,
+    }
+}
+
 fn schema_offsets(
     schema: &crate::mesh::VertexSchema,
 ) -> (
@@ -2769,13 +2799,13 @@ mod more_error_path_tests {
                     });
 
             let result = context.validate("intentionally invalid bind group", || {
-                context
+                Ok(context
                     .device
                     .create_bind_group(&wgpu::BindGroupDescriptor {
                         layout: &layout,
                         entries: &[],
                         label: Some("intentionally invalid bind group"),
-                    })
+                    }))
             });
 
             match result {
