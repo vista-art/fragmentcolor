@@ -614,7 +614,7 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     throws('writeRegion with reversed bounds', () =>
       canvasTexture.writeRegion(patch, { minX: 8, maxX: 4, minY: 0, maxY: 4 }));
     throws('writeRegion with misspelled keys', () => canvasTexture.writeRegion(patch, { x: 0, y: 0, w: 4, h: 4 }));
-    // 16 rows of 4 texels: the bytes a zero width once stretched to the edge.
+    // 4 rows of 16 texels, the bytes a 16x4 region holds, so only the zero width is wrong.
     throws('writeRegion with a zero width', () => canvasTexture.writeRegion(new Uint8Array(16 * 4 * 4), [0, 0, 0, 4]));
     // The same 64 bytes as the 4x4 region, in another shape.
     const wide = new ImageData(new Uint8ClampedArray(8 * 2 * 4), 8, 2);
