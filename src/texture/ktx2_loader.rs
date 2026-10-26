@@ -242,6 +242,8 @@ pub(crate) fn from_ktx2_bytes(
             )));
         }
 
+        // A level smaller than one block still stores a whole block, and wgpu
+        // copies whole blocks, so the copy covers the level's physical size.
         context.queue.write_texture(
             wgpu::TexelCopyTextureInfo {
                 aspect: wgpu::TextureAspect::All,
@@ -253,11 +255,11 @@ pub(crate) fn from_ktx2_bytes(
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(bytes_per_row),
-                rows_per_image: Some(blocks_in_col * block_h),
+                rows_per_image: Some(blocks_in_col),
             },
             wgpu::Extent3d {
-                width: level_w,
-                height: level_h,
+                width: blocks_in_row * block_w,
+                height: blocks_in_col * block_h,
                 depth_or_array_layers: 1,
             },
         );
@@ -454,6 +456,47 @@ mod tests {
                 other => panic!("expected InvalidInput, got {other:?}"),
             };
             assert!(message.contains("at most 3 mip levels, got 4"), "{message}");
+        });
+    }
+
+    // Story: a block-compressed chain down to 1x1, the chain encoders write, loads with
+    // no GPU error. Its levels smaller than one block still copy as one whole block.
+    #[test]
+    fn loads_compressed_levels_smaller_than_a_block() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([1, 1])
+                .await
+                .expect("a target");
+            let context = target.context.clone();
+            if !context
+                .device
+                .features()
+                .contains(wgpu::Features::TEXTURE_COMPRESSION_BC)
+            {
+                eprintln!("the device has no BC compression");
+                return;
+            }
+            // An 8x8 BC1 chain: 2x2 blocks, then three levels of one 8-byte block each.
+            let levels = [32, 8, 8, 8].map(|bytes| vec![0; bytes]).to_vec();
+            let bytes = Ktx2Test {
+                format: VkFormat::BC1_RGBA_UNORM_BLOCK,
+                width: 8,
+                height: 8,
+                levels,
+            }
+            .build();
+            let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
+
+            let scope = context
+                .device
+                .push_error_scope(wgpu::ErrorFilter::Validation);
+            let texture = from_ktx2_bytes(&context, &bytes, usage).expect("an 8x8 BC1 chain");
+            let error = scope.pop().await;
+
+            assert!(error.is_none(), "{error:?}");
+            assert_eq!(texture.inner.mip_level_count(), 4);
         });
     }
 
