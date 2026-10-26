@@ -18,7 +18,7 @@ pub enum PassError {
     #[error("No pass in the scene matches the target: {0}")]
     PassNotFound(String),
     #[error(
-        "A shader on this Pass already holds {cap} lights, the most this device allows; drop a Light or give the extra lights another Material"
+        "A shader on this Pass takes at most {cap} lights on this device; drop a Light or give the extra lights another Material"
     )]
     LightCapReached { cap: u32 },
     #[error("Invalid color target: {0}")]
