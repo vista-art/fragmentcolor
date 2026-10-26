@@ -27,8 +27,11 @@ use crate::{Renderer, Size};
 
 /// Mobile-facing error type. Flattens every internal error to its `Display`
 /// representation so Swift/Kotlin callers get a single typed error to match on.
-/// A GPU error keeps its kind, its step's label and its message apart.
+/// A GPU error keeps its kind, its step's label and the device's own detail apart.
+/// The exported `Display` gives Swift's `description` and `localizedDescription`,
+/// and Kotlin's `toString()`, the full text of every case.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
+#[uniffi::export(Display)]
 pub enum FragmentColorError {
     #[error("{0}")]
     Init(String),
