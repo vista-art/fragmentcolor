@@ -581,8 +581,7 @@ mod tests {
         let roots = object.light_roots.clone().expect("roots");
         let lowered = lower_roots(object.module_for_pipeline(true), &roots, 253).expect("lowered");
         let flags = naga::valid::ValidationFlags::all();
-        let mut validator =
-            naga::valid::Validator::new(flags, naga::valid::Capabilities::empty());
+        let mut validator = naga::valid::Validator::new(flags, naga::valid::Capabilities::empty());
         let info = validator.validate(&lowered).expect("valid");
         let constants = naga::back::PipelineConstants::default();
         let (resolved, info) =
@@ -612,7 +611,10 @@ mod tests {
         .and_then(|mut writer| writer.write())
         .expect("GLSL ES 3.0");
         assert!(glsl.contains("uniform"), "lights become a uniform block");
-        assert!(!glsl.contains("buffer "), "no storage buffer remains:\n{glsl}");
+        assert!(
+            !glsl.contains("buffer "),
+            "no storage buffer remains:\n{glsl}"
+        );
     }
 
     #[test]

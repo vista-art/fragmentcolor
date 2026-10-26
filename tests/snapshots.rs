@@ -4,9 +4,7 @@ use std::fs;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
-use fragmentcolor::{
-    Camera, Light, Material, Mesh, Model, Pass, Renderer, Shader, Target, Vertex,
-};
+use fragmentcolor::{Camera, Light, Material, Mesh, Model, Pass, Renderer, Shader, Target, Vertex};
 
 pub struct Tolerance(pub f64);
 
