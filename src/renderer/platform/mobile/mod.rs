@@ -264,8 +264,8 @@ impl Renderer {
     /// Read back the mip-0 contents of a registered texture as tightly-packed
     /// bytes in the texture's native format. Uniffi exposes this as a Swift
     /// `async throws` / Kotlin `suspend fun` automatically. Foreign callers
-    /// await this in a coroutine or `Task`; the underlying GPU readback is
-    /// driven by the async `texture::read::read_pixels` path.
+    /// await this in a coroutine or `Task`. It runs `Renderer::read_texture`,
+    /// whose GPU readback goes through `texture::read::copy_pixels`.
     #[uniffi::method(name = "readTexture")]
     #[lsp_doc("docs/api/core/renderer/read_texture.md")]
     pub async fn read_texture_mobile(
