@@ -590,7 +590,7 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     same('Texture.write(ImageData) into Bgra8Unorm', await renderer.readTexture(bgra.id()), [0, 0, 255, 255]);
     bgra.writeRegion(red, [0, 0, 1, 1]);
     same('writeRegion(ImageData) into Bgra8Unorm', await renderer.readTexture(bgra.id()), [0, 0, 255, 255]);
-    throws('writeRegion with an ImageData of another size', () => bgra.writeRegion(image, [0, 0, 1, 1]));
+    await rejects('createTexture(ImageData) with a fractional size', () => renderer.createTexture(image, [1.5, 2]));
     same('Mipmap.build(ImageData) as Bgra8Unorm', Mipmap.build(red, TextureFormat.Bgra8Unorm).level(0), [0, 0, 255, 255]);
     const seeded = await renderer.createStorageTexture([1, 1], TextureFormat.Bgra8Unorm, red,
       TextureUsage.TEXTURE_BINDING | TextureUsage.COPY_DST | TextureUsage.COPY_SRC);
@@ -603,7 +603,15 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     throws('writeRegion with reversed bounds', () =>
       canvasTexture.writeRegion(patch, { minX: 8, maxX: 4, minY: 0, maxY: 4 }));
     throws('writeRegion with misspelled keys', () => canvasTexture.writeRegion(patch, { x: 0, y: 0, w: 4, h: 4 }));
-    throws('writeRegion with a zero width', () => canvasTexture.writeRegion(patch, [0, 0, 0, 4]));
+    // 16 rows of 4 texels: the bytes a zero width once stretched to the edge.
+    throws('writeRegion with a zero width', () => canvasTexture.writeRegion(new Uint8Array(16 * 4 * 4), [0, 0, 0, 4]));
+    // The same 64 bytes as the 4x4 region, in another shape.
+    const wide = new ImageData(new Uint8ClampedArray(8 * 2 * 4), 8, 2);
+    throws('writeRegion with an ImageData of another shape', () => canvasTexture.writeRegion(wide, [0, 0, 4, 4]));
+    throws('writeRegion with a function for x', () =>
+      canvasTexture.writeRegion(patch, { x: () => 4, y: 0, width: 4, height: 4 }));
+    throws('writeRegion with a function stride', () =>
+      canvasTexture.writeRegion(patch, { x: 0, y: 0, width: 4, height: 4, bytesPerRow: () => 16 }));
     canvasTexture.writeRegion(new Uint8Array(16 * 16 * 4), undefined);
     throws('writeRegion with minZ 2**32 - 1', () =>
       canvasTexture.writeRegion(patch, { minX: 0, maxX: 4, minY: 0, maxY: 4, minZ: 4294967295 }));
