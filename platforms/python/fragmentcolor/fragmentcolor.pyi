@@ -2229,7 +2229,7 @@ class Scene:
         camera node scaled to zero, returns `SceneLoadError::Camera`, which names
         the camera. Load with `cameras(false)` to skip the file's cameras. A
         perspective camera without `zfar` asks for an infinite projection, and the
-        loader gives it a far plane 10 million times its `znear`.
+        loader builds one, so nothing in front of the camera clips however far away.
 
         ## Skipping embedded cameras and lights
 

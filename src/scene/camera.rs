@@ -88,6 +88,9 @@ enum Projection {
         near: f32,
         far: f32,
     },
+    /// A perspective with no far plane: depth runs from 0 at `near` toward 1
+    /// at infinity. It's the projection glTF asks for when a camera has no `zfar`.
+    InfinitePerspective { fovy_radians: f32, near: f32 },
     Orthographic {
         left: f32,
         right: f32,
@@ -110,6 +113,10 @@ impl Projection {
                 near,
                 far,
             } => Ok((self, build_perspective(fovy_radians, aspect, near, far)?)),
+            Projection::InfinitePerspective { fovy_radians, near } => Ok((
+                self,
+                build_infinite_perspective(fovy_radians, aspect, near)?,
+            )),
             Projection::Orthographic {
                 left,
                 right,
@@ -174,20 +181,32 @@ fn build_perspective(fovy: f32, aspect: f32, near: f32, far: f32) -> Result<Mat4
         near,
         far,
     };
-    let finite = [fovy, aspect, near, far]
-        .iter()
-        .all(|value| value.is_finite());
-    let valid = finite
-        && fovy > 0.0
-        && fovy < std::f32::consts::PI
-        && aspect != 0.0
-        && near > 0.0
-        && far > 0.0
-        && near != far;
+    let valid = is_lens_valid(fovy, aspect, near) && far.is_finite() && far > 0.0 && near != far;
     if !valid {
         return Err(error);
     }
     require_finite(directx::perspective(fovy, aspect, near, far), error)
+}
+
+/// Build a perspective matrix with no far plane, refusing a lens that gives
+/// no finite one. Its error reports the missing far plane as infinity.
+fn build_infinite_perspective(fovy: f32, aspect: f32, near: f32) -> Result<Mat4, CameraError> {
+    let error = CameraError::Perspective {
+        fovy,
+        aspect,
+        near,
+        far: f32::INFINITY,
+    };
+    if !is_lens_valid(fovy, aspect, near) {
+        return Err(error);
+    }
+    require_finite(directx::perspective_infinite(fovy, aspect, near), error)
+}
+
+/// Whether a field of view, aspect and near plane can start a perspective.
+fn is_lens_valid(fovy: f32, aspect: f32, near: f32) -> bool {
+    let finite = [fovy, aspect, near].iter().all(|value| value.is_finite());
+    finite && fovy > 0.0 && fovy < std::f32::consts::PI && aspect != 0.0 && near > 0.0
 }
 
 /// Build an orthographic matrix, refusing planes that give no finite one.
@@ -313,6 +332,17 @@ impl Camera {
             near,
             far,
         };
+        Ok(Self::from_state(CameraState::new(projection, proj)))
+    }
+
+    /// A perspective Camera with no far plane, for a glTF camera without `zfar`.
+    pub(crate) fn create_infinite_perspective(
+        fovy_radians: f32,
+        aspect: f32,
+        near: f32,
+    ) -> Result<Self, CameraError> {
+        let proj = build_infinite_perspective(fovy_radians, aspect, near)?;
+        let projection = Projection::InfinitePerspective { fovy_radians, near };
         Ok(Self::from_state(CameraState::new(projection, proj)))
     }
 
@@ -586,6 +616,15 @@ mod tests {
                 "perspective({fovy}, {aspect}, {near}, {far}) should fail"
             );
         }
+    }
+
+    #[test]
+    fn an_infinite_perspective_keeps_no_far_plane_through_set_aspect() {
+        // The infinite projection's depth row is (-1, -near): no far plane.
+        let camera = Camera::create_infinite_perspective(1.0, 1.0, 0.25).expect("camera");
+        camera.set_aspect(2.0).expect("aspect");
+        let m = camera.view_proj();
+        assert_eq!((m[2][2], m[3][2]), (-1.0, -0.25), "got {m:?}");
     }
 
     #[test]

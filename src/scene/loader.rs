@@ -1107,12 +1107,15 @@ fn decode_image(image: &gltf::image::Data) -> Result<image::RgbaImage, SceneLoad
     })
 }
 
-/// Lift a glTF camera node into a FragmentColor [`Camera`]. The node's
-/// world matrix gives the eye position + view orientation; the camera's
-/// projection comes from the glTF camera projection block.
+/// Lift a glTF camera node into a FragmentColor [`Camera`].
+///
+/// The node's world matrix gives the eye position and view orientation, and
+/// the camera's projection block gives the projection. A perspective camera
+/// without `zfar` asks for an infinite projection, and it gets one. Errors
+/// from `Camera` carry the camera's index inside `SceneLoadError::Camera`.
 fn build_camera(gltf_camera: &gltf::Camera<'_>, world: Mat4) -> Result<Camera, SceneLoadError> {
     let index = gltf_camera.index();
-    let camera_err = |source| SceneLoadError::Camera { index, source };
+    let blame_camera = |source| SceneLoadError::Camera { index, source };
     let (near, zfar) = match gltf_camera.projection() {
         gltf::camera::Projection::Perspective(p) => (p.znear(), p.zfar()),
         gltf::camera::Projection::Orthographic(o) => (o.znear(), Some(o.zfar())),
@@ -1125,22 +1128,23 @@ fn build_camera(gltf_camera: &gltf::Camera<'_>, world: Mat4) -> Result<Camera, S
             "glTF camera {index} has zfar {far} at or before znear {near}"
         )));
     }
-    // Only a perspective camera may leave zfar out, which asks for an infinite
-    // projection. A far plane 10 million times znear stands in for it: always
-    // past znear, and 1e6 for the usual znear of 0.1.
-    let far = zfar.unwrap_or(near * 1.0e7);
     let camera = match gltf_camera.projection() {
         gltf::camera::Projection::Perspective(p) => {
             // glTF's aspectRatio is optional; fall back to 1.0 (a common
             // default that gets overridden when the user retargets to a
             // specific render target).
             let aspect = p.aspect_ratio().unwrap_or(1.0);
-            Camera::perspective(p.yfov(), aspect, near, far).map_err(camera_err)?
+            match zfar {
+                Some(far) => Camera::perspective(p.yfov(), aspect, near, far),
+                None => Camera::create_infinite_perspective(p.yfov(), aspect, near),
+            }
+            .map_err(blame_camera)?
         }
         gltf::camera::Projection::Orthographic(o) => {
             let half_w = o.xmag();
             let half_h = o.ymag();
-            Camera::orthographic(-half_w, half_w, -half_h, half_h, near, far).map_err(camera_err)?
+            Camera::orthographic(-half_w, half_w, -half_h, half_h, near, o.zfar())
+                .map_err(blame_camera)?
         }
     };
 
@@ -1154,7 +1158,7 @@ fn build_camera(gltf_camera: &gltf::Camera<'_>, world: Mat4) -> Result<Camera, S
     let target_v = translation + forward;
     camera
         .look_at(eye, target_v.into(), up.into())
-        .map_err(camera_err)
+        .map_err(blame_camera)
 }
 
 /// Lift a `KHR_lights_punctual` node into the unified [`Light`] type and
@@ -1366,12 +1370,28 @@ mod tests {
 
     #[test]
     fn load_takes_a_camera_with_no_far_plane() {
-        // An absent zfar is an infinite projection, so a far near plane is fine.
-        let json = CAMERA_LIGHT_JSON.replace(r#""znear":0.1,"zfar":100.0"#, r#""znear":2000000.0"#);
-        let scene = Scene::load(build_camera_light_glb(&json)).expect("load");
-        let cameras = scene.cameras();
-        let view_proj = glam::Mat4::from_cols_array_2d(&cameras[0].view_proj());
-        assert!(view_proj.is_finite(), "{view_proj:?}");
+        // glTF reads an absent zfar as an infinite projection: nothing ahead of
+        // the near plane clips, however far, and any near plane builds one. Far
+        // enough out f32 rounds the depth to 1, which the LessEqual test draws.
+        let depth_at = |znear: &str, distance: f32| {
+            let json = CAMERA_LIGHT_JSON.replace(
+                r#""znear":0.1,"zfar":100.0"#,
+                &format!(r#""znear":{znear}"#),
+            );
+            let scene = Scene::load(build_camera_light_glb(&json)).expect("load");
+            let cameras = scene.cameras();
+            let view_proj = glam::Mat4::from_cols_array_2d(&cameras[0].view_proj());
+            assert!(view_proj.is_finite(), "{view_proj:?}");
+            let clip = view_proj * glam::Vec4::new(0.0, 0.0, -distance, 1.0);
+            clip.z / clip.w
+        };
+        for (znear, distance) in [("0.001", 1.0e6), ("0.1", 1.0e9), ("1.0e16", 1.0e30)] {
+            let depth = depth_at(znear, distance);
+            assert!(
+                (0.0..=1.0).contains(&depth),
+                "znear {znear}: a point {distance} ahead lands at depth {depth}"
+            );
+        }
     }
 
     #[test]
