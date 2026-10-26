@@ -1,6 +1,7 @@
 use crate::pass::PassInput;
-use crate::{PassObject, ShaderHash, Target, TargetFrame, TextureData, TextureTarget, UniformData};
+use crate::{PassObject, ShaderError, ShaderHash, ShaderObject, Target, TargetFrame};
 use crate::{ScreenRegion, Size, WindowTarget};
+use crate::{TextureData, TextureTarget, UniformData};
 use dashmap::DashMap;
 use lsp_doc::lsp_doc;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
@@ -1315,12 +1316,8 @@ impl RenderContext {
                 first_mesh.vertex_buffers(&self.device, &self.queue)?;
                 // Now derive vertex buffer layouts; propagate any mapping error
                 vertex_buffer_layouts(shader, first_mesh.as_ref())?
-            } else if let Some((name, location)) = first_vertex_input(shader) {
-                return Err(crate::ShaderError::InvalidKey(format!(
-                    "shader input '{name}' @location({location}) has no mesh to read from; attach one with add_mesh"
-                ))
-                .into());
             } else {
+                require_mesh(shader)?;
                 None
             };
 
@@ -1913,30 +1910,15 @@ fn check_instance_count(
     Ok(())
 }
 
-/// The lowest `@location` input of the shader's vertex entry point, as its name and location.
-/// It looks inside a struct argument too, since its members carry the locations then.
-fn first_vertex_input(shader: &crate::ShaderObject) -> Option<(String, u32)> {
-    let entry_point = shader.find_entry_point(naga::ShaderStage::Vertex)?;
-    let mut inputs = Vec::new();
-    for argument in entry_point.function.arguments.iter() {
-        match &shader.module.types[argument.ty].inner {
-            naga::TypeInner::Struct { members, .. } if argument.binding.is_none() => inputs.extend(
-                members
-                    .iter()
-                    .map(|member| (member.name.clone(), member.binding.clone())),
-            ),
-            _ => inputs.push((argument.name.clone(), argument.binding.clone())),
-        }
-    }
-    inputs
-        .into_iter()
-        .filter_map(|(name, binding)| match binding {
-            Some(naga::Binding::Location { location, .. }) => {
-                Some((name.unwrap_or_else(|| format!("attr{location}")), location))
-            }
-            _ => None,
-        })
-        .min_by_key(|(_, location)| *location)
+/// Refuses a shader with no mesh when it reads vertex inputs, naming the first one.
+fn require_mesh(shader: &ShaderObject) -> Result<(), ShaderError> {
+    let Some(input) = shader.reflect_vertex_inputs()?.into_iter().next() else {
+        return Ok(());
+    };
+    Err(ShaderError::InvalidKey(format!(
+        "shader input '{}' @location({}) has no mesh to read from; attach one with add_mesh",
+        input.name, input.location
+    )))
 }
 
 // @TODO the Shader should provide this
@@ -3975,9 +3957,9 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
     }
 
     // Story: a shader that reads its vertex inputs through a struct argument
-    // and has no mesh returns the same error as one with plain arguments.
+    // can't take a mesh, and render and add_mesh both name the struct member.
     #[test]
-    fn struct_vertex_inputs_without_a_mesh_error() {
+    fn struct_vertex_inputs_error() {
         pollster::block_on(async move {
             let renderer = Renderer::new();
             let target = renderer
@@ -3986,7 +3968,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
                 .expect("texture target");
             let shader = crate::Shader::new(
                 r#"
-struct VIn { @location(0) pos: vec2<f32> };
+struct VIn { @builtin(vertex_index) index: u32, @location(0) pos: vec2<f32> };
 @vertex fn vs_main(input: VIn) -> @builtin(position) vec4<f32> {
   return vec4<f32>(input.pos, 0.0, 1.0);
 }
@@ -3994,12 +3976,20 @@ struct VIn { @location(0) pos: vec2<f32> };
 "#,
             )
             .expect("shader");
+            let mesh = crate::Mesh::new();
+            mesh.add_vertices(TRIANGLE.map(crate::Vertex::new));
 
-            let res = renderer.render(&shader, &target);
+            let rendered = renderer.render(&shader, &target);
+            let attached = shader.add_mesh(&mesh);
 
+            let member = "'pos' @location(0) is a struct member";
             assert!(
-                matches!(&res, Err(RendererError::ShaderError(crate::ShaderError::InvalidKey(message))) if message.contains("'pos' @location(0) has no mesh")),
-                "got {res:?}"
+                matches!(&rendered, Err(RendererError::ShaderError(crate::ShaderError::InvalidKey(message))) if message.contains(member) && !message.contains("add_mesh")),
+                "got {rendered:?}"
+            );
+            assert!(
+                matches!(&attached, Err(crate::ShaderError::InvalidKey(message)) if message.contains(member)),
+                "got {attached:?}"
             );
         });
     }
