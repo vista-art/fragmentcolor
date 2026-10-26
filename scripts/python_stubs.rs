@@ -915,9 +915,9 @@ mod python_stubs {
     /// A variant's `#[pyo3(annotation = "...")]` when it narrows a value or a
     /// container its Rust type leaves untyped, such as `list[int]` for a `Bound<PyList>`,
     /// or `int` and `Sequence[float]` for a `Bound<PyAny>` that the binding checks itself.
-    /// Every name in it must be a builtin or a class Python can hold. A dict
-    /// parameter stays `dict[str, Any]`: `dict` is invariant, so a narrower
-    /// hint would turn away a caller's `dict[str, int]`.
+    /// Every name in it must be a builtin or a class Python can hold. A `dict[...]`
+    /// annotation narrows only a return: `dict` is invariant, so a parameter hinted
+    /// `dict[str, bool | None]` would turn away a caller's `dict[str, bool]`.
     fn annotated(atoms: Vec<Atom>, attrs: &[Attribute], mode: Mode, ctx: &Ctx) -> Vec<Atom> {
         const BUILTINS: &[&str] = &[
             "int", "float", "str", "bytes", "bool", "None", "list", "dict", "tuple", "Sequence",

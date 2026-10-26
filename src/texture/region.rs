@@ -242,16 +242,15 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
     type Error = TextureError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+        use crate::size::read_dimension;
         use js_sys::{Array, ArrayBuffer, Reflect};
 
         let dimension = |item: &wasm_bindgen::JsValue| {
-            item.as_f64()
-                .and_then(crate::size::read_dimension)
-                .ok_or_else(|| {
-                    TextureError::InvalidInput(format!(
-                        "a region takes whole numbers from 0 up, got {item:?}"
-                    ))
-                })
+            item.as_f64().and_then(read_dimension).ok_or_else(|| {
+                TextureError::InvalidInput(format!(
+                    "a region takes whole numbers from 0 up, got {item:?}"
+                ))
+            })
         };
 
         // Plain or typed array: [w,h] | [x,y,w,h] | [x,y,z,w,h,d]
