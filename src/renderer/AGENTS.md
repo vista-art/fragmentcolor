@@ -6,7 +6,7 @@ Core invariants
   - `RenderPipelineKey { shader_hash, color_format, depth, sample_count, alpha_mode, double_sided, vertex_layouts }`, where `depth` is a `DepthUse` (`src/renderer/depth.rs`)
   - `ComputePipelineKey { shader_hash, bind_group_entries }` (layout entry contents, never resource addresses)
   Do not rely on tuple ordering; extend these structs if new state starts to affect pipeline configuration.
-- If a shader has no `@location` vertex inputs, draw a single fullscreen triangle (three built-in verts).
+- If a shader has no `@location` vertex inputs, draw a single fullscreen triangle (three built-in verts). A shader that reads `@location` inputs, plain or in a struct argument, and has no mesh returns `ShaderError::InvalidKey` before any pipeline is built.
 - Vertex layouts are derived from the shader's first mesh and are part of the pipeline key, since shaders with the same source can feed meshes with different layouts. The renderer does not re-validate per-mesh at draw time.
 - A mesh with an empty index list draws nothing. A Model mesh with no visible Model in the pass draws nothing either, which covers a hidden Model and a Model added to another pass through a shared Material. Drawing it would read whatever buffer an earlier mesh left in slot 1.
 

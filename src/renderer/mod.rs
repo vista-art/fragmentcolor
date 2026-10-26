@@ -1270,6 +1270,11 @@ impl RenderContext {
                 first_mesh.vertex_buffers(&self.device, &self.queue)?;
                 // Now derive vertex buffer layouts; propagate any mapping error
                 vertex_buffer_layouts(shader, first_mesh.as_ref())?
+            } else if let Some((name, location)) = first_vertex_input(shader) {
+                return Err(crate::ShaderError::InvalidKey(format!(
+                    "shader input '{name}' @location({location}) has no mesh to read from; attach one with add_mesh"
+                ))
+                .into());
             } else {
                 None
             };
@@ -1882,6 +1887,32 @@ impl VertexLayouts {
             })
             .collect()
     }
+}
+
+/// The lowest `@location` input of the shader's vertex entry point, as its name and location.
+/// It looks inside a struct argument too, since its members carry the locations then.
+fn first_vertex_input(shader: &crate::ShaderObject) -> Option<(String, u32)> {
+    let entry_point = shader.find_entry_point(naga::ShaderStage::Vertex)?;
+    let mut inputs = Vec::new();
+    for argument in entry_point.function.arguments.iter() {
+        match &shader.module.types[argument.ty].inner {
+            naga::TypeInner::Struct { members, .. } if argument.binding.is_none() => inputs.extend(
+                members
+                    .iter()
+                    .map(|member| (member.name.clone(), member.binding.clone())),
+            ),
+            _ => inputs.push((argument.name.clone(), argument.binding.clone())),
+        }
+    }
+    inputs
+        .into_iter()
+        .filter_map(|(name, binding)| match binding {
+            Some(naga::Binding::Location { location, .. }) => {
+                Some((name.unwrap_or_else(|| format!("attr{location}")), location))
+            }
+            _ => None,
+        })
+        .min_by_key(|(_, location)| *location)
 }
 
 // @TODO the Shader should provide this
@@ -3811,9 +3842,12 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,0.,1.,1.); }
             let s = format!("{}", res.unwrap_err());
             assert!(s.contains("No compatible shader exists for this mesh"));
 
-            // User tries to render a Pass without a Mesh, a default quad is created
+            // The shader reads vertex inputs, so rendering it without a mesh is an error.
             let res = renderer.render(&pass, &target);
-            assert!(res.is_ok());
+            assert!(
+                matches!(&res, Err(RendererError::ShaderError(crate::ShaderError::InvalidKey(message))) if message.contains("@location(0) has no mesh")),
+                "got {res:?}"
+            );
         });
     }
 
@@ -3861,9 +3895,42 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
             let s = format!("{}", res.unwrap_err());
             assert!(s.contains("No compatible shader exists for this mesh"));
 
-            // User tries to render a Pass without a compatible Mesh, a default quad is created
+            // The shader reads vertex inputs, so rendering it without a mesh is an error.
             let res = renderer.render(&pass, &target);
-            assert!(res.is_ok());
+            assert!(
+                matches!(&res, Err(RendererError::ShaderError(crate::ShaderError::InvalidKey(message))) if message.contains("@location(0) has no mesh")),
+                "got {res:?}"
+            );
+        });
+    }
+
+    // Story: a shader that reads its vertex inputs through a struct argument
+    // and has no mesh returns the same error as one with plain arguments.
+    #[test]
+    fn struct_vertex_inputs_without_a_mesh_error() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8u32, 8u32])
+                .await
+                .expect("texture target");
+            let shader = crate::Shader::new(
+                r#"
+struct VIn { @location(0) pos: vec2<f32> };
+@vertex fn vs_main(input: VIn) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(input.pos, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+"#,
+            )
+            .expect("shader");
+
+            let res = renderer.render(&shader, &target);
+
+            assert!(
+                matches!(&res, Err(RendererError::ShaderError(crate::ShaderError::InvalidKey(message))) if message.contains("'pos' @location(0) has no mesh")),
+                "got {res:?}"
+            );
         });
     }
 
