@@ -378,13 +378,17 @@ function explore(state, size, image, pointer, gesture, budget, deadline) {
     state.center = state.center.map((value) => value << 128n);
     state.bits += 128;
   }
-  // Zooming in waits while the reference is out of digits, unfinished, or more
-  // than two views away. Zooming around the pointer keeps the point under it in place.
+  // Zooming around the pointer keeps the point under it in place: the center moves
+  // toward it by \`stay\` of the way, and the reference's offset moves with it.
+  const stay = 1 - 2 ** (state.zoom - zoom);
   const reference = state.reference;
-  const near = Math.hypot(...offset(state, reference, after)) <= 2 * image[1];
-  const ready = reference.bits >= Math.ceil(-after) + 40 && covers(reference, image, zoom, offset(state, reference, after), budget);
-  if (zoom < state.zoom || (near && ready)) {
-    const stay = 1 - 2 ** (state.zoom - zoom);
+  const drift = offset(state, reference, after).map((value, i) => value + at[i] * stay * 2 ** (pixel - after));
+  // Zooming in waits while the reference lacks the digits, is more than two views
+  // from where the zoom lands, or hasn't grown far enough yet.
+  const near = Math.hypot(...drift) <= 2 * image[1];
+  const deep = reference.bits >= Math.ceil(-after) + 40;
+  const far = zoom > state.zoom && !(near && deep);
+  if (zoom < state.zoom || (!far && covers(reference, image, zoom, drift, budget))) {
     state.center = pointAt(state, at[0] * stay, at[1] * stay, pixel);
     state.zoom = zoom;
   }
@@ -392,13 +396,16 @@ function explore(state, size, image, pointer, gesture, budget, deadline) {
   // A zoom in heads for the point under the pointer; anything else stays at the center.
   const now = Math.log2(START / image[1]) - state.zoom;
   const aim = gesture.zoom > 0 ? at : [0, 0];
+  // The offset is the center minus the reference, so a reference at the aim sits at -aim.
   const away = (other, limit) => {
     const [x, y] = offset(state, other, now);
-    return Math.hypot(x - aim[0], y - aim[1]) > limit;
+    return Math.hypot(x + aim[0], y + aim[1]) > limit;
   };
-  if (away(reference, image[1] / 4) || reference.bits < Math.ceil(-now) + 120) {
-    if (!state.next || away(state.next, image[1] / 2)) {
-      const bits = Math.ceil(-now) + 200;
+  // A zoom that waits on a far or shallow reference gets a new one, with the digits it needs.
+  const finest = far ? after : now;
+  if (far || away(reference, image[1] / 4) || reference.bits < Math.ceil(-now) + 120) {
+    if (!state.next || away(state.next, image[1] / 2) || state.next.bits < Math.ceil(-finest) + 40) {
+      const bits = Math.ceil(-finest) + 200;
       state.next = startReference(alignTo(pointAt(state, aim[0], aim[1], now), state.bits, bits), bits);
     }
   }
@@ -895,14 +902,19 @@ fn explore(
         state.center = state.center.clone().map(|value| value << 128);
         state.bits += 128;
     }
-    // Zooming in waits while the reference is out of digits, unfinished, or more
-    // than two views away. Zooming around the pointer keeps the point under it in place.
+    // Zooming around the pointer keeps the point under it in place: the center moves
+    // toward it by \`stay\` of the way, and the reference's offset moves with it.
+    let stay = 1.0 - (state.zoom - zoom).exp2();
     let reference = &state.reference;
-    let distance = offset(&state.center, state.bits, reference, after);
-    let near = distance[0].hypot(distance[1]) <= 2.0 * f64::from(image[1]);
-    let ready = reference.bits >= (-after).ceil() as usize + 40 && covers(reference, image, zoom, distance, budget);
-    if zoom < state.zoom || (near && ready) {
-        let stay = 1.0 - (state.zoom - zoom).exp2();
+    let shift = (pixel - after).exp2() * stay;
+    let [x, y] = offset(&state.center, state.bits, reference, after);
+    let drift = [x + at[0] * shift, y + at[1] * shift];
+    // Zooming in waits while the reference lacks the digits, is more than two views
+    // from where the zoom lands, or hasn't grown far enough yet.
+    let near = drift[0].hypot(drift[1]) <= 2.0 * f64::from(image[1]);
+    let deep = reference.bits >= (-after).ceil() as usize + 40;
+    let far = zoom > state.zoom && !(near && deep);
+    if zoom < state.zoom || (!far && covers(reference, image, zoom, drift, budget)) {
         state.center = point_at(&state.center, state.bits, [at[0] * stay, at[1] * stay], pixel);
         state.zoom = zoom;
     }
@@ -910,14 +922,19 @@ fn explore(
     // A zoom in heads for the point under the pointer; anything else stays at the center.
     let now = (START / f64::from(image[1])).log2() - state.zoom;
     let aim = if gesture.zoom > 0.0 { at } else { [0.0, 0.0] };
+    // The offset is the center minus the reference, so a reference at the aim sits at -aim.
     let away = |other: &Reference, limit: f64| {
         let [x, y] = offset(&state.center, state.bits, other, now);
-        (x - aim[0]).hypot(y - aim[1]) > limit
+        (x + aim[0]).hypot(y + aim[1]) > limit
     };
-    let needs = away(&state.reference, f64::from(image[1]) / 4.0)
+    // A zoom that waits on a far or shallow reference gets a new one, with the digits it needs.
+    let finest = if far { after } else { now };
+    let needs = far
+        || away(&state.reference, f64::from(image[1]) / 4.0)
         || state.reference.bits < (-now).ceil() as usize + 120;
-    if needs && state.next.as_ref().is_none_or(|next| away(next, f64::from(image[1]) / 2.0)) {
-        let bits = (-now).ceil() as usize + 200;
+    let shallow = (-finest).ceil() as usize + 40;
+    if needs && state.next.as_ref().is_none_or(|next| away(next, f64::from(image[1]) / 2.0) || next.bits < shallow) {
+        let bits = (-finest).ceil() as usize + 200;
         let goal = point_at(&state.center, state.bits, aim, now);
         state.next = Some(Reference::start(align(goal, state.bits, bits), bits));
     }
@@ -1384,14 +1401,19 @@ def explore(state, size, image, pointer, gesture, budget, deadline):
     if state.bits < math.ceil(-after) + 64:
         state.center = [value << 128 for value in state.center]
         state.bits += 128
-    # Zooming in waits while the reference is out of digits, unfinished, or more
-    # than two views away. Zooming around the pointer keeps the point under it in place.
+    # Zooming around the pointer keeps the point under it in place: the center moves
+    # toward it by \`stay\` of the way, and the reference's offset moves with it.
+    stay = 1 - 2 ** (state.zoom - zoom)
     reference = state.reference
-    distance = offset(state, reference, after)
-    near = math.hypot(*distance) <= 2 * image[1]
-    ready = reference.bits >= math.ceil(-after) + 40 and covers(reference, image, zoom, distance, budget)
-    if zoom < state.zoom or (near and ready):
-        stay = 1 - 2 ** (state.zoom - zoom)
+    shift = 2 ** (pixel - after) * stay
+    x, y = offset(state, reference, after)
+    drift = [x + at[0] * shift, y + at[1] * shift]
+    # Zooming in waits while the reference lacks the digits, is more than two views
+    # from where the zoom lands, or hasn't grown far enough yet.
+    near = math.hypot(*drift) <= 2 * image[1]
+    deep = reference.bits >= math.ceil(-after) + 40
+    far = zoom > state.zoom and not (near and deep)
+    if zoom < state.zoom or (not far and covers(reference, image, zoom, drift, budget)):
         state.center = point_at(state, [at[0] * stay, at[1] * stay], pixel)
         state.zoom = zoom
 
@@ -1399,13 +1421,16 @@ def explore(state, size, image, pointer, gesture, budget, deadline):
     now = math.log2(START / image[1]) - state.zoom
     aim = at if gesture.zoom > 0 else [0.0, 0.0]
 
+    # The offset is the center minus the reference, so a reference at the aim sits at -aim.
     def away(other, limit):
         x, y = offset(state, other, now)
-        return math.hypot(x - aim[0], y - aim[1]) > limit
+        return math.hypot(x + aim[0], y + aim[1]) > limit
 
-    if away(reference, image[1] / 4) or reference.bits < math.ceil(-now) + 120:
-        if state.next is None or away(state.next, image[1] / 2):
-            bits = math.ceil(-now) + 200
+    # A zoom that waits on a far or shallow reference gets a new one, with the digits it needs.
+    finest = after if far else now
+    if far or away(reference, image[1] / 4) or reference.bits < math.ceil(-now) + 120:
+        if state.next is None or away(state.next, image[1] / 2) or state.next.bits < math.ceil(-finest) + 40:
+            bits = math.ceil(-finest) + 200
             state.next = start_reference(align(point_at(state, aim, now), state.bits, bits), bits)
     if state.next is not None:
         grow(state.next, deadline)
@@ -1817,14 +1842,19 @@ func explore(
         state.center = state.center.map { $0 << 128 }
         state.bits += 128
     }
-    // Zooming in waits while the reference is out of digits, unfinished, or more
-    // than two views away. Zooming around the pointer keeps the point under it in place.
+    // Zooming around the pointer keeps the point under it in place: the center moves
+    // toward it by \`stay\` of the way, and the reference's offset moves with it.
+    let stay = 1 - exp2(state.zoom - zoom)
     let reference = state.reference
-    let distance = offset(state, reference, after)
-    let near = hypot(distance[0], distance[1]) <= 2 * Double(image[1])
-    let ready = reference.bits >= Int((-after).rounded(.up)) + 40 && covers(reference, image, zoom, distance, budget)
-    if zoom < state.zoom || (near && ready) {
-        let stay = 1 - exp2(state.zoom - zoom)
+    let shift = exp2(pixel - after) * stay
+    let offsetAfter = offset(state, reference, after)
+    let drift = [offsetAfter[0] + at[0] * shift, offsetAfter[1] + at[1] * shift]
+    // Zooming in waits while the reference lacks the digits, is more than two views
+    // from where the zoom lands, or hasn't grown far enough yet.
+    let near = hypot(drift[0], drift[1]) <= 2 * Double(image[1])
+    let deep = reference.bits >= Int((-after).rounded(.up)) + 40
+    let far = zoom > state.zoom && !(near && deep)
+    if zoom < state.zoom || (!far && covers(reference, image, zoom, drift, budget)) {
         state.center = pointAt(state, [at[0] * stay, at[1] * stay], pixel)
         state.zoom = zoom
     }
@@ -1833,13 +1863,17 @@ func explore(
     let now = log2(start / Double(image[1])) - state.zoom
     let aim = gesture.zoom > 0 ? at : [0, 0]
     let current = state
+    // The offset is the center minus the reference, so a reference at the aim sits at -aim.
     func away(_ other: Reference, _ limit: Double) -> Bool {
         let point = offset(current, other, now)
-        return hypot(point[0] - aim[0], point[1] - aim[1]) > limit
+        return hypot(point[0] + aim[0], point[1] + aim[1]) > limit
     }
-    if away(reference, Double(image[1]) / 4) || reference.bits < Int((-now).rounded(.up)) + 120 {
-        if state.next.map({ away($0, Double(image[1]) / 2) }) ?? true {
-            let bits = Int((-now).rounded(.up)) + 200
+    // A zoom that waits on a far or shallow reference gets a new one, with the digits it needs.
+    let finest = far ? after : now
+    let shallow = Int((-finest).rounded(.up)) + 40
+    if far || away(reference, Double(image[1]) / 4) || reference.bits < Int((-now).rounded(.up)) + 120 {
+        if state.next.map({ away($0, Double(image[1]) / 2) || $0.bits < shallow }) ?? true {
+            let bits = Int((-finest).rounded(.up)) + 200
             state.next = Reference(c: align(pointAt(state, aim, now), from: state.bits, to: bits), bits: bits)
         }
     }
@@ -2283,14 +2317,19 @@ fun explore(
         state.center = state.center.map { it.shiftLeft(128) }
         state.bits += 128
     }
-    // Zooming in waits while the reference is out of digits, unfinished, or more
-    // than two views away. Zooming around the pointer keeps the point under it in place.
+    // Zooming around the pointer keeps the point under it in place: the center moves
+    // toward it by \`stay\` of the way, and the reference's offset moves with it.
+    val stay = 1 - 2.0.pow(state.zoom - zoom)
     val reference = state.reference
-    val distance = offset(state, reference, after)
-    val near = hypot(distance[0], distance[1]) <= 2 * image[1].toDouble()
-    val ready = reference.bits >= ceil(-after).toInt() + 40 && covers(reference, image, zoom, distance, budget)
-    if (zoom < state.zoom || (near && ready)) {
-        val stay = 1 - 2.0.pow(state.zoom - zoom)
+    val shift = 2.0.pow(pixel - after) * stay
+    val (x, y) = offset(state, reference, after)
+    val drift = listOf(x + at[0] * shift, y + at[1] * shift)
+    // Zooming in waits while the reference lacks the digits, is more than two views
+    // from where the zoom lands, or hasn't grown far enough yet.
+    val near = hypot(drift[0], drift[1]) <= 2 * image[1].toDouble()
+    val deep = reference.bits >= ceil(-after).toInt() + 40
+    val far = zoom > state.zoom && !(near && deep)
+    if (zoom < state.zoom || (!far && covers(reference, image, zoom, drift, budget))) {
         state.center = pointAt(state, listOf(at[0] * stay, at[1] * stay), pixel)
         state.zoom = zoom
     }
@@ -2298,13 +2337,16 @@ fun explore(
     // A zoom in heads for the point under the pointer; anything else stays at the center.
     val now = log2(START / image[1].toDouble()) - state.zoom
     val aim = if (gesture.zoom > 0) at else listOf(0.0, 0.0)
+    // The offset is the center minus the reference, so a reference at the aim sits at -aim.
     fun away(other: Reference, limit: Double): Boolean {
         val point = offset(state, other, now)
-        return hypot(point[0] - aim[0], point[1] - aim[1]) > limit
+        return hypot(point[0] + aim[0], point[1] + aim[1]) > limit
     }
-    if (away(reference, image[1].toDouble() / 4) || reference.bits < ceil(-now).toInt() + 120) {
-        if (state.next?.let { away(it, image[1].toDouble() / 2) } != false) {
-            val bits = ceil(-now).toInt() + 200
+    // A zoom that waits on a far or shallow reference gets a new one, with the digits it needs.
+    val finest = if (far) after else now
+    if (far || away(reference, image[1].toDouble() / 4) || reference.bits < ceil(-now).toInt() + 120) {
+        if (state.next?.let { away(it, image[1].toDouble() / 2) || it.bits < ceil(-finest).toInt() + 40 } != false) {
+            val bits = ceil(-finest).toInt() + 200
             state.next = Reference(align(pointAt(state, aim, now), state.bits, bits), bits)
         }
     }
