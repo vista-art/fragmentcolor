@@ -4,14 +4,18 @@ import importlib
 from pathlib import Path
 import numpy as np
 from fragmentcolor import (
+    BindingError,
     Camera,
     CompareFunction,
     DeviceError,
+    EntryError,
     ErrorKind,
+    FeatureError,
     FragmentColorError,
     Instance,
     InvalidInputError,
     Light,
+    LimitError,
     MalformedImageError,
     Material,
     MaterialError,
@@ -315,6 +319,51 @@ SAMPLE_SHADER = """
   return textureSample(source, soft, pos.xy / 8.0);
 }
 """
+
+def check_shader_refusals(renderer):
+    """render refuses a shader the device can't run before any GPU work, with an exception
+    class that names the kind of refusal and carries its fields as attributes."""
+    target = renderer.create_texture_target([8, 8])
+    far = Shader("""
+@group(100) @binding(0) var<uniform> tint: vec4<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return tint; }
+""")
+    try:
+        renderer.render(far, target)
+    except LimitError as e:
+        assert isinstance(e, FragmentColorError)
+        assert e.limit == "max_bind_groups", f"limit {e.limit}"
+        assert e.value == 101 and e.max < 101, f"value {e.value}, max {e.max}"
+        assert e.item.startswith("'tint'"), f"item {e.item}"
+        print(f"a group past the device raised LimitError: {e}")
+    else:
+        raise AssertionError("a group past the device should raise LimitError")
+
+    unset = Shader(SAMPLE_SHADER)
+    try:
+        renderer.render(unset, target)
+    except BindingError as e:
+        assert e.name == "source", f"name {e.name}"
+        assert e.expected == "a texture", f"expected {e.expected}"
+        print(f"an unset texture raised BindingError: {e}")
+    else:
+        raise AssertionError("an unset texture should raise BindingError")
+
+    lone = Shader("@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }")
+    try:
+        renderer.render(lone, target)
+    except EntryError as e:
+        assert e.stage == "@vertex", f"stage {e.stage}"
+        print(f"a shader without a vertex stage raised EntryError: {e}")
+    else:
+        raise AssertionError("a shader without a vertex stage should raise EntryError")
+    assert issubclass(FeatureError, FragmentColorError)
+    renderer.render(Shader(SOLID_SHADER), target)
+
 
 def check_pass_targets(renderer):
     """A target with a mip chain raises InvalidInputError, and render refuses a pass
@@ -1026,6 +1075,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_mesh_inputs()
     check_require_graph(renderer)
     check_pass_targets(renderer)
+    check_shader_refusals(renderer)
     check_value_types()
     check_number_errors(renderer)
     check_empty_regions()
