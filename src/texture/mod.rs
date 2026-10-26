@@ -652,9 +652,7 @@ impl Texture {
 
     #[lsp_doc("docs/api/texture/texture/write.md")]
     pub fn write(&self, data: &[u8]) -> Result<(), TextureError> {
-        // Whole-texture write: TextureRegion::default() carries zeros that the
-        // write path interprets as "infer the full extent".
-        write::write(self, data, TextureRegion::default())
+        write::write(self, data, None)
     }
 
     #[lsp_doc("docs/api/texture/texture/write_region.md")]
@@ -663,7 +661,7 @@ impl Texture {
         data: &[u8],
         region: impl Into<TextureRegion>,
     ) -> Result<(), TextureError> {
-        write::write(self, data, region.into())
+        write::write(self, data, Some(region.into()))
     }
 
     #[lsp_doc("docs/api/texture/texture/get_image.md")]

@@ -577,6 +577,8 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     throws('writeRegion with reversed bounds', () =>
       canvasTexture.writeRegion(patch, { minX: 8, maxX: 4, minY: 0, maxY: 4 }));
     throws('writeRegion with misspelled keys', () => canvasTexture.writeRegion(patch, { x: 0, y: 0, w: 4, h: 4 }));
+    throws('writeRegion with a zero width', () => canvasTexture.writeRegion(patch, [0, 0, 0, 4]));
+    canvasTexture.writeRegion(new Uint8Array(16 * 16 * 4), undefined);
     throws('writeRegion with minZ 2**32 - 1', () =>
       canvasTexture.writeRegion(patch, { minX: 0, maxX: 4, minY: 0, maxY: 4, minZ: 4294967295 }));
     throws('setSamplerOptions with compare 1.5', () => canvasTexture.setSamplerOptions({ compare: 1.5 }));

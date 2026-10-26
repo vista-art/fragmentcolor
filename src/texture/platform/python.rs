@@ -368,11 +368,10 @@ impl Texture {
         region: Option<PyTextureRegion<'_>>,
     ) -> pyo3::PyResult<()> {
         let bytes: Vec<u8> = data.into();
-        let region = match region {
-            Some(region) => TextureRegion::try_from(region)?,
-            None => TextureRegion::default(),
-        };
-        self.write_region(&bytes, region)?;
+        match region {
+            Some(region) => self.write_region(&bytes, TextureRegion::try_from(region)?)?,
+            None => self.write(&bytes)?,
+        }
         Ok(())
     }
 

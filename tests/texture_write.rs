@@ -31,7 +31,7 @@ fn texture_write_full_ok() {
         let req = required_bytes(bpr, h, stride, 1, h);
         let data = vec![0xABu8; req];
 
-        let region = TextureRegion::default().with_stride(bpr);
+        let region = TextureRegion::from([w, h]).with_stride(bpr);
         tex.write_region(&data, region).expect("write full ok");
     });
 }
@@ -47,7 +47,7 @@ fn texture_write_explicit_tight_stride_ok() {
         // A stride of 16 bytes is not a multiple of 256, which write_texture allows
         let stride = 4u32 * 4;
         let data = vec![0u8; (stride * 2) as usize];
-        let region = TextureRegion::default().with_stride(stride);
+        let region = TextureRegion::from([4, 2]).with_stride(stride);
         tex.write_region(&data, region)
             .expect("tight explicit stride must succeed");
     });
@@ -183,7 +183,7 @@ fn texture_write_bpr_smaller_than_stride() {
         // Force bpr smaller than stride while aligned: stride=512, pick bpr=256
         let bpr = 256u32; // aligned and < stride(512)
         let data = vec![0xCDu8; stride as usize];
-        let region = TextureRegion::default().with_stride(bpr);
+        let region = TextureRegion::from([width, 1]).with_stride(bpr);
         let err = tex
             .write_region(&data, region)
             .expect_err("bpr < stride must err");
@@ -207,7 +207,7 @@ fn texture_write_data_too_small() {
         let bpr = stride.div_ceil(align) * align; // 256
         // Provide only one row of data; required would be 256*(h-1)+stride = 256+32=288
         let too_small = vec![0u8; stride as usize];
-        let region = TextureRegion::default().with_stride(bpr);
+        let region = TextureRegion::from([width, 2]).with_stride(bpr);
         let err = tex
             .write_region(&too_small, region)
             .expect_err("too small must err");
@@ -234,7 +234,7 @@ fn texture_write_no_copy_dst_usage_errors() {
         let req = required_bytes(bpr, h, stride, 1, h);
         let data = vec![0u8; req];
         let err = tex
-            .write_region(&data, TextureRegion::default().with_stride(bpr))
+            .write_region(&data, TextureRegion::from([w, h]).with_stride(bpr))
             .expect_err("no COPY_DST should fail");
         let s = format!("{}", err);
         assert!(s.contains("does not allow writes") || s.contains("COPY_DST"));

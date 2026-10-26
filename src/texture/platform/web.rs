@@ -132,8 +132,11 @@ impl Texture {
     #[lsp_doc("docs/api/texture/texture/write_region.md")]
     pub fn write_region_js(&self, data: &JsValue, region: &JsValue) -> Result<(), JsError> {
         let bytes = crate::texture::js_to_texture_bytes(data)?;
-        let r: crate::TextureRegion = region.try_into()?;
-        self.write_region(&bytes, r)?;
+        if region.is_undefined() || region.is_null() {
+            return Ok(self.write(&bytes)?);
+        }
+        let region: crate::TextureRegion = region.try_into()?;
+        self.write_region(&bytes, region)?;
         Ok(())
     }
 

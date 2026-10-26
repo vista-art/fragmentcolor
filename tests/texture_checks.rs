@@ -386,6 +386,32 @@ fn mip_chains_read_files_like_create_texture() {
     });
 }
 
+// Story: a region with a width, height or depth of 0 is refused, where a zero
+// stretched the region to the edge of the texture. Leaving the region out,
+// as write does, still covers the whole texture.
+#[test]
+fn zero_region_sides_are_refused() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let texture = renderer
+            .create_storage_texture(([16, 16], TextureFormat::Rgba))
+            .await
+            .expect("create_storage_texture");
+        let rows = vec![0; 16 * 4 * 4];
+        let invalid = |result: Result<(), TextureError>| {
+            matches!(result, Err(TextureError::InvalidInput(_)))
+        };
+        assert!(invalid(texture.write_region(&rows, [0, 0, 0, 4])), "zero width");
+        assert!(invalid(texture.write_region(&rows, [0, 0, 16, 0])), "zero height");
+        let deep = [0, 0, 0, 16, 4, 0];
+        assert!(invalid(texture.write_region(&rows, deep)), "zero depth");
+        texture
+            .write_region(&rows, [0, 0, 16, 4])
+            .expect("a region with every side");
+        texture.write(&vec![0; 16 * 16 * 4]).expect("the whole texture");
+    });
+}
+
 // Story: a buffer copy can't fill a depth texture, so raw pixels, seed bytes
 // and a write into Depth32Float are refused before they reach wgpu.
 #[test]

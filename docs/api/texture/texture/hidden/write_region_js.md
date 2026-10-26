@@ -9,7 +9,7 @@ The `region` argument accepts:
 - `{ x, y, z?, width, height, depth?, bytesPerRow?, rowsPerImage? }`
 - `{ minX, minY, maxX, maxY, minZ?, maxZ?, bytesPerRow?, rowsPerImage? }`
 
-The origin keys `x`, `y`, `minX` and `minY` default to 0, and a missing depth or `maxZ` makes the region one layer deep. An object without its `width` and `height`, or its `maxX` and `maxY`, with a max at or below its min, or with keys from both forms, throws an `Error`.
+The origin keys `x`, `y`, `minX` and `minY` default to 0, and a missing depth or `maxZ` makes the region one layer deep. An object without its `width` and `height`, or its `maxX` and `maxY`, with a max at or below its min, or with keys from both forms, throws an `Error`, and so does a width, height or depth of 0 in any form. A missing region, `undefined` or `null`, writes the whole texture.
 
 ## Example
 
