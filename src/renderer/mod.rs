@@ -2,6 +2,8 @@ use crate::pass::PassInput;
 use crate::{PassObject, ShaderHash, Target, TargetFrame, TextureData, TextureTarget, UniformData};
 use crate::{ScreenRegion, Size, WindowTarget};
 use dashmap::DashMap;
+use dashmap::mapref::entry::Entry;
+use dashmap::mapref::one::RefMut;
 use lsp_doc::lsp_doc;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use std::borrow::Cow;
@@ -46,6 +48,13 @@ mod late;
 
 #[cfg(test)]
 mod scope_tests;
+
+/// The kinds of GPU error each error scope catches, outermost first.
+const SCOPES: [wgpu::ErrorFilter; 3] = [
+    wgpu::ErrorFilter::OutOfMemory,
+    wgpu::ErrorFilter::Internal,
+    wgpu::ErrorFilter::Validation,
+];
 
 /// The Renderer accepts a generic window handle as input
 /// that must report its display size.
@@ -337,6 +346,8 @@ impl Renderer {
             .as_ref()
             .cloned()
             .ok_or(RendererError::NoContext)?;
+        #[cfg(wasm)]
+        context.late.settle().await?;
         let texture = context
             .get_texture(&texture_id)
             .ok_or(RendererError::TextureNotFoundError(texture_id))?;
@@ -362,7 +373,7 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/load.md")]
     pub async fn load(&self, renderable: &impl Renderable) -> Result<(), RendererError> {
         #[cfg(wasm)]
-        self.take_late()?;
+        self.settle().await?;
         for pass in renderable.passes().iter() {
             let shaders: Vec<Arc<crate::shader::ShaderObject>> =
                 pass.shaders.read().iter().cloned().collect();
@@ -407,7 +418,7 @@ impl Renderer {
         }
         let context = self.context(None).await?;
         #[cfg(wasm)]
-        context.late.take()?;
+        context.late.settle().await?;
         let (buffer, span) = context
             .storage_registry
             .get(binding)
@@ -435,11 +446,13 @@ impl Renderer {
         }
     }
 
-    /// Returns the GPU error an earlier frame left, when there is a context to hold one.
+    /// Waits for the error scopes earlier frames left open, then returns
+    /// the first GPU error they caught, when there is a context to hold one.
     #[cfg(wasm)]
-    fn take_late(&self) -> Result<(), RendererError> {
-        match self.context.read().as_ref() {
-            Some(context) => Ok(context.late.take()?),
+    async fn settle(&self) -> Result<(), RendererError> {
+        let context = self.context.read().as_ref().cloned();
+        match context {
+            Some(context) => Ok(context.late.settle().await?),
             None => Ok(()),
         }
     }
@@ -644,9 +657,10 @@ pub(crate) struct RenderContext {
     /// against what the adapter reports, since GLES and WebGL2 take less than WebGPU.
     pub(crate) adapter: Option<wgpu::Adapter>,
 
-    // Cache for RenderPipelines and ComputePipelines
-    render_pipelines: DashMap<RenderPipelineKey, RenderPipeline>,
-    compute_pipelines: DashMap<ComputePipelineKey, ComputePipeline>,
+    // Cache for RenderPipelines and ComputePipelines. Shared, so a wasm
+    // error that lands after the insert can evict the pipeline it names.
+    render_pipelines: Arc<DashMap<RenderPipelineKey, RenderPipeline>>,
+    compute_pipelines: Arc<DashMap<ComputePipelineKey, ComputePipeline>>,
 
     buffer_pool: RwLock<UniformBufferPool>,
     // Storage buffer pool (STORAGE | COPY_DST), separate from uniform pool
@@ -679,7 +693,7 @@ pub(crate) struct RenderContext {
     scratch: RwLock<RenderScratch>,
 
     // The first GPU error a wasm error scope caught after its call returned.
-    // The next call that touches the GPU returns it.
+    // The next render, load or readback returns it.
     #[cfg(wasm)]
     pub(crate) late: Arc<late::ErrorSlot>,
 }
@@ -732,8 +746,8 @@ impl RenderContext {
             queue,
             adapter: None,
 
-            render_pipelines: DashMap::new(),
-            compute_pipelines: DashMap::new(),
+            render_pipelines: Arc::default(),
+            compute_pipelines: Arc::default(),
 
             buffer_pool: RwLock::new(buffer_pool),
             storage_pool: RwLock::new(storage_pool),
@@ -812,7 +826,10 @@ impl RenderContext {
     }
 
     /// Renders any `Renderable` (Shader, Pass, or iterable of Pass) to a Target.
-    /// A frame whose commands fail validation returns the error and is never presented.
+    ///
+    /// A frame that acquired a surface texture presents it on every path, failed
+    /// frames included, since Vulkan takes an acquired image back only through a present.
+    /// wgpu clears a texture that no valid submit drew into, so a failed frame shows a cleared image.
     fn render(
         &self,
         renderable: &impl Renderable,
@@ -820,22 +837,25 @@ impl RenderContext {
     ) -> Result<(), RendererError> {
         #[cfg(wasm)]
         self.late.take()?;
-        let frame = self.validate("frame", || self.submit(renderable, target))?;
-        if let Some(frame) = frame
+        let mut acquired = None;
+        let result = self.validate("frame", || self.submit(renderable, target, &mut acquired));
+        if let Some(frame) = acquired
             && frame.auto_present()
         {
             frame.present(&self.queue);
         }
-        Ok(())
+        result
     }
 
     /// Records every pass of `renderable` and submits the commands.
-    /// Returns the frame they drew into, when a pass draws.
+    /// The frame they draw into, when a pass draws, goes in `acquired`,
+    /// so the caller presents it whether recording succeeds or not.
     fn submit(
         &self,
         renderable: &impl Renderable,
         target: &impl Target,
-    ) -> Result<Option<Box<dyn TargetFrame>>, RendererError> {
+        acquired: &mut Option<Box<dyn TargetFrame>>,
+    ) -> Result<(), RendererError> {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -843,13 +863,21 @@ impl RenderContext {
             });
 
         let pass_list = renderable.passes();
+        let draws: Vec<PassDraws> = pass_list
+            .iter()
+            .map(|pass| match pass.is_compute() {
+                true => PassDraws::default(),
+                false => self.build_pass_draws(pass),
+            })
+            .collect();
+        self.check_passes(&pass_list, &draws)?;
 
         // Compute passes never draw into the target, so a
         // render made only of compute passes acquires no frame.
-        let frame = match pass_list.iter().any(|pass| !pass.is_compute()) {
-            true => Some(self.acquire_frame(target)?),
-            false => None,
-        };
+        if pass_list.iter().any(|pass| !pass.is_compute()) {
+            *acquired = Some(self.acquire_frame(target)?);
+        }
+        let frame = acquired.as_deref();
 
         // Uploads land at the next submit, so every pass recorded
         // before it needs its own pool offsets. Rewind once per render:
@@ -869,7 +897,7 @@ impl RenderContext {
         // tile memory. Render passes are unaffected (encoder-end already syncs there).
         #[cfg(apple)]
         let mut prev_was_compute = false;
-        for pass in pass_list.iter() {
+        for (pass, draws) in pass_list.iter().zip(&draws) {
             let pass = pass.as_ref();
             #[cfg(apple)]
             {
@@ -885,14 +913,65 @@ impl RenderContext {
             }
             if pass.is_compute() {
                 self.process_compute_pass(&mut encoder, pass)?
-            } else if let Some(frame) = frame.as_deref() {
-                self.process_render_pass(&mut encoder, pass, frame)?
+            } else if let Some(frame) = frame {
+                self.process_render_pass(&mut encoder, pass, frame, draws)?
             }
         }
 
         self.queue.submit(Some(encoder.finish()));
 
-        Ok(frame)
+        Ok(())
+    }
+
+    /// Runs the checks each render pass makes on the CPU, before any frame is acquired,
+    /// so a shader that reads vertex inputs with no mesh, or a mesh asked for more
+    /// instances than it holds, fails without drawing and the target keeps its last frame.
+    fn check_passes(
+        &self,
+        passes: &[Arc<PassObject>],
+        draws: &[PassDraws],
+    ) -> Result<(), RendererError> {
+        for (pass, draws) in passes.iter().zip(draws) {
+            if pass.is_compute() {
+                continue;
+            }
+            for shader in pass.shaders.read().iter() {
+                let meshes = shader.meshes.read().clone();
+                let layouts = self.shader_layouts(shader, &meshes)?;
+                if *shader.alpha_mode.read() == crate::material::AlphaMode::Blend {
+                    continue;
+                }
+                for mesh in meshes.iter() {
+                    let (refs, counts) = mesh.vertex_buffers(&self.device, &self.queue)?;
+                    let key = (Arc::as_ptr(shader) as usize, Arc::as_ptr(mesh) as usize);
+                    let models = draws.opaque_overrides.get(&key);
+                    let own = refs.instance_buffer.as_ref();
+                    mesh_instances(models, own, mesh, layouts.as_ref(), counts)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The vertex layouts a shader reads from its first mesh,
+    /// or `None` for a shader that reads no vertex input.
+    fn shader_layouts(
+        &self,
+        shader: &crate::ShaderObject,
+        meshes: &[Arc<crate::mesh::MeshObject>],
+    ) -> Result<Option<VertexLayouts>, RendererError> {
+        if let Some(first) = meshes.first() {
+            // Derive the schemas (and pack the buffers) before reading the layouts.
+            first.vertex_buffers(&self.device, &self.queue)?;
+            return vertex_buffer_layouts(shader, first.as_ref());
+        }
+        match first_vertex_input(shader) {
+            Some((name, location)) => Err(crate::ShaderError::InvalidKey(format!(
+                "shader input '{name}' @location({location}) has no mesh to read from; attach one with add_mesh"
+            ))
+            .into()),
+            None => Ok(None),
+        }
     }
 
     /// Try to get a frame once, and on Lost/Outdated, retry exactly once.
@@ -1000,39 +1079,115 @@ impl RenderContext {
         self.sample_count.load(Ordering::Relaxed).max(1)
     }
 
-    /// Runs `op` inside a validation error scope.
+    /// Runs `op` inside error scopes for validation, internal and out of memory errors.
     ///
-    /// A wgpu error that `op` causes returns as `ValidationError`
-    /// instead of reaching the device's uncaptured error handler.
-    /// Pipeline builds, bind groups, views and each frame go through here.
-    /// The scope is popped on every path. When `op` fails, its own error wins,
-    /// and a GPU error the scope also caught goes to the log as a warning. On wasm
-    /// the scope resolves after `render` returns, so the error waits in `late` for the next call.
+    /// A wgpu error that `op` causes returns as `ValidationError` instead of
+    /// reaching the device's uncaptured error handler. Pipeline builds and each frame
+    /// go through here, and on native so does each bind group and view inside a frame.
+    /// The scopes are popped on every path. When `op` fails with a GPU error of its own,
+    /// such as an inner scope's, the error these scopes caught came first and wins. When
+    /// `op` fails on the CPU, its error wins, and the GPU error goes to the log as a warning.
+    /// On wasm the scopes resolve after `render` returns, so the error waits in `late`.
     fn validate<T>(
         &self,
         label: &str,
         op: impl FnOnce() -> Result<T, RendererError>,
     ) -> Result<T, RendererError> {
-        let scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        self.validate_with(label, op, || {})
+    }
+
+    /// Runs `op` like `validate`, and on wasm runs `on_error` when an error lands after it returned.
+    fn validate_with<T>(
+        &self,
+        label: &str,
+        op: impl FnOnce() -> Result<T, RendererError>,
+        on_error: impl FnOnce() + 'static,
+    ) -> Result<T, RendererError> {
+        let [memory, internal, validation] =
+            SCOPES.map(|filter| self.device.push_error_scope(filter));
         let result = op();
-        let popped = scope.pop();
+        // Scopes pop in reverse order.
+        let validation = validation.pop();
+        let internal = internal.pop();
+        let memory = memory.pop();
+        let caught = async move { validation.await.or(internal.await).or(memory.await) };
         #[cfg(not(wasm))]
-        match (result, futures::executor::block_on(popped)) {
-            (Err(error), Some(gpu)) => {
-                log::warn!("{label} failed: {error}. The GPU also reported: {gpu}");
-                Err(error)
+        {
+            let _ = on_error;
+            match (result, futures::executor::block_on(caught)) {
+                (Err(error), Some(gpu)) if error.is_gpu() => {
+                    log::warn!("{label} failed: {gpu}. It then caused: {error}");
+                    Err(RendererError::ValidationError {
+                        label: label.to_string(),
+                        message: gpu.to_string(),
+                    })
+                }
+                (Err(error), Some(gpu)) => {
+                    log::warn!("{label} failed: {error}. The GPU also reported: {gpu}");
+                    Err(error)
+                }
+                (Ok(_), Some(gpu)) => Err(RendererError::ValidationError {
+                    label: label.to_string(),
+                    message: gpu.to_string(),
+                }),
+                (result, None) => result,
             }
-            (Ok(_), Some(gpu)) => Err(RendererError::ValidationError {
-                label: label.to_string(),
-                message: gpu.to_string(),
-            }),
-            (result, None) => result,
         }
         #[cfg(wasm)]
         {
             let failure = result.as_ref().err().map(ToString::to_string);
-            self.late.watch(label, popped, failure);
+            self.late.watch(label, caught, failure, on_error);
             result
+        }
+    }
+
+    /// Runs one step inside a frame, such as a bind group, in scopes of its own on native,
+    /// so its error carries the step's label. On wasm the frame's scopes cover it.
+    fn validate_step<T>(
+        &self,
+        label: &str,
+        op: impl FnOnce() -> Result<T, RendererError>,
+    ) -> Result<T, RendererError> {
+        #[cfg(not(wasm))]
+        {
+            self.validate(label, op)
+        }
+        #[cfg(wasm)]
+        {
+            let _ = label;
+            op()
+        }
+    }
+
+    /// The pipeline cached under `key`, built by `build` inside error scopes on a miss.
+    ///
+    /// A pipeline that fails to build stays out of the cache, so the next frame builds
+    /// it again and reports the same error. On wasm the error lands after the insert,
+    /// so the pipeline leaves the cache then.
+    fn fetch_pipeline<'cache, K, V>(
+        &self,
+        cache: &'cache Arc<DashMap<K, V>>,
+        key: K,
+        label: &str,
+        build: impl FnOnce() -> V,
+    ) -> Result<RefMut<'cache, K, V>, RendererError>
+    where
+        K: Eq + std::hash::Hash + Clone + 'static,
+        V: 'static,
+    {
+        match cache.entry(key) {
+            Entry::Occupied(entry) => Ok(entry.into_ref()),
+            Entry::Vacant(entry) => {
+                let shared = Arc::downgrade(cache);
+                let key = entry.key().clone();
+                let evict = move || {
+                    if let Some(cache) = shared.upgrade() {
+                        cache.remove(&key);
+                    }
+                };
+                let pipeline = self.validate_with(label, || Ok(build()), evict)?;
+                Ok(entry.insert(pipeline))
+            }
         }
     }
 
@@ -1186,16 +1341,12 @@ impl RenderContext {
         encoder: &mut wgpu::CommandEncoder,
         pass: &PassObject,
         frame: &dyn TargetFrame,
+        pass_draws: &PassDraws,
     ) -> Result<(), RendererError> {
         // The frame's own size, which a resize on another thread can't change mid-render.
         let size = frame.size();
-        // Snapshot per-Model transforms for this Pass into GPU instance
-        // buffers BEFORE begin_render_pass — the wgpu::Buffer handles need
-        // to outlive the render_pass. Opaque/Mask entries collapse to one
-        // batched buffer per `(shader_ptr, mesh_ptr)` (auto-instancing);
-        // Blend entries get one buffer each, kept in a sorted Vec so the
-        // blend phase can walk them back-to-front by eye-space depth.
-        let pass_draws = self.build_pass_draws(pass);
+        // `pass_draws` holds this pass's per-Model GPU instance buffers, built
+        // before the frame was acquired so they outlive the render pass.
         let model_overrides = &pass_draws.opaque_overrides;
         let blend_draws = &pass_draws.blend_draws;
 
@@ -1315,19 +1466,7 @@ impl RenderContext {
         for shader in pass.shaders.read().iter() {
             shader.flush_pending();
             let shader_meshes = shader.meshes.read().clone();
-            let layouts = if let Some(first_mesh) = shader_meshes.first() {
-                // Ensure schemas are derived (and buffers packed) before pipeline creation
-                first_mesh.vertex_buffers(&self.device, &self.queue)?;
-                // Now derive vertex buffer layouts; propagate any mapping error
-                vertex_buffer_layouts(shader, first_mesh.as_ref())?
-            } else if let Some((name, location)) = first_vertex_input(shader) {
-                return Err(crate::ShaderError::InvalidKey(format!(
-                    "shader input '{name}' @location({location}) has no mesh to read from; attach one with add_mesh"
-                ))
-                .into());
-            } else {
-                None
-            };
+            let layouts = self.shader_layouts(shader, &shader_meshes)?;
 
             // Snapshot the Material-owned pipeline-state flags from the
             // shader's back-references. Drop the read locks immediately so
@@ -1345,24 +1484,24 @@ impl RenderContext {
                 double_sided,
                 vertex_layouts: layouts.clone(),
             };
-            let cached_pipeline = self
-                .render_pipelines
-                .entry(pipeline_key)
-                .or_try_insert_with(|| {
-                    self.validate("render pipeline", || {
-                        Ok(create_render_pipeline(
-                            &self.device,
-                            shader,
-                            color_format,
-                            sample_count,
-                            layouts.as_ref(),
-                            depth_use,
-                            alpha_mode,
-                            double_sided,
-                            self.aligned_uniform_bindings.load(Ordering::Relaxed),
-                        ))
-                    })
-                })?;
+            let cached_pipeline = self.fetch_pipeline(
+                &self.render_pipelines,
+                pipeline_key,
+                "render pipeline",
+                || {
+                    create_render_pipeline(
+                        &self.device,
+                        shader,
+                        color_format,
+                        sample_count,
+                        layouts.as_ref(),
+                        depth_use,
+                        alpha_mode,
+                        double_sided,
+                        self.aligned_uniform_bindings.load(Ordering::Relaxed),
+                    )
+                },
+            )?;
 
             // Collect resources per bind group to build entries safely with owned views/samplers
             #[derive(Default)]
@@ -1384,7 +1523,7 @@ impl RenderContext {
                 match &uniform.data {
                     UniformData::Texture(meta) => {
                         if let Some(tex) = self.get_texture(&meta.id) {
-                            let view = self.validate(
+                            let view = self.validate_step(
                                 &format!("texture view for binding '{}'", name),
                                 || Ok(tex.create_view()),
                             )?;
@@ -1546,7 +1685,7 @@ impl RenderContext {
                 entries.sort_by_key(|e| e.binding);
 
                 let label = format!("Bind Group for group: {}", group_index);
-                let bind_group = self.validate(&label, || {
+                let bind_group = self.validate_step(&label, || {
                     Ok(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                         layout,
                         entries: &entries,
@@ -1562,7 +1701,7 @@ impl RenderContext {
                 if !present_groups.contains(group) {
                     // Create an empty bind group (layout is expected to have zero entries for placeholders)
                     let label = format!("Empty Bind Group for group: {}", group);
-                    let empty = self.validate(&label, || {
+                    let empty = self.validate_step(&label, || {
                         Ok(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                             layout,
                             entries: &[],
@@ -1618,44 +1757,24 @@ impl RenderContext {
                         for mesh_object in shader_meshes.iter() {
                             let (refs, counts) =
                                 mesh_object.vertex_buffers(&self.device, &self.queue)?;
-                            // An empty index list draws nothing, like an instance count of 0.
-                            if counts.index_count == 0 {
-                                continue;
-                            }
-
-                            // Per-Pass Model override takes precedence over the
-                            // Mesh's own instance buffer. The override carries N
-                            // model matrices (one per Model::add_model call that
-                            // referenced this shader+mesh); the fall-through path
-                            // is for Meshes whose instances came from a direct
-                            // `Mesh::add_instance` call (crowd rendering, etc.).
                             let override_key = (shader_ptr, Arc::as_ptr(mesh_object) as usize);
-                            let overridden = model_overrides.get(&override_key);
-                            let instance_count = match (overridden, &refs.instance_buffer) {
-                                (Some((buffer, count)), _) => {
-                                    render_pass.set_vertex_buffer(1, buffer.slice(..));
-                                    *count
-                                }
-                                // A Model mesh with no visible Model in this pass has nothing to draw,
-                                // and slot 1 may still hold the buffer an earlier mesh bound.
-                                (None, None) if mesh_object.instance_schema.read().is_some() => {
-                                    continue;
-                                }
-                                (None, buffer) => {
-                                    check_instance_count(layouts.as_ref(), counts)?;
-                                    if let Some(buffer) = buffer {
-                                        render_pass.set_vertex_buffer(1, buffer.slice(..));
-                                    }
-                                    counts.instance_count
-                                }
+                            let models = model_overrides.get(&override_key);
+                            let own = refs.instance_buffer.as_ref();
+                            let Some(instances) =
+                                mesh_instances(models, own, mesh_object, layouts.as_ref(), counts)?
+                            else {
+                                continue;
                             };
+                            if let Some(buffer) = instances.buffer {
+                                render_pass.set_vertex_buffer(1, buffer.slice(..));
+                            }
 
                             render_pass.set_vertex_buffer(0, refs.vertex_buffer.slice(..));
                             render_pass.set_index_buffer(
                                 refs.index_buffer.slice(..),
                                 wgpu::IndexFormat::Uint32,
                             );
-                            render_pass.draw_indexed(0..counts.index_count, 0, 0..instance_count);
+                            render_pass.draw_indexed(0..counts.index_count, 0, 0..instances.count);
                         }
                     }
                     crate::material::AlphaMode::Blend => {
@@ -1717,16 +1836,13 @@ impl RenderContext {
         for (shader_index, shader) in pass.shaders.read().iter().enumerate() {
             shader.flush_pending();
             let entries = bind_group_entries(shader);
-            let cached = self
-                .compute_pipelines
-                .entry(ComputePipelineKey {
-                    shader_hash: shader.hash,
-                    bind_group_entries: entries.clone(),
-                })
-                .or_try_insert_with(|| {
-                    self.validate("compute pipeline", || {
-                        Ok(create_compute_pipeline(&self.device, shader, &entries))
-                    })
+            let key = ComputePipelineKey {
+                shader_hash: shader.hash,
+                bind_group_entries: entries.clone(),
+            };
+            let cached =
+                self.fetch_pipeline(&self.compute_pipelines, key, "compute pipeline", || {
+                    create_compute_pipeline(&self.device, shader, &entries)
                 })?;
             #[derive(Default)]
             struct BindGroupResources {
@@ -1741,7 +1857,7 @@ impl RenderContext {
                 match &uniform.data {
                     UniformData::Texture(meta) => {
                         if let Some(tex) = self.get_texture(&meta.id) {
-                            let view = self.validate(
+                            let view = self.validate_step(
                                 &format!("texture view for binding '{}'", name),
                                 || Ok(tex.create_view()),
                             )?;
@@ -1840,7 +1956,7 @@ impl RenderContext {
                 }
                 entries.sort_by_key(|e| e.binding);
                 let label = format!("Compute Bind Group for group: {}", group);
-                let bind_group = self.validate(&label, || {
+                let bind_group = self.validate_step(&label, || {
                     Ok(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                         layout,
                         entries: &entries,
@@ -1899,6 +2015,46 @@ impl VertexLayouts {
                 attributes: &stream.attributes,
             })
             .collect()
+    }
+}
+
+/// The instances a mesh draws, and the buffer slot 1 steps through for them.
+struct Instances<'draw> {
+    buffer: Option<&'draw wgpu::Buffer>,
+    count: u32,
+}
+
+/// The instances one mesh of an opaque or masked shader draws, or `None` when it draws nothing.
+///
+/// The pass's Models win over the mesh's own instance buffer: `models` holds one matrix
+/// for each visible Model that draws this mesh through this shader. Otherwise the mesh
+/// draws its own instances, such as a crowd built with `Mesh::add_instance`.
+fn mesh_instances<'draw>(
+    models: Option<&'draw (wgpu::Buffer, u32)>,
+    own: Option<&'draw wgpu::Buffer>,
+    mesh: &crate::mesh::MeshObject,
+    layouts: Option<&VertexLayouts>,
+    counts: crate::mesh::DrawCounts,
+) -> Result<Option<Instances<'draw>>, RendererError> {
+    // An empty index list draws nothing, like an instance count of 0.
+    if counts.index_count == 0 {
+        return Ok(None);
+    }
+    match (models, own) {
+        (Some((buffer, count)), _) => Ok(Some(Instances {
+            buffer: Some(buffer),
+            count: *count,
+        })),
+        // A Model mesh with no visible Model in this pass has nothing to draw,
+        // and slot 1 may still hold the buffer an earlier mesh bound.
+        (None, None) if mesh.instance_schema.read().is_some() => Ok(None),
+        (None, buffer) => {
+            check_instance_count(layouts, counts)?;
+            Ok(Some(Instances {
+                buffer,
+                count: counts.instance_count,
+            }))
+        }
     }
 }
 
@@ -3620,7 +3776,7 @@ struct VOut { @builtin(position) pos: vec4<f32> };
         let mut encoder = ctx
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        ctx.process_render_pass(&mut encoder, pass, &frame)
+        ctx.process_render_pass(&mut encoder, pass, &frame, &ctx.build_pass_draws(pass))
             .expect("render pass failed");
         ctx.queue.submit(Some(encoder.finish()));
         scope.pop().await
@@ -3791,7 +3947,8 @@ struct VOut { @builtin(position) pos: vec4<f32> };
                     .device
                     .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-                let res = ctx.process_render_pass(&mut encoder, &first_pass, &frame);
+                let draws = ctx.build_pass_draws(&first_pass);
+                let res = ctx.process_render_pass(&mut encoder, &first_pass, &frame, &draws);
                 assert!(
                     res.is_ok(),
                     "msaa depth render should succeed: {:?}",
@@ -4455,7 +4612,8 @@ fn main() -> @location(0) vec4<f32> {
             let mut encoder = ctx
                 .device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-            let res = ctx.process_render_pass(&mut encoder, &first_pass, &frame);
+            let draws = ctx.build_pass_draws(&first_pass);
+            let res = ctx.process_render_pass(&mut encoder, &first_pass, &frame, &draws);
             assert!(res.is_err());
             let s = format!("{}", res.unwrap_err());
             assert!(s.contains("sample_count"), "unexpected error: {s}");

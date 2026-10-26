@@ -14,7 +14,8 @@ pub enum RendererError {
     MeshError(#[from] crate::mesh::MeshError),
     #[error("Bind Group Layout error: {0}")]
     BindGroupLayoutError(String),
-    #[error("GPU validation error while building '{label}': {message}")]
+    /// A GPU error an error scope caught, labeled with the step that raised it.
+    #[error("GPU validation error in '{label}': {message}")]
     ValidationError { label: String, message: String },
     #[error("Texture error: {0}")]
     TextureError(#[from] crate::texture::TextureError),
@@ -35,6 +36,18 @@ pub enum RendererError {
     IoError(#[from] std::io::Error),
     #[error("Renderer error: {0}")]
     Error(String),
+}
+
+impl RendererError {
+    /// Whether the GPU raised this error, through a scope or a surface that failed validation.
+    #[cfg(not(wasm))]
+    pub(crate) fn is_gpu(&self) -> bool {
+        matches!(
+            self,
+            RendererError::ValidationError { .. }
+                | RendererError::SurfaceError(crate::target::SurfaceError::Validation)
+        )
+    }
 }
 
 #[derive(Error, Debug)]
