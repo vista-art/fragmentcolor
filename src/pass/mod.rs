@@ -111,14 +111,11 @@ impl Pass {
 
     /// Re-invoke `apply_to_shader` on every absorbed scene object for the
     /// given shader. Called by `Model::attach` when a Model brings a new
-    /// shader to the pass; the Camera / Light objects that opted into live
-    /// propagation see the new shader and write their state into it.
+    /// shader to the pass, so a Camera writes its state into it. The pass's
+    /// lights reach the shader through `add_shader`.
     pub(crate) fn replay_scene_objects(&self, shader: &crate::Shader) {
         for object in self.object.scene_objects.read().iter() {
             object.apply_to_shader(shader);
-        }
-        for light in self.object.lights.read().iter() {
-            shader.object.add_light(&light.object);
         }
     }
 
@@ -465,6 +462,15 @@ impl PassObject {
 
     /// Add a shader to this pass. The shader must be compatible with the pass type.
     pub(crate) fn add_shader(&self, shader: Arc<ShaderObject>) {
+        // A lit shader takes every light the pass holds. When they don't fit,
+        // the pass stays as it was.
+        let lights = self.lights.read();
+        let incoming: Vec<u64> = lights.iter().map(|light| light.object.id).collect();
+        if let Err(error) = shader.check_light_room(&incoming) {
+            log::warn!("Pass '{}' leaves out a shader: {error}", self.name);
+            return;
+        }
+
         // If this is the first shader added, adopt the shader kind for the pass.
         {
             let shaders = self.shaders.read();
@@ -478,6 +484,9 @@ impl PassObject {
         }
 
         if shader.is_compute() == self.is_compute() {
+            for light in lights.iter() {
+                shader.add_light(&light.object);
+            }
             *self.required_buffer_size.write() += shader.total_bytes;
             self.shaders.write().push(shader);
         } else {

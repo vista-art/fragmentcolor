@@ -912,6 +912,44 @@ struct Lights { count: u32, global_count: u32, promoted_count: u32, ambient: vec
     });
 }
 
+const STORAGE_ROOT: &str = "struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>, slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }
+struct Lights { count: u32, global_count: u32, promoted_count: u32, ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }
+@group(0) @binding(1) var<storage, read> lights: Lights;";
+
+#[test]
+fn a_shader_added_later_takes_the_pass_lights() {
+    pollster::block_on(async {
+        let lamp = Light::point([0.0, 0.0, 0.0], [0.2, 0.4, 0.0]);
+        let build = || {
+            let pass = Pass::new("lights first");
+            pass.add(&lamp).expect("light");
+            let shader = fullscreen(
+                STORAGE_ROOT,
+                "vec4<f32>(lights.lights[0].color, f32(lights.count) * 0.2)",
+            );
+            pass.add_shader(&shader);
+            pass
+        };
+        let drawn = draw(build, Mode::Clustered, 4).await;
+        assert_eq!(drawn.image[..4], [51, 102, 0, 51], "the pass's light");
+
+        // A shader that can't take the pass's lights stays out, and the pass is unchanged.
+        let pass = Pass::new("three lights");
+        for index in 0..3 {
+            pass.add(&Light::point([index as f32, 0.0, 0.0], [1.0; 3]))
+                .expect("light");
+        }
+        let small = fullscreen(
+            "struct LightArray { count: u32, ambient: vec3<f32>, lights: array<Light, 2> }
+@group(0) @binding(1) var<uniform> lights: LightArray;",
+            "vec4<f32>(lights.lights[0].color, 1.0)",
+        );
+        pass.add_shader(&small);
+        assert!(pass.object.shaders.read().is_empty());
+        assert!(small.object.gpu_lights().is_empty());
+    });
+}
+
 #[test]
 fn a_light_lights_after_its_handle_drops() {
     pollster::block_on(async {

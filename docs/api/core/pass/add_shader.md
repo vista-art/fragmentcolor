@@ -5,6 +5,12 @@ Add a [Shader](https://fragmentcolor.org/api/core/shader) to the
 they were added, sharing the pass's targets, viewport, clear color, and
 load policy.
 
+A shader that declares the light roots, as
+[`Material::custom`](https://fragmentcolor.org/api/scene/material#custom)
+lists them, takes every [Light](https://fragmentcolor.org/api/scene/light)
+the pass holds. When those lights would take it past the most it holds on
+the device, the pass logs a warning and leaves the shader out.
+
 ## Example
 
 ```rust
