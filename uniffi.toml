@@ -6,8 +6,3 @@ package_name = "org.fragmentcolor"
 android = true
 android_cleaner = true
 generate_immutable_records = true
-
-# A Kotlin exception has a message of its own, which a field of that name would
-# hide, so the GPU message of FragmentColorError.Device is detail in Kotlin.
-[bindings.kotlin.rename]
-"FragmentColorError.Device.message" = "detail"

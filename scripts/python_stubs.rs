@@ -1419,9 +1419,8 @@ mod python_stubs {
     // Rendering
     // ---------------------------------------------------------------------
 
-    /// The attributes `exception` carries, one line each: the named fields of the crate
-    /// error variant that shares its name, such as `RendererError::DeviceError`.
-    /// `message` is left out, since it is the exception's text.
+    /// The attributes `exception` carries, one line each: the named fields
+    /// of the crate error variant that shares its name, such as `RendererError::DeviceError`.
     fn exception_attributes(exception: &str, ctx: &Ctx) -> String {
         let variant = ctx
             .model
@@ -1438,9 +1437,6 @@ mod python_stubs {
         };
         let mut out = String::new();
         for (name, ty) in variant.names.iter().flatten().zip(&variant.fields) {
-            if name == "message" {
-                continue;
-            }
             let hint = render(
                 &expand(ty, Mode::Return, &Scope::default(), "", ctx),
                 Mode::Return,

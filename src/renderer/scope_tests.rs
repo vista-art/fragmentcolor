@@ -454,8 +454,8 @@ fn outer_error_reports_the_root_cause() {
 
         // Assert
         assert!(
-            matches!(&result, Err(RendererError::DeviceError { label, message, .. })
-                if label == "outer" && message.contains("the cause")),
+            matches!(&result, Err(RendererError::DeviceError { label, detail, .. })
+                if label == "outer" && detail.contains("the cause")),
             "got {result:?}"
         );
         assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
@@ -505,8 +505,8 @@ fn surface_validation_reports_the_device_error() {
 
         // Assert
         assert!(
-            matches!(&result, Err(RendererError::DeviceError { label, message, .. })
-                if label == "frame" && message.contains("the surface detail")),
+            matches!(&result, Err(RendererError::DeviceError { label, detail, .. })
+                if label == "frame" && detail.contains("the surface detail")),
             "got {result:?}"
         );
         assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());

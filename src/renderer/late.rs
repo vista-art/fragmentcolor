@@ -18,7 +18,7 @@ use std::sync::Arc;
 pub(crate) struct LateError {
     pub(crate) kind: ErrorKind,
     pub(crate) label: String,
-    pub(crate) message: String,
+    pub(crate) detail: String,
 }
 
 impl From<LateError> for RendererError {
@@ -26,7 +26,7 @@ impl From<LateError> for RendererError {
         RendererError::DeviceError {
             kind: error.kind,
             label: error.label,
-            message: error.message,
+            detail: error.detail,
         }
     }
 }
@@ -36,7 +36,7 @@ impl From<LateError> for TextureError {
         TextureError::DeviceError {
             kind: error.kind,
             label: error.label,
-            message: error.message,
+            detail: error.detail,
         }
     }
 }
@@ -137,7 +137,7 @@ impl ErrorSlot {
                 let late = |fault: Fault| LateError {
                     kind: fault.kind,
                     label: label.clone(),
-                    message: fault.error.to_string(),
+                    detail: fault.error.to_string(),
                 };
                 let error = late(cause);
                 match failure {
@@ -182,7 +182,7 @@ mod tests {
         LateError {
             kind: ErrorKind::Validation,
             label: label.into(),
-            message: format!("{label} failed"),
+            detail: format!("{label} failed"),
         }
     }
 
@@ -266,7 +266,7 @@ mod tests {
     }
 
     // Story: render and a readback report a late error as the same typed
-    // DeviceError, with the same kind, label and message.
+    // DeviceError, with the same kind, label and detail.
     #[test]
     fn converts_to_each_call_error() {
         // Arrange

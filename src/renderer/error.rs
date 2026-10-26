@@ -48,11 +48,11 @@ pub enum RendererError {
     #[error("Bind Group Layout error: {0}")]
     BindGroupLayoutError(String),
     /// A GPU error an error scope caught, labeled with the step that raised it.
-    #[error("Device error ({kind}) in '{label}': {message}")]
+    #[error("Device error ({kind}) in '{label}': {detail}")]
     DeviceError {
         kind: ErrorKind,
         label: String,
-        message: String,
+        detail: String,
     },
     #[error("Texture error: {0}")]
     TextureError(#[from] crate::texture::TextureError),
@@ -111,9 +111,11 @@ impl From<RendererError> for pyo3::PyErr {
             RendererError::SurfaceError(crate::target::SurfaceError::Occluded) => {
                 crate::error::OccludedSurfaceError::new_err(message)
             }
-            RendererError::DeviceError { kind, label, .. } => {
-                crate::error::DeviceError::raise(kind, label, message)
-            }
+            RendererError::DeviceError {
+                kind,
+                label,
+                detail,
+            } => crate::error::DeviceError::raise(kind, label, detail, message),
             _ => crate::PyFragmentColorError::new_err(message),
         }
     }
@@ -152,11 +154,15 @@ impl From<wasm_bindgen::JsValue> for RendererError {
 
 #[cfg(wasm)]
 impl RendererError {
-    /// The JS `Error` this error throws. A device error also carries its `kind` and `label`.
+    /// The JS `Error` this error throws. A device error also carries its `kind`, `label` and `detail`.
     pub(crate) fn into_js(self) -> JsError {
         let message = self.to_string();
         match self {
-            RendererError::DeviceError { kind, label, .. } => throw_device(kind, &label, &message),
+            RendererError::DeviceError {
+                kind,
+                label,
+                detail,
+            } => throw_device(kind, &label, &detail, &message),
             _ => JsError::new(&message),
         }
     }
@@ -170,15 +176,17 @@ impl From<RendererError> for wasm_bindgen::JsValue {
     }
 }
 
-/// A JS `Error` with `message` that carries the GPU error's `kind` and the `label` of its step.
+/// A JS `Error` with the full `message` that carries the GPU error's `kind`,
+/// the `label` of its step and the device's own `detail`.
 #[cfg(wasm)]
-pub(crate) fn throw_device(kind: ErrorKind, label: &str, message: &str) -> JsError {
+pub(crate) fn throw_device(kind: ErrorKind, label: &str, detail: &str, message: &str) -> JsError {
     let error = JsError::new(message);
     // A clone holds the same JS object, so the properties land on the error itself.
     let value = JsValue::from(error.clone());
     // Setting a property on a new Error object never throws.
     let _ = js_sys::Reflect::set(&value, &"kind".into(), &JsValue::from(kind as u32));
     let _ = js_sys::Reflect::set(&value, &"label".into(), &JsValue::from(label));
+    let _ = js_sys::Reflect::set(&value, &"detail".into(), &JsValue::from(detail));
     error
 }
 
@@ -238,7 +246,7 @@ mod tests {
         let error = RendererError::DeviceError {
             kind: ErrorKind::Memory,
             label: "frame".into(),
-            message: "Out of Memory".into(),
+            detail: "Out of Memory".into(),
         };
 
         // Act

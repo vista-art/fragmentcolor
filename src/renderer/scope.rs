@@ -108,7 +108,7 @@ pub(super) fn resolve<T>(
     let scoped = RendererError::DeviceError {
         kind: cause.kind,
         label: label.to_string(),
-        message: cause_text.clone(),
+        detail: cause_text.clone(),
     };
     match (result, origin) {
         (Err(error), Origin::Cpu) => {
@@ -212,7 +212,7 @@ mod tests {
         let limit = RendererError::DeviceError {
             kind: ErrorKind::Validation,
             label: "storage".into(),
-            message: "past max_buffer_size".into(),
+            detail: "past max_buffer_size".into(),
         };
         let caught = Caught::split([None, None, Some(validation())]);
 

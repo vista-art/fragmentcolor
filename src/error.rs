@@ -65,13 +65,19 @@ create_exception!(
     fragment_color,
     DeviceError,
     PyFragmentColorError,
-    "A GPU error an error scope caught, with its kind and the label of the step that raised it."
+    "A GPU error an error scope caught, with its kind, the label of the step that raised it and the device's own detail."
 );
 
 #[cfg(python)]
 impl DeviceError {
-    /// A `DeviceError` with `message` that carries the GPU error's `kind` and `label`.
-    pub(crate) fn raise(kind: crate::ErrorKind, label: String, message: String) -> PyErr {
+    /// A `DeviceError` with the full `message` that carries the GPU error's `kind`,
+    /// the `label` of its step and the device's own `detail`.
+    pub(crate) fn raise(
+        kind: crate::ErrorKind,
+        label: String,
+        detail: String,
+        message: String,
+    ) -> PyErr {
         Python::attach(|py| {
             let error = DeviceError::new_err(message);
             let set = {
@@ -79,6 +85,7 @@ impl DeviceError {
                 value
                     .setattr("kind", kind)
                     .and_then(|()| value.setattr("label", label))
+                    .and_then(|()| value.setattr("detail", detail))
             };
             match set {
                 Ok(()) => error,

@@ -61,11 +61,11 @@ pub enum TextureError {
     #[error("Bind Group Layout error: {0}")]
     BindGroupLayoutError(String),
     /// A GPU error an earlier frame left, which a readback reports before it reads.
-    #[error("Device error ({kind}) in '{label}': {message}")]
+    #[error("Device error ({kind}) in '{label}': {detail}")]
     DeviceError {
         kind: crate::renderer::ErrorKind,
         label: String,
-        message: String,
+        detail: String,
     },
     #[error("Renderer error: {0}")]
     Error(String),
@@ -94,9 +94,11 @@ impl From<TextureError> for pyo3::PyErr {
                 UnsupportedMipmapFormatError::new_err(message)
             }
             TextureError::MalformedImageError(_) => MalformedImageError::new_err(message),
-            TextureError::DeviceError { kind, label, .. } => {
-                DeviceError::raise(kind, label, message)
-            }
+            TextureError::DeviceError {
+                kind,
+                label,
+                detail,
+            } => DeviceError::raise(kind, label, detail, message),
             _ => crate::PyFragmentColorError::new_err(message),
         }
     }
@@ -118,13 +120,15 @@ impl From<wasm_bindgen::JsValue> for TextureError {
 
 #[cfg(wasm)]
 impl TextureError {
-    /// The JS `Error` this error throws. A device error also carries its `kind` and `label`.
+    /// The JS `Error` this error throws. A device error also carries its `kind`, `label` and `detail`.
     pub(crate) fn into_js(self) -> wasm_bindgen::JsError {
         let message = self.to_string();
         match self {
-            TextureError::DeviceError { kind, label, .. } => {
-                crate::renderer::error::throw_device(kind, &label, &message)
-            }
+            TextureError::DeviceError {
+                kind,
+                label,
+                detail,
+            } => crate::renderer::error::throw_device(kind, &label, &detail, &message),
             _ => wasm_bindgen::JsError::new(&message),
         }
     }

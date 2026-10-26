@@ -36,11 +36,11 @@ pub enum FragmentColorError {
     Render(String),
     #[error("{0}")]
     Shader(String),
-    #[error("Device error ({kind}) in '{label}': {message}")]
+    #[error("Device error ({kind}) in '{label}': {detail}")]
     Device {
         kind: crate::ErrorKind,
         label: String,
-        message: String,
+        detail: String,
     },
 }
 
@@ -60,11 +60,11 @@ impl From<crate::RendererError> for FragmentColorError {
             crate::RendererError::DeviceError {
                 kind,
                 label,
-                message,
+                detail,
             } => FragmentColorError::Device {
                 kind,
                 label,
-                message,
+                detail,
             },
             e => FragmentColorError::Render(e.to_string()),
         }
@@ -83,11 +83,11 @@ impl From<crate::texture::TextureError> for FragmentColorError {
             crate::texture::TextureError::DeviceError {
                 kind,
                 label,
-                message,
+                detail,
             } => FragmentColorError::Device {
                 kind,
                 label,
-                message,
+                detail,
             },
             e => FragmentColorError::Render(e.to_string()),
         }

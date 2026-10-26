@@ -3134,12 +3134,12 @@ mod more_error_path_tests {
                 Err(RendererError::DeviceError {
                     kind,
                     label,
-                    message,
+                    detail,
                 }) => {
                     assert_eq!(kind, ErrorKind::Validation);
                     assert_eq!(label, "intentionally invalid bind group");
                     assert!(
-                        !message.is_empty(),
+                        !detail.is_empty(),
                         "expected non-empty validation message, got empty"
                     );
                 }
