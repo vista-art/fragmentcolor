@@ -9,7 +9,7 @@
 # A `?` marks a parameter a caller may leave out.
 
 docs/api/core/renderer/create_storage_texture.md kotlin Renderer.createStorageTexture: (Size, TextureFormat, bytes?, int?) -> Texture throws async | rust (into TextureInput) -> Texture throws async
-docs/api/core/renderer/create_storage_texture.md python Renderer.create_storage_texture: (PySize, TextureFormat, bytes?, PyTextureUsage?, int?) -> Texture throws | rust (into TextureInput) -> Texture throws async
+docs/api/core/renderer/create_storage_texture.md python Renderer.create_storage_texture: (PySize, TextureFormat, bytes?, PyTextureUsage?, PyUnsigned?) -> Texture throws | rust (into TextureInput) -> Texture throws async
 docs/api/core/renderer/create_storage_texture.md swift Renderer.createStorageTexture: (Size, TextureFormat, bytes?, int?) -> Texture throws async | rust (into TextureInput) -> Texture throws async
 docs/api/core/renderer/create_storage_texture.md web Renderer.createStorageTexture: (any, any, any?, any?) -> Texture throws async | rust (into TextureInput) -> Texture throws async
 docs/api/core/renderer/create_target.md kotlin Renderer.createTarget: (int) -> WindowTarget throws | rust (into SurfaceTarget) -> RenderTarget throws async

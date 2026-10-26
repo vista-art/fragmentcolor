@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 
 use crate::Shader;
 use crate::material::{AlphaMode, Material, MaterialError, TextureSlot};
-use crate::platforms::python::read_unsigned;
+use crate::platforms::python::{PyChannels, PyUnsigned};
 use crate::texture::PyTextureSource;
 
 #[pymethods]
@@ -36,8 +36,8 @@ impl Material {
 
     #[pyo3(name = "base_color")]
     #[lsp_doc("docs/api/scene/material/base_color.md")]
-    pub fn base_color_py(&self, color: [f32; 4]) -> Self {
-        self.base_color(color)
+    pub fn base_color_py(&self, color: PyChannels<'_>) -> PyResult<Self> {
+        Ok(self.base_color(color.read_array("Material.base_color")?))
     }
 
     #[pyo3(name = "metallic")]
@@ -66,8 +66,8 @@ impl Material {
 
     #[pyo3(name = "emissive")]
     #[lsp_doc("docs/api/scene/material/emissive.md")]
-    pub fn emissive_py(&self, factor: [f32; 3]) -> Self {
-        self.emissive(factor)
+    pub fn emissive_py(&self, factor: PyChannels<'_>) -> PyResult<Self> {
+        Ok(self.emissive(factor.read_array("Material.emissive")?))
     }
 
     #[pyo3(name = "alpha_cutoff")]
@@ -84,12 +84,8 @@ impl Material {
 
     #[pyo3(name = "texture_uv")]
     #[lsp_doc("docs/api/scene/material/texture_uv.md")]
-    pub fn texture_uv_py(
-        &self,
-        slot: TextureSlot,
-        #[pyo3(from_py_with = read_unsigned)] set: u32,
-    ) -> PyResult<Self> {
-        Ok(self.texture_uv(slot, set)?)
+    pub fn texture_uv_py(&self, slot: TextureSlot, set: PyUnsigned<'_>) -> PyResult<Self> {
+        Ok(self.texture_uv(slot, set.read("Material.texture_uv: set")?)?)
     }
 
     #[pyo3(name = "texture_transform")]

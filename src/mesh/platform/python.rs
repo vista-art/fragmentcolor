@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
 use crate::mesh::{Instance, Mesh, MeshError, Vertex, VertexData};
-use crate::platforms::python::{read_list, read_unsigned};
+use crate::platforms::python::{PyUnsigned, read_list};
 use lsp_doc::lsp_doc;
 
 /// A vertex or instance attribute from Python:
@@ -275,14 +275,16 @@ impl Mesh {
 
     #[pyo3(name = "set_instance_count")]
     #[lsp_doc("docs/api/geometry/mesh/set_instance_count.md")]
-    pub fn set_instance_count_py(&mut self, #[pyo3(from_py_with = read_unsigned)] n: u32) {
-        self.set_instance_count(n);
+    pub fn set_instance_count_py(&mut self, n: PyUnsigned<'_>) -> PyResult<()> {
+        self.set_instance_count(n.read("Mesh.set_instance_count: n")?);
+        Ok(())
     }
 
     #[pyo3(name = "set_indices")]
     #[lsp_doc("docs/api/geometry/mesh/set_indices.md")]
-    pub fn set_indices_py(&mut self, #[pyo3(from_py_with = read_list)] indices: Vec<u32>) {
-        self.set_indices(indices);
+    pub fn set_indices_py(&mut self, indices: Vec<PyUnsigned<'_>>) -> PyResult<()> {
+        self.set_indices(read_list(&indices, "Mesh.set_indices")?);
+        Ok(())
     }
 
     #[pyo3(name = "clear_indices")]

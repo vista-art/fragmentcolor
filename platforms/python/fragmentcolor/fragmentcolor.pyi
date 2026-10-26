@@ -46,7 +46,7 @@ __all__ = [
     "rendercanvas_context_hook",
 ]
 
-_PySize: TypeAlias = Sequence[int] | Size | dict[str, Any]
+_PySize: TypeAlias = Size | Sequence[int] | dict[str, int]
 _PyTextureBytes: TypeAlias = bytes | npt.NDArray[numpy.uint8] | Sequence[int]
 _PyTextureSource: TypeAlias = str | bytearray | bytes | memoryview[Any] | Mipmap | Texture | list[int] | npt.NDArray[numpy.uint8] | tuple[Any, ...]
 _PyVertexPosition: TypeAlias = float | Vertex | Sequence[float]
@@ -5020,7 +5020,7 @@ class Texture:
         texture.write(frame)
         ```
         """
-    def write_region(self, data: _PyTextureBytes, region: ScreenRegion | Sequence[int] | dict[str, Any] | None) -> None:
+    def write_region(self, data: _PyTextureBytes, region: ScreenRegion | dict[str, Any] | Sequence[int] | None) -> None:
         """
         Same as `Texture::write`, but writes into a sub-region of the texture and/or with explicit source data layout.
 

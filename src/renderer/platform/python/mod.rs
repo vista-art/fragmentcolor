@@ -167,7 +167,7 @@ impl Renderer {
         format: Option<crate::TextureFormat>,
         mipmaps: Option<bool>,
         sampler: Option<crate::texture::PySamplerOptions<'py>>,
-        usage: Option<crate::texture::PyTextureUsage>,
+        usage: Option<crate::texture::PyTextureUsage<'py>>,
     ) -> Result<crate::texture::Texture, PyErr> {
         let options = TextureKeywords {
             size,
@@ -246,8 +246,8 @@ impl Renderer {
         size: PySize<'_>,
         format: crate::TextureFormat,
         data: Option<Vec<u8>>,
-        usage: Option<crate::texture::PyTextureUsage>,
-        usage_bits: Option<u32>,
+        usage: Option<crate::texture::PyTextureUsage<'_>>,
+        usage_bits: Option<crate::platforms::python::PyUnsigned<'_>>,
     ) -> Result<crate::texture::Texture, PyErr> {
         if usage_bits.is_some() {
             let warning = py.get_type::<pyo3::exceptions::PyDeprecationWarning>();
@@ -261,7 +261,11 @@ impl Renderer {
             options: crate::TextureOptions {
                 size: Some(Size::try_from(size)?),
                 format,
-                usage: usage.map(u32::from).or(usage_bits),
+                usage: match (usage, usage_bits) {
+                    (Some(usage), _) => Some(usage.read("usage")?),
+                    (None, Some(bits)) => Some(bits.read("usage_bits")?),
+                    (None, None) => None,
+                },
                 ..Default::default()
             },
         };
@@ -314,7 +318,7 @@ fn py_to_texture_spec(
         spec.options.sampler = crate::SamplerOptions::try_from(sampler)?;
     }
     if let Some(usage) = options.usage {
-        spec.options.usage = Some(usage.into());
+        spec.options.usage = Some(usage.read("usage")?);
     }
     Ok(spec)
 }
@@ -325,5 +329,5 @@ struct TextureKeywords<'py> {
     format: Option<crate::TextureFormat>,
     mipmaps: Option<bool>,
     sampler: Option<crate::texture::PySamplerOptions<'py>>,
-    usage: Option<crate::texture::PyTextureUsage>,
+    usage: Option<crate::texture::PyTextureUsage<'py>>,
 }

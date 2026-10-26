@@ -7,8 +7,11 @@ other platform.
 
 The extension passes the layer's address. The constructor checks that the
 address names a `CAMetalLayer` before it reads the layer's drawable size, and
-throws `FragmentColorError` for any other object, for a null address, and for a
-drawable size that is negative or NaN.
+throws `FragmentColorError` for any other object and for a null address.
+
+The system reports the drawable size in floats. A fraction rounds down, a side of
+0 becomes 1 pixel, and a side that is negative, NaN, infinite or past
+`UInt32.max` throws `FragmentColorError`.
 
 Exposed as synchronous because `wgpu::SurfaceTargetUnsafe` holds a raw
 pointer and can't be held across an `await` in a `Send` future.

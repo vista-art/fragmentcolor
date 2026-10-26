@@ -129,14 +129,14 @@ extension Pass {
 
     // MARK: - Clear color
 
-    /// Set the clear color as separate linear RGBA components, each passed to the GPU as given.
-    public func setClearColor(r: Float, g: Float, b: Float, a: Float = 1.0) throws {
-        try self.setClearColor(color: [r, g, b, a])
-    }
-
-    /// Set the clear color from a 3- or 4-element float array (`[r, g, b]` or `[r, g, b, a]`).
+    /// Set the clear color from `[r, g, b]` or `[r, g, b, a]`, each channel passed to the GPU as given.
     public func setClearColor(_ rgba: [Float]) throws {
         try self.setClearColor(color: rgba)
+    }
+
+    /// Set the clear color from `[r, g, b]` or `[r, g, b, a]` as doubles.
+    public func setClearColor(_ rgba: [Double]) throws {
+        try self.setClearColor(color: rgba.map { Float($0) })
     }
 
     // MARK: - Viewport
@@ -147,7 +147,7 @@ extension Pass {
     }
 
     /// Set the viewport from `[(x, y), (width, height)]`, an origin and a size,
-    /// as `ScreenRegion(origin, size)` reads them.
+    /// as `ScreenRegion(origin, size)` reads them. A width or height of 0 throws.
     public func setViewport(_ originAndSize: [(UInt32, UInt32)]) throws {
         guard originAndSize.count == 2 else {
             throw FragmentColorError.Render("setViewport: expected [(x, y), (width, height)], got \(originAndSize.count) pairs")
@@ -156,6 +156,7 @@ extension Pass {
     }
 
     /// Set the viewport from `[x, y, width, height]`, or `[width, height]` at the origin.
+    /// A width or height of 0, or any other count of numbers, throws.
     public func setViewport(_ rect: [UInt32]) throws {
         switch rect.count {
         case 2: try setViewport(region: ScreenRegion([0, 0], rect))
@@ -173,18 +174,19 @@ extension Pass {
 }
 
 extension ScreenRegion {
-    /// A region at `origin` (x, y) that is `size` (width, height) large,
-    /// as Rust's `ScreenRegion::new(origin, size)` reads them. A side of 0 throws.
+    /// A region at `origin` (x, y) that is `size` (width, height) large, as Rust's
+    /// `ScreenRegion::new(origin, size)` reads them. A side of 0 throws, and so does
+    /// a far edge past `UInt32.max`.
     public init(_ origin: (UInt32, UInt32), _ size: (UInt32, UInt32)) throws {
         guard size.0 > 0 && size.1 > 0 else {
             throw FragmentColorError.Render("ScreenRegion: a region needs a width and a height of at least 1, got \(size.0) by \(size.1)")
         }
-        self.init(
-            minX: origin.0,
-            minY: origin.1,
-            maxX: UInt32(clamping: UInt64(origin.0) + UInt64(size.0)),
-            maxY: UInt32(clamping: UInt64(origin.1) + UInt64(size.1))
-        )
+        let (maxX, xOverflow) = origin.0.addingReportingOverflow(size.0)
+        let (maxY, yOverflow) = origin.1.addingReportingOverflow(size.1)
+        guard !xOverflow && !yOverflow else {
+            throw FragmentColorError.Render("ScreenRegion: a region at \(origin.0), \(origin.1) sized \(size.0) by \(size.1) reaches past \(UInt32.max)")
+        }
+        self.init(minX: origin.0, minY: origin.1, maxX: maxX, maxY: maxY)
     }
 
     /// A region at `origin` `[x, y]` that is `size` `[width, height]` large.

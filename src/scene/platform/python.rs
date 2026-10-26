@@ -3,7 +3,7 @@
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 
-use crate::platforms::python::read_unsigned;
+use crate::platforms::python::{PyChannels, PyUnsigned, read_unsigned};
 use crate::scene::{
     Camera, CameraError, Light, LightError, LightKind, Model, Scene, SceneLoadError,
 };
@@ -192,22 +192,36 @@ impl Light {
     #[staticmethod]
     #[pyo3(name = "directional")]
     #[lsp_doc("docs/api/scene/light/directional.md")]
-    pub fn directional_py(direction: [f32; 3], color: [f32; 3]) -> Self {
-        Light::directional(direction, color)
+    pub fn directional_py(direction: [f32; 3], color: PyChannels<'_>) -> PyResult<Self> {
+        Ok(Light::directional(
+            direction,
+            color.read_array("Light.directional: color")?,
+        ))
     }
 
     #[staticmethod]
     #[pyo3(name = "point")]
     #[lsp_doc("docs/api/scene/light/point.md")]
-    pub fn point_py(position: [f32; 3], color: [f32; 3]) -> Self {
-        Light::point(position, color)
+    pub fn point_py(position: [f32; 3], color: PyChannels<'_>) -> PyResult<Self> {
+        Ok(Light::point(
+            position,
+            color.read_array("Light.point: color")?,
+        ))
     }
 
     #[staticmethod]
     #[pyo3(name = "spot")]
     #[lsp_doc("docs/api/scene/light/spot.md")]
-    pub fn spot_py(position: [f32; 3], direction: [f32; 3], color: [f32; 3]) -> Self {
-        Light::spot(position, direction, color)
+    pub fn spot_py(
+        position: [f32; 3],
+        direction: [f32; 3],
+        color: PyChannels<'_>,
+    ) -> PyResult<Self> {
+        Ok(Light::spot(
+            position,
+            direction,
+            color.read_array("Light.spot: color")?,
+        ))
     }
 
     #[pyo3(name = "kind")]
@@ -264,8 +278,8 @@ impl Light {
 
     #[pyo3(name = "set_color")]
     #[lsp_doc("docs/api/scene/light/set_color.md")]
-    pub fn set_color_py(&self, color: [f32; 3]) -> Self {
-        self.set_color(color)
+    pub fn set_color_py(&self, color: PyChannels<'_>) -> PyResult<Self> {
+        Ok(self.set_color(color.read_array("Light.set_color")?))
     }
 
     #[pyo3(name = "set_intensity")]
@@ -363,8 +377,8 @@ impl Scene {
 
     #[pyo3(name = "get_pass")]
     #[lsp_doc("docs/api/scene/scene/get_pass.md")]
-    pub fn get_pass_py(&self, #[pyo3(from_py_with = read_unsigned)] index: u32) -> Option<Pass> {
-        self.get_pass(index as usize)
+    pub fn get_pass_py(&self, index: PyUnsigned<'_>) -> PyResult<Option<Pass>> {
+        Ok(self.get_pass(index.read("Scene.get_pass: index")? as usize))
     }
 
     #[pyo3(name = "find_pass")]
@@ -381,7 +395,7 @@ impl Scene {
 
     /// Add a SceneObject to a specific Pass, addressed by an `int` index or
     /// a `str` name. Branches on the runtime Python type the same way
-    /// `Scene.add` does.
+    /// `Scene.add` does. A target that is neither a str nor an int raises `TypeError`.
     #[pyo3(name = "add_to")]
     #[lsp_doc("docs/api/scene/scene/add_to.md")]
     pub fn add_to_py<'py>(
@@ -389,11 +403,11 @@ impl Scene {
         target: &Bound<'py, PyAny>,
         object: &Bound<'py, PyAny>,
     ) -> PyResult<PyRef<'py, Self>> {
-        // A str names the pass. Anything else is an index, and a value that
-        // isn't an int raises the TypeError that `read_unsigned` gives it.
         let target = match target.extract::<String>() {
             Ok(name) => crate::scene::PassRef::Name(name),
-            Err(_) => crate::scene::PassRef::Index(read_unsigned(target)? as usize),
+            Err(_) => {
+                crate::scene::PassRef::Index(read_unsigned(target, "Scene.add_to: target")? as usize)
+            }
         };
         if let Ok(model) = object.cast::<Model>() {
             slf.add_to(target, &*model.borrow())?;
@@ -452,9 +466,12 @@ impl Scene {
 
     #[pyo3(name = "ambient")]
     #[lsp_doc("docs/api/scene/scene/ambient.md")]
-    pub fn ambient_py(slf: PyRef<'_, Self>, color: [f32; 3]) -> PyRef<'_, Self> {
-        slf.ambient(color);
-        slf
+    pub fn ambient_py<'py>(
+        slf: PyRef<'py, Self>,
+        color: PyChannels<'_>,
+    ) -> PyResult<PyRef<'py, Self>> {
+        slf.ambient(color.read_array("Scene.ambient")?);
+        Ok(slf)
     }
 
     #[pyo3(name = "models")]

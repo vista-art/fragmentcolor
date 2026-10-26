@@ -1,3 +1,4 @@
+use std::convert::Infallible;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -41,8 +42,8 @@ pub enum PassError {
 }
 
 /// Lets a conversion that can't fail, such as a `ScreenRegion` passed as itself, use `?`.
-impl From<std::convert::Infallible> for PassError {
-    fn from(never: std::convert::Infallible) -> Self {
+impl From<Infallible> for PassError {
+    fn from(never: Infallible) -> Self {
         match never {}
     }
 }

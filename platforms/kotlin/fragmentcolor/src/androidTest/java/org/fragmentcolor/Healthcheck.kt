@@ -35,6 +35,21 @@ class Healthcheck : ExampleCase() {
 
     // Shader.set shapes each Kotlin value to the uniform's declared WGSL type.
     // Setting and reading uniforms touches no GPU, so this runs on any emulator.
+    // A region or viewport with a side of 0, or a far edge past UInt.MAX_VALUE,
+    // throws instead of shrinking, and a clear color is a list of floats or doubles.
+    @Test
+    fun regionsAndViewportsThrow() {
+        val pass = Pass("regions")
+        assertFailsWith<FragmentColorException> { ScreenRegion(listOf(0u, 0u), listOf(0u, 4u)) }
+        assertFailsWith<FragmentColorException> { ScreenRegion(listOf(UInt.MAX_VALUE, 0u), listOf(5u, 5u)) }
+        assertFailsWith<FragmentColorException> { pass.setViewport(listOf(4u, 0u)) }
+        assertFailsWith<FragmentColorException> { pass.setViewport(listOf(1u, 2u, 3u)) }
+        pass.setViewport(listOf(0u, 0u, 4u, 4u))
+        pass.setClearColor(floatArrayOf(0.1f, 0.2f, 0.3f))
+        pass.setClearColor(doubleArrayOf(0.1, 0.2, 0.3, 1.0))
+        pass.setClearColor(listOf(0.1, 0.2, 0.3))
+    }
+
     @Test
     fun shaderSetShapesValues() {
         val shader = Shader(

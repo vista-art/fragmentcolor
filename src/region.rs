@@ -51,17 +51,23 @@ impl ScreenRegion {
         Self::from_region(x, y, w, h)
     }
 
-    /// A region at `x`, `y` that is `width` by `height` large. A side of 0 is an error.
+    /// A region at `x`, `y` that is `width` by `height` large.
+    /// A side of 0, or a far edge past `u32::MAX`, is an error.
     pub fn from_region(x: u32, y: u32, width: u32, height: u32) -> Result<Self, ScreenRegionError> {
-        let a: (u32, u32) = (x, y);
-        let b = (x.saturating_add(width), y.saturating_add(height));
-        let (min, max) = ((a.0.min(b.0), a.1.min(b.1)), (a.0.max(b.0), a.1.max(b.1)));
-
+        let overflow = ScreenRegionError::Overflow {
+            x,
+            y,
+            width,
+            height,
+        };
+        let (Some(max_x), Some(max_y)) = (x.checked_add(width), y.checked_add(height)) else {
+            return Err(overflow);
+        };
         Self {
-            min_x: min.0,
-            min_y: min.1,
-            max_x: max.0,
-            max_y: max.1,
+            min_x: x,
+            min_y: y,
+            max_x,
+            max_y,
         }
         .check()
     }
@@ -84,18 +90,21 @@ impl ScreenRegion {
     }
 
     /// The region between two corners, both inside it, so it spans one pixel more than their distance.
-    pub fn from_tuples(a: (u32, u32), b: (u32, u32)) -> Self {
-        // Figure out what our two ranges are
-        let (min, max) = ((a.0.min(b.0), a.1.min(b.1)), (a.0.max(b.0), a.1.max(b.1)));
-
-        // Increase max by one pixel as we've calculated the *encompassed* max
-        let max = (max.0.saturating_add(1), max.1.saturating_add(1));
-
-        Self {
-            min_x: min.0,
-            min_y: min.1,
-            max_x: max.0,
-            max_y: max.1,
+    /// A corner at `u32::MAX` has no pixel past it, so it is an error.
+    pub fn from_tuples(a: (u32, u32), b: (u32, u32)) -> Result<Self, ScreenRegionError> {
+        let (min_x, min_y) = (a.0.min(b.0), a.1.min(b.1));
+        let (far_x, far_y) = (a.0.max(b.0), a.1.max(b.1));
+        match (
+            (far_x - min_x).checked_add(1),
+            (far_y - min_y).checked_add(1),
+        ) {
+            (Some(width), Some(height)) => Self::from_region(min_x, min_y, width, height),
+            (width, height) => Err(ScreenRegionError::Overflow {
+                x: min_x,
+                y: min_y,
+                width: width.unwrap_or(u32::MAX),
+                height: height.unwrap_or(u32::MAX),
+            }),
         }
     }
 
@@ -142,13 +151,9 @@ impl ScreenRegion {
         .check()
     }
 
-    pub fn from_pixel(x: u32, y: u32) -> Self {
-        Self {
-            min_x: x,
-            min_y: y,
-            max_x: x + 1,
-            max_y: y + 1,
-        }
+    /// The one pixel at `x`, `y`. A pixel at `u32::MAX` has no far edge, so it is an error.
+    pub fn from_pixel(x: u32, y: u32) -> Result<Self, ScreenRegionError> {
+        Self::from_region(x, y, 1, 1)
     }
 
     pub fn clamp(&mut self, width: u32, height: u32) {
@@ -172,11 +177,10 @@ impl ScreenRegion {
         self.max_y = self.max_y.max(other.max_y);
     }
 
-    pub fn encompass(&mut self, x: u32, y: u32) {
-        self.min_x = self.min_x.min(x);
-        self.min_y = self.min_y.min(y);
-        self.max_x = self.max_x.max(x + 1);
-        self.max_y = self.max_y.max(y + 1);
+    /// Grows the region to hold the pixel at `x`, `y`, and keeps it as it was for a pixel at `u32::MAX`.
+    pub fn encompass(&mut self, x: u32, y: u32) -> Result<(), ScreenRegionError> {
+        self.union(Self::from_pixel(x, y)?);
+        Ok(())
     }
 
     pub fn intersects(&self, other: ScreenRegion) -> bool {
@@ -605,15 +609,19 @@ impl TryFrom<&[u32; 4]> for ScreenRegion {
     }
 }
 
-impl From<((u32, u32), (u32, u32))> for ScreenRegion {
+impl TryFrom<((u32, u32), (u32, u32))> for ScreenRegion {
+    type Error = ScreenRegionError;
+
     #[inline]
-    fn from(p: ((u32, u32), (u32, u32))) -> Self {
+    fn try_from(p: ((u32, u32), (u32, u32))) -> Result<Self, Self::Error> {
         ScreenRegion::from_tuples(p.0, p.1)
     }
 }
-impl From<&((u32, u32), (u32, u32))> for ScreenRegion {
+impl TryFrom<&((u32, u32), (u32, u32))> for ScreenRegion {
+    type Error = ScreenRegionError;
+
     #[inline]
-    fn from(p: &((u32, u32), (u32, u32))) -> Self {
+    fn try_from(p: &((u32, u32), (u32, u32))) -> Result<Self, Self::Error> {
         ScreenRegion::from_tuples(p.0, p.1)
     }
 }
@@ -629,7 +637,7 @@ impl From<&ScreenRegion> for [f32; 4] {
 #[cfg(python)]
 mod python_bindings {
     use super::*;
-    use crate::platforms::python::{read_pair, read_unsigned};
+    use crate::platforms::python::PyUnsigned;
     use pyo3::prelude::*;
 
     #[pymethods]
@@ -640,9 +648,17 @@ mod python_bindings {
         #[doc(hidden)]
         #[new]
         pub fn new_py(
-            #[pyo3(from_py_with = read_pair)] origin: (u32, u32),
-            #[pyo3(from_py_with = read_pair)] size: (u32, u32),
+            origin: (PyUnsigned<'_>, PyUnsigned<'_>),
+            size: (PyUnsigned<'_>, PyUnsigned<'_>),
         ) -> PyResult<Self> {
+            let origin = (
+                origin.0.read("ScreenRegion: x")?,
+                origin.1.read("ScreenRegion: y")?,
+            );
+            let size = (
+                size.0.read("ScreenRegion: width")?,
+                size.1.read("ScreenRegion: height")?,
+            );
             Ok(ScreenRegion::new(origin, size)?)
         }
 
@@ -650,19 +666,27 @@ mod python_bindings {
         #[staticmethod]
         #[pyo3(name = "from_region")]
         pub fn from_region_py(
-            #[pyo3(from_py_with = read_unsigned)] x: u32,
-            #[pyo3(from_py_with = read_unsigned)] y: u32,
-            #[pyo3(from_py_with = read_unsigned)] width: u32,
-            #[pyo3(from_py_with = read_unsigned)] height: u32,
+            x: PyUnsigned<'_>,
+            y: PyUnsigned<'_>,
+            width: PyUnsigned<'_>,
+            height: PyUnsigned<'_>,
         ) -> PyResult<Self> {
-            Ok(ScreenRegion::from_region(x, y, width, height)?)
+            Ok(ScreenRegion::from_region(
+                x.read("ScreenRegion.from_region: x")?,
+                y.read("ScreenRegion.from_region: y")?,
+                width.read("ScreenRegion.from_region: width")?,
+                height.read("ScreenRegion.from_region: height")?,
+            )?)
         }
 
         #[doc(hidden)]
         #[staticmethod]
         #[pyo3(name = "from_tuple")]
-        pub fn from_tuple_py(#[pyo3(from_py_with = read_pair)] size: (u32, u32)) -> PyResult<Self> {
-            Ok(ScreenRegion::from_tuple(size)?)
+        pub fn from_tuple_py(size: (PyUnsigned<'_>, PyUnsigned<'_>)) -> PyResult<Self> {
+            Ok(ScreenRegion::from_tuple((
+                size.0.read("ScreenRegion.from_tuple: width")?,
+                size.1.read("ScreenRegion.from_tuple: height")?,
+            ))?)
         }
 
         #[doc(hidden)]
@@ -683,8 +707,8 @@ mod python_bindings {
 mod tests {
     use super::ScreenRegion;
 
-    /// A region built field by field, so a test can hold one with no area.
-    fn rect(x: u32, y: u32, width: u32, height: u32) -> ScreenRegion {
+    /// Builds a region field by field, so a test can hold one with no area.
+    fn build_region(x: u32, y: u32, width: u32, height: u32) -> ScreenRegion {
         ScreenRegion {
             min_x: x,
             min_y: y,
@@ -711,73 +735,73 @@ mod tests {
         }
 
         test(
-            rect(0, 0, 10, 10),
-            rect(0, 0, 10, 10),
+            build_region(0, 0, 10, 10),
+            build_region(0, 0, 10, 10),
             (0, 0),
             (0, 0),
             (5, 5),
-            rect(0, 0, 5, 5),
-            rect(0, 0, 5, 5),
+            build_region(0, 0, 5, 5),
+            build_region(0, 0, 5, 5),
         );
 
         test(
-            rect(0, 0, 10, 10),
-            rect(0, 0, 150, 150),
+            build_region(0, 0, 10, 10),
+            build_region(0, 0, 150, 150),
             (-1, -1),
             (100, 100),
             (5, 5),
-            rect(0, 0, 4, 4),
-            rect(101, 101, 4, 4),
+            build_region(0, 0, 4, 4),
+            build_region(101, 101, 4, 4),
         );
 
         test(
-            rect(0, 0, 10, 10),
-            rect(0, 0, 150, 150),
+            build_region(0, 0, 10, 10),
+            build_region(0, 0, 150, 150),
             (-1, -1),
             (100, 100),
             (15, 15),
-            rect(0, 0, 10, 10),
-            rect(101, 101, 10, 10),
+            build_region(0, 0, 10, 10),
+            build_region(101, 101, 10, 10),
         );
 
         test(
-            rect(10, 10, 20, 20),
-            rect(0, 0, 150, 150),
+            build_region(10, 10, 20, 20),
+            build_region(0, 0, 150, 150),
             (15, 5),
             (0, 0),
             (15, 15),
-            rect(15, 10, 15, 10),
-            rect(0, 5, 15, 10),
+            build_region(15, 10, 15, 10),
+            build_region(0, 5, 15, 10),
         );
 
         test(
-            rect(0, 0, 800, 600),
-            rect(0, 0, 200, 40),
+            build_region(0, 0, 800, 600),
+            build_region(0, 0, 200, 40),
             (400, 440),
             (40, 0),
             (40, 40),
-            rect(400, 440, 40, 40),
-            rect(40, 0, 40, 40),
+            build_region(400, 440, 40, 40),
+            build_region(40, 0, 40, 40),
         );
 
         test(
-            rect(0, 0, 240, 180),
-            rect(0, 0, 238, 164),
+            build_region(0, 0, 240, 180),
+            build_region(0, 0, 238, 164),
             (-1, 0),
             (0, 0),
             (240, 180),
-            rect(0, 0, 237, 164),
-            rect(1, 0, 237, 164),
+            build_region(0, 0, 237, 164),
+            build_region(1, 0, 237, 164),
         );
 
         test(
-            rect(0, 0, 10, 10),
-            rect(0, 0, 10, 10),
+            build_region(0, 0, 10, 10),
+            build_region(0, 0, 10, 10),
             (15, 0),
             (0, 15),
             (100, 100),
-            rect(0, 0, 0, 0),
-            rect(0, 0, 0, 0),
+            build_region(0, 0, 0, 0),
+            build_region(0, 0, 0, 0),
         );
     }
 
@@ -787,11 +811,11 @@ mod tests {
     fn reads_two_or_four_dimensions() {
         assert_eq!(
             ScreenRegion::from_dimensions(&[8, 4]).ok(),
-            Some(rect(0, 0, 8, 4))
+            Some(build_region(0, 0, 8, 4))
         );
         assert_eq!(
             ScreenRegion::from_dimensions(&[1, 2, 8, 4]).ok(),
-            Some(rect(1, 2, 8, 4))
+            Some(build_region(1, 2, 8, 4))
         );
         assert!(ScreenRegion::from_dimensions(&[1, 2, 3]).is_err());
         assert!(ScreenRegion::from_dimensions(&[1, 2, 0, 4]).is_err());
@@ -806,8 +830,34 @@ mod tests {
         assert_eq!(region.map(|region| region.width()), Some(10));
     }
 
+    // Story: a region whose far edge would pass u32::MAX is an error that names
+    // the size asked for, from every constructor that adds to a coordinate.
+    #[test]
+    fn refuses_a_far_edge_past_u32() {
+        use super::error::ScreenRegionError;
+        let overflow = |result: Result<ScreenRegion, ScreenRegionError>| {
+            matches!(result, Err(ScreenRegionError::Overflow { .. }))
+        };
+        let message = ScreenRegion::from_region(u32::MAX - 2, 0, 5, 5)
+            .err()
+            .map(|error| error.to_string());
+        assert_eq!(
+            message.as_deref(),
+            Some("a region at 4294967293, 0 sized 5 by 5 reaches past 4294967295")
+        );
+        assert!(overflow(ScreenRegion::new((u32::MAX, 0), (5, 5))));
+        assert!(overflow(ScreenRegion::try_from((0, u32::MAX, 4, 4))));
+        assert!(overflow(ScreenRegion::from_tuples((0, 0), (u32::MAX, 3))));
+        assert!(overflow(ScreenRegion::from_pixel(u32::MAX, 0)));
+        let mut region = build_region(0, 0, 2, 2);
+        assert!(region.encompass(u32::MAX, 0).is_err());
+        assert_eq!(region, build_region(0, 0, 2, 2));
+        let edge = ScreenRegion::from_region(u32::MAX - 5, 0, 5, 5).ok();
+        assert_eq!(edge.map(|region| region.max_x), Some(u32::MAX));
+    }
+
     // Story: a region with no width or no height is an error from every
-    // constructor and conversion, where it meant "to the edge".
+    // constructor and conversion.
     #[test]
     fn refuses_a_side_of_zero() {
         use super::error::ScreenRegionError;
@@ -822,8 +872,11 @@ mod tests {
         assert!(empty(ScreenRegion::try_from([8, 0])));
         assert!(empty(ScreenRegion::try_from((1, 2, 0, 4))));
         assert!(empty(ScreenRegion::try_from([1, 2, 4, 0])));
-        assert!(empty(rect(3, 3, 0, 2).check()));
-        assert_eq!(rect(3, 3, 1, 1).check().ok(), Some(rect(3, 3, 1, 1)));
+        assert!(empty(build_region(3, 3, 0, 2).check()));
+        assert_eq!(
+            build_region(3, 3, 1, 1).check().ok(),
+            Some(build_region(3, 3, 1, 1))
+        );
     }
 
     // Story: a size alone covers exactly that many pixels, while two corners
@@ -832,28 +885,29 @@ mod tests {
     fn size_forms_cover_exact_pixels() {
         assert_eq!(
             ScreenRegion::try_from([32, 32]).ok(),
-            Some(rect(0, 0, 32, 32))
+            Some(build_region(0, 0, 32, 32))
         );
         assert_eq!(
             ScreenRegion::try_from((64, 32)).ok(),
-            Some(rect(0, 0, 64, 32))
+            Some(build_region(0, 0, 64, 32))
         );
         assert_eq!(
             ScreenRegion::from_tuple((64, 32)).ok(),
-            Some(rect(0, 0, 64, 32))
+            Some(build_region(0, 0, 64, 32))
         );
         assert_eq!(
             ScreenRegion::try_from([2, 4, 8, 6]).ok(),
-            Some(rect(2, 4, 8, 6))
+            Some(build_region(2, 4, 8, 6))
         );
-        assert_eq!(ScreenRegion::from_tuples((0, 0), (31, 31)).width(), 32);
+        let corners = ScreenRegion::from_tuples((0, 0), (31, 31));
+        assert_eq!(corners.map(|region| region.width()).ok(), Some(32));
     }
 
     // Story: Construct regions using helpers and verify geometry utilities.
     #[test]
     fn computes_area_aspect_and_centers() {
         // Arrange
-        let r = rect(2, 4, 8, 6); // spans x:[2,10), y:[4,10)
+        let r = build_region(2, 4, 8, 6); // spans x:[2,10), y:[4,10)
 
         // Act / Assert
         assert_eq!(r.width(), 8);
@@ -867,8 +921,8 @@ mod tests {
     #[test]
     fn unions_and_intersects() {
         // Arrange
-        let mut a = rect(0, 0, 4, 4);
-        let b = rect(2, 2, 4, 4);
+        let mut a = build_region(0, 0, 4, 4);
+        let b = build_region(2, 2, 4, 4);
 
         // Act
         let overlaps = a.intersects(b);
@@ -876,24 +930,24 @@ mod tests {
 
         // Assert
         assert!(overlaps);
-        assert_eq!(a, rect(0, 0, 6, 6));
+        assert_eq!(a, build_region(0, 0, 6, 6));
     }
 
     // Story: Clamp, encompass and equals work at the boundaries; radii helpers return intuitive values.
     #[test]
     fn clamp_encompass_equals_and_radii() {
-        let mut r = rect(1, 2, 3, 4);
+        let mut r = build_region(1, 2, 3, 4);
         r.clamp(2, 3);
-        assert_eq!(r, rect(1, 2, 1, 1)); // max clamped down
+        assert_eq!(r, build_region(1, 2, 1, 1)); // max clamped down
 
-        r.encompass(5, 6);
+        assert!(r.encompass(5, 6).is_ok());
         assert_eq!(r.max_x, 6);
         assert_eq!(r.max_y, 7);
 
-        let r2 = rect(1, 2, 5, 5);
+        let r2 = build_region(1, 2, 5, 5);
         assert!(r.equals(r2));
 
-        let square = rect(0, 0, 4, 4);
+        let square = build_region(0, 0, 4, 4);
         assert!((square.inbound_radius() - 2.0).abs() < 1e-6);
         assert!((square.outbound_radius() - (2.0f32.hypot(2.0))).abs() < 1e-6);
     }
@@ -901,13 +955,13 @@ mod tests {
     // Story: Clip keeps the part of a region inside an area and orders its corners.
     #[test]
     fn clips_to_an_area() {
-        let inside = rect(2, 2, 4, 4);
+        let inside = build_region(2, 2, 4, 4);
         assert_eq!(inside.clip(8, 8), inside);
 
-        let past = rect(6, 4, 10, 10);
-        assert_eq!(past.clip(8, 8), rect(6, 4, 2, 4));
+        let past = build_region(6, 4, 10, 10);
+        assert_eq!(past.clip(8, 8), build_region(6, 4, 2, 4));
 
-        let outside = rect(10, 10, 4, 4);
+        let outside = build_region(10, 10, 4, 4);
         assert_eq!(outside.clip(8, 8).area(), 0);
 
         let flipped = ScreenRegion {
@@ -916,6 +970,6 @@ mod tests {
             max_x: 1,
             max_y: 2,
         };
-        assert_eq!(flipped.clip(8, 8), rect(1, 2, 4, 4));
+        assert_eq!(flipped.clip(8, 8), build_region(1, 2, 4, 4));
     }
 }

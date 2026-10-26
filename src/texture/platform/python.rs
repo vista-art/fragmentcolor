@@ -1,6 +1,6 @@
 #![cfg(python)]
 
-use crate::platforms::python::{read_optional, read_unsigned};
+use crate::platforms::python::{PyUnsigned, read_list, read_unsigned};
 use crate::texture::{Mipmap, Texture, TextureError, TextureId, TextureRegion};
 use crate::{CompareFunction, SamplerOptions, TextureFormat};
 use lsp_doc::lsp_doc;
@@ -136,18 +136,19 @@ pub(crate) fn ndarray_input(
 /// A texture usage from Python: a `TextureUsage`, such as
 /// `TextureUsage.COPY_SRC | TextureUsage.TEXTURE_BINDING`, or its bits as an int.
 #[derive(FromPyObject)]
-pub enum PyTextureUsage {
+pub enum PyTextureUsage<'py> {
     #[pyo3(annotation = "TextureUsage")]
     Usage(crate::TextureUsage),
     #[pyo3(annotation = "int")]
-    Bits(u32),
+    Bits(PyUnsigned<'py>),
 }
 
-impl From<PyTextureUsage> for u32 {
-    fn from(usage: PyTextureUsage) -> Self {
-        match usage {
-            PyTextureUsage::Usage(usage) => usage.bits,
-            PyTextureUsage::Bits(bits) => bits,
+impl PyTextureUsage<'_> {
+    /// The usage bits, or an error that names `label` for an int out of range.
+    pub(crate) fn read(&self, label: &str) -> PyResult<u32> {
+        match self {
+            PyTextureUsage::Usage(usage) => Ok(usage.bits),
+            PyTextureUsage::Bits(bits) => bits.read(label),
         }
     }
 }
@@ -156,8 +157,7 @@ impl From<PyTextureUsage> for u32 {
 /// `[x, y, z, w, h, d]` in any sequence of ints, a `ScreenRegion`, or a dict.
 #[derive(FromPyObject)]
 pub enum PyTextureRegion<'py> {
-    #[pyo3(annotation = "Sequence[int]")]
-    Numbers(Vec<Bound<'py, PyAny>>),
+    Numbers(Vec<PyUnsigned<'py>>),
     #[pyo3(annotation = "ScreenRegion")]
     Screen(crate::ScreenRegion),
     #[pyo3(annotation = "dict[str, int | None]")]
@@ -173,10 +173,7 @@ impl TryFrom<PyTextureRegion<'_>> for TextureRegion {
             PyTextureRegion::Screen(screen) => return Ok(screen.into()),
             PyTextureRegion::Layout(layout) => return layout_region(&layout),
         };
-        let numbers = items
-            .iter()
-            .map(read_unsigned)
-            .collect::<PyResult<Vec<u32>>>()?;
+        let numbers = read_list(&items, "Texture.write_region")?;
         match *numbers {
             [w, h] => Ok([w, h].into()),
             [x, y, w, h] => Ok([x, y, w, h].into()),
@@ -196,7 +193,10 @@ fn layout_region(layout: &Bound<'_, PyDict>) -> PyResult<TextureRegion> {
     let read = |(camel, snake): crate::texture::region::Key| -> PyResult<Option<u32>> {
         for name in [snake, camel] {
             if let Some(value) = layout.get_item(name)? {
-                return read_optional(&value);
+                if value.is_none() {
+                    return Ok(None);
+                }
+                return read_unsigned(&value, &format!("Texture.write_region: {snake}")).map(Some);
             }
         }
         Ok(None)
@@ -321,11 +321,10 @@ impl Mipmap {
     /// the valid range.
     #[pyo3(name = "level")]
     #[lsp_doc("docs/api/texture/mipmap/level.md")]
-    pub fn level_py(
-        &self,
-        #[pyo3(from_py_with = read_unsigned)] index: u32,
-    ) -> pyo3::PyResult<Vec<u8>> {
-        Ok(self.level(index as usize)?.to_vec())
+    pub fn level_py(&self, index: PyUnsigned<'_>) -> pyo3::PyResult<Vec<u8>> {
+        Ok(self
+            .level(index.read("Mipmap.level: index")? as usize)?
+            .to_vec())
     }
 
     /// Every mip level's bytes as a list, level 0 first.
