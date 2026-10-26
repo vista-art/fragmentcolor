@@ -221,9 +221,13 @@ fn build_orthographic(
     )
 }
 
-/// Build a view matrix, refusing vectors that give no finite one.
-/// The finite check on the result covers a target on the position, a zero
-/// up, and an up parallel to the view, since each one normalizes a zero vector.
+/// The sine of the smallest angle `look_at` takes between the view and `up`.
+/// Below it, rounding in the cross product, not the caller, picks the roll.
+const PARALLEL_LIMIT: f32 = 1.0e-5;
+
+/// Build a view matrix, refusing vectors that give no finite one or no roll.
+/// The view and `up` must both have a direction and stand at least
+/// `PARALLEL_LIMIT` apart, which also refuses a target on the position.
 fn build_view(position: [f32; 3], target: [f32; 3], up: [f32; 3]) -> Result<Mat4, CameraError> {
     let error = CameraError::View {
         position,
@@ -235,11 +239,15 @@ fn build_view(position: [f32; 3], target: [f32; 3], up: [f32; 3]) -> Result<Mat4
         .chain(&target)
         .chain(&up)
         .all(|value| value.is_finite());
-    if !finite {
+    let (position, target, up) = (Vec3::from(position), Vec3::from(target), Vec3::from(up));
+    let forward = (target - position).try_normalize();
+    let side = forward
+        .zip(up.try_normalize())
+        .map(|(forward, up)| forward.cross(up));
+    if !finite || side.is_none_or(|side| side.length() < PARALLEL_LIMIT) {
         return Err(error);
     }
-    let view = view::look_at_mat4(Vec3::from(position), Vec3::from(target), Vec3::from(up));
-    require_finite(view, error)
+    require_finite(view::look_at_mat4(position, target, up), error)
 }
 
 #[cfg_attr(wasm, wasm_bindgen)]
@@ -647,6 +655,31 @@ mod tests {
         }
         assert_eq!(camera.view_proj(), before, "a refused view changes nothing");
         assert_eq!(camera.position(), [0.0, 0.0, 5.0]);
+    }
+
+    #[test]
+    fn look_at_refuses_an_up_on_the_view_line() {
+        // Rounding leaves these cross products a hair above zero, so a finite
+        // matrix alone can't catch them: its roll would be noise.
+        let camera = Camera::perspective(1.0, 1.0, 0.1, 100.0).expect("camera");
+        for up in [[0.3, 0.7, 1.1], [-0.3, -0.7, -1.1], [0.3, 0.7, 1.1000001]] {
+            assert!(
+                matches!(
+                    camera.look_at([0.3, 0.7, 1.1], [0.0, 0.0, 0.0], up),
+                    Err(CameraError::View { .. })
+                ),
+                "an up of {up:?} lies on the view line"
+            );
+        }
+    }
+
+    #[test]
+    fn look_at_takes_a_view_nearly_straight_down() {
+        // Offsetting the target a little is the usual way to look down along +Y.
+        let camera = Camera::perspective(1.0, 1.0, 0.1, 100.0).expect("camera");
+        camera
+            .look_at([0.0, 10.0, 0.0], [0.0, 0.0, 0.001], [0.0, 1.0, 0.0])
+            .expect("a view 0.0001 off the up axis still has a roll");
     }
 
     #[test]
