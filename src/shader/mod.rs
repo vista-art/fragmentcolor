@@ -14,6 +14,7 @@ use parking_lot::RwLock;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use wgpu::DownlevelFlags;
 use wgpu_naga_bridge::features_to_naga_capabilities;
 
@@ -43,7 +44,7 @@ mod glsl;
 mod immediates;
 pub(crate) use immediates::lower_immediates;
 mod layouts;
-pub(crate) use layouts::write_layouts;
+pub(crate) use layouts::{list_explicit, write_layouts};
 mod input;
 pub(crate) mod light_roots;
 use light_roots::LightRoots;
@@ -234,6 +235,9 @@ pub(crate) struct ShaderObject {
     /// The textures bound to texture uniforms, by uniform name. Holding their
     /// registrations keeps them in the registry after their handles drop.
     pub(crate) bound_textures: DashMap<String, Arc<Registration>>,
+    /// The stamp of the latest texture setter call for each texture uniform. An upload
+    /// that finishes after a newer setter call for its key is dropped, so the latest call wins.
+    texture_stamps: DashMap<String, u64>,
 }
 
 /// A `set` queued while the storage was busy, applied by `flush_pending`.
@@ -251,6 +255,8 @@ pub(crate) enum PendingUpdate {
 pub(crate) struct PendingTexture {
     pub key: String,
     pub input: crate::TextureInput,
+    /// The stamp its setter call took. A later setter for the key takes a newer one.
+    pub stamp: u64,
 }
 
 impl Default for ShaderObject {
@@ -338,6 +344,7 @@ impl ShaderObject {
 
     /// Holds the texture `id` names for `key`, releasing the one bound before.
     fn bind_texture(&self, key: &str, id: TextureId) {
+        self.stamp_texture(key);
         if let Some(registration) = Registration::find(id) {
             self.bound_textures.insert(key.to_string(), registration);
         } else {
@@ -481,8 +488,7 @@ impl ShaderObject {
         let module = create_parser().parse(source)?;
         let info = create_validator().validate(&module).map_err(Box::new)?;
         immediates::check_immediates(&module)?;
-        // The web gets WGSL that keeps explicit layouts, so one it would lose fails here everywhere.
-        write_layouts(&module, &info)?;
+        check_samplers(&module, &info)?;
 
         let light_roots = light_roots::find_roots(&module, &info)?;
         let filled = light_roots
@@ -522,6 +528,7 @@ impl ShaderObject {
             lights: RwLock::new(ShaderLights::default()),
             lowered: RwLock::new(HashMap::new()),
             bound_textures: DashMap::new(),
+            texture_stamps: DashMap::new(),
         };
         // Refuses vertex inputs no mesh can feed, such as two with one name.
         object.reflect_vertex_inputs()?;
@@ -602,10 +609,26 @@ impl ShaderObject {
             let meta = TextureMeta::with_id_only(*tex.id());
             return self.set(&key, UniformData::Texture(meta));
         }
+        let stamp = self.stamp_texture(&key);
         self.pending_textures
             .write()
-            .push(PendingTexture { key, input });
+            .push(PendingTexture { key, input, stamp });
         Ok(())
+    }
+
+    /// Gives `key` a new stamp, newer than every stamp before it, and returns it.
+    fn stamp_texture(&self, key: &str) -> u64 {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        let stamp = NEXT.fetch_add(1, Ordering::Relaxed);
+        self.texture_stamps.insert(key.to_string(), stamp);
+        stamp
+    }
+
+    /// Whether `entry` still holds the latest setter call for its key.
+    pub(crate) fn is_latest(&self, entry: &PendingTexture) -> bool {
+        self.texture_stamps
+            .get(&entry.key)
+            .is_none_or(|stamp| *stamp == entry.stamp)
     }
 
     /// Take the current pending-texture queue, leaving the slot empty.
@@ -614,11 +637,12 @@ impl ShaderObject {
     }
 
     /// Puts the uploads that `failed` back at the front of the queue, so the next
-    /// `load` or `render` tries them again. A key queued again in the meantime keeps its newer entry.
+    /// `load` or `render` tries them again. A key set again in the meantime keeps its newer value.
     pub(crate) fn requeue_textures(&self, failed: Vec<PendingTexture>) {
         let mut queue = self.pending_textures.write();
         let kept: Vec<PendingTexture> = failed
             .into_iter()
+            .filter(|entry| self.is_latest(entry))
             .filter(|entry| queue.iter().all(|queued| queued.key != entry.key))
             .collect();
         queue.splice(0..0, kept);
@@ -847,6 +871,37 @@ fn find_stages(
     stages
 }
 
+/// Refuses a filtering sampler that samples a depth texture. WebGPU binds a depth texture
+/// only with a comparison sampler or one that doesn't filter, and a FragmentColor
+/// `sampler` filters, so such a pair would draw on native backends and fail on the web.
+fn check_samplers(module: &Module, info: &ModuleInfo) -> Result<(), ShaderError> {
+    for index in 0..module.entry_points.len() {
+        for key in info.get_entry_point(index).sampling_set.iter() {
+            let image = &module.global_variables[key.image];
+            let sampler = &module.global_variables[key.sampler];
+            let depth = matches!(
+                module.types[image.ty].inner,
+                naga::TypeInner::Image {
+                    class: naga::ImageClass::Depth { .. },
+                    ..
+                }
+            );
+            let filtering = matches!(
+                module.types[sampler.ty].inner,
+                naga::TypeInner::Sampler { comparison: false }
+            );
+            if depth && filtering {
+                return Err(ShaderError::ParseError(format!(
+                    "`{}` filters, and it samples the depth texture `{}`, which only a sampler_comparison or textureLoad reads on the web",
+                    sampler.name.as_deref().unwrap_or("?"),
+                    image.name.as_deref().unwrap_or("?")
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Whether the global writes to its storage, as a `read_write` buffer or a writable storage texture.
 fn writes_storage(module: &Module, variable: &naga::GlobalVariable) -> bool {
     match variable.space {
@@ -873,6 +928,10 @@ fn parse_uniforms(
 
     for (handle, variable) in module.global_variables.iter() {
         if filled.contains(&handle) {
+            // The renderer fills a light root, which still holds its slot.
+            if let (Some(name), Some(binding)) = (&variable.name, &variable.binding) {
+                claim_slot(&mut slots, binding, name)?;
+            }
             continue;
         }
         let stages = find_stages(module, info, handle);
@@ -2375,6 +2434,60 @@ struct VertexIn { @location(0) position: vec2<f32>, @location(1) uv: vec2<f32> }
             );
             assert!(err.contains(&expected), "{err}");
         }
+    }
+
+    // Story: a filtering sampler that samples a depth texture fails at Shader::new on every
+    // platform, since the web binds depth only with a comparison sampler or textureLoad.
+    #[test]
+    fn filtering_samplers_on_depth_fail() {
+        let filtered = r#"
+@group(0) @binding(0) var depth: texture_depth_2d;
+@group(0) @binding(1) var linear: sampler;
+@vertex fn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(0.0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(textureSample(depth, linear, vec2<f32>(0.5))); }
+"#;
+        let err = Shader::new(filtered).unwrap_err().to_string();
+        assert!(
+            err.contains("`linear` filters, and it samples the depth texture `depth`"),
+            "{err}"
+        );
+        let compared = r#"
+@group(0) @binding(0) var depth: texture_depth_2d;
+@group(0) @binding(1) var shadow: sampler_comparison;
+@vertex fn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(0.0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(textureSampleCompare(depth, shadow, vec2<f32>(0.5), 0.5)); }
+"#;
+        assert!(Shader::new(compared).is_ok());
+    }
+
+    // Story: a texture set while the upload queued for its key is in flight wins,
+    // so the older upload neither binds nor goes back in the queue.
+    #[test]
+    fn a_setter_during_an_upload_wins() {
+        let shader = Shader::new(
+            r#"
+@group(0) @binding(0) var image: texture_2d<f32>;
+@vertex fn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(0.0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(image, vec2<i32>(0), 0); }
+"#,
+        )
+        .expect("shader");
+        let object = &shader.object;
+        let lazy = crate::TextureInput::from("tests/assets/missing.png");
+        object.queue_or_set_texture("image", lazy).expect("queues");
+        let in_flight = object.drain_pending_textures();
+        assert_eq!(in_flight.len(), 1);
+
+        object
+            .set_input("image", UniformInput::Texture(TextureId { id: 77 }))
+            .expect("sets");
+
+        assert!(!object.is_latest(&in_flight[0]), "the newer setter wins");
+        object.requeue_textures(in_flight);
+        assert!(
+            object.pending_textures.read().is_empty(),
+            "the stale upload stays out"
+        );
     }
 
     // Story: two globals on one slot fail at Shader::new, used by different entry points or not used at all.

@@ -450,6 +450,21 @@ mod tests {
         )
     }
 
+    // Story: a global on the slot of a light root fails at Shader::new, as two globals
+    // on one slot do, though the renderer fills the light root itself.
+    #[test]
+    fn a_global_on_a_light_slot_fails() {
+        let shared = source(
+            &format!(
+                "{LIGHTS}\n@group(0) @binding(1) var<storage, read> lights: Lights;\n@group(0) @binding(1) var<uniform> tint: vec4<f32>;"
+            ),
+            "return vec4<f32>(lights.ambient, 1.0);",
+        );
+        let err = Shader::new(shared.as_str()).unwrap_err().to_string();
+        assert!(err.contains("both use @group(0) @binding(1)"), "{err}");
+        assert!(Shader::new(storage_source().as_str()).is_ok());
+    }
+
     fn array_source(count: u32) -> String {
         source(
             &format!(
