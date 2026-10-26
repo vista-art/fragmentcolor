@@ -304,6 +304,46 @@ def check_require_graph(renderer):
     print("Pass.require runs the required passes")
 
 
+SAMPLE_SHADER = """
+@group(0) @binding(0) var source: texture_2d<f32>;
+@group(0) @binding(1) var soft: sampler;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+  return textureSample(source, soft, pos.xy / 8.0);
+}
+"""
+
+def check_pass_targets(renderer):
+    """A target with a mip chain raises InvalidInputError, and render refuses a pass
+    that samples its own target, or a target from another Renderer, before any GPU work."""
+    chain = renderer.create_texture(bytes(64), size=[4, 4], usage=TextureUsage.RENDER_ATTACHMENT)
+    raises_invalid("Pass.set_target with a mip chain", lambda: Pass("chain").set_target(chain))
+
+    def refuses(label, words, call):
+        try:
+            call()
+        except DeviceError as e:
+            raise AssertionError(f"{label} reached the GPU: {e}")
+        except FragmentColorError as e:
+            assert words in str(e), str(e)
+            print(f"{label} raised FragmentColorError: {e}")
+            return
+        raise AssertionError(f"{label} should raise FragmentColorError")
+
+    target = renderer.create_texture_target([8, 8])
+    feedback = Shader(SAMPLE_SHADER)
+    feedback.set("source", target.texture())
+    refuses("sampling the render target", "Texture conflict", lambda: renderer.render(feedback, target))
+
+    foreign = Renderer().create_texture_target([8, 8])
+    refuses("a target from another Renderer", "another Renderer",
+            lambda: renderer.render(Shader(SOLID_SHADER), foreign))
+    renderer.render(Shader(SOLID_SHADER), target)
+
+
 def check_value_types():
     """Value types compare by value, and their fields read back."""
     chain = Mipmap.build(bytes(4 * 4 * 4), TextureFormat.Rgba8UnormSrgb, [4, 4])
@@ -969,6 +1009,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_vertex_values(renderer)
     check_mesh_inputs()
     check_require_graph(renderer)
+    check_pass_targets(renderer)
     check_value_types()
     check_number_errors(renderer)
     check_empty_regions()

@@ -105,6 +105,54 @@ final class Healthcheck: ExampleCase {
         } catch is FragmentColorError {}
     }
 
+    // render refuses a pass that samples its own target, and a target another
+    // Renderer created, before any GPU work. The foreign target stopped the app inside wgpu.
+    func testPassChecksThrow() async throws {
+        let renderer = Renderer()
+        let target = try await renderer.createTextureTarget([8, 8])
+        let feedback = try Shader(source: """
+            @group(0) @binding(0) var source: texture_2d<f32>;
+            @group(0) @binding(1) var soft: sampler;
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+              let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+              return vec4f(p[i], 0., 1.);
+            }
+            @fragment fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+              return textureSample(source, soft, pos.xy / 8.0);
+            }
+        """)
+        try feedback.set("source", target.texture())
+        try assertRenderThrows("sampling the render target", "Texture conflict") {
+            try renderer.render(feedback, target)
+        }
+
+        let solid = try Shader(source: """
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+              let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+              return vec4f(p[i], 0., 1.);
+            }
+            @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4f(1., 0., 0., 1.); }
+        """)
+        let foreign = try await Renderer().createTextureTarget([8, 8])
+        try assertRenderThrows("a target from another Renderer", "another Renderer") {
+            try renderer.render(solid, foreign)
+        }
+        try renderer.render(solid, target)
+    }
+
+    /// Checks that `run` throws `FragmentColorError.Render` with `words` in its text.
+    private func assertRenderThrows(_ label: String, _ words: String, _ run: () throws -> Void) throws {
+        do {
+            try run()
+        } catch let error as FragmentColorError {
+            guard case let .Render(message) = error, message.contains(words) else {
+                throw HealthcheckError.assertion("\(label) threw \(error)")
+            }
+            return
+        }
+        throw HealthcheckError.assertion("\(label) should throw")
+    }
+
     // A region or viewport with a side of 0, or a far edge past UInt32.max,
     // throws instead of shrinking, and a clear color is a list of floats or doubles.
     func testRegionsAndViewportsThrow() throws {
