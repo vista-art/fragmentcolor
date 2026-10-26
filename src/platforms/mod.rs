@@ -4,6 +4,9 @@ pub mod python;
 #[cfg(wasm)]
 pub mod web;
 
+#[cfg(any(wasm, mobile, python, test))]
+pub(crate) mod vector;
+
 #[cfg(any(wasm, test))]
 use crate::size::read_dimension;
 

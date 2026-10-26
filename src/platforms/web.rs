@@ -54,6 +54,50 @@ pub(crate) fn read_unsigned(value: f64, what: &str) -> Result<u32, wasm_bindgen:
     Ok(super::read_unsigned(value, what)?)
 }
 
+/// The numbers of a float vector from JavaScript: an array or a `Float32Array`, as AGENTS.md rule 6 lists.
+/// Any other value, or an item that isn't a number, fails with an error that names `label`.
+fn read_vector_items(
+    value: &wasm_bindgen::JsValue,
+    label: &str,
+) -> Result<Vec<f64>, wasm_bindgen::JsError> {
+    use js_sys::{Array, Float32Array};
+    use wasm_bindgen::{JsCast, JsError};
+    if !(Array::is_array(value) || value.is_instance_of::<Float32Array>()) {
+        return Err(JsError::new(&format!(
+            "{label} takes an array or a Float32Array of numbers, got {value:?}"
+        )));
+    }
+    Array::from(value)
+        .iter()
+        .enumerate()
+        .map(|(index, item)| {
+            item.as_f64().ok_or_else(|| {
+                JsError::new(&format!(
+                    "{label}: item {index} must be a number, got {item:?}"
+                ))
+            })
+        })
+        .collect()
+}
+
+/// Exactly `N` numbers of a float vector, such as a position, each checked by [`super::vector::read_floats`].
+pub(crate) fn read_vector<const N: usize>(
+    value: &wasm_bindgen::JsValue,
+    label: &str,
+) -> Result<[f32; N], wasm_bindgen::JsError> {
+    let items = read_vector_items(value, label)?;
+    Ok(super::vector::read_vector::<N>(items, label)?)
+}
+
+/// A color from `[r, g, b]` or `[r, g, b, a]`, each channel checked by [`super::vector::read_floats`].
+pub(crate) fn read_color(
+    value: &wasm_bindgen::JsValue,
+    label: &str,
+) -> Result<crate::Color, wasm_bindgen::JsError> {
+    let items = read_vector_items(value, label)?;
+    Ok(super::vector::read_color(items, label)?)
+}
+
 /// Reads a plain array of numbers or a numeric typed array.
 /// Returns `None` for any other value, or when an item is not a number.
 pub(crate) fn read_numbers(value: &wasm_bindgen::JsValue) -> Option<Vec<f64>> {

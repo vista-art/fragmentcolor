@@ -151,49 +151,6 @@ impl TryFrom<&[f32]> for Color {
     }
 }
 
-/// Reads `[r, g, b]` or `[r, g, b, a]` as a plain array or a `Float32Array`, the
-/// lists every binding takes. Numbers keep their value, and a missing alpha is 1.
-#[cfg(wasm)]
-impl TryFrom<&wasm_bindgen::JsValue> for Color {
-    type Error = ColorError;
-
-    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
-        use js_sys::{Array, Float32Array};
-
-        if !(Array::is_array(value) || value.is_instance_of::<Float32Array>()) {
-            return Err(ColorError::TypeMismatch(format!(
-                "a color takes [r, g, b] or [r, g, b, a] as an array or a Float32Array, got {value:?}"
-            )));
-        }
-        let items = Array::from(value);
-        if !(3..=4).contains(&items.length()) {
-            return Err(ColorError::TypeMismatch(format!(
-                "a color takes 3 or 4 channels, got {}",
-                items.length()
-            )));
-        }
-        let channels = items
-            .iter()
-            .zip(CHANNELS)
-            .map(|(item, channel)| read_channel(channel, &item))
-            .collect::<Result<Vec<f32>, ColorError>>()?;
-        Color::try_from(channels.as_slice())
-    }
-}
-
-/// One channel from JavaScript, which must be a number.
-#[cfg(wasm)]
-fn read_channel(channel: &str, item: &JsValue) -> Result<f32, ColorError> {
-    item.as_f64().map(|number| number as f32).ok_or_else(|| {
-        ColorError::TypeMismatch(format!(
-            "the {channel} channel must be a number, got {item:?}"
-        ))
-    })
-}
-
-#[cfg(wasm)]
-crate::impl_tryfrom_owned_via_ref!(Color, wasm_bindgen::JsValue, ColorError);
-
 #[cfg(test)]
 mod tests {
     use super::*;

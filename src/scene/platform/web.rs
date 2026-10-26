@@ -4,7 +4,7 @@ use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
-use crate::platforms::web::{read_bytes, read_numbers, read_rows, read_unsigned};
+use crate::platforms::web::{read_bytes, read_numbers, read_rows, read_unsigned, read_vector};
 use crate::scene::{Camera, Light, LightKind, Model, Scene, SceneSource};
 use crate::{Material, Mesh, Pass};
 
@@ -57,9 +57,9 @@ impl Model {
     #[lsp_doc("docs/api/scene/model/translate.md")]
     pub fn translate_js(
         &self,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] offset: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] offset: &JsValue,
     ) -> Result<(), JsError> {
-        let arr = vec3(&offset, "Model.translate")?;
+        let arr = read_vector::<3>(offset, "Model.translate")?;
         self.translate(arr);
         Ok(())
     }
@@ -68,10 +68,10 @@ impl Model {
     #[lsp_doc("docs/api/scene/model/rotate.md")]
     pub fn rotate_js(
         &self,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] axis: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] axis: &JsValue,
         radians: f32,
     ) -> Result<(), JsError> {
-        let arr = vec3(&axis, "Model.rotate")?;
+        let arr = read_vector::<3>(axis, "Model.rotate: axis")?;
         self.rotate(arr, radians);
         Ok(())
     }
@@ -80,9 +80,9 @@ impl Model {
     #[lsp_doc("docs/api/scene/model/scale.md")]
     pub fn scale_js(
         &self,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] factor: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] factor: &JsValue,
     ) -> Result<(), JsError> {
-        let arr = vec3(&factor, "Model.scale")?;
+        let arr = read_vector::<3>(factor, "Model.scale")?;
         self.scale(arr);
         Ok(())
     }
@@ -130,13 +130,13 @@ impl Camera {
     #[lsp_doc("docs/api/scene/camera/look_at.md")]
     pub fn look_at_js(
         &self,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] position: Vec<f32>,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] target: Vec<f32>,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] up: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] position: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] target: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] up: &JsValue,
     ) -> Result<Camera, JsError> {
-        let pos = vec3(&position, "Camera.lookAt position")?;
-        let target = vec3(&target, "Camera.lookAt target")?;
-        let up = vec3(&up, "Camera.lookAt up")?;
+        let pos = read_vector::<3>(position, "Camera.lookAt: position")?;
+        let target = read_vector::<3>(target, "Camera.lookAt: target")?;
+        let up = read_vector::<3>(up, "Camera.lookAt: up")?;
         Ok(self.look_at(pos, target, up)?)
     }
 
@@ -173,35 +173,35 @@ impl Light {
     #[wasm_bindgen(js_name = "directional")]
     #[lsp_doc("docs/api/scene/light/directional.md")]
     pub fn directional_js(
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] direction: Vec<f32>,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] color: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] direction: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] color: &JsValue,
     ) -> Result<Light, JsError> {
-        let direction = vec3(&direction, "Light.directional direction")?;
-        let color = vec3(&color, "Light.directional color")?;
+        let direction = read_vector::<3>(direction, "Light.directional: direction")?;
+        let color = read_vector::<3>(color, "Light.directional: color")?;
         Ok(Light::directional(direction, color))
     }
 
     #[wasm_bindgen(js_name = "point")]
     #[lsp_doc("docs/api/scene/light/point.md")]
     pub fn point_js(
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] position: Vec<f32>,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] color: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] position: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] color: &JsValue,
     ) -> Result<Light, JsError> {
-        let position = vec3(&position, "Light.point position")?;
-        let color = vec3(&color, "Light.point color")?;
+        let position = read_vector::<3>(position, "Light.point: position")?;
+        let color = read_vector::<3>(color, "Light.point: color")?;
         Ok(Light::point(position, color))
     }
 
     #[wasm_bindgen(js_name = "spot")]
     #[lsp_doc("docs/api/scene/light/spot.md")]
     pub fn spot_js(
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] position: Vec<f32>,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] direction: Vec<f32>,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] color: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] position: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] direction: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] color: &JsValue,
     ) -> Result<Light, JsError> {
-        let position = vec3(&position, "Light.spot position")?;
-        let direction = vec3(&direction, "Light.spot direction")?;
-        let color = vec3(&color, "Light.spot color")?;
+        let position = read_vector::<3>(position, "Light.spot: position")?;
+        let direction = read_vector::<3>(direction, "Light.spot: direction")?;
+        let color = read_vector::<3>(color, "Light.spot: color")?;
         Ok(Light::spot(position, direction, color))
     }
 
@@ -261,9 +261,9 @@ impl Light {
     #[lsp_doc("docs/api/scene/light/set_color.md")]
     pub fn set_color_js(
         &self,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] color: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] color: &JsValue,
     ) -> Result<Light, JsError> {
-        let color = vec3(&color, "Light.setColor")?;
+        let color = read_vector::<3>(color, "Light.setColor")?;
         Ok(self.set_color(color))
     }
 
@@ -277,9 +277,9 @@ impl Light {
     #[lsp_doc("docs/api/scene/light/set_position.md")]
     pub fn set_position_js(
         &self,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] position: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] position: &JsValue,
     ) -> Result<Light, JsError> {
-        let position = vec3(&position, "Light.setPosition")?;
+        let position = read_vector::<3>(position, "Light.setPosition")?;
         self.set_position(position)
             .map_err(|e| JsError::new(&e.to_string()))
     }
@@ -288,9 +288,9 @@ impl Light {
     #[lsp_doc("docs/api/scene/light/set_direction.md")]
     pub fn set_direction_js(
         &self,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] direction: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] direction: &JsValue,
     ) -> Result<Light, JsError> {
-        let direction = vec3(&direction, "Light.setDirection")?;
+        let direction = read_vector::<3>(direction, "Light.setDirection")?;
         self.set_direction(direction)
             .map_err(|e| JsError::new(&e.to_string()))
     }
@@ -475,9 +475,9 @@ impl Scene {
     #[lsp_doc("docs/api/scene/scene/ambient.md")]
     pub fn ambient_js(
         &self,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] color: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] color: &JsValue,
     ) -> Result<Scene, JsError> {
-        let color = vec3(&color, "Scene.ambient")?;
+        let color = read_vector::<3>(color, "Scene.ambient")?;
         Ok(self.ambient(color).clone())
     }
 
@@ -556,13 +556,4 @@ fn read_passes(value: &JsValue) -> Result<Vec<Pass>, JsError> {
             .map_err(|_| JsError::new(&format!("Scene.setPasses: item {index} is not a Pass")))
     };
     array.iter().enumerate().map(read).collect()
-}
-
-fn vec3(v: &[f32], field: &str) -> Result<[f32; 3], JsError> {
-    if v.len() != 3 {
-        return Err(JsError::new(&format!(
-            "{field}: expected an array of length 3"
-        )));
-    }
-    Ok([v[0], v[1], v[2]])
 }
