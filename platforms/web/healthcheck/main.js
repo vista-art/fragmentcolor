@@ -641,6 +641,7 @@ await withModule('platforms.web.healthcheck.late_errors', async () => {
       let seen = -1;
       while (seen !== logged.length) { seen = logged.length; for (let i = 0; i < 10; i++) await pause(); }
     };
+    const pipelineErrors = () => logged.filter((text) => text.includes("'render pipeline'")).length;
 
     try {
       // The fragment stage reads @location(0), which the vertex stage never writes,
@@ -666,6 +667,13 @@ struct VOut { @builtin(position) pos: vec4<f32> };
       renderer.render(unfed, target);
       await surfaces('load after a failed frame', () => renderer.load(valid));
       await renderer.load(valid);
+
+      // A pipeline whose error landed left the cache, so the next
+      // failed frame builds it again and logs its cause again.
+      const reported = pipelineErrors();
+      renderer.render(unfed, target);
+      await surfaces('getImage after the pipeline failed again', () => target.getImage());
+      if (pipelineErrors() !== reported + 1) fail('a failed pipeline stayed in the cache');
 
       // A frame no later call follows still reports its error, through the console.
       const lone = new Renderer();

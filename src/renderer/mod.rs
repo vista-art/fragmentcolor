@@ -2,6 +2,8 @@ use crate::pass::PassInput;
 use crate::{PassObject, ShaderHash, Target, TargetFrame, TextureData, TextureTarget, UniformData};
 use crate::{ScreenRegion, Size, WindowTarget};
 use dashmap::DashMap;
+use dashmap::mapref::entry::Entry;
+use dashmap::mapref::one::RefMut;
 use lsp_doc::lsp_doc;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use std::borrow::Cow;
@@ -647,9 +649,10 @@ pub(crate) struct RenderContext {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
 
-    // Cache for RenderPipelines and ComputePipelines
-    render_pipelines: DashMap<RenderPipelineKey, RenderPipeline>,
-    compute_pipelines: DashMap<ComputePipelineKey, ComputePipeline>,
+    // Cache for RenderPipelines and ComputePipelines. Shared, so a wasm
+    // error that lands after the insert can evict the pipeline it names.
+    render_pipelines: Arc<DashMap<RenderPipelineKey, RenderPipeline>>,
+    compute_pipelines: Arc<DashMap<ComputePipelineKey, ComputePipeline>>,
 
     buffer_pool: RwLock<UniformBufferPool>,
     // Storage buffer pool (STORAGE | COPY_DST), separate from uniform pool
@@ -734,8 +737,8 @@ impl RenderContext {
             device,
             queue,
 
-            render_pipelines: DashMap::new(),
-            compute_pipelines: DashMap::new(),
+            render_pipelines: Arc::default(),
+            compute_pipelines: Arc::default(),
 
             buffer_pool: RwLock::new(buffer_pool),
             storage_pool: RwLock::new(storage_pool),
@@ -1081,6 +1084,16 @@ impl RenderContext {
         label: &str,
         op: impl FnOnce() -> Result<T, RendererError>,
     ) -> Result<T, RendererError> {
+        self.validate_with(label, op, || {})
+    }
+
+    /// Runs `op` like `validate`, and on wasm runs `on_error` when an error lands after it returned.
+    fn validate_with<T>(
+        &self,
+        label: &str,
+        op: impl FnOnce() -> Result<T, RendererError>,
+        on_error: impl FnOnce() + 'static,
+    ) -> Result<T, RendererError> {
         let [memory, internal, validation] =
             SCOPES.map(|filter| self.device.push_error_scope(filter));
         let result = op();
@@ -1090,28 +1103,31 @@ impl RenderContext {
         let memory = memory.pop();
         let caught = async move { validation.await.or(internal.await).or(memory.await) };
         #[cfg(not(wasm))]
-        match (result, futures::executor::block_on(caught)) {
-            (Err(error), Some(gpu)) if error.is_gpu() => {
-                log::warn!("{label} failed: {gpu}. It then caused: {error}");
-                Err(RendererError::ValidationError {
+        {
+            let _ = on_error;
+            match (result, futures::executor::block_on(caught)) {
+                (Err(error), Some(gpu)) if error.is_gpu() => {
+                    log::warn!("{label} failed: {gpu}. It then caused: {error}");
+                    Err(RendererError::ValidationError {
+                        label: label.to_string(),
+                        message: gpu.to_string(),
+                    })
+                }
+                (Err(error), Some(gpu)) => {
+                    log::warn!("{label} failed: {error}. The GPU also reported: {gpu}");
+                    Err(error)
+                }
+                (Ok(_), Some(gpu)) => Err(RendererError::ValidationError {
                     label: label.to_string(),
                     message: gpu.to_string(),
-                })
+                }),
+                (result, None) => result,
             }
-            (Err(error), Some(gpu)) => {
-                log::warn!("{label} failed: {error}. The GPU also reported: {gpu}");
-                Err(error)
-            }
-            (Ok(_), Some(gpu)) => Err(RendererError::ValidationError {
-                label: label.to_string(),
-                message: gpu.to_string(),
-            }),
-            (result, None) => result,
         }
         #[cfg(wasm)]
         {
             let failure = result.as_ref().err().map(ToString::to_string);
-            self.late.watch(label, caught, failure);
+            self.late.watch(label, caught, failure, on_error);
             result
         }
     }
@@ -1131,6 +1147,38 @@ impl RenderContext {
         {
             let _ = label;
             op()
+        }
+    }
+
+    /// The pipeline cached under `key`, built by `build` inside error scopes on a miss.
+    ///
+    /// A pipeline that fails to build stays out of the cache, so the next frame builds
+    /// it again and reports the same error. On wasm the error lands after the insert,
+    /// so the pipeline leaves the cache then.
+    fn fetch_pipeline<'cache, K, V>(
+        &self,
+        cache: &'cache Arc<DashMap<K, V>>,
+        key: K,
+        label: &str,
+        build: impl FnOnce() -> V,
+    ) -> Result<RefMut<'cache, K, V>, RendererError>
+    where
+        K: Eq + std::hash::Hash + Clone + 'static,
+        V: 'static,
+    {
+        match cache.entry(key) {
+            Entry::Occupied(entry) => Ok(entry.into_ref()),
+            Entry::Vacant(entry) => {
+                let shared = Arc::downgrade(cache);
+                let key = entry.key().clone();
+                let evict = move || {
+                    if let Some(cache) = shared.upgrade() {
+                        cache.remove(&key);
+                    }
+                };
+                let pipeline = self.validate_with(label, || Ok(build()), evict)?;
+                Ok(entry.insert(pipeline))
+            }
         }
     }
 
@@ -1427,24 +1475,24 @@ impl RenderContext {
                 double_sided,
                 vertex_layouts: layouts.clone(),
             };
-            let cached_pipeline = self
-                .render_pipelines
-                .entry(pipeline_key)
-                .or_try_insert_with(|| {
-                    self.validate("render pipeline", || {
-                        Ok(create_render_pipeline(
-                            &self.device,
-                            shader,
-                            color_format,
-                            sample_count,
-                            layouts.as_ref(),
-                            depth_use,
-                            alpha_mode,
-                            double_sided,
-                            self.aligned_uniform_bindings.load(Ordering::Relaxed),
-                        ))
-                    })
-                })?;
+            let cached_pipeline = self.fetch_pipeline(
+                &self.render_pipelines,
+                pipeline_key,
+                "render pipeline",
+                || {
+                    create_render_pipeline(
+                        &self.device,
+                        shader,
+                        color_format,
+                        sample_count,
+                        layouts.as_ref(),
+                        depth_use,
+                        alpha_mode,
+                        double_sided,
+                        self.aligned_uniform_bindings.load(Ordering::Relaxed),
+                    )
+                },
+            )?;
 
             // Collect resources per bind group to build entries safely with owned views/samplers
             #[derive(Default)]
@@ -1779,16 +1827,13 @@ impl RenderContext {
         for (shader_index, shader) in pass.shaders.read().iter().enumerate() {
             shader.flush_pending();
             let entries = bind_group_entries(shader);
-            let cached = self
-                .compute_pipelines
-                .entry(ComputePipelineKey {
-                    shader_hash: shader.hash,
-                    bind_group_entries: entries.clone(),
-                })
-                .or_try_insert_with(|| {
-                    self.validate("compute pipeline", || {
-                        Ok(create_compute_pipeline(&self.device, shader, &entries))
-                    })
+            let key = ComputePipelineKey {
+                shader_hash: shader.hash,
+                bind_group_entries: entries.clone(),
+            };
+            let cached =
+                self.fetch_pipeline(&self.compute_pipelines, key, "compute pipeline", || {
+                    create_compute_pipeline(&self.device, shader, &entries)
                 })?;
             #[derive(Default)]
             struct BindGroupResources {

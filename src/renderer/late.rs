@@ -48,14 +48,15 @@ impl ErrorSlot {
     ///
     /// Every error that lands goes to the log as an error, which the browser
     /// shows as a `console.error`, so a frame no later call follows still reports it.
-    /// It also waits in the slot for the next call, unless `failure`
-    /// says the call already failed and returned its own error.
+    /// It also runs `on_error`, and waits in the slot for the next call unless
+    /// `failure` says the call already failed and returned its own error.
     #[cfg(wasm)]
     pub(crate) fn watch(
         self: &std::sync::Arc<Self>,
         label: &str,
         caught: impl std::future::Future<Output = Option<wgpu::Error>> + 'static,
         failure: Option<String>,
+        on_error: impl FnOnce() + 'static,
     ) {
         let slot = self.clone();
         let label = label.to_string();
@@ -63,6 +64,7 @@ impl ErrorSlot {
             let Some(gpu) = caught.await else {
                 return;
             };
+            on_error();
             let error = LateError {
                 label,
                 message: gpu.to_string(),
