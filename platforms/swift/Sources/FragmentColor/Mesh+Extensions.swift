@@ -25,6 +25,7 @@ extension Mesh {
     }
 
     /// Append a single vertex from a Double array (converted to Float).
+    @_disfavoredOverload
     public func addVertex(_ position: [Double]) throws {
         try addVertex(v: Vertex(position: position.map { Float($0) }))
     }
@@ -34,6 +35,7 @@ extension Mesh {
         addVertex(try Vertex(position).set("uv", uv))
     }
 
+    @_disfavoredOverload
     public func addVertex(_ position: [Double], _ uv: [Double]) throws {
         addVertex(try Vertex(position).set("uv", uv))
     }
@@ -44,6 +46,7 @@ extension Mesh {
         addVertex(try Vertex(position).set("uv", uv).set("color", color))
     }
 
+    @_disfavoredOverload
     public func addVertex(_ position: [Double], _ uv: [Double], _ color: [Double]) throws {
         addVertex(try Vertex(position).set("uv", uv).set("color", color))
     }
@@ -54,6 +57,7 @@ extension Mesh {
     }
 
     /// Append multiple vertices from an array of double-array positions.
+    @_disfavoredOverload
     public func addVertices(_ positions: [[Double]]) throws {
         try addVertices(vertices: positions.map { try Vertex(position: $0.map { Float($0) }) })
     }
@@ -81,6 +85,7 @@ extension Mesh {
     }
 
     /// Build a Mesh from an array of double-array positions.
+    @_disfavoredOverload
     public static func fromVertices(_ positions: [[Double]]) throws -> Mesh {
         let m = Mesh()
         try m.addVertices(positions)
@@ -108,6 +113,7 @@ extension Vertex {
     }
 
     /// Convenience: construct a Vertex from an unlabeled double array.
+    @_disfavoredOverload
     public convenience init(_ position: [Double]) throws {
         try self.init(position: position.map { Float($0) })
     }
@@ -116,6 +122,7 @@ extension Vertex {
     public static func pbr(_ position: [Float]) throws -> Vertex {
         return try Vertex.pbr(position: position)
     }
+    @_disfavoredOverload
     public static func pbr(_ position: [Double]) throws -> Vertex {
         return try Vertex.pbr(position: position.map { Float($0) })
     }
@@ -236,6 +243,7 @@ extension Quad {
     }
 
     /// Create a Quad from unlabeled Double corner arrays.
+    @_disfavoredOverload
     public convenience init(_ min: [Double], _ max: [Double]) throws {
         try self.init(min: min.map { Float($0) }, max: max.map { Float($0) })
     }

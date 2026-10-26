@@ -21,6 +21,7 @@ extension Model {
     public func setTransform(_ matrix: [Float]) throws {
         try setTransform(matrix: matrix)
     }
+    @_disfavoredOverload
     public func setTransform(_ matrix: [Double]) throws {
         try setTransform(matrix: matrix.map { Float($0) })
     }
@@ -30,6 +31,7 @@ extension Model {
     public func setTransform(_ columns: [[Float]]) throws {
         try setTransform(matrix: columns.flatMap { $0 })
     }
+    @_disfavoredOverload
     public func setTransform(_ columns: [[Double]]) throws {
         try setTransform(matrix: columns.flatMap { $0 }.map { Float($0) })
     }
@@ -37,6 +39,7 @@ extension Model {
     public func translate(_ offset: [Float]) throws {
         try translate(offset: offset)
     }
+    @_disfavoredOverload
     public func translate(_ offset: [Double]) throws {
         try translate(offset: offset.map { Float($0) })
     }
@@ -44,6 +47,7 @@ extension Model {
     public func rotate(_ axis: [Float], _ radians: Float) throws {
         try rotate(axis: axis, radians: radians)
     }
+    @_disfavoredOverload
     public func rotate(_ axis: [Double], _ radians: Double) throws {
         try rotate(axis: axis.map { Float($0) }, radians: Float(radians))
     }
@@ -51,6 +55,7 @@ extension Model {
     public func scale(_ factor: [Float]) throws {
         try scale(factor: factor)
     }
+    @_disfavoredOverload
     public func scale(_ factor: [Double]) throws {
         try scale(factor: factor.map { Float($0) })
     }

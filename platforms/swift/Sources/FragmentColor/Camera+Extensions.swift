@@ -73,6 +73,7 @@ extension Camera {
         return try lookAt(position: position, target: target, up: up)
     }
     @discardableResult
+    @_disfavoredOverload
     public func lookAt(_ position: [Double], _ target: [Double], _ up: [Double]) throws -> Camera {
         return try lookAt(
             position: position.map { Float($0) },

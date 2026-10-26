@@ -96,6 +96,17 @@ final class Healthcheck: ExampleCase {
         try pass.setClearColor([0.1, 0.2, 0.3, 1.0] as [Float])
     }
 
+    // A list of integer literals compiles wherever a list of floats does.
+    func testIntegerLiteralsCompile() throws {
+        try Pass("literals").setClearColor([0, 0, 0, 1])
+        _ = try Light.point([0, 2, 0], [1, 1, 1]).setColor([1, 0, 0])
+        _ = try Scene().ambient([0, 0, 0])
+        _ = try Material.pbr().baseColor([1, 1, 1, 1])
+        try Model(Mesh(), Material.pbr()).translate([0, 1, 0])
+        _ = try Camera.perspective(1, 1, 0.1, 100).lookAt([0, 0, 5], [0, 0, 0], [0, 1, 0])
+        try Mesh().addVertex([0, 0, 0])
+    }
+
     // A region of 3 numbers throws, as in Kotlin, where it stopped the app.
     func testTextureRegionRefusesBadLengths() throws {
         do {
