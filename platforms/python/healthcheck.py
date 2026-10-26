@@ -8,6 +8,7 @@ from fragmentcolor import (
     FragmentColorError,
     Instance,
     InvalidInputError,
+    Light,
     MalformedImageError,
     Material,
     Mesh,
@@ -352,7 +353,7 @@ def check_number_errors(renderer):
 
 
 def check_empty_regions():
-    """A region or viewport with a width or height of 0 raises FragmentColorError."""
+    """A region with a side of 0, or a far edge past 2**32 - 1, raises InvalidInputError."""
     rpass = Pass("empty")
     for label, call in (
         ("ScreenRegion((0, 0), (0, 4))", lambda: ScreenRegion((0, 0), (0, 4))),
@@ -360,15 +361,115 @@ def check_empty_regions():
         ("ScreenRegion.from_tuple((0, 0))", lambda: ScreenRegion.from_tuple((0, 0))),
         ("Pass.set_viewport([0, 0, 0, 4])", lambda: rpass.set_viewport([0, 0, 0, 4])),
         ("Pass.set_viewport([4, 0])", lambda: rpass.set_viewport([4, 0])),
+        ("ScreenRegion((2**32 - 1, 0), (5, 5))", lambda: ScreenRegion((2**32 - 1, 0), (5, 5))),
+        ("ScreenRegion.from_region(0, 2**32 - 3, 4, 4)", lambda: ScreenRegion.from_region(0, 2**32 - 3, 4, 4)),
+        ("Pass.set_viewport([2**32 - 1, 0, 2, 2])", lambda: rpass.set_viewport([2**32 - 1, 0, 2, 2])),
     ):
         try:
             call()
-        except FragmentColorError as e:
-            print(f"{label} raised {type(e).__name__}: {e}")
+        except InvalidInputError as e:
+            print(f"{label} raised InvalidInputError: {e}")
         else:
-            raise AssertionError(f"{label} should raise FragmentColorError")
+            raise AssertionError(f"{label} should raise InvalidInputError")
     rpass.set_viewport([0, 0, 1, 1])
-    print("Regions and viewports refuse a side of 0")
+    assert ScreenRegion((2**32 - 5, 0), (5, 5)).max_x == 2**32 - 1
+    print("Regions refuse a side of 0 and a far edge past 2**32 - 1")
+
+
+def check_labels(renderer):
+    """Number errors name the parameter, and the item for a list, as JavaScript's do."""
+    def message(call):
+        try:
+            call()
+        except FragmentColorError as e:
+            return str(e)
+        raise AssertionError("the call should raise FragmentColorError")
+
+    assert "Mesh.set_indices: item 1" in message(lambda: Mesh().set_indices([0, -1, 2]))
+    assert "Pass.set_compute_dispatch: y" in message(lambda: Pass("p").set_compute_dispatch(1, -1, 1))
+    assert "Size: height" in message(lambda: Size(4, -1))
+    assert "Pass.set_viewport: item 2" in message(lambda: Pass("p").set_viewport([0, 0, -4, 4]))
+    assert "Pass.set_clear_color: item 1" in message(lambda: Pass("p").set_clear_color([0, 10**400, 0]))
+    texture = renderer.create_texture(bytes(64), size=[4, 4])
+    for count in (3, 5):
+        raises_invalid(f"Texture.write_region with {count} numbers", lambda: texture.write_region(bytes(4), [0] * count))
+    print("Number errors name their parameter")
+
+
+def raises_invalid(label, call):
+    try:
+        call()
+    except InvalidInputError as e:
+        print(f"{label} raised InvalidInputError: {e}")
+        return
+    raise AssertionError(f"{label} should raise InvalidInputError")
+
+
+def raises_type(label, call):
+    try:
+        call()
+    except TypeError as e:
+        print(f"{label} raised TypeError: {e}")
+        return
+    raise AssertionError(f"{label} should raise TypeError")
+
+
+def check_colors(renderer):
+    """Every color setter takes a number sequence, refuses bytes, and refuses a channel past float range."""
+    rpass, light, scene, material = Pass("colors"), Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]), Scene(), Material.pbr()
+    setters = {
+        "Pass.set_clear_color": (rpass.set_clear_color, 4),
+        "Light.set_color": (light.set_color, 3),
+        "Scene.ambient": (scene.ambient, 3),
+        "Material.base_color": (material.base_color, 4),
+        "Material.emissive": (material.emissive, 3),
+        "Light.point": (lambda color: Light.point([0.0, 0.0, 0.0], color), 3),
+        "Light.directional": (lambda color: Light.directional([0.0, -1.0, 0.0], color), 3),
+        "Light.spot": (lambda color: Light.spot([0.0, 1.0, 0.0], [0.0, -1.0, 0.0], color), 3),
+    }
+    for name, (setter, count) in setters.items():
+        setter([0.5] * count)
+        setter(tuple([0.5] * count))
+        setter(np.full(count, 0.5, dtype=np.float32))
+        raises_type(f"{name}(bytes)", lambda: setter(bytes(count)))
+        raises_type(f"{name}(bytearray)", lambda: setter(bytearray(count)))
+        raises_type(f"{name} with a string channel", lambda: setter(["1"] + [0] * (count - 1)))
+        raises_invalid(f"{name} with 10**400", lambda: setter([10**400] + [0] * (count - 1)))
+        raises_invalid(f"{name} with 1e39", lambda: setter([1e39] + [0] * (count - 1)))
+        raises_invalid(f"{name} with too many channels", lambda: setter([0.5] * 5))
+    # Storage texture usage reads as an int too.
+    raises_invalid("create_storage_texture(usage=-1)",
+                   lambda: renderer.create_storage_texture([4, 4], TextureFormat.Rgba8Unorm, usage=-1))
+    raises_invalid("create_storage_texture(usage=10**400)",
+                   lambda: renderer.create_storage_texture([4, 4], TextureFormat.Rgba8Unorm, usage=10**400))
+    print("Color setters take number sequences and refuse bytes and out-of-range channels")
+
+
+RESOLUTION_SHADER = """
+@group(0) @binding(0) var<uniform> resolution: vec2<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4f(resolution / 1000.0, 0., 1.); }
+"""
+
+
+def check_example_resize(renderer):
+    """The examples' rendercanvas resize handler hands resize whole pixels from float event sizes."""
+    import ast
+    for path in ("examples/python/main.py", "examples/python/multiobject.py"):
+        tree = ast.parse(Path(path).read_text())
+        handler = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "handler")
+        handler.decorator_list = []
+        shader = Shader(RESOLUTION_SHADER)
+        target = renderer.create_texture_target([8, 8])
+        namespace = {"circle": shader, "circles": [shader], "target": target}
+        exec(compile(ast.Module([handler], []), path, "exec"), namespace)
+        namespace["handler"]({"event_type": "resize", "width": 400.0, "height": 300.0, "pixel_ratio": 1.5})
+        size = target.size()
+        assert (size.width, size.height) == (600, 450), f"{path} resized to {size.width}x{size.height}"
+    print("The examples resize their target from float event sizes")
 
 
 def check_clear_color():
@@ -758,6 +859,9 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_value_types()
     check_number_errors(renderer)
     check_empty_regions()
+    check_labels(renderer)
+    check_colors(renderer)
+    check_example_resize(renderer)
     check_clear_color()
     check_texture_inputs(renderer)
     check_invalid_textures(renderer)

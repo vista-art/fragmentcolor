@@ -1,6 +1,6 @@
 #![cfg(python)]
 
-use crate::platforms::python::read_unsigned;
+use crate::platforms::python::{PyChannels, PyUnsigned, read_list};
 use crate::{Color, Pass, PassObject, PassType, ScreenRegion, Shader};
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
@@ -90,9 +90,10 @@ impl Pass {
 
     #[pyo3(name = "set_clear_color")]
     #[lsp_doc("docs/api/core/pass/set_clear_color.md")]
-    pub fn set_clear_color_py(&self, color: Vec<f32>) -> PyResult<()> {
+    pub fn set_clear_color_py(&self, color: PyChannels<'_>) -> PyResult<()> {
+        let channels = color.read("Pass.set_clear_color")?;
         self.object
-            .set_clear_color(Color::try_from(color.as_slice())?)?;
+            .set_clear_color(Color::try_from(channels.as_slice())?)?;
         Ok(())
     }
 
@@ -108,11 +109,16 @@ impl Pass {
     #[lsp_doc("docs/api/core/pass/set_compute_dispatch.md")]
     pub fn set_compute_dispatch_py(
         &self,
-        #[pyo3(from_py_with = read_unsigned)] x: u32,
-        #[pyo3(from_py_with = read_unsigned)] y: u32,
-        #[pyo3(from_py_with = read_unsigned)] z: u32,
-    ) {
-        self.object.set_compute_dispatch(x, y, z);
+        x: PyUnsigned<'_>,
+        y: PyUnsigned<'_>,
+        z: PyUnsigned<'_>,
+    ) -> PyResult<()> {
+        self.object.set_compute_dispatch(
+            x.read("Pass.set_compute_dispatch: x")?,
+            y.read("Pass.set_compute_dispatch: y")?,
+            z.read("Pass.set_compute_dispatch: z")?,
+        );
+        Ok(())
     }
 
     #[pyo3(name = "set_target")]
@@ -183,11 +189,10 @@ impl Pass {
 pub enum PyViewport<'py> {
     #[pyo3(annotation = "ScreenRegion")]
     Region(ScreenRegion),
-    #[pyo3(annotation = "Sequence[int]")]
-    Numbers(Vec<Bound<'py, PyAny>>),
+    Numbers(Vec<PyUnsigned<'py>>),
 }
 
-/// Reads each number as an int that [`read_unsigned`] checks.
+/// Reads each number as an int that [`PyUnsigned::read`] checks.
 impl TryFrom<PyViewport<'_>> for ScreenRegion {
     type Error = PyErr;
 
@@ -195,10 +200,7 @@ impl TryFrom<PyViewport<'_>> for ScreenRegion {
         match viewport {
             PyViewport::Region(region) => Ok(region),
             PyViewport::Numbers(items) => {
-                let dimensions = items
-                    .iter()
-                    .map(read_unsigned)
-                    .collect::<PyResult<Vec<u32>>>()?;
+                let dimensions = read_list(&items, "Pass.set_viewport")?;
                 Ok(ScreenRegion::from_dimensions(&dimensions)?)
             }
         }

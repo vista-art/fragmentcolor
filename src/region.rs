@@ -637,7 +637,7 @@ impl From<&ScreenRegion> for [f32; 4] {
 #[cfg(python)]
 mod python_bindings {
     use super::*;
-    use crate::platforms::python::{read_pair, read_unsigned};
+    use crate::platforms::python::PyUnsigned;
     use pyo3::prelude::*;
 
     #[pymethods]
@@ -648,9 +648,17 @@ mod python_bindings {
         #[doc(hidden)]
         #[new]
         pub fn new_py(
-            #[pyo3(from_py_with = read_pair)] origin: (u32, u32),
-            #[pyo3(from_py_with = read_pair)] size: (u32, u32),
+            origin: (PyUnsigned<'_>, PyUnsigned<'_>),
+            size: (PyUnsigned<'_>, PyUnsigned<'_>),
         ) -> PyResult<Self> {
+            let origin = (
+                origin.0.read("ScreenRegion: x")?,
+                origin.1.read("ScreenRegion: y")?,
+            );
+            let size = (
+                size.0.read("ScreenRegion: width")?,
+                size.1.read("ScreenRegion: height")?,
+            );
             Ok(ScreenRegion::new(origin, size)?)
         }
 
@@ -658,19 +666,27 @@ mod python_bindings {
         #[staticmethod]
         #[pyo3(name = "from_region")]
         pub fn from_region_py(
-            #[pyo3(from_py_with = read_unsigned)] x: u32,
-            #[pyo3(from_py_with = read_unsigned)] y: u32,
-            #[pyo3(from_py_with = read_unsigned)] width: u32,
-            #[pyo3(from_py_with = read_unsigned)] height: u32,
+            x: PyUnsigned<'_>,
+            y: PyUnsigned<'_>,
+            width: PyUnsigned<'_>,
+            height: PyUnsigned<'_>,
         ) -> PyResult<Self> {
-            Ok(ScreenRegion::from_region(x, y, width, height)?)
+            Ok(ScreenRegion::from_region(
+                x.read("ScreenRegion.from_region: x")?,
+                y.read("ScreenRegion.from_region: y")?,
+                width.read("ScreenRegion.from_region: width")?,
+                height.read("ScreenRegion.from_region: height")?,
+            )?)
         }
 
         #[doc(hidden)]
         #[staticmethod]
         #[pyo3(name = "from_tuple")]
-        pub fn from_tuple_py(#[pyo3(from_py_with = read_pair)] size: (u32, u32)) -> PyResult<Self> {
-            Ok(ScreenRegion::from_tuple(size)?)
+        pub fn from_tuple_py(size: (PyUnsigned<'_>, PyUnsigned<'_>)) -> PyResult<Self> {
+            Ok(ScreenRegion::from_tuple((
+                size.0.read("ScreenRegion.from_tuple: width")?,
+                size.1.read("ScreenRegion.from_tuple: height")?,
+            ))?)
         }
 
         #[doc(hidden)]
@@ -691,8 +707,8 @@ mod python_bindings {
 mod tests {
     use super::ScreenRegion;
 
-    /// A region built field by field, so a test can hold one with no area.
-    fn rect(x: u32, y: u32, width: u32, height: u32) -> ScreenRegion {
+    /// Builds a region field by field, so a test can hold one with no area.
+    fn build_region(x: u32, y: u32, width: u32, height: u32) -> ScreenRegion {
         ScreenRegion {
             min_x: x,
             min_y: y,

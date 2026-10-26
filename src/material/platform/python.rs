@@ -5,6 +5,7 @@ use pyo3::prelude::*;
 
 use crate::Shader;
 use crate::material::{AlphaMode, Material};
+use crate::platforms::python::PyChannels;
 use crate::texture::PyTextureSource;
 
 #[pymethods]
@@ -35,8 +36,8 @@ impl Material {
 
     #[pyo3(name = "base_color")]
     #[lsp_doc("docs/api/scene/material/base_color.md")]
-    pub fn base_color_py(&self, color: [f32; 4]) -> Self {
-        self.base_color(color)
+    pub fn base_color_py(&self, color: PyChannels<'_>) -> PyResult<Self> {
+        Ok(self.base_color(color.read_array("Material.base_color")?))
     }
 
     #[pyo3(name = "metallic")]
@@ -65,8 +66,8 @@ impl Material {
 
     #[pyo3(name = "emissive")]
     #[lsp_doc("docs/api/scene/material/emissive.md")]
-    pub fn emissive_py(&self, factor: [f32; 3]) -> Self {
-        self.emissive(factor)
+    pub fn emissive_py(&self, factor: PyChannels<'_>) -> PyResult<Self> {
+        Ok(self.emissive(factor.read_array("Material.emissive")?))
     }
 
     #[pyo3(name = "alpha_cutoff")]

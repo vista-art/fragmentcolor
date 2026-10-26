@@ -912,9 +912,9 @@ mod python_stubs {
         atoms
     }
 
-    /// A variant's `#[pyo3(annotation = "...")]` when it narrows a container
-    /// its Rust type leaves untyped, such as `list[int]` for a `Bound<PyList>`
-    /// or `Sequence[int]` for a `Vec<Bound<PyAny>>` that the binding checks.
+    /// A variant's `#[pyo3(annotation = "...")]` when it narrows a value or a
+    /// container its Rust type leaves untyped, such as `list[int]` for a `Bound<PyList>`,
+    /// or `int` and `Sequence[float]` for a `Bound<PyAny>` that the binding checks itself.
     /// Every name in it must be a builtin or a class Python can hold. A dict
     /// parameter stays `dict[str, Any]`: `dict` is invariant, so a narrower
     /// hint would turn away a caller's `dict[str, int]`.
@@ -930,7 +930,8 @@ mod python_stubs {
         };
         let dict = mode == Mode::Return && narrows("dict[str, Any]", "dict[");
         let sequence = atoms == [Atom::Seq(name("Any"))] && annotation.starts_with("Sequence[");
-        if !(narrows("list[Any]", "list[") || dict || sequence) {
+        let value = atoms == name("Any") && !annotation.starts_with("dict[");
+        if !(narrows("list[Any]", "list[") || dict || sequence || value) {
             return atoms;
         }
         let mut text = annotation.clone();

@@ -2,11 +2,13 @@
 use wasm_bindgen::prelude::*;
 
 #[cfg(python)]
-use crate::platforms::python::{read_optional, read_unsigned};
+use crate::platforms::python::{PyUnsigned, read_list};
 #[cfg(python)]
 use pyo3::FromPyObject;
 #[cfg(python)]
 use pyo3::prelude::*;
+#[cfg(python)]
+use std::collections::HashMap;
 
 pub mod error;
 #[cfg(any(wasm, python, test))]
@@ -233,11 +235,15 @@ impl Size {
     #[new]
     #[pyo3(signature = (width, height, depth=None))]
     pub fn new_py(
-        #[pyo3(from_py_with = read_unsigned)] width: u32,
-        #[pyo3(from_py_with = read_unsigned)] height: u32,
-        #[pyo3(from_py_with = read_optional)] depth: Option<u32>,
-    ) -> Self {
-        Size::new(width, height, depth)
+        width: PyUnsigned<'_>,
+        height: PyUnsigned<'_>,
+        depth: Option<PyUnsigned<'_>>,
+    ) -> PyResult<Self> {
+        Ok(Size::new(
+            width.read("Size: width")?,
+            height.read("Size: height")?,
+            depth.map(|depth| depth.read("Size: depth")).transpose()?,
+        ))
     }
 
     #[doc(hidden)]
@@ -249,8 +255,9 @@ impl Size {
     /// Checks the int as the constructor does, and keeps the old width on an error.
     #[doc(hidden)]
     #[setter(width)]
-    pub fn set_width_py(&mut self, #[pyo3(from_py_with = read_unsigned)] value: u32) {
-        self.width = value;
+    pub fn set_width_py(&mut self, value: PyUnsigned<'_>) -> PyResult<()> {
+        self.width = value.read("Size.width")?;
+        Ok(())
     }
 
     #[doc(hidden)]
@@ -261,8 +268,9 @@ impl Size {
 
     #[doc(hidden)]
     #[setter(height)]
-    pub fn set_height_py(&mut self, #[pyo3(from_py_with = read_unsigned)] value: u32) {
-        self.height = value;
+    pub fn set_height_py(&mut self, value: PyUnsigned<'_>) -> PyResult<()> {
+        self.height = value.read("Size.height")?;
+        Ok(())
     }
 
     #[doc(hidden)]
@@ -274,20 +282,20 @@ impl Size {
     /// `None` clears the depth.
     #[doc(hidden)]
     #[setter(depth)]
-    pub fn set_depth_py(&mut self, #[pyo3(from_py_with = read_optional)] value: Option<u32>) {
-        self.depth = value;
+    pub fn set_depth_py(&mut self, value: Option<PyUnsigned<'_>>) -> PyResult<()> {
+        self.depth = value.map(|depth| depth.read("Size.depth")).transpose()?;
+        Ok(())
     }
 }
 
 /// A size from Python: a `Size`, `[w, h]` or `[w, h, d]` in any sequence, or a dict of its fields.
-/// Each number is an int that [`read_unsigned`] checks.
+/// Each number is an int that [`PyUnsigned::read`] checks.
 #[cfg(python)]
 #[derive(FromPyObject)]
 pub enum PySize<'py> {
     Size(Size),
-    #[pyo3(annotation = "Sequence[int]")]
-    Numbers(Vec<Bound<'py, PyAny>>),
-    Fields(std::collections::HashMap<String, Bound<'py, PyAny>>),
+    Numbers(Vec<PyUnsigned<'py>>),
+    Fields(HashMap<String, PyUnsigned<'py>>),
 }
 
 /// Checks a size from Python with the same rule as every other binding.
@@ -298,9 +306,12 @@ impl TryFrom<PySize<'_>> for Size {
     fn try_from(value: PySize<'_>) -> Result<Self, Self::Error> {
         let dimensions = match value {
             PySize::Size(size) => return Ok(size),
-            PySize::Numbers(items) => items.iter().map(read_unsigned).collect::<PyResult<_>>()?,
+            PySize::Numbers(items) => read_list(&items, "size")?,
             PySize::Fields(fields) => {
-                let field = |name: &str| fields.get(name).map(read_unsigned).transpose();
+                let field = |name: &str| {
+                    let label = format!("size: {name}");
+                    fields.get(name).map(|value| value.read(&label)).transpose()
+                };
                 let (Some(width), Some(height)) = (field("width")?, field("height")?) else {
                     return Err(SizeError::TypeMismatch(
                         "a size dict needs a width and a height".into(),

@@ -1,5 +1,6 @@
-use pyo3::exceptions::PyOverflowError;
+use pyo3::exceptions::{PyOverflowError, PyTypeError};
 use pyo3::prelude::*;
+use pyo3::types::{PyByteArray, PyBytes};
 use pyo3::wrap_pyfunction;
 
 use crate::error::{InvalidInputError, PythonError};
@@ -88,44 +89,137 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
+/// A Python int that a binding reads with [`PyUnsigned::read`], which names the parameter in its errors.
+/// Extraction keeps the object as it came, so the stub hints `int` and the check runs where the label is known.
+#[derive(FromPyObject)]
+pub enum PyUnsigned<'py> {
+    #[pyo3(annotation = "int")]
+    Int(Bound<'py, PyAny>),
+}
+
+impl PyUnsigned<'_> {
+    /// The int as a `u32`, or an error that names `label`, as [`read_unsigned`] reads it.
+    pub(crate) fn read(&self, label: &str) -> PyResult<u32> {
+        let PyUnsigned::Int(value) = self;
+        read_unsigned(value, label)
+    }
+}
+
+/// Reads each int of a list, naming a failing item as `{label}: item {index}`.
+pub(crate) fn read_list(items: &[PyUnsigned<'_>], label: &str) -> PyResult<Vec<u32>> {
+    items
+        .iter()
+        .enumerate()
+        .map(
+            |(index, PyUnsigned::Int(item))| match item.extract::<u32>() {
+                Ok(number) => Ok(number),
+                Err(_) => read_unsigned(item, &format!("{label}: item {index}")),
+            },
+        )
+        .collect()
+}
+
 /// Reads a Python int as an unsigned 32-bit integer, such as a count, an index or a size.
 /// An object with `__index__`, such as a NumPy integer, counts as an int, and any other type
 /// raises `TypeError`. An int below 0 or past `u32::MAX` raises `InvalidInputError`, however large.
-pub(crate) fn read_unsigned(value: &Bound<'_, PyAny>) -> PyResult<u32> {
+pub(crate) fn read_unsigned(value: &Bound<'_, PyAny>, label: &str) -> PyResult<u32> {
+    let py = value.py();
     match value.extract::<u32>() {
-        Err(error) if error.is_instance_of::<PyOverflowError>(value.py()) => {
-            let shown = match value.str() {
-                Ok(text) => text.to_string(),
-                Err(_) => "an int too long to print".to_string(),
-            };
+        Ok(number) => Ok(number),
+        Err(error) if error.is_instance_of::<PyOverflowError>(py) => {
             Err(InvalidInputError::new_err(format!(
-                "expected an int from 0 to {}, got {shown}",
-                u32::MAX
+                "{label} must be a whole number from 0 to {}, got {}",
+                u32::MAX,
+                show(value)
             )))
         }
-        result => result,
+        Err(error) if error.is_instance_of::<PyTypeError>(py) => Err(PyTypeError::new_err(
+            format!("{label} must be an int, got {}", type_name(value)),
+        )),
+        Err(error) => Err(error),
     }
 }
 
-/// Reads `None`, or an int as [`read_unsigned`] does.
-pub(crate) fn read_optional(value: &Bound<'_, PyAny>) -> PyResult<Option<u32>> {
-    if value.is_none() {
-        return Ok(None);
+/// A color or other list of channels from Python: any sequence of numbers, NumPy arrays
+/// included, except a bytes object. [`PyChannels::read`] names the parameter in its errors.
+#[derive(FromPyObject)]
+pub enum PyChannels<'py> {
+    #[pyo3(annotation = "Sequence[float]")]
+    Numbers(Bound<'py, PyAny>),
+}
+
+impl PyChannels<'_> {
+    /// Each channel as an `f32`. A bytes object or a value that isn't a number raises
+    /// `TypeError`, and a number past the 32-bit float range raises `InvalidInputError`.
+    pub(crate) fn read(&self, label: &str) -> PyResult<Vec<f32>> {
+        let PyChannels::Numbers(value) = self;
+        if value.is_instance_of::<PyBytes>() || value.is_instance_of::<PyByteArray>() {
+            return Err(PyTypeError::new_err(format!(
+                "{label} takes numbers, got {}",
+                type_name(value)
+            )));
+        }
+        value
+            .extract::<Vec<Bound<'_, PyAny>>>()?
+            .iter()
+            .enumerate()
+            .map(|(index, item)| read_float(item, label, index))
+            .collect()
     }
-    read_unsigned(value).map(Some)
+
+    /// Exactly `N` channels, read as [`PyChannels::read`] reads them.
+    pub(crate) fn read_array<const N: usize>(&self, label: &str) -> PyResult<[f32; N]> {
+        let channels = self.read(label)?;
+        match <[f32; N]>::try_from(channels.as_slice()) {
+            Ok(array) => Ok(array),
+            Err(_) => Err(InvalidInputError::new_err(format!(
+                "{label} takes {N} numbers, got {}",
+                channels.len()
+            ))),
+        }
+    }
 }
 
-/// Reads a pair of ints, such as an origin or a size, as [`read_unsigned`] does.
-pub(crate) fn read_pair(value: &Bound<'_, PyAny>) -> PyResult<(u32, u32)> {
-    let (first, second) = value.extract::<(Bound<'_, PyAny>, Bound<'_, PyAny>)>()?;
-    Ok((read_unsigned(&first)?, read_unsigned(&second)?))
+/// One channel as an `f32`. NaN and infinity pass, and the call decides what to do with them.
+fn read_float(value: &Bound<'_, PyAny>, label: &str, index: usize) -> PyResult<f32> {
+    let py = value.py();
+    let number = match value.extract::<f64>() {
+        Ok(number) => number,
+        Err(error) if error.is_instance_of::<PyOverflowError>(py) => {
+            return Err(InvalidInputError::new_err(format!(
+                "{label}: item {index} must fit a 32-bit float, got {}",
+                show(value)
+            )));
+        }
+        Err(error) if error.is_instance_of::<PyTypeError>(py) => {
+            return Err(PyTypeError::new_err(format!(
+                "{label}: item {index} must be a number, got {}",
+                type_name(value)
+            )));
+        }
+        Err(error) => return Err(error),
+    };
+    let channel = number as f32;
+    if number.is_finite() && !channel.is_finite() {
+        return Err(InvalidInputError::new_err(format!(
+            "{label}: item {index} must fit a 32-bit float, got {number}"
+        )));
+    }
+    Ok(channel)
 }
 
-/// Reads a sequence of ints, such as a list or a NumPy array, as [`read_unsigned`] does.
-pub(crate) fn read_list(value: &Bound<'_, PyAny>) -> PyResult<Vec<u32>> {
-    value
-        .extract::<Vec<Bound<'_, PyAny>>>()?
-        .iter()
-        .map(read_unsigned)
-        .collect()
+/// The value as Python prints it, or a note when it is too long to print.
+fn show(value: &Bound<'_, PyAny>) -> String {
+    match value.str() {
+        Ok(text) => text.to_string(),
+        Err(_) => "an int too long to print".to_string(),
+    }
+}
+
+/// The name of the value's type, such as `float`.
+fn type_name(value: &Bound<'_, PyAny>) -> String {
+    match value.get_type().name() {
+        Ok(name) => name.to_string(),
+        Err(_) => "an unknown type".to_string(),
+    }
 }
