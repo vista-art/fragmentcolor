@@ -574,6 +574,7 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     const canvasTexture = await renderer.createStorageTexture([16, 16], TextureFormat.Rgba);
     const patch = new Uint8Array(4 * 4 * 4);
     canvasTexture.writeRegion(patch, { minX: 4, maxX: 8, minY: 0, maxY: 4 });
+    canvasTexture.writeRegion(patch, new fc.ScreenRegion([4, 0], [4, 4]));
     throws('writeRegion with reversed bounds', () =>
       canvasTexture.writeRegion(patch, { minX: 8, maxX: 4, minY: 0, maxY: 4 }));
     throws('writeRegion with misspelled keys', () => canvasTexture.writeRegion(patch, { x: 0, y: 0, w: 4, h: 4 }));

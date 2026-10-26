@@ -273,12 +273,14 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
 
         // Object: { x?, y?, z?, width, height, depth?, bytesPerRow?, rowsPerImage? }
         // or       { minX?, minY?, maxX, maxY, minZ?, maxZ?, bytesPerRow?, rowsPerImage? }
+        // A method is no key: a `ScreenRegion` reads by its `minX` to `maxY`
+        // getters, and its `width()` and `height()` methods stay out of the way.
         if value.is_object() {
             let read = |(camel, snake): Key| -> Result<Option<u32>, TextureError> {
                 for name in [camel, snake] {
                     let field = Reflect::get(value, &wasm_bindgen::JsValue::from_str(name))
                         .unwrap_or(wasm_bindgen::JsValue::UNDEFINED);
-                    if !field.is_undefined() && !field.is_null() {
+                    if !field.is_undefined() && !field.is_null() && !field.is_function() {
                         return dimension(&field).map(Some);
                     }
                 }
