@@ -19,9 +19,15 @@ The shader uses:
   and Schlick Fresnel.
 - **Lambertian diffuse** with energy conservation against the specular
   Fresnel and metalness.
-- **Up to 32 lights** in the `lights.lights[N]` array (uniform `lights`, with
-  `lights.count` active), one camera (uniform `camera`), and the per-Model
-  transform via the instance-attribute stream.
+- **Clustered lights**: as many lights as the device allows, in the
+  read-only storage roots `lights` and `light_grid` that the renderer fills.
+  Each fragment reads only the lights whose range reaches its cluster, plus
+  every light without a range. See [Light](https://fragmentcolor.org/api/scene/light)
+  for the cost of each kind and the cap on each device, and
+  [`Material::custom`](https://fragmentcolor.org/api/scene/material#custom)
+  for the layout of the roots.
+- **One camera** (uniform `camera`), and the per-Model transform via the
+  instance-attribute stream.
 - **glTF 2.0 PBR-MR texture sampling**: five sampled maps (`base_color_map`,
   `metallic_roughness_map`, `normal_map`, `occlusion_map`, `emissive_map`)
   combined with their matching factors per the spec.
@@ -61,16 +67,21 @@ mismatch. Use `Material::custom(...)` to bring your own vertex layout.
 | `emissive_map`               | 1×1 white            |
 | `camera.view_proj`           | identity 4×4         |
 | `camera.position`            | `[0, 0, 0]`          |
-| `light.direction`            | `[0, -1, 0]` (down)  |
-| `light.color`                | `[1, 1, 1]`          |
+| `lights.ambient`             | `[0.03, 0.03, 0.03]` |
+| placeholder light            | white, directional, pointing down `[0, -1, 0]` |
 
-The camera and light are the user's domain, not the Material's. Pass them
-to [`Pass::add`](https://fragmentcolor.org/api/core/pass#add). The
-typed [Camera](https://fragmentcolor.org/api/scene/camera) and
-[Light](https://fragmentcolor.org/api/scene/light) handles seed the matching
-`camera.*` / `light.*` uniforms and propagate any later updates back into
-the Material's shader. Dropping down to `material.shader().set(...)` directly
-is still supported if you need it.
+The placeholder light lights a fresh Material until the first
+[Light](https://fragmentcolor.org/api/scene/light) reaches its shader,
+and returns once no Light does.
+
+The camera and lights are the user's domain, not the Material's. Pass them
+to [`Pass::add`](https://fragmentcolor.org/api/core/pass#add). The typed
+[Camera](https://fragmentcolor.org/api/scene/camera) handle seeds the
+`camera.*` uniforms and propagates later updates into the Material's shader,
+and the renderer packs every Light that reaches the shader at each render.
+`material.shader().set(...)` still sets `camera.*` and `lights.ambient`
+directly. The lights themselves have no keys: `set` and `get` on
+`lights.count` or `lights.lights[i]` return `ShaderError::UniformNotFound`.
 
 ## Example
 

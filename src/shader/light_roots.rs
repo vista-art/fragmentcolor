@@ -574,6 +574,34 @@ mod tests {
     }
 
     #[test]
+    fn the_custom_page_reference_compiles() {
+        // The roots and the reference functions on the Material::custom page.
+        let page = include_str!("../../docs/api/scene/material/custom.md");
+        let blocks: Vec<&str> = page
+            .split("```wgsl")
+            .skip(1)
+            .filter_map(|rest| rest.split("```").next())
+            .collect();
+        let [roots, functions, ..] = blocks.as_slice() else {
+            panic!("the page should hold the roots and the reference functions");
+        };
+        let source = format!(
+            "{roots}\n{functions}
+fn shade_light(lt: Light, world: vec3<f32>, normal: vec3<f32>) -> vec3<f32> {{
+  return lt.color * max(dot(normal, normalize(lt.position - world)), 0.0);
+}}
+@vertex fn vs_main() -> @builtin(position) vec4<f32> {{ return vec4<f32>(0.0); }}
+@fragment fn fs_main(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {{
+  return vec4<f32>(accumulate_lights(p.xyz, vec3<f32>(0.0, 0.0, 1.0)), 1.0);
+}}"
+        );
+        let shader = Shader::new(source.as_str()).expect("the reference compiles");
+        assert_eq!(shape(&shader), Some(LightShape::Storage));
+        let roots = shader.object.light_roots.clone().expect("roots");
+        assert!(roots.grid.is_some());
+    }
+
+    #[test]
     fn compute_modules_are_untouched() {
         let shader = Shader::new(
             "struct Other { count: u32, value: f32 }

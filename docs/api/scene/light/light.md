@@ -33,45 +33,68 @@ The matching getters use `Option<T>` for the kind-specific fields:
 return `Some` only on the kinds that carry the value, `None` otherwise.
 
 Lights hold Arc-shared state, so a single handle can be absorbed by
-multiple Passes; later mutators propagate to every shader the Light has
-been wired into.
+multiple Passes, and a later setter reaches every shader the Light lights
+at the next render.
+
+## Lifetime
+
+A Light stops lighting once nothing holds it. Each `Pass` holds the
+lights added to it, and so does each `Scene`. `scene.add(&light)` keeps
+lighting after the local `light` handle drops, and a `Model` that joins
+the pass later takes every light the pass holds. Once the last pass,
+scene and handle holding a Light are gone, the shaders it reached draw
+without it.
 
 ## Cost model
 
-The default Material::pbr shader uses **forward shading**. Every fragment
-loops over every active light and accumulates the contribution. That makes
-the per-frame cost roughly `O(fragments × lights)`, so the practical
-ceiling depends on resolution and overdraw. The current cap of **32
-lights** fits the forward path comfortably; for scenes with hundreds of
-lights, a clustered / storage-buffer path is on the roadmap.
+`Material::pbr` shades each fragment with the lights that reach it. At
+each render the renderer sorts every light with a finite `range` into a
+grid of clusters over the pass's camera view, and a fragment loops over
+the lights of its own cluster. The cost of a fragment grows with the
+lights that overlap it, not with every light in the scene.
 
-### Cap semantics: lights bind to the shader, not the Pass
+A light without a range reaches every fragment, so every fragment pays
+for it. That covers each directional light and every point or spot light
+left at the default range of 0. Keep those to a few suns and fill lights,
+and give lamps, torches and other local lights a range.
 
-The 32-light cap is enforced **per `ShaderObject`**, not per `Pass`. Two
-Passes that share the same Material (and therefore the same shader)
-share its light slots:
+A still scene sorts its lights once. Moving a light, changing its range
+or cone, or moving the camera sorts them again at the next render, and
+a new color or intensity only uploads the changed values.
 
-- Adding the same `Light` to Pass A and Pass B reuses one shader slot
-  (the dedup is by shader-pointer identity). Both Passes render with
-  that light visible.
-- Adding two different `Light`s, one to Pass A, one to Pass B, packs
-  them into two separate slots on the shared shader. **Both lights
-  illuminate both Passes**, even though each was only `add(&...)`-ed
-  to one. That's surprising if you think of a Pass as an isolated
-  scene; it's the right answer if you think of a Material as the
-  lighting model and the Passes as views into the same lit world.
-- The cap exceeds at 32 *distinct* Lights on one shader. Whether the
-  33rd fails depends on the order. Added to a pass whose shader already
-  holds 32, it returns `Err(PassError::LightCapReached { cap: 32 })`.
-  Added before that shader joins the pass, it doesn't fail: the shader
-  drops it with a logged warning when it joins.
+### How many lights a shader takes
 
-For genuinely independent lighting setups, build a separate Material
-per scene (each `Material::pbr()` allocates a fresh shader, so its 32
-slots are independent) or pass your own shader to `Material::custom`.
-A single scene with one Material covers the typical case. The per-
-shader semantic is what lets `Scene::add(&light)` propagate through
-every Pass that renders the Scene without re-attaching.
+The device sets the cap. A device with storage buffers in fragment
+shaders, as on WebGPU, Vulkan, Metal and DirectX 12, takes as many
+lights as its largest storage buffer binding holds: about two million at
+the common 128 MiB. WebGL2 and native OpenGL take the lights through a
+uniform block, so the cap is what the device's largest uniform block
+holds, from 253 lights in 16 KiB up to 1,021.
+
+Past the cap, `pass.add(&light)` returns
+`PassError::LightCapReached { cap }`, and so does adding a `Model` whose
+shader would take more lights than that when it joins the pass. Lights
+added before the renderer opened a device are checked at render, which
+returns `RendererError::PassError` with the same error.
+
+### Lights bind to the shader, not the Pass
+
+Each shader keeps its own list of lights, and the cap applies to that
+list. Two Passes that share a Material, and so its shader, share its
+lights:
+
+- Adding the same `Light` to Pass A and Pass B lists it once on the
+  shared shader. Both Passes render with it.
+- Adding one `Light` to Pass A and another to Pass B lists both on the
+  shared shader, so **both lights illuminate both Passes**. Think of a
+  Material as the lighting model and the Passes as views into the same
+  lit world.
+
+For independent lighting setups, build a separate Material per scene
+(each `Material::pbr()` makes a new shader with its own list) or pass
+your own shader to `Material::custom`. One scene with one Material
+covers the typical case, and the shared list is what lets
+`Scene::add(&light)` reach every Pass that renders the Scene.
 
 ## Constructors
 

@@ -113,7 +113,7 @@ impl GltfSource {
     /// Toggle `KHR_lights_punctual` light-node instantiation. Default `true`;
     /// pass `false` when the consumer brings its own [`Light`](crate::Light)
     /// rig (cursor lighting, animated key/fill, …) and the embedded lights
-    /// would compete for the same `lights.lights[..]` slots.
+    /// would only add to it.
     pub fn lights(mut self, on: bool) -> Self {
         self.options.lights = on;
         self
