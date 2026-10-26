@@ -28,6 +28,7 @@ pub(crate) mod builtins;
 
 mod platform;
 
+use crate::renderer::RenderContext;
 use crate::{PassObject, Renderable, Shader, ShaderError};
 
 #[derive(Clone, Debug)]
@@ -233,10 +234,10 @@ pub(crate) struct MeshObject {
     aabb_min: RwLock<glam::Vec3>,
     aabb_max: RwLock<glam::Vec3>,
 
-    // GPU resources (created lazily)
+    /// GPU buffers on the device that drew the mesh last, created lazily.
     gpu: RwLock<Option<GpuStreams>>,
 
-    // Cache for ensure_gpu results
+    /// The last `vertex_buffers` result, for the device `gpu` lives on.
     gpu_cache: RwLock<Option<(VertexBuffers, DrawCounts)>>,
     cache_valid: RwLock<bool>,
 }
@@ -284,8 +285,12 @@ impl AttributeTypes {
     }
 }
 
+/// A mesh's buffers on the device of one `Renderer`. Another `Renderer`
+/// that draws the mesh uploads buffers of its own in their place.
 #[derive(Debug)]
 struct GpuStreams {
+    /// The `RenderContext::id` of the context whose device holds the buffers.
+    owner: u64,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     instance_buffer_len: u32,
@@ -522,19 +527,25 @@ impl MeshObject {
     }
 
     /// Get Vertex Buffers and Draw counts for this mesh,
-    /// creating or updating GPU resources as needed.
+    /// creating or updating GPU resources on the device of `context` as needed.
+    /// Buffers on another context's device give way to new ones.
     pub(crate) fn vertex_buffers(
         &self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        context: &RenderContext,
     ) -> Result<(VertexBuffers, DrawCounts), MeshError> {
-        if *self.cache_valid.read()
+        let owned = self
+            .gpu
+            .read()
+            .as_ref()
+            .is_some_and(|gpu| gpu.owner == context.id);
+        if owned
+            && *self.cache_valid.read()
             && let Some(cached) = self.gpu_cache.read().as_ref()
         {
             return Ok(cached.clone());
         }
 
-        let result = self.upload_vertex_buffers(device, queue)?;
+        let result = self.upload_vertex_buffers(context)?;
 
         *self.gpu_cache.write() = Some(result.clone());
         *self.cache_valid.write() = true;
@@ -544,9 +555,9 @@ impl MeshObject {
 
     fn upload_vertex_buffers(
         &self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        context: &RenderContext,
     ) -> Result<(VertexBuffers, DrawCounts), MeshError> {
+        let (device, queue) = (&context.device, &context.queue);
         // Capture dirty flags before packing; ensure_packed() clears them
         let was_dirty_v = *self.dirty_vertices.read();
         let was_dirty_i = *self.dirty_instances.read();
@@ -570,10 +581,13 @@ impl MeshObject {
         // Create or grow buffers
         let mut gpu = self.gpu.write();
 
-        // Decide whether we need to recreate GPU buffers
+        // Decide whether we need to recreate GPU buffers. Buffers on
+        // another device can't draw here, so they give way to new ones.
         let mut need_new = match gpu.as_ref() {
             None => true,
-            Some(g) => g.instance_buffer_len as usize != idx.len() || was_dirty_v,
+            Some(g) => {
+                g.owner != context.id || g.instance_buffer_len as usize != idx.len() || was_dirty_v
+            }
         };
 
         if let Some(g) = gpu.as_ref() {
@@ -622,6 +636,7 @@ impl MeshObject {
             };
 
             gpu.replace(GpuStreams {
+                owner: context.id,
                 vertex_buffer,
                 index_buffer,
                 instance_buffer_len: idx.len() as u32,
@@ -1000,9 +1015,8 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
             let (device, queue) = crate::renderer::platform::all::request_device(&adapter)
                 .await
                 .expect("device");
-            mesh.object
-                .vertex_buffers(&device, &queue)
-                .expect("buffers");
+            let context = RenderContext::new(device, queue);
+            mesh.object.vertex_buffers(&context).expect("buffers");
             assert!(*mesh.object.cache_valid.read());
 
             let second = crate::Shader::new(wgsl).expect("shader");
@@ -1054,27 +1068,28 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
             let (device, queue) = crate::renderer::platform::all::request_device(&adapter)
                 .await
                 .expect("device");
+            let context = RenderContext::new(device, queue);
 
             // Without override, instance_count == 2 (matches buffer)
-            let (_bufs, counts) = mesh.object.vertex_buffers(&device, &queue).expect("vb");
+            let (_bufs, counts) = mesh.object.vertex_buffers(&context).expect("vb");
             assert_eq!(counts.instance_count, 2);
 
             // With override, instance_count == 5
             mesh.set_instance_count(5);
-            let (_bufs2, counts2) = mesh.object.vertex_buffers(&device, &queue).expect("vb2");
+            let (_bufs2, counts2) = mesh.object.vertex_buffers(&context).expect("vb2");
             assert_eq!(counts2.instance_count, 5);
 
             // Adding an instance auto-clears the override (otherwise the GPU would
             // draw past the actual buffer end and read garbage). count falls back
             // to the new buffer length (3).
             mesh.add_instance(Instance::new().set("id", 8u32));
-            let (_bufs3, counts3) = mesh.object.vertex_buffers(&device, &queue).expect("vb3");
+            let (_bufs3, counts3) = mesh.object.vertex_buffers(&context).expect("vb3");
             assert_eq!(counts3.instance_count, 3);
 
             // clear_instances resets everything: empty buffer + no override → 1.
             mesh.set_instance_count(99);
             mesh.clear_instances();
-            let (_bufs4, counts4) = mesh.object.vertex_buffers(&device, &queue).expect("vb4");
+            let (_bufs4, counts4) = mesh.object.vertex_buffers(&context).expect("vb4");
             assert_eq!(counts4.instance_count, 1);
         });
     }

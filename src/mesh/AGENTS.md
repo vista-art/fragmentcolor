@@ -9,7 +9,8 @@ Schema & packing
 - Maintain GPU buffers with caching and dirty flags. Recording a new type resets the schema that lists it, marks its stream dirty and invalidates the cache; an attach that records nothing keeps the packed bytes and GPU buffers.
 
 GPU buffers
-- `vertex_buffers(device, queue)` must create / update and cache GPU buffers; avoid re-allocating unless a dirty flag demands it.
+- `vertex_buffers(context)` must create / update and cache GPU buffers; avoid re-allocating unless a dirty flag demands it.
+- The buffers belong to one `RenderContext` at a time (`GpuStreams::owner`, its `id`). Another context gets buffers of its own, uploaded from the packed bytes, so a mesh draws with any `Renderer`.
 - Instance buffers are optional; `instance_count` can be overridden to drive non-instanced draws.
 
 Validation contract

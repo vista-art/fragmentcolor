@@ -806,6 +806,9 @@ struct ComputePipelineKey {
 pub(crate) struct RenderContext {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
+    /// Tells this context from every other one, so a mesh knows which device its
+    /// buffers live on. wgpu compares the devices of two instances by an index both reuse.
+    pub(crate) id: u64,
     /// The adapter the device came from. A texture checks its format and copies
     /// against what the adapter reports, since GLES and WebGL2 take less than WebGPU.
     pub(crate) adapter: Option<wgpu::Adapter>,
@@ -921,7 +924,8 @@ impl PbrDefaults {
 
 impl RenderContext {
     /// Creates a new Context with the given device and queue.
-    fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
+    pub(crate) fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
+        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
         let buffer_pool = UniformBufferPool::new("Uniform Buffer Pool", &device);
         let storage_pool = StorageBufferPool::new("Storage Buffer Pool", &device);
         let readback_pool = ReadbackBufferPool::new("Readback Buffer Pool", 8);
@@ -933,6 +937,7 @@ impl RenderContext {
         RenderContext {
             device,
             queue,
+            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             adapter: None,
 
             render_pipelines: Arc::default(),
@@ -1201,7 +1206,7 @@ impl RenderContext {
             let shader_ptr = Arc::as_ptr(&shader) as usize;
             let mut batched = Vec::with_capacity(meshes.len());
             for mesh in meshes.iter() {
-                let (buffers, counts) = mesh.vertex_buffers(&self.device, &self.queue)?;
+                let (buffers, counts) = mesh.vertex_buffers(self)?;
                 let models = overrides.get(&(shader_ptr, Arc::as_ptr(mesh) as usize));
                 let own = buffers.instance_buffer.as_ref();
                 let instances =
@@ -1233,7 +1238,7 @@ impl RenderContext {
     ) -> Result<Option<VertexLayouts>, RendererError> {
         if let Some(first) = meshes.first() {
             // Derive the schemas (and pack the buffers) before reading the layouts.
-            first.vertex_buffers(&self.device, &self.queue)?;
+            first.vertex_buffers(self)?;
             return vertex_buffer_layouts(shader, first.as_ref());
         }
         require_mesh(shader)?;
@@ -2054,7 +2059,7 @@ impl RenderContext {
                     }
                     current_shader_ptr = Some(draw.shader_ptr);
                 }
-                let (refs, counts) = draw.mesh.vertex_buffers(&self.device, &self.queue)?;
+                let (refs, counts) = draw.mesh.vertex_buffers(self)?;
                 if counts.index_count == 0 {
                     continue;
                 }

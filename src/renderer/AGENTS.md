@@ -71,7 +71,7 @@ Lights (`lights.rs`, `lights/grid.rs`, `light_binning.wgsl`)
 - A storage root packs the lights without a range first, each part in attach order. The older `LightArray` packs them in attach order.
 - The bind loop binds each lit shader's light buffers whole, with `size: None`, before the reflected uniforms. Light root layout entries are visible to `FRAGMENT`, plus `VERTEX` when the vertex entry reads a root, and the push-constant fallback group sits past the highest reflected or light group.
 - The binning pipeline builds once per context inside `validate`; a native failure isn't cached. CPU-side math in `lights/grid.rs` mirrors the WGSL, and `constants_match` keeps the grid constants and struct offsets of the three WGSL files in step with Rust.
-- Mesh buffers belong to the device that drew the mesh first, so a GPU test that compares renderers builds a new pass for each one.
+- A mesh keeps buffers for the context that drew it last, keyed by `RenderContext::id`, and a context that finds another's buffers uploads its own. wgpu compares the devices of two instances by an index both reuse, so the id tells contexts apart.
 
 Mobile uniffi path
 - Methods on `Renderer` that need to be uniffi-exported live in `platform/mobile/`; keep them concrete-typed (uniffi cannot marshal `impl Trait`).
