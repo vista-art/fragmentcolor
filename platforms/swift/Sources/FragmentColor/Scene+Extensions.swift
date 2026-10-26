@@ -40,7 +40,7 @@ extension Scene {
     @discardableResult
     @_disfavoredOverload
     public func ambient(_ color: [Double]) throws -> Scene {
-        try ambient(color: color.map { Float($0) })
+        try ambient(color: readFloats(color, "Scene.ambient"))
     }
 
     /// `Scene.load("path/to/model.glb")` — unlabeled path overload matching

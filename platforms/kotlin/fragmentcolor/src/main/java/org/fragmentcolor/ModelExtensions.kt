@@ -36,11 +36,11 @@ fun Model.translate(offset: FloatArray) {
 
 @JvmName("translateDoubles")
 fun Model.translate(offset: List<Double>) {
-    translate(offset.map { it.toFloat() })
+    translate(readFloats(offset, "Model.translate"))
 }
 
 fun Model.translate(offset: DoubleArray) {
-    translate(offset.map { it.toFloat() })
+    translate(readFloats(offset, "Model.translate"))
 }
 
 fun Model.rotate(axis: FloatArray, radians: Float) {
@@ -49,11 +49,11 @@ fun Model.rotate(axis: FloatArray, radians: Float) {
 
 @JvmName("rotateDoubles")
 fun Model.rotate(axis: List<Double>, radians: Double) {
-    rotate(axis.map { it.toFloat() }, radians.toFloat())
+    rotate(readFloats(axis, "Model.rotate: axis"), radians.toFloat())
 }
 
 fun Model.rotate(axis: DoubleArray, radians: Double) {
-    rotate(axis.map { it.toFloat() }, radians.toFloat())
+    rotate(readFloats(axis, "Model.rotate: axis"), radians.toFloat())
 }
 
 fun Model.scale(factor: FloatArray) {
@@ -62,9 +62,9 @@ fun Model.scale(factor: FloatArray) {
 
 @JvmName("scaleDoubles")
 fun Model.scale(factor: List<Double>) {
-    scale(factor.map { it.toFloat() })
+    scale(readFloats(factor, "Model.scale"))
 }
 
 fun Model.scale(factor: DoubleArray) {
-    scale(factor.map { it.toFloat() })
+    scale(readFloats(factor, "Model.scale"))
 }

@@ -312,6 +312,20 @@ func byteData(_ bytes: [Int], _ method: String) throws -> Data {
     })
 }
 
+/// Each number of a color or vector as a `Float`, the rule every binding shares.
+/// Throws for NaN, an infinity, or a finite number past the `Float` range.
+func readFloats(_ values: [Double], _ label: String) throws -> [Float] {
+    try values.enumerated().map { index, value in
+        let float = Float(value)
+        guard float.isFinite else {
+            throw FragmentColorError.Render(
+                "\(label): item \(index) must be a finite number that fits a 32-bit float, got \(value)"
+            )
+        }
+        return float
+    }
+}
+
 /// A URL input for `http(s)`, otherwise a file path.
 private func pathInput(_ path: String) -> TextureInputMobile {
     path.hasPrefix("http://") || path.hasPrefix("https://") ? .url(path) : .path(path)
