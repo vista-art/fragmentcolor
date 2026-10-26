@@ -18,6 +18,9 @@ pub enum ShaderError {
     WgslError(#[from] naga::back::wgsl::Error),
     #[error("WGSL Parse error: {0}")]
     WgslParseError(#[from] naga::front::wgsl::ParseError),
+    /// A type whose layout naga can't compute, such as one past its size limit.
+    #[error("Layout error: {0}")]
+    LayoutError(#[from] naga::proc::LayoutError),
     #[error("GLSL Validation error: {0}")]
     GlslValidationError(#[from] Box<naga::WithSpan<naga::valid::ValidationError>>),
     #[error("GLSL Parse errors: {0}")]
