@@ -2172,8 +2172,10 @@ class Scene:
         When no single accessor is to blame, it names the mesh and the primitive.
 
         A camera whose values build no finite matrix, such as a `yfov` of 0 or a
-        camera node scaled to zero, returns `SceneLoadError::Camera`. Load with
-        `cameras(false)` to skip the file's cameras.
+        camera node scaled to zero, returns `SceneLoadError::Camera`, which names
+        the camera. Load with `cameras(false)` to skip the file's cameras. A
+        perspective camera without `zfar` asks for an infinite projection, and the
+        loader gives it a far plane 10 million times its `znear`.
 
         ## Skipping embedded cameras and lights
 

@@ -204,8 +204,11 @@ pub enum SceneLoadError {
     Material(#[from] crate::ShaderError),
     #[error("invalid glTF data: {0}")]
     Invalid(String),
-    #[error("glTF camera: {0}. Load with cameras(false) to skip the file's cameras")]
-    Camera(#[from] crate::scene::CameraError),
+    #[error("glTF camera {index}: {source}. Load with cameras(false) to skip the file's cameras")]
+    Camera {
+        index: usize,
+        source: crate::scene::CameraError,
+    },
 }
 
 /// Entry point invoked by `Scene::load`. Dispatches on the format tag.
@@ -988,31 +991,36 @@ fn decode_image(image: &gltf::image::Data) -> Result<image::RgbaImage, SceneLoad
 /// world matrix gives the eye position + view orientation; the camera's
 /// projection comes from the glTF camera projection block.
 fn build_camera(gltf_camera: &gltf::Camera<'_>, world: Mat4) -> Result<Camera, SceneLoadError> {
-    let (near, far) = match gltf_camera.projection() {
-        // glTF's zfar is optional for a perspective camera; map "infinite"
-        // to a large finite value the depth buffer can still represent.
-        gltf::camera::Projection::Perspective(p) => (p.znear(), p.zfar().unwrap_or(1.0e6)),
-        gltf::camera::Projection::Orthographic(o) => (o.znear(), o.zfar()),
+    let index = gltf_camera.index();
+    let camera_err = |source| SceneLoadError::Camera { index, source };
+    let (near, zfar) = match gltf_camera.projection() {
+        gltf::camera::Projection::Perspective(p) => (p.znear(), p.zfar()),
+        gltf::camera::Projection::Orthographic(o) => (o.znear(), Some(o.zfar())),
     };
     // A Camera takes far < near as reverse-Z, but glTF requires zfar > znear.
-    if far <= near {
+    if let Some(far) = zfar
+        && far <= near
+    {
         return Err(SceneLoadError::Invalid(format!(
-            "glTF camera {} has zfar {far} at or before znear {near}",
-            gltf_camera.index()
+            "glTF camera {index} has zfar {far} at or before znear {near}"
         )));
     }
+    // Only a perspective camera may leave zfar out, which asks for an infinite
+    // projection. A far plane 10 million times znear stands in for it: always
+    // past znear, and 1e6 for the usual znear of 0.1.
+    let far = zfar.unwrap_or(near * 1.0e7);
     let camera = match gltf_camera.projection() {
         gltf::camera::Projection::Perspective(p) => {
             // glTF's aspectRatio is optional; fall back to 1.0 (a common
             // default that gets overridden when the user retargets to a
             // specific render target).
             let aspect = p.aspect_ratio().unwrap_or(1.0);
-            Camera::perspective(p.yfov(), aspect, near, far)?
+            Camera::perspective(p.yfov(), aspect, near, far).map_err(camera_err)?
         }
         gltf::camera::Projection::Orthographic(o) => {
             let half_w = o.xmag();
             let half_h = o.ymag();
-            Camera::orthographic(-half_w, half_w, -half_h, half_h, near, far)?
+            Camera::orthographic(-half_w, half_w, -half_h, half_h, near, far).map_err(camera_err)?
         }
     };
 
@@ -1024,7 +1032,9 @@ fn build_camera(gltf_camera: &gltf::Camera<'_>, world: Mat4) -> Result<Camera, S
     let forward = rotation * Vec3::new(0.0, 0.0, -1.0);
     let up = rotation * Vec3::new(0.0, 1.0, 0.0);
     let target_v = translation + forward;
-    Ok(camera.look_at(eye, target_v.into(), up.into())?)
+    camera
+        .look_at(eye, target_v.into(), up.into())
+        .map_err(camera_err)
 }
 
 /// Lift a `KHR_lights_punctual` node into the unified [`Light`] type and
@@ -1165,6 +1175,8 @@ mod tests {
         build_glb(json, &bin)
     }
 
+    const CAMERAS: &str = r#""cameras":[{"type":"perspective","perspective":{"aspectRatio":1.5,"yfov":1.0,"znear":0.1,"zfar":100.0}}]"#;
+
     const DIRECTIONAL_LIGHT: &str =
         r#"{"type":"directional","color":[1.0,0.95,0.9],"intensity":2.0}"#;
 
@@ -1177,11 +1189,13 @@ mod tests {
         );
     }
 
-    /// Load a variant of the camera file and expect `SceneLoadError::Camera`.
-    fn assert_camera_error(json: &str) {
+    /// Load a variant of the camera file and expect `SceneLoadError::Camera`
+    /// with a message that holds `needle`.
+    fn assert_camera_error(json: &str, needle: &str) {
         match Scene::load(build_camera_light_glb(json)) {
-            Err(SceneLoadError::Camera(error)) => {
-                assert!(error.to_string().contains("Camera::"), "{error}")
+            Err(error @ SceneLoadError::Camera { .. }) => {
+                let message = error.to_string();
+                assert!(message.contains(needle), "{message:?} lacks {needle:?}")
             }
             Err(other) => panic!("expected SceneLoadError::Camera, got {other:?}"),
             Ok(_) => panic!("expected SceneLoadError::Camera, got a Scene"),
@@ -1190,14 +1204,37 @@ mod tests {
 
     #[test]
     fn load_refuses_a_camera_with_no_field_of_view() {
-        assert_camera_error(&CAMERA_LIGHT_JSON.replace(r#""yfov":1.0"#, r#""yfov":0.0"#));
+        assert_camera_error(
+            &CAMERA_LIGHT_JSON.replace(r#""yfov":1.0"#, r#""yfov":0.0"#),
+            "glTF camera 0: Camera::perspective",
+        );
     }
 
     #[test]
     fn load_refuses_a_camera_node_with_zero_scale() {
         let json =
             CAMERA_LIGHT_JSON.replace(r#"{"camera":0}"#, r#"{"camera":0,"scale":[0.0,0.0,0.0]}"#);
-        assert_camera_error(&json);
+        assert_camera_error(&json, "glTF camera 0: Camera::look_at");
+    }
+
+    #[test]
+    fn load_names_the_camera_at_fault() {
+        // Camera 0 is fine; the node points at camera 1, whose yfov is 0.
+        let cameras = r#""cameras":[{"type":"perspective","perspective":{"aspectRatio":1.5,"yfov":1.0,"znear":0.1,"zfar":100.0}},{"type":"perspective","perspective":{"yfov":0.0,"znear":0.1}}]"#;
+        let json = CAMERA_LIGHT_JSON
+            .replace(CAMERAS, cameras)
+            .replace(r#"{"camera":0}"#, r#"{"camera":1}"#);
+        assert_camera_error(&json, "glTF camera 1: Camera::perspective");
+    }
+
+    #[test]
+    fn load_takes_a_camera_with_no_far_plane() {
+        // An absent zfar is an infinite projection, so a far near plane is fine.
+        let json = CAMERA_LIGHT_JSON.replace(r#""znear":0.1,"zfar":100.0"#, r#""znear":2000000.0"#);
+        let scene = Scene::load(build_camera_light_glb(&json)).expect("load");
+        let cameras = scene.cameras();
+        let view_proj = glam::Mat4::from_cols_array_2d(&cameras[0].view_proj());
+        assert!(view_proj.is_finite(), "{view_proj:?}");
     }
 
     #[test]
