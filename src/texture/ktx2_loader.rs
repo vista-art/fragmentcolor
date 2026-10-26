@@ -120,7 +120,8 @@ pub(crate) fn vk_format_to_wgpu(format: VkFormat) -> Option<wgpu::TextureFormat>
 ///   every other texture takes, rather than inside wgpu validation.
 ///
 /// Mipmap chain: every level present in the file is uploaded as-is. We do not
-/// generate additional mips on top of the file's chain.
+/// generate additional mips on top of the file's chain. A file that lists more
+/// levels than a chain down to 1x1 holds returns `TextureError::InvalidInput`.
 pub(crate) fn from_ktx2_bytes(
     context: &RenderContext,
     bytes: &[u8],
@@ -180,11 +181,14 @@ pub(crate) fn from_ktx2_bytes(
         ));
     }
 
-    // Honor `level_count = 0` (file says "regenerate the chain"): we treat that
-    // as "the file ships level 0 only" and synthesize the rest if the format is
-    // mip-friendly. For now we just upload what's there — if we want resampling
-    // here later, dispatch to `write_image_levels` like the JPEG/PNG path.
-    let stored_levels = level_count.min(mip_level_count_for(width, height));
+    // A chain ends at 1x1, so a file can't hold more levels than that.
+    let most = mip_level_count_for(width, height);
+    if level_count > most {
+        return Err(TextureError::InvalidInput(format!(
+            "a {width}x{height} KTX2 file holds at most {most} mip levels, got {level_count}"
+        )));
+    }
+    let stored_levels = level_count;
 
     let size = wgpu::Extent3d {
         width,
@@ -423,6 +427,33 @@ mod tests {
                 ),
                 "a 6x6 BC7 file should be refused before wgpu"
             );
+        });
+    }
+
+    // Story: a KTX2 file that lists more mip levels than its size has is refused,
+    // where the extra levels were dropped without a word.
+    #[test]
+    fn refuses_more_levels_than_the_size_has() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let levels = [16, 4, 1, 1].map(|texels| vec![0; texels * 4]).to_vec();
+            let bytes = Ktx2Test {
+                format: VkFormat::R8G8B8A8_UNORM,
+                width: 4,
+                height: 4,
+                levels,
+            }
+            .build();
+            let result = renderer
+                .create_texture(crate::texture::TextureData::Ktx2Bytes(bytes))
+                .await;
+            let message = match result {
+                Err(crate::RendererError::TextureError(TextureError::InvalidInput(message))) => {
+                    message
+                }
+                other => panic!("expected InvalidInput, got {other:?}"),
+            };
+            assert!(message.contains("at most 3 mip levels, got 4"), "{message}");
         });
     }
 
