@@ -238,10 +238,21 @@ internal fun readFloats(values: List<Double>, label: String): List<Float> =
         val float = value.toFloat()
         if (!float.isFinite()) {
             throw FragmentColorException.Render(
-                "$label: item $index must be a finite number that fits a 32-bit float, got $value",
+                "$label: item $index must be a finite number that fits a 32-bit float, got ${showNumber(value)}",
             )
         }
         float
+    }
+
+/**
+ * The number as the shared Rust message prints it: `NaN`, `inf`, `-inf`, or `1e39`.
+ * Only those reach the message, since every other Double fits a Float.
+ */
+internal fun showNumber(value: Double): String =
+    when {
+        value.isNaN() -> "NaN"
+        value.isInfinite() -> if (value < 0) "-inf" else "inf"
+        else -> value.toString().replace(".0E", "E").replace("E", "e")
     }
 
 internal fun readFloats(values: DoubleArray, label: String): List<Float> = readFloats(values.toList(), label)

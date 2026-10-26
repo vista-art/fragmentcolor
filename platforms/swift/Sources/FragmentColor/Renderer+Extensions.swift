@@ -319,11 +319,19 @@ func readFloats(_ values: [Double], _ label: String) throws -> [Float] {
         let float = Float(value)
         guard float.isFinite else {
             throw FragmentColorError.Render(
-                "\(label): item \(index) must be a finite number that fits a 32-bit float, got \(value)"
+                "\(label): item \(index) must be a finite number that fits a 32-bit float, got \(showNumber(value))"
             )
         }
         return float
     }
+}
+
+/// The number as the shared Rust message prints it: `NaN`, `inf`, `-inf`, or `1e39`.
+/// Only those reach the message, since every other Double fits a Float.
+func showNumber(_ value: Double) -> String {
+    if value.isNaN { return "NaN" }
+    if value.isInfinite { return value < 0 ? "-inf" : "inf" }
+    return "\(value)".replacingOccurrences(of: "e+", with: "e")
 }
 
 /// A URL input for `http(s)`, otherwise a file path.

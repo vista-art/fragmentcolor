@@ -1,4 +1,6 @@
-use crate::texture::{js_to_texture_bytes, read_format, read_texture_input, read_usage};
+use crate::texture::{
+    TextureError, js_to_texture_bytes, read_format, read_texture_input, read_usage,
+};
 use crate::{
     Mesh, Pass, PassObject, Renderable, Renderer, RendererError, Scene, Shader, Size, Texture,
     TextureData, TextureTarget, target::CanvasTarget,
@@ -8,6 +10,7 @@ use lsp_doc::lsp_doc;
 use std::sync::Arc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::future_to_promise;
 
 pub enum Canvas {
     Html(web_sys::HtmlCanvasElement),
@@ -160,18 +163,22 @@ impl Renderer {
         self.unregister_texture(id)
     }
 
-    #[wasm_bindgen(js_name = "readTexture")]
+    // The readbacks and load are plain functions, so each call takes its start
+    // before it returns the promise, whose future first runs on a later microtask.
+    #[wasm_bindgen(js_name = "readTexture", unchecked_return_type = "Promise<Uint8Array>")]
     #[lsp_doc("docs/api/core/renderer/read_texture.md")]
-    pub async fn read_texture_js(
-        &self,
-        texture_id: &JsValue,
-    ) -> Result<js_sys::Uint8Array, JsError> {
-        let id = crate::texture::js_to_texture_id(texture_id)?;
-        let bytes = self
-            .read_texture(id)
-            .await
-            .map_err(RendererError::into_js)?;
-        Ok(js_sys::Uint8Array::from(bytes.as_slice()))
+    pub fn read_texture_js(&self, texture_id: &JsValue) -> js_sys::Promise {
+        let start = self.start();
+        let renderer = self.share();
+        let id = crate::texture::js_to_texture_id(texture_id);
+        future_to_promise(async move {
+            let id = id.map_err(TextureError::into_js)?;
+            let bytes = renderer
+                .read_texture_from(id, start)
+                .await
+                .map_err(RendererError::into_js)?;
+            Ok(js_sys::Uint8Array::from(bytes.as_slice()).into())
+        })
     }
 
     #[wasm_bindgen(js_name = "createExternalTexture")]
@@ -183,31 +190,41 @@ impl Renderer {
         self.create_external_texture(video)
     }
 
-    #[wasm_bindgen(js_name = "load")]
+    #[wasm_bindgen(js_name = "load", unchecked_return_type = "Promise<void>")]
     #[lsp_doc("docs/api/core/renderer/load.md")]
-    pub async fn load_js(
+    pub fn load_js(
         &self,
         #[wasm_bindgen(
             unchecked_param_type = "Shader | Pass | Mesh | Scene | Array<Shader | Pass | Mesh | Scene>"
         )]
         renderable: &JsValue,
-    ) -> Result<(), JsError> {
-        let renderables = RenderableList::read(renderable, "Renderer.load")?;
-        self.load(&renderables)
-            .await
-            .map_err(RendererError::into_js)
+    ) -> js_sys::Promise {
+        let start = self.start();
+        let renderer = self.share();
+        let renderables = RenderableList::read(renderable, "Renderer.load");
+        future_to_promise(async move {
+            let renderables = renderables?;
+            renderer
+                .load_from(&renderables, start)
+                .await
+                .map_err(RendererError::into_js)?;
+            Ok(JsValue::UNDEFINED)
+        })
     }
 
-    #[wasm_bindgen(js_name = "readStorage")]
+    #[wasm_bindgen(js_name = "readStorage", unchecked_return_type = "Promise<Uint8Array>")]
     #[lsp_doc("docs/api/core/renderer/read_storage.md")]
-    pub async fn read_storage_js(
-        &self,
-        shader: &Shader,
-        binding: String,
-    ) -> Result<Vec<u8>, JsError> {
-        self.read_storage(shader, &binding)
-            .await
-            .map_err(RendererError::into_js)
+    pub fn read_storage_js(&self, shader: &Shader, binding: String) -> js_sys::Promise {
+        let start = self.start();
+        let renderer = self.share();
+        let shader = shader.clone();
+        future_to_promise(async move {
+            let bytes = renderer
+                .read_storage_from(&shader, &binding, start)
+                .await
+                .map_err(RendererError::into_js)?;
+            Ok(js_sys::Uint8Array::from(bytes.as_slice()).into())
+        })
     }
 
     #[wasm_bindgen(js_name = "render")]

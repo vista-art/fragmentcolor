@@ -138,6 +138,14 @@ class Healthcheck : ExampleCase() {
             val error = assertFailsWith<FragmentColorException> { call() }
             assertTrue(error.message.orEmpty().contains(label), "$label threw ${error.message}")
         }
+        // A Double item prints the way the shared Rust message prints it.
+        val shown = listOf(1e39 to "1e39", -1e39 to "-1e39", Double.NaN to "NaN", Double.POSITIVE_INFINITY to "inf")
+        for ((value, text) in shown) {
+            val error = assertFailsWith<FragmentColorException> {
+                Light.point(doubleArrayOf(value, 0.0, 0.0), doubleArrayOf(1.0, 1.0, 1.0))
+            }
+            assertTrue(error.toString().endsWith("got $text"), "$text printed as $error")
+        }
     }
 
     // Shader.set shapes each Kotlin value to the uniform's declared WGSL type.

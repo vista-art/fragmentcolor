@@ -357,7 +357,7 @@ class Renderer:
 
         A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. A shader without its mesh, an instance count past the mesh's instances, a shader or texture the device checks refuse, a target from another `Renderer`, a pass target that is missing, and a pass whose own target or compute dispatch fails its checks fail before `render` takes a frame, and the window keeps its last image.
 
-        JavaScript gets the GPU's errors late, because WebGPU reports them after `render` has returned. Each error logs a `console.error` when it lands, and the next `render` still throws the first one, as an `Error` with `kind`, `label` and `detail` properties, before doing any work. `load`, `readTexture`, `readStorage`, and `getImage` on a `Texture` or `TextureTarget` wait for the frames before them to report, so they throw a frame's error even when called right after it. A call that waits throws only the error of a frame rendered before it began: the error of a frame rendered while it waits stays for the next call. Only the first error to land throws, and only once; the ones that land after it, before a call takes it, only log. The label names the render pipeline, the compute pipeline, the light binning pipeline or the frame. A pipeline that failed stays in the cache until its error lands, and a frame that draws with it before then reports a frame error. Once the error lands, the pipeline leaves the cache. In a loop that renders each frame, the next `render` throws the error before doing any work, and the one after it builds the pipeline again and reports the same error.
+        JavaScript gets the GPU's errors late, because WebGPU reports them after `render` has returned. Each error logs a `console.error` when it lands, and the next `render` still throws the first one, as an `Error` with `kind`, `label` and `detail` properties, before doing any work. `load`, `readTexture`, `readStorage`, and `getImage` on a `Texture` or `TextureTarget` wait for the frames before them to report, so they throw a frame's error even when called right after it. A call that waits throws only the error of a frame rendered before it began: the error of a frame rendered while it waits, even one rendered in the same task right after the call, stays for the next call. Only the first error to land throws, and only once; the ones that land after it, before a call takes it, only log. The label names the render pipeline, the compute pipeline, the light binning pipeline or the frame. A pipeline that failed stays in the cache until its error lands, and a frame that draws with it before then reports a frame error. Once the error lands, the pipeline leaves the cache. In a loop that renders each frame, the next `render` throws the error before doing any work, and the one after it builds the pipeline again and reports the same error.
 
         Example:
 
@@ -2291,9 +2291,12 @@ class Scene:
         them:
 
         - a primitive drawn as points or lines
-        - a mesh attribute or index accessor with more elements than 32-bit indices
-          reach. On the web the glTF parser refuses any count past 32 bits first, so
-          there the file returns `SceneLoadError::Gltf`.
+        - an index accessor, or a mesh attribute the loader reads (`POSITION`,
+          `NORMAL`, `TANGENT`, `TEXCOORD_0`, `TEXCOORD_1` and `COLOR_0`), with more
+          elements than 32-bit indices reach. Attributes it doesn't read, such as
+          `JOINTS_0` or `COLOR_1`, aren't checked. On the web the glTF parser
+          refuses any count past 32 bits first, so there the file returns
+          `SceneLoadError::Gltf`.
         - a sparse `POSITION` or index accessor without a bufferView that spans more
           bytes than all of the file's buffers hold
 

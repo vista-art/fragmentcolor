@@ -94,11 +94,18 @@ impl ErrorSlot {
         }
     }
 
-    /// Waits until every scope opened before this call has landed, then returns
+    /// The ticket the next scope opens with. A call that reads it when it starts
+    /// waits for the scopes opened before it, and for none opened later.
+    /// A JS export reads it before it builds its promise (`Start::now`),
+    /// since the promise's future first runs on a later microtask.
+    pub(crate) fn mark(&self) -> u64 {
+        self.scopes.lock().next
+    }
+
+    /// Waits until every scope with a ticket below `before` has landed, then returns
     /// the error one of them stored, once. An error from a later scope stays for the next call.
     #[cfg(wasm)]
-    pub(crate) async fn settle(&self) -> Result<(), LateError> {
-        let before = self.scopes.lock().next;
+    pub(crate) async fn settle_from(&self, before: u64) -> Result<(), LateError> {
         for _ in 0..SETTLE_ROUNDS {
             if self.has_landed(before) {
                 break;
@@ -227,7 +234,7 @@ mod tests {
         let slot = ErrorSlot::default();
         let first = slot.open();
         let second = slot.open();
-        let before = slot.scopes.lock().next;
+        let before = slot.mark();
         let later = slot.open();
 
         // Act
@@ -249,7 +256,7 @@ mod tests {
         // Arrange
         let slot = ErrorSlot::default();
         let earlier = slot.open();
-        let before = slot.scopes.lock().next;
+        let before = slot.mark();
         let later = slot.open();
         slot.store(later, late("frame"));
 

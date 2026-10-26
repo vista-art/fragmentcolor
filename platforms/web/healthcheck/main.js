@@ -998,21 +998,29 @@ struct Data { values: array<f32, 4> };
       await throwsLate('readTexture right after a failed frame', () => renderer.readTexture(target.texture().id()));
       await succeeds('readTexture after the error was thrown', () => renderer.readTexture(target.texture().id()));
 
-      // readTexture waits once, for the frames rendered before it, and throws only their
-      // error. A frame that fails while it waits keeps its error for the next call.
-      await succeeds('render before readTexture', () => renderer.render(valid, target));
-      const reading = renderer.readTexture(target.texture().id());
-      await Promise.resolve();
-      await Promise.resolve();
-      await succeeds('render while readTexture waits', () => renderer.render(unfed, target));
-      const bytes = await succeeds('readTexture during a failed frame', () => reading);
+      // A call that waits throws only the error of a frame rendered before it began.
+      // A frame rendered right after the call, in the same task, keeps its error for the next call.
+      const keepsLaterErrors = async (label, call) => {
+        await succeeds(`render before ${label}`, () => renderer.render(valid, target));
+        const waiting = call();
+        renderer.render(unfed, target);
+        const result = await succeeds(`${label} during a failed frame`, () => waiting);
+        await throwsLate(`getImage after a frame that failed during ${label}`, () => target.getImage());
+        return result;
+      };
+      const bytes = await keepsLaterErrors('readTexture', () => renderer.readTexture(target.texture().id()));
       if (!(bytes instanceof Uint8Array) || bytes.length !== 8 * 8 * 4) {
         fail(`readTexture during a failed frame returned ${bytes}`);
       }
-      await throwsLate('getImage after a frame that failed during readTexture', () => target.getImage());
+      const image = await keepsLaterErrors('getImage', () => target.getImage());
+      if (!(image instanceof Uint8Array) || image.length !== 8 * 8 * 4) {
+        fail(`getImage during a failed frame returned ${image}`);
+      }
+      await keepsLaterErrors('load', () => renderer.load(valid));
 
       await succeeds('render of a storage shader', () => renderer.render(storage, target));
       await succeeds('readStorage', () => renderer.readStorage(storage, 'data'));
+      await keepsLaterErrors('readStorage', () => renderer.readStorage(storage, 'data'));
       renderer.render(unfed, target);
       await throwsLate('readStorage right after a failed frame', () => renderer.readStorage(storage, 'data'));
       await succeeds('readStorage after the error was thrown', () => renderer.readStorage(storage, 'data'));

@@ -36,6 +36,11 @@ pub enum CameraError {
         near: f32,
         far: f32,
     },
+    /// A glTF perspective camera without `zfar`, which has no far plane.
+    #[error(
+        "a perspective camera with no zfar needs finite values with 0 < yfov < π, a nonzero aspect ratio and a positive znear, got yfov {fovy}, aspect ratio {aspect}, znear {near}"
+    )]
+    InfinitePerspective { fovy: f32, aspect: f32, near: f32 },
     #[error(
         "Camera::orthographic needs finite planes with left != right, bottom != top and near != far, got left {left}, right {right}, bottom {bottom}, top {top}, near {near}, far {far}"
     )]
@@ -189,15 +194,9 @@ fn build_perspective(fovy: f32, aspect: f32, near: f32, far: f32) -> Result<Mat4
     require_finite(directx::perspective(fovy, aspect, near, far), error)
 }
 
-/// Build a perspective matrix with no far plane, refusing a lens that gives
-/// no finite one. Its error reports the missing far plane as infinity.
+/// Build a perspective matrix with no far plane, refusing a lens that gives no finite one.
 fn build_infinite_perspective(fovy: f32, aspect: f32, near: f32) -> Result<Mat4, CameraError> {
-    let error = CameraError::Perspective {
-        fovy,
-        aspect,
-        near,
-        far: f32::INFINITY,
-    };
+    let error = CameraError::InfinitePerspective { fovy, aspect, near };
     if !is_lens_valid(fovy, aspect, near) {
         return Err(error);
     }
