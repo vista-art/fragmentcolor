@@ -717,10 +717,8 @@ pub(crate) struct TextureObject {
 // platform-specific bindings live under texture/platform/{python,web}.rs
 
 impl TextureObject {
-    /// Create a texture with an explicit usage mask (e.g., storage textures).
-    /// Validates that the active device's enabled features cover `format`
-    /// when `usage` includes `TEXTURE_BINDING`; returns
-    /// [`TextureError::UnsupportedFormatForUsage`] if not.
+    /// Create a texture with an explicit usage mask, such as a storage texture.
+    /// It fails with a typed error when the device can't make `format` with `usage`.
     pub fn new(
         context: &RenderContext,
         size: wgpu::Extent3d,
@@ -728,7 +726,7 @@ impl TextureObject {
         usage: wgpu::TextureUsages,
         options: SamplerOptions,
     ) -> Result<Self, TextureError> {
-        check_format(context.device.features(), format, usage)?;
+        check_format(context, format, usage, dimension(size))?;
         let descriptor = Self::texture_descriptor("Generic Texture", size, format, usage, 1, 1); // @TODO mip_count, sample_count
         let inner = context.device.create_texture(&descriptor);
         let size = inner.size();
@@ -842,7 +840,7 @@ impl TextureObject {
         generate_mipmaps: bool,
         usage: wgpu::TextureUsages,
     ) -> Result<Self, TextureError> {
-        check_format(context.device.features(), format, usage)?;
+        check_format(context, format, usage, dimension(size))?;
         check_extent(&context.device.limits(), size, dimension(size))?;
         let bpp = bytes_per_pixel(format);
 
@@ -905,7 +903,7 @@ impl TextureObject {
             depth_or_array_layers: 1,
         };
         let format = format_override.unwrap_or_else(|| infer_format(image.color()));
-        check_format(context.device.features(), format, usage)?;
+        check_format(context, format, usage, dimension(size))?;
         check_extent(&context.device.limits(), size, dimension(size))?;
 
         let want_mips = generate_mipmaps && supports_cpu_mipmaps(format);
@@ -951,7 +949,7 @@ impl TextureObject {
         }
         let levels = chain.levels.as_slice();
         let format = chain.format;
-        check_format(context.device.features(), format, usage)?;
+        check_format(context, format, usage, wgpu::TextureDimension::D2)?;
         let bpp = bytes_per_pixel(format);
         if bpp == 0 {
             return Err(TextureError::CreateTextureError(format!(
@@ -1260,46 +1258,73 @@ pub(crate) fn supports_cpu_mipmaps(format: wgpu::TextureFormat) -> bool {
     )
 }
 
-/// Return the wgpu feature required to use `format` with `TEXTURE_BINDING`,
-/// if any. Returns `None` for formats that don't gate on a feature (the
-/// common 8-bit and float formats). The list mirrors the wgpu validation
-/// rules and grows as wgpu adds new format-feature pairings.
-pub(crate) fn format_feature(format: wgpu::TextureFormat) -> Option<wgpu::Features> {
-    use wgpu::TextureFormat as F;
-    match format {
-        F::R16Unorm
-        | F::Rg16Unorm
-        | F::Rgba16Unorm
-        | F::R16Snorm
-        | F::Rg16Snorm
-        | F::Rgba16Snorm => Some(wgpu::Features::TEXTURE_FORMAT_16BIT_NORM),
-        _ => None,
+/// What the device lets a texture of `format` do, the way wgpu checks a new texture.
+/// A backend below WebGPU, such as GLES or WebGL2, reports its own,
+/// and every other backend takes the WebGPU baseline for the device's features.
+pub(crate) fn format_features(
+    context: &RenderContext,
+    format: wgpu::TextureFormat,
+) -> wgpu::TextureFormatFeatures {
+    let features = context.device.features();
+    let reports = |adapter: &&wgpu::Adapter| {
+        let flags = adapter.get_downlevel_capabilities().flags;
+        features.contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
+            || !flags.contains(wgpu::DownlevelFlags::WEBGPU_TEXTURE_FORMAT_SUPPORT)
+    };
+    match context.adapter.as_ref().filter(reports) {
+        Some(adapter) => adapter.get_texture_format_features(format),
+        None => format.guaranteed_format_features(features),
     }
 }
 
-/// Fail-fast guard: if `usage` includes `TEXTURE_BINDING` and the active
-/// device doesn't have the wgpu feature required for `format`, return a
-/// typed error instead of letting `device.create_texture` produce a
-/// silently-invalid texture that detonates on first `create_view` /
-/// copy / sample. Skips the check when the texture isn't bindable as a
-/// sampled texture (the format-feature pairings only gate that usage).
-/// Called from every `TextureObject` constructor that takes a
-/// user-controlled format.
+/// Checks that the device makes a texture of `format` with `usage` and `dimension`,
+/// so a texture wgpu would refuse never reaches `device.create_texture`.
 pub(crate) fn check_format(
-    device_features: wgpu::Features,
+    context: &RenderContext,
     format: wgpu::TextureFormat,
     usage: wgpu::TextureUsages,
+    dimension: wgpu::TextureDimension,
 ) -> Result<(), TextureError> {
-    if !usage.contains(wgpu::TextureUsages::TEXTURE_BINDING) {
+    check_feature(context.device.features(), format)?;
+    let allowed = format_features(context, format).allowed_usages;
+    check_support(allowed, format, usage, dimension)
+}
+
+/// Checks that the device's `features` hold every feature `format` needs.
+pub(crate) fn check_feature(
+    features: wgpu::Features,
+    format: wgpu::TextureFormat,
+) -> Result<(), TextureError> {
+    let missing = format.required_features() - features;
+    if missing.is_empty() {
         return Ok(());
     }
-    if let Some(feature) = format_feature(format)
-        && !device_features.contains(feature)
-    {
-        return Err(TextureError::UnsupportedFormatForUsage {
-            format,
-            missing_feature: feature,
-        });
+    Err(TextureError::UnsupportedFormatForUsage {
+        format,
+        missing_feature: missing,
+    })
+}
+
+/// Checks `usage` against the usages `allowed` for `format`,
+/// and that a depth format makes a 2D texture, the only kind it has.
+pub(crate) fn check_support(
+    allowed: wgpu::TextureUsages,
+    format: wgpu::TextureFormat,
+    usage: wgpu::TextureUsages,
+    dimension: wgpu::TextureDimension,
+) -> Result<(), TextureError> {
+    let missing = usage - allowed;
+    if !missing.is_empty() {
+        let names: Vec<&str> = missing.iter_names().map(|(name, _)| name).collect();
+        return Err(TextureError::InvalidInput(format!(
+            "a {format:?} texture can't take the usage {}",
+            names.join(" | ")
+        )));
+    }
+    if format.is_depth_stencil_format() && dimension != wgpu::TextureDimension::D2 {
+        return Err(TextureError::InvalidInput(format!(
+            "a {format:?} texture has one layer, so its depth must be 1"
+        )));
     }
     Ok(())
 }
@@ -2196,76 +2221,70 @@ mod tests {
         });
     }
 
-    // Story: format_feature maps every 16-bit norm variant to
-    // TEXTURE_FORMAT_16BIT_NORM and leaves the common 8-bit / float formats
-    // unmapped (no feature gate). Pure-table function; no GPU required.
+    // Story: a format that needs a wgpu feature the device lacks is refused for
+    // any usage, with the typed error naming the missing feature. Pure, no GPU.
     #[test]
-    fn format_feature_covers_16bit_norms_only() {
-        for f in [
+    fn check_feature_names_the_missing_feature() {
+        let empty = wgpu::Features::empty();
+        let norm = wgpu::Features::TEXTURE_FORMAT_16BIT_NORM;
+        for format in [
             wgpu::TextureFormat::R16Unorm,
             wgpu::TextureFormat::Rg16Unorm,
             wgpu::TextureFormat::Rgba16Unorm,
-            wgpu::TextureFormat::R16Snorm,
-            wgpu::TextureFormat::Rg16Snorm,
-            wgpu::TextureFormat::Rgba16Snorm,
         ] {
-            assert_eq!(
-                format_feature(f),
-                Some(wgpu::Features::TEXTURE_FORMAT_16BIT_NORM),
-                "format {:?} should gate on TEXTURE_FORMAT_16BIT_NORM",
-                f,
-            );
+            match check_feature(empty, format) {
+                Err(TextureError::UnsupportedFormatForUsage {
+                    format: refused,
+                    missing_feature,
+                }) => {
+                    assert_eq!(refused, format);
+                    assert_eq!(missing_feature, norm);
+                }
+                other => panic!("expected UnsupportedFormatForUsage, got {other:?}"),
+            }
+            check_feature(norm, format).expect("with the feature");
         }
-        for f in [
-            wgpu::TextureFormat::R8Unorm,
+        for format in [
             wgpu::TextureFormat::Rgba8Unorm,
-            wgpu::TextureFormat::Rgba8UnormSrgb,
-            wgpu::TextureFormat::Rgba16Float,
             wgpu::TextureFormat::Rgba32Float,
+            wgpu::TextureFormat::Depth32Float,
         ] {
-            assert!(
-                format_feature(f).is_none(),
-                "format {:?} should not gate on a feature",
-                f,
-            );
+            check_feature(empty, format).expect("needs no feature");
         }
     }
 
-    // Story: check_format fires when the device is missing the
-    // required feature AND the usage mask includes TEXTURE_BINDING. Storage-
-    // only usage skips the check. Pure-table; no GPU required.
+    // Story: a usage the format can't take, such as storage on Depth32Float,
+    // Rgba8UnormSrgb or Bgra8Unorm, and a depth format with layers are refused
+    // with the error resize returns. Pure, against the WebGPU baseline.
     #[test]
-    fn check_format_fails_fast_when_feature_absent() {
-        let empty = wgpu::Features::empty();
-        let with_norm = wgpu::Features::TEXTURE_FORMAT_16BIT_NORM;
-        let bind_only = wgpu::TextureUsages::TEXTURE_BINDING;
-        let storage_only = wgpu::TextureUsages::STORAGE_BINDING;
-
-        // Bindable + missing feature → typed error carrying the wgpu format
-        // and the missing feature, so consumers can match on it.
-        let err = check_format(empty, wgpu::TextureFormat::R16Unorm, bind_only)
-            .expect_err("R16Unorm without TEXTURE_FORMAT_16BIT_NORM must fail");
-        match err {
-            TextureError::UnsupportedFormatForUsage {
-                format,
-                missing_feature,
-            } => {
-                assert_eq!(format, wgpu::TextureFormat::R16Unorm);
-                assert_eq!(missing_feature, wgpu::Features::TEXTURE_FORMAT_16BIT_NORM);
-            }
-            other => panic!("expected UnsupportedFormatForUsage, got {:?}", other),
+    fn check_support_refuses_what_the_format_cannot_take() {
+        let flat = wgpu::TextureDimension::D2;
+        let deep = wgpu::TextureDimension::D3;
+        let storage = wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING;
+        let sampled = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
+        let check = |format: wgpu::TextureFormat, usage, dimension| {
+            let allowed = format
+                .guaranteed_format_features(wgpu::Features::empty())
+                .allowed_usages;
+            check_support(allowed, format, usage, dimension)
+        };
+        for format in [
+            wgpu::TextureFormat::Depth32Float,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            wgpu::TextureFormat::Bgra8Unorm,
+            wgpu::TextureFormat::R8Unorm,
+        ] {
+            assert!(
+                matches!(check(format, storage, flat), Err(TextureError::InvalidInput(_))),
+                "{format:?} takes no storage"
+            );
+            check(format, sampled, flat).expect("every format samples");
         }
-
-        // Bindable + feature present → ok.
-        check_format(with_norm, wgpu::TextureFormat::R16Unorm, bind_only)
-            .expect("with feature should be ok");
-
-        // Format that doesn't gate on a feature → always ok.
-        check_format(empty, wgpu::TextureFormat::Rgba8Unorm, bind_only)
-            .expect("Rgba8Unorm should always be ok");
-
-        // Storage-only usage skips the gate (different validation rules apply).
-        check_format(empty, wgpu::TextureFormat::R16Unorm, storage_only)
-            .expect("storage-only usage should skip the binding gate");
+        check(wgpu::TextureFormat::Rgba8Unorm, storage, flat).expect("Rgba8Unorm stores");
+        check(wgpu::TextureFormat::Rgba8Unorm, sampled, deep).expect("a color format in 3D");
+        assert!(matches!(
+            check(wgpu::TextureFormat::Depth32Float, sampled, deep),
+            Err(TextureError::InvalidInput(_))
+        ));
     }
 }

@@ -203,8 +203,8 @@ pub(crate) fn from_ktx2_bytes(
         height,
         depth_or_array_layers: 1,
     };
-    crate::texture::check_format(context.device.features(), wgpu_format, usage)?;
     let dimension = wgpu::TextureDimension::D2;
+    crate::texture::check_format(context, wgpu_format, usage, dimension)?;
     crate::texture::check_extent(&context.device.limits(), size, dimension)?;
     // A compressed format stores whole blocks, so the size must hold a whole number of them.
     let (block_w, block_h) = wgpu_format.block_dimensions();

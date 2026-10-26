@@ -519,7 +519,9 @@ impl Renderer {
             let instance = self.instance().await;
             let adapter = platform::all::request_adapter(instance.as_ref(), surface).await?;
             let (device, queue) = platform::all::request_device(&adapter).await?;
-            let context = Arc::new(RenderContext::new(device, queue));
+            let mut context = RenderContext::new(device, queue);
+            context.adapter = Some(adapter.clone());
+            let context = Arc::new(context);
             let flags = adapter.get_downlevel_capabilities().flags;
             context.aligned_uniform_bindings.store(
                 !flags.contains(wgpu::DownlevelFlags::BUFFER_BINDINGS_NOT_16_BYTE_ALIGNED),
@@ -624,6 +626,9 @@ struct ComputePipelineKey {
 pub(crate) struct RenderContext {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
+    /// The adapter the device came from. A texture checks its format and copies
+    /// against what the adapter reports, since GLES and WebGL2 take less than WebGPU.
+    pub(crate) adapter: Option<wgpu::Adapter>,
 
     // Cache for RenderPipelines and ComputePipelines
     render_pipelines: DashMap<RenderPipelineKey, RenderPipeline>,
@@ -706,6 +711,7 @@ impl RenderContext {
         RenderContext {
             device,
             queue,
+            adapter: None,
 
             render_pipelines: DashMap::new(),
             compute_pipelines: DashMap::new(),

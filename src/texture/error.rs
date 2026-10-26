@@ -36,9 +36,8 @@ pub enum TextureError {
     #[error("Only a texture a pass can draw into resizes. Create it with RENDER_ATTACHMENT usage.")]
     FixedSize,
     /// The active device doesn't have the wgpu feature required to use the
-    /// requested format with the requested usage. Common case: `R16Unorm`
-    /// (and its Rg/Rgba/Snorm cousins) need
-    /// [`wgpu::Features::TEXTURE_FORMAT_16BIT_NORM`] for `TEXTURE_BINDING`.
+    /// requested format. Common case: `R16Unorm` (and its Rg/Rgba/Snorm
+    /// cousins) need [`wgpu::Features::TEXTURE_FORMAT_16BIT_NORM`].
     /// FragmentColor requests every feature the adapter advertises at
     /// device creation (see `request_device` in `renderer/platform/all.rs`),
     /// so the only path to this error is a device that genuinely doesn't
