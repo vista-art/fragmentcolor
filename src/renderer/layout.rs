@@ -5,9 +5,11 @@
 
 use super::PushMode;
 use super::lights::{self, LightPath};
-use crate::shader::{PushEntry, StorageEntry, Uniform, UniformData, lower_immediates};
+use crate::shader::{PushEntry, StorageEntry, Uniform, UniformData};
+use crate::shader::{create_validator, lower_immediates, write_layouts};
 use crate::texture::{TextureClass, TextureDim, TextureMeta, TextureScalarKind};
 use crate::{ShaderError, ShaderObject};
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::num::NonZeroU64;
 
@@ -261,6 +263,22 @@ pub(super) fn build_module(
         Some(PushMode::Fallback { group, bindings }) => lower_immediates(&module, *group, bindings),
         _ => module.into_owned(),
     })
+}
+
+/// The source a pipeline hands wgpu for `module`. On the browser's WebGPU (`writes_wgsl`),
+/// wgpu writes a module back to WGSL without `@size` and `@align`, so a module whose
+/// buffer structs set their layout with them goes as WGSL that keeps the layout.
+pub(super) fn pick_source(
+    module: naga::Module,
+    writes_wgsl: bool,
+) -> Result<wgpu::ShaderSource<'static>, ShaderError> {
+    if writes_wgsl {
+        let info = create_validator().validate(&module).map_err(Box::new)?;
+        if let Some(text) = write_layouts(&module, &info)? {
+            return Ok(wgpu::ShaderSource::Wgsl(Cow::Owned(text)));
+        }
+    }
+    Ok(wgpu::ShaderSource::Naga(Cow::Owned(module)))
 }
 
 /// Builds one layout for each group in `entries`, and an empty one for each lower group

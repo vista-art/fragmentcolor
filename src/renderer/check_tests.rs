@@ -184,7 +184,7 @@ fn stage_counts_follow_the_stages_that_use_each_binding() {
             )
         );
 
-        let half = (max + 1) / 2;
+        let half = (max + 1).div_ceil(2);
         let split = Shader::new(
             format!(
                 "{}{image}

@@ -7,7 +7,6 @@ use dashmap::mapref::entry::Entry;
 use dashmap::mapref::one::RefMut;
 use lsp_doc::lsp_doc;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
-use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::sync::Arc;
@@ -42,7 +41,7 @@ mod depth;
 use depth::DepthUse;
 mod layout;
 use layout::{Layout, build_module, create_bind_group_layouts, create_pipeline_layout};
-use layout::{plan_layout, read_immediate_size};
+use layout::{pick_source, plan_layout, read_immediate_size};
 pub(crate) mod background;
 mod external_texture;
 pub(crate) mod lights;
@@ -576,6 +575,8 @@ impl Renderer {
                 !flags.contains(wgpu::DownlevelFlags::BUFFER_BINDINGS_NOT_16_BYTE_ALIGNED),
                 Ordering::Relaxed,
             );
+            let browser = adapter.get_info().backend == wgpu::Backend::BrowserWebGpu;
+            context.writes_wgsl.store(browser, Ordering::Relaxed);
             let path = LightPath::pick(&adapter, &context.device);
             *context.light_path.write() = path;
             crate::shader::lower_light_cap(path.cap());
@@ -731,6 +732,10 @@ pub(crate) struct RenderContext {
     /// True on backends that reject uniform bindings not aligned to 16
     /// bytes (OpenGL, WebGL2); shaders then compile a padded module.
     aligned_uniform_bindings: AtomicBool,
+    /// True on the browser's WebGPU, where wgpu hands the browser WGSL that naga
+    /// writes without `@size` and `@align`. A shader whose buffer structs use them
+    /// then goes as WGSL that keeps its layout (`layout::pick_source`).
+    writes_wgsl: AtomicBool,
 
     // Persistent storage buffer registry: root name -> (buffer, span)
     storage_registry: DashMap<String, (wgpu::Buffer, u64)>,
@@ -844,6 +849,7 @@ impl RenderContext {
 
             textures: DashMap::new(),
             aligned_uniform_bindings: AtomicBool::new(false),
+            writes_wgsl: AtomicBool::new(false),
             storage_registry: DashMap::new(),
             checked: DashMap::new(),
             sample_count: AtomicU32::new(1),
@@ -1648,6 +1654,7 @@ impl RenderContext {
                         double_sided,
                         self.aligned_uniform_bindings.load(Ordering::Relaxed),
                         self.light_path(),
+                        self.writes_wgsl.load(Ordering::Relaxed),
                     )
                 },
             )?;
@@ -2013,7 +2020,8 @@ impl RenderContext {
             };
             let cached =
                 self.fetch_pipeline(&self.compute_pipelines, key, "compute pipeline", || {
-                    create_compute_pipeline(&self.device, shader, &layout)
+                    let writes_wgsl = self.writes_wgsl.load(Ordering::Relaxed);
+                    create_compute_pipeline(&self.device, shader, &layout, writes_wgsl)
                 })?;
             #[derive(Default)]
             struct BindGroupResources {
@@ -2628,17 +2636,18 @@ fn create_render_pipeline(
     double_sided: bool,
     pad_uniforms: bool,
     light_path: LightPath,
+    writes_wgsl: bool,
 ) -> Result<RenderPipeline, RendererError> {
     // Every CPU check comes before the first wgpu call, so a refusal builds nothing.
     check_output(shader, format)?;
     let vs_entry = find_entry(shader, naga::ShaderStage::Vertex)?;
     let fs_entry = find_entry(shader, naga::ShaderStage::Fragment)?;
     let module = build_module(shader, layout, pad_uniforms, light_path.uniform_lights())?;
-    let module = Cow::Owned(set_encoding(&module, format));
+    let source = pick_source(set_encoding(&module, format), writes_wgsl)?;
 
     let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Shader"),
-        source: wgpu::ShaderSource::Naga(module),
+        source,
     });
     let layouts = create_bind_group_layouts(device, &layout.entries());
     let immediate_size = read_immediate_size(layout.push.as_ref());
@@ -2716,16 +2725,18 @@ fn create_render_pipeline(
 }
 
 /// Builds the compute pipeline for `shader` from its `layout`.
+/// `writes_wgsl` is true on the browser's WebGPU, as `pick_source` takes it.
 fn create_compute_pipeline(
     device: &wgpu::Device,
     shader: &crate::ShaderObject,
     layout: &Layout,
+    writes_wgsl: bool,
 ) -> Result<ComputePipeline, RendererError> {
     let cs_entry = find_entry(shader, naga::ShaderStage::Compute)?;
-    let module = Cow::Owned(build_module(shader, layout, false, None)?);
+    let source = pick_source(build_module(shader, layout, false, None)?, writes_wgsl)?;
     let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Compute Shader"),
-        source: wgpu::ShaderSource::Naga(module),
+        source,
     });
     let layouts = create_bind_group_layouts(device, &layout.entries());
     let immediate_size = read_immediate_size(layout.push.as_ref());
