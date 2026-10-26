@@ -951,12 +951,16 @@ Camera and Light hold Arc-shared state, so subsequent mutations on the
 same value (`camera.look_at(...)`, `light.set_color(...)`) propagate to
 every shader on the pass with no further `add` call.
 
+The pass holds every Light added to it, so a Light keeps lighting after
+the caller drops its handle.
+
 Returns `Result<&Pass, PassError>`. Models can fail at attach time when
 the Mesh layout doesn't match the Material's shader, and Cameras always
-succeed. A Light fails with `PassError::LightCapReached` when a shader
-on the pass already holds 32 lights. Lights added before their shaders
-join the pass don't fail: a shader past the cap drops the extra ones
-with a logged warning instead. Chain with `?` between calls.
+succeed. A Light fails with `PassError::LightCapReached { cap }` when a
+shader on the pass already holds as many lights as the device allows,
+and a Model fails the same way when its shader would take more than that
+from the pass. See [Light](/api/scene/light)
+for the cap on each kind of device. Chain with `?` between calls.
 
 #### Example
 

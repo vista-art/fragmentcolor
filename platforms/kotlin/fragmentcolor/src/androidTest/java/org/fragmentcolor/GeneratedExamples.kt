@@ -907,7 +907,22 @@ class GeneratedExamples : ExampleCase() {
 
     @Test
     fun scene_light_point() = example("docs/api/scene/light/point.md") {
-        val bulb = Light.point(listOf(0.0f, 2.5f, 0.0f), listOf(1.0f, 0.95f, 0.8f)).setIntensity(15.0f)
+        val renderer = Renderer()
+        val target = renderer.createTextureTarget(listOf(64u, 64u))
+
+        val wall = Mesh()
+        wall.addVertices(listOf(Vertex.pbr(listOf(-2.0f, -2.0f, 0.0f)), Vertex.pbr(listOf(2.0f, -2.0f, 0.0f)), Vertex.pbr(listOf(2.0f, 2.0f, 0.0f)), Vertex.pbr(listOf(-2.0f, 2.0f, 0.0f))))
+        wall.setIndices(listOf(0u, 1u, 2u, 0u, 2u, 3u))
+
+        val camera = Camera.perspective(1.047f, 1.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 0.0f, 4.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+        val bulb = Light.point(listOf(0.0f, 0.5f, 1.0f), listOf(1.0f, 0.95f, 0.8f)).setIntensity(15.0f)
+        bulb.setRange(3.0f)
+
+        val pass = Pass("lamp")
+        pass.add(Model(wall, Material.pbr()))
+        pass.add(camera)
+        pass.add(bulb)
+        renderer.render(pass, target)
     }
 
     @Test
@@ -1011,9 +1026,16 @@ class GeneratedExamples : ExampleCase() {
 
     @Test
     fun scene_material_custom() = example("docs/api/scene/material/custom.md") {
-        val wireframe = Shader("""
+        val flat = Shader("""
             struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+            struct Light { kind: u32, intensity: f32, range: f32, inner_cone_cos: f32,
+                position: vec3<f32>, outer_cone_cos: f32, direction: vec3<f32>, color: vec3<f32> }
+            struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>,
+                slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }
+            struct Lights { count: u32, global_count: u32, promoted_count: u32,
+                ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }
             @group(0) @binding(0) var<uniform> camera: Camera;
+            @group(0) @binding(1) var<storage, read> lights: Lights;
 
             @vertex
             fn vs_main(
@@ -1027,12 +1049,16 @@ class GeneratedExamples : ExampleCase() {
                 return camera.view_proj * model * vec4<f32>(p, 1.0);
             }
             @fragment fn fs_main() -> @location(0) vec4<f32> {
-                return vec4<f32>(0.0, 1.0, 0.4, 1.0);
+                var glow = lights.ambient;
+                for (var i = 0u; i < lights.count; i++) {
+                    glow += lights.lights[i].color * lights.lights[i].intensity * 0.1;
+                }
+                return vec4<f32>(glow, 1.0);
             }
 
         """)
 
-        val wire_mat = Material.custom(wireframe)
+        val flat_mat = Material.custom(flat)
     }
 
     @Test
