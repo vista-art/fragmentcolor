@@ -108,11 +108,19 @@ impl TextureTarget {
         self.size()
     }
 
-    #[wasm_bindgen(js_name = "getImage")]
+    // A plain function, so the call takes its start before it returns the promise.
+    #[wasm_bindgen(js_name = "getImage", unchecked_return_type = "Promise<Uint8Array>")]
     #[lsp_doc("docs/api/targets/texture_target/get_image.md")]
-    pub async fn get_image_js(&self) -> Result<js_sys::Uint8Array, TextureError> {
-        let data = self.get_image().await?;
-        Ok(js_sys::Uint8Array::from(data.as_slice()))
+    pub fn get_image_js(&self) -> js_sys::Promise {
+        let start = crate::renderer::Start::now(Some(&self.context));
+        let target = self.clone();
+        wasm_bindgen_futures::future_to_promise(async move {
+            let pixels = target
+                .read_image_from(start)
+                .await
+                .map_err(TextureError::into_js)?;
+            Ok(js_sys::Uint8Array::from(pixels.as_slice()).into())
+        })
     }
 
     /// Get a sampleable Texture handle for binding in a shader uniform.

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::renderer::Start;
 use crate::texture::{Texture, TextureError, TextureObject};
 use crate::{PendingReadback, RenderContext};
 
@@ -147,8 +148,19 @@ pub(crate) async fn read_pixels(
     context: &RenderContext,
     texture: &TextureObject,
 ) -> Result<Vec<u8>, TextureError> {
+    read_pixels_from(context, texture, Start::now(Some(context))).await
+}
+
+/// Reads like `read_pixels`, once the frames rendered before `start` have reported their GPU errors.
+pub(crate) async fn read_pixels_from(
+    context: &RenderContext,
+    texture: &TextureObject,
+    start: Start,
+) -> Result<Vec<u8>, TextureError> {
     #[cfg(wasm)]
-    context.late.settle().await?;
+    start.settle(context).await?;
+    #[cfg(not(wasm))]
+    let _ = start;
     copy_pixels(context, texture).await
 }
 

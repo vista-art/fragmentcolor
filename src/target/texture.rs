@@ -1,3 +1,4 @@
+use crate::renderer::Start;
 use crate::texture::{Registration, TextureError};
 use crate::{RenderContext, Size, Target, TargetFrame, TextureObject};
 use lsp_doc::lsp_doc;
@@ -68,10 +69,7 @@ impl Target for TextureTarget {
     /// (browser `fetch`/`mapAsync`, native `device.poll(Wait)`, etc.).
     #[lsp_doc("docs/api/targets/target/get_image.md")]
     async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
-        let texture = self.registration.object();
-        let mut pixels = crate::texture::read_pixels(&self.context, &texture).await?;
-        crate::texture::swap_bgra(&mut pixels, texture.format());
-        Ok(pixels)
+        self.read_image_from(Start::now(Some(&self.context))).await
     }
 }
 
@@ -79,6 +77,15 @@ impl TextureTarget {
     #[lsp_doc("docs/api/targets/texture_target/texture.md")]
     pub fn texture(&self) -> crate::texture::Texture {
         crate::texture::Texture::new(self.context.clone(), self.registration.clone())
+    }
+
+    /// Reads the target as RGBA8 bytes once the frames rendered before `start`
+    /// have reported their GPU errors.
+    pub(crate) async fn read_image_from(&self, start: Start) -> Result<Vec<u8>, TextureError> {
+        let texture = self.registration.object();
+        let mut pixels = crate::texture::read_pixels_from(&self.context, &texture, start).await?;
+        crate::texture::swap_bgra(&mut pixels, texture.format());
+        Ok(pixels)
     }
 }
 

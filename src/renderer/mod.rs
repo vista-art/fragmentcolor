@@ -101,21 +101,66 @@ struct ComputePipeline {
 #[cfg_attr(mobile, derive(uniffi::Object))]
 #[lsp_doc("docs/api/core/renderer/renderer.md")]
 pub struct Renderer {
-    instance: RwLock<Option<Arc<wgpu::Instance>>>,
-    adapter: RwLock<Option<wgpu::Adapter>>,
-    context: RwLock<Option<Arc<RenderContext>>>,
+    // Shared, so a JS export can hand a future a handle that outlives its borrow.
+    instance: Arc<RwLock<Option<Arc<wgpu::Instance>>>>,
+    adapter: Arc<RwLock<Option<wgpu::Adapter>>>,
+    context: Arc<RwLock<Option<Arc<RenderContext>>>>,
 }
 
 crate::impl_fc_kind!(Renderer, "Renderer");
 
+/// When a call that waits for earlier frames started. On the web it holds the
+/// ticket of the context's error slot at that moment, so the call takes only
+/// the error of a frame rendered before it, and a later frame keeps its error for the next call.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Start {
+    #[cfg(wasm)]
+    before: u64,
+}
+
+impl Start {
+    /// A call that starts now on a renderer with `context`, or with none yet,
+    /// which leaves no earlier frame to wait for.
+    pub(crate) fn now(context: Option<&RenderContext>) -> Self {
+        #[cfg(wasm)]
+        {
+            Start {
+                before: context.map_or(0, |context| context.late.mark()),
+            }
+        }
+        #[cfg(not(wasm))]
+        {
+            let _ = context;
+            Start {}
+        }
+    }
+
+    /// Waits for the frames rendered before the start, then returns the first error they left.
+    #[cfg(wasm)]
+    pub(crate) async fn settle(self, context: &RenderContext) -> Result<(), late::LateError> {
+        context.late.settle_from(self.before).await
+    }
+}
+
 impl Renderer {
     #[lsp_doc("docs/api/core/renderer/new.md")]
     pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// A second handle on this renderer's instance, adapter and context.
+    #[cfg(wasm)]
+    pub(crate) fn share(&self) -> Self {
         Renderer {
-            instance: RwLock::new(None),
-            adapter: RwLock::new(None),
-            context: RwLock::new(None),
+            instance: self.instance.clone(),
+            adapter: self.adapter.clone(),
+            context: self.context.clone(),
         }
+    }
+
+    /// The start of a call made now, for one that waits for earlier frames.
+    pub(crate) fn start(&self) -> Start {
+        Start::now(self.context.read().as_deref())
     }
 
     #[lsp_doc("docs/api/core/renderer/create_target.md")]
@@ -343,7 +388,16 @@ impl Renderer {
         &self,
         texture_id: impl Into<crate::texture::TextureId>,
     ) -> Result<Vec<u8>, RendererError> {
-        let texture_id = texture_id.into();
+        self.read_texture_from(texture_id.into(), self.start())
+            .await
+    }
+
+    /// Reads a registered texture once the frames rendered before `start` have reported their GPU errors.
+    pub(crate) async fn read_texture_from(
+        &self,
+        texture_id: crate::texture::TextureId,
+        start: Start,
+    ) -> Result<Vec<u8>, RendererError> {
         let context = self
             .context
             .read()
@@ -351,7 +405,9 @@ impl Renderer {
             .cloned()
             .ok_or(RendererError::NoContext)?;
         #[cfg(wasm)]
-        context.late.settle().await?;
+        start.settle(&context).await?;
+        #[cfg(not(wasm))]
+        let _ = start;
         let texture = context
             .get_texture(&texture_id)
             .ok_or(RendererError::TextureNotFoundError(texture_id))?;
@@ -376,8 +432,25 @@ impl Renderer {
     /// there. On wasm `render` can't block, so await `load` before the first frame.
     #[lsp_doc("docs/api/core/renderer/load.md")]
     pub async fn load(&self, renderable: &impl Renderable) -> Result<(), RendererError> {
+        self.load_from(renderable, self.start()).await
+    }
+
+    /// Uploads what `renderable` waits for, once the frames rendered before `start`
+    /// have reported their GPU errors.
+    pub(crate) async fn load_from(
+        &self,
+        renderable: &impl Renderable,
+        start: Start,
+    ) -> Result<(), RendererError> {
         #[cfg(wasm)]
-        self.settle().await?;
+        {
+            let context = self.context.read().clone();
+            if let Some(context) = context {
+                start.settle(&context).await?;
+            }
+        }
+        #[cfg(not(wasm))]
+        let _ = start;
         for pass in renderable.passes().iter() {
             let shaders: Vec<Arc<crate::shader::ShaderObject>> =
                 pass.shaders.read().iter().cloned().collect();
@@ -417,12 +490,25 @@ impl Renderer {
         shader: &crate::Shader,
         binding: &str,
     ) -> Result<Vec<u8>, RendererError> {
+        self.read_storage_from(shader, binding, self.start()).await
+    }
+
+    /// Reads a storage binding back once the frames rendered before `start`
+    /// have reported their GPU errors.
+    pub(crate) async fn read_storage_from(
+        &self,
+        shader: &crate::Shader,
+        binding: &str,
+        start: Start,
+    ) -> Result<Vec<u8>, RendererError> {
         if !shader.object.has_storage(binding) {
             return Err(RendererError::StorageBindingNotFound(binding.to_string()));
         }
         let context = self.context(None).await?;
         #[cfg(wasm)]
-        context.late.settle().await?;
+        start.settle(&context).await?;
+        #[cfg(not(wasm))]
+        let _ = start;
         let (buffer, span) = context
             .storage_registry
             .get(binding)
@@ -447,17 +533,6 @@ impl Renderer {
             context.render(renderable, target)
         } else {
             Err(RendererError::NoContext)
-        }
-    }
-
-    /// Waits for the error scopes earlier frames left open, then returns
-    /// the first GPU error they caught, when there is a context to hold one.
-    #[cfg(wasm)]
-    async fn settle(&self) -> Result<(), RendererError> {
-        let context = self.context.read().as_ref().cloned();
-        match context {
-            Some(context) => Ok(context.late.settle().await?),
-            None => Ok(()),
         }
     }
 
