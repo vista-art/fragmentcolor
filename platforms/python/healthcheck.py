@@ -351,6 +351,26 @@ def check_number_errors(renderer):
     print("Counts, indices, sizes and regions take ints and refuse ones they can't hold")
 
 
+def check_empty_regions():
+    """A region or viewport with a width or height of 0 raises FragmentColorError."""
+    rpass = Pass("empty")
+    for label, call in (
+        ("ScreenRegion((0, 0), (0, 4))", lambda: ScreenRegion((0, 0), (0, 4))),
+        ("ScreenRegion.from_region(1, 1, 4, 0)", lambda: ScreenRegion.from_region(1, 1, 4, 0)),
+        ("ScreenRegion.from_tuple((0, 0))", lambda: ScreenRegion.from_tuple((0, 0))),
+        ("Pass.set_viewport([0, 0, 0, 4])", lambda: rpass.set_viewport([0, 0, 0, 4])),
+        ("Pass.set_viewport([4, 0])", lambda: rpass.set_viewport([4, 0])),
+    ):
+        try:
+            call()
+        except FragmentColorError as e:
+            print(f"{label} raised {type(e).__name__}: {e}")
+        else:
+            raise AssertionError(f"{label} should raise FragmentColorError")
+    rpass.set_viewport([0, 0, 1, 1])
+    print("Regions and viewports refuse a side of 0")
+
+
 def check_clear_color():
     """A clear color keeps its numbers, raises FragmentColorError for NaN, and TypeError for a string."""
     rpass = Pass("clear")
@@ -735,6 +755,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_require_graph(renderer)
     check_value_types()
     check_number_errors(renderer)
+    check_empty_regions()
     check_clear_color()
     check_texture_inputs(renderer)
     check_invalid_textures(renderer)

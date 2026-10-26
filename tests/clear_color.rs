@@ -41,7 +41,8 @@ fn float_target_keeps_the_clear_color() {
 
         // The shader draws only pixel (0, 0), so pixel (1, 0) holds the clear color.
         let pass = Pass::from_shader("clear", &Shader::default());
-        pass.set_viewport([0, 0, 1, 1]);
+        pass.set_viewport([0, 0, 1, 1])
+            .expect("set_viewport failed");
         pass.set_clear_color([4.0, -1.0, 0.25, 1.0])
             .expect("set_clear_color failed");
         pass.set_target(&texture).expect("set_target failed");

@@ -99,7 +99,8 @@ impl Pass {
     #[pyo3(name = "set_viewport")]
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
     pub fn set_viewport_py(&self, viewport: PyViewport<'_>) -> PyResult<()> {
-        self.object.set_viewport(ScreenRegion::try_from(viewport)?);
+        self.object
+            .set_viewport(ScreenRegion::try_from(viewport)?)?;
         Ok(())
     }
 

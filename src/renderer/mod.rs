@@ -3655,7 +3655,8 @@ struct VOut { @builtin(position) pos: vec4<f32> };
             let (_adapter, device, queue) = create_device_and_queue().await;
             let ctx = RenderContext::new(device, queue);
             let pass = model_pass();
-            *pass.viewport.write() = Some(crate::ScreenRegion::new((100, 100), (4, 4)));
+            *pass.viewport.write() =
+                Some(crate::ScreenRegion::new((100, 100), (4, 4)).expect("a region"));
             assert!(draw(&ctx, &pass, 16).await.is_none(), "invalid pass");
             assert_eq!(pooled_depths(&ctx), [(16, 16)], "the lease went back");
         });
@@ -3840,7 +3841,8 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
             let pass = Pass::from_shader("msaa-viewport", &shader);
             pass.set_clear_color([0.0, 0.0, 1.0, 1.0])
                 .expect("set_clear_color failed");
-            pass.set_viewport(crate::ScreenRegion::new((4, 4), (8, 8)));
+            pass.set_viewport(crate::ScreenRegion::new((4, 4), (8, 8)).expect("a region"))
+                .expect("set_viewport failed");
 
             renderer.render(&pass, &target).expect("render ok");
 

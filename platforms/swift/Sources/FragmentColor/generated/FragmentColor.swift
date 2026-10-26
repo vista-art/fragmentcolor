@@ -2560,7 +2560,7 @@ public protocol PassProtocol: AnyObject, Sendable {
     /**
      * Set the viewport (scissor + render region) for this pass.
      */
-    func setViewport(region: ScreenRegion) 
+    func setViewport(region: ScreenRegion) throws 
     
 }
 open class Pass: PassProtocol, @unchecked Sendable {
@@ -2832,7 +2832,7 @@ open func setTargetTexture(texture: Texture)throws   {try rustCallWithError(FfiC
     /**
      * Set the viewport (scissor + render region) for this pass.
      */
-open func setViewport(region: ScreenRegion)  {try! rustCall() {
+open func setViewport(region: ScreenRegion)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_pass_setviewport(
             self.uniffiCloneHandle(),
@@ -9104,7 +9104,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_pass_settargettexture() != 11684) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_setviewport() != 4614) {
+    if (uniffi_fragmentcolor_checksum_method_pass_setviewport() != 57239) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_renderer_createdepthtexture() != 43106) {

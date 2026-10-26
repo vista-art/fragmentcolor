@@ -155,8 +155,8 @@ impl Pass {
     /// Set the viewport (scissor + render region) for this pass.
     #[uniffi::method(name = "setViewport")]
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
-    pub fn set_viewport_mobile(&self, region: ScreenRegion) {
-        self.set_viewport(region);
+    pub fn set_viewport_mobile(&self, region: ScreenRegion) -> Result<(), FragmentColorError> {
+        Ok(self.set_viewport(region)?)
     }
 
     /// Set the compute dispatch dimensions for this pass.

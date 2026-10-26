@@ -20,6 +20,8 @@ pub enum PassError {
     InvalidColorTarget(String),
     #[error("Invalid clear color: {0}")]
     Color(#[from] crate::color::error::ColorError),
+    #[error("Invalid viewport: {0}")]
+    Viewport(#[from] crate::region::error::ScreenRegionError),
     #[error("Self dependency is not allowed")]
     SelfDependency,
     #[error("Duplicate dependency: {0}")]
@@ -36,6 +38,13 @@ pub enum PassError {
     #[cfg(wasm)]
     #[error("WASM Pass Error: {0}")]
     Error(String),
+}
+
+/// Lets a conversion that can't fail, such as a `ScreenRegion` passed as itself, use `?`.
+impl From<std::convert::Infallible> for PassError {
+    fn from(never: std::convert::Infallible) -> Self {
+        match never {}
+    }
 }
 
 // Python-specific conversions

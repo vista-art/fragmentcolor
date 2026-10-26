@@ -120,8 +120,12 @@ impl Pass {
     }
 
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
-    pub fn set_viewport(&self, viewport: impl Into<ScreenRegion>) {
-        self.object.set_viewport(viewport);
+    pub fn set_viewport<R>(&self, viewport: R) -> Result<(), PassError>
+    where
+        R: TryInto<ScreenRegion>,
+        PassError: From<R::Error>,
+    {
+        self.object.set_viewport(viewport.try_into()?)
     }
 
     #[lsp_doc("docs/api/core/pass/set_clear_color.md")]
@@ -491,8 +495,10 @@ impl PassObject {
         }
     }
 
-    pub fn set_viewport(&self, viewport: impl Into<ScreenRegion>) {
-        *self.viewport.write() = Some(viewport.into());
+    /// Keeps the viewport, or refuses a region with no width or no height.
+    pub fn set_viewport(&self, viewport: ScreenRegion) -> Result<(), PassError> {
+        *self.viewport.write() = Some(viewport.check()?);
+        Ok(())
     }
 
     pub fn is_compute(&self) -> bool {
@@ -784,13 +790,35 @@ mod tests {
     fn sets_viewport_rect() {
         // Arrange
         let pass = Pass::new("p");
-        let vp = ScreenRegion::from_region(2, 4, 8, 6);
+        let vp = ScreenRegion::from_region(2, 4, 8, 6).expect("a region with an area");
 
         // Act
-        pass.set_viewport(vp);
+        assert!(pass.set_viewport(vp).is_ok());
 
         // Assert
         assert_eq!(pass.object.viewport.read().as_ref(), Some(vp).as_ref());
+    }
+
+    // Story: a viewport with no width or no height fails and keeps the old
+    // one, whether it comes as an array or as a region built field by field.
+    #[test]
+    fn refuses_an_empty_viewport() {
+        let pass = Pass::new("p");
+        assert!(pass.set_viewport([2, 4, 8, 6]).is_ok());
+
+        let error = pass.set_viewport([0, 0, 0, 4]).err();
+        assert!(matches!(error, Some(PassError::Viewport(_))), "{error:?}");
+        assert!(pass.set_viewport((4, 0)).is_err());
+        let flat = ScreenRegion {
+            min_x: 3,
+            min_y: 3,
+            max_x: 9,
+            max_y: 3,
+        };
+        assert!(pass.set_viewport(flat).is_err());
+
+        let kept = ScreenRegion::from_region(2, 4, 8, 6).ok();
+        assert_eq!(*pass.object.viewport.read(), kept);
     }
 
     // Story: compute dispatch clamps zeros to 1 per dimension.

@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use fragmentcolor::{Pass, Renderer, ScreenRegion, Shader, Target};
+use fragmentcolor::{Pass, PassError, Renderer, ScreenRegion, Shader, Target};
 
 const FILL: &str = r#"
 @group(0) @binding(0) var<uniform> color: vec4<f32>;
@@ -20,13 +20,17 @@ const GREEN: [u8; 4] = [0, 255, 0, 255];
 const BLUE: [u8; 4] = [0, 0, 255, 255];
 
 /// A pass that fills its viewport with `color` over a blue clear.
-fn fill_pass(viewport: impl Into<ScreenRegion>, color: [f32; 4]) -> Pass {
+fn fill_pass<R>(viewport: R, color: [f32; 4]) -> Pass
+where
+    R: TryInto<ScreenRegion>,
+    PassError: From<R::Error>,
+{
     let shader = Shader::new(FILL).expect("fill shader failed");
     shader.set("color", color).expect("set failed");
     let pass = Pass::from_shader("fill", &shader);
     pass.set_clear_color([0.0, 0.0, 1.0, 1.0])
         .expect("set_clear_color failed");
-    pass.set_viewport(viewport);
+    pass.set_viewport(viewport).expect("set_viewport failed");
     pass
 }
 
@@ -68,7 +72,7 @@ fn draws_inside_the_viewport_only() {
             &image,
             16,
             16,
-            red_inside(ScreenRegion::new((4, 2), (8, 6))),
+            red_inside(ScreenRegion::new((4, 2), (8, 6)).expect("a region")),
         );
     });
 }
@@ -90,7 +94,7 @@ fn clips_a_viewport_larger_than_the_target() {
             &image,
             16,
             16,
-            red_inside(ScreenRegion::new((10, 6), (6, 10))),
+            red_inside(ScreenRegion::new((10, 6), (6, 10)).expect("a region")),
         );
 
         let whole = fill_pass([64, 64], [1.0, 0.0, 0.0, 1.0]);
@@ -132,7 +136,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         pass.set_clear_color([0.0, 0.0, 1.0, 1.0])
             .expect("set_clear_color failed");
         // The viewport spans x 8..24, so its red left half covers 8..16 and its green half falls off.
-        pass.set_viewport([8, 0, 16, 8]);
+        pass.set_viewport([8, 0, 16, 8])
+            .expect("set_viewport failed");
 
         renderer.render(&pass, &target).expect("render failed");
 
@@ -178,7 +183,12 @@ fn clips_to_the_pass_target() {
         renderer.render(&pass, &probe).expect("render failed");
 
         let image = side.get_image().await.expect("read back");
-        assert_pixels(&image, 8, 8, red_inside(ScreenRegion::new((4, 0), (4, 8))));
+        assert_pixels(
+            &image,
+            8,
+            8,
+            red_inside(ScreenRegion::new((4, 0), (4, 8)).expect("a region")),
+        );
     });
 }
 

@@ -514,6 +514,13 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     throws('new ScreenRegion([0, 0], [1.5, 2])', () => new fc.ScreenRegion([0, 0], [1.5, 2]));
     throws('Pass.setViewport([0, 0, 1.5, 2])', () => first.setViewport([0, 0, 1.5, 2]));
     await rejects('createTextureTarget([1.5, 2])', () => renderer.createTextureTarget([1.5, 2]));
+
+    // A region or viewport with a width or height of 0 throws.
+    throws('new ScreenRegion([0, 0], [0, 4])', () => new fc.ScreenRegion([0, 0], [0, 4]));
+    throws('Pass.setViewport([0, 0, 0, 4])', () => first.setViewport([0, 0, 0, 4]));
+    throws('Pass.setViewport([4, 0])', () => first.setViewport([4, 0]));
+    throws('Pass.setViewport({ minX: 2, minY: 2, maxX: 2, maxY: 6 })',
+      () => first.setViewport({ minX: 2, minY: 2, maxX: 2, maxY: 6 }));
     const region = new fc.ScreenRegion([0, 0], [64, 64]);
     region.max_x = -1;
     if (region.maxX !== 64) fail(`ScreenRegion.max_x wrote ${region.maxX} past the checks`);
