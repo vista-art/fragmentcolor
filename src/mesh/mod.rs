@@ -402,6 +402,13 @@ impl MeshObject {
         self.invalidate_cache();
     }
 
+    /// Whether only Models give this mesh instances:
+    /// it declares the Model columns and holds no instance of its own.
+    pub(crate) fn awaits_models(&self) -> bool {
+        self.insts.read().is_empty()
+            && self.instance_schema.read().as_ref() == Some(&model_schema())
+    }
+
     /// Records the types a shader gave untyped attributes and repacks what they change.
     /// Records nothing when another shader has typed one of them another way meanwhile.
     pub(crate) fn declare(&self, added: AttributeTypes) -> Result<(), ShaderError> {

@@ -1631,11 +1631,9 @@ impl RenderContext {
                                     render_pass.set_vertex_buffer(1, buffer.slice(..));
                                     *count
                                 }
-                                // A Model mesh with no visible Model in this pass has nothing to draw,
-                                // and slot 1 may still hold the buffer an earlier mesh bound.
-                                (None, None) if mesh_object.instance_schema.read().is_some() => {
-                                    continue;
-                                }
+                                // A shader that draws this pass's Models skips a Model mesh whose Model
+                                // is hidden or in another pass. Slot 1 may hold an earlier mesh's buffer.
+                                (None, None) if model && mesh_object.awaits_models() => continue,
                                 (None, buffer) => {
                                     check_instance_count(layouts.as_ref(), counts)?;
                                     if let Some(buffer) = buffer {
@@ -4147,6 +4145,60 @@ struct VIn { @location(0) pos: vec2<f32> };
         });
     }
 
+    /// Draws its mesh's positions in green and reads no instance attribute.
+    const PLAIN_SHADER: &str = r#"
+@vertex fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(position, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(0.0, 1.0, 0.0, 1.0); }
+"#;
+
+    // Story: a shader that draws a hidden Model's mesh, and no Model, still draws it,
+    // in a pass of its own or in the Model's pass, and so does the mesh's quick view.
+    #[test]
+    fn a_plain_shader_draws_a_model_mesh() {
+        pollster::block_on(async move {
+            use crate::Target;
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([SIDE, SIDE])
+                .await
+                .expect("texture target");
+            let model = strip(&red_glow(), -1.0, -0.2);
+            let pass = Pass::new("models");
+            pass.set_clear_color(BLUE).expect("set clear color");
+            pass.add(&model).expect("add model");
+            pass.add(&camera()).expect("add camera");
+            model.set_visible(false);
+            let plain = crate::Shader::new(PLAIN_SHADER).expect("shader");
+            plain.add_mesh(model.mesh()).expect("mesh attaches");
+            let own = Pass::new("plain");
+            own.set_clear_color(BLUE).expect("set clear color");
+            own.add_shader(&plain);
+
+            renderer.render(&own, &target).expect("render its own pass");
+            let alone = target.get_image().await.expect("read back");
+            pass.add_shader(&plain);
+            renderer
+                .render(&pass, &target)
+                .expect("render the Model's pass");
+            let shared = target.get_image().await.expect("read back");
+            renderer
+                .render(model.mesh(), &target)
+                .expect("render the quick view");
+            let quick = target.get_image().await.expect("read back");
+
+            let green = [0, 255, 0, 255];
+            assert_eq!(pixel(&alone, LEFT), green, "a pass of its own");
+            assert_eq!(pixel(&shared, LEFT), green, "the Model's pass");
+            assert!(
+                is_blue(pixel(&shared, RIGHT)),
+                "the Model's pass, off the strip"
+            );
+            assert_eq!(pixel(&quick, LEFT), [255, 255, 255, 255], "the quick view");
+        });
+    }
+
     const OFFSET_SHADER: &str = r#"
 struct VOut { @builtin(position) pos: vec4<f32> };
 @vertex fn vs_main(@location(0) pos: vec2<f32>, @location(1) offset: vec2<f32>) -> VOut {
@@ -4197,6 +4249,88 @@ struct VOut { @builtin(position) pos: vec4<f32> };
                 "got {past:?}"
             );
             assert!(indexed.is_ok(), "got {indexed:?}");
+        });
+    }
+
+    /// Colors each instance by its index: green for 0, yellow for 2.
+    const INDEX_COLOR: &str = r#"
+struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat) index: u32 };
+@vertex fn vs_main(@location(0) pos: vec3<f32>, @builtin(instance_index) index: u32) -> VOut {
+  return VOut(vec4<f32>(pos, 1.0), index);
+}
+@fragment fn fs_main(v: VOut) -> @location(0) vec4<f32> {
+  return vec4<f32>(f32(v.index) / 2.0, 1.0, 0.0, 1.0);
+}
+"#;
+
+    /// A triangle that covers the whole view.
+    const COVER: [[f32; 3]; 3] = [[-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0]];
+
+    // Story: instances with no properties draw when the shader reads no instance
+    // attribute. One draws once, and a count of three draws the third one last.
+    #[test]
+    fn instances_without_properties_draw() {
+        pollster::block_on(async move {
+            use crate::Target;
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([SIDE, SIDE])
+                .await
+                .expect("texture target");
+            let single = crate::Mesh::new();
+            single.add_vertices(COVER.map(crate::Vertex::new));
+            single.add_instance(crate::Instance::new());
+            let triple = crate::Mesh::new();
+            triple.add_vertices(COVER.map(crate::Vertex::new));
+            triple.add_instances([(); 3].map(|_| crate::Instance::new()));
+            triple.set_instance_count(3);
+
+            let mut pixels = Vec::new();
+            for mesh in [single, triple] {
+                let shader = crate::Shader::new(INDEX_COLOR).expect("shader");
+                shader.add_mesh(&mesh).expect("mesh attaches");
+                let pass = Pass::new("instances");
+                pass.set_clear_color(BLUE).expect("set clear color");
+                pass.add_shader(&shader);
+                renderer.render(&pass, &target).expect("render");
+                pixels.push(pixel(&target.get_image().await.expect("read back"), LEFT));
+            }
+
+            assert_eq!(pixels[0], [0, 255, 0, 255], "one instance");
+            assert_eq!(pixels[1], [255, 255, 0, 255], "three instances");
+        });
+    }
+
+    // Story: a Material's shader that also draws a mesh with instances of its own
+    // draws them, though they hold no properties and no Model drives that mesh.
+    #[test]
+    fn a_material_shader_draws_its_own_instances() {
+        pollster::block_on(async move {
+            use crate::Target;
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([SIDE, SIDE])
+                .await
+                .expect("texture target");
+            let shader = crate::Shader::new(INDEX_COLOR).expect("shader");
+            let model = strip(&crate::Material::custom(shader.clone()), 0.2, 1.0);
+            let pass = Pass::new("models");
+            pass.set_clear_color(BLUE).expect("set clear color");
+            pass.add(&model).expect("add model");
+            let crowd = crate::Mesh::new();
+            crowd.add_vertices(COVER.map(crate::Vertex::pbr));
+            crowd.add_instances([(); 3].map(|_| crate::Instance::new()));
+            crowd.set_instance_count(3);
+            shader.add_mesh(&crowd).expect("mesh attaches");
+
+            renderer.render(&pass, &target).expect("render");
+            let image = target.get_image().await.expect("read back");
+
+            assert_eq!(
+                pixel(&image, LEFT),
+                [255, 255, 0, 255],
+                "the third instance"
+            );
         });
     }
 
