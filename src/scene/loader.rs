@@ -239,7 +239,6 @@ fn load_gltf(source: GltfSource) -> Result<Scene, SceneLoadError> {
         }
         GltfPayload::Bytes(b) => gltf::import_slice(&b)?,
     };
-    check_counts(&document, &buffers)?;
 
     let scene = Scene::new();
     let default_gltf_scene = document
@@ -287,42 +286,6 @@ fn load_gltf(source: GltfSource) -> Result<Scene, SceneLoadError> {
     }
 
     Ok(scene)
-}
-
-/// Refuse an accessor whose count the file doesn't back, before anything reads it.
-///
-/// gltf casts each count to `usize`, which cuts it to 32 bits on wasm, so this
-/// reads the JSON's u64. Past `u32::MAX` no index reaches an element. A sparse
-/// accessor without a bufferView stores only its changed values, so its count
-/// may span no more bytes than all of the file's buffers hold: memory then grows
-/// with the file instead of with a number the file merely states.
-fn check_counts(
-    document: &gltf::Document,
-    buffers: &[gltf::buffer::Data],
-) -> Result<(), SceneLoadError> {
-    let file_bytes: u64 = buffers.iter().map(|data| data.len() as u64).sum();
-    let declared = &document.as_json().accessors;
-    for accessor in document.accessors() {
-        let index = accessor.index();
-        let Some(count) = declared.get(index).map(|json| json.count.0) else {
-            continue;
-        };
-        if count > u64::from(u32::MAX) {
-            return Err(SceneLoadError::Invalid(format!(
-                "glTF accessor {index} holds {count} elements, more than 32-bit indices reach"
-            )));
-        }
-        if accessor.view().is_some() {
-            continue;
-        }
-        let bytes = count * accessor.size() as u64;
-        if bytes > file_bytes {
-            return Err(SceneLoadError::Invalid(format!(
-                "glTF accessor {index} spans {bytes} bytes without a bufferView, more than the {file_bytes} bytes the file's buffers hold"
-            )));
-        }
-    }
-    Ok(())
 }
 
 /// Load one glTF node and return its world matrix for its children.
@@ -455,8 +418,38 @@ fn check_primitive(
             )));
         }
     }
+    let file_bytes = buffers.iter().map(|data| data.len() as u64).sum();
+    if let Some(positions) = primitive.get(&Semantic::Positions) {
+        check_backing(&positions, "POSITION", file_bytes)?;
+    }
     if let Some(indices) = primitive.indices() {
         check_accessor(&indices, "indices", INDEX_TYPES, buffers)?;
+        check_backing(&indices, "indices", file_bytes)?;
+    }
+    Ok(())
+}
+
+/// Refuse a vertex or index count the file's bytes don't back.
+///
+/// With a bufferView the count is bounded by the view. A sparse accessor
+/// without one stores only its changed values, so it may span no more bytes
+/// than all of the file's buffers hold. Every other attribute the loader reads
+/// matches the vertex count, so memory grows with the file and not with a number.
+fn check_backing(
+    accessor: &gltf::Accessor<'_>,
+    semantic: &str,
+    file_bytes: u64,
+) -> Result<(), SceneLoadError> {
+    if accessor.view().is_some() {
+        return Ok(());
+    }
+    // check_accessor has capped the count at u32::MAX, so this can't overflow.
+    let bytes = accessor.count() as u64 * accessor.size() as u64;
+    if bytes > file_bytes {
+        return Err(SceneLoadError::Invalid(format!(
+            "glTF accessor {} ({semantic}) spans {bytes} bytes without a bufferView, more than the {file_bytes} bytes the file's buffers hold",
+            accessor.index()
+        )));
     }
     Ok(())
 }
@@ -486,6 +479,11 @@ fn check_accessor(
         return Err(SceneLoadError::Invalid(format!(
             "{label} holds {:?} {:?}, a type {semantic} doesn't take",
             layout.0, layout.1
+        )));
+    }
+    if count > u32::MAX as usize {
+        return Err(SceneLoadError::Invalid(format!(
+            "{label} holds {count} elements, more than 32-bit indices reach"
         )));
     }
     let size = accessor.size();
@@ -566,8 +564,8 @@ fn check_range(
 }
 
 /// Reserve room for `count` items, or name what the allocator refused.
-/// A system that overcommits may still grant more than it can fill, which is
-/// why `check_counts` first ties every count to the file's own bytes.
+/// An overcommitting system may grant more than it can fill, which is why
+/// `check_backing` first ties every vertex and index count to the file's bytes.
 fn reserve<Item>(count: usize, what: &str) -> Result<Vec<Item>, SceneLoadError> {
     let mut items = Vec::new();
     if items.try_reserve_exact(count).is_err() {
@@ -1650,12 +1648,81 @@ mod tests {
         // collecting 2^62 positions overflowed the allocation.
         assert_invalid(
             sparse_positions("4611686018427387904"),
-            "accessor 0 holds 4611686018427387904 elements",
+            "(POSITION) holds 4611686018427387904 elements",
         );
         assert_invalid(
             sparse_positions("4294967296"),
-            "accessor 0 holds 4294967296 elements",
+            "(POSITION) holds 4294967296 elements",
         );
+    }
+
+    /// Pack a .glb whose BIN chunk holds the triangle's positions, one u32
+    /// sparse index of 0, one vec3 sparse value, then `extra` bytes.
+    fn build_sparse_glb(json: &str, extra: &[u8]) -> Vec<u8> {
+        #[rustfmt::skip]
+        let positions: [f32; 9] = [
+             0.0,  0.5, 0.0,
+            -0.5, -0.5, 0.0,
+             0.5, -0.5, 0.0,
+        ];
+        let mut bin: Vec<u8> = positions.iter().flat_map(|f| f.to_le_bytes()).collect();
+        bin.extend(0u32.to_le_bytes());
+        bin.extend([0.0f32, 0.1, 0.0].iter().flat_map(|f| f.to_le_bytes()));
+        bin.extend_from_slice(extra);
+        build_glb(json, &bin)
+    }
+
+    #[test]
+    fn load_ignores_a_bufferless_animation_track() {
+        // A 100-key translation track whose output is sparse without a view,
+        // the shape glTF-Transform's sparse() writes. The loader never reads
+        // animations, so the track's 1200 bytes of zeros don't count.
+        let times: Vec<u8> = (0..100)
+            .flat_map(|key| (key as f32 / 3.0).to_le_bytes())
+            .collect();
+        let json = r#"{"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"mode":4}]}],"buffers":[{"byteLength":452}],"bufferViews":[{"buffer":0,"byteLength":36,"byteOffset":0},{"buffer":0,"byteLength":4,"byteOffset":36},{"buffer":0,"byteLength":12,"byteOffset":40},{"buffer":0,"byteLength":400,"byteOffset":52}],"accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[-0.5,-0.5,0.0],"max":[0.5,0.5,0.0]},{"bufferView":3,"componentType":5126,"count":100,"type":"SCALAR","min":[0.0],"max":[33.0]},{"componentType":5126,"count":100,"type":"VEC3","sparse":{"count":1,"indices":{"bufferView":1,"componentType":5125},"values":{"bufferView":2}}}],"animations":[{"channels":[{"sampler":0,"target":{"node":0,"path":"translation"}}],"samplers":[{"input":1,"output":2}]}]}"#;
+        let scene = Scene::load(build_sparse_glb(json, &times)).expect("load");
+        assert_eq!(scene.models().len(), 1);
+    }
+
+    const UNUSED_ACCESSOR_JSON: &str = r#"{"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"mode":4}]}],"buffers":[{"byteLength":52}],"bufferViews":[{"buffer":0,"byteLength":36,"byteOffset":0},{"buffer":0,"byteLength":4,"byteOffset":36},{"buffer":0,"byteLength":12,"byteOffset":40}],"accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[-0.5,-0.5,0.0],"max":[0.5,0.5,0.0]},UNUSED]}"#;
+
+    #[test]
+    fn load_ignores_an_unused_bufferless_accessor() {
+        // A sparse accessor 1000 elements long that nothing references.
+        let unused = r#"{"componentType":5126,"count":1000,"type":"VEC3","sparse":{"count":1,"indices":{"bufferView":1,"componentType":5125},"values":{"bufferView":2}}}"#;
+        let json = UNUSED_ACCESSOR_JSON.replace("UNUSED", unused);
+        let scene = Scene::load(build_sparse_glb(&json, &[])).expect("load");
+        assert_eq!(scene.models().len(), 1);
+    }
+
+    #[test]
+    fn load_reports_an_all_zero_accessor_as_a_parse_error() {
+        // glTF reads an accessor with neither a view nor sparse values as all
+        // zeros, but the glTF parser refuses it before the loader runs.
+        let json = UNUSED_ACCESSOR_JSON.replace(
+            "UNUSED",
+            r#"{"componentType":5126,"count":1000,"type":"VEC3"}"#,
+        );
+        assert!(matches!(
+            Scene::load(build_sparse_glb(&json, &[])),
+            Err(SceneLoadError::Gltf(_))
+        ));
+    }
+
+    #[test]
+    fn load_reads_a_bufferless_color_beside_dense_positions() {
+        // 99 positions take 1188 bytes. Their sparse COLOR_0 spans 1584 bytes
+        // of zeros, more than the file holds, but it can't outgrow POSITION.
+        let json = r#"{"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],"meshes":[{"primitives":[{"attributes":{"POSITION":0,"COLOR_0":1},"mode":4}]}],"buffers":[{"byteLength":1208}],"bufferViews":[{"buffer":0,"byteLength":1188,"byteOffset":0},{"buffer":0,"byteLength":4,"byteOffset":1188},{"buffer":0,"byteLength":16,"byteOffset":1192}],"accessors":[{"bufferView":0,"componentType":5126,"count":99,"type":"VEC3","min":[0.0,0.0,0.0],"max":[33.0,1.0,0.0]},{"componentType":5126,"count":99,"type":"VEC4","sparse":{"count":1,"indices":{"bufferView":1,"componentType":5125},"values":{"bufferView":2}}}]}"#;
+        let mut bin: Vec<u8> = (0..99)
+            .flat_map(|vertex| [vertex as f32 / 3.0, (vertex % 3 == 1) as u8 as f32, 0.0])
+            .flat_map(|value| value.to_le_bytes())
+            .collect();
+        bin.extend(0u32.to_le_bytes());
+        bin.extend([1.0f32; 4].iter().flat_map(|f| f.to_le_bytes()));
+        let scene = Scene::load(build_glb(json, &bin)).expect("load");
+        assert_eq!(scene.models().len(), 1);
     }
 
     #[test]
@@ -1665,11 +1732,11 @@ mod tests {
         // 51 GB that an overcommitting system grants and then can't fill.
         assert_invalid(
             sparse_positions("100000"),
-            "glTF accessor 0 spans 1200000 bytes without a bufferView, more than the 72 bytes",
+            "glTF accessor 0 (POSITION) spans 1200000 bytes without a bufferView, more than the 72 bytes",
         );
         assert_invalid(
             sparse_positions("4294967295"),
-            "glTF accessor 0 spans 51539607540 bytes without a bufferView",
+            "glTF accessor 0 (POSITION) spans 51539607540 bytes without a bufferView",
         );
     }
 
@@ -1692,7 +1759,7 @@ mod tests {
         let indices = r#""max":[0.5,0.5,0.0]},{"componentType":5125,"count":4611686018427387904,"type":"SCALAR","sparse":{"count":1,"indices":{"bufferView":1,"componentType":5125},"values":{"bufferView":1}}}]"#;
         let bytes =
             mutate_triangle(&[(MODE, r#""indices":1,"mode":4}"#), (LAST_ACCESSOR, indices)]);
-        assert_invalid(bytes, "accessor 1 holds 4611686018427387904 elements");
+        assert_invalid(bytes, "(indices) holds 4611686018427387904 elements");
     }
 
     #[test]

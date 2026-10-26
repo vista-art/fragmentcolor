@@ -38,9 +38,16 @@ things the loader can't take, and it returns `SceneLoadError::Invalid` for
 them:
 
 - a primitive drawn as points or lines
-- an accessor with more elements than 32-bit indices reach
-- a sparse accessor without a bufferView that spans more bytes than all of
-  the file's buffers hold
+- a mesh attribute or index accessor with more elements than 32-bit indices
+  reach. On the web the glTF parser refuses any count past 32 bits first, so
+  there the file returns `SceneLoadError::Gltf`.
+- a sparse `POSITION` or index accessor without a bufferView that spans more
+  bytes than all of the file's buffers hold
+
+The glTF parser also refuses any accessor with neither a bufferView nor
+sparse values, which glTF reads as all zeros. A file with one returns
+`SceneLoadError::Gltf`, even when the accessor belongs to an animation or
+nothing at all.
 
 A file that breaks the glTF rules returns the same error. That covers:
 
