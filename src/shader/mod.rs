@@ -37,6 +37,12 @@ pub(crate) mod embedded;
 
 mod glsl;
 mod input;
+pub(crate) mod light_roots;
+use light_roots::LightRoots;
+mod lights;
+#[cfg(test)]
+pub(crate) use lights::lower_test_cap;
+pub(crate) use lights::{ShaderLights, lower_light_cap};
 mod pad_uniforms;
 mod platform;
 mod storage;
@@ -44,6 +50,9 @@ use storage::*;
 
 /// The hash of a shader source.
 pub type ShaderHash = [u8; 32];
+
+/// The key of the ambient term in both light root shapes.
+const AMBIENT_KEY: &str = "lights.ambient";
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(from_py_object))]
@@ -202,13 +211,12 @@ pub(crate) struct ShaderObject {
     pub(crate) meshes: RwLock<Vec<Arc<crate::mesh::MeshObject>>>,
     pub(crate) alpha_mode: RwLock<crate::material::AlphaMode>,
     pub(crate) double_sided: RwLock<bool>,
-    /// Number of user-attached Lights on this Shader. `Light::apply_to_shader`
-    /// consults this counter to allocate the next free slot in the WGSL
-    /// `lights.lights[..]` array. Material::pbr seeds slot 0 with a dim
-    /// directional default; the first `Light` attached overwrites that
-    /// slot (so adding one Light replaces the placeholder rather than
-    /// double-lighting the scene).
-    pub(crate) user_lights_attached: RwLock<u32>,
+    /// The `lights` and `light_grid` roots the renderer fills, when the shader declares them.
+    pub(crate) light_roots: Option<LightRoots>,
+    /// The lights that reach this shader and its ambient term.
+    pub(crate) lights: RwLock<ShaderLights>,
+    /// Modules with the light roots lowered to a uniform block, by light count and padding.
+    lowered: RwLock<HashMap<(u32, bool), Module>>,
     /// Texture uploads queued by lazy setters (typically the Material's
     /// `*_texture(impl Into<TextureInput>)` family). The renderer drains
     /// this list at first render and via the explicit `Renderer::load`
@@ -257,6 +265,11 @@ impl ShaderObject {
     /// Non-blocking: applies immediately when storage is available, otherwise enqueues a last-wins update.
     pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
         let val: UniformData = value.into();
+        if self.routes_ambient(key) {
+            let input = UniformInput::try_from(val)
+                .map_err(|_| ShaderError::TypeMismatch(AMBIENT_KEY.into()))?;
+            return self.set_input(key, input);
+        }
         let texture = match &val {
             UniformData::Texture(meta) if meta.id.id != 0 => Some(meta.id),
             _ => None,
@@ -278,6 +291,17 @@ impl ShaderObject {
     /// Never blocks: when the storage is busy the update is queued, already shaped
     /// when a read lock is free, so a type error still surfaces here in the common case.
     pub(crate) fn set_input(&self, key: &str, input: UniformInput) -> Result<(), ShaderError> {
+        if self.routes_ambient(key) {
+            let UniformData::Vec3(color) = input.resolve(key, &UniformData::Vec3(vec![0.0; 3]))?
+            else {
+                return Err(ShaderError::TypeMismatch(AMBIENT_KEY.into()));
+            };
+            let [red, green, blue] = color[..] else {
+                return Err(ShaderError::TypeMismatch(AMBIENT_KEY.into()));
+            };
+            self.set_ambient([red, green, blue]);
+            return Ok(());
+        }
         let texture = match &input {
             UniformInput::Texture(id) => Some(*id),
             _ => None,
@@ -297,6 +321,11 @@ impl ShaderObject {
             self.bind_texture(key, id);
         }
         Ok(())
+    }
+
+    /// Whether `key` is the ambient term of light roots, which the shader keeps beside its lights.
+    fn routes_ambient(&self, key: &str) -> bool {
+        key == AMBIENT_KEY && self.light_roots.is_some()
     }
 
     /// Holds the texture `id` names for `key`, releasing the one bound before.
@@ -402,6 +431,9 @@ impl ShaderObject {
     /// The lock is released before returning, so `let v = get(); set(v)` is safe.
     /// Structs, arrays, and buffer roots read as raw bytes. See [`UniformData::decode`].
     pub fn get_uniform_data(&self, key: &str) -> Result<UniformData, ShaderError> {
+        if self.routes_ambient(key) {
+            return Ok(UniformData::Vec3(self.ambient().to_vec()));
+        }
         let storage = self.storage.read();
         let slot = storage.shape(key)?;
         let bytes = storage
@@ -440,9 +472,14 @@ impl ShaderObject {
     pub fn wgsl(source: &str) -> Result<Self, ShaderError> {
         let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
         let module = naga::front::wgsl::parse_str(source)?;
-        validator.validate(&module).map_err(Box::new)?;
+        let info = validator.validate(&module).map_err(Box::new)?;
 
-        let uniforms = parse_uniforms(&module)?;
+        let light_roots = light_roots::find_roots(&module, &info)?;
+        let filled = light_roots
+            .as_ref()
+            .map(LightRoots::handles)
+            .unwrap_or_default();
+        let uniforms = parse_uniforms(&module, &filled)?;
         let storage = RwLock::new(UniformStorage::new(&uniforms));
         let hash = hash(source);
 
@@ -471,9 +508,31 @@ impl ShaderObject {
             // cull on).
             double_sided: RwLock::new(true),
             pending_textures: RwLock::new(Vec::new()),
-            user_lights_attached: RwLock::new(0),
+            light_roots,
+            lights: RwLock::new(ShaderLights::default()),
+            lowered: RwLock::new(HashMap::new()),
             bound_textures: DashMap::new(),
         })
+    }
+
+    /// The module a pipeline compiles on a device that takes lights through a
+    /// uniform block of `uniform_lights` lights, or through storage when `None`.
+    pub(crate) fn module_for_device(
+        &self,
+        pad_uniforms: bool,
+        uniform_lights: Option<u32>,
+    ) -> Result<std::borrow::Cow<'_, Module>, ShaderError> {
+        let module = self.module_for_pipeline(pad_uniforms);
+        let (Some(count), Some(roots)) = (uniform_lights, self.light_roots.as_ref()) else {
+            return Ok(std::borrow::Cow::Borrowed(module));
+        };
+        let key = (count, pad_uniforms);
+        if let Some(lowered) = self.lowered.read().get(&key) {
+            return Ok(std::borrow::Cow::Owned(lowered.clone()));
+        }
+        let lowered = light_roots::lower_roots(module, roots, count)?;
+        self.lowered.write().insert(key, lowered.clone());
+        Ok(std::borrow::Cow::Owned(lowered))
     }
 
     /// Module to compile for a pipeline. Backends that reject uniform
@@ -671,11 +730,18 @@ fn sampled_image_globals(
     sampled
 }
 
-fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderError> {
+/// Reflects the module's bindings, leaving out the `filled` globals, which the renderer fills.
+fn parse_uniforms(
+    module: &Module,
+    filled: &[naga::Handle<naga::GlobalVariable>],
+) -> Result<HashMap<String, Uniform>, ShaderError> {
     let mut uniforms = HashMap::new();
     let sampled_set = sampled_image_globals(module);
 
     for (handle, variable) in module.global_variables.iter() {
+        if filled.contains(&handle) {
+            continue;
+        }
         // Handle WorkGroup specially: ignore unbound; error on bound (unexpected)
         match variable.space {
             AddressSpace::WorkGroup => {

@@ -37,6 +37,8 @@ mod depth;
 use depth::DepthUse;
 pub(crate) mod background;
 mod external_texture;
+pub(crate) mod lights;
+use lights::LightPath;
 mod sampler_pairs;
 mod storage_read;
 mod unregister;
@@ -541,6 +543,9 @@ impl Renderer {
                 !flags.contains(wgpu::DownlevelFlags::BUFFER_BINDINGS_NOT_16_BYTE_ALIGNED),
                 Ordering::Relaxed,
             );
+            let path = LightPath::pick(&adapter, &context.device);
+            *context.light_path.write() = path;
+            crate::shader::lower_light_cap(path.cap());
 
             self.adapter.write().replace(adapter);
             self.context.write().replace(context.clone());
@@ -678,6 +683,17 @@ pub(crate) struct RenderContext {
     // `Vec` allocations the previous shape paid.
     scratch: RwLock<RenderScratch>,
 
+    /// How shaders take their lights on this device: storage roots binned by
+    /// a compute pass, or a uniform block. Picked once, when the context opens.
+    light_path: RwLock<LightPath>,
+    /// Each pass's light sets, by pass id and light list. They stay out of the
+    /// storage registry and the per-frame pools.
+    light_sets: RwLock<HashMap<(u64, u64), lights::LightSet>>,
+    /// The light binning pipeline, built on first use.
+    binning: RwLock<Option<Arc<lights::BinningPipeline>>>,
+    #[cfg(test)]
+    light_probe: lights::LightProbe,
+
     // The first GPU error a wasm error scope caught after its call returned.
     // The next call that touches the GPU returns it.
     #[cfg(wasm)]
@@ -726,6 +742,10 @@ impl RenderContext {
         let buffer_pool = UniformBufferPool::new("Uniform Buffer Pool", &device);
         let storage_pool = StorageBufferPool::new("Storage Buffer Pool", &device);
         let readback_pool = ReadbackBufferPool::new("Readback Buffer Pool", 8);
+        let limits = device.limits();
+        let storage_limit = limits
+            .max_storage_buffer_binding_size
+            .min(limits.max_buffer_size);
 
         RenderContext {
             device,
@@ -746,6 +766,14 @@ impl RenderContext {
             sample_count: AtomicU32::new(1),
             pbr_defaults: RwLock::new(None),
             scratch: RwLock::new(RenderScratch::default()),
+            // `Renderer::context` picks the path from the adapter once it has one.
+            light_path: RwLock::new(LightPath::Clustered {
+                limit: storage_limit,
+            }),
+            light_sets: RwLock::new(HashMap::new()),
+            binning: RwLock::new(None),
+            #[cfg(test)]
+            light_probe: lights::LightProbe::default(),
             #[cfg(wasm)]
             late: Arc::default(),
         }
@@ -1198,6 +1226,8 @@ impl RenderContext {
         let pass_draws = self.build_pass_draws(pass);
         let model_overrides = &pass_draws.opaque_overrides;
         let blend_draws = &pass_draws.blend_draws;
+        // Light buffers for every lit shader, binned before the render pass begins.
+        let light_buffers = self.prepare_lights(encoder, pass)?;
 
         let load_op = match *pass.input.read() {
             PassInput::Load => wgpu::LoadOp::Load,
@@ -1350,7 +1380,7 @@ impl RenderContext {
                 .entry(pipeline_key)
                 .or_try_insert_with(|| {
                     self.validate("render pipeline", || {
-                        Ok(create_render_pipeline(
+                        create_render_pipeline(
                             &self.device,
                             shader,
                             color_format,
@@ -1360,7 +1390,8 @@ impl RenderContext {
                             alpha_mode,
                             double_sided,
                             self.aligned_uniform_bindings.load(Ordering::Relaxed),
-                        ))
+                            self.light_path(),
+                        )
                     })
                 })?;
 
@@ -1372,11 +1403,25 @@ impl RenderContext {
                 storage_buffers: Vec<(u32, buffer_pool::BufferLocation)>,
                 // persistent storage buffers (buffer, span)
                 persistent_storage_buffers: Vec<(u32, wgpu::Buffer, u64)>,
+                // light set buffers, bound whole
+                light_buffers: Vec<(u32, wgpu::Buffer)>,
                 sampler_sources: SamplerSources,
                 views: Vec<(u32, wgpu::TextureView)>,
             }
 
             let mut groups: HashMap<u32, BindGroupResources> = HashMap::new();
+            if let Some(roots) = shader.light_roots.as_ref() {
+                let buffers = light_buffers
+                    .get(&(Arc::as_ptr(shader) as usize))
+                    .ok_or_else(|| crate::ShaderError::UniformNotFound("lights".into()))?;
+                for (group, binding, buffer) in buffers.bindings(roots) {
+                    groups
+                        .entry(group)
+                        .or_default()
+                        .light_buffers
+                        .push((binding, buffer));
+                }
+            }
             let mut pbr_defaults_handle: Option<Arc<PbrDefaults>> = None;
             for name in &shader.list_uniforms() {
                 let uniform = shader.get_uniform(name)?;
@@ -1527,6 +1572,12 @@ impl RenderContext {
                             offset: 0,
                             size: Some(size_nz),
                         }),
+                    });
+                }
+                for (binding, buffer) in resources.light_buffers.iter() {
+                    entries.push(wgpu::BindGroupEntry {
+                        binding: *binding,
+                        resource: buffer.as_entire_binding(),
                     });
                 }
                 for (binding, view) in resources.views.iter() {
@@ -2411,8 +2462,20 @@ fn create_render_pipeline(
     alpha_mode: crate::material::AlphaMode,
     double_sided: bool,
     pad_uniforms: bool,
-) -> RenderPipeline {
-    let mut layouts = create_bind_group_layouts(device, &bind_group_entries(shader));
+    light_path: LightPath,
+) -> Result<RenderPipeline, RendererError> {
+    let mut entries = bind_group_entries(shader);
+    let mut light_groups: Vec<u32> = Vec::new();
+    if let Some(roots) = shader.light_roots.as_ref() {
+        for (group, entry) in lights::layout_entries(roots, light_path) {
+            light_groups.push(group);
+            let list = entries.entry(group).or_default();
+            list.push(entry);
+            list.sort_by_key(|entry| entry.binding);
+        }
+    }
+    let base_module = shader.module_for_device(pad_uniforms, light_path.uniform_lights())?;
+    let mut layouts = create_bind_group_layouts(device, &entries);
 
     let vs_entry = shader
         .find_entry_point(naga::ShaderStage::Vertex)
@@ -2465,10 +2528,7 @@ fn create_render_pipeline(
                 size: *sz,
             });
         }
-        let module = Cow::Owned(set_encoding(
-            shader.module_for_pipeline(pad_uniforms),
-            format,
-        ));
+        let module = Cow::Owned(set_encoding(&base_module, format));
         device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
             source: wgpu::ShaderSource::Naga(module),
@@ -2477,7 +2537,7 @@ fn create_render_pipeline(
         // Fallback push-constants mode: rewrite push constants to uniform buffers
 
         // Let's add a new new binding group id (beyond current ones)
-        let mut max_group: u32 = 0;
+        let mut max_group: u32 = light_groups.iter().copied().max().unwrap_or(0);
         for (_, _, u) in shader.storage.read().uniforms.values() {
             if !u.name.contains('.') {
                 max_group = max_group.max(u.group);
@@ -2487,7 +2547,7 @@ fn create_render_pipeline(
 
         // Assign bindings following the discovered push_roots order.
         // push_roots preserves the order we collected from storage.uniforms / naga globals.
-        let mut module = shader.module_for_pipeline(pad_uniforms).clone();
+        let mut module = base_module.into_owned();
 
         // Map root name -> binding index according to push_roots sequence
         let mut ordered_map: std::collections::HashMap<String, u32> =
@@ -2646,11 +2706,11 @@ fn create_render_pipeline(
         cache: None,
     });
 
-    RenderPipeline {
+    Ok(RenderPipeline {
         pipeline,
         bind_group_layouts: layouts.clone(),
         push_mode,
-    }
+    })
 }
 
 /// Builds the compute pipeline for `shader` with one layout per group in `entries`.

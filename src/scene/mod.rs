@@ -32,6 +32,7 @@ mod scene;
 
 pub use camera::*;
 pub use light::*;
+pub(crate) use light::{GpuLight, LightObject, bump_epoch, current_epoch};
 pub use loader::{GltfSource, SceneLoadError, SceneSource};
 pub use object::SceneObject;
 pub use scene::{PassRef, Scene};
@@ -67,6 +68,25 @@ pub struct Model {
 impl SceneObject for Model {
     fn attach(&self, pass: &crate::Pass) -> Result<(), crate::PassError> {
         let shader_arc = &self.material.shader.object;
+        let shader_present = pass
+            .object
+            .shaders
+            .read()
+            .iter()
+            .any(|s| Arc::ptr_eq(s, shader_arc));
+
+        // A shader that joins takes every light on the pass, so check that
+        // they fit before anything changes.
+        if !shader_present {
+            let incoming: Vec<u64> = pass
+                .object
+                .lights
+                .read()
+                .iter()
+                .map(|light| light.object.id)
+                .collect();
+            shader_arc.check_light_room(&incoming)?;
+        }
 
         // Declare the model-instance vertex schema on the Mesh first, so the
         // shader's mesh-validation (inside `add_mesh` below) sees `model_0..3`
@@ -83,12 +103,6 @@ impl SceneObject for Model {
         // groups twice for the same draws. When a new shader joins, replay
         // every scene object on the pass against it so order-of-add (Camera
         // before Model, lights after Model, …) doesn't matter.
-        let shader_present = pass
-            .object
-            .shaders
-            .read()
-            .iter()
-            .any(|s| Arc::ptr_eq(s, shader_arc));
         if !shader_present {
             pass.add_shader(&self.material.shader);
             pass.replay_scene_objects(&self.material.shader);

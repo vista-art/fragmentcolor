@@ -117,6 +117,9 @@ impl Pass {
         for object in self.object.scene_objects.read().iter() {
             object.apply_to_shader(shader);
         }
+        for light in self.object.lights.read().iter() {
+            shader.object.add_light(&light.object);
+        }
     }
 
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
@@ -341,10 +344,18 @@ pub(crate) struct CameraSnapshot {
     /// laterally on a vertical plane (a row of glass panels viewed
     /// edge-on); eye-Z resolves them in the right order.
     pub(crate) view: [[f32; 4]; 4],
+    /// The camera's `proj * view`, column-major. The renderer bins the
+    /// pass's lights in its clip space.
+    pub(crate) view_proj: [[f32; 4]; 4],
 }
+
+/// Hands each pass a number of its own, which keys its light sets.
+static NEXT_PASS_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug)]
 pub struct PassObject {
+    /// Unique in the process.
+    pub(crate) id: u64,
     pub pass_type: RwLock<PassType>,
     pub(crate) name: Arc<str>,
     pub(crate) input: RwLock<PassInput>,
@@ -366,6 +377,10 @@ pub struct PassObject {
     // on the source value reach every absorbed shader without a second
     // `add` call. Model doesn't go in this list (its work is one-shot).
     pub(crate) scene_objects: RwLock<Vec<Box<dyn crate::scene::SceneObject>>>,
+    /// The lights added to this pass, in add order. Holding them keeps them
+    /// lighting after the caller drops its handles, and a shader that joins
+    /// the pass later takes every one.
+    pub(crate) lights: RwLock<Vec<crate::scene::Light>>,
     pub(crate) viewport: RwLock<Option<ScreenRegion>>,
     pub(crate) required_buffer_size: RwLock<u64>,
     /// Snapshot of the most recently attached Camera's `(view, position)`,
@@ -402,10 +417,12 @@ impl PassObject {
     /// Create a new Pass object with the given name and type.
     pub fn new(name: &str, pass_type: PassType) -> Self {
         Self {
+            id: NEXT_PASS_ID.fetch_add(1, Ordering::Relaxed),
             name: Arc::from(name),
             shaders: RwLock::new(Vec::new()),
             model_entries: RwLock::new(Vec::new()),
             scene_objects: RwLock::new(Vec::new()),
+            lights: RwLock::new(Vec::new()),
             viewport: RwLock::new(None),
             input: RwLock::new(PassInput::Clear(Color::transparent())),
             required_buffer_size: RwLock::new(0),
