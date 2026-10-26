@@ -19,10 +19,10 @@ final class GeneratedExamples: ExampleCase {
             let shader = Shader.default()
 
             let pass = Pass("First Pass")
-            pass.addShader(shader)
+            try pass.addShader(shader)
 
             let pass2 = Pass("Second Pass")
-            pass2.addShader(shader)
+            try pass2.addShader(shader)
 
             // standalone
             try renderer.render(pass, target)
@@ -84,7 +84,7 @@ final class GeneratedExamples: ExampleCase {
         await example("docs/api/core/pass/add_shader.md") {
             let shader = Shader.default()
             let pass = Pass("p")
-            pass.addShader(shader)
+            try pass.addShader(shader)
         }
     }
 
@@ -92,7 +92,7 @@ final class GeneratedExamples: ExampleCase {
         await example("docs/api/core/pass/compute.md") {
             let cs = try Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
             let pass = Pass.compute("compute")
-            pass.addShader(cs)
+            try pass.addShader(cs)
         }
     }
 
@@ -124,7 +124,7 @@ final class GeneratedExamples: ExampleCase {
 
             let shader = Shader.default()
             let pass = Pass("blend with previous")
-            pass.addShader(shader)
+            try pass.addShader(shader)
             pass.loadPrevious()
 
             try renderer.render(pass, target)
@@ -167,7 +167,7 @@ final class GeneratedExamples: ExampleCase {
 
             let shader = Shader.default()
             let pass = Pass("solid background")
-            pass.addShader(shader)
+            try pass.addShader(shader)
 
             try pass.setClearColor([0.1, 0.2, 0.3, 1.0])
 
@@ -224,7 +224,7 @@ final class GeneratedExamples: ExampleCase {
 
             let shader = Shader.default()
             let pass = Pass("clipped")
-            pass.addShader(shader)
+            try pass.addShader(shader)
 
             try pass.setViewport(try ScreenRegion((0, 0), (32, 32)))
 
@@ -360,7 +360,7 @@ final class GeneratedExamples: ExampleCase {
 
             let pass = Pass.compute("seed")
             pass.setComputeDispatch(1, 1, 1)
-            pass.addShader(compute)
+            try pass.addShader(compute)
             try renderer.render(pass, target)
 
             let bytes = try await renderer.readStorage(compute, "out")

@@ -1047,8 +1047,8 @@ class Pass:
 
     The constructor creates a RenderPass by default. To create a ComputePass, call [Pass](https://fragmentcolor.org/api/core/pass)::compute().
 
-    After creation, it will only accept a compatible [Shader](https://fragmentcolor.org/api/core/shader) object. If you try to add a Compute [Shader](https://fragmentcolor.org/api/core/shader) to a Render [Pass](https://fragmentcolor.org/api/core/pass) or vice-versa,
-    it won't add the shader to its internal list and log a warning message in the console.
+    The first [Shader](https://fragmentcolor.org/api/core/shader) added sets the pass's kind, and the pass then takes only shaders of that kind.
+    [`add_shader`](https://fragmentcolor.org/api/core/pass#add_shader) returns `PassError::ShaderKind` for a compute shader on a render pass, or the reverse, and leaves the pass as it was.
 
     Example:
 
@@ -1104,7 +1104,8 @@ class Pass:
         Only [Shader](https://fragmentcolor.org/api/core/shader) objects that compile to compute pipelines can be added.
 
         The first shader added decides the pass kind, whichever constructor made the
-        pass. After that, a shader of the other kind is dropped with a logged warning.
+        pass. After that, `add_shader` returns `PassError::ShaderKind` for a shader of
+        the other kind and leaves the pass as it was.
 
         Example:
 
@@ -1186,6 +1187,18 @@ class Pass:
         they were added, sharing the pass's targets, viewport, clear color, and
         load policy.
 
+        The first shader sets the pass's kind. After that, a compute shader on a
+        render pass, or a render shader on a compute pass, returns
+        `PassError::ShaderKind`, which names both kinds.
+
+        A shader that declares the light roots, as
+        [`Material::custom`](https://fragmentcolor.org/api/scene/material#custom)
+        lists them, takes every [Light](https://fragmentcolor.org/api/scene/light)
+        the pass holds. When those lights would take it past the most it holds on
+        the device, `add_shader` returns `PassError::LightCapReached`.
+
+        Either error leaves the pass and the shader as they were.
+
         Example:
 
         ```python
@@ -1245,23 +1258,27 @@ class Pass:
         [Light](https://fragmentcolor.org/api/scene/light), or, in Rust, a
         user-defined node that implements the trait) into the pass. The other
         bindings take the built-in kinds. Each kind brings its
-        own attach behavior: a Model queues a draw with its own per-instance
-        transform; a Camera or Light wires its uniforms into every shader the
-        pass renders, both the ones already there and the ones added afterwards.
+        own attach behavior. A Model queues a draw with its own per-instance
+        transform. A Camera writes its uniforms into every shader on the pass and
+        into the shaders that later Models bring. A Light reaches every shader on
+        the pass that declares the light roots, both the ones already there and
+        the ones added afterwards, through a Model or
+        [`add_shader`](https://fragmentcolor.org/api/core/pass#add_shader).
 
-        Camera and Light hold Arc-shared state, so subsequent mutations on the
-        same value (`camera.look_at(...)`, `light.set_color(...)`) propagate to
-        every shader on the pass with no further `add` call.
+        Camera and Light hold Arc-shared state, so a later `camera.look_at(...)`
+        or `light.set_color(...)` reaches those shaders with no further `add`
+        call.
 
         The pass holds every Light added to it, so a Light keeps lighting after
         the caller drops its handle.
 
-        Returns `Result<&Pass, PassError>`. Models can fail at attach time when
-        the Mesh layout doesn't match the Material's shader, and Cameras always
+        Returns `Result<&Pass, PassError>`. A Model fails at attach time when
+        the Mesh layout doesn't match the Material's shader, and with
+        `PassError::ShaderKind` on a pass of compute shaders. Cameras always
         succeed. A Light fails with `PassError::LightCapReached { cap }` when a
-        shader on the pass already holds as many lights as the device allows,
-        and a Model fails the same way when its shader would take more than that
-        from the pass. See [Light](https://fragmentcolor.org/api/scene/light)
+        shader on the pass already holds as many lights as it takes on this
+        device, and a Model fails the same way when its shader would take more
+        than that from the pass. See [Light](https://fragmentcolor.org/api/scene/light)
         for the cap on each kind of device. Chain with `?` between calls.
 
         Example:
@@ -2307,12 +2324,13 @@ class Scene:
         onto its default [Pass](https://fragmentcolor.org/api/core/pass), which
         is created lazily on the first call.
 
-        Each kind brings its own attach behavior: a Model queues a draw with its
-        own per-instance transform; a Camera or Light wires its uniforms into
-        every shader the pass renders, both the ones already there and the ones
-        added afterwards. Camera and Light hold Arc-shared state, so subsequent
-        mutations (`camera.look_at(...)`, `light.set_color(...)`) propagate to
-        every shader on the pass with no further `add` call.
+        Each kind brings its own attach behavior. A Model queues a draw with its
+        own per-instance transform. A Camera writes its uniforms into every shader
+        on the pass, including the shaders that later Models bring, and a Light
+        reaches every shader on the pass that declares the light roots, both the
+        ones already there and the ones added afterwards. Camera and Light hold
+        Arc-shared state, so a later `camera.look_at(...)` or
+        `light.set_color(...)` reaches those shaders with no further `add` call.
 
         The Scene holds every Light added to it, so `scene.add(&light)` keeps
         lighting after the caller drops its handle.
@@ -2320,8 +2338,8 @@ class Scene:
         Returns `Result<&Scene, PassError>` so Models can fail at attach time when
         the Mesh layout doesn't match the Material's shader. Cameras always
         succeed. A Light fails with `PassError::LightCapReached { cap }` when a
-        shader on the default pass already holds as many lights as the device
-        allows, and a Model fails the same way when its shader would take more
+        shader on the default pass already holds as many lights as it takes on
+        this device, and a Model fails the same way when its shader would take more
         than that. See [Light](https://fragmentcolor.org/api/scene/light) for the
         cap on each kind of device. Chain with `?` between calls.
 
@@ -2851,8 +2869,8 @@ class Scene:
         on [`Scene::load`](https://fragmentcolor.org/api/scene/scene#load)).
 
         Each entry is an Arc-shared clone. Mutating a returned handle
-        (`set_color`, `set_intensity`, `set_position`, …) propagates to every
-        shader the Light occupies a slot in.
+        (`set_color`, `set_intensity`, `set_position`, …) reaches every shader
+        the Light lights at the next render.
 
         The default-injected Light (auto-fired when the Scene first renders with
         no user-supplied Light) appears in this list too, so consumers can grab
@@ -3472,12 +3490,14 @@ class Light:
 
     ## Lifetime
 
-    A Light stops lighting once nothing holds it. Each `Pass` holds the
-    lights added to it, and so does each `Scene`. `scene.add(&light)` keeps
-    lighting after the local `light` handle drops, and a `Model` that joins
-    the pass later takes every light the pass holds. Once the last pass,
-    scene and handle holding a Light are gone, the shaders it reached draw
-    without it.
+    A Light lights as long as a `Scene`, a `Pass` or a handle of yours holds
+    it. Each `Pass` and each `Scene` holds the lights added to it, so
+    `scene.add(&light)` keeps lighting after the local `light` handle drops.
+    A `Model` holds no lights. When it joins a pass, its shader takes every
+    light that pass holds, and so does a shader added with
+    [`Pass::add_shader`](https://fragmentcolor.org/api/core/pass#add_shader).
+    Once the last pass, scene and handle holding a Light are gone, the
+    shaders it reached draw without it.
 
     ## Cost model
 
@@ -3493,16 +3513,18 @@ class Light:
     and give lamps, torches and other local lights a range.
 
     A still scene sorts its lights once. Moving a light, changing its range
-    or cone, or moving the camera sorts them again at the next render, and
-    a new color or intensity only uploads the changed values.
+    or cone, or moving the camera sorts them again at the next render. A new
+    color or intensity sorts nothing and uploads only the lights from the
+    first one that changed to the last.
 
     ### How many lights a shader takes
 
-    The device sets the cap. A device with storage buffers in fragment
-    shaders, as on WebGPU, Vulkan, Metal and DirectX 12, takes as many
-    lights as its largest storage buffer binding holds: about two million at
-    the common 128 MiB. WebGL2 and native OpenGL take the lights through a
-    uniform block, so the cap is what the device's largest uniform block
+    The device sets the cap. A device with compute shaders and storage
+    buffers in fragment shaders, as on WebGPU, Vulkan, Metal and DirectX 12,
+    takes as many lights as its largest storage buffer binding holds: about
+    two million at the common 128 MiB. Every OpenGL backend, WebGL2
+    included, takes the lights through a uniform block, and so does any
+    other device, so the cap is what the device's largest uniform block
     holds, from 253 lights in 16 KiB up to 1,021.
 
     Past the cap, `pass.add(&light)` returns
@@ -4319,11 +4341,12 @@ class Material:
         `KHR_lights_punctual` falloff, `(1 - (d / range)^4)` scaled by the inverse
         square distance.
 
-        WebGL2 and native OpenGL have no storage buffers in fragment shaders. There
-        the same source runs with `lights` turned into a uniform block that holds as
-        many lights as the device allows, and with no grid, so `light_cell` returns
-        `CELL_EVERY`. A shader that calls `arrayLength` on either root can't run
-        there, and its first render returns `ShaderError::TypeMismatch`.
+        On every OpenGL backend, WebGL2 included, and on a device without compute
+        shaders or storage buffers in fragment shaders, the same source runs with
+        `lights` turned into a uniform block that holds as many lights as the device
+        allows, and with no grid, so `light_cell` returns `CELL_EVERY`. A shader that
+        calls `arrayLength` on either root can't run there, and its first render
+        returns `ShaderError::TypeMismatch`.
 
         ### The older interface
 
@@ -4336,7 +4359,8 @@ class Material:
         ```
 
         A shader of this shape takes at most `N` lights, and the `add` past them
-        fails with `PassError::LightCapReached { cap: N }`. A uniform `lights` that
+        fails with `PassError::LightCapReached { cap: N }`. `lights.lights[i]` holds
+        the lights in the order they reached the shader. A uniform `lights` that
         matches neither shape stays an ordinary uniform, which `set` reaches, and
         logs a warning.
 
