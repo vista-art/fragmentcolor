@@ -9,6 +9,11 @@
 - The renderer releases a texture when the last thing holding it drops: every `Texture` handle, the `TextureTarget` that owns it, and each shader uniform or pass target that binds it. It kept every texture until `unregister_texture`, so a demo that made a new texture on each resize leaked the old ones.
 - A pass that draws `Model`s and sets no depth target draws with a depth buffer, so overlapping scenes now draw with depth: the nearest surface shows whatever order the models were added in, where a far model added last covered a near one. The buffer matches the pass's color attachment in size and sample count. The renderer reuses it from frame to frame and frees it a few renders after the target changes size. The shaders in that pass that draw no model, such as a fullscreen backdrop or an overlay, ignore depth and draw in order, so a backdrop drawn first stays behind the models. `Pass.set_depth_target` still sets a pass's own depth texture, and passes without models, such as 2D and fullscreen passes, draw without depth.
 - PBR materials light a `Model` scaled differently along each axis, or mirrored, the way its surfaces face. The registry's `mesh_transform_normal` uses the inverse transpose of the model matrix, where the plain matrix tilted normals toward the stretched axis.
+- `Renderer.render` returns the GPU validation errors of a frame in Rust, Python, Swift and Kotlin. It builds each render and compute pipeline, and records and submits each frame, inside a validation error scope, and returns what the scope catches as `RendererError::ValidationError`. It returned success, drew nothing and logged an uncaptured error on every frame. A pipeline that fails to build stays out of the cache, so the next frame builds it again and reports the same error. The web logs these errors to the console as before, since WebGPU reports them asynchronously and `render` is synchronous.
+- A hidden `Model` draws nothing, and neither does a `Model` mesh in a pass the Model isn't in, as when two passes share one `Material`. Either one lost the whole frame to a GPU error, or drew the mesh at another Model's transform.
+- `render` of a shader that reads `@location` vertex inputs and has no mesh returns `ShaderError::InvalidKey` naming the input, in all five languages. That covers a shader rendered on its own, one whose meshes were removed, and a `Model` whose attach failed. It built a pipeline wgpu rejected and drew nothing.
+- A mesh whose index list is empty draws nothing, where `render` panicked with "buffer slice can not be empty".
+- `render` returns `MeshError::InvalidInstance` when `set_instance_count` asks for more instances than the mesh holds and the shader reads instance attributes. A shader that reads none, such as one that indexes a storage buffer with `@builtin(instance_index)`, draws any count.
 
 ### Textures
 
@@ -45,6 +50,9 @@
 - A `TextureId` on its own doesn't keep its texture. Once the last handle, shader uniform and pass target holding a texture drop, `read_texture` and `unregister_texture` report its id as not found.
 - Python reads sizes with a call: `texture.size.width` from the 0.12.6 notes is now `texture.size().width`, and `target.size` is `target.size()` on a texture target.
 - `RendererError::MsaaViewMissing` is gone. No code returned it.
+- `render` returns an error for a frame or pipeline that fails GPU validation, where it returned success. Rust returns `RendererError::ValidationError`, Python and Swift throw `FragmentColorError`, and Kotlin throws `FragmentColorException`. A frame that fails is not presented. JavaScript keeps returning `undefined` and logging the error.
+- `render` of a shader that reads vertex inputs and has no mesh returns `ShaderError::InvalidKey` in every language, where it returned success. JavaScript throws an `Error`.
+- An instance count from `set_instance_count` past the instances a mesh holds is an error from `render` in every language when the shader reads instance attributes, where it reached a wgpu validation error.
 
 ## 0.12.6: Binding and renderer fixes
 
