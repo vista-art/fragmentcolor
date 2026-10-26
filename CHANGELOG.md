@@ -15,6 +15,10 @@
 - `Texture.resize(size)` gives a texture a pass draws into a new size, in Rust, JavaScript, Python, Swift and Kotlin. Every clone of the handle follows, and so do the shader uniforms and pass targets that hold it, so a depth texture can follow a window without being created again. A new size starts with blank pixels. A texture without `RENDER_ATTACHMENT` usage returns `TextureError::FixedSize`, and a width or height of zero returns `TextureError::InvalidInput`. Both keep the old size.
 - A `Texture` from `TextureTarget.texture()`, and every clone of a `TextureTarget`, follow `TextureTarget.resize`. They kept the old size, and `write` and `get_image` reached the old texture.
 
+### Scene
+
+- `Scene.load` refuses a malformed glTF file with `SceneLoadError::Invalid`, which names the accessor or node, in every language. A `byteStride` shorter than one element, an index or attribute type its semantic doesn't take, a count of 0, an accessor past the end of its buffer view, a view past the end of its buffer, or a node that is its own ancestor stopped the program: Rust panicked, the web build aborted, and Python, Swift and Kotlin raised a panic exception instead of the scene error.
+
 ### JavaScript
 
 - `Vertex`, `Instance`, `Quad` and `TextureId` carry the `__fc_kind` brand the other classes have. Minifiers rename classes, and the checks that passed these objects into the library fell back to the class name, so a production build failed where a development build worked: `mesh.addVertices` rejected its `Vertex` objects. The checks read only the brand now, and a build fails when a type that crosses into the library has none. A site that keeps class names in its build to work around this, as the FragmentColor website does with `keepNames` in `docs/website/astro.config.mjs`, can drop that once it loads 0.12.7.
@@ -45,6 +49,8 @@
 - A `TextureId` on its own doesn't keep its texture. Once the last handle, shader uniform and pass target holding a texture drop, `read_texture` and `unregister_texture` report its id as not found.
 - Python reads sizes with a call: `texture.size.width` from the 0.12.6 notes is now `texture.size().width`, and `target.size` is `target.size()` on a texture target.
 - `RendererError::MsaaViewMissing` is gone. No code returned it.
+- `Scene.load` fails on a glTF attribute or index accessor the file declares but whose bytes can't be read. It computed normals, used default UVs and colors, or drew without indices instead.
+- `Scene.load` fails on a glTF file that reaches one node twice, through a cycle or a node with two parents. glTF requires nodes to form trees.
 
 ## 0.12.6: Binding and renderer fixes
 

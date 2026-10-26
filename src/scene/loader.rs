@@ -17,9 +17,12 @@
 //! and `KHR_lights_punctual` lights. Animation, skinning, morph targets,
 //! and material extensions beyond PBR-MR are out of scope here.
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use glam::{Mat4, Quat, Vec3};
+use gltf::Semantic;
+use gltf::accessor::{DataType, Dimensions};
 
 use crate::scene::{Camera, Light, Scene};
 use crate::{Material, Mesh, Model, TextureData, TextureInput};
@@ -243,27 +246,47 @@ fn load_gltf(source: GltfSource) -> Result<Scene, SceneLoadError> {
         std::collections::HashMap::new();
 
     if let Some(gltf_scene) = default_gltf_scene {
-        for node in gltf_scene.nodes() {
-            visit_node(
+        // An explicit stack walks the tree depth first in file order. A deep
+        // chain of nodes can't overflow the call stack, and `visited` refuses
+        // a node reached twice: glTF nodes form disjoint trees, so a second
+        // visit means a cycle or a node with two parents.
+        let mut stack: Vec<(gltf::Node<'_>, Mat4)> = gltf_scene
+            .nodes()
+            .map(|node| (node, Mat4::IDENTITY))
+            .collect();
+        stack.reverse();
+        let mut visited = HashSet::new();
+        while let Some((node, parent_world)) = stack.pop() {
+            if !visited.insert(node.index()) {
+                return Err(SceneLoadError::Invalid(format!(
+                    "glTF node {} is reached twice; nodes must form trees, without cycles or shared children",
+                    node.index()
+                )));
+            }
+            let world = visit_node(
                 &node,
-                Mat4::IDENTITY,
+                parent_world,
                 &buffers,
                 &images,
                 &scene,
                 &mut material_cache,
                 &options,
             )?;
+            let first_child = stack.len();
+            stack.extend(node.children().map(|child| (child, world)));
+            stack[first_child..].reverse();
         }
     }
 
     Ok(scene)
 }
 
-/// Depth-first walk over the glTF node tree. Multiplies the node's local
-/// transform into the inherited world matrix and dispatches on the node's
-/// payload (mesh / camera / KHR_lights_punctual light). Filter toggles in
-/// [`GltfOptions`] short-circuit the camera and light branches when the
-/// caller opted out.
+/// Load one glTF node and return its world matrix for its children.
+///
+/// Multiplies the node's local transform into the inherited world matrix
+/// and dispatches on the node's payload (mesh / camera / KHR_lights_punctual
+/// light). Filter toggles in [`GltfOptions`] short-circuit the camera and
+/// light branches when the caller opted out.
 fn visit_node(
     node: &gltf::Node<'_>,
     parent_world: Mat4,
@@ -272,7 +295,7 @@ fn visit_node(
     scene: &Scene,
     material_cache: &mut std::collections::HashMap<Option<usize>, Material>,
     options: &GltfOptions,
-) -> Result<(), SceneLoadError> {
+) -> Result<Mat4, SceneLoadError> {
     let local = local_transform(node);
     let world = parent_world * local;
 
@@ -311,18 +334,7 @@ fn visit_node(
         add_light(&gltf_light, world, scene)?;
     }
 
-    for child in node.children() {
-        visit_node(
-            &child,
-            world,
-            buffers,
-            images,
-            scene,
-            material_cache,
-            options,
-        )?;
-    }
-    Ok(())
+    Ok(world)
 }
 
 /// glTF nodes carry either `matrix` or `(translation, rotation, scale)`;
@@ -343,24 +355,225 @@ fn local_transform(node: &gltf::Node<'_>) -> Mat4 {
     }
 }
 
+/// Accessor types the loader reads for each semantic.
+const VEC3_FLOAT: &[(DataType, Dimensions)] = &[(DataType::F32, Dimensions::Vec3)];
+const VEC4_FLOAT: &[(DataType, Dimensions)] = &[(DataType::F32, Dimensions::Vec4)];
+const UV_TYPES: &[(DataType, Dimensions)] = &[
+    (DataType::U8, Dimensions::Vec2),
+    (DataType::U16, Dimensions::Vec2),
+    (DataType::F32, Dimensions::Vec2),
+];
+const COLOR_TYPES: &[(DataType, Dimensions)] = &[
+    (DataType::U8, Dimensions::Vec3),
+    (DataType::U16, Dimensions::Vec3),
+    (DataType::F32, Dimensions::Vec3),
+    (DataType::U8, Dimensions::Vec4),
+    (DataType::U16, Dimensions::Vec4),
+    (DataType::F32, Dimensions::Vec4),
+];
+const INDEX_TYPES: &[(DataType, Dimensions)] = &[
+    (DataType::U8, Dimensions::Scalar),
+    (DataType::U16, Dimensions::Scalar),
+    (DataType::U32, Dimensions::Scalar),
+];
+
+/// Check every accessor of a primitive before the gltf reader runs.
+///
+/// The reader panics on a component type its semantic doesn't allow, on
+/// a stride shorter than one element and on a count of 0, so the loader
+/// refuses those here. Attributes the loader never reads only need a count.
+fn check_primitive(
+    primitive: &gltf::Primitive<'_>,
+    buffers: &[gltf::buffer::Data],
+) -> Result<(), SceneLoadError> {
+    for (semantic, accessor) in primitive.attributes() {
+        let accepted = match semantic {
+            Semantic::Positions | Semantic::Normals => VEC3_FLOAT,
+            Semantic::Tangents => VEC4_FLOAT,
+            Semantic::TexCoords(0 | 1) => UV_TYPES,
+            Semantic::Colors(0) => COLOR_TYPES,
+            _ => &[],
+        };
+        check_accessor(&accessor, &semantic.to_string(), accepted, buffers)?;
+    }
+    if let Some(indices) = primitive.indices() {
+        check_accessor(&indices, "indices", INDEX_TYPES, buffers)?;
+    }
+    Ok(())
+}
+
+/// Check one accessor's type, count and byte range.
+///
+/// An empty `accepted` list marks an attribute the loader never reads, so
+/// only its count is checked. The arithmetic is checked too, because a huge
+/// count would otherwise overflow inside the reader.
+fn check_accessor(
+    accessor: &gltf::Accessor<'_>,
+    semantic: &str,
+    accepted: &[(DataType, Dimensions)],
+    buffers: &[gltf::buffer::Data],
+) -> Result<(), SceneLoadError> {
+    let label = format!("glTF accessor {} ({semantic})", accessor.index());
+    let count = accessor.count();
+    if count == 0 {
+        return Err(SceneLoadError::Invalid(format!(
+            "{label} has count 0; glTF requires at least 1"
+        )));
+    }
+    if accepted.is_empty() {
+        return Ok(());
+    }
+    let layout = (accessor.data_type(), accessor.dimensions());
+    if !accepted.contains(&layout) {
+        return Err(SceneLoadError::Invalid(format!(
+            "{label} holds {:?} {:?}, a type {semantic} doesn't take",
+            layout.0, layout.1
+        )));
+    }
+    let size = accessor.size();
+    let Some(sparse) = accessor.sparse() else {
+        let view = accessor.view().ok_or_else(|| {
+            SceneLoadError::Invalid(format!("{label} has neither a bufferView nor sparse data"))
+        })?;
+        return check_range(&label, &view, accessor.offset(), count, size, buffers);
+    };
+    if sparse.count() == 0 {
+        return Err(SceneLoadError::Invalid(format!(
+            "{label} has a sparse count of 0; glTF requires at least 1"
+        )));
+    }
+    if let Some(view) = accessor.view() {
+        check_range(&label, &view, accessor.offset(), count, size, buffers)?;
+    }
+    let indices = sparse.indices();
+    let index_size = indices.index_type().size();
+    check_range(
+        &label,
+        &indices.view(),
+        indices.offset(),
+        sparse.count(),
+        index_size,
+        buffers,
+    )?;
+    let values = sparse.values();
+    check_range(
+        &label,
+        &values.view(),
+        values.offset(),
+        sparse.count(),
+        size,
+        buffers,
+    )
+}
+
+/// Check that `count` elements of `size` bytes fit their buffer view.
+///
+/// The view's stride must hold one element, the last element must end inside
+/// the view, and the view must end inside its buffer. Every sum is checked.
+fn check_range(
+    label: &str,
+    view: &gltf::buffer::View<'_>,
+    offset: usize,
+    count: usize,
+    size: usize,
+    buffers: &[gltf::buffer::Data],
+) -> Result<(), SceneLoadError> {
+    let stride = view.stride().unwrap_or(size);
+    if stride < size {
+        return Err(SceneLoadError::Invalid(format!(
+            "{label} reads {size}-byte elements from bufferView {} with byteStride {stride}",
+            view.index()
+        )));
+    }
+    let end = count
+        .checked_sub(1)
+        .and_then(|last| stride.checked_mul(last))
+        .and_then(|span| span.checked_add(offset))
+        .and_then(|start| start.checked_add(size));
+    if end.is_none_or(|end| end > view.length()) {
+        return Err(SceneLoadError::Invalid(format!(
+            "{label} reads past the end of bufferView {}",
+            view.index()
+        )));
+    }
+    let view_end = view.offset().checked_add(view.length());
+    let buffer_length = buffers.get(view.buffer().index()).map(|data| data.len());
+    match (view_end, buffer_length) {
+        (Some(end), Some(length)) if end <= length => Ok(()),
+        _ => Err(SceneLoadError::Invalid(format!(
+            "{label} reads bufferView {}, which runs past the end of buffer {}",
+            view.index(),
+            view.buffer().index()
+        ))),
+    }
+}
+
+/// Turn a reader's `None` for a declared accessor into an error.
+///
+/// The reader returns `None` both for an absent attribute and for one whose
+/// bytes it can't reach, and only the first case may fall back to defaults.
+fn require<Items>(
+    declared: Option<gltf::Accessor<'_>>,
+    items: Option<Items>,
+    semantic: &str,
+) -> Result<Option<Items>, SceneLoadError> {
+    match (declared, items) {
+        (None, _) => Ok(None),
+        (Some(_), Some(items)) => Ok(Some(items)),
+        (Some(accessor), None) => Err(SceneLoadError::Invalid(format!(
+            "glTF accessor {} ({semantic}) can't be read from its buffer",
+            accessor.index()
+        ))),
+    }
+}
+
 fn build_mesh(
     primitive: &gltf::Primitive<'_>,
     buffers: &[gltf::buffer::Data],
 ) -> Result<Mesh, SceneLoadError> {
+    check_primitive(primitive, buffers)?;
     let mesh = Mesh::new();
-    let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
+    let reader = primitive.reader(|buffer| buffers.get(buffer.index()).map(|data| &data[..]));
 
-    let positions: Vec<[f32; 3]> = reader
-        .read_positions()
-        .ok_or_else(|| SceneLoadError::Invalid("glTF primitive has no POSITION attribute".into()))?
-        .collect();
-    let supplied_normals: Option<Vec<[f32; 3]>> = reader.read_normals().map(|it| it.collect());
-    let uvs: Option<Vec<[f32; 2]>> = reader.read_tex_coords(0).map(|it| it.into_f32().collect());
-    let uv1s: Option<Vec<[f32; 2]>> = reader.read_tex_coords(1).map(|it| it.into_f32().collect());
-    let colors: Option<Vec<[f32; 4]>> =
-        reader.read_colors(0).map(|it| it.into_rgba_f32().collect());
-    let tangents: Option<Vec<[f32; 4]>> = reader.read_tangents().map(|it| it.collect());
-    let indices: Option<Vec<u32>> = reader.read_indices().map(|it| it.into_u32().collect());
+    let positions: Vec<[f32; 3]> = require(
+        primitive.get(&Semantic::Positions),
+        reader.read_positions(),
+        "POSITION",
+    )?
+    .ok_or_else(|| SceneLoadError::Invalid("glTF primitive has no POSITION attribute".into()))?
+    .collect();
+    let supplied_normals: Option<Vec<[f32; 3]>> = require(
+        primitive.get(&Semantic::Normals),
+        reader.read_normals(),
+        "NORMAL",
+    )?
+    .map(|it| it.collect());
+    let uvs: Option<Vec<[f32; 2]>> = require(
+        primitive.get(&Semantic::TexCoords(0)),
+        reader.read_tex_coords(0),
+        "TEXCOORD_0",
+    )?
+    .map(|it| it.into_f32().collect());
+    let uv1s: Option<Vec<[f32; 2]>> = require(
+        primitive.get(&Semantic::TexCoords(1)),
+        reader.read_tex_coords(1),
+        "TEXCOORD_1",
+    )?
+    .map(|it| it.into_f32().collect());
+    let colors: Option<Vec<[f32; 4]>> = require(
+        primitive.get(&Semantic::Colors(0)),
+        reader.read_colors(0),
+        "COLOR_0",
+    )?
+    .map(|it| it.into_rgba_f32().collect());
+    let tangents: Option<Vec<[f32; 4]>> = require(
+        primitive.get(&Semantic::Tangents),
+        reader.read_tangents(),
+        "TANGENT",
+    )?
+    .map(|it| it.collect());
+    let indices: Option<Vec<u32>> = require(primitive.indices(), reader.read_indices(), "indices")?
+        .map(|it| it.into_u32().collect());
 
     // glTF normals are optional; when missing, compute per-vertex normals
     // by accumulating face normals across every triangle that touches the
@@ -737,21 +950,45 @@ mod tests {
     use super::*;
     use crate::Renderable;
 
+    /// The minimal triangle: positions only, read through accessor 0 from
+    /// bufferView 0. Views 1 (12 bytes) and 2 (24 bytes) sit unused, so a
+    /// test can point a new accessor at them with a plain text replace.
+    const TRIANGLE_JSON: &str = r#"{"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"mode":4}]}],"buffers":[{"byteLength":72}],"bufferViews":[{"buffer":0,"byteLength":36,"byteOffset":0},{"buffer":0,"byteLength":12,"byteOffset":36},{"buffer":0,"byteLength":24,"byteOffset":48}],"accessors":[{"bufferView":0,"byteOffset":0,"componentType":5126,"count":3,"type":"VEC3","min":[-0.5,-0.5,0.0],"max":[0.5,0.5,0.0]}],"asset":{"version":"2.0"}}"#;
+
     /// Build a minimal valid .glb in memory: one triangle, positions only.
-    /// Three vertices (vec3 floats) packed into the BIN chunk; the JSON
-    /// chunk wires them up through a single buffer / bufferView /
-    /// accessor / mesh primitive / node / scene.
     fn build_minimal_triangle_glb() -> Vec<u8> {
+        build_triangle_glb(TRIANGLE_JSON)
+    }
+
+    /// Pack `json` with the triangle's BIN chunk: three vec3 positions, the
+    /// u32 indices `[0, 1, 2]` and 24 bytes of `[0.5, 0.5]` float pairs.
+    fn build_triangle_glb(json: &str) -> Vec<u8> {
         #[rustfmt::skip]
         let positions: [f32; 9] = [
              0.0,  0.5, 0.0,
             -0.5, -0.5, 0.0,
              0.5, -0.5, 0.0,
         ];
-        let bin: Vec<u8> = positions.iter().flat_map(|f| f.to_le_bytes()).collect();
-        let bin_len = bin.len() as u32;
+        let mut bin: Vec<u8> = positions.iter().flat_map(|f| f.to_le_bytes()).collect();
+        bin.extend([0u32, 1, 2].iter().flat_map(|i| i.to_le_bytes()));
+        bin.extend([0.5f32; 6].iter().flat_map(|f| f.to_le_bytes()));
+        build_glb(json, &bin)
+    }
 
-        let json = r#"{"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"mode":4}]}],"buffers":[{"byteLength":36}],"bufferViews":[{"buffer":0,"byteLength":36,"byteOffset":0}],"accessors":[{"bufferView":0,"byteOffset":0,"componentType":5126,"count":3,"type":"VEC3","min":[-0.5,-0.5,0.0],"max":[0.5,0.5,0.0]}],"asset":{"version":"2.0"}}"#;
+    /// Apply text patches to the minimal triangle's JSON and pack it.
+    fn mutate_triangle(patches: &[(&str, &str)]) -> Vec<u8> {
+        let json = patches
+            .iter()
+            .fold(TRIANGLE_JSON.to_string(), |json, (from, to)| {
+                assert!(json.contains(from), "patch target {from:?} not in the JSON");
+                json.replace(from, to)
+            });
+        build_triangle_glb(&json)
+    }
+
+    /// Wrap a JSON chunk and a BIN chunk in a .glb container.
+    fn build_glb(json: &str, bin: &[u8]) -> Vec<u8> {
+        let bin_len = bin.len() as u32;
         let mut json_bytes = json.as_bytes().to_vec();
         while !json_bytes.len().is_multiple_of(4) {
             json_bytes.push(b' ');
@@ -768,7 +1005,7 @@ mod tests {
         glb.extend_from_slice(&json_bytes);
         glb.extend_from_slice(&bin_len.to_le_bytes());
         glb.extend_from_slice(b"BIN\0");
-        glb.extend_from_slice(&bin);
+        glb.extend_from_slice(bin);
         glb
     }
 
@@ -887,6 +1124,158 @@ mod tests {
         // we want to see.
         let result = Scene::load("/definitely/not/a/real/path.glb");
         assert!(result.is_err(), "expected a load error for a bogus path");
+    }
+
+    /// Load `bytes` and expect `SceneLoadError::Invalid` naming `needle`.
+    fn assert_invalid(bytes: Vec<u8>, needle: &str) {
+        match Scene::load(bytes) {
+            Err(SceneLoadError::Invalid(message)) => {
+                assert!(message.contains(needle), "{message:?} lacks {needle:?}")
+            }
+            Err(other) => panic!("expected SceneLoadError::Invalid, got {other:?}"),
+            Ok(_) => panic!("expected SceneLoadError::Invalid, got a Scene"),
+        }
+    }
+
+    const POSITION_VIEW: &str = r#"{"buffer":0,"byteLength":36,"byteOffset":0}"#;
+    const LAST_ACCESSOR: &str = r#""max":[0.5,0.5,0.0]}]"#;
+    const ATTRIBUTES: &str = r#"{"POSITION":0}"#;
+    const MODE: &str = r#""mode":4}"#;
+
+    #[test]
+    fn load_refuses_a_stride_shorter_than_the_element() {
+        let bytes = mutate_triangle(&[(
+            POSITION_VIEW,
+            r#"{"buffer":0,"byteLength":36,"byteOffset":0,"byteStride":4}"#,
+        )]);
+        assert_invalid(bytes, "byteStride 4");
+    }
+
+    #[test]
+    fn load_refuses_float_indices() {
+        let bytes = mutate_triangle(&[
+            (MODE, r#""indices":1,"mode":4}"#),
+            (
+                LAST_ACCESSOR,
+                r#""max":[0.5,0.5,0.0]},{"bufferView":1,"componentType":5126,"count":3,"type":"SCALAR"}]"#,
+            ),
+        ]);
+        assert_invalid(bytes, "(indices) holds F32 Scalar");
+    }
+
+    #[test]
+    fn load_refuses_unsigned_int_tex_coords() {
+        let bytes = mutate_triangle(&[
+            (ATTRIBUTES, r#"{"POSITION":0,"TEXCOORD_0":1}"#),
+            (
+                LAST_ACCESSOR,
+                r#""max":[0.5,0.5,0.0]},{"bufferView":2,"componentType":5125,"count":3,"type":"VEC2"}]"#,
+            ),
+        ]);
+        assert_invalid(bytes, "(TEXCOORD_0) holds U32 Vec2");
+    }
+
+    #[test]
+    fn load_refuses_vec2_colors() {
+        let bytes = mutate_triangle(&[
+            (ATTRIBUTES, r#"{"POSITION":0,"COLOR_0":1}"#),
+            (
+                LAST_ACCESSOR,
+                r#""max":[0.5,0.5,0.0]},{"bufferView":2,"componentType":5126,"count":3,"type":"VEC2"}]"#,
+            ),
+        ]);
+        assert_invalid(bytes, "(COLOR_0) holds F32 Vec2");
+    }
+
+    #[test]
+    fn load_refuses_an_empty_position_accessor() {
+        let bytes =
+            mutate_triangle(&[(r#""count":3,"type":"VEC3""#, r#""count":0,"type":"VEC3""#)]);
+        assert_invalid(bytes, "(POSITION) has count 0");
+    }
+
+    #[test]
+    fn load_refuses_an_empty_index_accessor() {
+        let bytes = mutate_triangle(&[
+            (MODE, r#""indices":1,"mode":4}"#),
+            (
+                LAST_ACCESSOR,
+                r#""max":[0.5,0.5,0.0]},{"bufferView":1,"componentType":5125,"count":0,"type":"SCALAR"}]"#,
+            ),
+        ]);
+        assert_invalid(bytes, "(indices) has count 0");
+    }
+
+    #[test]
+    fn load_refuses_a_count_that_overflows_the_byte_range() {
+        let bytes = mutate_triangle(&[(
+            r#""count":3,"type":"VEC3""#,
+            r#""count":4611686018427387904,"type":"VEC3""#,
+        )]);
+        assert_invalid(bytes, "reads past the end of bufferView 0");
+    }
+
+    #[test]
+    fn load_refuses_an_accessor_past_its_view() {
+        // A declared NORMAL the reader can't reach is an error, not a cue to
+        // compute normals: its last element would end at byte 28 of 24.
+        let bytes = mutate_triangle(&[
+            (ATTRIBUTES, r#"{"POSITION":0,"NORMAL":1}"#),
+            (
+                LAST_ACCESSOR,
+                r#""max":[0.5,0.5,0.0]},{"bufferView":2,"byteOffset":4,"componentType":5126,"count":2,"type":"VEC3"}]"#,
+            ),
+        ]);
+        assert_invalid(bytes, "(NORMAL) reads past the end of bufferView 2");
+    }
+
+    #[test]
+    fn load_refuses_a_view_past_its_buffer() {
+        let bytes = mutate_triangle(&[
+            (
+                r#"{"buffer":0,"byteLength":24,"byteOffset":48}"#,
+                r#"{"buffer":0,"byteLength":24,"byteOffset":64}"#,
+            ),
+            (ATTRIBUTES, r#"{"POSITION":0,"TEXCOORD_0":1}"#),
+            (
+                LAST_ACCESSOR,
+                r#""max":[0.5,0.5,0.0]},{"bufferView":2,"componentType":5126,"count":3,"type":"VEC2"}]"#,
+            ),
+        ]);
+        assert_invalid(bytes, "runs past the end of buffer 0");
+    }
+
+    #[test]
+    fn load_refuses_a_node_that_is_its_own_child() {
+        let bytes = mutate_triangle(&[(
+            r#""nodes":[{"mesh":0}]"#,
+            r#""nodes":[{"mesh":0,"children":[0]}]"#,
+        )]);
+        assert_invalid(bytes, "glTF node 0 is reached twice");
+    }
+
+    #[test]
+    fn load_refuses_a_cycle_between_two_nodes() {
+        let bytes = mutate_triangle(&[(
+            r#""nodes":[{"mesh":0}]"#,
+            r#""nodes":[{"mesh":0,"children":[1]},{"children":[0]}]"#,
+        )]);
+        assert_invalid(bytes, "glTF node 0 is reached twice");
+    }
+
+    #[test]
+    fn load_reads_valid_indices_and_uvs() {
+        // The checks must not refuse the accessors they exist to protect.
+        let bytes = mutate_triangle(&[
+            (ATTRIBUTES, r#"{"POSITION":0,"TEXCOORD_0":1}"#),
+            (MODE, r#""indices":2,"mode":4}"#),
+            (
+                LAST_ACCESSOR,
+                r#""max":[0.5,0.5,0.0]},{"bufferView":2,"componentType":5126,"count":3,"type":"VEC2"},{"bufferView":1,"componentType":5125,"count":3,"type":"SCALAR"}]"#,
+            ),
+        ]);
+        let scene = Scene::load(bytes).expect("load");
+        assert_eq!(scene.models().len(), 1);
     }
 
     #[test]
