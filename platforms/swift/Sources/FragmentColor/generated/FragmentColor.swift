@@ -7672,8 +7672,7 @@ public func FfiConverterTypeTextureSlot_lower(_ value: TextureSlot) -> RustBuffe
 /**
  * Storage-texture format. Mirrors `naga::StorageFormat`.
  *
- * Variants outside of the set the renderer translates to `wgpu::TextureFormat`
- * fall through to the renderer's `Rgba8Unorm` fallback.
+ * Every variant binds as the `wgpu::TextureFormat` of the same name.
  */
 
 public enum TextureStorageFormat: Equatable, Hashable {

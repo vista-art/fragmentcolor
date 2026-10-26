@@ -238,6 +238,12 @@ class Renderer:
         [`Renderer::create_texture`](https://fragmentcolor.org/api/core/renderer#create_texture)
         for each, and writes the resulting `Texture` into the matching uniform.
 
+        An upload that fails stays pending and the others still bind, so a good
+        normal map binds even when the base color path is missing. `load` returns
+        the first failure, and so does every later `load`, and every native
+        `render`, until the input is fixed or replaced. The latest setter call for
+        a map wins, so setting a map again replaces the pending upload.
+
         On native targets, [`Renderer::render`](https://fragmentcolor.org/api/core/renderer)
         runs `load` first whenever the renderable has pending uploads, so an
         explicit `load` is optional there. Reach for it when you want to pay the
@@ -343,9 +349,11 @@ class Renderer:
 
         A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input. The inputs are the `@location` arguments of the vertex entry point and the `@location` members of its struct arguments, and each one reads the mesh attribute of its own name.
 
+        Before it takes a frame, `render` checks each shader against the device and each texture uniform against its slot, so every language returns these errors from the call that caused them, the web included. A group, binding, binding count or buffer size past the device's limits returns `RendererError::BindGroupLayoutError`, and so does a texture uniform with no texture or with a texture its slot can't take. A texture `unregister_texture` removed returns `RendererError::TextureNotFoundError`. A render shader without its vertex or fragment entry point returns `ShaderError::ParseError`. A compute shader on a device without compute, a workgroup past the device's limits, a fragment output the target's format can't store, and anything else the device's shader validator refuses return `RendererError::Error`. The [Shader](https://fragmentcolor.org/api/core/shader) page lists the checks.
+
         `render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail, it returns a [DeviceError](https://fragmentcolor.org/api/core/deviceerror), `RendererError::DeviceError` in Rust. Its `kind` tells validation errors, internal errors such as a shader the backend compiler refuses, and running out of memory apart, and its `label` names the step that failed: the render pipeline, the compute pipeline, the light binning pipeline, the frame, or a bind group or texture view inside the frame. When one error causes another, `render` returns the first. In Rust, Python, Swift and Kotlin, a pipeline that failed is never kept, and the next frame builds it again and returns the same error.
 
-        A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. A shader without its mesh and an instance count past the mesh's instances fail before `render` takes a frame, and the window keeps its last image.
+        A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. A shader without its mesh, an instance count past the mesh's instances, and a shader or texture the device checks refuse fail before `render` takes a frame, and the window keeps its last image.
 
         JavaScript gets the GPU's errors late, because WebGPU reports them after `render` has returned. Each error logs a `console.error` when it lands, and the next `render` still throws the first one, as an `Error` with `kind`, `label` and `detail` properties, before doing any work. `load`, `readTexture`, `readStorage`, and `getImage` on a `Texture` or `TextureTarget` wait for the frames before them to report, so they throw a frame's error even when called right after it. A call that waits throws only the error of a frame rendered before it began: the error of a frame rendered while it waits stays for the next call. Only the first error to land throws, and only once; the ones that land after it, before a call takes it, only log. The label names the render pipeline, the compute pipeline, the light binning pipeline or the frame. A pipeline that failed stays in the cache until its error lands, and a frame that draws with it before then reports a frame error. Once the error lands, the pipeline leaves the cache. In a loop that renders each frame, the next `render` throws the error before doing any work, and the one after it builds the pipeline again and reports the same error.
 
@@ -468,6 +476,8 @@ class Shader:
     The [Shader](https://fragmentcolor.org/api/core/shader) object is the main building block in [FragmentColor](https://fragmentcolor.org).
 
     It takes a WGSL or GLSL shader source as input, parses it, validates it, and exposes the uniforms as keys.
+
+    `Shader::new` refuses a source that no device FragmentColor opens can run, with a `ShaderError` that names the problem: a feature outside the set FragmentColor requests (`f16`, subgroups, `texture_external`, texture atomics), two globals on one `@group` and `@binding`, writable storage in a `@vertex` entry point, an immediate root that breaks the uniform layout rules, and two vertex inputs with one name, which would read one mesh attribute.
 
     `Shader::new` accepts a source string, a registry slug like `"sdf2d/circle"`, an `https://` URL, a local file path, or an array mixing any of those. Array parts are deduplicated by hash and concatenated in order, so you can pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](https://fragmentcolor.org/api/core/shader#set_registry).
 
@@ -679,7 +689,7 @@ class Shader:
         - A number fits an `f32`, `i32`, or `u32` uniform. Integer uniforms take whole numbers in range.
         - A vector takes exactly as many numbers as it has components. A `mat2x2`, `mat3x3`, or `mat4x4` takes 4, 9, or 16.
         - A `Texture` created by a `Renderer` binds to a texture uniform.
-        - Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` (or a `bytearray` or `memoryview`) in Python, `Data` in Swift, or a `ByteArray` in Kotlin.
+        - Raw bytes replace a whole storage-buffer or push-constant root: a byte slice in Rust, a `Uint8Array` in JavaScript, `bytes` (or a `bytearray` or `memoryview`) in Python, `Data` in Swift, or a `ByteArray` in Kotlin. The byte count must equal the root's size, and any other length throws.
 
         Example:
 
@@ -738,7 +748,7 @@ class Shader:
         """
     def list_keys(self) -> list[str]:
         """
-        Returns a list of all keys in the [Shader](https://fragmentcolor.org/api/core/shader), including uniform names and struct fields using the dot notation.
+        Returns a list of all keys in the [Shader](https://fragmentcolor.org/api/core/shader), including uniform names and struct fields using the dot notation. Array elements aren't listed, and `set` and `get` still take them by index, as in `u.items[2].v`.
 
         `list_keys` never blocks. When another thread holds the shader's storage, it returns an empty list and logs a warning.
 
@@ -4242,7 +4252,7 @@ class Material:
         }
         ```
 
-        Spell the padding out as members. The WGSL a browser receives drops `@size` and `@align`, so a layout that needs them fails on the web.
+        `@size` and `@align` keep their layout on every platform, the web included, where FragmentColor hands the browser WGSL that keeps them. The built-in PBR shader spells its padding out as members instead, which reads the same anywhere the WGSL goes.
 
         - Four `vec4<f32>` vertex inputs named `model_0` to `model_3`, the columns of
           the Model's transform. The renderer fills them at draw time from each
