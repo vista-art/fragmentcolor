@@ -8,7 +8,9 @@ A window that is hidden or minimized has no frame to draw on. `render` then retu
 
 A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input.
 
-`render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail validation, it returns `RendererError::ValidationError`, labeled with the render pipeline, the compute pipeline or the frame, and presents nothing from that frame. A pipeline that failed is never kept, and the next frame returns the same error. On the web these errors go to the browser console instead: WebGPU reports them asynchronously, and `render` is synchronous.
+`render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail validation, it returns `RendererError::ValidationError`, labeled with the render pipeline, the compute pipeline or the frame, and presents nothing from that frame. A pipeline that failed is never kept, and the next frame returns the same error.
+
+JavaScript gets these errors one call late. WebGPU reports them after `render` has returned, so the next `render`, `load`, `readTexture`, `readStorage` or `getImage` throws the error as an `Error` before doing any work. Each error throws once, and when several land before that call, the first one does. A shader whose pipeline failed reports an error again after each frame it draws.
 
 ## Example
 
