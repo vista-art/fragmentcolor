@@ -1036,7 +1036,8 @@ impl RenderContext {
                 let (buffers, counts) = mesh.vertex_buffers(&self.device, &self.queue)?;
                 let models = overrides.get(&(shader_ptr, Arc::as_ptr(mesh) as usize));
                 let own = buffers.instance_buffer.as_ref();
-                let instances = pick_instances(models, own, mesh, model, layouts.as_ref(), counts)?;
+                let instances =
+                    pick_instances(&shader, models, own, mesh, model, layouts.as_ref(), counts)?;
                 if let Some(instances) = instances {
                     batched.push(MeshDraw {
                         index_count: counts.index_count,
@@ -2126,8 +2127,9 @@ struct Instances {
 /// The pass's Models win over the mesh's own instance buffer: `models` holds one matrix
 /// for each visible Model that draws this mesh through this shader. Otherwise the mesh
 /// draws its own instances, such as a crowd built with `Mesh::add_instance`. `model` is
-/// true for a shader that draws the pass's Models, hidden ones included.
+/// true for `shader` when it draws the pass's Models, hidden ones included.
 fn pick_instances(
+    shader: &ShaderObject,
     models: Option<&(wgpu::Buffer, u32)>,
     own: Option<&wgpu::Buffer>,
     mesh: &crate::mesh::MeshObject,
@@ -2148,7 +2150,7 @@ fn pick_instances(
         // is hidden or in another pass. Slot 1 may hold an earlier mesh's buffer.
         (None, None) if model && mesh.awaits_models() => Ok(None),
         (None, buffer) => {
-            check_instance_count(layouts, counts, mesh)?;
+            check_instance_count(shader, layouts, counts, mesh)?;
             Ok(Some(Instances {
                 buffer: buffer.cloned(),
                 count: counts.instance_count,
@@ -2161,18 +2163,23 @@ fn pick_instances(
 /// when the pipeline reads instance attributes from its buffer.
 /// A Model's mesh holds none, and only its Models fill the columns.
 fn check_instance_count(
+    shader: &ShaderObject,
     layouts: Option<&VertexLayouts>,
     counts: crate::mesh::DrawCounts,
     mesh: &crate::mesh::MeshObject,
 ) -> Result<(), RendererError> {
     let rows = counts.instance_rows.unwrap_or(0);
-    let stepped = layouts.is_some_and(|layouts| layouts.instance.is_some());
-    if !stepped || counts.instance_count <= rows {
+    let Some(instance) = layouts.and_then(|layouts| layouts.instance.as_ref()) else {
+        return Ok(());
+    };
+    if counts.instance_count <= rows {
         return Ok(());
     }
     let message = if mesh.awaits_models() {
-        "the shader reads the Model columns, and no Model in this pass draws this mesh through it"
-            .to_string()
+        format!(
+            "the shader reads the Model columns {}, and no Model in this pass draws this mesh with this shader",
+            name_columns(shader, instance)?
+        )
     } else {
         format!(
             "instance count {} exceeds the {rows} instances the mesh holds",
@@ -2180,6 +2187,29 @@ fn check_instance_count(
         )
     };
     Err(crate::mesh::MeshError::InvalidInstance(message).into())
+}
+
+/// Names the inputs `shader` reads from the instance stream, in location order:
+/// `'model_0', 'model_1', 'model_2' and 'model_3'`.
+fn name_columns(shader: &ShaderObject, instance: &VertexStream) -> Result<String, ShaderError> {
+    let mut names: Vec<String> = shader
+        .reflect_vertex_inputs()?
+        .into_iter()
+        .filter(|input| {
+            instance
+                .attributes
+                .iter()
+                .any(|attribute| attribute.shader_location == input.location)
+        })
+        .map(|input| format!("'{}'", input.name))
+        .collect();
+    let Some(last) = names.pop() else {
+        return Ok(String::new());
+    };
+    if names.is_empty() {
+        return Ok(last);
+    }
+    Ok(format!("{} and {last}", names.join(", ")))
 }
 
 /// The shaders that draw the pass's Models, hidden ones included.
@@ -4532,7 +4562,7 @@ struct VIn { @builtin(vertex_index) index: u32 };
     }
 
     // Story: a Material's shader rendered without its Models reads Model columns
-    // that nothing fills, and render says so where it drew nothing.
+    // that nothing fills, and render names the columns where it drew nothing.
     #[test]
     fn model_columns_without_a_model_error() {
         pollster::block_on(async move {
@@ -4547,8 +4577,10 @@ struct VIn { @builtin(vertex_index) index: u32 };
 
             let res = renderer.render(model.material().shader(), &target);
 
+            let columns = "'model_0', 'model_1', 'model_2' and 'model_3'";
             assert!(
-                matches!(&res, Err(RendererError::MeshError(crate::mesh::MeshError::InvalidInstance(message))) if message.contains("no Model in this pass")),
+                matches!(&res, Err(RendererError::MeshError(crate::mesh::MeshError::InvalidInstance(message)))
+                    if message.contains(columns) && message.contains("no Model in this pass draws this mesh")),
                 "got {res:?}"
             );
         });
