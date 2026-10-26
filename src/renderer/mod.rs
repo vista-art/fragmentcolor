@@ -47,6 +47,8 @@ mod unregister;
 #[cfg(any(wasm, test))]
 mod late;
 mod scope;
+#[cfg(not(wasm))]
+use scope::Origin;
 use scope::{Caught, SCOPES};
 
 #[cfg(test)]
@@ -970,18 +972,24 @@ impl RenderContext {
     /// Try to get a frame once, and on Lost/Outdated, retry exactly once.
     /// This is a centralized, generic helper; specific targets may still
     /// perform their own recovery internally (e.g., WindowTarget).
+    /// A surface that fails validation sends the details to the device, so on
+    /// native the error is marked as the GPU's, and the frame scope reports those details.
     fn acquire_frame(
         &self,
         target: &impl Target,
     ) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
-        match target.get_current_frame() {
-            Ok(f) => Ok(f),
+        let frame = match target.get_current_frame() {
             Err(crate::SurfaceError::Lost) | Err(crate::SurfaceError::Outdated) => {
                 // Retry exactly once.
                 target.get_current_frame()
             }
-            Err(e) => Err(e),
+            frame => frame,
+        };
+        #[cfg(not(wasm))]
+        if matches!(frame, Err(crate::SurfaceError::Validation)) {
+            Origin::Gpu.record();
         }
+        frame
     }
 }
 
@@ -1080,8 +1088,9 @@ impl RenderContext {
     /// Of the errors they catch, the cause returns: out of memory, then internal, then validation.
     ///
     /// On native the scopes resolve before this returns. When `op` fails with a GPU error
-    /// of its own, such as an inner scope's, the cause these scopes caught came first and wins.
-    /// When `op` fails on the CPU, its error wins. Every error that doesn't return goes to the log as a warning.
+    /// of its own, from a nested scope or a surface that failed validation, the cause these
+    /// scopes caught came first, and it returns under `label`. When `op` fails on the CPU, its error
+    /// returns. Every error that doesn't return goes to the log as a warning (`scope::resolve`).
     ///
     /// On wasm the scopes resolve after `render` returns, so `op`'s own result always returns.
     /// `ErrorSlot::watch` logs each error that lands at error level, and keeps the cause in `late`
@@ -1103,7 +1112,11 @@ impl RenderContext {
     ) -> Result<T, RendererError> {
         let [memory, internal, validation] =
             SCOPES.map(|filter| self.device.push_error_scope(filter));
+        #[cfg(not(wasm))]
+        Origin::Cpu.record();
         let result = op();
+        #[cfg(not(wasm))]
+        let origin = Origin::take();
         // Scopes pop in reverse order.
         let validation = validation.pop();
         let internal = internal.pop();
@@ -1112,27 +1125,10 @@ impl RenderContext {
         #[cfg(not(wasm))]
         {
             let _ = on_error;
-            let Some(Caught { cause, symptoms }) = futures::executor::block_on(caught) else {
-                return result;
-            };
-            for symptom in symptoms {
-                log::warn!("{label}: the GPU then reported: {symptom}");
-            }
-            let scoped = RendererError::ValidationError {
-                label: label.to_string(),
-                message: cause.to_string(),
-            };
-            match result {
-                Err(error) if error.is_gpu() => {
-                    log::warn!("{label} failed: {cause}. It then caused: {error}");
-                    Err(scoped)
-                }
-                Err(error) => {
-                    log::warn!("{label} failed: {error}. The GPU also reported: {cause}");
-                    Err(error)
-                }
-                Ok(_) => Err(scoped),
-            }
+            let caught = futures::executor::block_on(caught);
+            let (result, origin) = scope::resolve(label, result, origin, caught);
+            origin.record();
+            result
         }
         #[cfg(wasm)]
         {

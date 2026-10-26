@@ -38,18 +38,6 @@ pub enum RendererError {
     Error(String),
 }
 
-impl RendererError {
-    /// Whether the GPU raised this error, through a scope or a surface that failed validation.
-    #[cfg(not(wasm))]
-    pub(crate) fn is_gpu(&self) -> bool {
-        matches!(
-            self,
-            RendererError::ValidationError { .. }
-                | RendererError::SurfaceError(crate::target::SurfaceError::Validation)
-        )
-    }
-}
-
 #[derive(Error, Debug)]
 pub enum InitializationError {
     #[error("Failed to find a compatible GPU adapter")]

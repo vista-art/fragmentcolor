@@ -414,6 +414,57 @@ fn outer_error_reports_the_root_cause() {
     });
 }
 
+/// A window whose surface fails validation: wgpu sends the details
+/// to the device, and the frame only learns that it failed.
+struct InvalidSurface {
+    context: Arc<RenderContext>,
+}
+
+impl crate::target::FrameSource for InvalidSurface {
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
+        raise_named(&self.context, "the surface detail");
+        Err(crate::SurfaceError::Validation)
+    }
+}
+
+impl Target for InvalidSurface {
+    fn size(&self) -> Size {
+        Size::from((SPY_SIZE.width, SPY_SIZE.height))
+    }
+
+    fn resize(&mut self, _size: impl Into<Size>) -> Result<(), crate::texture::TextureError> {
+        Ok(())
+    }
+
+    async fn get_image(&self) -> Result<Vec<u8>, crate::texture::TextureError> {
+        Ok(Vec::new())
+    }
+}
+
+// Story: a surface that fails validation reports the details the device caught,
+// under the frame's label, where render returned a bare surface error before.
+#[test]
+fn surface_validation_reports_the_device_error() {
+    pollster::block_on(async move {
+        // Arrange
+        let (renderer, context, uncaptured) = setup().await.expect("render context");
+        let target = InvalidSurface {
+            context: context.clone(),
+        };
+
+        // Act
+        let result = renderer.render(&Shader::default(), &target);
+
+        // Assert
+        assert!(
+            matches!(&result, Err(RendererError::ValidationError { label, message })
+                if label == "frame" && message.contains("the surface detail")),
+            "got {result:?}"
+        );
+        assert!(uncaptured.lock().is_empty(), "got {:?}", uncaptured.lock());
+    });
+}
+
 // Story: a CPU error from the operation still wins over a GPU error the scope caught,
 // since it names the input to fix.
 #[test]
