@@ -75,7 +75,7 @@ fun Pass.setDepthTarget(texture: Texture) {
 
 // ── Clear color ──────────────────────────────────────────────────────────────
 
-/** Set the clear color as separate RGBA components (0..1 linear space). */
+/** Set the clear color as separate linear RGBA components, each passed to the GPU as given. */
 fun Pass.setClearColor(r: Float, g: Float, b: Float, a: Float = 1.0f) {
     setClearColor(listOf(r, g, b, a))
 }
