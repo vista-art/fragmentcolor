@@ -559,7 +559,8 @@ def check_invalid_textures(renderer):
     invalid("reversed bounds", lambda: storage.write_region(patch, {"min_x": 8, "max_x": 4, "max_y": 4}))
     invalid("misspelled keys", lambda: storage.write_region(patch, {"x": 0, "w": 4, "h": 4}))
     invalid("both region forms", lambda: storage.write_region(patch, {"x": 0, "width": 4, "height": 4, "max_x": 4}))
-    invalid("a zero width region", lambda: storage.write_region(patch, [0, 0, 0, 4]))
+    # 16 rows of 4 texels: the bytes a zero width once stretched to the edge.
+    invalid("a zero width region", lambda: storage.write_region(bytes(16 * 4 * 4), [0, 0, 0, 4]))
     storage.write_region(bytes(16 * 16 * 4), None)
     print("write_region reads a dict region or raises InvalidInputError")
 

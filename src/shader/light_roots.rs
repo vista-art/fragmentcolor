@@ -626,9 +626,14 @@ mod tests {
             .skip(1)
             .filter_map(|rest| rest.split("```").next())
             .collect();
-        let [roots, functions, ..] = blocks.as_slice() else {
-            panic!("the page should hold the roots and the reference functions");
+        let find = |needle: &str| {
+            blocks
+                .iter()
+                .find(|block| block.contains(needle))
+                .unwrap_or_else(|| panic!("the page should hold a block with {needle}"))
         };
+        let roots = find("var<storage, read> lights");
+        let functions = find("fn accumulate_lights");
         let source = format!(
             "{roots}\n{functions}
 fn shade_light(lt: Light, world: vec3<f32>, normal: vec3<f32>) -> vec3<f32> {{
