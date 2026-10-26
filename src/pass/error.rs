@@ -83,17 +83,28 @@ impl From<pyo3::PyErr> for PassError {
     }
 }
 
-/// A color, viewport or target texture the caller passed raises `InvalidInputError`,
-/// and any other error `FragmentColorError`.
+#[cfg(python)]
+impl PassError {
+    /// The Python exception for this error, with `message`, whether a setter or `render`
+    /// raises it. A value the caller passed raises `InvalidInputError`: a color, a
+    /// viewport, a target texture or a dispatch. Any other error raises `FragmentColorError`.
+    pub(crate) fn raise(&self, message: String) -> pyo3::PyErr {
+        match self {
+            PassError::Color(_)
+            | PassError::Viewport(_)
+            | PassError::ViewportLimit { .. }
+            | PassError::InvalidColorTarget(_)
+            | PassError::DispatchLimit { .. } => crate::error::InvalidInputError::new_err(message),
+            _ => crate::PyFragmentColorError::new_err(message),
+        }
+    }
+}
+
 #[cfg(python)]
 impl From<PassError> for pyo3::PyErr {
     fn from(error: PassError) -> Self {
-        match error {
-            PassError::Color(_) | PassError::Viewport(_) | PassError::InvalidColorTarget(_) => {
-                crate::error::InvalidInputError::new_err(error.to_string())
-            }
-            _ => crate::PyFragmentColorError::new_err(error.to_string()),
-        }
+        let message = error.to_string();
+        error.raise(message)
     }
 }
 

@@ -117,6 +117,7 @@ impl From<RendererError> for pyo3::PyErr {
         match e {
             RendererError::TextureError(texture) => texture.into(),
             RendererError::InitializationError(init) => init.into(),
+            RendererError::PassError(pass) => pass.raise(message),
             RendererError::SurfaceError(crate::target::SurfaceError::Occluded) => {
                 crate::error::OccludedSurfaceError::new_err(message)
             }
