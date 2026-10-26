@@ -150,7 +150,7 @@ impl From<LightError> for PyErr {
     }
 }
 
-/// Camera parameters without a finite matrix raise `CameraError`,
+/// Refused camera parameters raise `CameraError`,
 /// a `FragmentColorError` that is also a `ValueError`.
 impl From<CameraError> for PyErr {
     fn from(error: CameraError) -> Self {

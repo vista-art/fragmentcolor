@@ -408,8 +408,8 @@ impl Camera {
     ///   matches the new aspect, centered on the existing horizontal
     ///   midpoint. Frustum height stays put.
     ///
-    /// Returns a handle to the same Camera (Arc-shared) for chaining. An
-    /// aspect that can't build a finite projection leaves the Camera as it was.
+    /// Returns a handle to the same Camera (Arc-shared) for chaining. A
+    /// refused aspect leaves the Camera as it was.
     #[lsp_doc("docs/api/scene/camera/set_aspect.md")]
     pub fn set_aspect(&self, aspect: f32) -> Result<Self, CameraError> {
         self.apply_aspect(aspect)
@@ -420,8 +420,8 @@ impl Camera {
     /// that orients the roll (typically `[0, 1, 0]`). Matches Light's
     /// `position` vocabulary so both scene types describe "where this
     /// object is in the world" the same way. Returns a handle to the same
-    /// Camera (Arc-shared backing) for chaining. Vectors that can't build a
-    /// finite view leave the Camera as it was.
+    /// Camera (Arc-shared backing) for chaining. Refused vectors leave the
+    /// Camera as it was.
     #[lsp_doc("docs/api/scene/camera/look_at.md")]
     pub fn look_at(
         &self,

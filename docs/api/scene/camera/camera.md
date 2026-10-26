@@ -22,11 +22,12 @@ Internally a Camera carries:
   shaders that need it (specular highlights, fresnel) don't have to invert
   the view matrix on every frame.
 
-Parameters that leave no usable view fail instead of hiding every
-model: `perspective`, `orthographic`, `look_at` and `set_aspect` return a
-`CameraError` in Rust, throw an `Error` in JavaScript, raise `CameraError`
-(a `FragmentColorError` and a `ValueError`) in Python, throw
-`FragmentColorError` in Swift and throw `FragmentColorException` in Kotlin.
+Parameters that leave no usable view return an error, and a Camera that
+already exists keeps its state. `perspective`, `orthographic`, `look_at`
+and `set_aspect` return a `CameraError` in Rust, throw an `Error` in
+JavaScript, raise `CameraError` (a `FragmentColorError` and a `ValueError`)
+in Python, throw `FragmentColorError` in Swift and throw
+`FragmentColorException` in Kotlin.
 
 The Camera is the user's domain, not the Material's: a Material is "what the
 surface looks like under any light from any viewpoint", a Camera is "which

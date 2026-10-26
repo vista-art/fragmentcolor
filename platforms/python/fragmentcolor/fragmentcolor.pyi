@@ -2225,11 +2225,15 @@ class Scene:
         Each of these messages names the accessor, node, light or camera at fault.
         When no single accessor is to blame, it names the mesh and the primitive.
 
-        A camera whose values build no finite matrix, such as a `yfov` of 0 or a
-        camera node scaled to zero, returns `SceneLoadError::Camera`, which names
-        the camera. Load with `cameras(false)` to skip the file's cameras. A
-        perspective camera without `zfar` asks for an infinite projection, and the
-        loader builds one, so nothing in front of the camera clips however far away.
+        A camera that `Camera::perspective`, `Camera::orthographic` or
+        `Camera::look_at` refuses returns `SceneLoadError::Camera`, which names the
+        camera, whether or not its values break a glTF rule. That covers a `yfov`
+        that isn't between 0 and π, a `znear` of 0 and a camera node scaled to
+        zero. Load with `cameras(false)` to skip the file's cameras.
+
+        A perspective camera without `zfar` asks for an infinite projection, and
+        the loader builds one, so nothing in front of the camera clips however far
+        away.
 
         ## Skipping embedded cameras and lights
 
@@ -3222,11 +3226,12 @@ class Camera:
       shaders that need it (specular highlights, fresnel) don't have to invert
       the view matrix on every frame.
 
-    Parameters that leave no usable view fail instead of hiding every
-    model: `perspective`, `orthographic`, `look_at` and `set_aspect` return a
-    `CameraError` in Rust, throw an `Error` in JavaScript, raise `CameraError`
-    (a `FragmentColorError` and a `ValueError`) in Python, throw
-    `FragmentColorError` in Swift and throw `FragmentColorException` in Kotlin.
+    Parameters that leave no usable view return an error, and a Camera that
+    already exists keeps its state. `perspective`, `orthographic`, `look_at`
+    and `set_aspect` return a `CameraError` in Rust, throw an `Error` in
+    JavaScript, raise `CameraError` (a `FragmentColorError` and a `ValueError`)
+    in Python, throw `FragmentColorError` in Swift and throw
+    `FragmentColorException` in Kotlin.
 
     The Camera is the user's domain, not the Material's: a Material is "what the
     surface looks like under any light from any viewpoint", a Camera is "which
@@ -3260,9 +3265,9 @@ class Camera:
 
         Every value must be finite, `fovy_radians` must lie between 0 and π,
         `aspect` can't be 0, and `near` and `far` must be positive and different.
-        Anything else returns `Err(CameraError::Perspective)`, since it would put
-        infinities or NaN in the matrix and every model drawn through the camera
-        would vanish.
+        Anything else returns `Err(CameraError::Perspective)`: such values give a
+        matrix of infinities or NaN, a flipped or collapsed image, or no usable
+        depth range.
 
         Example:
 
