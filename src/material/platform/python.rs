@@ -5,6 +5,7 @@ use pyo3::prelude::*;
 
 use crate::Shader;
 use crate::material::{AlphaMode, Material, MaterialError, TextureSlot};
+use crate::platforms::python::read_unsigned;
 use crate::texture::PyTextureSource;
 
 #[pymethods]
@@ -83,8 +84,11 @@ impl Material {
 
     #[pyo3(name = "texture_uv")]
     #[lsp_doc("docs/api/scene/material/texture_uv.md")]
-    pub fn texture_uv_py(&self, slot: TextureSlot, set: f64) -> PyResult<Self> {
-        let set = crate::platforms::python::read_unsigned(set, "set")?;
+    pub fn texture_uv_py(
+        &self,
+        slot: TextureSlot,
+        #[pyo3(from_py_with = read_unsigned)] set: u32,
+    ) -> PyResult<Self> {
         Ok(self.texture_uv(slot, set)?)
     }
 

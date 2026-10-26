@@ -10,6 +10,7 @@ from fragmentcolor import (
     InvalidInputError,
     MalformedImageError,
     Material,
+    MaterialError,
     Mesh,
     OccludedSurfaceError,
     Mipmap,
@@ -24,6 +25,7 @@ from fragmentcolor import (
     Shader,
     Size,
     TextureFormat,
+    TextureSlot,
     TextureUsage,
     Vertex,
     WindowTarget,
@@ -307,6 +309,7 @@ def check_number_errors(renderer):
     texture = renderer.create_texture(bytes(4 * 4 * 4), size=[4, 4])
     target = renderer.create_texture_target([4, 4])
     model = Model(Mesh(), Material.pbr())
+    material = Material.pbr()
     calls = {
         "Pass.set_compute_dispatch": lambda n: rpass.set_compute_dispatch(n, 1, 1),
         "Pass.set_viewport": lambda n: rpass.set_viewport([0, 0, n, 4]),
@@ -324,6 +327,7 @@ def check_number_errors(renderer):
         "ScreenRegion": lambda n: ScreenRegion((0, 0), (n, 4)),
         "ScreenRegion.from_region": lambda n: ScreenRegion.from_region(0, 0, n, 4),
         "ScreenRegion.from_tuple": lambda n: ScreenRegion.from_tuple((n, 4)),
+        "Material.texture_uv": lambda n: material.texture_uv(TextureSlot.Occlusion, n),
     }
     # An int of any size outside 0 to 2**32 - 1 is a value error, never OverflowError.
     for name, call in calls.items():
@@ -334,6 +338,11 @@ def check_number_errors(renderer):
         raises(TypeError, f"{name}(2.0)", lambda: call(2.0))
     assert issubclass(InvalidInputError, FragmentColorError)
     raises(InvalidInputError, "Pass.set_viewport([0, 0, 4])", lambda: rpass.set_viewport([0, 0, 4]))
+
+    # A UV set past 1 fits a u32, but no texture can sample it.
+    assert issubclass(MaterialError, FragmentColorError) and issubclass(MaterialError, ValueError)
+    raises(MaterialError, "Material.texture_uv(2)", lambda: material.texture_uv(TextureSlot.Occlusion, 2))
+    assert isinstance(material.texture_uv(TextureSlot.Occlusion, np.uint32(1)), Material)
 
     size = Size(4, 2)
     for field in ("width", "height", "depth"):
