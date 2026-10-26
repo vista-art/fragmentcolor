@@ -57,8 +57,8 @@ impl ScreenRegion {
         let overflow = ScreenRegionError::Overflow {
             x,
             y,
-            width,
-            height,
+            width: width.into(),
+            height: height.into(),
         };
         let (Some(max_x), Some(max_y)) = (x.checked_add(width), y.checked_add(height)) else {
             return Err(overflow);
@@ -93,17 +93,15 @@ impl ScreenRegion {
     /// A corner at `u32::MAX` has no pixel past it, so it is an error.
     pub fn from_tuples(a: (u32, u32), b: (u32, u32)) -> Result<Self, ScreenRegionError> {
         let (min_x, min_y) = (a.0.min(b.0), a.1.min(b.1));
-        let (far_x, far_y) = (a.0.max(b.0), a.1.max(b.1));
-        match (
-            (far_x - min_x).checked_add(1),
-            (far_y - min_y).checked_add(1),
-        ) {
-            (Some(width), Some(height)) => Self::from_region(min_x, min_y, width, height),
-            (width, height) => Err(ScreenRegionError::Overflow {
+        let width = u64::from(a.0.max(b.0) - min_x) + 1;
+        let height = u64::from(a.1.max(b.1) - min_y) + 1;
+        match (u32::try_from(width), u32::try_from(height)) {
+            (Ok(width), Ok(height)) => Self::from_region(min_x, min_y, width, height),
+            _ => Err(ScreenRegionError::Overflow {
                 x: min_x,
                 y: min_y,
-                width: width.unwrap_or(u32::MAX),
-                height: height.unwrap_or(u32::MAX),
+                width,
+                height,
             }),
         }
     }
@@ -850,7 +848,13 @@ mod tests {
         );
         assert!(overflow(ScreenRegion::new((u32::MAX, 0), (5, 5))));
         assert!(overflow(ScreenRegion::try_from((0, u32::MAX, 4, 4))));
-        assert!(overflow(ScreenRegion::from_tuples((0, 0), (u32::MAX, 3))));
+        let message = ScreenRegion::from_tuples((0, 0), (u32::MAX, 3))
+            .err()
+            .map(|error| error.to_string());
+        assert_eq!(
+            message.as_deref(),
+            Some("a region at 0, 0 sized 4294967296 by 4 reaches past 4294967295")
+        );
         assert!(overflow(ScreenRegion::from_pixel(u32::MAX, 0)));
         let mut region = build_region(0, 0, 2, 2);
         assert!(region.encompass(u32::MAX, 0).is_err());
