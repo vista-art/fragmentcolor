@@ -313,7 +313,7 @@ class Renderer:
 
         A window that is hidden or minimized has no frame to draw on. `render` then returns `RendererError::SurfaceError(SurfaceError::Occluded)`, which Python raises as `OccludedSurfaceError`, a `FragmentColorError`. Skip that frame and draw the next one.
 
-        A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input.
+        A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input. Meshes feed only `@location` arguments of the vertex entry point, so when a shader takes its inputs as members of a struct, the error names the member instead.
 
         `render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail validation, it returns `RendererError::ValidationError`, labeled with the render pipeline, the compute pipeline or the frame, and presents nothing from that frame. A pipeline that failed is never kept, and the next frame returns the same error.
 
@@ -728,6 +728,7 @@ class Shader:
         - On success, the mesh is attached, its attributes keep those types for as long as the mesh lives, and it is drawn when this shader renders.
         - On a missing attribute or a value that doesn't fit, the error names the attribute, the declared type and the value, or the vertex or instance that lacks it. The mesh isn't attached and records no type.
         - A shader that declares another type for an attribute an earlier shader already typed on this mesh fails to attach.
+        - A mesh feeds only the `@location` arguments of the vertex entry point. A shader that takes a struct argument with `@location` members rejects every mesh with `ShaderError::InvalidKey` naming the member, and so does a shader with no `@location` inputs.
 
         ## See also
 
@@ -3078,7 +3079,9 @@ class Model:
         """
         Toggle the Model in or out of the next frame. Hidden Models are skipped
         by the renderer in both the opaque-batched and blend-sorted draw paths;
-        no Pass rebuild needed.
+        no Pass rebuild needed. Hiding a Model hides what its Material draws. A
+        shader of your own that draws the same Mesh, such as an outline, still
+        draws it.
 
         The flag is Arc-shared with `ModelEntry` (the renderer's queue), so
         toggles take effect on the very next `Renderer::render` call. Cheap:
@@ -4004,7 +4007,10 @@ class Material:
           the Model's transform. The renderer fills them at draw time from each
           Model's `set_transform`, `translate`, `rotate` and `scale`. The PBR shader
           reads them at locations 3 to 6. Any free locations work, since the renderer
-          matches these inputs by name.
+          matches these inputs by name. It fills them only for the Models a pass
+          holds, through each Model's Material. A shader that reads them for a Mesh
+          with no Model behind it in the pass, such as one attached with `add_mesh`,
+          makes `Renderer::render` return `MeshError::InvalidInstance`.
 
         Without these the Material still draws. The factor setters do nothing, and
         every Model draws at its Mesh's own coordinates, whatever its transform.

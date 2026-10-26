@@ -1418,7 +1418,7 @@ Renders the given object to the given [Target](/api/targets/target).
 
 A window that is hidden or minimized has no frame to draw on. `render` then returns `RendererError::SurfaceError(SurfaceError::Occluded)`, which Python raises as `OccludedSurfaceError`, a `FragmentColorError`. Skip that frame and draw the next one.
 
-A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input.
+A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input. Meshes feed only `@location` arguments of the vertex entry point, so when a shader takes its inputs as members of a struct, the error names the member instead.
 
 `render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail validation, it returns `RendererError::ValidationError`, labeled with the render pipeline, the compute pipeline or the frame, and presents nothing from that frame. A pipeline that failed is never kept, and the next frame returns the same error.
 

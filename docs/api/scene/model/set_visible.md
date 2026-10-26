@@ -2,7 +2,9 @@
 
 Toggle the Model in or out of the next frame. Hidden Models are skipped
 by the renderer in both the opaque-batched and blend-sorted draw paths;
-no Pass rebuild needed.
+no Pass rebuild needed. Hiding a Model hides what its Material draws. A
+shader of your own that draws the same Mesh, such as an outline, still
+draws it.
 
 The flag is Arc-shared with `ModelEntry` (the renderer's queue), so
 toggles take effect on the very next `Renderer::render` call. Cheap:
