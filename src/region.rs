@@ -537,6 +537,9 @@ impl ScreenRegion {
 #[cfg(wasm)]
 crate::impl_tryfrom_owned_via_ref!(ScreenRegion, wasm_bindgen::JsValue, ScreenRegionError);
 
+// The brand lets a reader tell a ScreenRegion from a plain object after a minifier renames the class.
+crate::impl_fc_kind!(ScreenRegion, "ScreenRegion");
+
 // -------------------------------------------
 // Trait-based conversions (preferred surface)
 // -------------------------------------------

@@ -118,7 +118,7 @@ impl Renderer {
         size: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "TextureFormat")] format: &JsValue,
         #[wasm_bindgen(
-            unchecked_optional_param_type = "Uint8Array | ArrayBuffer | ArrayLike<number> | null"
+            unchecked_optional_param_type = "Uint8Array | ArrayBuffer | ArrayLike<number> | ImageData | HTMLCanvasElement | OffscreenCanvas | null"
         )]
         data: Option<JsValue>,
         #[wasm_bindgen(unchecked_optional_param_type = "TextureUsage | number")] usage: Option<

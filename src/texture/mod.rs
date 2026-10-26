@@ -161,11 +161,12 @@ impl Mipmap {
                 format: public_format,
             });
         }
-        let image = match data {
+        // Raw pixels keep their bytes as level 0, and only the levels below it are resampled.
+        let (image, raw) = match data {
             // Encoded bytes path. If `options.size` is present, treat as raw
             // pixel data; otherwise decode internally.
             TextureData::Bytes(bytes) => match options.size {
-                None => decode(&bytes, ANY_SIDE)?,
+                None => (decode(&bytes, ANY_SIDE)?, None),
                 Some(size) => {
                     let extent: wgpu::Extent3d = size.into();
                     if extent.width == 0 || extent.height == 0 {
@@ -191,10 +192,11 @@ impl Mipmap {
                             bytes.len()
                         )));
                     }
-                    bytes_as_image(&bytes, extent.width, extent.height, wfmt)?
+                    let image = bytes_as_image(&bytes, extent.width, extent.height, wfmt)?;
+                    (image, Some(bytes))
                 }
             },
-            TextureData::Path(path) => decode(&read_file(&path)?, ANY_SIDE)?,
+            TextureData::Path(path) => (decode(&read_file(&path)?, ANY_SIDE)?, None),
             // Async / pre-baked / non-prep variants don't fit the sync CPU
             // mipmap pipeline. Surface a clear typed error so callers can
             // match on the same `InvalidInput` variant they already match
@@ -226,13 +228,15 @@ impl Mipmap {
                 ));
             }
         };
-        Self::from_dynamic_image(&image, public_format, wfmt)
+        Self::from_dynamic_image(&image, public_format, wfmt, raw)
     }
 
+    /// The chain of `image`, with `raw`, the caller's own bytes for it, as level 0.
     fn from_dynamic_image(
         image: &DynamicImage,
         public_format: crate::TextureFormat,
         format: wgpu::TextureFormat,
+        raw: Option<Vec<u8>>,
     ) -> Result<Mipmap, TextureError> {
         let (width, height) = image.dimensions();
         if width == 0 || height == 0 {
@@ -240,7 +244,7 @@ impl Mipmap {
                 "build: decoded image has zero width or height".into(),
             ));
         }
-        let levels = build_mip_chain(image, format).map_err(|err| match err {
+        let mut levels = build_mip_chain(image, format).map_err(|err| match err {
             // Surface the format mismatch as the typed variant so callers
             // matching on UnsupportedMipmapFormat catch it both at the
             // top-level guard and in the inner dispatcher.
@@ -249,6 +253,9 @@ impl Mipmap {
             },
             other => other,
         })?;
+        if let (Some(raw), Some(top)) = (raw, levels.first_mut()) {
+            *top = raw;
+        }
         Ok(Mipmap {
             format,
             base_size: (width, height),
@@ -851,9 +858,8 @@ impl TextureObject {
     /// The data layout is tightly packed with bytes_per_row = bpp * width.
     ///
     /// When `generate_mipmaps = true`, a full mip chain is built CPU-side via the
-    /// dispatcher in [`write_levels`]. Mipmaps run for every format
-    /// `supports_cpu_mipmaps` accepts (Rgba8/Bgra8 family, R8, Rg8, R16,
-    /// Rg16, Rgba16); other formats fall back to a single level.
+    /// dispatcher in [`write_levels`], for every format `supports_cpu_mipmaps`
+    /// accepts, the float formats included. Other formats, and a 3D size, get one level.
     fn from_raw_bytes(
         context: &RenderContext,
         size: wgpu::Extent3d,
@@ -1481,47 +1487,57 @@ pub(crate) fn write_image_levels(
         wgpu::TextureFormat::Rgba16Unorm => {
             write_pixel_levels(context, image.to_rgba16(), texture, mip_level_count, 8);
         }
-        wgpu::TextureFormat::Rgba32Float => {
-            write_pixel_levels(context, image.to_rgba32f(), texture, mip_level_count, 16);
-        }
-        wgpu::TextureFormat::Rgba16Float => {
-            write_half_levels(context, image.to_rgba32f(), texture, mip_level_count);
+        wgpu::TextureFormat::Rgba16Float | wgpu::TextureFormat::Rgba32Float => {
+            write_floats(
+                context,
+                image.to_rgba32f(),
+                texture,
+                mip_level_count,
+                format,
+                None,
+            )?;
         }
         _ => check_decode(format)?,
     }
     Ok(())
 }
 
-/// Uploads `base` and its mip levels as half floats, resampled in full precision.
-fn write_half_levels(
+/// Uploads `base` and the float levels below it, `count` in all, packed for `format`.
+/// `raw`, the caller's own bytes for `base`, uploads as level 0 byte for byte.
+fn write_floats(
     context: &RenderContext,
     base: image::Rgba32FImage,
     texture: &wgpu::Texture,
-    mip_level_count: u32,
-) {
-    for (level, image) in mip_levels(base, mip_level_count as usize).enumerate() {
-        let bytes = half_bytes(image.as_raw());
-        write_level(
-            context,
-            texture,
-            level as u32,
-            &bytes,
-            image.dimensions(),
-            8,
-        );
+    count: u32,
+    format: wgpu::TextureFormat,
+    raw: Option<&[u8]>,
+) -> Result<(), TextureError> {
+    let size = texel_size(format)?;
+    for (level, image) in downsample_floats(base, count as usize).enumerate() {
+        let bytes = match (level, raw) {
+            (0, Some(raw)) => std::borrow::Cow::Borrowed(raw),
+            _ => std::borrow::Cow::Owned(pack_floats(image.as_raw(), format)),
+        };
+        let level = level as u32;
+        write_level(context, texture, level, &bytes, image.dimensions(), size);
+    }
+    Ok(())
+}
+
+/// The bytes of f32 `values` in `format`: half floats saturated to their range
+/// for `Rgba16Float`, and the values exactly as they are for `Rgba32Float`.
+fn pack_floats(values: &[f32], format: wgpu::TextureFormat) -> Vec<u8> {
+    match format {
+        wgpu::TextureFormat::Rgba16Float => values
+            .iter()
+            .flat_map(|value| to_half(*value).to_le_bytes())
+            .collect(),
+        _ => bytemuck::cast_slice(values).to_vec(),
     }
 }
 
-/// The half float bytes of `values`, each saturated to the half float range.
-fn half_bytes(values: &[f32]) -> Vec<u8> {
-    values
-        .iter()
-        .flat_map(|value| to_half(*value).to_le_bytes())
-        .collect()
-}
-
 /// The f32 values of tightly packed `Rgba16Float` or `Rgba32Float` bytes.
-fn float_values(bytes: &[u8], format: wgpu::TextureFormat) -> Vec<f32> {
+fn read_floats(bytes: &[u8], format: wgpu::TextureFormat) -> Vec<f32> {
     match format {
         wgpu::TextureFormat::Rgba16Float => {
             let half = |word: &[u8; 2]| half::f16::from_le_bytes(*word).to_f32();
@@ -1532,6 +1548,41 @@ fn float_values(bytes: &[u8], format: wgpu::TextureFormat) -> Vec<f32> {
             bytes.as_chunks::<4>().0.iter().map(float).collect()
         }
     }
+}
+
+/// `base` and the float levels below it, `count` in all, each half the size
+/// of the one before, never smaller than 1x1, and averaged with [`halve`].
+fn downsample_floats(
+    base: image::Rgba32FImage,
+    count: usize,
+) -> impl Iterator<Item = image::Rgba32FImage> {
+    std::iter::successors(Some(base), |level| Some(halve(level))).take(count)
+}
+
+/// `image` at half its size with a box filter, so a value past 0 to 1 keeps its size,
+/// where the `image` crate's resize clamps a float channel to that range.
+/// On an odd side the last texel joins the span before it, so every texel counts once.
+fn halve(image: &image::Rgba32FImage) -> image::Rgba32FImage {
+    let (width, height) = image.dimensions();
+    let (half_width, half_height) = ((width / 2).max(1), (height / 2).max(1));
+    // The source texels output texel `index` of `half` covers, out of `total`.
+    let span = |index: u32, half: u32, total: u32| {
+        let edge = |index: u32| (u64::from(index) * u64::from(total) / u64::from(half)) as u32;
+        edge(index)..edge(index + 1)
+    };
+    image::Rgba32FImage::from_fn(half_width, half_height, |x, y| {
+        let (mut sum, mut count) = ([0f64; 4], 0f64);
+        for row in span(y, half_height, height) {
+            for column in span(x, half_width, width) {
+                let texel = image.get_pixel(column, row).0;
+                for (total, value) in sum.iter_mut().zip(texel) {
+                    *total += f64::from(value);
+                }
+                count += 1.0;
+            }
+        }
+        image::Rgba(sum.map(|total| (total / count) as f32))
+    })
 }
 
 /// `value` as a half float, saturated to the half float range,
@@ -1702,7 +1753,7 @@ pub(crate) fn bytes_as_image(
         }
         wgpu::TextureFormat::Rgba16Float | wgpu::TextureFormat::Rgba32Float => {
             let length = pixel_count * texel_size(format)? as usize;
-            let values = float_values(&bytes[..length], format);
+            let values = read_floats(&bytes[..length], format);
             DynamicImage::ImageRgba32F(
                 image::Rgba32FImage::from_raw(width, height, values)
                     .ok_or_else(|| wrap_err("Rgba32F"))?,
@@ -1745,12 +1796,11 @@ pub(crate) fn build_mip_chain(
         wgpu::TextureFormat::Rgba16Unorm => {
             downsample_levels_to_bytes(image.to_rgba16(), level_count)
         }
-        wgpu::TextureFormat::Rgba32Float => {
-            downsample_levels_to_bytes(image.to_rgba32f(), level_count)
+        wgpu::TextureFormat::Rgba16Float | wgpu::TextureFormat::Rgba32Float => {
+            downsample_floats(image.to_rgba32f(), level_count)
+                .map(|level| pack_floats(level.as_raw(), format))
+                .collect()
         }
-        wgpu::TextureFormat::Rgba16Float => mip_levels(image.to_rgba32f(), level_count)
-            .map(|level| half_bytes(level.as_raw()))
-            .collect(),
         _ => {
             return Err(TextureError::CreateTextureError(format!(
                 "build_mip_chain: format {:?} is not supported",
@@ -1774,14 +1824,16 @@ where
     P: image::Pixel + 'static,
     P::Subpixel: bytemuck::NoUninit + 'static,
 {
-    mip_levels(base, level_count)
+    downsample(base, level_count)
         .map(|level| bytemuck::cast_slice(level.as_raw()).to_vec())
         .collect()
 }
 
 /// `base` and the levels below it, `count` in all, each half the size of the
 /// one before with the Triangle filter, and never smaller than 1x1.
-fn mip_levels<P>(
+/// The filter clamps each channel to its type's range, which suits the integer
+/// formats, so the float formats go through [`downsample_floats`] instead.
+fn downsample<P>(
     base: image::ImageBuffer<P, Vec<P::Subpixel>>,
     count: usize,
 ) -> impl Iterator<Item = image::ImageBuffer<P, Vec<P::Subpixel>>>
@@ -1883,15 +1935,10 @@ pub(crate) fn write_levels(
         }
         wgpu::TextureFormat::Rgba16Float | wgpu::TextureFormat::Rgba32Float => {
             let length = pixel_count * texel_size(format)? as usize;
-            let values = float_values(&bytes[..length], format);
-            let base =
-                image::Rgba32FImage::from_raw(w, h, values).ok_or_else(|| wrap_err("Rgba32F"))?;
-            match format {
-                wgpu::TextureFormat::Rgba16Float => {
-                    write_half_levels(context, base, texture, mip_level_count)
-                }
-                _ => write_pixel_levels(context, base, texture, mip_level_count, 16),
-            }
+            let raw = &bytes[..length];
+            let base = image::Rgba32FImage::from_raw(w, h, read_floats(raw, format))
+                .ok_or_else(|| wrap_err("Rgba32F"))?;
+            write_floats(context, base, texture, mip_level_count, format, Some(raw))?;
         }
         _ => {
             // Caller should have caught this via supports_cpu_mipmaps;
@@ -1932,7 +1979,7 @@ fn bytes_to_u16_vec(bytes: &[u8]) -> Vec<u16> {
 /// Generic worker: upload `base` as mip 0, then iteratively downsample with the
 /// Triangle filter until the chain is full. Works for any pixel type the `image`
 /// crate's `imageops::resize` supports (Rgba8, Luma8, LumaA8, Luma16, LumaA16,
-/// Rgba16, Rgba32F). Pixel data is reinterpreted to bytes via `bytemuck::cast_slice`,
+/// Rgba16). Pixel data is reinterpreted to bytes via `bytemuck::cast_slice`,
 /// which is a no-op for `u8` subpixels and a little-endian byte view for wider ones.
 /// All FragmentColor target platforms are little-endian, which matches WebGPU's
 /// expected byte order.
@@ -1946,7 +1993,7 @@ pub(crate) fn write_pixel_levels<P>(
     P: image::Pixel + 'static,
     P::Subpixel: bytemuck::NoUninit + 'static,
 {
-    for (level, image) in mip_levels(base, mip_level_count as usize).enumerate() {
+    for (level, image) in downsample(base, mip_level_count as usize).enumerate() {
         let bytes: &[u8] = bytemuck::cast_slice(image.as_raw());
         write_level(
             context,
@@ -2244,6 +2291,170 @@ mod tests {
                 .expect("create R16Unorm texture from Luma16 image");
             assert_eq!(tex.object().format, wgpu::TextureFormat::R16Unorm);
             assert_eq!(tex.object().inner.mip_level_count(), 3); // 4, 2, 1
+        });
+    }
+
+    /// The texels of mip `level` of `texture`, copied straight from the GPU.
+    fn read_level(texture: &Texture, level: u32) -> Vec<u8> {
+        let object = texture.object();
+        let context = &texture.context;
+        let bpp = texel_size(object.format).expect("texel size");
+        let (width, height) = (
+            (object.size.width >> level).max(1),
+            (object.size.height >> level).max(1),
+        );
+        let (row, padded) = (width * bpp, (width * bpp).div_ceil(256) * 256);
+        let buffer = context.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Level readback"),
+            size: u64::from(padded * height),
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let mut encoder = context.device.create_command_encoder(&Default::default());
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &object.inner,
+                mip_level: level,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded),
+                    rows_per_image: Some(height),
+                },
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+        context.queue.submit(Some(encoder.finish()));
+        let slice = buffer.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |_| {});
+        context
+            .device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: None,
+            })
+            .expect("poll");
+        let view = slice.get_mapped_range().expect("mapped range");
+        let rows = view.chunks(padded as usize).take(height as usize);
+        rows.flat_map(|line| line[..row as usize].to_vec())
+            .collect()
+    }
+
+    /// The bytes of `texels` in the float `format`.
+    fn float_bytes(texels: &[f32], format: crate::TextureFormat) -> Vec<u8> {
+        match format {
+            crate::TextureFormat::Rgba16Float => texels
+                .iter()
+                .flat_map(|value| half::f16::from_f32(*value).to_le_bytes())
+                .collect(),
+            _ => texels
+                .iter()
+                .flat_map(|value| value.to_le_bytes())
+                .collect(),
+        }
+    }
+
+    /// The first texel of `bytes` in the float `format`.
+    fn first_texel(bytes: &[u8], format: crate::TextureFormat) -> Vec<f32> {
+        read_floats(bytes, format.into())[..4].to_vec()
+    }
+
+    // Story: a float mip level keeps values past 0 to 1, from raw bytes, a whole
+    // write, Mipmap::build and an HDR decode, where the image crate's resize
+    // clamped every level below the first to that range.
+    #[test]
+    fn float_levels_keep_their_range() {
+        pollster::block_on(async move {
+            let r = crate::Renderer::new();
+            let sky = [10.0, -2.0, 0.5, 1.0];
+            let night = [20.0, -4.0, 0.25, 1.0];
+            for format in [
+                crate::TextureFormat::Rgba16Float,
+                crate::TextureFormat::Rgba32Float,
+            ] {
+                let bytes = float_bytes(&sky.repeat(4), format);
+                let options = TextureOptions {
+                    size: Some([2u32, 2].into()),
+                    format,
+                    ..Default::default()
+                }
+                .with_usage(crate::TextureUsage::COPY_SRC);
+                let tex = r
+                    .create_texture((bytes.clone(), options))
+                    .await
+                    .expect("raw float texture");
+                assert_eq!(tex.object().inner.mip_level_count(), 2);
+                assert_eq!(first_texel(&read_level(&tex, 1), format), sky, "{format:?}");
+
+                tex.write(&float_bytes(&night.repeat(4), format))
+                    .expect("a whole write");
+                let level = read_level(&tex, 1);
+                assert_eq!(first_texel(&level, format), night, "{format:?} write");
+
+                let chain = Mipmap::build((bytes.as_slice(), format, [2u32, 2])).expect("chain");
+                let level = chain.level(1).expect("level 1");
+                assert_eq!(first_texel(level, format), sky, "{format:?} Mipmap");
+            }
+
+            let hdr_sky = image::Rgb32FImage::from_pixel(2, 2, image::Rgb([10.0, 5.0, 2.5]));
+            let mut hdr = Vec::new();
+            DynamicImage::ImageRgb32F(hdr_sky)
+                .write_to(&mut std::io::Cursor::new(&mut hdr), image::ImageFormat::Hdr)
+                .expect("encode hdr");
+            let options = TextureOptions::default().with_usage(crate::TextureUsage::COPY_SRC);
+            let tex = r
+                .create_texture((TextureData::Bytes(hdr), options))
+                .await
+                .expect("an HDR file");
+            let format = crate::TextureFormat::Rgba16Float;
+            let texel = first_texel(&read_level(&tex, 1), format);
+            assert!(
+                (texel[0] - 10.0).abs() < 0.2,
+                "HDR level 1 keeps 10, got {texel:?}"
+            );
+        });
+    }
+
+    // Story: raw half floats upload as given at level 0, an infinity and a NaN
+    // payload included, and only the levels below it are resampled.
+    #[test]
+    fn raw_half_floats_keep_level_zero() {
+        pollster::block_on(async move {
+            let words: [u16; 16] = [0x7C00, 0x7E01, 0x3C00, 0x3C00]
+                .repeat(4)
+                .try_into()
+                .unwrap();
+            let bytes: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
+            let format = crate::TextureFormat::Rgba16Float;
+            let options = TextureOptions {
+                size: Some([2u32, 2].into()),
+                format,
+                ..Default::default()
+            }
+            .with_usage(crate::TextureUsage::COPY_SRC);
+            let r = crate::Renderer::new();
+            let tex = r
+                .create_texture((bytes.clone(), options))
+                .await
+                .expect("raw half floats");
+            assert_eq!(tex.object().inner.mip_level_count(), 2);
+            assert_eq!(read_level(&tex, 0), bytes, "create_texture keeps level 0");
+            tex.write(&bytes).expect("a whole write");
+            assert_eq!(read_level(&tex, 0), bytes, "write keeps level 0");
+            let chain = Mipmap::build((bytes.as_slice(), format, [2u32, 2])).expect("chain");
+            assert_eq!(
+                chain.level(0).expect("level 0"),
+                bytes,
+                "Mipmap keeps level 0"
+            );
         });
     }
 

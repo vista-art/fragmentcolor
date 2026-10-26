@@ -267,6 +267,7 @@ const OPTION_KEYS: [&str; 5] = ["size", "format", "mipmaps", "sampler", "usage"]
 /// Reads texture options: a bare `TextureFormat`, a bare size like `[w, h]`,
 /// or an object `{ size?, format?, mipmaps?, sampler?, usage? }`, which reads
 /// as options whenever it holds one of those keys, and then refuses a `width`.
+/// A bare size that fails to read, such as `[1.5, 2]`, throws.
 fn read_texture_options(value: &JsValue) -> Result<TextureOptions, JsError> {
     if value.as_f64().is_some() {
         return Ok(TextureOptions::from(read_format(value)?));
@@ -278,9 +279,9 @@ fn read_texture_options(value: &JsValue) -> Result<TextureOptions, JsError> {
             "texture options take the size under `size`, as in { size: [w, h] }",
         ));
     }
-    // A bare size, as a list or as an object with a width and a height, reports its own error.
+    // A list or an object with a width reads as a size, and one that fails to read throws.
     let list = js_sys::Array::is_array(value) || js_sys::ArrayBuffer::is_view(value);
-    if list || (!options && given(&["width", "height", "depth"])) {
+    if !options && (list || given(&["width", "height", "depth"])) {
         return Ok(TextureOptions::from(Size::try_from(value)?));
     }
     if !value.is_object() {

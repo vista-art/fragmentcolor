@@ -105,7 +105,8 @@ pub(crate) fn vk_format_to_wgpu(format: VkFormat) -> Option<wgpu::TextureFormat>
 
 /// Decode a KTX2 byte slice into a fully-uploaded [`TextureObject`].
 ///
-/// Validation rules (any violation returns `TextureError::CreateTextureError`):
+/// Validation rules (any violation returns `TextureError::CreateTextureError`,
+/// except a missing device feature, which returns `TextureError::UnsupportedFormatForUsage`):
 /// - `format` must be present (no Basis Universal — VK_FORMAT_UNDEFINED — yet).
 /// - `supercompression_scheme` must be `None` (no zstd/zlib/Basis transcoding yet).
 /// - `face_count` must be 1 (cube maps unsupported).
@@ -115,8 +116,8 @@ pub(crate) fn vk_format_to_wgpu(format: VkFormat) -> Option<wgpu::TextureFormat>
 /// - The runtime device must actually support the chosen format. We honor the
 ///   adapter's advertised features (BC / ETC2 / ASTC are opportunistically
 ///   requested at device creation), but a desktop adapter without ASTC, for
-///   example, will reject ASTC textures here with a clear error rather than
-///   crashing inside wgpu validation.
+///   example, refuses ASTC textures here through `check_feature`, the check
+///   every other texture takes, rather than inside wgpu validation.
 ///
 /// Mipmap chain: every level present in the file is uploaded as-is. We do not
 /// generate additional mips on top of the file's chain.
@@ -166,19 +167,8 @@ pub(crate) fn from_ktx2_bytes(
         ))
     })?;
 
-    // Verify the device actually supports this format (the relevant compression
-    // feature may not have been granted by the adapter). Without this guard,
-    // wgpu would surface a hard-to-trace validation error inside texture creation.
-    let required_features = wgpu_format.required_features();
-    let device_features = context.device.features();
-    if !device_features.contains(required_features) {
-        return Err(TextureError::CreateTextureError(format!(
-            "KTX2 format {:?} requires GPU features {:?}, but the active adapter only advertises {:?}",
-            vk_format,
-            required_features,
-            device_features & required_features
-        )));
-    }
+    // The device may lack the compression feature the format needs.
+    crate::texture::check_feature(context.device.features(), wgpu_format)?;
 
     let width = header.pixel_width;
     let height = header.pixel_height.max(1);
@@ -456,7 +446,9 @@ mod tests {
             let texture = match renderer.create_texture(input).await {
                 Ok(texture) => texture,
                 // A device without BC compression can't make the texture at all.
-                Err(crate::RendererError::TextureError(TextureError::CreateTextureError(_))) => {
+                Err(crate::RendererError::TextureError(
+                    TextureError::UnsupportedFormatForUsage { .. },
+                )) => {
                     return;
                 }
                 Err(error) => panic!("create_texture failed: {error}"),
