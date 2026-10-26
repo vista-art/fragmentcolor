@@ -639,7 +639,7 @@ public protocol CameraProtocol: AnyObject, Sendable {
     
     func position()  -> [Float]
     
-    func setAspect(aspect: Float)  -> Camera
+    func setAspect(aspect: Float) throws  -> Camera
     
     func viewProj()  -> [Float]
     
@@ -695,8 +695,8 @@ open class Camera: CameraProtocol, @unchecked Sendable {
     }
 
     
-public static func orthographic(left: Float, right: Float, bottom: Float, top: Float, near: Float, far: Float) -> Camera  {
-    return try!  FfiConverterTypeCamera_lift(try! rustCall() {
+public static func orthographic(left: Float, right: Float, bottom: Float, top: Float, near: Float, far: Float)throws  -> Camera  {
+    return try  FfiConverterTypeCamera_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_constructor_camera_orthographic(
         FfiConverterFloat.lower(left),
@@ -709,8 +709,8 @@ public static func orthographic(left: Float, right: Float, bottom: Float, top: F
 })
 }
     
-public static func perspective(fovyRadians: Float, aspect: Float, near: Float, far: Float) -> Camera  {
-    return try!  FfiConverterTypeCamera_lift(try! rustCall() {
+public static func perspective(fovyRadians: Float, aspect: Float, near: Float, far: Float)throws  -> Camera  {
+    return try  FfiConverterTypeCamera_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_constructor_camera_perspective(
         FfiConverterFloat.lower(fovyRadians),
@@ -744,8 +744,8 @@ open func position() -> [Float]  {
 })
 }
     
-open func setAspect(aspect: Float) -> Camera  {
-    return try!  FfiConverterTypeCamera_lift(try! rustCall() {
+open func setAspect(aspect: Float)throws  -> Camera  {
+    return try  FfiConverterTypeCamera_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_camera_setaspect(
             self.uniffiCloneHandle(),
@@ -9173,7 +9173,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_camera_position() != 27841) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_camera_setaspect() != 46144) {
+    if (uniffi_fragmentcolor_checksum_method_camera_setaspect() != 61981) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_camera_viewproj() != 472) {
@@ -9407,10 +9407,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_constructor_model_new() != 51565) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_camera_orthographic() != 24104) {
+    if (uniffi_fragmentcolor_checksum_constructor_camera_orthographic() != 49241) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_camera_perspective() != 9457) {
+    if (uniffi_fragmentcolor_checksum_constructor_camera_perspective() != 55968) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_light_directional() != 7479) {

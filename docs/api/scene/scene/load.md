@@ -16,6 +16,13 @@ flattened into Model matrices, glTF camera nodes, and `KHR_lights_punctual`
 lights. Animation, skinning, morph targets, and material extensions beyond
 PBR-MR are out of scope; they parse cleanly and the loader ignores them.
 
+Triangle strips and fans load as triangle lists. A file that breaks the
+glTF rules returns `SceneLoadError::Invalid`, which names the accessor,
+node or index at fault. That covers a primitive drawn as points or lines,
+an accessor whose type, count or byte range doesn't fit its buffer, an
+attribute with a different element count than `POSITION`, an index past
+the last vertex, and a node that is its own ancestor.
+
 ## Skipping embedded cameras and lights
 
 By default the loader instantiates the glTF file's own camera and light nodes.
@@ -36,8 +43,8 @@ let scene = Scene::load(
 )?;
 
 // Supply your own camera; it's now the only one the Scene tracks.
-let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)
-    .look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)?
+    .look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
 scene.add(&camera)?;
 # Ok(())
 # }

@@ -21,6 +21,14 @@
 - `Texture.resize(size)` gives a texture a pass draws into a new size, in Rust, JavaScript, Python, Swift and Kotlin. Every clone of the handle follows, and so do the shader uniforms and pass targets that hold it, so a depth texture can follow a window without being created again. A new size starts with blank pixels. A texture without `RENDER_ATTACHMENT` usage returns `TextureError::FixedSize`, and a width or height of zero returns `TextureError::InvalidInput`. Both keep the old size.
 - A `Texture` from `TextureTarget.texture()`, and every clone of a `TextureTarget`, follow `TextureTarget.resize`. They kept the old size, and `write` and `get_image` reached the old texture.
 
+### Scene
+
+- `Scene.load` refuses a malformed glTF file with `SceneLoadError::Invalid`, which names the accessor or node, in every language. A `byteStride` shorter than one element, an index or attribute type its semantic doesn't take, a count of 0, an accessor past the end of its buffer view, a view past the end of its buffer, or a node that is its own ancestor stopped the program: Rust panicked, the web build aborted, and Python, Swift and Kotlin raised a panic exception instead of the scene error.
+- `Scene.load` draws glTF triangle strips and fans, expanded into triangle lists. It drew them as lists, which scrambled the geometry.
+- `Scene.load` decodes every image format the glTF importer reads into the material's textures, 16-bit, gray with alpha and float images included. It skipped those with a log warning, and the slot kept its 1×1 default.
+- `Camera.perspective`, `Camera.orthographic`, `Camera.set_aspect` and `Camera.look_at` refuse parameters that build no finite matrix: a field of view of 0, an aspect of 0 or NaN, equal near and far planes, a frustum with no width or height, a target on the camera's position, or an up along the view. Rust returns the new `CameraError`, JavaScript throws an `Error`, Python raises `CameraError` (a `FragmentColorError` and a `ValueError`), Swift throws `FragmentColorError` and Kotlin throws `FragmentColorException`. The camera keeps its old state. The matrix held infinities or NaN before, and every model drawn through the camera vanished without an error. `Scene.load` reports such a glTF camera, or one whose `zfar` isn't past its `znear`, as a scene error.
+- A spot light with equal inner and outer cone angles draws the hard edge its docs promise on every GPU. The PBR shader handed both edges to `smoothstep`, which WGSL leaves undefined when they meet.
+
 ### JavaScript
 
 - `Vertex`, `Instance`, `Quad` and `TextureId` carry the `__fc_kind` brand the other classes have. Minifiers rename classes, and the checks that passed these objects into the library fell back to the class name, so a production build failed where a development build worked: `mesh.addVertices` rejected its `Vertex` objects. The checks read only the brand now, and a build fails when a type that crosses into the library has none. A site that keeps class names in its build to work around this, as the FragmentColor website does with `keepNames` in `docs/website/astro.config.mjs`, can drop that once it loads 0.12.7.
@@ -64,6 +72,12 @@
 - `Pass::set_clear_color` returns `Result<(), PassError>`, and a channel that is NaN or infinite fails with the new `PassError::Color` and leaves the pass unchanged. It became 0. JavaScript throws an `Error`, Python raises `FragmentColorError`, Swift throws `FragmentColorError`, and Kotlin throws `FragmentColorException`.
 - `Color` holds four `f32` channels where it packed four bytes into a public `u32`, so `Color(0xFF0000FF)` and `u32::from(color)` are gone. `Color::from(0xFF0000FFu32)` still reads bytes. `Color` no longer implements `Hash`.
 - JavaScript's `ScreenRegion` drops its `min_x`, `min_y`, `max_x` and `max_y` properties, whose setters skipped every check. Read `minX`, `minY`, `maxX` and `maxY`, which stay. A plain `{ min_x, ... }` object still converts.
+- `Scene.load` fails on a glTF attribute or index accessor the file declares but whose bytes can't be read. It computed normals, used default UVs and colors, or drew without indices instead.
+- `Scene.load` fails on a glTF file that reaches one node twice, through a cycle or a node with two parents. glTF requires nodes to form trees.
+- `Camera::perspective`, `Camera::orthographic`, `Camera::set_aspect` and `Camera::look_at` return `Result<Camera, CameraError>` in Rust, and Swift calls to the first three now need `try`. A resize handler that hands `set_aspect` a minimized window's width of 0 gets an error and keeps the old aspect. `SceneLoadError` has a new `Camera` variant.
+- `Scene.load` fails on a glTF primitive drawn as points or lines, on an attribute whose element count differs from `POSITION`'s, and on an index past the last vertex. It drew points and lines as triangles, filled the missing elements with defaults, and sent the bad index to the GPU.
+- `Light.set_range` refuses NaN with `LightError::NegativeRange`, the error a negative number gets. NaN passed the check and lit as an unlimited range.
+- `Scene.load` fails on a `KHR_lights_punctual` light with a negative `range`, with the same `set_range` error. It clamped the range to 0, which means unlimited.
 
 ## 0.12.6: Binding and renderer fixes
 

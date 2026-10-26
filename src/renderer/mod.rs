@@ -4039,11 +4039,10 @@ struct VIn { @location(0) pos: vec2<f32> };
     }
 
     fn camera() -> crate::Camera {
-        crate::Camera::perspective(1.0, 1.0, 0.1, 100.0).look_at(
-            [0.0, 0.0, 3.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        )
+        crate::Camera::perspective(1.0, 1.0, 0.1, 100.0)
+            .expect("camera")
+            .look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            .expect("camera")
     }
 
     /// The RGBA bytes at `(x, y)` of an image `SIDE` pixels wide.

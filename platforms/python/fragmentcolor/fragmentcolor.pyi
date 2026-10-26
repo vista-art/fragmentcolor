@@ -14,6 +14,7 @@ __all__ = [
     "OccludedSurfaceError",
     "SceneLoadError",
     "LightError",
+    "CameraError",
     "Renderer",
     "Shader",
     "Pass",
@@ -63,6 +64,8 @@ class OccludedSurfaceError(FragmentColorError): ...
 class SceneLoadError(FragmentColorError): ...
 
 class LightError(FragmentColorError): ...
+
+class CameraError(FragmentColorError): ...
 
 @final
 class Renderer:
@@ -2140,6 +2143,13 @@ class Scene:
         lights. Animation, skinning, morph targets, and material extensions beyond
         PBR-MR are out of scope; they parse cleanly and the loader ignores them.
 
+        Triangle strips and fans load as triangle lists. A file that breaks the
+        glTF rules returns `SceneLoadError::Invalid`, which names the accessor,
+        node or index at fault. That covers a primitive drawn as points or lines,
+        an accessor whose type, count or byte range doesn't fit its buffer, an
+        attribute with a different element count than `POSITION`, an index past
+        the last vertex, and a node that is its own ancestor.
+
         ## Skipping embedded cameras and lights
 
         By default the loader instantiates the glTF file's own camera and light nodes.
@@ -2160,8 +2170,8 @@ class Scene:
         )?;
 
         // Supply your own camera; it's now the only one the Scene tracks.
-        let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)
-            .look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)?
+            .look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
         scene.add(&camera)?;
         # Ok(())
         # }
@@ -3123,6 +3133,12 @@ class Camera:
       shaders that need it (specular highlights, fresnel) don't have to invert
       the view matrix on every frame.
 
+    Parameters that can't build a finite matrix fail instead of hiding every
+    model: `perspective`, `orthographic`, `look_at` and `set_aspect` return a
+    `CameraError` in Rust, throw an `Error` in JavaScript, raise `CameraError`
+    (a `FragmentColorError` and a `ValueError`) in Python, throw
+    `FragmentColorError` in Swift and throw `FragmentColorException` in Kotlin.
+
     The Camera is the user's domain, not the Material's: a Material is "what the
     surface looks like under any light from any viewpoint", a Camera is "which
     viewpoint we're using right now".
@@ -3153,6 +3169,12 @@ class Camera:
         down `-Z`, with `+Y` up. Chain [`look_at`](https://fragmentcolor.org/api/scene/camera#look_at)
         to position the camera before binding it.
 
+        Every value must be finite, `fovy_radians` must lie between 0 and π,
+        `aspect` can't be 0, and `near` and `far` must be positive and different.
+        Anything else returns `Err(CameraError::Perspective)`, since it would put
+        infinities or NaN in the matrix and every model drawn through the camera
+        would vanish.
+
         Example:
 
         ```python
@@ -3178,6 +3200,10 @@ class Camera:
         down `-Z`, with `+Y` up. Chain [`look_at`](https://fragmentcolor.org/api/scene/camera#look_at)
         to position the camera before binding it.
 
+        All six planes must be finite, and `left` and `right`, `bottom` and `top`,
+        and `near` and `far` must differ. Planes that close the frustum to nothing
+        return `Err(CameraError::Orthographic)`.
+
         Example:
 
         ```python
@@ -3199,6 +3225,11 @@ class Camera:
         cleanly off a `perspective` or `orthographic` constructor and can be
         called again after the Camera has been added to a Pass. The new view
         propagates live to every Material the Pass renders.
+
+        The vectors must be finite, `target` must differ from `position`, and
+        `up` can't be zero or point along the view. Any of those leaves no way to
+        orient the camera, so the call returns `Err(CameraError::View)` and the
+        Camera keeps its view.
 
         Internally builds the view matrix with `glam::Mat4::look_at_rh`. The
         result is a right-handed view matrix that pairs with the right-handed
@@ -3231,6 +3262,9 @@ class Camera:
         renders without distortion.
 
         Returns a handle to the same Camera (Arc-shared backing) for chaining.
+        An aspect of 0, NaN or infinity returns `Err(CameraError::Aspect)` and
+        leaves the projection as it was. A minimized window reports a width or
+        height of 0, so skip the call until the window has an area again.
 
         Behavior by projection kind:
 
@@ -3721,8 +3755,8 @@ class Light:
         returns `Ok(self)` for chaining. Calling this on a directional light
         returns `Err(LightError::FieldNotApplicable { kind: Directional, field:
         "set_range" })` because parallel rays have no distance falloff. Passing a
-        negative value returns `Err(LightError::NegativeRange(value))` regardless
-        of kind.
+        negative value or NaN returns `Err(LightError::NegativeRange(value))`
+        regardless of kind, and the light keeps its range.
 
         A value of `0.0` means "unlimited", matching glTF `KHR_lights_punctual`'s
         default; positive values cut the contribution off smoothly past that

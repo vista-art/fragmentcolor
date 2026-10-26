@@ -42,8 +42,8 @@ mesh.add_vertex(
 );
 let model = Model::new(mesh, Material::pbr());
 
-let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)
-    .look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)?
+    .look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
 let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 
 let scene = Scene::new();
@@ -53,7 +53,7 @@ scene.add(&sun)?;
 
 // Updating the camera later is enough. Every shader on the scene picks
 // up the new view_proj at the next render.
-camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
 # let _ = renderer;
 # Ok(())
 # }

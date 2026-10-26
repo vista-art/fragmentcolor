@@ -3,7 +3,9 @@
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 
-use crate::scene::{Camera, Light, LightError, LightKind, Model, Scene, SceneLoadError};
+use crate::scene::{
+    Camera, CameraError, Light, LightError, LightKind, Model, Scene, SceneLoadError,
+};
 use crate::{Material, Mesh, Pass};
 
 #[pymethods]
@@ -76,8 +78,8 @@ impl Camera {
     #[staticmethod]
     #[pyo3(name = "perspective")]
     #[lsp_doc("docs/api/scene/camera/perspective.md")]
-    pub fn perspective_py(fovy_radians: f32, aspect: f32, near: f32, far: f32) -> Self {
-        Camera::perspective(fovy_radians, aspect, near, far)
+    pub fn perspective_py(fovy_radians: f32, aspect: f32, near: f32, far: f32) -> PyResult<Self> {
+        Ok(Camera::perspective(fovy_radians, aspect, near, far)?)
     }
 
     #[staticmethod]
@@ -90,20 +92,20 @@ impl Camera {
         top: f32,
         near: f32,
         far: f32,
-    ) -> Self {
-        Camera::orthographic(left, right, bottom, top, near, far)
+    ) -> PyResult<Self> {
+        Ok(Camera::orthographic(left, right, bottom, top, near, far)?)
     }
 
     #[pyo3(name = "look_at")]
     #[lsp_doc("docs/api/scene/camera/look_at.md")]
-    pub fn look_at_py(&self, position: [f32; 3], target: [f32; 3], up: [f32; 3]) -> Self {
-        self.look_at(position, target, up)
+    pub fn look_at_py(&self, position: [f32; 3], target: [f32; 3], up: [f32; 3]) -> PyResult<Self> {
+        Ok(self.look_at(position, target, up)?)
     }
 
     #[pyo3(name = "set_aspect")]
     #[lsp_doc("docs/api/scene/camera/set_aspect.md")]
-    pub fn set_aspect_py(&self, aspect: f32) -> Self {
-        self.set_aspect(aspect)
+    pub fn set_aspect_py(&self, aspect: f32) -> PyResult<Self> {
+        Ok(self.set_aspect(aspect)?)
     }
 
     #[pyo3(name = "view_proj")]
@@ -144,6 +146,14 @@ impl From<PyMatrix> for [[f32; 4]; 4] {
 impl From<LightError> for PyErr {
     fn from(error: LightError) -> Self {
         crate::error::PythonError::Light.new_err(error.to_string())
+    }
+}
+
+/// Camera parameters without a finite matrix raise `CameraError`,
+/// a `FragmentColorError` that is also a `ValueError`.
+impl From<CameraError> for PyErr {
+    fn from(error: CameraError) -> Self {
+        crate::error::PythonError::Camera.new_err(error.to_string())
     }
 }
 

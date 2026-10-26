@@ -247,7 +247,11 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
       if (lt.kind == 2u) {
         let spot_axis = normalize(-lt.direction);
         let cos_angle = dot(spot_axis, l);
-        attenuation = attenuation * smoothstep(lt.outer_cone_cos, lt.inner_cone_cos, cos_angle);
+        // smoothstep is undefined when its edges meet, and equal cone angles
+        // ask for a hard edge, so the Hermite curve is spelled out here.
+        let band = max(lt.inner_cone_cos - lt.outer_cone_cos, 1.0e-6);
+        let t = clamp((cos_angle - lt.outer_cone_cos) / band, 0.0, 1.0);
+        attenuation = attenuation * t * t * (3.0 - 2.0 * t);
       }
     }
     let radiance = lt.color * lt.intensity * attenuation;

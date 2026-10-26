@@ -7,5 +7,5 @@ let scene = try Scene.load("path/to/model.glb")
 // runs once.
 for camera in scene.cameras() {
     try camera.lookAt([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
-    camera.setAspect(16.0 / 9.0)
+    try camera.setAspect(16.0 / 9.0)
 }
