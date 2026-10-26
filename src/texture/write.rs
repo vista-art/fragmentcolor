@@ -139,8 +139,8 @@ fn tight_rows(data: &[u8], bytes_per_row: u32, row_stride: u32, height: u32) -> 
     Cow::Owned(rows.flat_map(|row| &row[..used]).copied().collect())
 }
 
-/// The fewest bytes WebGPU reads for a region of `size` at `bytes_per_row`:
-/// every full row but the last, then the last row's `row_stride`.
+/// The fewest bytes WebGPU reads for a region of `size`:
+/// every row but the last at `bytes_per_row`, then the last row's `row_stride`.
 fn least_bytes(bytes_per_row: u32, row_stride: u32, rows_per_image: u32, size: [u32; 3]) -> u64 {
     let rows = (size[2].saturating_sub(1) as u64)
         .saturating_mul(rows_per_image as u64)

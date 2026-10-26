@@ -91,8 +91,8 @@ fn prepare_readback(
     })
 }
 
-/// Checks that a backend with the downlevel `flags` copies a texture of `format` to a buffer.
-/// GLES and WebGL2 copy no depth texture.
+/// Checks that a backend copies a texture of `format` to a buffer.
+/// `flags` are its downlevel flags, and GLES and WebGL2 copy no depth texture.
 fn check_copy(
     format: wgpu::TextureFormat,
     flags: wgpu::DownlevelFlags,

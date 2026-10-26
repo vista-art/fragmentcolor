@@ -231,10 +231,9 @@ pub(crate) fn js_to_sampler_options(value: &JsValue) -> Result<SamplerOptions, J
     })
 }
 
-/// Reads a texture source and its options, as `createTexture` and the Material
-/// texture setters take them. An `ImageData` or canvas source carries its own
-/// size and RGBA pixels: the options may repeat the size and pick an 8-bit RGBA
-/// or BGRA format, which stores blue first.
+/// Reads a texture source and its options, as `createTexture` and the Material setters take them.
+/// An `ImageData` or canvas brings its own size and RGBA pixels, so the options may repeat
+/// that size and pick an 8-bit RGBA or BGRA format, which stores blue first.
 pub(crate) fn read_texture_input(
     source: &JsValue,
     options: Option<&JsValue>,
@@ -255,9 +254,9 @@ pub(crate) fn read_texture_input(
 /// The keys of a texture options object.
 const OPTION_KEYS: [&str; 5] = ["size", "format", "mipmaps", "sampler", "usage"];
 
-/// Reads texture options: a bare `TextureFormat`, a bare size such as `[w, h]`,
-/// or an object `{ size?, format?, mipmaps?, sampler?, usage? }`. An object with
-/// an option key reads as options, and then a `width` beside it is an error.
+/// Reads texture options: a bare `TextureFormat`, a bare size like `[w, h]`,
+/// or an object `{ size?, format?, mipmaps?, sampler?, usage? }`, which reads
+/// as options whenever it holds one of those keys, and then refuses a `width`.
 fn read_texture_options(value: &JsValue) -> Result<TextureOptions, JsError> {
     if value.as_f64().is_some() {
         return Ok(TextureOptions::from(read_format(value)?));

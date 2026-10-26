@@ -183,9 +183,8 @@ fn vec4_from_vec(v: &[f32], field: &str) -> Result<[f32; 4], JsError> {
     Ok([v[0], v[1], v[2], v[3]])
 }
 
-/// Maps an `AlphaMode` from JS, a number in the variant order of `AlphaMode`,
-/// to the mode. Anything else is an error, where wasm-bindgen would read
-/// `undefined`, `NaN` or a fraction as `Opaque`.
+/// Maps an `AlphaMode` from JS, a number in variant order, to the mode.
+/// Anything else is an error, which wasm-bindgen would read as `Opaque`.
 fn read_alpha_mode(value: &JsValue) -> Result<AlphaMode, JsError> {
     let code = value
         .as_f64()

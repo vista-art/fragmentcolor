@@ -108,8 +108,8 @@ impl TryFrom<PyTextureSource<'_>> for crate::TextureInput {
     }
 }
 
-/// The texture input for a `uint8` array, which brings its own size. A `size` keyword
-/// must match it, and the channels must fit the `format`, `Rgba` when unset.
+/// The texture input for a `uint8` array, which brings its own size.
+/// A `size` keyword must match it, and its channels must fit the `format`, `Rgba` when unset.
 pub(crate) fn ndarray_input(
     array: &numpy::PyReadonlyArrayDyn<'_, u8>,
     size: Option<crate::Size>,
@@ -180,8 +180,8 @@ impl TryFrom<PyTextureRegion<'_>> for TextureRegion {
     }
 }
 
-/// Reads the dict form through the reader every binding shares. A key like
-/// `bytes_per_row` also takes its camelCase form, `bytesPerRow`.
+/// Reads the dict form through the reader the bindings share.
+/// A key like `bytes_per_row` also takes its camelCase form, `bytesPerRow`.
 fn layout_region(layout: &Bound<'_, PyDict>) -> PyResult<TextureRegion> {
     let read = |(camel, snake): crate::texture::region::Key| -> PyResult<Option<u32>> {
         for name in [snake, camel] {

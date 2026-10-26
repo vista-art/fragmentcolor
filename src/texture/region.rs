@@ -197,13 +197,12 @@ const EXTENT: [Key; 3] = [("width", "width"), ("height", "height"), ("depth", "d
 #[cfg(any(wasm, python, test))]
 const AXES: [&str; 3] = ["x", "y", "z"];
 
-/// Reads a region from a JS object or a Python dict, through `read`, which
-/// returns the number under a key or `None` when the key is missing.
+/// Reads a region from a JS object or a Python dict through `read`.
 ///
-/// The object takes one of two forms. `{ x, y, z?, width, height, depth? }`
-/// needs its width and height, and `{ minX, minY, maxX, maxY, minZ?, maxZ? }`
-/// needs each max past its min, with one layer when `maxZ` is missing.
-/// Both forms take `bytesPerRow` and `rowsPerImage`.
+/// `read` returns the number under a key, or `None` for a missing key.
+/// The form `{ x, y, z?, width, height, depth? }` needs its width and height.
+/// The form `{ minX, minY, maxX, maxY, minZ?, maxZ? }` needs each max past its min,
+/// and both take `bytesPerRow` and `rowsPerImage`, with one layer when they give no depth.
 #[cfg(any(wasm, python, test))]
 pub(crate) fn read_region<E: From<TextureError>>(
     read: impl Fn(Key) -> Result<Option<u32>, E>,
@@ -230,8 +229,8 @@ pub(crate) fn read_region<E: From<TextureError>>(
     Ok(region)
 }
 
-/// A region from its bounds. The x and y bounds need a max past the min,
-/// and a missing z max makes the region one layer deep.
+/// A region from its bounds, one layer deep without a z max.
+/// The x and y bounds each need a max past the min, and so does a z max given.
 #[cfg(any(wasm, python, test))]
 fn from_bounds(min: [u32; 3], max: [Option<u32>; 3]) -> Result<TextureRegion, TextureError> {
     let mut size = [1; 3];
@@ -255,8 +254,8 @@ fn from_bounds(min: [u32; 3], max: [Option<u32>; 3]) -> Result<TextureRegion, Te
     Ok(TextureRegion::new(min, size))
 }
 
-/// A region from its origin and extent, which needs its width and height
-/// and is one layer deep without a depth.
+/// A region from its origin and extent.
+/// It needs a width and a height, and without a depth it is one layer deep.
 #[cfg(any(wasm, python, test))]
 fn from_box(origin: [u32; 3], extent: [Option<u32>; 3]) -> Result<TextureRegion, TextureError> {
     let [Some(width), Some(height), depth] = extent else {

@@ -1246,7 +1246,7 @@ fn check_source(data: &TextureData, size: Option<Size>) -> Result<(), TextureErr
     }
 }
 
-/// Decodes an encoded image once the size its header declares fits the device's `limits`,
+/// Decodes an encoded image once its header's size fits the device's `limits`,
 /// so an image too large to upload is refused before its pixels take any memory.
 fn decode(bytes: &[u8], limits: &wgpu::Limits) -> Result<DynamicImage, TextureError> {
     let format = image::guess_format(bytes)?;
@@ -1306,8 +1306,8 @@ pub(crate) fn supports_cpu_mipmaps(format: wgpu::TextureFormat) -> bool {
     )
 }
 
-/// What the device lets a texture of `format` do, the way wgpu checks a new texture.
-/// A backend below WebGPU, such as GLES or WebGL2, reports its own,
+/// What the device lets a texture of `format` do, as wgpu checks it.
+/// A backend below WebGPU, such as GLES or WebGL2, reports its own table,
 /// and every other backend takes the WebGPU baseline for the device's features.
 pub(crate) fn format_features(
     context: &RenderContext,
@@ -1325,7 +1325,7 @@ pub(crate) fn format_features(
     }
 }
 
-/// Checks that the device makes a texture of `format` with `usage` and `dimension`,
+/// Checks the device makes `format` with `usage` and `dimension`,
 /// so a texture wgpu would refuse never reaches `device.create_texture`.
 pub(crate) fn check_format(
     context: &RenderContext,
@@ -1427,8 +1427,8 @@ pub(crate) fn infer_format(color: image::ColorType) -> wgpu::TextureFormat {
 /// silently going through `to_rgba8`.
 ///
 /// Each branch picks the matching `image` crate decoder so the channel layout and
-/// bytes-per-pixel agree with the wgpu format. Any format [`check_decode`] refuses
-/// is an error here too.
+/// bytes-per-pixel agree with the wgpu format, and any format [`check_decode`] refuses
+/// is an error here too, though from_image checks it before it makes the texture.
 pub(crate) fn write_image_levels(
     context: &RenderContext,
     image: &DynamicImage,
@@ -1531,10 +1531,10 @@ pub(crate) fn write_image_levels(
     Ok(())
 }
 
-/// The texel bytes of a `uint8` array of `shape`, `(h, w)` or `(h, w, channels)`, for `format`,
-/// and the array's size. Channels that match the format's bytes per pixel pass as they are,
-/// and 1 or 3 channels gain an opaque alpha for an 8-bit RGBA or BGRA format.
-/// The shape is checked before `read` collects the array's bytes.
+/// The texel bytes and size of a `uint8` array of `shape` for `format`.
+/// Channels that match the format's bytes per pixel pass as they are, and
+/// 1 or 3 channels gain an opaque alpha for an 8-bit RGBA or BGRA format.
+/// The shape, `(h, w)` or `(h, w, channels)`, is checked before `read` collects the bytes.
 #[cfg(any(python, test))]
 pub(crate) fn array_pixels(
     shape: &[usize],
@@ -1574,9 +1574,9 @@ pub(crate) fn array_pixels(
     Ok((pixels, size))
 }
 
-/// Checks texture options against a source that brings its own RGBA8 pixels
-/// at the size `own`, such as a JavaScript `ImageData` or canvas.
-/// A different size, or a format other than 8-bit RGBA or BGRA, would misread them.
+/// Checks options for a source with RGBA8 pixels at the size `own`,
+/// such as a JavaScript `ImageData` or canvas. A different size, or a
+/// format other than 8-bit RGBA or BGRA, would misread the pixels it holds.
 #[cfg(any(wasm, test))]
 pub(crate) fn check_pixels(own: Size, options: &TextureOptions) -> Result<(), TextureError> {
     let flat = |size: Size| (size.width, size.height, size.depth.unwrap_or(1));
@@ -1945,7 +1945,7 @@ pub(crate) fn write_pixel_levels<P>(
     }
 }
 
-/// The bytes one texel of `format` takes, for a format a copy moves one texel at a time.
+/// The bytes a texel of `format` takes in a copy, one texel at a time.
 /// A block-compressed format, and a depth format with no copy size, are refused.
 pub(crate) fn texel_size(format: wgpu::TextureFormat) -> Result<u32, TextureError> {
     match (format.block_dimensions(), format.block_copy_size(None)) {
