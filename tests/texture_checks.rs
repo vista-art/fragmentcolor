@@ -3,7 +3,7 @@
 use fragmentcolor::renderer::error::RendererError;
 use fragmentcolor::texture::TextureError;
 use fragmentcolor::{
-    Renderer, Texture, TextureFormat, TextureInput, TextureOptions, TextureUsage,
+    Mipmap, Renderer, Texture, TextureFormat, TextureInput, TextureOptions, TextureUsage,
 };
 
 fn refused(result: &Result<Texture, RendererError>) -> bool {
@@ -168,6 +168,31 @@ fn decoded_images_fill_float_formats() {
             let result = renderer.create_texture((png.clone(), format)).await;
             assert!(refused(&result), "a decoded image into {format:?}");
         }
+    });
+}
+
+// Story: a decoded image in a Bgra8 format stores blue first, so its colors
+// sample right, while raw bytes, already in the format's order, upload as given.
+#[test]
+fn decoded_images_fill_bgra_in_order() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let red = image::RgbaImage::from_raw(1, 1, vec![255, 0, 0, 255]).expect("pixel");
+        let png = encode(red.into(), image::ImageFormat::Png);
+        let blue_first = [0, 0, 255, 255];
+
+        let texture = renderer
+            .create_texture((png.clone(), readable(TextureFormat::Bgra8Unorm)))
+            .await
+            .expect("a PNG fills Bgra8Unorm");
+        let image = texture.get_image().await.expect("read back");
+        assert_eq!(image, blue_first, "create_texture stores blue first");
+
+        let chain = Mipmap::build((png.as_slice(), TextureFormat::Bgra)).expect("Mipmap::build");
+        assert_eq!(chain.level(0).expect("level 0"), blue_first, "Mipmap::build");
+
+        let raw = Mipmap::build((&blue_first[..], TextureFormat::Bgra, [1, 1])).expect("raw");
+        assert_eq!(raw.level(0).expect("level 0"), blue_first, "raw bytes stay as given");
     });
 }
 

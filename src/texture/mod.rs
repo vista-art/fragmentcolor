@@ -1407,7 +1407,7 @@ pub(crate) fn write_image_levels(
         | wgpu::TextureFormat::Bgra8UnormSrgb => {
             write_pixel_levels(
                 context,
-                image.to_rgba8(),
+                decode_rgba8(image, format),
                 texture,
                 full_size,
                 mip_level_count,
@@ -1494,6 +1494,26 @@ pub(crate) fn write_image_levels(
     Ok(())
 }
 
+/// Swaps red and blue in 4-byte `pixels` when `format` stores BGRA.
+/// The swap is its own inverse, so it turns RGBA into BGRA and back.
+pub(crate) fn swap_bgra(pixels: &mut [u8], format: wgpu::TextureFormat) {
+    if matches!(
+        format,
+        wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb
+    ) {
+        for pixel in pixels.as_chunks_mut::<4>().0 {
+            pixel.swap(0, 2);
+        }
+    }
+}
+
+/// The image as 4-byte pixels in the channel order of `format`, blue first for BGRA.
+fn decode_rgba8(image: &DynamicImage, format: wgpu::TextureFormat) -> image::RgbaImage {
+    let mut pixels = image.to_rgba8();
+    swap_bgra(&mut pixels, format);
+    pixels
+}
+
 /// Wrap raw pixel bytes (already laid out for `format` at `width x height`)
 /// into a `DynamicImage` so [`build_mip_chain`] can downsample them with
 /// the same Triangle filter used by the inline path. Mirrors the format
@@ -1516,10 +1536,15 @@ pub(crate) fn bytes_as_image(
         wgpu::TextureFormat::Rgba8Unorm
         | wgpu::TextureFormat::Rgba8UnormSrgb
         | wgpu::TextureFormat::Bgra8Unorm
-        | wgpu::TextureFormat::Bgra8UnormSrgb => DynamicImage::ImageRgba8(
-            image::RgbaImage::from_raw(width, height, bytes[..pixel_count * 4].to_vec())
-                .ok_or_else(|| wrap_err("RgbaImage"))?,
-        ),
+        | wgpu::TextureFormat::Bgra8UnormSrgb => {
+            // The image holds RGBA, so BGRA bytes swap here and back when the chain is built.
+            let mut pixels = bytes[..pixel_count * 4].to_vec();
+            swap_bgra(&mut pixels, format);
+            DynamicImage::ImageRgba8(
+                image::RgbaImage::from_raw(width, height, pixels)
+                    .ok_or_else(|| wrap_err("RgbaImage"))?,
+            )
+        }
         wgpu::TextureFormat::R8Unorm => DynamicImage::ImageLuma8(
             image::GrayImage::from_raw(width, height, bytes[..pixel_count].to_vec())
                 .ok_or_else(|| wrap_err("GrayImage"))?,
@@ -1573,7 +1598,7 @@ pub(crate) fn build_mip_chain(
         | wgpu::TextureFormat::Rgba8UnormSrgb
         | wgpu::TextureFormat::Bgra8Unorm
         | wgpu::TextureFormat::Bgra8UnormSrgb => {
-            downsample_levels_to_bytes(image.to_rgba8(), level_count)
+            downsample_levels_to_bytes(decode_rgba8(image, format), level_count)
         }
         wgpu::TextureFormat::R8Unorm => downsample_levels_to_bytes(image.to_luma8(), level_count),
         wgpu::TextureFormat::Rg8Unorm => {

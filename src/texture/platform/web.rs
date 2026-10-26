@@ -6,8 +6,8 @@ use wasm_bindgen::prelude::*;
 
 use crate::platforms::web::read_unsigned;
 use crate::{
-    CompareFunction, Mipmap, SamplerOptions, Size, Texture, TextureFormat, TextureId, TextureInput,
-    TextureOptions,
+    CompareFunction, Mipmap, SamplerOptions, Size, Texture, TextureData, TextureFormat, TextureId,
+    TextureInput, TextureOptions,
 };
 
 #[wasm_bindgen]
@@ -235,7 +235,8 @@ pub(crate) fn js_to_sampler_options(value: &JsValue) -> Result<SamplerOptions, J
 
 /// Reads a texture source and its options, as `createTexture` and the Material
 /// texture setters take them. An `ImageData` or canvas source carries its own
-/// size, which applies when the options don't set one.
+/// size, which applies when the options don't set one, and RGBA pixels, which
+/// a `Bgra8Unorm` format stores blue first.
 pub(crate) fn read_texture_input(
     source: &JsValue,
     options: Option<&JsValue>,
@@ -245,6 +246,9 @@ pub(crate) fn read_texture_input(
         let source_size = input.options.size;
         input.options = read_texture_options(options)?;
         input.options.size = input.options.size.or(source_size);
+        if let (Some(_), TextureData::Bytes(pixels)) = (source_size, &mut input.data) {
+            crate::texture::swap_bgra(pixels, input.options.format.into());
+        }
     }
     Ok(input)
 }
