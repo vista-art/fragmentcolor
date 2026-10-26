@@ -577,6 +577,50 @@ struct Data { items: array<vec4<f32>, 2> };
     if (levels.length !== chain.count() || !(levels[0] instanceof Uint8Array)) fail('Mipmap.levels is wrong');
 });
 
+// WebGPU reports a GPU error after render returns, so the next call throws it, once.
+await withModule('platforms.web.healthcheck.late_errors', async () => {
+    const renderer = new Renderer();
+    const target = await renderer.createTextureTarget([8, 8]);
+    const fail = (message) => { throw new Error(message); };
+    const pause = () => new Promise((resolve) => setTimeout(resolve, 10));
+    // Calls `run` until the error lands and it throws, then checks what it threw.
+    const surfaces = async (label, run) => {
+      for (let attempt = 0; attempt < 200; attempt++) {
+        await pause();
+        try { await run(); } catch (e) {
+          if (!(e instanceof Error)) fail(`${label} threw a ${typeof e}, not an Error`);
+          if (!e.message.includes('GPU validation error')) fail(`${label} threw: ${e.message}`);
+          return console.log(`${label} threw:`, e.message);
+        }
+      }
+      fail(`${label} never reported the failed frame`);
+    };
+
+    // The fragment stage reads @location(0), which the vertex stage never writes,
+    // so the shader parses and only its pipeline fails.
+    const unfed = new Shader(`
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+  let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  return VOut(vec4<f32>(p[i], 0.0, 1.0));
+}
+@fragment fn fs_main(@location(0) tint: vec4<f32>) -> @location(0) vec4<f32> { return tint; }
+`);
+    const valid = Shader.default();
+
+    renderer.render(unfed, target);
+    await surfaces('render after a failed frame', () => renderer.render(valid, target));
+    renderer.render(valid, target);
+
+    renderer.render(unfed, target);
+    await surfaces('getImage after a failed frame', () => target.getImage());
+    await target.getImage();
+
+    renderer.render(unfed, target);
+    await surfaces('load after a failed frame', () => renderer.load(valid));
+    await renderer.load(valid);
+});
+
 // Auto-generated: run all extracted examples (after init)
 await withModule('platforms.web.healthcheck.generated_examples', async () => {
   const mod = await import('./generated_examples.mjs');

@@ -12,10 +12,11 @@ Core invariants
 - When the pipeline reads instance attributes, a mesh draws no more instances than it holds. A larger `set_instance_count` returns `MeshError::InvalidInstance`.
 
 Error scopes & the pipeline cache
-- `RenderContext::validate(label, op)` is the one place GPU work runs in a validation error scope. It pops the scope on every path, `op`'s own errors included, and a captured error returns as `RendererError::ValidationError { label, .. }`.
-- Each render and compute pipeline builds inside `validate` and enters its cache through `or_try_insert_with`, so a pipeline that failed is never cached and the next frame reports the same error.
+- `RenderContext::validate(label, op)` is the one place GPU work runs in a validation error scope. It pops the scope on every path, `op`'s own errors included. On native a captured error returns from that call as `RendererError::ValidationError { label, .. }`.
+- Each render and compute pipeline builds inside `validate` and enters its cache through `or_try_insert_with`, so on native a pipeline that failed is never cached and the next frame reports the same error.
 - Each frame records its passes and submits them inside one `validate("frame", ..)`. A frame that fails is not presented.
-- On wasm `validate` runs `op` without a scope, because a scope resolves asynchronously and `render` is synchronous. A wasm mechanism belongs there. A check that has to work on the web runs on the CPU before any wgpu call.
+- On wasm a scope resolves after `render` returns. `validate` hands the popped scope to `ErrorSlot::watch` (`late.rs`), whose spawned future stores the first error caught in `RenderContext::late`. The next `render`, `load`, `read_storage` or readback (`read_pixels`, behind `read_texture` and both `get_image`) takes it and returns it before any GPU work, once. A scoped error never reaches the uncaptured handler, so it never logs a `console.error`.
+- On wasm a failed pipeline is cached, since its error lands after the insert, and each frame that uses it reports an error again. A check that has to work on the web in the same call runs on the CPU before any wgpu call.
 
 Depth
 - `RenderContext::resolve_depth` picks each render pass's depth attachment. A depth target the pass set wins, and its sample count must match the color attachment (`DepthSampleCountMismatch`). Otherwise a pass with Models takes a pooled `Depth32Float` sized and sampled like its color attachment, cleared to 1.0 and discarded at the end. Any other pass draws without depth, in order.

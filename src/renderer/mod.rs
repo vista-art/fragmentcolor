@@ -41,6 +41,9 @@ mod sampler_pairs;
 mod storage_read;
 mod unregister;
 
+#[cfg(any(wasm, test))]
+mod late;
+
 #[cfg(test)]
 mod scope_tests;
 
@@ -359,6 +362,8 @@ impl Renderer {
     /// there. On wasm `render` can't block, so await `load` before the first frame.
     #[lsp_doc("docs/api/core/renderer/load.md")]
     pub async fn load(&self, renderable: &impl Renderable) -> Result<(), RendererError> {
+        #[cfg(wasm)]
+        self.take_late()?;
         for pass in renderable.passes().iter() {
             let shaders: Vec<Arc<crate::shader::ShaderObject>> =
                 pass.shaders.read().iter().cloned().collect();
@@ -402,6 +407,8 @@ impl Renderer {
             return Err(RendererError::StorageBindingNotFound(binding.to_string()));
         }
         let context = self.context(None).await?;
+        #[cfg(wasm)]
+        context.late.take()?;
         let (buffer, span) = context
             .storage_registry
             .get(binding)
@@ -426,6 +433,15 @@ impl Renderer {
             context.render(renderable, target)
         } else {
             Err(RendererError::NoContext)
+        }
+    }
+
+    /// Returns the GPU error an earlier frame left, when there is a context to hold one.
+    #[cfg(wasm)]
+    fn take_late(&self) -> Result<(), RendererError> {
+        match self.context.read().as_ref() {
+            Some(context) => Ok(context.late.take()?),
+            None => Ok(()),
         }
     }
 
@@ -657,6 +673,11 @@ pub(crate) struct RenderContext {
     // start of each call and reused across frames, avoiding the per-frame
     // `Vec` allocations the previous shape paid.
     scratch: RwLock<RenderScratch>,
+
+    // The first GPU error a wasm error scope caught after its call returned.
+    // The next call that touches the GPU returns it.
+    #[cfg(wasm)]
+    pub(crate) late: Arc<late::ErrorSlot>,
 }
 
 /// Frame-local scratch allocations cached on `RenderContext`. Cleared at
@@ -720,6 +741,8 @@ impl RenderContext {
             sample_count: AtomicU32::new(1),
             pbr_defaults: RwLock::new(None),
             scratch: RwLock::new(RenderScratch::default()),
+            #[cfg(wasm)]
+            late: Arc::default(),
         }
     }
 
@@ -790,6 +813,8 @@ impl RenderContext {
         renderable: &impl Renderable,
         target: &impl Target,
     ) -> Result<(), RendererError> {
+        #[cfg(wasm)]
+        self.late.take()?;
         let frame = self.validate("frame", || self.submit(renderable, target))?;
         if let Some(frame) = frame
             && frame.auto_present()
@@ -976,36 +1001,33 @@ impl RenderContext {
     /// instead of reaching the device's uncaptured error handler.
     /// Pipeline builds, bind groups, views and each frame go through here.
     /// The scope is popped on every path. When `op` fails, its own error wins,
-    /// because wasm returns that same error, and a GPU error the scope also caught
-    /// goes to the log. On wasm a scope can only be read asynchronously, and `render`
-    /// is synchronous, so `op` runs there without one.
+    /// and a GPU error the scope also caught goes to the log as a warning. On wasm
+    /// the scope resolves after `render` returns, so the error waits in `late` for the next call.
     fn validate<T>(
         &self,
         label: &str,
         op: impl FnOnce() -> Result<T, RendererError>,
     ) -> Result<T, RendererError> {
+        let scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let result = op();
+        let popped = scope.pop();
         #[cfg(not(wasm))]
-        {
-            let scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
-            let result = op();
-            let caught = futures::executor::block_on(scope.pop());
-            match (result, caught) {
-                (Err(error), Some(gpu)) => {
-                    log::error!("{label} failed: {error}. The GPU also reported: {gpu}");
-                    Err(error)
-                }
-                (Err(error), None) => Err(error),
-                (Ok(_), Some(gpu)) => Err(RendererError::ValidationError {
-                    label: label.to_string(),
-                    message: gpu.to_string(),
-                }),
-                (Ok(value), None) => Ok(value),
+        match (result, futures::executor::block_on(popped)) {
+            (Err(error), Some(gpu)) => {
+                log::warn!("{label} failed: {error}. The GPU also reported: {gpu}");
+                Err(error)
             }
+            (Ok(_), Some(gpu)) => Err(RendererError::ValidationError {
+                label: label.to_string(),
+                message: gpu.to_string(),
+            }),
+            (result, None) => result,
         }
         #[cfg(wasm)]
         {
-            let _ = label;
-            op()
+            let failure = result.as_ref().err().map(ToString::to_string);
+            self.late.watch(label, popped, failure);
+            result
         }
     }
 
