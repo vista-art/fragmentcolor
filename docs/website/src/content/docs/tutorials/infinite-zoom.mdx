@@ -150,7 +150,7 @@ At startup, `setup` (`Zoom::new` in Rust) builds the shader from a list of sourc
 
 <Snippet file="infinite-zoom/02-on-the-gpu/example.rs" region="frame" />
 
-On its own, `steer` runs the zoom from the whole set down to a view <Math tex="10^{-\mathit{DEPTH}}" /> tall and back. While the pointer moves over the canvas, its vertical position picks the depth instead, deepest at the top:
+On its own, `steer` runs the zoom from the whole set down to a view <Math tex="10^{-\mathit{DEPTH}}" /> tall and back. While the pointer moves over the canvas, its height sets the speed instead. Above the middle the view dives, below it the view climbs, and the speed grows toward the edges, up to four times `SPEED`:
 
 <Snippet file="infinite-zoom/02-on-the-gpu/example.rs" region="steer" />
 
@@ -389,7 +389,7 @@ Both passes declare `counts` with the same size, so FragmentColor binds one buff
 
 <Demo file="infinite-zoom/04-deep-zoom/example.rs" />
 
-With the pointer at the top of the canvas, the view reaches `1e-1000` in about two seconds. The spiral there looks like the one at `1e-10`. That likeness is the reason to aim at a Misiurewicz point.
+At `1e-1000`, the spiral looks like the one at `1e-10`. That likeness is the reason to aim at a Misiurewicz point.
 
 <Figure height={219} alt="Two captures of step 4 side by side, labeled 1e-10 on the left and 1e-1000 on the right. Both show the same shape: a spiral wound around the center, with smaller spirals branching off its arms." caption="The spiral at `1e-10` and at `1e-1000`.">
   <image href="/tutorials/infinite-zoom/spiral-10.webp" x="8" y="8" width="348" height="203" />
