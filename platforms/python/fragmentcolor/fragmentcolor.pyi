@@ -4593,7 +4593,9 @@ class Texture:
         """
     def write(self, data: _PyTextureBytes) -> None:
         """
-        Efficiently upload raw pixel data into an existing texture. Ideal for video playback or any per-frame dynamic image updates.
+        Efficiently upload raw pixel data into an existing texture, such as each frame of a video or any image that changes from frame to frame.
+
+        A texture from `create_texture` has a mip chain by default, and every whole write rebuilds that chain on the CPU, on the calling thread. For video and other per-frame updates, create the texture with `mipmaps: false`, so a write is a single GPU upload.
 
         - Whole texture updates: use `Texture.write(&bytes)`.
         - Sub-rectangle updates or explicit data layout: use `Texture.write_region(&bytes, region)`.
@@ -4686,7 +4688,7 @@ class Texture:
         - The texture must have `COPY_SRC` usage. Creation helpers like `create_storage_texture` enable it by default.
         - GLES and WebGL2 can't copy a depth texture to a buffer, so reading one back there returns `TextureError::Readback`. So does a texture whose readback needs a buffer past the device's largest, `max_buffer_size`.
         - A block-compressed texture, such as one loaded from a BC7 or ASTC KTX2 file, has no size per pixel, so reading it back is an `InvalidInput` error.
-        - Python returns the same bytes as a uint8 NumPy array shaped `(height, width, bytes per pixel)`, with a leading layer axis for array textures. A float format reads as floats through `image.view(numpy.float32)`.
+        - Python returns the same bytes as a uint8 NumPy array shaped `(height, width, bytes per pixel)`, with a leading layer axis for array textures. A float format reads as floats through a view: `image.view(numpy.float16)` for `Rgba16Float`, the format an HDR file decodes into, and `image.view(numpy.float32)` for `Rgba32Float`.
 
         Example:
 
@@ -4870,7 +4872,7 @@ class Mipmap:
         """
     def levels(self) -> list[bytes]:
         """
-        Return the tightly-packed bytes for each mip level, level 0 first. Each level holds `bytes_per_pixel(format) * max(1, base_w >> level) * max(1, base_h >> level)` bytes. Reach for this when you want to inspect a level, dump the chain to disk, or feed the bytes into a tool that isn't FragmentColor. When you upload via `Renderer::create_texture(chain)`, the renderer reads the bytes directly and you don't need to touch them yourself.
+        Return the tightly-packed bytes for each mip level, level 0 first. Each level holds the format's bytes per pixel times `max(1, base_w >> level) * max(1, base_h >> level)` bytes. Reach for this when you want to inspect a level, dump the chain to disk, or feed the bytes into a tool that isn't FragmentColor. When you upload via `Renderer::create_texture(chain)`, the renderer reads the bytes directly and you don't need to touch them yourself.
 
         Example:
 

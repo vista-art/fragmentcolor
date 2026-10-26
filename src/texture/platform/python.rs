@@ -384,7 +384,8 @@ impl Texture {
 
     /// Read back mip 0 as a uint8 ndarray shaped (height, width, bytes per pixel),
     /// with a leading layer axis for array textures. The bytes keep the native
-    /// format, so a float texture reads as floats through `image.view(numpy.float32)`.
+    /// format, so a float texture reads as floats through `image.view(numpy.float16)`
+    /// for `Rgba16Float` or `image.view(numpy.float32)` for `Rgba32Float`.
     #[pyo3(name = "get_image")]
     #[lsp_doc("docs/api/texture/texture/get_image.md")]
     pub fn get_image_py(&self) -> pyo3::PyResult<Py<numpy::PyArrayDyn<u8>>> {

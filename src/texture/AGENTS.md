@@ -7,10 +7,10 @@ Lifecycle & creation
 - Texture ids are unique across renderers, because a shader binding finds the registration to hold from its id.
 
 Creation checks
-- A texture a caller describes passes the checks in `src/texture/` before any `device.create_texture` or `queue.write_texture`: `check_usage` takes only the five `TextureUsage` flags, `check_format` takes the features, usages and dimension the device allows for the format (`format_features` follows wgpu: the adapter's own table on GLES and WebGL2, the WebGPU baseline elsewhere), `check_extent` takes the device limits, `check_upload` refuses a buffer copy into a depth format, and `check_decode` takes the formats a decoded image fills. A failed check returns `TextureError::InvalidInput`, the error `resize` returns.
+- A texture a caller describes passes the checks in `src/texture/` before any `device.create_texture` or `queue.write_texture`: `check_usage` takes only the five `TextureUsage` flags, `check_format` takes the features, usages and dimension the device allows for the format (`format_features` follows wgpu: the adapter's own table on GLES and WebGL2, the WebGPU baseline elsewhere), `check_extent` takes the device limits, `check_upload` refuses a buffer copy into a depth format, and `check_decode` takes the formats a decoded image fills. A missing wgpu feature returns `TextureError::UnsupportedFormatForUsage`, and every other failed check returns `TextureError::InvalidInput`, the error `resize` returns.
 - Copies move one texel at a time, and `texel_size` reads its size from wgpu's format data, so a block-compressed texture refuses `write` and readback. Never guess a size per pixel.
 - Raw bytes are exactly the size of their region. A `size` comes with raw bytes only, since a path, a URL, a KTX2 file and a `Mipmap` carry their own, and a decoded image's header size is checked before its pixels decode.
-- A decoded image or a JS `ImageData` stores blue first in a `Bgra8` format through `swap_bgra`. Raw bytes keep their order.
+- A decoded image, a JS `ImageData` and a canvas hold RGBA, so each stores blue first in a `Bgra8` format through `swap_bgra`, on every path that takes it. In JS that path is `js_to_texture_bytes` or `read_texture_input`, never a bare byte read. Raw bytes, a NumPy array among them, keep their order.
 
 Binding & sampling
 - Texture views are created per bind. Each texture keeps one sampler built from its `SamplerOptions` and rebuilds it in `set_sampler_options`.
