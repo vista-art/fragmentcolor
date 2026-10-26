@@ -382,22 +382,7 @@ impl Renderer {
     pub async fn load(&self, renderable: &impl Renderable) -> Result<(), RendererError> {
         #[cfg(wasm)]
         self.settle().await?;
-        for pass in renderable.passes().iter() {
-            let shaders: Vec<Arc<crate::shader::ShaderObject>> =
-                pass.shaders.read().iter().cloned().collect();
-            for shader in shaders {
-                let pending = shader.drain_pending_textures();
-                if pending.is_empty() {
-                    continue;
-                }
-                for entry in pending {
-                    let texture = self.create_texture(entry.input).await?;
-                    let meta = crate::texture::TextureMeta::with_id_only(*texture.id());
-                    let _ = shader.set(&entry.key, UniformData::Texture(meta));
-                }
-            }
-        }
-        Ok(())
+        self.upload_pending(renderable).await
     }
 
     /// Read the GPU-side bytes of a storage binding back to the CPU.
@@ -452,6 +437,35 @@ impl Renderer {
         } else {
             Err(RendererError::NoContext)
         }
+    }
+
+    /// Uploads every texture a lazy setter queued on the shaders of `renderable`.
+    ///
+    /// Each upload that works binds its texture, whatever happens to the others.
+    /// One that fails stays queued, and the first failure returns, so every `load`
+    /// and native `render` returns it again until the input is fixed or replaced.
+    async fn upload_pending(&self, renderable: &impl Renderable) -> Result<(), RendererError> {
+        let mut first = None;
+        for pass in renderable.passes().iter() {
+            let shaders: Vec<Arc<ShaderObject>> = pass.shaders.read().iter().cloned().collect();
+            for shader in shaders {
+                let mut failed = Vec::new();
+                for entry in shader.drain_pending_textures() {
+                    match self.create_texture(entry.input.clone()).await {
+                        Ok(texture) => {
+                            let meta = crate::texture::TextureMeta::with_id_only(*texture.id());
+                            shader.set(&entry.key, UniformData::Texture(meta))?;
+                        }
+                        Err(error) => {
+                            first.get_or_insert(error);
+                            failed.push(entry);
+                        }
+                    }
+                }
+                shader.requeue_textures(failed);
+            }
+        }
+        first.map_or(Ok(()), Err)
     }
 
     /// Waits for the error scopes earlier frames left open, then returns

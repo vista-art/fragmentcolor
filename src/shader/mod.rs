@@ -590,6 +590,10 @@ impl ShaderObject {
         use crate::shader::UniformData;
         use crate::texture::TextureMeta;
         let key = key.into();
+        // The latest setter call wins, so an upload queued before can't overwrite it.
+        self.pending_textures
+            .write()
+            .retain(|entry| entry.key != key);
         if let crate::TextureData::CloneOf(ref tex) = input.data {
             let meta = TextureMeta::with_id_only(*tex.id());
             return self.set(&key, UniformData::Texture(meta));
@@ -603,6 +607,17 @@ impl ShaderObject {
     /// Take the current pending-texture queue, leaving the slot empty.
     pub(crate) fn drain_pending_textures(&self) -> Vec<PendingTexture> {
         std::mem::take(&mut *self.pending_textures.write())
+    }
+
+    /// Puts the uploads that `failed` back at the front of the queue, so the next
+    /// `load` or `render` tries them again. A key queued again in the meantime keeps its newer entry.
+    pub(crate) fn requeue_textures(&self, failed: Vec<PendingTexture>) {
+        let mut queue = self.pending_textures.write();
+        let kept: Vec<PendingTexture> = failed
+            .into_iter()
+            .filter(|entry| queue.iter().all(|queued| queued.key != entry.key))
+            .collect();
+        queue.splice(0..0, kept);
     }
 
     /// Get a uniform value as Uniform struct.
