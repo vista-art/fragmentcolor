@@ -1461,31 +1461,13 @@ pub(crate) fn write_image_levels(
             );
         }
         wgpu::TextureFormat::R8Unorm => {
-            write_pixel_levels(
-                context,
-                image.to_luma8(),
-                texture,
-                mip_level_count,
-                1,
-            );
+            write_pixel_levels(context, image.to_luma8(), texture, mip_level_count, 1);
         }
         wgpu::TextureFormat::Rg8Unorm => {
-            write_pixel_levels(
-                context,
-                image.to_luma_alpha8(),
-                texture,
-                mip_level_count,
-                2,
-            );
+            write_pixel_levels(context, image.to_luma_alpha8(), texture, mip_level_count, 2);
         }
         wgpu::TextureFormat::R16Unorm => {
-            write_pixel_levels(
-                context,
-                image.to_luma16(),
-                texture,
-                mip_level_count,
-                2,
-            );
+            write_pixel_levels(context, image.to_luma16(), texture, mip_level_count, 2);
         }
         wgpu::TextureFormat::Rg16Unorm => {
             write_pixel_levels(
@@ -1497,22 +1479,10 @@ pub(crate) fn write_image_levels(
             );
         }
         wgpu::TextureFormat::Rgba16Unorm => {
-            write_pixel_levels(
-                context,
-                image.to_rgba16(),
-                texture,
-                mip_level_count,
-                8,
-            );
+            write_pixel_levels(context, image.to_rgba16(), texture, mip_level_count, 8);
         }
         wgpu::TextureFormat::Rgba32Float => {
-            write_pixel_levels(
-                context,
-                image.to_rgba32f(),
-                texture,
-                mip_level_count,
-                16,
-            );
+            write_pixel_levels(context, image.to_rgba32f(), texture, mip_level_count, 16);
         }
         wgpu::TextureFormat::Rgba16Float => {
             write_half_levels(context, image.to_rgba32f(), texture, mip_level_count);
@@ -1531,7 +1501,14 @@ fn write_half_levels(
 ) {
     for (level, image) in mip_levels(base, mip_level_count as usize).enumerate() {
         let bytes = half_bytes(image.as_raw());
-        write_level(context, texture, level as u32, &bytes, image.dimensions(), 8);
+        write_level(
+            context,
+            texture,
+            level as u32,
+            &bytes,
+            image.dimensions(),
+            8,
+        );
     }
 }
 
@@ -1907,8 +1884,8 @@ pub(crate) fn write_levels(
         wgpu::TextureFormat::Rgba16Float | wgpu::TextureFormat::Rgba32Float => {
             let length = pixel_count * texel_size(format)? as usize;
             let values = float_values(&bytes[..length], format);
-            let base = image::Rgba32FImage::from_raw(w, h, values)
-                .ok_or_else(|| wrap_err("Rgba32F"))?;
+            let base =
+                image::Rgba32FImage::from_raw(w, h, values).ok_or_else(|| wrap_err("Rgba32F"))?;
             match format {
                 wgpu::TextureFormat::Rgba16Float => {
                     write_half_levels(context, base, texture, mip_level_count)
@@ -1971,7 +1948,14 @@ pub(crate) fn write_pixel_levels<P>(
 {
     for (level, image) in mip_levels(base, mip_level_count as usize).enumerate() {
         let bytes: &[u8] = bytemuck::cast_slice(image.as_raw());
-        write_level(context, texture, level as u32, bytes, image.dimensions(), bpp);
+        write_level(
+            context,
+            texture,
+            level as u32,
+            bytes,
+            image.dimensions(),
+            bpp,
+        );
     }
 }
 
@@ -2131,8 +2115,12 @@ mod tests {
         ] {
             check_pixels(own, None, format).expect("an RGBA8 format");
         }
-        check_pixels(own, Some(Size::new(2, 1, Some(1))), wgpu::TextureFormat::Rgba8Unorm)
-            .expect("the source's own size");
+        check_pixels(
+            own,
+            Some(Size::new(2, 1, Some(1))),
+            wgpu::TextureFormat::Rgba8Unorm,
+        )
+        .expect("the source's own size");
         for (size, format) in [
             (Some(Size::new(1, 1, None)), wgpu::TextureFormat::Rgba8Unorm),
             (None, wgpu::TextureFormat::R8Unorm),
@@ -2293,7 +2281,10 @@ mod tests {
             let sizes: Vec<usize> = chain.levels().iter().map(Vec::len).collect();
             assert_eq!(sizes, [8 * 64, 8 * 16, 8 * 4, 8]);
             let half = half::f16::from_le_bytes([chain.levels()[3][0], chain.levels()[3][1]]);
-            assert!((half.to_f32() - 128.0 / 255.0).abs() < 0.01, "level 3 keeps the value");
+            assert!(
+                (half.to_f32() - 128.0 / 255.0).abs() < 0.01,
+                "level 3 keeps the value"
+            );
         });
     }
 

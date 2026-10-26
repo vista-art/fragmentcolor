@@ -398,17 +398,24 @@ fn zero_region_sides_are_refused() {
             .await
             .expect("create_storage_texture");
         let rows = vec![0; 16 * 4 * 4];
-        let invalid = |result: Result<(), TextureError>| {
-            matches!(result, Err(TextureError::InvalidInput(_)))
-        };
-        assert!(invalid(texture.write_region(&rows, [0, 0, 0, 4])), "zero width");
-        assert!(invalid(texture.write_region(&rows, [0, 0, 16, 0])), "zero height");
+        let invalid =
+            |result: Result<(), TextureError>| matches!(result, Err(TextureError::InvalidInput(_)));
+        assert!(
+            invalid(texture.write_region(&rows, [0, 0, 0, 4])),
+            "zero width"
+        );
+        assert!(
+            invalid(texture.write_region(&rows, [0, 0, 16, 0])),
+            "zero height"
+        );
         let deep = [0, 0, 0, 16, 4, 0];
         assert!(invalid(texture.write_region(&rows, deep)), "zero depth");
         texture
             .write_region(&rows, [0, 0, 16, 4])
             .expect("a region with every side");
-        texture.write(&vec![0; 16 * 16 * 4]).expect("the whole texture");
+        texture
+            .write(&vec![0; 16 * 16 * 4])
+            .expect("the whole texture");
     });
 }
 

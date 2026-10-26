@@ -521,7 +521,10 @@ mod tests {
 
             let shader = crate::Shader::new(SECOND_LEVEL).expect("shader");
             shader.set("tex", &texture).expect("set tex");
-            let target = renderer.create_texture_target([1, 1]).await.expect("target");
+            let target = renderer
+                .create_texture_target([1, 1])
+                .await
+                .expect("target");
             renderer.render(&shader, &target).expect("render");
             let image = crate::Target::get_image(&target).await.expect("read back");
             assert_eq!(image, [255, 255, 255, 255], "level 1 follows the write");
