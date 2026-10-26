@@ -1195,9 +1195,9 @@ impl RenderContext {
 
     /// Runs `op` inside error scopes for out of memory, internal and validation errors.
     ///
-    /// A wgpu error that `op` causes returns as `ValidationError` instead of reaching the
-    /// device's uncaptured error handler. Pipeline builds and each frame go through here,
-    /// and on native so does each bind group and view inside a frame. The scopes pop on every path.
+    /// A wgpu error that `op` causes returns as `DeviceError`, with the kind of its scope,
+    /// instead of reaching the device's uncaptured error handler. Pipeline builds and each frame
+    /// go through here, and on native so does each bind group and view inside a frame. The scopes pop on every path.
     /// Of the errors they catch, the cause returns: out of memory, then internal, then validation.
     ///
     /// On native the scopes resolve before this returns. When `op` fails with a GPU error
@@ -1216,7 +1216,7 @@ impl RenderContext {
         on_error: impl FnOnce() + 'static,
     ) -> Result<T, RendererError> {
         let [memory, internal, validation] =
-            SCOPES.map(|filter| self.device.push_error_scope(filter));
+            SCOPES.map(|(filter, _)| self.device.push_error_scope(filter));
         #[cfg(not(wasm))]
         Origin::Cpu.record();
         let result = op();
@@ -3065,7 +3065,7 @@ mod more_error_path_tests {
     }
 
     // Story: validate() surfaces wgpu validation errors as
-    // RendererError::ValidationError instead of leaking through the device's
+    // RendererError::DeviceError instead of leaking through the device's
     // uncaptured-error handler. Repro: a layout that requires one uniform
     // buffer entry, paired with a descriptor that supplies zero entries.
     #[test]
@@ -3101,7 +3101,12 @@ mod more_error_path_tests {
             });
 
             match result {
-                Err(RendererError::ValidationError { label, message }) => {
+                Err(RendererError::DeviceError {
+                    kind,
+                    label,
+                    message,
+                }) => {
+                    assert_eq!(kind, ErrorKind::Validation);
                     assert_eq!(label, "intentionally invalid bind group");
                     assert!(
                         !message.is_empty(),
@@ -3109,12 +3114,12 @@ mod more_error_path_tests {
                     );
                 }
                 Err(other) => panic!(
-                    "expected ValidationError, got different RendererError: {:?}",
+                    "expected DeviceError, got different RendererError: {:?}",
                     other
                 ),
-                Ok(_) => panic!(
-                    "expected ValidationError for layout/entries mismatch, got Ok bind group"
-                ),
+                Ok(_) => {
+                    panic!("expected DeviceError for layout/entries mismatch, got Ok bind group")
+                }
             }
         });
     }

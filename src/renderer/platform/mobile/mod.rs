@@ -27,6 +27,7 @@ use crate::{Renderer, Size};
 
 /// Mobile-facing error type. Flattens every internal error to its `Display`
 /// representation so Swift/Kotlin callers get a single typed error to match on.
+/// A GPU error keeps its kind, its step's label and its message apart.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum FragmentColorError {
     #[error("{0}")]
@@ -35,6 +36,12 @@ pub enum FragmentColorError {
     Render(String),
     #[error("{0}")]
     Shader(String),
+    #[error("Device error ({kind}) in '{label}': {message}")]
+    Device {
+        kind: crate::ErrorKind,
+        label: String,
+        message: String,
+    },
 }
 
 impl From<crate::InitializationError> for FragmentColorError {
@@ -50,6 +57,15 @@ impl From<crate::RendererError> for FragmentColorError {
     fn from(e: crate::RendererError) -> Self {
         match e {
             crate::RendererError::InitializationError(e) => e.into(),
+            crate::RendererError::DeviceError {
+                kind,
+                label,
+                message,
+            } => FragmentColorError::Device {
+                kind,
+                label,
+                message,
+            },
             e => FragmentColorError::Render(e.to_string()),
         }
     }
@@ -63,7 +79,18 @@ impl From<crate::ShaderError> for FragmentColorError {
 
 impl From<crate::texture::TextureError> for FragmentColorError {
     fn from(e: crate::texture::TextureError) -> Self {
-        FragmentColorError::Render(e.to_string())
+        match e {
+            crate::texture::TextureError::DeviceError {
+                kind,
+                label,
+                message,
+            } => FragmentColorError::Device {
+                kind,
+                label,
+                message,
+            },
+            e => FragmentColorError::Render(e.to_string()),
+        }
     }
 }
 

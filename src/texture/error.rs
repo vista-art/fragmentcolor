@@ -61,8 +61,12 @@ pub enum TextureError {
     #[error("Bind Group Layout error: {0}")]
     BindGroupLayoutError(String),
     /// A GPU error an earlier frame left, which a readback reports before it reads.
-    #[error("GPU validation error in '{label}': {message}")]
-    ValidationError { label: String, message: String },
+    #[error("Device error ({kind}) in '{label}': {message}")]
+    DeviceError {
+        kind: crate::renderer::ErrorKind,
+        label: String,
+        message: String,
+    },
     #[error("Renderer error: {0}")]
     Error(String),
 }
@@ -76,11 +80,13 @@ impl From<pyo3::PyErr> for TextureError {
     }
 }
 
-/// Three texture errors raise their own subclass of `FragmentColorError`, so Python can tell them apart.
+/// Four texture errors raise their own subclass of `FragmentColorError`, so Python can tell them apart.
 #[cfg(python)]
 impl From<TextureError> for pyo3::PyErr {
     fn from(e: TextureError) -> Self {
-        use crate::error::{InvalidInputError, MalformedImageError, UnsupportedMipmapFormatError};
+        use crate::error::{
+            DeviceError, InvalidInputError, MalformedImageError, UnsupportedMipmapFormatError,
+        };
         let message = e.to_string();
         match e {
             TextureError::InvalidInput(_) => InvalidInputError::new_err(message),
@@ -88,6 +94,9 @@ impl From<TextureError> for pyo3::PyErr {
                 UnsupportedMipmapFormatError::new_err(message)
             }
             TextureError::MalformedImageError(_) => MalformedImageError::new_err(message),
+            TextureError::DeviceError { kind, label, .. } => {
+                DeviceError::raise(kind, label, message)
+            }
             _ => crate::PyFragmentColorError::new_err(message),
         }
     }
@@ -108,9 +117,24 @@ impl From<wasm_bindgen::JsValue> for TextureError {
 }
 
 #[cfg(wasm)]
+impl TextureError {
+    /// The JS `Error` this error throws. A device error also carries its `kind` and `label`.
+    pub(crate) fn into_js(self) -> wasm_bindgen::JsError {
+        let message = self.to_string();
+        match self {
+            TextureError::DeviceError { kind, label, .. } => {
+                crate::renderer::error::throw_device(kind, &label, &message)
+            }
+            _ => wasm_bindgen::JsError::new(&message),
+        }
+    }
+}
+
+#[cfg(wasm)]
 impl From<TextureError> for wasm_bindgen::JsValue {
     fn from(error: TextureError) -> Self {
-        js_sys::Error::new(&error.to_string()).into()
+        let error: wasm_bindgen::JsError = error.into_js();
+        error.into()
     }
 }
 

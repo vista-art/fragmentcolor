@@ -20,6 +20,7 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Renderer>()?;
     m.add_class::<Shader>()?;
     m.add_class::<Pass>()?;
+    m.add_class::<crate::renderer::ErrorKind>()?;
 
     // Helpers
     m.add_class::<Size>()?;
@@ -86,6 +87,7 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
         "OccludedSurfaceError",
         py.get_type::<crate::error::OccludedSurfaceError>(),
     )?;
+    m.add("DeviceError", py.get_type::<crate::error::DeviceError>())?;
     m.add("SceneLoadError", PythonError::SceneLoad.class(py)?)?;
     m.add("LightError", PythonError::Light.class(py)?)?;
     m.add("CameraError", PythonError::Camera.class(py)?)?;

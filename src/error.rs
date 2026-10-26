@@ -60,6 +60,33 @@ create_exception!(
     PyFragmentColorError,
     "A window that is hidden or minimized, so render skips the frame."
 );
+#[cfg(python)]
+create_exception!(
+    fragment_color,
+    DeviceError,
+    PyFragmentColorError,
+    "A GPU error an error scope caught, with its kind and the label of the step that raised it."
+);
+
+#[cfg(python)]
+impl DeviceError {
+    /// A `DeviceError` with `message` that carries the GPU error's `kind` and `label`.
+    pub(crate) fn raise(kind: crate::ErrorKind, label: String, message: String) -> PyErr {
+        Python::attach(|py| {
+            let error = DeviceError::new_err(message);
+            let set = {
+                let value = error.value(py);
+                value
+                    .setattr("kind", kind)
+                    .and_then(|()| value.setattr("label", label))
+            };
+            match set {
+                Ok(()) => error,
+                Err(failure) => failure,
+            }
+        })
+    }
+}
 
 /// Python exceptions with two bases, `FragmentColorError` and a builtin,
 /// so an `except` clause for either one catches them.

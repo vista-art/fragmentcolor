@@ -1,4 +1,35 @@
+use lsp_doc::lsp_doc;
 use thiserror::Error;
+
+#[cfg(python)]
+use pyo3::prelude::*;
+#[cfg(wasm)]
+use wasm_bindgen::prelude::*;
+
+#[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(python, pyclass(eq, eq_int, from_py_object))]
+#[cfg_attr(mobile, derive(uniffi::Enum))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[lsp_doc("docs/api/core/error_kind/error_kind.md")]
+pub enum ErrorKind {
+    /// The GPU refused a call that breaks a rule of the API.
+    Validation,
+    /// The GPU failed for a reason of its own, such as a driver bug.
+    Internal,
+    /// The device ran out of memory.
+    Memory,
+}
+
+impl std::fmt::Display for ErrorKind {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            ErrorKind::Validation => "validation",
+            ErrorKind::Internal => "internal",
+            ErrorKind::Memory => "memory",
+        };
+        formatter.write_str(name)
+    }
+}
 
 #[derive(Error, Debug)]
 pub enum RendererError {
@@ -17,8 +48,12 @@ pub enum RendererError {
     #[error("Bind Group Layout error: {0}")]
     BindGroupLayoutError(String),
     /// A GPU error an error scope caught, labeled with the step that raised it.
-    #[error("GPU validation error in '{label}': {message}")]
-    ValidationError { label: String, message: String },
+    #[error("Device error ({kind}) in '{label}': {message}")]
+    DeviceError {
+        kind: ErrorKind,
+        label: String,
+        message: String,
+    },
     #[error("Texture error: {0}")]
     TextureError(#[from] crate::texture::TextureError),
     #[error("Texture {0} not found")]
@@ -69,13 +104,17 @@ impl From<pyo3::PyErr> for RendererError {
 #[cfg(python)]
 impl From<RendererError> for pyo3::PyErr {
     fn from(e: RendererError) -> Self {
+        let message = e.to_string();
         match e {
             RendererError::TextureError(texture) => texture.into(),
             RendererError::InitializationError(init) => init.into(),
             RendererError::SurfaceError(crate::target::SurfaceError::Occluded) => {
-                crate::error::OccludedSurfaceError::new_err(e.to_string())
+                crate::error::OccludedSurfaceError::new_err(message)
             }
-            other => crate::PyFragmentColorError::new_err(other.to_string()),
+            RendererError::DeviceError { kind, label, .. } => {
+                crate::error::DeviceError::raise(kind, label, message)
+            }
+            _ => crate::PyFragmentColorError::new_err(message),
         }
     }
 }
@@ -112,10 +151,35 @@ impl From<wasm_bindgen::JsValue> for RendererError {
 }
 
 #[cfg(wasm)]
+impl RendererError {
+    /// The JS `Error` this error throws. A device error also carries its `kind` and `label`.
+    pub(crate) fn into_js(self) -> JsError {
+        let message = self.to_string();
+        match self {
+            RendererError::DeviceError { kind, label, .. } => throw_device(kind, &label, &message),
+            _ => JsError::new(&message),
+        }
+    }
+}
+
+#[cfg(wasm)]
 impl From<RendererError> for wasm_bindgen::JsValue {
     fn from(error: RendererError) -> Self {
-        js_sys::Error::new(&error.to_string()).into()
+        let error: JsError = error.into_js();
+        error.into()
     }
+}
+
+/// A JS `Error` with `message` that carries the GPU error's `kind` and the `label` of its step.
+#[cfg(wasm)]
+pub(crate) fn throw_device(kind: ErrorKind, label: &str, message: &str) -> JsError {
+    let error = JsError::new(message);
+    // A clone holds the same JS object, so the properties land on the error itself.
+    let value = JsValue::from(error.clone());
+    // Setting a property on a new Error object never throws.
+    let _ = js_sys::Reflect::set(&value, &"kind".into(), &JsValue::from(kind as u32));
+    let _ = js_sys::Reflect::set(&value, &"label".into(), &JsValue::from(label));
+    error
 }
 
 #[cfg(wasm)]
@@ -165,6 +229,23 @@ mod tests {
             let e4: RendererError = net.into();
             assert!(matches!(e4, RendererError::NetworkRequestError(_)));
         }
+    }
+
+    // Story: a device error names its kind, the step that raised it and the GPU's message.
+    #[test]
+    fn device_error_names_kind_and_label() {
+        // Arrange
+        let error = RendererError::DeviceError {
+            kind: ErrorKind::Memory,
+            label: "frame".into(),
+            message: "Out of Memory".into(),
+        };
+
+        // Act
+        let text = error.to_string();
+
+        // Assert
+        assert_eq!(text, "Device error (memory) in 'frame': Out of Memory");
     }
 
     // Story: SurfaceError variants are wrapped with a helpful message in Display.

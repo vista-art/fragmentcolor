@@ -1,8 +1,8 @@
 //! GPU errors that a wasm frame reports after `render` has returned.
 
-use super::RendererError;
 #[cfg(wasm)]
-use super::scope::Caught;
+use super::scope::{Caught, Fault};
+use super::{ErrorKind, RendererError};
 #[cfg(wasm)]
 use crate::platforms::web::yield_to_event_loop;
 use crate::texture::TextureError;
@@ -16,13 +16,15 @@ use std::sync::Arc;
 /// A GPU error that an error scope caught after its call returned.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct LateError {
+    pub(crate) kind: ErrorKind,
     pub(crate) label: String,
     pub(crate) message: String,
 }
 
 impl From<LateError> for RendererError {
     fn from(error: LateError) -> Self {
-        RendererError::ValidationError {
+        RendererError::DeviceError {
+            kind: error.kind,
             label: error.label,
             message: error.message,
         }
@@ -31,7 +33,8 @@ impl From<LateError> for RendererError {
 
 impl From<LateError> for TextureError {
     fn from(error: LateError) -> Self {
-        TextureError::ValidationError {
+        TextureError::DeviceError {
+            kind: error.kind,
             label: error.label,
             message: error.message,
         }
@@ -110,9 +113,10 @@ impl ErrorSlot {
         wasm_bindgen_futures::spawn_local(async move {
             if let Some(Caught { cause, symptoms }) = caught.await {
                 on_error();
-                let late = |error: wgpu::Error| LateError {
+                let late = |fault: Fault| LateError {
+                    kind: fault.kind,
                     label: label.clone(),
-                    message: error.to_string(),
+                    message: fault.error.to_string(),
                 };
                 let error = late(cause);
                 match failure {
@@ -155,6 +159,7 @@ mod tests {
 
     fn late(label: &str) -> LateError {
         LateError {
+            kind: ErrorKind::Validation,
             label: label.into(),
             message: format!("{label} failed"),
         }
@@ -217,11 +222,14 @@ mod tests {
     }
 
     // Story: render and a readback report a late error as the same typed
-    // ValidationError, with the same label and the same message.
+    // DeviceError, with the same kind, label and message.
     #[test]
     fn converts_to_each_call_error() {
         // Arrange
-        let error = late("frame");
+        let error = LateError {
+            kind: ErrorKind::Memory,
+            ..late("frame")
+        };
 
         // Act
         let renderer = RendererError::from(error.clone());
@@ -229,11 +237,11 @@ mod tests {
 
         // Assert
         assert!(
-            matches!(&renderer, RendererError::ValidationError { label, .. } if label == "frame"),
+            matches!(&renderer, RendererError::DeviceError { kind: ErrorKind::Memory, label, .. } if label == "frame"),
             "got {renderer:?}"
         );
         assert!(
-            matches!(&texture, TextureError::ValidationError { label, .. } if label == "frame"),
+            matches!(&texture, TextureError::DeviceError { kind: ErrorKind::Memory, label, .. } if label == "frame"),
             "got {texture:?}"
         );
         assert_eq!(texture.to_string(), renderer.to_string());
