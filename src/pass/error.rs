@@ -23,6 +23,18 @@ pub enum PassError {
     LightCapReached { cap: u32 },
     #[error("Invalid color target: {0}")]
     InvalidColorTarget(String),
+    /// A compute dispatch with more workgroups in one dimension than the device takes.
+    #[error(
+        "Pass '{pass}' dispatches {dispatch:?} workgroups, and this device takes at most {limit} in each dimension"
+    )]
+    DispatchLimit {
+        pass: String,
+        dispatch: [u32; 3],
+        limit: u32,
+    },
+    /// A texture one pass both writes and reads, or writes in two ways.
+    #[error("Texture conflict in pass '{pass}': {detail}")]
+    TextureConflict { pass: String, detail: String },
     #[error("Invalid clear color: {0}")]
     Color(#[from] crate::color::error::ColorError),
     #[error("Invalid viewport: {0}")]

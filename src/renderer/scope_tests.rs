@@ -301,9 +301,37 @@ fn valid_frame_presents_once() {
 }
 
 // Story: a CPU error found after the frame was acquired still presents it.
-// The pass draws into a texture the renderer no longer holds.
+// The pass's depth target misses the size of the frame it draws into.
 #[test]
 fn frame_that_fails_after_acquire_presents() {
+    pollster::block_on(async move {
+        // Arrange
+        let (renderer, context, _uncaptured) = setup().await.expect("render context");
+        let target = SpyTarget::new(&context, wgpu::TextureUsages::RENDER_ATTACHMENT);
+        let depth = renderer
+            .create_depth_texture([4u32, 4u32])
+            .await
+            .expect("depth texture");
+        let pass = crate::Pass::from_shader("depth", &Shader::default());
+        pass.set_depth_target(&depth).expect("a depth texture");
+
+        // Act
+        let result = renderer.render(&pass, &target);
+
+        // Assert
+        assert!(
+            matches!(result, Err(RendererError::DepthSizeMismatch { .. })),
+            "got {result:?}"
+        );
+        assert_eq!(target.counts.acquired(), 1);
+        assert_eq!(target.counts.presented(), 1, "the failed frame presents");
+    });
+}
+
+// Story: a pass target the renderer no longer holds fails before any frame is
+// acquired, so a window keeps its last image.
+#[test]
+fn a_missing_target_acquires_no_frame() {
     pollster::block_on(async move {
         // Arrange
         let (renderer, context, _uncaptured) = setup().await.expect("render context");
@@ -312,8 +340,7 @@ fn frame_that_fails_after_acquire_presents() {
             .create_texture_target([8u32, 8u32])
             .await
             .expect("texture target");
-        let shader = Shader::default();
-        let pass = crate::Pass::from_shader("offscreen", &shader);
+        let pass = crate::Pass::from_shader("offscreen", &Shader::default());
         pass.set_target(&offscreen)
             .expect("a texture target is a color target");
         renderer
@@ -328,8 +355,8 @@ fn frame_that_fails_after_acquire_presents() {
             matches!(result, Err(RendererError::TextureNotFoundError(_))),
             "got {result:?}"
         );
-        assert_eq!(target.counts.acquired(), 1);
-        assert_eq!(target.counts.presented(), 1, "the failed frame presents");
+        assert_eq!(target.counts.acquired(), 0, "no frame was taken");
+        assert_eq!(target.counts.presented(), 0);
     });
 }
 

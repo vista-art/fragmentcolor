@@ -1,6 +1,6 @@
 //! The depth attachment of a render pass, and how its pipelines use it.
 
-use super::{Lease, RenderContext, RendererError, TextureKey};
+use super::{Lease, RenderContext, TextureKey};
 use crate::material::AlphaMode;
 use crate::{PassObject, TextureObject};
 
@@ -88,33 +88,24 @@ impl PassDepth<'_> {
 impl RenderContext {
     /// The depth attachment `pass` draws with, sized and sampled like its color attachment.
     ///
-    /// A depth target the app set wins. Otherwise a pass that draws models
+    /// The depth `target` the app set wins. `check_attachment` has matched its size and
+    /// sample count to the color attachment's. Otherwise a pass that draws models
     /// takes a pooled depth texture, and any other pass draws without depth.
     pub(super) fn resolve_depth(
         &self,
         pass: &PassObject,
+        target: Option<&TextureObject>,
         extent: wgpu::Extent3d,
         sample_count: u32,
-    ) -> Result<PassDepth<'_>, RendererError> {
-        let target = pass.depth_target.read().as_ref().map(|target| *target.id());
-        if let Some(id) = target {
-            let Some(texture) = self.get_texture(&id) else {
-                return Ok(PassDepth::Off);
-            };
-            let depth = texture.inner.sample_count();
-            if depth != sample_count {
-                return Err(RendererError::DepthSampleCountMismatch {
-                    depth,
-                    pass: sample_count,
-                });
-            }
+    ) -> PassDepth<'_> {
+        if let Some(texture) = target {
             let view = texture.create_view();
             let format = texture.format();
-            return Ok(PassDepth::Target { view, format });
+            return PassDepth::Target { view, format };
         }
         let models = !pass.model_entries.read().is_empty();
         if !models || extent.width == 0 || extent.height == 0 {
-            return Ok(PassDepth::Off);
+            return PassDepth::Off;
         }
         let size = wgpu::Extent3d {
             depth_or_array_layers: 1,
@@ -122,10 +113,6 @@ impl RenderContext {
         };
         let usage = wgpu::TextureUsages::RENDER_ATTACHMENT;
         let key = TextureKey::new(size, TextureObject::DEPTH_FORMAT, sample_count, usage);
-        Ok(PassDepth::Scene(Lease::take(
-            &self.texture_pool,
-            &self.device,
-            key,
-        )))
+        PassDepth::Scene(Lease::take(&self.texture_pool, &self.device, key))
     }
 }

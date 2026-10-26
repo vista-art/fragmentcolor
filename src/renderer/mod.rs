@@ -37,7 +37,9 @@ pub(crate) use buffer_pool::*;
 mod texture_pool;
 pub(crate) use texture_pool::*;
 
+mod access;
 mod checks;
+use checks::{Attachment, PassTargets};
 mod depth;
 use depth::DepthUse;
 pub(crate) mod background;
@@ -623,6 +625,8 @@ struct PassDraws {
     shaders: Vec<ShaderDraw>,
     /// Whether the pass holds Models, so its other shaders ignore the depth attachment.
     has_models: bool,
+    /// The color and depth targets the pass set.
+    targets: PassTargets,
 }
 
 /// What one shader of a render pass draws, decided before the frame is acquired.
@@ -939,7 +943,7 @@ impl RenderContext {
         let draws = pass_list
             .iter()
             .map(|pass| match pass.is_compute() {
-                true => Ok(PassDraws::default()),
+                true => self.check_compute(pass).map(|()| PassDraws::default()),
                 false => self.plan_pass(pass),
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -1001,10 +1005,13 @@ impl RenderContext {
     ///
     /// The checks that need no frame run here. The target keeps its last frame
     /// when a lit shader holds more lights than the device takes, a shader reads
-    /// vertex inputs with no mesh, or a mesh is asked for more instances than it holds.
+    /// vertex inputs with no mesh, a mesh is asked for more instances than it holds,
+    /// or a target the pass set is missing. A pass with a target of its own checks its
+    /// attachments here too, and a pass that draws into the frame checks them once it has one.
     /// The draw loop takes each shader's layouts and buffers from the plan.
     fn plan_pass(&self, pass: &PassObject) -> Result<PassDraws, RendererError> {
         self.check_light_cap(pass)?;
+        let targets = self.find_targets(pass)?;
         let mut draws = self.build_pass_draws(pass);
         let model_shaders = find_model_shaders(pass);
         draws.has_models = !model_shaders.is_empty();
@@ -1013,6 +1020,10 @@ impl RenderContext {
             let model = model_shaders.contains(&(Arc::as_ptr(&shader) as usize));
             let plan = self.plan_shader(shader, model, &draws.opaque_overrides)?;
             draws.shaders.push(plan);
+        }
+        draws.targets = targets;
+        if let Some(color) = draws.targets.color.as_deref() {
+            self.check_attachment(pass, &draws, &Attachment::from_target(color))?;
         }
         Ok(draws)
     }
@@ -1453,13 +1464,6 @@ impl RenderContext {
         // `pass_draws` holds this pass's plan and its per-Model GPU instance
         // buffers, built before the frame was acquired so they outlive the render pass.
         let blend_draws = &pass_draws.blend_draws;
-        // Light buffers for every lit shader, binned before the render pass begins.
-        let light_buffers = self.prepare_lights(encoder, pass)?;
-
-        let load_op = match *pass.input.read() {
-            PassInput::Load => wgpu::LoadOp::Load,
-            PassInput::Clear(color) => wgpu::LoadOp::Clear(color.to_wgpu()),
-        };
 
         // Choose color attachment: per-pass override or default frame view.
         // Offscreen color targets are bound single-sampled; surface targets may use MSAA.
@@ -1469,17 +1473,27 @@ impl RenderContext {
         let mut color_format = frame.format();
         let mut extent = size;
         let mut pass_texture_view = None;
-        let color_target = pass.color_target.read().as_ref().map(|target| *target.id());
-        if let Some(id) = color_target {
-            if let Some(texture) = self.get_texture(&id) {
+        // The plan checked the pass against a color target it set, and the frame is checked here.
+        match pass_draws.targets.color.as_deref() {
+            Some(texture) => {
                 pass_texture_view = Some(texture.create_view());
                 color_format = texture.format();
                 sample_count = texture.inner.sample_count();
                 extent = texture.inner.size();
-            } else {
-                return Err(RendererError::TextureNotFoundError(id));
+            }
+            None => {
+                let attachment = Attachment::from_frame(frame, sample_count);
+                self.check_attachment(pass, pass_draws, &attachment)?;
             }
         }
+
+        // Light buffers for every lit shader, binned before the render pass begins.
+        let light_buffers = self.prepare_lights(encoder, pass)?;
+
+        let load_op = match *pass.input.read() {
+            PassInput::Load => wgpu::LoadOp::Load,
+            PassInput::Clear(color) => wgpu::LoadOp::Clear(color.to_wgpu()),
+        };
 
         let viewport = *pass.viewport.read();
 
@@ -1514,7 +1528,8 @@ impl RenderContext {
 
         // The depth target the pass set, a pooled one for a pass that draws
         // models, or none. Like the MSAA lease, it outlives the render pass.
-        let depth = self.resolve_depth(pass, extent, sample_count)?;
+        let depth_target = pass_draws.targets.depth.as_deref();
+        let depth = self.resolve_depth(pass, depth_target, extent, sample_count);
 
         let descriptor = wgpu::RenderPassDescriptor {
             label: Some(&format!("Render Pass: {}", pass.name.clone())),
