@@ -8,6 +8,7 @@ Core invariants
   Do not rely on tuple ordering; extend these structs if new state starts to affect pipeline configuration.
 - If a shader has no `@location` vertex inputs, draw a single fullscreen triangle (three built-in verts).
 - Vertex layouts are derived from the shader's first mesh and are part of the pipeline key, since shaders with the same source can feed meshes with different layouts. The renderer does not re-validate per-mesh at draw time.
+- A mesh with an empty index list draws nothing. A Model mesh with no visible Model in the pass draws nothing either, which covers a hidden Model and a Model added to another pass through a shared Material. Drawing it would read whatever buffer an earlier mesh left in slot 1.
 
 Depth
 - `RenderContext::resolve_depth` picks each render pass's depth attachment. A depth target the pass set wins, and its sample count must match the color attachment (`DepthSampleCountMismatch`). Otherwise a pass with Models takes a pooled `Depth32Float` sized and sampled like its color attachment, cleared to 1.0 and discarded at the end. Any other pass draws without depth, in order.

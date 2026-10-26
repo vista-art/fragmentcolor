@@ -1561,7 +1561,10 @@ impl RenderContext {
                         for mesh_object in shader_meshes.iter() {
                             let (refs, counts) =
                                 mesh_object.vertex_buffers(&self.device, &self.queue)?;
-                            render_pass.set_vertex_buffer(0, refs.vertex_buffer.slice(..));
+                            // An empty index list draws nothing, like an instance count of 0.
+                            if counts.index_count == 0 {
+                                continue;
+                            }
 
                             // Per-Pass Model override takes precedence over the
                             // Mesh's own instance buffer. The override carries N
@@ -1570,17 +1573,26 @@ impl RenderContext {
                             // is for Meshes whose instances came from a direct
                             // `Mesh::add_instance` call (crowd rendering, etc.).
                             let override_key = (shader_ptr, Arc::as_ptr(mesh_object) as usize);
-                            let instance_count =
-                                if let Some((buf, count)) = model_overrides.get(&override_key) {
-                                    render_pass.set_vertex_buffer(1, buf.slice(..));
+                            let overridden = model_overrides.get(&override_key);
+                            let instance_count = match (overridden, &refs.instance_buffer) {
+                                (Some((buffer, count)), _) => {
+                                    render_pass.set_vertex_buffer(1, buffer.slice(..));
                                     *count
-                                } else {
-                                    if let Some(instance_buffer) = &refs.instance_buffer {
-                                        render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
+                                }
+                                // A Model mesh with no visible Model in this pass has nothing to draw,
+                                // and slot 1 may still hold the buffer an earlier mesh bound.
+                                (None, None) if mesh_object.instance_schema.read().is_some() => {
+                                    continue;
+                                }
+                                (None, buffer) => {
+                                    if let Some(buffer) = buffer {
+                                        render_pass.set_vertex_buffer(1, buffer.slice(..));
                                     }
                                     counts.instance_count
-                                };
+                                }
+                            };
 
+                            render_pass.set_vertex_buffer(0, refs.vertex_buffer.slice(..));
                             render_pass.set_index_buffer(
                                 refs.index_buffer.slice(..),
                                 wgpu::IndexFormat::Uint32,
@@ -1624,6 +1636,9 @@ impl RenderContext {
                     current_shader_ptr = Some(draw.shader_ptr);
                 }
                 let (refs, counts) = draw.mesh.vertex_buffers(&self.device, &self.queue)?;
+                if counts.index_count == 0 {
+                    continue;
+                }
                 render_pass.set_vertex_buffer(0, refs.vertex_buffer.slice(..));
                 render_pass.set_vertex_buffer(1, buf.slice(..));
                 render_pass
@@ -3849,6 +3864,181 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
             // User tries to render a Pass without a compatible Mesh, a default quad is created
             let res = renderer.render(&pass, &target);
             assert!(res.is_ok());
+        });
+    }
+
+    const SIDE: u32 = 16;
+    const BLUE: [f32; 4] = [0.0, 0.0, 1.0, 1.0];
+    /// A pixel inside the left strip, and one inside the right strip.
+    const LEFT: (u32, u32) = (4, 8);
+    const RIGHT: (u32, u32) = (12, 8);
+
+    /// A material that glows red without any light.
+    fn red_glow() -> crate::Material {
+        crate::Material::pbr()
+            .base_color([0.0, 0.0, 0.0, 1.0])
+            .emissive([1.0, 0.0, 0.0])
+    }
+
+    /// A model whose mesh spans `left` to `right` across the middle of the view.
+    fn strip(material: &crate::Material, left: f32, right: f32) -> crate::Model {
+        let mesh = crate::Mesh::new();
+        let corners = [
+            [left, -0.5, 0.0],
+            [right, -0.5, 0.0],
+            [right, 0.5, 0.0],
+            [left, -0.5, 0.0],
+            [right, 0.5, 0.0],
+            [left, 0.5, 0.0],
+        ];
+        mesh.add_vertices(
+            corners.map(|corner| {
+                crate::Vertex::pbr(corner).set(crate::Vertex::NORMAL, [0.0, 0.0, 1.0])
+            }),
+        );
+        crate::Model::new(mesh, material.clone())
+    }
+
+    fn camera() -> crate::Camera {
+        crate::Camera::perspective(1.0, 1.0, 0.1, 100.0).look_at(
+            [0.0, 0.0, 3.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        )
+    }
+
+    /// The RGBA bytes at `(x, y)` of an image `SIDE` pixels wide.
+    fn pixel(image: &[u8], (x, y): (u32, u32)) -> [u8; 4] {
+        let start = ((y * SIDE + x) * 4) as usize;
+        [
+            image[start],
+            image[start + 1],
+            image[start + 2],
+            image[start + 3],
+        ]
+    }
+
+    fn is_red(rgba: [u8; 4]) -> bool {
+        rgba[0] > 200 && rgba[1] < 50 && rgba[2] < 50
+    }
+
+    fn is_blue(rgba: [u8; 4]) -> bool {
+        rgba == [0, 0, 255, 255]
+    }
+
+    // Story: of two models that share a material, the hidden one draws nothing,
+    // whether its mesh was attached first or last, and the visible one still draws.
+    #[test]
+    fn a_hidden_model_draws_nothing() {
+        pollster::block_on(async move {
+            use crate::Target;
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([SIDE, SIDE])
+                .await
+                .expect("texture target");
+            let material = red_glow();
+            let left = strip(&material, -1.0, -0.2);
+            let right = strip(&material, 0.2, 1.0);
+            let pass = Pass::new("models");
+            pass.set_clear_color(BLUE);
+            pass.add(&left).expect("add left");
+            pass.add(&right).expect("add right");
+            pass.add(&camera()).expect("add camera");
+
+            left.set_visible(false);
+            renderer
+                .render(&pass, &target)
+                .expect("render with the first mesh hidden");
+            let first_hidden = target.get_image().await.expect("read back");
+            left.set_visible(true);
+            right.set_visible(false);
+            renderer
+                .render(&pass, &target)
+                .expect("render with the last mesh hidden");
+            let last_hidden = target.get_image().await.expect("read back");
+
+            assert!(is_blue(pixel(&first_hidden, LEFT)), "first hidden, left");
+            assert!(is_red(pixel(&first_hidden, RIGHT)), "first hidden, right");
+            assert!(is_red(pixel(&last_hidden, LEFT)), "last hidden, left");
+            assert!(is_blue(pixel(&last_hidden, RIGHT)), "last hidden, right");
+        });
+    }
+
+    // Story: two passes that share a material each draw only their own model,
+    // although the material's shader holds both meshes.
+    #[test]
+    fn passes_sharing_a_material_draw_only_their_models() {
+        pollster::block_on(async move {
+            use crate::Target;
+            let renderer = Renderer::new();
+            let frame = renderer
+                .create_texture_target([SIDE, SIDE])
+                .await
+                .expect("frame");
+            let material = red_glow();
+            let mut images = Vec::new();
+            let mut passes = Vec::new();
+            for (name, model) in [
+                ("left", strip(&material, -1.0, -0.2)),
+                ("right", strip(&material, 0.2, 1.0)),
+            ] {
+                let image = renderer
+                    .create_texture_target([SIDE, SIDE])
+                    .await
+                    .expect("image");
+                let pass = Pass::new(name);
+                pass.set_clear_color(BLUE);
+                pass.add(&model).expect("add model");
+                pass.add(&camera()).expect("add camera");
+                pass.set_target(&image).expect("set target");
+                images.push(image);
+                passes.push(pass);
+            }
+
+            renderer
+                .render(&passes.iter().collect::<Vec<_>>(), &frame)
+                .expect("render");
+            let left = images[0].get_image().await.expect("read back");
+            let right = images[1].get_image().await.expect("read back");
+
+            assert!(is_red(pixel(&left, LEFT)), "left pass, left strip");
+            assert!(is_blue(pixel(&left, RIGHT)), "left pass, right strip");
+            assert!(is_blue(pixel(&right, LEFT)), "right pass, left strip");
+            assert!(is_red(pixel(&right, RIGHT)), "right pass, right strip");
+        });
+    }
+
+    // Story: a mesh whose index list is empty draws nothing, opaque or blended,
+    // and the pass keeps its clear color.
+    #[test]
+    fn an_empty_index_list_draws_nothing() {
+        pollster::block_on(async move {
+            use crate::Target;
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([SIDE, SIDE])
+                .await
+                .expect("texture target");
+            let opaque = strip(&red_glow(), -1.0, 1.0);
+            let blended = strip(
+                &red_glow().alpha_mode(crate::material::AlphaMode::Blend),
+                -1.0,
+                1.0,
+            );
+            let mut images = Vec::new();
+            for model in [opaque, blended] {
+                model.mesh().set_indices(Vec::new());
+                let pass = Pass::new("empty");
+                pass.set_clear_color(BLUE);
+                pass.add(&model).expect("add model");
+                pass.add(&camera()).expect("add camera");
+                renderer.render(&pass, &target).expect("render");
+                images.push(target.get_image().await.expect("read back"));
+            }
+
+            assert!(is_blue(pixel(&images[0], LEFT)), "opaque");
+            assert!(is_blue(pixel(&images[1], LEFT)), "blended");
         });
     }
 
