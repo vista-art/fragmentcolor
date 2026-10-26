@@ -29,9 +29,9 @@ Items found while reviewing 0.12.6.
 - [ ] `headless_window` is a free function that only the window-target doctests use. Make it a method on an object, or let those doctests compile without running
 - [ ] Remove `Renderer::create_external_texture` until it works. Every binding returns "not implemented yet", and an API that does nothing doesn't belong in the public surface
 - [ ] Doc comments that describe planned behavior state what the code does: `SceneSource` in `src/scene/loader.rs` and `set_sampler_options` in `src/texture/platform/mobile.rs`
-- [ ] Swift extensions throw where they stop the app with `preconditionFailure` on input they can't read (`TextureRegion.from`, `setViewport`), as rule 5 asks. `Vertex.set` and `Instance.set` throw since 0.12.6
+- [ ] Swift extensions throw where they stop the app with `preconditionFailure` on input they can't read (`TextureRegion.from`), as rule 5 asks. `Vertex.set` and `Instance.set` throw since 0.12.6, and `setViewport` and the `ScreenRegion` inits since 0.12.7
 - [ ] The Swift transpiler picks `try` from the overload a call resolves to, where it merges `throws` across every overload of a name. Today `mesh.addInstance(instance)` gets a `try` that Swift warns about, because the attribute-pair `addInstance` overloads throw
-- [ ] The public `From` conversions between `wgpu::Extent3d` and `ScreenRegion` or `Size` go, as rule 14 asks
+- [ ] The public `From` conversions between `wgpu::Extent3d` and `Size` go, as rule 14 asks. `ScreenRegion`'s went in 0.12.7
 - [ ] The website's Rust tabs hide a doctest's `#` lines
 - [ ] `UniformData` can be named outside the crate, so a helper can forward one value to `Shader::set` on several shaders
 - [ ] uniffi warns that `uniffi.toml` looks like an old-style config file; move it to the current layout
