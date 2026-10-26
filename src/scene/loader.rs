@@ -1361,12 +1361,16 @@ mod tests {
 
     #[test]
     fn load_names_the_camera_at_fault() {
-        // Camera 0 is fine; the node points at camera 1, whose yfov is 0.
+        // Camera 0 is fine; the node points at camera 1, whose yfov is 0 and which
+        // has no zfar, so the error names its lens and no far plane the file never wrote.
         let cameras = r#""cameras":[{"type":"perspective","perspective":{"aspectRatio":1.5,"yfov":1.0,"znear":0.1,"zfar":100.0}},{"type":"perspective","perspective":{"yfov":0.0,"znear":0.1}}]"#;
         let json = CAMERA_LIGHT_JSON
             .replace(CAMERAS, cameras)
             .replace(r#"{"camera":0}"#, r#"{"camera":1}"#);
-        assert_camera_error(&json, "glTF camera 1: Camera::perspective");
+        assert_camera_error(
+            &json,
+            "glTF camera 1: a perspective camera with no zfar needs finite values with 0 < yfov < π, a nonzero aspect ratio and a positive znear, got yfov 0, aspect ratio 1, znear 0.1",
+        );
     }
 
     #[test]
