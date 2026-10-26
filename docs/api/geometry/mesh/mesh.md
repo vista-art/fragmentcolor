@@ -12,7 +12,14 @@ attribute's own location (instance first, then vertex).
 
 A plain number takes the type the shader declares for its input. The attach
 checks every vertex and instance, and it fails with an error that names the
-attribute when an input finds no data or a value doesn't fit its type.
+attribute when an input finds no data or a value doesn't fit its type. A vertex
+or instance added after the attach holds every attribute the shader reads, or
+`Renderer.render` returns `MeshError::InvalidVertex` or
+`MeshError::InvalidInstance` naming the attribute and the item. An attribute
+no attached shader reads can be left out, and it uploads as zeros.
+
+A mesh draws with every `Renderer` that renders it. Each one uploads buffers
+of its own from the mesh's vertices, indices and instances.
 
 ## Example
 

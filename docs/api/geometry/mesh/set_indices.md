@@ -14,6 +14,12 @@ with `add_vertex` is packed in insertion order and the indices you supply
 are used verbatim. Call `clear_indices` to return to the auto-derived
 path.
 
+The list draws whole triangles of vertices the mesh holds. `Renderer.render`
+returns `MeshError::IndexRange` for an index past the last vertex, and
+`MeshError::IndexCount` for a count that isn't a multiple of 3, where the GPU
+read a vertex of zeros or dropped the last indices. The check runs on every
+render until the indices fit the vertices. An empty list draws nothing.
+
 ## Example
 
 ```rust

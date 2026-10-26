@@ -2,6 +2,10 @@
 
 Add many vertices to the mesh.
 
+As with `add_vertex`, a vertex added after the mesh attaches to a shader
+holds every attribute that shader reads, or `Renderer.render` returns
+`MeshError::InvalidVertex` naming the attribute and the vertex.
+
 ## Example
 
 ```rust
