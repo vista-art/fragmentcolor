@@ -288,6 +288,43 @@ def check_value_types():
     print("Value types compare by value")
 
 
+def check_number_errors():
+    """Counts, indices, sizes and regions raise FragmentColorError for numbers they can't hold."""
+    def raises(label, call):
+        try:
+            call()
+        except FragmentColorError as e:
+            print(f"{label} raised FragmentColorError: {e}")
+            return
+        raise AssertionError(f"{label} should raise FragmentColorError")
+
+    rpass, mesh = Pass("numbers"), Mesh()
+    for bad in (-1, 2**32):
+        raises(f"Pass.set_compute_dispatch({bad}, 1, 1)", lambda: rpass.set_compute_dispatch(bad, 1, 1))
+        raises(f"Mesh.set_instance_count({bad})", lambda: mesh.set_instance_count(bad))
+        raises(f"Mesh.set_indices([{bad}])", lambda: mesh.set_indices([bad]))
+        raises(f"Pass.set_viewport([0, 0, {bad}, 4])", lambda: rpass.set_viewport([0, 0, bad, 4]))
+        raises(f"Size({bad}, 2)", lambda: Size(bad, 2))
+        raises(f"ScreenRegion((0, 0), ({bad}, 4))", lambda: ScreenRegion((0, 0), (bad, 4)))
+        raises(f"ScreenRegion.from_region(0, 0, {bad}, 4)", lambda: ScreenRegion.from_region(0, 0, bad, 4))
+        raises(f"ScreenRegion.from_tuple(({bad}, 4))", lambda: ScreenRegion.from_tuple((bad, 4)))
+    raises("Pass.set_compute_dispatch(1.5, 1, 1)", lambda: rpass.set_compute_dispatch(1.5, 1, 1))
+    raises("Pass.set_viewport([0, 0, 4])", lambda: rpass.set_viewport([0, 0, 4]))
+
+    size = Size(4, 2)
+    for field, bad in (("width", -1), ("height", 2**32), ("depth", float("nan"))):
+        raises(f"Size.{field} = {bad}", lambda: setattr(size, field, bad))
+    assert (size.width, size.height, size.depth) == (4, 2, None), "a refused write changed the Size"
+    size.depth = 3
+    size.depth = None
+    assert size.depth is None
+
+    rpass.set_viewport([0, 0, 4, 4])
+    rpass.set_compute_dispatch(64, 1, 1)
+    mesh.set_indices(np.array([0, 1, 2], dtype=np.uint32))
+    print("Counts, indices, sizes and regions refuse numbers they can't hold")
+
+
 def check_texture_inputs(renderer):
     """create_texture takes usage, bytearray, memoryview, tuples and Textures."""
     pixels = bytes(range(16))
@@ -612,6 +649,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_mesh_inputs()
     check_require_graph(renderer)
     check_value_types()
+    check_number_errors()
     check_texture_inputs(renderer)
     check_scene_errors()
     check_stub()

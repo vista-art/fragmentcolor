@@ -1,6 +1,8 @@
 #![cfg(python)]
 
-use crate::{Pass, PassObject, PassType, Shader};
+use crate::platforms::python::read_unsigned;
+use crate::region::error::ScreenRegionError;
+use crate::{Pass, PassObject, PassType, ScreenRegion, Shader};
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
@@ -95,14 +97,19 @@ impl Pass {
 
     #[pyo3(name = "set_viewport")]
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
-    pub fn set_viewport_py(&self, viewport: PyViewport) {
-        self.object.set_viewport(viewport);
+    pub fn set_viewport_py(&self, viewport: PyViewport) -> PyResult<()> {
+        self.object.set_viewport(ScreenRegion::try_from(viewport)?);
+        Ok(())
     }
 
     #[pyo3(name = "set_compute_dispatch")]
     #[lsp_doc("docs/api/core/pass/set_compute_dispatch.md")]
-    pub fn set_compute_dispatch_py(&self, x: u32, y: u32, z: u32) {
+    pub fn set_compute_dispatch_py(&self, x: f64, y: f64, z: f64) -> PyResult<()> {
+        let x = read_unsigned(x, "Pass.set_compute_dispatch: x")?;
+        let y = read_unsigned(y, "Pass.set_compute_dispatch: y")?;
+        let z = read_unsigned(z, "Pass.set_compute_dispatch: z")?;
         self.object.set_compute_dispatch(x, y, z);
+        Ok(())
     }
 
     #[pyo3(name = "set_target")]
@@ -190,19 +197,19 @@ impl From<PyClearColor> for crate::Color {
 #[derive(FromPyObject)]
 pub enum PyViewport {
     #[pyo3(annotation = "ScreenRegion")]
-    Region(crate::ScreenRegion),
-    #[pyo3(annotation = "Sequence[int]")]
-    Rect([u32; 4]),
-    #[pyo3(annotation = "Sequence[int]")]
-    Size([u32; 2]),
+    Region(ScreenRegion),
+    #[pyo3(annotation = "Sequence[float]")]
+    Numbers(Vec<f64>),
 }
 
-impl From<PyViewport> for crate::ScreenRegion {
-    fn from(viewport: PyViewport) -> Self {
+/// Checks each number the way JavaScript's `setViewport` does.
+impl TryFrom<PyViewport> for ScreenRegion {
+    type Error = ScreenRegionError;
+
+    fn try_from(viewport: PyViewport) -> Result<Self, Self::Error> {
         match viewport {
-            PyViewport::Region(region) => region,
-            PyViewport::Rect(rect) => rect.into(),
-            PyViewport::Size(size) => size.into(),
+            PyViewport::Region(region) => Ok(region),
+            PyViewport::Numbers(numbers) => ScreenRegion::from_numbers(&numbers),
         }
     }
 }

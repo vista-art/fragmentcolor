@@ -1273,7 +1273,7 @@ class Pass:
         renderer.render(rpass, target)
         ```
         """
-    def set_viewport(self, viewport: ScreenRegion | Sequence[int]) -> None:
+    def set_viewport(self, viewport: ScreenRegion | Sequence[float]) -> None:
         """
         Sets the viewport region for this [Pass](https://fragmentcolor.org/api/core/pass).
 
@@ -1302,7 +1302,7 @@ class Pass:
         renderer.render(rpass, target)
         ```
         """
-    def set_compute_dispatch(self, x: int, y: int, z: int) -> None:
+    def set_compute_dispatch(self, x: float, y: float, z: float) -> None:
         """
         Set the workgroup-grid size for a compute pass. The three numbers are the
         number of workgroups to dispatch in each dimension; total invocations are
@@ -1436,10 +1436,19 @@ class Pass:
 
 @final
 class Size:
-    width: int
-    height: int
-    depth: int | None
-    def __new__(cls, width: int, height: int, depth: int | None = ...) -> Size: ...
+    def __new__(cls, width: float, height: float, depth: float | None = ...) -> Size: ...
+    @property
+    def width(self) -> int: ...
+    @width.setter
+    def width(self, value: float) -> None: ...
+    @property
+    def height(self) -> int: ...
+    @height.setter
+    def height(self, value: float) -> None: ...
+    @property
+    def depth(self) -> int | None: ...
+    @depth.setter
+    def depth(self, value: float | None) -> None: ...
 
 @final
 class ScreenRegion:
@@ -1451,11 +1460,11 @@ class ScreenRegion:
     def max_x(self) -> int: ...
     @property
     def max_y(self) -> int: ...
-    def __new__(cls, origin: tuple[int, int], size: tuple[int, int]) -> ScreenRegion: ...
+    def __new__(cls, origin: tuple[float, float], size: tuple[float, float]) -> ScreenRegion: ...
     @staticmethod
-    def from_region(x: int, y: int, width: int, height: int) -> ScreenRegion: ...
+    def from_region(x: float, y: float, width: float, height: float) -> ScreenRegion: ...
     @staticmethod
-    def from_tuple(size: tuple[int, int]) -> ScreenRegion: ...
+    def from_tuple(size: tuple[float, float]) -> ScreenRegion: ...
     def width(self) -> int: ...
     def height(self) -> int: ...
 
@@ -1612,7 +1621,7 @@ class Mesh:
         m.clear_instances() # back to a single uninstanced draw
         ```
         """
-    def set_instance_count(self, n: int) -> None:
+    def set_instance_count(self, n: float) -> None:
         """
         Override how many instances to draw without providing per-instance attributes.
 
@@ -1637,7 +1646,7 @@ class Mesh:
         m.set_instance_count(1_000_000)
         ```
         """
-    def set_indices(self, indices: Sequence[int]) -> None:
+    def set_indices(self, indices: Sequence[float]) -> None:
         """
         Provide the index buffer directly, bypassing the mesh's automatic vertex
         dedup pass. Use this when an asset already carries its own indexing: glTF
