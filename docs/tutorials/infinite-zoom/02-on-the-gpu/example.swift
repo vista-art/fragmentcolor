@@ -157,9 +157,9 @@ func frame(
 // #endregion: frame
 
 // #region: steer
-/// The zoom runs from the whole set down to 10^-depth and back on its own. While
-/// the pointer moves, and for two seconds after, the pointer's vertical position
-/// picks the depth, deepest at the top. Returns the zoom in doublings.
+/// The zoom runs from the whole set down to 10^-depth and back on its own.
+/// While the pointer moves, and for two seconds after, its height sets the speed:
+/// the view dives above the middle and climbs below it. Returns the zoom in doublings.
 func steer(_ state: inout State, _ time: Float, _ size: [Float], _ pointer: [Float]) -> Double {
     // A clock that starts over forgets the pointer.
     if let last = state.last, time < last {
@@ -174,8 +174,10 @@ func steer(_ state: inout State, _ time: Float, _ size: [Float], _ pointer: [Flo
     }
     state.pointer = pointer
     if time - state.moved < 2 {
-        let goal = (1 - Double(pointer[1] / size[1])) * deepest
-        state.zoom += (goal - state.zoom) * min(1, delta * 4)
+        // The speed grows toward the edges, up to four times `speed`, and a band across the middle holds still.
+        let lean = 1 - 2 * Double(pointer[1] / size[1])
+        let push = copysign(max(abs(lean) - 0.1, 0) / 0.9, lean)
+        state.zoom += push * 4 * speed * delta
     } else {
         state.zoom += state.direction * speed * delta
         if state.zoom >= deepest {
