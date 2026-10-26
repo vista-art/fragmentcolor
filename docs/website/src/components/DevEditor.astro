@@ -1,15 +1,18 @@
 ---
 // In dev, edits any Markdown page on disk through /api/dev/edit.
-// On the deployed site, edits blog posts through /api/edit, which
-// commits them to GitHub. There the button stays hidden without a token.
+// On the deployed site, edits hand-written pages through /api/edit,
+// which commits them to GitHub. There the button stays hidden without a token.
 const isDev = import.meta.env.DEV;
 const entry = Astro.locals.starlightRoute?.entry;
 const filePath = entry?.filePath ?? "";
 const isMarkdown = filePath.endsWith(".md") || filePath.endsWith(".mdx");
-// starlight-blog's tag, author and page listings claim paths under the blog
-// folder too, but only a real post has a date.
-const isPost = filePath.startsWith("src/content/docs/blog/") && entry?.data.date !== undefined;
-const canEdit = isMarkdown && (isDev || isPost);
+// The Rust build writes the api/ pages from docs/api. starlight-blog's index,
+// tag, author and page listings claim blog paths too, but only a post has a date.
+const docs = "src/content/docs/";
+const isGenerated = filePath.startsWith(`${docs}api/`);
+const isListing = /^src\/content\/docs\/blog(\/|\.md$)/.test(filePath) && entry?.data.date === undefined;
+const isPage = filePath.startsWith(docs) && !isGenerated && !isListing;
+const canEdit = isMarkdown && (isDev || isPage);
 // The production endpoint takes paths from the repository root.
 const editPath = isDev ? filePath : `docs/website/${filePath}`;
 ---
@@ -183,6 +186,25 @@ const editPath = isDev ? filePath : `docs/website/${filePath}`;
     } catch {}
   }
 
+  const UNLOCK_REPLIES: Record<number, string> = {
+    400: "Editing is unlocked on this device.",
+    401: "The server rejected that token.",
+    404: "Editing is off on this deployment, so the server couldn't check the token. It's saved on this device.",
+    503: "Editing is unlocked, but the server has no GitHub token.",
+  };
+
+  /** Says what the server makes of a token. Only a rejected one is dropped. */
+  async function accept(candidate: string): Promise<boolean> {
+    if (import.meta.env.DEV) return true;
+    // A GET without a path passes the token checks and stops before GitHub.
+    const status = await fetch("/api/edit", { headers: { authorization: `Bearer ${candidate}` } }).then(
+      (res) => res.status,
+      () => 0,
+    );
+    alert(UNLOCK_REPLIES[status] ?? "Editing is unlocked, but the server couldn't check the token.");
+    return status !== 401;
+  }
+
   // The token also lives in memory, so a page without storage can still edit.
   let token = readToken();
   const url = new URL(location.href);
@@ -190,8 +212,11 @@ const editPath = isDev ? filePath : `docs/website/${filePath}`;
   if (mode === "unlock" || mode === "lock") {
     url.searchParams.delete("edit");
     history.replaceState(history.state, "", url);
-    token = mode === "unlock" ? prompt("Edit token")?.trim() || token : null;
-    storeToken(token);
+    const entered = mode === "unlock" ? prompt("Edit token")?.trim() : null;
+    if (mode === "lock" || (entered && (await accept(entered)))) {
+      token = entered ?? null;
+      storeToken(token);
+    }
   }
 
   const root = document.querySelector<HTMLDivElement>(".dev-editor-root");
