@@ -22,7 +22,10 @@ impl From<LateError> for RendererError {
 
 impl From<LateError> for TextureError {
     fn from(error: LateError) -> Self {
-        TextureError::Error(RendererError::from(error).to_string())
+        TextureError::ValidationError {
+            label: error.label,
+            message: error.message,
+        }
     }
 }
 
@@ -199,8 +202,8 @@ mod tests {
         assert!(done, "only the later scope {later} is open");
     }
 
-    // Story: render reports a late error as a ValidationError, and a readback
-    // as a TextureError that carries the same message.
+    // Story: render and a readback report a late error as the same typed
+    // ValidationError, with the same label and the same message.
     #[test]
     fn converts_to_each_call_error() {
         // Arrange
@@ -215,10 +218,10 @@ mod tests {
             matches!(&renderer, RendererError::ValidationError { label, .. } if label == "frame"),
             "got {renderer:?}"
         );
-        assert_eq!(
-            texture.to_string(),
-            format!("Renderer error: {renderer}"),
-            "the readback error carries the render error's message"
+        assert!(
+            matches!(&texture, TextureError::ValidationError { label, .. } if label == "frame"),
+            "got {texture:?}"
         );
+        assert_eq!(texture.to_string(), renderer.to_string());
     }
 }
