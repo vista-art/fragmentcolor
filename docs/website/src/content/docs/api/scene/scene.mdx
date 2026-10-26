@@ -98,11 +98,21 @@ encounters are queued as pending uploads on the resulting Materials.
 them. On native targets the first render runs it for you; on the web, await
 it before the first render.
 
-The loader reads static glTF: mesh primitives (POSITION + NORMAL + UV0 +
-indices), PBR-MR materials with all five texture slots, per-node transforms
-flattened into Model matrices, glTF camera nodes, and `KHR_lights_punctual`
-lights. Animation, skinning, morph targets, and material extensions beyond
-PBR-MR are out of scope; they parse cleanly and the loader ignores them.
+The loader reads static glTF: mesh primitives (`POSITION`, `NORMAL`,
+`TEXCOORD_0`, `TEXCOORD_1`, `COLOR_0`, `TANGENT` and indices), PBR-MR
+materials with all five texture slots, per-node transforms flattened into
+Model matrices, glTF camera nodes, and `KHR_lights_punctual` lights.
+Animation, skinning, morph targets, and material extensions beyond PBR-MR
+and `KHR_texture_transform` are out of scope; they parse cleanly and the
+loader ignores them.
+
+Each texture slot samples the UV set its `texCoord` names, through its own
+`KHR_texture_transform`. The extension's `texCoord`, when it has one, wins
+over the texture's. A primitive without `TEXCOORD_1` takes its `TEXCOORD_0`
+values as `UV1`, so a slot on set 1 samples the same UVs as set 0 there.
+The PBR material samples two UV sets, so a texture that names `TEXCOORD_2`
+or above returns `SceneLoadError::Invalid`, naming the slot, such as
+`occlusionTexture`.
 
 Triangle strips and fans load as triangle lists. glTF also allows a few
 things the loader can't take, and it returns `SceneLoadError::Invalid` for

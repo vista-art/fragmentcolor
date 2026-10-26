@@ -495,6 +495,12 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     throws('Mesh.setInstanceCount(-1)', () => mesh.setInstanceCount(-1));
     throws('Mesh.setIndices([0.5])', () => mesh.setIndices([0.5]));
     throws('Pass.setComputeDispatch(-1, 1, 1)', () => first.setComputeDispatch(-1, 1, 1));
+    const occlusion = fc.TextureSlot.Occlusion;
+    throws('Material.textureUv(Occlusion, 1.5)', () => Material.pbr().textureUv(occlusion, 1.5));
+    throws('Material.textureUv(Occlusion, -1)', () => Material.pbr().textureUv(occlusion, -1));
+    // A UV set past 1 is a whole number, but no texture can sample it.
+    throws('Material.textureUv(Occlusion, 2)', () => Material.pbr().textureUv(occlusion, 2));
+    if (!(Material.pbr().textureUv(occlusion, 1) instanceof Material)) fail('textureUv should return the material');
 
     // Size fields take only the numbers the constructor takes, and ScreenRegion has no setters.
     const extent = new fc.Size(64, 64);
@@ -662,6 +668,9 @@ struct Data { items: array<vec4<f32>, 2> };
     throws('Mipmap.build without a format', () => Mipmap.build(new Uint8Array(4 * 4 * 4), undefined, [4, 4]));
     throws('Material.alphaMode(undefined)', () => Material.pbr().alphaMode(undefined));
     throws('Material.alphaMode(0.5)', () => Material.pbr().alphaMode(0.5));
+    throws('Material.textureUv(undefined, 0)', () => Material.pbr().textureUv(undefined, 0));
+    throws('Material.textureTransform(5, ...)', () =>
+      Material.pbr().textureTransform(5, [0, 0], [1, 1], 0));
     await rejects('createStorageTexture with a format string', () =>
       renderer.createStorageTexture([4, 4], 'rgba8unorm'));
     await rejects('createStorageTexture with usage 32', () =>

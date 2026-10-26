@@ -65,6 +65,13 @@ the explicit-fresh-Material path is the escape hatch.
   `normal_map`, `occlusion_map`, `emissive_map`) and sampled by the default
   shader. Unset slots resolve to the renderer's 1×1 defaults so the shader's
   bind group is always complete.
+- **UV sources**: each texture slot samples its own UV set (`UV0` or `UV1`)
+  through its own `KHR_texture_transform`. The PBR shader keeps them in
+  `material.uv`, five entries in
+  [`TextureSlot`](/api/scene/textureslot) order,
+  each with `uv_set`, `offset`, `scale` and `rotation`.
+  `Material::texture_uv`, `Material::texture_transform` and
+  `Material::uv_transform` set them.
 - **Per-Model transform** rides the **per-instance vertex attribute** stream
   as `model_0` to `model_3` (four `vec4<f32>` columns of a `mat4x4<f32>`, at
   locations 3 to 6 in the PBR shader). The renderer fills it from each
@@ -2132,24 +2139,257 @@ lang="kotlin"
 
 ---
 
+### Material::texture_transform \{#texture_transform\}
+
+Give one texture slot its own UV transform, the one glTF's
+[`KHR_texture_transform`](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_texture_transform)
+describes. The slot's UV is scaled first, then rotated, then offset:
+
+- `scale` multiplies the UV (`[1, 1]` keeps it)
+- `rotation` turns the scaled UV around the origin, in radians. A positive
+  angle turns the UVs counter-clockwise in texture space, where `v` points
+  down, so the image itself turns clockwise
+- `offset` moves the result, in fractions of the texture (`[0, 0]` keeps it)
+
+Every slot starts with the identity transform. The transform applies to
+the UV set that
+[`texture_uv`](/api/scene/material#texture_uv)
+picks for the slot.
+[`uv_transform`](/api/scene/material#uv_transform)
+sets one transform on all five slots, and a `texture_transform` after it
+replaces the transform of its slot alone.
+
+Whether a UV past 0 to 1 repeats the texture depends on the sampler. The
+PBR shader samples every slot with the sampler options of the base color
+texture.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, TextureSlot};
+
+// Every map spans the surface twice, and the normal map eight times.
+let tiles = Material::pbr()
+    .uv_transform([0.0, 0.0], [2.0, 2.0], 0.0)
+    .texture_transform(TextureSlot::Normal, [0.0, 0.0], [8.0, 8.0], 0.0);
+let _ = tiles;
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 8-10}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, TextureSlot } from "fragmentcolor";
+
+// Every map spans the surface twice, and the normal map eight times.
+const tiles = Material.pbr().uvTransform([0.0, 0.0], [2.0, 2.0], 0.0).textureTransform(TextureSlot.Normal, [0.0, 0.0], [8.0, 8.0], 0.0);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, TextureSlot
+
+# Every map spans the surface twice, and the normal map eight times.
+tiles = Material.pbr().uv_transform([0.0, 0.0], [2.0, 2.0], 0.0).texture_transform(TextureSlot.Normal, [0.0, 0.0], [8.0, 8.0], 0.0)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// Every map spans the surface twice, and the normal map eight times.
+let tiles = try Material.pbr().uvTransform([0.0, 0.0], [2.0, 2.0], 0.0).textureTransform(TextureSlot.normal, [0.0, 0.0], [8.0, 8.0], 0.0)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// Every map spans the surface twice, and the normal map eight times.
+val tiles = Material.pbr().uvTransform(listOf(0.0f, 0.0f), listOf(2.0f, 2.0f), 0.0f).textureTransform(TextureSlot.NORMAL, listOf(0.0f, 0.0f), listOf(8.0f, 8.0f), 0.0f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::texture_uv \{#texture_uv\}
+
+Pick the vertex UV set one texture slot samples: `0` reads `Vertex::UV0`
+and `1` reads `Vertex::UV1`. glTF calls this choice `texCoord`. Baked
+lighting and occlusion often live on a second UV layout, apart from the
+tiled UVs of the color maps. Every slot starts on set 0.
+
+A set other than 0 or 1 returns `MaterialError::UvSet` and keeps the
+slot's set. JavaScript throws an `Error`, Python raises `MaterialError`, a
+`FragmentColorError` that is also a `ValueError`, Swift throws
+`FragmentColorError`, and Kotlin throws `FragmentColorException`. The set
+is a count like any other: JavaScript throws for a fraction or a negative
+number, and Python takes an `int`, raising `TypeError` for a float and
+`InvalidInputError` for an int below 0 or past `2**32 - 1`.
+
+The PBR shader reads `UV1` from every vertex, and a mesh whose vertices
+lack it fails to attach with an error that names `uv1`. `Vertex::pbr`
+seeds `UV1` at `[0, 0]`, so a slot on set 1 reads that one point until
+the mesh sets its own. `Scene::load` gives a primitive without
+`TEXCOORD_1` its `TEXCOORD_0` values as `UV1`, so set 1 reads the same UVs
+as set 0 there.
+
+The slot's
+[`texture_transform`](/api/scene/material#texture_transform)
+applies to whichever set it reads.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, TextureSlot, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::pbr([0.0, 0.5, 0.0])
+        .set(Vertex::UV0, [0.5, 1.0])
+        .set(Vertex::UV1, [0.25, 0.75]),
+);
+
+// The occlusion map follows the second UV layout.
+let material = Material::pbr().texture_uv(TextureSlot::Occlusion, 1)?;
+let _ = (mesh, material);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 13-15}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, TextureSlot, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]) .set(Vertex.UV0, [0.5, 1.0]) .set(Vertex.UV1, [0.25, 0.75]), );
+
+// The occlusion map follows the second UV layout.
+const material = Material.pbr().textureUv(TextureSlot.Occlusion, 1);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, TextureSlot, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]).set(Vertex.UV1, [0.25, 0.75]),
+)
+
+# The occlusion map follows the second UV layout.
+material = Material.pbr().texture_uv(TextureSlot.Occlusion, 1)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]).set(Vertex.UV1, [0.25, 0.75])
+)
+
+// The occlusion map follows the second UV layout.
+let material = try Material.pbr().textureUv(TextureSlot.occlusion, 1)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)).set(Vertex.UV1, listOf(0.25f, 0.75f)), )
+
+// The occlusion map follows the second UV layout.
+val material = Material.pbr().textureUv(TextureSlot.OCCLUSION, 1u)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
 ### Material::uv_transform \{#uv_transform\}
 
-Set a global UV transform applied to every map sample. Matches glTF's
+Set one UV transform on all five texture slots, the transform glTF's
 [`KHR_texture_transform`](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_texture_transform)
-composition: scale → rotate → offset, with the result fed to every
-`textureSample` in the PBR fragment shader.
+describes. Each slot's UV is scaled first, then rotated, then offset:
 
-- `offset` translates the UV after scale + rotation (`[0, 0]` is no translation)
-- `scale` multiplies the UV first (`[1, 1]` is no scale)
-- `rotation` rotates the scaled UV in radians (positive = counter-clockwise
-  in WGSL's `(u, v)` convention)
+- `scale` multiplies the UV (`[1, 1]` keeps it)
+- `rotation` turns the scaled UV around the origin, in radians. A positive
+  angle turns the UVs counter-clockwise in texture space, where `v` points
+  down, so the image itself turns clockwise
+- `offset` moves the result, in fractions of the texture (`[0, 0]` keeps it)
 
-Defaults to identity (scale `[1, 1]`, rotation `0`, offset `[0, 0]`) so an
-unset Material samples textures untransformed. The transform is shared
-across all five texture slots; per-map transforms (and the per-map
-`texCoord` selector that picks `UV0` vs `UV1`) are out of scope for the
-built-in PBR shader. For glTFs that carry `KHR_texture_transform` only on
-the base-color map (the most common case), the global path is lossless.
+Every slot starts with the identity transform: scale `[1, 1]`, rotation
+`0` and offset `[0, 0]`.
+[`texture_transform`](/api/scene/material#texture_transform)
+sets the transform of one slot, so a call after `uv_transform` replaces
+that slot's transform and keeps the other four. Each slot applies its
+transform to the UV set that
+[`texture_uv`](/api/scene/material#texture_uv)
+picks for it.
 
 #### Example
 

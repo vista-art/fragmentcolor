@@ -4,7 +4,7 @@ use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
 use crate::Shader;
-use crate::material::{AlphaMode, Material};
+use crate::material::{AlphaMode, Material, MaterialError, TextureSlot};
 use crate::renderer::platform::mobile::FragmentColorError;
 use crate::texture::{Texture, TextureInput, TextureInputMobile, TextureOptions};
 
@@ -89,6 +89,30 @@ impl Material {
         let o = take_vec2(&offset, "uvTransform offset")?;
         let s = take_vec2(&scale, "uvTransform scale")?;
         Ok(Arc::new(self.uv_transform(o, s, rotation)))
+    }
+
+    #[uniffi::method(name = "textureUv")]
+    #[lsp_doc("docs/api/scene/material/texture_uv.md")]
+    pub fn texture_uv_mobile(
+        self: Arc<Self>,
+        slot: TextureSlot,
+        set: u32,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(self.texture_uv(slot, set)?))
+    }
+
+    #[uniffi::method(name = "textureTransform")]
+    #[lsp_doc("docs/api/scene/material/texture_transform.md")]
+    pub fn texture_transform_mobile(
+        self: Arc<Self>,
+        slot: TextureSlot,
+        offset: Vec<f32>,
+        scale: Vec<f32>,
+        rotation: f32,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        let o = take_vec2(&offset, "textureTransform offset")?;
+        let s = take_vec2(&scale, "textureTransform scale")?;
+        Ok(Arc::new(self.texture_transform(slot, o, s, rotation)))
     }
 
     #[uniffi::method(name = "alphaMode")]
@@ -191,6 +215,13 @@ impl Material {
         options: Option<TextureOptions>,
     ) -> Arc<Self> {
         Arc::new(self.emissive_texture(texture_input(input, options)))
+    }
+}
+
+/// A value the material can't use reaches Swift and Kotlin as a render error.
+impl From<MaterialError> for FragmentColorError {
+    fn from(error: MaterialError) -> Self {
+        FragmentColorError::Render(error.to_string())
     }
 }
 
