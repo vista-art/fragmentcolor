@@ -42,6 +42,8 @@ pub(crate) mod embedded;
 mod glsl;
 mod immediates;
 pub(crate) use immediates::lower_immediates;
+mod layouts;
+pub(crate) use layouts::write_layouts;
 mod input;
 pub(crate) mod light_roots;
 use light_roots::LightRoots;
@@ -479,6 +481,8 @@ impl ShaderObject {
         let module = create_parser().parse(source)?;
         let info = create_validator().validate(&module).map_err(Box::new)?;
         immediates::check_immediates(&module)?;
+        // The web gets WGSL that keeps explicit layouts, so one it would lose fails here everywhere.
+        write_layouts(&module, &info)?;
 
         let light_roots = light_roots::find_roots(&module, &info)?;
         let filled = light_roots
