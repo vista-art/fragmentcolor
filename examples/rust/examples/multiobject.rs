@@ -53,7 +53,7 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
         s
     };
     let pass = Pass::new("Multi Object Pass");
-    pass.add_shader(&triangle);
+    pass.add_shader(&triangle)?;
 
     // seed circles with a nominal size
     let mut rng = Rng::new();
@@ -64,7 +64,7 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
     };
     for _ in 0..50 {
         let circle = random_circle(&mut rng, size, 1.0);
-        pass.add_shader(&circle);
+        pass.add_shader(&circle)?;
     }
 
     app.add("pass.main", pass);

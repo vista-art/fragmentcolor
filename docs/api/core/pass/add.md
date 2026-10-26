@@ -20,12 +20,13 @@ call.
 The pass holds every Light added to it, so a Light keeps lighting after
 the caller drops its handle.
 
-Returns `Result<&Pass, PassError>`. Models can fail at attach time when
-the Mesh layout doesn't match the Material's shader, and Cameras always
+Returns `Result<&Pass, PassError>`. A Model fails at attach time when
+the Mesh layout doesn't match the Material's shader, and with
+`PassError::ShaderKind` on a pass of compute shaders. Cameras always
 succeed. A Light fails with `PassError::LightCapReached { cap }` when a
-shader on the pass already holds as many lights as the device allows,
-and a Model fails the same way when its shader would take more than that
-from the pass. See [Light](https://fragmentcolor.org/api/scene/light)
+shader on the pass already holds as many lights as it takes on this
+device, and a Model fails the same way when its shader would take more
+than that from the pass. See [Light](https://fragmentcolor.org/api/scene/light)
 for the cap on each kind of device. Chain with `?` between calls.
 
 ## Example

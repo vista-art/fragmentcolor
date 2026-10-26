@@ -294,7 +294,7 @@ fn pass_add_mesh_tries_the_next_shader() {
         let float = Shader::new(FLOAT).expect("shader failed");
         let typed = Shader::new(TYPED).expect("shader failed");
         let pass = Pass::from_shader("float", &float);
-        pass.add_shader(&typed);
+        pass.add_shader(&typed).expect("add_shader failed");
         let mesh = Mesh::new();
         mesh.add_vertices(
             FULLSCREEN.map(|position| Vertex::new(position).set("id", 2.5).set("cell", [-1, 2])),

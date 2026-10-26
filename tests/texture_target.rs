@@ -76,7 +76,7 @@ fn pass_target_draws_into_resized_texture() {
         let fill = Shader::new(FILL).expect("fill shader failed");
         fill.set("color", [1.0, 0.0, 0.0, 1.0]).expect("set failed");
         let pass = Pass::new("fill");
-        pass.add_shader(&fill);
+        pass.add_shader(&fill).expect("add_shader failed");
         pass.set_target(&target).expect("set_target failed");
 
         renderer.render(&pass, &scratch).expect("render failed");
@@ -110,7 +110,7 @@ fn sampled_binding_reads_resized_texture() {
         let fill = Shader::new(FILL).expect("fill shader failed");
         fill.set("color", [1.0, 0.0, 0.0, 1.0]).expect("set failed");
         let draw = Pass::new("draw");
-        draw.add_shader(&fill);
+        draw.add_shader(&fill).expect("add_shader failed");
         draw.set_target(&target).expect("set_target failed");
 
         let post = Shader::new(SAMPLE_CENTER).expect("sample shader failed");

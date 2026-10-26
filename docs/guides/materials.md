@@ -53,7 +53,7 @@ right_shader.set("tex", &tex_b)?;
 
 // 4) One pass, two shaders
 let pass = Pass::from_shader("materials", &left_shader);
-pass.add_shader(&right_shader);
+pass.add_shader(&right_shader)?;
 
 // 5) Two quads, each attached to a different Shader
 let left:  Mesh = Quad::new([-0.9, -0.5], [-0.1, 0.5]).into();

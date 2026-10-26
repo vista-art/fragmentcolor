@@ -51,8 +51,8 @@ impl Pass {
     /// Attach a shader to this pass.
     #[uniffi::method(name = "addShader")]
     #[lsp_doc("docs/api/core/pass/add_shader.md")]
-    pub fn add_shader_mobile(&self, shader: Arc<Shader>) {
-        self.object.add_shader(shader.object.clone());
+    pub fn add_shader_mobile(&self, shader: Arc<Shader>) -> Result<(), FragmentColorError> {
+        Ok(self.add_shader(&shader)?)
     }
 
     /// Add a mesh to the last compatible shader in this pass.

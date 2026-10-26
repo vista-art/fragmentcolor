@@ -54,8 +54,8 @@ impl Pass {
 
     #[wasm_bindgen(js_name = "addShader")]
     #[lsp_doc("docs/api/core/pass/add_shader.md")]
-    pub fn add_shader_js(&self, shader: &Shader) {
-        self.object.add_shader(shader.object.clone());
+    pub fn add_shader_js(&self, shader: &Shader) -> Result<(), JsError> {
+        Ok(self.add_shader(shader)?)
     }
 
     #[wasm_bindgen(js_name = "addMesh")]

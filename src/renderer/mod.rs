@@ -4489,11 +4489,11 @@ struct VIn { @builtin(vertex_index) index: u32 };
             plain.add_mesh(model.mesh()).expect("mesh attaches");
             let own = Pass::new("plain");
             own.set_clear_color(BLUE).expect("set clear color");
-            own.add_shader(&plain);
+            own.add_shader(&plain).expect("add shader");
 
             renderer.render(&own, &target).expect("render its own pass");
             let alone = target.get_image().await.expect("read back");
-            pass.add_shader(&plain);
+            pass.add_shader(&plain).expect("add shader");
             renderer
                 .render(&pass, &target)
                 .expect("render the Model's pass");
@@ -4629,7 +4629,7 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat)
                 shader.add_mesh(&mesh).expect("mesh attaches");
                 let pass = Pass::new("instances");
                 pass.set_clear_color(BLUE).expect("set clear color");
-                pass.add_shader(&shader);
+                pass.add_shader(&shader).expect("add shader");
                 renderer.render(&pass, &target).expect("render");
                 pixels.push(pixel(&target.get_image().await.expect("read back"), LEFT));
             }
