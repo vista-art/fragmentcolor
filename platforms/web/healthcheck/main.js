@@ -834,10 +834,8 @@ await withModule('platforms.web.healthcheck.error_scopes', async () => {
 // Auto-generated: run all extracted examples (after init)
 await withModule('platforms.web.healthcheck.generated_examples', async () => {
   const mod = await import('./generated_examples.mjs');
+  // The runner waits for each example's GPU errors to land before the next one starts.
   const { passed, failed } = await mod.runExamples();
-  // A GPU error from an example's last frame logs its console.error once WebGPU
-  // reports it, so let it land before the marker ends the run.
-  await new Promise((resolve) => setTimeout(resolve, 100));
   if (failed === 0) {
     console.log(`\n✅ test result: ok. ${passed} passed; ${failed} failed`);
   } else {
