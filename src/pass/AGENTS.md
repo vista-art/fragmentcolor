@@ -6,7 +6,8 @@ Role
 
 Targets
 - `Pass::set_target(target)` attaches an offscreen color target for intermediate rendering (one per pass; subsequent calls overwrite).
-- `Pass::set_depth_target(target)` attaches an offscreen depth target; sample counts must match the color target.
+- `Pass::set_depth_target(target)` attaches an offscreen depth target; its size and sample count must match the color attachment at render time.
+- `ColorTarget::try_from` and `DepthTarget::try_from` refuse a texture with more than one mip level or layer (`check_plane`), since a pass draws into one level of one layer and can't pick it. A resize keeps both counts, so the check holds after one.
 - A pass that draws Models and has no depth target gets a pooled depth attachment from the renderer, matching its color attachment. `set_depth_target` replaces it. Passes without Models draw without depth.
 - There is no explicit `present(pass)` API — the last render pass in the executed DAG presents to the final frame by default.
 
@@ -19,6 +20,7 @@ Clear color
 
 Compute vs render
 - `Pass::is_compute()` reflects whether every attached shader is compute; a pass adopts the kind of the first attached shader.
+- `set_compute_dispatch` stores the counts, and `render` refuses one past the device's `max_compute_workgroups_per_dimension` with `PassError::DispatchLimit`, since the pass has no device.
 
 Mesh handling
 - `Pass::add_mesh(mesh)` delegates to the last compatible shader. For per-shader attachment, callers use `Shader::add_mesh(mesh)` directly. `Pass` never owns mesh validation itself.
