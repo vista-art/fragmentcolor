@@ -480,7 +480,7 @@ impl ShaderObject {
             .map(LightRoots::handles)
             .unwrap_or_default();
         let uniforms = parse_uniforms(&module, &filled)?;
-        let storage = RwLock::new(UniformStorage::new(&uniforms));
+        let storage = RwLock::new(UniformStorage::new(&uniforms)?);
         let hash = hash(source);
 
         let mut total_bytes = 0;
@@ -2170,6 +2170,35 @@ struct Arr { arr: array<vec4<f32>, 2> };
         let bytes = UniformInput::Bytes(vec![0; 8]);
         assert!(shader.object.set_input("cell", bytes.clone()).is_err());
         assert!(shader.object.set_input("buf.items[0].v", bytes).is_err());
+    }
+
+    // Story: an array of structs costs one key per field, not one per element, and its elements still resolve.
+    #[test]
+    fn array_elements_resolve_without_keys() {
+        let shader = Shader::new(
+            r#"
+struct Item { v: vec4<f32>, w: f32 };
+struct U { items: array<Item, 4096> };
+@group(0) @binding(0) var<uniform> u: U;
+@vertex fn vs_main() -> @builtin(position) vec4<f32> { return u.items[0].v; }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(u.items[1].w); }
+"#,
+        )
+        .expect("shader");
+        let mut keys = shader.list_keys();
+        keys.sort();
+        assert_eq!(keys, ["u", "u.items"]);
+        shader.set("u.items[4095].w", 2.5).expect("last element");
+        assert_eq!(shader.get::<f32>("u.items[4095].w").expect("get"), 2.5);
+        let err = shader.set("u.items[4096].w", 1.0).unwrap_err();
+        assert!(matches!(err, ShaderError::IndexOutOfBounds { .. }), "{err}");
+        // The element sits at its stride: 4095 elements of 32 bytes, then `w` after `v`.
+        let bytes: Vec<u8> = shader.get::<Vec<u8>>("u").expect("bytes");
+        assert_eq!(bytes.len(), 4096 * 32);
+        assert_eq!(
+            &bytes[4095 * 32 + 16..4095 * 32 + 20],
+            &2.5f32.to_le_bytes()
+        );
     }
 
     // Story: two globals on one slot fail at Shader::new, used by different entry points or not used at all.

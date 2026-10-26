@@ -21,7 +21,7 @@ pub(crate) struct UniformStorage {
 
 impl UniformStorage {
     /// Create a new UniformStorage from a HashMap of key->Uniform
-    pub(crate) fn new(uniforms: &HashMap<String, Uniform>) -> Self {
+    pub(crate) fn new(uniforms: &HashMap<String, Uniform>) -> Result<Self, ShaderError> {
         let mut storage = Self {
             uniform_bytes: Vec::new(),
             uniforms: HashMap::new(),
@@ -30,16 +30,17 @@ impl UniformStorage {
             push_blobs: HashMap::new(),
         };
 
-        storage.extend(uniforms);
+        storage.extend(uniforms)?;
 
-        storage
+        Ok(storage)
     }
 
     /// Extend the block with a HashMap of key->UniformData
-    fn extend(&mut self, uniforms: &HashMap<String, Uniform>) {
+    fn extend(&mut self, uniforms: &HashMap<String, Uniform>) -> Result<(), ShaderError> {
         for uniform in uniforms.values() {
-            self.add_uniform(uniform);
+            self.add_uniform(uniform)?;
         }
+        Ok(())
     }
 
     /// Add a single uniform to the storage.
@@ -49,18 +50,20 @@ impl UniformStorage {
     /// We will index both the uniform name and its fields with the dot notation.
     /// For example, for a struct uniform named `light` with fields `position` and `color`,
     /// we will index the uniform as `light` and the fields as `light.position` and `light.color`.
-    pub(crate) fn add_uniform(&mut self, uniform: &Uniform) {
+    /// Array elements are not indexed. A key like `u.items[2].v` resolves through `locate_key`.
+    pub(crate) fn add_uniform(&mut self, uniform: &Uniform) -> Result<(), ShaderError> {
         // For storage buffers AND push constants, we keep a separate CPU blob
         // and do not write to uniform_bytes.
         // For other value types, append to uniform_bytes and index by offset.
-        let mut base_offset = self.uniform_bytes.len() as u32;
+        let base_offset = self.uniform_bytes.len() as u32;
 
         let is_storage = matches!(uniform.data, UniformData::Storage(_));
         let is_push = matches!(uniform.data, UniformData::PushConstant(_));
-        if is_storage || is_push {
-            base_offset = self.uniform_bytes.len() as u32;
-        } else {
-            self.uniform_bytes.extend(uniform.data.to_bytes());
+        if !is_storage && !is_push {
+            // Reflected values are all zero, so the root starts as zero bytes.
+            let size = uniform.data.size() as usize;
+            reserve(&mut self.uniform_bytes, &uniform.name, size)?;
+            self.uniform_bytes.resize(base_offset as usize + size, 0);
         }
 
         // Determine span for indexing; push constants report 0 via size(),
@@ -102,52 +105,6 @@ impl UniformStorage {
                         },
                     ),
                 );
-
-                // Array-of-struct field: expand every element's struct
-                // fields too, so callers can read / write
-                // `<root>.<field>[i].<inner_field>` via the fast-path
-                // index. The slow-path in `update`/`get_bytes` already
-                // resolved writes correctly; this expansion is what
-                // unlocks `Shader::get(...)` on the same paths.
-                if let UniformData::Array(items) = field_data
-                    && let Some(ArrayElement {
-                        ty: elem_ty,
-                        count,
-                        stride,
-                    }) = items.first()
-                    && let Some(UniformData::Struct(StructShape {
-                        fields: elem_fields,
-                        ..
-                    })) = elem_ty.first()
-                {
-                    for i in 0..*count {
-                        let elem_base = base_offset + field_offset + i * *stride;
-                        for StructField {
-                            offset: ef_offset,
-                            name: ef_name,
-                            ty: ef_ty,
-                        } in elem_fields
-                        {
-                            let Some(ef_data) = ef_ty.first() else {
-                                continue;
-                            };
-                            let ek = format!("{}[{}].{}", key, i, ef_name);
-                            self.uniforms.insert(
-                                ek.clone(),
-                                (
-                                    elem_base + ef_offset,
-                                    ef_data.size(),
-                                    Uniform {
-                                        name: ek,
-                                        group: uniform.group,
-                                        binding: uniform.binding,
-                                        data: ef_data.clone(),
-                                    },
-                                ),
-                            );
-                        }
-                    }
-                }
             }
         }
 
@@ -155,10 +112,8 @@ impl UniformStorage {
         if let UniformData::Storage(data) = &uniform.data
             && let Some(StorageEntry { inner, span, .. }) = data.iter().next()
         {
-            // Create blob if missing
             self.storage_blobs
-                .entry(uniform.name.clone())
-                .or_insert_with(|| vec![0u8; *span as usize]);
+                .insert(uniform.name.clone(), zeros(&uniform.name, *span)?);
 
             // Index fields with their declared offsets relative to the storage blob
             if let Some(inner_shape) = inner.first()
@@ -209,10 +164,8 @@ impl UniformStorage {
         if let UniformData::PushConstant(data) = &uniform.data
             && let Some(PushEntry { inner, span }) = data.iter().next()
         {
-            let span = *span;
             self.push_blobs
-                .entry(uniform.name.clone())
-                .or_insert_with(|| vec![0u8; span as usize]);
+                .insert(uniform.name.clone(), zeros(&uniform.name, *span)?);
 
             // Index fields for direct access if it's a struct
             if let Some(inner_shape) = inner.first()
@@ -244,6 +197,7 @@ impl UniformStorage {
                 }
             }
         }
+        Ok(())
     }
 
     /// Replaces the bytes of the storage root `root`, which must be exactly its size.
@@ -548,6 +502,23 @@ impl UniformStorage {
     pub(crate) fn has_storage(&self, root: &str) -> bool {
         self.storage_blobs.contains_key(root)
     }
+}
+
+/// Reserves `size` more bytes in `bytes` for the root `name`, refusing a size the process can't hold.
+fn reserve(bytes: &mut Vec<u8>, name: &str, size: usize) -> Result<(), ShaderError> {
+    bytes.try_reserve_exact(size).map_err(|_| {
+        ShaderError::TypeMismatch(format!(
+            "{name}: {size} bytes is more memory than this process can hold"
+        ))
+    })
+}
+
+/// `span` zero bytes for the root `name`.
+fn zeros(name: &str, span: u32) -> Result<Vec<u8>, ShaderError> {
+    let mut bytes = Vec::new();
+    reserve(&mut bytes, name, span as usize)?;
+    bytes.resize(span as usize, 0);
+    Ok(bytes)
 }
 
 /// Copies `bytes` over `blob`, refusing any other length.
