@@ -917,11 +917,11 @@ impl TextureObject {
 
     /// Internal method to create a TextureObject from a DynamicImage instance.
     ///
-    /// `format_override = None` infers the format from `image.color()`. The image is
-    /// re-decoded to match the target format (e.g. `R16Unorm` triggers `to_luma16()`,
-    /// preserving 16-bit precision). Mipmaps are generated CPU-side via
-    /// `image::imageops::resize` for every format `supports_cpu_mipmaps` takes,
-    /// the float formats included. Any other format is refused.
+    /// `format_override = None` infers the format from `image.color()`, and any
+    /// format outside `supports_cpu_mipmaps` is refused. The image is decoded again
+    /// to match the format, so `R16Unorm` goes through `to_luma16()` and keeps 16 bits.
+    /// Mips of a unorm format come from `image::imageops::resize` with the Triangle filter.
+    /// The float formats take [`downsample_floats`] instead, since that resize clamps them to 0..1.
     fn from_image(
         context: &RenderContext,
         image: &DynamicImage,
@@ -1437,15 +1437,13 @@ pub(crate) fn infer_format(color: image::ColorType) -> wgpu::TextureFormat {
     }
 }
 
-/// Decode `image` into the right pixel buffer for `format`, then upload it as
-/// mip 0 — and (when `mip_level_count > 1`) iteratively downsample with the
-/// Triangle filter for each subsequent level. This is the dispatch that lets us
-/// preserve 16-bit precision (`R16Unorm` from a 16-bit grayscale PNG) instead of
-/// silently going through `to_rgba8`.
+/// Uploads `image` with its mips, decoded into the pixels `format` holds.
 ///
-/// Each branch picks the matching `image` crate decoder so the channel layout and
-/// bytes-per-pixel agree with the wgpu format, and any format [`check_decode`] refuses
-/// is an error here too, though from_image checks it before it makes the texture.
+/// A format [`check_decode`] refuses is an error, as it is in `from_image`.
+/// Each branch decodes it into the channels and bytes per pixel of `format`,
+/// so a 16-bit grayscale PNG keeps its precision as `R16Unorm`, never `to_rgba8`.
+/// A unorm format takes its mips from `image::imageops::resize` with the Triangle filter.
+/// The float formats take [`downsample_floats`] instead, since that resize clamps them to 0..1.
 pub(crate) fn write_image_levels(
     context: &RenderContext,
     image: &DynamicImage,
