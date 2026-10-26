@@ -19,8 +19,12 @@ sets one transform on all five slots, and a `texture_transform` after it
 replaces the transform of its slot alone.
 
 Whether a UV past 0 to 1 repeats the texture depends on the sampler. The
-PBR shader samples every slot with the sampler options of the base color
-texture.
+PBR shader samples all five slots with one sampler, which takes the
+options of the first texture the material sets, in `TextureSlot` order:
+base color, metallic-roughness, normal, occlusion, then emissive. A slot
+left at its 1×1 default doesn't count. So a material with only an
+occlusion map tiles it with the occlusion map's own options, and one with
+a clamped base color texture clamps a tiled normal map too.
 
 ## Example
 

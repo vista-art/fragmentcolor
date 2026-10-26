@@ -2,7 +2,9 @@
 
 Bind an emissive map to the canonical `emissive_map` slot. The default PBR
 shader samples it in `fs_main` and multiplies by the factor: per-fragment
-emission is `material.emissive * textureSample(emissive_map, sampler, in.uv).rgb`.
+emission is `material.emissive * textureSample(emissive_map, pbr_sampler, uv).rgb`,
+where `uv` is `slot_uv(material.uv[4], in.uv0, in.uv1)`, the slot's own UV
+set through its own transform.
 
 Unset, this slot resolves to a 1×1 white default so the multiplied
 emission falls back to the `material.emissive` factor as-is.

@@ -174,7 +174,8 @@ mod tests {
 
     /// A 2×2 texture, its texels in rows from the top, that repeats and
     /// samples the nearest texel. The PBR shader samples every slot with
-    /// the base color texture's sampler, so only that one's options count.
+    /// the options of the first texture set, in slot order, so each test
+    /// gives every texture the same options.
     async fn texture(renderer: &Renderer, texels: [[u8; 4]; 4]) -> Texture {
         let bytes = texels.concat();
         let texture = renderer

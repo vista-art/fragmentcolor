@@ -179,12 +179,15 @@ Seeds every attribute [`Material::pbr`](/api/scene/material#pbr)
 reads (`NORMAL`, `UV0`, `COLOR0`, `UV1`, `TANGENT`) with a neutral identity
 default; chain `.set(...)` to override the slots a real mesh has data for.
 
-A vertex built with `Vertex::pbr(pos)` alone renders the same way
-[`Scene::load`](/api/scene/scene#load) renders a
-glTF primitive that carries only POSITION. Face-normal computation, UV
-defaults, vertex tint, and tangents all collapse to the values the loader
-falls back to. Useful for building PBR meshes by hand without spelling
-out every default attribute.
+The defaults are the values
+[`Scene::load`](/api/scene/scene#load) falls back
+to for a glTF primitive that lacks those attributes, with two exceptions.
+The loader computes a missing normal from the faces, where `Vertex::pbr`
+points every normal along +Z. And the loader copies a primitive's
+`TEXCOORD_0` into `UV1` when it has no `TEXCOORD_1`, where `Vertex::pbr`
+keeps `UV1` at `[0, 0]` after you set `UV0`, until you set `UV1` too.
+Useful for building PBR meshes by hand without spelling out every default
+attribute.
 
 Defaults:
 
@@ -193,7 +196,7 @@ Defaults:
 | `NORMAL`  | `[0, 0, 1]`             | forward-facing surface                          |
 | `UV0`     | `[0, 0]`                | corner of the texture                           |
 | `COLOR0`  | `[1, 1, 1, 1]`          | identity vertex tint                            |
-| `UV1`     | `[0, 0]`                | unused; only matters for maps that opt into UV1 |
+| `UV1`     | `[0, 0]`                | read by slots `texture_uv` puts on UV set 1     |
 | `TANGENT` | `[1, 0, 0, 1]`          | T = +X, bitangent sign +1                       |
 
 #### Example
