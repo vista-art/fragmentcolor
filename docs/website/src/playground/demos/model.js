@@ -120,8 +120,9 @@ export function frame(state, renderer, target, time, size, pointer, gesture = { 
   if (gesture.zoom || gesture.pan[0] || gesture.pan[1]) state.turning = false;
   if (state.turning) state.yaw += delta * SPIN;
   // A drag the height of the canvas turns the camera half a circle.
-  state.yaw -= (gesture.pan[0] / size[1]) * Math.PI;
-  state.pitch = clamp(state.pitch + (gesture.pan[1] / size[1]) * Math.PI, -1.4, 1.4);
+  const height = Math.max(size[1], 1);
+  state.yaw -= (gesture.pan[0] / height) * Math.PI;
+  state.pitch = clamp(state.pitch + (gesture.pan[1] / height) * Math.PI, -1.4, 1.4);
   state.distance = clamp(state.distance / 2 ** gesture.zoom, DISTANCE / 3, DISTANCE * 3);
 
   const reach = state.distance * Math.cos(state.pitch);
@@ -323,8 +324,9 @@ function writeRust({ library, values }) {
     "        state.yaw += delta * SPIN;",
     "    }",
     "    // A drag the height of the window turns the camera half a circle.",
-    "    state.yaw -= gesture.pan[0] / size[1] * PI;",
-    "    state.pitch = (state.pitch + gesture.pan[1] / size[1] * PI).clamp(-1.4, 1.4);",
+    "    let height = size[1].max(1.0);",
+    "    state.yaw -= gesture.pan[0] / height * PI;",
+    "    state.pitch = (state.pitch + gesture.pan[1] / height * PI).clamp(-1.4, 1.4);",
     "    state.distance = (state.distance / gesture.zoom.exp2()).clamp(DISTANCE / 3.0, DISTANCE * 3.0);",
     "",
     "    let reach = state.distance * state.pitch.cos();",
@@ -335,7 +337,7 @@ function writeRust({ library, values }) {
     "    ];",
     "    state",
     "        .camera",
-    "        .set_aspect(size[0].max(1.0) / size[1].max(1.0))?",
+    "        .set_aspect(size[0].max(1.0) / height)?",
     "        .look_at(eye, CENTER, [0.0, 1.0, 0.0])?;",
     "    // Both lights turn with the camera, so the side in view stays lit.",
     "    state.key.set_direction(turn(KEY, state.yaw))?;",
@@ -473,8 +475,9 @@ function writePython({ library, values }) {
     "    if state.turning:",
     "        state.yaw += delta * SPIN",
     "    # A drag the height of the canvas turns the camera half a circle.",
-    "    state.yaw -= gesture.pan[0] / size[1] * math.pi",
-    "    state.pitch = min(max(state.pitch + gesture.pan[1] / size[1] * math.pi, -1.4), 1.4)",
+    "    height = max(size[1], 1)",
+    "    state.yaw -= gesture.pan[0] / height * math.pi",
+    "    state.pitch = min(max(state.pitch + gesture.pan[1] / height * math.pi, -1.4), 1.4)",
     "    state.distance = min(",
     "        max(state.distance / 2**gesture.zoom, DISTANCE / 3), DISTANCE * 3",
     "    )",
@@ -485,7 +488,7 @@ function writePython({ library, values }) {
     "        CENTER[1] + state.distance * math.sin(state.pitch),",
     "        CENTER[2] + reach * math.cos(state.yaw),",
     "    ]",
-    "    aspect = max(size[0], 1) / max(size[1], 1)",
+    "    aspect = max(size[0], 1) / height",
     "    state.camera.set_aspect(aspect).look_at(eye, CENTER, [0.0, 1.0, 0.0])",
     "    # Both lights turn with the camera, so the side in view stays lit.",
     "    state.key.set_direction(turn(KEY, state.yaw))",
@@ -618,8 +621,9 @@ function writeSwift({ library, values }) {
     "        state.yaw += delta * spin",
     "    }",
     "    // A drag the height of the view turns the camera half a circle.",
-    "    state.yaw -= gesture.pan[0] / size[1] * .pi",
-    "    state.pitch = min(max(state.pitch + gesture.pan[1] / size[1] * .pi, -1.4), 1.4)",
+    "    let height = max(size[1], 1)",
+    "    state.yaw -= gesture.pan[0] / height * .pi",
+    "    state.pitch = min(max(state.pitch + gesture.pan[1] / height * .pi, -1.4), 1.4)",
     "    let zoomed = state.distance / pow(2, gesture.zoom)",
     "    state.distance = min(max(zoomed, startDistance / 3), startDistance * 3)",
     "",
@@ -629,7 +633,7 @@ function writeSwift({ library, values }) {
     "        center[1] + state.distance * sin(state.pitch),",
     "        center[2] + reach * cos(state.yaw),",
     "    ]",
-    "    let aspect = max(size[0], 1) / max(size[1], 1)",
+    "    let aspect = max(size[0], 1) / height",
     "    _ = try state.camera.setAspect(aspect).lookAt(eye, center, [0, 1, 0])",
     "    // Both lights turn with the camera, so the side in view stays lit.",
     "    _ = try state.key.setDirection(turn(keyDirection, state.yaw))",
@@ -760,7 +764,7 @@ function writeKotlin({ library, values }) {
     "    if (gesture.zoom != 0.0 || gesture.pan != listOf(0.0, 0.0)) state.turning = false",
     "    if (state.turning) state.yaw += delta * SPIN",
     "    // A drag the height of the view turns the camera half a circle.",
-    "    val height = size[1].toDouble()",
+    "    val height = maxOf(size[1].toDouble(), 1.0)",
     "    state.yaw -= gesture.pan[0] / height * PI",
     "    state.pitch = (state.pitch + gesture.pan[1] / height * PI).coerceIn(-1.4, 1.4)",
     "    state.distance = (state.distance / 2.0.pow(gesture.zoom)).coerceIn(DISTANCE / 3, DISTANCE * 3)",
@@ -771,7 +775,7 @@ function writeKotlin({ library, values }) {
     "        CENTER[1] + state.distance * sin(state.pitch),",
     "        CENTER[2] + reach * cos(state.yaw),",
     "    )",
-    "    val aspect = maxOf(size[0].toDouble(), 1.0) / maxOf(height, 1.0)",
+    "    val aspect = maxOf(size[0].toDouble(), 1.0) / height",
     "    state.camera.setAspect(aspect).lookAt(eye, CENTER, listOf(0.0, 1.0, 0.0))",
     "    // Both lights turn with the camera, so the side in view stays lit.",
     "    state.key.setDirection(turn(KEY, state.yaw))",
