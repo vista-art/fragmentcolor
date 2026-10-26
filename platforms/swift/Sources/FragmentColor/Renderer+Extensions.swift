@@ -35,7 +35,7 @@ extension Renderer {
 
     /// Create a headless texture target from a `Size`.
     public func createTextureTarget(_ size: Size) async throws -> TextureTarget {
-        try await createTextureTarget(width: size.width, height: size.height)
+        try await createTextureTarget(size: size)
     }
 
     // MARK: - createDepthTexture
@@ -47,7 +47,7 @@ extension Renderer {
 
     /// Create a depth texture from a `Size`.
     public func createDepthTexture(_ size: Size) async throws -> Texture {
-        try await createDepthTexture(width: size.width, height: size.height)
+        try await createDepthTexture(size: size)
     }
 
     // MARK: - createStorageTexture

@@ -33,7 +33,7 @@ final class Healthcheck: ExampleCase {
         // DOC: (end)
 
         // DOC: Renderer.create_texture_target (begin)
-        let target = try await renderer.createTextureTarget(width: 32, height: 64)
+        let target = try await renderer.createTextureTarget([32, 64])
         // DOC: (end)
 
         // DOC: Shader.new (begin)

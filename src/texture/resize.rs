@@ -24,6 +24,34 @@ pub(crate) fn check_size(width: u32, height: u32, limit: u32) -> Result<(), Text
     )))
 }
 
+/// Checks a texture's size against `limits` for its `dimension`. A 2D texture
+/// takes each side in 1 to the 2D limit and 1 to the array limit of layers,
+/// and a 3D texture takes every side, its depth too, in 1 to the 3D limit.
+pub(crate) fn check_extent(
+    limits: &wgpu::Limits,
+    size: wgpu::Extent3d,
+    dimension: wgpu::TextureDimension,
+) -> Result<(), TextureError> {
+    let (side, layers) = match dimension {
+        wgpu::TextureDimension::D3 => (
+            limits.max_texture_dimension_3d,
+            limits.max_texture_dimension_3d,
+        ),
+        _ => (
+            limits.max_texture_dimension_2d,
+            limits.max_texture_array_layers,
+        ),
+    };
+    check_size(size.width, size.height, side)?;
+    let depth = size.depth_or_array_layers;
+    if (1..=layers).contains(&depth) {
+        return Ok(());
+    }
+    Err(TextureError::InvalidInput(format!(
+        "can't use a depth of {depth}, it must lie in 1 to {layers}"
+    )))
+}
+
 /// Checks a size for a texture of one layer, such as a target or a depth attachment:
 /// a depth of 1 or none, and each side in 1 to `limit`.
 pub(crate) fn check_plane(size: Size, limit: u32) -> Result<(), TextureError> {
@@ -124,6 +152,26 @@ mod tests {
             check_size(8, 8193, 8192),
             Err(TextureError::InvalidInput(_))
         ));
+    }
+
+    // Story: a 2D texture takes layers up to the array limit, and a 3D one takes
+    // every side up to the 3D limit.
+    #[test]
+    fn check_extent_takes_layers_within_the_limits() {
+        let limits = wgpu::Limits::downlevel_defaults();
+        let size = |width, height, depth_or_array_layers| wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers,
+        };
+        let (flat, deep) = (wgpu::TextureDimension::D2, wgpu::TextureDimension::D3);
+        assert!(check_extent(&limits, size(8, 8, 1), flat).is_ok());
+        assert!(check_extent(&limits, size(8, 8, 6), flat).is_ok());
+        assert!(check_extent(&limits, size(8, 8, 0), flat).is_err());
+        assert!(check_extent(&limits, size(8, 8, u32::MAX), flat).is_err());
+        assert!(check_extent(&limits, size(0, 8, 1), flat).is_err());
+        assert!(check_extent(&limits, size(8, 8, 8), deep).is_ok());
+        assert!(check_extent(&limits, size(8, 8, u32::MAX), deep).is_err());
     }
 
     // Story: a plane has one layer, and its sides pass the same check.

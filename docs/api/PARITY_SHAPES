@@ -8,8 +8,6 @@
 #   <doc> <platform> <Type.method>: <binding shape> | rust <rust shape>
 # A `?` marks a parameter a caller may leave out.
 
-docs/api/core/renderer/create_depth_texture.md kotlin Renderer.createDepthTexture: (int, int) -> Texture throws async | rust (into Size) -> Texture throws async
-docs/api/core/renderer/create_depth_texture.md swift Renderer.createDepthTexture: (int, int) -> Texture throws async | rust (into Size) -> Texture throws async
 docs/api/core/renderer/create_storage_texture.md kotlin Renderer.createStorageTexture: (Size, TextureFormat, bytes?, int?) -> Texture throws async | rust (into TextureInput) -> Texture throws async
 docs/api/core/renderer/create_storage_texture.md python Renderer.create_storage_texture: (PySize, TextureFormat, bytes?, PyTextureUsage?, int?) -> Texture throws | rust (into TextureInput) -> Texture throws async
 docs/api/core/renderer/create_storage_texture.md swift Renderer.createStorageTexture: (Size, TextureFormat, bytes?, int?) -> Texture throws async | rust (into TextureInput) -> Texture throws async
@@ -18,8 +16,6 @@ docs/api/core/renderer/create_target.md kotlin Renderer.createTarget: (int) -> W
 docs/api/core/renderer/create_target.md swift Renderer.createTarget: (int) -> WindowTarget throws | rust (into SurfaceTarget) -> RenderTarget throws async
 docs/api/core/renderer/create_texture.md kotlin Renderer.createTexture: (TextureInputMobile, TextureOptions) -> Texture throws async | rust (into TextureInput) -> Texture throws async
 docs/api/core/renderer/create_texture.md swift Renderer.createTexture: (TextureInputMobile, TextureOptions) -> Texture throws async | rust (into TextureInput) -> Texture throws async
-docs/api/core/renderer/create_texture_target.md kotlin Renderer.createTextureTarget: (int, int) -> TextureTarget throws async | rust (into Size) -> TextureTarget throws async
-docs/api/core/renderer/create_texture_target.md swift Renderer.createTextureTarget: (int, int) -> TextureTarget throws async | rust (into Size) -> TextureTarget throws async
 docs/api/core/shader/set_registry.md kotlin Shader.useRegistry: (text) -> self | rust (text) -> unit
 docs/api/core/shader/set_registry.md swift Shader.useRegistry: (text) -> self | rust (text) -> unit
 docs/api/scene/camera/view_proj.md kotlin Camera.viewProj: () -> floats | rust () -> matrix

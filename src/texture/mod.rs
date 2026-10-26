@@ -46,7 +46,7 @@ pub use region::TextureRegion;
 #[cfg(mobile)]
 pub use region::TextureRegionMobile;
 pub(crate) use registration::Registration;
-pub(crate) use resize::{check_plane, check_size, resize};
+pub(crate) use resize::{check_extent, check_plane, check_size, resize};
 
 pub mod meta;
 pub use meta::{
@@ -728,6 +728,7 @@ impl TextureObject {
         options: SamplerOptions,
     ) -> Result<Self, TextureError> {
         check_format(context.device.features(), format, usage)?;
+        check_extent(&context.device.limits(), size, dimension(size))?;
         let descriptor = Self::texture_descriptor("Generic Texture", size, format, usage, 1, 1); // @TODO mip_count, sample_count
         let inner = context.device.create_texture(&descriptor);
         let size = inner.size();
@@ -842,6 +843,7 @@ impl TextureObject {
         usage: wgpu::TextureUsages,
     ) -> Result<Self, TextureError> {
         check_format(context.device.features(), format, usage)?;
+        check_extent(&context.device.limits(), size, dimension(size))?;
         let bpp = bytes_per_pixel(format);
 
         let expected = (size.width as usize)
@@ -902,6 +904,7 @@ impl TextureObject {
         };
         let format = format_override.unwrap_or_else(|| infer_format(image.color()));
         check_format(context.device.features(), format, usage)?;
+        check_extent(&context.device.limits(), size, dimension(size))?;
 
         let want_mips = generate_mipmaps && supports_cpu_mipmaps(format);
         let mip_level_count = if want_mips {
@@ -977,6 +980,7 @@ impl TextureObject {
             height: h,
             depth_or_array_layers: 1,
         };
+        check_extent(&context.device.limits(), size, dimension(size))?;
         let mip_level_count = levels.len() as u32;
         let descriptor =
             Self::texture_descriptor("Prepared Texture", size, format, usage, 1, mip_level_count);
@@ -1189,10 +1193,7 @@ impl TextureObject {
             size,
             mip_level_count,
             sample_count,
-            dimension: match size.depth_or_array_layers {
-                1 => wgpu::TextureDimension::D2,
-                _ => wgpu::TextureDimension::D3,
-            },
+            dimension: dimension(size),
             format,
             view_formats: &[],
             usage,
@@ -1225,6 +1226,14 @@ pub(crate) fn source_usage(extra: Option<u32>) -> wgpu::TextureUsages {
             wgpu::TextureUsages::empty(),
             wgpu::TextureUsages::from_bits_truncate,
         )
+}
+
+/// The dimension a texture of `size` gets: 2D with one layer, and 3D with more.
+fn dimension(size: wgpu::Extent3d) -> wgpu::TextureDimension {
+    match size.depth_or_array_layers {
+        1 => wgpu::TextureDimension::D2,
+        _ => wgpu::TextureDimension::D3,
+    }
 }
 
 /// Number of mip levels in a full chain that goes down to 1×1 for the given dimensions.

@@ -28,6 +28,7 @@
 ### Swift
 
 - `TextureTarget.resize([w, h])` and `WindowTarget.resize([w, h])` throw `FragmentColorError` for an array that isn't 2 or 3 numbers long, where they stopped the app.
+- `createTextureTarget` and `createDepthTexture` pass the whole `Size`, depth included, to the checks the other languages run, in Swift and Kotlin. Their `Size` overloads dropped the depth, so a depth of 2 built a flat target where Rust, JavaScript and Python refuse it. The uniffi methods take a `Size` where they took a width and a height, and the `[w, h]` and `Size` overloads stay.
 - The `Camera`, `Light` and `Material` setters that return their receiver, such as `lookAt`, `setAspect` and `setDirection`, are `@discardableResult`, as `Scene` and `Pass` were. A per-frame update no longer needs `_ =` in front.
 
 ### Breaking and behavior changes
@@ -37,6 +38,7 @@
 - In a pass that draws models, a shader that draws none, such as a fullscreen backdrop, ignores the depth target the pass sets, where it tested and wrote it and could hide every model.
 - Texture ids are unique across renderers, so a second renderer's first texture no longer gets id 1.
 - `resize` on a target can fail. Rust's `Target::resize` returns `Result<(), TextureError>`, JavaScript throws an `Error`, Python raises `FragmentColorError`, Swift calls need `try`, and Kotlin calls can throw `FragmentColorException`. A width or height of zero on a `TextureTarget` is an error that keeps its size. A `WindowTarget` accepts a width or height of zero, such as the 0×0 a minimized window reports, without an error: it keeps its last size and draws again once the window has one, where it handed the surface a size of zero. A side past the device limit is an error on either target. `App::resize` and `App::resize_target` return the same `Result`.
+- `create_storage_texture` and `create_texture` check a texture's size against the device's limits and return `TextureError::InvalidInput`, the error `resize` returns, where a size past them reached a wgpu validation error. That covers an explicit size, a decoded image, a prepared mip chain and a KTX2 file. A 2D texture takes each side up to the 2D limit, a 3D texture each side and its depth up to the 3D limit, and a side or depth of zero is refused.
 - `create_target`, `create_texture_target` and `create_depth_texture` check the size against the device limit and return the error `resize` returns, where a size past it reached a wgpu validation error. In Rust that is `TextureError::InvalidInput` inside the new `InitializationError::TextureError` variant. Swift and Kotlin get the `Render` case of `FragmentColorError` from these calls, as from `resize`, where creation errors were `Init`. A texture target or depth texture refuses a width or height of zero and a depth other than 1, and a window with no area yet still gets one pixel on that side.
 - Resizing a `TextureTarget` to its current size keeps its pixels.
 - A `TextureId` on its own doesn't keep its texture. Once the last handle, shader uniform and pass target holding a texture drop, `read_texture` and `unregister_texture` report its id as not found.

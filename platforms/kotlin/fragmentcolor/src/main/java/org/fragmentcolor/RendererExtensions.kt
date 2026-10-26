@@ -46,16 +46,10 @@ fun Renderer.createTarget(surface: Surface): WindowTarget {
 suspend fun Renderer.createTextureTarget(size: List<UInt>): TextureTarget =
     createTextureTarget(sizeRecord(size, "createTextureTarget"))
 
-/** Create a headless texture target from a [Size]. */
-suspend fun Renderer.createTextureTarget(size: Size): TextureTarget =
-    createTextureTarget(size.width, size.height)
-
 /** Create a depth texture from a `[width, height]` list. */
 suspend fun Renderer.createDepthTexture(size: List<UInt>): Texture =
     createDepthTexture(sizeRecord(size, "createDepthTexture"))
 
-/** Create a depth texture from a [Size]. */
-suspend fun Renderer.createDepthTexture(size: Size): Texture = createDepthTexture(size.width, size.height)
 
 // ── createStorageTexture ─────────────────────────────────────────────────────
 

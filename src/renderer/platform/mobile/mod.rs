@@ -95,22 +95,16 @@ impl Renderer {
         Arc::new(Self::new())
     }
 
-    /// Create a headless `TextureTarget` sized `width` × `height`. Uniffi
-    /// cannot marshal `impl Into<Size>`, so the mobile entry point accepts
-    /// width/height as `u32` primitives and builds the `Size` internally.
-    /// Returns a `MobileTextureTarget` wrapper that exposes `size()`,
-    /// `resize()`, and `get_image()` on the Swift / Kotlin side.
+    /// Create a headless `TextureTarget` of `size`. Uniffi can't marshal
+    /// `impl Into<Size>`, so the mobile entry point takes the `Size` record,
+    /// layers included, and checks it the way every binding does.
     #[uniffi::method(name = "createTextureTarget")]
     #[lsp_doc("docs/api/core/renderer/hidden/create_texture_target_mobile.md")]
     pub async fn create_texture_target_mobile(
         self: Arc<Self>,
-        width: u32,
-        height: u32,
+        size: Size,
     ) -> Result<Arc<MobileTextureTarget>, FragmentColorError> {
-        let tex = self
-            .create_texture_target(Size::new(width, height, None))
-            .await
-            .map_err(FragmentColorError::from)?;
+        let tex = self.create_texture_target(size).await?;
         Ok(MobileTextureTarget::new(tex))
     }
 
@@ -221,21 +215,16 @@ impl Renderer {
         }
     }
 
-    /// Create a depth texture (Depth32Float) at the given size.
-    ///
-    /// Uniffi cannot marshal `impl Into<Size>`, so width/height are taken as
-    /// `u32` primitives and a `Size` is constructed internally.
+    /// Create a depth texture (Depth32Float) of `size`. Uniffi can't marshal
+    /// `impl Into<Size>`, so the mobile entry point takes the `Size` record,
+    /// layers included, and checks it the way every binding does.
     #[uniffi::method(name = "createDepthTexture")]
     #[lsp_doc("docs/api/core/renderer/hidden/create_depth_texture_mobile.md")]
     pub async fn create_depth_texture_mobile(
         self: Arc<Self>,
-        width: u32,
-        height: u32,
+        size: Size,
     ) -> Result<Arc<crate::texture::Texture>, FragmentColorError> {
-        let tex = self
-            .create_depth_texture(crate::Size::new(width, height, None))
-            .await
-            .map_err(FragmentColorError::from)?;
+        let tex = self.create_depth_texture(size).await?;
         Ok(Arc::new(tex))
     }
 

@@ -107,7 +107,7 @@ class Healthcheck : ExampleCase() {
         // DOC: (end)
 
         // DOC: Renderer.create_texture_target (begin)
-        val target = renderer.createTextureTarget(32u, 64u)
+        val target = renderer.createTextureTarget(listOf(32u, 64u))
         // DOC: (end)
 
         // DOC: Shader.new (begin)

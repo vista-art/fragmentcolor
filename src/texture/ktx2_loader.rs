@@ -204,12 +204,14 @@ pub(crate) fn from_ktx2_bytes(
         depth_or_array_layers: 1,
     };
     crate::texture::check_format(context.device.features(), wgpu_format, usage)?;
+    let dimension = wgpu::TextureDimension::D2;
+    crate::texture::check_extent(&context.device.limits(), size, dimension)?;
     let descriptor = wgpu::TextureDescriptor {
         label: Some("KTX2 Source Texture"),
         size,
         mip_level_count: stored_levels,
         sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
+        dimension,
         format: wgpu_format,
         view_formats: &[],
         usage,

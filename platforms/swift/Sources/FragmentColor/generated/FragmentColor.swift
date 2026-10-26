@@ -3032,12 +3032,11 @@ public func FfiConverterTypeQuad_lower(_ value: Quad) -> UInt64 {
 public protocol RendererProtocol: AnyObject, Sendable {
     
     /**
-     * Create a depth texture (Depth32Float) at the given size.
-     *
-     * Uniffi cannot marshal `impl Into<Size>`, so width/height are taken as
-     * `u32` primitives and a `Size` is constructed internally.
+     * Create a depth texture (Depth32Float) of `size`. Uniffi can't marshal
+     * `impl Into<Size>`, so the mobile entry point takes the `Size` record,
+     * layers included, and checks it the way every binding does.
      */
-    func createDepthTexture(width: UInt32, height: UInt32) async throws  -> Texture
+    func createDepthTexture(size: Size) async throws  -> Texture
     
     /**
      * Wrap a native platform video-frame source as an external texture.
@@ -3071,13 +3070,11 @@ public protocol RendererProtocol: AnyObject, Sendable {
     func createTexture(input: TextureInputMobile, options: TextureOptions?) async throws  -> Texture
     
     /**
-     * Create a headless `TextureTarget` sized `width` × `height`. Uniffi
-     * cannot marshal `impl Into<Size>`, so the mobile entry point accepts
-     * width/height as `u32` primitives and builds the `Size` internally.
-     * Returns a `MobileTextureTarget` wrapper that exposes `size()`,
-     * `resize()`, and `get_image()` on the Swift / Kotlin side.
+     * Create a headless `TextureTarget` of `size`. Uniffi can't marshal
+     * `impl Into<Size>`, so the mobile entry point takes the `Size` record,
+     * layers included, and checks it the way every binding does.
      */
-    func createTextureTarget(width: UInt32, height: UInt32) async throws  -> TextureTarget
+    func createTextureTarget(size: Size) async throws  -> TextureTarget
     
     /**
      * Single mobile `render` entry. Mirrors the canonical Rust
@@ -3181,17 +3178,16 @@ public convenience init() {
 
     
     /**
-     * Create a depth texture (Depth32Float) at the given size.
-     *
-     * Uniffi cannot marshal `impl Into<Size>`, so width/height are taken as
-     * `u32` primitives and a `Size` is constructed internally.
+     * Create a depth texture (Depth32Float) of `size`. Uniffi can't marshal
+     * `impl Into<Size>`, so the mobile entry point takes the `Size` record,
+     * layers included, and checks it the way every binding does.
      */
-open func createDepthTexture(width: UInt32, height: UInt32)async throws  -> Texture  {
+open func createDepthTexture(size: Size)async throws  -> Texture  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_fragmentcolor_fn_method_renderer_createdepthtexture(
-                        self.uniffiCloneHandle(),FfiConverterUInt32.lower(width),FfiConverterUInt32.lower(height)
+                        self.uniffiCloneHandle(),FfiConverterTypeSize_lower(size)
                 )
             },
             pollFunc: ffi_fragmentcolor_rust_future_poll_u64,
@@ -3270,18 +3266,16 @@ open func createTexture(input: TextureInputMobile, options: TextureOptions?)asyn
 }
     
     /**
-     * Create a headless `TextureTarget` sized `width` × `height`. Uniffi
-     * cannot marshal `impl Into<Size>`, so the mobile entry point accepts
-     * width/height as `u32` primitives and builds the `Size` internally.
-     * Returns a `MobileTextureTarget` wrapper that exposes `size()`,
-     * `resize()`, and `get_image()` on the Swift / Kotlin side.
+     * Create a headless `TextureTarget` of `size`. Uniffi can't marshal
+     * `impl Into<Size>`, so the mobile entry point takes the `Size` record,
+     * layers included, and checks it the way every binding does.
      */
-open func createTextureTarget(width: UInt32, height: UInt32)async throws  -> TextureTarget  {
+open func createTextureTarget(size: Size)async throws  -> TextureTarget  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_fragmentcolor_fn_method_renderer_createtexturetarget(
-                        self.uniffiCloneHandle(),FfiConverterUInt32.lower(width),FfiConverterUInt32.lower(height)
+                        self.uniffiCloneHandle(),FfiConverterTypeSize_lower(size)
                 )
             },
             pollFunc: ffi_fragmentcolor_rust_future_poll_u64,
@@ -9113,7 +9107,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_pass_setviewport() != 4614) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createdepthtexture() != 48149) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_createdepthtexture() != 43106) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_renderer_createexternaltexture() != 14702) {
@@ -9125,7 +9119,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_renderer_createtexture() != 57813) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createtexturetarget() != 7750) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_createtexturetarget() != 43834) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_renderer_load() != 27451) {
