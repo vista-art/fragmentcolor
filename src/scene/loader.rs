@@ -1181,6 +1181,22 @@ mod tests {
         r#"{"type":"directional","color":[1.0,0.95,0.9],"intensity":2.0}"#;
 
     #[test]
+    fn load_names_the_light_at_fault() {
+        // Light 0 is fine; the node points at light 1, whose range is negative.
+        let lights = format!(r#"{DIRECTIONAL_LIGHT},{{"type":"point","range":-5.0}}"#);
+        let json = CAMERA_LIGHT_JSON
+            .replace(DIRECTIONAL_LIGHT, &lights)
+            .replace(
+                r#"{"KHR_lights_punctual":{"light":0}}"#,
+                r#"{"KHR_lights_punctual":{"light":1}}"#,
+            );
+        assert_invalid(
+            build_camera_light_glb(&json),
+            "glTF light 1: Light::set_range",
+        );
+    }
+
+    #[test]
     fn load_refuses_a_negative_light_range() {
         let json = CAMERA_LIGHT_JSON.replace(DIRECTIONAL_LIGHT, r#"{"type":"point","range":-5.0}"#);
         assert_invalid(
@@ -1453,6 +1469,32 @@ mod tests {
             r#""nodes":[{"mesh":0,"children":[0]}]"#,
         )]);
         assert_invalid(bytes, "glTF node 0 is reached twice");
+    }
+
+    #[test]
+    fn load_refuses_a_child_with_two_parents() {
+        let bytes = mutate_triangle(&[(
+            r#""scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}]"#,
+            r#""scenes":[{"nodes":[0,1]}],"nodes":[{"children":[2]},{"children":[2]},{"mesh":0}]"#,
+        )]);
+        assert_invalid(bytes, "glTF node 2 is reached twice");
+    }
+
+    #[test]
+    fn load_names_the_mesh_and_primitive_at_fault() {
+        // Mesh 0 is unused; the node draws mesh 1, whose third primitive is points.
+        let triangle = r#"{"attributes":{"POSITION":0},"mode":4}"#;
+        let meshes = format!(
+            r#""meshes":[{{"primitives":[{triangle}]}},{{"primitives":[{triangle},{triangle},{{"attributes":{{"POSITION":0}},"mode":0}}]}}]"#
+        );
+        let bytes = mutate_triangle(&[
+            (
+                r#""meshes":[{"primitives":[{"attributes":{"POSITION":0},"mode":4}]}]"#,
+                &meshes,
+            ),
+            (r#""nodes":[{"mesh":0}]"#, r#""nodes":[{"mesh":1}]"#),
+        ]);
+        assert_invalid(bytes, "glTF mesh 1 primitive 2 draws in mode Points");
     }
 
     #[test]
