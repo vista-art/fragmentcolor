@@ -733,8 +733,11 @@ pub(crate) struct RenderContext {
     /// Each pass's light sets, by pass id and light list. They stay out of the
     /// storage registry and the per-frame pools.
     light_sets: RwLock<HashMap<(u64, u64), lights::LightSet>>,
+    /// Set when a frame fails, so the next frame packs and bins every light
+    /// set again: the failed frame's binning never reached the GPU.
+    lights_failed: Arc<AtomicBool>,
     /// The light binning pipeline, built on first use.
-    binning: RwLock<Option<Arc<lights::BinningPipeline>>>,
+    binning: Arc<RwLock<Option<Arc<lights::BinningPipeline>>>>,
     #[cfg(test)]
     light_probe: lights::LightProbe,
 
@@ -815,7 +818,8 @@ impl RenderContext {
                 limit: storage_limit,
             }),
             light_sets: RwLock::new(HashMap::new()),
-            binning: RwLock::new(None),
+            lights_failed: Arc::default(),
+            binning: Arc::default(),
             #[cfg(test)]
             light_probe: lights::LightProbe::default(),
             #[cfg(wasm)]
@@ -897,7 +901,16 @@ impl RenderContext {
         #[cfg(wasm)]
         self.late.take()?;
         let mut acquired = None;
-        let result = self.validate("frame", || self.submit(renderable, target, &mut acquired));
+        // A frame that fails drops its binning, so the next one bins again.
+        let failed = self.lights_failed.clone();
+        let result = self.validate_with(
+            "frame",
+            || self.submit(renderable, target, &mut acquired),
+            move || failed.store(true, Ordering::Relaxed),
+        );
+        if result.is_err() {
+            self.lights_failed.store(true, Ordering::Relaxed);
+        }
         if let Some(frame) = acquired
             && frame.auto_present()
         {
@@ -946,6 +959,7 @@ impl RenderContext {
         // so compute steps between frames don't free a frame's textures.
         if frame.is_some() {
             self.texture_pool.write().start_render();
+            self.start_light_render();
         }
 
         // Apple's Metal driver does not reliably flush tile-based storage-texture writes between

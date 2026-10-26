@@ -337,6 +337,16 @@ impl LightSet {
         }
     }
 
+    /// Forgets what the set packed, uploaded and binned, so its next prepare
+    /// does all three again.
+    fn forget(&mut self) {
+        self.epoch = 0;
+        self.packed = Packed::default();
+        self.uploaded.clear();
+        self.matrix = None;
+        self.binned = None;
+    }
+
     fn buffers(&self) -> LightBuffers {
         LightBuffers {
             lights: self.lights.clone(),
@@ -672,6 +682,19 @@ impl RenderContext {
         *self.light_path.read()
     }
 
+    /// Starts a render that draws. After a failed frame, every light set
+    /// packs, uploads and bins again, since that frame's binning never ran.
+    pub(crate) fn start_light_render(&self) {
+        if self
+            .lights_failed
+            .swap(false, std::sync::atomic::Ordering::Relaxed)
+        {
+            for set in self.light_sets.write().values_mut() {
+                set.forget();
+            }
+        }
+    }
+
     /// Packs and bins the lights of every lit shader on `pass`, at most once
     /// per render for each light set, and returns each shader's buffers by
     /// its address. A shader holding more lights than the device takes fails
@@ -788,15 +811,26 @@ impl RenderContext {
         Ok(())
     }
 
-    /// The binning pipeline, built on first use. A build that fails on
-    /// native isn't kept, so the next frame reports the same error.
+    /// The binning pipeline, built on first use. A build that fails isn't
+    /// kept, so the next frame builds it again and reports the same error.
+    /// On wasm the error lands after the insert, so the pipeline leaves then.
     fn binning_pipeline(&self) -> Result<Arc<BinningPipeline>, RendererError> {
         if let Some(pipeline) = self.binning.read().clone() {
             return Ok(pipeline);
         }
-        let pipeline = Arc::new(self.validate("light binning pipeline", || {
-            BinningPipeline::new(&self.device)
-        })?);
+        let cache = Arc::downgrade(&self.binning);
+        let failed = self.lights_failed.clone();
+        let evict = move || {
+            if let Some(cache) = cache.upgrade() {
+                *cache.write() = None;
+            }
+            failed.store(true, std::sync::atomic::Ordering::Relaxed);
+        };
+        let pipeline = Arc::new(self.validate_with(
+            "light binning pipeline",
+            || BinningPipeline::new(&self.device),
+            evict,
+        )?);
         *self.binning.write() = Some(pipeline.clone());
         Ok(pipeline)
     }

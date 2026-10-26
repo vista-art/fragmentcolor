@@ -653,6 +653,64 @@ fn still_renders_dispatch_once() {
     });
 }
 
+/// A pass whose pipeline fails to build: its fragment output doesn't fit the target.
+fn broken_pass() -> Pass {
+    let shader = Shader::new(
+        "@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>, 3>(vec2<f32>(-1.0, -1.0), vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0));
+  return vec4<f32>(p[i], 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<u32> { return vec4<u32>(1u); }",
+    )
+    .expect("shader");
+    Pass::from_shader("broken", &shader)
+}
+
+#[test]
+fn a_failed_frame_bins_again_on_the_next() {
+    pollster::block_on(async {
+        let lights = seeded_lights(&mut Seeds(1));
+        let camera = camera();
+        let build = || lit_pass("600 lights", Some(&camera), &lights);
+        let clean = draw(build, Mode::Clustered, 96).await;
+        assert_varied(&clean.image, "clean");
+
+        // The first binning sits in a frame that a later pass fails.
+        let (renderer, target, _) = open(Mode::Clustered, 96).await;
+        let lit = build();
+        let broken = broken_pass();
+        let listed = [&lit, &broken];
+        assert!(renderer.render(&listed.as_slice(), &target).is_err());
+        renderer.render(&lit, &target).expect("render");
+        let after = target.get_image().await.expect("read back");
+        assert_close(&after, &clean.image, "after a failed first binning");
+
+        // A rebin for a moved camera sits in a failed frame.
+        let moved = Camera::perspective(1.0, 1.0, 0.1, 100.0)
+            .expect("camera")
+            .look_at([3.0, 5.0, 7.0], [-1.0, 0.5, -3.0], [0.0, 1.0, 0.0])
+            .expect("camera");
+        let moved_clean = draw(
+            || lit_pass("moved", Some(&moved), &lights),
+            Mode::Clustered,
+            96,
+        )
+        .await;
+        let (renderer, target, _) = open(Mode::Clustered, 96).await;
+        let moving = self::camera();
+        let lit = lit_pass("moving", Some(&moving), &lights);
+        renderer.render(&lit, &target).expect("render");
+        moving
+            .look_at([3.0, 5.0, 7.0], [-1.0, 0.5, -3.0], [0.0, 1.0, 0.0])
+            .expect("camera");
+        let listed = [&lit, &broken];
+        assert!(renderer.render(&listed.as_slice(), &target).is_err());
+        renderer.render(&lit, &target).expect("render");
+        let after = target.get_image().await.expect("read back");
+        assert_close(&after, &moved_clean.image, "after a failed rebin");
+    });
+}
+
 #[test]
 fn the_uniform_path_caps_lights_at_its_block() {
     pollster::block_on(async {
