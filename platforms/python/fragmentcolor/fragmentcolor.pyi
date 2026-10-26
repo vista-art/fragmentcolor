@@ -349,9 +349,9 @@ class Renderer:
 
         A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input. The inputs are the `@location` arguments of the vertex entry point and the `@location` members of its struct arguments, and each one reads the mesh attribute of its own name.
 
-        Before it takes a frame, `render` checks each shader against the device and each texture uniform against its slot, so every language returns these errors from the call that caused them, the web included. A group, binding, binding count or buffer size past the device's limits returns `RendererError::BindGroupLayoutError`, and so does a texture uniform with no texture or with a texture its slot can't take. A texture `unregister_texture` removed returns `RendererError::TextureNotFoundError`. A render shader without its vertex or fragment entry point returns `ShaderError::ParseError`. A compute shader on a device without compute, a workgroup past the device's limits, and anything else the device's shader validator refuses return `RendererError::Error`. The [Shader](https://fragmentcolor.org/api/core/shader) page lists the checks.
+        Before it takes a frame, `render` checks each shader against the device and each texture uniform against its slot, so every language returns these errors from the call that caused them, the web included. A group, binding, binding count or buffer size past the device's limits returns `RendererError::BindGroupLayoutError`, and so does a texture uniform with no texture or with a texture its slot can't take. A texture `unregister_texture` removed, or one from another `Renderer`, returns `RendererError::TextureNotFoundError`, in a PBR map slot too. A render shader without its vertex or fragment entry point returns `ShaderError::ParseError`. A compute shader on a device without compute, a workgroup past the device's limits, and anything else the device's shader validator refuses return `RendererError::Error`. The [Shader](https://fragmentcolor.org/api/core/shader) page lists the checks.
 
-        A `Renderer` draws only into the targets it created. A target from another `Renderer` returns `RendererError::ForeignTarget`, unless every pass is a compute pass, which draws into no target. Each pass is checked against what it draws into before it records: a [depth target](https://fragmentcolor.org/api/core/pass#set_depth_target) of the color attachment's size and sample count, shader outputs and blending the [target](https://fragmentcolor.org/api/core/pass#set_target)'s format takes, no texture both drawn into and bound, and a [compute dispatch](https://fragmentcolor.org/api/core/pass#set_compute_dispatch) the device takes.
+        A `Renderer` draws only into the targets it created. A target from another `Renderer` returns `RendererError::ForeignTarget`, unless every pass is a compute pass, which draws into no target. Each pass is checked against what it draws into before it records: a [depth target](https://fragmentcolor.org/api/core/pass#set_depth_target) of the color attachment's size and sample count, shader outputs and blending the [target](https://fragmentcolor.org/api/core/pass#set_target)'s format takes, a [viewport](https://fragmentcolor.org/api/core/pass#set_viewport) and a [compute dispatch](https://fragmentcolor.org/api/core/pass#set_compute_dispatch) the device takes, and textures that one pass doesn't both write and read. A render pass can't bind a texture it draws into, and no pass can read a texture one of its bindings writes, so a compute dispatch that samples a texture and stores into it returns `PassError::TextureConflict` too.
 
         `render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail, it returns a [DeviceError](https://fragmentcolor.org/api/core/deviceerror), `RendererError::DeviceError` in Rust. Its `kind` tells validation errors, internal errors such as a shader the backend compiler refuses, and running out of memory apart, and its `label` names the step that failed: the render pipeline, the compute pipeline, the light binning pipeline, the frame, or a bind group or texture view inside the frame. When one error causes another, `render` returns the first. In Rust, Python, Swift and Kotlin, a pipeline that failed is never kept, and the next frame builds it again and returns the same error.
 
@@ -384,8 +384,10 @@ class Renderer:
         - If you are rendering offscreen via `create_texture_target`, it defaults to 1.
 
         This ensures the depth attachment `sample_count` matches the pass sample count.
-        If you attach a depth texture with a different `sample_count` than the pass,
-        rendering will return a descriptive validation error.
+        A depth texture with a different `sample_count` than the pass makes `render` return
+        `RendererError::DepthSampleCountMismatch`, and one whose width or height differs from
+        the pass's color attachment returns `RendererError::DepthSizeMismatch`, before it takes
+        a frame. A window that resizes needs a depth texture of the new size, or a `resize` of this one.
 
         Example:
 
@@ -1127,6 +1129,10 @@ class Pass:
         pass. After that, `add_shader` returns `PassError::ShaderKind` for a shader of
         the other kind and leaves the pass as it was.
 
+        Each shader of a compute pass dispatches on its own. A shader that reads a
+        texture through one binding and writes it through another makes `render` return
+        `PassError::TextureConflict`, so read the result in a later pass.
+
         Example:
 
         ```python
@@ -1364,7 +1370,7 @@ class Pass:
 
         A width or height of 0 is an error that leaves the pass's viewport as it was, and so is a far edge past `u32::MAX`, the largest pixel coordinate. To draw on the whole target, leave the viewport unset.
 
-        A region that reaches past the target keeps its size and loses the part outside, and a region wholly outside the target draws nothing. When the pass has its own target from `set_target`, the region is measured against that target.
+        A region that reaches past the target keeps its size and loses the part outside, and a region wholly outside the target draws nothing. When the pass has its own target from `set_target`, the region is measured against that target. A side past the device's largest 2D texture, `max_texture_dimension_2d`, makes `render` return `PassError::ViewportLimit`, which names the size and the limit, before it takes a frame.
 
         The clear color still fills the whole target. To split one target between passes, call `load_previous` on each pass after the first. In the fragment stage, `@builtin(position)` counts pixels from the target's corner, not the region's.
 
@@ -1391,12 +1397,17 @@ class Pass:
         number of workgroups to dispatch in each dimension; total invocations are
         `x * y * z * workgroup_size_x * workgroup_size_y * workgroup_size_z`,
         where the per-workgroup size comes from the WGSL `@workgroup_size`
-        attribute. A 0 in any dimension becomes 1. Has no effect on render passes.
+        attribute. A 0 in any dimension dispatches nothing, and the pass's storage keeps
+        what it holds. Has no effect on render passes.
 
         Each count must fit the device, which takes at most 65535 workgroups per
         dimension on most GPUs. A larger one makes `render` return
         `PassError::DispatchLimit`, which names the counts and the limit, before
         anything runs.
+
+        One shader can't read a texture it writes in the same dispatch. A shader that
+        samples a texture and stores into it through a storage binding returns
+        `PassError::TextureConflict`, which names both bindings. Read it in a later pass.
 
         Example:
 
@@ -1413,13 +1424,15 @@ class Pass:
 
         A Pass has at most one color target. Call `set_target` again to swap it. Use this to render intermediate results (e.g., a shadow map) that later passes can sample.
 
-        The texture needs `RENDER_ATTACHMENT` usage, a color format, one mip level and one layer. A pass draws into one level of one layer, so a texture with a mip chain or with layers returns `PassError::InvalidColorTarget`, and so does a depth format. `create_texture` builds a mip chain unless `mipmaps` is false.
+        The texture needs `RENDER_ATTACHMENT` usage, a color format, one mip level and one layer. A pass draws into one level of one layer, so a texture with a mip chain or with layers returns `PassError::InvalidColorTarget`, and so does a depth format. `create_texture` builds a mip chain unless `mipmaps` is false. A texture from another `Renderer`, or one that `unregister_texture` removed, makes `render` return `RendererError::TextureNotFoundError`.
 
         `render` checks the pass against its target before it takes a frame:
 
         - Each shader writes at `@location(0)` the values the format takes: the same scalar type, in at least as many channels. An `Rgba32Uint` target takes `vec4<u32>`, so a shader that writes `vec4<f32>` returns `PassError::InvalidColorTarget`.
-        - A shader with `AlphaMode::Blend` needs a format the device blends. `Rgba32Float` and the integer formats don't, and return the same error.
+        - A shader with `AlphaMode::Blend` needs a format the device blends, and returns the same error otherwise. The integer formats never blend, and `Rgba32Float` blends only on a device with float32 blending. Blending reads the alpha channel, so the shader writes a `vec4`, whatever the format holds.
         - The pass can't bind the texture it draws into. A shader that samples it returns `PassError::TextureConflict`. Sample it in a later pass.
+
+        A shader that writes nothing at `@location(0)`, such as one that only tests depth, leaves the target's color as it is.
 
         Example:
 
@@ -1441,7 +1454,7 @@ class Pass:
 
         The target must be a depth `Texture` (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](https://fragmentcolor.org/api/core/renderer#create_depth_texture). A `TextureTarget` always has a color format, so passing one returns an error. A depth texture from another `Renderer`, or one that `unregister_texture` removed, makes `render` return `RendererError::TextureNotFoundError`.
 
-        The depth attachment matches the pass's color attachment, the pass's own target or the frame it draws into. A different width or height returns `RendererError::DepthSizeMismatch`, which names both sizes, so a window that resizes needs a depth texture of the new size, or a `resize` of the one it has. A different sample count returns `RendererError::DepthSampleCountMismatch`, so mixing 1× and 4× MSAA in the same pass fails. A shader in the pass that reads the depth texture returns `PassError::TextureConflict`. Read it in a later pass.
+        The depth attachment matches the pass's color attachment, the pass's own target or the frame it draws into. A different width or height returns `RendererError::DepthSizeMismatch`, which names both sizes, so a window that resizes needs a depth texture of the new size, or a `resize` of the one it has. A different sample count returns `RendererError::DepthSampleCountMismatch`, so mixing 1× and 4× MSAA in the same pass fails. A shader in the pass that reads the depth texture returns `PassError::TextureConflict`. Read it in a later pass. A shader whose fragment entry point writes no color, such as `@fragment fn fs_main() {}`, fills the depth texture and leaves the color as it is.
 
         A pass that draws a `Model` and has no depth target gets a depth buffer from the renderer. It matches the pass's color attachment in size and sample count and clears at the start of the pass. In a pass that draws models, the shaders that draw none, such as a fullscreen backdrop or an overlay, ignore depth and draw in order, with that buffer or a depth target you set. A pass without models draws without depth unless you call `set_depth_target`, and then every shader in it tests depth.
 
@@ -4767,6 +4780,10 @@ class Material:
           so self-intersecting or interpenetrating translucent meshes can still show artifacts.
           Cross-Material interleaving works correctly: translucent draws across every shader
           in the Pass merge into one globally-sorted back-to-front pass.
+          Blending needs a color target that blends and a shader that writes a `vec4`, or `render`
+          returns `PassError::InvalidColorTarget`. Integer formats never blend, and whether
+          `Rgba32Float` blends depends on the device: the renderer asks for float32 blending
+          wherever the GPU offers it. `Rgba16Float` and the 8-bit unorm formats blend everywhere.
 
         This is a pipeline-state flag. Changing it forces the renderer to rebuild the pipeline
         for the affected `(shader, alpha_mode, double_sided)` key. Switching it every frame is
@@ -5200,9 +5217,11 @@ class Texture:
         so a depth texture or an offscreen image can follow a window without being created again.
         The pixels start blank at the new size. Asking for the current size keeps the texture as it is.
 
-        Only a texture a pass can draw into resizes: one from `create_depth_texture`, the `texture()` of a
+        Only a texture made to be drawn into resizes: one from `create_depth_texture`, the `texture()` of a
         `TextureTarget`, or a texture made with `RENDER_ATTACHMENT` in its usage by `create_storage_texture`
-        or `create_texture`. A texture made from an image loses that image when it resizes. Resizing a target's
+        or `create_texture`. A resize keeps the mip chain `create_texture` builds by default, and a pass draws
+        only into a texture of one level, so create one for `set_target` with `mipmaps` false. A texture made
+        from an image loses that image when it resizes. Resizing a target's
         `texture()` resizes the target. Any other texture returns `TextureError::FixedSize`, and a side of
         zero, or one past the device limit, returns `TextureError::InvalidInput`. Both keep the old size.
 

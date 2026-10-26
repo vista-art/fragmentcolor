@@ -286,6 +286,10 @@ The first shader added decides the pass kind, whichever constructor made the
 pass. After that, `add_shader` returns `PassError::ShaderKind` for a shader of
 the other kind and leaves the pass as it was.
 
+Each shader of a compute pass dispatches on its own. A shader that reads a
+texture through one binding and writes it through another makes `render` return
+`PassError::TextureConflict`, so read the result in a later pass.
+
 #### Example
 
 <Tabs>
@@ -1153,7 +1157,7 @@ The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `
 
 A width or height of 0 is an error that leaves the pass's viewport as it was, and so is a far edge past `u32::MAX`, the largest pixel coordinate. To draw on the whole target, leave the viewport unset.
 
-A region that reaches past the target keeps its size and loses the part outside, and a region wholly outside the target draws nothing. When the pass has its own target from `set_target`, the region is measured against that target.
+A region that reaches past the target keeps its size and loses the part outside, and a region wholly outside the target draws nothing. When the pass has its own target from `set_target`, the region is measured against that target. A side past the device's largest 2D texture, `max_texture_dimension_2d`, makes `render` return `PassError::ViewportLimit`, which names the size and the limit, before it takes a frame.
 
 The clear color still fills the whole target. To split one target between passes, call `load_previous` on each pass after the first. In the fragment stage, `@builtin(position)` counts pixels from the target's corner, not the region's.
 
@@ -1425,12 +1429,17 @@ Set the workgroup-grid size for a compute pass. The three numbers are the
 number of workgroups to dispatch in each dimension; total invocations are
 `x * y * z * workgroup_size_x * workgroup_size_y * workgroup_size_z`,
 where the per-workgroup size comes from the WGSL `@workgroup_size`
-attribute. A 0 in any dimension becomes 1. Has no effect on render passes.
+attribute. A 0 in any dimension dispatches nothing, and the pass's storage keeps
+what it holds. Has no effect on render passes.
 
 Each count must fit the device, which takes at most 65535 workgroups per
 dimension on most GPUs. A larger one makes `render` return
 `PassError::DispatchLimit`, which names the counts and the limit, before
 anything runs.
+
+One shader can't read a texture it writes in the same dispatch. A shader that
+samples a texture and stores into it through a storage binding returns
+`PassError::TextureConflict`, which names both bindings. Read it in a later pass.
 
 #### Example
 
@@ -1512,13 +1521,15 @@ Attach a per-pass color render target. When set, this pass renders into the prov
 
 A Pass has at most one color target. Call `set_target` again to swap it. Use this to render intermediate results (e.g., a shadow map) that later passes can sample.
 
-The texture needs `RENDER_ATTACHMENT` usage, a color format, one mip level and one layer. A pass draws into one level of one layer, so a texture with a mip chain or with layers returns `PassError::InvalidColorTarget`, and so does a depth format. `create_texture` builds a mip chain unless `mipmaps` is false.
+The texture needs `RENDER_ATTACHMENT` usage, a color format, one mip level and one layer. A pass draws into one level of one layer, so a texture with a mip chain or with layers returns `PassError::InvalidColorTarget`, and so does a depth format. `create_texture` builds a mip chain unless `mipmaps` is false. A texture from another `Renderer`, or one that `unregister_texture` removed, makes `render` return `RendererError::TextureNotFoundError`.
 
 `render` checks the pass against its target before it takes a frame:
 
 - Each shader writes at `@location(0)` the values the format takes: the same scalar type, in at least as many channels. An `Rgba32Uint` target takes `vec4<u32>`, so a shader that writes `vec4<f32>` returns `PassError::InvalidColorTarget`.
-- A shader with `AlphaMode::Blend` needs a format the device blends. `Rgba32Float` and the integer formats don't, and return the same error.
+- A shader with `AlphaMode::Blend` needs a format the device blends, and returns the same error otherwise. The integer formats never blend, and `Rgba32Float` blends only on a device with float32 blending. Blending reads the alpha channel, so the shader writes a `vec4`, whatever the format holds.
 - The pass can't bind the texture it draws into. A shader that samples it returns `PassError::TextureConflict`. Sample it in a later pass.
+
+A shader that writes nothing at `@location(0)`, such as one that only tests depth, leaves the target's color as it is.
 
 #### Example
 
@@ -1624,7 +1635,7 @@ A Pass has at most one depth attachment. Call `set_depth_target` again to swap i
 
 The target must be a depth `Texture` (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](/api/core/renderer#create_depth_texture). A `TextureTarget` always has a color format, so passing one returns an error. A depth texture from another `Renderer`, or one that `unregister_texture` removed, makes `render` return `RendererError::TextureNotFoundError`.
 
-The depth attachment matches the pass's color attachment, the pass's own target or the frame it draws into. A different width or height returns `RendererError::DepthSizeMismatch`, which names both sizes, so a window that resizes needs a depth texture of the new size, or a `resize` of the one it has. A different sample count returns `RendererError::DepthSampleCountMismatch`, so mixing 1× and 4× MSAA in the same pass fails. A shader in the pass that reads the depth texture returns `PassError::TextureConflict`. Read it in a later pass.
+The depth attachment matches the pass's color attachment, the pass's own target or the frame it draws into. A different width or height returns `RendererError::DepthSizeMismatch`, which names both sizes, so a window that resizes needs a depth texture of the new size, or a `resize` of the one it has. A different sample count returns `RendererError::DepthSampleCountMismatch`, so mixing 1× and 4× MSAA in the same pass fails. A shader in the pass that reads the depth texture returns `PassError::TextureConflict`. Read it in a later pass. A shader whose fragment entry point writes no color, such as `@fragment fn fs_main() {}`, fills the depth texture and leaves the color as it is.
 
 A pass that draws a `Model` and has no depth target gets a depth buffer from the renderer. It matches the pass's color attachment in size and sample count and clears at the start of the pass. In a pass that draws models, the shaders that draw none, such as a fullscreen backdrop or an overlay, ignore depth and draw in order, with that buffer or a depth target you set. A pass without models draws without depth unless you call `set_depth_target`, and then every shader in it tests depth.
 

@@ -182,8 +182,10 @@ The created depth texture inherits the renderer's current sample count:
 - If you are rendering offscreen via `create_texture_target`, it defaults to 1.
 
 This ensures the depth attachment `sample_count` matches the pass sample count.
-If you attach a depth texture with a different `sample_count` than the pass,
-rendering will return a descriptive validation error.
+A depth texture with a different `sample_count` than the pass makes `render` return
+`RendererError::DepthSampleCountMismatch`, and one whose width or height differs from
+the pass's color attachment returns `RendererError::DepthSizeMismatch`, before it takes
+a frame. A window that resizes needs a depth texture of the new size, or a `resize` of this one.
 
 #### Example
 
@@ -1446,9 +1448,9 @@ A window that is hidden or minimized has no frame to draw on. `render` then retu
 
 A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input. The inputs are the `@location` arguments of the vertex entry point and the `@location` members of its struct arguments, and each one reads the mesh attribute of its own name.
 
-Before it takes a frame, `render` checks each shader against the device and each texture uniform against its slot, so every language returns these errors from the call that caused them, the web included. A group, binding, binding count or buffer size past the device's limits returns `RendererError::BindGroupLayoutError`, and so does a texture uniform with no texture or with a texture its slot can't take. A texture `unregister_texture` removed returns `RendererError::TextureNotFoundError`. A render shader without its vertex or fragment entry point returns `ShaderError::ParseError`. A compute shader on a device without compute, a workgroup past the device's limits, and anything else the device's shader validator refuses return `RendererError::Error`. The [Shader](/api/core/shader) page lists the checks.
+Before it takes a frame, `render` checks each shader against the device and each texture uniform against its slot, so every language returns these errors from the call that caused them, the web included. A group, binding, binding count or buffer size past the device's limits returns `RendererError::BindGroupLayoutError`, and so does a texture uniform with no texture or with a texture its slot can't take. A texture `unregister_texture` removed, or one from another `Renderer`, returns `RendererError::TextureNotFoundError`, in a PBR map slot too. A render shader without its vertex or fragment entry point returns `ShaderError::ParseError`. A compute shader on a device without compute, a workgroup past the device's limits, and anything else the device's shader validator refuses return `RendererError::Error`. The [Shader](/api/core/shader) page lists the checks.
 
-A `Renderer` draws only into the targets it created. A target from another `Renderer` returns `RendererError::ForeignTarget`, unless every pass is a compute pass, which draws into no target. Each pass is checked against what it draws into before it records: a [depth target](/api/core/pass#set_depth_target) of the color attachment's size and sample count, shader outputs and blending the [target](/api/core/pass#set_target)'s format takes, no texture both drawn into and bound, and a [compute dispatch](/api/core/pass#set_compute_dispatch) the device takes.
+A `Renderer` draws only into the targets it created. A target from another `Renderer` returns `RendererError::ForeignTarget`, unless every pass is a compute pass, which draws into no target. Each pass is checked against what it draws into before it records: a [depth target](/api/core/pass#set_depth_target) of the color attachment's size and sample count, shader outputs and blending the [target](/api/core/pass#set_target)'s format takes, a [viewport](/api/core/pass#set_viewport) and a [compute dispatch](/api/core/pass#set_compute_dispatch) the device takes, and textures that one pass doesn't both write and read. A render pass can't bind a texture it draws into, and no pass can read a texture one of its bindings writes, so a compute dispatch that samples a texture and stores into it returns `PassError::TextureConflict` too.
 
 `render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail, it returns a [DeviceError](/api/core/deviceerror), `RendererError::DeviceError` in Rust. Its `kind` tells validation errors, internal errors such as a shader the backend compiler refuses, and running out of memory apart, and its `label` names the step that failed: the render pipeline, the compute pipeline, the light binning pipeline, the frame, or a bind group or texture view inside the frame. When one error causes another, `render` returns the first. In Rust, Python, Swift and Kotlin, a pipeline that failed is never kept, and the next frame builds it again and returns the same error.
 
