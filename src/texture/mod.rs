@@ -43,7 +43,7 @@ mod registration;
 mod resize;
 mod write;
 
-pub(crate) use read::read_pixels;
+pub(crate) use read::{copy_pixels, read_pixels};
 pub use region::TextureRegion;
 #[cfg(mobile)]
 pub use region::TextureRegionMobile;

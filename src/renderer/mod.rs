@@ -349,7 +349,7 @@ impl Renderer {
         let texture = context
             .get_texture(&texture_id)
             .ok_or(RendererError::TextureNotFoundError(texture_id))?;
-        Ok(crate::texture::read_pixels(&context, &texture).await?)
+        Ok(crate::texture::copy_pixels(&context, &texture).await?)
     }
 
     #[cfg(wasm)]

@@ -684,11 +684,11 @@ await withModule('platforms.web.healthcheck.late_errors', async () => {
     const target = await renderer.createTextureTarget([8, 8]);
     const fail = (message) => { throw new Error(message); };
     const pause = () => new Promise((resolve) => setTimeout(resolve, 10));
-    // Checks that `run` throws the frame's error as an Error.
+    // Checks that `run` throws the frame's error as an Error, with the text render throws.
     const throwsLate = async (label, run) => {
       try { await run(); } catch (e) {
         if (!(e instanceof Error)) fail(`${label} threw a ${typeof e}, not an Error`);
-        if (!e.message.includes('GPU validation error')) fail(`${label} threw: ${e.message}`);
+        if (!e.message.startsWith('GPU validation error')) fail(`${label} threw: ${e.message}`);
         return console.log(`${label} threw:`, e.message);
       }
       fail(`${label} never reported the failed frame`);
@@ -752,6 +752,16 @@ struct Data { values: array<f32, 4> };
       renderer.render(unfed, target);
       await throwsLate('readTexture right after a failed frame', () => renderer.readTexture(target.texture().id()));
       await renderer.readTexture(target.texture().id());
+
+      // readTexture waits once, for the frames rendered before it. A frame that fails
+      // while it waits reports to the next call, never as a texture error from readTexture.
+      renderer.render(valid, target);
+      const reading = renderer.readTexture(target.texture().id());
+      await Promise.resolve();
+      await Promise.resolve();
+      renderer.render(unfed, target);
+      await reading;
+      await throwsLate('getImage after a frame that failed during readTexture', () => target.getImage());
 
       renderer.render(storage, target);
       await renderer.readStorage(storage, 'data');
