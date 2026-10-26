@@ -347,6 +347,8 @@ impl Renderer {
             .as_ref()
             .cloned()
             .ok_or(RendererError::NoContext)?;
+        #[cfg(wasm)]
+        context.late.settle().await?;
         let texture = context
             .get_texture(&texture_id)
             .ok_or(RendererError::TextureNotFoundError(texture_id))?;
@@ -372,7 +374,7 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/load.md")]
     pub async fn load(&self, renderable: &impl Renderable) -> Result<(), RendererError> {
         #[cfg(wasm)]
-        self.take_late()?;
+        self.settle().await?;
         for pass in renderable.passes().iter() {
             let shaders: Vec<Arc<crate::shader::ShaderObject>> =
                 pass.shaders.read().iter().cloned().collect();
@@ -417,7 +419,7 @@ impl Renderer {
         }
         let context = self.context(None).await?;
         #[cfg(wasm)]
-        context.late.take()?;
+        context.late.settle().await?;
         let (buffer, span) = context
             .storage_registry
             .get(binding)
@@ -445,11 +447,13 @@ impl Renderer {
         }
     }
 
-    /// Returns the GPU error an earlier frame left, when there is a context to hold one.
+    /// Waits for the error scopes earlier frames left open, then returns
+    /// the first GPU error they caught, when there is a context to hold one.
     #[cfg(wasm)]
-    fn take_late(&self) -> Result<(), RendererError> {
-        match self.context.read().as_ref() {
-            Some(context) => Ok(context.late.take()?),
+    async fn settle(&self) -> Result<(), RendererError> {
+        let context = self.context.read().as_ref().cloned();
+        match context {
+            Some(context) => Ok(context.late.settle().await?),
             None => Ok(()),
         }
     }
@@ -685,7 +689,7 @@ pub(crate) struct RenderContext {
     scratch: RwLock<RenderScratch>,
 
     // The first GPU error a wasm error scope caught after its call returned.
-    // The next call that touches the GPU returns it.
+    // The next render, load or readback returns it.
     #[cfg(wasm)]
     pub(crate) late: Arc<late::ErrorSlot>,
 }

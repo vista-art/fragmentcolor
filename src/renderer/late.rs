@@ -26,22 +26,56 @@ impl From<LateError> for TextureError {
     }
 }
 
-/// Holds the first late error until the next call that touches the GPU takes it.
+/// Holds the first late error until the next call that reports it takes it.
 #[derive(Debug, Default)]
-pub(crate) struct ErrorSlot(Mutex<Option<LateError>>);
+pub(crate) struct ErrorSlot {
+    first: Mutex<Option<LateError>>,
+    scopes: Mutex<OpenScopes>,
+}
+
+/// The scopes whose errors haven't landed yet, by the ticket each one opened with.
+#[derive(Debug, Default)]
+struct OpenScopes {
+    next: u64,
+    open: std::collections::BTreeSet<u64>,
+}
+
+/// Turns of the event loop `settle` waits for open scopes, about ten seconds.
+#[cfg(wasm)]
+const SETTLE_ROUNDS: usize = 2000;
 
 impl ErrorSlot {
     /// Keeps `error`, unless an earlier one is still waiting.
     pub(crate) fn store(&self, error: LateError) {
-        self.0.lock().get_or_insert(error);
+        self.first.lock().get_or_insert(error);
     }
 
     /// Returns the waiting error, once, and empties the slot.
     pub(crate) fn take(&self) -> Result<(), LateError> {
-        match self.0.lock().take() {
+        match self.first.lock().take() {
             Some(error) => Err(error),
             None => Ok(()),
         }
+    }
+
+    /// Waits until every scope opened before this call has landed,
+    /// then returns the waiting error, once, like `take`.
+    #[cfg(wasm)]
+    pub(crate) async fn settle(&self) -> Result<(), LateError> {
+        let before = self.scopes.lock().next;
+        for _ in 0..SETTLE_ROUNDS {
+            if self.landed(before) {
+                break;
+            }
+            crate::platforms::web::yield_to_event_loop().await;
+        }
+        self.take()
+    }
+
+    /// Whether every scope with a ticket below `before` has landed.
+    fn landed(&self, before: u64) -> bool {
+        let scopes = self.scopes.lock();
+        scopes.open.first().is_none_or(|ticket| *ticket >= before)
     }
 
     /// Reports the error that `caught` resolves to, when it resolves.
@@ -60,26 +94,41 @@ impl ErrorSlot {
     ) {
         let slot = self.clone();
         let label = label.to_string();
+        let ticket = self.open();
         wasm_bindgen_futures::spawn_local(async move {
-            let Some(gpu) = caught.await else {
-                return;
-            };
-            on_error();
-            let error = LateError {
-                label,
-                message: gpu.to_string(),
-            };
-            match failure {
-                Some(failure) => log::error!(
-                    "{}. The call had already failed: {failure}",
-                    RendererError::from(error)
-                ),
-                None => {
-                    log::error!("{}", RendererError::from(error.clone()));
-                    slot.store(error);
+            if let Some(gpu) = caught.await {
+                on_error();
+                let error = LateError {
+                    label,
+                    message: gpu.to_string(),
+                };
+                match failure {
+                    Some(failure) => log::error!(
+                        "{}. The call had already failed: {failure}",
+                        RendererError::from(error)
+                    ),
+                    None => {
+                        log::error!("{}", RendererError::from(error.clone()));
+                        slot.store(error);
+                    }
                 }
             }
+            slot.close(ticket);
         });
+    }
+
+    /// Records a scope whose error hasn't landed yet and returns its ticket.
+    fn open(&self) -> u64 {
+        let mut scopes = self.scopes.lock();
+        let ticket = scopes.next;
+        scopes.next += 1;
+        scopes.open.insert(ticket);
+        ticket
+    }
+
+    /// Marks the scope with `ticket` as landed.
+    fn close(&self, ticket: u64) {
+        self.scopes.lock().open.remove(&ticket);
     }
 }
 
@@ -125,6 +174,29 @@ mod tests {
         assert_eq!(first, Err(late("frame")));
         assert_eq!(second, Ok(()));
         assert_eq!(third, Err(late("compute pipeline")));
+    }
+
+    // Story: a readback waits for the scopes opened before it, in any order they land,
+    // and a scope opened after it began doesn't hold it up.
+    #[test]
+    fn waits_for_earlier_scopes_only() {
+        // Arrange
+        let slot = ErrorSlot::default();
+        let first = slot.open();
+        let second = slot.open();
+        let before = slot.scopes.lock().next;
+        let later = slot.open();
+
+        // Act
+        let waiting = slot.landed(before);
+        slot.close(second);
+        let still_waiting = slot.landed(before);
+        slot.close(first);
+        let done = slot.landed(before);
+
+        // Assert
+        assert!(!waiting && !still_waiting, "earlier scopes are still open");
+        assert!(done, "only the later scope {later} is open");
     }
 
     // Story: render reports a late error as a ValidationError, and a readback

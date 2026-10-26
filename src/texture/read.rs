@@ -120,7 +120,7 @@ pub(crate) async fn read_pixels(
     texture: &TextureObject,
 ) -> Result<Vec<u8>, TextureError> {
     #[cfg(wasm)]
-    context.late.take()?;
+    context.late.settle().await?;
     let plan = prepare_readback(context, texture, "Texture readback encoder")?;
     let readback = PendingReadback::new(&context.readback_pool, plan.buffer.clone());
 

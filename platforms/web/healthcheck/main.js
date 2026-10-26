@@ -605,21 +605,28 @@ struct Data { items: array<vec4<f32>, 2> };
     if (levels.length !== chain.count() || !(levels[0] instanceof Uint8Array)) fail('Mipmap.levels is wrong');
 });
 
-// WebGPU reports a GPU error after render returns. Each one logs a
-// console.error as it lands, and the next call throws it, once.
+// WebGPU reports a GPU error after render returns. Each one logs a console.error as it
+// lands, and the next render throws it, once. A readback or load waits for it and throws it.
 await withModule('platforms.web.healthcheck.late_errors', async () => {
     const renderer = new Renderer();
     const target = await renderer.createTextureTarget([8, 8]);
     const fail = (message) => { throw new Error(message); };
     const pause = () => new Promise((resolve) => setTimeout(resolve, 10));
+    // Checks that `run` throws the frame's error as an Error.
+    const throwsLate = async (label, run) => {
+      try { await run(); } catch (e) {
+        if (!(e instanceof Error)) fail(`${label} threw a ${typeof e}, not an Error`);
+        if (!e.message.includes('GPU validation error')) fail(`${label} threw: ${e.message}`);
+        return console.log(`${label} threw:`, e.message);
+      }
+      fail(`${label} never reported the failed frame`);
+    };
     // Calls `run` until the error lands and it throws, then checks what it threw.
     const surfaces = async (label, run) => {
       for (let attempt = 0; attempt < 200; attempt++) {
         await pause();
         try { await run(); } catch (e) {
-          if (!(e instanceof Error)) fail(`${label} threw a ${typeof e}, not an Error`);
-          if (!e.message.includes('GPU validation error')) fail(`${label} threw: ${e.message}`);
-          return console.log(`${label} threw:`, e.message);
+          return throwsLate(label, () => { throw e; });
         }
       }
       fail(`${label} never reported the failed frame`);
@@ -655,17 +662,33 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 @fragment fn fs_main(@location(0) tint: vec4<f32>) -> @location(0) vec4<f32> { return tint; }
 `);
       const valid = Shader.default();
+      const storage = new Shader(`
+struct Data { values: array<f32, 4> };
+@group(0) @binding(0) var<storage, read_write> data: Data;
+@compute @workgroup_size(1) fn cs_main() { data.values[0] = 7.0; }
+`);
 
       renderer.render(unfed, target);
       await surfaces('render after a failed frame', () => renderer.render(valid, target));
       renderer.render(valid, target);
 
+      // A readback or load in the same task as the failed frame waits for its error.
       renderer.render(unfed, target);
-      await surfaces('getImage after a failed frame', () => target.getImage());
+      await throwsLate('getImage right after a failed frame', () => target.getImage());
       await target.getImage();
 
       renderer.render(unfed, target);
-      await surfaces('load after a failed frame', () => renderer.load(valid));
+      await throwsLate('readTexture right after a failed frame', () => renderer.readTexture(target.texture().id()));
+      await renderer.readTexture(target.texture().id());
+
+      renderer.render(storage, target);
+      await renderer.readStorage(storage, 'data');
+      renderer.render(unfed, target);
+      await throwsLate('readStorage right after a failed frame', () => renderer.readStorage(storage, 'data'));
+      await renderer.readStorage(storage, 'data');
+
+      renderer.render(unfed, target);
+      await throwsLate('load right after a failed frame', () => renderer.load(valid));
       await renderer.load(valid);
 
       // A pipeline whose error landed left the cache, so the next
