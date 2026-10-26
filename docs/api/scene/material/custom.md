@@ -26,15 +26,19 @@ struct TextureUv {
   offset: vec2<f32>,
   scale: vec2<f32>,
   rotation: f32,
-  @size(12) uv_set: u32,
+  uv_set: u32,
+  pad: vec2<u32>,
 }
 
 struct PbrMaterial {
   base_color: vec4<f32>,
-  // … the other factors …
-  @align(16) uv: array<TextureUv, 5>,
+  // … the other factors, then plain padding members up to
+  // an offset that is a multiple of 16 …
+  uv: array<TextureUv, 5>,
 }
 ```
+
+Spell the padding out as members. The WGSL a browser receives drops `@size` and `@align`, so a layout that needs them fails on the web.
 
 - Four `vec4<f32>` vertex inputs named `model_0` to `model_3`, the columns of
   the Model's transform. The renderer fills them at draw time from each

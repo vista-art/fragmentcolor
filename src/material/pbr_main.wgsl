@@ -46,19 +46,26 @@ struct PbrMaterial {
   // `Blend` ignore the flag — their behavior is pipeline-state
   // (depth-write, blend equation) rather than fragment-shader logic.
   alpha_mode_flag: u32,
+  // Move `uv` to offset 64, since an array in a uniform starts on 16 bytes.
+  // The padding is spelled out because the WGSL a browser receives
+  // drops @align and @size, so a layout that needs them breaks on the web.
+  pad0: u32,
+  pad1: u32,
+  pad2: u32,
   // The UV source of each texture slot, in the order base color,
   // metallic-roughness, normal, occlusion, emissive.
-  @align(16) uv: array<TextureUv, 5>,
+  uv: array<TextureUv, 5>,
 }
 
 // The UVs a texture slot samples: the vertex UV set `uv_set` names (0 or 1),
-// through its KHR_texture_transform. The struct spans 32 bytes, a stride
-// a uniform array can take.
+// through its KHR_texture_transform. `pad` fills the struct to 32 bytes,
+// a stride a uniform array can take.
 struct TextureUv {
   offset: vec2<f32>,
   scale: vec2<f32>,
   rotation: f32,
-  @size(12) uv_set: u32,
+  uv_set: u32,
+  pad: vec2<u32>,
 }
 
 // A slot's sampling UV. KHR_texture_transform scales the UV, rotates it,

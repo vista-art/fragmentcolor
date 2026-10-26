@@ -20,6 +20,7 @@ Reflection & mapping
   3. by the mesh's own buffer location, instance first, then vertex
 - Typed Rust values (`f32`, `u32`) must match exactly. Plain numbers take the declared type: floats, or integers when every value is whole and in range. A misfit is an `AttributeMismatch` naming the attribute, the declared type and the value.
 - The first shader that reads an untyped attribute fixes its type for the mesh. A shader that declares another type fails to attach with `AttributeConflict`, whatever value the mesh holds now.
+- Every pipeline compiles from a naga module, and on the web wgpu hands the browser the WGSL naga writes back, which drops `@size` and `@align`. Built-in WGSL spells its padding out as members, as `PbrMaterial` and `TextureUv` do, and `pbr_layout_survives_the_web_round_trip` checks the PBR layouts through that round trip.
 
 Light roots (`light_roots.rs`, `lights.rs`)
 - `lights` and `light_grid` are reserved root names in a module with a vertex or fragment entry. `Shader::new` recognizes them before `parse_uniforms`: the read-only storage `Lights` (with an optional `var<storage, read> light_grid: array<u32>`) or the older uniform `LightArray` of `N` lights. Matched roots leave `UniformStorage`, `list_uniforms`, `list_keys` and the storage registry; the renderer fills them.

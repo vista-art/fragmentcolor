@@ -668,4 +668,58 @@ mod tests {
             }
         });
     }
+
+    /// Writes `module` back as WGSL, as wgpu does for a browser, and parses that again.
+    fn write_for_the_web(module: &naga::Module) -> naga::Module {
+        use naga::valid::{Capabilities, ValidationFlags, Validator};
+        let info = Validator::new(ValidationFlags::all(), Capabilities::all())
+            .validate(module)
+            .expect("the module validates");
+        let flags = naga::back::wgsl::WriterFlags::empty();
+        let written = naga::back::wgsl::write_string(module, &info, flags).expect("writes WGSL");
+        naga::front::wgsl::parse_str(&written).expect("the written WGSL parses")
+    }
+
+    /// The span and member offsets of every struct in `module`, in declaration order.
+    /// Names are left out, since the writer renames a struct whose name repeats.
+    fn read_layouts(module: &naga::Module) -> Vec<(u32, Vec<u32>)> {
+        module
+            .types
+            .iter()
+            .filter_map(|(_, ty)| match &ty.inner {
+                naga::TypeInner::Struct { members, span } => {
+                    Some((*span, members.iter().map(|member| member.offset).collect()))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    // Story: on the web wgpu hands the browser the WGSL naga writes back, which drops
+    // @size and @align. The PBR shader's uniforms keep their layout through that
+    // round trip, on the storage path and on the uniform light path alike.
+    #[test]
+    fn pbr_layout_survives_the_web_round_trip() {
+        // Arrange
+        let material = Material::pbr();
+        let object = &material.shader().object;
+        let uniform = object
+            .module_for_device(false, Some(4))
+            .expect("the uniform light path lowers");
+        let modules = [&object.module, uniform.as_ref()];
+
+        // Act
+        let written: Vec<naga::Module> = modules.iter().map(|m| write_for_the_web(m)).collect();
+
+        // Assert
+        for (module, written) in modules.iter().zip(&written) {
+            let mut validator = naga::valid::Validator::new(
+                naga::valid::ValidationFlags::all(),
+                naga::valid::Capabilities::all(),
+            );
+            let checked = validator.validate(written);
+            assert!(checked.is_ok(), "the web module fails: {checked:?}");
+            assert_eq!(read_layouts(written), read_layouts(module));
+        }
+    }
 }
