@@ -55,7 +55,7 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
     let opaque_pass = {
         let p = Pass::new("Opaque Pass");
         p.add_shader(&triangle);
-        p.set_clear_color([0.0, 0.0, 0.0, 1.0]);
+        p.set_clear_color([0.0, 0.0, 0.0, 1.0])?;
         p
     };
     let transparent_pass = Pass::new("Transparent Pass");

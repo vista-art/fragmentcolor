@@ -85,3 +85,15 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     Ok(())
 }
+
+/// Reads a Python number as an unsigned 32-bit integer, such as an index or a count.
+/// Negative, fractional, NaN and out-of-range values raise a `FragmentColorError` that names `what`.
+pub(crate) fn read_unsigned(value: f64, what: &str) -> PyResult<u32> {
+    Ok(super::read_unsigned(value, what)?)
+}
+
+impl From<super::NumberError> for PyErr {
+    fn from(error: super::NumberError) -> Self {
+        crate::error::PyFragmentColorError::new_err(error.to_string())
+    }
+}

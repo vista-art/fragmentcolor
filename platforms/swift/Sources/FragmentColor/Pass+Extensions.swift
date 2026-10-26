@@ -129,7 +129,7 @@ extension Pass {
 
     // MARK: - Clear color
 
-    /// Set the clear color as separate RGBA components (0..1 linear space).
+    /// Set the clear color as separate linear RGBA components, each passed to the GPU as given.
     public func setClearColor(r: Float, g: Float, b: Float, a: Float = 1.0) throws {
         try self.setClearColor(color: [r, g, b, a])
     }

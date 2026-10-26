@@ -1276,7 +1276,7 @@ let model = Model::new(mesh, Material::pbr());
 
 // A backdrop pass that clears to a soft blue before the scene's main draw.
 let backdrop = Pass::new("backdrop");
-backdrop.set_clear_color([0.05, 0.08, 0.12, 1.0]);
+backdrop.set_clear_color([0.05, 0.08, 0.12, 1.0])?;
 
 let scene = Scene::new();
 scene.add_pass(&backdrop);

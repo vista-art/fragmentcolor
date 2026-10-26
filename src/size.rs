@@ -11,15 +11,15 @@ pub mod error;
 use error::SizeError;
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(
-    python,
-    pyclass(from_py_object, get_all, set_all, eq, module = "fragmentcolor")
-)]
+#[cfg_attr(python, pyclass(from_py_object, eq, module = "fragmentcolor"))]
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, PartialOrd)]
 pub struct Size {
+    #[cfg_attr(wasm, wasm_bindgen(skip))]
     pub width: u32,
+    #[cfg_attr(wasm, wasm_bindgen(skip))]
     pub height: u32,
+    #[cfg_attr(wasm, wasm_bindgen(skip))]
     #[cfg_attr(mobile, uniffi(default = None))]
     pub depth: Option<u32>,
 }
@@ -36,17 +36,16 @@ impl Size {
     /// A size from the 2 or 3 numbers a binding received, each checked by [`read_dimension`].
     #[cfg(any(wasm, python))]
     pub(crate) fn from_numbers(numbers: &[f64]) -> Result<Size, SizeError> {
-        let dimension = |number: f64| {
-            read_dimension(number).ok_or_else(|| {
-                SizeError::TypeMismatch(format!("a size takes numbers from 0 up, got {number}"))
-            })
-        };
         match *numbers {
-            [width, height] => Ok(Size::new(dimension(width)?, dimension(height)?, None)),
+            [width, height] => Ok(Size::new(
+                check_dimension(width)?,
+                check_dimension(height)?,
+                None,
+            )),
             [width, height, depth] => Ok(Size::new(
-                dimension(width)?,
-                dimension(height)?,
-                Some(dimension(depth)?),
+                check_dimension(width)?,
+                check_dimension(height)?,
+                Some(check_dimension(depth)?),
             )),
             _ => Err(SizeError::TypeMismatch(format!(
                 "a size takes 2 or 3 numbers, got {}",
@@ -58,9 +57,17 @@ impl Size {
 
 /// One size or region dimension from a binding.
 /// It must be a finite number from 0 to `u32::MAX`, and a fraction rounds down.
-#[cfg(any(wasm, python))]
+#[cfg(any(wasm, python, ios, all(test, macos)))]
 pub(crate) fn read_dimension(number: f64) -> Option<u32> {
     (number.is_finite() && (0.0..=u32::MAX as f64).contains(&number)).then_some(number as u32)
+}
+
+/// One size dimension from a binding, or the error that names the number.
+#[cfg(any(wasm, python))]
+fn check_dimension(number: f64) -> Result<u32, SizeError> {
+    read_dimension(number).ok_or_else(|| {
+        SizeError::TypeMismatch(format!("a size takes numbers from 0 up, got {number}"))
+    })
 }
 
 crate::impl_from_into_with_refs!(
@@ -164,6 +171,47 @@ impl Size {
         };
         Ok(Size::from_numbers(&numbers)?)
     }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter = width)]
+    pub fn width_js(&self) -> u32 {
+        self.width
+    }
+
+    /// Checks the number as the constructor does, and keeps the old width on an error.
+    #[doc(hidden)]
+    #[wasm_bindgen(setter = width)]
+    pub fn set_width_js(&mut self, value: f64) -> Result<(), JsError> {
+        self.width = check_dimension(value)?;
+        Ok(())
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter = height)]
+    pub fn height_js(&self) -> u32 {
+        self.height
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(setter = height)]
+    pub fn set_height_js(&mut self, value: f64) -> Result<(), JsError> {
+        self.height = check_dimension(value)?;
+        Ok(())
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter = depth)]
+    pub fn depth_js(&self) -> Option<u32> {
+        self.depth
+    }
+
+    /// `undefined` or `null` clears the depth.
+    #[doc(hidden)]
+    #[wasm_bindgen(setter = depth)]
+    pub fn set_depth_js(&mut self, value: Option<f64>) -> Result<(), JsError> {
+        self.depth = value.map(check_dimension).transpose()?;
+        Ok(())
+    }
 }
 
 #[cfg(wasm)]
@@ -177,8 +225,53 @@ impl Size {
     #[doc(hidden)]
     #[new]
     #[pyo3(signature = (width, height, depth=None))]
-    pub fn new_py(width: u32, height: u32, depth: Option<u32>) -> Self {
-        Size::new(width, height, depth)
+    pub fn new_py(width: f64, height: f64, depth: Option<f64>) -> PyResult<Self> {
+        let numbers = match depth {
+            Some(depth) => vec![width, height, depth],
+            None => vec![width, height],
+        };
+        Ok(Size::from_numbers(&numbers)?)
+    }
+
+    #[doc(hidden)]
+    #[getter(width)]
+    pub fn width_py(&self) -> u32 {
+        self.width
+    }
+
+    /// Checks the number as the constructor does, and keeps the old width on an error.
+    #[doc(hidden)]
+    #[setter(width)]
+    pub fn set_width_py(&mut self, value: f64) -> PyResult<()> {
+        self.width = check_dimension(value)?;
+        Ok(())
+    }
+
+    #[doc(hidden)]
+    #[getter(height)]
+    pub fn height_py(&self) -> u32 {
+        self.height
+    }
+
+    #[doc(hidden)]
+    #[setter(height)]
+    pub fn set_height_py(&mut self, value: f64) -> PyResult<()> {
+        self.height = check_dimension(value)?;
+        Ok(())
+    }
+
+    #[doc(hidden)]
+    #[getter(depth)]
+    pub fn depth_py(&self) -> Option<u32> {
+        self.depth
+    }
+
+    /// `None` clears the depth.
+    #[doc(hidden)]
+    #[setter(depth)]
+    pub fn set_depth_py(&mut self, value: Option<f64>) -> PyResult<()> {
+        self.depth = value.map(check_dimension).transpose()?;
+        Ok(())
     }
 }
 

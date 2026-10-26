@@ -14,6 +14,7 @@
 - `render` of a shader that reads `@location` vertex inputs and has no mesh returns `ShaderError::InvalidKey` naming the input, in all five languages. That covers a shader rendered on its own, one whose meshes were removed, and a `Model` whose attach failed. It built a pipeline wgpu rejected and drew nothing.
 - A mesh whose index list is empty draws nothing, where `render` panicked with "buffer slice can not be empty".
 - `render` returns `MeshError::InvalidInstance` when `set_instance_count` asks for more instances than the mesh holds and the shader reads instance attributes. A shader that reads none, such as one that indexes a storage buffer with `@builtin(instance_index)`, draws any count.
+- `Pass.set_clear_color` hands each channel to the GPU as given, in every language. A float target such as `Rgba16Float` clears to `[4.0, -1.0, 0.25, 1.0]`, and a unorm target clamps on the GPU. Every channel was clamped to 0 to 1 and rounded to 8 bits first.
 
 ### Textures
 
@@ -24,16 +25,21 @@
 
 - `Vertex`, `Instance`, `Quad` and `TextureId` carry the `__fc_kind` brand the other classes have. Minifiers rename classes, and the checks that passed these objects into the library fell back to the class name, so a production build failed where a development build worked: `mesh.addVertices` rejected its `Vertex` objects. The checks read only the brand now, and a build fails when a type that crosses into the library has none. A site that keeps class names in its build to work around this, as the FragmentColor website does with `keepNames` in `docs/website/astro.config.mjs`, can drop that once it loads 0.12.7.
 - A GPU validation error from a frame throws as an `Error` from the next call that touches the GPU: `render`, `load`, `readTexture`, `readStorage` or `getImage`. WebGPU reports the error after `render` has returned, so the frame that caused it can't throw it. Each error throws once, and when several land before the next call, the first one does. These errors went to `console.error` and `render` kept returning `undefined`.
+- Setting `size.width`, `size.height` or `size.depth` checks the number as `new Size` does and throws an `Error` for a negative, NaN or out-of-range one, keeping the old value. The setters wrapped it modulo 2^32, so `size.width = 2 ** 32 + 64` made a 64-pixel-wide target.
+- `Pass.setClearColor([1.2, 0.5, 0.25])` clears to the color every other language gets. One channel above 1 switched all of them to a 0 to 255 scale, so this color cleared near black. A channel that isn't a number, such as `undefined` or `'1'`, throws an `Error` where it became 0, and an `{ r, g, b, a }` object needs `a` to be a number or left out. `Int32Array` and `Uint32Array` colors are gone.
 
 ### Python
 
 - Draws fire with rendercanvas 2.7, where `canvas.request_draw` never called the draw function and `examples/python/main.py` showed nothing. `Renderer.create_target` registers a rendercanvas context on the canvas, and `render` presents each window frame itself, from a draw function or a timer.
 - A hidden or minimized window raises `OccludedSurfaceError`, a subclass of `FragmentColorError`, so a render loop can skip the frame without reading the message. Rust reports it as `SurfaceError::Occluded`.
 - `size()` is a method on `Texture`, `TextureTarget` and `WindowTarget`, as in every other language and like every other Python getter. `TextureTarget.size` and `Texture.size` were properties, and `WindowTarget.size()` the one method among them.
+- Counts, indices, sizes and regions raise `FragmentColorError` for a number they can't hold, as JavaScript throws for one. That covers a negative number, one past `2**32 - 1`, and a fractional count or index, in `Pass.set_compute_dispatch`, `Mesh.set_instance_count`, `Mesh.set_indices`, `Pass.set_viewport`, `Size(...)` and its fields, and `ScreenRegion(...)` with `from_region` and `from_tuple`. They raised `OverflowError`, or a `TypeError` about a failed enum for a list. A viewport list of the wrong length raises `FragmentColorError` as well, and a string still raises `TypeError`. The stub hints these parameters as `float`, the plain number JavaScript takes.
+- `Pass.set_clear_color` raises `FragmentColorError` for a list that isn't 3 or 4 numbers long, where it raised a `TypeError` about a failed enum.
 
 ### Swift
 
 - `TextureTarget.resize([w, h])` and `WindowTarget.resize([w, h])` throw `FragmentColorError` for an array that isn't 2 or 3 numbers long, where they stopped the app.
+- `createTarget` checks that the layer address it receives names a `CAMetalLayer` and throws `FragmentColorError` for any other object. A plain `CALayer` passed to the raw uniffi method aborted the app. A drawable size that is negative or NaN throws too, where it became 1 pixel.
 - The `Camera`, `Light` and `Material` setters that return their receiver, such as `lookAt`, `setAspect` and `setDirection`, are `@discardableResult`, as `Scene` and `Pass` were. A per-frame update no longer needs `_ =` in front.
 
 ### Breaking and behavior changes
@@ -54,6 +60,10 @@
 - `render` returns an error for a frame or pipeline that fails GPU validation, where it returned success. Rust returns `RendererError::ValidationError`, Python and Swift throw `FragmentColorError`, and Kotlin throws `FragmentColorException`. A frame that fails is not presented. JavaScript throws the error as an `Error` from the next call that touches the GPU, where it logged it.
 - `render` of a shader that reads vertex inputs and has no mesh returns `ShaderError::InvalidKey` in every language, where it returned success. JavaScript throws an `Error`.
 - An instance count from `set_instance_count` past the instances a mesh holds is an error from `render` in every language when the shader reads instance attributes, where it reached a wgpu validation error.
+- `ScreenRegion` loses its `i32` conversions, along with `from_region_i32`, `from_tuples_i32` and `from_arrays_i32`. They moved a negative origin to 0 and shrank the region to match, so `set_viewport((-100, -100, 400, 300))` drew a different rectangle. A tuple such as `(10, 10, 100, 100)` now reads as `u32`, and a negative number fails to compile, as it does in Swift and Kotlin.
+- `Pass::set_clear_color` returns `Result<(), PassError>`, and a channel that is NaN or infinite fails with the new `PassError::Color` and leaves the pass unchanged. It became 0. JavaScript throws an `Error`, Python raises `FragmentColorError`, Swift throws `FragmentColorError`, and Kotlin throws `FragmentColorException`.
+- `Color` holds four `f32` channels where it packed four bytes into a public `u32`, so `Color(0xFF0000FF)` and `u32::from(color)` are gone. `Color::from(0xFF0000FFu32)` still reads bytes. `Color` no longer implements `Hash`.
+- JavaScript's `ScreenRegion` drops its `min_x`, `min_y`, `max_x` and `max_y` properties, whose setters skipped every check. Read `minX`, `minY`, `maxX` and `maxY`, which stay. A plain `{ min_x, ... }` object still converts.
 
 ## 0.12.6: Binding and renderer fixes
 

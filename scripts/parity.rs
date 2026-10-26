@@ -2271,18 +2271,22 @@ mod parity {
             }
 
             /// Classes that differ only by an idiom of the binding's language.
+            /// JavaScript and Python read an integer as a plain number and check it.
             fn loosely(&self, b: &Class, r: &Class) -> bool {
                 let web = self.platform == Platform::Web;
+                let plain = matches!(self.platform, Platform::Web | Platform::Python);
                 let no_fixed_arrays = matches!(
                     self.platform,
                     Platform::Web | Platform::Swift | Platform::Kotlin
                 );
                 match (b, r) {
-                    (Class::Int, Class::Float) | (Class::Float, Class::Int) => web,
+                    (Class::Int, Class::Float) => web,
+                    (Class::Float, Class::Int) => plain,
                     (Class::Floats(_), Class::Floats(_)) | (Class::Ints(_), Class::Ints(_)) => {
                         no_fixed_arrays
                     }
-                    (Class::Floats(_), Class::Ints(_)) | (Class::Ints(_), Class::Floats(_)) => web,
+                    (Class::Ints(_), Class::Floats(_)) => web,
+                    (Class::Floats(_), Class::Ints(_)) => plain,
                     _ => false,
                 }
             }

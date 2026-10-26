@@ -18,6 +18,8 @@ pub enum PassError {
     LightCapReached { cap: u32 },
     #[error("Invalid color target: {0}")]
     InvalidColorTarget(String),
+    #[error("Invalid clear color: {0}")]
+    Color(#[from] crate::color::error::ColorError),
     #[error("Self dependency is not allowed")]
     SelfDependency,
     #[error("Duplicate dependency: {0}")]

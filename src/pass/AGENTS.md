@@ -10,6 +10,10 @@ Targets
 - A pass that draws Models and has no depth target gets a pooled depth attachment from the renderer, matching its color attachment. `set_depth_target` replaces it. Passes without Models draw without depth.
 - There is no explicit `present(pass)` API — the last render pass in the executed DAG presents to the final frame by default.
 
+Clear color
+- `Pass::set_clear_color` hands each channel to wgpu as given. A float target keeps values past 0 to 1, and a unorm target clamps them on the GPU. Never clamp or quantize a clear color on the CPU.
+- A NaN or infinite channel returns `PassError::Color` and leaves the pass unchanged. The browser's WebGPU throws a `TypeError` for one.
+
 Compute vs render
 - `Pass::is_compute()` reflects whether every attached shader is compute; a pass adopts the kind of the first attached shader.
 

@@ -274,7 +274,7 @@ function writeRust({ library, values }) {
     "    // The fish pass clears to transparent, so present.wgsl can lay the fish over the water.",
     "    // The first frame gives it an image and a depth buffer the size of the window.",
     '    let fish = scene.get_pass(0).ok_or("the model loaded no pass")?;',
-    "    fish.set_clear_color([0.0, 0.0, 0.0, 0.0]);",
+    "    fish.set_clear_color([0.0, 0.0, 0.0, 0.0])?;",
     "",
     ...wrap("    ", "let present = Shader::new([", [...library.map(quote), "PRESENT_SOURCE"], "])?;", 100),
     ...setCalls("rust", values, { after: "?;" }),

@@ -3833,7 +3833,8 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
             "#;
             let shader = Shader::new(wgsl).expect("shader");
             let pass = Pass::from_shader("msaa-viewport", &shader);
-            pass.set_clear_color([0.0, 0.0, 1.0, 1.0]);
+            pass.set_clear_color([0.0, 0.0, 1.0, 1.0])
+                .expect("set_clear_color failed");
             pass.set_viewport(crate::ScreenRegion::new((4, 4), (8, 8)));
 
             renderer.render(&pass, &target).expect("render ok");
@@ -4079,7 +4080,7 @@ struct VIn { @location(0) pos: vec2<f32> };
             let left = strip(&material, -1.0, -0.2);
             let right = strip(&material, 0.2, 1.0);
             let pass = Pass::new("models");
-            pass.set_clear_color(BLUE);
+            pass.set_clear_color(BLUE).expect("set clear color");
             pass.add(&left).expect("add left");
             pass.add(&right).expect("add right");
             pass.add(&camera()).expect("add camera");
@@ -4126,7 +4127,7 @@ struct VIn { @location(0) pos: vec2<f32> };
                     .await
                     .expect("image");
                 let pass = Pass::new(name);
-                pass.set_clear_color(BLUE);
+                pass.set_clear_color(BLUE).expect("set clear color");
                 pass.add(&model).expect("add model");
                 pass.add(&camera()).expect("add camera");
                 pass.set_target(&image).expect("set target");
@@ -4221,7 +4222,7 @@ struct VOut { @builtin(position) pos: vec4<f32> };
             for model in [opaque, blended] {
                 model.mesh().set_indices(Vec::new());
                 let pass = Pass::new("empty");
-                pass.set_clear_color(BLUE);
+                pass.set_clear_color(BLUE).expect("set clear color");
                 pass.add(&model).expect("add model");
                 pass.add(&camera()).expect("add camera");
                 renderer.render(&pass, &target).expect("render");

@@ -87,9 +87,7 @@ impl Pass {
     #[wasm_bindgen(js_name = "setClearColor")]
     #[lsp_doc("docs/api/core/pass/set_clear_color.md")]
     pub fn set_clear_color_js(&self, color: &JsValue) -> Result<(), JsError> {
-        let color: Color = color.try_into()?;
-        self.object.set_clear_color(color);
-        Ok(())
+        Ok(self.set_clear_color(Color::try_from(color)?)?)
     }
 
     #[wasm_bindgen(js_name = "setComputeDispatch")]

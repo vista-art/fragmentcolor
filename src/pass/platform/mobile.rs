@@ -19,7 +19,7 @@ use crate::pass::Pass;
 use crate::pass::error::PassError;
 use crate::renderer::platform::mobile::FragmentColorError;
 use crate::renderer::renderable::{RenderableHandle, SceneObjectHandle, TargetHandle};
-use crate::{Mesh, ScreenRegion, Shader, Texture};
+use crate::{Color, Mesh, ScreenRegion, Shader, Texture};
 
 // -----------------------------------------------------------------
 // Pass (uniffi bindings)
@@ -142,27 +142,14 @@ impl Pass {
             .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
     }
 
-    /// Set the clear color for this pass (as `[r, g, b, a]` in linear 0..1 space).
+    /// Set the clear color for this pass as linear `[r, g, b]` or `[r, g, b, a]`.
     ///
     /// Switching from load to clear mode: after calling this the pass will
     /// clear its color attachment to `color` at the start of each frame.
     #[uniffi::method(name = "setClearColor")]
     #[lsp_doc("docs/api/core/pass/hidden/set_clear_color_mobile.md")]
     pub fn set_clear_color_mobile(&self, color: Vec<f32>) -> Result<(), FragmentColorError> {
-        match color.len() {
-            3 => {
-                self.set_clear_color([color[0], color[1], color[2], 1.0]);
-                Ok(())
-            }
-            4 => {
-                self.set_clear_color([color[0], color[1], color[2], color[3]]);
-                Ok(())
-            }
-            n => Err(FragmentColorError::Render(format!(
-                "setClearColor: expected 3 or 4 components (r, g, b[, a]); got {}",
-                n
-            ))),
-        }
+        Ok(self.set_clear_color(Color::try_from(color.as_slice())?)?)
     }
 
     /// Set the viewport (scissor + render region) for this pass.

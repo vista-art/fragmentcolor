@@ -24,7 +24,8 @@ fn fill_pass(viewport: impl Into<ScreenRegion>, color: [f32; 4]) -> Pass {
     let shader = Shader::new(FILL).expect("fill shader failed");
     shader.set("color", color).expect("set failed");
     let pass = Pass::from_shader("fill", &shader);
-    pass.set_clear_color([0.0, 0.0, 1.0, 1.0]);
+    pass.set_clear_color([0.0, 0.0, 1.0, 1.0])
+        .expect("set_clear_color failed");
     pass.set_viewport(viewport);
     pass
 }
@@ -128,7 +129,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             .expect("create_texture_target failed");
         let shader = Shader::new(HALVES).expect("halves shader failed");
         let pass = Pass::from_shader("halves", &shader);
-        pass.set_clear_color([0.0, 0.0, 1.0, 1.0]);
+        pass.set_clear_color([0.0, 0.0, 1.0, 1.0])
+            .expect("set_clear_color failed");
         // The viewport spans x 8..24, so its red left half covers 8..16 and its green half falls off.
         pass.set_viewport([8, 0, 16, 8]);
 

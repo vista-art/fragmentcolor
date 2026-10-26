@@ -496,6 +496,21 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     throws('Mesh.setIndices([0.5])', () => mesh.setIndices([0.5]));
     throws('Pass.setComputeDispatch(-1, 1, 1)', () => first.setComputeDispatch(-1, 1, 1));
 
+    // Size fields take only the numbers the constructor takes, and ScreenRegion has no setters.
+    const extent = new fc.Size(64, 64);
+    throws('Size.width = 2 ** 32 + 64', () => { extent.width = 2 ** 32 + 64; });
+    throws('Size.height = -1', () => { extent.height = -1; });
+    throws('Size.depth = NaN', () => { extent.depth = NaN; });
+    if (extent.width !== 64 || extent.height !== 64 || extent.depth !== undefined) fail('a refused write changed the Size');
+    extent.width = 32;
+    extent.depth = 2;
+    if (extent.width !== 32 || extent.depth !== 2) fail('Size fields did not take valid numbers');
+    extent.depth = undefined;
+    if (extent.depth !== undefined) fail('Size.depth = undefined did not clear the depth');
+    const region = new fc.ScreenRegion([0, 0], [64, 64]);
+    region.max_x = -1;
+    if (region.maxX !== 64) fail(`ScreenRegion.max_x wrote ${region.maxX} past the checks`);
+
     // Pass.require takes a Scene, and throws on anything it can't render.
     const compose = new Pass('compose');
     compose.require(built);
@@ -507,6 +522,19 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     await renderer.load([Shader.default(), built]);
     renderer.render([Shader.default(), Shader.default()], target);
     throws('render with a string item', () => renderer.render([Shader.default(), 'x'], target));
+
+    // A clear color takes numbers as given, as in every other language, and refuses anything else.
+    throws('Pass.setClearColor([undefined, 0, 0])', () => first.setClearColor([undefined, 0, 0]));
+    throws("Pass.setClearColor(['1', 0, 0])", () => first.setClearColor(['1', 0, 0]));
+    throws('Pass.setClearColor([NaN, 0, 0])', () => first.setClearColor([NaN, 0, 0]));
+    throws("Pass.setClearColor({ r: 1, g: 0, b: 0, a: 'x' })", () => first.setClearColor({ r: 1, g: 0, b: 0, a: 'x' }));
+    throws('Pass.setClearColor([0, 0])', () => first.setClearColor([0, 0]));
+    const clear = Pass.fromShader('clear', Shader.default());
+    clear.setViewport([0, 0, 1, 1]);
+    clear.setClearColor([1.2, 0.5, 0.25]);
+    renderer.render(clear, target);
+    const corner = Array.from((await target.getImage()).slice(252, 255));
+    if (Math.max(...corner) !== 255 || Math.min(...corner) < 50) fail(`[1.2, 0.5, 0.25] cleared to ${corner}`);
 
     // The window target is WindowTarget, and CanvasTarget names the same class.
     const canvas = document.createElement('canvas');

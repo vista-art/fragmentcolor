@@ -125,8 +125,8 @@ impl Pass {
     }
 
     #[lsp_doc("docs/api/core/pass/set_clear_color.md")]
-    pub fn set_clear_color(&self, color: impl Into<Color>) {
-        self.object.set_clear_color(color);
+    pub fn set_clear_color(&self, color: impl Into<Color>) -> Result<(), PassError> {
+        self.object.set_clear_color(color)
     }
 
     #[lsp_doc("docs/api/core/pass/set_compute_dispatch.md")]
@@ -421,9 +421,10 @@ impl PassObject {
         }
     }
 
-    /// Set the clear color for this pass; changes input to a clear operation.
-    pub fn set_clear_color(&self, color: impl Into<Color>) {
-        *self.input.write() = PassInput::Clear(color.into());
+    /// Makes the pass clear to `color`, and keeps its input when a channel isn't finite.
+    pub fn set_clear_color(&self, color: impl Into<Color>) -> Result<(), PassError> {
+        *self.input.write() = PassInput::Clear(color.into().check_finite()?);
+        Ok(())
     }
 
     /// Keep what the target holds instead of clearing it.
@@ -737,7 +738,7 @@ mod tests {
         let pass = Pass::new("p");
         let input = |pass: &Pass| *pass.object.input.read();
 
-        pass.set_clear_color([0.1, 0.2, 0.3, 0.4]);
+        assert!(pass.set_clear_color([0.1, 0.2, 0.3, 0.4]).is_ok());
         assert_eq!(
             input(&pass),
             PassInput::Clear(Color::from([0.1, 0.2, 0.3, 0.4]))
@@ -747,13 +748,35 @@ mod tests {
         assert_eq!(input(&pass), PassInput::Load);
 
         // Any Color form works: three channels are opaque, and a Color passes through.
-        pass.set_clear_color([1.0, 0.0, 0.0]);
+        assert!(pass.set_clear_color([1.0, 0.0, 0.0]).is_ok());
         assert_eq!(
             input(&pass),
             PassInput::Clear(Color::from([1.0, 0.0, 0.0, 1.0]))
         );
-        pass.set_clear_color(Color::white());
+        assert!(pass.set_clear_color(Color::white()).is_ok());
         assert_eq!(input(&pass), PassInput::Clear(Color::white()));
+    }
+
+    // Story: a clear color keeps values past 0 to 1 for float targets, and a
+    // channel that is NaN or infinite fails and leaves the pass as it was.
+    #[test]
+    fn keeps_the_clear_color_and_refuses_nan() {
+        let pass = Pass::new("p");
+        let input = |pass: &Pass| *pass.object.input.read();
+
+        assert!(pass.set_clear_color([4.0, -1.0, 0.25, 1.0]).is_ok());
+        assert_eq!(
+            input(&pass),
+            PassInput::Clear(Color::new(4.0, -1.0, 0.25, 1.0))
+        );
+
+        let error = pass.set_clear_color([f32::NAN, 0.0, 0.0]).err();
+        assert!(matches!(error, Some(PassError::Color(_))), "{error:?}");
+        assert!(pass.set_clear_color([0.0, 0.0, f32::INFINITY]).is_err());
+        assert_eq!(
+            input(&pass),
+            PassInput::Clear(Color::new(4.0, -1.0, 0.25, 1.0))
+        );
     }
 
     // Story: setting a viewport is stored and can be read back.
