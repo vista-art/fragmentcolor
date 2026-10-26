@@ -237,6 +237,7 @@ fn load_gltf(source: GltfSource) -> Result<Scene, SceneLoadError> {
         }
         GltfPayload::Bytes(b) => gltf::import_slice(&b)?,
     };
+    check_counts(&document, &buffers)?;
 
     let scene = Scene::new();
     let default_gltf_scene = document
@@ -284,6 +285,42 @@ fn load_gltf(source: GltfSource) -> Result<Scene, SceneLoadError> {
     }
 
     Ok(scene)
+}
+
+/// Refuse an accessor whose count the file doesn't back, before anything reads it.
+///
+/// gltf casts each count to `usize`, which cuts it to 32 bits on wasm, so this
+/// reads the JSON's u64. Past `u32::MAX` no index reaches an element. A sparse
+/// accessor without a bufferView stores only its changed values, so its count
+/// may span no more bytes than all of the file's buffers hold: memory then grows
+/// with the file instead of with a number the file merely states.
+fn check_counts(
+    document: &gltf::Document,
+    buffers: &[gltf::buffer::Data],
+) -> Result<(), SceneLoadError> {
+    let file_bytes: u64 = buffers.iter().map(|data| data.len() as u64).sum();
+    let declared = &document.as_json().accessors;
+    for accessor in document.accessors() {
+        let index = accessor.index();
+        let Some(count) = declared.get(index).map(|json| json.count.0) else {
+            continue;
+        };
+        if count > u64::from(u32::MAX) {
+            return Err(SceneLoadError::Invalid(format!(
+                "glTF accessor {index} holds {count} elements, more than 32-bit indices reach"
+            )));
+        }
+        if accessor.view().is_some() {
+            continue;
+        }
+        let bytes = count * accessor.size() as u64;
+        if bytes > file_bytes {
+            return Err(SceneLoadError::Invalid(format!(
+                "glTF accessor {index} spans {bytes} bytes without a bufferView, more than the {file_bytes} bytes the file's buffers hold"
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Load one glTF node and return its world matrix for its children.
@@ -449,19 +486,7 @@ fn check_accessor(
             layout.0, layout.1
         )));
     }
-    // A sparse accessor without a view holds zeros that cost no bytes in the
-    // file, so nothing else bounds its count. Past u32::MAX no index reaches it.
-    if count > u32::MAX as usize {
-        return Err(SceneLoadError::Invalid(format!(
-            "{label} holds {count} elements, more than 32-bit indices reach"
-        )));
-    }
     let size = accessor.size();
-    if count.checked_mul(size).is_none() {
-        return Err(SceneLoadError::Invalid(format!(
-            "{label} holds {count} elements of {size} bytes, more than this platform addresses"
-        )));
-    }
     let Some(sparse) = accessor.sparse() else {
         let view = accessor.view().ok_or_else(|| {
             SceneLoadError::Invalid(format!("{label} has neither a bufferView nor sparse data"))
@@ -538,12 +563,22 @@ fn check_range(
     }
 }
 
+/// Reserve room for `count` items, or name what the allocator refused.
+/// A system that overcommits may still grant more than it can fill, which is
+/// why `check_counts` first ties every count to the file's own bytes.
+fn reserve<Item>(count: usize, what: &str) -> Result<Vec<Item>, SceneLoadError> {
+    let mut items = Vec::new();
+    if items.try_reserve_exact(count).is_err() {
+        return Err(SceneLoadError::Invalid(format!(
+            "{what} needs {count} elements, more than the allocator gives"
+        )));
+    }
+    Ok(items)
+}
+
 /// Collect a declared accessor's items, or `None` for an absent one.
-///
 /// The reader returns `None` both for an absent attribute and for one whose
 /// bytes it can't reach, and only the first case may fall back to defaults.
-/// The memory is reserved up front and fallibly, so a count too large to hold
-/// is an error instead of an allocation panic.
 fn read_items<Item>(
     declared: Option<gltf::Accessor<'_>>,
     items: Option<impl Iterator<Item = Item>>,
@@ -559,14 +594,8 @@ fn read_items<Item>(
         }
         (Some(accessor), Some(items)) => (accessor, items),
     };
-    let mut values = Vec::new();
-    if values.try_reserve_exact(accessor.count()).is_err() {
-        return Err(SceneLoadError::Invalid(format!(
-            "glTF accessor {} ({semantic}) holds {} elements, more than fit in memory",
-            accessor.index(),
-            accessor.count()
-        )));
-    }
+    let label = format!("glTF accessor {} ({semantic})", accessor.index());
+    let mut values = reserve(accessor.count(), &label)?;
     values.extend(items);
     Ok(Some(values))
 }
@@ -632,7 +661,11 @@ fn build_mesh(
     // tools would have written. Falls back to the +Z placeholder only for
     // degenerate vertices that touch no triangle.
     let computed_normals = if supplied_normals.is_none() {
-        Some(compute_vertex_normals(&positions, indices.as_deref()))
+        Some(compute_vertex_normals(
+            &label,
+            &positions,
+            indices.as_deref(),
+        )?)
     } else {
         None
     };
@@ -713,33 +746,48 @@ fn list_triangles(
                     "{label} has {vertex_count} vertices, more than 32-bit indices reach"
                 )));
             };
-            (0..count).collect()
+            let mut order = reserve(vertex_count, label)?;
+            order.extend(0..count);
+            order
         }
     };
-    Ok(Some(expand(&order)))
+    Ok(Some(expand(label, &order)?))
+}
+
+/// Reserve the list a strip or fan of `steps` triangles expands into.
+fn reserve_list(label: &str, steps: usize) -> Result<Vec<u32>, SceneLoadError> {
+    let Some(count) = steps.checked_mul(3) else {
+        return Err(SceneLoadError::Invalid(format!(
+            "{label} expands into more triangle indices than this platform addresses"
+        )));
+    };
+    reserve(count, label)
 }
 
 /// One triangle per step of a strip, every second one flipped back to the
 /// strip's winding.
-fn expand_strip(order: &[u32]) -> Vec<u32> {
-    order
-        .windows(3)
-        .enumerate()
-        .flat_map(|(step, corners)| match step % 2 {
-            0 => [corners[0], corners[1], corners[2]],
-            _ => [corners[1], corners[0], corners[2]],
-        })
-        .collect()
+fn expand_strip(label: &str, order: &[u32]) -> Result<Vec<u32>, SceneLoadError> {
+    let mut list = reserve_list(label, order.len().saturating_sub(2))?;
+    list.extend(
+        order
+            .windows(3)
+            .enumerate()
+            .flat_map(|(step, corners)| match step % 2 {
+                0 => [corners[0], corners[1], corners[2]],
+                _ => [corners[1], corners[0], corners[2]],
+            }),
+    );
+    Ok(list)
 }
 
 /// One triangle per step of a fan, each sharing the first vertex.
-fn expand_fan(order: &[u32]) -> Vec<u32> {
+fn expand_fan(label: &str, order: &[u32]) -> Result<Vec<u32>, SceneLoadError> {
     let Some((&hub, rim)) = order.split_first() else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
-    rim.windows(2)
-        .flat_map(|edge| [hub, edge[0], edge[1]])
-        .collect()
+    let mut list = reserve_list(label, rim.len().saturating_sub(1))?;
+    list.extend(rim.windows(2).flat_map(|edge| [hub, edge[0], edge[1]]));
+    Ok(list)
 }
 
 /// Refuse an index that points past the last vertex.
@@ -767,9 +815,14 @@ fn check_indices(
 /// vector. Degenerate vertices (zero accumulated direction, or untouched
 /// by any triangle) fall back to a forward-Z normal so the BRDF stays
 /// finite — matches the glTF 2.0 default for POSITION-only meshes.
-fn compute_vertex_normals(positions: &[[f32; 3]], indices: Option<&[u32]>) -> Vec<[f32; 3]> {
-    let mut accum = vec![Vec3::ZERO; positions.len()];
+fn compute_vertex_normals(
+    label: &str,
+    positions: &[[f32; 3]],
+    indices: Option<&[u32]>,
+) -> Result<Vec<[f32; 3]>, SceneLoadError> {
     let n_verts = positions.len();
+    let mut accum = reserve(n_verts, label)?;
+    accum.resize(n_verts, Vec3::ZERO);
     let visit_triangle = |a: usize, b: usize, c: usize, accum: &mut [Vec3]| {
         if a >= n_verts || b >= n_verts || c >= n_verts {
             return;
@@ -798,14 +851,13 @@ fn compute_vertex_normals(positions: &[[f32; 3]], indices: Option<&[u32]>) -> Ve
             i += 3;
         }
     }
-    accum
-        .iter()
-        .map(|v| {
-            v.try_normalize()
-                .unwrap_or(Vec3::new(0.0, 0.0, 1.0))
-                .to_array()
-        })
-        .collect()
+    let mut normals = reserve(n_verts, label)?;
+    normals.extend(accum.iter().map(|v| {
+        v.try_normalize()
+            .unwrap_or(Vec3::new(0.0, 0.0, 1.0))
+            .to_array()
+    }));
+    Ok(normals)
 }
 
 /// Translate a glTF texture's sampler into FragmentColor's
@@ -1527,11 +1579,40 @@ mod tests {
         // collecting 2^62 positions overflowed the allocation.
         assert_invalid(
             sparse_positions("4611686018427387904"),
-            "(POSITION) holds 4611686018427387904 elements",
+            "accessor 0 holds 4611686018427387904 elements",
         );
         assert_invalid(
             sparse_positions("4294967296"),
-            "(POSITION) holds 4294967296 elements",
+            "accessor 0 holds 4294967296 elements",
+        );
+    }
+
+    #[test]
+    fn load_refuses_a_sparse_accessor_larger_than_the_file() {
+        // The file holds 72 bytes of buffers. Its one sparse value can't stand
+        // for 100,000 positions, and a count just under u32::MAX would ask for
+        // 51 GB that an overcommitting system grants and then can't fill.
+        assert_invalid(
+            sparse_positions("100000"),
+            "glTF accessor 0 spans 1200000 bytes without a bufferView, more than the 72 bytes",
+        );
+        assert_invalid(
+            sparse_positions("4294967295"),
+            "glTF accessor 0 spans 51539607540 bytes without a bufferView",
+        );
+    }
+
+    #[test]
+    fn reserve_refuses_a_count_the_allocator_cant_give() {
+        // Every Vec the loader sizes from a count goes through `reserve`, so a
+        // refused allocation is an error there instead of an abort.
+        let refused = reserve::<[f32; 3]>(usize::MAX, "glTF accessor 0 (POSITION)");
+        let message = refused
+            .expect_err("usize::MAX positions overflow")
+            .to_string();
+        assert!(
+            message.contains("glTF accessor 0 (POSITION) needs"),
+            "{message}"
         );
     }
 
@@ -1540,7 +1621,7 @@ mod tests {
         let indices = r#""max":[0.5,0.5,0.0]},{"componentType":5125,"count":4611686018427387904,"type":"SCALAR","sparse":{"count":1,"indices":{"bufferView":1,"componentType":5125},"values":{"bufferView":1}}}]"#;
         let bytes =
             mutate_triangle(&[(MODE, r#""indices":1,"mode":4}"#), (LAST_ACCESSOR, indices)]);
-        assert_invalid(bytes, "(indices) holds 4611686018427387904 elements");
+        assert_invalid(bytes, "accessor 1 holds 4611686018427387904 elements");
     }
 
     #[test]
@@ -1703,7 +1784,7 @@ mod tests {
         // triangle as if it pointed forward — visibly wrong.
         let positions = [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
         let indices = [0u32, 1, 2];
-        let normals = compute_vertex_normals(&positions, Some(&indices));
+        let normals = compute_vertex_normals("test", &positions, Some(&indices)).expect("normals");
         for n in normals {
             assert!((n[0] - 1.0).abs() < 1.0e-6, "got {n:?}");
             assert!(n[1].abs() < 1.0e-6);
@@ -1717,7 +1798,7 @@ mod tests {
         // triplets. The loader treats every three consecutive positions
         // as one face.
         let positions = [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
-        let normals = compute_vertex_normals(&positions, None);
+        let normals = compute_vertex_normals("test", &positions, None).expect("normals");
         for n in normals {
             assert!((n[0] - 1.0).abs() < 1.0e-6, "got {n:?}");
         }
@@ -1736,7 +1817,7 @@ mod tests {
             [0.0, -1.0, 0.0],
         ];
         let indices = [0u32, 1, 2, 0, 3, 4];
-        let normals = compute_vertex_normals(&positions, Some(&indices));
+        let normals = compute_vertex_normals("test", &positions, Some(&indices)).expect("normals");
         assert!((normals[0][2] - 1.0).abs() < 1.0e-6, "shared {normals:?}");
     }
 

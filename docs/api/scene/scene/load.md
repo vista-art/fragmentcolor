@@ -16,10 +16,14 @@ flattened into Model matrices, glTF camera nodes, and `KHR_lights_punctual`
 lights. Animation, skinning, morph targets, and material extensions beyond
 PBR-MR are out of scope; they parse cleanly and the loader ignores them.
 
-Triangle strips and fans load as triangle lists. glTF also allows two
-things the loader can't draw, and it returns `SceneLoadError::Invalid` for
-them: a primitive drawn as points or lines, and an accessor with more
-elements than 32-bit indices reach.
+Triangle strips and fans load as triangle lists. glTF also allows a few
+things the loader can't take, and it returns `SceneLoadError::Invalid` for
+them:
+
+- a primitive drawn as points or lines
+- an accessor with more elements than 32-bit indices reach
+- a sparse accessor without a bufferView that spans more bytes than all of
+  the file's buffers hold
 
 A file that breaks the glTF rules returns the same error. That covers:
 
