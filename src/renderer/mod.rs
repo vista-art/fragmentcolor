@@ -602,7 +602,7 @@ struct BlendDraw {
 /// into the two draw-time categories the renderer cares about: batched
 /// opaque/mask draws (one instanced GPU call per `(shader, mesh)` pair)
 /// and individually-ordered blend draws.
-#[derive(Default, Debug)]
+#[derive(Default)]
 struct PassDraws {
     /// Per-(shader_ptr, mesh_ptr) instance buffer + instance count. Keys
     /// match the `Pass::add_model` dedupe identity. Bound at vertex slot 1
@@ -612,6 +612,37 @@ struct PassDraws {
     /// renderer walks this list inside the blend phase, looking each
     /// shader's pipeline + bind groups up by `shader_ptr`.
     blend_draws: Vec<BlendDraw>,
+    /// What each shader of the pass draws, in the pass's order.
+    shaders: Vec<ShaderDraw>,
+    /// Whether the pass holds Models, so its other shaders ignore the depth attachment.
+    has_models: bool,
+}
+
+/// What one shader of a render pass draws, decided before the frame is acquired.
+struct ShaderDraw {
+    shader: Arc<ShaderObject>,
+    /// The vertex layouts the shader reads from its first mesh, or `None` when it reads none.
+    layouts: Option<VertexLayouts>,
+    /// Whether the shader draws the pass's Models, hidden ones included.
+    model: bool,
+    draws: MeshDraws,
+}
+
+/// The draws one shader makes in its own turn of a render pass.
+enum MeshDraws {
+    /// Three built-in vertices, for a shader with no mesh.
+    Fullscreen,
+    /// One draw for each mesh of an opaque or masked shader that has something to draw.
+    Batched(Vec<MeshDraw>),
+    /// None: a translucent shader's Models draw in the pass's blend phase.
+    Blend,
+}
+
+/// One mesh draw: the mesh's buffers, its index count, and the instances it draws.
+struct MeshDraw {
+    buffers: crate::mesh::VertexBuffers,
+    index_count: u32,
+    instances: Instances,
 }
 
 /// Key for caching render pipelines
@@ -861,14 +892,13 @@ impl RenderContext {
             });
 
         let pass_list = renderable.passes();
-        let draws: Vec<PassDraws> = pass_list
+        let draws = pass_list
             .iter()
             .map(|pass| match pass.is_compute() {
-                true => PassDraws::default(),
-                false => self.build_pass_draws(pass),
+                true => Ok(PassDraws::default()),
+                false => self.plan_pass(pass),
             })
-            .collect();
-        self.check_passes(&pass_list, &draws)?;
+            .collect::<Result<Vec<_>, _>>()?;
 
         // Compute passes never draw into the target, so a
         // render made only of compute passes acquires no frame.
@@ -921,41 +951,67 @@ impl RenderContext {
         Ok(())
     }
 
-    /// Runs the checks each render pass makes on the CPU, before any frame is acquired,
-    /// so a shader that reads vertex inputs with no mesh, or a mesh asked for more
-    /// instances than it holds, fails without drawing and the target keeps its last frame.
-    fn check_passes(
-        &self,
-        passes: &[Arc<PassObject>],
-        draws: &[PassDraws],
-    ) -> Result<(), RendererError> {
-        for (pass, draws) in passes.iter().zip(draws) {
-            if pass.is_compute() {
-                continue;
-            }
-            let model_shaders = find_model_shaders(pass);
-            for shader in pass.shaders.read().iter() {
-                let meshes = shader.meshes.read().clone();
-                let layouts = self.shader_layouts(shader, &meshes)?;
-                if *shader.alpha_mode.read() == crate::material::AlphaMode::Blend {
-                    continue;
-                }
-                let model = model_shaders.contains(&(Arc::as_ptr(shader) as usize));
-                for mesh in meshes.iter() {
-                    let (refs, counts) = mesh.vertex_buffers(&self.device, &self.queue)?;
-                    let key = (Arc::as_ptr(shader) as usize, Arc::as_ptr(mesh) as usize);
-                    let models = draws.opaque_overrides.get(&key);
-                    let own = refs.instance_buffer.as_ref();
-                    mesh_instances(models, own, mesh, model, layouts.as_ref(), counts)?;
-                }
-            }
+    /// Decides what a render pass draws, before any frame is acquired.
+    ///
+    /// The checks that need no frame run here, so a shader that reads vertex inputs
+    /// with no mesh, or a mesh asked for more instances than it holds, fails without drawing,
+    /// and the target keeps its last frame. The draw loop takes each shader's layouts and buffers from it.
+    fn plan_pass(&self, pass: &PassObject) -> Result<PassDraws, RendererError> {
+        let mut draws = self.build_pass_draws(pass);
+        let model_shaders = find_model_shaders(pass);
+        draws.has_models = !model_shaders.is_empty();
+        let shaders = pass.shaders.read().clone();
+        for shader in shaders {
+            let model = model_shaders.contains(&(Arc::as_ptr(&shader) as usize));
+            let plan = self.plan_shader(shader, model, &draws.opaque_overrides)?;
+            draws.shaders.push(plan);
         }
-        Ok(())
+        Ok(draws)
+    }
+
+    /// Decides what `shader` draws in its turn of a pass, given the pass's Model `overrides`.
+    /// `model` is true for a shader that draws the pass's Models, hidden ones included.
+    fn plan_shader(
+        &self,
+        shader: Arc<ShaderObject>,
+        model: bool,
+        overrides: &HashMap<(usize, usize), (wgpu::Buffer, u32)>,
+    ) -> Result<ShaderDraw, RendererError> {
+        let meshes = shader.meshes.read().clone();
+        let layouts = self.read_layouts(&shader, &meshes)?;
+        let draws = if meshes.is_empty() {
+            MeshDraws::Fullscreen
+        } else if *shader.alpha_mode.read() == crate::material::AlphaMode::Blend {
+            MeshDraws::Blend
+        } else {
+            let shader_ptr = Arc::as_ptr(&shader) as usize;
+            let mut batched = Vec::with_capacity(meshes.len());
+            for mesh in meshes.iter() {
+                let (buffers, counts) = mesh.vertex_buffers(&self.device, &self.queue)?;
+                let models = overrides.get(&(shader_ptr, Arc::as_ptr(mesh) as usize));
+                let own = buffers.instance_buffer.as_ref();
+                let instances = pick_instances(models, own, mesh, model, layouts.as_ref(), counts)?;
+                if let Some(instances) = instances {
+                    batched.push(MeshDraw {
+                        index_count: counts.index_count,
+                        instances,
+                        buffers,
+                    });
+                }
+            }
+            MeshDraws::Batched(batched)
+        };
+        Ok(ShaderDraw {
+            shader,
+            layouts,
+            model,
+            draws,
+        })
     }
 
     /// The vertex layouts a shader reads from its first mesh,
     /// or `None` for a shader that reads no vertex input.
-    fn shader_layouts(
+    fn read_layouts(
         &self,
         shader: &crate::ShaderObject,
         meshes: &[Arc<crate::mesh::MeshObject>],
@@ -1342,9 +1398,8 @@ impl RenderContext {
     ) -> Result<(), RendererError> {
         // The frame's own size, which a resize on another thread can't change mid-render.
         let size = frame.size();
-        // `pass_draws` holds this pass's per-Model GPU instance buffers, built
-        // before the frame was acquired so they outlive the render pass.
-        let model_overrides = &pass_draws.opaque_overrides;
+        // `pass_draws` holds this pass's plan and its per-Model GPU instance
+        // buffers, built before the frame was acquired so they outlive the render pass.
         let blend_draws = &pass_draws.blend_draws;
 
         let load_op = match *pass.input.read() {
@@ -1451,21 +1506,18 @@ impl RenderContext {
         }
         let mut shader_states: HashMap<usize, ShaderRenderState> = HashMap::new();
 
-        // In a pass with models, the shaders that draw none ignore the depth attachment.
-        let model_shaders = find_model_shaders(pass);
-
-        for shader in pass.shaders.read().iter() {
+        for plan in pass_draws.shaders.iter() {
+            let shader = &plan.shader;
             shader.flush_pending();
-            let shader_meshes = shader.meshes.read().clone();
-            let layouts = self.shader_layouts(shader, &shader_meshes)?;
+            let layouts = &plan.layouts;
 
             // Snapshot the Material-owned pipeline-state flags from the
             // shader's back-references. Drop the read locks immediately so
             // we don't hold them across the pipeline build.
             let alpha_mode = *shader.alpha_mode.read();
             let double_sided = *shader.double_sided.read();
-            let model = model_shaders.contains(&(Arc::as_ptr(shader) as usize));
-            let depth_use = depth.pick(!model_shaders.is_empty() && !model);
+            // In a pass with models, the shaders that draw none ignore the depth attachment.
+            let depth_use = depth.pick(pass_draws.has_models && !plan.model);
             let pipeline_key = RenderPipelineKey {
                 shader_hash: shader.hash,
                 color_format,
@@ -1736,51 +1788,27 @@ impl RenderContext {
                 },
             );
 
-            match shader_meshes.len() {
-                0 => render_pass.draw(0..3, 0..1),
-                _ => match alpha_mode {
-                    crate::material::AlphaMode::Opaque | crate::material::AlphaMode::Mask => {
-                        // Auto-instancing path: one batched draw per
-                        // (shader, mesh) pair regardless of how many
-                        // Models contributed. The instance override map
-                        // packs all queued model matrices into one
-                        // vertex buffer at slot 1.
-                        for mesh_object in shader_meshes.iter() {
-                            let (refs, counts) =
-                                mesh_object.vertex_buffers(&self.device, &self.queue)?;
-                            let override_key = (shader_ptr, Arc::as_ptr(mesh_object) as usize);
-                            let models = model_overrides.get(&override_key);
-                            let own = refs.instance_buffer.as_ref();
-                            let Some(instances) = mesh_instances(
-                                models,
-                                own,
-                                mesh_object,
-                                model,
-                                layouts.as_ref(),
-                                counts,
-                            )?
-                            else {
-                                continue;
-                            };
-                            if let Some(buffer) = instances.buffer {
-                                render_pass.set_vertex_buffer(1, buffer.slice(..));
-                            }
-
-                            render_pass.set_vertex_buffer(0, refs.vertex_buffer.slice(..));
-                            render_pass.set_index_buffer(
-                                refs.index_buffer.slice(..),
-                                wgpu::IndexFormat::Uint32,
-                            );
-                            render_pass.draw_indexed(0..counts.index_count, 0, 0..instances.count);
+            match &plan.draws {
+                MeshDraws::Fullscreen => render_pass.draw(0..3, 0..1),
+                // Auto-instancing path: one batched draw per (shader, mesh) pair
+                // regardless of how many Models contributed. The pass packs all
+                // queued model matrices into one vertex buffer at slot 1.
+                MeshDraws::Batched(meshes) => {
+                    for mesh in meshes {
+                        if let Some(buffer) = mesh.instances.buffer.as_ref() {
+                            render_pass.set_vertex_buffer(1, buffer.slice(..));
                         }
+                        render_pass.set_vertex_buffer(0, mesh.buffers.vertex_buffer.slice(..));
+                        render_pass.set_index_buffer(
+                            mesh.buffers.index_buffer.slice(..),
+                            wgpu::IndexFormat::Uint32,
+                        );
+                        render_pass.draw_indexed(0..mesh.index_count, 0, 0..mesh.instances.count);
                     }
-                    crate::material::AlphaMode::Blend => {
-                        // Blend draws run in the global back-to-front phase
-                        // below, after every shader has registered its
-                        // pipeline + bind groups in `shader_states`. Nothing
-                        // to do here.
-                    }
-                },
+                }
+                // Blend draws run in the global back-to-front phase below, after every
+                // shader has registered its pipeline and bind groups in `shader_states`.
+                MeshDraws::Blend => {}
             }
         }
 
@@ -2016,8 +2044,8 @@ impl VertexLayouts {
 }
 
 /// The instances a mesh draws, and the buffer slot 1 steps through for them.
-struct Instances<'draw> {
-    buffer: Option<&'draw wgpu::Buffer>,
+struct Instances {
+    buffer: Option<wgpu::Buffer>,
     count: u32,
 }
 
@@ -2027,21 +2055,21 @@ struct Instances<'draw> {
 /// for each visible Model that draws this mesh through this shader. Otherwise the mesh
 /// draws its own instances, such as a crowd built with `Mesh::add_instance`. `model` is
 /// true for a shader that draws the pass's Models, hidden ones included.
-fn mesh_instances<'draw>(
-    models: Option<&'draw (wgpu::Buffer, u32)>,
-    own: Option<&'draw wgpu::Buffer>,
+fn pick_instances(
+    models: Option<&(wgpu::Buffer, u32)>,
+    own: Option<&wgpu::Buffer>,
     mesh: &crate::mesh::MeshObject,
     model: bool,
     layouts: Option<&VertexLayouts>,
     counts: crate::mesh::DrawCounts,
-) -> Result<Option<Instances<'draw>>, RendererError> {
+) -> Result<Option<Instances>, RendererError> {
     // An empty index list draws nothing, like an instance count of 0.
     if counts.index_count == 0 {
         return Ok(None);
     }
     match (models, own) {
         (Some((buffer, count)), _) => Ok(Some(Instances {
-            buffer: Some(buffer),
+            buffer: Some(buffer.clone()),
             count: *count,
         })),
         // A shader that draws this pass's Models skips a Model mesh whose Model
@@ -2050,7 +2078,7 @@ fn mesh_instances<'draw>(
         (None, buffer) => {
             check_instance_count(layouts, counts, mesh)?;
             Ok(Some(Instances {
-                buffer,
+                buffer: buffer.cloned(),
                 count: counts.instance_count,
             }))
         }
@@ -3776,7 +3804,8 @@ struct VOut { @builtin(position) pos: vec4<f32> };
         let mut encoder = ctx
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        ctx.process_render_pass(&mut encoder, pass, &frame, &ctx.build_pass_draws(pass))
+        let draws = ctx.plan_pass(pass).expect("the pass plans");
+        ctx.process_render_pass(&mut encoder, pass, &frame, &draws)
             .expect("render pass failed");
         ctx.queue.submit(Some(encoder.finish()));
         scope.pop().await
@@ -3947,7 +3976,7 @@ struct VOut { @builtin(position) pos: vec4<f32> };
                     .device
                     .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-                let draws = ctx.build_pass_draws(&first_pass);
+                let draws = ctx.plan_pass(&first_pass).expect("the pass plans");
                 let res = ctx.process_render_pass(&mut encoder, &first_pass, &frame, &draws);
                 assert!(
                     res.is_ok(),
@@ -4779,7 +4808,7 @@ fn main() -> @location(0) vec4<f32> {
             let mut encoder = ctx
                 .device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-            let draws = ctx.build_pass_draws(&first_pass);
+            let draws = ctx.plan_pass(&first_pass).expect("the pass plans");
             let res = ctx.process_render_pass(&mut encoder, &first_pass, &frame, &draws);
             assert!(res.is_err());
             let s = format!("{}", res.unwrap_err());
