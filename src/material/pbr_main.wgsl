@@ -1,10 +1,11 @@
 // Material::pbr default complete shader.
 //
 // Composes the `mesh/transform`, `material/pbr` and `color/linear_to_srgb`
-// registry snippets with this main body. Bindings (overridable via shader.set):
+// registry snippets, then `light.wgsl` and `pbr_lights.wgsl`, with this main
+// body. Bindings (overridable via shader.set):
 //   group 0 binding 0 — camera   (view_proj, position)
-//   group 0 binding 1 — lights   (LightArray: count + ambient + up to
-//                                 PBR_MAX_LIGHTS KHR_lights_punctual lights)
+//   group 0 binding 1 — lights   (filled by the renderer, see pbr_lights.wgsl)
+//   group 0 binding 2 — light_grid (filled by the renderer)
 //   group 1 binding 0 — material (PBR factors, alpha_mode flag, and the UV
 //                                 set and transform of each texture slot)
 //   group 2 bindings 0..5 — five glTF PBR-MR maps + shared sampler
@@ -71,52 +72,13 @@ fn slot_uv(slot: TextureUv, uv0: vec2<f32>, uv1: vec2<f32>) -> vec2<f32> {
   return vec2<f32>(c * uv.x + s * uv.y, c * uv.y - s * uv.x) + slot.offset;
 }
 
-// glTF KHR_lights_punctual model. Each entry in `lights.lights[i]` is one
-// light; `kind` selects which fields fs_main consults:
-//   0 = directional — parallel rays, only `direction` matters
-//   1 = point       — inverse-square distance from `position`, optional
-//                     `range` cutoff (0 = unlimited)
-//   2 = spot        — point + cone falloff via `inner_cone_cos` /
-//                     `outer_cone_cos`, cone axis = `-direction`
-// `intensity` scales `color` uniformly so glTF's per-light intensity slots in
-// without Rust-side premultiplication.
-struct Light {
-  kind: u32,
-  intensity: f32,
-  range: f32,
-  inner_cone_cos: f32,
-  position: vec3<f32>,
-  outer_cone_cos: f32,
-  direction: vec3<f32>,
-  color: vec3<f32>,
-}
-
-// Fixed-size light list. `count` is the number of valid entries in
-// `lights[..count]`; `ambient` is a scene-wide RGB term added to the final
-// shaded color so unlit faces don't read as pitch-black (replaces the
-// hardcoded `albedo * 0.03` from the prior single-light shader).
-//
-// `PBR_MAX_LIGHTS = 32` keeps the uniform near 2 KiB (1 u32 + vec3
-// ambient + 32 × Light(64) = 32 + 2048 = 2080 bytes), well inside wgpu's
-// per-binding limit. Beyond a few dozen lights the forward-shaded loop
-// becomes the bottleneck; a clustered / storage-buffer path is on the
-// roadmap for scenes that need hundreds.
-const PBR_MAX_LIGHTS: u32 = 32u;
-
 // Whether the target stores colors encoded for display. The renderer sets it
 // from the target's format: true for Rgba8Unorm and Bgra8Unorm, false for an
 // sRGB format, which encodes on write, and for a float format, which keeps
 // linear light for the passes after it.
 override ENCODE_SRGB: bool = true;
 
-struct LightArray {
-  count: u32,
-  ambient: vec3<f32>,
-  lights: array<Light, 32>,
-}
-
 @group(0) @binding(0) var<uniform> camera: Camera;
-@group(0) @binding(1) var<uniform> lights: LightArray;
 @group(1) @binding(0) var<uniform> material: PbrMaterial;
 
 // glTF 2.0 PBR-MR texture maps. Every Material::pbr starts with a 1×1
@@ -233,51 +195,8 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 
   let v = normalize(camera.position - in.world);
 
-  // Accumulate direct lighting from every active light. The KHR_lights_
-  // punctual loop dispatches on `kind` per fragment:
-  //   directional → unattenuated parallel rays from `-direction`
-  //   point       → inverse-square distance from `position`, optional
-  //                 (1 - (d/range)^4) cutoff
-  //   spot        → point + smooth cone falloff between inner / outer
-  //                 cone cosines, cone axis = `-direction`
-  var lit_total: vec3<f32> = vec3<f32>(0.0);
-  let n_lights = min(lights.count, PBR_MAX_LIGHTS);
-  for (var i: u32 = 0u; i < n_lights; i = i + 1u) {
-    let lt = lights.lights[i];
-    var l: vec3<f32>;
-    var attenuation: f32 = 1.0;
-    if (lt.kind == 0u) {
-      l = normalize(-lt.direction);
-    } else {
-      let to_light = lt.position - in.world;
-      let dist = length(to_light);
-      l = to_light / max(dist, 1.0e-6);
-      attenuation = 1.0 / max(dist * dist, 1.0e-4);
-      if (lt.range > 0.0) {
-        attenuation = attenuation * max(0.0, 1.0 - pow(dist / lt.range, 4.0));
-      }
-      if (lt.kind == 2u) {
-        let spot_axis = normalize(-lt.direction);
-        let cos_angle = dot(spot_axis, l);
-        // smoothstep's curve between the cone cosines. Equal or inverted
-        // angles leave no band, where smoothstep is undefined, so they get a
-        // hard edge at the outer angle.
-        let band = lt.inner_cone_cos - lt.outer_cone_cos;
-        var cone = step(lt.outer_cone_cos, cos_angle);
-        if (band > 0.0) {
-          let t = clamp((cos_angle - lt.outer_cone_cos) / band, 0.0, 1.0);
-          cone = t * t * (3.0 - 2.0 * t);
-        }
-        attenuation = attenuation * cone;
-      }
-    }
-    let radiance = lt.color * lt.intensity * attenuation;
-    lit_total = lit_total + pbr_shade(
-      world_normal, l, v,
-      albedo, metallic, roughness,
-      radiance,
-    );
-  }
+  // Direct light from every light that reaches the fragment, see pbr_lights.wgsl.
+  let lit_total = accumulate_lights(in.world, world_normal, v, albedo, metallic, roughness);
   // Scene-wide ambient — keeps unlit faces from reading pitch-black.
   // Drives an albedo-tinted constant; future image-based lighting will
   // replace this branch.

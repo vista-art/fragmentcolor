@@ -15,6 +15,7 @@
 - A mesh whose index list is empty draws nothing, where `render` panicked with "buffer slice can not be empty".
 - `render` returns `MeshError::InvalidInstance` when `set_instance_count` asks for more instances than the mesh holds and the shader reads instance attributes. A shader that reads none, such as one that indexes a storage buffer with `@builtin(instance_index)`, draws any count.
 - `Pass.set_clear_color` hands each channel to the GPU as given, in every language. A float target such as `Rgba16Float` clears to `[4.0, -1.0, 0.25, 1.0]`, and a unorm target clamps on the GPU. Each channel was clamped to 0 to 1 and truncated to 8 bits first, so 0.5 cleared to 127/255.
+- Lights are clustered, and a `Material::pbr` shader takes as many as the device allows, in every language. At each render the renderer sorts every light with a `range` into a grid of cells over the pass's camera view, with a compute pass, and each fragment shades only the lights of its own cell plus the lights without a range. A still scene sorts once; a moved light or camera sorts again, and a new color or intensity only uploads. WebGL2 and native OpenGL have no storage buffers in fragment shaders, so they take the lights through a uniform block the size the device allows, from 253 to 1,021 lights, and loop over all of them. A custom shader gets the same lights by declaring the `lights` and `light_grid` roots that the `Material::custom` page lists.
 
 ### Textures
 
@@ -113,6 +114,12 @@
 - A positive `rotation` in `uv_transform`, `texture_transform` and a glTF `KHR_texture_transform` turns the UVs counter-clockwise in texture space, where `v` points down, as the extension's example and the Khronos sample renderer do. The PBR shader turned them the other way, so every rotated texture turned the wrong way.
 - `Scene.load` fails on a texture that reads `TEXCOORD_2` or above with `SceneLoadError::Invalid`, which names the slot, such as `occlusionTexture`. The PBR material samples two UV sets, and the loader drew such a texture with `UV0`.
 - The PBR material's `material.uv_offset`, `material.uv_scale` and `material.uv_rotation` uniforms are gone. Code that sets them through the material's shader sets `material.uv[i].offset`, `.scale` and `.rotation` instead, where `i` counts the slots in `TextureSlot` order, and `material.uv[i].uv_set` holds the UV set of slot `i`.
+- The PBR shader's `lights` is a read-only storage `Lights` at group 0 binding 1, and `light_grid` takes binding 2. It was a uniform `LightArray` of 32 lights. A custom shader that copied the 0.12.6 `LightArray` keeps drawing with the lights that reach it, up to its own array length; that shape goes in 0.13.
+- `shader.set` and `shader.get` on `lights.count` and `lights.lights[i]` return `ShaderError::UniformNotFound` in every language, since the renderer fills the lights at each render. `lights.ambient` still sets the ambient term, so `Scene.ambient` works as before. To draw with ambient light alone, where `lights.count = 0` did that, add a black light.
+- `list_uniforms` and `list_keys` leave out the `lights` and `light_grid` roots of a shader that declares them.
+- The 32-light cap is gone, and so is the warning that dropped a light added before its shader joined the pass. `PassError::LightCapReached { cap }` names the cap of the device, with a new message, and it also fires when a `Model` whose shader would take too many lights joins a pass, and from `render` for lights added before the renderer opened a device. Only shaders that declare `lights` take lights, so a backdrop shader in the pass no longer counts against the cap.
+- `RendererError` has a new `PassError` variant, which `render` returns for a shader past the light cap. The enum isn't `#[non_exhaustive]`, so a `match` that lists every variant needs a new arm.
+- A `Light` stops lighting once nothing holds it. A `Pass` and a `Scene` hold the lights added to them, so `scene.add(&light)` keeps lighting after the handle drops, but a shader no longer keeps a light it was given after its passes, scenes and handles are gone.
 
 ## 0.12.6: Binding and renderer fixes
 

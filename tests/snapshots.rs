@@ -4,7 +4,7 @@ use std::fs;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
-use fragmentcolor::{Pass, Renderer, Shader, Target};
+use fragmentcolor::{Camera, Light, Material, Mesh, Model, Pass, Renderer, Shader, Target, Vertex};
 
 pub struct Tolerance(pub f64);
 
@@ -172,6 +172,94 @@ fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); 
 
         let img = render_shader_to_rgba(&shader, size).await;
         let name = "fullscreen_triangle";
+        let golden = golden_path(format!("{}.png", name));
+
+        if gonna_be_gonna_be_golden() {
+            save_png(&golden, size[0], size[1], &img).expect("save golden");
+            return;
+        }
+
+        if !golden.exists() {
+            panic!(
+                "Golden missing at {}. Run with GOLDEN=1 to create it.",
+                golden.display()
+            );
+        }
+        let expected = parse_file(&golden);
+        compare_images(&img, &expected, Tolerance::default(), name);
+    })
+}
+
+/// A quad over `corners`, counterclockwise around `normal`.
+fn quad(corners: [[f32; 3]; 4], normal: [f32; 3]) -> Mesh {
+    let mesh = Mesh::new();
+    let [a, b, c, d] = corners;
+    mesh.add_vertices(
+        [a, b, c, a, c, d].map(|corner| Vertex::pbr(corner).set(Vertex::NORMAL, normal)),
+    );
+    mesh
+}
+
+#[test]
+fn snapshot_clustered_lights() {
+    pollster::block_on(async move {
+        let size = [128u32, 128u32];
+        let material = Material::pbr().roughness(0.7);
+        let pass = Pass::new("clustered lights");
+        let floor = quad(
+            [
+                [-6.0, 0.0, -6.0],
+                [-6.0, 0.0, 6.0],
+                [6.0, 0.0, 6.0],
+                [6.0, 0.0, -6.0],
+            ],
+            [0.0, 1.0, 0.0],
+        );
+        let wall = quad(
+            [
+                [-6.0, 0.0, -6.0],
+                [6.0, 0.0, -6.0],
+                [6.0, 6.0, -6.0],
+                [-6.0, 6.0, -6.0],
+            ],
+            [0.0, 0.0, 1.0],
+        );
+        pass.add(&Model::new(floor, material.clone()))
+            .expect("floor");
+        pass.add(&Model::new(wall, material)).expect("wall");
+        let camera = Camera::perspective(1.0, 1.0, 0.1, 100.0)
+            .expect("camera")
+            .look_at([0.0, 4.0, 9.0], [0.0, 1.0, -2.0], [0.0, 1.0, 0.0])
+            .expect("camera");
+        pass.add(&camera).expect("camera");
+
+        // 256 colored point lights on a 16 x 16 lattice over the floor, so
+        // they land in many clusters, then one spot and one directional light.
+        for index in 0..256u32 {
+            let (column, row) = ((index % 16) as f32, (index / 16) as f32);
+            let hue = index as f32 / 256.0 * std::f32::consts::TAU;
+            let color = [
+                0.5 + 0.5 * hue.cos(),
+                0.5 + 0.5 * (hue + 2.1).cos(),
+                0.5 + 0.5 * (hue + 4.2).cos(),
+            ];
+            let height = 0.25 + (index % 3) as f32 * 0.2;
+            let position = [column * 0.75 - 5.6, height, row * 0.75 - 5.6];
+            let light = Light::point(position, color).set_intensity(0.6);
+            light.set_range(1.2).expect("range");
+            pass.add(&light).expect("point light");
+        }
+        let spot = Light::spot([0.0, 5.0, -3.0], [0.0, -0.4, -1.0], [1.0, 0.9, 0.7])
+            .set_intensity(12.0)
+            .set_cone_angles(0.2, 0.45)
+            .expect("cone");
+        spot.set_range(10.0).expect("range");
+        pass.add(&spot).expect("spot light");
+        pass.add(&Light::directional([0.3, -1.0, -0.5], [0.15, 0.15, 0.2]))
+            .expect("directional light");
+
+        let img = render_pass_to_rgba(&pass, size).await;
+        let name = "clustered_lights";
         let golden = golden_path(format!("{}.png", name));
 
         if gonna_be_gonna_be_golden() {

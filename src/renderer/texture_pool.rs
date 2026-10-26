@@ -87,6 +87,11 @@ impl TexturePool {
             .retain(|entry| render - entry.used <= IDLE_RENDERS);
     }
 
+    /// The number of renders started so far, which names the current one.
+    pub fn render(&self) -> u64 {
+        self.render
+    }
+
     pub fn acquire(&mut self, device: &wgpu::Device, key: TextureKey) -> wgpu::Texture {
         // search best (any) matching entry (first fit)
         if let Some(idx) = self.entries.iter().position(|entry| entry.key == key)

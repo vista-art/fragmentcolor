@@ -43,6 +43,12 @@ mod platform;
 /// helper functions, so they slot in cleanly alongside this main body.
 const PBR_MAIN: &str = include_str!("pbr_main.wgsl");
 
+/// The light types and grid constants, which the light binning pass shares.
+pub(crate) const LIGHT: &str = include_str!("light.wgsl");
+
+/// The light roots and the loops that read them.
+const PBR_LIGHTS: &str = include_str!("pbr_lights.wgsl");
+
 /// The registry snippets the built-in PBR shader composes from, baked in
 /// directly rather than resolved through the shader registry. They power the
 /// engine's own `Material::pbr()`, so they must be present on every platform
@@ -89,7 +95,15 @@ impl Material {
         // SAFETY-justified expect: the three parts are WGSL source compiled into the binary at build
         // time. The only way this fails is a malformed shader file in the repo, which is a build-time
         // programmer error caught by the doctests and healthchecks, not a runtime fault.
-        let shader = Shader::new([MESH_TRANSFORM, MATERIAL_PBR, LINEAR_TO_SRGB, PBR_MAIN]).expect("SAFETY: built-in PBR shader parts are compiled-in WGSL source; a parse failure is a build-time error, not a runtime fault");
+        let shader = Shader::new([
+            MESH_TRANSFORM,
+            MATERIAL_PBR,
+            LINEAR_TO_SRGB,
+            LIGHT,
+            PBR_LIGHTS,
+            PBR_MAIN,
+        ])
+        .expect("SAFETY: built-in PBR shader parts are compiled-in WGSL source; a parse failure is a build-time error, not a runtime fault");
         let material = Self { shader };
         material.apply_defaults();
         // Seed the ShaderObject. The default ShaderObject double_sided is
@@ -148,33 +162,11 @@ impl Material {
         ];
         let _ = self.shader.set("camera.view_proj", identity);
         let _ = self.shader.set("camera.position", [0.0_f32, 0.0, 0.0]);
-        // Default lighting: one directional light at slot 0 (sun-style
-        // angled top-down white). `lights.count = 1` so a freshly-built
-        // Material renders correctly without any Light attached; the
-        // first `pass.add(&light)` writes to slot 0 too, overwriting the
-        // defaults. Subsequent Lights take slots 1, 2, … up to
-        // `PBR_MAX_LIGHTS` (32). Ambient is a small gray tint so unlit
-        // faces don't read as pitch-black — matches the prior shader's
-        // hardcoded `* 0.03` term.
-        let _ = self.shader.set("lights.count", 1_u32);
+        // A white light from straight above lights a fresh Material until the
+        // first Light reaches it. Ambient is a small gray tint so unlit faces
+        // don't read as pitch-black.
+        self.shader.object.set_placeholder();
         let _ = self.shader.set("lights.ambient", [0.03_f32, 0.03, 0.03]);
-        let _ = self.shader.set("lights.lights[0].kind", 0_u32);
-        let _ = self
-            .shader
-            .set("lights.lights[0].direction", [0.0_f32, -1.0, 0.0]);
-        let _ = self
-            .shader
-            .set("lights.lights[0].position", [0.0_f32, 0.0, 0.0]);
-        let _ = self
-            .shader
-            .set("lights.lights[0].color", [1.0_f32, 1.0, 1.0]);
-        let _ = self.shader.set("lights.lights[0].intensity", 1.0_f32);
-        let _ = self.shader.set("lights.lights[0].range", 0.0_f32);
-        let _ = self.shader.set("lights.lights[0].inner_cone_cos", 1.0_f32);
-        let _ = self.shader.set(
-            "lights.lights[0].outer_cone_cos",
-            std::f32::consts::FRAC_PI_4.cos(),
-        );
     }
 
     // --- factor setters ---
@@ -522,12 +514,7 @@ mod tests {
             mat.shader()
                 .set("camera.position", [0.0_f32, 0.0, 1.0])
                 .ok();
-            mat.shader()
-                .set("lights.lights[0].direction", [0.0_f32, 0.0, -1.0])
-                .ok();
-            mat.shader()
-                .set("lights.lights[0].color", [1.0_f32, 1.0, 1.0])
-                .ok();
+            let light = crate::Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]);
 
             let mesh = Mesh::new();
             for (pos, uv) in [
@@ -540,6 +527,7 @@ mod tests {
             let model = crate::scene::Model::new(mesh, mat);
             let pass = Pass::new("textured-triangle");
             pass.add(&model).expect("add_model");
+            pass.add(&light).expect("light");
             renderer
                 .render(&pass, &target)
                 .expect("render textured triangle");

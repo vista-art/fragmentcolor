@@ -5,16 +5,16 @@
 //! `set_cone_angles`) return a typed [`LightError::FieldNotApplicable`] when
 //! called on the wrong kind, and the matching getters return `None`.
 //!
-//! Lights hold Arc-shared state, so a single handle can be absorbed by
-//! multiple Passes with `pass.add(&light)`; later mutators propagate to every
-//! shader the Light has been wired into. The renderer's shader-binding code
-//! is uniform — every Light writes into the same WGSL `lights.lights[..]`
-//! array, branching on the `kind` discriminant.
+//! A Light holds Arc-shared state. Each shader that declares the light roots
+//! keeps a weak list of the lights that reach it, and the renderer packs their
+//! current state at each render. The passes and scenes that took a light hold
+//! it, so it lights while one of them, or a handle, lives.
 
 use glam::Vec3;
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[cfg(python)]
 use pyo3::prelude::*;
@@ -26,7 +26,7 @@ use crate::scene::SceneObject;
 use crate::shader::ShaderObject;
 
 /// Discriminant for the three light kinds. Wire-compatible with the WGSL
-/// `light.kind` field in `pbr_main.wgsl`: directional=0, point=1, spot=2.
+/// `Light.kind` field in `src/material/light.wgsl`: directional=0, point=1, spot=2.
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyo3::pyclass(eq, eq_int, from_py_object))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,18 +50,88 @@ pub enum LightError {
     NegativeRange(f32),
 }
 
-/// Hard cap on simultaneously-active lights per Shader. Must match the
-/// `PBR_MAX_LIGHTS` const + `array<Light, N>` literal in
-/// `src/material/pbr_main.wgsl`; raise both together if you need more.
-pub(crate) const PBR_MAX_LIGHTS: u32 = 32;
+/// Moves on every change to the lights a shader packs:
+/// a light setter, a light list or ambient change, and a light drop.
+static LIGHT_EPOCH: AtomicU64 = AtomicU64::new(1);
+
+/// Marks every packed light set stale.
+pub(crate) fn bump_epoch() {
+    LIGHT_EPOCH.fetch_add(1, Ordering::Relaxed);
+}
+
+/// The current light epoch.
+pub(crate) fn current_epoch() -> u64 {
+    LIGHT_EPOCH.load(Ordering::Relaxed)
+}
+
+/// One light as a shader reads it, in the 64-byte WGSL `Light` layout.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct GpuLight {
+    pub(crate) kind: u32,
+    pub(crate) intensity: f32,
+    pub(crate) range: f32,
+    pub(crate) inner_cone_cos: f32,
+    pub(crate) position: [f32; 3],
+    pub(crate) outer_cone_cos: f32,
+    pub(crate) direction: [f32; 3],
+    pub(crate) color: [f32; 3],
+}
+
+impl GpuLight {
+    /// The size of one packed light.
+    pub(crate) const SIZE: usize = 64;
+
+    /// The white light `Material::pbr` draws with while no Light reaches it.
+    pub(crate) fn placeholder() -> Self {
+        Self {
+            kind: LightKind::Directional as u32,
+            intensity: 1.0,
+            range: 0.0,
+            inner_cone_cos: 1.0,
+            position: [0.0; 3],
+            outer_cone_cos: std::f32::consts::FRAC_PI_4.cos(),
+            direction: [0.0, -1.0, 0.0],
+            color: [1.0; 3],
+        }
+    }
+
+    /// Appends the 64 bytes of this light to `out`.
+    pub(crate) fn write(&self, out: &mut Vec<u8>) {
+        let words: [u32; 16] = [
+            self.kind,
+            self.intensity.to_bits(),
+            self.range.to_bits(),
+            self.inner_cone_cos.to_bits(),
+            self.position[0].to_bits(),
+            self.position[1].to_bits(),
+            self.position[2].to_bits(),
+            self.outer_cone_cos.to_bits(),
+            self.direction[0].to_bits(),
+            self.direction[1].to_bits(),
+            self.direction[2].to_bits(),
+            0,
+            self.color[0].to_bits(),
+            self.color[1].to_bits(),
+            self.color[2].to_bits(),
+            0,
+        ];
+        for word in words {
+            out.extend_from_slice(&word.to_le_bytes());
+        }
+    }
+}
 
 #[derive(Debug)]
 pub(crate) struct LightObject {
+    /// Unique in the process, so a shader's list dedupes by it.
+    pub(crate) id: u64,
     state: RwLock<LightState>,
-    /// `(shader, slot)` pairs — each entry remembers which slot in the
-    /// shader's `lights.lights[..]` array this Light owns, so live
-    /// `set_*` mutations can write back to the right index.
-    attached: RwLock<Vec<(Weak<ShaderObject>, u32)>>,
+}
+
+impl Drop for LightObject {
+    fn drop(&mut self) {
+        bump_epoch();
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -73,7 +143,7 @@ struct LightState {
     intensity: f32,
     /// 0.0 means unlimited (matches glTF KHR_lights_punctual default).
     range: f32,
-    /// Stored as radians; converted to cosine when written to the shader.
+    /// Stored as radians; converted to cosine when packed.
     inner_cone_angle: f32,
     outer_cone_angle: f32,
 }
@@ -95,110 +165,44 @@ impl LightState {
 
 impl LightObject {
     fn new(state: LightState) -> Arc<Self> {
+        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
         Arc::new(Self {
+            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             state: RwLock::new(state),
-            attached: RwLock::new(Vec::new()),
         })
     }
 
-    fn write_to_shader_slot(&self, shader: &Shader, slot: u32) {
-        let s = *self.state.read();
-        let prefix = format!("lights.lights[{slot}]");
-        let _ = shader.set(&format!("{prefix}.kind"), s.kind as u32);
-        let _ = shader.set(&format!("{prefix}.direction"), s.direction.to_array());
-        let _ = shader.set(&format!("{prefix}.position"), s.position.to_array());
-        let _ = shader.set(&format!("{prefix}.color"), s.color.to_array());
-        let _ = shader.set(&format!("{prefix}.intensity"), s.intensity);
-        let _ = shader.set(&format!("{prefix}.range"), s.range);
-        let _ = shader.set(
-            &format!("{prefix}.inner_cone_cos"),
-            s.inner_cone_angle.cos(),
-        );
-        let _ = shader.set(
-            &format!("{prefix}.outer_cone_cos"),
-            s.outer_cone_angle.cos(),
-        );
+    /// The light as the shaders read it.
+    pub(crate) fn gpu(&self) -> GpuLight {
+        let state = *self.state.read();
+        GpuLight {
+            kind: state.kind as u32,
+            intensity: state.intensity,
+            range: state.range,
+            inner_cone_cos: state.inner_cone_angle.cos(),
+            position: state.position.to_array(),
+            outer_cone_cos: state.outer_cone_angle.cos(),
+            direction: state.direction.to_array(),
+            color: state.color.to_array(),
+        }
     }
 
-    fn propagate(&self) {
-        let mut attached = self.attached.write();
-        attached.retain(|(weak, slot)| {
-            if let Some(shader) = weak.upgrade() {
-                self.write_to_shader_slot(&Shader::from(shader), *slot);
-                true
-            } else {
-                false
-            }
-        });
+    /// Applies `change` to the state and marks the packed lights stale.
+    fn update(&self, change: impl FnOnce(&mut LightState)) {
+        change(&mut self.state.write());
+        bump_epoch();
     }
 
+    /// Hands this light to every lit shader on `pass`, or to none when one is full.
     fn attach_to_pass(self: &Arc<Self>, pass: &crate::Pass) -> Result<(), crate::PassError> {
         let shaders: Vec<Arc<ShaderObject>> = pass.object.shaders.read().iter().cloned().collect();
-        // Pre-check the cap on every shader. A Light already attached to a
-        // shader rides on its existing slot (no new allocation), so the
-        // pre-check mirrors the dedup logic in `apply_to_shader` rather
-        // than refusing reattachment of an existing Light.
-        for s in &shaders {
-            let already_attached = self.attached.read().iter().any(|(weak, _)| {
-                weak.upgrade()
-                    .map(|sh| Arc::ptr_eq(&sh, s))
-                    .unwrap_or(false)
-            });
-            if !already_attached && *s.user_lights_attached.read() >= PBR_MAX_LIGHTS {
-                return Err(crate::PassError::LightCapReached {
-                    cap: PBR_MAX_LIGHTS,
-                });
-            }
+        for shader in &shaders {
+            shader.check_light_room(&[self.id])?;
         }
-        for s in shaders {
-            self.apply_to_shader(&Shader::from(s));
+        for shader in &shaders {
+            shader.add_light(self);
         }
         Ok(())
-    }
-
-    fn apply_to_shader(&self, shader: &Shader) {
-        // Dedup-by-shader: a Light already absorbed by this Shader keeps
-        // its existing slot, just rewrites its values. Without this, the
-        // Pass's replay-on-shader-join path would consume a new slot for
-        // every Model that joins after the Light, eventually capping out.
-        let shader_ptr = Arc::as_ptr(&shader.object);
-        let existing = self.attached.read().iter().find_map(|(weak, slot)| {
-            weak.upgrade().and_then(|sh| {
-                if Arc::as_ptr(&sh) == shader_ptr {
-                    Some(*slot)
-                } else {
-                    None
-                }
-            })
-        });
-        if let Some(slot) = existing {
-            self.write_to_shader_slot(shader, slot);
-            return;
-        }
-
-        // Allocate the next slot. Material::pbr seeds slot 0 with a dim
-        // placeholder + `lights.count = 1`; the first user-attached Light
-        // overwrites that slot rather than living at slot 1, so adding
-        // a single Light produces one lit scene (not "Light + placeholder").
-        let slot = {
-            let mut n = shader.object.user_lights_attached.write();
-            let i = *n;
-            if i >= PBR_MAX_LIGHTS {
-                log::warn!(
-                    "Shader has reached the {}-light cap; ignoring additional Light attach",
-                    PBR_MAX_LIGHTS
-                );
-                return;
-            }
-            *n = i + 1;
-            i
-        };
-        self.write_to_shader_slot(shader, slot);
-        // Publish the new active count to the WGSL `lights.count` field.
-        let _ = shader.set("lights.count", slot + 1);
-        self.attached
-            .write()
-            .push((Arc::downgrade(&shader.object), slot));
     }
 }
 
@@ -285,21 +289,19 @@ impl Light {
     // Universal setters — defined for every kind.
     // ------------------------------------------------------------------
 
-    /// Update the linear-RGB color and propagate to every shader the Light
-    /// has been wired into. Defined for every kind.
+    /// Update the linear-RGB color. Every shader the Light reaches draws
+    /// with it at the next render. Defined for every kind.
     #[lsp_doc("docs/api/scene/light/set_color.md")]
     pub fn set_color(&self, color: [f32; 3]) -> Self {
-        self.object.state.write().color = Vec3::from(color);
-        self.object.propagate();
+        self.object.update(|state| state.color = Vec3::from(color));
         self.clone()
     }
 
-    /// Update the scalar intensity multiplier and propagate to every shader
-    /// the Light has been wired into. Defined for every kind.
+    /// Update the scalar intensity multiplier. Every shader the Light
+    /// reaches draws with it at the next render. Defined for every kind.
     #[lsp_doc("docs/api/scene/light/set_intensity.md")]
     pub fn set_intensity(&self, value: f32) -> Self {
-        self.object.state.write().intensity = value;
-        self.object.propagate();
+        self.object.update(|state| state.intensity = value);
         self.clone()
     }
 
@@ -367,8 +369,8 @@ impl Light {
         let kind = self.object.state.read().kind;
         match kind {
             LightKind::Point | LightKind::Spot => {
-                self.object.state.write().position = Vec3::from(position);
-                self.object.propagate();
+                self.object
+                    .update(|state| state.position = Vec3::from(position));
                 Ok(self.clone())
             }
             LightKind::Directional => Err(LightError::FieldNotApplicable {
@@ -384,8 +386,8 @@ impl Light {
         let kind = self.object.state.read().kind;
         match kind {
             LightKind::Directional | LightKind::Spot => {
-                self.object.state.write().direction = Vec3::from(direction);
-                self.object.propagate();
+                self.object
+                    .update(|state| state.direction = Vec3::from(direction));
                 Ok(self.clone())
             }
             LightKind::Point => Err(LightError::FieldNotApplicable {
@@ -405,8 +407,7 @@ impl Light {
         let kind = self.object.state.read().kind;
         match kind {
             LightKind::Point | LightKind::Spot => {
-                self.object.state.write().range = range;
-                self.object.propagate();
+                self.object.update(|state| state.range = range);
                 Ok(self.clone())
             }
             LightKind::Directional => Err(LightError::FieldNotApplicable {
@@ -422,11 +423,10 @@ impl Light {
         let kind = self.object.state.read().kind;
         match kind {
             LightKind::Spot => {
-                let mut s = self.object.state.write();
-                s.inner_cone_angle = inner;
-                s.outer_cone_angle = outer;
-                drop(s);
-                self.object.propagate();
+                self.object.update(|state| {
+                    state.inner_cone_angle = inner;
+                    state.outer_cone_angle = outer;
+                });
                 Ok(self.clone())
             }
             _ => Err(LightError::FieldNotApplicable {
@@ -440,15 +440,16 @@ impl Light {
 impl SceneObject for Light {
     fn attach(&self, pass: &crate::Pass) -> Result<(), crate::PassError> {
         self.object.attach_to_pass(pass)?;
-        pass.object
-            .scene_objects
-            .write()
-            .push(Box::new(self.clone()));
+        // The pass holds the light, so it lights after the caller drops its handle.
+        let mut lights = pass.object.lights.write();
+        if !lights.iter().any(|light| light.object.id == self.object.id) {
+            lights.push(self.clone());
+        }
         Ok(())
     }
 
     fn apply_to_shader(&self, shader: &Shader) {
-        self.object.apply_to_shader(shader);
+        shader.object.add_light(&self.object);
     }
 }
 
@@ -578,10 +579,9 @@ mod tests {
     }
 
     #[test]
-    fn shader_uniforms_propagate_across_kinds() {
-        // Three kinds in one pass — exercises the polymorphic add path
-        // (Pass::add<O: SceneObject>) and confirms each kind writes the
-        // correct discriminator into `lights.lights[i].kind`.
+    fn lights_reach_the_shader_across_kinds() {
+        // Three kinds in one pass, through the polymorphic `Pass::add`. The
+        // shader packs each in attach order with its `kind` discriminant.
         let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
         let lamp = Light::point([2.0, 1.0, 0.0], [1.0, 0.5, 0.5]).set_intensity(3.0);
         let torch = Light::spot([0.0, 3.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 0.8])
@@ -599,27 +599,25 @@ mod tests {
             .add(&torch)
             .expect("torch");
 
-        let count: u32 = material.shader().get("lights.count").unwrap();
-        assert_eq!(count, 3);
-        let k0: u32 = material.shader().get("lights.lights[0].kind").unwrap();
-        let k1: u32 = material.shader().get("lights.lights[1].kind").unwrap();
-        let k2: u32 = material.shader().get("lights.lights[2].kind").unwrap();
-        assert_eq!(k0, 0);
-        assert_eq!(k1, 1);
-        assert_eq!(k2, 2);
+        let kinds: Vec<u32> = material
+            .shader()
+            .object
+            .gpu_lights()
+            .iter()
+            .map(|light| light.kind)
+            .collect();
+        assert_eq!(kinds, [0, 1, 2]);
 
-        // Universal set_color propagates live.
+        // A setter reaches the shader with no further `add`.
         sun.set_color([0.5, 0.25, 0.125]);
-        let c: [f32; 3] = material.shader().get("lights.lights[0].color").unwrap();
-        assert_eq!(c, [0.5, 0.25, 0.125]);
+        let color = material.shader().object.gpu_lights()[0].color;
+        assert_eq!(color, [0.5, 0.25, 0.125]);
     }
 
     #[test]
-    fn replay_keeps_one_slot_per_light() {
-        // The Pass replay mechanism re-runs `apply_to_shader` for every
-        // scene_object whenever a new Shader joins. Without the dedup-by-
-        // shader check in `apply_to_shader`, each replay would claim a
-        // fresh slot and saturate the cap after a few Model adds.
+    fn replay_keeps_one_entry_per_light() {
+        // A shader joining the pass replays every light on it. A light the
+        // shader already holds keeps its one entry.
         let light = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
         let material = Material::pbr();
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
@@ -629,38 +627,13 @@ mod tests {
         let other = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
         pass.add(&other).expect("other");
 
-        let count: u32 = material.shader().get("lights.count").unwrap();
-        assert_eq!(count, 1, "dedup must keep replay from claiming new slots");
+        assert_eq!(material.shader().object.gpu_lights().len(), 1);
     }
 
     #[test]
-    fn cap_rejects_lights_past_the_limit() {
-        // Add `PBR_MAX_LIGHTS + 1` distinct lights; the last one should fail
-        // with the typed cap error and `cap` should report the configured
-        // ceiling.
-        let material = Material::pbr();
-        let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
-        let pass = crate::Pass::new("scene");
-        pass.add(&model).expect("model");
-        for _ in 0..PBR_MAX_LIGHTS {
-            pass.add(&Light::directional([0.0, -1.0, 0.0], [1.0; 3]))
-                .expect("light under cap");
-        }
-        let extra = Light::directional([0.0, -1.0, 0.0], [1.0; 3]);
-        let err = pass.add(&extra).expect_err("33rd light must fail");
-        match err {
-            crate::PassError::LightCapReached { cap } => assert_eq!(cap, PBR_MAX_LIGHTS),
-            other => panic!("expected LightCapReached, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn cap_is_per_shader_not_per_pass() {
-        // Two Passes that share a Material share the underlying ShaderObject
-        // and therefore its 32-light slots. A Light added to Pass A appears
-        // in Pass B's render because both reach into the same shader. The
-        // doc on `Light` warns about this; this test pins the contract so
-        // any future "per-Pass cap" refactor flags it explicitly.
+    fn lights_follow_the_shader_across_passes() {
+        // Two passes that share a Material share its shader, and so its light
+        // list: a light added to either pass lights both.
         let material = Material::pbr();
         let model_a = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
         let model_b = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
@@ -675,18 +648,54 @@ mod tests {
         pass_a.add(&sun).expect("sun on pass_a");
         pass_b.add(&lamp).expect("lamp on pass_b");
 
-        // Both lights occupy slots on the shared shader; lights.count is 2.
-        let count: u32 = material.shader().get("lights.count").unwrap();
+        let kinds: Vec<u32> = material
+            .shader()
+            .object
+            .gpu_lights()
+            .iter()
+            .map(|light| light.kind)
+            .collect();
+        assert_eq!(kinds, [0, 1], "both lights reach the shared shader");
+    }
+
+    #[test]
+    fn a_light_lives_while_a_pass_or_scene_holds_it() {
+        let material = Material::pbr();
+        let pass = crate::Pass::new("held by a pass");
+        pass.add(&crate::scene::Model::new(
+            pbr_triangle_mesh(),
+            material.clone(),
+        ))
+        .expect("model");
+        pass.add(&Light::point([0.0, 1.0, 0.0], [1.0; 3]))
+            .expect("light");
+        assert_eq!(material.shader().object.gpu_lights()[0].kind, 1);
+
+        let scene_material = Material::pbr();
+        let scene = crate::Scene::new();
+        scene
+            .add(&crate::scene::Model::new(
+                pbr_triangle_mesh(),
+                scene_material.clone(),
+            ))
+            .expect("model");
+        scene
+            .add(&Light::point([0.0, 1.0, 0.0], [1.0; 3]))
+            .expect("light");
+        assert_eq!(scene_material.shader().object.gpu_lights()[0].kind, 1);
+
+        // Once nothing holds the light, the shader falls back to its placeholder.
+        drop(pass);
         assert_eq!(
-            count, 2,
-            "lights from both Passes pack into the shared shader's slots"
+            material.shader().object.gpu_lights(),
+            [GpuLight::placeholder()]
         );
     }
 
     #[test]
     fn ambient_default_seeds_to_dim_gray() {
-        // Material::apply_defaults seeds `lights.ambient = [0.03; 3]` so
-        // a fresh material's shader has a sensible non-zero ambient.
+        // Material::pbr seeds `lights.ambient = [0.03; 3]` so a fresh
+        // material's shader has a sensible non-zero ambient.
         let material = Material::pbr();
         let amb: [f32; 3] = material.shader().get("lights.ambient").unwrap();
         assert_eq!(amb, [0.03, 0.03, 0.03]);

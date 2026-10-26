@@ -190,7 +190,6 @@ mod tests {
     async fn draw(renderer: &Renderer, material: Material, mesh: Mesh) -> Vec<u8> {
         let material = material.double_sided(true);
         let shader = material.shader();
-        shader.set("lights.count", 0u32).expect("light count");
         shader
             .set("lights.ambient", [1.0f32, 1.0, 1.0])
             .expect("ambient light");
@@ -201,6 +200,9 @@ mod tests {
         let pass = Pass::new("texture uv");
         pass.add(&Model::new(mesh, material))
             .expect("add the model");
+        // A black light takes the place of the placeholder light.
+        pass.add(&crate::Light::directional([0.0, -1.0, 0.0], [0.0; 3]))
+            .expect("add a black light");
         renderer.render(&pass, &target).expect("render");
         target.get_image().await.expect("read back")
     }

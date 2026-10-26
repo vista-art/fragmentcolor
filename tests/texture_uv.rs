@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use fragmentcolor::{Renderer, Scene, Target};
+use fragmentcolor::{Light, Renderer, Scene, Target};
 
 // A quad over the whole view with an occlusion map on TEXCOORD_1. The map
 // is white on its left half and black on its right. TEXCOORD_0 stays on the
@@ -26,10 +26,10 @@ fn occlusion_on_texcoord_1_reads_uv1() {
         // ambient term alone, so each pixel shows the occlusion it samples.
         let scene = Scene::load(OCCLUSION_UV1).expect("load occlusion_uv1.gltf");
         scene.no_defaults().ambient([1.0, 1.0, 1.0]);
-        for model in scene.models() {
-            let shader = model.material().shader();
-            shader.set("lights.count", 0u32).expect("light count");
-        }
+        // A black light takes the place of the placeholder light.
+        scene
+            .add(&Light::directional([0.0, -1.0, 0.0], [0.0; 3]))
+            .expect("add a black light");
         let renderer = Renderer::new();
         let target = renderer
             .create_texture_target([SIZE, SIZE])

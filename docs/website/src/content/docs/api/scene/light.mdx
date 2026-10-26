@@ -44,45 +44,68 @@ The matching getters use `Option<T>` for the kind-specific fields:
 return `Some` only on the kinds that carry the value, `None` otherwise.
 
 Lights hold Arc-shared state, so a single handle can be absorbed by
-multiple Passes; later mutators propagate to every shader the Light has
-been wired into.
+multiple Passes, and a later setter reaches every shader the Light lights
+at the next render.
+
+## Lifetime
+
+A Light stops lighting once nothing holds it. Each `Pass` holds the
+lights added to it, and so does each `Scene`. `scene.add(&light)` keeps
+lighting after the local `light` handle drops, and a `Model` that joins
+the pass later takes every light the pass holds. Once the last pass,
+scene and handle holding a Light are gone, the shaders it reached draw
+without it.
 
 ## Cost model
 
-The default Material::pbr shader uses **forward shading**. Every fragment
-loops over every active light and accumulates the contribution. That makes
-the per-frame cost roughly `O(fragments × lights)`, so the practical
-ceiling depends on resolution and overdraw. The current cap of **32
-lights** fits the forward path comfortably; for scenes with hundreds of
-lights, a clustered / storage-buffer path is on the roadmap.
+`Material::pbr` shades each fragment with the lights that reach it. At
+each render the renderer sorts every light with a finite `range` into a
+grid of clusters over the pass's camera view, and a fragment loops over
+the lights of its own cluster. The cost of a fragment grows with the
+lights that overlap it, not with every light in the scene.
 
-### Cap semantics: lights bind to the shader, not the Pass
+A light without a range reaches every fragment, so every fragment pays
+for it. That covers each directional light and every point or spot light
+left at the default range of 0. Keep those to a few suns and fill lights,
+and give lamps, torches and other local lights a range.
 
-The 32-light cap is enforced **per `ShaderObject`**, not per `Pass`. Two
-Passes that share the same Material (and therefore the same shader)
-share its light slots:
+A still scene sorts its lights once. Moving a light, changing its range
+or cone, or moving the camera sorts them again at the next render, and
+a new color or intensity only uploads the changed values.
 
-- Adding the same `Light` to Pass A and Pass B reuses one shader slot
-  (the dedup is by shader-pointer identity). Both Passes render with
-  that light visible.
-- Adding two different `Light`s, one to Pass A, one to Pass B, packs
-  them into two separate slots on the shared shader. **Both lights
-  illuminate both Passes**, even though each was only `add(&...)`-ed
-  to one. That's surprising if you think of a Pass as an isolated
-  scene; it's the right answer if you think of a Material as the
-  lighting model and the Passes as views into the same lit world.
-- The cap exceeds at 32 *distinct* Lights on one shader. Whether the
-  33rd fails depends on the order. Added to a pass whose shader already
-  holds 32, it returns `Err(PassError::LightCapReached { cap: 32 })`.
-  Added before that shader joins the pass, it doesn't fail: the shader
-  drops it with a logged warning when it joins.
+### How many lights a shader takes
 
-For genuinely independent lighting setups, build a separate Material
-per scene (each `Material::pbr()` allocates a fresh shader, so its 32
-slots are independent) or pass your own shader to `Material::custom`.
-A single scene with one Material covers the typical case. The per-
-shader semantic is what lets `Scene::add(&light)` propagate through
-every Pass that renders the Scene without re-attaching.
+The device sets the cap. A device with storage buffers in fragment
+shaders, as on WebGPU, Vulkan, Metal and DirectX 12, takes as many
+lights as its largest storage buffer binding holds: about two million at
+the common 128 MiB. WebGL2 and native OpenGL take the lights through a
+uniform block, so the cap is what the device's largest uniform block
+holds, from 253 lights in 16 KiB up to 1,021.
+
+Past the cap, `pass.add(&light)` returns
+`PassError::LightCapReached { cap }`, and so does adding a `Model` whose
+shader would take more lights than that when it joins the pass. Lights
+added before the renderer opened a device are checked at render, which
+returns `RendererError::PassError` with the same error.
+
+### Lights bind to the shader, not the Pass
+
+Each shader keeps its own list of lights, and the cap applies to that
+list. Two Passes that share a Material, and so its shader, share its
+lights:
+
+- Adding the same `Light` to Pass A and Pass B lists it once on the
+  shared shader. Both Passes render with it.
+- Adding one `Light` to Pass A and another to Pass B lists both on the
+  shared shader, so **both lights illuminate both Passes**. Think of a
+  Material as the lighting model and the Passes as views into the same
+  lit world.
+
+For independent lighting setups, build a separate Material per scene
+(each `Material::pbr()` makes a new shader with its own list) or pass
+your own shader to `Material::custom`. One scene with one Material
+covers the typical case, and the shared list is what lets
+`Scene::add(&light)` reach every Pass that renders the Scene.
 
 ## Constructors
 
@@ -212,6 +235,9 @@ A point light carries no direction or cone. Calling
 or [`set_cone_angles`](/api/scene/light#set_cone_angles)
 on a point light returns `LightError::FieldNotApplicable`.
 
+A point light with a range lights only what lies within it, which lets the
+renderer skip it everywhere else. Without one, every fragment pays for it.
+
 #### Example
 
 <Tabs>
@@ -219,18 +245,40 @@ on a point light returns `LightError::FieldNotApplicable`.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::Light;
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Camera, Light, Material, Mesh, Model, Pass, Renderer, Vertex};
 
-let bulb = Light::point([0.0, 2.5, 0.0], [1.0, 0.95, 0.8]).set_intensity(15.0);
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([64, 64]).await?;
 
-assert_eq!(bulb.position(), Some([0.0, 2.5, 0.0]));
+let wall = Mesh::new();
+wall.add_vertices([
+    Vertex::pbr([-2.0, -2.0, 0.0]),
+    Vertex::pbr([2.0, -2.0, 0.0]),
+    Vertex::pbr([2.0, 2.0, 0.0]),
+    Vertex::pbr([-2.0, 2.0, 0.0]),
+]);
+wall.set_indices([0, 1, 2, 0, 2, 3]);
+
+let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)?
+    .look_at([0.0, 0.0, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
+let bulb = Light::point([0.0, 0.5, 1.0], [1.0, 0.95, 0.8]).set_intensity(15.0);
+bulb.set_range(3.0)?;
+
+let pass = Pass::new("lamp");
+pass.add(&Model::new(wall, Material::pbr()))?;
+pass.add(&camera)?;
+pass.add(&bulb)?;
+renderer.render(&pass, &target)?;
+
+assert_eq!(bulb.position(), Some([0.0, 0.5, 1.0]));
 assert_eq!(bulb.color(), [1.0, 0.95, 0.8]);
 assert!((bulb.intensity() - 15.0).abs() < 1.0e-6);
 Ok(())
 }
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 6-10}"
+lang="rust" meta="collapse={1-1, 27-32}"
 />
 
 </TabItem>
@@ -238,9 +286,24 @@ lang="rust" meta="collapse={1-1, 6-10}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Light } from "fragmentcolor";
+import { Camera, Light, Material, Mesh, Model, Pass, Renderer, Vertex } from "fragmentcolor";
 
-const bulb = Light.point([0.0, 2.5, 0.0], [1.0, 0.95, 0.8]).setIntensity(15.0);
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget([64, 64]);
+
+const wall = new Mesh();
+wall.addVertices([ Vertex.pbr([-2.0, -2.0, 0.0]), Vertex.pbr([2.0, -2.0, 0.0]), Vertex.pbr([2.0, 2.0, 0.0]), Vertex.pbr([-2.0, 2.0, 0.0]), ]);
+wall.setIndices([0, 1, 2, 0, 2, 3]);
+
+const camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+const bulb = Light.point([0.0, 0.5, 1.0], [1.0, 0.95, 0.8]).setIntensity(15.0);
+bulb.setRange(3.0);
+
+const pass = new Pass("lamp");
+pass.add(new Model(wall, Material.pbr()));
+pass.add(camera);
+pass.add(bulb);
+renderer.render(pass, target);
 
 `}
 lang="js"
@@ -251,9 +314,29 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Light
+from fragmentcolor import Camera, Light, Material, Mesh, Model, Pass, Renderer, Vertex
 
-bulb = Light.point([0.0, 2.5, 0.0], [1.0, 0.95, 0.8]).set_intensity(15.0)
+renderer = Renderer()
+target = renderer.create_texture_target([64, 64])
+
+wall = Mesh()
+wall.add_vertices([
+    Vertex.pbr([-2.0, -2.0, 0.0]),
+    Vertex.pbr([2.0, -2.0, 0.0]),
+    Vertex.pbr([2.0, 2.0, 0.0]),
+    Vertex.pbr([-2.0, 2.0, 0.0]),
+])
+wall.set_indices([0, 1, 2, 0, 2, 3])
+
+camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).look_at([0.0, 0.0, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+bulb = Light.point([0.0, 0.5, 1.0], [1.0, 0.95, 0.8]).set_intensity(15.0)
+bulb.set_range(3.0)
+
+rpass = Pass("lamp")
+rpass.add(Model(wall, Material.pbr()))
+rpass.add(camera)
+rpass.add(bulb)
+renderer.render(rpass, target)
 
 `}
 lang="python"
@@ -266,7 +349,27 @@ lang="python"
 code={`
 import FragmentColor
 
-let bulb = try Light.point([0.0, 2.5, 0.0], [1.0, 0.95, 0.8]).setIntensity(15.0)
+let renderer = Renderer()
+let target = try await renderer.createTextureTarget([64, 64])
+
+let wall = Mesh()
+try wall.addVertices([
+    try Vertex.pbr([-2.0, -2.0, 0.0]),
+    try Vertex.pbr([2.0, -2.0, 0.0]),
+    try Vertex.pbr([2.0, 2.0, 0.0]),
+    try Vertex.pbr([-2.0, 2.0, 0.0]),
+])
+wall.setIndices([0, 1, 2, 0, 2, 3])
+
+let camera = try Camera.perspective(1.047, 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+let bulb = try Light.point([0.0, 0.5, 1.0], [1.0, 0.95, 0.8]).setIntensity(15.0)
+try bulb.setRange(3.0)
+
+let pass = Pass("lamp")
+try pass.add(Model(wall, Material.pbr()))
+try pass.add(camera)
+try pass.add(bulb)
+try renderer.render(pass, target)
 `}
 lang="swift"
 />
@@ -278,7 +381,22 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val bulb = Light.point(listOf(0.0f, 2.5f, 0.0f), listOf(1.0f, 0.95f, 0.8f)).setIntensity(15.0f)
+val renderer = Renderer()
+val target = renderer.createTextureTarget(listOf(64u, 64u))
+
+val wall = Mesh()
+wall.addVertices(listOf(Vertex.pbr(listOf(-2.0f, -2.0f, 0.0f)), Vertex.pbr(listOf(2.0f, -2.0f, 0.0f)), Vertex.pbr(listOf(2.0f, 2.0f, 0.0f)), Vertex.pbr(listOf(-2.0f, 2.0f, 0.0f))))
+wall.setIndices(listOf(0u, 1u, 2u, 0u, 2u, 3u))
+
+val camera = Camera.perspective(1.047f, 1.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 0.0f, 4.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+val bulb = Light.point(listOf(0.0f, 0.5f, 1.0f), listOf(1.0f, 0.95f, 0.8f)).setIntensity(15.0f)
+bulb.setRange(3.0f)
+
+val pass = Pass("lamp")
+pass.add(Model(wall, Material.pbr()))
+pass.add(camera)
+pass.add(bulb)
+renderer.render(pass, target)
 `}
 lang="kotlin"
 />

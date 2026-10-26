@@ -3,8 +3,7 @@
 Turn off default-Light injection while leaving the default Camera in place.
 By default a Scene with Models but no Light injects a white directional light
 at first render so the geometry reads as lit. Call this when the host owns the
-light rig and the stock light would only compete for the same
-`lights.lights[..]` slots.
+light rig and the stock light would only add to it.
 
 To turn off both kinds at once, use
 [`no_defaults`](https://fragmentcolor.org/api/scene/scene#no_defaults). To

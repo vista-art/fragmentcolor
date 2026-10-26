@@ -1238,12 +1238,16 @@ class Pass:
         same value (`camera.look_at(...)`, `light.set_color(...)`) propagate to
         every shader on the pass with no further `add` call.
 
+        The pass holds every Light added to it, so a Light keeps lighting after
+        the caller drops its handle.
+
         Returns `Result<&Pass, PassError>`. Models can fail at attach time when
         the Mesh layout doesn't match the Material's shader, and Cameras always
-        succeed. A Light fails with `PassError::LightCapReached` when a shader
-        on the pass already holds 32 lights. Lights added before their shaders
-        join the pass don't fail: a shader past the cap drops the extra ones
-        with a logged warning instead. Chain with `?` between calls.
+        succeed. A Light fails with `PassError::LightCapReached { cap }` when a
+        shader on the pass already holds as many lights as the device allows,
+        and a Model fails the same way when its shader would take more than that
+        from the pass. See [Light](https://fragmentcolor.org/api/scene/light)
+        for the cap on each kind of device. Chain with `?` between calls.
 
         Example:
 
@@ -2274,12 +2278,16 @@ class Scene:
         mutations (`camera.look_at(...)`, `light.set_color(...)`) propagate to
         every shader on the pass with no further `add` call.
 
+        The Scene holds every Light added to it, so `scene.add(&light)` keeps
+        lighting after the caller drops its handle.
+
         Returns `Result<&Scene, PassError>` so Models can fail at attach time when
         the Mesh layout doesn't match the Material's shader. Cameras always
-        succeed. A Light fails with `PassError::LightCapReached` when a shader on
-        the default pass already holds 32 lights. Lights added before the Models
-        whose shaders they light don't fail: a shader past the cap drops the extra
-        ones with a logged warning instead. Chain with `?` between calls.
+        succeed. A Light fails with `PassError::LightCapReached { cap }` when a
+        shader on the default pass already holds as many lights as the device
+        allows, and a Model fails the same way when its shader would take more
+        than that. See [Light](https://fragmentcolor.org/api/scene/light) for the
+        cap on each kind of device. Chain with `?` between calls.
 
         If you add Models without adding a Camera or any Light, the Scene injects
         sensible defaults at render time (`Camera::perspective` looking from
@@ -2611,8 +2619,7 @@ class Scene:
         Turn off default-Light injection while leaving the default Camera in place.
         By default a Scene with Models but no Light injects a white directional light
         at first render so the geometry reads as lit. Call this when the host owns the
-        light rig and the stock light would only compete for the same
-        `lights.lights[..]` slots.
+        light rig and the stock light would only add to it.
 
         To turn off both kinds at once, use
         [`no_defaults`](https://fragmentcolor.org/api/scene/scene#no_defaults). To
@@ -3418,45 +3425,68 @@ class Light:
     return `Some` only on the kinds that carry the value, `None` otherwise.
 
     Lights hold Arc-shared state, so a single handle can be absorbed by
-    multiple Passes; later mutators propagate to every shader the Light has
-    been wired into.
+    multiple Passes, and a later setter reaches every shader the Light lights
+    at the next render.
+
+    ## Lifetime
+
+    A Light stops lighting once nothing holds it. Each `Pass` holds the
+    lights added to it, and so does each `Scene`. `scene.add(&light)` keeps
+    lighting after the local `light` handle drops, and a `Model` that joins
+    the pass later takes every light the pass holds. Once the last pass,
+    scene and handle holding a Light are gone, the shaders it reached draw
+    without it.
 
     ## Cost model
 
-    The default Material::pbr shader uses **forward shading**. Every fragment
-    loops over every active light and accumulates the contribution. That makes
-    the per-frame cost roughly `O(fragments × lights)`, so the practical
-    ceiling depends on resolution and overdraw. The current cap of **32
-    lights** fits the forward path comfortably; for scenes with hundreds of
-    lights, a clustered / storage-buffer path is on the roadmap.
+    `Material::pbr` shades each fragment with the lights that reach it. At
+    each render the renderer sorts every light with a finite `range` into a
+    grid of clusters over the pass's camera view, and a fragment loops over
+    the lights of its own cluster. The cost of a fragment grows with the
+    lights that overlap it, not with every light in the scene.
 
-    ### Cap semantics: lights bind to the shader, not the Pass
+    A light without a range reaches every fragment, so every fragment pays
+    for it. That covers each directional light and every point or spot light
+    left at the default range of 0. Keep those to a few suns and fill lights,
+    and give lamps, torches and other local lights a range.
 
-    The 32-light cap is enforced **per `ShaderObject`**, not per `Pass`. Two
-    Passes that share the same Material (and therefore the same shader)
-    share its light slots:
+    A still scene sorts its lights once. Moving a light, changing its range
+    or cone, or moving the camera sorts them again at the next render, and
+    a new color or intensity only uploads the changed values.
 
-    - Adding the same `Light` to Pass A and Pass B reuses one shader slot
-      (the dedup is by shader-pointer identity). Both Passes render with
-      that light visible.
-    - Adding two different `Light`s, one to Pass A, one to Pass B, packs
-      them into two separate slots on the shared shader. **Both lights
-      illuminate both Passes**, even though each was only `add(&...)`-ed
-      to one. That's surprising if you think of a Pass as an isolated
-      scene; it's the right answer if you think of a Material as the
-      lighting model and the Passes as views into the same lit world.
-    - The cap exceeds at 32 *distinct* Lights on one shader. Whether the
-      33rd fails depends on the order. Added to a pass whose shader already
-      holds 32, it returns `Err(PassError::LightCapReached { cap: 32 })`.
-      Added before that shader joins the pass, it doesn't fail: the shader
-      drops it with a logged warning when it joins.
+    ### How many lights a shader takes
 
-    For genuinely independent lighting setups, build a separate Material
-    per scene (each `Material::pbr()` allocates a fresh shader, so its 32
-    slots are independent) or pass your own shader to `Material::custom`.
-    A single scene with one Material covers the typical case. The per-
-    shader semantic is what lets `Scene::add(&light)` propagate through
-    every Pass that renders the Scene without re-attaching.
+    The device sets the cap. A device with storage buffers in fragment
+    shaders, as on WebGPU, Vulkan, Metal and DirectX 12, takes as many
+    lights as its largest storage buffer binding holds: about two million at
+    the common 128 MiB. WebGL2 and native OpenGL take the lights through a
+    uniform block, so the cap is what the device's largest uniform block
+    holds, from 253 lights in 16 KiB up to 1,021.
+
+    Past the cap, `pass.add(&light)` returns
+    `PassError::LightCapReached { cap }`, and so does adding a `Model` whose
+    shader would take more lights than that when it joins the pass. Lights
+    added before the renderer opened a device are checked at render, which
+    returns `RendererError::PassError` with the same error.
+
+    ### Lights bind to the shader, not the Pass
+
+    Each shader keeps its own list of lights, and the cap applies to that
+    list. Two Passes that share a Material, and so its shader, share its
+    lights:
+
+    - Adding the same `Light` to Pass A and Pass B lists it once on the
+      shared shader. Both Passes render with it.
+    - Adding one `Light` to Pass A and another to Pass B lists both on the
+      shared shader, so **both lights illuminate both Passes**. Think of a
+      Material as the lighting model and the Passes as views into the same
+      lit world.
+
+    For independent lighting setups, build a separate Material per scene
+    (each `Material::pbr()` makes a new shader with its own list) or pass
+    your own shader to `Material::custom`. One scene with one Material
+    covers the typical case, and the shared list is what lets
+    `Scene::add(&light)` reach every Pass that renders the Scene.
 
     ## Constructors
 
@@ -3534,12 +3564,35 @@ class Light:
         or [`set_cone_angles`](https://fragmentcolor.org/api/scene/light#set_cone_angles)
         on a point light returns `LightError::FieldNotApplicable`.
 
+        A point light with a range lights only what lies within it, which lets the
+        renderer skip it everywhere else. Without one, every fragment pays for it.
+
         Example:
 
         ```python
-        from fragmentcolor import Light
+        from fragmentcolor import Camera, Light, Material, Mesh, Model, Pass, Renderer, Vertex
 
-        bulb = Light.point([0.0, 2.5, 0.0], [1.0, 0.95, 0.8]).set_intensity(15.0)
+        renderer = Renderer()
+        target = renderer.create_texture_target([64, 64])
+
+        wall = Mesh()
+        wall.add_vertices([
+            Vertex.pbr([-2.0, -2.0, 0.0]),
+            Vertex.pbr([2.0, -2.0, 0.0]),
+            Vertex.pbr([2.0, 2.0, 0.0]),
+            Vertex.pbr([-2.0, 2.0, 0.0]),
+        ])
+        wall.set_indices([0, 1, 2, 0, 2, 3])
+
+        camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).look_at([0.0, 0.0, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+        bulb = Light.point([0.0, 0.5, 1.0], [1.0, 0.95, 0.8]).set_intensity(15.0)
+        bulb.set_range(3.0)
+
+        rpass = Pass("lamp")
+        rpass.add(Model(wall, Material.pbr()))
+        rpass.add(camera)
+        rpass.add(bulb)
+        renderer.render(rpass, target)
         ```
         """
     @staticmethod
@@ -3976,9 +4029,15 @@ class Material:
           and Schlick Fresnel.
         - **Lambertian diffuse** with energy conservation against the specular
           Fresnel and metalness.
-        - **Up to 32 lights** in the `lights.lights[N]` array (uniform `lights`, with
-          `lights.count` active), one camera (uniform `camera`), and the per-Model
-          transform via the instance-attribute stream.
+        - **Clustered lights**: as many lights as the device allows, in the
+          read-only storage roots `lights` and `light_grid` that the renderer fills.
+          Each fragment reads only the lights whose range reaches its cluster, plus
+          every light without a range. See [Light](https://fragmentcolor.org/api/scene/light)
+          for the cost of each kind and the cap on each device, and
+          [`Material::custom`](https://fragmentcolor.org/api/scene/material#custom)
+          for the layout of the roots.
+        - **One camera** (uniform `camera`), and the per-Model transform via the
+          instance-attribute stream.
         - **glTF 2.0 PBR-MR texture sampling**: five sampled maps (`base_color_map`,
           `metallic_roughness_map`, `normal_map`, `occlusion_map`, `emissive_map`)
           combined with their matching factors per the spec.
@@ -4018,16 +4077,21 @@ class Material:
         | `emissive_map`               | 1×1 white            |
         | `camera.view_proj`           | identity 4×4         |
         | `camera.position`            | `[0, 0, 0]`          |
-        | `light.direction`            | `[0, -1, 0]` (down)  |
-        | `light.color`                | `[1, 1, 1]`          |
+        | `lights.ambient`             | `[0.03, 0.03, 0.03]` |
+        | placeholder light            | white, directional, pointing down `[0, -1, 0]` |
 
-        The camera and light are the user's domain, not the Material's. Pass them
-        to [`Pass::add`](https://fragmentcolor.org/api/core/pass#add). The
-        typed [Camera](https://fragmentcolor.org/api/scene/camera) and
-        [Light](https://fragmentcolor.org/api/scene/light) handles seed the matching
-        `camera.*` / `light.*` uniforms and propagate any later updates back into
-        the Material's shader. Dropping down to `material.shader().set(...)` directly
-        is still supported if you need it.
+        The placeholder light lights a fresh Material until the first
+        [Light](https://fragmentcolor.org/api/scene/light) reaches its shader,
+        and returns once no Light does.
+
+        The camera and lights are the user's domain, not the Material's. Pass them
+        to [`Pass::add`](https://fragmentcolor.org/api/core/pass#add). The typed
+        [Camera](https://fragmentcolor.org/api/scene/camera) handle seeds the
+        `camera.*` uniforms and propagates later updates into the Material's shader,
+        and the renderer packs every Light that reaches the shader at each render.
+        `material.shader().set(...)` still sets `camera.*` and `lights.ambient`
+        directly. The lights themselves have no keys: `set` and `get` on
+        `lights.count` or `lights.lights[i]` return `ShaderError::UniformNotFound`.
 
         Example:
 
@@ -4066,14 +4130,164 @@ class Material:
         Without these the Material still draws. The factor setters do nothing, and
         every Model draws at its Mesh's own coordinates, whatever its transform.
 
+        ## Lights
+
+        A render shader takes the [Lights](https://fragmentcolor.org/api/scene/light)
+        that reach it by declaring a root named `lights`, and optionally one named
+        `light_grid`, at any group and binding. The member names, types and offsets
+        must match the ones below, and the struct names are free. The renderer fills
+        both roots in render passes, so they don't appear in `list_uniforms` or
+        `list_keys`, and `set` and `get` reach only `lights.ambient`.
+
+        ```wgsl
+        struct Light {                   // 64 bytes
+          kind: u32,                     // 0 directional, 1 point, 2 spot
+          intensity: f32,
+          range: f32,                    // 0 reaches everywhere
+          inner_cone_cos: f32,
+          position: vec3<f32>,
+          outer_cone_cos: f32,
+          direction: vec3<f32>,
+          color: vec3<f32>,
+        }
+        struct LightGrid {               // 112 bytes
+          view_proj: mat4x4<f32>,
+          depth_plane: vec4<f32>,
+          size: vec3<u32>,
+          slicing: u32,                  // 0 no grid, 1 logarithmic, 2 linear
+          slice_scale: f32,
+          slice_bias: f32,
+          reach: f32,
+        }
+        struct Lights {
+          count: u32,
+          global_count: u32,
+          promoted_count: u32,
+          ambient: vec3<f32>,
+          grid: LightGrid,               // at byte 32
+          lights: array<Light>,          // at byte 144
+        }
+        @group(0) @binding(1) var<storage, read> lights: Lights;
+        @group(0) @binding(2) var<storage, read> light_grid: array<u32>;
+        ```
+
+        A storage `lights` with another layout, or a `light_grid` of another type,
+        fails `Shader::new` with `ShaderError::TypeMismatch`, which spells out the
+        layout above.
+
+        `lights.lights` holds `lights.count` lights: first the `global_count` lights
+        without a range, then the lights with one. A shader without `light_grid`
+        loops over all of them. With it, a fragment reads only the lights that
+        reach its cluster. `light_grid` starts with `promoted_count` light indices
+        that every cluster reads, and cluster `c` follows at word
+        `promoted_count + 2 * c`, as the word where its index list starts and the
+        length of that list. Copy `light_cell` and `accumulate_lights` below and
+        write a `shade_light` for your shading model:
+
+        ```wgsl
+        const GRID_MARGIN: f32 = 0.015625;
+        const CELL_EVERY: u32 = 0xffffffffu;
+        const CELL_GLOBAL: u32 = 0xfffffffeu;
+
+        // The cluster that holds `world`, or CELL_GLOBAL past every light's reach,
+        // or CELL_EVERY with no grid, behind the grid's eye, or outside the grid.
+        fn light_cell(world: vec3<f32>) -> u32 {
+          let grid = lights.grid;
+          if (grid.slicing == 0u) {
+            return CELL_EVERY;
+          }
+          let point = vec4<f32>(world, 1.0);
+          let depth = dot(grid.depth_plane, point);
+          if (depth > grid.reach) {
+            return CELL_GLOBAL;
+          }
+          let clip = grid.view_proj * point;
+          if (clip.w <= 0.0) {
+            return CELL_EVERY;
+          }
+          let size = vec3<f32>(grid.size);
+          var slice = depth * grid.slice_scale + grid.slice_bias;
+          if (grid.slicing == 1u) {
+            slice = log2(max(depth, 1.0e-30)) * grid.slice_scale + grid.slice_bias;
+          }
+          let cell = vec3<f32>((clip.xy / clip.w * 0.5 + 0.5) * size.xy, slice);
+          if (any(cell < vec3<f32>(-GRID_MARGIN)) || any(cell > size + GRID_MARGIN)) {
+            return CELL_EVERY;
+          }
+          let index = min(vec3<u32>(max(cell, vec3<f32>(0.0))), grid.size - vec3<u32>(1u));
+          return index.x + grid.size.x * (index.y + grid.size.y * index.z);
+        }
+
+        // Every light that reaches `world`, shaded by your `shade_light`.
+        fn accumulate_lights(world: vec3<f32>, normal: vec3<f32>) -> vec3<f32> {
+          var total = vec3<f32>(0.0);
+          let cell = light_cell(world);
+          if (cell == CELL_EVERY) {
+            for (var i = 0u; i < lights.count; i++) {
+              total += shade_light(lights.lights[i], world, normal);
+            }
+            return total;
+          }
+          for (var i = 0u; i < lights.global_count; i++) {
+            total += shade_light(lights.lights[i], world, normal);
+          }
+          if (cell == CELL_GLOBAL) {
+            return total;
+          }
+          for (var k = 0u; k < lights.promoted_count; k++) {
+            total += shade_light(lights.lights[light_grid[k]], world, normal);
+          }
+          let entry = lights.promoted_count + 2u * cell;
+          let first = light_grid[entry];
+          for (var k = 0u; k < light_grid[entry + 1u]; k++) {
+            total += shade_light(lights.lights[light_grid[first + k]], world, normal);
+          }
+          return total;
+        }
+        ```
+
+        A light with a range adds nothing past it, and a spot light adds nothing
+        outside its outer cone, so `shade_light` must honor both for the grid to
+        stay exact. The `Material::pbr` shader's `shade_light` uses the
+        `KHR_lights_punctual` falloff, `(1 - (d / range)^4)` scaled by the inverse
+        square distance.
+
+        WebGL2 and native OpenGL have no storage buffers in fragment shaders. There
+        the same source runs with `lights` turned into a uniform block that holds as
+        many lights as the device allows, and with no grid, so `light_cell` returns
+        `CELL_EVERY`. A shader that calls `arrayLength` on either root can't run
+        there, and its first render returns `ShaderError::TypeMismatch`.
+
+        ### The older interface
+
+        The 0.12.6 shape is the older interface. It still fills on every device,
+        holding up to its own `N` lights, and goes away in 0.13:
+
+        ```wgsl
+        struct LightArray { count: u32, ambient: vec3<f32>, lights: array<Light, N> }
+        @group(0) @binding(1) var<uniform> lights: LightArray;
+        ```
+
+        A shader of this shape takes at most `N` lights, and the `add` past them
+        fails with `PassError::LightCapReached { cap: N }`. A uniform `lights` that
+        matches neither shape stays an ordinary uniform, which `set` reaches, and
+        logs a warning.
+
         Example:
 
         ```python
         from fragmentcolor import Material, Shader
 
-        wireframe = Shader(\"\"\"
+        flat = Shader(\"\"\"
             struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+            struct Light { kind: u32, intensity: f32, range: f32, inner_cone_cos: f32,
+                position: vec3<f32>, outer_cone_cos: f32, direction: vec3<f32>, color: vec3<f32> }
+            struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>,
+                slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }
+            struct Lights { count: u32, global_count: u32, promoted_count: u32,
+                ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }
             @group(0) @binding(0) var<uniform> camera: Camera;
+            @group(0) @binding(1) var<storage, read> lights: Lights;
 
             @vertex
             fn vs_main(
@@ -4087,12 +4301,16 @@ class Material:
                 return camera.view_proj * model * vec4<f32>(p, 1.0);
             }
             @fragment fn fs_main() -> @location(0) vec4<f32> {
-                return vec4<f32>(0.0, 1.0, 0.4, 1.0);
+                var glow = lights.ambient;
+                for (var i = 0u; i < lights.count; i++) {
+                    glow += lights.lights[i].color * lights.lights[i].intensity * 0.1;
+                }
+                return vec4<f32>(glow, 1.0);
             }
 
         \"\"\")
 
-        wire_mat = Material.custom(wireframe)
+        flat_mat = Material.custom(flat)
         ```
         """
     def shader(self) -> Shader:

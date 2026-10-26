@@ -16,12 +16,16 @@ added afterwards. Camera and Light hold Arc-shared state, so subsequent
 mutations (`camera.look_at(...)`, `light.set_color(...)`) propagate to
 every shader on the pass with no further `add` call.
 
+The Scene holds every Light added to it, so `scene.add(&light)` keeps
+lighting after the caller drops its handle.
+
 Returns `Result<&Scene, PassError>` so Models can fail at attach time when
 the Mesh layout doesn't match the Material's shader. Cameras always
-succeed. A Light fails with `PassError::LightCapReached` when a shader on
-the default pass already holds 32 lights. Lights added before the Models
-whose shaders they light don't fail: a shader past the cap drops the extra
-ones with a logged warning instead. Chain with `?` between calls.
+succeed. A Light fails with `PassError::LightCapReached { cap }` when a
+shader on the default pass already holds as many lights as the device
+allows, and a Model fails the same way when its shader would take more
+than that. See [Light](https://fragmentcolor.org/api/scene/light) for the
+cap on each kind of device. Chain with `?` between calls.
 
 If you add Models without adding a Camera or any Light, the Scene injects
 sensible defaults at render time (`Camera::perspective` looking from

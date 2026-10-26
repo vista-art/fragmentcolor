@@ -1,7 +1,9 @@
 // WebGL2 fallback smoke: the runner deletes `navigator.gpu` before this
 // module runs, so the engine must pick the GL backend. Uniform blocks whose
 // WGSL size is not a multiple of 16 bytes once drew nothing here.
-import init, { Renderer, Shader } from "fragmentcolor";
+import init, {
+  Camera, Light, Material, Mesh, Model, Pass, Renderer, Shader, Vertex,
+} from "fragmentcolor";
 
 console.log("[webgl2] boot; navigator.gpu:", typeof navigator.gpu);
 
@@ -76,5 +78,51 @@ for (const c of CASES) {
     console.error(`[webgl2] FAIL: ${c.name}: ${e?.message || e}`);
   }
 }
+// WebGL2 has no storage buffers in fragment shaders, so a PBR shader takes
+// its lights through a uniform block, as many as the device's largest block
+// holds. Adding lights past that throws, and the message names the cap.
+try {
+  const scratch = document.createElement("canvas").getContext("webgl2");
+  const blockSize = scratch.getParameter(scratch.MAX_UNIFORM_BLOCK_SIZE);
+  const cap = Math.floor((Math.min(blockSize, 65536) - 144) / 64);
+  console.log(`[webgl2] MAX_UNIFORM_BLOCK_SIZE ${blockSize}, so ${cap} lights`);
+
+  const quad = new Mesh();
+  for (const corner of [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]]) {
+    quad.addVertex(Vertex.pbr([corner[0], corner[1], 0.0]).set("normal", [0.0, 0.0, 1.0]));
+  }
+  const camera = Camera.perspective(1.0, 1.0, 0.1, 10.0)
+    .lookAt([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+  const pass = new Pass("light cap");
+  pass.add(new Model(quad, Material.pbr()));
+  pass.add(camera);
+
+  let added = 0;
+  let message = "";
+  while (added < 4096) {
+    try {
+      pass.add(Light.point([0.0, 0.0, 1.0], [1.0, 1.0, 1.0]).setIntensity(1.5 / cap));
+      added++;
+    } catch (e) {
+      message = e?.message || String(e);
+      break;
+    }
+  }
+  console.log(`[webgl2] added ${added} lights, then: ${message}`);
+  if (added !== cap) throw new Error(`added ${added} lights, want the cap of ${cap}`);
+  if (!message.includes(`holds ${cap} lights`)) {
+    throw new Error(`the cap error should name ${cap}: ${message}`);
+  }
+
+  renderer.render(pass, target);
+  const img = await target.getImage();
+  const center = (4 * 8 + 4) * 4;
+  if (img[center] < 100) throw new Error(`the quad should be lit, got red ${img[center]}`);
+  console.log(`[webgl2] ok: ${cap} lights render, red ${img[center]}`);
+} catch (e) {
+  failed++;
+  console.error(`[webgl2] FAIL: light cap: ${e?.message || e}`);
+}
+
 if (failed) throw new Error(`${failed} webgl2 case(s) failed`);
 console.log("✅ webgl2 test result: ok");

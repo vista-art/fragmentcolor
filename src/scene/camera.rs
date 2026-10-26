@@ -456,7 +456,7 @@ impl Camera {
                 s.position.to_array(),
             )
         };
-        let snapshot = CameraSnapshot { view };
+        let snapshot = CameraSnapshot { view, view_proj };
         let mut attached = self.object.attached.write();
         attached.retain(|weak| {
             if let Some(shader) = weak.upgrade() {
@@ -506,7 +506,7 @@ impl SceneObject for Camera {
         // draws back-to-front without going through `Shader::get`. Register a
         // Weak<PassObject> on the Camera so subsequent `Camera::look_at` mutations
         // refresh the snapshot in step with every absorbing Pass.
-        *pass.object.camera_snapshot.write() = Some(CameraSnapshot { view });
+        *pass.object.camera_snapshot.write() = Some(CameraSnapshot { view, view_proj });
         self.object
             .attached_passes
             .write()

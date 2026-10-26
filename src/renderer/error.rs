@@ -12,6 +12,8 @@ pub enum RendererError {
     ShaderError(#[from] crate::shader::ShaderError),
     #[error("Mesh error: {0}")]
     MeshError(#[from] crate::mesh::MeshError),
+    #[error("Pass error: {0}")]
+    PassError(#[from] crate::pass::PassError),
     #[error("Bind Group Layout error: {0}")]
     BindGroupLayoutError(String),
     #[error("GPU validation error while building '{label}': {message}")]

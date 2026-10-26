@@ -691,6 +691,149 @@ Optional but recommended:
 Without these the Material still draws. The factor setters do nothing, and
 every Model draws at its Mesh's own coordinates, whatever its transform.
 
+#### Lights
+
+A render shader takes the [Lights](/api/scene/light)
+that reach it by declaring a root named `lights`, and optionally one named
+`light_grid`, at any group and binding. The member names, types and offsets
+must match the ones below, and the struct names are free. The renderer fills
+both roots in render passes, so they don't appear in `list_uniforms` or
+`list_keys`, and `set` and `get` reach only `lights.ambient`.
+
+```wgsl
+struct Light {                   // 64 bytes
+  kind: u32,                     // 0 directional, 1 point, 2 spot
+  intensity: f32,
+  range: f32,                    // 0 reaches everywhere
+  inner_cone_cos: f32,
+  position: vec3<f32>,
+  outer_cone_cos: f32,
+  direction: vec3<f32>,
+  color: vec3<f32>,
+}
+struct LightGrid {               // 112 bytes
+  view_proj: mat4x4<f32>,
+  depth_plane: vec4<f32>,
+  size: vec3<u32>,
+  slicing: u32,                  // 0 no grid, 1 logarithmic, 2 linear
+  slice_scale: f32,
+  slice_bias: f32,
+  reach: f32,
+}
+struct Lights {
+  count: u32,
+  global_count: u32,
+  promoted_count: u32,
+  ambient: vec3<f32>,
+  grid: LightGrid,               // at byte 32
+  lights: array<Light>,          // at byte 144
+}
+@group(0) @binding(1) var<storage, read> lights: Lights;
+@group(0) @binding(2) var<storage, read> light_grid: array<u32>;
+```
+
+A storage `lights` with another layout, or a `light_grid` of another type,
+fails `Shader::new` with `ShaderError::TypeMismatch`, which spells out the
+layout above.
+
+`lights.lights` holds `lights.count` lights: first the `global_count` lights
+without a range, then the lights with one. A shader without `light_grid`
+loops over all of them. With it, a fragment reads only the lights that
+reach its cluster. `light_grid` starts with `promoted_count` light indices
+that every cluster reads, and cluster `c` follows at word
+`promoted_count + 2 * c`, as the word where its index list starts and the
+length of that list. Copy `light_cell` and `accumulate_lights` below and
+write a `shade_light` for your shading model:
+
+```wgsl
+const GRID_MARGIN: f32 = 0.015625;
+const CELL_EVERY: u32 = 0xffffffffu;
+const CELL_GLOBAL: u32 = 0xfffffffeu;
+
+// The cluster that holds `world`, or CELL_GLOBAL past every light's reach,
+// or CELL_EVERY with no grid, behind the grid's eye, or outside the grid.
+fn light_cell(world: vec3<f32>) -> u32 {
+  let grid = lights.grid;
+  if (grid.slicing == 0u) {
+    return CELL_EVERY;
+  }
+  let point = vec4<f32>(world, 1.0);
+  let depth = dot(grid.depth_plane, point);
+  if (depth > grid.reach) {
+    return CELL_GLOBAL;
+  }
+  let clip = grid.view_proj * point;
+  if (clip.w <= 0.0) {
+    return CELL_EVERY;
+  }
+  let size = vec3<f32>(grid.size);
+  var slice = depth * grid.slice_scale + grid.slice_bias;
+  if (grid.slicing == 1u) {
+    slice = log2(max(depth, 1.0e-30)) * grid.slice_scale + grid.slice_bias;
+  }
+  let cell = vec3<f32>((clip.xy / clip.w * 0.5 + 0.5) * size.xy, slice);
+  if (any(cell < vec3<f32>(-GRID_MARGIN)) || any(cell > size + GRID_MARGIN)) {
+    return CELL_EVERY;
+  }
+  let index = min(vec3<u32>(max(cell, vec3<f32>(0.0))), grid.size - vec3<u32>(1u));
+  return index.x + grid.size.x * (index.y + grid.size.y * index.z);
+}
+
+// Every light that reaches `world`, shaded by your `shade_light`.
+fn accumulate_lights(world: vec3<f32>, normal: vec3<f32>) -> vec3<f32> {
+  var total = vec3<f32>(0.0);
+  let cell = light_cell(world);
+  if (cell == CELL_EVERY) {
+    for (var i = 0u; i < lights.count; i++) {
+      total += shade_light(lights.lights[i], world, normal);
+    }
+    return total;
+  }
+  for (var i = 0u; i < lights.global_count; i++) {
+    total += shade_light(lights.lights[i], world, normal);
+  }
+  if (cell == CELL_GLOBAL) {
+    return total;
+  }
+  for (var k = 0u; k < lights.promoted_count; k++) {
+    total += shade_light(lights.lights[light_grid[k]], world, normal);
+  }
+  let entry = lights.promoted_count + 2u * cell;
+  let first = light_grid[entry];
+  for (var k = 0u; k < light_grid[entry + 1u]; k++) {
+    total += shade_light(lights.lights[light_grid[first + k]], world, normal);
+  }
+  return total;
+}
+```
+
+A light with a range adds nothing past it, and a spot light adds nothing
+outside its outer cone, so `shade_light` must honor both for the grid to
+stay exact. The `Material::pbr` shader's `shade_light` uses the
+`KHR_lights_punctual` falloff, `(1 - (d / range)^4)` scaled by the inverse
+square distance.
+
+WebGL2 and native OpenGL have no storage buffers in fragment shaders. There
+the same source runs with `lights` turned into a uniform block that holds as
+many lights as the device allows, and with no grid, so `light_cell` returns
+`CELL_EVERY`. A shader that calls `arrayLength` on either root can't run
+there, and its first render returns `ShaderError::TypeMismatch`.
+
+##### The older interface
+
+The 0.12.6 shape is the older interface. It still fills on every device,
+holding up to its own `N` lights, and goes away in 0.13:
+
+```wgsl
+struct LightArray { count: u32, ambient: vec3<f32>, lights: array<Light, N> }
+@group(0) @binding(1) var<uniform> lights: LightArray;
+```
+
+A shader of this shape takes at most `N` lights, and the `add` past them
+fails with `PassError::LightCapReached { cap: N }`. A uniform `lights` that
+matches neither shape stays an ordinary uniform, which `set` reaches, and
+logs a warning.
+
 #### Example
 
 <Tabs>
@@ -701,9 +844,16 @@ code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Shader};
 
-let wireframe = Shader::new(r#"
+let flat = Shader::new(r#"
     struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    struct Light { kind: u32, intensity: f32, range: f32, inner_cone_cos: f32,
+        position: vec3<f32>, outer_cone_cos: f32, direction: vec3<f32>, color: vec3<f32> }
+    struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>,
+        slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }
+    struct Lights { count: u32, global_count: u32, promoted_count: u32,
+        ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }
     @group(0) @binding(0) var<uniform> camera: Camera;
+    @group(0) @binding(1) var<storage, read> lights: Lights;
 
     @vertex
     fn vs_main(
@@ -717,16 +867,21 @@ let wireframe = Shader::new(r#"
         return camera.view_proj * model * vec4<f32>(p, 1.0);
     }
     @fragment fn fs_main() -> @location(0) vec4<f32> {
-        return vec4<f32>(0.0, 1.0, 0.4, 1.0);
+        var glow = lights.ambient;
+        for (var i = 0u; i < lights.count; i++) {
+            glow += lights.lights[i].color * lights.lights[i].intensity * 0.1;
+        }
+        return vec4<f32>(glow, 1.0);
     }
 "#)?;
 
-let wire_mat = Material::custom(wireframe);
-let _ = wire_mat;
+let flat_mat = Material::custom(flat);
+assert!(flat_mat.shader().list_uniforms().contains(&"camera".to_string()));
+assert!(!flat_mat.shader().list_uniforms().contains(&"lights".to_string()));
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 25-27}"
+lang="rust" meta="collapse={1-1, 36-39}"
 />
 
 </TabItem>
@@ -736,10 +891,17 @@ lang="rust" meta="collapse={1-1, 25-27}"
 code={`
 import { Material, Shader } from "fragmentcolor";
 
-const wireframe = new Shader(\`
+const flat = new Shader(\`
 
     struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    struct Light { kind: u32, intensity: f32, range: f32, inner_cone_cos: f32,
+        position: vec3<f32>, outer_cone_cos: f32, direction: vec3<f32>, color: vec3<f32> }
+    struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>,
+        slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }
+    struct Lights { count: u32, global_count: u32, promoted_count: u32,
+        ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }
     @group(0) @binding(0) var<uniform> camera: Camera;
+    @group(0) @binding(1) var<storage, read> lights: Lights;
 
     @vertex
     fn vs_main(
@@ -753,12 +915,16 @@ const wireframe = new Shader(\`
         return camera.view_proj * model * vec4<f32>(p, 1.0);
     }
     @fragment fn fs_main() -> @location(0) vec4<f32> {
-        return vec4<f32>(0.0, 1.0, 0.4, 1.0);
+        var glow = lights.ambient;
+        for (var i = 0u; i < lights.count; i++) {
+            glow += lights.lights[i].color * lights.lights[i].intensity * 0.1;
+        }
+        return vec4<f32>(glow, 1.0);
     }
 
 \`);
 
-const wire_mat = Material.custom(wireframe);
+const flat_mat = Material.custom(flat);
 `}
 lang="js"
 />
@@ -770,9 +936,16 @@ lang="js"
 code={`
 from fragmentcolor import Material, Shader
 
-wireframe = Shader("""
+flat = Shader("""
     struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    struct Light { kind: u32, intensity: f32, range: f32, inner_cone_cos: f32,
+        position: vec3<f32>, outer_cone_cos: f32, direction: vec3<f32>, color: vec3<f32> }
+    struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>,
+        slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }
+    struct Lights { count: u32, global_count: u32, promoted_count: u32,
+        ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }
     @group(0) @binding(0) var<uniform> camera: Camera;
+    @group(0) @binding(1) var<storage, read> lights: Lights;
 
     @vertex
     fn vs_main(
@@ -786,12 +959,16 @@ wireframe = Shader("""
         return camera.view_proj * model * vec4<f32>(p, 1.0);
     }
     @fragment fn fs_main() -> @location(0) vec4<f32> {
-        return vec4<f32>(0.0, 1.0, 0.4, 1.0);
+        var glow = lights.ambient;
+        for (var i = 0u; i < lights.count; i++) {
+            glow += lights.lights[i].color * lights.lights[i].intensity * 0.1;
+        }
+        return vec4<f32>(glow, 1.0);
     }
 
 """)
 
-wire_mat = Material.custom(wireframe)
+flat_mat = Material.custom(flat)
 `}
 lang="python"
 />
@@ -803,9 +980,16 @@ lang="python"
 code={`
 import FragmentColor
 
-let wireframe = try Shader("""
+let flat = try Shader("""
     struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    struct Light { kind: u32, intensity: f32, range: f32, inner_cone_cos: f32,
+        position: vec3<f32>, outer_cone_cos: f32, direction: vec3<f32>, color: vec3<f32> }
+    struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>,
+        slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }
+    struct Lights { count: u32, global_count: u32, promoted_count: u32,
+        ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }
     @group(0) @binding(0) var<uniform> camera: Camera;
+    @group(0) @binding(1) var<storage, read> lights: Lights;
 
     @vertex
     fn vs_main(
@@ -819,12 +1003,16 @@ let wireframe = try Shader("""
         return camera.view_proj * model * vec4<f32>(p, 1.0);
     }
     @fragment fn fs_main() -> @location(0) vec4<f32> {
-        return vec4<f32>(0.0, 1.0, 0.4, 1.0);
+        var glow = lights.ambient;
+        for (var i = 0u; i < lights.count; i++) {
+            glow += lights.lights[i].color * lights.lights[i].intensity * 0.1;
+        }
+        return vec4<f32>(glow, 1.0);
     }
 
 """)
 
-let wire_mat = Material.custom(wireframe)
+let flat_mat = Material.custom(flat)
 `}
 lang="swift"
 />
@@ -836,9 +1024,16 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val wireframe = Shader("""
+val flat = Shader("""
     struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    struct Light { kind: u32, intensity: f32, range: f32, inner_cone_cos: f32,
+        position: vec3<f32>, outer_cone_cos: f32, direction: vec3<f32>, color: vec3<f32> }
+    struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>,
+        slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }
+    struct Lights { count: u32, global_count: u32, promoted_count: u32,
+        ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }
     @group(0) @binding(0) var<uniform> camera: Camera;
+    @group(0) @binding(1) var<storage, read> lights: Lights;
 
     @vertex
     fn vs_main(
@@ -852,12 +1047,16 @@ val wireframe = Shader("""
         return camera.view_proj * model * vec4<f32>(p, 1.0);
     }
     @fragment fn fs_main() -> @location(0) vec4<f32> {
-        return vec4<f32>(0.0, 1.0, 0.4, 1.0);
+        var glow = lights.ambient;
+        for (var i = 0u; i < lights.count; i++) {
+            glow += lights.lights[i].color * lights.lights[i].intensity * 0.1;
+        }
+        return vec4<f32>(glow, 1.0);
     }
 
 """)
 
-val wire_mat = Material.custom(wireframe)
+val flat_mat = Material.custom(flat)
 `}
 lang="kotlin"
 />
@@ -1810,9 +2009,15 @@ The shader uses:
   and Schlick Fresnel.
 - **Lambertian diffuse** with energy conservation against the specular
   Fresnel and metalness.
-- **Up to 32 lights** in the `lights.lights[N]` array (uniform `lights`, with
-  `lights.count` active), one camera (uniform `camera`), and the per-Model
-  transform via the instance-attribute stream.
+- **Clustered lights**: as many lights as the device allows, in the
+  read-only storage roots `lights` and `light_grid` that the renderer fills.
+  Each fragment reads only the lights whose range reaches its cluster, plus
+  every light without a range. See [Light](/api/scene/light)
+  for the cost of each kind and the cap on each device, and
+  [`Material::custom`](/api/scene/material#custom)
+  for the layout of the roots.
+- **One camera** (uniform `camera`), and the per-Model transform via the
+  instance-attribute stream.
 - **glTF 2.0 PBR-MR texture sampling**: five sampled maps (`base_color_map`,
   `metallic_roughness_map`, `normal_map`, `occlusion_map`, `emissive_map`)
   combined with their matching factors per the spec.
@@ -1852,16 +2057,21 @@ mismatch. Use `Material::custom(...)` to bring your own vertex layout.
 | `emissive_map`               | 1×1 white            |
 | `camera.view_proj`           | identity 4×4         |
 | `camera.position`            | `[0, 0, 0]`          |
-| `light.direction`            | `[0, -1, 0]` (down)  |
-| `light.color`                | `[1, 1, 1]`          |
+| `lights.ambient`             | `[0.03, 0.03, 0.03]` |
+| placeholder light            | white, directional, pointing down `[0, -1, 0]` |
 
-The camera and light are the user's domain, not the Material's. Pass them
-to [`Pass::add`](/api/core/pass#add). The
-typed [Camera](/api/scene/camera) and
-[Light](/api/scene/light) handles seed the matching
-`camera.*` / `light.*` uniforms and propagate any later updates back into
-the Material's shader. Dropping down to `material.shader().set(...)` directly
-is still supported if you need it.
+The placeholder light lights a fresh Material until the first
+[Light](/api/scene/light) reaches its shader,
+and returns once no Light does.
+
+The camera and lights are the user's domain, not the Material's. Pass them
+to [`Pass::add`](/api/core/pass#add). The typed
+[Camera](/api/scene/camera) handle seeds the
+`camera.*` uniforms and propagates later updates into the Material's shader,
+and the renderer packs every Light that reaches the shader at each render.
+`material.shader().set(...)` still sets `camera.*` and `lights.ambient`
+directly. The lights themselves have no keys: `set` and `get` on
+`lights.count` or `lights.lights[i]` return `ShaderError::UniformNotFound`.
 
 #### Example
 
