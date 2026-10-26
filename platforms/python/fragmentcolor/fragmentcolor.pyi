@@ -173,7 +173,7 @@ class Renderer:
 
         When you pass a `size`, the bytes are treated as raw pixels in the chosen format. Without a size, the bytes (or the file/URL contents) are decoded as PNG, JPEG, BMP, HDR, etc.
 
-        A size with a side of zero, or one past the device's limits, is an error that reaches no GPU call, and so is an image larger than the device takes: `TextureError::InvalidInput` inside `RendererError::TextureError` in Rust, a thrown `Error` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
+        A size with a side of zero, or one past the device's limits, is an error that reaches no GPU call, and so is an image larger than the device takes, which is checked from its header before the pixels decode: `TextureError::InvalidInput` inside `RendererError::TextureError` in Rust, a thrown `Error` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
 
         Decode and mipmap generation run on a background worker on native platforms. On the web they run inline on the caller's thread; move heavy decode into a Web Worker if you need parallelism.
 
@@ -190,12 +190,14 @@ class Renderer:
         |------|-----------|
         | `bytes` (no size) | Encoded image; decoded internally (PNG, JPEG, BMP, HDR, etc.). |
         | `(bytes, size)` / options with `size` set | Raw pixel bytes; `bpp(format) * width * height` long, no decode. The default `Rgba` format uploads them as linear `Rgba8Unorm`. |
-        | `(bytes, format)` / options with `format` set | Encoded image reinterpreted as `format` (e.g. `Rgba8Unorm` for normal-map data, `R16Unorm` for 16-bit grayscale). |
+        | `(bytes, format)` / options with `format` set | Encoded image reinterpreted as `format` (e.g. `Rgba8Unorm` for normal-map data, `R16Unorm` for 16-bit grayscale, `Rgba32Float` for full float precision). |
         | `path` / `URL` | File or HTTP fetch, then decoded. |
         | `Mipmap` | Pre-built CPU mip chain; GPU-only upload. Build via [Mipmap::build](https://fragmentcolor.org/api/texture/mipmap#build) on a worker thread. |
         | `Ktx2Bytes` / `Ktx2Path` / `Ktx2Url` | KTX2 container (BC / ETC2 / ASTC / uncompressed); the file's declared format and pre-baked mip chain win. |
 
         A full mipmap chain is generated for source images by default (`options.mipmaps = true`). Set to `false` to skip the CPU work for textures that won't be sampled at distance.
+
+        An HDR image decodes into `Rgba16Float`. A decoded image fills the 8-bit and 16-bit color formats and `Rgba16Float` or `Rgba32Float`. An integer format such as `Rgba32Uint`, or `Depth32Float`, is an `InvalidInput` error: pass raw bytes with a size for an integer texture, and draw into a depth texture.
 
         `options.usage` adds `TextureUsage` flags to the `TEXTURE_BINDING | COPY_DST` every texture made from data has, such as `COPY_SRC` to read it back. A bit outside the five `TextureUsage` flags is an `InvalidInput` error.
 

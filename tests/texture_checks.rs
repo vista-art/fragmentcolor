@@ -96,6 +96,81 @@ fn storage_textures_check_their_format() {
     });
 }
 
+/// Encodes `image` as a file in `format` would hold it.
+fn encode(image: image::DynamicImage, format: image::ImageFormat) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    image
+        .write_to(&mut std::io::Cursor::new(&mut bytes), format)
+        .expect("encode image");
+    bytes
+}
+
+/// Options that read the texture back, in `format`.
+fn readable(format: TextureFormat) -> TextureOptions {
+    TextureOptions {
+        format,
+        mipmaps: false,
+        ..Default::default()
+    }
+    .with_usage(TextureUsage::COPY_SRC)
+}
+
+fn halves(bytes: &[u8]) -> Vec<f32> {
+    let words = bytes.chunks_exact(2);
+    let half = |word: &[u8]| half::f16::from_le_bytes([word[0], word[1]]).to_f32();
+    words.map(half).collect()
+}
+
+fn floats(bytes: &[u8]) -> Vec<f32> {
+    let word = |word: &[u8]| f32::from_le_bytes([word[0], word[1], word[2], word[3]]);
+    bytes.chunks_exact(4).map(word).collect()
+}
+
+fn close(got: &[f32], want: &[f32]) -> bool {
+    got.len() == want.len() && got.iter().zip(want).all(|(a, b)| (a - b).abs() < 0.02)
+}
+
+// Story: an HDR file decodes into Rgba16Float with its bright values intact, a
+// PNG fills an explicit float format, and an integer format refuses a decoded
+// image, where each uploaded RGBA8 bytes into the wrong layout.
+#[test]
+fn decoded_images_fill_float_formats() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let sky = image::Rgb32FImage::from_raw(2, 1, vec![2.0, 0.5, 0.25, 1.0, 1.0, 1.0])
+            .expect("sky pixels");
+        let hdr = encode(sky.into(), image::ImageFormat::Hdr);
+        let texture = renderer
+            .create_texture((hdr, readable(TextureFormat::Rgba)))
+            .await
+            .expect("an HDR file decodes");
+        let image = texture.get_image().await.expect("read back");
+        let want = [2.0, 0.5, 0.25, 1.0, 1.0, 1.0, 1.0, 1.0];
+        assert!(close(&halves(&image), &want), "HDR read back {:?}", halves(&image));
+
+        let pixel = image::RgbaImage::from_raw(1, 1, vec![255, 0, 51, 255]).expect("pixel");
+        let png = encode(pixel.into(), image::ImageFormat::Png);
+        let want = [1.0, 0.0, 0.2, 1.0];
+        let texture = renderer
+            .create_texture((png.clone(), readable(TextureFormat::Rgba32Float)))
+            .await
+            .expect("a PNG fills Rgba32Float");
+        let image = texture.get_image().await.expect("read back");
+        assert!(close(&floats(&image), &want), "Rgba32Float {:?}", floats(&image));
+        let texture = renderer
+            .create_texture((png.clone(), readable(TextureFormat::Rgba16Float)))
+            .await
+            .expect("a PNG fills Rgba16Float");
+        let image = texture.get_image().await.expect("read back");
+        assert!(close(&halves(&image), &want), "Rgba16Float {:?}", halves(&image));
+
+        for format in [TextureFormat::Rgba32Uint, TextureFormat::Rgba32Sint] {
+            let result = renderer.create_texture((png.clone(), format)).await;
+            assert!(refused(&result), "a decoded image into {format:?}");
+        }
+    });
+}
+
 // Story: a buffer copy can't fill a depth texture, so raw pixels, seed bytes
 // and a write into Depth32Float are refused before they reach wgpu.
 #[test]

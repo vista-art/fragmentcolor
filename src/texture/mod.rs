@@ -797,12 +797,12 @@ impl TextureObject {
                             usage,
                         )
                     } else {
-                        let image = image::load_from_memory(&bytes)?;
+                        let image = decode(&bytes, &context.device.limits())?;
                         Self::from_image(context.as_ref(), &image, format_override, mipmaps, usage)
                     }
                 }
                 TextureData::Path(path) => {
-                    let image = image::open(&path)?;
+                    let image = decode(&read_file(&path)?, &context.device.limits())?;
                     Self::from_image(context.as_ref(), &image, format_override, mipmaps, usage)
                 }
                 TextureData::Prepared(chain) => Self::from_chain(context.as_ref(), chain, usage),
@@ -886,9 +886,8 @@ impl TextureObject {
     /// `format_override = None` infers the format from `image.color()`. The image is
     /// re-decoded to match the target format (e.g. `R16Unorm` triggers `to_luma16()`,
     /// preserving 16-bit precision). Mipmaps are generated CPU-side via
-    /// `image::imageops::resize` for every format the dispatcher recognizes — see
-    /// `supports_cpu_mipmaps`. Unrecognized formats fall back to writing
-    /// `to_rgba8` bytes as a single level (best-effort, may misrender for non-RGBA8 layouts).
+    /// `image::imageops::resize` for every format `supports_cpu_mipmaps` takes,
+    /// and the float formats get one level. Any other format is refused.
     fn from_image(
         context: &RenderContext,
         image: &DynamicImage,
@@ -906,6 +905,7 @@ impl TextureObject {
         let format = format_override.unwrap_or_else(|| infer_format(image.color()));
         check_format(context, format, usage, dimension(size))?;
         check_upload(format)?;
+        check_decode(format)?;
         check_extent(&context.device.limits(), size, dimension(size))?;
 
         let want_mips = generate_mipmaps && supports_cpu_mipmaps(format);
@@ -917,7 +917,7 @@ impl TextureObject {
         let descriptor = Self::texture_descriptor(label, size, format, usage, 1, mip_level_count);
         let texture = context.device.create_texture(&descriptor);
 
-        write_image_levels(context, image, &texture, size, format, mip_level_count);
+        write_image_levels(context, image, &texture, size, format, mip_level_count)?;
 
         let sampler = create_default_sampler(&context.device);
 
@@ -1209,6 +1209,21 @@ fn read_ktx2_file(
     ktx2_loader::from_ktx2_bytes(context, &bytes, usage)
 }
 
+/// Decodes an encoded image once the size its header declares fits the device's `limits`,
+/// so an image too large to upload is refused before its pixels take any memory.
+fn decode(bytes: &[u8], limits: &wgpu::Limits) -> Result<DynamicImage, TextureError> {
+    let format = image::guess_format(bytes)?;
+    let reader = || image::ImageReader::with_format(std::io::Cursor::new(bytes), format);
+    let (width, height) = reader().into_dimensions()?;
+    check_size(width, height, limits.max_texture_dimension_2d)?;
+    Ok(reader().decode()?)
+}
+
+/// The bytes of the file at `path`. A failed read is an image error, as `image::open` reports it.
+fn read_file(path: &std::path::Path) -> image::ImageResult<Vec<u8>> {
+    Ok(std::fs::read(path)?)
+}
+
 /// Usage of a texture made from source data.
 /// It always holds `TEXTURE_BINDING | COPY_DST`, since the upload and sampling need them,
 /// plus any bits from `TextureOptions::usage`, such as `COPY_SRC` for `read_texture`.
@@ -1312,6 +1327,21 @@ pub(crate) fn check_upload(format: wgpu::TextureFormat) -> Result<(), TextureErr
     }
 }
 
+/// Checks that a decoded image converts into `format`: a format the CPU mipmap
+/// path fills, or `Rgba16Float` or `Rgba32Float`. Integer formats take raw bytes.
+pub(crate) fn check_decode(format: wgpu::TextureFormat) -> Result<(), TextureError> {
+    let float = matches!(
+        format,
+        wgpu::TextureFormat::Rgba16Float | wgpu::TextureFormat::Rgba32Float
+    );
+    match float || supports_cpu_mipmaps(format) {
+        true => Ok(()),
+        false => Err(TextureError::InvalidInput(format!(
+            "can't decode an image into {format:?}, pass raw bytes with a size"
+        ))),
+    }
+}
+
 /// Checks `usage` against the usages `allowed` for `format`,
 /// and that a depth format makes a 2D texture, the only kind it has.
 pub(crate) fn check_support(
@@ -1347,8 +1377,8 @@ pub(crate) fn infer_format(color: image::ColorType) -> wgpu::TextureFormat {
         image::ColorType::La16 => wgpu::TextureFormat::Rg16Unorm,
         image::ColorType::Rgb16 => wgpu::TextureFormat::Rgba16Unorm,
         image::ColorType::Rgba16 => wgpu::TextureFormat::Rgba16Unorm,
-        image::ColorType::Rgb32F => wgpu::TextureFormat::Rgba32Float,
-        image::ColorType::Rgba32F => wgpu::TextureFormat::Rgba32Float,
+        image::ColorType::Rgb32F => wgpu::TextureFormat::Rgba16Float,
+        image::ColorType::Rgba32F => wgpu::TextureFormat::Rgba16Float,
         _ => wgpu::TextureFormat::Rgba8UnormSrgb,
     }
 }
@@ -1360,10 +1390,8 @@ pub(crate) fn infer_format(color: image::ColorType) -> wgpu::TextureFormat {
 /// silently going through `to_rgba8`.
 ///
 /// Each branch picks the matching `image` crate decoder so the channel layout and
-/// bytes-per-pixel agree with the wgpu format. Unrecognized formats fall back to
-/// writing `to_rgba8` bytes as a single level — best-effort, may misrender for
-/// non-RGBA8 layouts (caller should have caught this via `supports_cpu_mipmaps`
-/// when picking `mip_level_count`).
+/// bytes-per-pixel agree with the wgpu format. Any format [`check_decode`] refuses
+/// is an error here too.
 pub(crate) fn write_image_levels(
     context: &RenderContext,
     image: &DynamicImage,
@@ -1371,7 +1399,7 @@ pub(crate) fn write_image_levels(
     full_size: wgpu::Extent3d,
     format: wgpu::TextureFormat,
     mip_level_count: u32,
-) {
+) -> Result<(), TextureError> {
     match format {
         wgpu::TextureFormat::Rgba8Unorm
         | wgpu::TextureFormat::Rgba8UnormSrgb
@@ -1436,29 +1464,34 @@ pub(crate) fn write_image_levels(
                 8,
             );
         }
-        _ => {
-            log::warn!(
-                "from_image: unsupported texture format {:?}; writing to_rgba8 bytes as a single level (channels and bytes-per-pixel may not match the texture)",
-                format
-            );
-            let source = image.to_rgba8();
-            context.queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    aspect: wgpu::TextureAspect::All,
-                    texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                },
-                source.as_raw(),
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(4 * full_size.width),
-                    rows_per_image: Some(full_size.height),
-                },
+        wgpu::TextureFormat::Rgba32Float => {
+            write_pixel_levels(
+                context,
+                image.to_rgba32f(),
+                texture,
                 full_size,
+                mip_level_count,
+                16,
             );
         }
+        wgpu::TextureFormat::Rgba16Float => {
+            let halves: Vec<u16> = image
+                .to_rgba32f()
+                .as_raw()
+                .iter()
+                .map(|value| half::f16::from_f32(*value).to_bits())
+                .collect();
+            let base: image::ImageBuffer<image::Rgba<u16>, Vec<u16>> =
+                image::ImageBuffer::from_raw(full_size.width, full_size.height, halves)
+                    .ok_or_else(|| {
+                        TextureError::CreateTextureError("Failed to wrap Rgba16Float pixels".into())
+                    })?;
+            // One level only: a resample would read the half floats as integers.
+            write_pixel_levels(context, base, texture, full_size, 1, 8);
+        }
+        _ => check_decode(format)?,
     }
+    Ok(())
 }
 
 /// Wrap raw pixel bytes (already laid out for `format` at `width x height`)

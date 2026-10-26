@@ -107,6 +107,27 @@ fn decoded_and_prepared_textures_check_their_size() {
     });
 }
 
+// Story: the size in an image's header is checked before its pixels decode, so
+// a file too wide for the device is refused as too wide even when its pixel data
+// is cut short, where the decode ran first and failed on the missing data.
+#[test]
+fn decoded_images_check_the_header_first() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let mut png = wide_png();
+        let data = png
+            .windows(4)
+            .position(|chunk| chunk == b"IDAT")
+            .expect("an IDAT chunk");
+        png.truncate(data + 6);
+        let result = renderer.create_texture(TextureData::Bytes(png)).await;
+        assert!(
+            refused(&result),
+            "a header past the limit should be refused, got {result:?}"
+        );
+    });
+}
+
 // Story: a storage texture with seed bytes too short for its size still
 // reports the size, the error resize gives, when the size is past the limit.
 #[test]
