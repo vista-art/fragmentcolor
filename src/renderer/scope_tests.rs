@@ -381,3 +381,24 @@ fn instance_count_past_the_rows_acquires_no_frame() {
         assert_eq!(target.counts.acquired(), 0, "no frame was acquired");
     });
 }
+
+// Story: every scope catches internal and out of memory errors along with validation
+// errors, so a backend compiler that rejects a pipeline keeps it out of the cache too.
+#[test]
+fn scopes_catch_every_error_kind() {
+    // Arrange
+    let expected = [
+        wgpu::ErrorFilter::OutOfMemory,
+        wgpu::ErrorFilter::Internal,
+        wgpu::ErrorFilter::Validation,
+    ];
+
+    // Act
+    let missing: Vec<_> = expected
+        .iter()
+        .filter(|filter| !SCOPES.contains(filter))
+        .collect();
+
+    // Assert
+    assert!(missing.is_empty(), "no scope catches {missing:?}");
+}

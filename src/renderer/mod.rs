@@ -47,6 +47,13 @@ mod late;
 #[cfg(test)]
 mod scope_tests;
 
+/// The kinds of GPU error each error scope catches, outermost first.
+const SCOPES: [wgpu::ErrorFilter; 3] = [
+    wgpu::ErrorFilter::OutOfMemory,
+    wgpu::ErrorFilter::Internal,
+    wgpu::ErrorFilter::Validation,
+];
+
 /// The Renderer accepts a generic window handle as input
 /// that must report its display size.
 pub trait HasDisplaySize {
@@ -1060,24 +1067,29 @@ impl RenderContext {
         self.sample_count.load(Ordering::Relaxed).max(1)
     }
 
-    /// Runs `op` inside a validation error scope.
+    /// Runs `op` inside error scopes for validation, internal and out of memory errors.
     ///
     /// A wgpu error that `op` causes returns as `ValidationError`
     /// instead of reaching the device's uncaptured error handler.
     /// Pipeline builds, bind groups, views and each frame go through here.
-    /// The scope is popped on every path. When `op` fails, its own error wins,
-    /// and a GPU error the scope also caught goes to the log as a warning. On wasm
-    /// the scope resolves after `render` returns, so the error waits in `late` for the next call.
+    /// The scopes are popped on every path. When `op` fails, its own error wins,
+    /// and a GPU error the scopes also caught goes to the log as a warning. On wasm
+    /// the scopes resolve after `render` returns, so the error waits in `late` for the next call.
     fn validate<T>(
         &self,
         label: &str,
         op: impl FnOnce() -> Result<T, RendererError>,
     ) -> Result<T, RendererError> {
-        let scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let [memory, internal, validation] =
+            SCOPES.map(|filter| self.device.push_error_scope(filter));
         let result = op();
-        let popped = scope.pop();
+        // Scopes pop in reverse order.
+        let validation = validation.pop();
+        let internal = internal.pop();
+        let memory = memory.pop();
+        let caught = async move { validation.await.or(internal.await).or(memory.await) };
         #[cfg(not(wasm))]
-        match (result, futures::executor::block_on(popped)) {
+        match (result, futures::executor::block_on(caught)) {
             (Err(error), Some(gpu)) => {
                 log::warn!("{label} failed: {error}. The GPU also reported: {gpu}");
                 Err(error)
@@ -1091,7 +1103,7 @@ impl RenderContext {
         #[cfg(wasm)]
         {
             let failure = result.as_ref().err().map(ToString::to_string);
-            self.late.watch(label, popped, failure);
+            self.late.watch(label, caught, failure);
             result
         }
     }
