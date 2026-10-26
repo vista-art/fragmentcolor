@@ -6393,7 +6393,9 @@ public func FfiConverterTypeErrorKind_lower(_ value: ErrorKind) -> RustBuffer {
 /**
  * Mobile-facing error type. Flattens every internal error to its `Display`
  * representation so Swift/Kotlin callers get a single typed error to match on.
- * A GPU error keeps its kind, its step's label and its message apart.
+ * A GPU error keeps its kind, its step's label and the device's own detail apart.
+ * The exported `Display` gives Swift's `description` and `localizedDescription`,
+ * and Kotlin's `toString()`, the full text of every case.
  */
 public 
 enum FragmentColorError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
@@ -6406,12 +6408,23 @@ enum FragmentColorError: Swift.Error, Equatable, Hashable, Foundation.LocalizedE
     )
     case Shader(String
     )
-    case Device(kind: ErrorKind, label: String, message: String
+    case Device(kind: ErrorKind, label: String, detail: String
     )
 
     
 
     
+// The local Rust `Display` implementation.
+public var description: String {
+    return try!  FfiConverterString.lift(
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_fragmentcolorerror_uniffi_trait_display(
+            FfiConverterTypeFragmentColorError_lower(self),uniffiCallStatus
+    )
+}
+    )
+}
 
     
     public var errorDescription: String? {
@@ -6449,7 +6462,7 @@ public struct FfiConverterTypeFragmentColorError: FfiConverterRustBuffer {
         case 4: return .Device(
             kind: try FfiConverterTypeErrorKind.read(from: &buf), 
             label: try FfiConverterString.read(from: &buf), 
-            message: try FfiConverterString.read(from: &buf)
+            detail: try FfiConverterString.read(from: &buf)
             )
 
          default: throw UniffiInternalError.unexpectedEnumCase
@@ -6478,11 +6491,11 @@ public struct FfiConverterTypeFragmentColorError: FfiConverterRustBuffer {
             FfiConverterString.write(v1, into: &buf)
             
         
-        case let .Device(kind,label,message):
+        case let .Device(kind,label,detail):
             writeInt(&buf, Int32(4))
             FfiConverterTypeErrorKind.write(kind, into: &buf)
             FfiConverterString.write(label, into: &buf)
-            FfiConverterString.write(message, into: &buf)
+            FfiConverterString.write(detail, into: &buf)
             
         }
     }

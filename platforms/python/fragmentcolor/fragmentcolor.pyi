@@ -68,6 +68,7 @@ class OccludedSurfaceError(FragmentColorError): ...
 class DeviceError(FragmentColorError):
     kind: ErrorKind
     label: str
+    detail: str
 
 class SceneLoadError(FragmentColorError): ...
 
@@ -346,7 +347,7 @@ class Renderer:
 
         A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. A shader without its mesh and an instance count past the mesh's instances fail before `render` takes a frame, and the window keeps its last image.
 
-        JavaScript gets the GPU's errors late, because WebGPU reports them after `render` has returned. Each error logs a `console.error` when it lands, and the next `render` still throws the first one, as an `Error` with `kind` and `label` properties, before doing any work. `load`, `readTexture`, `readStorage`, and `getImage` on a `Texture` or `TextureTarget` wait for the frames before them to report, so they throw a frame's error even when called right after it. A call that waits throws only the error of a frame rendered before it began: the error of a frame rendered while it waits stays for the next call. Only the first error to land throws, and only once; the ones that land after it, before a call takes it, only log. The label names the render pipeline, the compute pipeline, the light binning pipeline or the frame. A pipeline that failed stays in the cache until its error lands, and a frame that draws with it before then reports a frame error. Once the error lands, the pipeline leaves the cache. In a loop that renders each frame, the next `render` throws the error before doing any work, and the one after it builds the pipeline again and reports the same error.
+        JavaScript gets the GPU's errors late, because WebGPU reports them after `render` has returned. Each error logs a `console.error` when it lands, and the next `render` still throws the first one, as an `Error` with `kind`, `label` and `detail` properties, before doing any work. `load`, `readTexture`, `readStorage`, and `getImage` on a `Texture` or `TextureTarget` wait for the frames before them to report, so they throw a frame's error even when called right after it. A call that waits throws only the error of a frame rendered before it began: the error of a frame rendered while it waits stays for the next call. Only the first error to land throws, and only once; the ones that land after it, before a call takes it, only log. The label names the render pipeline, the compute pipeline, the light binning pipeline or the frame. A pipeline that failed stays in the cache until its error lands, and a frame that draws with it before then reports a frame error. Once the error lands, the pipeline leaves the cache. In a loop that renders each frame, the next `render` throws the error before doing any work, and the one after it builds the pipeline again and reports the same error.
 
         Example:
 
@@ -4229,15 +4230,19 @@ class Material:
           offset: vec2<f32>,
           scale: vec2<f32>,
           rotation: f32,
-          @size(12) uv_set: u32,
+          uv_set: u32,
+          pad: vec2<u32>,
         }
 
         struct PbrMaterial {
           base_color: vec4<f32>,
-          // … the other factors …
-          @align(16) uv: array<TextureUv, 5>,
+          // … the other factors, then plain padding members up to
+          // an offset that is a multiple of 16 …
+          uv: array<TextureUv, 5>,
         }
         ```
+
+        Spell the padding out as members. The WGSL a browser receives drops `@size` and `@align`, so a layout that needs them fails on the web.
 
         - Four `vec4<f32>` vertex inputs named `model_0` to `model_3`, the columns of
           the Model's transform. The renderer fills them at draw time from each
