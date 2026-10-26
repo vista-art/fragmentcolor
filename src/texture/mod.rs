@@ -1516,7 +1516,7 @@ pub(crate) fn write_image_levels(
                 .to_rgba32f()
                 .as_raw()
                 .iter()
-                .map(|value| half::f16::from_f32(*value).to_bits())
+                .map(|value| to_half(*value).to_bits())
                 .collect();
             let base: image::ImageBuffer<image::Rgba<u16>, Vec<u16>> =
                 image::ImageBuffer::from_raw(full_size.width, full_size.height, halves)
@@ -1529,6 +1529,13 @@ pub(crate) fn write_image_levels(
         _ => check_decode(format)?,
     }
     Ok(())
+}
+
+/// `value` as a half float, saturated to the half float range,
+/// so a value past 65504 stays 65504 where a plain conversion gives infinity.
+fn to_half(value: f32) -> half::f16 {
+    let limit = half::f16::MAX.to_f32();
+    half::f16::from_f32(value.clamp(-limit, limit))
 }
 
 /// The texel bytes and size of a `uint8` array of `shape` for `format`.

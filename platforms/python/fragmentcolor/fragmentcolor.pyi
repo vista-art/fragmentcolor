@@ -200,7 +200,9 @@ class Renderer:
 
         A full mipmap chain is generated for source images by default (`options.mipmaps = true`). Set to `false` to skip the CPU work for textures that won't be sampled at distance.
 
-        An HDR image decodes into `Rgba16Float`. A decoded image, an `ImageData` or a canvas uploads into `Bgra8Unorm` blue first, so its colors sample right, while raw bytes upload as given. A decoded image fills the 8-bit and 16-bit color formats and `Rgba16Float` or `Rgba32Float`. An integer format such as `Rgba32Uint`, or `Depth32Float`, is an `InvalidInput` error: pass raw bytes with a size for an integer texture, and draw into a depth texture.
+        An HDR image decodes into `Rgba16Float`. A value past the half float range saturates at 65504, or -65504, and never becomes infinity, the way Three.js converts it. An explicit `Rgba32Float` keeps the full range, and a linear sampler filters it where the device has `FLOAT32_FILTERABLE`.
+
+        A decoded image, an `ImageData` or a canvas uploads into `Bgra8Unorm` blue first, so its colors sample right, while raw bytes upload as given. A decoded image fills the 8-bit and 16-bit color formats and `Rgba16Float` or `Rgba32Float`. An integer format such as `Rgba32Uint`, or `Depth32Float`, is an `InvalidInput` error: pass raw bytes with a size for an integer texture, and draw into a depth texture.
 
         `options.usage` adds `TextureUsage` flags to the `TEXTURE_BINDING | COPY_DST` every texture made from data has, such as `COPY_SRC` to read it back. A bit outside the five `TextureUsage` flags is an `InvalidInput` error.
 
