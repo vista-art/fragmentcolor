@@ -481,6 +481,56 @@ mod tests {
         });
     }
 
+    /// Draws mip level 1 of `tex` over the whole target.
+    const SECOND_LEVEL: &str = "
+@group(0) @binding(0) var tex: texture_2d<f32>;
+@group(0) @binding(1) var samp: sampler;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> {
+  return textureSampleLevel(tex, samp, vec2f(0.5, 0.5), 1.0);
+}
+";
+
+    // Story: a KTX2 file in Rgba16Float with a baked mip chain takes a whole
+    // write, which rebuilds the chain, where it was refused as a partial write.
+    #[test]
+    fn half_float_chains_take_whole_writes() {
+        pollster::block_on(async move {
+            let bytes = Ktx2Test {
+                format: VkFormat::R16G16B16A16_SFLOAT,
+                width: 4,
+                height: 4,
+                levels: vec![vec![0; 4 * 4 * 8], vec![0; 2 * 2 * 8]],
+            }
+            .build();
+            let renderer = crate::Renderer::new();
+            let texture = renderer
+                .create_texture(crate::texture::TextureData::Ktx2Bytes(bytes))
+                .await
+                .expect("load a half float KTX2 chain");
+            assert_eq!(texture.object().inner.mip_level_count(), 2);
+
+            let one = half::f16::from_f32(1.0).to_le_bytes();
+            let white: Vec<u8> = one.repeat(4 * 4 * 4);
+            texture.write(&white).expect("a whole write");
+            let partial = texture.write_region(&white[..2 * 2 * 8], [0, 0, 2, 2]);
+            assert!(matches!(partial, Err(TextureError::InvalidInput(_))));
+
+            let shader = crate::Shader::new(SECOND_LEVEL).expect("shader");
+            shader.set("tex", &texture).expect("set tex");
+            let target = renderer
+                .create_texture_target([1, 1])
+                .await
+                .expect("target");
+            renderer.render(&shader, &target).expect("render");
+            let image = crate::Target::get_image(&target).await.expect("read back");
+            assert_eq!(image, [255, 255, 255, 255], "level 1 follows the write");
+        });
+    }
+
     // Story: a synthetic uncompressed-RGBA8 KTX2 with one mip level loads with
     // the right format, dimensions, and mip count. The default RGBA8 path
     // doesn't need any compression features so it works on every adapter.

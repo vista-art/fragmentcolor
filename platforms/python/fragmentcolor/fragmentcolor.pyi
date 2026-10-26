@@ -184,7 +184,7 @@ class Renderer:
 
         - **Rust:** `create_texture(input)`. `input` accepts bare bytes, `(bytes, [w, h])`, `(bytes, format)`, `(bytes, options)`, a path, a URL string, a `Texture`, a `Mipmap`, or a KTX2 input. A string that starts with `http://` or `https://` is a URL; any other string is a path.
         - **JS:** `await renderer.createTexture(input, options?)`. `input` is `Uint8Array` / `ArrayBuffer` / URL string / CSS selector / `HTMLImageElement` / `HTMLCanvasElement` / `OffscreenCanvas` / `ImageData` / a `Texture` / a `Mipmap`. `options` is `{ size?, format?, mipmaps?, sampler?, usage? }`; when `size` is set, `input` is read as raw pixel bytes. `ImageData` and canvases bring their own size and RGBA pixels, so their options may repeat that size and pick an 8-bit RGBA or BGRA format, and anything else throws. The options object takes the size under `size`, and a `width` or `height` beside another option throws.
-        - **Python:** `renderer.create_texture(input, size=None, format=None, mipmaps=None, sampler=None, usage=None)`. `input` is `bytes` / `bytearray` / `memoryview` / a list or tuple of ints / a path or URL `str` / `os.PathLike` / uint8 numpy `ndarray[H, W, C]` / `Texture` / `Mipmap`. Numpy arrays fill in `size` for you, and a `size` that differs from the array's raises `InvalidInputError`. An array whose channels match the format's bytes per pixel uploads as it is, such as an `(H, W)` array as `R8Unorm`, and one with 1 or 3 channels gains an opaque alpha for an 8-bit RGBA or BGRA format. Any other shape raises `InvalidInputError`.
+        - **Python:** `renderer.create_texture(input, size=None, format=None, mipmaps=None, sampler=None, usage=None)`. `input` is `bytes` / `bytearray` / `memoryview` / a list or tuple of ints / a path or URL `str` / `os.PathLike` / uint8 numpy `ndarray[H, W, C]` / `Texture` / `Mipmap`. Numpy arrays fill in `size` for you, and a `size` that differs from the array's raises `InvalidInputError`. An array is raw bytes in the named format: one whose channels match the format's bytes per pixel uploads as it is, such as an `(H, W)` array as `R8Unorm` or a 4-channel array as `Bgra8Unorm` with no swap, and one with 1 or 3 channels gains an opaque alpha for an 8-bit RGBA or BGRA format. Any other shape raises `InvalidInputError`.
         - **Swift / Kotlin:** `try await renderer.createTexture(bytes)`, `createTexture(bytes, format)`, `createTexture(bytes, [w, h])`, `createTexture(bytes, options)`, `createTexture(path)` or `createTexture(chain)`. Bytes are `Data` or `[UInt8]` in Swift and `ByteArray` in Kotlin. Every bytes form also takes an optional `usage`.
 
         ## How the discriminator works
@@ -200,7 +200,9 @@ class Renderer:
 
         A full mipmap chain is generated for source images by default (`options.mipmaps = true`). Set to `false` to skip the CPU work for textures that won't be sampled at distance.
 
-        An HDR image decodes into `Rgba16Float`. A decoded image, an `ImageData` or a canvas uploads into `Bgra8Unorm` blue first, so its colors sample right, while raw bytes upload as given. A decoded image fills the 8-bit and 16-bit color formats and `Rgba16Float` or `Rgba32Float`. An integer format such as `Rgba32Uint`, or `Depth32Float`, is an `InvalidInput` error: pass raw bytes with a size for an integer texture, and draw into a depth texture.
+        An HDR image decodes into `Rgba16Float`. A value past the half float range saturates at 65504, or -65504, and never becomes infinity, the way Three.js converts it. An explicit `Rgba32Float` keeps the full range, and a linear sampler filters it where the device has `FLOAT32_FILTERABLE`.
+
+        A decoded image, an `ImageData` or a canvas holds RGBA by definition, so it uploads into `Bgra8Unorm` blue first and its colors sample right. Every path that takes an `ImageData` or a canvas does this: `createTexture`, the Material texture setters, `Texture.write` and `writeRegion`, `Mipmap.build` and the `createStorageTexture` seed. Raw bytes, a NumPy array among them, are texels in the named format and upload as given, never swapped. A decoded image fills the 8-bit and 16-bit color formats and `Rgba16Float` or `Rgba32Float`. An integer format such as `Rgba32Uint`, or `Depth32Float`, is an `InvalidInput` error: pass raw bytes with a size for an integer texture, and draw into a depth texture.
 
         `options.usage` adds `TextureUsage` flags to the `TEXTURE_BINDING | COPY_DST` every texture made from data has, such as `COPY_SRC` to read it back. A bit outside the five `TextureUsage` flags is an `InvalidInput` error.
 
@@ -4609,7 +4611,9 @@ class Texture:
         """
     def write(self, data: _PyTextureBytes) -> None:
         """
-        Efficiently upload raw pixel data into an existing texture. Ideal for video playback or any per-frame dynamic image updates.
+        Efficiently upload raw pixel data into an existing texture, such as each frame of a video or any image that changes from frame to frame.
+
+        A texture from `create_texture` has a mip chain by default, and every whole write rebuilds that chain on the CPU, on the calling thread. For video and other per-frame updates, create the texture with `mipmaps: false`, so a write is a single GPU upload.
 
         - Whole texture updates: use `Texture.write(&bytes)`.
         - Sub-rectangle updates or explicit data layout: use `Texture.write_region(&bytes, region)`.
@@ -4637,7 +4641,7 @@ class Texture:
         """
         Same as `Texture::write`, but writes into a sub-region of the texture and/or with explicit source data layout.
 
-        The `region` argument is required; use `Texture::write` to replace the whole texture. It accepts anything convertible into a `TextureRegion`:
+        The `region` argument is required; use `Texture::write` to replace the whole texture. A region with a width, height or depth of 0 is an `InvalidInput` error. It accepts anything convertible into a `TextureRegion`:
         - `[w, h]` / `(w, h)`: a `w` by `h` rectangle at origin `(0, 0, 0)`
         - `[x, y, w, h]` / `(x, y, w, h)`: 2D rectangle
         - `[x, y, z, w, h, d]`: 3D box (for layered or 3D textures)
@@ -4648,7 +4652,7 @@ class Texture:
         - See `Texture::write` for format and row layout details.
         - `bytes_per_row` (set via `.with_stride(...)`) defaults to the region width times the bytes per pixel, or to that row padded to 256 bytes when the data is exactly that size. Without it, data of any other length is an `InvalidInput` error. A larger value skips the padding at the end of each source row, and the data may then run past the region.
         - `rows_per_image` (set via `.with_rows(...)`) defaults to the region height.
-        - A texture with a mip chain, which `create_texture` builds by default, takes whole writes only, since a partial one would leave the smaller levels stale. Any other region is an `InvalidInput` error, so create a texture you update in parts with `mipmaps: false`.
+        - A texture with a mip chain, which `create_texture` builds by default, takes whole writes only, since a partial one would leave the smaller levels stale. Any other region is an `InvalidInput` error, so create a texture you update in parts with `mipmaps: false`, or from a KTX2 file with one level.
 
         Example:
 
@@ -4702,7 +4706,7 @@ class Texture:
         - The texture must have `COPY_SRC` usage. Creation helpers like `create_storage_texture` enable it by default.
         - GLES and WebGL2 can't copy a depth texture to a buffer, so reading one back there returns `TextureError::Readback`. So does a texture whose readback needs a buffer past the device's largest, `max_buffer_size`.
         - A block-compressed texture, such as one loaded from a BC7 or ASTC KTX2 file, has no size per pixel, so reading it back is an `InvalidInput` error.
-        - Python returns the same bytes as a uint8 NumPy array shaped `(height, width, bytes per pixel)`, with a leading layer axis for array textures. A float format reads as floats through `image.view(numpy.float32)`.
+        - Python returns the same bytes as a uint8 NumPy array shaped `(height, width, bytes per pixel)`, with a leading layer axis for array textures. A float format reads as floats through a view: `image.view(numpy.float16)` for `Rgba16Float`, the format an HDR file decodes into, and `image.view(numpy.float32)` for `Rgba32Float`.
 
         Example:
 
@@ -4793,14 +4797,14 @@ class Mipmap:
 
         `build(input)` takes the same input shapes as `Renderer::create_texture` and `Renderer::create_storage_texture`, so you write the call the same way regardless of which entry point you target. Whether `build` decodes the bytes depends on whether you pass a `size`:
 
-        - **Encoded path, `size` absent.** The bytes get decoded as PNG / JPEG / BMP / HDR / etc., and the chain inherits the image's dimensions. Use this when you have an encoded blob from disk, the network, or a decoder that emits encoded data.
+        - **Encoded path, `size` absent.** The bytes get decoded as PNG / JPEG / BMP / HDR / etc., and the chain inherits the image's dimensions. The format comes from the bytes, as in `create_texture`, so a file name without an extension works. Use this when you have an encoded blob from disk, the network, or a decoder that emits encoded data.
         - **Raw path, `size` present.** The bytes are treated as already laid out for `format` at `size`, one layer deep and exactly that long. A file path takes its size from the file, so a path with a size is an `InvalidInput` error. Use this when your decoder already produced pixel-format-matching bytes (typical for tile-cache pipelines that fold mip generation into the same step that produced the tile).
 
         `build` runs synchronously and accepts only sync-friendly inputs: bytes or a file path. URL inputs (which need an async fetch), KTX2 inputs (already pre-baked), an existing chain, an existing texture, and empty inputs all return `TextureError::InvalidInput` with a message pointing at the right entry point.
 
         A decoded image built for `Bgra8Unorm` or `Bgra` stores blue first, as `create_texture` does, and raw bytes keep their order.
 
-        Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`, and the `Rgba`, `Bgra`, `L8` and `Lab` aliases. Anything else returns `TextureError::UnsupportedMipmapFormat`. Decode failures surface as `MalformedImageError`; size and byte-count mismatches as `InvalidInput`.
+        Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`, `Rgba16Float`, `Rgba32Float`, and the `Rgba`, `Bgra`, `L8` and `Lab` aliases. Anything else returns `TextureError::UnsupportedMipmapFormat`. Decode failures surface as `MalformedImageError`; size and byte-count mismatches as `InvalidInput`.
 
         ## Per-language shapes
 
@@ -4886,7 +4890,7 @@ class Mipmap:
         """
     def levels(self) -> list[bytes]:
         """
-        Return the tightly-packed bytes for each mip level, level 0 first. Each level holds `bytes_per_pixel(format) * max(1, base_w >> level) * max(1, base_h >> level)` bytes. Reach for this when you want to inspect a level, dump the chain to disk, or feed the bytes into a tool that isn't FragmentColor. When you upload via `Renderer::create_texture(chain)`, the renderer reads the bytes directly and you don't need to touch them yourself.
+        Return the tightly-packed bytes for each mip level, level 0 first. Each level holds the format's bytes per pixel times `max(1, base_w >> level) * max(1, base_h >> level)` bytes. Reach for this when you want to inspect a level, dump the chain to disk, or feed the bytes into a tool that isn't FragmentColor. When you upload via `Renderer::create_texture(chain)`, the renderer reads the bytes directly and you don't need to touch them yourself.
 
         Example:
 

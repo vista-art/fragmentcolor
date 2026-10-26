@@ -1,6 +1,8 @@
 # Texture::write(bytes)
 
-Efficiently upload raw pixel data into an existing texture. Ideal for video playback or any per-frame dynamic image updates.
+Efficiently upload raw pixel data into an existing texture, such as each frame of a video or any image that changes from frame to frame.
+
+A texture from `create_texture` has a mip chain by default, and every whole write rebuilds that chain on the CPU, on the calling thread. For video and other per-frame updates, create the texture with `mipmaps: false`, so a write is a single GPU upload.
 
 - Whole texture updates: use `Texture.write(&bytes)`.
 - Sub-rectangle updates or explicit data layout: use `Texture.write_region(&bytes, region)`.

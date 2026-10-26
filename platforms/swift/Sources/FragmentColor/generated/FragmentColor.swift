@@ -4255,9 +4255,8 @@ public protocol TextureProtocol: AnyObject, Sendable {
     func write(bytes: Data) throws 
     
     /**
-     * Upload raw pixel data into a sub-region of the texture. Pass a
-     * `TextureRegionMobile` with all-zero `size_*` fields for a whole-texture
-     * write (equivalent to `write()`). Mirrors `Texture::write_region`.
+     * Upload raw pixel data into a sub-region of the texture, each side at least 1.
+     * Call `write()` for the whole texture. Mirrors `Texture::write_region`.
      */
     func writeRegion(bytes: Data, region: TextureRegion) throws 
     
@@ -4421,9 +4420,8 @@ open func write(bytes: Data)throws   {try rustCallWithError(FfiConverterTypeFrag
 }
     
     /**
-     * Upload raw pixel data into a sub-region of the texture. Pass a
-     * `TextureRegionMobile` with all-zero `size_*` fields for a whole-texture
-     * write (equivalent to `write()`). Mirrors `Texture::write_region`.
+     * Upload raw pixel data into a sub-region of the texture, each side at least 1.
+     * Call `write()` for the whole texture. Mirrors `Texture::write_region`.
      */
 open func writeRegion(bytes: Data, region: TextureRegion)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
@@ -5832,9 +5830,7 @@ public func FfiConverterTypeTextureOptions_lower(_ value: TextureOptions) -> Rus
  *
  * Uniffi cannot marshal fixed-size arrays (`[u32; 3]`), so the mobile
  * binding exposes the 3D origin and size as individual `u32` fields.
- * Use `origin_x/y/z = 0` and `size_width/height/depth = 0` (the defaults)
- * to target the whole texture; the write path interprets zeros as
- * "infer the full extent from the texture dimensions".
+ * Each size is at least 1, and a write without a region covers the whole texture.
  *
  * Swift and Kotlin see it as `TextureRegion`, the name every other binding uses.
  */
@@ -5843,15 +5839,15 @@ public struct TextureRegion: Equatable, Hashable {
     public var originY: UInt32
     public var originZ: UInt32
     /**
-     * Width of the region to write. `0` → infer (full texture width).
+     * Width of the region to write, at least 1.
      */
     public var sizeWidth: UInt32
     /**
-     * Height of the region to write. `0` → infer (full texture height).
+     * Height of the region to write, at least 1.
      */
     public var sizeHeight: UInt32
     /**
-     * Depth of the region to write. `0` → infer (full texture depth, usually 1).
+     * Depth of the region to write, at least 1.
      */
     public var sizeDepth: UInt32
     public var bytesPerRow: UInt32?
@@ -5861,13 +5857,13 @@ public struct TextureRegion: Equatable, Hashable {
     // declare one manually.
     public init(originX: UInt32, originY: UInt32, originZ: UInt32, 
         /**
-         * Width of the region to write. `0` → infer (full texture width).
+         * Width of the region to write, at least 1.
          */sizeWidth: UInt32, 
         /**
-         * Height of the region to write. `0` → infer (full texture height).
+         * Height of the region to write, at least 1.
          */sizeHeight: UInt32, 
         /**
-         * Depth of the region to write. `0` → infer (full texture depth, usually 1).
+         * Depth of the region to write, at least 1.
          */sizeDepth: UInt32, bytesPerRow: UInt32?, rowsPerImage: UInt32?) {
         self.originX = originX
         self.originY = originY
@@ -9365,7 +9361,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_texture_write() != 15815) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texture_writeregion() != 41639) {
+    if (uniffi_fragmentcolor_checksum_method_texture_writeregion() != 22138) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_material_custom() != 28686) {

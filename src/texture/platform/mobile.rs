@@ -62,9 +62,8 @@ impl Texture {
         self.write(&bytes).map_err(FragmentColorError::from)
     }
 
-    /// Upload raw pixel data into a sub-region of the texture. Pass a
-    /// `TextureRegionMobile` with all-zero `size_*` fields for a whole-texture
-    /// write (equivalent to `write()`). Mirrors `Texture::write_region`.
+    /// Upload raw pixel data into a sub-region of the texture, each side at least 1.
+    /// Call `write()` for the whole texture. Mirrors `Texture::write_region`.
     #[uniffi::method(name = "writeRegion")]
     #[lsp_doc("docs/api/texture/texture/write_region.md")]
     pub fn write_region_mobile(

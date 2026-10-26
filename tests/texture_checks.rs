@@ -182,6 +182,31 @@ fn decoded_images_fill_float_formats() {
     });
 }
 
+// Story: an HDR value past the half float range saturates at 65504 in the
+// default Rgba16Float, where it became infinity, and an explicit Rgba32Float
+// keeps it whole.
+#[test]
+fn hdr_values_saturate_in_half_floats() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let sun = image::Rgb32FImage::from_raw(1, 1, vec![131072.0, 1.0, 0.5]).expect("sun");
+        let hdr = encode(sun.into(), image::ImageFormat::Hdr);
+        let texture = renderer
+            .create_texture((hdr.clone(), readable(TextureFormat::Rgba)))
+            .await
+            .expect("an HDR file decodes");
+        let image = halves(&texture.get_image().await.expect("read back"));
+        assert_eq!(image[0], 65504.0, "the sun saturates, got {image:?}");
+
+        let texture = renderer
+            .create_texture((hdr, readable(TextureFormat::Rgba32Float)))
+            .await
+            .expect("an HDR file fills Rgba32Float");
+        let image = floats(&texture.get_image().await.expect("read back"));
+        assert_eq!(image[0], 131072.0, "Rgba32Float keeps the full value");
+    });
+}
+
 // Story: a decoded image in a Bgra8 format stores blue first, so its colors
 // sample right, while raw bytes, already in the format's order, upload as given.
 #[test]
@@ -337,6 +362,60 @@ fn sizes_come_with_raw_bytes_only() {
             .create_texture("examples/assets/logo.png")
             .await
             .expect("a path without a size decodes");
+    });
+}
+
+// Story: Mipmap::build reads a file's format from its bytes, as create_texture
+// does, so a PNG saved without an extension builds a chain, where the extension
+// decided the format and the file failed to decode.
+#[test]
+fn mip_chains_read_files_like_create_texture() {
+    pollster::block_on(async move {
+        let folder = tempfile::tempdir().expect("temp folder");
+        let path = folder.path().join("3f9a2c");
+        let pixel = image::RgbaImage::from_raw(2, 2, vec![255; 16]).expect("pixels");
+        std::fs::write(&path, encode(pixel.into(), image::ImageFormat::Png)).expect("write");
+
+        let chain = Mipmap::build((path.as_path(), TextureFormat::Rgba8Unorm))
+            .expect("Mipmap::build reads a PNG without an extension");
+        assert_eq!(chain.size(), (2, 2));
+        Renderer::new()
+            .create_texture(path.as_path())
+            .await
+            .expect("create_texture reads it too");
+    });
+}
+
+// Story: a region with a width, height or depth of 0 is refused, where a zero
+// stretched the region to the edge of the texture. Leaving the region out,
+// as write does, still covers the whole texture.
+#[test]
+fn zero_region_sides_are_refused() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let texture = renderer
+            .create_storage_texture(([16, 16], TextureFormat::Rgba))
+            .await
+            .expect("create_storage_texture");
+        let rows = vec![0; 16 * 4 * 4];
+        let invalid =
+            |result: Result<(), TextureError>| matches!(result, Err(TextureError::InvalidInput(_)));
+        assert!(
+            invalid(texture.write_region(&rows, [0, 0, 0, 4])),
+            "zero width"
+        );
+        assert!(
+            invalid(texture.write_region(&rows, [0, 0, 16, 0])),
+            "zero height"
+        );
+        let deep = [0, 0, 0, 16, 4, 0];
+        assert!(invalid(texture.write_region(&rows, deep)), "zero depth");
+        texture
+            .write_region(&rows, [0, 0, 16, 4])
+            .expect("a region with every side");
+        texture
+            .write(&vec![0; 16 * 16 * 4])
+            .expect("the whole texture");
     });
 }
 

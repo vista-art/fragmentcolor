@@ -130,7 +130,10 @@ impl Renderer {
         let format = read_format(format)?;
         let usage = usage.filter(given).as_ref().map(read_usage).transpose()?;
         let data = match data.filter(given) {
-            Some(bytes) => TextureData::Bytes(js_to_texture_bytes(&bytes)?),
+            Some(bytes) => {
+                let (bytes, _) = js_to_texture_bytes(&bytes, Some(size), format.into())?;
+                TextureData::Bytes(bytes)
+            }
             None => TextureData::Empty,
         };
         let options = crate::TextureOptions {
