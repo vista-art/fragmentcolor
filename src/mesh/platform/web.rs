@@ -5,19 +5,12 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::mesh::{Instance, Mesh, Quad, Vertex, VertexData};
-use crate::platforms::web::{read_numbers, read_rows, read_unsigned};
+use crate::platforms::vector;
+use crate::platforms::web::{read_floats, read_numbers, read_rows, read_unsigned, read_vector};
 
 // -----------------------------
 // JS helpers
 // -----------------------------
-fn js_to_f32_vec(value: &JsValue) -> Option<Vec<f32>> {
-    if let Some(number) = value.as_f64() {
-        return Some(vec![number as f32]);
-    }
-    let numbers = read_numbers(value)?;
-    Some(numbers.into_iter().map(|number| number as f32).collect())
-}
-
 /// Reads a vertex attribute value: a number,
 /// or an array or typed array of 1 to 4 numbers.
 /// They take the type the shader declares when the mesh attaches to it.
@@ -31,40 +24,37 @@ fn read_attribute(value: &JsValue) -> Result<VertexData, JsError> {
     Ok(VertexData::try_from(numbers.as_slice())?)
 }
 
-/// Reads a vertex position: a `Vertex`, a number, or 1 to 4 numbers.
-fn js_to_vertex_into(value: &JsValue) -> Result<Vertex, JsError> {
+/// Reads a vertex position: a `Vertex`, a number, or an array or `Float32Array`
+/// of 1 to 4 numbers, each checked by the float vector rule under `label`.
+fn read_position(value: &JsValue, label: &str) -> Result<Vertex, JsError> {
     if let Ok(vertex) = Vertex::try_from(value) {
         return Ok(vertex);
     }
-    let data = js_to_f32_vec(value).ok_or_else(|| {
-        JsError::new("Expected Vertex object, number, or array/typed array for position")
-    })?;
-    match *data {
-        [x] => Ok(Vertex::new(x)),
-        [x, y] => Ok(Vertex::new([x, y])),
-        [x, y, z] => Ok(Vertex::new([x, y, z])),
-        [x, y, z, w] => Ok(Vertex::new([x, y, z, w])),
-        _ => Err(JsError::new("Position must have 1..=4 components")),
-    }
+    let vertex = match value.as_f64() {
+        Some(number) => vector::read_position([number], label)?,
+        None => vector::read_position(read_floats(value, label)?, label)?,
+    };
+    Ok(vertex)
 }
 
 /// Reads a vertex for the `Mesh` methods: anything `new Vertex` takes, or the
 /// `[position, uv]` and `[position, uv, color]` forms of Rust's `Into<Vertex>`.
-fn read_vertex(value: &JsValue) -> Result<Vertex, JsError> {
+/// The position follows the float vector rule under `label`.
+fn read_vertex(value: &JsValue, label: &str) -> Result<Vertex, JsError> {
     let Some(parts) = read_rows(value).filter(|parts| parts.len() > 1) else {
-        return js_to_vertex_into(value);
+        return read_position(value, label);
     };
     let floats = |part: &Vec<f64>| part.iter().map(|&n| n as f32).collect::<Vec<f32>>();
-    let parts: Vec<Vec<f32>> = parts.iter().map(floats).collect();
+    let position = |part: &Vec<f64>| vector::read_vector::<3>(part.iter().copied(), label);
     match parts.as_slice() {
-        [position, uv] if position.len() == 3 && uv.len() == 2 => {
-            let (position, uv) = ([position[0], position[1], position[2]], [uv[0], uv[1]]);
-            Ok(Vertex::from((position, uv)))
+        [first, uv] if first.len() == 3 && uv.len() == 2 => {
+            let uv = floats(uv);
+            Ok(Vertex::from((position(first)?, [uv[0], uv[1]])))
         }
-        [position, uv, color] if position.len() == 3 && uv.len() == 2 && color.len() == 4 => {
-            let position = [position[0], position[1], position[2]];
+        [first, uv, color] if first.len() == 3 && uv.len() == 2 && color.len() == 4 => {
+            let (uv, color) = (floats(uv), floats(color));
             let color = [color[0], color[1], color[2], color[3]];
-            Ok(Vertex::from((position, [uv[0], uv[1]], color)))
+            Ok(Vertex::from((position(first)?, [uv[0], uv[1]], color)))
         }
         _ => Err(JsError::new(
             "a vertex given in parts is [position, uv] or [position, uv, color], with 3, 2 and 4 numbers",
@@ -156,7 +146,7 @@ impl Vertex {
     #[wasm_bindgen(constructor)]
     #[lsp_doc("docs/api/geometry/vertex/new.md")]
     pub fn new_js(position: &JsValue) -> Result<Vertex, JsError> {
-        js_to_vertex_into(position)
+        read_position(position, "Vertex: position")
     }
 
     // Support Rust-style Vertex::new([...]) in JS as Vertex.new([...])
@@ -164,13 +154,13 @@ impl Vertex {
     #[doc(hidden)]
     #[wasm_bindgen(js_name = "new")]
     pub fn new_static(position: &JsValue) -> Result<Vertex, JsError> {
-        js_to_vertex_into(position)
+        read_position(position, "Vertex: position")
     }
 
     #[wasm_bindgen(js_name = "pbr")]
     #[lsp_doc("docs/api/geometry/vertex/pbr.md")]
     pub fn pbr_js(position: &JsValue) -> Result<Vertex, JsError> {
-        let v = js_to_vertex_into(position)?;
+        let v = read_position(position, "Vertex.pbr: position")?;
         Ok(v.set(Self::NORMAL, [0.0_f32, 0.0, 1.0])
             .set(Self::UV0, [0.0_f32, 0.0])
             .set(Self::COLOR0, [1.0_f32, 1.0, 1.0, 1.0])
@@ -242,8 +232,8 @@ impl Mesh {
             .then(|| js_sys::Array::from(list))
             .ok_or_else(|| JsError::new("Expected an array"))?;
         let m = Mesh::new();
-        for v in arr.iter() {
-            let vertex = read_vertex(&v)?;
+        for (index, v) in arr.iter().enumerate() {
+            let vertex = read_vertex(&v, &format!("Mesh.fromVertices: vertex {index}"))?;
             m.add_vertex(vertex);
         }
         Ok(m)
@@ -252,7 +242,7 @@ impl Mesh {
     #[wasm_bindgen(js_name = "addVertex")]
     #[lsp_doc("docs/api/geometry/mesh/add_vertex.md")]
     pub fn add_vertex_js(&mut self, v: &JsValue) -> Result<(), JsError> {
-        let vertex = read_vertex(v)?;
+        let vertex = read_vertex(v, "Mesh.addVertex: vertex")?;
         self.add_vertex(vertex);
         Ok(())
     }
@@ -264,8 +254,8 @@ impl Mesh {
             .then(|| js_sys::Array::from(list))
             .ok_or_else(|| JsError::new("Expected an array"))?;
         let mut verts: Vec<Vertex> = Vec::with_capacity(arr.length() as usize);
-        for v in arr.iter() {
-            let vertex = read_vertex(&v)?;
+        for (index, v) in arr.iter().enumerate() {
+            let vertex = read_vertex(&v, &format!("Mesh.addVertices: vertex {index}"))?;
             verts.push(vertex);
         }
         self.add_vertices(verts);
@@ -339,23 +329,15 @@ impl Mesh {
 // -----------------------------
 // Quad (WASM bindings)
 // -----------------------------
-fn js_to_f32x2(value: &JsValue) -> Result<[f32; 2], JsError> {
-    let v =
-        js_to_f32_vec(value).ok_or_else(|| JsError::new("Expected [x, y] array or typed array"))?;
-    if v.len() != 2 {
-        return Err(JsError::new("Expected [x, y] with exactly 2 numbers"));
-    }
-    Ok([v[0], v[1]])
-}
-
 #[wasm_bindgen]
 impl Quad {
     #[wasm_bindgen(constructor)]
     #[lsp_doc("docs/api/geometry/quad/new.md")]
     pub fn new_js(min: &JsValue, max: &JsValue) -> Result<Quad, JsError> {
-        let min2 = js_to_f32x2(min)?;
-        let max2 = js_to_f32x2(max)?;
-        Ok(Quad::new(min2, max2))
+        Ok(Quad::new(
+            read_vector::<2>(min, "Quad: min")?,
+            read_vector::<2>(max, "Quad: max")?,
+        ))
     }
 
     #[wasm_bindgen(js_name = "getMesh")]

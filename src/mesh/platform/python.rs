@@ -2,10 +2,11 @@
 
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyDict, PyString};
 
 use crate::mesh::{Instance, Mesh, MeshError, Vertex, VertexData};
-use crate::platforms::python::{PyUnsigned, read_list};
+use crate::platforms::python::{PyChannels, PyUnsigned, read_list, read_number, read_numbers};
+use crate::platforms::vector;
 use lsp_doc::lsp_doc;
 
 /// A vertex or instance attribute from Python:
@@ -38,57 +39,69 @@ impl From<MeshError> for PyErr {
     }
 }
 
-/// A `Vertex` position from Python: a `Vertex` to copy,
-/// a number, or 1 to 4 numbers, tried in that order.
+/// A `Vertex` position from Python: a `Vertex` to copy, a number, or 1 to 4 numbers.
+/// [`PyVertexPosition::read`] checks each number with the float vector rule.
 #[derive(FromPyObject)]
-pub enum PyVertexPosition {
+pub enum PyVertexPosition<'py> {
     #[pyo3(annotation = "Vertex")]
     Vertex(Vertex),
-    #[pyo3(annotation = "float")]
-    X(f32),
-    #[pyo3(annotation = "[x]")]
-    Single([f32; 1]),
-    #[pyo3(annotation = "[x, y]")]
-    Xy([f32; 2]),
-    #[pyo3(annotation = "[x, y, z]")]
-    Xyz([f32; 3]),
-    #[pyo3(annotation = "[x, y, z, w]")]
-    Xyzw([f32; 4]),
+    #[pyo3(
+        annotation = "float | Sequence[float] | npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64]"
+    )]
+    Numbers(Bound<'py, PyAny>),
 }
 
-impl From<PyVertexPosition> for Vertex {
-    fn from(position: PyVertexPosition) -> Self {
-        match position {
-            PyVertexPosition::Vertex(vertex) => vertex,
-            PyVertexPosition::X(x) => Vertex::new(x),
-            PyVertexPosition::Single(x) => Vertex::new(x),
-            PyVertexPosition::Xy(xy) => Vertex::new(xy),
-            PyVertexPosition::Xyz(xyz) => Vertex::new(xyz),
-            PyVertexPosition::Xyzw(xyzw) => Vertex::new(xyzw),
-        }
+impl PyVertexPosition<'_> {
+    /// The vertex, or an error that names `label`. A value with a length, other
+    /// than a string, is a list of numbers, and anything else is one number.
+    pub(crate) fn read(&self, label: &str) -> PyResult<Vertex> {
+        let value = match self {
+            PyVertexPosition::Vertex(vertex) => return Ok(vertex.clone()),
+            PyVertexPosition::Numbers(value) => value,
+        };
+        let numbers = if !value.is_instance_of::<PyString>() && value.len().is_ok() {
+            read_numbers(value, label)?
+        } else {
+            vec![read_number(value, label, 0)?]
+        };
+        Ok(vector::read_position(numbers, label)?)
     }
 }
 
-/// A vertex for the `Mesh` methods: any `Vertex` position, or the
-/// `(position, uv)` and `(position, uv, color)` tuples of `Into<Vertex>`.
+/// A vertex for the `Mesh` methods: the `(position, uv)` and `(position, uv, color)`
+/// tuples of `Into<Vertex>`, or any `Vertex` position, tried in that order.
 #[derive(FromPyObject)]
-pub enum PyIntoVertex {
-    #[pyo3(annotation = "Vertex | position")]
-    Position(PyVertexPosition),
+pub enum PyIntoVertex<'py> {
     #[pyo3(annotation = "(position, uv)")]
-    Uv([f32; 3], [f32; 2]),
+    Uv(PyChannels<'py>, [f32; 2]),
     #[pyo3(annotation = "(position, uv, color)")]
-    UvColor([f32; 3], [f32; 2], [f32; 4]),
+    UvColor(PyChannels<'py>, [f32; 2], [f32; 4]),
+    #[pyo3(annotation = "Vertex | position")]
+    Position(PyVertexPosition<'py>),
 }
 
-impl From<PyIntoVertex> for Vertex {
-    fn from(vertex: PyIntoVertex) -> Self {
-        match vertex {
-            PyIntoVertex::Position(position) => position.into(),
-            PyIntoVertex::Uv(position, uv) => (position, uv).into(),
-            PyIntoVertex::UvColor(position, uv, color) => (position, uv, color).into(),
+impl PyIntoVertex<'_> {
+    /// The vertex, with its position checked by the float vector rule under `label`.
+    pub(crate) fn read(&self, label: &str) -> PyResult<Vertex> {
+        let position =
+            |channels: &PyChannels<'_>| channels.read_array::<3>(&format!("{label}: position"));
+        match self {
+            PyIntoVertex::Uv(channels, uv) => Ok((position(channels)?, *uv).into()),
+            PyIntoVertex::UvColor(channels, uv, color) => {
+                Ok((position(channels)?, *uv, *color).into())
+            }
+            PyIntoVertex::Position(position) => position.read(label),
         }
     }
+}
+
+/// Reads each vertex of a list, naming a failing one as `{label}: vertex {index}`.
+fn read_vertices(vertices: &[PyIntoVertex<'_>], label: &str) -> PyResult<Vec<Vertex>> {
+    vertices
+        .iter()
+        .enumerate()
+        .map(|(index, vertex)| vertex.read(&format!("{label}: vertex {index}")))
+        .collect()
 }
 
 /// An instance for the `Mesh` methods: an `Instance`, a `Vertex`
@@ -175,23 +188,24 @@ impl Vertex {
 
     #[new]
     #[lsp_doc("docs/api/geometry/vertex/new.md")]
-    pub fn new_py(position: PyVertexPosition) -> Self {
-        position.into()
+    pub fn new_py(position: PyVertexPosition<'_>) -> PyResult<Self> {
+        position.read("Vertex: position")
     }
 
     #[staticmethod]
     #[pyo3(name = "pbr")]
     #[lsp_doc("docs/api/geometry/vertex/pbr.md")]
-    pub fn pbr_py(position: PyVertexPosition) -> Self {
+    pub fn pbr_py(position: PyVertexPosition<'_>) -> PyResult<Self> {
         // Build the base Vertex from the position, then layer the
         // PBR identity defaults via the same `.set(...)` chain
         // `Vertex::pbr` uses on the Rust side.
-        Vertex::from(position)
+        Ok(position
+            .read("Vertex.pbr: position")?
             .set(Self::NORMAL, [0.0_f32, 0.0, 1.0])
             .set(Self::UV0, [0.0_f32, 0.0])
             .set(Self::COLOR0, [1.0_f32, 1.0, 1.0, 1.0])
             .set(Self::UV1, [0.0_f32, 0.0])
-            .set(Self::TANGENT, [1.0_f32, 0.0, 0.0, 1.0])
+            .set(Self::TANGENT, [1.0_f32, 0.0, 0.0, 1.0]))
     }
 
     #[pyo3(name = "set")]
@@ -233,20 +247,25 @@ impl Mesh {
     #[staticmethod]
     #[pyo3(name = "from_vertices")]
     #[lsp_doc("docs/api/geometry/mesh/from_vertices.md")]
-    pub fn from_vertices_py(vertices: Vec<PyIntoVertex>) -> Self {
-        Mesh::from_vertices(vertices)
+    pub fn from_vertices_py(vertices: Vec<PyIntoVertex<'_>>) -> PyResult<Self> {
+        Ok(Mesh::from_vertices(read_vertices(
+            &vertices,
+            "Mesh.from_vertices",
+        )?))
     }
 
     #[pyo3(name = "add_vertex")]
     #[lsp_doc("docs/api/geometry/mesh/add_vertex.md")]
-    pub fn add_vertex_py(&mut self, vertex: PyIntoVertex) {
-        self.add_vertex(vertex);
+    pub fn add_vertex_py(&mut self, vertex: PyIntoVertex<'_>) -> PyResult<()> {
+        self.add_vertex(vertex.read("Mesh.add_vertex: vertex")?);
+        Ok(())
     }
 
     #[pyo3(name = "add_vertices")]
     #[lsp_doc("docs/api/geometry/mesh/add_vertices.md")]
-    pub fn add_vertices_py(&mut self, vertices: Vec<PyIntoVertex>) {
-        self.add_vertices(vertices);
+    pub fn add_vertices_py(&mut self, vertices: Vec<PyIntoVertex<'_>>) -> PyResult<()> {
+        self.add_vertices(read_vertices(&vertices, "Mesh.add_vertices")?);
+        Ok(())
     }
 
     #[pyo3(name = "add_instance")]

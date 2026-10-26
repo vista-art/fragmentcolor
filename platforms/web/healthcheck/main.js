@@ -551,6 +551,18 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       () => Material.pbr().textureTransform(occlusion, [0, 0], [Infinity, 1], 0));
     // A float vector is an array or a Float32Array, as a color is.
     named('Light.point: color', () => Light.point([0, 1, 0], new Float64Array([1, 1, 1])));
+    // A vertex position and a Quad corner follow the same rule.
+    named('Vertex: position', () => new Vertex([1e39, 0, 0]));
+    named('Vertex: position', () => new Vertex(NaN));
+    named('Vertex: position', () => new Vertex(new Float64Array([0, 0, 0])));
+    named('Vertex.pbr: position', () => Vertex.pbr([0, Infinity, 0]));
+    named('Quad: min', () => new fc.Quad([NaN, 0], [1, 1]));
+    named('Quad: max', () => new fc.Quad([0, 0], new Float64Array([1, 1])));
+    named('Mesh.addVertex: vertex', () => new Mesh().addVertex([0, 1e39, 0]));
+    named('Mesh.addVertex: vertex', () => new Mesh().addVertex([[0, NaN, 0], [0, 0]]));
+    named('Mesh.addVertices: vertex 1', () => new Mesh().addVertices([[0, 0, 0], [-Infinity, 0, 0]]));
+    if (!(new fc.Quad(new Float32Array([0, 0]), [1, 1]) instanceof fc.Quad)) fail('Quad took no Float32Array');
+    if (!(new Vertex(0.5) instanceof Vertex)) fail('Vertex took no single number');
     if (!(Light.point([0, 1, 0], new Float32Array([1, 1, 1])) instanceof Light)) fail('Light.point took no Float32Array');
 
     // A region or viewport with a width or height of 0 throws.

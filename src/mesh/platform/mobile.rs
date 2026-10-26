@@ -16,6 +16,7 @@ use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
 use crate::mesh::{Instance, Mesh, Quad, Vertex, VertexData};
+use crate::platforms::vector::{VectorError, read_floats, read_position, read_vector};
 use crate::renderer::platform::mobile::FragmentColorError;
 
 // -----------------------------------------------------------------
@@ -30,14 +31,7 @@ impl Vertex {
     #[uniffi::constructor(name = "new")]
     #[lsp_doc("docs/api/geometry/vertex/hidden/new_mobile.md")]
     pub fn new_mobile(position: Vec<f32>) -> Result<Arc<Self>, FragmentColorError> {
-        let v = match position.as_slice() {
-            [x] => Vertex::new(*x),
-            [x, y] => Vertex::new([*x, *y]),
-            [x, y, z] => Vertex::new([*x, *y, *z]),
-            [x, y, z, w] => Vertex::new([*x, *y, *z, *w]),
-            other => return Err(position_error(other.len())),
-        };
-        Ok(Arc::new(v))
+        Ok(Arc::new(read_position(position, "Vertex: position")?))
     }
 
     /// Construct a `Vertex` with PBR-shader defaults seeded for the
@@ -47,6 +41,7 @@ impl Vertex {
     #[uniffi::constructor(name = "pbr")]
     #[lsp_doc("docs/api/geometry/vertex/pbr.md")]
     pub fn pbr_mobile(position: Vec<f32>) -> Result<Arc<Self>, FragmentColorError> {
+        let position = read_floats(position, "Vertex.pbr: position")?;
         let v = match position.as_slice() {
             [x] => Vertex::pbr(*x),
             [x, y] => Vertex::pbr([*x, *y]),
@@ -203,19 +198,10 @@ impl Quad {
     #[uniffi::constructor(name = "new")]
     #[lsp_doc("docs/api/geometry/quad/hidden/new_mobile.md")]
     pub fn new_mobile(min: Vec<f32>, max: Vec<f32>) -> Result<Arc<Self>, FragmentColorError> {
-        if min.len() != 2 {
-            return Err(FragmentColorError::Render(format!(
-                "Quad min must have exactly 2 components; got {}",
-                min.len()
-            )));
-        }
-        if max.len() != 2 {
-            return Err(FragmentColorError::Render(format!(
-                "Quad max must have exactly 2 components; got {}",
-                max.len()
-            )));
-        }
-        Ok(Arc::new(Quad::new([min[0], min[1]], [max[0], max[1]])))
+        Ok(Arc::new(Quad::new(
+            read_vector::<2>(min, "Quad: min")?,
+            read_vector::<2>(max, "Quad: max")?,
+        )))
     }
 
     /// Get the `Mesh` built by this `Quad`.
@@ -226,9 +212,12 @@ impl Quad {
     }
 }
 
-/// The error for a vertex position that isn't 1 to 4 numbers long.
-fn position_error(len: usize) -> FragmentColorError {
-    FragmentColorError::Render(format!(
-        "Vertex position must have 1 to 4 components; got {len}"
-    ))
+/// The error for a `Vertex.pbr` position that isn't 1 to 4 numbers long.
+fn position_error(count: usize) -> FragmentColorError {
+    VectorError::Length {
+        label: "Vertex.pbr: position".to_string(),
+        expected: "1 to 4".to_string(),
+        count,
+    }
+    .into()
 }

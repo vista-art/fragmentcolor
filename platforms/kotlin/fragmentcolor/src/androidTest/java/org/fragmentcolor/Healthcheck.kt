@@ -133,6 +133,12 @@ class Healthcheck : ExampleCase() {
             "Material.textureTransform: scale" to {
                 material.textureTransform(TextureSlot.NORMAL, listOf(0f, 0f), listOf(Float.POSITIVE_INFINITY, 1f), 0f)
             },
+            "Vertex: position" to { Vertex(doubleArrayOf(1e39, 0.0, 0.0)) },
+            "Vertex: position" to { Vertex(listOf(Float.NaN, 0f)) },
+            "Vertex.pbr: position" to { Vertex.pbr(listOf(0.0, Double.POSITIVE_INFINITY, 0.0)) },
+            "Vertex: position" to { Mesh().addVertex(listOf(0.0, Double.NaN, 0.0)) },
+            "Quad: min" to { Quad(listOf(1e39, 0.0), listOf(1.0, 1.0)) },
+            "Quad: max" to { Quad(listOf(0f, 0f), listOf(Float.POSITIVE_INFINITY, 1f)) },
         )
         for ((label, call) in cases) {
             val error = assertFailsWith<FragmentColorException> { call() }

@@ -29,20 +29,20 @@ operator fun Vertex.Companion.invoke(position: FloatArray): Vertex = Vertex(posi
 
 /** A vertex at [position], 1 to 4 numbers. */
 @JvmName("invokeDoubles")
-operator fun Vertex.Companion.invoke(position: List<Double>): Vertex = Vertex(position.map { it.toFloat() })
+operator fun Vertex.Companion.invoke(position: List<Double>): Vertex = Vertex(readFloats(position, "Vertex: position"))
 
 /** A vertex at [position], 1 to 4 numbers. */
-operator fun Vertex.Companion.invoke(position: DoubleArray): Vertex = Vertex(position.map { it.toFloat() })
+operator fun Vertex.Companion.invoke(position: DoubleArray): Vertex = Vertex(readFloats(position, "Vertex: position"))
 
 /** A vertex at [position] with the PBR shader's default attributes. */
 fun Vertex.Companion.pbr(position: FloatArray): Vertex = pbr(position.toList())
 
 /** A vertex at [position] with the PBR shader's default attributes. */
 @JvmName("pbrDoubles")
-fun Vertex.Companion.pbr(position: List<Double>): Vertex = pbr(position.map { it.toFloat() })
+fun Vertex.Companion.pbr(position: List<Double>): Vertex = pbr(readFloats(position, "Vertex.pbr: position"))
 
 /** A vertex at [position] with the PBR shader's default attributes. */
-fun Vertex.Companion.pbr(position: DoubleArray): Vertex = pbr(position.map { it.toFloat() })
+fun Vertex.Companion.pbr(position: DoubleArray): Vertex = pbr(readFloats(position, "Vertex.pbr: position"))
 
 // ── Mesh: vertices ────────────────────────────────────────────────────────────
 
@@ -155,4 +155,4 @@ operator fun Quad.Companion.invoke(min: FloatArray, max: FloatArray): Quad = Qua
 /** A quad from its clip-space corners [min] and [max], 2 numbers each. */
 @JvmName("invokeDoubles")
 operator fun Quad.Companion.invoke(min: List<Double>, max: List<Double>): Quad =
-    Quad(min.map { it.toFloat() }, max.map { it.toFloat() })
+    Quad(readFloats(min, "Quad: min"), readFloats(max, "Quad: max"))
