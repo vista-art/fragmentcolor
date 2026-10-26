@@ -1,6 +1,6 @@
 # Material::base_color_texture
 
-Bind a texture to the `base_color_map` slot. The default PBR shader samples it in `fs_main` and multiplies by the factor. The albedo for each fragment is `material.base_color * textureSample(base_color_map, sampler, in.uv)`.
+Bind a texture to the `base_color_map` slot. The default PBR shader samples it in `fs_main` and multiplies by the factor. The albedo for each fragment is `material.base_color * textureSample(base_color_map, pbr_sampler, uv) * vertex_color`, where `uv` is `slot_uv(material.uv[0], in.uv0, in.uv1)`: the UV set [`texture_uv`](https://fragmentcolor.org/api/scene/material#texture_uv) picks for the slot, through the slot's [`texture_transform`](https://fragmentcolor.org/api/scene/material#texture_transform).
 
 Accepts any `Into<TextureInput>`:
 

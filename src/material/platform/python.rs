@@ -78,8 +78,15 @@ impl Material {
 
     #[pyo3(name = "uv_transform")]
     #[lsp_doc("docs/api/scene/material/uv_transform.md")]
-    pub fn uv_transform_py(&self, offset: [f32; 2], scale: [f32; 2], rotation: f32) -> Self {
-        self.uv_transform(offset, scale, rotation)
+    pub fn uv_transform_py(
+        &self,
+        offset: PyChannels<'_>,
+        scale: PyChannels<'_>,
+        rotation: f32,
+    ) -> PyResult<Self> {
+        let offset = offset.read_array("Material.uv_transform: offset")?;
+        let scale = scale.read_array("Material.uv_transform: scale")?;
+        Ok(self.uv_transform(offset, scale, rotation))
     }
 
     #[pyo3(name = "texture_uv")]
@@ -93,11 +100,13 @@ impl Material {
     pub fn texture_transform_py(
         &self,
         slot: TextureSlot,
-        offset: [f32; 2],
-        scale: [f32; 2],
+        offset: PyChannels<'_>,
+        scale: PyChannels<'_>,
         rotation: f32,
-    ) -> Self {
-        self.texture_transform(slot, offset, scale, rotation)
+    ) -> PyResult<Self> {
+        let offset = offset.read_array("Material.texture_transform: offset")?;
+        let scale = scale.read_array("Material.texture_transform: scale")?;
+        Ok(self.texture_transform(slot, offset, scale, rotation))
     }
 
     #[pyo3(name = "alpha_mode")]

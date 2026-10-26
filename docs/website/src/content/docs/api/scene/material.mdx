@@ -511,7 +511,7 @@ lang="kotlin"
 
 ### Material::base_color_texture \{#base_color_texture\}
 
-Bind a texture to the `base_color_map` slot. The default PBR shader samples it in `fs_main` and multiplies by the factor. The albedo for each fragment is `material.base_color * textureSample(base_color_map, sampler, in.uv)`.
+Bind a texture to the `base_color_map` slot. The default PBR shader samples it in `fs_main` and multiplies by the factor. The albedo for each fragment is `material.base_color * textureSample(base_color_map, pbr_sampler, uv) * vertex_color`, where `uv` is `slot_uv(material.uv[0], in.uv0, in.uv1)`: the UV set [`texture_uv`](/api/scene/material#texture_uv) picks for the slot, through the slot's [`texture_transform`](/api/scene/material#texture_transform).
 
 Accepts any `Into<TextureInput>`:
 
@@ -682,6 +682,25 @@ Optional but recommended:
 
 - `struct PbrMaterial { base_color: vec4<f32>, … }` at `@group(1) @binding(0)`
   bound as `material`. This lets the PBR factor setters work as-is.
+- A `uv` field in that struct, with one entry per texture slot in
+  `TextureSlot` order, for `uv_transform`, `texture_transform` and
+  `texture_uv` to write. The built-in PBR shader declares it this way:
+
+```wgsl
+struct TextureUv {
+  offset: vec2<f32>,
+  scale: vec2<f32>,
+  rotation: f32,
+  @size(12) uv_set: u32,
+}
+
+struct PbrMaterial {
+  base_color: vec4<f32>,
+  // … the other factors …
+  @align(16) uv: array<TextureUv, 5>,
+}
+```
+
 - Four `vec4<f32>` vertex inputs named `model_0` to `model_3`, the columns of
   the Model's transform. The renderer fills them at draw time from each
   Model's `set_transform`, `translate`, `rotate` and `scale`. The PBR shader
@@ -1287,7 +1306,9 @@ lang="kotlin"
 
 Bind an emissive map to the canonical `emissive_map` slot. The default PBR
 shader samples it in `fs_main` and multiplies by the factor: per-fragment
-emission is `material.emissive * textureSample(emissive_map, sampler, in.uv).rgb`.
+emission is `material.emissive * textureSample(emissive_map, pbr_sampler, uv).rgb`,
+where `uv` is `slot_uv(material.uv[4], in.uv0, in.uv1)`, the slot's own UV
+set through its own transform.
 
 Unset, this slot resolves to a 1×1 white default so the multiplied
 emission falls back to the `material.emissive` factor as-is.
@@ -2376,8 +2397,12 @@ sets one transform on all five slots, and a `texture_transform` after it
 replaces the transform of its slot alone.
 
 Whether a UV past 0 to 1 repeats the texture depends on the sampler. The
-PBR shader samples every slot with the sampler options of the base color
-texture.
+PBR shader samples all five slots with one sampler, which takes the
+options of the first texture the material sets, in `TextureSlot` order:
+base color, metallic-roughness, normal, occlusion, then emissive. A slot
+left at its 1×1 default doesn't count. So a material with only an
+occlusion map tiles it with the occlusion map's own options, and one with
+a clamped base color texture clamps a tiled normal map too.
 
 #### Example
 

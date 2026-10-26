@@ -75,7 +75,9 @@ docs/api/scene/material/hidden/emissive_source_mobile.md=>docs/api/scene/materia
 #
 # `AlphaMode` exists in every binding. Its three values are documented on
 # docs/api/scene/material/alpha_mode.md, the one method that takes it, like the
-# other value enums (`TextureFormat`, `CompareFunction`).
+# other value enums (`TextureFormat`, `CompareFunction`). `TextureSlot` has a
+# page of its own, docs/api/scene/texture_slot/texture_slot.md, since two
+# methods take it.
 #
 # `LightKind` is what Rust's `Light::kind` returns. JS and Python also export
 # the enum, Swift and Kotlin don't, and `Light.kind()` returns the kind's name

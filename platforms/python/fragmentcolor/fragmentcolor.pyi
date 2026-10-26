@@ -1811,12 +1811,15 @@ class Vertex:
         reads (`NORMAL`, `UV0`, `COLOR0`, `UV1`, `TANGENT`) with a neutral identity
         default; chain `.set(...)` to override the slots a real mesh has data for.
 
-        A vertex built with `Vertex::pbr(pos)` alone renders the same way
-        [`Scene::load`](https://fragmentcolor.org/api/scene/scene#load) renders a
-        glTF primitive that carries only POSITION. Face-normal computation, UV
-        defaults, vertex tint, and tangents all collapse to the values the loader
-        falls back to. Useful for building PBR meshes by hand without spelling
-        out every default attribute.
+        The defaults are the values
+        [`Scene::load`](https://fragmentcolor.org/api/scene/scene#load) falls back
+        to for a glTF primitive that lacks those attributes, with two exceptions.
+        The loader computes a missing normal from the faces, where `Vertex::pbr`
+        points every normal along +Z. And the loader copies a primitive's
+        `TEXCOORD_0` into `UV1` when it has no `TEXCOORD_1`, where `Vertex::pbr`
+        keeps `UV1` at `[0, 0]` after you set `UV0`, until you set `UV1` too.
+        Useful for building PBR meshes by hand without spelling out every default
+        attribute.
 
         Defaults:
 
@@ -1825,7 +1828,7 @@ class Vertex:
         | `NORMAL`  | `[0, 0, 1]`             | forward-facing surface                          |
         | `UV0`     | `[0, 0]`                | corner of the texture                           |
         | `COLOR0`  | `[1, 1, 1, 1]`          | identity vertex tint                            |
-        | `UV1`     | `[0, 0]`                | unused; only matters for maps that opt into UV1 |
+        | `UV1`     | `[0, 0]`                | read by slots `texture_uv` puts on UV set 1     |
         | `TANGENT` | `[1, 0, 0, 1]`          | T = +X, bitangent sign +1                       |
 
         Example:
@@ -2185,6 +2188,13 @@ class Scene:
         The PBR material samples two UV sets, so a texture that names `TEXCOORD_2`
         or above returns `SceneLoadError::Invalid`, naming the slot, such as
         `occlusionTexture`.
+
+        Each texture keeps its glTF sampler's filters and wrap modes, but the PBR
+        material samples all five slots with one sampler. That sampler takes the
+        options of the first texture in slot order, base color first, so the
+        other maps follow its wrap modes. A file whose base color texture clamps
+        while a tiled normal map repeats draws the normal map clamped, and the
+        edge texels smear across most of the surface.
 
         Triangle strips and fans load as triangle lists. glTF also allows a few
         things the loader can't take, and it returns `SceneLoadError::Invalid` for
@@ -4141,6 +4151,25 @@ class Material:
 
         - `struct PbrMaterial { base_color: vec4<f32>, … }` at `@group(1) @binding(0)`
           bound as `material`. This lets the PBR factor setters work as-is.
+        - A `uv` field in that struct, with one entry per texture slot in
+          `TextureSlot` order, for `uv_transform`, `texture_transform` and
+          `texture_uv` to write. The built-in PBR shader declares it this way:
+
+        ```wgsl
+        struct TextureUv {
+          offset: vec2<f32>,
+          scale: vec2<f32>,
+          rotation: f32,
+          @size(12) uv_set: u32,
+        }
+
+        struct PbrMaterial {
+          base_color: vec4<f32>,
+          // … the other factors …
+          @align(16) uv: array<TextureUv, 5>,
+        }
+        ```
+
         - Four `vec4<f32>` vertex inputs named `model_0` to `model_3`, the columns of
           the Model's transform. The renderer fills them at draw time from each
           Model's `set_transform`, `translate`, `rotate` and `scale`. The PBR shader
@@ -4594,8 +4623,12 @@ class Material:
         replaces the transform of its slot alone.
 
         Whether a UV past 0 to 1 repeats the texture depends on the sampler. The
-        PBR shader samples every slot with the sampler options of the base color
-        texture.
+        PBR shader samples all five slots with one sampler, which takes the
+        options of the first texture the material sets, in `TextureSlot` order:
+        base color, metallic-roughness, normal, occlusion, then emissive. A slot
+        left at its 1×1 default doesn't count. So a material with only an
+        occlusion map tiles it with the occlusion map's own options, and one with
+        a clamped base color texture clamps a tiled normal map too.
 
         Example:
 
@@ -4681,7 +4714,7 @@ class Material:
         """
     def base_color_texture(self, texture: _PyTextureSource) -> Material:
         """
-        Bind a texture to the `base_color_map` slot. The default PBR shader samples it in `fs_main` and multiplies by the factor. The albedo for each fragment is `material.base_color * textureSample(base_color_map, sampler, in.uv)`.
+        Bind a texture to the `base_color_map` slot. The default PBR shader samples it in `fs_main` and multiplies by the factor. The albedo for each fragment is `material.base_color * textureSample(base_color_map, pbr_sampler, uv) * vertex_color`, where `uv` is `slot_uv(material.uv[0], in.uv0, in.uv1)`: the UV set [`texture_uv`](https://fragmentcolor.org/api/scene/material#texture_uv) picks for the slot, through the slot's [`texture_transform`](https://fragmentcolor.org/api/scene/material#texture_transform).
 
         Accepts any `Into<TextureInput>`:
 
@@ -4815,7 +4848,9 @@ class Material:
         """
         Bind an emissive map to the canonical `emissive_map` slot. The default PBR
         shader samples it in `fs_main` and multiplies by the factor: per-fragment
-        emission is `material.emissive * textureSample(emissive_map, sampler, in.uv).rgb`.
+        emission is `material.emissive * textureSample(emissive_map, pbr_sampler, uv).rgb`,
+        where `uv` is `slot_uv(material.uv[4], in.uv0, in.uv1)`, the slot's own UV
+        set through its own transform.
 
         Unset, this slot resolves to a 1×1 white default so the multiplied
         emission falls back to the `material.emissive` factor as-is.
@@ -4847,7 +4882,9 @@ class AlphaMode:
 class TextureSlot:
     """
     Names one of the five texture slots of a PBR `Material`, the maps glTF 2.0
-    defines for metallic-roughness materials:
+    defines for metallic-roughness materials.
+
+    Each slot and the setter that binds its texture:
 
     - `BaseColor`, which `Material::base_color_texture` binds
     - `MetallicRoughness`, which `Material::metallic_roughness_texture` binds

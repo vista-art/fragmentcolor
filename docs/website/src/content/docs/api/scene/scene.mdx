@@ -114,6 +114,13 @@ The PBR material samples two UV sets, so a texture that names `TEXCOORD_2`
 or above returns `SceneLoadError::Invalid`, naming the slot, such as
 `occlusionTexture`.
 
+Each texture keeps its glTF sampler's filters and wrap modes, but the PBR
+material samples all five slots with one sampler. That sampler takes the
+options of the first texture in slot order, base color first, so the
+other maps follow its wrap modes. A file whose base color texture clamps
+while a tiled normal map repeats draws the normal map clamped, and the
+edge texels smear across most of the surface.
+
 Triangle strips and fans load as triangle lists. glTF also allows a few
 things the loader can't take, and it returns `SceneLoadError::Invalid` for
 them:

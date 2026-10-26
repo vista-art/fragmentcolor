@@ -40,7 +40,7 @@
 - A glTF perspective camera without `zfar`, which asks for an infinite projection, gets a far plane 10 million times its `znear`. It got 1e6, so a `znear` at or past 1e6 failed as a `zfar` before its `znear`.
 - A spot light with equal inner and outer cone angles draws the hard edge its docs promise on every GPU. The PBR shader handed both edges to `smoothstep`, which WGSL leaves undefined when they meet.
 - Each of the five PBR texture slots samples its own UV set through its own `KHR_texture_transform`, in Rust, JavaScript, Python, Swift and Kotlin. `Material.texture_uv(slot, set)` picks `UV0` or `UV1` for a slot, and `Material.texture_transform(slot, offset, scale, rotation)` sets its transform. The new `TextureSlot` enum names the slot: `BaseColor`, `MetallicRoughness`, `Normal`, `Occlusion` or `Emissive`. A set other than 0 or 1 returns the new `MaterialError::UvSet` in Rust; JavaScript throws an `Error`, Python raises the new `MaterialError` (a `FragmentColorError` and a `ValueError`), Swift throws `FragmentColorError` and Kotlin throws `FragmentColorException`. `uv_transform` still sets one transform on all five slots. Every slot sampled `UV0` through that one transform.
-- `Scene.load` reads the `texCoord` and the `KHR_texture_transform` of every texture slot, the extension's own `texCoord` included, so an occlusion map on `TEXCOORD_1` samples `UV1`. The loader read the transform of the base color map alone, applied it to every map, and logged a warning for the metallic-roughness and emissive transforms. A primitive without `TEXCOORD_1` takes its `TEXCOORD_0` values as `UV1`, where it got `[0, 0]`.
+- `Scene.load` reads the `texCoord` and the `KHR_texture_transform` of every texture slot, the extension's own `texCoord` included, so an occlusion map on `TEXCOORD_1` samples `UV1`. The loader read the transform of the base color map alone, applied it to every map, and logged a warning for the metallic-roughness and emissive transforms. A primitive without `TEXCOORD_1` takes its `TEXCOORD_0` values as `UV1`, where it got `[0, 0]`. A `null` `KHR_texture_transform`, which glTF doesn't allow, counts as none on every slot.
 
 ### JavaScript
 
@@ -66,6 +66,7 @@
 - Every color argument reads the same way: `Pass.set_clear_color`, `Light.set_color`, the `color` of `Light.point`, `Light.directional` and `Light.spot`, `Scene.ambient`, `Material.base_color` and `Material.emissive`. Each takes any sequence of numbers, NumPy arrays included, and raises `TypeError` for a bytes object and `InvalidInputError` for a channel past the 32-bit float range, such as `10**400` or `1e39`, where a bytes object read as channels and a huge int raised `OverflowError`.
 - `create_storage_texture`'s `usage` and `usage_bits` raise `InvalidInputError` for an int out of range, where they raised `OverflowError` or a `TypeError` about a failed enum.
 - `examples/python/main.py` and `multiobject.py` round the rendercanvas resize size to whole pixels, which `resize` now requires.
+- `Material.uv_transform` and `Material.texture_transform` raise `InvalidInputError` for an offset or scale that isn't two numbers long, where pyo3 raised a builtin `ValueError` that `except FragmentColorError` missed. A string raises `TypeError`.
 
 ### Swift
 
@@ -133,6 +134,7 @@
 - The 32-light cap is gone, and so is the warning that dropped a light added before its shader joined the pass. `PassError::LightCapReached { cap }` names the cap of the device, with a new message, and it also fires when a `Model` whose shader would take too many lights joins a pass, and from `render` for lights added before the renderer opened a device. Only shaders that declare `lights` take lights, so a backdrop shader in the pass no longer counts against the cap.
 - `RendererError` has a new `PassError` variant, which `render` returns for a shader past the light cap. The enum isn't `#[non_exhaustive]`, so a `match` that lists every variant needs a new arm.
 - A `Light` stops lighting once nothing holds it. A `Pass` and a `Scene` hold the lights added to them, so `scene.add(&light)` keeps lighting after the handle drops, but a shader no longer keeps a light it was given after its passes, scenes and handles are gone.
+- A `Material::custom` shader that declared `uv_offset`, `uv_scale` and `uv_rotation` in its `material` struct no longer gets them from `uv_transform`. `uv_transform`, `texture_transform` and `texture_uv` write `material.uv`, an array of five `TextureUv` entries whose declaration the `Material::custom` docs show, and log a warning for a shader that lacks it.
 
 ## 0.12.6: Binding and renderer fixes
 

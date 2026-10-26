@@ -122,11 +122,11 @@ impl Vertex {
     pub fn pbr<P: IntoVertexPositionFull>(position: P) -> Self {
         // Seed every attribute `Material::pbr` reads in its vertex shader
         // with a neutral identity value. Chain `.set(...)` afterwards to
-        // override the slots a real mesh actually has data for. The
-        // defaults match the loader's fallbacks for missing glTF
-        // accessors, so a vertex built via `Vertex::pbr(pos)` alone
-        // renders the same way the loader renders a glTF primitive that
-        // carries only POSITION.
+        // override the slots a real mesh actually has data for. These are
+        // the loader's fallbacks for missing glTF accessors, with two
+        // exceptions: the loader computes a missing NORMAL from the faces,
+        // and it copies TEXCOORD_0 into a missing TEXCOORD_1, where UV1
+        // here stays at [0, 0] after UV0 is set.
         Self::new(position)
             .set(Self::NORMAL, [0.0_f32, 0.0, 1.0])
             .set(Self::UV0, [0.0_f32, 0.0])
