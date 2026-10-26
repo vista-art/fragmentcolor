@@ -135,7 +135,7 @@ impl Renderable for Mesh {
         if self.pass.shaders.read().is_empty() {
             if let Some(first) = self.object.verts.read().first().cloned() {
                 let shader = Shader::from_vertex(&first);
-                self.pass.add_shader(shader.object.clone());
+                self.pass.push_shader(shader.object.clone());
                 _ = shader.add_mesh(self);
             }
         } else if let Some(shader) = self.pass.shaders.read().last().cloned() {

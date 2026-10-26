@@ -168,8 +168,9 @@ impl LightBuffers {
 /// What a light set's buffers hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum SetShape {
-    /// Storage roots with a grid.
-    Clustered,
+    /// Storage roots on a device that bins. `grid` tells whether a shader
+    /// reads `light_grid`, without which the set never bins.
+    Clustered { grid: bool },
     /// A storage root lowered to a uniform block of `count` lights.
     Uniform { count: u32 },
     /// The older uniform `LightArray` of `count` lights.
@@ -179,14 +180,16 @@ enum SetShape {
 impl SetShape {
     fn new(roots: &LightRoots, path: LightPath) -> Self {
         match (roots.shape, path) {
-            (LightShape::Storage, LightPath::Clustered { .. }) => SetShape::Clustered,
+            (LightShape::Storage, LightPath::Clustered { .. }) => SetShape::Clustered {
+                grid: roots.grid.is_some(),
+            },
             (LightShape::Storage, LightPath::Uniform { count }) => SetShape::Uniform { count },
             (LightShape::Array { count }, _) => SetShape::Array { count },
         }
     }
 }
 
-/// A set's lights packed for the GPU: the lights without a range first.
+/// A set's lights packed for the GPU.
 #[derive(Debug, Default, PartialEq)]
 struct Packed {
     array: Vec<u8>,
@@ -197,6 +200,27 @@ struct Packed {
 }
 
 impl Packed {
+    /// Packs the lights of a set with `shape`. A storage root reads the lights
+    /// without a range first, and the older `LightArray` reads them in attach order.
+    fn for_shape(lights: &[GpuLight], shape: SetShape) -> Self {
+        match shape {
+            SetShape::Array { .. } => Packed::in_order(lights),
+            SetShape::Clustered { .. } | SetShape::Uniform { .. } => Packed::new(lights),
+        }
+    }
+
+    /// The lights in attach order, with no bounds, since nothing bins them.
+    fn in_order(lights: &[GpuLight]) -> Self {
+        let mut packed = Packed::default();
+        for light in lights {
+            light.write(&mut packed.array);
+        }
+        packed.count = lights.len() as u32;
+        packed.global_count = packed.count;
+        packed
+    }
+
+    /// The lights without a range first, then the bounded ones, each part in attach order.
     fn new(lights: &[GpuLight]) -> Self {
         let mut packed = Packed::default();
         let bounds: Vec<Option<Sphere>> = lights.iter().map(Sphere::around).collect();
@@ -303,7 +327,7 @@ pub(crate) struct LightSet {
 impl LightSet {
     fn new(context: &RenderContext, shape: SetShape, cap: u32) -> Self {
         let (capacity, size, usage) = match shape {
-            SetShape::Clustered => (
+            SetShape::Clustered { .. } => (
                 MIN_LIGHTS.min(u64::from(cap)),
                 u64::from(LIGHTS_HEADER) + u64::from(LIGHT_SIZE) * MIN_LIGHTS.min(u64::from(cap)),
                 wgpu::BufferUsages::STORAGE,
@@ -319,7 +343,7 @@ impl LightSet {
                 wgpu::BufferUsages::UNIFORM,
             ),
         };
-        let light_grid = (shape == SetShape::Clustered)
+        let light_grid = (shape == SetShape::Clustered { grid: true })
             .then(|| Sized::new(context, "Light Grid", MIN_WORDS * 4));
         LightSet {
             shape,
@@ -335,6 +359,16 @@ impl LightSet {
             binned: None,
             used: 0,
         }
+    }
+
+    /// Forgets what the set packed, uploaded and binned, so its next prepare
+    /// does all three again.
+    fn forget(&mut self) {
+        self.epoch = 0;
+        self.packed = Packed::default();
+        self.uploaded.clear();
+        self.matrix = None;
+        self.binned = None;
     }
 
     fn buffers(&self) -> LightBuffers {
@@ -359,18 +393,18 @@ impl LightSet {
         if self.epoch != epoch {
             self.epoch = epoch;
             self.ambient = shader.ambient();
-            let packed = Packed::new(&shader.gpu_lights());
+            let packed = Packed::for_shape(&shader.gpu_lights(), self.shape);
             rebin = packed.spheres != self.packed.spheres;
             self.packed = packed;
             changed = true;
         }
-        if self.shape != SetShape::Clustered {
+        let SetShape::Clustered { grid } = self.shape else {
             if changed {
                 let bytes = self.fixed_bytes();
                 self.upload(context, bytes);
             }
             return Ok(());
-        }
+        };
         let cap = (limit.saturating_sub(u64::from(LIGHTS_HEADER))) / u64::from(LIGHT_SIZE);
         if u64::from(self.packed.count) > self.capacity {
             self.capacity = grow(u64::from(self.packed.count), MIN_LIGHTS).min(cap);
@@ -378,13 +412,16 @@ impl LightSet {
             self.lights = create_buffer(context, "Lights", size, wgpu::BufferUsages::STORAGE);
             self.uploaded.clear();
             rebin = true;
+            changed = true;
         }
+        // Without a `light_grid` root no shader reads a grid, so the set never bins.
+        let matrix = matrix.filter(|_| grid);
         let bits = matrix.map(|matrix| matrix_bits(&matrix));
         if bits != self.matrix {
             self.matrix = bits;
             rebin = true;
         }
-        if rebin {
+        if rebin && grid {
             let frustum = matrix.and_then(Frustum::from_matrix);
             self.binned = self.bin(context, encoder, frustum, limit)?;
             changed = true;
@@ -430,24 +467,40 @@ impl LightSet {
         bytes
     }
 
-    /// Writes the bytes of `bytes` that differ from the last upload.
+    /// Writes the header when it changed, and the lights from the first one
+    /// that changed since the last upload to the last one that did.
     fn upload(&mut self, context: &RenderContext, bytes: Vec<u8>) {
         let header = match self.shape {
             SetShape::Array { .. } => ARRAY_HEADER as usize,
             _ => LIGHTS_HEADER as usize,
         };
         let split = header.min(bytes.len());
-        let same =
-            |range: std::ops::Range<usize>| self.uploaded.get(range.clone()) == bytes.get(range);
-        if !same(0..split) {
-            context.queue.write_buffer(&self.lights, 0, &bytes[..split]);
+        if self.uploaded.get(..split) != bytes.get(..split) {
+            self.write(context, 0, &bytes[..split]);
         }
-        if bytes.len() > split && !same(split..bytes.len()) {
-            context
-                .queue
-                .write_buffer(&self.lights, split as u64, &bytes[split..]);
+        let differs = |at: &usize| self.uploaded.get(*at) != bytes.get(*at);
+        let first = (split..bytes.len()).find(differs);
+        let last = (split..bytes.len()).rfind(differs);
+        if let (Some(first), Some(last)) = (first, last) {
+            // Whole lights, so the span keeps the 4-byte alignment a write needs.
+            let size = GpuLight::SIZE;
+            let start = split + (first - split) / size * size;
+            let end = (split + (last - split) / size * size + size).min(bytes.len());
+            self.write(context, start, &bytes[start..end]);
         }
         self.uploaded = bytes;
+    }
+
+    /// Writes `bytes` to the light buffer at `offset`.
+    fn write(&self, context: &RenderContext, offset: usize, bytes: &[u8]) {
+        context
+            .queue
+            .write_buffer(&self.lights, offset as u64, bytes);
+        #[cfg(test)]
+        context
+            .light_probe
+            .uploads
+            .fetch_add(bytes.len() as u64, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Bins the bounded lights in `frustum`, and returns the grid with the
@@ -494,11 +547,12 @@ impl LightSet {
         if words > budget {
             // Promote the largest boxes until every index list fits one binding.
             kept.sort_by_key(|(index, _, cells)| (std::cmp::Reverse(cells.volume()), *index));
-            while words > budget && !kept.is_empty() {
-                let largest = kept.remove(0);
-                words = words + 1 - u64::from(largest.2.volume());
-                promoted.push(largest);
+            let mut cut = 0;
+            while words > budget && cut < kept.len() {
+                words = words + 1 - u64::from(kept[cut].2.volume());
+                cut += 1;
             }
+            promoted.extend(kept.drain(..cut));
             kept.sort_by_key(|(index, _, _)| *index);
         }
         promoted.sort_by_key(|(index, _, _)| *index);
@@ -628,10 +682,12 @@ impl BinningPipeline {
     }
 }
 
-/// Counts binning dispatches and turns grids off, for the tests.
+/// Counts set prepares, uploaded bytes and binning dispatches, and turns grids off, for the tests.
 #[cfg(test)]
 #[derive(Debug, Default)]
 pub(crate) struct LightProbe {
+    prepares: std::sync::atomic::AtomicU64,
+    uploads: std::sync::atomic::AtomicU64,
     dispatches: std::sync::atomic::AtomicU64,
     no_grid: std::sync::atomic::AtomicBool,
 }
@@ -647,7 +703,7 @@ impl LightProbe {
 /// bits, the shape, and the shader when the pass has no camera to bin in.
 fn set_key(shader: &ShaderObject, shape: SetShape, own_matrix: bool) -> u64 {
     let mut hasher = DefaultHasher::new();
-    shader.hash_lights(&mut hasher);
+    shader.light_summary().hash.hash(&mut hasher);
     shape.hash(&mut hasher);
     if own_matrix {
         (shader as *const ShaderObject as usize).hash(&mut hasher);
@@ -672,10 +728,42 @@ impl RenderContext {
         *self.light_path.read()
     }
 
+    /// Starts a render that draws, after the texture pool starts it. Frees the
+    /// light sets no render used for `IDLE_RENDERS` renders, whether or not a
+    /// lit pass renders now. After a failed frame, every other light set packs,
+    /// uploads and bins again, since that frame's binning never ran.
+    pub(crate) fn start_light_render(&self) {
+        let render = self.texture_pool.read().render();
+        let mut sets = self.light_sets.write();
+        sets.retain(|_, set| render.saturating_sub(set.used) <= IDLE_RENDERS);
+        if self
+            .lights_failed
+            .swap(false, std::sync::atomic::Ordering::Relaxed)
+        {
+            for set in sets.values_mut() {
+                set.forget();
+            }
+        }
+    }
+
+    /// Checks that no lit shader on `pass` holds more lights than this device
+    /// takes. `plan_pass` runs it before the frame is acquired.
+    pub(crate) fn check_light_cap(&self, pass: &PassObject) -> Result<(), RendererError> {
+        let path = self.light_path();
+        for shader in pass.shaders.read().iter() {
+            if let Some(roots) = shader.light_roots.as_ref() {
+                let cap = path.cap().min(roots.capacity());
+                if shader.light_summary().count > u64::from(cap) {
+                    return Err(PassError::LightCapReached { cap }.into());
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Packs and bins the lights of every lit shader on `pass`, at most once
     /// per render for each light set, and returns each shader's buffers by
-    /// its address. A shader holding more lights than the device takes fails
-    /// here, before any light buffer is touched.
+    /// its address.
     pub(crate) fn prepare_lights(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -693,14 +781,6 @@ impl RenderContext {
             return Ok(prepared);
         }
         let path = self.light_path();
-        for shader in &lit {
-            if let Some(roots) = shader.light_roots.as_ref() {
-                let cap = path.cap().min(roots.capacity());
-                if shader.light_ids().len() as u64 > u64::from(cap) {
-                    return Err(PassError::LightCapReached { cap }.into());
-                }
-            }
-        }
         let limit = match path {
             LightPath::Clustered { limit } => limit,
             LightPath::Uniform { .. } => 0,
@@ -719,11 +799,11 @@ impl RenderContext {
             })
             .collect();
         let mut sets = self.light_sets.write();
-        sets.retain(|_, set| render.saturating_sub(set.used) <= IDLE_RENDERS);
         for (shader, shape, key) in keyed.iter().copied() {
             shader.flush_pending();
             if !sets.contains_key(&key) {
-                // Reuse a set this pass left idle, which a light change orphaned.
+                // Reuse the buffers of a set this pass left idle, which a light or
+                // camera change orphaned. What it packed belongs to another key.
                 let idle = sets
                     .iter()
                     .find(|(found, set)| {
@@ -734,7 +814,10 @@ impl RenderContext {
                     })
                     .map(|(key, _)| *key);
                 let set = match idle.and_then(|idle| sets.remove(&idle)) {
-                    Some(set) => set,
+                    Some(mut set) => {
+                        set.forget();
+                        set
+                    }
                     None => LightSet::new(self, shape, path.cap()),
                 };
                 sets.insert(key, set);
@@ -744,6 +827,10 @@ impl RenderContext {
             };
             if set.used != render {
                 set.used = render;
+                #[cfg(test)]
+                self.light_probe
+                    .prepares
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 let matrix = camera.or_else(|| shader_matrix(shader));
                 set.prepare(self, encoder, shader, matrix, limit)?;
             }
@@ -788,15 +875,26 @@ impl RenderContext {
         Ok(())
     }
 
-    /// The binning pipeline, built on first use. A build that fails on
-    /// native isn't kept, so the next frame reports the same error.
+    /// The binning pipeline, built on first use. A build that fails isn't
+    /// kept, so the next frame builds it again and reports the same error.
+    /// On wasm the error lands after the insert, so the pipeline leaves then.
     fn binning_pipeline(&self) -> Result<Arc<BinningPipeline>, RendererError> {
         if let Some(pipeline) = self.binning.read().clone() {
             return Ok(pipeline);
         }
-        let pipeline = Arc::new(self.validate("light binning pipeline", || {
-            BinningPipeline::new(&self.device)
-        })?);
+        let cache = Arc::downgrade(&self.binning);
+        let failed = self.lights_failed.clone();
+        let evict = move || {
+            if let Some(cache) = cache.upgrade() {
+                *cache.write() = None;
+            }
+            failed.store(true, std::sync::atomic::Ordering::Relaxed);
+        };
+        let pipeline = Arc::new(self.validate_with(
+            "light binning pipeline",
+            || BinningPipeline::new(&self.device),
+            evict,
+        )?);
         *self.binning.write() = Some(pipeline.clone());
         Ok(pipeline)
     }

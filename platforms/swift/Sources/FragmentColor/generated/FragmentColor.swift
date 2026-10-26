@@ -2518,7 +2518,7 @@ public protocol PassProtocol: AnyObject, Sendable {
     /**
      * Attach a shader to this pass.
      */
-    func addShader(shader: Shader) 
+    func addShader(shader: Shader) throws 
     
     /**
      * Return `true` if this is a compute pass; `false` for a render pass.
@@ -2712,7 +2712,7 @@ open func addMesh(mesh: Mesh)throws   {try rustCallWithError(FfiConverterTypeFra
     /**
      * Attach a shader to this pass.
      */
-open func addShader(shader: Shader)  {try! rustCall() {
+open func addShader(shader: Shader)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_pass_addshader(
             self.uniffiCloneHandle(),
@@ -9203,7 +9203,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_pass_addmesh() != 3682) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_addshader() != 48048) {
+    if (uniffi_fragmentcolor_checksum_method_pass_addshader() != 42375) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_pass_iscompute() != 10190) {

@@ -97,6 +97,16 @@ fn dispatches(context: &RenderContext) -> u64 {
     context.light_probe.dispatches.load(Ordering::Relaxed)
 }
 
+/// The number of light set prepares a context ran.
+fn prepares(context: &RenderContext) -> u64 {
+    context.light_probe.prepares.load(Ordering::Relaxed)
+}
+
+/// The bytes a context wrote to light buffers.
+fn uploads(context: &RenderContext) -> u64 {
+    context.light_probe.uploads.load(Ordering::Relaxed)
+}
+
 /// The number of light sets of the context that bin with a grid.
 fn grids(context: &RenderContext) -> usize {
     context
@@ -542,8 +552,13 @@ fn sixteen_thousand_lights_grow_every_buffer() {
         let sets = clustered.context.light_sets.read();
         let set = sets.values().next().expect("a light set");
         assert!(set.capacity >= 16384, "lights hold {}", set.capacity);
+        // One light lists at most half the clusters, or it is promoted.
+        let one = grow(u64::from(2 * GRID_CELLS + GRID_CELLS / 2), MIN_WORDS) * 4;
         let grid = set.light_grid.as_ref().map_or(0, |grid| grid.size);
-        assert!(grid > MIN_WORDS * 4, "the light grid holds {grid} bytes");
+        assert!(
+            grid > one,
+            "the light grid holds {grid} bytes, one light takes {one}"
+        );
         let bins = set.bins.as_ref().map_or(0, |bins| bins.size);
         assert!(
             bins > BINS_HEADER + BIN_SIZE * MIN_LIGHTS,
@@ -603,6 +618,25 @@ fn a_small_storage_limit_promotes_lights() {
 }
 
 #[test]
+fn idle_light_sets_go_once_no_lit_pass_renders() {
+    pollster::block_on(async {
+        let lights = seeded_lights(&mut Seeds(41));
+        let camera = camera();
+        let (renderer, target, context) = open(Mode::Clustered, 16).await;
+        renderer
+            .render(&lit_pass("lit", Some(&camera), &lights), &target)
+            .expect("render");
+        assert_eq!(context.light_sets.read().len(), 1);
+        // Unlit renders age the set, and it goes after IDLE_RENDERS of them.
+        let unlit = Pass::from_shader("unlit", &Shader::default());
+        for _ in 0..=IDLE_RENDERS {
+            renderer.render(&unlit, &target).expect("render");
+        }
+        assert!(context.light_sets.read().is_empty(), "the idle set stays");
+    });
+}
+
+#[test]
 fn still_renders_dispatch_once() {
     pollster::block_on(async {
         let lights = seeded_lights(&mut Seeds(29));
@@ -613,12 +647,18 @@ fn still_renders_dispatch_once() {
             renderer.render(&pass, &target).expect("render");
         }
         assert_eq!(dispatches(&context), 1, "three still renders");
+        let before = uploads(&context);
         lights[0].set_color([0.1, 0.2, 0.3]);
         renderer.render(&pass, &target).expect("render");
         assert_eq!(
             dispatches(&context),
             1,
             "a color change only rewrites bytes"
+        );
+        assert_eq!(
+            uploads(&context) - before,
+            u64::from(LIGHT_SIZE),
+            "a color change uploads one light"
         );
         lights[0].set_position([1.0, 1.0, 1.0]).expect("position");
         renderer.render(&pass, &target).expect("render");
@@ -640,6 +680,7 @@ fn still_renders_dispatch_once() {
             .render(&listed.as_slice(), &target)
             .expect("render");
         assert_eq!(dispatches(&context), 1, "a pass listed twice");
+        assert_eq!(prepares(&context), 1, "a pass listed twice prepares once");
 
         // Lights without a range never bin.
         let suns: Vec<Light> = (0..4)
@@ -650,6 +691,110 @@ fn still_renders_dispatch_once() {
         renderer.render(&sunny, &target).expect("render");
         renderer.render(&sunny, &target).expect("render");
         assert_eq!(dispatches(&context), 0, "directional lights only");
+    });
+}
+
+/// A floor with a red ambient and a wall with the default one, lit by `lights`.
+fn two_ambients(lights: &[Light], camera: Option<&Camera>) -> Pass {
+    let red = rough();
+    red.shader()
+        .set("lights.ambient", [0.5, 0.0, 0.0])
+        .expect("ambient");
+    let [floor, _] = floor_and_wall(&red);
+    let [_, wall] = floor_and_wall(&rough());
+    let pass = Pass::new("two ambients");
+    pass.add(&floor).expect("floor");
+    pass.add(&wall).expect("wall");
+    if let Some(camera) = camera {
+        pass.add(camera).expect("camera");
+    }
+    for light in lights {
+        pass.add(light).expect("light");
+    }
+    pass
+}
+
+#[test]
+fn a_reused_light_set_packs_its_new_shader() {
+    pollster::block_on(async {
+        // A pass that gains a Camera keys its sets again with no light change,
+        // and each shader may take the idle set the other one left.
+        let lights = seeded_lights(&mut Seeds(37));
+        let camera = camera();
+        let clean = draw(|| two_ambients(&lights, Some(&camera)), Mode::Clustered, 64).await;
+        assert_varied(&clean.image, "two ambients");
+        // HashMap order picks which idle set each shader takes, so try a few times.
+        for attempt in 0..8 {
+            let (renderer, target, _) = open(Mode::Clustered, 64).await;
+            let pass = two_ambients(&lights, None);
+            renderer
+                .render(&pass, &target)
+                .expect("render without a camera");
+            pass.add(&camera).expect("camera");
+            renderer
+                .render(&pass, &target)
+                .expect("render with the camera");
+            let image = target.get_image().await.expect("read back");
+            assert_close(&image, &clean.image, &format!("attempt {attempt}"));
+        }
+    });
+}
+
+/// A pass whose pipeline fails to build: its fragment output doesn't fit the target.
+fn broken_pass() -> Pass {
+    let shader = Shader::new(
+        "@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>, 3>(vec2<f32>(-1.0, -1.0), vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0));
+  return vec4<f32>(p[i], 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<u32> { return vec4<u32>(1u); }",
+    )
+    .expect("shader");
+    Pass::from_shader("broken", &shader)
+}
+
+#[test]
+fn a_failed_frame_bins_again_on_the_next() {
+    pollster::block_on(async {
+        let lights = seeded_lights(&mut Seeds(1));
+        let camera = camera();
+        let build = || lit_pass("600 lights", Some(&camera), &lights);
+        let clean = draw(build, Mode::Clustered, 96).await;
+        assert_varied(&clean.image, "clean");
+
+        // The first binning sits in a frame that a later pass fails.
+        let (renderer, target, _) = open(Mode::Clustered, 96).await;
+        let lit = build();
+        let broken = broken_pass();
+        let listed = [&lit, &broken];
+        assert!(renderer.render(&listed.as_slice(), &target).is_err());
+        renderer.render(&lit, &target).expect("render");
+        let after = target.get_image().await.expect("read back");
+        assert_close(&after, &clean.image, "after a failed first binning");
+
+        // A rebin for a moved camera sits in a failed frame.
+        let moved = Camera::perspective(1.0, 1.0, 0.1, 100.0)
+            .expect("camera")
+            .look_at([3.0, 5.0, 7.0], [-1.0, 0.5, -3.0], [0.0, 1.0, 0.0])
+            .expect("camera");
+        let moved_clean = draw(
+            || lit_pass("moved", Some(&moved), &lights),
+            Mode::Clustered,
+            96,
+        )
+        .await;
+        let (renderer, target, _) = open(Mode::Clustered, 96).await;
+        let moving = self::camera();
+        let lit = lit_pass("moving", Some(&moving), &lights);
+        renderer.render(&lit, &target).expect("render");
+        moving
+            .look_at([3.0, 5.0, 7.0], [-1.0, 0.5, -3.0], [0.0, 1.0, 0.0])
+            .expect("camera");
+        let listed = [&lit, &broken];
+        assert!(renderer.render(&listed.as_slice(), &target).is_err());
+        renderer.render(&lit, &target).expect("render");
+        let after = target.get_image().await.expect("read back");
+        assert_close(&after, &moved_clean.image, "after a failed rebin");
     });
 }
 
@@ -786,6 +931,109 @@ struct Lights { count: u32, global_count: u32, promoted_count: u32, ambient: vec
                 );
             }
         }
+    });
+}
+
+#[test]
+fn the_older_light_array_reads_lights_in_attach_order() {
+    pollster::block_on(async {
+        // A bounded light added first stays at index 0, ahead of a light without a range.
+        let lamp = bulb([0.0, 0.0, 0.0], [0.4, 0.0, 0.0], 1.0, 5.0);
+        let sun = Light::directional([0.0, -1.0, 0.0], [0.0, 0.0, 0.8]);
+        for mode in [Mode::Clustered, Mode::Uniform(8)] {
+            let build = || {
+                let shader = fullscreen(
+                    "struct LightArray { count: u32, ambient: vec3<f32>, lights: array<Light, 4> }
+@group(0) @binding(1) var<uniform> lights: LightArray;",
+                    "vec4<f32>(lights.lights[0].color, 1.0)",
+                );
+                let pass = Pass::from_shader("attach order", &shader);
+                pass.add(&lamp).expect("lamp");
+                pass.add(&sun).expect("sun");
+                pass
+            };
+            let drawn = draw(build, mode, 4).await;
+            assert_eq!(
+                drawn.image[..4],
+                [102, 0, 0, 255],
+                "the lamp first, {mode:?}"
+            );
+        }
+    });
+}
+
+const STORAGE_ROOT: &str = "struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>, slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }
+struct Lights { count: u32, global_count: u32, promoted_count: u32, ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }
+@group(0) @binding(1) var<storage, read> lights: Lights;";
+
+#[test]
+fn a_set_without_light_grid_never_bins() {
+    pollster::block_on(async {
+        // A shader that loops over every light reads no grid, so its set skips the binning.
+        let camera = camera();
+        let lamps: Vec<Light> = (0..32)
+            .map(|index| bulb([index as f32 * 0.3 - 4.8, 0.5, 0.0], [0.01; 3], 1.0, 2.0))
+            .collect();
+        let shader = fullscreen(
+            STORAGE_ROOT,
+            "vec4<f32>(0.0, 0.0, 0.0, f32(lights.count) / 255.0)",
+        );
+        let pass = Pass::from_shader("no grid", &shader);
+        pass.add(&camera).expect("camera");
+        for lamp in &lamps {
+            pass.add(lamp).expect("light");
+        }
+        let (renderer, target, context) = open(Mode::Clustered, 4).await;
+        renderer.render(&pass, &target).expect("render");
+        camera
+            .look_at([2.0, 4.0, 9.0], [0.0, 1.0, -2.0], [0.0, 1.0, 0.0])
+            .expect("camera");
+        renderer.render(&pass, &target).expect("render");
+        let image = target.get_image().await.expect("read back");
+        assert_eq!(image[3], 32, "the shader reads every light");
+        assert_eq!(dispatches(&context), 0, "nothing reads a grid");
+        let sets = context.light_sets.read();
+        let set = sets.values().next().expect("a light set");
+        assert!(set.light_grid.is_none() && set.bins.is_none());
+    });
+}
+
+#[test]
+fn a_shader_added_later_takes_the_pass_lights() {
+    pollster::block_on(async {
+        let lamp = Light::point([0.0, 0.0, 0.0], [0.2, 0.4, 0.0]);
+        let build = || {
+            let pass = Pass::new("lights first");
+            pass.add(&lamp).expect("light");
+            let shader = fullscreen(
+                STORAGE_ROOT,
+                "vec4<f32>(lights.lights[0].color, f32(lights.count) * 0.2)",
+            );
+            pass.add_shader(&shader)
+                .expect("the shader takes the light");
+            pass
+        };
+        let drawn = draw(build, Mode::Clustered, 4).await;
+        assert_eq!(drawn.image[..4], [51, 102, 0, 51], "the pass's light");
+
+        // A shader that can't take the pass's lights fails to join, and nothing changes.
+        let pass = Pass::new("three lights");
+        for index in 0..3 {
+            pass.add(&Light::point([index as f32, 0.0, 0.0], [1.0; 3]))
+                .expect("light");
+        }
+        let small = fullscreen(
+            "struct LightArray { count: u32, ambient: vec3<f32>, lights: array<Light, 2> }
+@group(0) @binding(1) var<uniform> lights: LightArray;",
+            "vec4<f32>(lights.lights[0].color, 1.0)",
+        );
+        let joined = pass.add_shader(&small);
+        assert!(
+            matches!(joined, Err(PassError::LightCapReached { cap: 2 })),
+            "{joined:?}"
+        );
+        assert!(pass.object.shaders.read().is_empty());
+        assert!(small.object.gpu_lights().is_empty());
     });
 }
 

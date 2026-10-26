@@ -30,8 +30,8 @@ extension Pass {
     // MARK: - Shader / Mesh (unlabeled overloads)
 
     /// Attach a shader to this pass (unlabeled overload).
-    public func addShader(_ shader: Shader) {
-        addShader(shader: shader)
+    public func addShader(_ shader: Shader) throws {
+        try addShader(shader: shader)
     }
 
     /// Attach a mesh to this pass (unlabeled overload).

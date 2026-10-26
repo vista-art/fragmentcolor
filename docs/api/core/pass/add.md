@@ -6,23 +6,27 @@ Absorb any `SceneObject` (a
 [Light](https://fragmentcolor.org/api/scene/light), or, in Rust, a
 user-defined node that implements the trait) into the pass. The other
 bindings take the built-in kinds. Each kind brings its
-own attach behavior: a Model queues a draw with its own per-instance
-transform; a Camera or Light wires its uniforms into every shader the
-pass renders, both the ones already there and the ones added afterwards.
+own attach behavior. A Model queues a draw with its own per-instance
+transform. A Camera writes its uniforms into every shader on the pass and
+into the shaders that later Models bring. A Light reaches every shader on
+the pass that declares the light roots, both the ones already there and
+the ones added afterwards, through a Model or
+[`add_shader`](https://fragmentcolor.org/api/core/pass#add_shader).
 
-Camera and Light hold Arc-shared state, so subsequent mutations on the
-same value (`camera.look_at(...)`, `light.set_color(...)`) propagate to
-every shader on the pass with no further `add` call.
+Camera and Light hold Arc-shared state, so a later `camera.look_at(...)`
+or `light.set_color(...)` reaches those shaders with no further `add`
+call.
 
 The pass holds every Light added to it, so a Light keeps lighting after
 the caller drops its handle.
 
-Returns `Result<&Pass, PassError>`. Models can fail at attach time when
-the Mesh layout doesn't match the Material's shader, and Cameras always
+Returns `Result<&Pass, PassError>`. A Model fails at attach time when
+the Mesh layout doesn't match the Material's shader, and with
+`PassError::ShaderKind` on a pass of compute shaders. Cameras always
 succeed. A Light fails with `PassError::LightCapReached { cap }` when a
-shader on the pass already holds as many lights as the device allows,
-and a Model fails the same way when its shader would take more than that
-from the pass. See [Light](https://fragmentcolor.org/api/scene/light)
+shader on the pass already holds as many lights as it takes on this
+device, and a Model fails the same way when its shader would take more
+than that from the pass. See [Light](https://fragmentcolor.org/api/scene/light)
 for the cap on each kind of device. Chain with `?` between calls.
 
 ## Example

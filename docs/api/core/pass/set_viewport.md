@@ -24,7 +24,7 @@ let target = renderer.create_texture_target([64, 64]).await?;
 
 let shader = Shader::default();
 let mut pass = Pass::new("clipped");
-pass.add_shader(&shader);
+pass.add_shader(&shader)?;
 
 pass.set_viewport(ScreenRegion::new((0, 0), (32, 32))?)?;
 

@@ -56,8 +56,8 @@ impl Pass {
 
     #[pyo3(name = "add_shader")]
     #[lsp_doc("docs/api/core/pass/add_shader.md")]
-    pub fn add_shader_py(&self, shader: &Shader) {
-        self.object.add_shader(shader.object.clone());
+    pub fn add_shader_py(&self, shader: &Shader) -> Result<(), PyErr> {
+        Ok(self.add_shader(shader)?)
     }
 
     #[pyo3(name = "add_mesh")]

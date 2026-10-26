@@ -105,6 +105,33 @@ pub(crate) struct Frustum {
     pub(crate) size: [u32; 3],
 }
 
+/// How close to 0 or 1 the depth plane's share of clip depth may come before
+/// its plane lies past what the matrix's f32 entries resolve.
+const PLANE_RESOLUTION: f64 = 1.0e-6;
+
+/// The view depths of a perspective `matrix`'s near and far planes, nearest
+/// first, worked in f64. A plane past what the f32 entries resolve, as a far
+/// of a million times the near gives, comes back infinite. `None` when a plane
+/// lies behind the eye or neither plane resolves.
+fn depth_range(matrix: &Mat4) -> Option<(f32, f32)> {
+    let plane = matrix.row(3).as_dvec4();
+    let normal = plane.xyz().length();
+    let (plane, depth) = (plane / normal, matrix.row(2).as_dvec4() / normal);
+    // Clip depth over view depth is `a + b / depth`, which is 0 at one plane and 1 at the other.
+    let a = depth.xyz().dot(plane.xyz());
+    let b = depth.w - a * plane.w;
+    let solve = |share: f64, value: f64| match share.abs() < PLANE_RESOLUTION {
+        true => f64::INFINITY,
+        false => value / share,
+    };
+    let (first, second) = (solve(a, -b), solve(1.0 - a, b));
+    let near = first.min(second);
+    if !near.is_finite() || near <= 0.0 || first.is_nan() || second.is_nan() {
+        return None;
+    }
+    Some((near as f32, first.max(second) as f32))
+}
+
 impl Frustum {
     /// The frustum of `matrix`, or `None` when it can't bin: a matrix that
     /// isn't finite, or a perspective whose near plane isn't in front of the eye.
@@ -117,20 +144,8 @@ impl Frustum {
         let (view_proj, depth_plane, slicing, near, far) = if normal > 1.0e-6 * row.w.abs().max(1.0)
         {
             let view_proj = matrix * (1.0 / normal);
-            let plane = view_proj.row(3);
-            let depth = view_proj.row(2);
-            let a = depth.xyz().dot(plane.xyz());
-            let b = depth.w - a * plane.w;
-            let first = -b / a;
-            let second = b / (1.0 - a);
-            if !first.is_finite() || !second.is_finite() {
-                return None;
-            }
-            let (near, far) = (first.min(second), first.max(second));
-            if near <= 0.0 {
-                return None;
-            }
-            (view_proj, plane, Slicing::Log, near, far)
+            let (near, far) = depth_range(&matrix)?;
+            (view_proj, view_proj.row(3), Slicing::Log, near, far)
         } else {
             if row.w.is_nan() || row.w <= 0.0 {
                 return None;
@@ -149,7 +164,7 @@ impl Frustum {
                 1.0 / normal,
             )
         };
-        if !view_proj.is_finite() || !depth_plane.is_finite() || !far.is_finite() {
+        if !view_proj.is_finite() || !depth_plane.is_finite() || far.is_nan() {
             return None;
         }
         let portrait = view_proj.row(0).xyz().length() > view_proj.row(1).xyz().length();
@@ -437,6 +452,27 @@ mod tests {
         let portrait =
             Frustum::from_matrix(directx::perspective(1.0, 0.5, 0.1, 10.0)).expect("portrait");
         assert_eq!(portrait.size, [GRID_SHORT, GRID_LONG, GRID_SLICES]);
+    }
+
+    #[test]
+    fn a_far_plane_past_f32_still_bins() {
+        // A far a hundred million times the near, which rounds 1 - a to 0 in f32.
+        let mut seeds = Seeds(23);
+        for _ in 0..200 {
+            let eye = Vec3::new(seeds.signed(), seeds.signed(), seeds.signed()) * 50.0;
+            let toward = Vec3::new(seeds.signed(), seeds.signed(), seeds.signed());
+            let view = view::look_at_mat4(eye, eye + toward.normalize(), Vec3::Y);
+            let matrix = directx::perspective(1.0, 1.5, 0.01, 1.0e6) * view;
+            let frustum = Frustum::from_matrix(matrix).expect("a grid");
+            assert!(
+                (frustum.near - 0.01).abs() < 1.0e-5,
+                "near {}",
+                frustum.near
+            );
+            assert!(frustum.far > 1.0e5, "far {}", frustum.far);
+            let grid = frustum.grid(40.0);
+            assert!(grid.scale.is_finite() && grid.bias.is_finite());
+        }
     }
 
     #[test]

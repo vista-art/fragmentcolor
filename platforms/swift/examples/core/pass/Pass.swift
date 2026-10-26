@@ -8,10 +8,10 @@ let target = try await renderer.createTarget(canvas)
 let shader = Shader.default()
 
 let pass = Pass("First Pass")
-pass.addShader(shader)
+try pass.addShader(shader)
 
 let pass2 = Pass("Second Pass")
-pass2.addShader(shader)
+try pass2.addShader(shader)
 
 // standalone
 try renderer.render(pass, target)

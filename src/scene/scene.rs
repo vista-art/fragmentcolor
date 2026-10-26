@@ -257,8 +257,8 @@ impl Scene {
     /// Snapshot of every [`Light`](crate::Light) added to this Scene via
     /// [`Scene::add`] (including Lights the loader created from glTF
     /// `KHR_lights_punctual` nodes, unless you skipped them via the loader's
-    /// light filter). Each entry is an Arc-shared clone — `light.set_color(...)`
-    /// on a returned handle drives every shader the Light occupies a slot in.
+    /// light filter). Each entry is an Arc-shared clone, so `light.set_color(...)`
+    /// on a returned handle reaches every shader the Light lights.
     #[lsp_doc("docs/api/scene/scene/lights.md")]
     pub fn lights(&self) -> Vec<Light> {
         self.inner.lights.read().clone()

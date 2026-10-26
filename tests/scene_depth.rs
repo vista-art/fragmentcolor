@@ -236,7 +236,7 @@ fn an_overlay_in_a_model_pass_draws_in_order() {
             cover.map(|[x, y]| Vertex::new([x, y, 0.99]).set("color", [0.0, 0.0, 1.0, 1.0])),
         );
         overlay.add_mesh(&mesh).expect("mesh is compatible");
-        pass.add_shader(&overlay);
+        pass.add_shader(&overlay).expect("add_shader failed");
         let frame = target(&renderer, SIZE).await;
         renderer.render(&pass, &frame).expect("render failed");
         let image = frame.get_image().await.expect("read back");

@@ -78,7 +78,7 @@ for (const c of CASES) {
     console.error(`[webgl2] FAIL: ${c.name}: ${e?.message || e}`);
   }
 }
-// WebGL2 has no storage buffers in fragment shaders, so a PBR shader takes
+// WebGL2 runs on a GL backend, so a PBR shader takes
 // its lights through a uniform block, as many as the device's largest block
 // holds. Adding lights past that throws, and the message names the cap.
 try {
@@ -110,7 +110,7 @@ try {
   }
   console.log(`[webgl2] added ${added} lights, then: ${message}`);
   if (added !== cap) throw new Error(`added ${added} lights, want the cap of ${cap}`);
-  if (!message.includes(`holds ${cap} lights`)) {
+  if (!message.includes(`takes at most ${cap} lights`)) {
     throw new Error(`the cap error should name ${cap}: ${message}`);
   }
 

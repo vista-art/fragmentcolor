@@ -733,8 +733,11 @@ pub(crate) struct RenderContext {
     /// Each pass's light sets, by pass id and light list. They stay out of the
     /// storage registry and the per-frame pools.
     light_sets: RwLock<HashMap<(u64, u64), lights::LightSet>>,
+    /// Set when a frame fails, so the next frame packs and bins every light
+    /// set again: the failed frame's binning never reached the GPU.
+    lights_failed: Arc<AtomicBool>,
     /// The light binning pipeline, built on first use.
-    binning: RwLock<Option<Arc<lights::BinningPipeline>>>,
+    binning: Arc<RwLock<Option<Arc<lights::BinningPipeline>>>>,
     #[cfg(test)]
     light_probe: lights::LightProbe,
 
@@ -815,7 +818,8 @@ impl RenderContext {
                 limit: storage_limit,
             }),
             light_sets: RwLock::new(HashMap::new()),
-            binning: RwLock::new(None),
+            lights_failed: Arc::default(),
+            binning: Arc::default(),
             #[cfg(test)]
             light_probe: lights::LightProbe::default(),
             #[cfg(wasm)]
@@ -897,7 +901,16 @@ impl RenderContext {
         #[cfg(wasm)]
         self.late.take()?;
         let mut acquired = None;
-        let result = self.validate("frame", || self.submit(renderable, target, &mut acquired));
+        // A frame that fails drops its binning, so the next one bins again.
+        let failed = self.lights_failed.clone();
+        let result = self.validate_with(
+            "frame",
+            || self.submit(renderable, target, &mut acquired),
+            move || failed.store(true, Ordering::Relaxed),
+        );
+        if result.is_err() {
+            self.lights_failed.store(true, Ordering::Relaxed);
+        }
         if let Some(frame) = acquired
             && frame.auto_present()
         {
@@ -946,6 +959,7 @@ impl RenderContext {
         // so compute steps between frames don't free a frame's textures.
         if frame.is_some() {
             self.texture_pool.write().start_render();
+            self.start_light_render();
         }
 
         // Apple's Metal driver does not reliably flush tile-based storage-texture writes between
@@ -983,10 +997,12 @@ impl RenderContext {
 
     /// Decides what a render pass draws, before any frame is acquired.
     ///
-    /// The checks that need no frame run here, so a shader that reads vertex inputs
-    /// with no mesh, or a mesh asked for more instances than it holds, fails without drawing,
-    /// and the target keeps its last frame. The draw loop takes each shader's layouts and buffers from it.
+    /// The checks that need no frame run here. The target keeps its last frame
+    /// when a lit shader holds more lights than the device takes, a shader reads
+    /// vertex inputs with no mesh, or a mesh is asked for more instances than it holds.
+    /// The draw loop takes each shader's layouts and buffers from the plan.
     fn plan_pass(&self, pass: &PassObject) -> Result<PassDraws, RendererError> {
+        self.check_light_cap(pass)?;
         let mut draws = self.build_pass_draws(pass);
         let model_shaders = find_model_shaders(pass);
         draws.has_models = !model_shaders.is_empty();
@@ -1166,6 +1182,17 @@ impl RenderContext {
         self.sample_count.load(Ordering::Relaxed).max(1)
     }
 
+    /// Runs `op` like `validate_with`, with nothing to run for a late error.
+    /// Only native code calls it, since the wasm callers each pass `on_error`.
+    #[cfg(not(wasm))]
+    fn validate<T>(
+        &self,
+        label: &str,
+        op: impl FnOnce() -> Result<T, RendererError>,
+    ) -> Result<T, RendererError> {
+        self.validate_with(label, op, || {})
+    }
+
     /// Runs `op` inside error scopes for out of memory, internal and validation errors.
     ///
     /// A wgpu error that `op` causes returns as `ValidationError` instead of reaching the
@@ -1181,15 +1208,7 @@ impl RenderContext {
     /// On wasm the scopes resolve after `render` returns, so `op`'s own result always returns.
     /// `ErrorSlot::watch` logs each error that lands at error level, and keeps the cause in `late`
     /// for the next call only when `op` succeeded. When `op` failed, the cause is logged and dropped.
-    fn validate<T>(
-        &self,
-        label: &str,
-        op: impl FnOnce() -> Result<T, RendererError>,
-    ) -> Result<T, RendererError> {
-        self.validate_with(label, op, || {})
-    }
-
-    /// Runs `op` like `validate`, and on wasm runs `on_error` when an error lands after it returned.
+    /// In both cases `on_error` runs when the error lands. On native it never runs, since the error returns.
     fn validate_with<T>(
         &self,
         label: &str,
@@ -4473,11 +4492,11 @@ struct VIn { @builtin(vertex_index) index: u32 };
             plain.add_mesh(model.mesh()).expect("mesh attaches");
             let own = Pass::new("plain");
             own.set_clear_color(BLUE).expect("set clear color");
-            own.add_shader(&plain);
+            own.add_shader(&plain).expect("add shader");
 
             renderer.render(&own, &target).expect("render its own pass");
             let alone = target.get_image().await.expect("read back");
-            pass.add_shader(&plain);
+            pass.add_shader(&plain).expect("add shader");
             renderer
                 .render(&pass, &target)
                 .expect("render the Model's pass");
@@ -4613,7 +4632,7 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat)
                 shader.add_mesh(&mesh).expect("mesh attaches");
                 let pass = Pass::new("instances");
                 pass.set_clear_color(BLUE).expect("set clear color");
-                pass.add_shader(&shader);
+                pass.add_shader(&shader).expect("add shader");
                 renderer.render(&pass, &target).expect("render");
                 pixels.push(pixel(&target.get_image().await.expect("read back"), LEFT));
             }

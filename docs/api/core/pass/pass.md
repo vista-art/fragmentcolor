@@ -10,8 +10,8 @@ The [Pass](https://fragmentcolor.org/api/core/pass) represents a single RenderPa
 
 The constructor creates a RenderPass by default. To create a ComputePass, call [Pass](https://fragmentcolor.org/api/core/pass)::compute().
 
-After creation, it will only accept a compatible [Shader](https://fragmentcolor.org/api/core/shader) object. If you try to add a Compute [Shader](https://fragmentcolor.org/api/core/shader) to a Render [Pass](https://fragmentcolor.org/api/core/pass) or vice-versa,
-it won't add the shader to its internal list and log a warning message in the console.
+The first [Shader](https://fragmentcolor.org/api/core/shader) added sets the pass's kind, and the pass then takes only shaders of that kind.
+[`add_shader`](https://fragmentcolor.org/api/core/pass#add_shader) returns `PassError::ShaderKind` for a compute shader on a render pass, or the reverse, and leaves the pass as it was.
 
 ## Example
 
@@ -45,10 +45,10 @@ let target = renderer.create_target(canvas).await?;
 let shader = Shader::default();
 
 let mut pass = Pass::new("First Pass");
-pass.add_shader(&shader);
+pass.add_shader(&shader)?;
 
 let mut pass2 = Pass::new("Second Pass");
-pass2.add_shader(&shader);
+pass2.add_shader(&shader)?;
 
 // standalone
 renderer.render(&pass, &target)?;

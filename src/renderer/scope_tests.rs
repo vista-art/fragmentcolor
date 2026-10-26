@@ -387,6 +387,54 @@ fn instance_count_past_the_rows_acquires_no_frame() {
     });
 }
 
+/// Reads the storage `Lights` root, and draws the light count.
+const LIT_FULLSCREEN: &str = r#"
+struct Light { kind: u32, intensity: f32, range: f32, inner_cone_cos: f32, position: vec3<f32>, outer_cone_cos: f32, direction: vec3<f32>, color: vec3<f32> }
+struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>, slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }
+struct Lights { count: u32, global_count: u32, promoted_count: u32, ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }
+@group(0) @binding(1) var<storage, read> lights: Lights;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  return vec4<f32>(p[i], 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(f32(lights.count) / 255.0); }
+"#;
+
+// Story: a lit shader that holds more lights than the device takes fails before any
+// frame is acquired. The lights reach it before the device's cap is known.
+#[test]
+fn lights_past_the_cap_acquire_no_frame() {
+    pollster::block_on(async move {
+        // Arrange
+        let (renderer, context, _uncaptured) = setup().await.expect("render context");
+        let target = SpyTarget::new(&context, wgpu::TextureUsages::RENDER_ATTACHMENT);
+        let shader = Shader::new(LIT_FULLSCREEN).expect("shader");
+        let pass = crate::Pass::from_shader("lit", &shader);
+        let lights: Vec<crate::Light> = (0..3)
+            .map(|index| crate::Light::point([index as f32, 0.0, 0.0], [1.0; 3]))
+            .collect();
+        for light in &lights {
+            pass.add(light).expect("under the process cap");
+        }
+        *context.light_path.write() = LightPath::Uniform { count: 2 };
+
+        // Act
+        let result = renderer.render(&pass, &target);
+
+        // Assert
+        assert!(
+            matches!(
+                result,
+                Err(RendererError::PassError(
+                    crate::PassError::LightCapReached { cap: 2 }
+                ))
+            ),
+            "got {result:?}"
+        );
+        assert_eq!(target.counts.acquired(), 0, "no frame was acquired");
+    });
+}
+
 // Story: when an inner scope fails because of an error the outer scope caught
 // first, validate reports that first error, under the outer label.
 #[test]

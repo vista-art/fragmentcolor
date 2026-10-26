@@ -53,7 +53,7 @@ let compute = Shader::new(
 
 let pass = Pass::compute("seed");
 pass.set_compute_dispatch(1, 1, 1);
-pass.add_shader(&compute);
+pass.add_shader(&compute)?;
 renderer.render(&pass, &target)?;
 
 let bytes = renderer.read_storage(&compute, "out").await?;

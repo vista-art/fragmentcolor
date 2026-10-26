@@ -32,7 +32,7 @@ mod scene;
 
 pub use camera::*;
 pub use light::*;
-pub(crate) use light::{GpuLight, LightObject, bump_epoch, current_epoch};
+pub(crate) use light::{GpuLight, LightObject, PassLights, bump_epoch, current_epoch};
 pub use loader::{GltfSource, SceneLoadError, SceneSource};
 pub use object::SceneObject;
 pub use scene::{PassRef, Scene};
@@ -75,17 +75,16 @@ impl SceneObject for Model {
             .iter()
             .any(|s| Arc::ptr_eq(s, shader_arc));
 
-        // A shader that joins takes every light on the pass, so check that
-        // they fit before anything changes.
+        // Dedupe shader-attach: many Models that share one Material's Shader
+        // should result in one entry on the pass. The renderer iterates
+        // shaders linearly and a doubled entry would set pipeline + bind
+        // groups twice for the same draws. A shader that joins takes every
+        // light on the pass, or fails before anything changes. Every other
+        // scene object on the pass replays against it, so order-of-add
+        // (Camera before Model, lights after Model, …) doesn't matter.
         if !shader_present {
-            let incoming: Vec<u64> = pass
-                .object
-                .lights
-                .read()
-                .iter()
-                .map(|light| light.object.id)
-                .collect();
-            shader_arc.check_light_room(&incoming)?;
+            pass.add_shader(&self.material.shader)?;
+            pass.replay_scene_objects(&self.material.shader);
         }
 
         // Declare the model-instance vertex schema on the Mesh first, so the
@@ -95,17 +94,6 @@ impl SceneObject for Model {
         // queue and the renderer builds the buffer at draw time.
         if self.mesh.object.instance_schema.read().is_none() {
             self.mesh.object.declare_model_instance_schema();
-        }
-
-        // Dedupe shader-attach: many Models that share one Material's Shader
-        // should result in one entry on the pass. The renderer iterates
-        // shaders linearly and a doubled entry would set pipeline + bind
-        // groups twice for the same draws. When a new shader joins, replay
-        // every scene object on the pass against it so order-of-add (Camera
-        // before Model, lights after Model, …) doesn't matter.
-        if !shader_present {
-            pass.add_shader(&self.material.shader);
-            pass.replay_scene_objects(&self.material.shader);
         }
 
         // Dedupe mesh-attach onto the shader. Without this the renderer

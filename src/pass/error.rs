@@ -1,6 +1,8 @@
 use std::convert::Infallible;
 use thiserror::Error;
 
+use super::PassType;
+
 #[derive(Error, Debug)]
 pub enum PassError {
     #[error("Invalid uniform root")]
@@ -11,10 +13,12 @@ pub enum PassError {
     NoCompatibleShader(crate::ShaderError),
     #[error("The pass has no shader to attach the mesh to")]
     NoShader,
+    #[error("A {pass} pass can't take a {shader} shader")]
+    ShaderKind { pass: PassType, shader: PassType },
     #[error("No pass in the scene matches the target: {0}")]
     PassNotFound(String),
     #[error(
-        "A shader on this Pass already holds {cap} lights, the most this device allows; drop a Light or give the extra lights another Material"
+        "A shader on this Pass takes at most {cap} lights on this device; drop a Light or give the extra lights another Material"
     )]
     LightCapReached { cap: u32 },
     #[error("Invalid color target: {0}")]
@@ -102,6 +106,10 @@ mod tests {
         let b = PassError::AliasConflict;
         let c = PassError::NoCompatibleShader(crate::ShaderError::InvalidKey("k".into()));
         let k = PassError::NoShader;
+        let kind = PassError::ShaderKind {
+            pass: PassType::Compute,
+            shader: PassType::Render,
+        };
         let d = PassError::InvalidColorTarget("k".into());
         let e = PassError::SelfDependency;
         let f = PassError::DuplicateDependency("p".into());
@@ -118,6 +126,10 @@ mod tests {
             "No compatible shader exists for this mesh: Invalid key: k"
         );
         assert!(k.to_string().contains("no shader"));
+        assert_eq!(
+            kind.to_string(),
+            "A compute pass can't take a render shader"
+        );
         assert!(d.to_string().contains("Invalid color target"));
         assert!(e.to_string().contains("Self dependency"));
         assert!(f.to_string().contains("Duplicate dependency"));

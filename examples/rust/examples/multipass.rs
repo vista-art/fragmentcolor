@@ -54,7 +54,7 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
     };
     let opaque_pass = {
         let p = Pass::new("Opaque Pass");
-        p.add_shader(&triangle);
+        p.add_shader(&triangle)?;
         p.set_clear_color([0.0, 0.0, 0.0, 1.0])?;
         p
     };
@@ -69,11 +69,11 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
     };
     for _ in 0..10 {
         let circle = random_circle(&mut rng, size, 1.0);
-        opaque_pass.add_shader(&circle);
+        opaque_pass.add_shader(&circle)?;
     }
     for _ in 0..20 {
         let circle = random_circle(&mut rng, size, 0.2);
-        transparent_pass.add_shader(&circle);
+        transparent_pass.add_shader(&circle)?;
     }
 
     let passes: Vec<Pass> = vec![opaque_pass, transparent_pass];

@@ -24,10 +24,19 @@ pub(crate) enum PassInput {
     Clear(Color),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PassType {
     Compute,
     Render,
+}
+
+impl std::fmt::Display for PassType {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PassType::Compute => formatter.write_str("compute"),
+            PassType::Render => formatter.write_str("render"),
+        }
+    }
 }
 
 impl From<Shader> for PassType {
@@ -89,8 +98,8 @@ impl Pass {
     }
 
     #[lsp_doc("docs/api/core/pass/add_shader.md")]
-    pub fn add_shader(&self, shader: &Shader) {
-        self.object.add_shader(shader.object.clone());
+    pub fn add_shader(&self, shader: &Shader) -> Result<(), PassError> {
+        self.object.add_shader(shader.object.clone())
     }
 
     #[lsp_doc("docs/api/core/pass/add_mesh.md")]
@@ -111,14 +120,11 @@ impl Pass {
 
     /// Re-invoke `apply_to_shader` on every absorbed scene object for the
     /// given shader. Called by `Model::attach` when a Model brings a new
-    /// shader to the pass; the Camera / Light objects that opted into live
-    /// propagation see the new shader and write their state into it.
+    /// shader to the pass, so a Camera writes its state into it. The pass's
+    /// lights reach the shader through `add_shader`.
     pub(crate) fn replay_scene_objects(&self, shader: &crate::Shader) {
         for object in self.object.scene_objects.read().iter() {
             object.apply_to_shader(shader);
-        }
-        for light in self.object.lights.read().iter() {
-            shader.object.add_light(&light.object);
         }
     }
 
@@ -384,7 +390,7 @@ pub struct PassObject {
     /// The lights added to this pass, in add order. Holding them keeps them
     /// lighting after the caller drops its handles, and a shader that joins
     /// the pass later takes every one.
-    pub(crate) lights: RwLock<Vec<crate::scene::Light>>,
+    pub(crate) lights: RwLock<crate::scene::PassLights>,
     pub(crate) viewport: RwLock<Option<ScreenRegion>>,
     pub(crate) required_buffer_size: RwLock<u64>,
     /// Snapshot of the most recently attached Camera's `(view, position)`,
@@ -426,7 +432,7 @@ impl PassObject {
             shaders: RwLock::new(Vec::new()),
             model_entries: RwLock::new(Vec::new()),
             scene_objects: RwLock::new(Vec::new()),
-            lights: RwLock::new(Vec::new()),
+            lights: RwLock::new(crate::scene::PassLights::default()),
             viewport: RwLock::new(None),
             input: RwLock::new(PassInput::Clear(Color::transparent())),
             required_buffer_size: RwLock::new(0),
@@ -463,26 +469,35 @@ impl PassObject {
         *self.compute_dispatch.read()
     }
 
-    /// Add a shader to this pass. The shader must be compatible with the pass type.
-    pub(crate) fn add_shader(&self, shader: Arc<ShaderObject>) {
-        // If this is the first shader added, adopt the shader kind for the pass.
-        {
-            let shaders = self.shaders.read();
-            if shaders.is_empty() {
-                let pass_type = match shader.is_compute() {
-                    true => PassType::Compute,
-                    false => PassType::Render,
-                };
-                *self.pass_type.write() = pass_type;
+    /// Adds a shader to this pass. The first shader sets the pass's kind, and
+    /// a later one must match it. A lit shader takes every light the pass holds,
+    /// and when they don't fit, the pass stays as it was.
+    pub(crate) fn add_shader(&self, shader: Arc<ShaderObject>) -> Result<(), PassError> {
+        let lights = self.lights.read();
+        let kind = PassType::from(shader.clone());
+        if !self.shaders.read().is_empty() {
+            let pass = *self.pass_type.read();
+            if pass != kind {
+                return Err(PassError::ShaderKind { pass, shader: kind });
             }
         }
-
-        if shader.is_compute() == self.is_compute() {
-            *self.required_buffer_size.write() += shader.total_bytes;
-            self.shaders.write().push(shader);
-        } else {
-            log::warn!("Cannot add a compute shader to a render pass or vice versa");
+        let incoming: Vec<u64> = lights.iter().map(|light| light.object.id).collect();
+        shader.check_light_room(&incoming)?;
+        for light in lights.iter() {
+            shader.add_light(&light.object);
         }
+        self.push_shader(shader);
+        Ok(())
+    }
+
+    /// Adds a shader with no checks, for a pass that has no shader and no light.
+    pub(crate) fn push_shader(&self, shader: Arc<ShaderObject>) {
+        let mut shaders = self.shaders.write();
+        if shaders.is_empty() {
+            *self.pass_type.write() = PassType::from(shader.clone());
+        }
+        *self.required_buffer_size.write() += shader.total_bytes;
+        shaders.push(shader);
     }
 
     pub(crate) fn set_color_target(&self, target: Arc<Registration>) {
@@ -523,12 +538,8 @@ impl PassObject {
     }
 
     pub(crate) fn from_shader(name: &str, shader: Arc<ShaderObject>) -> Self {
-        let pass_type = match shader.is_compute() {
-            true => PassType::Compute,
-            false => PassType::Render,
-        };
-        let object = Self::new(name, pass_type);
-        object.add_shader(shader);
+        let object = Self::new(name, PassType::from(shader.clone()));
+        object.push_shader(shader);
         object
     }
 
@@ -721,8 +732,8 @@ mod tests {
 
         // Act
         let before = *pass.object.required_buffer_size.read();
-        pass.add_shader(&s1);
-        pass.add_shader(&s2);
+        pass.add_shader(&s1).expect("a render shader");
+        pass.add_shader(&s2).expect("a render shader");
         let after = *pass.object.required_buffer_size.read();
 
         // Assert
@@ -731,10 +742,11 @@ mod tests {
         assert!(!pass.object.is_compute());
     }
 
-    // Story: A compute shader cannot be added to a render pass (and vice versa); count does not change.
+    // Story: A compute shader on a render pass, or the reverse, returns ShaderKind
+    // naming both kinds, and the pass doesn't change.
     #[test]
     fn rejects_mismatched_shader_kinds() {
-        // Arrange: a render pass with one render shader
+        // Arrange: a render pass with one render shader, and a compute pass with one compute shader
         let render_shader = Shader::default();
         let compute_src = r#"
             @group(0) @binding(0) var<uniform> u: vec4<f32>;
@@ -742,17 +754,40 @@ mod tests {
             fn cs() { _ = u; }
         "#;
         let compute_shader = Shader::new(compute_src).expect("compute shader");
-        let pass = Pass::from_shader("render pass", &render_shader);
-        let count_before = pass.object.shaders.read().len();
-        let bytes_before = *pass.object.required_buffer_size.read();
+        let render = Pass::from_shader("render pass", &render_shader);
+        let compute = Pass::from_shader("compute pass", &compute_shader);
+        let bytes_before = *render.object.required_buffer_size.read();
 
-        // Act: try to add a compute shader to a render pass
-        pass.add_shader(&compute_shader);
+        // Act
+        let on_render = render.add_shader(&compute_shader);
+        let on_compute = compute.add_shader(&render_shader);
 
-        // Assert: no change
-        assert_eq!(pass.object.shaders.read().len(), count_before);
-        assert_eq!(*pass.object.required_buffer_size.read(), bytes_before);
-        assert!(!pass.object.is_compute());
+        // Assert: each names both kinds, and neither pass changed
+        assert!(
+            matches!(
+                on_render,
+                Err(PassError::ShaderKind {
+                    pass: PassType::Render,
+                    shader: PassType::Compute,
+                })
+            ),
+            "{on_render:?}"
+        );
+        assert!(
+            matches!(
+                on_compute,
+                Err(PassError::ShaderKind {
+                    pass: PassType::Compute,
+                    shader: PassType::Render,
+                })
+            ),
+            "{on_compute:?}"
+        );
+        assert_eq!(render.object.shaders.read().len(), 1);
+        assert_eq!(compute.object.shaders.read().len(), 1);
+        assert_eq!(*render.object.required_buffer_size.read(), bytes_before);
+        assert!(!render.object.is_compute());
+        assert!(compute.object.is_compute());
     }
 
     // Story: set_clear_color makes the pass clear its target; load_previous makes it keep it.
