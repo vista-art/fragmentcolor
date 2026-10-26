@@ -57,10 +57,16 @@ impl From<pyo3::PyErr> for PassError {
     }
 }
 
+/// A color or viewport the caller passed raises `InvalidInputError`, and any other error `FragmentColorError`.
 #[cfg(python)]
 impl From<PassError> for pyo3::PyErr {
-    fn from(e: PassError) -> Self {
-        crate::PyFragmentColorError::new_err(e.to_string())
+    fn from(error: PassError) -> Self {
+        match error {
+            PassError::Color(_) | PassError::Viewport(_) => {
+                crate::error::InvalidInputError::new_err(error.to_string())
+            }
+            _ => crate::PyFragmentColorError::new_err(error.to_string()),
+        }
     }
 }
 

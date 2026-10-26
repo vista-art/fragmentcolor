@@ -1,3 +1,4 @@
+use crate::platforms::python::PyUnsigned;
 use crate::{
     PySize, Renderer, Size,
     target::{PyTextureTarget, RenderCanvasTarget},
@@ -247,7 +248,7 @@ impl Renderer {
         format: crate::TextureFormat,
         data: Option<Vec<u8>>,
         usage: Option<crate::texture::PyTextureUsage<'_>>,
-        usage_bits: Option<crate::platforms::python::PyUnsigned<'_>>,
+        usage_bits: Option<PyUnsigned<'_>>,
     ) -> Result<crate::texture::Texture, PyErr> {
         if usage_bits.is_some() {
             let warning = py.get_type::<pyo3::exceptions::PyDeprecationWarning>();
@@ -274,8 +275,8 @@ impl Renderer {
 
     #[pyo3(name = "unregister_texture")]
     #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
-    pub fn unregister_texture_py(&self, texture_id: PyTextureId) -> Result<(), PyErr> {
-        self.unregister_texture(crate::texture::TextureId::from(texture_id))?;
+    pub fn unregister_texture_py(&self, texture_id: PyTextureId<'_>) -> Result<(), PyErr> {
+        self.unregister_texture(texture_id.read("Renderer.unregister_texture: texture_id")?)?;
         Ok(())
     }
 
@@ -287,10 +288,9 @@ impl Renderer {
     /// device loop.
     #[pyo3(name = "read_texture")]
     #[lsp_doc("docs/api/core/renderer/read_texture.md")]
-    pub fn read_texture_py(&self, texture_id: PyTextureId) -> Result<Vec<u8>, PyErr> {
-        Ok(pollster::block_on(self.read_texture(
-            crate::texture::TextureId::from(texture_id),
-        ))?)
+    pub fn read_texture_py(&self, texture_id: PyTextureId<'_>) -> Result<Vec<u8>, PyErr> {
+        let id = texture_id.read("Renderer.read_texture: texture_id")?;
+        Ok(pollster::block_on(self.read_texture(id))?)
     }
 }
 

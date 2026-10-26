@@ -11,20 +11,21 @@ use pyo3::types::{PyByteArray, PyBytes, PyDict, PyList, PyMemoryView, PyTuple};
 // The argument types below are `pub` inside this private module,
 // so the bindings can take them while they stay out of the crate API.
 
-/// A texture id from Python: the integer value or a `TextureId`.
+/// A texture id from Python: a `TextureId` or its integer value, which [`PyTextureId::read`] checks.
 #[derive(FromPyObject)]
-pub enum PyTextureId {
-    #[pyo3(annotation = "int")]
-    Int(u64),
+pub enum PyTextureId<'py> {
     #[pyo3(annotation = "TextureId")]
     Id(TextureId),
+    #[pyo3(annotation = "int")]
+    Int(Bound<'py, PyAny>),
 }
 
-impl From<PyTextureId> for TextureId {
-    fn from(value: PyTextureId) -> Self {
-        match value {
-            PyTextureId::Int(id) => id.into(),
-            PyTextureId::Id(id) => id,
+impl PyTextureId<'_> {
+    /// The id, or an error that names `label` when the int is below 0 or past `u64::MAX`.
+    pub(crate) fn read(&self, label: &str) -> PyResult<TextureId> {
+        match self {
+            PyTextureId::Id(id) => Ok(*id),
+            PyTextureId::Int(value) => Ok(read_unsigned::<u64>(value, label)?.into()),
         }
     }
 }
