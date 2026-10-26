@@ -126,9 +126,16 @@ things the loader can't take, and it returns `SceneLoadError::Invalid` for
 them:
 
 - a primitive drawn as points or lines
-- an accessor with more elements than 32-bit indices reach
-- a sparse accessor without a bufferView that spans more bytes than all of
-  the file's buffers hold
+- a mesh attribute or index accessor with more elements than 32-bit indices
+  reach. On the web the glTF parser refuses any count past 32 bits first, so
+  there the file returns `SceneLoadError::Gltf`.
+- a sparse `POSITION` or index accessor without a bufferView that spans more
+  bytes than all of the file's buffers hold
+
+The glTF parser also refuses any accessor with neither a bufferView nor
+sparse values, which glTF reads as all zeros. A file with one returns
+`SceneLoadError::Gltf`, even when the accessor belongs to an animation or
+nothing at all.
 
 A file that breaks the glTF rules returns the same error. That covers:
 
@@ -143,11 +150,15 @@ A file that breaks the glTF rules returns the same error. That covers:
 Each of these messages names the accessor, node, light or camera at fault.
 When no single accessor is to blame, it names the mesh and the primitive.
 
-A camera whose values build no finite matrix, such as a `yfov` of 0 or a
-camera node scaled to zero, returns `SceneLoadError::Camera`, which names
-the camera. Load with `cameras(false)` to skip the file's cameras. A
-perspective camera without `zfar` asks for an infinite projection, and the
-loader gives it a far plane 10 million times its `znear`.
+A camera that `Camera::perspective`, `Camera::orthographic` or
+`Camera::look_at` refuses returns `SceneLoadError::Camera`, which names the
+camera, whether or not its values break a glTF rule. That covers a `yfov`
+that isn't between 0 and π, a `znear` of 0 and a camera node scaled to
+zero. Load with `cameras(false)` to skip the file's cameras.
+
+A perspective camera without `zfar` asks for an infinite projection, and
+the loader builds one, so nothing in front of the camera clips however far
+away.
 
 #### Skipping embedded cameras and lights
 

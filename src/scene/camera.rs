@@ -8,6 +8,7 @@
 //! Camera has been wired into.
 
 use glam::camera::rh::{proj::directx, view};
+use glam::dcamera::rh::view as precise_view;
 use glam::{Mat4, Vec3};
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
@@ -88,6 +89,9 @@ enum Projection {
         near: f32,
         far: f32,
     },
+    /// A perspective with no far plane: depth runs from 0 at `near` toward 1
+    /// at infinity. It's the projection glTF asks for when a camera has no `zfar`.
+    InfinitePerspective { fovy_radians: f32, near: f32 },
     Orthographic {
         left: f32,
         right: f32,
@@ -110,6 +114,10 @@ impl Projection {
                 near,
                 far,
             } => Ok((self, build_perspective(fovy_radians, aspect, near, far)?)),
+            Projection::InfinitePerspective { fovy_radians, near } => Ok((
+                self,
+                build_infinite_perspective(fovy_radians, aspect, near)?,
+            )),
             Projection::Orthographic {
                 left,
                 right,
@@ -174,20 +182,32 @@ fn build_perspective(fovy: f32, aspect: f32, near: f32, far: f32) -> Result<Mat4
         near,
         far,
     };
-    let finite = [fovy, aspect, near, far]
-        .iter()
-        .all(|value| value.is_finite());
-    let valid = finite
-        && fovy > 0.0
-        && fovy < std::f32::consts::PI
-        && aspect != 0.0
-        && near > 0.0
-        && far > 0.0
-        && near != far;
+    let valid = is_lens_valid(fovy, aspect, near) && far.is_finite() && far > 0.0 && near != far;
     if !valid {
         return Err(error);
     }
     require_finite(directx::perspective(fovy, aspect, near, far), error)
+}
+
+/// Build a perspective matrix with no far plane, refusing a lens that gives
+/// no finite one. Its error reports the missing far plane as infinity.
+fn build_infinite_perspective(fovy: f32, aspect: f32, near: f32) -> Result<Mat4, CameraError> {
+    let error = CameraError::Perspective {
+        fovy,
+        aspect,
+        near,
+        far: f32::INFINITY,
+    };
+    if !is_lens_valid(fovy, aspect, near) {
+        return Err(error);
+    }
+    require_finite(directx::perspective_infinite(fovy, aspect, near), error)
+}
+
+/// Whether a field of view, aspect and near plane can start a perspective.
+fn is_lens_valid(fovy: f32, aspect: f32, near: f32) -> bool {
+    let finite = [fovy, aspect, near].iter().all(|value| value.is_finite());
+    finite && fovy > 0.0 && fovy < std::f32::consts::PI && aspect != 0.0 && near > 0.0
 }
 
 /// Build an orthographic matrix, refusing planes that give no finite one.
@@ -221,14 +241,15 @@ fn build_orthographic(
     )
 }
 
-/// The sine of the smallest angle `look_at` takes between the view and `up`.
-/// Parallel vectors leave a cross product of up to about 2.6 epsilon after
-/// rounding, so below this limit rounding, not the caller, picks the roll.
-const PARALLEL_LIMIT: f32 = 4.0 * f32::EPSILON;
+/// The sine below which `look_at` calls `up` parallel to the view.
+/// The view basis is built in f64, where parallel vectors leave about 1e-16,
+/// so this limit refuses only an `up` that really lies on the line of the view.
+const PARALLEL_LIMIT: f64 = 1.0e-12;
 
-/// Build a view matrix, refusing vectors that give no finite one or no roll.
-/// The view and `up` must both have a direction and stand at least
-/// `PARALLEL_LIMIT` apart, which also refuses a target on the position.
+/// Build a view matrix in f64 and cast it to f32.
+/// Both the view and `up` must have a direction, normalized before glam sees
+/// them, and stand at least `PARALLEL_LIMIT` apart, which refuses a target on
+/// the position. Double precision keeps the roll exact for a nearly parallel `up`.
 fn build_view(position: [f32; 3], target: [f32; 3], up: [f32; 3]) -> Result<Mat4, CameraError> {
     let error = CameraError::View {
         position,
@@ -240,15 +261,22 @@ fn build_view(position: [f32; 3], target: [f32; 3], up: [f32; 3]) -> Result<Mat4
         .chain(&target)
         .chain(&up)
         .all(|value| value.is_finite());
-    let (position, target, up) = (Vec3::from(position), Vec3::from(target), Vec3::from(up));
-    let forward = (target - position).try_normalize();
-    let side = forward
-        .zip(up.try_normalize())
-        .map(|(forward, up)| forward.cross(up));
-    if !finite || side.is_none_or(|side| side.length() < PARALLEL_LIMIT) {
+    if !finite {
         return Err(error);
     }
-    require_finite(view::look_at_mat4(position, target, up), error)
+    let eye = Vec3::from(position).as_dvec3();
+    let forward = (Vec3::from(target).as_dvec3() - eye).try_normalize();
+    let up = Vec3::from(up).as_dvec3().try_normalize();
+    let (Some(forward), Some(up)) = (forward, up) else {
+        return Err(error);
+    };
+    if forward.cross(up).length() < PARALLEL_LIMIT {
+        return Err(error);
+    }
+    require_finite(
+        precise_view::look_to_mat4(eye, forward, up).as_mat4(),
+        error,
+    )
 }
 
 #[cfg_attr(wasm, wasm_bindgen)]
@@ -316,6 +344,17 @@ impl Camera {
         Ok(Self::from_state(CameraState::new(projection, proj)))
     }
 
+    /// A perspective Camera with no far plane, for a glTF camera without `zfar`.
+    pub(crate) fn create_infinite_perspective(
+        fovy_radians: f32,
+        aspect: f32,
+        near: f32,
+    ) -> Result<Self, CameraError> {
+        let proj = build_infinite_perspective(fovy_radians, aspect, near)?;
+        let projection = Projection::InfinitePerspective { fovy_radians, near };
+        Ok(Self::from_state(CameraState::new(projection, proj)))
+    }
+
     fn create_orthographic(
         left: f32,
         right: f32,
@@ -369,8 +408,8 @@ impl Camera {
     ///   matches the new aspect, centered on the existing horizontal
     ///   midpoint. Frustum height stays put.
     ///
-    /// Returns a handle to the same Camera (Arc-shared) for chaining. An
-    /// aspect that can't build a finite projection leaves the Camera as it was.
+    /// Returns a handle to the same Camera (Arc-shared) for chaining. A
+    /// refused aspect leaves the Camera as it was.
     #[lsp_doc("docs/api/scene/camera/set_aspect.md")]
     pub fn set_aspect(&self, aspect: f32) -> Result<Self, CameraError> {
         self.apply_aspect(aspect)
@@ -381,8 +420,8 @@ impl Camera {
     /// that orients the roll (typically `[0, 1, 0]`). Matches Light's
     /// `position` vocabulary so both scene types describe "where this
     /// object is in the world" the same way. Returns a handle to the same
-    /// Camera (Arc-shared backing) for chaining. Vectors that can't build a
-    /// finite view leave the Camera as it was.
+    /// Camera (Arc-shared backing) for chaining. Refused vectors leave the
+    /// Camera as it was.
     #[lsp_doc("docs/api/scene/camera/look_at.md")]
     pub fn look_at(
         &self,
@@ -589,6 +628,15 @@ mod tests {
     }
 
     #[test]
+    fn an_infinite_perspective_keeps_no_far_plane_through_set_aspect() {
+        // The infinite projection's depth row is (-1, -near): no far plane.
+        let camera = Camera::create_infinite_perspective(1.0, 1.0, 0.25).expect("camera");
+        camera.set_aspect(2.0).expect("aspect");
+        let m = camera.view_proj();
+        assert_eq!((m[2][2], m[3][2]), (-1.0, -0.25), "got {m:?}");
+    }
+
+    #[test]
     fn perspective_takes_reverse_z() {
         let camera = Camera::perspective(1.0, 1.0, 100.0, 0.1).expect("near > far is reverse-Z");
         assert!(glam::Mat4::from_cols_array_2d(&camera.view_proj()).is_finite());
@@ -658,12 +706,18 @@ mod tests {
         assert_eq!(camera.position(), [0.0, 0.0, 5.0]);
     }
 
+    /// The view matrix's side, up and back axes, as rows of its 3x3 part.
+    fn view_axes(camera: &Camera) -> [glam::Vec3; 3] {
+        let view = camera.object.state.read().view;
+        let row = |index: usize| view.row(index).truncate();
+        [row(0), row(1), row(2)]
+    }
+
     #[test]
     fn look_at_refuses_an_up_on_the_view_line() {
-        // Rounding leaves these cross products a hair above zero, so a finite
-        // matrix alone can't catch them: its roll would be noise.
+        // Exactly parallel, forward or back: no roll follows from the numbers.
         let camera = Camera::perspective(1.0, 1.0, 0.1, 100.0).expect("camera");
-        for up in [[0.3, 0.7, 1.1], [-0.3, -0.7, -1.1], [0.3, 0.7, 1.1000001]] {
+        for up in [[0.3, 0.7, 1.1], [-0.3, -0.7, -1.1]] {
             assert!(
                 matches!(
                     camera.look_at([0.3, 0.7, 1.1], [0.0, 0.0, 0.0], up),
@@ -675,15 +729,43 @@ mod tests {
     }
 
     #[test]
+    fn look_at_draws_the_line_at_a_sine_of_1e12() {
+        // A top-down camera a million units up: a target offset of 9e-7 gives
+        // a sine of 9e-13, below the limit, and 2e-6 gives 2e-12, above it.
+        let camera = Camera::perspective(1.0, 1.0, 0.1, 100.0).expect("camera");
+        let down = |offset| camera.look_at([0.0, 1.0e6, 0.0], [0.0, 0.0, offset], [0.0, 1.0, 0.0]);
+        assert!(matches!(down(9.0e-7), Err(CameraError::View { .. })));
+        down(2.0e-6).expect("a sine of 2e-12 still has a roll");
+    }
+
+    #[test]
     fn look_at_takes_a_view_nearly_straight_down() {
         // Offsetting the target a little is the usual way to look down along
-        // +Y. A map camera zoomed out to 1000 units keeps a sine of 1e-6,
-        // still several times the rounding noise, so its roll is well defined.
+        // +Y. Even 10,000 units up, with a sine of 1e-7, the roll is exact:
+        // the side axis comes out as -X.
         let camera = Camera::perspective(1.0, 1.0, 0.1, 100.0).expect("camera");
-        for height in [10.0, 1000.0] {
+        for height in [10.0, 1000.0, 10000.0] {
             camera
                 .look_at([0.0, height, 0.0], [0.0, 0.0, 0.001], [0.0, 1.0, 0.0])
                 .expect("a top-down view offset by 0.001 has a roll");
+            let [side, _, _] = view_axes(&camera);
+            assert_eq!(side, glam::Vec3::new(-1.0, 0.0, 0.0), "height {height}");
+        }
+    }
+
+    #[test]
+    fn look_at_builds_orthonormal_axes_from_a_tiny_up() {
+        let camera = Camera::perspective(1.0, 1.0, 0.1, 100.0).expect("camera");
+        for up in [[0.0, 1.0e-21, 0.0], [0.0, 1.0e-22, 0.0], [0.0, 3.0e20, 0.0]] {
+            camera
+                .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], up)
+                .expect("a tiny up still has a direction");
+            for axis in view_axes(&camera) {
+                assert!(
+                    (axis.length() - 1.0).abs() < 1.0e-6,
+                    "up {up:?} gave {axis:?}"
+                );
+            }
         }
     }
 

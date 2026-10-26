@@ -71,7 +71,7 @@ pub(crate) enum PythonError {
     SceneLoad,
     /// A light setter that doesn't fit the light's kind, also a `ValueError`.
     Light,
-    /// Camera parameters that build no finite matrix, also a `ValueError`.
+    /// Camera parameters that leave no usable view, also a `ValueError`.
     Camera,
     /// A material setter value the material can't use, also a `ValueError`.
     Material,

@@ -23,7 +23,7 @@ pub enum PassTarget {
     Name(String),
 }
 
-/// Camera parameters without a finite matrix reach Swift and Kotlin as a render error.
+/// Refused camera parameters reach Swift and Kotlin as a render error.
 impl From<CameraError> for FragmentColorError {
     fn from(error: CameraError) -> Self {
         FragmentColorError::Render(error.to_string())

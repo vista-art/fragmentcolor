@@ -14,9 +14,9 @@ to position the camera before binding it.
 
 Every value must be finite, `fovy_radians` must lie between 0 and π,
 `aspect` can't be 0, and `near` and `far` must be positive and different.
-Anything else returns `Err(CameraError::Perspective)`, since it would put
-infinities or NaN in the matrix and every model drawn through the camera
-would vanish.
+Anything else returns `Err(CameraError::Perspective)`: such values give a
+matrix of infinities or NaN, a flipped or collapsed image, or no usable
+depth range.
 
 ## Example
 

@@ -2201,9 +2201,16 @@ class Scene:
         them:
 
         - a primitive drawn as points or lines
-        - an accessor with more elements than 32-bit indices reach
-        - a sparse accessor without a bufferView that spans more bytes than all of
-          the file's buffers hold
+        - a mesh attribute or index accessor with more elements than 32-bit indices
+          reach. On the web the glTF parser refuses any count past 32 bits first, so
+          there the file returns `SceneLoadError::Gltf`.
+        - a sparse `POSITION` or index accessor without a bufferView that spans more
+          bytes than all of the file's buffers hold
+
+        The glTF parser also refuses any accessor with neither a bufferView nor
+        sparse values, which glTF reads as all zeros. A file with one returns
+        `SceneLoadError::Gltf`, even when the accessor belongs to an animation or
+        nothing at all.
 
         A file that breaks the glTF rules returns the same error. That covers:
 
@@ -2218,11 +2225,15 @@ class Scene:
         Each of these messages names the accessor, node, light or camera at fault.
         When no single accessor is to blame, it names the mesh and the primitive.
 
-        A camera whose values build no finite matrix, such as a `yfov` of 0 or a
-        camera node scaled to zero, returns `SceneLoadError::Camera`, which names
-        the camera. Load with `cameras(false)` to skip the file's cameras. A
-        perspective camera without `zfar` asks for an infinite projection, and the
-        loader gives it a far plane 10 million times its `znear`.
+        A camera that `Camera::perspective`, `Camera::orthographic` or
+        `Camera::look_at` refuses returns `SceneLoadError::Camera`, which names the
+        camera, whether or not its values break a glTF rule. That covers a `yfov`
+        that isn't between 0 and π, a `znear` of 0 and a camera node scaled to
+        zero. Load with `cameras(false)` to skip the file's cameras.
+
+        A perspective camera without `zfar` asks for an infinite projection, and
+        the loader builds one, so nothing in front of the camera clips however far
+        away.
 
         ## Skipping embedded cameras and lights
 
@@ -3215,11 +3226,12 @@ class Camera:
       shaders that need it (specular highlights, fresnel) don't have to invert
       the view matrix on every frame.
 
-    Parameters that leave no usable view fail instead of hiding every
-    model: `perspective`, `orthographic`, `look_at` and `set_aspect` return a
-    `CameraError` in Rust, throw an `Error` in JavaScript, raise `CameraError`
-    (a `FragmentColorError` and a `ValueError`) in Python, throw
-    `FragmentColorError` in Swift and throw `FragmentColorException` in Kotlin.
+    Parameters that leave no usable view return an error, and a Camera that
+    already exists keeps its state. `perspective`, `orthographic`, `look_at`
+    and `set_aspect` return a `CameraError` in Rust, throw an `Error` in
+    JavaScript, raise `CameraError` (a `FragmentColorError` and a `ValueError`)
+    in Python, throw `FragmentColorError` in Swift and throw
+    `FragmentColorException` in Kotlin.
 
     The Camera is the user's domain, not the Material's: a Material is "what the
     surface looks like under any light from any viewpoint", a Camera is "which
@@ -3253,9 +3265,9 @@ class Camera:
 
         Every value must be finite, `fovy_radians` must lie between 0 and π,
         `aspect` can't be 0, and `near` and `far` must be positive and different.
-        Anything else returns `Err(CameraError::Perspective)`, since it would put
-        infinities or NaN in the matrix and every model drawn through the camera
-        would vanish.
+        Anything else returns `Err(CameraError::Perspective)`: such values give a
+        matrix of infinities or NaN, a flipped or collapsed image, or no usable
+        depth range.
 
         Example:
 
@@ -3313,13 +3325,13 @@ class Camera:
         those leaves no way to orient the camera, so the call returns
         `Err(CameraError::View)` and the Camera keeps its view.
 
-        An `up` whose angle to that line has a sine below about 4.8e-7
-        (4 × `f32::EPSILON`) counts as on it, since at that size rounding would
-        pick the roll. A top-down camera 1000 units up, with its target offset by
-        0.001, has a sine of 1e-6 and works.
+        The view is built in double precision, from a normalized `up`, and stored
+        as `f32`. So an `up` counts as on that line only when the sine of its angle
+        to it is below 1e-12, and one just off the line still gets the roll its
+        numbers describe. A top-down camera 10,000 units up, with its target offset
+        by 0.001, has a sine of 1e-7 and gets an exact roll.
 
-        Internally builds the view matrix with `glam::Mat4::look_at_rh`. The
-        result is a right-handed view matrix that pairs with the right-handed
+        The result is a right-handed view matrix that pairs with the right-handed
         projection produced by [`perspective`](https://fragmentcolor.org/api/scene/camera#perspective)
         and [`orthographic`](https://fragmentcolor.org/api/scene/camera#orthographic).
 
