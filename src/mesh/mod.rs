@@ -651,6 +651,7 @@ impl MeshObject {
         let draw_counts = DrawCounts {
             index_count: g.instance_buffer_len,
             instance_count: override_count.or(instance_rows).unwrap_or(1),
+            instance_rows,
         };
 
         Ok((vertex_buffers, draw_counts))
@@ -687,6 +688,8 @@ impl Debug for VertexBuffers {
 pub(crate) struct DrawCounts {
     pub index_count: u32,
     pub instance_count: u32,
+    /// The instances the mesh holds, or `None` when it holds none.
+    pub instance_rows: Option<u32>,
 }
 
 impl MeshObject {

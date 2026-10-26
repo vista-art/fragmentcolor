@@ -1590,6 +1590,7 @@ impl RenderContext {
                                     continue;
                                 }
                                 (None, buffer) => {
+                                    check_instance_count(layouts.as_ref(), counts)?;
                                     if let Some(buffer) = buffer {
                                         render_pass.set_vertex_buffer(1, buffer.slice(..));
                                     }
@@ -1887,6 +1888,24 @@ impl VertexLayouts {
             })
             .collect()
     }
+}
+
+/// Refuses to draw more instances than the mesh holds
+/// when the pipeline reads instance attributes from its buffer.
+fn check_instance_count(
+    layouts: Option<&VertexLayouts>,
+    counts: crate::mesh::DrawCounts,
+) -> Result<(), RendererError> {
+    let rows = counts.instance_rows.unwrap_or(0);
+    let stepped = layouts.is_some_and(|layouts| layouts.instance.is_some());
+    if stepped && counts.instance_count > rows {
+        return Err(crate::mesh::MeshError::InvalidInstance(format!(
+            "instance count {} exceeds the {rows} instances the mesh holds",
+            counts.instance_count
+        ))
+        .into());
+    }
+    Ok(())
 }
 
 /// The lowest `@location` input of the shader's vertex entry point, as its name and location.
@@ -4073,6 +4092,59 @@ struct VIn { @location(0) pos: vec2<f32> };
             assert!(is_blue(pixel(&left, RIGHT)), "left pass, right strip");
             assert!(is_blue(pixel(&right, LEFT)), "right pass, left strip");
             assert!(is_red(pixel(&right, RIGHT)), "right pass, right strip");
+        });
+    }
+
+    const OFFSET_SHADER: &str = r#"
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex fn vs_main(@location(0) pos: vec2<f32>, @location(1) offset: vec2<f32>) -> VOut {
+  return VOut(vec4<f32>(pos + offset, 0.0, 1.0));
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+"#;
+
+    const INDEXED_SHADER: &str = r#"
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex fn vs_main(@location(0) pos: vec2<f32>, @builtin(instance_index) index: u32) -> VOut {
+  return VOut(vec4<f32>(pos * f32(index + 1u), 0.0, 1.0));
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+"#;
+
+    const TRIANGLE: [[f32; 2]; 3] = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+
+    // Story: a mesh can't draw more instances than it holds when the shader
+    // reads instance attributes, and a shader that reads none draws any count.
+    #[test]
+    fn instance_count_past_the_rows_errors() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8u32, 8u32])
+                .await
+                .expect("texture target");
+            let shader = crate::Shader::new(OFFSET_SHADER).expect("shader");
+            let mesh = crate::Mesh::new();
+            mesh.add_vertices(TRIANGLE.map(crate::Vertex::new));
+            mesh.add_instances(
+                [0.0, 1.0].map(|shift| crate::Instance::new().set("offset", [shift, 0.0])),
+            );
+            mesh.set_instance_count(10);
+            shader.add_mesh(&mesh).expect("mesh attaches");
+            let indexed = crate::Shader::new(INDEXED_SHADER).expect("shader");
+            let unread = crate::Mesh::new();
+            unread.add_vertices(TRIANGLE.map(crate::Vertex::new));
+            unread.set_instance_count(10);
+            indexed.add_mesh(&unread).expect("mesh attaches");
+
+            let past = renderer.render(&shader, &target);
+            let indexed = renderer.render(&indexed, &target);
+
+            assert!(
+                matches!(&past, Err(RendererError::MeshError(crate::mesh::MeshError::InvalidInstance(message))) if message.contains("instance count 10 exceeds the 2")),
+                "got {past:?}"
+            );
+            assert!(indexed.is_ok(), "got {indexed:?}");
         });
     }
 
