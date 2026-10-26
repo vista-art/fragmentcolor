@@ -1,4 +1,4 @@
-import { defineConfig } from "astro/config";
+import { defineConfig, envField } from "astro/config";
 import starlight from "@astrojs/starlight";
 import starlightBlog from "starlight-blog";
 import path from "node:path";
@@ -238,6 +238,15 @@ export default defineConfig({
   ],
 
   adapter: vercel(),
+
+  // Secrets for editing blog posts on the deployed site, read at runtime
+  // by `src/pages/api/edit.ts`. Client code can't import them.
+  env: {
+    schema: {
+      EDIT_TOKEN: envField.string({ context: "server", access: "secret", optional: true }),
+      GITHUB_TOKEN: envField.string({ context: "server", access: "secret", optional: true }),
+    },
+  },
 
   vite: {
     build: {
