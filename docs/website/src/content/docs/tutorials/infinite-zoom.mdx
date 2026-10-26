@@ -28,7 +28,9 @@ Robert Brooks and Peter Matelski printed [a rough picture of the set](https://do
   {printout.runs.map(({ x, y, text, width }) => <text x={x} y={y} textLength={width} lengthAdjust="spacing" style="fill: var(--fig-ink); font-family: var(--__sl-font-mono, ui-monospace, monospace); font-size: 15px">{text}</text>)}
 </Figure>
 
-Two years later, [computer plots](https://doi.org/10.1111/j.1749-6632.1980.tb29690.x) by Benoit Mandelbrot made it famous, and Adrien Douady and John Hubbard, who proved that the set is connected, named it after him. Yet the shape is older than everyone in this story. Its spirals follow from <Math tex="z^2 + c" /> the way the primes follow from multiplication, so they existed before anyone wrote the rule down. People discovered the set; computers made it visible.
+Two years later, Benoit Mandelbrot made it famous in his paper [FRACTAL ASPECTS OF THE ITERATION OF z →Λz(1- z) FOR COMPLEX Λ AND z](https://doi.org/10.1111/j.1749-6632.1980.tb29690.x), and then Adrien Douady and John Hubbard, who proved that the set is connected, named it after him.
+
+Mandelbrot proved that there are geometrical objects, which he called Fractals, that are infinitely rough on all edges at any scale. Yet, these shapes are older than anyone in this story: They are eternal structures that humans discovered after some exploration. This story is important to computer science because we could only see these shapes with a computer. Visualizing them requires plotting millions of points in a plane, and computers are the tool that makes it possible.
 
 <Figure src="/tutorials/infinite-zoom/benoit-mandelbrot.webp" width={600} height={799} narrow alt="Benoit Mandelbrot speaking at TED in 2010: an older man with white hair and wire-rimmed glasses, in a dark jacket and white shirt, raising one hand as he talks." caption="Benoit Mandelbrot at TED in 2010.">
   <span slot="credit">Photo by <a href="https://www.flickr.com/photos/jurvetson/4770047266/">Steve Jurvetson</a>, cropped and resized, <a href="https://creativecommons.org/licenses/by/2.0/">CC BY 2.0</a>.</span>
