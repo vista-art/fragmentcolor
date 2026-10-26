@@ -222,8 +222,9 @@ fn build_orthographic(
 }
 
 /// The sine of the smallest angle `look_at` takes between the view and `up`.
-/// Below it, rounding in the cross product, not the caller, picks the roll.
-const PARALLEL_LIMIT: f32 = 1.0e-5;
+/// Parallel vectors leave a cross product of up to about 2.6 epsilon after
+/// rounding, so below this limit rounding, not the caller, picks the roll.
+const PARALLEL_LIMIT: f32 = 4.0 * f32::EPSILON;
 
 /// Build a view matrix, refusing vectors that give no finite one or no roll.
 /// The view and `up` must both have a direction and stand at least
@@ -675,11 +676,15 @@ mod tests {
 
     #[test]
     fn look_at_takes_a_view_nearly_straight_down() {
-        // Offsetting the target a little is the usual way to look down along +Y.
+        // Offsetting the target a little is the usual way to look down along
+        // +Y. A map camera zoomed out to 1000 units keeps a sine of 1e-6,
+        // still several times the rounding noise, so its roll is well defined.
         let camera = Camera::perspective(1.0, 1.0, 0.1, 100.0).expect("camera");
-        camera
-            .look_at([0.0, 10.0, 0.0], [0.0, 0.0, 0.001], [0.0, 1.0, 0.0])
-            .expect("a view 0.0001 off the up axis still has a roll");
+        for height in [10.0, 1000.0] {
+            camera
+                .look_at([0.0, height, 0.0], [0.0, 0.0, 0.001], [0.0, 1.0, 0.0])
+                .expect("a top-down view offset by 0.001 has a roll");
+        }
     }
 
     #[test]

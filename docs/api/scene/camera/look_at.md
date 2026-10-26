@@ -12,10 +12,14 @@ called again after the Camera has been added to a Pass. The new view
 propagates live to every Material the Pass renders.
 
 The vectors must be finite, `target` must differ from `position`, and
-`up` can't be zero or lie on the line of view, forward or back. An `up`
-within about 0.0006° of that line counts as on it, since rounding would
-pick the roll. Any of those leaves no way to orient the camera, so the call
-returns `Err(CameraError::View)` and the Camera keeps its view.
+`up` can't be zero or lie on the line of view, forward or back. Any of
+those leaves no way to orient the camera, so the call returns
+`Err(CameraError::View)` and the Camera keeps its view.
+
+An `up` whose angle to that line has a sine below about 4.8e-7
+(4 × `f32::EPSILON`) counts as on it, since at that size rounding would
+pick the roll. A top-down camera 1000 units up, with its target offset by
+0.001, has a sine of 1e-6 and works.
 
 Internally builds the view matrix with `glam::Mat4::look_at_rh`. The
 result is a right-handed view matrix that pairs with the right-handed
