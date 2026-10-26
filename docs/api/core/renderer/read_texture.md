@@ -5,6 +5,7 @@ Read back the mip-0 contents of a registered texture as tightly-packed bytes in 
 - Works on native and on the web; the call awaits the GPU readback mapping.
 - Equivalent to calling [`Texture::get_image`] on the texture handle. Use this entry point when you only kept the `TextureId` around.
 - The texture must have `COPY_SRC` usage. Creation helpers like `create_storage_texture` enable it by default.
+- In JavaScript, `readTexture` first waits for the frames rendered before it to report their GPU errors and throws the first one, as [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render) describes.
 
 ## Example
 ```rust

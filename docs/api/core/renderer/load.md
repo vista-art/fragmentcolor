@@ -20,6 +20,10 @@ On the web, `render` can't wait for an upload, so it leaves pending uploads
 alone. Await `load` before the first `render`. Until then, a PBR Material
 draws with its 1×1 default maps.
 
+In JavaScript, `load` first waits for the frames rendered before it to
+report their GPU errors, and throws the first one, as
+[`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render) describes.
+
 ## Example
 
 ```rust

@@ -8,6 +8,8 @@ Python returns a NumPy array of shape `(height, width, 4)`, indexed `image[y, x]
 
 A readback that fails or times out returns an error: a thrown `Error` in JavaScript, a `FragmentColorError` in Python and Swift, and a `FragmentColorException` in Kotlin.
 
+In JavaScript, `getImage` also throws the GPU error of a frame rendered before it. It waits for that frame to report first, so a call right after a failed `render` throws, as [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render) describes.
+
 ## Example
 
 ```rust

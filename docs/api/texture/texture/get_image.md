@@ -6,6 +6,7 @@ Read back the mip-0 contents of this texture as tightly-packed bytes in the text
 - For multi-layer textures, layers come first in the byte layout (layer-major).
 - The texture must have `COPY_SRC` usage. Creation helpers like `create_storage_texture` enable it by default.
 - Python returns the same bytes as a uint8 NumPy array shaped `(height, width, bytes per pixel)`, with a leading layer axis for array textures. A float format reads as floats through `image.view(numpy.float32)`.
+- In JavaScript, `getImage` first waits for the frames rendered before it to report their GPU errors and throws the first one, as [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render) describes.
 
 ## Example
 ```rust
