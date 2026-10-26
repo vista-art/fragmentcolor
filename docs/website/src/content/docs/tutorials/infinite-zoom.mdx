@@ -356,7 +356,7 @@ Near `1e-1000`, the series skips about 32,140 of roughly 32,270 steps. A typical
 
 The iteration moves into a **compute shader**: GPU code that runs as a grid of invocations and writes its results to memory, with no triangles involved. Splitting the work this way lets the expensive part run at a lower resolution on a large screen, while a cheap second shader turns its results into colors. `@workgroup_size(8, 8)` groups the invocations into tiles of 8 by 8, `global_invocation_id` tells each one which pixel it handles, and the host's `set_compute_dispatch` (`setComputeDispatch` in JavaScript) asks for enough tiles to cover the image. Each invocation writes one smooth count into a storage buffer, `counts`.
 
-FragmentColor runs shaders in **passes**. A `Pass` holds shaders that draw or compute together, and `render` takes a list of passes and runs them in order; steps 2 and 3 handed `render` a lone `Shader`, which acts as a pass of its own. Any pass whose shader has a `@compute` entry point runs as a compute pass. The second pass reads `counts` and colors each pixel, with the palette's density and phase and the inside color as its uniforms. Comments such as `// 100..5000` give the [playground](/welcome/playground/#mandelbrot)'s sliders their ranges.
+FragmentColor runs shaders in **passes**. A `Pass` holds shaders that draw or compute together, and `render` takes a list of passes and runs them in order; steps 2 and 3 handed `render` a lone `Shader`, which acts as a pass of its own. Any pass whose shader has a `@compute` entry point runs as a compute pass. The second pass reads `counts` and colors each pixel, with the palette's density and phase and the inside color as its uniforms. Comments such as `// 100..5000` give the [playground](/#mandelbrot)'s sliders their ranges.
 
 <Figure height={270} alt="A flow from left to right. The compute pass, iterate.wgsl, runs one invocation per pixel, drawn as a grid of small squares grouped into workgroups of 8 by 8. An arrow leads to the storage buffer counts, which holds one number per pixel. A second arrow leads to the render pass, present.wgsl, and an arrow down from it reaches the canvas." caption="`iterate.wgsl` writes one smooth count per pixel into `counts`, and `present.wgsl` reads the same buffer to color the canvas.">
   <Rect at={[20, 30]} size={[210, 200]} tone="accent" />
@@ -400,7 +400,7 @@ How close are these pictures to the truth? A slow `BigInt` computation of the sa
 
 ## Where to go next
 
-The [playground](/welcome/playground/#mandelbrot) runs the last program with both shaders and its JavaScript host open for editing. Some changes to try there:
+The [playground](/#mandelbrot) runs the last program with both shaders and its JavaScript host open for editing. Some changes to try there:
 
 - Set `TARGET` to another Misiurewicz point. Other preperiods and periods work, as long as the sixteen digits start close enough for Newton's method; from too far away, it can settle on a nearby point with a shorter preperiod or period.
 - Raise `DEPTH`. Each extra power of ten adds about 32 orbit iterations to `setup`, each on wider integers. Past roughly `1e-2000`, the orbit needs a larger `ORBIT`. The GPU work per frame stays the same.

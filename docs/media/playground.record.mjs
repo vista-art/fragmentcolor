@@ -1,7 +1,7 @@
 // Records playground.webp: picking a demo from the cards, a shader edit that rebuilds as it is typed,
 // a generated slider, and the Rust tab. Redo it with `./fc capture record docs/media/playground.record.mjs`.
 export default {
-  page: "/welcome/playground/#shapes",
+  page: "/#shapes",
   viewportHeight: 760,
   fps: 8,
   quality: 55,

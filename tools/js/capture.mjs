@@ -263,7 +263,7 @@ async function captureThumbs(browser, origin, ids, options) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: scale * 2 });
     const errors = watchErrors(page);
     try {
-      await page.goto(`${origin}/welcome/playground/#${id}`, { waitUntil: "load" });
+      await page.goto(`${origin}/#${id}`, { waitUntil: "load" });
       await page.waitForFunction((id) => document.querySelector("fc-playground")?.dataset.active === id, id, {
         timeout: 60_000,
       });
@@ -299,7 +299,7 @@ async function circle(page, element, [x, y], duration) {
 async function listDemos(browser, origin) {
   const page = await browser.newPage();
   try {
-    await page.goto(`${origin}/welcome/playground/`, { waitUntil: "domcontentloaded" });
+    await page.goto(`${origin}/`, { waitUntil: "domcontentloaded" });
     return await page.evaluate(() => document.querySelector("fc-playground")?.dataset.demos?.split(",") ?? []);
   } finally {
     await page.close();
