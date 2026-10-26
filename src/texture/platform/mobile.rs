@@ -159,15 +159,6 @@ impl Mipmap {
     #[uniffi::method(name = "level")]
     #[lsp_doc("docs/api/texture/mipmap/level.md")]
     pub fn level_mobile(&self, index: u32) -> Result<Vec<u8>, FragmentColorError> {
-        let levels = self.levels();
-        let idx = index as usize;
-        if idx >= levels.len() {
-            return Err(FragmentColorError::Render(format!(
-                "level {} out of range; chain has {} levels",
-                idx,
-                levels.len()
-            )));
-        }
-        Ok(levels[idx].clone())
+        Ok(self.level(index as usize)?.to_vec())
     }
 }

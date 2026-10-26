@@ -560,6 +560,30 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     });
     same('readTexture after usage: COPY_SRC', (await renderer.readTexture(readable.id())).slice(0, 4), [1, 2, 3, 255]);
 
+    // An ImageData keeps its size and RGBA pixels, and Bgra8Unorm stores them blue first.
+    await rejects('createTexture(ImageData) with another size', () =>
+      renderer.createTexture(image, { size: [1, 1] }));
+    await rejects('createTexture(ImageData) as R8Unorm', () =>
+      renderer.createTexture(image, { format: TextureFormat.R8Unorm }));
+    const red = new ImageData(new Uint8ClampedArray([255, 0, 0, 255]), 1, 1);
+    const bgra = await renderer.createTexture(red, {
+      format: TextureFormat.Bgra8Unorm, mipmaps: false, usage: TextureUsage.COPY_SRC,
+    });
+    same('ImageData into Bgra8Unorm', await renderer.readTexture(bgra.id()), [0, 0, 255, 255]);
+    // A region object needs its extent, and its bounds in order.
+    const canvasTexture = await renderer.createStorageTexture([16, 16], TextureFormat.Rgba);
+    const patch = new Uint8Array(4 * 4 * 4);
+    canvasTexture.writeRegion(patch, { minX: 4, maxX: 8, minY: 0, maxY: 4 });
+    throws('writeRegion with reversed bounds', () =>
+      canvasTexture.writeRegion(patch, { minX: 8, maxX: 4, minY: 0, maxY: 4 }));
+    throws('writeRegion with misspelled keys', () => canvasTexture.writeRegion(patch, { x: 0, y: 0, w: 4, h: 4 }));
+    throws('writeRegion with minZ 2**32 - 1', () =>
+      canvasTexture.writeRegion(patch, { minX: 0, maxX: 4, minY: 0, maxY: 4, minZ: 4294967295 }));
+    throws('setSamplerOptions with compare 1.5', () => canvasTexture.setSamplerOptions({ compare: 1.5 }));
+    // An options object keeps its size under `size`, so a width beside format is an error.
+    await rejects('createTexture options with width and format', () =>
+      renderer.createTexture(new Uint8Array(4), { width: 1, height: 1, format: TextureFormat.Rgba8Unorm }));
+
     // Material texture setters take any texture source.
     Material.pbr().baseColorTexture(new Uint8Array([255, 0, 0, 255]), { size: [1, 1] });
     Material.pbr().baseColorTexture(fromImage);
@@ -603,6 +627,17 @@ struct Data { items: array<vec4<f32>, 2> };
     const chain = Mipmap.build(new Uint8Array(4 * 4 * 4), TextureFormat.Rgba8Unorm, [4, 4]);
     const levels = chain.levels();
     if (levels.length !== chain.count() || !(levels[0] instanceof Uint8Array)) fail('Mipmap.levels is wrong');
+
+    // Enum and index arguments are checked, where undefined, NaN, strings and fractions read as a code.
+    throws('Mipmap.level(1.5)', () => chain.level(1.5));
+    throws('Mipmap.level(NaN)', () => chain.level(NaN));
+    throws('Mipmap.build without a format', () => Mipmap.build(new Uint8Array(4 * 4 * 4), undefined, [4, 4]));
+    throws('Material.alphaMode(undefined)', () => Material.pbr().alphaMode(undefined));
+    throws('Material.alphaMode(0.5)', () => Material.pbr().alphaMode(0.5));
+    await rejects('createStorageTexture with a format string', () =>
+      renderer.createStorageTexture([4, 4], 'rgba8unorm'));
+    await rejects('createStorageTexture with usage 32', () =>
+      renderer.createStorageTexture([4, 4], TextureFormat.Rgba, null, 32));
 });
 
 // WebGPU reports a GPU error after render returns, so the next call throws it, once.

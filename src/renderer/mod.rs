@@ -211,15 +211,6 @@ impl Renderer {
     ) -> Result<crate::texture::Texture, RendererError> {
         let crate::TextureInput { data, options } = input.into();
         let context = self.context(None).await?;
-        let usage = options
-            .usage
-            .map(wgpu::TextureUsages::from_bits_truncate)
-            .unwrap_or(
-                wgpu::TextureUsages::STORAGE_BINDING
-                    | wgpu::TextureUsages::TEXTURE_BINDING
-                    | wgpu::TextureUsages::COPY_DST
-                    | wgpu::TextureUsages::COPY_SRC,
-            );
         let size = options.size.ok_or_else(|| {
             RendererError::CreateTextureError(
                 "create_storage_texture requires options.size — pass `(size, format)` or set the field explicitly".into(),
@@ -230,6 +221,19 @@ impl Renderer {
         // The size comes first, so a bad one reports the same error whatever the seed.
         let limits = context.device.limits();
         crate::texture::check_extent(&limits, wgpu_size, crate::texture::dimension(wgpu_size))?;
+        let usage = options.usage.map(crate::texture::check_usage).transpose()?;
+        let usage = usage.unwrap_or(
+            wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::COPY_SRC,
+        );
+        if usage.is_empty() {
+            return Err(crate::texture::TextureError::InvalidInput(
+                "create_storage_texture needs at least one usage flag".into(),
+            )
+            .into());
+        }
 
         let bytes_opt: Option<Vec<u8>> = match data {
             crate::TextureData::Empty => None,
@@ -243,29 +247,24 @@ impl Renderer {
         };
 
         if let Some(ref bytes) = bytes_opt {
+            crate::texture::check_upload(wgpu_format)?;
             if !usage.contains(wgpu::TextureUsages::COPY_DST) {
                 return Err(RendererError::CreateTextureError(
                     "create_storage_texture with seed data requires COPY_DST in the usage mask"
                         .into(),
                 ));
             }
-            let bpp = crate::texture::bytes_per_pixel(wgpu_format);
-            if bpp == 0 {
-                return Err(RendererError::CreateTextureError(
-                    "Unsupported format for create_storage_texture seed data (bytes-per-pixel is 0)"
-                        .into(),
-                ));
-            }
+            let bpp = crate::texture::texel_size(wgpu_format)?;
             let expected = (wgpu_size.width as usize)
                 .saturating_mul(wgpu_size.height as usize)
                 .saturating_mul(wgpu_size.depth_or_array_layers.max(1) as usize)
                 .saturating_mul(bpp as usize);
-            if bytes.len() < expected {
-                return Err(RendererError::CreateTextureError(format!(
-                    "Seed data is {} bytes but the texture needs {}",
-                    bytes.len(),
-                    expected
-                )));
+            if bytes.len() != expected {
+                return Err(crate::texture::TextureError::InvalidInput(format!(
+                    "seed data is {} bytes, and the texture takes {expected}",
+                    bytes.len()
+                ))
+                .into());
             }
         }
 
@@ -278,7 +277,7 @@ impl Renderer {
         )?;
 
         if let Some(bytes) = bytes_opt {
-            let bpp = crate::texture::bytes_per_pixel(wgpu_format);
+            let bpp = crate::texture::texel_size(wgpu_format)?;
             context.queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
                     aspect: wgpu::TextureAspect::All,
@@ -534,7 +533,9 @@ impl Renderer {
             let instance = self.instance().await;
             let adapter = platform::all::request_adapter(instance.as_ref(), surface).await?;
             let (device, queue) = platform::all::request_device(&adapter).await?;
-            let context = Arc::new(RenderContext::new(device, queue));
+            let mut context = RenderContext::new(device, queue);
+            context.adapter = Some(adapter.clone());
+            let context = Arc::new(context);
             let flags = adapter.get_downlevel_capabilities().flags;
             context.aligned_uniform_bindings.store(
                 !flags.contains(wgpu::DownlevelFlags::BUFFER_BINDINGS_NOT_16_BYTE_ALIGNED),
@@ -639,6 +640,9 @@ struct ComputePipelineKey {
 pub(crate) struct RenderContext {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
+    /// The adapter the device came from. A texture checks its format and copies
+    /// against what the adapter reports, since GLES and WebGL2 take less than WebGPU.
+    pub(crate) adapter: Option<wgpu::Adapter>,
 
     // Cache for RenderPipelines and ComputePipelines
     render_pipelines: DashMap<RenderPipelineKey, RenderPipeline>,
@@ -726,6 +730,7 @@ impl RenderContext {
         RenderContext {
             device,
             queue,
+            adapter: None,
 
             render_pipelines: DashMap::new(),
             compute_pipelines: DashMap::new(),

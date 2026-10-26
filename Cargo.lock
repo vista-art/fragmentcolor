@@ -1186,6 +1186,7 @@ dependencies = [
  "futures",
  "glam",
  "gltf",
+ "half",
  "heck",
  "image",
  "image-compare",

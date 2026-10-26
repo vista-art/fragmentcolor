@@ -1,4 +1,4 @@
-use crate::texture::{js_to_texture_bytes, read_texture_input, read_usage};
+use crate::texture::{js_to_texture_bytes, read_format, read_texture_input, read_usage};
 use crate::{
     Mesh, Pass, PassObject, Renderable, Renderer, RendererError, Scene, Shader, Size, Texture,
     TextureData, TextureTarget, target::CanvasTarget,
@@ -116,7 +116,7 @@ impl Renderer {
     pub async fn create_storage_texture_js(
         &self,
         size: &JsValue,
-        format: crate::TextureFormat,
+        #[wasm_bindgen(unchecked_param_type = "TextureFormat")] format: &JsValue,
         #[wasm_bindgen(
             unchecked_optional_param_type = "Uint8Array | ArrayBuffer | ArrayLike<number> | null"
         )]
@@ -127,6 +127,7 @@ impl Renderer {
     ) -> Result<crate::texture::Texture, JsError> {
         let given = |value: &JsValue| !value.is_undefined() && !value.is_null();
         let size: Size = size.try_into()?;
+        let format = read_format(format)?;
         let usage = usage.filter(given).as_ref().map(read_usage).transpose()?;
         let data = match data.filter(given) {
             Some(bytes) => TextureData::Bytes(js_to_texture_bytes(&bytes)?),

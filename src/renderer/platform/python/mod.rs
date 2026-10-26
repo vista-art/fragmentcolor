@@ -287,16 +287,20 @@ impl Renderer {
     }
 }
 
-/// Builds the `TextureInput` for `create_texture`. An ndarray fills in its
-/// own size unless `size` is given; the other kwargs apply to every source.
+/// Builds the `TextureInput` for `create_texture`. An ndarray brings its own
+/// size, which a `size` keyword must match; the other kwargs apply to every source.
 fn py_to_texture_spec(
     input: PyTextureSource<'_>,
     options: TextureKeywords<'_>,
 ) -> Result<crate::texture::TextureInput, PyErr> {
-    let mut spec = crate::texture::TextureInput::try_from(input)?;
-    if let Some(size) = options.size {
-        spec.options.size = Some(Size::try_from(size)?);
-    }
+    let size = options.size.map(Size::try_from).transpose()?;
+    let mut spec = match input {
+        PyTextureSource::Array(array) => {
+            crate::texture::ndarray_input(&array, size, options.format)?
+        }
+        source => crate::texture::TextureInput::try_from(source)?,
+    };
+    spec.options.size = spec.options.size.or(size);
     if let Some(format) = options.format {
         spec.options.format = format;
     }

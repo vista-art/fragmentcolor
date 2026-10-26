@@ -7,6 +7,7 @@ from fragmentcolor import (
     CompareFunction,
     FragmentColorError,
     Instance,
+    InvalidInputError,
     MalformedImageError,
     Mesh,
     OccludedSurfaceError,
@@ -363,6 +364,45 @@ def check_texture_inputs(renderer):
     print("create_texture takes every byte form, a Texture, and usage")
 
 
+def check_invalid_textures(renderer):
+    """Texture inputs fill the format they are given, or raise InvalidInputError."""
+    gray = np.arange(16, dtype=np.uint8).reshape(4, 4)
+    texture = renderer.create_texture(
+        gray, format=TextureFormat.R8Unorm, mipmaps=False, usage=TextureUsage.COPY_SRC
+    )
+    assert bytes(renderer.read_texture(texture.id())) == gray.tobytes(), "R8Unorm read the gray bytes"
+
+    def invalid(label, call):
+        try:
+            call()
+        except InvalidInputError as e:
+            print(f"{label} raised InvalidInputError: {e}")
+            return
+        raise AssertionError(f"{label} should raise InvalidInputError")
+
+    invalid("a gray ndarray as Rgba32Float", lambda: renderer.create_texture(gray, format=TextureFormat.Rgba32Float))
+    invalid("an ndarray with another size", lambda: renderer.create_texture(gray, size=[2, 8]))
+    invalid("an ndarray with 5 channels", lambda: renderer.create_texture(np.zeros((2, 2, 5), np.uint8)))
+    invalid("a 4D ndarray", lambda: renderer.create_texture(np.zeros((2, 2, 2, 4), np.uint8)))
+    print("create_texture fits an ndarray to its format and size")
+
+    storage = renderer.create_storage_texture([16, 16], TextureFormat.Rgba)
+    patch = bytes(4 * 4 * 4)
+    storage.write_region(patch, {"min_x": 4, "max_x": 8, "min_y": 0, "max_y": 4})
+    invalid("reversed bounds", lambda: storage.write_region(patch, {"min_x": 8, "max_x": 4, "max_y": 4}))
+    invalid("misspelled keys", lambda: storage.write_region(patch, {"x": 0, "w": 4, "h": 4}))
+    invalid("both region forms", lambda: storage.write_region(patch, {"x": 0, "width": 4, "height": 4, "max_x": 4}))
+    print("write_region reads a dict region or raises InvalidInputError")
+
+    invalid("a path with a size", lambda: renderer.create_texture("examples/assets/logo.png", size=[64, 64]))
+    invalid("usage 32", lambda: renderer.create_texture(bytes(16), size=[2, 2], usage=32))
+    invalid("storage usage 0", lambda: renderer.create_storage_texture([4, 4], TextureFormat.Rgba, usage=0))
+    invalid("storage on Depth32Float", lambda: renderer.create_storage_texture([4, 4], TextureFormat.Depth32Float))
+    invalid("raw bytes into Depth32Float", lambda: renderer.create_texture(bytes(64), size=[4, 4], format=TextureFormat.Depth32Float))
+    invalid("extra raw bytes", lambda: renderer.create_texture(bytes(20), size=[2, 2]))
+    print("create_texture and create_storage_texture refuse what wgpu would")
+
+
 def check_scene_errors():
     """A failed Scene.load raises a FragmentColorError that is also a RuntimeError."""
     for kind in (FragmentColorError, RuntimeError, SceneLoadError):
@@ -672,6 +712,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_number_errors()
     check_clear_color()
     check_texture_inputs(renderer)
+    check_invalid_textures(renderer)
     check_scene_errors()
     check_stub()
 

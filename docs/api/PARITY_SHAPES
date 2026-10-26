@@ -11,7 +11,7 @@
 docs/api/core/renderer/create_storage_texture.md kotlin Renderer.createStorageTexture: (Size, TextureFormat, bytes?, int?) -> Texture throws async | rust (into TextureInput) -> Texture throws async
 docs/api/core/renderer/create_storage_texture.md python Renderer.create_storage_texture: (PySize, TextureFormat, bytes?, PyTextureUsage?, int?) -> Texture throws | rust (into TextureInput) -> Texture throws async
 docs/api/core/renderer/create_storage_texture.md swift Renderer.createStorageTexture: (Size, TextureFormat, bytes?, int?) -> Texture throws async | rust (into TextureInput) -> Texture throws async
-docs/api/core/renderer/create_storage_texture.md web Renderer.createStorageTexture: (any, TextureFormat, any?, any?) -> Texture throws async | rust (into TextureInput) -> Texture throws async
+docs/api/core/renderer/create_storage_texture.md web Renderer.createStorageTexture: (any, any, any?, any?) -> Texture throws async | rust (into TextureInput) -> Texture throws async
 docs/api/core/renderer/create_target.md kotlin Renderer.createTarget: (int) -> WindowTarget throws | rust (into SurfaceTarget) -> RenderTarget throws async
 docs/api/core/renderer/create_target.md swift Renderer.createTarget: (int) -> WindowTarget throws | rust (into SurfaceTarget) -> RenderTarget throws async
 docs/api/core/renderer/create_texture.md kotlin Renderer.createTexture: (TextureInputMobile, TextureOptions) -> Texture throws async | rust (into TextureInput) -> Texture throws async
@@ -33,7 +33,7 @@ docs/api/scene/model/transform.md web Model.transform: () -> floats | rust () ->
 docs/api/texture/mipmap/build.md kotlin Mipmap.build: (bytes, TextureFormat, Size?) -> self throws | rust (into TextureInput) -> self throws
 docs/api/texture/mipmap/build.md python Mipmap.build: (PyTextureBytes, TextureFormat, PySize?) -> self throws | rust (into TextureInput) -> self throws
 docs/api/texture/mipmap/build.md swift Mipmap.build: (bytes, TextureFormat, Size?) -> self throws | rust (into TextureInput) -> self throws
-docs/api/texture/mipmap/build.md web Mipmap.build: (any, TextureFormat, any?) -> self throws | rust (into TextureInput) -> self throws
+docs/api/texture/mipmap/build.md web Mipmap.build: (any, any, any?) -> self throws | rust (into TextureInput) -> self throws
 docs/api/texture/mipmap/size.md kotlin Mipmap.size: () -> Size | rust () -> ints(2)
 docs/api/texture/mipmap/size.md swift Mipmap.size: () -> Size | rust () -> ints(2)
 docs/api/texture/mipmap/size.md web Mipmap.size: () -> Size | rust () -> ints(2)

@@ -18,6 +18,8 @@
 
 use std::ops::{BitOr, BitOrAssign};
 
+use crate::texture::TextureError;
+
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
@@ -153,6 +155,20 @@ impl BitOrAssign for TextureUsage {
     }
 }
 
+/// The bits of the five flags `TextureUsage` names, `COPY_SRC` to `RENDER_ATTACHMENT`.
+const NAMED: u32 = 0x1F;
+
+/// The wgpu usage for `bits` from a caller, which may set only the five named flags.
+pub(crate) fn check_usage(bits: u32) -> Result<wgpu::TextureUsages, TextureError> {
+    let unknown = bits & !NAMED;
+    if unknown != 0 {
+        return Err(TextureError::InvalidInput(format!(
+            "usage {bits:#x} sets bits {unknown:#x} outside the TextureUsage flags"
+        )));
+    }
+    Ok(wgpu::TextureUsages::from_bits_retain(bits))
+}
+
 impl From<TextureUsage> for wgpu::TextureUsages {
     fn from(usage: TextureUsage) -> wgpu::TextureUsages {
         wgpu::TextureUsages::from_bits_retain(usage.bits)
@@ -193,6 +209,26 @@ mod tests {
             let w: wgpu::TextureUsages = u.into();
             let back: TextureUsage = w.into();
             assert_eq!(u, back);
+        }
+    }
+
+    // Story: a usage takes the five named flags and nothing else, so wgpu-only
+    // bits such as TRANSIENT_ATTACHMENT (32) and STORAGE_ATOMIC (65536) are refused.
+    #[test]
+    fn check_usage_takes_the_named_flags() {
+        let all = TextureUsage::COPY_SRC
+            | TextureUsage::COPY_DST
+            | TextureUsage::TEXTURE_BINDING
+            | TextureUsage::STORAGE_BINDING
+            | TextureUsage::RENDER_ATTACHMENT;
+        let usage = check_usage(all.bits).expect("the named flags");
+        assert_eq!(usage.bits(), all.bits);
+        assert!(check_usage(0).expect("no flags").is_empty());
+        for bits in [32, 64, 65536, 1 << 20] {
+            assert!(
+                matches!(check_usage(bits), Err(TextureError::InvalidInput(_))),
+                "{bits} should be refused"
+            );
         }
     }
 }

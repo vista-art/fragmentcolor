@@ -6,8 +6,8 @@ use wasm_bindgen::prelude::*;
 
 use crate::platforms::web::read_unsigned;
 use crate::{
-    CompareFunction, Mipmap, SamplerOptions, Size, Texture, TextureFormat, TextureId, TextureInput,
-    TextureOptions,
+    CompareFunction, Mipmap, SamplerOptions, Size, Texture, TextureData, TextureFormat, TextureId,
+    TextureInput, TextureOptions,
 };
 
 #[wasm_bindgen]
@@ -29,11 +29,12 @@ impl Mipmap {
     #[lsp_doc("docs/api/texture/mipmap/build.md")]
     pub fn build_js(
         bytes: &JsValue,
-        format: TextureFormat,
+        #[wasm_bindgen(unchecked_param_type = "TextureFormat")] format: &JsValue,
         #[wasm_bindgen(unchecked_optional_param_type = "ArrayLike<number> | Size")] size: Option<
             JsValue,
         >,
     ) -> Result<Mipmap, JsError> {
+        let format = read_format(format)?;
         let bytes = crate::texture::js_to_texture_bytes(bytes)?;
         let size = size.filter(|size| !size.is_undefined() && !size.is_null());
         let size: Option<Size> = size.as_ref().map(Size::try_from).transpose()?;
@@ -76,20 +77,18 @@ impl Mipmap {
 
     /// Return the bytes for a single mip level as a `Uint8Array`. Use
     /// `count()` to discover the valid range. Returns an error if the
-    /// requested level is out of range.
+    /// requested level is out of range or not a whole number.
     #[wasm_bindgen(js_name = "level")]
     #[lsp_doc("docs/api/texture/mipmap/level.md")]
-    pub fn level_js(&self, index: u32) -> Result<js_sys::Uint8Array, JsError> {
-        let levels = self.levels();
-        let idx = index as usize;
-        if idx >= levels.len() {
-            return Err(JsError::new(&format!(
-                "level {} out of range; chain has {} levels",
-                idx,
-                levels.len()
-            )));
-        }
-        Ok(js_sys::Uint8Array::from(levels[idx].as_slice()))
+    pub fn level_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "number")] index: &JsValue,
+    ) -> Result<js_sys::Uint8Array, JsError> {
+        let number = index
+            .as_f64()
+            .ok_or_else(|| JsError::new("level index must be a number"))?;
+        let index = read_unsigned(number, "level index")?;
+        Ok(js_sys::Uint8Array::from(self.level(index as usize)?))
     }
 }
 
@@ -186,9 +185,8 @@ fn parse_compare(value: &JsValue) -> Result<Option<CompareFunction>, JsError> {
         };
         return Ok(Some(cf));
     }
-    if let Some(n) = value.as_f64() {
-        let code = n as i32;
-        let cf = match code {
+    if let Some(number) = value.as_f64() {
+        let cf = match read_unsigned(number, "compare")? {
             1 => CompareFunction::Never,
             2 => CompareFunction::Less,
             3 => CompareFunction::Equal,
@@ -233,9 +231,9 @@ pub(crate) fn js_to_sampler_options(value: &JsValue) -> Result<SamplerOptions, J
     })
 }
 
-/// Reads a texture source and its options, as `createTexture` and the Material
-/// texture setters take them. An `ImageData` or canvas source carries its own
-/// size, which applies when the options don't set one.
+/// Reads a texture source and its options, as `createTexture` and the Material setters take them.
+/// An `ImageData` or canvas brings its own size and RGBA pixels, so the options may repeat
+/// that size and pick an 8-bit RGBA or BGRA format, which stores blue first.
 pub(crate) fn read_texture_input(
     source: &JsValue,
     options: Option<&JsValue>,
@@ -244,18 +242,33 @@ pub(crate) fn read_texture_input(
     if let Some(options) = options.filter(|options| !options.is_undefined() && !options.is_null()) {
         let source_size = input.options.size;
         input.options = read_texture_options(options)?;
+        if let (Some(own), TextureData::Bytes(pixels)) = (source_size, &mut input.data) {
+            crate::texture::check_pixels(own, &input.options)?;
+            crate::texture::swap_bgra(pixels, input.options.format.into());
+        }
         input.options.size = input.options.size.or(source_size);
     }
     Ok(input)
 }
 
-/// Reads texture options: a bare `TextureFormat`, a bare size such as `[w, h]`,
-/// or an object `{ size?, format?, mipmaps?, sampler?, usage? }`.
+/// The keys of a texture options object.
+const OPTION_KEYS: [&str; 5] = ["size", "format", "mipmaps", "sampler", "usage"];
+
+/// Reads texture options: a bare `TextureFormat`, a bare size like `[w, h]`,
+/// or an object `{ size?, format?, mipmaps?, sampler?, usage? }`, which reads
+/// as options whenever it holds one of those keys, and then refuses a `width`.
 fn read_texture_options(value: &JsValue) -> Result<TextureOptions, JsError> {
-    if let Some(code) = value.as_f64() {
-        return Ok(TextureOptions::from(read_format(code)?));
+    if value.as_f64().is_some() {
+        return Ok(TextureOptions::from(read_format(value)?));
     }
-    if let Ok(size) = Size::try_from(value) {
+    let given = |keys: &[&str]| keys.iter().any(|key| read_field(value, key).is_some());
+    let options = value.is_object() && given(&OPTION_KEYS);
+    if options && given(&["width", "height", "depth"]) {
+        return Err(JsError::new(
+            "texture options take the size under `size`, as in { size: [w, h] }",
+        ));
+    }
+    if !options && let Ok(size) = Size::try_from(value) {
         return Ok(TextureOptions::from(size));
     }
     if !value.is_object() {
@@ -268,10 +281,7 @@ fn read_texture_options(value: &JsValue) -> Result<TextureOptions, JsError> {
         options.size = Some(Size::try_from(&size)?);
     }
     if let Some(format) = read_field(value, "format") {
-        let code = format
-            .as_f64()
-            .ok_or_else(|| JsError::new("options.format must be a TextureFormat"))?;
-        options.format = read_format(code)?;
+        options.format = read_format(&format)?;
     }
     if let Some(mipmaps) = read_field(value, "mipmaps") {
         options.mipmaps = mipmaps
@@ -305,9 +315,13 @@ fn read_field(object: &JsValue, name: &str) -> Option<JsValue> {
         .filter(|value| !value.is_undefined() && !value.is_null())
 }
 
-/// Maps a `TextureFormat` code from JS to the format. The codes follow the
-/// variant order in `src/texture/format.rs`.
-fn read_format(code: f64) -> Result<TextureFormat, JsError> {
+/// Maps a `TextureFormat` from JS, a number in the variant order of
+/// `src/texture/format.rs`, to the format. Anything else is an error,
+/// where wasm-bindgen would read `undefined`, `NaN` or a fraction as a code.
+pub(crate) fn read_format(value: &JsValue) -> Result<TextureFormat, JsError> {
+    let code = value
+        .as_f64()
+        .ok_or_else(|| JsError::new(&format!("format must be a TextureFormat, got {value:?}")))?;
     let format = match read_unsigned(code, "format")? {
         0 => TextureFormat::R8Unorm,
         1 => TextureFormat::Rg8Unorm,

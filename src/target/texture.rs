@@ -66,7 +66,7 @@ impl Target for TextureTarget {
     async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
         let texture = self.registration.object();
         let mut pixels = crate::texture::read_pixels(&self.context, &texture).await?;
-        swap_bgra_to_rgba(&mut pixels, texture.format());
+        crate::texture::swap_bgra(&mut pixels, texture.format());
         Ok(pixels)
     }
 }
@@ -75,17 +75,6 @@ impl TextureTarget {
     #[lsp_doc("docs/api/targets/texture_target/texture.md")]
     pub fn texture(&self) -> crate::texture::Texture {
         crate::texture::Texture::new(self.context.clone(), self.registration.clone())
-    }
-}
-
-fn swap_bgra_to_rgba(pixels: &mut [u8], format: wgpu::TextureFormat) {
-    if matches!(
-        format,
-        wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb
-    ) {
-        for px in pixels.as_chunks_mut::<4>().0 {
-            px.swap(0, 2);
-        }
     }
 }
 

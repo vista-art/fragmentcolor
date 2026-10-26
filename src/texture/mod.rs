@@ -22,9 +22,11 @@ pub(crate) mod ktx2_loader;
 
 mod platform;
 #[cfg(python)]
-pub(crate) use platform::{PySamplerOptions, PyTextureId, PyTextureSource, PyTextureUsage};
+pub(crate) use platform::{
+    PySamplerOptions, PyTextureId, PyTextureSource, PyTextureUsage, ndarray_input,
+};
 #[cfg(wasm)]
-pub(crate) use platform::{read_texture_input, read_usage};
+pub(crate) use platform::{read_format, read_texture_input, read_usage};
 
 use crate::{RenderContext, Size};
 use image::{DynamicImage, GenericImageView};
@@ -47,6 +49,7 @@ pub use region::TextureRegion;
 pub use region::TextureRegionMobile;
 pub(crate) use registration::Registration;
 pub(crate) use resize::{check_extent, check_plane, check_size, resize};
+pub(crate) use usage::check_usage;
 
 pub mod meta;
 pub use meta::{
@@ -93,8 +96,8 @@ pub enum TextureData {
 /// to [`crate::Renderer::create_texture`] (the unified entry point
 /// dispatches via `From<Mipmap> for TextureInput`).
 ///
-/// Levels are tightly-packed bytes, level 0 first, with `bytes_per_pixel(format) *
-/// max(1, base_w >> level) * max(1, base_h >> level)` bytes per level.
+/// Levels are tightly-packed bytes, level 0 first, with the format's bytes per pixel
+/// times `max(1, base_w >> level) * max(1, base_h >> level)` bytes per level.
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Object))]
@@ -146,6 +149,7 @@ impl Mipmap {
     #[lsp_doc("docs/api/texture/mipmap/build.md")]
     pub fn build(input: impl Into<crate::TextureInput>) -> Result<Mipmap, TextureError> {
         let crate::TextureInput { data, options } = input.into();
+        check_source(&data, options.size)?;
         let public_format = options.format;
         let wfmt: wgpu::TextureFormat = public_format.into();
         if !supports_cpu_mipmaps(wfmt) {
@@ -165,9 +169,15 @@ impl Mipmap {
                             "build: size must be non-zero in both dimensions".into(),
                         ));
                     }
-                    let bpp = bytes_per_pixel(wfmt) as usize;
+                    if extent.depth_or_array_layers != 1 {
+                        return Err(TextureError::InvalidInput(format!(
+                            "build: a mip chain resamples one layer, got a depth of {}",
+                            extent.depth_or_array_layers
+                        )));
+                    }
+                    let bpp = texel_size(wfmt)? as usize;
                     let expected = bpp * (extent.width as usize) * (extent.height as usize);
-                    if bytes.len() < expected {
+                    if bytes.len() != expected {
                         return Err(TextureError::InvalidInput(format!(
                             "build: expected {} bytes for {}x{} @ {} bpp, got {}",
                             expected,
@@ -177,7 +187,7 @@ impl Mipmap {
                             bytes.len()
                         )));
                     }
-                    bytes_as_image(&bytes[..expected], extent.width, extent.height, wfmt)?
+                    bytes_as_image(&bytes, extent.width, extent.height, wfmt)?
                 }
             },
             TextureData::Path(path) => image::open(path)?,
@@ -716,10 +726,8 @@ pub(crate) struct TextureObject {
 // platform-specific bindings live under texture/platform/{python,web}.rs
 
 impl TextureObject {
-    /// Create a texture with an explicit usage mask (e.g., storage textures).
-    /// Validates that the active device's enabled features cover `format`
-    /// when `usage` includes `TEXTURE_BINDING`; returns
-    /// [`TextureError::UnsupportedFormatForUsage`] if not.
+    /// Create a texture with an explicit usage mask, such as a storage texture.
+    /// It fails with a typed error when the device can't make `format` with `usage`.
     pub fn new(
         context: &RenderContext,
         size: wgpu::Extent3d,
@@ -727,7 +735,7 @@ impl TextureObject {
         usage: wgpu::TextureUsages,
         options: SamplerOptions,
     ) -> Result<Self, TextureError> {
-        check_format(context.device.features(), format, usage)?;
+        check_format(context, format, usage, dimension(size))?;
         let descriptor = Self::texture_descriptor("Generic Texture", size, format, usage, 1, 1); // @TODO mip_count, sample_count
         let inner = context.device.create_texture(&descriptor);
         let size = inner.size();
@@ -752,6 +760,7 @@ impl TextureObject {
         input: TextureInput,
     ) -> Result<Self, TextureError> {
         let TextureInput { data, options } = input;
+        check_source(&data, options.size)?;
         let format_override = if matches!(options.format, crate::TextureFormat::Rgba) {
             None
         } else {
@@ -761,7 +770,7 @@ impl TextureObject {
         let opt_size = options.size;
         let opt_format = options.format;
         let sampler = options.sampler;
-        let usage = source_usage(options.usage);
+        let usage = source_usage(options.usage)?;
 
         // URL variants need an async fetch on the calling thread; everything
         // else runs on the background worker. Pre-fetch and forward the
@@ -798,12 +807,12 @@ impl TextureObject {
                             usage,
                         )
                     } else {
-                        let image = image::load_from_memory(&bytes)?;
+                        let image = decode(&bytes, &context.device.limits())?;
                         Self::from_image(context.as_ref(), &image, format_override, mipmaps, usage)
                     }
                 }
                 TextureData::Path(path) => {
-                    let image = image::open(&path)?;
+                    let image = decode(&read_file(&path)?, &context.device.limits())?;
                     Self::from_image(context.as_ref(), &image, format_override, mipmaps, usage)
                 }
                 TextureData::Prepared(chain) => Self::from_chain(context.as_ref(), chain, usage),
@@ -841,18 +850,25 @@ impl TextureObject {
         generate_mipmaps: bool,
         usage: wgpu::TextureUsages,
     ) -> Result<Self, TextureError> {
-        check_format(context.device.features(), format, usage)?;
+        check_format(context, format, usage, dimension(size))?;
+        check_upload(format)?;
         check_extent(&context.device.limits(), size, dimension(size))?;
-        let bpp = bytes_per_pixel(format);
+        let bpp = texel_size(format)?;
 
         let expected = (size.width as usize)
             .saturating_mul(size.height as usize)
             .saturating_mul(size.depth_or_array_layers as usize)
             .saturating_mul(bpp as usize);
-        if data.len() < expected {
-            return Err(TextureError::CreateTextureError(
-                "Insufficient raw data for declared size/format".into(),
-            ));
+        if data.len() != expected {
+            let wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: depth,
+            } = size;
+            return Err(TextureError::InvalidInput(format!(
+                "raw bytes are {} long, and {width}x{height}x{depth} {format:?} takes {expected}",
+                data.len()
+            )));
         }
 
         // CPU mipmaps resample one slice, so a 3D texture keeps one level and every slice.
@@ -886,9 +902,8 @@ impl TextureObject {
     /// `format_override = None` infers the format from `image.color()`. The image is
     /// re-decoded to match the target format (e.g. `R16Unorm` triggers `to_luma16()`,
     /// preserving 16-bit precision). Mipmaps are generated CPU-side via
-    /// `image::imageops::resize` for every format the dispatcher recognizes — see
-    /// `supports_cpu_mipmaps`. Unrecognized formats fall back to writing
-    /// `to_rgba8` bytes as a single level (best-effort, may misrender for non-RGBA8 layouts).
+    /// `image::imageops::resize` for every format `supports_cpu_mipmaps` takes,
+    /// and the float formats get one level. Any other format is refused.
     fn from_image(
         context: &RenderContext,
         image: &DynamicImage,
@@ -904,7 +919,9 @@ impl TextureObject {
             depth_or_array_layers: 1,
         };
         let format = format_override.unwrap_or_else(|| infer_format(image.color()));
-        check_format(context.device.features(), format, usage)?;
+        check_format(context, format, usage, dimension(size))?;
+        check_upload(format)?;
+        check_decode(format)?;
         check_extent(&context.device.limits(), size, dimension(size))?;
 
         let want_mips = generate_mipmaps && supports_cpu_mipmaps(format);
@@ -916,7 +933,7 @@ impl TextureObject {
         let descriptor = Self::texture_descriptor(label, size, format, usage, 1, mip_level_count);
         let texture = context.device.create_texture(&descriptor);
 
-        write_image_levels(context, image, &texture, size, format, mip_level_count);
+        write_image_levels(context, image, &texture, size, format, mip_level_count)?;
 
         let sampler = create_default_sampler(&context.device);
 
@@ -950,14 +967,8 @@ impl TextureObject {
         }
         let levels = chain.levels.as_slice();
         let format = chain.format;
-        check_format(context.device.features(), format, usage)?;
-        let bpp = bytes_per_pixel(format);
-        if bpp == 0 {
-            return Err(TextureError::CreateTextureError(format!(
-                "Mipmap format {:?} has zero bytes-per-pixel",
-                format
-            )));
-        }
+        check_format(context, format, usage, wgpu::TextureDimension::D2)?;
+        let bpp = texel_size(format)?;
 
         for (i, level_bytes) in levels.iter().enumerate() {
             let level_w = (w >> i).max(1);
@@ -1214,16 +1225,49 @@ fn read_ktx2_file(
     ktx2_loader::from_ktx2_bytes(context, &bytes, usage)
 }
 
+/// Checks that a `size` comes only with raw pixel bytes,
+/// since a path, a URL, a KTX2 file and a mip chain each carry their own.
+fn check_source(data: &TextureData, size: Option<Size>) -> Result<(), TextureError> {
+    let sized = match data {
+        TextureData::Bytes(bytes) => ktx2_loader::is_ktx2(bytes),
+        TextureData::Path(_)
+        | TextureData::Url(_)
+        | TextureData::Ktx2Bytes(_)
+        | TextureData::Ktx2Path(_)
+        | TextureData::Ktx2Url(_)
+        | TextureData::Prepared(_) => true,
+        TextureData::Empty | TextureData::CloneOf(_) => false,
+    };
+    match sized && size.is_some() {
+        true => Err(TextureError::InvalidInput(
+            "a size describes raw pixel bytes; a path, URL, KTX2 file or Mipmap takes its size from the file".into(),
+        )),
+        false => Ok(()),
+    }
+}
+
+/// Decodes an encoded image once its header's size fits the device's `limits`,
+/// so an image too large to upload is refused before its pixels take any memory.
+fn decode(bytes: &[u8], limits: &wgpu::Limits) -> Result<DynamicImage, TextureError> {
+    let format = image::guess_format(bytes)?;
+    let reader = || image::ImageReader::with_format(std::io::Cursor::new(bytes), format);
+    let (width, height) = reader().into_dimensions()?;
+    check_size(width, height, limits.max_texture_dimension_2d)?;
+    Ok(reader().decode()?)
+}
+
+/// The bytes of the file at `path`. A failed read is an image error, as `image::open` reports it.
+fn read_file(path: &std::path::Path) -> image::ImageResult<Vec<u8>> {
+    Ok(std::fs::read(path)?)
+}
+
 /// Usage of a texture made from source data.
 /// It always holds `TEXTURE_BINDING | COPY_DST`, since the upload and sampling need them,
 /// plus any bits from `TextureOptions::usage`, such as `COPY_SRC` for `read_texture`.
-pub(crate) fn source_usage(extra: Option<u32>) -> wgpu::TextureUsages {
+pub(crate) fn source_usage(extra: Option<u32>) -> Result<wgpu::TextureUsages, TextureError> {
     let required = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
-    required
-        | extra.map_or(
-            wgpu::TextureUsages::empty(),
-            wgpu::TextureUsages::from_bits_truncate,
-        )
+    let extra = extra.map(check_usage).transpose()?;
+    Ok(required | extra.unwrap_or(wgpu::TextureUsages::empty()))
 }
 
 /// The dimension a texture of `size` gets: 2D with one layer, and 3D with more.
@@ -1262,46 +1306,99 @@ pub(crate) fn supports_cpu_mipmaps(format: wgpu::TextureFormat) -> bool {
     )
 }
 
-/// Return the wgpu feature required to use `format` with `TEXTURE_BINDING`,
-/// if any. Returns `None` for formats that don't gate on a feature (the
-/// common 8-bit and float formats). The list mirrors the wgpu validation
-/// rules and grows as wgpu adds new format-feature pairings.
-pub(crate) fn format_feature(format: wgpu::TextureFormat) -> Option<wgpu::Features> {
-    use wgpu::TextureFormat as F;
-    match format {
-        F::R16Unorm
-        | F::Rg16Unorm
-        | F::Rgba16Unorm
-        | F::R16Snorm
-        | F::Rg16Snorm
-        | F::Rgba16Snorm => Some(wgpu::Features::TEXTURE_FORMAT_16BIT_NORM),
-        _ => None,
+/// What the device lets a texture of `format` do, as wgpu checks it.
+/// A backend below WebGPU, such as GLES or WebGL2, reports its own table,
+/// and every other backend takes the WebGPU baseline for the device's features.
+pub(crate) fn format_features(
+    context: &RenderContext,
+    format: wgpu::TextureFormat,
+) -> wgpu::TextureFormatFeatures {
+    let features = context.device.features();
+    let reports = |adapter: &&wgpu::Adapter| {
+        let flags = adapter.get_downlevel_capabilities().flags;
+        features.contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
+            || !flags.contains(wgpu::DownlevelFlags::WEBGPU_TEXTURE_FORMAT_SUPPORT)
+    };
+    match context.adapter.as_ref().filter(reports) {
+        Some(adapter) => adapter.get_texture_format_features(format),
+        None => format.guaranteed_format_features(features),
     }
 }
 
-/// Fail-fast guard: if `usage` includes `TEXTURE_BINDING` and the active
-/// device doesn't have the wgpu feature required for `format`, return a
-/// typed error instead of letting `device.create_texture` produce a
-/// silently-invalid texture that detonates on first `create_view` /
-/// copy / sample. Skips the check when the texture isn't bindable as a
-/// sampled texture (the format-feature pairings only gate that usage).
-/// Called from every `TextureObject` constructor that takes a
-/// user-controlled format.
+/// Checks the device makes `format` with `usage` and `dimension`,
+/// so a texture wgpu would refuse never reaches `device.create_texture`.
 pub(crate) fn check_format(
-    device_features: wgpu::Features,
+    context: &RenderContext,
     format: wgpu::TextureFormat,
     usage: wgpu::TextureUsages,
+    dimension: wgpu::TextureDimension,
 ) -> Result<(), TextureError> {
-    if !usage.contains(wgpu::TextureUsages::TEXTURE_BINDING) {
+    check_feature(context.device.features(), format)?;
+    let allowed = format_features(context, format).allowed_usages;
+    check_support(allowed, format, usage, dimension)
+}
+
+/// Checks that the device's `features` hold every feature `format` needs.
+pub(crate) fn check_feature(
+    features: wgpu::Features,
+    format: wgpu::TextureFormat,
+) -> Result<(), TextureError> {
+    let missing = format.required_features() - features;
+    if missing.is_empty() {
         return Ok(());
     }
-    if let Some(feature) = format_feature(format)
-        && !device_features.contains(feature)
-    {
-        return Err(TextureError::UnsupportedFormatForUsage {
-            format,
-            missing_feature: feature,
-        });
+    Err(TextureError::UnsupportedFormatForUsage {
+        format,
+        missing_feature: missing,
+    })
+}
+
+/// Checks that a copy can fill a texture of `format` with pixels.
+/// wgpu takes no buffer copy into a depth format, so such a texture is drawn into instead.
+pub(crate) fn check_upload(format: wgpu::TextureFormat) -> Result<(), TextureError> {
+    match format.is_depth_stencil_format() {
+        true => Err(TextureError::InvalidInput(format!(
+            "{format:?} takes no uploaded pixels, render into it instead"
+        ))),
+        false => Ok(()),
+    }
+}
+
+/// Checks that a decoded image converts into `format`: a format the CPU mipmap
+/// path fills, or `Rgba16Float` or `Rgba32Float`. Integer formats take raw bytes.
+pub(crate) fn check_decode(format: wgpu::TextureFormat) -> Result<(), TextureError> {
+    let float = matches!(
+        format,
+        wgpu::TextureFormat::Rgba16Float | wgpu::TextureFormat::Rgba32Float
+    );
+    match float || supports_cpu_mipmaps(format) {
+        true => Ok(()),
+        false => Err(TextureError::InvalidInput(format!(
+            "can't decode an image into {format:?}, pass raw bytes with a size"
+        ))),
+    }
+}
+
+/// Checks `usage` against the usages `allowed` for `format`,
+/// and that a depth format makes a 2D texture, the only kind it has.
+pub(crate) fn check_support(
+    allowed: wgpu::TextureUsages,
+    format: wgpu::TextureFormat,
+    usage: wgpu::TextureUsages,
+    dimension: wgpu::TextureDimension,
+) -> Result<(), TextureError> {
+    let missing = usage - allowed;
+    if !missing.is_empty() {
+        let names: Vec<&str> = missing.iter_names().map(|(name, _)| name).collect();
+        return Err(TextureError::InvalidInput(format!(
+            "a {format:?} texture can't take the usage {}",
+            names.join(" | ")
+        )));
+    }
+    if format.is_depth_stencil_format() && dimension != wgpu::TextureDimension::D2 {
+        return Err(TextureError::InvalidInput(format!(
+            "a {format:?} texture has one layer, so its depth must be 1"
+        )));
     }
     Ok(())
 }
@@ -1317,8 +1414,8 @@ pub(crate) fn infer_format(color: image::ColorType) -> wgpu::TextureFormat {
         image::ColorType::La16 => wgpu::TextureFormat::Rg16Unorm,
         image::ColorType::Rgb16 => wgpu::TextureFormat::Rgba16Unorm,
         image::ColorType::Rgba16 => wgpu::TextureFormat::Rgba16Unorm,
-        image::ColorType::Rgb32F => wgpu::TextureFormat::Rgba32Float,
-        image::ColorType::Rgba32F => wgpu::TextureFormat::Rgba32Float,
+        image::ColorType::Rgb32F => wgpu::TextureFormat::Rgba16Float,
+        image::ColorType::Rgba32F => wgpu::TextureFormat::Rgba16Float,
         _ => wgpu::TextureFormat::Rgba8UnormSrgb,
     }
 }
@@ -1330,10 +1427,8 @@ pub(crate) fn infer_format(color: image::ColorType) -> wgpu::TextureFormat {
 /// silently going through `to_rgba8`.
 ///
 /// Each branch picks the matching `image` crate decoder so the channel layout and
-/// bytes-per-pixel agree with the wgpu format. Unrecognized formats fall back to
-/// writing `to_rgba8` bytes as a single level — best-effort, may misrender for
-/// non-RGBA8 layouts (caller should have caught this via `supports_cpu_mipmaps`
-/// when picking `mip_level_count`).
+/// bytes-per-pixel agree with the wgpu format, and any format [`check_decode`] refuses
+/// is an error here too, though from_image checks it before it makes the texture.
 pub(crate) fn write_image_levels(
     context: &RenderContext,
     image: &DynamicImage,
@@ -1341,7 +1436,7 @@ pub(crate) fn write_image_levels(
     full_size: wgpu::Extent3d,
     format: wgpu::TextureFormat,
     mip_level_count: u32,
-) {
+) -> Result<(), TextureError> {
     match format {
         wgpu::TextureFormat::Rgba8Unorm
         | wgpu::TextureFormat::Rgba8UnormSrgb
@@ -1349,7 +1444,7 @@ pub(crate) fn write_image_levels(
         | wgpu::TextureFormat::Bgra8UnormSrgb => {
             write_pixel_levels(
                 context,
-                image.to_rgba8(),
+                decode_rgba8(image, format),
                 texture,
                 full_size,
                 mip_level_count,
@@ -1406,29 +1501,130 @@ pub(crate) fn write_image_levels(
                 8,
             );
         }
-        _ => {
-            log::warn!(
-                "from_image: unsupported texture format {:?}; writing to_rgba8 bytes as a single level (channels and bytes-per-pixel may not match the texture)",
-                format
-            );
-            let source = image.to_rgba8();
-            context.queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    aspect: wgpu::TextureAspect::All,
-                    texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                },
-                source.as_raw(),
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(4 * full_size.width),
-                    rows_per_image: Some(full_size.height),
-                },
+        wgpu::TextureFormat::Rgba32Float => {
+            write_pixel_levels(
+                context,
+                image.to_rgba32f(),
+                texture,
                 full_size,
+                mip_level_count,
+                16,
             );
         }
+        wgpu::TextureFormat::Rgba16Float => {
+            let halves: Vec<u16> = image
+                .to_rgba32f()
+                .as_raw()
+                .iter()
+                .map(|value| half::f16::from_f32(*value).to_bits())
+                .collect();
+            let base: image::ImageBuffer<image::Rgba<u16>, Vec<u16>> =
+                image::ImageBuffer::from_raw(full_size.width, full_size.height, halves)
+                    .ok_or_else(|| {
+                        TextureError::CreateTextureError("Failed to wrap Rgba16Float pixels".into())
+                    })?;
+            // One level only: a resample would read the half floats as integers.
+            write_pixel_levels(context, base, texture, full_size, 1, 8);
+        }
+        _ => check_decode(format)?,
     }
+    Ok(())
+}
+
+/// The texel bytes and size of a `uint8` array of `shape` for `format`.
+/// Channels that match the format's bytes per pixel pass as they are, and
+/// 1 or 3 channels gain an opaque alpha for an 8-bit RGBA or BGRA format.
+/// The shape, `(h, w)` or `(h, w, channels)`, is checked before `read` collects the bytes.
+#[cfg(any(python, test))]
+pub(crate) fn array_pixels(
+    shape: &[usize],
+    read: impl FnOnce() -> Vec<u8>,
+    format: wgpu::TextureFormat,
+) -> Result<(Vec<u8>, Size), TextureError> {
+    let invalid = || {
+        TextureError::InvalidInput(format!(
+            "an ndarray of shape {shape:?} doesn't fit a {format:?} texture"
+        ))
+    };
+    let (height, width, channels) = match *shape {
+        [height, width] => (height, width, 1),
+        [height, width, channels] => (height, width, channels),
+        _ => return Err(invalid()),
+    };
+    let side = |value: usize| u32::try_from(value).ok().ok_or_else(invalid);
+    let size = Size::new(side(width)?, side(height)?, None);
+    if channels == texel_size(format)? as usize {
+        return Ok((read(), size));
+    }
+    if !holds_rgba8(format) || !matches!(channels, 1 | 3) {
+        return Err(invalid());
+    }
+    let length = width
+        .checked_mul(height)
+        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or_else(invalid)?;
+    let mut pixels = Vec::with_capacity(length);
+    for texel in read().chunks_exact(channels) {
+        match *texel {
+            [value] => pixels.extend_from_slice(&[value, value, value, 255]),
+            [red, green, blue] => pixels.extend_from_slice(&[red, green, blue, 255]),
+            _ => return Err(invalid()),
+        }
+    }
+    Ok((pixels, size))
+}
+
+/// Checks options for a source with RGBA8 pixels at the size `own`,
+/// such as a JavaScript `ImageData` or canvas. A different size, or a
+/// format other than 8-bit RGBA or BGRA, would misread the pixels it holds.
+#[cfg(any(wasm, test))]
+pub(crate) fn check_pixels(own: Size, options: &TextureOptions) -> Result<(), TextureError> {
+    let flat = |size: Size| (size.width, size.height, size.depth.unwrap_or(1));
+    if let Some(size) = options.size.filter(|size| flat(*size) != flat(own)) {
+        return Err(TextureError::InvalidInput(format!(
+            "size {size:?} differs from the source's {}x{}",
+            own.width, own.height
+        )));
+    }
+    let format = wgpu::TextureFormat::from(options.format);
+    match holds_rgba8(format) {
+        true => Ok(()),
+        false => Err(TextureError::InvalidInput(format!(
+            "the source holds RGBA8 pixels, which a {format:?} texture can't take"
+        ))),
+    }
+}
+
+/// True for the formats that store 8-bit RGBA or BGRA texels.
+#[cfg(any(python, wasm, test))]
+fn holds_rgba8(format: wgpu::TextureFormat) -> bool {
+    matches!(
+        format,
+        wgpu::TextureFormat::Rgba8Unorm
+            | wgpu::TextureFormat::Rgba8UnormSrgb
+            | wgpu::TextureFormat::Bgra8Unorm
+            | wgpu::TextureFormat::Bgra8UnormSrgb
+    )
+}
+
+/// Swaps red and blue in 4-byte `pixels` when `format` stores BGRA.
+/// The swap is its own inverse, so it turns RGBA into BGRA and back.
+pub(crate) fn swap_bgra(pixels: &mut [u8], format: wgpu::TextureFormat) {
+    if matches!(
+        format,
+        wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb
+    ) {
+        for pixel in pixels.as_chunks_mut::<4>().0 {
+            pixel.swap(0, 2);
+        }
+    }
+}
+
+/// The image as 4-byte pixels in the channel order of `format`, blue first for BGRA.
+fn decode_rgba8(image: &DynamicImage, format: wgpu::TextureFormat) -> image::RgbaImage {
+    let mut pixels = image.to_rgba8();
+    swap_bgra(&mut pixels, format);
+    pixels
 }
 
 /// Wrap raw pixel bytes (already laid out for `format` at `width x height`)
@@ -1453,10 +1649,15 @@ pub(crate) fn bytes_as_image(
         wgpu::TextureFormat::Rgba8Unorm
         | wgpu::TextureFormat::Rgba8UnormSrgb
         | wgpu::TextureFormat::Bgra8Unorm
-        | wgpu::TextureFormat::Bgra8UnormSrgb => DynamicImage::ImageRgba8(
-            image::RgbaImage::from_raw(width, height, bytes[..pixel_count * 4].to_vec())
-                .ok_or_else(|| wrap_err("RgbaImage"))?,
-        ),
+        | wgpu::TextureFormat::Bgra8UnormSrgb => {
+            // The image holds RGBA, so BGRA bytes swap here and back when the chain is built.
+            let mut pixels = bytes[..pixel_count * 4].to_vec();
+            swap_bgra(&mut pixels, format);
+            DynamicImage::ImageRgba8(
+                image::RgbaImage::from_raw(width, height, pixels)
+                    .ok_or_else(|| wrap_err("RgbaImage"))?,
+            )
+        }
         wgpu::TextureFormat::R8Unorm => DynamicImage::ImageLuma8(
             image::GrayImage::from_raw(width, height, bytes[..pixel_count].to_vec())
                 .ok_or_else(|| wrap_err("GrayImage"))?,
@@ -1510,7 +1711,7 @@ pub(crate) fn build_mip_chain(
         | wgpu::TextureFormat::Rgba8UnormSrgb
         | wgpu::TextureFormat::Bgra8Unorm
         | wgpu::TextureFormat::Bgra8UnormSrgb => {
-            downsample_levels_to_bytes(image.to_rgba8(), level_count)
+            downsample_levels_to_bytes(decode_rgba8(image, format), level_count)
         }
         wgpu::TextureFormat::R8Unorm => downsample_levels_to_bytes(image.to_luma8(), level_count),
         wgpu::TextureFormat::Rg8Unorm => {
@@ -1579,7 +1780,7 @@ pub(crate) fn write_levels(
     mip_level_count: u32,
 ) -> Result<(), TextureError> {
     if mip_level_count == 1 {
-        let bpp = bytes_per_pixel(format);
+        let bpp = texel_size(format)?;
         context.queue.write_texture(
             wgpu::TexelCopyTextureInfo {
                 aspect: wgpu::TextureAspect::All,
@@ -1652,7 +1853,7 @@ pub(crate) fn write_levels(
         _ => {
             // Caller should have caught this via supports_cpu_mipmaps;
             // be defensive and write a single level.
-            let bpp = bytes_per_pixel(format);
+            let bpp = texel_size(format)?;
             context.queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
                     aspect: wgpu::TextureAspect::All,
@@ -1744,59 +1945,14 @@ pub(crate) fn write_pixel_levels<P>(
     }
 }
 
-pub(crate) fn bytes_per_pixel(format: wgpu::TextureFormat) -> u32 {
-    match format {
-        wgpu::TextureFormat::R8Unorm
-        | wgpu::TextureFormat::R8Uint
-        | wgpu::TextureFormat::R8Sint
-        | wgpu::TextureFormat::R8Snorm
-        | wgpu::TextureFormat::Stencil8 => 1,
-        wgpu::TextureFormat::Rg8Uint
-        | wgpu::TextureFormat::Rg8Sint
-        | wgpu::TextureFormat::R16Uint
-        | wgpu::TextureFormat::R16Sint
-        | wgpu::TextureFormat::Rg16Uint
-        | wgpu::TextureFormat::Rg16Sint
-        | wgpu::TextureFormat::R16Float
-        | wgpu::TextureFormat::Rg8Unorm
-        | wgpu::TextureFormat::Rg8Snorm
-        | wgpu::TextureFormat::R16Unorm
-        | wgpu::TextureFormat::R16Snorm
-        | wgpu::TextureFormat::Rg16Unorm
-        | wgpu::TextureFormat::Rg16Snorm
-        | wgpu::TextureFormat::Depth16Unorm => 2,
-        wgpu::TextureFormat::R32Uint
-        | wgpu::TextureFormat::R32Sint
-        | wgpu::TextureFormat::R32Float
-        | wgpu::TextureFormat::Rgba8Uint
-        | wgpu::TextureFormat::Rgba8Sint
-        | wgpu::TextureFormat::Rg16Float
-        | wgpu::TextureFormat::Rgba8Unorm
-        | wgpu::TextureFormat::Rgba8Snorm
-        | wgpu::TextureFormat::Bgra8Unorm
-        | wgpu::TextureFormat::Rgb10a2Uint
-        | wgpu::TextureFormat::Depth24Plus
-        | wgpu::TextureFormat::Rgb9e5Ufloat
-        | wgpu::TextureFormat::Depth32Float
-        | wgpu::TextureFormat::Rgb10a2Unorm
-        | wgpu::TextureFormat::Rg11b10Ufloat
-        | wgpu::TextureFormat::Bgra8UnormSrgb
-        | wgpu::TextureFormat::Rgba8UnormSrgb
-        | wgpu::TextureFormat::Depth24PlusStencil8 => 4,
-        wgpu::TextureFormat::R64Uint
-        | wgpu::TextureFormat::Rg32Uint
-        | wgpu::TextureFormat::Rg32Sint
-        | wgpu::TextureFormat::Rg32Float
-        | wgpu::TextureFormat::Rgba16Uint
-        | wgpu::TextureFormat::Rgba16Sint
-        | wgpu::TextureFormat::Rgba16Float
-        | wgpu::TextureFormat::Rgba16Unorm
-        | wgpu::TextureFormat::Rgba16Snorm
-        | wgpu::TextureFormat::Depth32FloatStencil8 => 8,
-        wgpu::TextureFormat::Rgba32Float
-        | wgpu::TextureFormat::Rgba32Uint
-        | wgpu::TextureFormat::Rgba32Sint => 16,
-        _ => 4,
+/// The bytes a texel of `format` takes in a copy, one texel at a time.
+/// A block-compressed format, and a depth format with no copy size, are refused.
+pub(crate) fn texel_size(format: wgpu::TextureFormat) -> Result<u32, TextureError> {
+    match (format.block_dimensions(), format.block_copy_size(None)) {
+        ((1, 1), Some(size)) => Ok(size),
+        _ => Err(TextureError::InvalidInput(format!(
+            "can't copy pixels of {format:?}, write and read take formats with a fixed size per pixel"
+        ))),
     }
 }
 
@@ -1866,6 +2022,78 @@ mod tests {
         assert_eq!(chain.level(0).expect("level 0").len(), 4 * 4 * 4);
         assert_eq!(chain.level(2).expect("level 2").len(), 4);
         assert!(matches!(chain.level(3), Err(TextureError::InvalidInput(_))));
+    }
+
+    // Story: an ndarray's bytes pass as they are when its channels match the
+    // format, gain alpha for an 8-bit RGBA format, and anything else, a shape
+    // past u32 included, is refused before its bytes are read.
+    #[test]
+    fn array_pixels_fit_the_format() {
+        let gray = [1u8, 2, 3, 4];
+        let read = || gray.to_vec();
+        let (bytes, size) =
+            array_pixels(&[2, 2], read, wgpu::TextureFormat::R8Unorm).expect("gray as R8");
+        assert_eq!((bytes, size), (gray.to_vec(), Size::new(2, 2, None)));
+        let (bytes, _) =
+            array_pixels(&[2, 2], read, wgpu::TextureFormat::Rgba8Unorm).expect("gray as RGBA");
+        assert_eq!(&bytes[..8], &[1, 1, 1, 255, 2, 2, 2, 255]);
+        let (bytes, size) = array_pixels(&[1, 2, 2], read, wgpu::TextureFormat::Rg8Unorm)
+            .expect("two channels as Rg8");
+        assert_eq!((bytes, size), (gray.to_vec(), Size::new(2, 1, None)));
+
+        let unread = || -> Vec<u8> { panic!("the bytes of a refused shape are never read") };
+        for (shape, format) in [
+            (vec![2, 2], wgpu::TextureFormat::Rgba32Float),
+            (vec![2, 2, 3], wgpu::TextureFormat::Rg16Unorm),
+            (vec![2, 2, 5], wgpu::TextureFormat::Rgba8Unorm),
+            (vec![2, 2, 2, 2], wgpu::TextureFormat::Rgba8Unorm),
+            (vec![1, (1 << 32) + 4, 3], wgpu::TextureFormat::Rgba8Unorm),
+        ] {
+            assert!(
+                matches!(
+                    array_pixels(&shape, unread, format),
+                    Err(TextureError::InvalidInput(_))
+                ),
+                "{shape:?} as {format:?}"
+            );
+        }
+    }
+
+    // Story: options for a source with its own RGBA8 pixels keep its size and an
+    // 8-bit RGBA or BGRA format, and anything else is refused, where it misread them.
+    #[test]
+    fn check_pixels_keeps_the_source_layout() {
+        let own = Size::new(2, 1, None);
+        let options = |size: Option<Size>, format| TextureOptions {
+            size,
+            format,
+            ..Default::default()
+        };
+        for format in [
+            crate::TextureFormat::Rgba,
+            crate::TextureFormat::Rgba8UnormSrgb,
+            crate::TextureFormat::Bgra8Unorm,
+        ] {
+            check_pixels(own, &options(None, format)).expect("an RGBA8 format");
+        }
+        check_pixels(
+            own,
+            &options(Some(Size::new(2, 1, Some(1))), Default::default()),
+        )
+        .expect("the source's own size");
+        for (size, format) in [
+            (Some(Size::new(1, 1, None)), crate::TextureFormat::Rgba),
+            (None, crate::TextureFormat::R8Unorm),
+            (None, crate::TextureFormat::Rgba32Float),
+        ] {
+            assert!(
+                matches!(
+                    check_pixels(own, &options(size, format)),
+                    Err(TextureError::InvalidInput(_))
+                ),
+                "{size:?} {format:?}"
+            );
+        }
     }
 
     // Story: Create a texture from encoded image bytes and verify aspect.
@@ -2198,76 +2426,73 @@ mod tests {
         });
     }
 
-    // Story: format_feature maps every 16-bit norm variant to
-    // TEXTURE_FORMAT_16BIT_NORM and leaves the common 8-bit / float formats
-    // unmapped (no feature gate). Pure-table function; no GPU required.
+    // Story: a format that needs a wgpu feature the device lacks is refused for
+    // any usage, with the typed error naming the missing feature. Pure, no GPU.
     #[test]
-    fn format_feature_covers_16bit_norms_only() {
-        for f in [
+    fn check_feature_names_the_missing_feature() {
+        let empty = wgpu::Features::empty();
+        let norm = wgpu::Features::TEXTURE_FORMAT_16BIT_NORM;
+        for format in [
             wgpu::TextureFormat::R16Unorm,
             wgpu::TextureFormat::Rg16Unorm,
             wgpu::TextureFormat::Rgba16Unorm,
-            wgpu::TextureFormat::R16Snorm,
-            wgpu::TextureFormat::Rg16Snorm,
-            wgpu::TextureFormat::Rgba16Snorm,
         ] {
-            assert_eq!(
-                format_feature(f),
-                Some(wgpu::Features::TEXTURE_FORMAT_16BIT_NORM),
-                "format {:?} should gate on TEXTURE_FORMAT_16BIT_NORM",
-                f,
-            );
+            match check_feature(empty, format) {
+                Err(TextureError::UnsupportedFormatForUsage {
+                    format: refused,
+                    missing_feature,
+                }) => {
+                    assert_eq!(refused, format);
+                    assert_eq!(missing_feature, norm);
+                }
+                other => panic!("expected UnsupportedFormatForUsage, got {other:?}"),
+            }
+            check_feature(norm, format).expect("with the feature");
         }
-        for f in [
-            wgpu::TextureFormat::R8Unorm,
+        for format in [
             wgpu::TextureFormat::Rgba8Unorm,
-            wgpu::TextureFormat::Rgba8UnormSrgb,
-            wgpu::TextureFormat::Rgba16Float,
             wgpu::TextureFormat::Rgba32Float,
+            wgpu::TextureFormat::Depth32Float,
         ] {
-            assert!(
-                format_feature(f).is_none(),
-                "format {:?} should not gate on a feature",
-                f,
-            );
+            check_feature(empty, format).expect("needs no feature");
         }
     }
 
-    // Story: check_format fires when the device is missing the
-    // required feature AND the usage mask includes TEXTURE_BINDING. Storage-
-    // only usage skips the check. Pure-table; no GPU required.
+    // Story: a usage the format can't take, such as storage on Depth32Float,
+    // Rgba8UnormSrgb or Bgra8Unorm, and a depth format with layers are refused
+    // with the error resize returns. Pure, against the WebGPU baseline.
     #[test]
-    fn check_format_fails_fast_when_feature_absent() {
-        let empty = wgpu::Features::empty();
-        let with_norm = wgpu::Features::TEXTURE_FORMAT_16BIT_NORM;
-        let bind_only = wgpu::TextureUsages::TEXTURE_BINDING;
-        let storage_only = wgpu::TextureUsages::STORAGE_BINDING;
-
-        // Bindable + missing feature → typed error carrying the wgpu format
-        // and the missing feature, so consumers can match on it.
-        let err = check_format(empty, wgpu::TextureFormat::R16Unorm, bind_only)
-            .expect_err("R16Unorm without TEXTURE_FORMAT_16BIT_NORM must fail");
-        match err {
-            TextureError::UnsupportedFormatForUsage {
-                format,
-                missing_feature,
-            } => {
-                assert_eq!(format, wgpu::TextureFormat::R16Unorm);
-                assert_eq!(missing_feature, wgpu::Features::TEXTURE_FORMAT_16BIT_NORM);
-            }
-            other => panic!("expected UnsupportedFormatForUsage, got {:?}", other),
+    fn check_support_refuses_what_the_format_cannot_take() {
+        let flat = wgpu::TextureDimension::D2;
+        let deep = wgpu::TextureDimension::D3;
+        let storage = wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING;
+        let sampled = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
+        let check = |format: wgpu::TextureFormat, usage, dimension| {
+            let allowed = format
+                .guaranteed_format_features(wgpu::Features::empty())
+                .allowed_usages;
+            check_support(allowed, format, usage, dimension)
+        };
+        for format in [
+            wgpu::TextureFormat::Depth32Float,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            wgpu::TextureFormat::Bgra8Unorm,
+            wgpu::TextureFormat::R8Unorm,
+        ] {
+            assert!(
+                matches!(
+                    check(format, storage, flat),
+                    Err(TextureError::InvalidInput(_))
+                ),
+                "{format:?} takes no storage"
+            );
+            check(format, sampled, flat).expect("every format samples");
         }
-
-        // Bindable + feature present → ok.
-        check_format(with_norm, wgpu::TextureFormat::R16Unorm, bind_only)
-            .expect("with feature should be ok");
-
-        // Format that doesn't gate on a feature → always ok.
-        check_format(empty, wgpu::TextureFormat::Rgba8Unorm, bind_only)
-            .expect("Rgba8Unorm should always be ok");
-
-        // Storage-only usage skips the gate (different validation rules apply).
-        check_format(empty, wgpu::TextureFormat::R16Unorm, storage_only)
-            .expect("storage-only usage should skip the binding gate");
+        check(wgpu::TextureFormat::Rgba8Unorm, storage, flat).expect("Rgba8Unorm stores");
+        check(wgpu::TextureFormat::Rgba8Unorm, sampled, deep).expect("a color format in 3D");
+        assert!(matches!(
+            check(wgpu::TextureFormat::Depth32Float, sampled, deep),
+            Err(TextureError::InvalidInput(_))
+        ));
     }
 }

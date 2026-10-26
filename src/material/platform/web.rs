@@ -92,8 +92,11 @@ impl Material {
 
     #[wasm_bindgen(js_name = "alphaMode")]
     #[lsp_doc("docs/api/scene/material/alpha_mode.md")]
-    pub fn alpha_mode_js(&self, mode: AlphaMode) -> Self {
-        self.alpha_mode(mode)
+    pub fn alpha_mode_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "AlphaMode")] mode: &JsValue,
+    ) -> Result<Material, JsError> {
+        Ok(self.alpha_mode(read_alpha_mode(mode)?))
     }
 
     #[wasm_bindgen(js_name = "doubleSided")]
@@ -178,4 +181,18 @@ fn vec4_from_vec(v: &[f32], field: &str) -> Result<[f32; 4], JsError> {
         )));
     }
     Ok([v[0], v[1], v[2], v[3]])
+}
+
+/// Maps an `AlphaMode` from JS, a number in variant order, to the mode.
+/// Anything else is an error, which wasm-bindgen would read as `Opaque`.
+fn read_alpha_mode(value: &JsValue) -> Result<AlphaMode, JsError> {
+    let code = value
+        .as_f64()
+        .ok_or_else(|| JsError::new(&format!("mode must be an AlphaMode, got {value:?}")))?;
+    match crate::platforms::web::read_unsigned(code, "mode")? {
+        0 => Ok(AlphaMode::Opaque),
+        1 => Ok(AlphaMode::Mask),
+        2 => Ok(AlphaMode::Blend),
+        _ => Err(JsError::new(&format!("{code} is not an AlphaMode"))),
+    }
 }

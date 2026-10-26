@@ -101,61 +101,35 @@ impl TryFrom<PyTextureSource<'_>> for crate::TextureInput {
             PyTextureSource::Tuple(tuple) => TextureData::Bytes(tuple.extract()?),
             PyTextureSource::Source(source) => TextureData::from(source.as_str()),
             PyTextureSource::Path(path) => TextureData::Path(path),
-            PyTextureSource::Array(array) => {
-                let (rgba, size) = ndarray_to_rgba(&array)?;
-                return Ok((rgba, size).into());
-            }
+            PyTextureSource::Array(array) => return Ok(ndarray_input(&array, None, None)?),
             PyTextureSource::Mipmap(chain) => TextureData::Prepared(chain),
         };
         Ok(data.into())
     }
 }
 
-/// Expands an `(h, w)` or `(h, w, 1 | 3 | 4)` uint8 array to RGBA8 bytes.
-fn ndarray_to_rgba(
+/// The texture input for a `uint8` array, which brings its own size.
+/// A `size` keyword must match it, and its channels must fit the `format`, `Rgba` when unset.
+pub(crate) fn ndarray_input(
     array: &numpy::PyReadonlyArrayDyn<'_, u8>,
-) -> Result<(Vec<u8>, crate::Size), PyErr> {
+    size: Option<crate::Size>,
+    format: Option<TextureFormat>,
+) -> Result<crate::TextureInput, crate::texture::TextureError> {
     use numpy::PyUntypedArrayMethods;
 
-    let shape = array.shape();
-    if shape.len() != 2 && shape.len() != 3 {
-        return Err(crate::error::PyFragmentColorError::new_err(format!(
-            "ndarray must have 2 or 3 dimensions, got {}",
-            shape.len()
+    let format = format.unwrap_or_default();
+    let read = || ndarray_bytes(array);
+    let (pixels, own) = crate::texture::array_pixels(array.shape(), read, format.into())?;
+    let fits = |size: &crate::Size| {
+        (size.width, size.height, size.depth.unwrap_or(1)) == (own.width, own.height, 1)
+    };
+    if let Some(size) = size.filter(|size| !fits(size)) {
+        return Err(crate::texture::TextureError::InvalidInput(format!(
+            "size {size:?} differs from the ndarray's {}x{}",
+            own.width, own.height
         )));
     }
-    let h = shape[0] as u32;
-    let w = shape[1] as u32;
-    let c = if shape.len() == 3 { shape[2] } else { 1 };
-    let mut rgba = vec![0u8; (w as usize) * (h as usize) * 4];
-    let data = ndarray_bytes(array);
-    for y in 0..(h as usize) {
-        for x in 0..(w as usize) {
-            let src_idx = (y * (w as usize) + x) * c;
-            let dst_idx = (y * (w as usize) + x) * 4;
-            match c {
-                1 => {
-                    let v = data[src_idx];
-                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&[v, v, v, 255]);
-                }
-                3 => {
-                    let r = data[src_idx];
-                    let g = data[src_idx + 1];
-                    let b = data[src_idx + 2];
-                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&[r, g, b, 255]);
-                }
-                4 => {
-                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&data[src_idx..src_idx + 4]);
-                }
-                _ => {
-                    return Err(crate::error::PyFragmentColorError::new_err(
-                        "ndarray last dimension must be 1, 3, or 4",
-                    ));
-                }
-            }
-        }
-    }
-    Ok((rgba, crate::Size::new(w, h, None)))
+    Ok((pixels, format, own).into())
 }
 
 /// A texture usage from Python: a `TextureUsage`, such as
@@ -206,45 +180,18 @@ impl TryFrom<PyTextureRegion<'_>> for TextureRegion {
     }
 }
 
-/// Reads the known keys of the dict form, so any other entry is ignored.
+/// Reads the dict form through the reader the bindings share.
 /// A key like `bytes_per_row` also takes its camelCase form, `bytesPerRow`.
 fn layout_region(layout: &Bound<'_, PyDict>) -> PyResult<TextureRegion> {
-    let read = |names: &[&str]| -> PyResult<Option<u32>> {
-        for name in names {
-            if let Some(value) = layout.get_item(*name)? {
+    let read = |(camel, snake): crate::texture::region::Key| -> PyResult<Option<u32>> {
+        for name in [snake, camel] {
+            if let Some(value) = layout.get_item(name)? {
                 return value.extract::<Option<u32>>();
             }
         }
         Ok(None)
     };
-
-    let mut region = if read(&["min_x", "minX"])?.is_some() || read(&["max_x", "maxX"])?.is_some() {
-        let min_x = read(&["min_x", "minX"])?.unwrap_or(0);
-        let min_y = read(&["min_y", "minY"])?.unwrap_or(0);
-        let max_x = read(&["max_x", "maxX"])?.unwrap_or(min_x);
-        let max_y = read(&["max_y", "maxY"])?.unwrap_or(min_y);
-        let min_z = read(&["min_z", "minZ"])?.unwrap_or(0);
-        let max_z = read(&["max_z", "maxZ"])?.unwrap_or(min_z.saturating_add(1));
-        TextureRegion::new(
-            [min_x, min_y, min_z],
-            [
-                max_x.saturating_sub(min_x),
-                max_y.saturating_sub(min_y),
-                max_z.saturating_sub(min_z).max(1),
-            ],
-        )
-    } else {
-        let x = read(&["x"])?.unwrap_or(0);
-        let y = read(&["y"])?.unwrap_or(0);
-        let z = read(&["z"])?.unwrap_or(0);
-        let w = read(&["width"])?.unwrap_or(0);
-        let h = read(&["height"])?.unwrap_or(0);
-        let d = read(&["depth"])?.unwrap_or(1);
-        TextureRegion::new([x, y, z], [w, h, d])
-    };
-    region.bytes_per_row = read(&["bytes_per_row", "bytesPerRow"])?;
-    region.rows_per_image = read(&["rows_per_image", "rowsPerImage"])?;
-    Ok(region)
+    crate::texture::region::read_region(read)
 }
 
 /// `SamplerOptions` from Python: the class itself, or a dict of its fields.
@@ -447,7 +394,7 @@ impl Texture {
         let object = self.object();
         let data = pollster::block_on(crate::texture::read_pixels(&self.context, &object))?;
         let extent = object.size;
-        let bpp = crate::texture::bytes_per_pixel(object.format) as usize;
+        let bpp = crate::texture::texel_size(object.format)? as usize;
         let (width, height) = (extent.width as usize, extent.height as usize);
         let layers = extent.depth_or_array_layers.max(1) as usize;
         let shape = match layers {

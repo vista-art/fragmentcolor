@@ -15,9 +15,7 @@ use ktx2::Format as VkFormat;
 
 use crate::RenderContext;
 use crate::texture::error::TextureError;
-use crate::texture::{
-    SamplerOptions, TextureObject, bytes_per_pixel, create_default_sampler, mip_level_count_for,
-};
+use crate::texture::{SamplerOptions, TextureObject, create_default_sampler, mip_level_count_for};
 use parking_lot::RwLock;
 
 /// The identifier every KTX2 file starts with: `«KTX 20»\r\n\x1A\n`.
@@ -203,8 +201,8 @@ pub(crate) fn from_ktx2_bytes(
         height,
         depth_or_array_layers: 1,
     };
-    crate::texture::check_format(context.device.features(), wgpu_format, usage)?;
     let dimension = wgpu::TextureDimension::D2;
+    crate::texture::check_format(context, wgpu_format, usage, dimension)?;
     crate::texture::check_extent(&context.device.limits(), size, dimension)?;
     // A compressed format stores whole blocks, so the size must hold a whole number of them.
     let (block_w, block_h) = wgpu_format.block_dimensions();
@@ -231,7 +229,6 @@ pub(crate) fn from_ktx2_bytes(
             vk_format
         ))
     })?;
-    let bpp_fallback = bytes_per_pixel(wgpu_format);
 
     for (level_index, level) in reader.levels().take(stored_levels as usize).enumerate() {
         let mip = level_index as u32;
@@ -240,12 +237,7 @@ pub(crate) fn from_ktx2_bytes(
 
         let blocks_in_row = level_w.div_ceil(block_w);
         let blocks_in_col = level_h.div_ceil(block_h);
-        let bytes_per_row = if block_w == 1 && block_h == 1 {
-            // Uncompressed: bytes_per_row is bpp * width.
-            bpp_fallback * level_w
-        } else {
-            block_bytes * blocks_in_row
-        };
+        let bytes_per_row = block_bytes * blocks_in_row;
         let expected_len = (bytes_per_row as u64) * (blocks_in_col as u64);
         if (level.data.len() as u64) < expected_len {
             return Err(TextureError::CreateTextureError(format!(
@@ -440,6 +432,51 @@ mod tests {
                     ))
                 ),
                 "a 6x6 BC7 file should be refused before wgpu"
+            );
+        });
+    }
+
+    // Story: write, write_region and get_image move one texel at a time, so a
+    // block-compressed texture refuses them, aligned or not, before they reach wgpu.
+    #[test]
+    fn compressed_textures_refuse_texel_copies() {
+        pollster::block_on(async move {
+            let bytes = Ktx2Test {
+                format: VkFormat::BC7_UNORM_BLOCK,
+                width: 8,
+                height: 8,
+                levels: vec![vec![0; 4 * 16]],
+            }
+            .build();
+            let input = crate::TextureInput {
+                data: crate::texture::TextureData::Ktx2Bytes(bytes),
+                options: crate::TextureOptions::default().with_usage(crate::TextureUsage::COPY_SRC),
+            };
+            let renderer = crate::Renderer::new();
+            let texture = match renderer.create_texture(input).await {
+                Ok(texture) => texture,
+                // A device without BC compression can't make the texture at all.
+                Err(crate::RendererError::TextureError(TextureError::CreateTextureError(_))) => {
+                    return;
+                }
+                Err(error) => panic!("create_texture failed: {error}"),
+            };
+            let refused = |result: Result<(), TextureError>| {
+                matches!(result, Err(TextureError::InvalidInput(_)))
+            };
+            assert!(refused(texture.write(&[0; 4 * 16])), "write");
+            assert!(
+                refused(texture.write_region(&[0; 64], [1, 1, 2, 2])),
+                "an unaligned region"
+            );
+            assert!(
+                refused(texture.write_region(&[0; 16], [0, 0, 4, 4])),
+                "an aligned region"
+            );
+            let image = texture.get_image().await;
+            assert!(
+                matches!(image, Err(TextureError::InvalidInput(_))),
+                "get_image"
             );
         });
     }

@@ -2045,8 +2045,8 @@ public func FfiConverterTypeMesh_lower(_ value: Mesh) -> UInt64 {
  * to [`crate::Renderer::create_texture`] (the unified entry point
  * dispatches via `From<Mipmap> for TextureInput`).
  *
- * Levels are tightly-packed bytes, level 0 first, with `bytes_per_pixel(format) *
- * max(1, base_w >> level) * max(1, base_h >> level)` bytes per level.
+ * Levels are tightly-packed bytes, level 0 first, with the format's bytes per pixel
+ * times `max(1, base_w >> level) * max(1, base_h >> level)` bytes per level.
  */
 public protocol MipmapProtocol: AnyObject, Sendable {
     
@@ -2073,8 +2073,8 @@ public protocol MipmapProtocol: AnyObject, Sendable {
  * to [`crate::Renderer::create_texture`] (the unified entry point
  * dispatches via `From<Mipmap> for TextureInput`).
  *
- * Levels are tightly-packed bytes, level 0 first, with `bytes_per_pixel(format) *
- * max(1, base_w >> level) * max(1, base_h >> level)` bytes per level.
+ * Levels are tightly-packed bytes, level 0 first, with the format's bytes per pixel
+ * times `max(1, base_w >> level) * max(1, base_h >> level)` bytes per level.
  */
 open class Mipmap: MipmapProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64

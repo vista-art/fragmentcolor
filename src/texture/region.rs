@@ -176,11 +176,102 @@ impl From<crate::ScreenRegion> for TextureRegion {
 }
 
 // -------------------------------------------
-// JS conversion (#[cfg(wasm)])
+// Object and dict regions (JS and Python)
 // -------------------------------------------
 
-#[cfg(wasm)]
+#[cfg(any(wasm, python, test))]
 use crate::texture::TextureError;
+
+/// A region key in its camelCase and snake_case spellings.
+#[cfg(any(wasm, python, test))]
+pub(crate) type Key = (&'static str, &'static str);
+
+#[cfg(any(wasm, python, test))]
+const MIN: [Key; 3] = [("minX", "min_x"), ("minY", "min_y"), ("minZ", "min_z")];
+#[cfg(any(wasm, python, test))]
+const MAX: [Key; 3] = [("maxX", "max_x"), ("maxY", "max_y"), ("maxZ", "max_z")];
+#[cfg(any(wasm, python, test))]
+const ORIGIN: [Key; 3] = [("x", "x"), ("y", "y"), ("z", "z")];
+#[cfg(any(wasm, python, test))]
+const EXTENT: [Key; 3] = [("width", "width"), ("height", "height"), ("depth", "depth")];
+#[cfg(any(wasm, python, test))]
+const AXES: [&str; 3] = ["x", "y", "z"];
+
+/// Reads a region from a JS object or a Python dict through `read`.
+///
+/// `read` returns the number under a key, or `None` for a missing key.
+/// The form `{ x, y, z?, width, height, depth? }` needs its width and height.
+/// The form `{ minX, minY, maxX, maxY, minZ?, maxZ? }` needs each max past its min,
+/// and both take `bytesPerRow` and `rowsPerImage`, with one layer when they give no depth.
+#[cfg(any(wasm, python, test))]
+pub(crate) fn read_region<E: From<TextureError>>(
+    read: impl Fn(Key) -> Result<Option<u32>, E>,
+) -> Result<TextureRegion, E> {
+    let triple = |keys: [Key; 3]| -> Result<[Option<u32>; 3], E> {
+        Ok([read(keys[0])?, read(keys[1])?, read(keys[2])?])
+    };
+    let (min, max) = (triple(MIN)?, triple(MAX)?);
+    let (origin, extent) = (triple(ORIGIN)?, triple(EXTENT)?);
+    let given = |values: &[Option<u32>]| values.iter().any(Option::is_some);
+    let bounds = given(&min) || given(&max);
+    if bounds && (given(&origin) || given(&extent)) {
+        return Err(TextureError::InvalidInput(
+            "a region takes x, y, width and height, or min and max bounds, not both".into(),
+        )
+        .into());
+    }
+    let mut region = match bounds {
+        true => from_bounds(min.map(|value| value.unwrap_or(0)), max)?,
+        false => from_box(origin.map(|value| value.unwrap_or(0)), extent)?,
+    };
+    region.bytes_per_row = read(("bytesPerRow", "bytes_per_row"))?;
+    region.rows_per_image = read(("rowsPerImage", "rows_per_image"))?;
+    Ok(region)
+}
+
+/// A region from its bounds, one layer deep without a z max.
+/// The x and y bounds each need a max past the min, and so does a z max given.
+#[cfg(any(wasm, python, test))]
+fn from_bounds(min: [u32; 3], max: [Option<u32>; 3]) -> Result<TextureRegion, TextureError> {
+    let mut size = [1; 3];
+    for (axis, name) in AXES.iter().enumerate() {
+        size[axis] = match max[axis] {
+            None if axis == 2 => 1,
+            None => {
+                return Err(TextureError::InvalidInput(format!(
+                    "a region with bounds needs its max {name}"
+                )));
+            }
+            Some(end) if end > min[axis] => end - min[axis],
+            Some(end) => {
+                return Err(TextureError::InvalidInput(format!(
+                    "max {name} ({end}) must be greater than min {name} ({})",
+                    min[axis]
+                )));
+            }
+        };
+    }
+    Ok(TextureRegion::new(min, size))
+}
+
+/// A region from its origin and extent.
+/// It needs a width and a height, and without a depth it is one layer deep.
+#[cfg(any(wasm, python, test))]
+fn from_box(origin: [u32; 3], extent: [Option<u32>; 3]) -> Result<TextureRegion, TextureError> {
+    let [Some(width), Some(height), depth] = extent else {
+        return Err(TextureError::InvalidInput(
+            "a region needs its width and height, or min and max bounds".into(),
+        ));
+    };
+    Ok(TextureRegion::new(
+        origin,
+        [width, height, depth.unwrap_or(1)],
+    ))
+}
+
+// -------------------------------------------
+// JS conversion (#[cfg(wasm)])
+// -------------------------------------------
 
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
@@ -221,11 +312,11 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
             };
         }
 
-        // Object: { x?, y?, z?, width?, height?, depth?, bytesPerRow?, rowsPerImage? }
-        // or       { minX, minY, maxX, maxY, minZ?, maxZ?, bytesPerRow?, rowsPerImage? }
+        // Object: { x?, y?, z?, width, height, depth?, bytesPerRow?, rowsPerImage? }
+        // or       { minX?, minY?, maxX, maxY, minZ?, maxZ?, bytesPerRow?, rowsPerImage? }
         if value.is_object() {
-            let read = |names: &[&str]| -> Result<Option<u32>, TextureError> {
-                for name in names {
+            let read = |(camel, snake): Key| -> Result<Option<u32>, TextureError> {
+                for name in [camel, snake] {
                     let field = Reflect::get(value, &wasm_bindgen::JsValue::from_str(name))
                         .unwrap_or(wasm_bindgen::JsValue::UNDEFINED);
                     if !field.is_undefined() && !field.is_null() {
@@ -234,46 +325,70 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
                 }
                 Ok(None)
             };
-
-            // min/max variant
-            let min_x = read(&["minX", "min_x"])?;
-            let max_x = read(&["maxX", "max_x"])?;
-            if min_x.is_some() || max_x.is_some() {
-                let min_x = min_x.unwrap_or(0);
-                let min_y = read(&["minY", "min_y"])?.unwrap_or(0);
-                let max_x = max_x.unwrap_or(min_x);
-                let max_y = read(&["maxY", "max_y"])?.unwrap_or(min_y);
-                let min_z = read(&["minZ", "min_z"])?.unwrap_or(0);
-                let max_z = read(&["maxZ", "max_z"])?.unwrap_or(min_z + 1);
-                let mut tr = Self::new(
-                    [min_x, min_y, min_z],
-                    [
-                        max_x.saturating_sub(min_x),
-                        max_y.saturating_sub(min_y),
-                        max_z.saturating_sub(min_z).max(1),
-                    ],
-                );
-                tr.bytes_per_row = read(&["bytesPerRow", "bytes_per_row"])?;
-                tr.rows_per_image = read(&["rowsPerImage", "rows_per_image"])?;
-                return Ok(tr);
-            }
-
-            // x/y/z + width/height/depth variant
-            let x = read(&["x"])?.unwrap_or(0);
-            let y = read(&["y"])?.unwrap_or(0);
-            let z = read(&["z"])?.unwrap_or(0);
-            let w = read(&["width"])?.unwrap_or(0);
-            let h = read(&["height"])?.unwrap_or(0);
-            let d = read(&["depth"])?.unwrap_or(1);
-            let mut tr = Self::new([x, y, z], [w, h, d]);
-            tr.bytes_per_row = read(&["bytesPerRow", "bytes_per_row"])?;
-            tr.rows_per_image = read(&["rowsPerImage", "rows_per_image"])?;
-            return Ok(tr);
+            return read_region(read);
         }
 
         Err(TextureError::Error(
             "Cannot convert JavaScript value to TextureRegion (expected [w,h], [x,y,w,h], [x,y,z,w,h,d], or {x,y,width,height,...})"
                 .into(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    /// Reads `region` from the pairs of a map, the way a JS object or a Python dict reads.
+    fn read(pairs: &[(&str, u32)]) -> Result<TextureRegion, TextureError> {
+        let map: HashMap<&str, u32> = pairs.iter().copied().collect();
+        read_region(|(camel, snake): Key| Ok(map.get(camel).or_else(|| map.get(snake)).copied()))
+    }
+
+    // Story: both object forms read the region they spell, with one layer when
+    // they leave out the depth, and with the stride and rows they carry.
+    #[test]
+    fn read_region_reads_both_forms() {
+        let boxed = read(&[("x", 1), ("y", 2), ("width", 3), ("height", 4)]).expect("box");
+        assert_eq!((boxed.origin, boxed.size), ([1, 2, 0], [3, 4, 1]));
+        let bounds =
+            read(&[("minX", 8), ("maxX", 12), ("min_y", 0), ("max_y", 4)]).expect("bounds");
+        assert_eq!((bounds.origin, bounds.size), ([8, 0, 0], [4, 4, 1]));
+        let deep = read(&[("maxX", 2), ("maxY", 2), ("minZ", u32::MAX - 1)]).expect("deep");
+        assert_eq!((deep.origin[2], deep.size[2]), (u32::MAX - 1, 1));
+        let layout = read(&[("width", 4), ("height", 4), ("bytesPerRow", 256)]).expect("stride");
+        assert_eq!(layout.bytes_per_row, Some(256));
+    }
+
+    // Story: reversed or empty bounds, a missing extent, misspelled keys, both
+    // forms at once and a z that overflows are refused, where they turned into a
+    // write of a different region or a panic.
+    #[test]
+    fn read_region_refuses_what_it_cannot_read() {
+        let cases: [&[(&str, u32)]; 7] = [
+            &[("minX", 10), ("maxX", 2), ("minY", 0), ("maxY", 4)],
+            &[
+                ("minX", 0),
+                ("maxX", 4),
+                ("minY", 0),
+                ("maxY", 4),
+                ("minZ", 2),
+                ("maxZ", 2),
+            ],
+            &[("minX", 0), ("maxX", 4)],
+            &[("minY", 0), ("maxY", 4)],
+            &[("x", 0), ("y", 0), ("w", 4), ("h", 4)],
+            &[("x", 0), ("width", 4), ("height", 4), ("maxX", 4)],
+            &[],
+        ];
+        for pairs in cases {
+            assert!(
+                matches!(read(pairs), Err(TextureError::InvalidInput(_))),
+                "{pairs:?} should be refused"
+            );
+        }
+        let edge = read(&[("maxX", 1), ("maxY", 1), ("minZ", u32::MAX)]).expect("one layer");
+        assert_eq!(edge.size[2], 1, "a missing maxZ adds nothing to minZ");
     }
 }
