@@ -12,6 +12,7 @@
 //   --url <origin>   a running docs server; without it the tool starts one and stops it after
 //   --scale <n>      device pixels per figure unit (2 by default, 1 for thumbnails)
 //   --wait <s>       seconds a thumbnail demo runs before its capture (2.5 by default)
+//   --hold <x,y>     keep the pointer moving at that point of a thumbnail's canvas, as fractions
 //   --dir <folder>   where thumbnails go (docs/website/public/playground/thumbs by default)
 //   --fps <n>        frames a recording tries to take each second (10 by default)
 //   --quality <n>    WebP quality of a recording (72 by default)
@@ -75,6 +76,7 @@ function printHelp() {
     "  --url <origin>       use a running docs server instead of starting one",
     "  --scale <n>          device pixels per figure unit (default 2, thumbnails 1)",
     "  --wait <s>           seconds a thumbnail demo runs first (default 2.5)",
+    "  --hold <x,y>         keep the pointer moving at that point of the canvas, as fractions",
     "  --dir <folder>       where thumbnails go (default docs/website/public/playground/thumbs)",
     "  --fps <n>            frames per second a recording aims for (default 10)",
     "  --quality <n>        WebP quality of a recording (default 72)",
@@ -251,6 +253,7 @@ async function findAddress(tutorial) {
 async function captureThumbs(browser, origin, ids, options) {
   const scale = Number(options.scale ?? 1);
   const wait = Number(options.wait ?? 2.5) * 1000;
+  const hold = options.hold?.split(",").map(Number);
   const dir = options.dir ? path.resolve(options.dir) : path.join(SITE, "public/playground/thumbs");
   const all = await listDemos(browser, origin);
   const chosen = ids.length ? ids : all;
@@ -266,14 +269,29 @@ async function captureThumbs(browser, origin, ids, options) {
       });
       // Buttons and notes drawn over the canvas stay out of the picture.
       await page.addStyleTag({ content: ".fcp-canvas > :not(canvas) { visibility: hidden !important; }" });
-      await sleep(wait);
+      const canvas = page.locator("fc-playground canvas").first();
+      if (hold) await circle(page, canvas, hold, wait);
+      else await sleep(wait);
       if (errors.length) throw new Error(`${id}: ${errors.join("; ")}`);
-      const png = await page.locator("fc-playground canvas").first().screenshot({ type: "png" });
+      const png = await canvas.screenshot({ type: "png" });
       const out = path.join(dir, `${id}.webp`);
       await writeWebp(png, out, { quality: 80, resize: THUMB_SIZE.map((value) => value * scale) });
     } finally {
       await page.close();
     }
+  }
+}
+
+// Moves the pointer in a tight circle around a point of the element for `duration` ms.
+// A demo that pulls toward a moving pointer, like Life, gathers there. The point is
+// measured on every step, since the canvas shrinks when the controls appear under it.
+async function circle(page, element, [x, y], duration) {
+  const end = Date.now() + duration;
+  for (let step = 0; Date.now() < end; step++) {
+    const box = await element.boundingBox();
+    const center = [box.x + box.width * x, box.y + box.height * y];
+    await page.mouse.move(center[0] + 2 * Math.cos(step / 2), center[1] + 2 * Math.sin(step / 2));
+    await sleep(16);
   }
 }
 

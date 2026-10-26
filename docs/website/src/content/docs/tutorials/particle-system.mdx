@@ -1,5 +1,5 @@
 ---
-title: Eight million particles
+title: A particle system
 description: Move eight million particles with a compute shader, count them into a grid of cells and light every pixel by its count.
 draft: false
 tableOfContents: false
@@ -14,7 +14,7 @@ import Lang from "../../../components/Lang.astro";
 import LangSelector from "../../../components/LangSelector.astro";
 import Figure from "../../../components/Figure.astro";
 import { Arrow, Dot, Label, Path, Rect, Ring } from "../../../components/figure";
-import { flip, frame, grid, step } from "../../../figures/eight-million-particles";
+import { flip, frame, grid, step } from "../../../figures/particle-system";
 
 <LangSelector />
 
@@ -23,7 +23,7 @@ Somewhere past a million, triangles stop paying for themselves. Shrinking one sa
 **Here, eight million particles move every frame, and none of them is a triangle.**
 
 <Aside title="Run it yourself">
-The program is in [`docs/tutorials/eight-million-particles/01-splat`](https://github.com/vista-art/fragmentcolor/tree/main/docs/tutorials/eight-million-particles/01-splat) as a `setup` and a `frame` function, in all five languages. From a checkout of the repository, `./fc example tutorial_eight_million_particles_splat` opens it in a window. Python does the same with `python docs/tutorials/eight-million-particles/host.py 01-splat`, after `pip install fragmentcolor rendercanvas glfw`. Swift and Kotlin apps call `setup` once and `frame` from their render loop. In JavaScript, the loop under [Make it move](/tutorials/hello-triangle/#make-it-move) in Hello, million triangles! plays it on a `<canvas>`.
+The program is in [`docs/tutorials/particle-system/01-splat`](https://github.com/vista-art/fragmentcolor/tree/main/docs/tutorials/particle-system/01-splat) as a `setup` and a `frame` function, in all five languages. From a checkout of the repository, `./fc example tutorial_particle_system_splat` opens it in a window. Python does the same with `python docs/tutorials/particle-system/host.py 01-splat`, after `pip install fragmentcolor rendercanvas glfw`. Swift and Kotlin apps call `setup` once and `frame` from their render loop. In JavaScript, the loop under [Make it move](/tutorials/hello-triangle/#make-it-move) in Hello, million triangles! plays it on a `<canvas>`.
 </Aside>
 
 ## Compute shaders and storage buffers
@@ -34,7 +34,7 @@ A compute shader runs a function for every item, in workgroups of 256 here. It r
 
 ## Three passes per frame
 
-<Snippet file="eight-million-particles/01-splat/example.rs" region="setup" />
+<Snippet file="particle-system/01-splat/example.rs" region="setup" />
 
 The `sizes` string holds three WGSL constants, formatted from <Lang /> numbers. Each `Shader` list puts them ahead of the shader's own source. `COUNT` makes the particle buffer eight million entries of 16 bytes, 128 MB in all. That's just under 128 MiB (134,217,728 bytes), and every WebGPU device must allow a storage buffer binding up to that size.
 
@@ -65,11 +65,11 @@ A `Pass` made from a compute shader dispatches workgroups instead of drawing. <c
 
 The first pass sets every count back to zero:
 
-<Snippet file="eight-million-particles/01-splat/example.rs" region="clear-shader" />
+<Snippet file="particle-system/01-splat/example.rs" region="clear-shader" />
 
 ## Moving the particles
 
-<Snippet file="eight-million-particles/01-splat/example.rs" region="simulate-shader" />
+<Snippet file="particle-system/01-splat/example.rs" region="simulate-shader" />
 
 `global_invocation_id` numbers the runs, as `instance_index` numbers the copies of a mesh.
 
@@ -108,7 +108,7 @@ More than a thousand particles can share a cell during one frame. `atomicAdd` ma
 
 ## Drawing the counts
 
-<Snippet file="eight-million-particles/01-splat/example.rs" region="draw-shader" />
+<Snippet file="particle-system/01-splat/example.rs" region="draw-shader" />
 
 The `draw` shader just reads, so it declares `counts` as plain `u32` with `read` access: the same bytes without the `atomic` wrapper. In a fragment stage, `@builtin(position)` holds the pixel's coordinates in the target, counted from the top-left corner, which is why `fs_main` flips `y` before it looks up a cell. The grid stretches to fill the canvas, while `fit` in the `simulate` shader keeps the swirl round. Only at 1280 × 720 does a cell match exactly one pixel.
 
@@ -133,17 +133,17 @@ The `draw` shader just reads, so it declares `counts` as plain `u32` with `read`
 
 On every frame, the program sets the time and the canvas size and renders `output`:
 
-<Snippet file="eight-million-particles/01-splat/example.rs" region="frame" />
+<Snippet file="particle-system/01-splat/example.rs" region="frame" />
 
 Most demos on this site run on WebGPU, or on WebGL2 where a browser lacks it. This one needs WebGPU, since WebGL2 has no compute shaders, and shows a note instead where it's missing.
 
-<Demo file="eight-million-particles/01-splat/example.rs" webgpu />
+<Demo file="particle-system/01-splat/example.rs" webgpu />
 
 ## Where the time goes
 
 A particle here is one run of the compute shader and one `atomicAdd`, with no triangle for the GPU to prepare. Item for item, it costs about a sixteenth as much as an instanced triangle. This program moves eight times as many particles as the last step of [Hello, million triangles!](/tutorials/hello-triangle/) draws triangles, in about half the time.
 
-Your own numbers depend on your GPU. The [frame budget](/tutorials/hello-triangle/#your-frame-budget) section of Hello, million triangles! shows how to measure them, and `FC_TUTORIAL_FRAMES=120 ./fc example tutorial_eight_million_particles_splat` prints this program's average frame time.
+Your own numbers depend on your GPU. The [frame budget](/tutorials/hello-triangle/#your-frame-budget) section of Hello, million triangles! shows how to measure them, and `FC_TUTORIAL_FRAMES=120 ./fc example tutorial_particle_system_splat` prints this program's average frame time.
 
 ## What just happened
 

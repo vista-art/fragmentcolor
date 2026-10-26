@@ -14,6 +14,12 @@ const SUMMARIES = {
   signal: "A late broadcast curving across old glass. The pointer tunes it, and press and pulse add interference.",
 };
 
+// Chip crops for the artworks that read better magnified (see index.js).
+const CHIPS = {
+  plankton: { x: 0.35, y: 0.45, zoom: 3 },
+  monolith: { x: 0.5, y: 0.56, zoom: 1.8 },
+};
+
 // Starting values that replace the shared ones for one artwork. Monolith opens at
 // 60% of every slider, and Rose Window in full bloom with its pulse near the top.
 const VALUES = {
@@ -27,6 +33,7 @@ export const ARTWORK_DEMOS = ARTWORKS.map((artwork) => ({
   summary: SUMMARIES[artwork.id] ?? artwork.caption,
   category: "Artworks",
   thumbnail: `/playground/thumbs/${artwork.id}.webp`,
+  chip: CHIPS[artwork.id],
   kind: "fragment",
   library: artwork.slugs,
   values: { "u.drag": [0.55, 0.32], "u.zoom": 1, "u.press": 0, "u.pulse": 0, ...VALUES[artwork.id] },

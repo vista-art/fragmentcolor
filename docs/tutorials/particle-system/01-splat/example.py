@@ -1,6 +1,6 @@
-"""Eight million particles: a compute shader moves them and counts them in a grid.
+"""A particle system: a compute shader moves eight million particles and counts them in a grid.
 
-From the repository root, run `python docs/tutorials/eight-million-particles/host.py 01-splat`.
+From the repository root, run `python docs/tutorials/particle-system/host.py 01-splat`.
 """
 
 from dataclasses import dataclass

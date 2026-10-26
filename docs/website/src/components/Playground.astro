@@ -21,6 +21,12 @@ const list = demos ? demos.flatMap((id) => DEMOS.filter((d) => d.id === id)) : D
 const first = list.find((d) => d.id === demo) ?? list[0];
 if (!first) throw new Error(`<Playground>: no demo matches ${JSON.stringify(demos)}.`);
 
+// A chip's crop of its demo's thumbnail, as the custom properties its CSS reads.
+function chipCrop(demo: (typeof list)[number]) {
+  const chip = "chip" in demo ? demo.chip : undefined;
+  return chip && `--chip-x: ${chip.x}; --chip-y: ${chip.y}; --chip-zoom: ${chip.zoom}`;
+}
+
 // The picker's category chips, in the order each category first appears, with their demo counts.
 const categories = new Map<string, number>();
 for (const d of list) categories.set(d.category, (categories.get(d.category) ?? 0) + 1);
@@ -92,12 +98,39 @@ const installs = [
     <div class="fcp-menu">
       {
         list.length > 1 ? (
-          <button type="button" class="fcp-menu-button" aria-haspopup="dialog" aria-expanded="false">
-            <span class="fcp-menu-label">Demo</span>
-            <span class="fcp-menu-value">{first.title}</span>
-          </button>
+          <>
+            <div class="fcp-strip" role="toolbar" aria-label="Demos">
+              {list.map((d) => (
+                <button
+                  type="button"
+                  class="fcp-strip-item"
+                  data-demo={d.id}
+                  aria-pressed={d.id === first.id ? "true" : "false"}
+                  tabindex={d.id === first.id ? 0 : -1}
+                  title={d.summary}
+                >
+                  <span class="fcp-strip-thumb" style={chipCrop(d)}>
+                    <img src={d.thumbnail} alt="" width="384" height="240" loading="lazy" decoding="async" />
+                  </span>
+                  <span>{d.title}</span>
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              class="fcp-menu-button"
+              aria-haspopup="dialog"
+              aria-expanded="false"
+              aria-label={`All ${list.length} demos`}
+            >
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1.2" /><rect x="9" y="2" width="5" height="5" rx="1.2" /><rect x="2" y="9" width="5" height="5" rx="1.2" /><rect x="9" y="9" width="5" height="5" rx="1.2" /></svg>
+              <span>
+                All {list.length}<span class="fcp-menu-word"> demos</span>
+              </span>
+            </button>
+          </>
         ) : (
-          <div class="fcp-menu-button fcp-menu-single">
+          <div class="fcp-menu-single">
             <span class="fcp-menu-label">Demo</span>
             <span class="fcp-menu-value">{first.title}</span>
           </div>
@@ -105,7 +138,7 @@ const installs = [
       }
       {
         list.length > 1 && (
-          <div class="fcp-picker fcp-demo-picker" role="dialog" aria-label="Demos" hidden>
+          <div class="fcp-picker fcp-demo-picker" role="dialog" aria-label="All demos" hidden>
             <div class="fcp-picker-head">
               <input
                 class="fcp-picker-search"
@@ -476,7 +509,9 @@ const installs = [
     outline-offset: 1px;
   }
 
-  fc-playground .fcp-tabs button:focus-visible {
+  /* Rows that clip what overflows them keep the focus ring inside each button. */
+  fc-playground .fcp-tabs button:focus-visible,
+  fc-playground .fcp-strip-item:focus-visible {
     outline-offset: -2px;
   }
 
@@ -488,75 +523,160 @@ const installs = [
     border-bottom: 1px solid var(--fcp-line);
   }
 
-  /* The minimum width keeps the chevron in place as the title changes.
-     The demo picker opens over the panes. */
+  /* Every demo has a chip in one row, which scrolls sideways once it runs past
+     the toolbar. The button at its end opens the demo picker over the panes.
+     The menu ends at that button, so the picker hangs right under it. */
   .fcp-menu {
     position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
     flex: 0 1 auto;
     min-width: 0;
   }
 
+  .fcp-strip {
+    display: flex;
+    gap: 6px;
+    flex: 0 1 auto;
+    min-width: 0;
+    padding: 2px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .fcp-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* A fade marks each side that hides more demos. */
+  .fcp-strip[data-more="end"] {
+    mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent);
+  }
+
+  .fcp-strip[data-more="start"] {
+    mask-image: linear-gradient(to left, #000 calc(100% - 48px), transparent);
+  }
+
+  .fcp-strip[data-more="both"] {
+    mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent);
+  }
+
+  .fcp-strip-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex: none;
+    margin: 0;
+    padding: 3px 12px 3px 3px;
+    border: 1px solid var(--fcp-line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--fcp-dim);
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  /* A circle cut from the demo's 16:10 thumbnail. --chip-x and --chip-y center it,
+     as fractions of the thumbnail, --chip-zoom magnifies it, and the clamps keep
+     the thumbnail over the whole circle. */
+  .fcp-strip-thumb {
+    --size: 24px;
+    position: relative;
+    flex: none;
+    width: var(--size);
+    height: var(--size);
+    overflow: hidden;
+    border-radius: 50%;
+    background: var(--fcp-panel);
+  }
+
+  .fcp-strip-thumb img {
+    --height: calc(var(--size) * var(--chip-zoom, 1));
+    --width: calc(var(--height) * 1.6);
+    position: absolute;
+    left: clamp(var(--size) - var(--width), var(--size) / 2 - var(--chip-x, 0.5) * var(--width), 0px);
+    top: clamp(var(--size) - var(--height), var(--size) / 2 - var(--chip-y, 0.5) * var(--height), 0px);
+    width: var(--width);
+    height: var(--height);
+    max-width: none;
+    margin: 0;
+  }
+
+  .fcp-strip-item:not([aria-pressed="true"]):hover {
+    color: var(--fcp-ink);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  :root[data-theme="light"] .fcp-strip-item:not([aria-pressed="true"]):hover {
+    border-color: hsla(224, 10%, 10%, 0.24);
+  }
+
+  .fcp-strip-item[aria-pressed="true"] {
+    color: var(--fcp-ink);
+    background: var(--fcp-accent-bg);
+    border-color: var(--fcp-accent);
+  }
+
   .fcp-menu-button {
     display: flex;
-    align-items: baseline;
-    gap: 8px;
-    box-sizing: border-box;
-    width: 100%;
-    min-width: 13rem;
+    align-items: center;
+    gap: 7px;
+    flex: none;
     margin: 0;
-    padding: 5px 10px 5px 12px;
-    border: 1px solid var(--fcp-line);
-    border-radius: 8px;
-    background: var(--fcp-panel);
-    text-align: left;
+    padding: 6px 10px 6px 12px;
+    border: 1px solid var(--fcp-accent);
+    border-radius: 999px;
+    background: var(--fcp-accent-bg);
+    color: var(--fcp-accent);
+    font-size: 13px;
     white-space: nowrap;
-    cursor: pointer;
     -webkit-user-select: none;
     user-select: none;
   }
 
-  button.fcp-menu-button:hover,
+  .fcp-menu-button svg {
+    flex: none;
+    fill: currentColor;
+  }
+
+  .fcp-menu-button:hover,
   .fcp-menu-button[aria-expanded="true"] {
-    border-color: rgba(255, 255, 255, 0.2);
+    background: hsla(230, 90%, 75%, 0.24);
   }
 
-  :root[data-theme="light"] button.fcp-menu-button:hover,
+  /* Over the deeper tint of a hovered or open button, the text takes the darker accent to stay readable. */
+  :root[data-theme="light"] .fcp-menu-button:hover,
   :root[data-theme="light"] .fcp-menu-button[aria-expanded="true"] {
-    border-color: hsla(224, 10%, 10%, 0.24);
+    background: hsla(234, 90%, 60%, 0.2);
+    color: var(--sl-color-accent-high);
   }
 
-  /* A playground with one demo names it without a picker. */
-  .fcp-menu-single {
-    cursor: default;
-  }
-
-  .fcp-menu-single::after {
-    display: none;
-  }
-
-  .fcp-menu-button:focus-visible {
-    outline: 2px solid var(--fcp-accent);
-    outline-offset: 1px;
-  }
-
+  /* The chevron is a mask over the text color, so it changes color with the text. */
   .fcp-menu-button::after {
     content: "";
     flex: none;
-    align-self: center;
     width: 12px;
     height: 12px;
-    margin-left: auto;
-    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%23a5b4fc' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    background: currentColor;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
       no-repeat center / contain;
     transition: transform 0.15s;
   }
 
-  :root[data-theme="light"] .fcp-menu-button::after {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%233d50f5' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  }
-
   .fcp-menu-button[aria-expanded="true"]::after {
     transform: rotate(180deg);
+  }
+
+  /* A playground with one demo names it without a picker. */
+  .fcp-menu-single {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    padding: 5px 0;
+    white-space: nowrap;
   }
 
   .fcp-menu-label {
@@ -858,7 +978,7 @@ const installs = [
     border: 1px dashed var(--fcp-accent);
     border-radius: 6px;
     background: none;
-    color: var(--fcp-accent) !important;
+    color: var(--fcp-accent);
     font-size: 12px !important;
   }
 
@@ -1091,12 +1211,25 @@ const installs = [
       order: -1;
     }
 
-    .fcp-menu {
-      flex: 1;
+    /* A demo row takes the toolbar's full width, and the status goes under it. */
+    .fcp-toolbar {
+      flex-wrap: wrap;
+      row-gap: 6px;
     }
 
-    .fcp-menu-button {
-      min-width: 0;
+    .fcp-menu:has(.fcp-strip) {
+      flex-basis: 100%;
+    }
+
+    .fcp-menu:has(.fcp-strip) + .fcp-status {
+      margin-left: 0;
+    }
+  }
+
+  /* A phone leaves the demo row more room with a shorter button. */
+  @media (max-width: 30rem) {
+    .fcp-menu-word {
+      display: none;
     }
   }
 </style>
