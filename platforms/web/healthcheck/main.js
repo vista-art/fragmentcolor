@@ -717,6 +717,106 @@ struct Data { items: array<vec4<f32>, 2> };
       renderer.createStorageTexture([4, 4], TextureFormat.Rgba, null, 32));
 });
 
+// A shader the device can't run, or a texture its slot can't take, throws from render
+// itself, before any GPU work, so no late error or console.error follows.
+await withModule('platforms.web.healthcheck.device_checks', async () => {
+    const renderer = new Renderer();
+    const target = await renderer.createTextureTarget([8, 8]);
+    const fail = (message) => { throw new Error(message); };
+    // Checks that `run` throws an Error whose message holds `text`.
+    const refuses = (label, text, run) => {
+      try { run(); } catch (e) {
+        if (!(e instanceof Error)) fail(`${label} threw a ${typeof e}, not an Error`);
+        if (!text.test(e.message)) fail(`${label} threw: ${e.message}`);
+        return console.log(`${label} threw:`, e.message);
+      }
+      fail(`${label} should throw`);
+    };
+    const vertex = `
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  return vec4<f32>(p[i], 0.0, 1.0);
+}`;
+
+    const sampled = new Shader(`${vertex}
+@group(0) @binding(0) var image: texture_2d<f32>;
+@group(0) @binding(1) var linear: sampler;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return textureSample(image, linear, vec2<f32>(0.5)); }`);
+    refuses('render with an unset texture', /texture 'image' is not set/, () => renderer.render(sampled, target));
+    const depth = await renderer.createDepthTexture([8, 8]);
+    sampled.set('image', depth);
+    refuses('render with a depth texture in a texture_2d<f32> slot', /texture 'image' can't take Depth32Float/,
+      () => renderer.render(sampled, target));
+    const plain = await renderer.createTexture(new Uint8Array(4 * 4 * 4), { size: [4, 4] });
+    sampled.set('image', plain);
+    renderer.unregisterTexture(plain.id());
+    refuses('render with a texture unregisterTexture removed', /not found/, () => renderer.render(sampled, target));
+
+    const marks = new Shader(`${vertex}
+@group(0) @binding(0) var marks: texture_storage_2d<rgba8unorm, write>;
+@fragment fn fs_main() -> @location(0) vec4<f32> {
+  textureStore(marks, vec2<u32>(0u), vec4<f32>(1.0));
+  return vec4<f32>(1.0);
+}`);
+    const sampledOnly = await renderer.createTexture(new Uint8Array(4 * 4 * 4), { size: [4, 4] });
+    marks.set('marks', sampledOnly);
+    // WebGL2 binds no storage textures at all, which the same check reports first.
+    refuses('render with a sampled texture in a storage slot', /without STORAGE_BINDING usage|storage textures in the fragment stage/,
+      () => renderer.render(marks, target));
+
+    const far = new Shader(`${vertex}
+@group(100) @binding(0) var<uniform> tint: vec4<f32>;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return tint; }`);
+    refuses('render with a group past the device', /bind groups/, () => renderer.render(far, target));
+    const lone = new Shader(`@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }`);
+    refuses('render without a vertex entry point', /no @vertex entry point/, () => renderer.render(lone, target));
+    const wide = new Shader(`@compute @workgroup_size(4096) fn cs_main() {}`);
+    refuses('dispatch of a workgroup past the device', /max_compute_workgroup_size_x|runs no compute shaders/,
+      () => renderer.render(wide, target));
+    const integer = new Shader(`${vertex}
+@fragment fn fs_main() -> @location(0) vec4<u32> { return vec4<u32>(1u); }`);
+    refuses('render of integer output into a float target', /can't store/, () => renderer.render(integer, target));
+
+    // Each refusal ran no GPU work, so the next frame draws and reads back with no late error.
+    renderer.render(Shader.default(), target);
+    const image = await target.getImage();
+    if (!(image instanceof Uint8Array) || image.length !== 8 * 8 * 4) fail(`getImage returned ${image}`);
+});
+
+// The WGSL wgpu writes for the browser drops @size and @align, so FragmentColor hands it
+// WGSL that keeps them: each member reads and writes the bytes its explicit layout gives it.
+await withModule('platforms.web.healthcheck.explicit_layouts', async () => {
+    if (!navigator.gpu || !(await navigator.gpu.requestAdapter())) {
+      return console.log('explicit layouts: no WebGPU adapter, so WebGL2 keeps the module as it is');
+    }
+    const renderer = new Renderer();
+    const target = await renderer.createTextureTarget([8, 8]);
+    const shader = new Shader(`
+struct Params { scale: f32, @align(16) offset: vec2<f32>, @size(20) tag: f32, last: f32 };
+@group(0) @binding(0) var<uniform> params: Params;
+struct Out { a: f32, @align(16) b: vec2<f32>, c: f32 };
+@group(0) @binding(1) var<storage, read_write> explicit_layout_out: Out;
+@compute @workgroup_size(1) fn cs_main() {
+  explicit_layout_out.a = params.scale;
+  explicit_layout_out.b = params.offset;
+  explicit_layout_out.c = params.last;
+}`);
+    shader.set('params.scale', 2);
+    shader.set('params.offset', [3, 4]);
+    shader.set('params.last', 5);
+
+    renderer.render(shader, target);
+    const bytes = await renderer.readStorage(shader, 'explicit_layout_out');
+
+    const floats = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
+    // `a` at byte 0, `b` at byte 16 after its @align(16), and `c` right after `b`, at byte 24.
+    const read = [floats[0], floats[4], floats[5], floats[6]];
+    const want = [2, 3, 4, 5];
+    if (read.some((value, index) => value !== want[index])) {
+      throw new Error(`explicit layouts read [${read}], want [${want}]`);
+    }
+});
+
 // WebGPU reports a GPU error after render returns. Each one logs a console.error as it
 // lands, and the next render throws it, once. A readback or load waits for it and throws it.
 await withModule('platforms.web.healthcheck.late_errors', async () => {
