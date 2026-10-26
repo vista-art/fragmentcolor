@@ -446,7 +446,19 @@ fn check_accessor(
             layout.0, layout.1
         )));
     }
+    // A sparse accessor without a view holds zeros that cost no bytes in the
+    // file, so nothing else bounds its count. Past u32::MAX no index reaches it.
+    if count > u32::MAX as usize {
+        return Err(SceneLoadError::Invalid(format!(
+            "{label} holds {count} elements, more than 32-bit indices reach"
+        )));
+    }
     let size = accessor.size();
+    if count.checked_mul(size).is_none() {
+        return Err(SceneLoadError::Invalid(format!(
+            "{label} holds {count} elements of {size} bytes, more than this platform addresses"
+        )));
+    }
     let Some(sparse) = accessor.sparse() else {
         let view = accessor.view().ok_or_else(|| {
             SceneLoadError::Invalid(format!("{label} has neither a bufferView nor sparse data"))
@@ -523,22 +535,37 @@ fn check_range(
     }
 }
 
-/// Turn a reader's `None` for a declared accessor into an error.
+/// Collect a declared accessor's items, or `None` for an absent one.
+///
 /// The reader returns `None` both for an absent attribute and for one whose
 /// bytes it can't reach, and only the first case may fall back to defaults.
-fn require<Items>(
+/// The memory is reserved up front and fallibly, so a count too large to hold
+/// is an error instead of an allocation panic.
+fn read_items<Item>(
     declared: Option<gltf::Accessor<'_>>,
-    items: Option<Items>,
+    items: Option<impl Iterator<Item = Item>>,
     semantic: &str,
-) -> Result<Option<Items>, SceneLoadError> {
-    match (declared, items) {
-        (None, _) => Ok(None),
-        (Some(_), Some(items)) => Ok(Some(items)),
-        (Some(accessor), None) => Err(SceneLoadError::Invalid(format!(
-            "glTF accessor {} ({semantic}) can't be read from its buffer",
-            accessor.index()
-        ))),
+) -> Result<Option<Vec<Item>>, SceneLoadError> {
+    let (accessor, items) = match (declared, items) {
+        (None, _) => return Ok(None),
+        (Some(accessor), None) => {
+            return Err(SceneLoadError::Invalid(format!(
+                "glTF accessor {} ({semantic}) can't be read from its buffer",
+                accessor.index()
+            )));
+        }
+        (Some(accessor), Some(items)) => (accessor, items),
+    };
+    let mut values = Vec::new();
+    if values.try_reserve_exact(accessor.count()).is_err() {
+        return Err(SceneLoadError::Invalid(format!(
+            "glTF accessor {} ({semantic}) holds {} elements, more than fit in memory",
+            accessor.index(),
+            accessor.count()
+        )));
     }
+    values.extend(items);
+    Ok(Some(values))
 }
 
 fn build_mesh(
@@ -549,45 +576,42 @@ fn build_mesh(
     let mesh = Mesh::new();
     let reader = primitive.reader(|buffer| buffers.get(buffer.index()).map(|data| &data[..]));
 
-    let positions: Vec<[f32; 3]> = require(
+    let positions: Vec<[f32; 3]> = read_items(
         primitive.get(&Semantic::Positions),
         reader.read_positions(),
         "POSITION",
     )?
-    .ok_or_else(|| SceneLoadError::Invalid("glTF primitive has no POSITION attribute".into()))?
-    .collect();
-    let supplied_normals: Option<Vec<[f32; 3]>> = require(
+    .ok_or_else(|| SceneLoadError::Invalid("glTF primitive has no POSITION attribute".into()))?;
+    let supplied_normals: Option<Vec<[f32; 3]>> = read_items(
         primitive.get(&Semantic::Normals),
         reader.read_normals(),
         "NORMAL",
-    )?
-    .map(|it| it.collect());
-    let uvs: Option<Vec<[f32; 2]>> = require(
+    )?;
+    let uvs: Option<Vec<[f32; 2]>> = read_items(
         primitive.get(&Semantic::TexCoords(0)),
-        reader.read_tex_coords(0),
+        reader.read_tex_coords(0).map(|it| it.into_f32()),
         "TEXCOORD_0",
-    )?
-    .map(|it| it.into_f32().collect());
-    let uv1s: Option<Vec<[f32; 2]>> = require(
+    )?;
+    let uv1s: Option<Vec<[f32; 2]>> = read_items(
         primitive.get(&Semantic::TexCoords(1)),
-        reader.read_tex_coords(1),
+        reader.read_tex_coords(1).map(|it| it.into_f32()),
         "TEXCOORD_1",
-    )?
-    .map(|it| it.into_f32().collect());
-    let colors: Option<Vec<[f32; 4]>> = require(
+    )?;
+    let colors: Option<Vec<[f32; 4]>> = read_items(
         primitive.get(&Semantic::Colors(0)),
-        reader.read_colors(0),
+        reader.read_colors(0).map(|it| it.into_rgba_f32()),
         "COLOR_0",
-    )?
-    .map(|it| it.into_rgba_f32().collect());
-    let tangents: Option<Vec<[f32; 4]>> = require(
+    )?;
+    let tangents: Option<Vec<[f32; 4]>> = read_items(
         primitive.get(&Semantic::Tangents),
         reader.read_tangents(),
         "TANGENT",
-    )?
-    .map(|it| it.collect());
-    let indices: Option<Vec<u32>> = require(primitive.indices(), reader.read_indices(), "indices")?
-        .map(|it| it.into_u32().collect());
+    )?;
+    let indices: Option<Vec<u32>> = read_items(
+        primitive.indices(),
+        reader.read_indices().map(|it| it.into_u32()),
+        "indices",
+    )?;
     let indices = list_triangles(primitive.mode(), indices, positions.len())?;
     check_indices(indices.as_deref(), positions.len())?;
 
@@ -1325,11 +1349,16 @@ mod tests {
 
     #[test]
     fn load_refuses_a_count_that_overflows_the_byte_range() {
-        let bytes = mutate_triangle(&[(
+        let huge = mutate_triangle(&[(
             r#""count":3,"type":"VEC3""#,
             r#""count":4611686018427387904,"type":"VEC3""#,
         )]);
-        assert_invalid(bytes, "reads past the end of bufferView 0");
+        assert_invalid(huge, "holds 4611686018427387904 elements");
+        let largest = mutate_triangle(&[(
+            r#""count":3,"type":"VEC3""#,
+            r#""count":4294967295,"type":"VEC3""#,
+        )]);
+        assert_invalid(largest, "reads past the end of bufferView 0");
     }
 
     #[test]
@@ -1378,6 +1407,43 @@ mod tests {
             r#""nodes":[{"mesh":0,"children":[1]},{"children":[0]}]"#,
         )]);
         assert_invalid(bytes, "glTF node 0 is reached twice");
+    }
+
+    const POSITION_ACCESSOR: &str = r#"{"bufferView":0,"byteOffset":0,"componentType":5126,"count":3,"type":"VEC3","min":[-0.5,-0.5,0.0],"max":[0.5,0.5,0.0]}"#;
+
+    /// The triangle with POSITION as a sparse accessor of `count` elements
+    /// and no bufferView: zeros, except element 0 read from view 0.
+    fn sparse_positions(count: &str) -> Vec<u8> {
+        let sparse = r#"{"componentType":5126,"count":COUNT,"type":"VEC3","min":[-0.5,-0.5,0.0],"max":[0.5,0.5,0.0],"sparse":{"count":1,"indices":{"bufferView":1,"componentType":5125},"values":{"bufferView":0}}}"#;
+        mutate_triangle(&[(POSITION_ACCESSOR, &sparse.replace("COUNT", count))])
+    }
+
+    #[test]
+    fn load_reads_a_sparse_accessor_without_a_view() {
+        let scene = Scene::load(sparse_positions("3")).expect("load sparse POSITION");
+        assert_eq!(scene.models().len(), 1);
+    }
+
+    #[test]
+    fn load_refuses_a_sparse_accessor_too_large_to_read() {
+        // Without a view, nothing in the file bounds the count, and
+        // collecting 2^62 positions overflowed the allocation.
+        assert_invalid(
+            sparse_positions("4611686018427387904"),
+            "(POSITION) holds 4611686018427387904 elements",
+        );
+        assert_invalid(
+            sparse_positions("4294967296"),
+            "(POSITION) holds 4294967296 elements",
+        );
+    }
+
+    #[test]
+    fn load_refuses_sparse_indices_too_large_to_read() {
+        let indices = r#""max":[0.5,0.5,0.0]},{"componentType":5125,"count":4611686018427387904,"type":"SCALAR","sparse":{"count":1,"indices":{"bufferView":1,"componentType":5125},"values":{"bufferView":1}}}]"#;
+        let bytes =
+            mutate_triangle(&[(MODE, r#""indices":1,"mode":4}"#), (LAST_ACCESSOR, indices)]);
+        assert_invalid(bytes, "(indices) holds 4611686018427387904 elements");
     }
 
     #[test]
