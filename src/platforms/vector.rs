@@ -6,7 +6,10 @@ use crate::Color;
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum VectorError {
     /// An item that is NaN, an infinity, or a finite number past the `f32` range.
-    #[error("{label}: item {index} must be a finite number that fits a 32-bit float, got {value}")]
+    #[error(
+        "{label}: item {index} must be a finite number that fits a 32-bit float, got {}",
+        show(*value)
+    )]
     Item {
         label: String,
         index: usize,
@@ -19,6 +22,15 @@ pub(crate) enum VectorError {
         expected: String,
         count: usize,
     },
+}
+
+/// The number as an error prints it: a large one in exponent form, such as `1e39`.
+fn show(value: f64) -> String {
+    if value.is_finite() && value.abs() >= 1e16 {
+        format!("{value:e}")
+    } else {
+        value.to_string()
+    }
 }
 
 /// Reads each number of a float vector as an `f32`, the rule every binding shares.
@@ -118,10 +130,9 @@ mod tests {
             .map(|error| error.to_string());
         assert_eq!(
             message.as_deref(),
-            Some(&*format!(
-                "Light.point: position: item 1 must be a finite number that fits a 32-bit float, got {}",
-                1e39
-            ))
+            Some(
+                "Light.point: position: item 1 must be a finite number that fits a 32-bit float, got 1e39"
+            )
         );
         let message = read_vector::<3>([0.0, 1.0], "Model.translate")
             .err()
