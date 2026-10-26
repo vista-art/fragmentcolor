@@ -15,6 +15,6 @@ pub enum ColorError {
 #[cfg(python)]
 impl From<ColorError> for pyo3::PyErr {
     fn from(error: ColorError) -> Self {
-        crate::error::PyFragmentColorError::new_err(error.to_string())
+        crate::error::InvalidInputError::new_err(error.to_string())
     }
 }

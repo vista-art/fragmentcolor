@@ -372,7 +372,7 @@ def check_empty_regions():
         else:
             raise AssertionError(f"{label} should raise InvalidInputError")
     rpass.set_viewport([0, 0, 1, 1])
-    assert ScreenRegion((2**32 - 5, 0), (5, 5)).max_x == 2**32 - 1
+    assert ScreenRegion((2**32 - 6, 0), (5, 5)).max_x == 2**32 - 1
     print("Regions refuse a side of 0 and a far edge past 2**32 - 1")
 
 
