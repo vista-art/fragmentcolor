@@ -791,6 +791,46 @@ struct Data { values: array<f32, 4> };
     }
 });
 
+// A wasm frame opens error scopes only for the frame and for each pipeline it builds.
+// Its texture views and bind groups, placeholders included, run under the frame's scopes.
+await withModule('platforms.web.healthcheck.error_scopes', async () => {
+    const device = globalThis.GPUDevice;
+    if (!device) return console.log('error_scopes: no WebGPU, skipped');
+    const push = device.prototype.pushErrorScope;
+    let pushed = 0;
+    device.prototype.pushErrorScope = function (filter) {
+      pushed++;
+      return push.call(this, filter);
+    };
+    try {
+      const renderer = new Renderer();
+      const target = await renderer.createTextureTarget([8, 8]);
+      // Group 0 holds nothing, so the pipeline binds an empty placeholder group there.
+      const shader = new Shader(`
+@group(1) @binding(0) var image: texture_2d<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  return vec4<f32>(p[i], 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(image, vec2<i32>(0, 0), 0); }
+`);
+      const texture = await renderer.createTexture(new Uint8Array([255, 0, 0, 255]), { size: [1, 1] });
+      shader.set('image', texture);
+
+      renderer.render(shader, target);
+      await target.getImage();
+      if (pushed === 0) return console.log('error_scopes: the device opens no WebGPU scopes, skipped');
+      pushed = 0;
+      renderer.render(shader, target);
+      const frame = pushed;
+      await target.getImage();
+
+      if (frame !== 3) throw new Error(`a frame with a cached pipeline opened ${frame} error scopes, not 3`);
+    } finally {
+      device.prototype.pushErrorScope = push;
+    }
+});
+
 // Auto-generated: run all extracted examples (after init)
 await withModule('platforms.web.healthcheck.generated_examples', async () => {
   const mod = await import('./generated_examples.mjs');
