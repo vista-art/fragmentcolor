@@ -307,8 +307,8 @@ def check_texture_inputs(renderer):
     print("create_texture takes every byte form, a Texture, and usage")
 
 
-def check_ndarray_formats(renderer):
-    """An ndarray fills the format it is given, or raises InvalidInputError."""
+def check_invalid_textures(renderer):
+    """Texture inputs fill the format they are given, or raise InvalidInputError."""
     gray = np.arange(16, dtype=np.uint8).reshape(4, 4)
     texture = renderer.create_texture(
         gray, format=TextureFormat.R8Unorm, mipmaps=False, usage=TextureUsage.COPY_SRC
@@ -336,6 +336,14 @@ def check_ndarray_formats(renderer):
     invalid("misspelled keys", lambda: storage.write_region(patch, {"x": 0, "w": 4, "h": 4}))
     invalid("both region forms", lambda: storage.write_region(patch, {"x": 0, "width": 4, "height": 4, "max_x": 4}))
     print("write_region reads a dict region or raises InvalidInputError")
+
+    invalid("a path with a size", lambda: renderer.create_texture("examples/assets/logo.png", size=[64, 64]))
+    invalid("usage 32", lambda: renderer.create_texture(bytes(16), size=[2, 2], usage=32))
+    invalid("storage usage 0", lambda: renderer.create_storage_texture([4, 4], TextureFormat.Rgba, usage=0))
+    invalid("storage on Depth32Float", lambda: renderer.create_storage_texture([4, 4], TextureFormat.Depth32Float))
+    invalid("raw bytes into Depth32Float", lambda: renderer.create_texture(bytes(64), size=[4, 4], format=TextureFormat.Depth32Float))
+    invalid("extra raw bytes", lambda: renderer.create_texture(bytes(20), size=[2, 2]))
+    print("create_texture and create_storage_texture refuse what wgpu would")
 
 
 def check_scene_errors():
@@ -645,7 +653,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_require_graph(renderer)
     check_value_types()
     check_texture_inputs(renderer)
-    check_ndarray_formats(renderer)
+    check_invalid_textures(renderer)
     check_scene_errors()
     check_stub()
 

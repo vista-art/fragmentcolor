@@ -149,6 +149,7 @@ impl Mipmap {
     #[lsp_doc("docs/api/texture/mipmap/build.md")]
     pub fn build(input: impl Into<crate::TextureInput>) -> Result<Mipmap, TextureError> {
         let crate::TextureInput { data, options } = input.into();
+        check_source(&data, options.size)?;
         let public_format = options.format;
         let wfmt: wgpu::TextureFormat = public_format.into();
         if !supports_cpu_mipmaps(wfmt) {
@@ -759,6 +760,7 @@ impl TextureObject {
         input: TextureInput,
     ) -> Result<Self, TextureError> {
         let TextureInput { data, options } = input;
+        check_source(&data, options.size)?;
         let format_override = if matches!(options.format, crate::TextureFormat::Rgba) {
             None
         } else {
@@ -1221,6 +1223,27 @@ fn read_ktx2_file(
         ))
     })?;
     ktx2_loader::from_ktx2_bytes(context, &bytes, usage)
+}
+
+/// Checks that a `size` comes only with raw pixel bytes,
+/// since a path, a URL, a KTX2 file and a mip chain each carry their own.
+fn check_source(data: &TextureData, size: Option<Size>) -> Result<(), TextureError> {
+    let sized = match data {
+        TextureData::Bytes(bytes) => ktx2_loader::is_ktx2(bytes),
+        TextureData::Path(_)
+        | TextureData::Url(_)
+        | TextureData::Ktx2Bytes(_)
+        | TextureData::Ktx2Path(_)
+        | TextureData::Ktx2Url(_)
+        | TextureData::Prepared(_) => true,
+        TextureData::Empty | TextureData::CloneOf(_) => false,
+    };
+    match sized && size.is_some() {
+        true => Err(TextureError::InvalidInput(
+            "a size describes raw pixel bytes; a path, URL, KTX2 file or Mipmap takes its size from the file".into(),
+        )),
+        false => Ok(()),
+    }
 }
 
 /// Decodes an encoded image once the size its header declares fits the device's `limits`,

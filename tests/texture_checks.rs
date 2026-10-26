@@ -277,6 +277,33 @@ fn writes_keep_the_mip_chain_current() {
     });
 }
 
+// Story: a size describes raw pixel bytes, so a path or URL with a size is
+// refused before any file read or fetch, where the path dropped the size and
+// the URL uploaded its encoded bytes as pixels.
+#[test]
+fn sizes_come_with_raw_bytes_only() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let result = renderer
+            .create_texture(("examples/assets/logo.png", [64, 64]))
+            .await;
+        assert!(refused(&result), "a path with a size");
+        let result = renderer
+            .create_texture(("https://invalid.invalid/x.png", [64, 64]))
+            .await;
+        assert!(refused(&result), "a URL with a size, refused before the fetch");
+        let chain = Mipmap::build(("examples/assets/logo.png", [64, 64]));
+        assert!(
+            matches!(chain, Err(TextureError::InvalidInput(_))),
+            "Mipmap::build with a path and a size"
+        );
+        renderer
+            .create_texture("examples/assets/logo.png")
+            .await
+            .expect("a path without a size decodes");
+    });
+}
+
 // Story: a buffer copy can't fill a depth texture, so raw pixels, seed bytes
 // and a write into Depth32Float are refused before they reach wgpu.
 #[test]
