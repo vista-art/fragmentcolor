@@ -13,6 +13,10 @@ __all__ = [
     "MalformedImageError",
     "OccludedSurfaceError",
     "DeviceError",
+    "LimitError",
+    "FeatureError",
+    "BindingError",
+    "EntryError",
     "SceneLoadError",
     "LightError",
     "CameraError",
@@ -69,6 +73,24 @@ class DeviceError(FragmentColorError):
     kind: ErrorKind
     label: str
     detail: str
+
+class LimitError(FragmentColorError):
+    item: str
+    limit: str
+    value: int
+    max: int
+
+class FeatureError(FragmentColorError):
+    item: str
+    feature: str
+
+class BindingError(FragmentColorError):
+    name: str
+    expected: str
+    found: str
+
+class EntryError(FragmentColorError):
+    stage: str
 
 class SceneLoadError(FragmentColorError): ...
 
@@ -241,8 +263,10 @@ class Renderer:
         An upload that fails stays pending and the others still bind, so a good
         normal map binds even when the base color path is missing. `load` returns
         the first failure, and so does every later `load`, and every native
-        `render`, until the input is fixed or replaced. The latest setter call for
-        a map wins, so setting a map again replaces the pending upload.
+        `render`, until the input is fixed or replaced. A map the shader doesn't
+        declare fails the `load` that uploads it, once, and the other maps still
+        bind. The latest setter call for a map wins, even one made while `load` is
+        uploading the older input, which is then dropped.
 
         On native targets, [`Renderer::render`](https://fragmentcolor.org/api/core/renderer)
         runs `load` first whenever the renderable has pending uploads, so an
@@ -349,7 +373,7 @@ class Renderer:
 
         A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input. The inputs are the `@location` arguments of the vertex entry point and the `@location` members of its struct arguments, and each one reads the mesh attribute of its own name.
 
-        Before it takes a frame, `render` checks each shader against the device and each texture uniform against its slot, so every language returns these errors from the call that caused them, the web included. A group, binding, binding count or buffer size past the device's limits returns `RendererError::BindGroupLayoutError`, and so does a texture uniform with no texture or with a texture its slot can't take. A texture `unregister_texture` removed, or one from another `Renderer`, returns `RendererError::TextureNotFoundError`, in a PBR map slot too. A render shader without its vertex or fragment entry point returns `ShaderError::ParseError`. A compute shader on a device without compute, a workgroup past the device's limits, and anything else the device's shader validator refuses return `RendererError::Error`. The [Shader](https://fragmentcolor.org/api/core/shader) page lists the checks.
+        Before it takes a frame, `render` checks each shader against the device and each texture uniform against its slot, so every language returns these errors from the call that caused them, the web included. A group, binding, binding count, buffer size or workgroup past the device's limits returns `RendererError::LimitError`, a feature the device lacks `RendererError::FeatureError`, a texture uniform that was never set or whose texture its slot can't take `RendererError::BindingError`, and a render shader without its vertex or fragment entry point `RendererError::EntryError`, each with its fields. An unset PBR map slot binds its 1x1 default instead, when the slot takes a 2D float texture. A texture `unregister_texture` removed, or one from another `Renderer`, returns `RendererError::TextureNotFoundError`, in a PBR map slot too. The [Shader](https://fragmentcolor.org/api/core/shader) page lists the checks and each language's form of these errors.
 
         A `Renderer` draws only into the targets it created. A target from another `Renderer` returns `RendererError::ForeignTarget`, unless every pass is a compute pass, which draws into no target. Each pass is checked against what it draws into before it records: a [depth target](https://fragmentcolor.org/api/core/pass#set_depth_target) of the color attachment's size and sample count, shader outputs and blending the [target](https://fragmentcolor.org/api/core/pass#set_target)'s format takes, a [viewport](https://fragmentcolor.org/api/core/pass#set_viewport) and a [compute dispatch](https://fragmentcolor.org/api/core/pass#set_compute_dispatch) the device takes, and textures that one pass doesn't both write and read. A render pass can't bind a texture it draws into, and no pass can read a texture one of its bindings writes, so a compute dispatch that samples a texture and stores into it returns `PassError::TextureConflict` too.
 
@@ -481,7 +505,7 @@ class Shader:
 
     It takes a WGSL or GLSL shader source as input, parses it, validates it, and exposes the uniforms as keys.
 
-    `Shader::new` refuses a source that no device FragmentColor opens can run, with a `ShaderError` that names the problem: a feature outside the set FragmentColor requests (`f16`, subgroups, `texture_external`, texture atomics), two globals on one `@group` and `@binding`, writable storage in a `@vertex` entry point, an immediate root that breaks the uniform layout rules, and two vertex inputs with one name, which would read one mesh attribute.
+    `Shader::new` refuses a source that no device FragmentColor opens can run, with a `ShaderError` that names the problem: a feature outside the set FragmentColor requests (`f16`, subgroups, `texture_external`, texture atomics), two globals on one `@group` and `@binding` (a `lights` root included), writable storage in a `@vertex` entry point, an immediate root that breaks the uniform layout rules, a filtering `sampler` that samples a depth texture, and two vertex inputs with one name, which would read one mesh attribute. A shader that passes can still be one a given device can't run, which `Renderer::render` refuses, as [Device limits](https://fragmentcolor.org/api/core/shader#device-limits) describes.
 
     `Shader::new` accepts a source string, a registry slug like `"sdf2d/circle"`, an `https://` URL, a local file path, or an array mixing any of those. Array parts are deduplicated by hash and concatenated in order, so you can pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](https://fragmentcolor.org/api/core/shader#set_registry).
 
@@ -541,8 +565,9 @@ class Shader:
         registry with your own source.
 
         If validation fails, the error message points at the line in the resulting
-        WGSL. If validation passes, the shader is guaranteed to work on the GPU. All
-        uniforms are initialized to zero.
+        WGSL. A shader that passes is one some device can run: `Renderer::render`
+        still checks it against its own device, and refuses one past that device's
+        limits or features with a typed error. All uniforms are initialized to zero.
 
         GLSL is supported only as a single part (a `.vert`, `.frag`, or `.glsl`
         file). Mixing GLSL with other parts is rejected.
@@ -4285,7 +4310,7 @@ class Material:
         }
         ```
 
-        `@size` and `@align` keep their layout on every platform, the web included, where FragmentColor hands the browser WGSL that keeps them. The built-in PBR shader spells its padding out as members instead, which reads the same anywhere the WGSL goes.
+        Spell the padding out as members, as the built-in PBR shader does. `@size` and `@align` keep their layout on Vulkan, Metal, DX12 and the browser's WebGPU, where FragmentColor hands the browser WGSL that keeps them, and the GL backends, WebGL2 among them, refuse them, since a std140 block can't hold such a layout.
 
         - Four `vec4<f32>` vertex inputs named `model_0` to `model_3`, the columns of
           the Model's transform. The renderer fills them at draw time from each
