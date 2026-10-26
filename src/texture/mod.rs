@@ -2344,7 +2344,8 @@ mod tests {
             .expect("poll");
         let view = slice.get_mapped_range().expect("mapped range");
         let rows = view.chunks(padded as usize).take(height as usize);
-        rows.flat_map(|line| line[..row as usize].to_vec()).collect()
+        rows.flat_map(|line| line[..row as usize].to_vec())
+            .collect()
     }
 
     /// The bytes of `texels` in the float `format`.
@@ -2354,7 +2355,10 @@ mod tests {
                 .iter()
                 .flat_map(|value| half::f16::from_f32(*value).to_le_bytes())
                 .collect(),
-            _ => texels.iter().flat_map(|value| value.to_le_bytes()).collect(),
+            _ => texels
+                .iter()
+                .flat_map(|value| value.to_le_bytes())
+                .collect(),
         }
     }
 
@@ -2412,7 +2416,10 @@ mod tests {
                 .expect("an HDR file");
             let format = crate::TextureFormat::Rgba16Float;
             let texel = first_texel(&read_level(&tex, 1), format);
-            assert!((texel[0] - 10.0).abs() < 0.2, "HDR level 1 keeps 10, got {texel:?}");
+            assert!(
+                (texel[0] - 10.0).abs() < 0.2,
+                "HDR level 1 keeps 10, got {texel:?}"
+            );
         });
     }
 
@@ -2421,7 +2428,10 @@ mod tests {
     #[test]
     fn raw_half_floats_keep_level_zero() {
         pollster::block_on(async move {
-            let words: [u16; 16] = [0x7C00, 0x7E01, 0x3C00, 0x3C00].repeat(4).try_into().unwrap();
+            let words: [u16; 16] = [0x7C00, 0x7E01, 0x3C00, 0x3C00]
+                .repeat(4)
+                .try_into()
+                .unwrap();
             let bytes: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
             let format = crate::TextureFormat::Rgba16Float;
             let options = TextureOptions {
@@ -2440,7 +2450,11 @@ mod tests {
             tex.write(&bytes).expect("a whole write");
             assert_eq!(read_level(&tex, 0), bytes, "write keeps level 0");
             let chain = Mipmap::build((bytes.as_slice(), format, [2u32, 2])).expect("chain");
-            assert_eq!(chain.level(0).expect("level 0"), bytes, "Mipmap keeps level 0");
+            assert_eq!(
+                chain.level(0).expect("level 0"),
+                bytes,
+                "Mipmap keeps level 0"
+            );
         });
     }
 
