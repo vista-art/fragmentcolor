@@ -265,6 +265,7 @@ struct VOut { @builtin(position) pos: vec4<f32> };
         assert e.kind == ErrorKind.Validation, f"kind {e.kind}"
         assert e.label == "render pipeline", f"label {e.label}"
         assert str(e).startswith("Device error (validation) in 'render pipeline'"), str(e)
+        assert e.detail and str(e).endswith(f": {e.detail}"), f"detail {e.detail}"
         print(f"render of a refused pipeline raised DeviceError: {e}")
     else:
         raise AssertionError("render of a refused pipeline should raise DeviceError")

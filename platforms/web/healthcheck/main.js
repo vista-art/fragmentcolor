@@ -29,7 +29,9 @@ async function withModule(moduleName, fn) {
   try {
     await fn();
   } catch (e) {
-    throw e; // propagate failure so healthcheck can fail
+    // Propagate the failure so the healthcheck fails, named after its module,
+    // since an error the library threw doesn't say which check it broke.
+    throw new Error(`${moduleName} failed: ${e?.message ?? e}`, { cause: e });
   } finally {
     globalThis.__HC.currentModule = prev || null;
   }
@@ -732,9 +734,16 @@ await withModule('platforms.web.healthcheck.late_errors', async () => {
         if (typeof e.label !== 'string' || !e.message.includes(`'${e.label}'`)) {
           fail(`${label} threw label ${e.label} for: ${e.message}`);
         }
+        if (typeof e.detail !== 'string' || !e.detail || !e.message.endsWith(`: ${e.detail}`)) {
+          fail(`${label} threw detail ${e.detail} for: ${e.message}`);
+        }
         return console.log(`${label} threw:`, e.message);
       }
       fail(`${label} never reported the failed frame`);
+    };
+    // Runs `run`, which must not throw, and names the step when it does.
+    const succeeds = async (label, run) => {
+      try { return await run(); } catch (e) { fail(`${label} threw: ${e?.message ?? e}`); }
     };
     // Calls `run` until the error lands and it throws, then checks what it threw.
     const surfaces = async (label, run) => {
@@ -785,39 +794,39 @@ struct Data { values: array<f32, 4> };
 
       renderer.render(unfed, target);
       await surfaces('render after a failed frame', () => renderer.render(valid, target));
-      renderer.render(valid, target);
+      await succeeds('render after the error was thrown', () => renderer.render(valid, target));
 
       // A readback or load in the same task as the failed frame waits for its error.
       renderer.render(unfed, target);
       await throwsLate('getImage right after a failed frame', () => target.getImage());
-      await target.getImage();
+      await succeeds('getImage after the error was thrown', () => target.getImage());
 
       renderer.render(unfed, target);
       await throwsLate('readTexture right after a failed frame', () => renderer.readTexture(target.texture().id()));
-      await renderer.readTexture(target.texture().id());
+      await succeeds('readTexture after the error was thrown', () => renderer.readTexture(target.texture().id()));
 
       // readTexture waits once, for the frames rendered before it, and throws only their
       // error. A frame that fails while it waits keeps its error for the next call.
-      renderer.render(valid, target);
+      await succeeds('render before readTexture', () => renderer.render(valid, target));
       const reading = renderer.readTexture(target.texture().id());
       await Promise.resolve();
       await Promise.resolve();
-      renderer.render(unfed, target);
-      const bytes = await reading;
+      await succeeds('render while readTexture waits', () => renderer.render(unfed, target));
+      const bytes = await succeeds('readTexture during a failed frame', () => reading);
       if (!(bytes instanceof Uint8Array) || bytes.length !== 8 * 8 * 4) {
         fail(`readTexture during a failed frame returned ${bytes}`);
       }
       await throwsLate('getImage after a frame that failed during readTexture', () => target.getImage());
 
-      renderer.render(storage, target);
-      await renderer.readStorage(storage, 'data');
+      await succeeds('render of a storage shader', () => renderer.render(storage, target));
+      await succeeds('readStorage', () => renderer.readStorage(storage, 'data'));
       renderer.render(unfed, target);
       await throwsLate('readStorage right after a failed frame', () => renderer.readStorage(storage, 'data'));
-      await renderer.readStorage(storage, 'data');
+      await succeeds('readStorage after the error was thrown', () => renderer.readStorage(storage, 'data'));
 
       renderer.render(unfed, target);
       await throwsLate('load right after a failed frame', () => renderer.load(valid));
-      await renderer.load(valid);
+      await succeeds('load after the error was thrown', () => renderer.load(valid));
 
       // A pipeline whose error landed left the cache, so the next
       // failed frame builds it again and logs its cause again.
