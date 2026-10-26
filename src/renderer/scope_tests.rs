@@ -161,6 +161,10 @@ impl crate::target::FrameSource for SpyTarget {
             counts: self.counts.clone(),
         }))
     }
+
+    fn owner(&self) -> Option<Arc<RenderContext>> {
+        None
+    }
 }
 
 impl Target for SpyTarget {
@@ -472,6 +476,10 @@ impl crate::target::FrameSource for InvalidSurface {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
         raise_named(&self.context, "the surface detail");
         Err(crate::SurfaceError::Validation)
+    }
+
+    fn owner(&self) -> Option<Arc<RenderContext>> {
+        Some(self.context.clone())
     }
 }
 

@@ -37,6 +37,7 @@ pub(crate) use buffer_pool::*;
 mod texture_pool;
 pub(crate) use texture_pool::*;
 
+mod checks;
 mod depth;
 use depth::DepthUse;
 pub(crate) mod background;
@@ -946,6 +947,7 @@ impl RenderContext {
         // Compute passes never draw into the target, so a
         // render made only of compute passes acquires no frame.
         if pass_list.iter().any(|pass| !pass.is_compute()) {
+            self.check_owner(target)?;
             *acquired = Some(self.acquire_frame(target)?);
         }
         let frame = acquired.as_deref();
@@ -3193,6 +3195,10 @@ mod tests {
         fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
             Err(crate::SurfaceError::Occluded)
         }
+
+        fn owner(&self) -> Option<Arc<RenderContext>> {
+            None
+        }
     }
 
     impl crate::Target for FramelessTarget {
@@ -4797,6 +4803,10 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat)
                     .write()
                     .pop_front()
                     .unwrap_or_else(|| Ok(Box::new(DummyFrame)))
+            }
+
+            fn owner(&self) -> Option<Arc<RenderContext>> {
+                None
             }
         }
         impl crate::Target for DummyTarget {

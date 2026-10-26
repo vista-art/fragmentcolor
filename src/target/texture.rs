@@ -43,6 +43,10 @@ impl crate::target::FrameSource for TextureTarget {
         let size = texture.size;
         Ok(Box::new(TextureFrame { view, format, size }))
     }
+
+    fn owner(&self) -> Option<Arc<RenderContext>> {
+        Some(self.context.clone())
+    }
 }
 
 impl Target for TextureTarget {

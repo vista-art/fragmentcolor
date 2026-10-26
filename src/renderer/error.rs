@@ -64,6 +64,9 @@ pub enum RendererError {
     StorageBindingNotFound(String),
     #[error("Depth sample_count mismatch: depth={depth} pass={pass}")]
     DepthSampleCountMismatch { depth: u32, pass: u32 },
+    /// A target that another Renderer created, whose frames work on another device.
+    #[error("The target belongs to another Renderer; render it with the Renderer that created it")]
+    ForeignTarget,
     #[error("initialization error: {0}")]
     InitializationError(#[from] InitializationError),
     #[cfg(not(wasm))]

@@ -14,9 +14,11 @@ mod platform;
 #[cfg(any(python, wasm, mobile))]
 pub use platform::*;
 
+use crate::RenderContext;
 use crate::size::Size;
 use crate::texture::TextureError;
 use lsp_doc::lsp_doc;
+use std::sync::Arc;
 
 pub mod error;
 
@@ -84,6 +86,10 @@ pub(crate) fn surface_texture_from(
 /// the canonical impls.
 pub(crate) trait FrameSource {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError>;
+
+    /// The context that created the target, or `None` before it has one.
+    /// A Renderer draws only into its own targets, since a frame works on one device.
+    fn owner(&self) -> Option<Arc<RenderContext>>;
 }
 
 #[lsp_doc("docs/api/targets/target/target.md")]

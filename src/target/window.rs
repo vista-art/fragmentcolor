@@ -30,6 +30,10 @@ impl crate::target::FrameSource for WindowTarget {
         let frame = self.acquire_frame()?;
         Ok(Box::new(frame))
     }
+
+    fn owner(&self) -> Option<Arc<RenderContext>> {
+        Some(self.context.clone())
+    }
 }
 
 impl Target for WindowTarget {
