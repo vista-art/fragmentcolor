@@ -96,6 +96,50 @@ class Healthcheck : ExampleCase() {
         renderer.render(solid, target)
     }
 
+    // One shader draws meshes with other layouts, and a second Renderer draws them too,
+    // where it stopped the app inside wgpu. render refuses indices past the vertices,
+    // and addMesh a vertex property named position.
+    @Test
+    fun meshChecks() = runBlocking {
+        val source = """
+            struct VOut { @builtin(position) pos: vec4<f32>, @location(0) color: vec4<f32> };
+            @vertex fn vs_main(@location(0) position: vec2<f32>, @location(1) color: vec4<f32>) -> VOut {
+              return VOut(vec4f(position, 0., 1.), color);
+            }
+            @fragment fn fs_main(v: VOut) -> @location(0) vec4<f32> { return v.color; }
+            """.trimIndent()
+        val corners = listOf(listOf(-1f, -1f), listOf(3f, -1f), listOf(-1f, 3f))
+        val shader = Shader(source)
+        val painted = Mesh()
+        for (corner in corners) {
+            painted.addVertex(Vertex(corner).set("color", listOf(1.0, 0.0, 0.0, 1.0)))
+        }
+        val tinted = Mesh()
+        tinted.addVertices(corners)
+        tinted.addInstance(mapOf("color" to listOf(0.0, 0.0, 1.0, 1.0)))
+        shader.addMesh(painted)
+        shader.addMesh(tinted)
+
+        val renderer = Renderer()
+        val target = renderer.createTextureTarget(listOf(8u, 8u))
+        renderer.render(shader, target)
+        val second = Renderer()
+        second.render(shader, second.createTextureTarget(listOf(8u, 8u)))
+
+        painted.setIndices(listOf(0u, 1u, 5u))
+        val past = assertFailsWith<FragmentColorException.Render> { renderer.render(shader, target) }
+        assertTrue(past.toString().contains("points past the last of 3 vertices"), past.toString())
+        painted.setIndices(listOf(0u, 1u, 2u))
+        renderer.render(shader, target)
+
+        val named = Mesh()
+        named.addVertex(
+            Vertex(listOf(0f, 0f)).set("position", listOf(5.0, 5.0)).set("color", listOf(1.0, 1.0, 1.0, 1.0))
+        )
+        val error = assertFailsWith<FragmentColorException> { Shader(source).addMesh(named) }
+        assertTrue(error.message.orEmpty().contains("property named 'position'"), error.message)
+    }
+
     // A region or viewport with a side of 0, or a far edge past UInt.MAX_VALUE,
     // throws instead of shrinking, and a clear color is a list of floats or doubles.
     @Test

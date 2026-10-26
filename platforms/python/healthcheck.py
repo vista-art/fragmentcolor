@@ -911,6 +911,68 @@ def check_mesh_inputs():
     print("Mesh, Vertex, and Instance take their typed inputs")
 
 
+COLOR_SHADER = """
+struct VOut { @builtin(position) pos: vec4<f32>, @location(0) color: vec4<f32> };
+@group(0) @binding(0) var<uniform> gain: f32;
+@vertex fn vs_main(@location(0) position: vec2<f32>, @location(1) color: vec4<f32>) -> VOut {
+  return VOut(vec4<f32>(position, 0.0, 1.0), color * gain);
+}
+@fragment fn fs_main(v: VOut) -> @location(0) vec4<f32> { return v.color; }
+"""
+
+
+def check_mesh_draws(renderer):
+    """One shader draws meshes with other layouts, a second Renderer draws them too,
+    and render and add_mesh refuse the mesh data they can't draw."""
+    def column(left, right):
+        return [[left, -1.0], [right, -1.0], [right, 1.0], [left, -1.0], [right, 1.0], [left, 1.0]]
+
+    def refuses(label, words, call):
+        try:
+            call()
+        except FragmentColorError as e:
+            assert words in str(e), f"{label}: {e!r} does not name {words!r}"
+            print(f"{label} raised FragmentColorError: {e}")
+            return
+        raise AssertionError(f"{label} should raise FragmentColorError")
+
+    shader = Shader(COLOR_SHADER)
+    shader.set("gain", 1.0)
+    painted = Mesh()
+    for corner in column(-1.0, 0.0):
+        painted.add_vertex(Vertex(corner).set("color", [1.0, 0.0, 0.0, 1.0]))
+    tinted = Mesh()
+    tinted.add_vertices(column(0.0, 1.0))
+    tinted.add_instance({"color": [0.0, 0.0, 1.0, 1.0]})
+    shader.add_mesh(painted)
+    shader.add_mesh(tinted)
+
+    for label, painter in (("one Renderer", renderer), ("a second Renderer", Renderer())):
+        target = painter.create_texture_target([8, 2])
+        painter.render(shader, target)
+        image = target.get_image()
+        assert list(image[0, 1]) == [255, 0, 0, 255], f"{label}: vertex color column {list(image[0, 1])}"
+        assert list(image[0, 6]) == [0, 0, 255, 255], f"{label}: instance color column {list(image[0, 6])}"
+
+    target = renderer.create_texture_target([8, 2])
+    painted.set_indices([0, 1, 7])
+    refuses("an index past the last vertex", "points past the last of 6 vertices",
+            lambda: renderer.render(shader, target))
+    painted.set_indices([0, 1, 2, 0])
+    refuses("a partial triangle", "multiple of 3 indices", lambda: renderer.render(shader, target))
+    painted.clear_indices()
+    tinted.add_instance(Instance())
+    refuses("an instance without the color the shader reads", "got no value at instance 1",
+            lambda: renderer.render(shader, target))
+    tinted.clear_instances()
+    tinted.add_instance({"color": [0.0, 0.0, 1.0, 1.0]})
+    named = Mesh()
+    named.add_vertex(Vertex([0.0, 0.0]).set("position", [5.0, 5.0]).set("color", [1.0, 1.0, 1.0, 1.0]))
+    refuses("a position property", "property named 'position'", lambda: Shader(COLOR_SHADER).add_mesh(named))
+    renderer.render(shader, target)
+    print("One shader draws meshes with other layouts, and refuses mesh data it can't draw")
+
+
 def run():
     """Simple smoke tests before running full examples"""
 
@@ -1066,6 +1128,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_error_types(renderer)
     check_vertex_values(renderer)
     check_mesh_inputs()
+    check_mesh_draws(renderer)
     check_require_graph(renderer)
     check_pass_targets(renderer)
     check_value_types()

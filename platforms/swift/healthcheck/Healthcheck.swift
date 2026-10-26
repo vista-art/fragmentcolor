@@ -140,6 +140,55 @@ final class Healthcheck: ExampleCase {
         try renderer.render(solid, target)
     }
 
+    // One shader draws meshes with other layouts, and a second Renderer draws them too,
+    // where it stopped the app inside wgpu. render refuses indices past the vertices,
+    // and addMesh a vertex property named position.
+    func testMeshChecks() async throws {
+        let source = """
+            struct VOut { @builtin(position) pos: vec4<f32>, @location(0) color: vec4<f32> };
+            @vertex fn vs_main(@location(0) position: vec2<f32>, @location(1) color: vec4<f32>) -> VOut {
+              return VOut(vec4f(position, 0., 1.), color);
+            }
+            @fragment fn fs_main(v: VOut) -> @location(0) vec4<f32> { return v.color; }
+        """
+        let corners: [[Float]] = [[-1, -1], [3, -1], [-1, 3]]
+        let shader = try Shader(source)
+        let painted = Mesh()
+        for corner in corners {
+            painted.addVertex(try Vertex(corner).set("color", [1.0, 0.0, 0.0, 1.0]))
+        }
+        let tinted = Mesh()
+        try tinted.addVertices(corners)
+        try tinted.addInstance(["color": [0.0, 0.0, 1.0, 1.0]])
+        try shader.addMesh(painted)
+        try shader.addMesh(tinted)
+
+        let renderer = Renderer()
+        let target = try await renderer.createTextureTarget([8, 8])
+        try renderer.render(shader, target)
+        let second = Renderer()
+        let other = try await second.createTextureTarget([8, 8])
+        try second.render(shader, other)
+
+        painted.setIndices([0, 1, 5])
+        try assertRenderThrows("an index past the last vertex", "points past the last of 3 vertices") {
+            try renderer.render(shader, target)
+        }
+        painted.setIndices([0, 1, 2])
+        try renderer.render(shader, target)
+
+        let named = Mesh()
+        named.addVertex(try Vertex([0.0, 0.0]).set("position", [5.0, 5.0]).set("color", [1.0, 1.0, 1.0, 1.0]))
+        do {
+            try Shader(source).addMesh(named)
+            throw HealthcheckError.assertion("a position property should throw")
+        } catch FragmentColorError.Shader(let message) {
+            guard message.contains("property named 'position'") else {
+                throw HealthcheckError.assertion("a position property: unexpected message \(message)")
+            }
+        }
+    }
+
     /// Checks that `run` throws `FragmentColorError.Render` with `words` in its text.
     private func assertRenderThrows(_ label: String, _ words: String, _ run: () throws -> Void) throws {
         do {
