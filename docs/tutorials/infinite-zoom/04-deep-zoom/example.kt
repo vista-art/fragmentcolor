@@ -288,12 +288,12 @@ fun setup(): State {
     val header = "const ORBIT: u32 = ${ORBIT}u;\nconst PIXELS: u32 = ${PIXELS}u;"
 
     val iterate = Shader(listOf(header, ITERATE))
-    iterate.set("view.budget", 1000u)
+    iterate.set("view.budget", 183u)
 
     // `gradient/palette_iq` from the shader library supplies the palette that `PRESENT` calls.
     val present = Shader(listOf("gradient/palette_iq", header, LABEL, PRESENT))
-    present.set("look.density", 0.02f)
-    present.set("look.phase", 0.6f)
+    present.set("look.density", 0.023f)
+    present.set("look.phase", 0.332f)
     present.set("look.inside_color", listOf(0.02f, 0.02f, 0.05f))
 
     // Compute the reference orbit once and send it to the GPU.

@@ -288,12 +288,12 @@ func setup() throws -> State {
     let header = "const ORBIT: u32 = \(orbitSize)u;\nconst PIXELS: u32 = \(pixels)u;"
 
     let iterate = try Shader([header, iterateSource])
-    try iterate.set("view.budget", 1000)
+    try iterate.set("view.budget", 183)
 
     // `gradient/palette_iq` from the shader library supplies the palette that `presentSource` calls.
     let present = try Shader(["gradient/palette_iq", header, label, presentSource])
-    try present.set("look.density", 0.02)
-    try present.set("look.phase", 0.6)
+    try present.set("look.density", 0.023)
+    try present.set("look.phase", 0.332)
     try present.set("look.inside_color", [0.02, 0.02, 0.05])
 
     // Compute the reference orbit once and send it to the GPU.

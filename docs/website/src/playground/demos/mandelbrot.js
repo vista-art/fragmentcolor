@@ -261,12 +261,12 @@ export async function setup(renderer, target) {
   const header = \`const ORBIT: u32 = \${ORBIT}u;\\nconst PIXELS: u32 = \${PIXELS}u;\`;
 
   const iterate = await prepare("iterate", [header, ITERATE]);
-  iterate.shader.set("view.budget", 1000);
+  iterate.shader.set("view.budget", 183);
 
   // The library brings the palette that present.wgsl calls.
   const present = await prepare("present", [...LIBRARY, header, LABEL, PRESENT]);
-  present.shader.set("look.density", 0.02);
-  present.shader.set("look.phase", 0.6);
+  present.shader.set("look.density", 0.023);
+  present.shader.set("look.phase", 0.332);
   present.shader.set("look.inside_color", [0.02, 0.02, 0.05]);
 
   // The dive's reference orbit grows a few milliseconds per frame, and the dive waits for it.
@@ -633,9 +633,9 @@ async function prepare(name, sources) {
 
 // The values main.js sets in setup, in order. Keys under look. belong to the present shader.
 const VALUES = {
-  "view.budget": 1000,
-  "look.density": 0.02,
-  "look.phase": 0.6,
+  "view.budget": 183,
+  "look.density": 0.023,
+  "look.phase": 0.332,
   "look.inside_color": [0.02, 0.02, 0.05],
 };
 

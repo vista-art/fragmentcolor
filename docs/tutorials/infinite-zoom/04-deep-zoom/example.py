@@ -271,12 +271,12 @@ def setup():
     header = f"const ORBIT: u32 = {ORBIT}u;\nconst PIXELS: u32 = {PIXELS}u;"
 
     iterate = Shader([header, ITERATE])
-    iterate.set("view.budget", 1000)
+    iterate.set("view.budget", 183)
 
     # `gradient/palette_iq` from the shader library supplies the palette that `PRESENT` calls.
     present = Shader(["gradient/palette_iq", header, LABEL, PRESENT])
-    present.set("look.density", 0.02)
-    present.set("look.phase", 0.6)
+    present.set("look.density", 0.023)
+    present.set("look.phase", 0.332)
     present.set("look.inside_color", [0.02, 0.02, 0.05])
 
     # Compute the reference orbit once and send it to the GPU.
