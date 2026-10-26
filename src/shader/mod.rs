@@ -496,7 +496,7 @@ impl ShaderObject {
             total_bytes += aligned;
         }
 
-        Ok(Self {
+        let object = Self {
             hash,
             module,
             source: source.to_string(),
@@ -518,7 +518,10 @@ impl ShaderObject {
             lights: RwLock::new(ShaderLights::default()),
             lowered: RwLock::new(HashMap::new()),
             bound_textures: DashMap::new(),
-        })
+        };
+        // Refuses vertex inputs no mesh can feed, such as two with one name.
+        object.reflect_vertex_inputs()?;
+        Ok(object)
     }
 
     /// The module a pipeline compiles on a device that takes lights through a
@@ -667,6 +670,13 @@ impl ShaderObject {
         };
         let format = naga_ty_to_vertex_format(&self.module.types[ty])?;
         let name = name.clone().unwrap_or_else(|| format!("attr{location}"));
+        // Each input reads the mesh attribute of its name, so two inputs can't share one.
+        if let Some(first) = inputs.iter().find(|input| input.name == name) {
+            return Err(ShaderError::ParseError(format!(
+                "the vertex inputs at @location({}) and @location({location}) are both named `{name}`, and each input reads the mesh attribute of its name",
+                first.location
+            )));
+        }
         inputs.push(VertexInputDesc {
             name,
             location: *location,
@@ -2318,6 +2328,34 @@ struct U { items: array<Item, 4096> };
         }
         let vector = shader("var<immediate> pc: vec4<f32>;\nfn read() -> f32 { return pc.y; }");
         assert!(Shader::new(vector.as_str()).is_ok());
+    }
+
+    // Story: two vertex inputs with one name fail at Shader::new, since both would read
+    // one mesh attribute: members of two structs, or a member and a plain argument.
+    #[test]
+    fn vertex_inputs_with_one_name_fail() {
+        let structs = r#"
+struct VertexIn { @location(0) position: vec2<f32> };
+struct InstanceIn { @location(1) position: vec2<f32> };
+@vertex fn vs_main(v: VertexIn, i: InstanceIn) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(v.position + i.position, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+"#;
+        let mixed = r#"
+struct VertexIn { @location(0) position: vec2<f32>, @location(1) uv: vec2<f32> };
+@vertex fn vs_main(v: VertexIn, @location(3) uv: vec2<f32>) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(v.position + v.uv + uv, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+"#;
+        for (source, first, second, name) in [(structs, 0, 1, "position"), (mixed, 1, 3, "uv")] {
+            let err = Shader::new(source).unwrap_err().to_string();
+            let expected = format!(
+                "the vertex inputs at @location({first}) and @location({second}) are both named `{name}`"
+            );
+            assert!(err.contains(&expected), "{err}");
+        }
     }
 
     // Story: two globals on one slot fail at Shader::new, used by different entry points or not used at all.
