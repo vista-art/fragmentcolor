@@ -14,15 +14,24 @@
 
 - `Texture.resize(size)` gives a texture a pass draws into a new size, in Rust, JavaScript, Python, Swift and Kotlin. Every clone of the handle follows, and so do the shader uniforms and pass targets that hold it, so a depth texture can follow a window without being created again. A new size starts with blank pixels. A texture without `RENDER_ATTACHMENT` usage returns `TextureError::FixedSize`, and a width or height of zero returns `TextureError::InvalidInput`. Both keep the old size.
 - A `Texture` from `TextureTarget.texture()`, and every clone of a `TextureTarget`, follow `TextureTarget.resize`. They kept the old size, and `write` and `get_image` reached the old texture.
+- `create_texture` decodes an HDR file into `Rgba16Float`, and a decoded image fills an explicit `Rgba16Float` or `Rgba32Float` format. Each uploaded RGBA8 bytes into a row four or eight times as wide and raised a GPU validation error, leaving the texture blank.
+- A decoded image in `Bgra8Unorm` stores blue first in `create_texture` and `Mipmap.build`, so its red and blue no longer swap. A JavaScript `ImageData` or canvas does the same.
+- `Texture.write` rebuilds the mip chain that `create_texture` builds by default, so a texture sampled far away shows the new image instead of the first one.
+- `create_texture` reads an image's size from its header and checks it against the device before the pixels decode, so an image too large to upload takes no memory.
+- Creating, writing and reading back a texture stays clear of GPU validation errors. The checks run before any wgpu call and return `TextureError::InvalidInput`, the error `resize` returns: a usage bit outside the five `TextureUsage` flags, a usage the format can't take on the device, such as `STORAGE_BINDING` on `Depth32Float`, a depth texture with layers, pixels for a depth texture, and a write or readback of a block-compressed KTX2 texture. A readback that needs a buffer past the device's largest, or a depth readback on GLES or WebGL2, returns `TextureError::Readback`.
 
 ### JavaScript
 
+- `createStorageTexture`, `Mipmap.build`, `Material.alphaMode` and `Mipmap.level` throw an `Error` for a format, mode or index that isn't a whole number of the right kind. `undefined`, `NaN` and strings read as `R8Unorm` or `Opaque`, and fractions truncated, so `level(1.5)` returned level 1.
+- `createTexture` and the Material texture setters read an options object by its keys. An object with `width` and `height` beside `format` or `usage` read as a bare size and dropped the rest. It now throws and asks for the size under `size`.
+- A numeric `compare` in sampler options must be a whole number from 1 to 8, so `1.5` throws instead of reading as `Never`.
 - `Vertex`, `Instance`, `Quad` and `TextureId` carry the `__fc_kind` brand the other classes have. Minifiers rename classes, and the checks that passed these objects into the library fell back to the class name, so a production build failed where a development build worked: `mesh.addVertices` rejected its `Vertex` objects. The checks read only the brand now, and a build fails when a type that crosses into the library has none. A site that keeps class names in its build to work around this, as the FragmentColor website does with `keepNames` in `docs/website/astro.config.mjs`, can drop that once it loads 0.12.7.
 
 ### Python
 
 - Draws fire with rendercanvas 2.7, where `canvas.request_draw` never called the draw function and `examples/python/main.py` showed nothing. `Renderer.create_target` registers a rendercanvas context on the canvas, and `render` presents each window frame itself, from a draw function or a timer.
 - A hidden or minimized window raises `OccludedSurfaceError`, a subclass of `FragmentColorError`, so a render loop can skip the frame without reading the message. Rust reports it as `SurfaceError::Occluded`.
+- `create_texture` with a NumPy array honors `format`. An array whose channels match the format's bytes per pixel uploads as it is, so a gray `(H, W)` array fills `R8Unorm`, and 1 or 3 channels gain an opaque alpha for an 8-bit RGBA or BGRA format. The array was always expanded to RGBA8 first, so `R8Unorm` uploaded the expanded bytes. A side past `u32` is refused before the bytes are collected, where it truncated to a small texture.
 - `size()` is a method on `Texture`, `TextureTarget` and `WindowTarget`, as in every other language and like every other Python getter. `TextureTarget.size` and `Texture.size` were properties, and `WindowTarget.size()` the one method among them.
 
 ### Swift
@@ -45,6 +54,16 @@
 - A `TextureId` on its own doesn't keep its texture. Once the last handle, shader uniform and pass target holding a texture drop, `read_texture` and `unregister_texture` report its id as not found.
 - Python reads sizes with a call: `texture.size.width` from the 0.12.6 notes is now `texture.size().width`, and `target.size` is `target.size()` on a texture target.
 - `RendererError::MsaaViewMissing` is gone. No code returned it.
+- Texture usage masks take the five `TextureUsage` flags only. `create_texture` and `create_storage_texture` refuse any other bit, and `create_storage_texture` refuses an empty mask, with `TextureError::InvalidInput`. wgpu-only bits reached wgpu as a validation error, and unknown ones were dropped.
+- `create_storage_texture` and `create_texture` check the usage and dimension the device allows for the format, so a storage texture in `Depth32Float`, `Rgba8UnormSrgb` or `Bgra8Unorm`, and a `Depth32Float` texture with a depth past 1, return `TextureError::InvalidInput`. A format that needs a missing wgpu feature returns `TextureError::UnsupportedFormatForUsage` for any usage, where only `TEXTURE_BINDING` checked it.
+- Raw bytes into a depth texture, from `create_texture`, a `create_storage_texture` seed or `Texture.write`, return `TextureError::InvalidInput`. Draw into a depth texture instead.
+- `Texture.write`, `write_region`, `get_image` and `read_texture` on a block-compressed texture from KTX2 return `TextureError::InvalidInput`.
+- A decoded image with an integer format override, such as `Rgba32Uint`, returns `TextureError::InvalidInput`. Pass raw bytes with a size for an integer texture. An HDR file infers `Rgba16Float`, where `Rgba32Float` never uploaded.
+- Raw bytes must match their region exactly. `create_texture` with a size, the `create_storage_texture` seed and `Mipmap.build` refused only short data, and a longer buffer uploaded its first rows. `Texture.write` and `write_region` without a stride take tight or 256-byte padded rows, and any other length returns `TextureError::InvalidInput`, which Python raises as `InvalidInputError`. `Mipmap.build` refuses a size with a depth past 1.
+- A partial write into a texture with a mip chain returns `TextureError::InvalidInput`, since it would leave the smaller levels stale. Create a texture you update in parts with `mipmaps: false`.
+- A size with a path, a URL, a KTX2 file or a `Mipmap` returns `TextureError::InvalidInput` from `create_texture` and `Mipmap.build`, before any file read or fetch. A path dropped the size, and a URL uploaded its encoded bytes as pixels.
+- A JavaScript `writeRegion` object and a Python `write_region` dict need their `width` and `height`, or their `maxX` and `maxY`, each max past its min, and one form at a time. Reversed bounds wrote to the edge of the texture, and misspelled keys wrote the whole texture.
+- A JavaScript `ImageData` or canvas takes the size it has and an 8-bit RGBA or BGRA format, and a NumPy array takes its own size. A different `size`, or another format, throws or raises `InvalidInputError`.
 
 ## 0.12.6: Binding and renderer fixes
 
