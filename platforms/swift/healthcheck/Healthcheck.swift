@@ -71,6 +71,31 @@ final class Healthcheck: ExampleCase {
         } catch is FragmentColorError {}
     }
 
+    // A region or viewport with a side of 0, or a far edge past UInt32.max,
+    // throws instead of shrinking, and a clear color is a list of floats or doubles.
+    func testRegionsAndViewportsThrow() throws {
+        let pass = Pass("regions")
+        do {
+            _ = try ScreenRegion((0, 0), (0, 4))
+            throw HealthcheckError.assertion("ScreenRegion((0, 0), (0, 4)) should throw")
+        } catch is FragmentColorError {}
+        do {
+            _ = try ScreenRegion((UInt32.max, 0), (5, 5))
+            throw HealthcheckError.assertion("ScreenRegion((UInt32.max, 0), (5, 5)) should throw")
+        } catch is FragmentColorError {}
+        do {
+            try pass.setViewport([4, 0] as [UInt32])
+            throw HealthcheckError.assertion("setViewport([4, 0]) should throw")
+        } catch is FragmentColorError {}
+        do {
+            try pass.setViewport([1, 2, 3] as [UInt32])
+            throw HealthcheckError.assertion("setViewport([1, 2, 3]) should throw")
+        } catch is FragmentColorError {}
+        try pass.setViewport([0, 0, 4, 4] as [UInt32])
+        try pass.setClearColor([0.1, 0.2, 0.3] as [Double])
+        try pass.setClearColor([0.1, 0.2, 0.3, 1.0] as [Float])
+    }
+
     // Shader.set shapes each Swift value to the uniform's declared WGSL type.
     func testShaderSetValues() throws {
         let shader = try Shader(source: """

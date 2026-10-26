@@ -75,16 +75,21 @@ fun Pass.setDepthTarget(texture: Texture) {
 
 // ── Clear color ──────────────────────────────────────────────────────────────
 
-/** Set the clear color as separate linear RGBA components, each passed to the GPU as given. */
-fun Pass.setClearColor(r: Float, g: Float, b: Float, a: Float = 1.0f) {
-    setClearColor(listOf(r, g, b, a))
-}
+/** Set the clear color from `[r, g, b]` or `[r, g, b, a]`, each channel passed to the GPU as given. */
+fun Pass.setClearColor(color: FloatArray) = setClearColor(color.toList())
+
+/** Set the clear color from `[r, g, b]` or `[r, g, b, a]` as doubles. */
+@JvmName("setClearColorDoubles")
+fun Pass.setClearColor(color: List<Double>) = setClearColor(color.map { it.toFloat() })
+
+/** Set the clear color from `[r, g, b]` or `[r, g, b, a]` as doubles. */
+fun Pass.setClearColor(color: DoubleArray) = setClearColor(color.map { it.toFloat() })
 
 // ── Viewport ──────────────────────────────────────────────────────────────────
 
 /**
  * Set the viewport from `[x, y, width, height]`, or `[width, height]` at the origin.
- * Throws [FragmentColorException] for any other length.
+ * Throws [FragmentColorException] for any other length, and for a width or height of 0.
  */
 fun Pass.setViewport(rect: List<UInt>) {
     val region = when (rect.size) {
@@ -100,7 +105,8 @@ fun Pass.setViewport(rect: List<UInt>) {
 /**
  * A region at [origin] `[x, y]` that is [size] `[width, height]` large,
  * as Rust's `ScreenRegion::new(origin, size)` reads them.
- * Throws [FragmentColorException] unless each holds two numbers, and for a side of 0.
+ * Throws [FragmentColorException] unless each holds two numbers, for a side of 0,
+ * and for a far edge past [UInt.MAX_VALUE].
  */
 operator fun ScreenRegion.Companion.invoke(origin: List<UInt>, size: List<UInt>): ScreenRegion {
     if (origin.size != 2 || size.size != 2) {
@@ -113,13 +119,10 @@ operator fun ScreenRegion.Companion.invoke(origin: List<UInt>, size: List<UInt>)
             "ScreenRegion: a region needs a width and a height of at least 1, got $width by $height",
         )
     }
-    return ScreenRegion(
-        minX = x,
-        minY = y,
-        maxX = saturatingAdd(x, width),
-        maxY = saturatingAdd(y, height),
-    )
+    if (x > UInt.MAX_VALUE - width || y > UInt.MAX_VALUE - height) {
+        throw FragmentColorException.Render(
+            "ScreenRegion: a region at $x, $y sized $width by $height reaches past ${UInt.MAX_VALUE}",
+        )
+    }
+    return ScreenRegion(minX = x, minY = y, maxX = x + width, maxY = y + height)
 }
-
-/** `a + b`, or [UInt.MAX_VALUE] when the sum doesn't fit. */
-private fun saturatingAdd(a: UInt, b: UInt): UInt = if (a > UInt.MAX_VALUE - b) UInt.MAX_VALUE else a + b
