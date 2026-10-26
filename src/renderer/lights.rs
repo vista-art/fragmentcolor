@@ -746,7 +746,8 @@ impl RenderContext {
         for (shader, shape, key) in keyed.iter().copied() {
             shader.flush_pending();
             if !sets.contains_key(&key) {
-                // Reuse a set this pass left idle, which a light change orphaned.
+                // Reuse the buffers of a set this pass left idle, which a light or
+                // camera change orphaned. What it packed belongs to another key.
                 let idle = sets
                     .iter()
                     .find(|(found, set)| {
@@ -757,7 +758,10 @@ impl RenderContext {
                     })
                     .map(|(key, _)| *key);
                 let set = match idle.and_then(|idle| sets.remove(&idle)) {
-                    Some(set) => set,
+                    Some(mut set) => {
+                        set.forget();
+                        set
+                    }
                     None => LightSet::new(self, shape, path.cap()),
                 };
                 sets.insert(key, set);

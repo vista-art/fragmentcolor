@@ -653,6 +653,52 @@ fn still_renders_dispatch_once() {
     });
 }
 
+/// A floor with a red ambient and a wall with the default one, lit by `lights`.
+fn two_ambients(lights: &[Light], camera: Option<&Camera>) -> Pass {
+    let red = rough();
+    red.shader()
+        .set("lights.ambient", [0.5, 0.0, 0.0])
+        .expect("ambient");
+    let [floor, _] = floor_and_wall(&red);
+    let [_, wall] = floor_and_wall(&rough());
+    let pass = Pass::new("two ambients");
+    pass.add(&floor).expect("floor");
+    pass.add(&wall).expect("wall");
+    if let Some(camera) = camera {
+        pass.add(camera).expect("camera");
+    }
+    for light in lights {
+        pass.add(light).expect("light");
+    }
+    pass
+}
+
+#[test]
+fn a_reused_light_set_packs_its_new_shader() {
+    pollster::block_on(async {
+        // A pass that gains a Camera keys its sets again with no light change,
+        // and each shader may take the idle set the other one left.
+        let lights = seeded_lights(&mut Seeds(37));
+        let camera = camera();
+        let clean = draw(|| two_ambients(&lights, Some(&camera)), Mode::Clustered, 64).await;
+        assert_varied(&clean.image, "two ambients");
+        // HashMap order picks which idle set each shader takes, so try a few times.
+        for attempt in 0..8 {
+            let (renderer, target, _) = open(Mode::Clustered, 64).await;
+            let pass = two_ambients(&lights, None);
+            renderer
+                .render(&pass, &target)
+                .expect("render without a camera");
+            pass.add(&camera).expect("camera");
+            renderer
+                .render(&pass, &target)
+                .expect("render with the camera");
+            let image = target.get_image().await.expect("read back");
+            assert_close(&image, &clean.image, &format!("attempt {attempt}"));
+        }
+    });
+}
+
 /// A pass whose pipeline fails to build: its fragment output doesn't fit the target.
 fn broken_pass() -> Pass {
     let shader = Shader::new(
