@@ -768,9 +768,12 @@ lang="kotlin"
 
 Toggle the Model in or out of the next frame. Hidden Models are skipped
 by the renderer in both the opaque-batched and blend-sorted draw paths;
-no Pass rebuild needed. Hiding a Model hides what its Material draws. A
-shader of your own that draws the same Mesh, such as an outline, still
-draws it.
+no Pass rebuild needed. Hiding a Model hides what its Material draws, and
+each shader that draws any of the pass's Models skips the hidden Model's Mesh.
+A shader of your own that draws none of them, such as an outline, still draws
+the Mesh when it reads no Model columns (`model_0` to `model_3`). One that
+reads them makes `Renderer::render` return `MeshError::InvalidInstance`,
+whether the Model is hidden or not.
 
 The flag is Arc-shared with `ModelEntry` (the renderer's queue), so
 toggles take effect on the very next `Renderer::render` call. Cheap:

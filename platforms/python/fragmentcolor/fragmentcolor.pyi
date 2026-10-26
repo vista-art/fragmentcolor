@@ -3132,9 +3132,12 @@ class Model:
         """
         Toggle the Model in or out of the next frame. Hidden Models are skipped
         by the renderer in both the opaque-batched and blend-sorted draw paths;
-        no Pass rebuild needed. Hiding a Model hides what its Material draws. A
-        shader of your own that draws the same Mesh, such as an outline, still
-        draws it.
+        no Pass rebuild needed. Hiding a Model hides what its Material draws, and
+        each shader that draws any of the pass's Models skips the hidden Model's Mesh.
+        A shader of your own that draws none of them, such as an outline, still draws
+        the Mesh when it reads no Model columns (`model_0` to `model_3`). One that
+        reads them makes `Renderer::render` return `MeshError::InvalidInstance`,
+        whether the Model is hidden or not.
 
         The flag is Arc-shared with `ModelEntry` (the renderer's queue), so
         toggles take effect on the very next `Renderer::render` call. Cheap:
@@ -4068,10 +4071,13 @@ class Material:
           the Model's transform. The renderer fills them at draw time from each
           Model's `set_transform`, `translate`, `rotate` and `scale`. The PBR shader
           reads them at locations 3 to 6. Any free locations work, since the renderer
-          matches these inputs by name. It fills them only for the Models a pass
-          holds, through each Model's Material. A shader that reads them for a Mesh
-          with no Model behind it in the pass, such as one attached with `add_mesh`,
-          makes `Renderer::render` return `MeshError::InvalidInstance`.
+          matches these inputs by name. It fills them for each visible Model that a
+          pass draws through this shader. A Model's Mesh that no visible Model in the
+          pass draws through it, such as a hidden Model's, or one in another pass that
+          shares the Material, draws nothing. A shader that draws none of the pass's
+          Models and reads these columns for a Model's Mesh, such as this Material's
+          shader rendered on its own, makes `Renderer::render` return
+          `MeshError::InvalidInstance`.
 
         Without these the Material still draws. The factor setters do nothing, and
         every Model draws at its Mesh's own coordinates, whatever its transform.
