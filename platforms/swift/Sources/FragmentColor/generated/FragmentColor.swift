@@ -3123,8 +3123,8 @@ public protocol RendererProtocol: AnyObject, Sendable {
      * Read back the mip-0 contents of a registered texture as tightly-packed
      * bytes in the texture's native format. Uniffi exposes this as a Swift
      * `async throws` / Kotlin `suspend fun` automatically. Foreign callers
-     * await this in a coroutine or `Task`; the underlying GPU readback is
-     * driven by the async `texture::read::read_pixels` path.
+     * await this in a coroutine or `Task`. It runs `Renderer::read_texture`,
+     * whose GPU readback goes through `texture::read::copy_pixels`.
      */
     func readTexture(textureId: UInt64) async throws  -> Data
     
@@ -3361,8 +3361,8 @@ open func readStorage(shader: Shader, binding: String)async throws  -> Data  {
      * Read back the mip-0 contents of a registered texture as tightly-packed
      * bytes in the texture's native format. Uniffi exposes this as a Swift
      * `async throws` / Kotlin `suspend fun` automatically. Foreign callers
-     * await this in a coroutine or `Task`; the underlying GPU readback is
-     * driven by the async `texture::read::read_pixels` path.
+     * await this in a coroutine or `Task`. It runs `Renderer::read_texture`,
+     * whose GPU readback goes through `texture::read::copy_pixels`.
      */
 open func readTexture(textureId: UInt64)async throws  -> Data  {
     return
@@ -6308,9 +6308,92 @@ public func FfiConverterTypeCompareFunction_lower(_ value: CompareFunction) -> R
 
 
 
+
+public enum ErrorKind: Equatable, Hashable {
+    
+    /**
+     * The GPU refused a call that breaks a rule of the API.
+     */
+    case validation
+    /**
+     * The GPU failed for a reason of its own, such as a driver bug.
+     */
+    case `internal`
+    /**
+     * The device ran out of memory.
+     */
+    case memory
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ErrorKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeErrorKind: FfiConverterRustBuffer {
+    typealias SwiftType = ErrorKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ErrorKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .validation
+        
+        case 2: return .`internal`
+        
+        case 3: return .memory
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ErrorKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .validation:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .`internal`:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .memory:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeErrorKind_lift(_ buf: RustBuffer) throws -> ErrorKind {
+    return try FfiConverterTypeErrorKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeErrorKind_lower(_ value: ErrorKind) -> RustBuffer {
+    return FfiConverterTypeErrorKind.lower(value)
+}
+
+
+
 /**
  * Mobile-facing error type. Flattens every internal error to its `Display`
  * representation so Swift/Kotlin callers get a single typed error to match on.
+ * A GPU error keeps its kind, its step's label and its message apart.
  */
 public 
 enum FragmentColorError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
@@ -6322,6 +6405,8 @@ enum FragmentColorError: Swift.Error, Equatable, Hashable, Foundation.LocalizedE
     case Render(String
     )
     case Shader(String
+    )
+    case Device(kind: ErrorKind, label: String, message: String
     )
 
     
@@ -6361,6 +6446,11 @@ public struct FfiConverterTypeFragmentColorError: FfiConverterRustBuffer {
         case 3: return .Shader(
             try FfiConverterString.read(from: &buf)
             )
+        case 4: return .Device(
+            kind: try FfiConverterTypeErrorKind.read(from: &buf), 
+            label: try FfiConverterString.read(from: &buf), 
+            message: try FfiConverterString.read(from: &buf)
+            )
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -6386,6 +6476,13 @@ public struct FfiConverterTypeFragmentColorError: FfiConverterRustBuffer {
         case let .Shader(v1):
             writeInt(&buf, Int32(3))
             FfiConverterString.write(v1, into: &buf)
+            
+        
+        case let .Device(kind,label,message):
+            writeInt(&buf, Int32(4))
+            FfiConverterTypeErrorKind.write(kind, into: &buf)
+            FfiConverterString.write(label, into: &buf)
+            FfiConverterString.write(message, into: &buf)
             
         }
     }
@@ -9260,7 +9357,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_renderer_readstorage() != 45648) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_readtexture() != 30358) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_readtexture() != 50739) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_renderer_render() != 24508) {

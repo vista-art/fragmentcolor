@@ -12,6 +12,7 @@ __all__ = [
     "UnsupportedMipmapFormatError",
     "MalformedImageError",
     "OccludedSurfaceError",
+    "DeviceError",
     "SceneLoadError",
     "LightError",
     "CameraError",
@@ -19,6 +20,7 @@ __all__ = [
     "Renderer",
     "Shader",
     "Pass",
+    "ErrorKind",
     "Size",
     "ScreenRegion",
     "Mesh",
@@ -62,6 +64,10 @@ class UnsupportedMipmapFormatError(FragmentColorError): ...
 class MalformedImageError(FragmentColorError): ...
 
 class OccludedSurfaceError(FragmentColorError): ...
+
+class DeviceError(FragmentColorError):
+    kind: ErrorKind
+    label: str
 
 class SceneLoadError(FragmentColorError): ...
 
@@ -334,13 +340,13 @@ class Renderer:
 
         A window that is hidden or minimized has no frame to draw on. `render` then returns `RendererError::SurfaceError(SurfaceError::Occluded)`, which Python raises as `OccludedSurfaceError`, a `FragmentColorError`. Skip that frame and draw the next one.
 
-        A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input. Meshes feed only `@location` arguments of the vertex entry point, so when a shader takes its inputs as members of a struct, the error names the member instead.
+        A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input. The inputs are the `@location` arguments of the vertex entry point and the `@location` members of its struct arguments, and each one reads the mesh attribute of its own name.
 
-        `render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail, it returns `RendererError::ValidationError`, labeled with the step that failed: the render pipeline, the compute pipeline, the frame, or a bind group or texture view inside the frame. That covers validation errors, internal errors such as a shader the backend compiler refuses, and running out of memory. When one error causes another, `render` returns the first. In Rust, Python, Swift and Kotlin, a pipeline that failed is never kept, and the next frame builds it again and returns the same error.
+        `render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail, it returns a [DeviceError](https://fragmentcolor.org/api/core/deviceerror), `RendererError::DeviceError` in Rust. Its `kind` tells validation errors, internal errors such as a shader the backend compiler refuses, and running out of memory apart, and its `label` names the step that failed: the render pipeline, the compute pipeline, the light binning pipeline, the frame, or a bind group or texture view inside the frame. When one error causes another, `render` returns the first. In Rust, Python, Swift and Kotlin, a pipeline that failed is never kept, and the next frame builds it again and returns the same error.
 
         A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. A shader without its mesh and an instance count past the mesh's instances fail before `render` takes a frame, and the window keeps its last image.
 
-        JavaScript gets the GPU's errors late, because WebGPU reports them after `render` has returned. Each error logs a `console.error` when it lands, and the next `render` throws the first one as an `Error` before doing any work. `load`, `readTexture`, `readStorage`, and `getImage` on a `Texture` or `TextureTarget` wait for the frames before them to report, so they throw a frame's error even when called right after it. Only the first error to land throws, and only once; the ones that land after it, before a call takes it, only log. The label names the render pipeline, the compute pipeline or the frame. A pipeline that failed stays in the cache until its error lands, and a frame that draws with it before then reports a frame error. Once the error lands, the pipeline leaves the cache. In a loop that renders each frame, the next `render` throws the error before doing any work, and the one after it builds the pipeline again and reports the same error.
+        JavaScript gets the GPU's errors late, because WebGPU reports them after `render` has returned. Each error logs a `console.error` when it lands, and the next `render` still throws the first one, as an `Error` with `kind` and `label` properties, before doing any work. `load`, `readTexture`, `readStorage`, and `getImage` on a `Texture` or `TextureTarget` wait for the frames before them to report, so they throw a frame's error even when called right after it. A call that waits throws only the error of a frame rendered before it began: the error of a frame rendered while it waits stays for the next call. Only the first error to land throws, and only once; the ones that land after it, before a call takes it, only log. The label names the render pipeline, the compute pipeline, the light binning pipeline or the frame. A pipeline that failed stays in the cache until its error lands, and a frame that draws with it before then reports a frame error. Once the error lands, the pipeline leaves the cache. In a loop that renders each frame, the next `render` throws the error before doing any work, and the one after it builds the pipeline again and reports the same error.
 
         Example:
 
@@ -754,7 +760,8 @@ class Shader:
         - On success, the mesh is attached, its attributes keep those types for as long as the mesh lives, and it is drawn when this shader renders.
         - On a missing attribute or a value that doesn't fit, the error names the attribute, the declared type and the value, or the vertex or instance that lacks it. The mesh isn't attached and records no type.
         - A shader that declares another type for an attribute an earlier shader already typed on this mesh fails to attach.
-        - A mesh feeds only the `@location` arguments of the vertex entry point. A shader that takes a struct argument with `@location` members rejects every mesh with `ShaderError::InvalidKey` naming the member, and so does a shader with no `@location` inputs.
+        - The `@location` members of a struct argument are inputs too, each read from the attribute of its own name, so `struct VIn { @location(1) color: vec4<f32> }` reads `color`. Built-in members such as `@builtin(vertex_index)` read nothing from the mesh.
+        - A shader with no `@location` inputs, in its arguments or their members, draws fullscreen and rejects every mesh with `ShaderError::InvalidKey`.
 
         ## See also
 
@@ -883,7 +890,7 @@ class Shader:
         """
         Validate that a Mesh is compatible with this Shader's vertex inputs.
 
-        - Checks that every `@location` input of the vertex entry point finds an attribute, that every vertex and instance holds each attribute the shader reads, and that every value fits the type the input declares.
+        - Checks that every `@location` input of the vertex entry point finds an attribute, that every vertex and instance holds each attribute the shader reads, and that every value fits the type the input declares. The `@location` members of a struct argument count as inputs, each under its member name.
         - Matches each input in this order:
           1) by name, instance attributes first, then vertex attributes (`position` included)
           2) the position, at `@location(0)`
@@ -895,7 +902,7 @@ class Shader:
 
         - `Shader::add_mesh` and `Pass::add_mesh` run the same check. Call `validate_mesh` to test a mesh without attaching it.
         - It changes nothing: the mesh isn't attached and its attributes take no type.
-        - If the Shader has no @location inputs (fullscreen/builtin-only), attaching a Mesh is rejected.
+        - If the Shader has no `@location` inputs, as arguments or struct members, it draws fullscreen and attaching a Mesh is rejected. A struct of built-ins only, such as `@builtin(vertex_index)`, still counts as no input.
         - This method does not allocate GPU buffers; it inspects CPU-side vertex/instance data only.
 
         Example:
@@ -1496,6 +1503,31 @@ class Pass:
         renderer.render(compose, target) # compose renders last
         ```
         """
+
+@final
+class ErrorKind:
+    """
+    Names the kind of GPU error a [DeviceError](https://fragmentcolor.org/api/core/deviceerror) carries, from the error scope that caught it.
+
+    - `Validation`: a call broke a rule of the GPU API, such as a bind group that doesn't match its layout.
+    - `Internal`: the GPU or its driver failed for a reason of its own, such as a shader the backend compiler refuses.
+    - `Memory`: the device ran out of memory.
+
+    Running out of memory or an internal failure leaves an object invalid, and each later use of that object fails validation. So when one error causes others, the error that returns is the first in the order memory, internal, validation.
+
+    Rust writes `ErrorKind::Memory`, JavaScript and Python `ErrorKind.Memory`, Swift `ErrorKind.memory` and Kotlin `ErrorKind.MEMORY`.
+
+    Example:
+
+    ```python
+    from fragmentcolor import ErrorKind
+
+    kind = ErrorKind.Memory
+    ```
+    """
+    Validation: ClassVar[ErrorKind]
+    Internal: ClassVar[ErrorKind]
+    Memory: ClassVar[ErrorKind]
 
 @final
 class Size:
@@ -3184,11 +3216,14 @@ class Model:
         """
         Toggle the Model in or out of the next frame. Hidden Models are skipped
         by the renderer in both the opaque-batched and blend-sorted draw paths;
-        no Pass rebuild needed. Hiding a Model hides what its Material draws, and
-        each shader that draws any of the pass's Models skips the hidden Model's Mesh.
-        A shader of your own that draws none of them, such as an outline, still draws
-        the Mesh when it reads no Model columns (`model_0` to `model_3`). One that
-        reads them makes `Renderer::render` return `MeshError::InvalidInstance`,
+        no Pass rebuild needed. Hiding a Model hides what its Material draws.
+        The skip holds per shader and Mesh: a shader that draws any of the pass's
+        Models skips the hidden Model's Mesh, unless a visible Model of the pass
+        draws the same Mesh through the same shader, as Models that share a Mesh
+        and a Material do. A shader of your own that draws none of the pass's Models,
+        such as an outline, still draws the Mesh when it reads no Model columns
+        (`model_0` to `model_3`). One that reads them makes `Renderer::render`
+        return `MeshError::InvalidInstance`, which names the columns it reads,
         whether the Model is hidden or not.
 
         The flag is Arc-shared with `ModelEntry` (the renderer's queue), so
@@ -4214,7 +4249,7 @@ class Material:
           shares the Material, draws nothing. A shader that draws none of the pass's
           Models and reads these columns for a Model's Mesh, such as this Material's
           shader rendered on its own, makes `Renderer::render` return
-          `MeshError::InvalidInstance`.
+          `MeshError::InvalidInstance`, which names the columns the shader reads.
 
         Without these the Material still draws. The factor setters do nothing, and
         every Model draws at its Mesh's own coordinates, whatever its transform.

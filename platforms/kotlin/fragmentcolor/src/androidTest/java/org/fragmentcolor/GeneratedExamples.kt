@@ -14,6 +14,21 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class GeneratedExamples : ExampleCase() {
     @Test
+    fun core_device_error_DeviceError() = example("docs/api/core/device_error/device_error.md") {
+        val renderer = Renderer()
+        val target = renderer.createTextureTarget(listOf(16u, 16u))
+        val shader = Shader.default()
+
+        // A GPU error in this frame returns as a DeviceError.
+        renderer.render(shader, target)
+    }
+
+    @Test
+    fun core_error_kind_ErrorKind() = example("docs/api/core/error_kind/error_kind.md") {
+        val kind = ErrorKind.MEMORY
+    }
+
+    @Test
     fun core_pass_Pass() = example("docs/api/core/pass/pass.md") {
         val surfaceTexture = android.graphics.SurfaceTexture(0)
         val canvas = android.view.Surface(surfaceTexture)
