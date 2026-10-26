@@ -181,6 +181,8 @@ const VALUES = {
 // The site loads FragmentColor 0.12.6, where Shader.set takes a texture on the web.
 const RELEASE = "0.12.6";
 const NEEDS = `Needs FragmentColor ${RELEASE} or later.`;
+// The Rust tab handles the camera errors 0.12.7 returns with `?`, which 0.12.6 can't compile.
+const RUST_NEEDS = "Needs FragmentColor 0.12.7 or later.";
 
 const CREDIT = "Barramundi Fish by Microsoft, CC0, from the Khronos glTF sample assets.";
 
@@ -208,7 +210,7 @@ function setCalls(lang, values, { before = "", after = "" } = {}) {
 
 function writeRust({ library, values }) {
   return [
-    `// ${NEEDS}`,
+    `// ${RUST_NEEDS}`,
     "",
     "use std::error::Error;",
     "use std::f32::consts::PI;",
@@ -333,7 +335,7 @@ function writeRust({ library, values }) {
     "    ];",
     "    state",
     "        .camera",
-    "        .set_aspect(size[0] / size[1])?",
+    "        .set_aspect(size[0].max(1.0) / size[1].max(1.0))?",
     "        .look_at(eye, CENTER, [0.0, 1.0, 0.0])?;",
     "    // Both lights turn with the camera, so the side in view stays lit.",
     "    state.key.set_direction(turn(KEY, state.yaw))?;",
@@ -483,7 +485,8 @@ function writePython({ library, values }) {
     "        CENTER[1] + state.distance * math.sin(state.pitch),",
     "        CENTER[2] + reach * math.cos(state.yaw),",
     "    ]",
-    "    state.camera.set_aspect(size[0] / size[1]).look_at(eye, CENTER, [0.0, 1.0, 0.0])",
+    "    aspect = max(size[0], 1) / max(size[1], 1)",
+    "    state.camera.set_aspect(aspect).look_at(eye, CENTER, [0.0, 1.0, 0.0])",
     "    # Both lights turn with the camera, so the side in view stays lit.",
     "    state.key.set_direction(turn(KEY, state.yaw))",
     "    state.rim.set_direction(turn(RIM, state.yaw))",
@@ -626,7 +629,8 @@ function writeSwift({ library, values }) {
     "        center[1] + state.distance * sin(state.pitch),",
     "        center[2] + reach * cos(state.yaw),",
     "    ]",
-    "    _ = try state.camera.setAspect(size[0] / size[1]).lookAt(eye, center, [0, 1, 0])",
+    "    let aspect = max(size[0], 1) / max(size[1], 1)",
+    "    _ = try state.camera.setAspect(aspect).lookAt(eye, center, [0, 1, 0])",
     "    // Both lights turn with the camera, so the side in view stays lit.",
     "    _ = try state.key.setDirection(turn(keyDirection, state.yaw))",
     "    _ = try state.rim.setDirection(turn(rimDirection, state.yaw))",
@@ -767,7 +771,8 @@ function writeKotlin({ library, values }) {
     "        CENTER[1] + state.distance * sin(state.pitch),",
     "        CENTER[2] + reach * cos(state.yaw),",
     "    )",
-    "    state.camera.setAspect(size[0] / height).lookAt(eye, CENTER, listOf(0.0, 1.0, 0.0))",
+    "    val aspect = maxOf(size[0].toDouble(), 1.0) / maxOf(height, 1.0)",
+    "    state.camera.setAspect(aspect).lookAt(eye, CENTER, listOf(0.0, 1.0, 0.0))",
     "    // Both lights turn with the camera, so the side in view stays lit.",
     "    state.key.setDirection(turn(KEY, state.yaw))",
     "    state.rim.setDirection(turn(RIM, state.yaw))",
