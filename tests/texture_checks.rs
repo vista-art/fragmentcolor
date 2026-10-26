@@ -237,6 +237,46 @@ fn raw_bytes_match_their_size() {
     });
 }
 
+/// Draws the 1x1 mip level of `tex` over the whole target.
+const SMALLEST_LEVEL: &str = "
+@group(0) @binding(0) var tex: texture_2d<f32>;
+@group(0) @binding(1) var samp: sampler;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> {
+  return textureSampleLevel(tex, samp, vec2f(0.5, 0.5), 3.0);
+}
+";
+
+// Story: a whole-texture write into a texture with a mip chain rebuilds the
+// chain, so a texture sampled far away shows the new image, and a partial write,
+// which would leave the smaller levels stale, is refused.
+#[test]
+fn writes_keep_the_mip_chain_current() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let red: Vec<u8> = [255, 0, 0, 255].repeat(8 * 8);
+        let texture = renderer
+            .create_texture((red.as_slice(), [8, 8]))
+            .await
+            .expect("a raw texture with a mip chain");
+        let green: Vec<u8> = [0, 255, 0, 255].repeat(8 * 8);
+        texture.write(&green).expect("a whole write");
+
+        let shader = fragmentcolor::Shader::new(SMALLEST_LEVEL).expect("shader");
+        shader.set("tex", &texture).expect("set tex");
+        let target = renderer.create_texture_target([1, 1]).await.expect("target");
+        renderer.render(&shader, &target).expect("render");
+        let image = fragmentcolor::Target::get_image(&target).await.expect("read back");
+        assert_eq!(image, [0, 255, 0, 255], "the smallest level follows the write");
+
+        let result = texture.write_region(&green[..4 * 4 * 4], [0, 0, 4, 4]);
+        assert!(matches!(result, Err(TextureError::InvalidInput(_))));
+    });
+}
+
 // Story: a buffer copy can't fill a depth texture, so raw pixels, seed bytes
 // and a write into Depth32Float are refused before they reach wgpu.
 #[test]

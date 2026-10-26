@@ -9,6 +9,7 @@ Efficiently upload raw pixel data into an existing texture. Ideal for video play
 ## Notes
 - Any format with a fixed size per pixel works, from 1-byte `R8Unorm` to 16-byte `Rgba32Float`. A block-compressed texture, such as one loaded from a BC7 or ASTC KTX2 file, is an `InvalidInput` error.
 - The texture must have COPY_DST usage.
+- `create_texture` builds a mip chain by default, and a whole write rebuilds it, so the texture looks the same up close and far away.
 - A depth texture such as `Depth32Float` takes no uploaded pixels, so writing into one is an `InvalidInput` error. Draw into it instead.
 
 ## Example

@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::texture::{Texture, TextureError, TextureRegion};
 
 pub(super) fn write(
@@ -85,6 +87,19 @@ pub(super) fn write(
         ));
     }
 
+    // A mip chain follows a whole new image, and a partial write would leave it stale.
+    let levels = object.inner.mip_level_count();
+    if levels > 1 {
+        let whole = region.origin == [0; 3] && region.size == [size.width, size.height, 1];
+        if !whole || !super::supports_cpu_mipmaps(format) {
+            return Err(TextureError::InvalidInput(
+                "the texture has a mip chain, which a partial write would leave stale; create it with mipmaps: false to write regions".into(),
+            ));
+        }
+        let rows = tight_rows(data, bytes_per_row, row_stride, region.size[1]);
+        return super::write_levels(&tex.context, &rows, &object.inner, size, format, levels);
+    }
+
     // Write
     tex.context.queue.write_texture(
         wgpu::TexelCopyTextureInfo {
@@ -111,6 +126,17 @@ pub(super) fn write(
     );
 
     Ok(())
+}
+
+/// The `height` rows of `data` at `bytes_per_row`, each cut to its `row_stride` bytes.
+fn tight_rows(data: &[u8], bytes_per_row: u32, row_stride: u32, height: u32) -> Cow<'_, [u8]> {
+    let (stride, used) = (bytes_per_row as usize, row_stride as usize);
+    let length = used * height as usize;
+    if stride == used {
+        return Cow::Borrowed(&data[..length]);
+    }
+    let rows = data.chunks(stride).take(height as usize);
+    Cow::Owned(rows.flat_map(|row| &row[..used]).copied().collect())
 }
 
 /// The fewest bytes WebGPU reads for a region of `size` at `bytes_per_row`:
