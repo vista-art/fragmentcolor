@@ -371,6 +371,23 @@ mod tests {
     use crate::renderer::platform::all::{create_instance, request_adapter};
     use crate::{PassType, Shader};
 
+    /// A fullscreen triangle that samples `source`.
+    const SAMPLE: &str = r#"
+@group(0) @binding(0) var source: texture_2d<f32>;
+@group(0) @binding(1) var soft: sampler;
+
+@vertex
+fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
+    let corner = vec2<f32>(f32((index << 1u) & 2u), f32(index & 2u));
+    return vec4<f32>(corner * 2.0 - 1.0, 0.0, 1.0);
+}
+
+@fragment
+fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+    return textureSample(source, soft, position.xy / 8.0);
+}
+"#;
+
     /// A context on a device that opens with exactly `features`,
     /// or `None` when the adapter doesn't offer them.
     async fn open(features: wgpu::Features) -> Option<RenderContext> {
@@ -453,5 +470,38 @@ mod tests {
         assert_eq!(direct, wgpu::ColorWrites::ALL);
         assert_eq!(member, wgpu::ColorWrites::ALL);
         assert_eq!(none, wgpu::ColorWrites::empty());
+    }
+
+    // Story: a texture binding that waits in the shader's queue, because a render held
+    // its storage, is applied before the checks, so binding the render target is refused.
+    #[test]
+    fn a_queued_binding_is_checked() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let frame = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("a target");
+            let shader = Shader::new(SAMPLE).expect("a shader");
+            {
+                let _busy = shader.object.storage.read();
+                shader
+                    .set("source", &frame.texture())
+                    .expect("a queued set");
+            }
+            assert!(
+                !shader.object.pending.is_empty(),
+                "the set was applied at once"
+            );
+
+            let result = renderer.render(&shader, &frame);
+            assert!(
+                matches!(
+                    result,
+                    Err(RendererError::PassError(PassError::TextureConflict { .. }))
+                ),
+                "{result:?}"
+            );
+        });
     }
 }
