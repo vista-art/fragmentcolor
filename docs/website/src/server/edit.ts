@@ -1,4 +1,4 @@
-// Edits blog posts on the deployed site, where the filesystem is read-only.
+// Edits pages on the deployed site, where the filesystem is read-only.
 // Reads and writes go through the GitHub contents API. Every save commits to
 // one branch, and one pull request at a time carries that branch into main.
 
@@ -18,12 +18,18 @@ const BASE = "main";
 const BRANCH = "content/edits";
 
 // Segments start with a letter, digit, `_` or `-`, which rules out `.` and `..`.
-const POST_PATH =
-  /^docs\/website\/src\/content\/docs\/blog\/((?:[\w-][\w.-]*\/)*[\w-][\w.-]*)\.mdx?$/;
+const PAGE_PATH =
+  /^docs\/website\/src\/content\/docs\/((?:[\w-][\w.-]*\/)*[\w-][\w.-]*)\.mdx?$/;
 
-interface Post {
+// The Rust build writes these pages from docs/api and overwrites any edit.
+const GENERATED = "api/";
+
+interface Page {
   path: string;
-  slug: string;
+  /** Commit scope: the page's top folder, or `website` for a top-level page. */
+  scope: string;
+  /** The page's path below its scope, without the extension. */
+  name: string;
 }
 
 interface Pull {
@@ -52,7 +58,7 @@ type GitHub = (method: string, path: string, body?: unknown) => Promise<Reply>;
 
 class GitHubError extends Error {}
 
-/** Answers `GET` with a post's source and `POST` with a commit to it. */
+/** Answers `GET` with a page's source and `POST` with a commit to it. */
 export async function handleEdit(request: Request, env: EditEnv): Promise<Response> {
   if (!env.editToken) return text("Not Found", 404);
   if (!authorized(request, env.editToken)) return text("Unauthorized", 401);
@@ -78,22 +84,24 @@ function digest(value: string): Buffer {
   return createHash("sha256").update(value).digest();
 }
 
-function parsePost(path: string): Post | null {
-  const match = POST_PATH.exec(path);
-  return match && { path, slug: match[1] };
+function parsePage(path: string): Page | null {
+  const slug = PAGE_PATH.exec(path)?.[1];
+  if (!slug || slug.startsWith(GENERATED)) return null;
+  const [top, ...rest] = slug.split("/");
+  return rest.length ? { path, scope: top, name: rest.join("/") } : { path, scope: "website", name: top };
 }
 
 async function read(request: Request, github: GitHub): Promise<Response> {
   const path = new URL(request.url).searchParams.get("path");
   if (!path) return text("path required", 400);
-  const post = parsePost(path);
-  if (!post) return text("path not allowed", 403);
+  const page = parsePage(path);
+  if (!page) return text("path not allowed", 403);
 
-  // A post merged into main after the branch was cut exists only on main.
+  // A page merged into main after the branch was cut exists only on main.
   const edits = await inspect(github);
   const refs = edits.kind === "live" ? [BRANCH, BASE] : [BASE];
   for (const ref of refs) {
-    const file = await fetchFile(github, post, ref);
+    const file = await fetchFile(github, page, ref);
     if (!file) continue;
     return new Response(Buffer.from(file.content, "base64").toString("utf8"), {
       headers: {
@@ -104,7 +112,7 @@ async function read(request: Request, github: GitHub): Promise<Response> {
       },
     });
   }
-  return text("post not found", 404);
+  return text("page not found", 404);
 }
 
 async function write(request: Request, github: GitHub): Promise<Response> {
@@ -113,31 +121,31 @@ async function write(request: Request, github: GitHub): Promise<Response> {
   if (typeof path !== "string" || typeof content !== "string" || typeof sha !== "string") {
     return text("path, content and sha required", 400);
   }
-  const post = parsePost(path);
-  if (!post) return text("path not allowed", 403);
+  const page = parsePage(path);
+  if (!page) return text("path not allowed", 403);
 
   // The branch never takes in main's history, which would need the
-  // Workflows permission once main changes a workflow file. So a post
+  // Workflows permission once main changes a workflow file. So a page
   // that reached main after the branch was cut waits for its pull request.
   const edits = await inspect(github);
   if (edits.kind !== "live") {
     await cutBranch(github, edits.kind === "spent");
-  } else if (!(await fetchFile(github, post, BRANCH))) {
+  } else if (!(await fetchFile(github, page, BRANCH))) {
     return text(
-      "This post is newer than the open edits pull request. Merge or close that pull request, then save again.",
+      "This page is newer than the open edits pull request. Merge or close that pull request, then save again.",
       409,
     );
   }
 
-  // GitHub refuses the write when the post changed since the editor loaded it.
-  const put = await github("PUT", `/contents/${post.path}`, {
-    message: `docs(blog): edit ${post.slug}`,
+  // GitHub refuses the write when the page changed since the editor loaded it.
+  const put = await github("PUT", `/contents/${page.path}`, {
+    message: `docs(${page.scope}): edit ${page.name}`,
     content: Buffer.from(content, "utf8").toString("base64"),
     sha,
     branch: BRANCH,
   });
   if (put.status === 409) {
-    return text("The post changed on GitHub since the editor opened it.", 409);
+    return text("The page changed on GitHub since the editor opened it.", 409);
   }
   const saved = expect(put, "PUT contents", 200, 201) as { content: { sha: string } };
 
@@ -178,7 +186,7 @@ async function cutBranch(github: GitHub, spent: boolean): Promise<void> {
 
 async function openPull(github: GitHub): Promise<Pull> {
   const reply = await github("POST", "/pulls", {
-    title: "docs(blog): edits from the website",
+    title: "docs(website): edits from the site editor",
     head: BRANCH,
     base: BASE,
     body: `Edits saved with the website editor. Each save adds a commit to \`${BRANCH}\`.`,
@@ -186,8 +194,8 @@ async function openPull(github: GitHub): Promise<Pull> {
   return expect(reply, "POST pulls", 201) as Pull;
 }
 
-async function fetchFile(github: GitHub, post: Post, ref: string): Promise<File | null> {
-  const reply = await github("GET", `/contents/${post.path}?ref=${encodeURIComponent(ref)}`);
+async function fetchFile(github: GitHub, page: Page, ref: string): Promise<File | null> {
+  const reply = await github("GET", `/contents/${page.path}?ref=${encodeURIComponent(ref)}`);
   if (reply.status === 404) return null;
   return expect(reply, "GET contents", 200) as File;
 }
