@@ -534,7 +534,8 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     throws('Pass.setClearColor([undefined, 0, 0])', () => first.setClearColor([undefined, 0, 0]));
     throws("Pass.setClearColor(['1', 0, 0])", () => first.setClearColor(['1', 0, 0]));
     throws('Pass.setClearColor([NaN, 0, 0])', () => first.setClearColor([NaN, 0, 0]));
-    throws("Pass.setClearColor({ r: 1, g: 0, b: 0, a: 'x' })", () => first.setClearColor({ r: 1, g: 0, b: 0, a: 'x' }));
+    throws("Pass.setClearColor({ r: 1, g: 0, b: 0 })", () => first.setClearColor({ r: 1, g: 0, b: 0 }));
+    throws("Pass.setClearColor('#ff8800')", () => first.setClearColor('#ff8800'));
     throws('Pass.setClearColor([0, 0])', () => first.setClearColor([0, 0]));
     const clear = Pass.fromShader('clear', Shader.default());
     clear.setViewport([0, 0, 1, 1]);
