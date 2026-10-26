@@ -951,6 +951,38 @@ fn a_shader_added_later_takes_the_pass_lights() {
 }
 
 #[test]
+fn a_set_without_light_grid_never_bins() {
+    pollster::block_on(async {
+        // A shader that loops over every light reads no grid, so its set skips the binning.
+        let camera = camera();
+        let lamps: Vec<Light> = (0..32)
+            .map(|index| bulb([index as f32 * 0.3 - 4.8, 0.5, 0.0], [0.01; 3], 1.0, 2.0))
+            .collect();
+        let shader = fullscreen(
+            STORAGE_ROOT,
+            "vec4<f32>(0.0, 0.0, 0.0, f32(lights.count) / 255.0)",
+        );
+        let pass = Pass::from_shader("no grid", &shader);
+        pass.add(&camera).expect("camera");
+        for lamp in &lamps {
+            pass.add(lamp).expect("light");
+        }
+        let (renderer, target, context) = open(Mode::Clustered, 4).await;
+        renderer.render(&pass, &target).expect("render");
+        camera
+            .look_at([2.0, 4.0, 9.0], [0.0, 1.0, -2.0], [0.0, 1.0, 0.0])
+            .expect("camera");
+        renderer.render(&pass, &target).expect("render");
+        let image = target.get_image().await.expect("read back");
+        assert_eq!(image[3], 32, "the shader reads every light");
+        assert_eq!(dispatches(&context), 0, "nothing reads a grid");
+        let sets = context.light_sets.read();
+        let set = sets.values().next().expect("a light set");
+        assert!(set.light_grid.is_none() && set.bins.is_none());
+    });
+}
+
+#[test]
 fn a_light_lights_after_its_handle_drops() {
     pollster::block_on(async {
         let center = |image: &[u8]| image[(16 * 32 + 16) * 4];

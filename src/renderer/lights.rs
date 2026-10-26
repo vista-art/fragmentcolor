@@ -168,8 +168,9 @@ impl LightBuffers {
 /// What a light set's buffers hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum SetShape {
-    /// Storage roots with a grid.
-    Clustered,
+    /// Storage roots on a device that bins. `grid` tells whether a shader
+    /// reads `light_grid`, without which the set never bins.
+    Clustered { grid: bool },
     /// A storage root lowered to a uniform block of `count` lights.
     Uniform { count: u32 },
     /// The older uniform `LightArray` of `count` lights.
@@ -179,7 +180,9 @@ enum SetShape {
 impl SetShape {
     fn new(roots: &LightRoots, path: LightPath) -> Self {
         match (roots.shape, path) {
-            (LightShape::Storage, LightPath::Clustered { .. }) => SetShape::Clustered,
+            (LightShape::Storage, LightPath::Clustered { .. }) => SetShape::Clustered {
+                grid: roots.grid.is_some(),
+            },
             (LightShape::Storage, LightPath::Uniform { count }) => SetShape::Uniform { count },
             (LightShape::Array { count }, _) => SetShape::Array { count },
         }
@@ -303,7 +306,7 @@ pub(crate) struct LightSet {
 impl LightSet {
     fn new(context: &RenderContext, shape: SetShape, cap: u32) -> Self {
         let (capacity, size, usage) = match shape {
-            SetShape::Clustered => (
+            SetShape::Clustered { .. } => (
                 MIN_LIGHTS.min(u64::from(cap)),
                 u64::from(LIGHTS_HEADER) + u64::from(LIGHT_SIZE) * MIN_LIGHTS.min(u64::from(cap)),
                 wgpu::BufferUsages::STORAGE,
@@ -319,7 +322,7 @@ impl LightSet {
                 wgpu::BufferUsages::UNIFORM,
             ),
         };
-        let light_grid = (shape == SetShape::Clustered)
+        let light_grid = (shape == SetShape::Clustered { grid: true })
             .then(|| Sized::new(context, "Light Grid", MIN_WORDS * 4));
         LightSet {
             shape,
@@ -374,13 +377,13 @@ impl LightSet {
             self.packed = packed;
             changed = true;
         }
-        if self.shape != SetShape::Clustered {
+        let SetShape::Clustered { grid } = self.shape else {
             if changed {
                 let bytes = self.fixed_bytes();
                 self.upload(context, bytes);
             }
             return Ok(());
-        }
+        };
         let cap = (limit.saturating_sub(u64::from(LIGHTS_HEADER))) / u64::from(LIGHT_SIZE);
         if u64::from(self.packed.count) > self.capacity {
             self.capacity = grow(u64::from(self.packed.count), MIN_LIGHTS).min(cap);
@@ -388,13 +391,16 @@ impl LightSet {
             self.lights = create_buffer(context, "Lights", size, wgpu::BufferUsages::STORAGE);
             self.uploaded.clear();
             rebin = true;
+            changed = true;
         }
+        // Without a `light_grid` root no shader reads a grid, so the set never bins.
+        let matrix = matrix.filter(|_| grid);
         let bits = matrix.map(|matrix| matrix_bits(&matrix));
         if bits != self.matrix {
             self.matrix = bits;
             rebin = true;
         }
-        if rebin {
+        if rebin && grid {
             let frustum = matrix.and_then(Frustum::from_matrix);
             self.binned = self.bin(context, encoder, frustum, limit)?;
             changed = true;
