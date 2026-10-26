@@ -1632,7 +1632,7 @@ impl RenderContext {
                                 // is hidden or in another pass. Slot 1 may hold an earlier mesh's buffer.
                                 (None, None) if model && mesh_object.awaits_models() => continue,
                                 (None, buffer) => {
-                                    check_instance_count(layouts.as_ref(), counts)?;
+                                    check_instance_count(layouts.as_ref(), counts, mesh_object)?;
                                     if let Some(buffer) = buffer {
                                         render_pass.set_vertex_buffer(1, buffer.slice(..));
                                     }
@@ -1894,20 +1894,27 @@ impl VertexLayouts {
 
 /// Refuses to draw more instances than the mesh holds
 /// when the pipeline reads instance attributes from its buffer.
+/// A Model's mesh holds none, and only its Models fill the columns.
 fn check_instance_count(
     layouts: Option<&VertexLayouts>,
     counts: crate::mesh::DrawCounts,
+    mesh: &crate::mesh::MeshObject,
 ) -> Result<(), RendererError> {
     let rows = counts.instance_rows.unwrap_or(0);
     let stepped = layouts.is_some_and(|layouts| layouts.instance.is_some());
-    if stepped && counts.instance_count > rows {
-        return Err(crate::mesh::MeshError::InvalidInstance(format!(
+    if !stepped || counts.instance_count <= rows {
+        return Ok(());
+    }
+    let message = if mesh.awaits_models() {
+        "the shader reads the Model columns, and no Model in this pass draws this mesh through it"
+            .to_string()
+    } else {
+        format!(
             "instance count {} exceeds the {rows} instances the mesh holds",
             counts.instance_count
-        ))
-        .into());
-    }
-    Ok(())
+        )
+    };
+    Err(crate::mesh::MeshError::InvalidInstance(message).into())
 }
 
 /// Refuses a shader with no mesh when it reads vertex inputs, naming the first one.
@@ -4186,6 +4193,29 @@ struct VIn { @builtin(vertex_index) index: u32, @location(0) pos: vec2<f32> };
                 "the Model's pass, off the strip"
             );
             assert_eq!(pixel(&quick, LEFT), [255, 255, 255, 255], "the quick view");
+        });
+    }
+
+    // Story: a Material's shader rendered without its Models reads Model columns
+    // that nothing fills, and render says so where it drew nothing.
+    #[test]
+    fn model_columns_without_a_model_error() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([SIDE, SIDE])
+                .await
+                .expect("texture target");
+            let model = strip(&red_glow(), -1.0, -0.2);
+            let pass = Pass::new("models");
+            pass.add(&model).expect("add model");
+
+            let res = renderer.render(model.material().shader(), &target);
+
+            assert!(
+                matches!(&res, Err(RendererError::MeshError(crate::mesh::MeshError::InvalidInstance(message))) if message.contains("no Model in this pass")),
+                "got {res:?}"
+            );
         });
     }
 
