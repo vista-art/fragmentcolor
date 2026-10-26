@@ -13,8 +13,9 @@ in order before validation, so you can compose pure helper functions from the
 registry with your own source.
 
 If validation fails, the error message points at the line in the resulting
-WGSL. If validation passes, the shader is guaranteed to work on the GPU. All
-uniforms are initialized to zero.
+WGSL. A shader that passes is one some device can run: `Renderer::render`
+still checks it against its own device, and refuses one past that device's
+limits or features with a typed error. All uniforms are initialized to zero.
 
 GLSL is supported only as a single part (a `.vert`, `.frag`, or `.glsl`
 file). Mixing GLSL with other parts is rejected.

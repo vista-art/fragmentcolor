@@ -38,7 +38,7 @@ struct PbrMaterial {
 }
 ```
 
-`@size` and `@align` keep their layout on every platform, the web included, where FragmentColor hands the browser WGSL that keeps them. The built-in PBR shader spells its padding out as members instead, which reads the same anywhere the WGSL goes.
+Spell the padding out as members, as the built-in PBR shader does. `@size` and `@align` keep their layout on Vulkan, Metal, DX12 and the browser's WebGPU, where FragmentColor hands the browser WGSL that keeps them, and the GL backends, WebGL2 among them, refuse them, since a std140 block can't hold such a layout.
 
 - Four `vec4<f32>` vertex inputs named `model_0` to `model_3`, the columns of
   the Model's transform. The renderer fills them at draw time from each
