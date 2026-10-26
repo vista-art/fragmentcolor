@@ -14,7 +14,11 @@ import Figure from "../../../components/Figure.astro";
 import { Arrow, Dot, Label, Line, Path, Rect, Ring } from "../../../components/figure";
 import { blocks, captures, ladder, orbits, palette, passes, perturbation, pixels, printout, series } from "../../../figures/infinite-zoom";
 
-Take any point <Math tex="c" /> of the plane. Starting at 0, apply the function <Math tex="z^2 + c" /> to each result in turn. The sequence of results is called an orbit, and the points whose orbit never escapes form the Mandelbrot set. Its edge grows new spirals however closely you look. By the last step of this page, a compute shader follows them a thousand decimal places deep.
+Have you ever wondered what imaginary numbers look like? They need a second direction. On a flat map, ordinary numbers run from left to right, imaginary ones from bottom to top, and a number with both parts is a single point. Mathematicians call that map the complex plane.
+
+Pick any point <Math tex="c" /> on it and try a small experiment. Start with <Math tex="z = 0" /> and compute <Math tex="z^2 + c" />. Then feed the answer back in as the new <Math tex="z" />, and keep going. The numbers you get trace a path called an orbit. Most points send their orbit flying off toward infinity. The rest keep it close to home forever, and together they form the Mandelbrot set.
+
+However far you zoom into the border between the two, it never runs out of detail. By the end of this page, your GPU dives into it in real time, a thousand decimal places deep.
 
 ## An eternal shape nobody could see
 
