@@ -467,24 +467,40 @@ impl LightSet {
         bytes
     }
 
-    /// Writes the bytes of `bytes` that differ from the last upload.
+    /// Writes the header when it changed, and the lights from the first one
+    /// that changed since the last upload to the last one that did.
     fn upload(&mut self, context: &RenderContext, bytes: Vec<u8>) {
         let header = match self.shape {
             SetShape::Array { .. } => ARRAY_HEADER as usize,
             _ => LIGHTS_HEADER as usize,
         };
         let split = header.min(bytes.len());
-        let same =
-            |range: std::ops::Range<usize>| self.uploaded.get(range.clone()) == bytes.get(range);
-        if !same(0..split) {
-            context.queue.write_buffer(&self.lights, 0, &bytes[..split]);
+        if self.uploaded.get(..split) != bytes.get(..split) {
+            self.write(context, 0, &bytes[..split]);
         }
-        if bytes.len() > split && !same(split..bytes.len()) {
-            context
-                .queue
-                .write_buffer(&self.lights, split as u64, &bytes[split..]);
+        let differs = |at: &usize| self.uploaded.get(*at) != bytes.get(*at);
+        let first = (split..bytes.len()).find(differs);
+        let last = (split..bytes.len()).rfind(differs);
+        if let (Some(first), Some(last)) = (first, last) {
+            // Whole lights, so the span keeps the 4-byte alignment a write needs.
+            let size = GpuLight::SIZE;
+            let start = split + (first - split) / size * size;
+            let end = (split + (last - split) / size * size + size).min(bytes.len());
+            self.write(context, start, &bytes[start..end]);
         }
         self.uploaded = bytes;
+    }
+
+    /// Writes `bytes` to the light buffer at `offset`.
+    fn write(&self, context: &RenderContext, offset: usize, bytes: &[u8]) {
+        context
+            .queue
+            .write_buffer(&self.lights, offset as u64, bytes);
+        #[cfg(test)]
+        context
+            .light_probe
+            .uploads
+            .fetch_add(bytes.len() as u64, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Bins the bounded lights in `frustum`, and returns the grid with the
@@ -666,10 +682,12 @@ impl BinningPipeline {
     }
 }
 
-/// Counts binning dispatches and turns grids off, for the tests.
+/// Counts set prepares, uploaded bytes and binning dispatches, and turns grids off, for the tests.
 #[cfg(test)]
 #[derive(Debug, Default)]
 pub(crate) struct LightProbe {
+    prepares: std::sync::atomic::AtomicU64,
+    uploads: std::sync::atomic::AtomicU64,
     dispatches: std::sync::atomic::AtomicU64,
     no_grid: std::sync::atomic::AtomicBool,
 }
@@ -803,6 +821,10 @@ impl RenderContext {
             };
             if set.used != render {
                 set.used = render;
+                #[cfg(test)]
+                self.light_probe
+                    .prepares
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 let matrix = camera.or_else(|| shader_matrix(shader));
                 set.prepare(self, encoder, shader, matrix, limit)?;
             }

@@ -59,8 +59,9 @@ left at the default range of 0. Keep those to a few suns and fill lights,
 and give lamps, torches and other local lights a range.
 
 A still scene sorts its lights once. Moving a light, changing its range
-or cone, or moving the camera sorts them again at the next render, and
-a new color or intensity only uploads the changed values.
+or cone, or moving the camera sorts them again at the next render. A new
+color or intensity sorts nothing and uploads only the lights from the
+first one that changed to the last.
 
 ### How many lights a shader takes
 

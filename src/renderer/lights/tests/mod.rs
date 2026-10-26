@@ -97,6 +97,16 @@ fn dispatches(context: &RenderContext) -> u64 {
     context.light_probe.dispatches.load(Ordering::Relaxed)
 }
 
+/// The number of light set prepares a context ran.
+fn prepares(context: &RenderContext) -> u64 {
+    context.light_probe.prepares.load(Ordering::Relaxed)
+}
+
+/// The bytes a context wrote to light buffers.
+fn uploads(context: &RenderContext) -> u64 {
+    context.light_probe.uploads.load(Ordering::Relaxed)
+}
+
 /// The number of light sets of the context that bin with a grid.
 fn grids(context: &RenderContext) -> usize {
     context
@@ -542,8 +552,13 @@ fn sixteen_thousand_lights_grow_every_buffer() {
         let sets = clustered.context.light_sets.read();
         let set = sets.values().next().expect("a light set");
         assert!(set.capacity >= 16384, "lights hold {}", set.capacity);
+        // One light lists at most half the clusters, or it is promoted.
+        let one = grow(u64::from(2 * GRID_CELLS + GRID_CELLS / 2), MIN_WORDS) * 4;
         let grid = set.light_grid.as_ref().map_or(0, |grid| grid.size);
-        assert!(grid > MIN_WORDS * 4, "the light grid holds {grid} bytes");
+        assert!(
+            grid > one,
+            "the light grid holds {grid} bytes, one light takes {one}"
+        );
         let bins = set.bins.as_ref().map_or(0, |bins| bins.size);
         assert!(
             bins > BINS_HEADER + BIN_SIZE * MIN_LIGHTS,
@@ -632,12 +647,18 @@ fn still_renders_dispatch_once() {
             renderer.render(&pass, &target).expect("render");
         }
         assert_eq!(dispatches(&context), 1, "three still renders");
+        let before = uploads(&context);
         lights[0].set_color([0.1, 0.2, 0.3]);
         renderer.render(&pass, &target).expect("render");
         assert_eq!(
             dispatches(&context),
             1,
             "a color change only rewrites bytes"
+        );
+        assert_eq!(
+            uploads(&context) - before,
+            u64::from(LIGHT_SIZE),
+            "a color change uploads one light"
         );
         lights[0].set_position([1.0, 1.0, 1.0]).expect("position");
         renderer.render(&pass, &target).expect("render");
@@ -659,6 +680,7 @@ fn still_renders_dispatch_once() {
             .render(&listed.as_slice(), &target)
             .expect("render");
         assert_eq!(dispatches(&context), 1, "a pass listed twice");
+        assert_eq!(prepares(&context), 1, "a pass listed twice prepares once");
 
         // Lights without a range never bin.
         let suns: Vec<Light> = (0..4)
