@@ -116,14 +116,13 @@ fn readable(format: TextureFormat) -> TextureOptions {
 }
 
 fn halves(bytes: &[u8]) -> Vec<f32> {
-    let words = bytes.chunks_exact(2);
-    let half = |word: &[u8]| half::f16::from_le_bytes([word[0], word[1]]).to_f32();
-    words.map(half).collect()
+    let half = |word: &[u8; 2]| half::f16::from_le_bytes(*word).to_f32();
+    bytes.as_chunks::<2>().0.iter().map(half).collect()
 }
 
 fn floats(bytes: &[u8]) -> Vec<f32> {
-    let word = |word: &[u8]| f32::from_le_bytes([word[0], word[1], word[2], word[3]]);
-    bytes.chunks_exact(4).map(word).collect()
+    let word = |word: &[u8; 4]| f32::from_le_bytes(*word);
+    bytes.as_chunks::<4>().0.iter().map(word).collect()
 }
 
 fn close(got: &[f32], want: &[f32]) -> bool {
@@ -146,7 +145,11 @@ fn decoded_images_fill_float_formats() {
             .expect("an HDR file decodes");
         let image = texture.get_image().await.expect("read back");
         let want = [2.0, 0.5, 0.25, 1.0, 1.0, 1.0, 1.0, 1.0];
-        assert!(close(&halves(&image), &want), "HDR read back {:?}", halves(&image));
+        assert!(
+            close(&halves(&image), &want),
+            "HDR read back {:?}",
+            halves(&image)
+        );
 
         let pixel = image::RgbaImage::from_raw(1, 1, vec![255, 0, 51, 255]).expect("pixel");
         let png = encode(pixel.into(), image::ImageFormat::Png);
@@ -156,13 +159,21 @@ fn decoded_images_fill_float_formats() {
             .await
             .expect("a PNG fills Rgba32Float");
         let image = texture.get_image().await.expect("read back");
-        assert!(close(&floats(&image), &want), "Rgba32Float {:?}", floats(&image));
+        assert!(
+            close(&floats(&image), &want),
+            "Rgba32Float {:?}",
+            floats(&image)
+        );
         let texture = renderer
             .create_texture((png.clone(), readable(TextureFormat::Rgba16Float)))
             .await
             .expect("a PNG fills Rgba16Float");
         let image = texture.get_image().await.expect("read back");
-        assert!(close(&halves(&image), &want), "Rgba16Float {:?}", halves(&image));
+        assert!(
+            close(&halves(&image), &want),
+            "Rgba16Float {:?}",
+            halves(&image)
+        );
 
         for format in [TextureFormat::Rgba32Uint, TextureFormat::Rgba32Sint] {
             let result = renderer.create_texture((png.clone(), format)).await;
@@ -189,10 +200,18 @@ fn decoded_images_fill_bgra_in_order() {
         assert_eq!(image, blue_first, "create_texture stores blue first");
 
         let chain = Mipmap::build((png.as_slice(), TextureFormat::Bgra)).expect("Mipmap::build");
-        assert_eq!(chain.level(0).expect("level 0"), blue_first, "Mipmap::build");
+        assert_eq!(
+            chain.level(0).expect("level 0"),
+            blue_first,
+            "Mipmap::build"
+        );
 
         let raw = Mipmap::build((&blue_first[..], TextureFormat::Bgra, [1, 1])).expect("raw");
-        assert_eq!(raw.level(0).expect("level 0"), blue_first, "raw bytes stay as given");
+        assert_eq!(
+            raw.level(0).expect("level 0"),
+            blue_first,
+            "raw bytes stay as given"
+        );
     });
 }
 
@@ -216,9 +235,8 @@ fn raw_bytes_match_their_size() {
             .await
             .expect("create_storage_texture");
         let large = vec![0; 128 * 128 * 4];
-        let invalid = |result: Result<(), TextureError>| {
-            matches!(result, Err(TextureError::InvalidInput(_)))
-        };
+        let invalid =
+            |result: Result<(), TextureError>| matches!(result, Err(TextureError::InvalidInput(_)));
         assert!(invalid(texture.write(&large)), "write with a larger image");
         let frame = vec![0; 64 * 64 * 4];
         assert!(
@@ -231,9 +249,15 @@ fn raw_bytes_match_their_size() {
 
         let pixels = vec![0; 4 * 4 * 4 * 3];
         let deep = Mipmap::build((pixels.as_slice(), TextureFormat::Rgba, [4, 4, 3]));
-        assert!(matches!(deep, Err(TextureError::InvalidInput(_))), "a 3D chain");
+        assert!(
+            matches!(deep, Err(TextureError::InvalidInput(_))),
+            "a 3D chain"
+        );
         let longer = Mipmap::build((pixels.as_slice(), TextureFormat::Rgba, [4, 4]));
-        assert!(matches!(longer, Err(TextureError::InvalidInput(_))), "extra bytes");
+        assert!(
+            matches!(longer, Err(TextureError::InvalidInput(_))),
+            "extra bytes"
+        );
     });
 }
 
@@ -267,10 +291,19 @@ fn writes_keep_the_mip_chain_current() {
 
         let shader = fragmentcolor::Shader::new(SMALLEST_LEVEL).expect("shader");
         shader.set("tex", &texture).expect("set tex");
-        let target = renderer.create_texture_target([1, 1]).await.expect("target");
+        let target = renderer
+            .create_texture_target([1, 1])
+            .await
+            .expect("target");
         renderer.render(&shader, &target).expect("render");
-        let image = fragmentcolor::Target::get_image(&target).await.expect("read back");
-        assert_eq!(image, [0, 255, 0, 255], "the smallest level follows the write");
+        let image = fragmentcolor::Target::get_image(&target)
+            .await
+            .expect("read back");
+        assert_eq!(
+            image,
+            [0, 255, 0, 255],
+            "the smallest level follows the write"
+        );
 
         let result = texture.write_region(&green[..4 * 4 * 4], [0, 0, 4, 4]);
         assert!(matches!(result, Err(TextureError::InvalidInput(_))));
@@ -291,7 +324,10 @@ fn sizes_come_with_raw_bytes_only() {
         let result = renderer
             .create_texture(("https://invalid.invalid/x.png", [64, 64]))
             .await;
-        assert!(refused(&result), "a URL with a size, refused before the fetch");
+        assert!(
+            refused(&result),
+            "a URL with a size, refused before the fetch"
+        );
         let chain = Mipmap::build(("examples/assets/logo.png", [64, 64]));
         assert!(
             matches!(chain, Err(TextureError::InvalidInput(_))),

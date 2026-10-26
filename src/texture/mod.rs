@@ -1541,7 +1541,11 @@ pub(crate) fn array_pixels(
     read: impl FnOnce() -> Vec<u8>,
     format: wgpu::TextureFormat,
 ) -> Result<(Vec<u8>, Size), TextureError> {
-    let invalid = || TextureError::InvalidInput(format!("an ndarray of shape {shape:?} doesn't fit a {format:?} texture"));
+    let invalid = || {
+        TextureError::InvalidInput(format!(
+            "an ndarray of shape {shape:?} doesn't fit a {format:?} texture"
+        ))
+    };
     let (height, width, channels) = match *shape {
         [height, width] => (height, width, 1),
         [height, width, channels] => (height, width, channels),
@@ -2072,8 +2076,11 @@ mod tests {
         ] {
             check_pixels(own, &options(None, format)).expect("an RGBA8 format");
         }
-        check_pixels(own, &options(Some(Size::new(2, 1, Some(1))), Default::default()))
-            .expect("the source's own size");
+        check_pixels(
+            own,
+            &options(Some(Size::new(2, 1, Some(1))), Default::default()),
+        )
+        .expect("the source's own size");
         for (size, format) in [
             (Some(Size::new(1, 1, None)), crate::TextureFormat::Rgba),
             (None, crate::TextureFormat::R8Unorm),
@@ -2473,7 +2480,10 @@ mod tests {
             wgpu::TextureFormat::R8Unorm,
         ] {
             assert!(
-                matches!(check(format, storage, flat), Err(TextureError::InvalidInput(_))),
+                matches!(
+                    check(format, storage, flat),
+                    Err(TextureError::InvalidInput(_))
+                ),
                 "{format:?} takes no storage"
             );
             check(format, sampled, flat).expect("every format samples");

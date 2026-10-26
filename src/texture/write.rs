@@ -168,8 +168,7 @@ fn default_stride(
             .saturating_mul(size[2] as u64)
     };
     let len = len as u64;
-    if len == full(row_stride) || len == least_bytes(row_stride, row_stride, rows_per_image, size)
-    {
+    if len == full(row_stride) || len == least_bytes(row_stride, row_stride, rows_per_image, size) {
         return Ok(row_stride);
     }
     if len == full(padded) {
@@ -193,8 +192,14 @@ mod tests {
     fn default_stride_takes_tight_or_padded_rows() {
         let size = [32, 32, 1];
         let tight = 32 * 4;
-        assert_eq!(default_stride(tight * 32, tight as u32, 32, size).ok(), Some(128));
-        assert_eq!(default_stride(256 * 32, tight as u32, 32, size).ok(), Some(256));
+        assert_eq!(
+            default_stride(tight * 32, tight as u32, 32, size).ok(),
+            Some(128)
+        );
+        assert_eq!(
+            default_stride(256 * 32, tight as u32, 32, size).ok(),
+            Some(256)
+        );
         for len in [64 * 64 * 4, tight * 32 - 1, tight * 32 + 4] {
             assert!(
                 matches!(
@@ -207,7 +212,13 @@ mod tests {
         // Layers spaced 40 rows apart take the full spacing or the WebGPU minimum.
         let layered = [32, 32, 2];
         let least = (40 + 31) * tight + tight;
-        assert_eq!(default_stride(least, tight as u32, 40, layered).ok(), Some(128));
-        assert_eq!(default_stride(tight * 80, tight as u32, 40, layered).ok(), Some(128));
+        assert_eq!(
+            default_stride(least, tight as u32, 40, layered).ok(),
+            Some(128)
+        );
+        assert_eq!(
+            default_stride(tight * 80, tight as u32, 40, layered).ok(),
+            Some(128)
+        );
     }
 }

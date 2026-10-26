@@ -15,9 +15,7 @@ use ktx2::Format as VkFormat;
 
 use crate::RenderContext;
 use crate::texture::error::TextureError;
-use crate::texture::{
-    SamplerOptions, TextureObject, create_default_sampler, mip_level_count_for,
-};
+use crate::texture::{SamplerOptions, TextureObject, create_default_sampler, mip_level_count_for};
 use parking_lot::RwLock;
 
 /// The identifier every KTX2 file starts with: `«KTX 20»\r\n\x1A\n`.
@@ -476,7 +474,10 @@ mod tests {
                 "an aligned region"
             );
             let image = texture.get_image().await;
-            assert!(matches!(image, Err(TextureError::InvalidInput(_))), "get_image");
+            assert!(
+                matches!(image, Err(TextureError::InvalidInput(_))),
+                "get_image"
+            );
         });
     }
 

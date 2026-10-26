@@ -264,7 +264,10 @@ fn from_box(origin: [u32; 3], extent: [Option<u32>; 3]) -> Result<TextureRegion,
             "a region needs its width and height, or min and max bounds".into(),
         ));
     };
-    Ok(TextureRegion::new(origin, [width, height, depth.unwrap_or(1)]))
+    Ok(TextureRegion::new(
+        origin,
+        [width, height, depth.unwrap_or(1)],
+    ))
 }
 
 // -------------------------------------------
@@ -341,9 +344,7 @@ mod tests {
     /// Reads `region` from the pairs of a map, the way a JS object or a Python dict reads.
     fn read(pairs: &[(&str, u32)]) -> Result<TextureRegion, TextureError> {
         let map: HashMap<&str, u32> = pairs.iter().copied().collect();
-        read_region(|(camel, snake): Key| {
-            Ok(map.get(camel).or_else(|| map.get(snake)).copied())
-        })
+        read_region(|(camel, snake): Key| Ok(map.get(camel).or_else(|| map.get(snake)).copied()))
     }
 
     // Story: both object forms read the region they spell, with one layer when
@@ -352,8 +353,8 @@ mod tests {
     fn read_region_reads_both_forms() {
         let boxed = read(&[("x", 1), ("y", 2), ("width", 3), ("height", 4)]).expect("box");
         assert_eq!((boxed.origin, boxed.size), ([1, 2, 0], [3, 4, 1]));
-        let bounds = read(&[("minX", 8), ("maxX", 12), ("min_y", 0), ("max_y", 4)])
-            .expect("bounds");
+        let bounds =
+            read(&[("minX", 8), ("maxX", 12), ("min_y", 0), ("max_y", 4)]).expect("bounds");
         assert_eq!((bounds.origin, bounds.size), ([8, 0, 0], [4, 4, 1]));
         let deep = read(&[("maxX", 2), ("maxY", 2), ("minZ", u32::MAX - 1)]).expect("deep");
         assert_eq!((deep.origin[2], deep.size[2]), (u32::MAX - 1, 1));
@@ -368,7 +369,14 @@ mod tests {
     fn read_region_refuses_what_it_cannot_read() {
         let cases: [&[(&str, u32)]; 7] = [
             &[("minX", 10), ("maxX", 2), ("minY", 0), ("maxY", 4)],
-            &[("minX", 0), ("maxX", 4), ("minY", 0), ("maxY", 4), ("minZ", 2), ("maxZ", 2)],
+            &[
+                ("minX", 0),
+                ("maxX", 4),
+                ("minY", 0),
+                ("maxY", 4),
+                ("minZ", 2),
+                ("maxZ", 2),
+            ],
             &[("minX", 0), ("maxX", 4)],
             &[("minY", 0), ("maxY", 4)],
             &[("x", 0), ("y", 0), ("w", 4), ("h", 4)],
