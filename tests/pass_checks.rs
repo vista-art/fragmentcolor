@@ -359,6 +359,43 @@ fn a_refused_render_leaves_the_mesh_to_its_owner() {
     });
 }
 
+// Story: a Renderer that has no context yet created no target, so it refuses another
+// Renderer's with ForeignTarget, where it returned NoContext.
+#[test]
+fn a_renderer_without_a_context_refuses_a_foreign_target() {
+    pollster::block_on(async move {
+        let owner = Renderer::new();
+        let frame = target(&owner, 8).await;
+
+        let result = Renderer::new().render(&Shader::default(), &frame);
+        assert!(
+            matches!(result, Err(RendererError::ForeignTarget)),
+            "{result:?}"
+        );
+    });
+}
+
+// Story: calls that race to create a Renderer's context share one, so the Renderer
+// draws every target they made, where the losers kept a context of their own.
+#[test]
+fn racing_calls_share_one_context() {
+    let renderer = Renderer::new();
+    let frames: Vec<TextureTarget> = std::thread::scope(|scope| {
+        let calls: Vec<_> = (0..8)
+            .map(|_| scope.spawn(|| pollster::block_on(target(&renderer, 4))))
+            .collect();
+        calls
+            .into_iter()
+            .map(|call| call.join().expect("a create call"))
+            .collect()
+    });
+    for frame in &frames {
+        renderer
+            .render(&Shader::default(), frame)
+            .expect("each target belongs to the Renderer");
+    }
+}
+
 // Story: a shader that samples the texture its pass draws into is refused, for the
 // frame of a TextureTarget and for a pass target alike, while a later pass reads it.
 #[test]

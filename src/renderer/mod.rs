@@ -5,6 +5,7 @@ use crate::{TextureData, TextureTarget, UniformData};
 use dashmap::DashMap;
 use dashmap::mapref::entry::Entry;
 use dashmap::mapref::one::RefMut;
+use futures::lock::Mutex as AsyncMutex;
 use lsp_doc::lsp_doc;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use std::collections::{HashMap, HashSet};
@@ -38,7 +39,7 @@ pub(crate) use texture_pool::*;
 
 mod access;
 mod checks;
-use checks::{Attachment, PassTargets};
+use checks::{Attachment, PassTargets, refuse_without_context};
 mod depth;
 mod shader_checks;
 use depth::DepthUse;
@@ -110,6 +111,10 @@ pub struct Renderer {
     instance: RwLock<Option<Arc<wgpu::Instance>>>,
     adapter: RwLock<Option<wgpu::Adapter>>,
     context: RwLock<Option<Arc<RenderContext>>>,
+    /// Held while the instance is created, so calls that race create it once.
+    instance_lock: AsyncMutex<()>,
+    /// Held while the context is created, so calls that race share one device.
+    context_lock: AsyncMutex<()>,
 }
 
 crate::impl_fc_kind!(Renderer, "Renderer");
@@ -117,11 +122,7 @@ crate::impl_fc_kind!(Renderer, "Renderer");
 impl Renderer {
     #[lsp_doc("docs/api/core/renderer/new.md")]
     pub fn new() -> Self {
-        Renderer {
-            instance: RwLock::new(None),
-            adapter: RwLock::new(None),
-            context: RwLock::new(None),
-        }
+        Renderer::default()
     }
 
     #[lsp_doc("docs/api/core/renderer/create_target.md")]
@@ -434,10 +435,9 @@ impl Renderer {
         // wait there until the caller awaits `load`.
         #[cfg(not(wasm))]
         futures::executor::block_on(self.load(renderable))?;
-        if let Some(context) = self.context.read().as_ref() {
-            context.render(renderable, target)
-        } else {
-            Err(RendererError::NoContext)
+        match self.context.read().as_ref() {
+            Some(context) => context.render(renderable, target),
+            None => Err(refuse_without_context(renderable, target)),
         }
     }
 
@@ -549,21 +549,30 @@ impl Renderer {
         Ok((context, surface, config))
     }
 
+    /// The wgpu instance, created by the first call that needs one.
     async fn instance(&self) -> Arc<wgpu::Instance> {
         if let Some(instance) = self.instance.read().as_ref() {
-            instance.clone()
-        } else {
-            let instance = platform::all::create_instance().await;
-            let instance = Arc::new(instance);
-            self.instance.write().replace(instance.clone());
-            instance
+            return instance.clone();
         }
+        let _creating = self.instance_lock.lock().await;
+        if let Some(instance) = self.instance.read().as_ref() {
+            return instance.clone();
+        }
+        let instance = Arc::new(platform::all::create_instance().await);
+        self.instance.write().replace(instance.clone());
+        instance
     }
 
+    /// The context every target and texture of this Renderer shares, created once.
+    /// A call that races the first one waits for it and takes its context.
     async fn context(
         &self,
         surface: Option<&wgpu::Surface<'_>>,
     ) -> Result<Arc<RenderContext>, InitializationError> {
+        if let Some(context) = self.context.read().as_ref() {
+            return Ok(context.clone());
+        }
+        let _creating = self.context_lock.lock().await;
         let context = if let Some(context) = self.context.read().as_ref() {
             context.clone()
         } else {

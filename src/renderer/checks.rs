@@ -9,7 +9,9 @@ use super::{PassDraws, RenderContext, RendererError};
 use crate::material::AlphaMode;
 use crate::pass::PassError;
 use crate::texture::Registration;
-use crate::{PassObject, ShaderObject, Target, TargetFrame, TextureObject, UniformData};
+use crate::{
+    PassObject, Renderable, ShaderObject, Target, TargetFrame, TextureObject, UniformData,
+};
 use parking_lot::RwLock;
 use std::sync::Arc;
 
@@ -72,6 +74,19 @@ impl std::fmt::Display for Channels {
             1 => write!(formatter, "{prefix}{bits}"),
             count => write!(formatter, "vec{count}<{prefix}{bits}>"),
         }
+    }
+}
+
+/// The error a render returns on a Renderer that has no context yet. Such a Renderer
+/// created no target, so a render pass that draws into one draws into another Renderer's.
+pub(super) fn refuse_without_context(
+    renderable: &impl Renderable,
+    target: &impl Target,
+) -> RendererError {
+    let draws = renderable.passes().iter().any(|pass| !pass.is_compute());
+    match draws && target.owner().is_some() {
+        true => RendererError::ForeignTarget,
+        false => RendererError::NoContext,
     }
 }
 
