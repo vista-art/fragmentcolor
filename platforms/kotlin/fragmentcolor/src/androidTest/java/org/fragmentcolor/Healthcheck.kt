@@ -24,6 +24,15 @@ class Healthcheck : ExampleCase() {
         runHeadlessRenderSmoke()
     }
 
+    // A size with layers reaches the check the other languages run: a texture
+    // target has one layer, so a depth of 2 throws.
+    @Test
+    fun textureTargetRefusesLayers() = runBlocking {
+        val renderer = Renderer()
+        assertFailsWith<FragmentColorException> { renderer.createTextureTarget(listOf(8u, 8u, 2u)) }
+        Unit
+    }
+
     // Shader.set shapes each Kotlin value to the uniform's declared WGSL type.
     // Setting and reading uniforms touches no GPU, so this runs on any emulator.
     @Test

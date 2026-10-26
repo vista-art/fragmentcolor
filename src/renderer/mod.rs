@@ -221,6 +221,9 @@ impl Renderer {
         })?;
         let wgpu_size: wgpu::Extent3d = size.into();
         let wgpu_format: wgpu::TextureFormat = options.format.into();
+        // The size comes first, so a bad one reports the same error whatever the seed.
+        let limits = context.device.limits();
+        crate::texture::check_extent(&limits, wgpu_size, crate::texture::dimension(wgpu_size))?;
 
         let bytes_opt: Option<Vec<u8>> = match data {
             crate::TextureData::Empty => None,

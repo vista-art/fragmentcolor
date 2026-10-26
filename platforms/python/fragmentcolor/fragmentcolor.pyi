@@ -173,7 +173,7 @@ class Renderer:
 
         When you pass a `size`, the bytes are treated as raw pixels in the chosen format. Without a size, the bytes (or the file/URL contents) are decoded as PNG, JPEG, BMP, HDR, etc.
 
-        A size with a side of zero, or one past the device's limits, is an error that reaches no GPU call, and so is an image larger than the device takes: `TextureError::InvalidInput` in Rust, a thrown `Error` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
+        A size with a side of zero, or one past the device's limits, is an error that reaches no GPU call, and so is an image larger than the device takes: `TextureError::InvalidInput` inside `RendererError::TextureError` in Rust, a thrown `Error` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
 
         Decode and mipmap generation run on a background worker on native platforms. On the web they run inline on the caller's thread; move heavy decode into a Web Worker if you need parallelism.
 
@@ -358,7 +358,7 @@ class Renderer:
 
         `size` is required; storage textures have no source to infer dimensions from. Missing it returns `RendererError::CreateTextureError`.
 
-        A depth of 1, or none, makes a 2D texture, and a larger depth makes a 3D texture. A side of zero, or a size past the device's limits for that kind of texture, is an error that reaches no GPU call: `TextureError::InvalidInput` in Rust, a thrown `Error` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
+        A depth of 1, or none, makes a 2D texture, and a larger depth makes a 3D texture. A side of zero, or a size past the device's limits for that kind of texture, is an error that reaches no GPU call: `TextureError::InvalidInput` inside `RendererError::TextureError` in Rust, a thrown `Error` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
 
         `options.usage` overrides the default mask of `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`. Every binding has the same named `TextureUsage` flags, combined with `|` (`or` in Kotlin). The other bindings take the size, format, optional bytes and optional usage as separate arguments.
 

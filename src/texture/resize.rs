@@ -33,13 +33,14 @@ pub(crate) fn check_extent(
     dimension: wgpu::TextureDimension,
 ) -> Result<(), TextureError> {
     let (side, layers) = match dimension {
+        wgpu::TextureDimension::D1 => (limits.max_texture_dimension_1d, 1),
+        wgpu::TextureDimension::D2 => (
+            limits.max_texture_dimension_2d,
+            limits.max_texture_array_layers,
+        ),
         wgpu::TextureDimension::D3 => (
             limits.max_texture_dimension_3d,
             limits.max_texture_dimension_3d,
-        ),
-        _ => (
-            limits.max_texture_dimension_2d,
-            limits.max_texture_array_layers,
         ),
     };
     check_size(size.width, size.height, side)?;
@@ -89,12 +90,7 @@ fn rebuild(
     if extent == current.size {
         return Ok(None);
     }
-    let limits = context.device.limits();
-    let limit = match current.inner.dimension() {
-        wgpu::TextureDimension::D3 => limits.max_texture_dimension_3d,
-        _ => limits.max_texture_dimension_2d,
-    };
-    check_size(extent.width, extent.height, limit)?;
+    check_extent(&context.device.limits(), extent, current.inner.dimension())?;
     Ok(Some(current.resized(context, extent)))
 }
 
@@ -172,6 +168,15 @@ mod tests {
         assert!(check_extent(&limits, size(0, 8, 1), flat).is_err());
         assert!(check_extent(&limits, size(8, 8, 8), deep).is_ok());
         assert!(check_extent(&limits, size(8, 8, u32::MAX), deep).is_err());
+
+        // The downlevel 3D limit is 256 where the 2D one is 2048.
+        assert!(check_extent(&limits, size(512, 8, 1), flat).is_ok());
+        assert!(check_extent(&limits, size(512, 8, 8), deep).is_err());
+
+        // The default array limit is 256 where the 3D one is 2048.
+        let limits = wgpu::Limits::default();
+        assert!(check_extent(&limits, size(8, 8, 300), flat).is_err());
+        assert!(check_extent(&limits, size(8, 8, 300), deep).is_ok());
     }
 
     // Story: a plane has one layer, and its sides pass the same check.

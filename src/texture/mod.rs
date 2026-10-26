@@ -728,7 +728,6 @@ impl TextureObject {
         options: SamplerOptions,
     ) -> Result<Self, TextureError> {
         check_format(context.device.features(), format, usage)?;
-        check_extent(&context.device.limits(), size, dimension(size))?;
         let descriptor = Self::texture_descriptor("Generic Texture", size, format, usage, 1, 1); // @TODO mip_count, sample_count
         let inner = context.device.create_texture(&descriptor);
         let size = inner.size();
@@ -856,7 +855,9 @@ impl TextureObject {
             ));
         }
 
-        let want_mips = generate_mipmaps && supports_cpu_mipmaps(format);
+        // CPU mipmaps resample one slice, so a 3D texture keeps one level and every slice.
+        let flat = size.depth_or_array_layers == 1;
+        let want_mips = generate_mipmaps && flat && supports_cpu_mipmaps(format);
         let mip_level_count = if want_mips {
             mip_level_count_for(size.width, size.height)
         } else {
@@ -1062,10 +1063,7 @@ impl TextureObject {
             size,
             mip_level_count: 1,
             sample_count: sample_count.max(1),
-            dimension: match size.depth_or_array_layers {
-                1 => wgpu::TextureDimension::D2,
-                _ => wgpu::TextureDimension::D3,
-            },
+            dimension: dimension(size),
             format,
             view_formats: &[],
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
@@ -1229,7 +1227,7 @@ pub(crate) fn source_usage(extra: Option<u32>) -> wgpu::TextureUsages {
 }
 
 /// The dimension a texture of `size` gets: 2D with one layer, and 3D with more.
-fn dimension(size: wgpu::Extent3d) -> wgpu::TextureDimension {
+pub(crate) fn dimension(size: wgpu::Extent3d) -> wgpu::TextureDimension {
     match size.depth_or_array_layers {
         1 => wgpu::TextureDimension::D2,
         _ => wgpu::TextureDimension::D3,
@@ -2123,6 +2121,23 @@ mod tests {
     // use for off-main-thread mip generation. Exercises both the
     // TextureInput::Prepared variant (Rust ergonomics) and the dedicated
     // create_texture_prepared cross-language entry point.
+    // Story: raw pixels for a 3D texture keep one mip level, so the upload
+    // writes every slice instead of resampling the first one.
+    #[test]
+    fn raw_3d_texture_keeps_one_level() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let pixels: Vec<u8> = (0..2 * 2 * 3 * 4).map(|value| value as u8).collect();
+            let texture = renderer
+                .create_texture((pixels.as_slice(), [2, 2, 3]))
+                .await
+                .expect("create_texture failed");
+            let object = texture.object();
+            assert_eq!(object.inner.dimension(), wgpu::TextureDimension::D3);
+            assert_eq!(object.inner.mip_level_count(), 1);
+        });
+    }
+
     #[test]
     fn prepared_input_round_trips_through_create_texture() {
         pollster::block_on(async move {

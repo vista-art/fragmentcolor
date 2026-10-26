@@ -206,6 +206,13 @@ pub(crate) fn from_ktx2_bytes(
     crate::texture::check_format(context.device.features(), wgpu_format, usage)?;
     let dimension = wgpu::TextureDimension::D2;
     crate::texture::check_extent(&context.device.limits(), size, dimension)?;
+    // A compressed format stores whole blocks, so the size must hold a whole number of them.
+    let (block_w, block_h) = wgpu_format.block_dimensions();
+    if width % block_w != 0 || height % block_h != 0 {
+        return Err(TextureError::InvalidInput(format!(
+            "a {vk_format:?} texture needs a size in whole {block_w}x{block_h} blocks, got {width}x{height}"
+        )));
+    }
     let descriptor = wgpu::TextureDescriptor {
         label: Some("KTX2 Source Texture"),
         size,
@@ -218,7 +225,6 @@ pub(crate) fn from_ktx2_bytes(
     };
     let texture = context.device.create_texture(&descriptor);
 
-    let (block_w, block_h) = wgpu_format.block_dimensions();
     let block_bytes = wgpu_format.block_copy_size(None).ok_or_else(|| {
         TextureError::CreateTextureError(format!(
             "KTX2 format {:?} has no defined block copy size — likely a depth/multi-aspect format that doesn't belong in a source texture",
@@ -390,6 +396,53 @@ pub(crate) mod test_helpers {
 mod tests {
     use super::*;
     use test_helpers::Ktx2Test;
+
+    // Story: a KTX2 file wider than any device, or one whose size isn't a whole
+    // number of compression blocks, is refused before it reaches wgpu.
+    #[test]
+    fn refuses_sizes_the_device_cannot_take() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let wide = Ktx2Test {
+                format: VkFormat::R8G8B8A8_UNORM,
+                width: 131_072,
+                height: 1,
+                levels: vec![vec![0; 131_072 * 4]],
+            }
+            .build();
+            let result = renderer
+                .create_texture(crate::texture::TextureData::Ktx2Bytes(wide))
+                .await;
+            assert!(matches!(
+                result,
+                Err(crate::RendererError::TextureError(
+                    TextureError::InvalidInput(_)
+                ))
+            ));
+
+            // 6x6 BC7 needs 2x2 blocks of 16 bytes, but wgpu wants whole 4x4 blocks.
+            let partial = Ktx2Test {
+                format: VkFormat::BC7_UNORM_BLOCK,
+                width: 6,
+                height: 6,
+                levels: vec![vec![0; 64]],
+            }
+            .build();
+            let result = renderer
+                .create_texture(crate::texture::TextureData::Ktx2Bytes(partial))
+                .await;
+            assert!(
+                matches!(
+                    result,
+                    Err(crate::RendererError::TextureError(
+                        TextureError::InvalidInput(_)
+                            | TextureError::UnsupportedFormatForUsage { .. }
+                    ))
+                ),
+                "a 6x6 BC7 file should be refused before wgpu"
+            );
+        });
+    }
 
     // Story: a synthetic uncompressed-RGBA8 KTX2 with one mip level loads with
     // the right format, dimensions, and mip count. The default RGBA8 path

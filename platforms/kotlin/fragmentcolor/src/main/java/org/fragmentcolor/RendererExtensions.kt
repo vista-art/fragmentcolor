@@ -50,7 +50,6 @@ suspend fun Renderer.createTextureTarget(size: List<UInt>): TextureTarget =
 suspend fun Renderer.createDepthTexture(size: List<UInt>): Texture =
     createDepthTexture(sizeRecord(size, "createDepthTexture"))
 
-
 // ── createStorageTexture ─────────────────────────────────────────────────────
 
 /**

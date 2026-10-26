@@ -61,6 +61,16 @@ final class Healthcheck: ExampleCase {
         // Tracked in CHANGELOG "Unfinished work" for v0.11.x.
     }
 
+    // A size with layers reaches the check the other languages run: a texture
+    // target has one layer, so a depth of 2 throws.
+    func testTextureTargetRefusesLayers() async throws {
+        let renderer = Renderer()
+        do {
+            _ = try await renderer.createTextureTarget([8, 8, 2])
+            throw HealthcheckError.assertion("createTextureTarget([8, 8, 2]) should throw")
+        } catch is FragmentColorError {}
+    }
+
     // Shader.set shapes each Swift value to the uniform's declared WGSL type.
     func testShaderSetValues() throws {
         let shader = try Shader(source: """
