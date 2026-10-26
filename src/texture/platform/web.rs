@@ -35,9 +35,10 @@ impl Mipmap {
         >,
     ) -> Result<Mipmap, JsError> {
         let format = read_format(format)?;
-        let bytes = crate::texture::js_to_texture_bytes(bytes)?;
         let size = size.filter(|size| !size.is_undefined() && !size.is_null());
         let size: Option<Size> = size.as_ref().map(Size::try_from).transpose()?;
+        let (bytes, own) = crate::texture::js_to_texture_bytes(bytes, size, format.into())?;
+        let size = size.or(own);
         let input = crate::TextureInput {
             data: crate::TextureData::Bytes(bytes),
             options: crate::TextureOptions {
@@ -123,7 +124,9 @@ impl Texture {
     #[wasm_bindgen(js_name = "write")]
     #[lsp_doc("docs/api/texture/texture/write.md")]
     pub fn write_js(&self, data: &JsValue) -> Result<(), JsError> {
-        let bytes = crate::texture::js_to_texture_bytes(data)?;
+        let object = self.object();
+        let (bytes, _) =
+            crate::texture::js_to_texture_bytes(data, Some(object.size()), object.format)?;
         self.write(&bytes)?;
         Ok(())
     }
@@ -131,11 +134,14 @@ impl Texture {
     #[wasm_bindgen(js_name = "writeRegion")]
     #[lsp_doc("docs/api/texture/texture/write_region.md")]
     pub fn write_region_js(&self, data: &JsValue, region: &JsValue) -> Result<(), JsError> {
-        let bytes = crate::texture::js_to_texture_bytes(data)?;
         if region.is_undefined() || region.is_null() {
-            return Ok(self.write(&bytes)?);
+            return self.write_js(data);
         }
         let region: crate::TextureRegion = region.try_into()?;
+        let [width, height, depth] = region.size;
+        let size = Size::new(width, height, Some(depth));
+        let format = self.object().format;
+        let (bytes, _) = crate::texture::js_to_texture_bytes(data, Some(size), format)?;
         self.write_region(&bytes, region)?;
         Ok(())
     }
@@ -246,8 +252,9 @@ pub(crate) fn read_texture_input(
         let source_size = input.options.size;
         input.options = read_texture_options(options)?;
         if let (Some(own), TextureData::Bytes(pixels)) = (source_size, &mut input.data) {
-            crate::texture::check_pixels(own, &input.options)?;
-            crate::texture::swap_bgra(pixels, input.options.format.into());
+            let format = input.options.format.into();
+            crate::texture::check_pixels(own, input.options.size, format)?;
+            crate::texture::swap_bgra(pixels, format);
         }
         input.options.size = input.options.size.or(source_size);
     }

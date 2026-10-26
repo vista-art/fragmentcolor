@@ -570,6 +570,16 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       format: TextureFormat.Bgra8Unorm, mipmaps: false, usage: TextureUsage.COPY_SRC,
     });
     same('ImageData into Bgra8Unorm', await renderer.readTexture(bgra.id()), [0, 0, 255, 255]);
+    // Every path that takes an ImageData reads it as RGBA, as createTexture does.
+    bgra.write(red);
+    same('Texture.write(ImageData) into Bgra8Unorm', await renderer.readTexture(bgra.id()), [0, 0, 255, 255]);
+    bgra.writeRegion(red, [0, 0, 1, 1]);
+    same('writeRegion(ImageData) into Bgra8Unorm', await renderer.readTexture(bgra.id()), [0, 0, 255, 255]);
+    throws('writeRegion with an ImageData of another size', () => bgra.writeRegion(image, [0, 0, 1, 1]));
+    same('Mipmap.build(ImageData) as Bgra8Unorm', Mipmap.build(red, TextureFormat.Bgra8Unorm).level(0), [0, 0, 255, 255]);
+    const seeded = await renderer.createStorageTexture([1, 1], TextureFormat.Bgra8Unorm, red,
+      TextureUsage.TEXTURE_BINDING | TextureUsage.COPY_DST | TextureUsage.COPY_SRC);
+    same('createStorageTexture seeded with an ImageData', await renderer.readTexture(seeded.id()), [0, 0, 255, 255]);
     // A region object needs its extent, and its bounds in order.
     const canvasTexture = await renderer.createStorageTexture([16, 16], TextureFormat.Rgba);
     const patch = new Uint8Array(4 * 4 * 4);
