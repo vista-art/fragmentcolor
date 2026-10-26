@@ -31,6 +31,7 @@ use wasm_bindgen::prelude::*;
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct TextureUsage {
+    #[cfg_attr(wasm, wasm_bindgen(readonly))]
     pub bits: u32,
 }
 
