@@ -26,7 +26,7 @@ pub(crate) use platform::{
     PySamplerOptions, PyTextureId, PyTextureSource, PyTextureUsage, ndarray_input,
 };
 #[cfg(wasm)]
-pub(crate) use platform::{read_texture_input, read_usage};
+pub(crate) use platform::{read_format, read_texture_input, read_usage};
 
 use crate::{RenderContext, Size};
 use image::{DynamicImage, GenericImageView};

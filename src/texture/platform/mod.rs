@@ -9,4 +9,4 @@ pub(crate) use python::{
 #[cfg(wasm)]
 mod web;
 #[cfg(wasm)]
-pub(crate) use web::{read_texture_input, read_usage};
+pub(crate) use web::{read_format, read_texture_input, read_usage};

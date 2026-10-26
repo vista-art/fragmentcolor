@@ -599,6 +599,17 @@ struct Data { items: array<vec4<f32>, 2> };
     const chain = Mipmap.build(new Uint8Array(4 * 4 * 4), TextureFormat.Rgba8Unorm, [4, 4]);
     const levels = chain.levels();
     if (levels.length !== chain.count() || !(levels[0] instanceof Uint8Array)) fail('Mipmap.levels is wrong');
+
+    // Enum and index arguments are checked, where undefined, NaN, strings and fractions read as a code.
+    throws('Mipmap.level(1.5)', () => chain.level(1.5));
+    throws('Mipmap.level(NaN)', () => chain.level(NaN));
+    throws('Mipmap.build without a format', () => Mipmap.build(new Uint8Array(4 * 4 * 4), undefined, [4, 4]));
+    throws('Material.alphaMode(undefined)', () => Material.pbr().alphaMode(undefined));
+    throws('Material.alphaMode(0.5)', () => Material.pbr().alphaMode(0.5));
+    await rejects('createStorageTexture with a format string', () =>
+      renderer.createStorageTexture([4, 4], 'rgba8unorm'));
+    await rejects('createStorageTexture with usage 32', () =>
+      renderer.createStorageTexture([4, 4], TextureFormat.Rgba, null, 32));
 });
 
 // Auto-generated: run all extracted examples (after init)

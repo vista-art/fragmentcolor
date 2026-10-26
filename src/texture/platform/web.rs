@@ -29,11 +29,12 @@ impl Mipmap {
     #[lsp_doc("docs/api/texture/mipmap/build.md")]
     pub fn build_js(
         bytes: &JsValue,
-        format: TextureFormat,
+        #[wasm_bindgen(unchecked_param_type = "TextureFormat")] format: &JsValue,
         #[wasm_bindgen(unchecked_optional_param_type = "ArrayLike<number> | Size")] size: Option<
             JsValue,
         >,
     ) -> Result<Mipmap, JsError> {
+        let format = read_format(format)?;
         let bytes = crate::texture::js_to_texture_bytes(bytes)?;
         let size = size.filter(|size| !size.is_undefined() && !size.is_null());
         let size: Option<Size> = size.as_ref().map(Size::try_from).transpose()?;
@@ -76,20 +77,18 @@ impl Mipmap {
 
     /// Return the bytes for a single mip level as a `Uint8Array`. Use
     /// `count()` to discover the valid range. Returns an error if the
-    /// requested level is out of range.
+    /// requested level is out of range or not a whole number.
     #[wasm_bindgen(js_name = "level")]
     #[lsp_doc("docs/api/texture/mipmap/level.md")]
-    pub fn level_js(&self, index: u32) -> Result<js_sys::Uint8Array, JsError> {
-        let levels = self.levels();
-        let idx = index as usize;
-        if idx >= levels.len() {
-            return Err(JsError::new(&format!(
-                "level {} out of range; chain has {} levels",
-                idx,
-                levels.len()
-            )));
-        }
-        Ok(js_sys::Uint8Array::from(levels[idx].as_slice()))
+    pub fn level_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "number")] index: &JsValue,
+    ) -> Result<js_sys::Uint8Array, JsError> {
+        let number = index
+            .as_f64()
+            .ok_or_else(|| JsError::new("level index must be a number"))?;
+        let index = read_unsigned(number, "level index")?;
+        Ok(js_sys::Uint8Array::from(self.level(index as usize)?))
     }
 }
 
@@ -260,8 +259,8 @@ const OPTION_KEYS: [&str; 5] = ["size", "format", "mipmaps", "sampler", "usage"]
 /// or an object `{ size?, format?, mipmaps?, sampler?, usage? }`. An object with
 /// an option key reads as options, and then a `width` beside it is an error.
 fn read_texture_options(value: &JsValue) -> Result<TextureOptions, JsError> {
-    if let Some(code) = value.as_f64() {
-        return Ok(TextureOptions::from(read_format(code)?));
+    if value.as_f64().is_some() {
+        return Ok(TextureOptions::from(read_format(value)?));
     }
     let given = |keys: &[&str]| keys.iter().any(|key| read_field(value, key).is_some());
     let options = value.is_object() && given(&OPTION_KEYS);
@@ -283,10 +282,7 @@ fn read_texture_options(value: &JsValue) -> Result<TextureOptions, JsError> {
         options.size = Some(Size::try_from(&size)?);
     }
     if let Some(format) = read_field(value, "format") {
-        let code = format
-            .as_f64()
-            .ok_or_else(|| JsError::new("options.format must be a TextureFormat"))?;
-        options.format = read_format(code)?;
+        options.format = read_format(&format)?;
     }
     if let Some(mipmaps) = read_field(value, "mipmaps") {
         options.mipmaps = mipmaps
@@ -320,9 +316,13 @@ fn read_field(object: &JsValue, name: &str) -> Option<JsValue> {
         .filter(|value| !value.is_undefined() && !value.is_null())
 }
 
-/// Maps a `TextureFormat` code from JS to the format. The codes follow the
-/// variant order in `src/texture/format.rs`.
-fn read_format(code: f64) -> Result<TextureFormat, JsError> {
+/// Maps a `TextureFormat` from JS, a number in the variant order of
+/// `src/texture/format.rs`, to the format. Anything else is an error,
+/// where wasm-bindgen would read `undefined`, `NaN` or a fraction as a code.
+pub(crate) fn read_format(value: &JsValue) -> Result<TextureFormat, JsError> {
+    let code = value
+        .as_f64()
+        .ok_or_else(|| JsError::new(&format!("format must be a TextureFormat, got {value:?}")))?;
     let format = match read_unsigned(code, "format")? {
         0 => TextureFormat::R8Unorm,
         1 => TextureFormat::Rg8Unorm,
