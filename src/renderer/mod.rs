@@ -4255,40 +4255,49 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
         });
     }
 
-    // Story: a shader that reads its vertex inputs through a struct argument
-    // can't take a mesh, and render and add_mesh both name the struct member.
+    const STRUCT_SHADER: &str = r#"
+struct VIn {
+  @builtin(vertex_index) index: u32,
+  @location(0) pos: vec2<f32>,
+  @location(1) color: vec4<f32>,
+};
+struct VOut { @builtin(position) position: vec4<f32>, @location(0) color: vec4<f32> };
+@vertex fn vs_main(input: VIn, @location(2) offset: vec2<f32>) -> VOut {
+  return VOut(vec4<f32>(input.pos + offset, 0.0, 1.0), input.color);
+}
+@fragment fn fs_main(input: VOut) -> @location(0) vec4<f32> { return input.color; }
+"#;
+
+    // Story: a shader that reads its vertex inputs through a struct argument takes
+    // a mesh, and each @location member reads the mesh property of its name.
     #[test]
-    fn struct_vertex_inputs_error() {
+    fn struct_vertex_inputs_render() {
         pollster::block_on(async move {
+            // Arrange
             let renderer = Renderer::new();
             let target = renderer
                 .create_texture_target([8u32, 8u32])
                 .await
                 .expect("texture target");
-            let shader = crate::Shader::new(
-                r#"
-struct VIn { @builtin(vertex_index) index: u32, @location(0) pos: vec2<f32> };
-@vertex fn vs_main(input: VIn) -> @builtin(position) vec4<f32> {
-  return vec4<f32>(input.pos, 0.0, 1.0);
-}
-@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
-"#,
-            )
-            .expect("shader");
+            let shader = crate::Shader::new(STRUCT_SHADER).expect("shader");
             let mesh = crate::Mesh::new();
-            mesh.add_vertices(TRIANGLE.map(crate::Vertex::new));
-
-            let rendered = renderer.render(&shader, &target);
+            let green =
+                |corner: [f32; 2]| crate::Vertex::new(corner).set("color", [0.0, 1.0, 0.0, 1.0]);
+            mesh.add_vertices(TRIANGLE.map(green));
+            mesh.add_instances([crate::Instance::new().set("offset", [0.0, 0.0])]);
             let attached = shader.add_mesh(&mesh);
 
-            let member = "'pos' @location(0) is a struct member";
-            assert!(
-                matches!(&rendered, Err(RendererError::ShaderError(crate::ShaderError::InvalidKey(message))) if message.contains(member) && !message.contains("add_mesh")),
-                "got {rendered:?}"
-            );
-            assert!(
-                matches!(&attached, Err(crate::ShaderError::InvalidKey(message)) if message.contains(member)),
-                "got {attached:?}"
+            // Act
+            let rendered = renderer.render(&shader, &target);
+            let image = target.get_image().await.expect("image");
+
+            // Assert
+            assert!(attached.is_ok(), "got {attached:?}");
+            assert!(rendered.is_ok(), "got {rendered:?}");
+            assert_eq!(
+                image[..4],
+                [0, 255, 0, 255],
+                "the member's color reaches the target"
             );
         });
     }
