@@ -12,7 +12,7 @@ interface Props {
   mode?: "full" | "landing";
   /** Demo ids to offer, in order. Defaults to every demo. */
   demos?: string[];
-  /** The demo to open first. A matching URL hash wins in full mode. */
+  /** The demo to open first. A matching URL hash wins. */
   demo?: string;
 }
 
@@ -1256,10 +1256,10 @@ const installs = [
         } catch {
           // a malformed escape just matches no demo
         }
-        let first = this.dataset.mode === "full" && ids.includes(hash) ? hash : this.dataset.demo;
+        let first = ids.includes(hash) ? hash : this.dataset.demo;
         // A demo picked before the playground starts is the one it starts on.
         this.#menu = wireMenu(this, demos, (id) => {
-          if (this.dataset.mode === "full") history.replaceState(null, "", `#${id}`);
+          history.replaceState(null, "", `#${id}`);
           first = id;
           this.#playground?.select(id);
         });

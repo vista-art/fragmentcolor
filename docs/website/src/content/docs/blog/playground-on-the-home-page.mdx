@@ -10,7 +10,7 @@ tags: ["website", "playground", "demos", "webgpu"]
 
 The [0.12.6 notes](/blog/announcing-v0-12-6/) announced it in passing. Since that release, the playground has gained a demo dropdown, a dive into the Mandelbrot set, and gestures to steer it.
 
-[How it works](/welcome/playground/#how-it-works) describes the editor: the rebuild on each edit, the sliders that follow `main.js`, the inline sliders and swatches, the **Library** bar, the generated Rust, Python, Swift, and Kotlin tabs, and the `index.js` tab that runs the same files as a Vite project.
+Each edit rebuilds the program, and the sliders follow `main.js`. Numbers and colors in the code get inline sliders and swatches, the **Library** bar adds functions from the shader library, and generated tabs show the same program in Rust, Python, Swift, and Kotlin, beside an `index.js` tab that runs the files as a Vite project.
 
 **+ Add** on that bar opens a searchable picker over the whole [shader library](/shaders/).
 
@@ -18,15 +18,15 @@ Those language tabs are full programs. Only the fragment demos share a template.
 
 ## Fifteen demos
 
-- [**Cells**](/welcome/playground/#cells): Worley noise under a fractal warp.
-- [**Particles**](/welcome/playground/#particles): a million particles that a compute pass moves and an instanced draw renders.
-- [**Life**](/welcome/playground/#life): four species of particles that chase or avoid one another.
-- [**Mandelbrot**](/welcome/playground/#mandelbrot): the deep zoom [below](#down-to-1e-1000).
-- [**Shapes**](/welcome/playground/#shapes): a circle, a star, and a hexagon blended by Inigo Quilez's smooth union and colored by distance in the logo's palette.
-- [**Kaleidoscope**](/welcome/playground/#kaleidoscope): a Truchet tiling bent through mirror segments and a twirl.
-- [**Halftone**](/welcome/playground/#halftone): a lit sphere printed in dots of varying size on a rotated grid.
-- [**Raymarch**](/welcome/playground/#raymarch): a twisted box that melts into a torus, sphere traced under Blinn-Phong and rim light.
-- [**Post Effects**](/welcome/playground/#postfx): six screen effects over a test card, from curvature to grain, with the raw card left of the pointer.
+- [**Cells**](/#cells): Worley noise under a fractal warp.
+- [**Particles**](/#particles): a million particles that a compute pass moves and an instanced draw renders.
+- [**Life**](/#life): four species of particles that chase or avoid one another.
+- [**Mandelbrot**](/#mandelbrot): the deep zoom [below](#down-to-1e-1000).
+- [**Shapes**](/#shapes): a circle, a star, and a hexagon blended by Inigo Quilez's smooth union and colored by distance in the logo's palette.
+- [**Kaleidoscope**](/#kaleidoscope): a Truchet tiling bent through mirror segments and a twirl.
+- [**Halftone**](/#halftone): a lit sphere printed in dots of varying size on a rotated grid.
+- [**Raymarch**](/#raymarch): a twisted box that melts into a torus, sphere traced under Blinn-Phong and rim light.
+- [**Post Effects**](/#postfx): six screen effects over a test card, from curvature to grain, with the raw card left of the pointer.
 - Nebula, Swirl, Rose Window, Plankton, Monolith, and Signal, [shown below](#the-artworks).
 
 Particles, Life, and Mandelbrot run compute shaders. Without WebGPU, they play a recording.
