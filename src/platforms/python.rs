@@ -171,9 +171,12 @@ pub(crate) fn read_unsigned<T: Unsigned>(value: &Bound<'_, PyAny>, label: &str) 
 
 /// A color, a vector or another list of floats from Python: any sequence of numbers, NumPy arrays
 /// included, except the bytes forms. Its readers name the parameter in their errors.
+/// The hint's ndarray leaves out the uint8 and bool arrays the readers refuse.
 #[derive(FromPyObject)]
 pub enum PyChannels<'py> {
-    #[pyo3(annotation = "Sequence[float]")]
+    #[pyo3(
+        annotation = "Sequence[float] | npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64]"
+    )]
     Numbers(Bound<'py, PyAny>),
 }
 

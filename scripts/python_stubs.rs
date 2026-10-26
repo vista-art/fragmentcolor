@@ -699,7 +699,9 @@ mod python_stubs {
 
     /// A parameter takes NumPy values wherever it takes numbers, as AGENTS.md rule 6 says:
     /// `int` is `SupportsIndex`, `float` is `SupportsFloat`, and a list of numbers also
-    /// takes an ndarray. A union that takes floats drops `int`, which `SupportsFloat` covers.
+    /// takes an ndarray, of integers when the list holds ints. A union that takes floats
+    /// drops `int`, which `SupportsFloat` covers. An annotation that names its own ndarray,
+    /// as the float vector readers do to leave out the uint8 bytes form, keeps it.
     fn render(union: &[Atom], mode: Mode) -> String {
         let any = union.iter().any(|a| *a == Atom::Name("Any".into()));
         if union.is_empty() || any {
@@ -707,18 +709,45 @@ mod python_stubs {
         }
         let float = Atom::Name("float".into());
         let int = Atom::Name("int".into());
+        // An ndarray has `__float__`, so beside an annotation's own ndarray a float names the
+        // number types, or `SupportsFloat` would let back in the arrays the annotation leaves out.
+        let named_array = union
+            .iter()
+            .any(|a| matches!(a, Atom::Name(n) if n.starts_with("npt.NDArray")));
         let mut parts: Vec<String> = union
             .iter()
             .filter(|a| !(mode == Mode::Param && **a == int && union.contains(&float)))
-            .map(|a| render_atom(a, mode))
+            .map(|a| match a {
+                _ if mode == Mode::Param && named_array && *a == float => {
+                    "float | numpy.floating[Any] | numpy.integer[Any]".to_string()
+                }
+                _ => render_atom(a, mode),
+            })
             .collect();
-        let numbers = union.iter().any(|a| matches!(a, Atom::Seq(_)) && numeric(a));
+        let lists: Vec<&Atom> = union
+            .iter()
+            .filter(|a| matches!(a, Atom::Seq(_)) && numeric(a))
+            .collect();
         let array = parts.iter().any(|p| p.starts_with("npt.NDArray"));
-        if mode == Mode::Param && numbers && !array {
+        if mode == Mode::Param && !lists.is_empty() && !array {
+            let dtype = if lists.iter().all(|a| integral(a)) {
+                "numpy.integer[Any]"
+            } else {
+                "Any"
+            };
             let before_none = parts.iter().position(|p| p == "None").unwrap_or(parts.len());
-            parts.insert(before_none, "npt.NDArray[Any]".into());
+            parts.insert(before_none, format!("npt.NDArray[{dtype}]"));
         }
         parts.join(" | ")
+    }
+
+    /// Whether the atom is an int or a list of ints, at any depth.
+    fn integral(atom: &Atom) -> bool {
+        match atom {
+            Atom::Name(n) => n == "int",
+            Atom::Seq(inner) => !inner.is_empty() && inner.iter().all(integral),
+            _ => false,
+        }
     }
 
     /// Whether the atom is a number or a list of numbers, at any depth.
@@ -745,8 +774,9 @@ mod python_stubs {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
-            // pyo3 extracts a HashMap only from a dict. A parameter says Mapping, whose values
-            // are covariant, so a caller's `dict[str, int]` fits `Mapping[str, SupportsIndex]`.
+            // A parameter says Mapping, whose values are covariant, so a caller's `dict[str, int]`
+            // fits `Mapping[str, SupportsIndex]`. pyo3 extracts a HashMap only from a dict, so a
+            // binding that hints a map takes a `Bound<PyMapping>` and reads any mapping.
             (Atom::Map(k, v), Mode::Param) => {
                 format!("Mapping[{}, {}]", render(k, mode), render(v, mode))
             }
@@ -758,35 +788,44 @@ mod python_stubs {
     }
 
     /// The atoms of a hint's text, split on its top-level `|`, with `Sequence[...]` read
-    /// as a list, so an annotated parameter renders its numbers as a typed one does.
+    /// as a list and `Mapping[K, V]` as a map, so an annotated parameter renders its
+    /// numbers as a typed one does.
     fn parse_hint(text: &str) -> Vec<Atom> {
+        split_hint(text, '|')
+            .into_iter()
+            .map(|part| {
+                let inner = |prefix: &str| {
+                    part.strip_prefix(prefix)
+                        .and_then(|rest| rest.strip_suffix(']'))
+                };
+                if let Some(item) = inner("Sequence[") {
+                    return Atom::Seq(parse_hint(item));
+                }
+                match inner("Mapping[").map(|pair| split_hint(pair, ',')).as_deref() {
+                    Some([key, value]) => Atom::Map(parse_hint(key), parse_hint(value)),
+                    _ => Atom::Name(part.to_string()),
+                }
+            })
+            .collect()
+    }
+
+    /// The parts of a hint's text between each top-level `separator`, trimmed.
+    fn split_hint(text: &str, separator: char) -> Vec<&str> {
         let mut parts = Vec::new();
         let (mut depth, mut start) = (0usize, 0usize);
         for (index, letter) in text.char_indices() {
             match letter {
                 '[' => depth += 1,
                 ']' => depth = depth.saturating_sub(1),
-                '|' if depth == 0 => {
-                    parts.push(&text[start..index]);
-                    start = index + 1;
+                _ if letter == separator && depth == 0 => {
+                    parts.push(text[start..index].trim());
+                    start = index + letter.len_utf8();
                 }
                 _ => {}
             }
         }
-        parts.push(&text[start..]);
+        parts.push(text[start..].trim());
         parts
-            .into_iter()
-            .map(str::trim)
-            .map(|part| {
-                match part
-                    .strip_prefix("Sequence[")
-                    .and_then(|rest| rest.strip_suffix(']'))
-                {
-                    Some(inner) => Atom::Seq(parse_hint(inner)),
-                    None => Atom::Name(part.to_string()),
-                }
-            })
-            .collect()
     }
 
     fn name(n: &str) -> Vec<Atom> {
@@ -878,6 +917,7 @@ mod python_stubs {
             | "Arc" | "Rc" => inner(0),
             "PyAny" | "PyObject" => name("Any"),
             "PyDict" => name("dict[str, Any]"),
+            "PyMapping" => vec![Atom::Map(name("Any"), name("Any"))],
             "PyList" => name("list[Any]"),
             "PyTuple" => name("tuple[Any, ...]"),
             "PyBytes" => name("bytes"),
@@ -989,6 +1029,8 @@ mod python_stubs {
     fn annotated(atoms: Vec<Atom>, attrs: &[Attribute], mode: Mode, ctx: &Ctx) -> Vec<Atom> {
         const BUILTINS: &[&str] = &[
             "int", "float", "str", "bytes", "bool", "None", "list", "dict", "tuple", "Sequence",
+            "Mapping", "Any", "npt", "NDArray", "numpy", "floating", "signedinteger", "integer",
+            "uint16", "uint32", "uint64",
         ];
         let Some(annotation) = pyo3_args(attrs).and_then(|a| arg_value(&a, "annotation")) else {
             return atoms;
@@ -998,8 +1040,10 @@ mod python_stubs {
         };
         let dict = mode == Mode::Return && narrows("dict[str, Any]", "dict[");
         let sequence = atoms == [Atom::Seq(name("Any"))] && annotation.starts_with("Sequence[");
+        let mapping =
+            atoms == [Atom::Map(name("Any"), name("Any"))] && annotation.starts_with("Mapping[");
         let value = atoms == name("Any") && !annotation.starts_with("dict[");
-        if !(narrows("list[Any]", "list[") || dict || sequence || value) {
+        if !(narrows("list[Any]", "list[") || dict || sequence || mapping || value) {
             return atoms;
         }
         let mut text = annotation.clone();

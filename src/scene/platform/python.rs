@@ -141,7 +141,9 @@ impl Camera {
 /// [`PyMatrix::read`] tells the forms apart by the first item: a list, but no string, starts a column.
 #[derive(FromPyObject)]
 pub enum PyMatrix<'py> {
-    #[pyo3(annotation = "Sequence[Sequence[float]] | Sequence[float]")]
+    #[pyo3(
+        annotation = "Sequence[Sequence[float] | npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64]] | Sequence[float] | npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64]"
+    )]
     Numbers(Bound<'py, PyAny>),
 }
 

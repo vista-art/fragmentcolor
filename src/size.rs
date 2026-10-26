@@ -8,7 +8,7 @@ use pyo3::FromPyObject;
 #[cfg(python)]
 use pyo3::prelude::*;
 #[cfg(python)]
-use std::collections::HashMap;
+use pyo3::types::PyMapping;
 
 pub mod error;
 #[cfg(any(wasm, python, test))]
@@ -288,14 +288,16 @@ impl Size {
     }
 }
 
-/// A size from Python: a `Size`, `[w, h]` or `[w, h, d]` in any sequence, or a dict of its fields.
-/// Each number is an int that [`PyUnsigned::read`] checks.
+/// A size from Python: a `Size`, a mapping of its fields such as a dict, or `[w, h]` or `[w, h, d]`
+/// in any sequence. Each number is an int that [`PyUnsigned::read`] checks.
 #[cfg(python)]
 #[derive(FromPyObject)]
 pub enum PySize<'py> {
     Size(Size),
+    /// Tried before the list, which a mapping such as `UserDict` also passes as its keys.
+    #[pyo3(annotation = "Mapping[str, int]")]
+    Fields(Bound<'py, PyMapping>),
     Numbers(Vec<PyUnsigned<'py>>),
-    Fields(HashMap<String, PyUnsigned<'py>>),
 }
 
 /// Checks a size from Python with the same rule as every other binding.
@@ -308,9 +310,12 @@ impl TryFrom<PySize<'_>> for Size {
             PySize::Size(size) => return Ok(size),
             PySize::Numbers(items) => read_list(&items, "size")?,
             PySize::Fields(fields) => {
-                let field = |name: &str| {
-                    let label = format!("size: {name}");
-                    fields.get(name).map(|value| value.read(&label)).transpose()
+                let field = |name: &str| -> PyResult<Option<u32>> {
+                    if !fields.contains(name)? {
+                        return Ok(None);
+                    }
+                    let value = PyUnsigned::Int(fields.get_item(name)?);
+                    value.read(&format!("size: {name}")).map(Some)
                 };
                 let (Some(width), Some(height)) = (field("width")?, field("height")?) else {
                     return Err(SizeError::TypeMismatch(

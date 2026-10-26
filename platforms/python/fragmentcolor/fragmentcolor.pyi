@@ -48,10 +48,10 @@ __all__ = [
     "rendercanvas_context_hook",
 ]
 
-_PySize: TypeAlias = Size | Sequence[SupportsIndex] | Mapping[str, SupportsIndex] | npt.NDArray[Any]
+_PySize: TypeAlias = Size | Sequence[SupportsIndex] | Mapping[str, SupportsIndex] | npt.NDArray[numpy.integer[Any]]
 _PyTextureBytes: TypeAlias = bytes | npt.NDArray[numpy.uint8] | Sequence[SupportsIndex]
 _PyTextureSource: TypeAlias = str | bytearray | bytes | memoryview[Any] | Mipmap | Texture | list[int] | npt.NDArray[numpy.uint8] | tuple[Any, ...]
-_PyVertexPosition: TypeAlias = SupportsFloat | Vertex | Sequence[SupportsFloat] | npt.NDArray[Any]
+_PyVertexPosition: TypeAlias = float | numpy.floating[Any] | numpy.integer[Any] | Vertex | npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]
 _Renderable: TypeAlias = Mesh | Pass | Scene | Shader | Sequence[Mesh | Pass | Scene | Shader]
 _SceneObject: TypeAlias = Camera | Light | Model
 
@@ -395,7 +395,7 @@ class Renderer:
         depth = r.create_depth_texture([800, 600])
         ```
         """
-    def create_storage_texture(self, size: _PySize, format: TextureFormat, data: bytes | Sequence[SupportsIndex] | npt.NDArray[Any] | None = ..., usage: SupportsIndex | TextureUsage | None = ..., usage_bits: SupportsIndex | None = ...) -> Texture:
+    def create_storage_texture(self, size: _PySize, format: TextureFormat, data: bytes | Sequence[SupportsIndex] | npt.NDArray[numpy.integer[Any]] | None = ..., usage: SupportsIndex | TextureUsage | None = ..., usage_bits: SupportsIndex | None = ...) -> Texture:
         """
         Create a storage-class texture for compute shaders, image store/load, or as a render target.
 
@@ -1327,7 +1327,7 @@ class Pass:
         camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
         ```
         """
-    def set_clear_color(self, color: Sequence[SupportsFloat] | npt.NDArray[Any]) -> None:
+    def set_clear_color(self, color: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> None:
         """
         Sets the clear color for this [Pass](https://fragmentcolor.org/api/core/pass).
 
@@ -1354,7 +1354,7 @@ class Pass:
         renderer.render(rpass, target)
         ```
         """
-    def set_viewport(self, viewport: ScreenRegion | Sequence[SupportsIndex] | npt.NDArray[Any]) -> None:
+    def set_viewport(self, viewport: ScreenRegion | Sequence[SupportsIndex] | npt.NDArray[numpy.integer[Any]]) -> None:
         """
         Sets the viewport region for this [Pass](https://fragmentcolor.org/api/core/pass).
 
@@ -1633,7 +1633,7 @@ class Mesh:
         ```
         """
     @staticmethod
-    def from_vertices(vertices: Sequence[SupportsFloat | Vertex | Sequence[SupportsFloat] | tuple[Sequence[SupportsFloat] | npt.NDArray[Any], Sequence[SupportsFloat] | npt.NDArray[Any], Sequence[SupportsFloat] | npt.NDArray[Any]] | tuple[Sequence[SupportsFloat] | npt.NDArray[Any], Sequence[SupportsFloat] | npt.NDArray[Any]] | npt.NDArray[Any]]) -> Mesh:
+    def from_vertices(vertices: Sequence[float | numpy.floating[Any] | numpy.integer[Any] | Vertex | npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat] | tuple[npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], Sequence[SupportsFloat] | npt.NDArray[Any], Sequence[SupportsFloat] | npt.NDArray[Any]] | tuple[npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], Sequence[SupportsFloat] | npt.NDArray[Any]]]) -> Mesh:
         """
         Create a mesh from an iterator of Vertex values.
 
@@ -1649,7 +1649,7 @@ class Mesh:
         ])
         ```
         """
-    def add_vertex(self, vertex: SupportsFloat | Vertex | Sequence[SupportsFloat] | tuple[Sequence[SupportsFloat] | npt.NDArray[Any], Sequence[SupportsFloat] | npt.NDArray[Any], Sequence[SupportsFloat] | npt.NDArray[Any]] | tuple[Sequence[SupportsFloat] | npt.NDArray[Any], Sequence[SupportsFloat] | npt.NDArray[Any]] | npt.NDArray[Any]) -> None:
+    def add_vertex(self, vertex: float | numpy.floating[Any] | numpy.integer[Any] | Vertex | npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat] | tuple[npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], Sequence[SupportsFloat] | npt.NDArray[Any], Sequence[SupportsFloat] | npt.NDArray[Any]] | tuple[npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], Sequence[SupportsFloat] | npt.NDArray[Any]]) -> None:
         """
         Append a single vertex to the mesh. Pass an array literal for the
         position (`[x, y]` or `[x, y, z]`); for vertices that carry `uv`, `color`,
@@ -1664,7 +1664,7 @@ class Mesh:
         m.add_vertex([0.0, 0.0])
         ```
         """
-    def add_vertices(self, vertices: Sequence[SupportsFloat | Vertex | Sequence[SupportsFloat] | tuple[Sequence[SupportsFloat] | npt.NDArray[Any], Sequence[SupportsFloat] | npt.NDArray[Any], Sequence[SupportsFloat] | npt.NDArray[Any]] | tuple[Sequence[SupportsFloat] | npt.NDArray[Any], Sequence[SupportsFloat] | npt.NDArray[Any]] | npt.NDArray[Any]]) -> None:
+    def add_vertices(self, vertices: Sequence[float | numpy.floating[Any] | numpy.integer[Any] | Vertex | npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat] | tuple[npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], Sequence[SupportsFloat] | npt.NDArray[Any], Sequence[SupportsFloat] | npt.NDArray[Any]] | tuple[npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], Sequence[SupportsFloat] | npt.NDArray[Any]]]) -> None:
         """
         Add many vertices to the mesh.
 
@@ -1772,7 +1772,7 @@ class Mesh:
         m.set_instance_count(1_000_000)
         ```
         """
-    def set_indices(self, indices: Sequence[SupportsIndex] | npt.NDArray[Any]) -> None:
+    def set_indices(self, indices: Sequence[SupportsIndex] | npt.NDArray[numpy.integer[Any]]) -> None:
         """
         Provide the index buffer directly, bypassing the mesh's automatic vertex
         dedup pass. Use this when an asset already carries its own indexing: glTF
@@ -2087,7 +2087,7 @@ class Quad:
     quad = Quad([-0.5, -0.5], [0.5, 0.5])
     ```
     """
-    def __new__(cls, min: Sequence[SupportsFloat] | npt.NDArray[Any], max: Sequence[SupportsFloat] | npt.NDArray[Any]) -> Quad:
+    def __new__(cls, min: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], max: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> Quad:
         """
         Create a quad from two corners (min.xy, max.xy) in clip-space coordinates.
 
@@ -2816,7 +2816,7 @@ class Scene:
         scene.set_default_light(key)
         ```
         """
-    def ambient(self, color: Sequence[SupportsFloat] | npt.NDArray[Any]) -> Scene:
+    def ambient(self, color: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> Scene:
         """
         Set the scene-wide ambient color. The PBR shader adds
         `albedo * ambient` to every fragment regardless of which lights are
@@ -3115,7 +3115,7 @@ class Model:
         identity = model.transform()
         ```
         """
-    def set_transform(self, matrix: Sequence[Sequence[SupportsFloat] | npt.NDArray[Any]] | Sequence[SupportsFloat] | npt.NDArray[Any]) -> None:
+    def set_transform(self, matrix: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[Sequence[SupportsFloat] | npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64]] | Sequence[SupportsFloat]) -> None:
         """
         Replace the Model's 4×4 transform wholesale, in column-major order. Useful
         when you already have a matrix from a math library or a glTF node and want
@@ -3147,7 +3147,7 @@ class Model:
         ])
         ```
         """
-    def translate(self, offset: Sequence[SupportsFloat] | npt.NDArray[Any]) -> None:
+    def translate(self, offset: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> None:
         """
         Move the Model by `offset` in world coordinates. Pre-multiplies the current
         transform by a translation matrix, so the result is independent of the
@@ -3169,7 +3169,7 @@ class Model:
         model.translate([5.0, 0.0, -2.0])
         ```
         """
-    def rotate(self, axis: Sequence[SupportsFloat] | npt.NDArray[Any], radians: SupportsFloat) -> None:
+    def rotate(self, axis: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], radians: SupportsFloat) -> None:
         """
         Rotate the Model around `axis` (in local space) by `radians`. Post-multiplies
         the current transform by an axis-angle rotation, so a rotated-then-translated
@@ -3195,7 +3195,7 @@ class Model:
         model.rotate([0.0, 1.0, 0.0], 1.571) # 90° around Y
         ```
         """
-    def scale(self, factor: Sequence[SupportsFloat] | npt.NDArray[Any]) -> None:
+    def scale(self, factor: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> None:
         """
         Scale the Model by per-axis `factor` (in local space). Post-multiplies the
         current transform by a scale matrix, so the Model grows or shrinks around
@@ -3391,7 +3391,7 @@ class Camera:
         camera = Camera.orthographic(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0)
         ```
         """
-    def look_at(self, position: Sequence[SupportsFloat] | npt.NDArray[Any], target: Sequence[SupportsFloat] | npt.NDArray[Any], up: Sequence[SupportsFloat] | npt.NDArray[Any]) -> Camera:
+    def look_at(self, position: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], target: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], up: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> Camera:
         """
         Position the camera in world space. `position` is where the camera sits,
         `target` is the point it aims at, and `up` is the world-space up vector
@@ -3646,7 +3646,7 @@ class Light:
     | `set_cone_angles`    | update the cone half-angles (Err on non-spot)         |
     """
     @staticmethod
-    def directional(direction: Sequence[SupportsFloat] | npt.NDArray[Any], color: Sequence[SupportsFloat] | npt.NDArray[Any]) -> Light:
+    def directional(direction: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], color: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> Light:
         """
         Construct a directional light. `direction` is the world-space vector the
         light travels along (so `[0, -1, 0]` is straight down, the noon sun); `color`
@@ -3673,7 +3673,7 @@ class Light:
         ```
         """
     @staticmethod
-    def point(position: Sequence[SupportsFloat] | npt.NDArray[Any], color: Sequence[SupportsFloat] | npt.NDArray[Any]) -> Light:
+    def point(position: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], color: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> Light:
         """
         Construct a point light. `position` is the world-space location the light
         radiates from; `color` is linear-RGB intensity (`[1, 1, 1]` for full white).
@@ -3726,7 +3726,7 @@ class Light:
         ```
         """
     @staticmethod
-    def spot(position: Sequence[SupportsFloat] | npt.NDArray[Any], direction: Sequence[SupportsFloat] | npt.NDArray[Any], color: Sequence[SupportsFloat] | npt.NDArray[Any]) -> Light:
+    def spot(position: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], direction: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], color: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> Light:
         """
         Construct a spot light. `position` is the world-space location the light
         radiates from; `direction` is the world-space vector the cone aims along
@@ -3909,7 +3909,7 @@ class Light:
         sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
         ```
         """
-    def set_color(self, color: Sequence[SupportsFloat] | npt.NDArray[Any]) -> Light:
+    def set_color(self, color: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> Light:
         """
         Update the linear-RGB color the light emits. Defined for every kind;
         returns `Self` for chaining. The new value propagates live to every
@@ -3946,7 +3946,7 @@ class Light:
         torch.set_intensity(8.0)
         ```
         """
-    def set_position(self, position: Sequence[SupportsFloat] | npt.NDArray[Any]) -> Light:
+    def set_position(self, position: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> Light:
         """
         Update the world-space position. Defined for point and spot lights only;
         returns `Ok(self)` for chaining. Calling this on a directional light
@@ -3964,7 +3964,7 @@ class Light:
         lamp.set_position([3.0, 1.5, -2.0])
         ```
         """
-    def set_direction(self, direction: Sequence[SupportsFloat] | npt.NDArray[Any]) -> Light:
+    def set_direction(self, direction: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> Light:
         """
         Update the world-space direction. Defined for directional and spot lights
         only; returns `Ok(self)` for chaining. Calling this on a point light
@@ -4507,7 +4507,7 @@ class Material:
         material.shader().set("material.alpha_cutoff", 0.25)
         ```
         """
-    def base_color(self, color: Sequence[SupportsFloat] | npt.NDArray[Any]) -> Material:
+    def base_color(self, color: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> Material:
         """
         Set the base color factor (linear RGBA). For dielectrics this is the diffuse
         albedo; for metals it's the F0 reflectance. Alpha goes through the fragment
@@ -4602,7 +4602,7 @@ class Material:
         crevices = Material.pbr().occlusion_strength(0.8)
         ```
         """
-    def emissive(self, factor: Sequence[SupportsFloat] | npt.NDArray[Any]) -> Material:
+    def emissive(self, factor: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> Material:
         """
         Set the emissive factor (linear RGB): light the surface emits regardless of
         incident illumination. Added on top of the PBR shading and clamped only by
@@ -4638,7 +4638,7 @@ class Material:
         foliage = Material.pbr().alpha_cutoff(0.3)
         ```
         """
-    def uv_transform(self, offset: Sequence[SupportsFloat] | npt.NDArray[Any], scale: Sequence[SupportsFloat] | npt.NDArray[Any], rotation: SupportsFloat) -> Material:
+    def uv_transform(self, offset: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], scale: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], rotation: SupportsFloat) -> Material:
         """
         Set one UV transform on all five texture slots, the transform glTF's
         [`KHR_texture_transform`](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_texture_transform)
@@ -4708,7 +4708,7 @@ class Material:
         material = Material.pbr().texture_uv(TextureSlot.Occlusion, 1)
         ```
         """
-    def texture_transform(self, slot: TextureSlot, offset: Sequence[SupportsFloat] | npt.NDArray[Any], scale: Sequence[SupportsFloat] | npt.NDArray[Any], rotation: SupportsFloat) -> Material:
+    def texture_transform(self, slot: TextureSlot, offset: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], scale: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], rotation: SupportsFloat) -> Material:
         """
         Give one texture slot its own UV transform, the one glTF's
         [`KHR_texture_transform`](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_texture_transform)
@@ -5163,7 +5163,7 @@ class Texture:
         texture.write(frame)
         ```
         """
-    def write_region(self, data: _PyTextureBytes, region: ScreenRegion | dict[str, Any] | Sequence[SupportsIndex] | npt.NDArray[Any] | None) -> None:
+    def write_region(self, data: _PyTextureBytes, region: ScreenRegion | dict[str, Any] | Sequence[SupportsIndex] | npt.NDArray[numpy.integer[Any]] | None) -> None:
         """
         Same as `Texture::write`, but writes into a sub-region of the texture and/or with explicit source data layout.
 
