@@ -18,8 +18,8 @@ extension Light {
     @_disfavoredOverload
     public static func directional(_ direction: [Double], _ color: [Double]) throws -> Light {
         return try Light.directional(
-            direction: direction.map { Float($0) },
-            color: color.map { Float($0) }
+            direction: readFloats(direction, "Light.directional: direction"),
+            color: readFloats(color, "Light.directional: color")
         )
     }
 
@@ -29,8 +29,8 @@ extension Light {
     @_disfavoredOverload
     public static func point(_ position: [Double], _ color: [Double]) throws -> Light {
         return try Light.point(
-            position: position.map { Float($0) },
-            color: color.map { Float($0) }
+            position: readFloats(position, "Light.point: position"),
+            color: readFloats(color, "Light.point: color")
         )
     }
 
@@ -40,9 +40,9 @@ extension Light {
     @_disfavoredOverload
     public static func spot(_ position: [Double], _ direction: [Double], _ color: [Double]) throws -> Light {
         return try Light.spot(
-            position: position.map { Float($0) },
-            direction: direction.map { Float($0) },
-            color: color.map { Float($0) }
+            position: readFloats(position, "Light.spot: position"),
+            direction: readFloats(direction, "Light.spot: direction"),
+            color: readFloats(color, "Light.spot: color")
         )
     }
 
@@ -55,7 +55,7 @@ extension Light {
     @discardableResult
     @_disfavoredOverload
     public func setColor(_ color: [Double]) throws -> Light {
-        return try setColor(color: color.map { Float($0) })
+        return try setColor(color: readFloats(color, "Light.setColor"))
     }
 
     @discardableResult
@@ -74,7 +74,7 @@ extension Light {
     @discardableResult
     @_disfavoredOverload
     public func setPosition(_ position: [Double]) throws -> Light {
-        return try setPosition(position: position.map { Float($0) })
+        return try setPosition(position: readFloats(position, "Light.setPosition"))
     }
 
     @discardableResult
@@ -84,7 +84,7 @@ extension Light {
     @discardableResult
     @_disfavoredOverload
     public func setDirection(_ direction: [Double]) throws -> Light {
-        return try setDirection(direction: direction.map { Float($0) })
+        return try setDirection(direction: readFloats(direction, "Light.setDirection"))
     }
 
     @discardableResult

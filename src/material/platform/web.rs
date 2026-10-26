@@ -5,6 +5,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::Shader;
 use crate::material::{AlphaMode, Material, TextureSlot};
+use crate::platforms::web::read_vector;
 use crate::texture::read_texture_input;
 
 #[wasm_bindgen]
@@ -31,9 +32,9 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/base_color.md")]
     pub fn base_color_js(
         &self,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] color: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] color: &JsValue,
     ) -> Result<Material, JsError> {
-        let arr = vec4_from_vec(&color, "base_color")?;
+        let arr = read_vector::<4>(color, "Material.baseColor")?;
         Ok(self.base_color(arr))
     }
 
@@ -65,9 +66,9 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/emissive.md")]
     pub fn emissive_js(
         &self,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] factor: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] factor: &JsValue,
     ) -> Result<Material, JsError> {
-        let arr = vec3_from_vec(&factor, "emissive")?;
+        let arr = read_vector::<3>(factor, "Material.emissive")?;
         Ok(self.emissive(arr))
     }
 
@@ -81,12 +82,12 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/uv_transform.md")]
     pub fn uv_transform_js(
         &self,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] offset: Vec<f32>,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] scale: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] offset: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] scale: &JsValue,
         rotation: f32,
     ) -> Result<Material, JsError> {
-        let o = vec2_from_vec(&offset, "Material.uvTransform offset")?;
-        let s = vec2_from_vec(&scale, "Material.uvTransform scale")?;
+        let o = read_vector::<2>(offset, "Material.uvTransform: offset")?;
+        let s = read_vector::<2>(scale, "Material.uvTransform: scale")?;
         Ok(self.uv_transform(o, s, rotation))
     }
 
@@ -106,12 +107,12 @@ impl Material {
     pub fn texture_transform_js(
         &self,
         #[wasm_bindgen(unchecked_param_type = "TextureSlot")] slot: &JsValue,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] offset: Vec<f32>,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] scale: Vec<f32>,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] offset: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] scale: &JsValue,
         rotation: f32,
     ) -> Result<Material, JsError> {
-        let o = vec2_from_vec(&offset, "textureTransform offset")?;
-        let s = vec2_from_vec(&scale, "textureTransform scale")?;
+        let o = read_vector::<2>(offset, "Material.textureTransform: offset")?;
+        let s = read_vector::<2>(scale, "Material.textureTransform: scale")?;
         Ok(self.texture_transform(read_texture_slot(slot)?, o, s, rotation))
     }
 
@@ -179,33 +180,6 @@ impl Material {
     ) -> Result<Self, JsError> {
         Ok(self.emissive_texture(read_texture_input(source, options.as_ref())?))
     }
-}
-
-fn vec2_from_vec(v: &[f32], field: &str) -> Result<[f32; 2], JsError> {
-    if v.len() != 2 {
-        return Err(JsError::new(&format!(
-            "Material.{field}: expected an array of length 2"
-        )));
-    }
-    Ok([v[0], v[1]])
-}
-
-fn vec3_from_vec(v: &[f32], field: &str) -> Result<[f32; 3], JsError> {
-    if v.len() != 3 {
-        return Err(JsError::new(&format!(
-            "Material.{field}: expected an array of length 3"
-        )));
-    }
-    Ok([v[0], v[1], v[2]])
-}
-
-fn vec4_from_vec(v: &[f32], field: &str) -> Result<[f32; 4], JsError> {
-    if v.len() != 4 {
-        return Err(JsError::new(&format!(
-            "Material.{field}: expected an array of length 4"
-        )));
-    }
-    Ok([v[0], v[1], v[2], v[3]])
 }
 
 /// Maps an `AlphaMode` from JS, a number in variant order, to the mode.

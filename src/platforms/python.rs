@@ -7,6 +7,7 @@ use pyo3::types::{PyBool, PyByteArray, PyBytes, PyMemoryView};
 use pyo3::wrap_pyfunction;
 
 use crate::error::{InvalidInputError, PythonError};
+use crate::platforms::vector;
 
 use crate::{
     Color, Pass, Renderer, ScreenRegion, Shader, Size,
@@ -169,7 +170,7 @@ pub(crate) fn read_unsigned<T: Unsigned>(value: &Bound<'_, PyAny>, label: &str) 
 }
 
 /// A color, a vector or another list of floats from Python: any sequence of numbers, NumPy arrays
-/// included, except the bytes forms. [`PyChannels::read`] names the parameter in its errors.
+/// included, except the bytes forms. Its readers name the parameter in their errors.
 #[derive(FromPyObject)]
 pub enum PyChannels<'py> {
     #[pyo3(annotation = "Sequence[float]")]
@@ -177,47 +178,37 @@ pub enum PyChannels<'py> {
 }
 
 impl PyChannels<'_> {
-    /// Each item as an `f32`. A bytes form, a `bool` or a value that isn't a number raises
-    /// `TypeError`, and a number past the 32-bit float range raises `InvalidInputError`.
-    pub(crate) fn read(&self, label: &str) -> PyResult<Vec<f32>> {
-        let PyChannels::Numbers(value) = self;
-        if is_bytes(value) {
-            return Err(PyTypeError::new_err(format!(
-                "{label} takes numbers, got {}",
-                type_name(value)
-            )));
-        }
-        value
-            .extract::<Vec<Bound<'_, PyAny>>>()?
-            .iter()
-            .enumerate()
-            .map(|(index, item)| read_float(item, label, index))
-            .collect()
-    }
-
-    /// Exactly `N` items, read as [`PyChannels::read`] reads them.
+    /// Exactly `N` items, each read by [`read_numbers`] and checked by [`vector::read_floats`].
     pub(crate) fn read_array<const N: usize>(&self, label: &str) -> PyResult<[f32; N]> {
-        let channels = self.read(label)?;
-        match <[f32; N]>::try_from(channels.as_slice()) {
-            Ok(array) => Ok(array),
-            Err(_) => Err(InvalidInputError::new_err(format!(
-                "{label} takes {N} numbers, got {}",
-                channels.len()
-            ))),
-        }
+        let PyChannels::Numbers(value) = self;
+        Ok(vector::read_vector::<N>(
+            read_numbers(value, label)?,
+            label,
+        )?)
     }
 
-    /// A color from `[r, g, b]` with an opaque alpha or `[r, g, b, a]`, read as [`PyChannels::read`] reads them.
+    /// A color from `[r, g, b]` with an opaque alpha or `[r, g, b, a]`, read as [`PyChannels::read_array`] reads it.
     pub(crate) fn read_color(&self, label: &str) -> PyResult<Color> {
-        let channels = self.read(label)?;
-        match Color::try_from(channels.as_slice()) {
-            Ok(color) => Ok(color),
-            Err(_) => Err(InvalidInputError::new_err(format!(
-                "{label} takes 3 or 4 numbers, got {}",
-                channels.len()
-            ))),
-        }
+        let PyChannels::Numbers(value) = self;
+        Ok(vector::read_color(read_numbers(value, label)?, label)?)
     }
+}
+
+/// Each item of a Python sequence as an `f64`. A bytes form, a `bool` or a value that isn't
+/// a number raises `TypeError`, and an int too large for a float raises `InvalidInputError`.
+pub(crate) fn read_numbers(value: &Bound<'_, PyAny>, label: &str) -> PyResult<Vec<f64>> {
+    if is_bytes(value) {
+        return Err(PyTypeError::new_err(format!(
+            "{label} takes numbers, got {}",
+            type_name(value)
+        )));
+    }
+    value
+        .extract::<Vec<Bound<'_, PyAny>>>()?
+        .iter()
+        .enumerate()
+        .map(|(index, item)| read_number(item, label, index))
+        .collect()
 }
 
 /// Whether the value is one of the bytes forms: `bytes`, `bytearray`, `memoryview` or a uint8 ndarray.
@@ -236,37 +227,30 @@ fn is_bool(value: &Bound<'_, PyAny>) -> bool {
             .unwrap_or(false)
 }
 
-/// One item as an `f32`. NaN and infinity pass, and the call decides what to do with them.
-fn read_float(value: &Bound<'_, PyAny>, label: &str, index: usize) -> PyResult<f32> {
+/// One item as an `f64`, before the float vector rule checks its value.
+fn read_number(value: &Bound<'_, PyAny>, label: &str, index: usize) -> PyResult<f64> {
     let py = value.py();
     if is_bool(value) {
         return Err(PyTypeError::new_err(format!(
             "{label}: item {index} must be a number, got bool"
         )));
     }
-    let number = match value.extract::<f64>() {
-        Ok(number) => number,
+    match value.extract::<f64>() {
+        Ok(number) => Ok(number),
         Err(error) if error.is_instance_of::<PyOverflowError>(py) => {
-            return Err(InvalidInputError::new_err(format!(
-                "{label}: item {index} must fit a 32-bit float, got {}",
+            Err(InvalidInputError::new_err(format!(
+                "{label}: item {index} must be a finite number that fits a 32-bit float, got {}",
                 show(value)
-            )));
+            )))
         }
         Err(error) if error.is_instance_of::<PyTypeError>(py) => {
-            return Err(PyTypeError::new_err(format!(
+            Err(PyTypeError::new_err(format!(
                 "{label}: item {index} must be a number, got {}",
                 type_name(value)
-            )));
+            )))
         }
-        Err(error) => return Err(error),
-    };
-    let channel = number as f32;
-    if number.is_finite() && !channel.is_finite() {
-        return Err(InvalidInputError::new_err(format!(
-            "{label}: item {index} must fit a 32-bit float, got {number}"
-        )));
+        Err(error) => Err(error),
     }
-    Ok(channel)
 }
 
 /// The value as Python prints it, or a note when it is too long to print.

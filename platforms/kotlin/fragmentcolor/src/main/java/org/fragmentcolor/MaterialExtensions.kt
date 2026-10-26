@@ -17,36 +17,54 @@ fun Material.alphaCutoff(value: Double): Material = alphaCutoff(value.toFloat())
 fun Material.baseColor(color: FloatArray): Material = baseColor(color.toList())
 
 @JvmName("baseColorDoubles")
-fun Material.baseColor(color: List<Double>): Material = baseColor(color.map { it.toFloat() })
+fun Material.baseColor(color: List<Double>): Material = baseColor(readFloats(color, "Material.baseColor"))
 
-fun Material.baseColor(color: DoubleArray): Material = baseColor(color.map { it.toFloat() })
+fun Material.baseColor(color: DoubleArray): Material = baseColor(readFloats(color, "Material.baseColor"))
 
 fun Material.emissive(factor: FloatArray): Material = emissive(factor.toList())
 
 @JvmName("emissiveDoubles")
-fun Material.emissive(factor: List<Double>): Material = emissive(factor.map { it.toFloat() })
+fun Material.emissive(factor: List<Double>): Material = emissive(readFloats(factor, "Material.emissive"))
 
-fun Material.emissive(factor: DoubleArray): Material = emissive(factor.map { it.toFloat() })
+fun Material.emissive(factor: DoubleArray): Material = emissive(readFloats(factor, "Material.emissive"))
 
 fun Material.uvTransform(offset: FloatArray, scale: FloatArray, rotation: Float): Material =
     uvTransform(offset.toList(), scale.toList(), rotation)
 
 @JvmName("uvTransformDoubles")
 fun Material.uvTransform(offset: List<Double>, scale: List<Double>, rotation: Double): Material =
-    uvTransform(offset.map { it.toFloat() }, scale.map { it.toFloat() }, rotation.toFloat())
+    uvTransform(
+        readFloats(offset, "Material.uvTransform: offset"),
+        readFloats(scale, "Material.uvTransform: scale"),
+        rotation.toFloat(),
+    )
 
 fun Material.uvTransform(offset: DoubleArray, scale: DoubleArray, rotation: Double): Material =
-    uvTransform(offset.map { it.toFloat() }, scale.map { it.toFloat() }, rotation.toFloat())
+    uvTransform(
+        readFloats(offset, "Material.uvTransform: offset"),
+        readFloats(scale, "Material.uvTransform: scale"),
+        rotation.toFloat(),
+    )
 
 fun Material.textureTransform(slot: TextureSlot, offset: FloatArray, scale: FloatArray, rotation: Float): Material =
     textureTransform(slot, offset.toList(), scale.toList(), rotation)
 
 @JvmName("textureTransformDoubles")
 fun Material.textureTransform(slot: TextureSlot, offset: List<Double>, scale: List<Double>, rotation: Double): Material =
-    textureTransform(slot, offset.map { it.toFloat() }, scale.map { it.toFloat() }, rotation.toFloat())
+    textureTransform(
+        slot,
+        readFloats(offset, "Material.textureTransform: offset"),
+        readFloats(scale, "Material.textureTransform: scale"),
+        rotation.toFloat(),
+    )
 
 fun Material.textureTransform(slot: TextureSlot, offset: DoubleArray, scale: DoubleArray, rotation: Double): Material =
-    textureTransform(slot, offset.map { it.toFloat() }, scale.map { it.toFloat() }, rotation.toFloat())
+    textureTransform(
+        slot,
+        readFloats(offset, "Material.textureTransform: offset"),
+        readFloats(scale, "Material.textureTransform: scale"),
+        rotation.toFloat(),
+    )
 
 // Each texture setter takes what `Renderer.createTexture` takes: a Texture, or
 // encoded bytes, a file path or http(s) URL, or a Mipmap. Inputs other than a

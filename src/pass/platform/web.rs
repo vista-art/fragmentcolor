@@ -1,8 +1,8 @@
 #![cfg(wasm)]
 
-use crate::platforms::web::read_unsigned;
+use crate::platforms::web::{read_color, read_unsigned};
 use crate::renderer::platform::web::RenderableList;
-use crate::{Color, Pass, Shader, Texture, TextureTarget};
+use crate::{Pass, Shader, Texture, TextureTarget};
 use lsp_doc::lsp_doc;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::*;
@@ -90,7 +90,7 @@ impl Pass {
         &self,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] color: &JsValue,
     ) -> Result<(), JsError> {
-        Ok(self.set_clear_color(Color::try_from(color)?)?)
+        Ok(self.set_clear_color(read_color(color, "Pass.setClearColor")?)?)
     }
 
     #[wasm_bindgen(js_name = "setComputeDispatch")]
