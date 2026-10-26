@@ -682,14 +682,19 @@ impl RenderContext {
         *self.light_path.read()
     }
 
-    /// Starts a render that draws. After a failed frame, every light set
-    /// packs, uploads and bins again, since that frame's binning never ran.
+    /// Starts a render that draws, after the texture pool starts it. Frees the
+    /// light sets no render used for `IDLE_RENDERS` renders, whether or not a
+    /// lit pass renders now. After a failed frame, every other light set packs,
+    /// uploads and bins again, since that frame's binning never ran.
     pub(crate) fn start_light_render(&self) {
+        let render = self.texture_pool.read().render();
+        let mut sets = self.light_sets.write();
+        sets.retain(|_, set| render.saturating_sub(set.used) <= IDLE_RENDERS);
         if self
             .lights_failed
             .swap(false, std::sync::atomic::Ordering::Relaxed)
         {
-            for set in self.light_sets.write().values_mut() {
+            for set in sets.values_mut() {
                 set.forget();
             }
         }
@@ -742,7 +747,6 @@ impl RenderContext {
             })
             .collect();
         let mut sets = self.light_sets.write();
-        sets.retain(|_, set| render.saturating_sub(set.used) <= IDLE_RENDERS);
         for (shader, shape, key) in keyed.iter().copied() {
             shader.flush_pending();
             if !sets.contains_key(&key) {

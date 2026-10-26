@@ -603,6 +603,25 @@ fn a_small_storage_limit_promotes_lights() {
 }
 
 #[test]
+fn idle_light_sets_go_once_no_lit_pass_renders() {
+    pollster::block_on(async {
+        let lights = seeded_lights(&mut Seeds(41));
+        let camera = camera();
+        let (renderer, target, context) = open(Mode::Clustered, 16).await;
+        renderer
+            .render(&lit_pass("lit", Some(&camera), &lights), &target)
+            .expect("render");
+        assert_eq!(context.light_sets.read().len(), 1);
+        // Unlit renders age the set, and it goes after IDLE_RENDERS of them.
+        let unlit = Pass::from_shader("unlit", &Shader::default());
+        for _ in 0..=IDLE_RENDERS {
+            renderer.render(&unlit, &target).expect("render");
+        }
+        assert!(context.light_sets.read().is_empty(), "the idle set stays");
+    });
+}
+
+#[test]
 fn still_renders_dispatch_once() {
     pollster::block_on(async {
         let lights = seeded_lights(&mut Seeds(29));
