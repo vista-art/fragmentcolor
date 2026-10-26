@@ -932,20 +932,24 @@ fn read_info_uv(info: &gltf::texture::Info<'_>) -> TextureUv {
 }
 
 /// Read the UVs of a normal or occlusion texture reference. The gltf crate
-/// keeps their `KHR_texture_transform` as raw JSON, parsed here.
+/// keeps their `KHR_texture_transform` as raw JSON, parsed here as it parses
+/// the typed slots, so a `null` extension counts as no extension.
 fn read_extension_uv(
     tex_coord: u32,
     extension: Option<&gltf::json::Value>,
 ) -> Result<TextureUv, SceneLoadError> {
     use gltf::json::extensions::texture::TextureTransform;
-    let Some(value) = extension else {
+    let parsed: Option<TextureTransform> = match extension {
+        Some(value) => gltf::json::deserialize::from_value(value.clone())
+            .map_err(|error| SceneLoadError::Invalid(format!("{TEXTURE_TRANSFORM}: {error}")))?,
+        None => None,
+    };
+    let Some(transform) = parsed else {
         return Ok(TextureUv {
             tex_coord,
             transform: UvTransform::default(),
         });
     };
-    let transform: TextureTransform = gltf::json::deserialize::from_value(value.clone())
-        .map_err(|error| SceneLoadError::Invalid(format!("{TEXTURE_TRANSFORM}: {error}")))?;
     Ok(TextureUv {
         tex_coord: transform.tex_coord.unwrap_or(tex_coord),
         transform: UvTransform {
@@ -1727,6 +1731,26 @@ mod tests {
         assert_eq!(read_slot(material, 2), (1, [0.0, 0.0], [1.0, 1.0], 0.0));
         assert_eq!(read_slot(material, 3), (1, [0.0, 0.25], [4.0, 4.0], 1.0));
         assert_eq!(read_slot(material, 4), (0, [0.0, 0.0], [1.0, 1.0], 0.0));
+    }
+
+    #[test]
+    fn load_reads_a_null_texture_transform_as_none_on_every_slot() {
+        // A null KHR_texture_transform is no transform on any slot.
+        let materials = quote(&[
+            "'materials':[{'pbrMetallicRoughness':{",
+            "'baseColorTexture':{'index':0,'extensions':{'KHR_texture_transform':null}},",
+            "'metallicRoughnessTexture':{'index':0,'extensions':{'KHR_texture_transform':null}}},",
+            "'normalTexture':{'index':0,'texCoord':1,'extensions':{'KHR_texture_transform':null}},",
+            "'occlusionTexture':{'index':0,'extensions':{'KHR_texture_transform':null}},",
+            "'emissiveTexture':{'index':0,'extensions':{'KHR_texture_transform':null}}}]",
+        ]);
+        let scene = load_textured(&materials).expect("a null transform loads");
+        let models = scene.models();
+        let material = models[0].material();
+        for index in [0, 1, 3, 4] {
+            assert_eq!(read_slot(material, index), (0, [0.0, 0.0], [1.0, 1.0], 0.0));
+        }
+        assert_eq!(read_slot(material, 2), (1, [0.0, 0.0], [1.0, 1.0], 0.0));
     }
 
     #[test]
