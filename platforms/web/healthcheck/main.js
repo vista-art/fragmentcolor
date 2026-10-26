@@ -526,6 +526,31 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     await rejects('createTexture(ImageData, { width: 1.5, height: 2 })',
       () => renderer.createTexture(pixels, { width: 1.5, height: 2 }));
 
+    // A color or vector item that is NaN, an infinity or past the 32-bit float range
+    // throws, and the message names the call, as in every binding.
+    const named = (label, run) => {
+      try { run(); } catch (e) {
+        caught(label, e);
+        if (!e.message.includes(label)) fail(`${label} threw "${e.message}", which doesn't name the call`);
+        return;
+      }
+      fail(`${label} should throw`);
+    };
+    named('Light.point: position', () => Light.point([1e39, 0, 0], [1, 1, 1]));
+    named('Light.setColor', () => Light.point([0, 1, 0], [1, 1, 1]).setColor([NaN, 0, 0]));
+    named('Pass.setClearColor', () => first.setClearColor([0, Infinity, 0]));
+    named('Scene.ambient', () => new Scene().ambient(new Float32Array([0, -Infinity, 0])));
+    named('Model.translate', () => model.translate([0, 1e39, 0]));
+    named('Model.rotate: axis', () => model.rotate([0, NaN, 0], 1));
+    named('Camera.lookAt: up', () => camera.lookAt([0, 0, 5], [0, 0, 0], [0, 1e39, 0]));
+    named('Material.baseColor', () => Material.pbr().baseColor([1, 1, NaN, 1]));
+    named('Material.uvTransform: offset', () => Material.pbr().uvTransform([1e39, 0], [1, 1], 0));
+    named('Material.textureTransform: scale',
+      () => Material.pbr().textureTransform(occlusion, [0, 0], [Infinity, 1], 0));
+    // A float vector is an array or a Float32Array, as a color is.
+    named('Light.point: color', () => Light.point([0, 1, 0], new Float64Array([1, 1, 1])));
+    if (!(Light.point([0, 1, 0], new Float32Array([1, 1, 1])) instanceof Light)) fail('Light.point took no Float32Array');
+
     // A region or viewport with a width or height of 0 throws.
     throws('new ScreenRegion([0, 0], [0, 4])', () => new fc.ScreenRegion([0, 0], [0, 4]));
     throws('Pass.setViewport([0, 0, 0, 4])', () => first.setViewport([0, 0, 0, 4]));

@@ -366,6 +366,8 @@ def check_number_errors(renderer):
     for name, apply in transforms.items():
         raises(InvalidInputError, f"{name} with 3 numbers", lambda: apply([0.0, 0.0, 0.0]))
         raises(TypeError, f"{name} with a string", lambda: apply("ab"))
+        for bad in (float("nan"), float("inf"), 1e39):
+            raises(InvalidInputError, f"{name} with {bad}", lambda: apply([bad, 1.0]))
         assert isinstance(apply(np.array([0.5, 2.0])), Material)
 
     size = Size(4, 2)
@@ -472,7 +474,8 @@ def check_colors(renderer):
         raises_type(f"{name} with a bool channel", lambda: setter([True] + [0] * (count - 1)))
         raises_type(f"{name} with a NumPy bool channel", lambda: setter(np.ones(count, dtype=np.bool_)))
         raises_invalid(f"{name} with 10**400", lambda: setter([10**400] + [0] * (count - 1)))
-        raises_invalid(f"{name} with 1e39", lambda: setter([1e39] + [0] * (count - 1)))
+        for bad in (1e39, float("nan"), float("inf"), float("-inf")):
+            raises_invalid(f"{name} with {bad}", lambda: setter([bad] + [0] * (count - 1)))
         raises_invalid(f"{name} with too many channels", lambda: setter([0.5] * 5))
     # Storage texture usage reads as an int too.
     raises_invalid("create_storage_texture(usage=-1)",
@@ -509,8 +512,23 @@ def check_vectors():
         raises_type(f"{name} with a string", lambda: apply(["0", 1, 0]))
         raises_invalid(f"{name} with 2 numbers", lambda: apply([0.0, 1.0]))
         raises_invalid(f"{name} with 10**400", lambda: apply([10**400, 1, 0]))
-        raises_invalid(f"{name} with 1e39", lambda: apply([1e39, 1, 0]))
+        for bad in (1e39, float("nan"), float("inf"), float("-inf")):
+            raises_invalid(f"{name} with {bad}", lambda: apply([bad, 1, 0]))
     assert light.set_position(np.array([1.0, 2.0, 3.0])).position() == [1.0, 2.0, 3.0]
+
+    # A matrix is 16 numbers or 4 columns of 4, as a list, a tuple or an ndarray.
+    identity = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
+    model.set_transform([2.0] + [0.0] * 15)
+    assert model.transform()[0][0] == 2.0
+    model.set_transform(identity)
+    model.set_transform(np.eye(4, dtype=np.float32))
+    model.set_transform(tuple(np.arange(16.0)))
+    assert model.transform()[1][0] == 4.0, "a flat matrix fills column after column"
+    for label, matrix in (("15 numbers", [0.0] * 15), ("3 columns", identity[:3]),
+                          ("a column of 3", identity[:3] + [[0.0, 0.0, 1.0]]), ("10**400", [10**400] + [0.0] * 15)):
+        raises_invalid(f"Model.set_transform with {label}", lambda: model.set_transform(matrix))
+    for label, matrix in (("a string", ["1"] + [0.0] * 15), ("a bool", [True] + [0.0] * 15), ("bytes", bytes(16))):
+        raises_type(f"Model.set_transform with {label}", lambda: model.set_transform(matrix))
     print("Vectors take three numbers and refuse bytes, bools and out-of-range items")
 
 
@@ -545,7 +563,12 @@ def check_clear_color():
     """A clear color keeps its numbers, raises InvalidInputError for NaN, and TypeError for a string."""
     rpass = Pass("clear")
     for label, color in (("NaN", [float("nan"), 0, 0]), ("infinity", [0, 0, float("inf"), 1]), ("two channels", [0, 0])):
-        raises_invalid(f"set_clear_color with {label}", lambda: rpass.set_clear_color(color))
+        try:
+            rpass.set_clear_color(color)
+        except InvalidInputError as e:
+            assert str(e).startswith("Pass.set_clear_color"), f"set_clear_color with {label} raised {e}"
+        else:
+            raise AssertionError(f"set_clear_color with {label} should raise InvalidInputError")
     try:
         rpass.set_clear_color(["1", 0, 0])
     except TypeError:

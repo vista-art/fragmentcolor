@@ -107,6 +107,36 @@ final class Healthcheck: ExampleCase {
         try Mesh().addVertex([0, 0, 0])
     }
 
+    // A color or vector item that is NaN, an infinity or past the Float range
+    // throws, and the message names the call, as in every binding.
+    func testFloatVectorsRefuseNonFiniteNumbers() throws {
+        let material = Material.pbr()
+        let cases: [(String, () throws -> Void)] = [
+            ("Light.point: position", { _ = try Light.point([1e39, 0, 0] as [Double], [1, 1, 1]) }),
+            ("Light.point: position", { _ = try Light.point([Float.nan, 0, 0], [1, 1, 1]) }),
+            ("Light.setColor", { _ = try Light.point([0, 1, 0], [1, 1, 1]).setColor([Double.infinity, 0, 0]) }),
+            ("Pass.setClearColor", { try Pass("p").setClearColor([0, -1e39, 0] as [Double]) }),
+            ("Pass.setClearColor", { try Pass("p").setClearColor([Float.nan, 0, 0]) }),
+            ("Scene.ambient", { _ = try Scene().ambient([Float.infinity, 0, 0]) }),
+            ("Model.translate", { try Model(Mesh(), material).translate([0, Double.nan, 0]) }),
+            ("Model.rotate: axis", { try Model(Mesh(), material).rotate([0, Float.infinity, 0], 1) }),
+            ("Camera.lookAt: up", { _ = try Camera.perspective(1, 1, 0.1, 100).lookAt([0, 0, 5], [0, 0, 0], [0, 1e39, 0] as [Double]) }),
+            ("Material.baseColor", { _ = try material.baseColor([1, 1, Float.nan, 1]) }),
+            ("Material.uvTransform: offset", { _ = try material.uvTransform([1e39, 0] as [Double], [1, 1], 0) }),
+            ("Material.textureTransform: scale", { _ = try material.textureTransform(.normal, [0, 0], [Float.infinity, 1], 0) }),
+        ]
+        for (label, call) in cases {
+            do {
+                try call()
+                throw HealthcheckError.assertion("\(label) should throw")
+            } catch let error as FragmentColorError {
+                guard "\(error)".contains(label) else {
+                    throw HealthcheckError.assertion("\(label) threw \(error)")
+                }
+            }
+        }
+    }
+
     // A region of 3 numbers throws, as in Kotlin, where it stopped the app.
     func testTextureRegionRefusesBadLengths() throws {
         do {
