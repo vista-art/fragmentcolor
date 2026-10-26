@@ -6,6 +6,7 @@ export default {
   summary: "Worley noise warped by fractal noise. The pointer magnifies the cells under it.",
   category: "Shaders",
   thumbnail: "/playground/thumbs/cells.webp",
+  chip: { x: 0.3, y: 0.6, zoom: 3 },
   kind: "fragment",
   library: ["noise/worley2", "noise/fbm2", "gradient/palette_iq"],
   values: {

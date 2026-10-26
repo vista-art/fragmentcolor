@@ -1,7 +1,7 @@
 // Records compose.webp: adding sdf2d/equilateral_triangle from the library picker, calling it in place
 // of the star, and removing sdf2d/star. Redo it with `./fc capture record docs/media/compose.record.mjs`.
 export default {
-  page: "/welcome/playground/#shapes",
+  page: "/#shapes",
   viewportHeight: 760,
   fps: 8,
   quality: 58,

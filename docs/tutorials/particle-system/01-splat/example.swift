@@ -1,4 +1,4 @@
-// Eight million particles: a compute shader moves them and counts them in a grid.
+// A particle system: a compute shader moves eight million particles and counts them in a grid.
 // Call `setup` once, then call `frame` on every display refresh, such as from an `MTKView` delegate.
 
 import FragmentColor

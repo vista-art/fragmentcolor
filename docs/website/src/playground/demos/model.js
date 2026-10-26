@@ -820,6 +820,7 @@ export default {
     "Barramundi Fish by Microsoft (CC0), loaded from a glTF file and lit by two lights. Drag to turn it, and scroll or pinch to move closer.",
   category: "3D",
   thumbnail: "/playground/thumbs/model.webp",
+  chip: { x: 0.12, y: 0.6, zoom: 2.2 },
   kind: "scene",
   needs: RELEASE,
   gestures: true,

@@ -604,16 +604,18 @@ impl Motion {
 
     // #region: steer
     /// The zoom runs from the whole set down to 10^-DEPTH and back on its own.
-    /// While the pointer moves, and for two seconds after, its vertical position
-    /// picks the depth, deepest at the top. Returns the zoom in doublings.
+    /// While the pointer moves, and for two seconds after, its height sets the speed:
+    /// the view dives above the middle and climbs below it. Returns the zoom in doublings.
     fn steer(&mut self, now: f64) -> f64 {
         // The first frame counts the whole clock, so a frame drawn at `now` shows the dive at `now`.
         let delta = self.last.map_or(now, |last| (now - last).min(0.1));
         self.last = Some(now);
         let deepest = DEPTH * 10_f64.log2() + START.log2();
         if now - self.moved < 2.0 {
-            let goal = (1.0 - self.pointer[1]) * deepest;
-            self.zoom += (goal - self.zoom) * (delta * 4.0).min(1.0);
+            // The speed grows toward the edges, up to four times SPEED, and a band across the middle holds still.
+            let lean = 1.0 - 2.0 * self.pointer[1];
+            let push = ((lean.abs() - 0.1).max(0.0) / 0.9).copysign(lean);
+            self.zoom += push * 4.0 * SPEED * delta;
         } else {
             self.zoom += self.direction * SPEED * delta;
             if self.zoom >= deepest {

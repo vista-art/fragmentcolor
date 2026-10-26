@@ -1,4 +1,4 @@
-import { defineConfig } from "astro/config";
+import { defineConfig, envField } from "astro/config";
 import starlight from "@astrojs/starlight";
 import starlightBlog from "starlight-blog";
 import path from "node:path";
@@ -18,11 +18,6 @@ import headingIds from "./integrations/heading-ids";
 // https://astro.build/config
 export default defineConfig({
   site: "https://fragmentcolor.org",
-  // Old addresses of moved pages keep their links working.
-  redirects: {
-    "/demos": "/",
-    "/blog/one-program-five-languages": "/blog/playground-on-the-home-page",
-  },
   integrations: [
     locks(),
     headingIds(),
@@ -243,6 +238,15 @@ export default defineConfig({
   ],
 
   adapter: vercel(),
+
+  // Secrets for editing blog posts on the deployed site, read at runtime
+  // by `src/pages/api/edit.ts`. Client code can't import them.
+  env: {
+    schema: {
+      EDIT_TOKEN: envField.string({ context: "server", access: "secret", optional: true }),
+      GITHUB_TOKEN: envField.string({ context: "server", access: "secret", optional: true }),
+    },
+  },
 
   vite: {
     build: {

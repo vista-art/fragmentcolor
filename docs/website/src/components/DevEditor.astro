@@ -1,25 +1,41 @@
 ---
+// In dev, edits any Markdown page on disk through /api/dev/edit.
+// On the deployed site, edits hand-written pages through /api/edit,
+// which commits them to GitHub. There the button stays hidden without a token.
 const isDev = import.meta.env.DEV;
 const entry = Astro.locals.starlightRoute?.entry;
 const filePath = entry?.filePath ?? "";
-const canEdit =
-  isDev && filePath && (filePath.endsWith(".md") || filePath.endsWith(".mdx"));
+const isMarkdown = filePath.endsWith(".md") || filePath.endsWith(".mdx");
+// The Rust build writes the api/ pages from docs/api. starlight-blog's index,
+// tag, author and page listings claim blog paths too, but only a post has a date.
+const docs = "src/content/docs/";
+const isGenerated = filePath.startsWith(`${docs}api/`);
+const isListing = /^src\/content\/docs\/blog(\/|\.md$)/.test(filePath) && entry?.data.date === undefined;
+const isPage = filePath.startsWith(docs) && !isGenerated && !isListing;
+const canEdit = isMarkdown && (isDev || isPage);
+// The production endpoint takes paths from the repository root.
+const editPath = isDev ? filePath : `docs/website/${filePath}`;
 ---
 
 {
   canEdit && (
-    <div class="dev-editor-root" data-file-path={filePath}>
-      <button class="dev-editor-trigger" type="button" title="Edit this page (dev only)">
+    <div class="dev-editor-root" data-file-path={editPath} data-pagefind-ignore="all">
+      <button class="dev-editor-trigger" type="button" title="Edit this page" hidden={!isDev}>
         ✎ Edit
       </button>
       <div class="dev-editor-backdrop" hidden>
         <div class="dev-editor-panel">
           <div class="dev-editor-header">
-            <span class="dev-editor-title">{filePath}</span>
+            <span class="dev-editor-title">{editPath}</span>
             <div class="dev-editor-actions">
               <button class="dev-editor-save" type="button">
                 Save (⌘S)
               </button>
+              {!isDev && (
+                <button class="dev-editor-lock" type="button" title="Forget the edit token on this device">
+                  Lock
+                </button>
+              )}
               <button class="dev-editor-cancel" type="button">
                 Close (Esc)
               </button>
@@ -48,6 +64,9 @@ const canEdit =
         }
         .dev-editor-trigger:hover {
           filter: brightness(1.1);
+        }
+        .dev-editor-trigger[hidden] {
+          display: none;
         }
         .dev-editor-backdrop {
           position: fixed;
@@ -129,117 +148,245 @@ const canEdit =
           opacity: 0.75;
           font-family: var(--__sl-font-mono, ui-monospace, monospace);
         }
+        .dev-editor-status a {
+          color: inherit;
+        }
+        .dev-editor-status button {
+          background: var(--sl-color-gray-6, #2b2d33);
+          color: inherit;
+          border: 1px solid var(--sl-color-gray-5, #444);
+          border-radius: 4px;
+          padding: 0.1rem 0.5rem;
+          cursor: pointer;
+          font: inherit;
+        }
       </style>
     </div>
   )
 }
 
+
 <script>
-  import { EditorState } from "@codemirror/state";
-  import { EditorView, basicSetup } from "codemirror";
-  import { markdown } from "@codemirror/lang-markdown";
-  import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
-  import { dracula } from "thememirror";
+  import type { EditorView } from "./editor/codemirror";
 
-  if (import.meta.env.DEV) {
-    (() => {
-      const root = document.querySelector<HTMLDivElement>(".dev-editor-root");
-      if (!root) return;
+  const TOKEN_KEY = "fragmentcolor:edit-token";
 
-      // Portal to <body> to escape any ancestor stacking contexts
-      // (Starlight's `.main-pane` uses `isolation: isolate`).
-      if (root.parentElement !== document.body) {
-        document.body.appendChild(root);
+  function readToken(): string | null {
+    try {
+      return localStorage.getItem(TOKEN_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  function storeToken(token: string | null) {
+    try {
+      if (token) localStorage.setItem(TOKEN_KEY, token);
+      else localStorage.removeItem(TOKEN_KEY);
+    } catch {}
+  }
+
+  const UNLOCK_REPLIES: Record<number, string> = {
+    400: "Editing is unlocked on this device.",
+    401: "The server rejected that token.",
+    404: "Editing is off on this deployment, so the server couldn't check the token. It's saved on this device.",
+    503: "Editing is unlocked, but the server has no GitHub token.",
+  };
+
+  /** Says what the server makes of a token. Only a rejected one is dropped. */
+  async function accept(candidate: string): Promise<boolean> {
+    if (import.meta.env.DEV) return true;
+    // A GET without a path passes the token checks and stops before GitHub.
+    const status = await fetch("/api/edit", { headers: { authorization: `Bearer ${candidate}` } }).then(
+      (res) => res.status,
+      () => 0,
+    );
+    alert(UNLOCK_REPLIES[status] ?? "Editing is unlocked, but the server couldn't check the token.");
+    return status !== 401;
+  }
+
+  // The token also lives in memory, so a page without storage can still edit.
+  let token = readToken();
+  const url = new URL(location.href);
+  const mode = url.searchParams.get("edit");
+  if (mode === "unlock" || mode === "lock") {
+    url.searchParams.delete("edit");
+    history.replaceState(history.state, "", url);
+    const entered = mode === "unlock" ? prompt("Edit token")?.trim() : null;
+    if (mode === "lock" || (entered && (await accept(entered)))) {
+      token = entered ?? null;
+      storeToken(token);
+    }
+  }
+
+  const root = document.querySelector<HTMLDivElement>(".dev-editor-root");
+  if (root && (import.meta.env.DEV || token)) {
+    // Portal to <body> to escape any ancestor stacking contexts
+    // (Starlight's `.main-pane` uses `isolation: isolate`).
+    if (root.parentElement !== document.body) {
+      document.body.appendChild(root);
+    }
+
+    const filePath = root.dataset.filePath || "";
+    const trigger = root.querySelector<HTMLButtonElement>(".dev-editor-trigger")!;
+    const backdrop = root.querySelector<HTMLDivElement>(".dev-editor-backdrop")!;
+    const host = root.querySelector<HTMLDivElement>(".dev-editor-host")!;
+    const status = root.querySelector<HTMLDivElement>(".dev-editor-status")!;
+    const saveBtn = root.querySelector<HTMLButtonElement>(".dev-editor-save")!;
+    const cancelBtn = root.querySelector<HTMLButtonElement>(".dev-editor-cancel")!;
+    const lockBtn = root.querySelector<HTMLButtonElement>(".dev-editor-lock");
+
+    let view: EditorView | null = null;
+    // The text as last loaded or saved, which tells unsaved edits apart.
+    let loaded = "";
+    // Blob sha of `loaded`. GitHub refuses a save once the post changed,
+    // so it only ever changes together with the text it belongs to.
+    let sha = "";
+
+    trigger.hidden = false;
+
+    function say(message: string, extra?: Node) {
+      status.textContent = message;
+      if (extra) status.append(extra);
+    }
+
+    function link(url: string): HTMLAnchorElement {
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.target = "_blank";
+      anchor.rel = "noopener";
+      anchor.textContent = url;
+      return anchor;
+    }
+
+    function action(label: string, run: () => void): HTMLButtonElement {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.addEventListener("click", run);
+      return button;
+    }
+
+    function headers(): Record<string, string> {
+      return { authorization: `Bearer ${token}`, "content-type": "application/json" };
+    }
+
+    async function check(res: Response): Promise<Response> {
+      if (res.status === 401) {
+        throw new Error("the edit token was rejected.");
       }
+      if (!res.ok) throw new Error(await res.text());
+      return res;
+    }
 
-      const filePath = root.dataset.filePath || "";
-      const trigger = root.querySelector<HTMLButtonElement>(".dev-editor-trigger")!;
-      const backdrop = root.querySelector<HTMLDivElement>(".dev-editor-backdrop")!;
-      const host = root.querySelector<HTMLDivElement>(".dev-editor-host")!;
-      const status = root.querySelector<HTMLDivElement>(".dev-editor-status")!;
-      const saveBtn = root.querySelector<HTMLButtonElement>(".dev-editor-save")!;
-      const cancelBtn = root.querySelector<HTMLButtonElement>(".dev-editor-cancel")!;
+    async function load(): Promise<{ doc: string; sha: string; note: string }> {
+      const query = `?path=${encodeURIComponent(filePath)}`;
+      if (import.meta.env.DEV) {
+        const res = await check(await fetch(`/api/dev/edit${query}`));
+        return { doc: await res.text(), sha: "", note: "" };
+      }
+      const res = await check(await fetch(`/api/edit${query}`, { headers: headers() }));
+      return {
+        doc: await res.text(),
+        sha: res.headers.get("x-edit-sha") ?? "",
+        note: `Loaded from ${res.headers.get("x-edit-ref")}. Saving commits to content/edits.`,
+      };
+    }
 
-      let view: import("@codemirror/view").EditorView | null = null;
-
-      function mount(doc: string) {
-        view?.destroy();
-        view = new EditorView({
-          state: EditorState.create({
-            doc,
-            extensions: [
-              basicSetup,
-              markdown(),
-              dracula,
-              syntaxHighlighting(defaultHighlightStyle),
-              EditorView.lineWrapping,
-              EditorView.theme({
-                "&": { height: "100%" },
-                ".cm-scroller": { overflow: "auto" },
-              }),
-            ],
-          }),
-          parent: host,
-        });
+    async function open() {
+      backdrop.hidden = false;
+      // Reopening keeps unsaved text. Only an explicit reload replaces it.
+      if (view && view.state.doc.toString() !== loaded) {
         view.focus();
+        return;
       }
+      await reload();
+    }
 
-      async function open() {
-        status.textContent = "Loading…";
-        backdrop.hidden = false;
-        try {
-          const res = await fetch(
-            `/api/dev/edit?path=${encodeURIComponent(filePath)}`,
-          );
-          if (!res.ok) throw new Error(await res.text());
-          mount(await res.text());
-          status.textContent = "";
-        } catch (e) {
-          status.textContent = `Load failed: ${e}`;
-        }
+    async function reload() {
+      say("Loading…");
+      try {
+        const [latest, { mountEditor }] = await Promise.all([
+          load(),
+          import("./editor/codemirror"),
+        ]);
+        view?.destroy();
+        view = mountEditor(host, latest.doc);
+        loaded = latest.doc;
+        sha = latest.sha;
+        say(latest.note);
+      } catch (e) {
+        say(`Load failed: ${e}`);
       }
+    }
 
-      function close() {
-        backdrop.hidden = true;
-      }
+    function close() {
+      backdrop.hidden = true;
+    }
 
-      async function save() {
-        if (!view) return;
-        status.textContent = "Saving…";
-        try {
-          const res = await fetch("/api/dev/edit", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              path: filePath,
-              content: view.state.doc.toString(),
+    async function save() {
+      if (!view) return;
+      say("Saving…");
+      const content = view.state.doc.toString();
+      try {
+        if (import.meta.env.DEV) {
+          await check(
+            await fetch("/api/dev/edit", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ path: filePath, content }),
             }),
-          });
-          if (!res.ok) throw new Error(await res.text());
-          status.textContent = "Saved — reloading";
+          );
+          say("Saved. Reloading…");
           setTimeout(() => location.reload(), 400);
-        } catch (e) {
-          status.textContent = `Save failed: ${e}`;
+          return;
         }
+        const res = await fetch("/api/edit", {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify({ path: filePath, content, sha }),
+        });
+        // A conflict keeps both the text and its old sha, so saving again
+        // can't overwrite the newer post until someone loads it on purpose.
+        if (res.status === 409) {
+          const replace = action("Replace it with the latest version", reload);
+          say(`${await res.text()} Your text is still here. `, replace);
+          return;
+        }
+        const result = (await (await check(res)).json()) as { pr: string; sha: string };
+        loaded = content;
+        sha = result.sha;
+        say("Committed to content/edits. Pull request: ", link(result.pr));
+      } catch (e) {
+        say(`Save failed: ${e}`);
       }
+    }
 
-      trigger.addEventListener("click", open);
-      cancelBtn.addEventListener("click", close);
-      saveBtn.addEventListener("click", save);
-      backdrop.addEventListener("click", (e) => {
-        if (e.target === backdrop) close();
-      });
+    function lock() {
+      token = null;
+      storeToken(null);
+      close();
+      trigger.hidden = true;
+    }
 
-      document.addEventListener("keydown", (e) => {
-        if (backdrop.hidden) return;
-        if (e.key === "Escape") {
-          e.preventDefault();
-          close();
-        } else if ((e.metaKey || e.ctrlKey) && e.key === "s") {
-          e.preventDefault();
-          save();
-        }
-      });
-    })();
+    trigger.addEventListener("click", open);
+    cancelBtn.addEventListener("click", close);
+    saveBtn.addEventListener("click", save);
+    lockBtn?.addEventListener("click", lock);
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) close();
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (backdrop.hidden) return;
+      // An Escape that CodeMirror used, to close search or completions, stays there.
+      if (e.key === "Escape" && !e.defaultPrevented) {
+        e.preventDefault();
+        close();
+      } else if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        save();
+      }
+    });
   }
 </script>

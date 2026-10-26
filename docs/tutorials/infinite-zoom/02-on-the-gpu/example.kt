@@ -6,11 +6,13 @@
 // breaks the picture into blocks.
 // Call `setup` once, then call `frame` on every display refresh, such as from a `Choreographer` callback.
 
+import kotlin.math.abs
 import kotlin.math.log10
 import kotlin.math.log2
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.withSign
 import org.fragmentcolor.*
 
 const val SHADER = """
@@ -159,9 +161,9 @@ fun frame(state: State, renderer: Renderer, target: WindowTarget, time: Float, s
 
 // #region: steer
 /**
- * The zoom runs from the whole set down to 10^-DEPTH and back on its own. While
- * the pointer moves, and for two seconds after, the pointer's vertical position
- * picks the depth, deepest at the top. Returns the zoom in doublings.
+ * The zoom runs from the whole set down to 10^-DEPTH and back on its own.
+ * While the pointer moves, and for two seconds after, its height sets the speed:
+ * the view dives above the middle and climbs below it. Returns the zoom in doublings.
  */
 fun steer(state: State, time: Float, size: List<Float>, pointer: List<Float>): Double {
     // A clock that starts over forgets the pointer.
@@ -173,8 +175,10 @@ fun steer(state: State, time: Float, size: List<Float>, pointer: List<Float>): D
     if (state.pointer != null && state.pointer != pointer) state.moved = time
     state.pointer = pointer
     if (time - state.moved < 2f) {
-        val goal = (1 - (pointer[1] / size[1]).toDouble()) * deepest
-        state.zoom += (goal - state.zoom) * min(1.0, delta * 4)
+        // The speed grows toward the edges, up to four times SPEED, and a band across the middle holds still.
+        val lean = 1 - 2 * (pointer[1] / size[1]).toDouble()
+        val push = (max(abs(lean) - 0.1, 0.0) / 0.9).withSign(lean)
+        state.zoom += push * 4 * SPEED * delta
     } else {
         state.zoom += state.direction * SPEED * delta
         if (state.zoom >= deepest) state.direction = -1.0
