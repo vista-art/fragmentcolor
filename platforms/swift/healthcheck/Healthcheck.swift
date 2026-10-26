@@ -71,6 +71,16 @@ final class Healthcheck: ExampleCase {
         } catch is FragmentColorError {}
     }
 
+    // A region of 3 numbers throws, as in Kotlin, where it stopped the app.
+    func testTextureRegionRefusesBadLengths() throws {
+        do {
+            _ = try TextureRegion.from([1, 2, 3])
+            throw HealthcheckError.assertion("TextureRegion.from([1, 2, 3]) should throw")
+        } catch is FragmentColorError {}
+        let region = try TextureRegion.from([1, 2, 3, 4])
+        try assertEqual(region.sizeWidth, 3, "TextureRegion.from width")
+    }
+
     // Shader.set shapes each Swift value to the uniform's declared WGSL type.
     func testShaderSetValues() throws {
         let shader = try Shader(source: """

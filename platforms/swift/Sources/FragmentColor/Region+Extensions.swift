@@ -18,10 +18,10 @@ extension TextureRegion {
     // MARK: - From rectangle / box
 
     /// `[w, h]`, `[x, y, w, h]` or `[x, y, z, w, h, d]`, as Rust's `TextureRegion::from` reads them.
-    /// Any other length stops the program.
-    public static func from(_ rect: [UInt32]) -> TextureRegion {
+    /// Throws `FragmentColorError` for any other length, as Kotlin throws `FragmentColorException`.
+    public static func from(_ rect: [UInt32]) throws -> TextureRegion {
         guard let region = textureRegion(rect) else {
-            preconditionFailure("TextureRegion.from: expected 2, 4 or 6 numbers, got \(rect.count)")
+            throw FragmentColorError.Render("TextureRegion.from: expected 2, 4 or 6 numbers, got \(rect.count)")
         }
         return region
     }

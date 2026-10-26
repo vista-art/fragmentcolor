@@ -2050,7 +2050,7 @@ final class GeneratedExamples: ExampleCase {
             try texture.writeRegion(bytes, [0, 0, 64, 32])
 
             // Explicit data layout, for when the source rows are padded.
-            let region = TextureRegion.from([0, 0, 64, 32]).withStride(256).withRows(32)
+            let region = try TextureRegion.from([0, 0, 64, 32]).withStride(256).withRows(32)
             try texture.writeRegion(bytes, region)
         }
     }
