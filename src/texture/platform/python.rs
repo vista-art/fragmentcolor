@@ -1,6 +1,7 @@
 #![cfg(python)]
 
-use crate::texture::{Mipmap, Texture, TextureId, TextureRegion};
+use crate::platforms::python::{read_optional, read_unsigned};
+use crate::texture::{Mipmap, Texture, TextureError, TextureId, TextureRegion};
 use crate::{CompareFunction, SamplerOptions, TextureFormat};
 use lsp_doc::lsp_doc;
 use pyo3::exceptions::PyTypeError;
@@ -151,15 +152,12 @@ impl From<PyTextureUsage> for u32 {
     }
 }
 
-/// A `Texture.write_region` region from Python, tried in this order.
+/// A `Texture.write_region` region from Python: `[w, h]`, `[x, y, w, h]` or
+/// `[x, y, z, w, h, d]` in any sequence of ints, a `ScreenRegion`, or a dict.
 #[derive(FromPyObject)]
 pub enum PyTextureRegion<'py> {
-    #[pyo3(annotation = "[w, h]")]
-    Size([u32; 2]),
-    #[pyo3(annotation = "[x, y, w, h]")]
-    Rect([u32; 4]),
-    #[pyo3(annotation = "[x, y, z, w, h, d]")]
-    Volume([u32; 6]),
+    #[pyo3(annotation = "Sequence[int]")]
+    Numbers(Vec<Bound<'py, PyAny>>),
     #[pyo3(annotation = "ScreenRegion")]
     Screen(crate::ScreenRegion),
     #[pyo3(annotation = "dict[str, int | None]")]
@@ -170,12 +168,24 @@ impl TryFrom<PyTextureRegion<'_>> for TextureRegion {
     type Error = PyErr;
 
     fn try_from(region: PyTextureRegion<'_>) -> Result<Self, Self::Error> {
-        match region {
-            PyTextureRegion::Size(size) => Ok(size.into()),
-            PyTextureRegion::Rect(rect) => Ok(rect.into()),
-            PyTextureRegion::Volume(volume) => Ok(volume.into()),
-            PyTextureRegion::Screen(screen) => Ok(screen.into()),
-            PyTextureRegion::Layout(layout) => layout_region(&layout),
+        let items = match region {
+            PyTextureRegion::Numbers(items) => items,
+            PyTextureRegion::Screen(screen) => return Ok(screen.into()),
+            PyTextureRegion::Layout(layout) => return layout_region(&layout),
+        };
+        let numbers = items
+            .iter()
+            .map(read_unsigned)
+            .collect::<PyResult<Vec<u32>>>()?;
+        match *numbers {
+            [w, h] => Ok([w, h].into()),
+            [x, y, w, h] => Ok([x, y, w, h].into()),
+            [x, y, z, w, h, d] => Ok([x, y, z, w, h, d].into()),
+            _ => Err(TextureError::InvalidInput(format!(
+                "a region takes 2, 4 or 6 numbers, got {}",
+                numbers.len()
+            ))
+            .into()),
         }
     }
 }
@@ -186,7 +196,7 @@ fn layout_region(layout: &Bound<'_, PyDict>) -> PyResult<TextureRegion> {
     let read = |(camel, snake): crate::texture::region::Key| -> PyResult<Option<u32>> {
         for name in [snake, camel] {
             if let Some(value) = layout.get_item(name)? {
-                return value.extract::<Option<u32>>();
+                return read_optional(&value);
             }
         }
         Ok(None)
@@ -276,7 +286,7 @@ impl Mipmap {
     pub fn build_py(
         bytes: PyTextureBytes<'_>,
         format: TextureFormat,
-        size: Option<crate::size::PySize>,
+        size: Option<crate::size::PySize<'_>>,
     ) -> pyo3::PyResult<Mipmap> {
         let input = crate::TextureInput {
             data: crate::TextureData::Bytes(bytes.into()),
@@ -311,8 +321,11 @@ impl Mipmap {
     /// the valid range.
     #[pyo3(name = "level")]
     #[lsp_doc("docs/api/texture/mipmap/level.md")]
-    pub fn level_py(&self, index: usize) -> pyo3::PyResult<Vec<u8>> {
-        Ok(self.level(index)?.to_vec())
+    pub fn level_py(
+        &self,
+        #[pyo3(from_py_with = read_unsigned)] index: u32,
+    ) -> pyo3::PyResult<Vec<u8>> {
+        Ok(self.level(index as usize)?.to_vec())
     }
 
     /// Every mip level's bytes as a list, level 0 first.
@@ -378,7 +391,7 @@ impl Texture {
 
     #[pyo3(name = "resize")]
     #[lsp_doc("docs/api/texture/texture/resize.md")]
-    pub fn resize_py(&self, size: crate::PySize) -> pyo3::PyResult<()> {
+    pub fn resize_py(&self, size: crate::PySize<'_>) -> pyo3::PyResult<()> {
         self.resize(crate::Size::try_from(size)?)?;
         Ok(())
     }

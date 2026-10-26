@@ -507,6 +507,13 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     if (extent.width !== 32 || extent.depth !== 2) fail('Size fields did not take valid numbers');
     extent.depth = undefined;
     if (extent.depth !== undefined) fail('Size.depth = undefined did not clear the depth');
+
+    // A size or region takes whole numbers, as counts do, and a fraction throws.
+    throws('new Size(1.5, 2)', () => new fc.Size(1.5, 2));
+    throws('Size.width = 1.5', () => { extent.width = 1.5; });
+    throws('new ScreenRegion([0, 0], [1.5, 2])', () => new fc.ScreenRegion([0, 0], [1.5, 2]));
+    throws('Pass.setViewport([0, 0, 1.5, 2])', () => first.setViewport([0, 0, 1.5, 2]));
+    await rejects('createTextureTarget([1.5, 2])', () => renderer.createTextureTarget([1.5, 2]));
     const region = new fc.ScreenRegion([0, 0], [64, 64]);
     region.max_x = -1;
     if (region.maxX !== 64) fail(`ScreenRegion.max_x wrote ${region.maxX} past the checks`);

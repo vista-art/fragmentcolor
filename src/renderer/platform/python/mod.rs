@@ -141,7 +141,7 @@ impl Renderer {
 
     #[lsp_doc("docs/api/core/renderer/create_texture_target.md")]
     #[pyo3(name = "create_texture_target")]
-    pub fn create_texture_target_py(&self, size: PySize) -> Result<Py<PyTextureTarget>, PyErr> {
+    pub fn create_texture_target_py(&self, size: PySize<'_>) -> Result<Py<PyTextureTarget>, PyErr> {
         Python::attach(|py| -> Result<Py<PyTextureTarget>, PyErr> {
             let target = pollster::block_on(self.create_texture_target(Size::try_from(size)?))?;
             let py_target: PyTextureTarget = target.into();
@@ -163,7 +163,7 @@ impl Renderer {
     pub fn create_texture_py<'py>(
         &self,
         input: PyTextureSource<'py>,
-        size: Option<PySize>,
+        size: Option<PySize<'py>>,
         format: Option<crate::TextureFormat>,
         mipmaps: Option<bool>,
         sampler: Option<crate::texture::PySamplerOptions<'py>>,
@@ -223,7 +223,10 @@ impl Renderer {
     // Depth texture
     #[pyo3(name = "create_depth_texture")]
     #[lsp_doc("docs/api/core/renderer/hidden/create_depth_texture_py.md")]
-    pub fn create_depth_texture_py(&self, size: PySize) -> Result<crate::texture::Texture, PyErr> {
+    pub fn create_depth_texture_py(
+        &self,
+        size: PySize<'_>,
+    ) -> Result<crate::texture::Texture, PyErr> {
         Python::attach(|_py| -> Result<crate::texture::Texture, PyErr> {
             let tex = pollster::block_on(self.create_depth_texture(Size::try_from(size)?))?;
             Ok(tex)
@@ -240,7 +243,7 @@ impl Renderer {
     pub fn create_storage_texture_py(
         &self,
         py: Python<'_>,
-        size: PySize,
+        size: PySize<'_>,
         format: crate::TextureFormat,
         data: Option<Vec<u8>>,
         usage: Option<crate::texture::PyTextureUsage>,
@@ -318,7 +321,7 @@ fn py_to_texture_spec(
 
 /// The keyword arguments of `create_texture`, each optional.
 struct TextureKeywords<'py> {
-    size: Option<PySize>,
+    size: Option<PySize<'py>>,
     format: Option<crate::TextureFormat>,
     mipmaps: Option<bool>,
     sampler: Option<crate::texture::PySamplerOptions<'py>>,

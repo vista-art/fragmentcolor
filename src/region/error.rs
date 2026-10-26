@@ -12,6 +12,6 @@ pub enum ScreenRegionError {
 #[cfg(python)]
 impl From<ScreenRegionError> for pyo3::PyErr {
     fn from(error: ScreenRegionError) -> Self {
-        crate::error::PyFragmentColorError::new_err(error.to_string())
+        crate::error::InvalidInputError::new_err(error.to_string())
     }
 }

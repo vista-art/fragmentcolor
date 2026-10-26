@@ -2,7 +2,9 @@
 use wasm_bindgen::prelude::*;
 
 pub mod error;
-#[cfg(any(wasm, python))]
+#[cfg(wasm)]
+use crate::size::read_dimension;
+#[cfg(any(wasm, python, test))]
 use error::ScreenRegionError;
 
 #[cfg_attr(wasm, wasm_bindgen)]
@@ -80,19 +82,25 @@ impl ScreenRegion {
         }
     }
 
-    /// Reads a binding's `[w, h]` or `[x, y, w, h]`, each number checked by [`crate::size::read_dimension`].
-    #[cfg(any(wasm, python))]
+    /// Reads JavaScript's `[w, h]` or `[x, y, w, h]`, each number checked by [`read_dimension`].
+    #[cfg(wasm)]
     pub(crate) fn from_numbers(numbers: &[f64]) -> Result<Self, ScreenRegionError> {
-        let numbers = numbers
+        let dimensions = numbers
             .iter()
             .map(|&number| check_dimension(number))
             .collect::<Result<Vec<u32>, ScreenRegionError>>()?;
-        match numbers[..] {
+        Self::from_dimensions(&dimensions)
+    }
+
+    /// A region from the `[w, h]` or `[x, y, w, h]` a binding read.
+    #[cfg(any(wasm, python, test))]
+    pub(crate) fn from_dimensions(dimensions: &[u32]) -> Result<Self, ScreenRegionError> {
+        match *dimensions {
             [width, height] => Ok(Self::from_size(width, height)),
             [x, y, width, height] => Ok(Self::from_region(x, y, width, height)),
             _ => Err(ScreenRegionError::TypeMismatch(format!(
                 "a region takes [w, h] or [x, y, w, h], got {} numbers",
-                numbers.len()
+                dimensions.len()
             ))),
         }
     }
@@ -385,7 +393,7 @@ impl TryFrom<&wasm_bindgen::JsValue> for ScreenRegion {
         if Array::is_array(value) || ArrayBuffer::is_view(value) {
             let numbers = Array::from(value)
                 .iter()
-                .map(|item| js_to_number(&item))
+                .map(|item| read_number(&item))
                 .collect::<Result<Vec<f64>, ScreenRegionError>>()?;
             return ScreenRegion::from_numbers(&numbers);
         }
@@ -433,26 +441,28 @@ impl TryFrom<&wasm_bindgen::JsValue> for ScreenRegion {
     }
 }
 
-/// One region number from a binding, checked by [`crate::size::read_dimension`].
-#[cfg(any(wasm, python))]
+/// One region number from JavaScript, checked by [`read_dimension`].
+#[cfg(wasm)]
 fn check_dimension(number: f64) -> Result<u32, ScreenRegionError> {
-    crate::size::read_dimension(number).ok_or_else(|| {
-        ScreenRegionError::TypeMismatch(format!("a region takes numbers from 0 up, got {number}"))
+    read_dimension(number).ok_or_else(|| {
+        ScreenRegionError::TypeMismatch(format!(
+            "a region takes whole numbers from 0 up, got {number}"
+        ))
     })
 }
 
-/// One region item from JS, which must be a number.
+/// One region item from JavaScript, which must be a number.
 #[cfg(wasm)]
-fn js_to_number(item: &JsValue) -> Result<f64, ScreenRegionError> {
+fn read_number(item: &JsValue) -> Result<f64, ScreenRegionError> {
     item.as_f64().ok_or_else(|| {
         ScreenRegionError::TypeMismatch(format!("a region takes numbers, got {item:?}"))
     })
 }
 
-/// One region number from JS, checked by [`crate::size::read_dimension`].
+/// One region number from JS, checked by [`read_dimension`].
 #[cfg(wasm)]
 fn js_to_dimension(item: &JsValue) -> Result<u32, ScreenRegionError> {
-    check_dimension(js_to_number(item)?)
+    check_dimension(read_number(item)?)
 }
 
 /// A pair of region numbers from JS, such as an origin or a size.
@@ -612,6 +622,7 @@ impl From<&ScreenRegion> for [f32; 4] {
 #[cfg(python)]
 mod python_bindings {
     use super::*;
+    use crate::platforms::python::{read_pair, read_unsigned};
     use pyo3::prelude::*;
 
     #[pymethods]
@@ -621,24 +632,30 @@ mod python_bindings {
         // audit tracks the parent methods, not the value type itself.
         #[doc(hidden)]
         #[new]
-        pub fn new_py(origin: (f64, f64), size: (f64, f64)) -> PyResult<Self> {
-            Ok(ScreenRegion::from_numbers(&[
-                origin.0, origin.1, size.0, size.1,
-            ])?)
+        pub fn new_py(
+            #[pyo3(from_py_with = read_pair)] origin: (u32, u32),
+            #[pyo3(from_py_with = read_pair)] size: (u32, u32),
+        ) -> Self {
+            ScreenRegion::new(origin, size)
         }
 
         #[doc(hidden)]
         #[staticmethod]
         #[pyo3(name = "from_region")]
-        pub fn from_region_py(x: f64, y: f64, width: f64, height: f64) -> PyResult<Self> {
-            Ok(ScreenRegion::from_numbers(&[x, y, width, height])?)
+        pub fn from_region_py(
+            #[pyo3(from_py_with = read_unsigned)] x: u32,
+            #[pyo3(from_py_with = read_unsigned)] y: u32,
+            #[pyo3(from_py_with = read_unsigned)] width: u32,
+            #[pyo3(from_py_with = read_unsigned)] height: u32,
+        ) -> Self {
+            ScreenRegion::from_region(x, y, width, height)
         }
 
         #[doc(hidden)]
         #[staticmethod]
         #[pyo3(name = "from_tuple")]
-        pub fn from_tuple_py(size: (f64, f64)) -> PyResult<Self> {
-            Ok(ScreenRegion::from_numbers(&[size.0, size.1])?)
+        pub fn from_tuple_py(#[pyo3(from_py_with = read_pair)] size: (u32, u32)) -> Self {
+            ScreenRegion::from_tuple(size)
         }
 
         #[doc(hidden)]
@@ -745,6 +762,21 @@ mod tests {
             ScreenRegion::from_region(0, 0, 0, 0),
             ScreenRegion::from_region(0, 0, 0, 0),
         );
+    }
+
+    // Story: a binding's region is a size or an origin and a size, and any
+    // other count of numbers fails.
+    #[test]
+    fn reads_two_or_four_dimensions() {
+        assert_eq!(
+            ScreenRegion::from_dimensions(&[8, 4]).ok(),
+            Some(ScreenRegion::from_size(8, 4))
+        );
+        assert_eq!(
+            ScreenRegion::from_dimensions(&[1, 2, 8, 4]).ok(),
+            Some(ScreenRegion::from_region(1, 2, 8, 4))
+        );
+        assert!(ScreenRegion::from_dimensions(&[1, 2, 3]).is_err());
     }
 
     // Story: a region tuple reads as unsigned, so a negative number fails to

@@ -4,8 +4,11 @@ pub mod python;
 #[cfg(wasm)]
 pub mod web;
 
-/// A number from JavaScript or Python that doesn't fit an unsigned 32-bit integer.
-#[cfg(any(wasm, python, test))]
+#[cfg(any(wasm, test))]
+use crate::size::read_dimension;
+
+/// A number from JavaScript that doesn't fit an unsigned 32-bit integer.
+#[cfg(any(wasm, test))]
 #[derive(Debug, thiserror::Error)]
 #[error("{what} must be a whole number from 0 to {}, got {value}", u32::MAX)]
 pub(crate) struct NumberError {
@@ -13,15 +16,11 @@ pub(crate) struct NumberError {
     value: f64,
 }
 
-/// Reads a binding's number as an unsigned 32-bit integer, such as an index or a count.
+/// Reads a JavaScript number as an unsigned 32-bit integer, such as an index or a count.
 /// Negative, fractional, NaN and out-of-range values fail with an error that names `what`.
-#[cfg(any(wasm, python, test))]
+#[cfg(any(wasm, test))]
 pub(crate) fn read_unsigned(value: f64, what: &str) -> Result<u32, NumberError> {
-    let whole = value.is_finite() && value.fract() == 0.0;
-    if whole && (0.0..=u32::MAX as f64).contains(&value) {
-        return Ok(value as u32);
-    }
-    Err(NumberError {
+    read_dimension(value).ok_or_else(|| NumberError {
         what: what.to_string(),
         value,
     })

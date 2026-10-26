@@ -3,6 +3,7 @@
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 
+use crate::platforms::python::read_unsigned;
 use crate::scene::{
     Camera, CameraError, Light, LightError, LightKind, Model, Scene, SceneLoadError,
 };
@@ -362,8 +363,8 @@ impl Scene {
 
     #[pyo3(name = "get_pass")]
     #[lsp_doc("docs/api/scene/scene/get_pass.md")]
-    pub fn get_pass_py(&self, index: usize) -> Option<Pass> {
-        self.get_pass(index)
+    pub fn get_pass_py(&self, #[pyo3(from_py_with = read_unsigned)] index: u32) -> Option<Pass> {
+        self.get_pass(index as usize)
     }
 
     #[pyo3(name = "find_pass")]
@@ -388,14 +389,11 @@ impl Scene {
         target: &Bound<'py, PyAny>,
         object: &Bound<'py, PyAny>,
     ) -> PyResult<PyRef<'py, Self>> {
-        let target = if let Ok(index) = target.extract::<usize>() {
-            crate::scene::PassRef::Index(index)
-        } else if let Ok(name) = target.extract::<String>() {
-            crate::scene::PassRef::Name(name)
-        } else {
-            return Err(pyo3::exceptions::PyTypeError::new_err(
-                "Scene.add_to: target must be an int index or a str name",
-            ));
+        // A str names the pass. Anything else is an index, and a value that
+        // isn't an int raises the TypeError that `read_unsigned` gives it.
+        let target = match target.extract::<String>() {
+            Ok(name) => crate::scene::PassRef::Name(name),
+            Err(_) => crate::scene::PassRef::Index(read_unsigned(target)? as usize),
         };
         if let Ok(model) = object.cast::<Model>() {
             slf.add_to(target, &*model.borrow())?;

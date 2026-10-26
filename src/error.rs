@@ -37,7 +37,7 @@ create_exception!(
     fragment_color,
     InvalidInputError,
     PyFragmentColorError,
-    "Texture bytes that don't match the size or format they were declared with."
+    "A value the call can't take, such as a negative size or bytes that don't match their texture."
 );
 #[cfg(python)]
 create_exception!(
