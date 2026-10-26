@@ -276,6 +276,7 @@ impl TryFrom<&crate::texture::Texture> for ColorTarget {
             }
             _ => {}
         }
+        check_plane(&object, "color")?;
         Ok(ColorTarget {
             registration: tex.registration.clone(),
         })
@@ -320,14 +321,37 @@ impl TryFrom<&crate::texture::Texture> for DepthTarget {
             | wgpu::TextureFormat::Depth16Unorm
             | wgpu::TextureFormat::Depth24Plus
             | wgpu::TextureFormat::Depth24PlusStencil8
-            | wgpu::TextureFormat::Depth32FloatStencil8 => Ok(DepthTarget {
-                registration: tex.registration.clone(),
-            }),
-            _ => Err(PassError::InvalidColorTarget(
-                "texture format is not a depth/stencil format".into(),
-            )),
+            | wgpu::TextureFormat::Depth32FloatStencil8 => {}
+            _ => {
+                return Err(PassError::InvalidColorTarget(
+                    "texture format is not a depth/stencil format".into(),
+                ));
+            }
         }
+        check_plane(&object, "depth")?;
+        Ok(DepthTarget {
+            registration: tex.registration.clone(),
+        })
     }
+}
+
+/// Refuses a texture with more than one mip level or layer as a `role` target.
+/// A pass draws into one level of one layer and has no way to pick it,
+/// so the other levels and layers would keep what they held.
+fn check_plane(object: &crate::TextureObject, role: &str) -> Result<(), PassError> {
+    let levels = object.inner.mip_level_count();
+    if levels != 1 {
+        return Err(PassError::InvalidColorTarget(format!(
+            "a {role} target has one mip level, and this texture has {levels}; create it with mipmaps set to false"
+        )));
+    }
+    let layers = object.size.depth_or_array_layers;
+    if layers != 1 {
+        return Err(PassError::InvalidColorTarget(format!(
+            "a {role} target has one layer, and this texture has {layers}"
+        )));
+    }
+    Ok(())
 }
 
 #[cfg(wasm)]
@@ -911,6 +935,55 @@ mod tests {
                 .expect("color tex");
             let dt_bad = DepthTarget::try_from(&color_tex);
             assert!(dt_bad.is_err());
+        });
+    }
+
+    // Story: a pass draws into one mip level of one layer, so a texture with a
+    // mip chain or with layers is refused as a target, and the pass keeps none.
+    #[test]
+    fn targets_refuse_mip_chains_and_layers() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let usage = crate::TextureUsage::RENDER_ATTACHMENT;
+            let options = |size: [u32; 3], mipmaps: bool| {
+                crate::TextureOptions {
+                    size: Some(size.into()),
+                    mipmaps,
+                    ..Default::default()
+                }
+                .with_usage(usage)
+            };
+            let chain = renderer
+                .create_texture((vec![255; 64], options([4, 4, 1], true)))
+                .await
+                .expect("a texture with a mip chain");
+            let layered = renderer
+                .create_storage_texture(crate::TextureInput {
+                    data: crate::TextureData::Empty,
+                    options: options([4, 4, 2], false),
+                })
+                .await
+                .expect("a texture with two layers");
+            let flat = renderer
+                .create_texture((vec![255; 64], options([4, 4, 1], false)))
+                .await
+                .expect("a texture with one level");
+
+            let pass = Pass::new("p");
+            for texture in [&chain, &layered] {
+                let error = pass.set_target(texture).err();
+                assert!(
+                    matches!(error, Some(PassError::InvalidColorTarget(_))),
+                    "{error:?}"
+                );
+            }
+            let error = pass.set_target(&chain).err().map(|error| error.to_string());
+            assert!(
+                error.is_some_and(|text| text.contains("mipmaps set to false")),
+                "the error names the fix"
+            );
+            assert!(pass.object.color_target.read().is_none());
+            pass.set_target(&flat).expect("one level of one layer");
         });
     }
 
