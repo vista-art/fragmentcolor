@@ -381,11 +381,15 @@ const INDEX_TYPES: &[(DataType, Dimensions)] = &[
 ///
 /// The reader panics on a component type its semantic doesn't allow, on
 /// a stride shorter than one element and on a count of 0, so the loader
-/// refuses those here. Attributes the loader never reads only need a count.
+/// refuses those here. Each attribute it reads must also hold one element
+/// per position. Attributes the loader never reads only need a count.
 fn check_primitive(
     primitive: &gltf::Primitive<'_>,
     buffers: &[gltf::buffer::Data],
 ) -> Result<(), SceneLoadError> {
+    let position_count = primitive
+        .get(&Semantic::Positions)
+        .map(|accessor| accessor.count());
     for (semantic, accessor) in primitive.attributes() {
         let accepted = match semantic {
             Semantic::Positions | Semantic::Normals => VEC3_FLOAT,
@@ -394,7 +398,18 @@ fn check_primitive(
             Semantic::Colors(0) => COLOR_TYPES,
             _ => &[],
         };
-        check_accessor(&accessor, &semantic.to_string(), accepted, buffers)?;
+        let name = semantic.to_string();
+        check_accessor(&accessor, &name, accepted, buffers)?;
+        if let Some(positions) = position_count
+            && !accepted.is_empty()
+            && accessor.count() != positions
+        {
+            return Err(SceneLoadError::Invalid(format!(
+                "glTF accessor {} ({name}) holds {} elements for {positions} positions",
+                accessor.index(),
+                accessor.count()
+            )));
+        }
     }
     if let Some(indices) = primitive.indices() {
         check_accessor(&indices, "indices", INDEX_TYPES, buffers)?;
@@ -574,6 +589,8 @@ fn build_mesh(
     .map(|it| it.collect());
     let indices: Option<Vec<u32>> = require(primitive.indices(), reader.read_indices(), "indices")?
         .map(|it| it.into_u32().collect());
+    let indices = list_triangles(primitive.mode(), indices, positions.len())?;
+    check_indices(indices.as_deref(), positions.len())?;
 
     // glTF normals are optional; when missing, compute per-vertex normals
     // by accumulating face normals across every triangle that touches the
@@ -632,6 +649,78 @@ fn build_mesh(
     }
 
     Ok(mesh)
+}
+
+/// Turn a primitive's draw mode into triangle list indices.
+///
+/// A triangle list keeps its indices. A strip or a fan expands its index
+/// list, or every vertex in order when it has none, into one triangle per
+/// step. Points and lines have no triangles, so the loader refuses them.
+fn list_triangles(
+    mode: gltf::mesh::Mode,
+    indices: Option<Vec<u32>>,
+    vertex_count: usize,
+) -> Result<Option<Vec<u32>>, SceneLoadError> {
+    use gltf::mesh::Mode;
+    let expand = match mode {
+        Mode::Triangles => return Ok(indices),
+        Mode::TriangleStrip => expand_strip,
+        Mode::TriangleFan => expand_fan,
+        other => {
+            return Err(SceneLoadError::Invalid(format!(
+                "glTF primitive mode {other:?} is not supported; Scene.load draws triangles"
+            )));
+        }
+    };
+    let order = match indices {
+        Some(indices) => indices,
+        None => {
+            let Ok(count) = u32::try_from(vertex_count) else {
+                return Err(SceneLoadError::Invalid(format!(
+                    "glTF primitive has {vertex_count} vertices, more than 32-bit indices reach"
+                )));
+            };
+            (0..count).collect()
+        }
+    };
+    Ok(Some(expand(&order)))
+}
+
+/// One triangle per step of a strip, every second one flipped back to the
+/// strip's winding.
+fn expand_strip(order: &[u32]) -> Vec<u32> {
+    order
+        .windows(3)
+        .enumerate()
+        .flat_map(|(step, corners)| match step % 2 {
+            0 => [corners[0], corners[1], corners[2]],
+            _ => [corners[1], corners[0], corners[2]],
+        })
+        .collect()
+}
+
+/// One triangle per step of a fan, each sharing the first vertex.
+fn expand_fan(order: &[u32]) -> Vec<u32> {
+    let Some((&hub, rim)) = order.split_first() else {
+        return Vec::new();
+    };
+    rim.windows(2)
+        .flat_map(|edge| [hub, edge[0], edge[1]])
+        .collect()
+}
+
+/// Refuse an index that points past the last vertex.
+fn check_indices(indices: Option<&[u32]>, vertex_count: usize) -> Result<(), SceneLoadError> {
+    let past_end = indices
+        .unwrap_or_default()
+        .iter()
+        .find(|&&index| index as usize >= vertex_count);
+    match past_end {
+        Some(index) => Err(SceneLoadError::Invalid(format!(
+            "glTF primitive index {index} points past the last of {vertex_count} vertices"
+        ))),
+        None => Ok(()),
+    }
 }
 
 /// Smooth per-vertex normals from positions + an optional index buffer.
@@ -744,9 +833,7 @@ fn build_material(
     }
 
     if let Some(info) = pbr.base_color_texture() {
-        if let Some(input) = try_image_to_texture_input(&info.texture(), images, "base_color")? {
-            material = material.base_color_texture(input);
-        }
+        material = material.base_color_texture(image_to_texture_input(&info.texture(), images)?);
         // KHR_texture_transform on the base-color slot is the most common
         // usage of the extension; promote it to the Material's global
         // transform. The non-base-color slots warn-and-ignore — see the
@@ -760,27 +847,18 @@ fn build_material(
     }
     if let Some(info) = pbr.metallic_roughness_texture() {
         warn_unused_uv_transform(&info, "metallic_roughness");
-        if let Some(input) =
-            try_image_to_texture_input(&info.texture(), images, "metallic_roughness")?
-        {
-            material = material.metallic_roughness_texture(input);
-        }
+        material =
+            material.metallic_roughness_texture(image_to_texture_input(&info.texture(), images)?);
     }
-    if let Some(info) = gltf_material.normal_texture()
-        && let Some(input) = try_image_to_texture_input(&info.texture(), images, "normal")?
-    {
-        material = material.normal_texture(input);
+    if let Some(info) = gltf_material.normal_texture() {
+        material = material.normal_texture(image_to_texture_input(&info.texture(), images)?);
     }
-    if let Some(info) = gltf_material.occlusion_texture()
-        && let Some(input) = try_image_to_texture_input(&info.texture(), images, "occlusion")?
-    {
-        material = material.occlusion_texture(input);
+    if let Some(info) = gltf_material.occlusion_texture() {
+        material = material.occlusion_texture(image_to_texture_input(&info.texture(), images)?);
     }
     if let Some(info) = gltf_material.emissive_texture() {
         warn_unused_uv_transform(&info, "emissive");
-        if let Some(input) = try_image_to_texture_input(&info.texture(), images, "emissive")? {
-            material = material.emissive_texture(input);
-        }
+        material = material.emissive_texture(image_to_texture_input(&info.texture(), images)?);
     }
 
     Ok(material)
@@ -804,64 +882,74 @@ fn warn_unused_uv_transform(info: &gltf::texture::Info<'_>, slot: &str) {
     }
 }
 
-/// Convert a glTF image reference into a TextureInput the lazy Material
-/// setter will queue. Returns `Ok(None)` for unsupported pixel formats so
-/// the caller can skip that slot and the Material falls back to its 1×1
-/// default — losing the whole `Scene::load` to one stray 16-bit-per-channel
-/// PNG was the prior behavior and it's worse than silently degraded
-/// shading on a single map. Hard errors (missing image, mismatched byte
-/// counts) still bubble up.
-fn try_image_to_texture_input(
+/// Convert a glTF image reference into the TextureInput the lazy Material
+/// setter queues. Every pixel format the importer decodes converts to RGBA8,
+/// and an image with fewer bytes than its size needs is an error.
+fn image_to_texture_input(
     texture: &gltf::Texture<'_>,
     images: &[gltf::image::Data],
-    slot: &str,
-) -> Result<Option<TextureInput>, SceneLoadError> {
+) -> Result<TextureInput, SceneLoadError> {
     let image = images
         .get(texture.source().index())
         .ok_or_else(|| SceneLoadError::Invalid("glTF texture references missing image".into()))?;
-
-    let buffer = image.pixels.clone();
-    let rgba = match image.format {
-        gltf::image::Format::R8G8B8A8 => {
-            image::RgbaImage::from_raw(image.width, image.height, buffer).ok_or_else(|| {
-                SceneLoadError::Invalid(
-                    "glTF RGBA image has fewer bytes than width × height × 4".into(),
-                )
-            })?
-        }
-        gltf::image::Format::R8G8B8 => image::DynamicImage::ImageRgb8(
-            image::RgbImage::from_raw(image.width, image.height, buffer).ok_or_else(|| {
-                SceneLoadError::Invalid(
-                    "glTF RGB image has fewer bytes than width × height × 3".into(),
-                )
-            })?,
-        )
-        .to_rgba8(),
-        gltf::image::Format::R8 => image::DynamicImage::ImageLuma8(
-            image::GrayImage::from_raw(image.width, image.height, buffer).ok_or_else(|| {
-                SceneLoadError::Invalid(
-                    "glTF luminance image has fewer bytes than width × height".into(),
-                )
-            })?,
-        )
-        .to_rgba8(),
-        other => {
-            log::warn!(
-                "Scene::load skipping `{slot}` slot: glTF image format {other:?} is not yet supported by the loader; falling back to the Material's 1×1 default for this slot"
-            );
-            return Ok(None);
-        }
-    };
-
+    let rgba = decode_image(image)?;
     let sampler_options = map_sampler_options(&texture.sampler());
-    Ok(Some(TextureInput {
+    Ok(TextureInput {
         data: TextureData::Bytes(rgba.into_raw()),
         options: crate::TextureOptions {
             size: Some(crate::Size::from([image.width, image.height])),
             sampler: sampler_options,
             ..Default::default()
         },
-    }))
+    })
+}
+
+/// Decode imported glTF pixels into RGBA8.
+///
+/// The importer stores 16-bit and float pixels in native byte order,
+/// so those formats read their channels back with `from_ne_bytes`.
+fn decode_image(image: &gltf::image::Data) -> Result<image::RgbaImage, SceneLoadError> {
+    use gltf::image::Format;
+    use image::{DynamicImage, ImageBuffer, Luma, LumaA, Rgb, Rgba};
+    let (width, height) = (image.width, image.height);
+    let bytes = || image.pixels.clone();
+    let wide = || -> Vec<u16> {
+        let (pairs, _) = image.pixels.as_chunks::<2>();
+        pairs.iter().map(|pair| u16::from_ne_bytes(*pair)).collect()
+    };
+    let float = || -> Vec<f32> {
+        let (quads, _) = image.pixels.as_chunks::<4>();
+        quads.iter().map(|quad| f32::from_ne_bytes(*quad)).collect()
+    };
+    let decoded = match image.format {
+        Format::R8 => ImageBuffer::<Luma<u8>, _>::from_raw(width, height, bytes())
+            .map(DynamicImage::ImageLuma8),
+        Format::R8G8 => ImageBuffer::<LumaA<u8>, _>::from_raw(width, height, bytes())
+            .map(DynamicImage::ImageLumaA8),
+        Format::R8G8B8 => {
+            ImageBuffer::<Rgb<u8>, _>::from_raw(width, height, bytes()).map(DynamicImage::ImageRgb8)
+        }
+        Format::R8G8B8A8 => ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, bytes())
+            .map(DynamicImage::ImageRgba8),
+        Format::R16 => ImageBuffer::<Luma<u16>, _>::from_raw(width, height, wide())
+            .map(DynamicImage::ImageLuma16),
+        Format::R16G16 => ImageBuffer::<LumaA<u16>, _>::from_raw(width, height, wide())
+            .map(DynamicImage::ImageLumaA16),
+        Format::R16G16B16 => ImageBuffer::<Rgb<u16>, _>::from_raw(width, height, wide())
+            .map(DynamicImage::ImageRgb16),
+        Format::R16G16B16A16 => ImageBuffer::<Rgba<u16>, _>::from_raw(width, height, wide())
+            .map(DynamicImage::ImageRgba16),
+        Format::R32G32B32FLOAT => ImageBuffer::<Rgb<f32>, _>::from_raw(width, height, float())
+            .map(DynamicImage::ImageRgb32F),
+        Format::R32G32B32A32FLOAT => ImageBuffer::<Rgba<f32>, _>::from_raw(width, height, float())
+            .map(DynamicImage::ImageRgba32F),
+    };
+    decoded.map(|image| image.to_rgba8()).ok_or_else(|| {
+        SceneLoadError::Invalid(format!(
+            "glTF {:?} image has fewer bytes than {width} × {height} pixels need",
+            image.format
+        ))
+    })
 }
 
 /// Lift a glTF camera node into a FragmentColor [`Camera`]. The node's
@@ -1266,6 +1354,138 @@ mod tests {
         ]);
         let scene = Scene::load(bytes).expect("load");
         assert_eq!(scene.models().len(), 1);
+    }
+
+    /// A unit quad, four positions read through accessor 0, drawn as a strip.
+    const QUAD_JSON: &str = r#"{"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"mode":5}]}],"buffers":[{"byteLength":48}],"bufferViews":[{"buffer":0,"byteLength":48,"byteOffset":0}],"accessors":[{"bufferView":0,"byteOffset":0,"componentType":5126,"count":4,"type":"VEC3","min":[0.0,0.0,0.0],"max":[1.0,1.0,0.0]}],"asset":{"version":"2.0"}}"#;
+
+    /// Load the quad with `mode` and return the indices its mesh draws.
+    fn load_quad_indices(mode: &str) -> Vec<u32> {
+        #[rustfmt::skip]
+        let positions: [f32; 12] = [
+            0.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            1.0, 1.0, 0.0,
+        ];
+        let bin: Vec<u8> = positions.iter().flat_map(|f| f.to_le_bytes()).collect();
+        let json = QUAD_JSON.replace(r#""mode":5"#, mode);
+        let scene = Scene::load(build_glb(&json, &bin)).expect("load quad");
+        let models = scene.models();
+        let mesh = &models[0].mesh().object;
+        assert!(*mesh.indices_overridden.read(), "{mode} should set indices");
+        mesh.indices.read().clone()
+    }
+
+    #[test]
+    fn load_expands_a_triangle_strip() {
+        // Every second strip triangle swaps its first two corners, so both
+        // triangles keep the strip's winding.
+        assert_eq!(load_quad_indices(r#""mode":5"#), [0, 1, 2, 2, 1, 3]);
+    }
+
+    #[test]
+    fn load_expands_a_triangle_fan() {
+        assert_eq!(load_quad_indices(r#""mode":6"#), [0, 1, 2, 0, 2, 3]);
+    }
+
+    #[test]
+    fn load_refuses_points_and_lines() {
+        for (mode, name) in [
+            ("0", "Points"),
+            ("1", "Lines"),
+            ("2", "LineLoop"),
+            ("3", "LineStrip"),
+        ] {
+            let bytes = mutate_triangle(&[(MODE, &format!(r#""mode":{mode}}}"#))]);
+            assert_invalid(bytes, &format!("mode {name} is not supported"));
+        }
+    }
+
+    #[test]
+    fn load_refuses_an_attribute_shorter_than_positions() {
+        let bytes = mutate_triangle(&[
+            (ATTRIBUTES, r#"{"POSITION":0,"NORMAL":1}"#),
+            (
+                LAST_ACCESSOR,
+                r#""max":[0.5,0.5,0.0]},{"bufferView":2,"componentType":5126,"count":2,"type":"VEC3"}]"#,
+            ),
+        ]);
+        assert_invalid(bytes, "(NORMAL) holds 2 elements for 3 positions");
+    }
+
+    #[test]
+    fn load_refuses_an_index_past_the_last_vertex() {
+        // View 2 holds 0.5 floats, which read as u32 0x3F00_0000.
+        let bytes = mutate_triangle(&[
+            (MODE, r#""indices":1,"mode":4}"#),
+            (
+                LAST_ACCESSOR,
+                r#""max":[0.5,0.5,0.0]},{"bufferView":2,"componentType":5125,"count":3,"type":"SCALAR"}]"#,
+            ),
+        ]);
+        assert_invalid(bytes, "index 1056964608 points past the last of 3 vertices");
+    }
+
+    /// The minimal triangle with a base color texture read from an embedded PNG.
+    const TEXTURED_JSON: &str = r#"{"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"material":0,"mode":4}]}],"materials":[{"pbrMetallicRoughness":{"baseColorTexture":{"index":0}}}],"textures":[{"source":0}],"images":[{"bufferView":1,"mimeType":"image/png"}],"buffers":[{"byteLength":BUFFER_LENGTH}],"bufferViews":[{"buffer":0,"byteLength":36,"byteOffset":0},{"buffer":0,"byteLength":PNG_LENGTH,"byteOffset":36}],"accessors":[{"bufferView":0,"byteOffset":0,"componentType":5126,"count":3,"type":"VEC3","min":[-0.5,-0.5,0.0],"max":[0.5,0.5,0.0]}],"asset":{"version":"2.0"}}"#;
+
+    /// Load the textured triangle with `image` as its base color, and return
+    /// the first pixel of the texture its Material queued.
+    fn load_texture_pixel(image: image::DynamicImage) -> [u8; 4] {
+        let mut png = std::io::Cursor::new(Vec::new());
+        image
+            .write_to(&mut png, image::ImageFormat::Png)
+            .expect("encode PNG");
+        let png = png.into_inner();
+        #[rustfmt::skip]
+        let positions: [f32; 9] = [
+             0.0,  0.5, 0.0,
+            -0.5, -0.5, 0.0,
+             0.5, -0.5, 0.0,
+        ];
+        let mut bin: Vec<u8> = positions.iter().flat_map(|f| f.to_le_bytes()).collect();
+        bin.extend_from_slice(&png);
+        let json = TEXTURED_JSON
+            .replace("BUFFER_LENGTH", &bin.len().to_string())
+            .replace("PNG_LENGTH", &png.len().to_string());
+        while !bin.len().is_multiple_of(4) {
+            bin.push(0);
+        }
+        let scene = Scene::load(build_glb(&json, &bin)).expect("load textured triangle");
+        let models = scene.models();
+        let pending = models[0].material().shader().object.pending_textures.read();
+        assert_eq!(pending.len(), 1, "the base color texture should be queued");
+        match &pending[0].input.data {
+            TextureData::Bytes(bytes) => [bytes[0], bytes[1], bytes[2], bytes[3]],
+            other => panic!("expected decoded bytes, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn load_decodes_a_16_bit_gray_png() {
+        let white = image::ImageBuffer::from_pixel(2, 2, image::Luma([u16::MAX]));
+        let pixel = load_texture_pixel(image::DynamicImage::ImageLuma16(white));
+        assert_eq!(pixel, [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn load_decodes_a_gray_alpha_png() {
+        let gray = image::ImageBuffer::from_pixel(2, 2, image::LumaA([128u8, 64]));
+        let pixel = load_texture_pixel(image::DynamicImage::ImageLumaA8(gray));
+        assert_eq!(pixel, [128, 128, 128, 64]);
+    }
+
+    #[test]
+    fn decode_image_refuses_short_pixels() {
+        let image = gltf::image::Data {
+            pixels: vec![0; 6],
+            format: gltf::image::Format::R16,
+            width: 2,
+            height: 2,
+        };
+        let error = decode_image(&image).expect_err("6 bytes can't hold 4 pixels of R16");
+        assert!(error.to_string().contains("R16 image has fewer bytes"));
     }
 
     #[test]
