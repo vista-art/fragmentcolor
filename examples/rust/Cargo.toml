@@ -71,8 +71,8 @@ name = "tutorial_01_hello_triangle_instance_index"
 path = "../../docs/tutorials/01-hello-triangle/07-instance-index/example.rs"
 
 [[example]]
-name = "tutorial_eight_million_particles_splat"
-path = "../../docs/tutorials/eight-million-particles/01-splat/example.rs"
+name = "tutorial_particle_system_splat"
+path = "../../docs/tutorials/particle-system/01-splat/example.rs"
 
 [[example]]
 name = "tutorial_drawing_with_distance_coordinates"

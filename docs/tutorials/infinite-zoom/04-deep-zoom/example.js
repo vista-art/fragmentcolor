@@ -462,9 +462,9 @@ function log2Size(a) {
 // #endregion: reference
 
 // #region: steer
-// The zoom runs from the whole set down to 10^-DEPTH and back on its own. While
-// the pointer moves, and for two seconds after, the pointer's vertical position
-// picks the depth, deepest at the top. Returns the zoom in doublings.
+// The zoom runs from the whole set down to 10^-DEPTH and back on its own.
+// While the pointer moves, and for two seconds after, its height sets the speed:
+// the view dives above the middle and climbs below it. Returns the zoom in doublings.
 function steer(state, time, size, [x, y]) {
   // A clock that starts over, as when a paused page resumes, forgets the pointer.
   if (state.last !== null && time < state.last) state.moved = -Infinity;
@@ -475,8 +475,10 @@ function steer(state, time, size, [x, y]) {
   if (state.pointer && (x !== state.pointer[0] || y !== state.pointer[1])) state.moved = time;
   state.pointer = [x, y];
   if (time - state.moved < 2) {
-    const goal = (1 - y / size[1]) * deepest;
-    state.zoom += (goal - state.zoom) * Math.min(1, delta * 4);
+    // The speed grows toward the edges, up to four times SPEED, and a band across the middle holds still.
+    const lean = 1 - (2 * y) / size[1];
+    const push = (Math.sign(lean) * Math.max(Math.abs(lean) - 0.1, 0)) / 0.9;
+    state.zoom += push * 4 * SPEED * delta;
   } else {
     state.zoom += state.direction * SPEED * delta;
     if (state.zoom >= deepest) state.direction = -1;

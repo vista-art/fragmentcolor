@@ -1,4 +1,4 @@
-// Geometry for the Eight million particles figures, computed from the same formulas as the shaders.
+// Geometry for the particle system figures, computed from the same formulas as the shaders.
 
 import { random } from "./01-hello-triangle";
 

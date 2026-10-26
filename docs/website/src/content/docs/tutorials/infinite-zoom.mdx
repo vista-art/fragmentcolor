@@ -1,5 +1,5 @@
 ---
-title: Infinite Mandelbrot zoom
+title: Infinite Fractal Zoom
 description: From one CPU image of the Mandelbrot set to a real-time zoom down to 1e-1000, with K. I. Martin's perturbation method and a compute shader.
 draft: false
 tableOfContents: false
@@ -13,6 +13,30 @@ import Math from "../../../components/Math.astro";
 import Figure from "../../../components/Figure.astro";
 import { Arrow, Dot, Label, Line, Path, Rect, Ring } from "../../../components/figure";
 import { blocks, captures, ladder, orbits, palette, passes, perturbation, pixels, printout, series } from "../../../figures/infinite-zoom";
+
+Have you ever wondered what imaginary numbers look like?
+
+Me neither, but it turns out they form beautiful shapes when you multiply them in sequence and organize them into a set based on how they behave. We will build a Mandelbrot Fractal together, make it zoomable until we hit a limit on your computer, then overcome that limit with clever maths to make it **infinitely** zoomable.
+
+## An eternal shape nobody could see
+
+Around 1918, Pierre Fatou and Gaston Julia studied what repeating a function like this one does to each starting point. They had proofs and pencils. A picture was out of reach: a single image of the set takes millions of these steps, and a person with paper might manage a few dozen points in an afternoon.
+
+Robert Brooks and Peter Matelski printed [a rough picture of the set](https://doi.org/10.1515/9781400881550-007) in 1978, one character at a time.
+
+<Figure height={printout.height} alt="A re-creation of Brooks and Matelski's 1978 printout: the Mandelbrot set drawn as rows of asterisks." caption="A re-creation of Brooks and Matelski's 1978 printout of the Mandelbrot set, drawn as rows of asterisks (Figure 2 of their paper).">
+  {printout.runs.map(({ x, y, text, width }) => <text x={x} y={y} textLength={width} lengthAdjust="spacing" style="fill: var(--fig-ink); font-family: var(--__sl-font-mono, ui-monospace, monospace); font-size: 15px">{text}</text>)}
+</Figure>
+
+Two years later, Benoit Mandelbrot made it famous in his paper [FRACTAL ASPECTS OF THE ITERATION OF z →Λz(1- z) FOR COMPLEX Λ AND z](https://doi.org/10.1111/j.1749-6632.1980.tb29690.x), and then Adrien Douady and John Hubbard, who proved that the set is connected, named it after him.
+
+Mandelbrot proved that there are geometrical objects, which he called Fractals, that are infinitely rough on all edges at any scale. Yet, these shapes are older than anyone in this story: They are eternal structures that humans discovered after some exploration. This story is important to computer science because we could only see these shapes with a computer. Visualizing them requires plotting millions of points in a plane, and computers are the tool that makes it possible.
+
+<Figure src="/tutorials/infinite-zoom/benoit-mandelbrot.webp" width={600} height={799} narrow alt="Benoit Mandelbrot speaking at TED in 2010: an older man with white hair and wire-rimmed glasses, in a dark jacket and white shirt, raising one hand as he talks." caption="Benoit Mandelbrot at TED in 2010.">
+  <span slot="credit">Photo by <a href="https://www.flickr.com/photos/jurvetson/4770047266/">Steve Jurvetson</a>, cropped and resized, <a href="https://creativecommons.org/licenses/by/2.0/">CC BY 2.0</a>.</span>
+</Figure>
+
+## Drawing the fractal
 
 The Mandelbrot set comes from one rule. It takes a complex number <Math tex="c" />, starts from <Math tex="z_0 = 0" />, and repeats
 
@@ -44,29 +68,7 @@ A complex number is a point in the plane: <Math tex="x + yi" /> is the point <Ma
 
 Coloring each point of the plane by how many steps its orbit takes to escape draws a coastline of bulbs, spirals and filaments, with small, slightly distorted copies of the whole set at every magnification.
 
-This tutorial builds a viewer for it in four steps. A single picture on the CPU comes first. Next, the same computation moves to the GPU, where rounding breaks the picture near `1e-6`. K. I. Martin's perturbation method then gets to `1e-35`, and a final step reaches `1e-1000` in real time. Those numbers measure the height of the view: at `1e-1000`, the canvas shows a strip of the plane <Math tex="10^{-1000}" /> units tall.
-
-## A shape nobody could see
-
-Around 1918, Pierre Fatou and Gaston Julia studied what repeating a function like this one does to each starting point. They had proofs and pencils. A picture was out of reach: a single image of the set takes millions of these steps, and a person with paper might manage a few dozen points in an afternoon.
-
-Robert Brooks and Peter Matelski printed [a rough picture of the set](https://doi.org/10.1515/9781400881550-007) in 1978, one character at a time.
-
-<Figure height={printout.height} alt="A re-creation of Brooks and Matelski's 1978 printout: the Mandelbrot set drawn as rows of asterisks. A rough cardioid sits on the right with a round bulb on its left, and a few separate specks of asterisks lie around them, where the coarse grid catches small copies of the set." caption="A re-creation, in the style of the first picture of the set: an asterisk for every `c` whose orbit settles on a stable cycle. The original is Figure 2 of Brooks and Matelski's paper.">
-  {printout.runs.map(({ x, y, text, width }) => <text x={x} y={y} textLength={width} lengthAdjust="spacing" style="fill: var(--fig-ink); font-family: var(--__sl-font-mono, ui-monospace, monospace); font-size: 15px">{text}</text>)}
-</Figure>
-
-Two years later, [computer plots](https://doi.org/10.1111/j.1749-6632.1980.tb29690.x) by Benoit Mandelbrot made it famous, and Adrien Douady and John Hubbard, who proved that the set is connected, named it after him. Yet the shape is older than everyone in this story. Its spirals follow from <Math tex="z^2 + c" /> the way the primes follow from multiplication, so they existed before anyone wrote the rule down. People discovered the set; computers made it visible.
-
-<Figure src="/tutorials/infinite-zoom/benoit-mandelbrot.webp" width={600} height={799} narrow alt="Benoit Mandelbrot speaking at TED in 2010: an older man with white hair and wire-rimmed glasses, in a dark jacket and white shirt, raising one hand as he talks." caption="Benoit Mandelbrot at TED in 2010.">
-  <span slot="credit">Photo by <a href="https://www.flickr.com/photos/jurvetson/4770047266/">Steve Jurvetson</a>, cropped and resized, <a href="https://creativecommons.org/licenses/by/2.0/">CC BY 2.0</a>.</span>
-</Figure>
-
-## Running the code
-
-Each step is a complete program in five languages, in [`docs/tutorials/infinite-zoom`](https://github.com/vista-art/fragmentcolor/tree/main/docs/tutorials/infinite-zoom). The Rust versions are examples of the repository's `fce` crate, so `./fc example --release tutorial_infinite_zoom_one_image` runs the first one. In a project of your own they need `fragmentcolor` with its `winit` feature, plus `winit` 0.30, `parking_lot`, `env_logger`, `bytemuck`, `image`, `num-bigint` and `num-traits`.
-
-From step 2 on, the other four languages split each program into two functions: `setup`, called once, and `frame`, called on every display refresh with the time, the canvas size and the pointer position in pixels. The canvases on this page call the JavaScript ones, and the [playground](/welcome/playground/)'s `index.js` tab shows a page that does the same. For Python, `docs/tutorials/infinite-zoom/host.py` opens a window (`pip install fragmentcolor rendercanvas glfw`). Swift and Kotlin apps call the two functions from their render loop; steps 3 and 4 in Swift also need the [BigInt](https://github.com/attaswift/BigInt) package.
+This tutorial builds a viewer for it in four steps. A single picture on the CPU comes first. Next, the same computation moves to the GPU, where rounding breaks the picture near `1e-6`. K. I. Martin's perturbation method then gets to `1e-35`, and a final step reaches `1e-1000` in real time. Those numbers measure the height of the view: at `1e-1000`, the canvas shows a strip of the plane <Math tex="10^{-1000}" /> units tall. Each step is a complete program in [`docs/tutorials/infinite-zoom`](https://github.com/vista-art/fragmentcolor/tree/main/docs/tutorials/infinite-zoom).
 
 ## Step 1: one image on the CPU
 
@@ -140,15 +142,15 @@ Constants at the top set the target and the pace. `TARGET` is a spiral in Seahor
   <Label at={captures.overview([-1, 0])} small>bulb</Label>
 </Figure>
 
-The host builds the shader from a list of sources and joins them into one program. `"gradient/palette_iq"` is a **slug**: the name of a function in FragmentColor's [shader library](/shaders/). `LABEL` holds `print_depth`, and `SHADER` is the code above. Rust's `Shader::new` finds slugs in a copy of the library inside the crate, while JavaScript's `Shader.fetch` may download them and returns a promise. `set` finds a uniform by name: `view.center` is the `center` field of the `var<uniform>` called `view`.
+At startup, `setup` (`Zoom::new` in Rust) builds the shader from a list of sources and joins them into one program. `"gradient/palette_iq"` is a **slug**: the name of a function in FragmentColor's [shader library](/shaders/). `LABEL` holds `print_depth`, and `SHADER` is the code above. Rust's `Shader::new` finds slugs in a copy of the library inside the crate, while JavaScript's `Shader.fetch` may download them and returns a promise. `set` finds a uniform by name: `view.center` is the `center` field of the `var<uniform>` called `view`.
 
 <Snippet file="infinite-zoom/02-on-the-gpu/example.rs" region="setup" />
 
-`zoom` counts doublings. Adding 1 to it halves the view's height, which is <Math tex="\mathit{START} \cdot 2^{-\mathit{zoom}}" />. Each frame, `steer` moves `zoom` by `SPEED` doublings per second of elapsed time, and the shader receives the new height and depth:
+`zoom` counts doublings. Adding 1 to it halves the view's height, which is <Math tex="\mathit{START} \cdot 2^{-\mathit{zoom}}" />. `frame` runs on every display refresh. In it, `steer` moves `zoom` by `SPEED` doublings per second of elapsed time, and the shader receives the new height and depth:
 
 <Snippet file="infinite-zoom/02-on-the-gpu/example.rs" region="frame" />
 
-On its own, `steer` runs the zoom from the whole set down to a view <Math tex="10^{-\mathit{DEPTH}}" /> tall and back. While the pointer moves over the canvas, its vertical position picks the depth instead, deepest at the top:
+On its own, `steer` runs the zoom from the whole set down to a view <Math tex="10^{-\mathit{DEPTH}}" /> tall and back. While the pointer moves over the canvas, its height sets the speed instead. Above the middle the view dives, below it the view climbs, and the speed grows toward the edges, up to four times `SPEED`:
 
 <Snippet file="infinite-zoom/02-on-the-gpu/example.rs" region="steer" />
 
@@ -214,7 +216,7 @@ Every sum in this rule adds small numbers to small numbers. <Math tex="Z_n" /> e
 
 The zoom's reference is a **Misiurewicz point**: after 24 steps, its orbit enters a cycle of period 2 and repeats it forever. Around such a point the set looks nearly the same at every depth, a spiral inside a spiral, so the zoom always has structure to show. Sixteen digits locate this one. Newton's method, in `refine`, improves them to as many as the deepest view needs, each round doubling the number of correct ones; on a first read, `refine` can stay a black box.
 
-Those digits need more room than any float has. On the CPU, the reference stores them in integers of any size: `BigInt` in JavaScript, the `num-bigint` crate in Rust, `int` in Python, `BigInteger` in Kotlin and the BigInt package in Swift. A `BigInt` value `n` stands for <Math tex="n / 2^{\mathit{bits}}" />. A product of two such values has the factor <Math tex="2^{\mathit{bits}}" /> twice, and a right shift by `bits` removes one of them. `bits` is the deepest view's depth in binary digits plus 80 spare ones, which keeps rounding far below one pixel.
+Those digits need more room than any float has. On the CPU, the reference stores them in integers of any size: `BigInt` in JavaScript, the `num-bigint` crate in Rust, `int` in Python, `BigInteger` in Kotlin and the [BigInt](https://github.com/attaswift/BigInt) package in Swift. A `BigInt` value `n` stands for <Math tex="n / 2^{\mathit{bits}}" />. A product of two such values has the factor <Math tex="2^{\mathit{bits}}" /> twice, and a right shift by `bits` removes one of them. `bits` is the deepest view's depth in binary digits plus 80 spare ones, which keeps rounding far below one pixel.
 
 The host converts each <Math tex="Z_n" /> to `f32` as it goes. Inside the integers, every right shift also drops bits. That error grows along the orbit like the derivative <Math tex="dZ_n/dc" />, kept in `dr` and `di`, and the loop ends before it reaches <Math tex="2^{-40}" />.
 
@@ -354,7 +356,7 @@ Near `1e-1000`, the series skips about 32,140 of roughly 32,270 steps. A typical
 
 The iteration moves into a **compute shader**: GPU code that runs as a grid of invocations and writes its results to memory, with no triangles involved. Splitting the work this way lets the expensive part run at a lower resolution on a large screen, while a cheap second shader turns its results into colors. `@workgroup_size(8, 8)` groups the invocations into tiles of 8 by 8, `global_invocation_id` tells each one which pixel it handles, and the host's `set_compute_dispatch` (`setComputeDispatch` in JavaScript) asks for enough tiles to cover the image. Each invocation writes one smooth count into a storage buffer, `counts`.
 
-FragmentColor runs shaders in **passes**. A `Pass` holds shaders that draw or compute together, and `render` takes a list of passes and runs them in order; steps 2 and 3 handed `render` a lone `Shader`, which acts as a pass of its own. Any pass whose shader has a `@compute` entry point runs as a compute pass. The second pass reads `counts` and colors each pixel, with the palette's density and phase and the inside color as its uniforms. Comments such as `// 100..5000` give the playground's sliders their ranges.
+FragmentColor runs shaders in **passes**. A `Pass` holds shaders that draw or compute together, and `render` takes a list of passes and runs them in order; steps 2 and 3 handed `render` a lone `Shader`, which acts as a pass of its own. Any pass whose shader has a `@compute` entry point runs as a compute pass. The second pass reads `counts` and colors each pixel, with the palette's density and phase and the inside color as its uniforms. Comments such as `// 100..5000` give the [playground](/#mandelbrot)'s sliders their ranges.
 
 <Figure height={270} alt="A flow from left to right. The compute pass, iterate.wgsl, runs one invocation per pixel, drawn as a grid of small squares grouped into workgroups of 8 by 8. An arrow leads to the storage buffer counts, which holds one number per pixel. A second arrow leads to the render pass, present.wgsl, and an arrow down from it reaches the canvas." caption="`iterate.wgsl` writes one smooth count per pixel into `counts`, and `present.wgsl` reads the same buffer to color the canvas.">
   <Rect at={[20, 30]} size={[210, 200]} tone="accent" />
@@ -387,7 +389,7 @@ Both passes declare `counts` with the same size, so FragmentColor binds one buff
 
 <Demo file="infinite-zoom/04-deep-zoom/example.rs" />
 
-With the pointer at the top of the canvas, the view reaches `1e-1000` in about two seconds. The spiral there looks like the one at `1e-10`. That likeness is the reason to aim at a Misiurewicz point.
+At `1e-1000`, the spiral looks like the one at `1e-10`. That likeness is the reason to aim at a Misiurewicz point.
 
 <Figure height={219} alt="Two captures of step 4 side by side, labeled 1e-10 on the left and 1e-1000 on the right. Both show the same shape: a spiral wound around the center, with smaller spirals branching off its arms." caption="The spiral at `1e-10` and at `1e-1000`.">
   <image href="/tutorials/infinite-zoom/spiral-10.webp" x="8" y="8" width="348" height="203" />
@@ -398,7 +400,7 @@ How close are these pictures to the truth? A slow `BigInt` computation of the sa
 
 ## Where to go next
 
-The [playground](/welcome/playground/#mandelbrot) runs the last program with both shaders and the host open for editing, in any of the five languages. Some changes to try there:
+The [playground](/#mandelbrot) runs the last program with both shaders and its JavaScript host open for editing. Some changes to try there:
 
 - Set `TARGET` to another Misiurewicz point. Other preperiods and periods work, as long as the sixteen digits start close enough for Newton's method; from too far away, it can settle on a nearby point with a shorter preperiod or period.
 - Raise `DEPTH`. Each extra power of ten adds about 32 orbit iterations to `setup`, each on wider integers. Past roughly `1e-2000`, the orbit needs a larger `ORBIT`. The GPU work per frame stays the same.

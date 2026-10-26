@@ -150,9 +150,9 @@ def frame(state, renderer, target, time, size, pointer):
 
 
 # #region: steer
-# The zoom runs from the whole set down to 10^-DEPTH and back on its own. While
-# the pointer moves, and for two seconds after, the pointer's vertical position
-# picks the depth, deepest at the top. Returns the zoom in doublings.
+# The zoom runs from the whole set down to 10^-DEPTH and back on its own.
+# While the pointer moves, and for two seconds after, its height sets the speed:
+# the view dives above the middle and climbs below it. Returns the zoom in doublings.
 def steer(state, time, size, pointer):
     # A clock that starts over forgets the pointer.
     if state.last is not None and time < state.last:
@@ -165,8 +165,10 @@ def steer(state, time, size, pointer):
         state.moved = time
     state.pointer = list(pointer)
     if time - state.moved < 2:
-        goal = (1 - pointer[1] / size[1]) * deepest
-        state.zoom += (goal - state.zoom) * min(1.0, delta * 4)
+        # The speed grows toward the edges, up to four times SPEED, and a band across the middle holds still.
+        lean = 1 - 2 * pointer[1] / size[1]
+        push = math.copysign(max(abs(lean) - 0.1, 0.0) / 0.9, lean)
+        state.zoom += push * 4 * SPEED * delta
     else:
         state.zoom += state.direction * SPEED * delta
         if state.zoom >= deepest:

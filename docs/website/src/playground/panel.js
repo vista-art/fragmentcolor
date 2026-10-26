@@ -261,12 +261,12 @@ const STYLE = `
 .fcp-picker-title .fcp-picker-prefix {
   font-size: 0.6875rem;
 }
-/* The demo picker drops down from its button and fits the room below it.
-   Its cards show wide thumbnails over the demo titles. */
+/* The demo picker drops down from its button at the end of the demo row and
+   fits the room below it. Its cards show wide thumbnails over the demo titles. */
 .fcp-picker.fcp-demo-picker {
   top: calc(100% + 4px);
-  left: 0;
-  right: auto;
+  left: auto;
+  right: 0;
   margin: 0;
   width: min(var(--fcp-picker-width, 46rem), var(--fcp-picker-room-x, 100vw));
   max-height: min(36rem, var(--fcp-picker-room-y, 78vh));

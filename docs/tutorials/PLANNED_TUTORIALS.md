@@ -21,7 +21,7 @@ order and the rough ideas. A tutorial moves out of here when it ships.
 |---|---|---|---|
 | 10 | Hello, million triangles! | | Written; student, technical and prose reviews passed |
 | 20 | Drawing with distance | Shapes | Written; student, technical and prose reviews passed |
-| 70 | Eight million particles | | Written; student, technical and prose reviews passed |
+| 70 | A particle system | | Written; student, technical and prose reviews passed |
 | 90 | Infinite Mandelbrot zoom | Mandelbrot (new) | Written; reviews passed |
 
 A fourth tutorial joins the launch only if it says something essential that the
@@ -51,7 +51,7 @@ other three leave out.
 
 ### Part 3: many things at once
 
-- **70. Eight million particles.** Compute shaders, storage buffers shared by name,
+- **70. A particle system.** Compute shaders, storage buffers shared by name,
   `atomicAdd`, and a full-screen draw that turns a count per cell into light.
 - **80. Life.** Several compute passes in a row, a density grid, `atomicAdd`, and
   how simple rules between species grow into colonies. Closes on the Life demo.

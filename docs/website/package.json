@@ -12,6 +12,7 @@
     "build": "astro check && astro build",
     "build:vercel": "astro build",
     "preview": "astro preview",
+    "test": "node --test tests/*.test.ts",
     "astro": "astro"
   },
   "dependencies": {

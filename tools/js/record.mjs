@@ -3,7 +3,7 @@
 // A recording script is a module whose default export describes the take:
 //
 //   export default {
-//     page: "/welcome/playground/#cells",  // path on the docs server
+//     page: "/#cells",  // path on the docs server
 //     element: "fc-playground",            // what the frames show
 //     width: 928,                          // the element's width in pixels
 //     viewportHeight: 760,                 // the playground sizes itself to the window
