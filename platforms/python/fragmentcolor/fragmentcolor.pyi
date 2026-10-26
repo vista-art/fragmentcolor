@@ -241,6 +241,10 @@ class Renderer:
         alone. Await `load` before the first `render`. Until then, a PBR Material
         draws with its 1×1 default maps.
 
+        In JavaScript, `load` first waits for the frames rendered before it to
+        report their GPU errors, and throws the first one, as
+        [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render) describes.
+
         Example:
 
         ```python
@@ -287,6 +291,13 @@ class Renderer:
         materialized the GPU-side buffer (storage buffers are allocated lazily on
         first bind).
 
+        In JavaScript, `readStorage` waits for the frames rendered before it to
+        report their GPU errors and throws the first one, as
+        [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render)
+        describes. An error throws only once, so when another call, such as the next
+        `render`, has already thrown it, `readStorage` returns the bytes the failed
+        frame left behind.
+
         Example:
 
         ```python
@@ -323,11 +334,13 @@ class Renderer:
 
         A window that is hidden or minimized has no frame to draw on. `render` then returns `RendererError::SurfaceError(SurfaceError::Occluded)`, which Python raises as `OccludedSurfaceError`, a `FragmentColorError`. Skip that frame and draw the next one.
 
-        A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input.
+        A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input. Meshes feed only `@location` arguments of the vertex entry point, so when a shader takes its inputs as members of a struct, the error names the member instead.
 
-        `render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail validation, it returns `RendererError::ValidationError`, labeled with the render pipeline, the compute pipeline or the frame, and presents nothing from that frame. A pipeline that failed is never kept, and the next frame returns the same error.
+        `render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail, it returns `RendererError::ValidationError`, labeled with the step that failed: the render pipeline, the compute pipeline, the frame, or a bind group or texture view inside the frame. That covers validation errors, internal errors such as a shader the backend compiler refuses, and running out of memory. When one error causes another, `render` returns the first. In Rust, Python, Swift and Kotlin, a pipeline that failed is never kept, and the next frame builds it again and returns the same error.
 
-        JavaScript gets these errors one call late. WebGPU reports them after `render` has returned, so the next `render`, `load`, `readTexture`, `readStorage` or `getImage` throws the error as an `Error` before doing any work. Each error throws once, and when several land before that call, the first one does. A shader whose pipeline failed reports an error again after each frame it draws.
+        A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. A shader without its mesh and an instance count past the mesh's instances fail before `render` takes a frame, and the window keeps its last image.
+
+        JavaScript gets the GPU's errors late, because WebGPU reports them after `render` has returned. Each error logs a `console.error` when it lands, and the next `render` throws the first one as an `Error` before doing any work. `load`, `readTexture`, `readStorage`, and `getImage` on a `Texture` or `TextureTarget` wait for the frames before them to report, so they throw a frame's error even when called right after it. Only the first error to land throws, and only once; the ones that land after it, before a call takes it, only log. The label names the render pipeline, the compute pipeline or the frame. A pipeline that failed stays in the cache until its error lands, and a frame that draws with it before then reports a frame error. Once the error lands, the pipeline leaves the cache. In a loop that renders each frame, the next `render` throws the error before doing any work, and the one after it builds the pipeline again and reports the same error.
 
         Example:
 
@@ -428,6 +441,7 @@ class Renderer:
         - The texture must have `COPY_SRC` usage. Creation helpers like `create_storage_texture` enable it by default.
         - GLES and WebGL2 can't copy a depth texture to a buffer, so reading one back there returns `TextureError::Readback`. So does a texture whose readback needs a buffer past the device's largest, `max_buffer_size`.
         - A block-compressed texture, such as one loaded from a BC7 or ASTC KTX2 file, has no size per pixel, so reading it back is an `InvalidInput` error.
+        - In JavaScript, `readTexture` first waits for the frames rendered before it to report their GPU errors and throws the first one, as [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render) describes.
 
         Example:
 
@@ -740,6 +754,7 @@ class Shader:
         - On success, the mesh is attached, its attributes keep those types for as long as the mesh lives, and it is drawn when this shader renders.
         - On a missing attribute or a value that doesn't fit, the error names the attribute, the declared type and the value, or the vertex or instance that lacks it. The mesh isn't attached and records no type.
         - A shader that declares another type for an attribute an earlier shader already typed on this mesh fails to attach.
+        - A mesh feeds only the `@location` arguments of the vertex entry point. A shader that takes a struct argument with `@location` members rejects every mesh with `ShaderError::InvalidKey` naming the member, and so does a shader with no `@location` inputs.
 
         ## See also
 
@@ -3130,7 +3145,12 @@ class Model:
         """
         Toggle the Model in or out of the next frame. Hidden Models are skipped
         by the renderer in both the opaque-batched and blend-sorted draw paths;
-        no Pass rebuild needed.
+        no Pass rebuild needed. Hiding a Model hides what its Material draws, and
+        each shader that draws any of the pass's Models skips the hidden Model's Mesh.
+        A shader of your own that draws none of them, such as an outline, still draws
+        the Mesh when it reads no Model columns (`model_0` to `model_3`). One that
+        reads them makes `Renderer::render` return `MeshError::InvalidInstance`,
+        whether the Model is hidden or not.
 
         The flag is Arc-shared with `ModelEntry` (the renderer's queue), so
         toggles take effect on the very next `Renderer::render` call. Cheap:
@@ -4125,7 +4145,13 @@ class Material:
           the Model's transform. The renderer fills them at draw time from each
           Model's `set_transform`, `translate`, `rotate` and `scale`. The PBR shader
           reads them at locations 3 to 6. Any free locations work, since the renderer
-          matches these inputs by name.
+          matches these inputs by name. It fills them for each visible Model that a
+          pass draws through this shader. A Model's Mesh that no visible Model in the
+          pass draws through it, such as a hidden Model's, or one in another pass that
+          shares the Material, draws nothing. A shader that draws none of the pass's
+          Models and reads these columns for a Model's Mesh, such as this Material's
+          shader rendered on its own, makes `Renderer::render` return
+          `MeshError::InvalidInstance`.
 
         Without these the Material still draws. The factor setters do nothing, and
         every Model draws at its Mesh's own coordinates, whatever its transform.
@@ -5064,6 +5090,7 @@ class Texture:
         - GLES and WebGL2 can't copy a depth texture to a buffer, so reading one back there returns `TextureError::Readback`. So does a texture whose readback needs a buffer past the device's largest, `max_buffer_size`.
         - A block-compressed texture, such as one loaded from a BC7 or ASTC KTX2 file, has no size per pixel, so reading it back is an `InvalidInput` error.
         - Python returns the same bytes as a uint8 NumPy array shaped `(height, width, bytes per pixel)`, with a leading layer axis for array textures. A float format reads as floats through a view: `image.view(numpy.float16)` for `Rgba16Float`, the format an HDR file decodes into, and `image.view(numpy.float32)` for `Rgba32Float`.
+        - In JavaScript, `getImage` first waits for the frames rendered before it to report their GPU errors and throws the first one, as [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render) describes.
 
         Example:
 
@@ -5343,6 +5370,8 @@ class TextureTarget:
         Python returns a NumPy array of shape `(height, width, 4)`, indexed `image[y, x]`. That is the layout `Renderer.create_texture` reads, so `renderer.create_texture(target.get_image())` uploads the same image.
 
         A readback that fails or times out, or that needs a buffer past the device's largest, returns an error: a thrown `Error` in JavaScript, a `FragmentColorError` in Python and Swift, and a `FragmentColorException` in Kotlin.
+
+        In JavaScript, `getImage` also throws the GPU error of a frame rendered before it. It waits for that frame to report first, so a call right after a failed `render` throws, as [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render) describes.
 
         Example:
 

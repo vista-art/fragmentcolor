@@ -702,11 +702,93 @@ mod website {
         );
         js_out.push_str("const EXAMPLES = [\n");
         for rel in &js_list {
-            js_out.push_str(&format!("  '../examples/{}',\n", rel));
+            let rel_norm = rel.replace('\\', "/");
+            let stem = rel_norm.strip_suffix(".js").unwrap_or(&rel_norm);
+            js_out.push_str(&format!(
+                "  ['../examples/{}', '{}'],\n",
+                rel_norm,
+                example_page(stem)
+            ));
         }
         js_out.push_str("]\n\n");
         js_out.push_str("function fq(rel){ return 'platforms.web.examples.' + rel.replace('../examples/','').replace(/\\\\.js$/, '').replaceAll('/', '.'); }\n");
-        js_out.push_str("export async function runExamples() {\n  const total = EXAMPLES.length;\n  let passed = 0;\n  let failed = 0;\n  console.log(`running ${total} tests`);\n  globalThis.__HC = globalThis.__HC || { currentModule: null };\n  for (const rel of EXAMPLES) {\n    const name = fq(rel);\n    const head = `test ${name} ... `;\n    try {\n      globalThis.__HC.currentModule = name;\n      await import(rel);\n      passed++;\n      console.log(head + GREEN + 'OK' + RESET);\n    } catch (e) {\n      failed++;\n      console.log(head + RED + 'FAILED' + RESET);\n      console.error(e);\n    } finally {\n      globalThis.__HC.currentModule = null;\n    }\n  }\n  return { passed, failed };\n}\n");
+        // WebGPU reports an example's GPU errors after its calls return. The runner waits
+        // for the error scopes each example opened before it starts the next one, so a
+        // late error fails the example that caused it and names its `docs/api` page.
+        js_out.push_str(
+            r#"
+// The error scopes WebGPU has yet to resolve.
+const pending = new Set();
+
+// Counts each popErrorScope until its promise settles.
+function trackScopes() {
+  const device = globalThis.GPUDevice;
+  if (!device || device.prototype.popErrorScope.__fcTracked) return;
+  const pop = device.prototype.popErrorScope;
+  const tracked = function () {
+    const promise = pop.call(this);
+    pending.add(promise);
+    const forget = () => pending.delete(promise);
+    promise.then(forget, forget);
+    return promise;
+  };
+  tracked.__fcTracked = true;
+  device.prototype.popErrorScope = tracked;
+}
+
+// Waits until every open scope has resolved and the library has logged what it caught.
+// The rounds are capped, so an example that keeps rendering can't hold the run.
+async function settleScopes() {
+  for (let round = 0; round < 100 && pending.size > 0; round++) {
+    await Promise.allSettled([...pending]);
+  }
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+export async function runExamples() {
+  const total = EXAMPLES.length;
+  let passed = 0;
+  let failed = 0;
+  console.log(`running ${total} tests`);
+  globalThis.__HC = globalThis.__HC || { currentModule: null };
+  trackScopes();
+  const consoleError = console.error;
+  let logged = [];
+  console.error = (...args) => {
+    logged.push(args.map(String).join(' '));
+    consoleError.apply(console, args);
+  };
+  try {
+    for (const [rel, page] of EXAMPLES) {
+      const name = fq(rel);
+      const head = `test ${name} ... `;
+      logged = [];
+      let problem = null;
+      try {
+        globalThis.__HC.currentModule = name;
+        await import(rel);
+      } catch (e) {
+        problem = e;
+      }
+      await settleScopes();
+      globalThis.__HC.currentModule = null;
+      if (problem === null && logged.length > 0) problem = logged.join('\n');
+      if (problem === null) {
+        passed++;
+        console.log(head + GREEN + 'OK' + RESET);
+      } else {
+        failed++;
+        console.log(head + RED + 'FAILED' + RESET);
+        console.error(`${page}:`, problem);
+      }
+    }
+  } finally {
+    console.error = consoleError;
+  }
+  return { passed, failed };
+}
+"#,
+        );
         let _ = super::meta::write_if_changed(&js_path, &js_out);
 
         // Sort and write Python aggregator

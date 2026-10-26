@@ -677,28 +677,55 @@ struct Data { items: array<vec4<f32>, 2> };
       renderer.createStorageTexture([4, 4], TextureFormat.Rgba, null, 32));
 });
 
-// WebGPU reports a GPU error after render returns, so the next call throws it, once.
+// WebGPU reports a GPU error after render returns. Each one logs a console.error as it
+// lands, and the next render throws it, once. A readback or load waits for it and throws it.
 await withModule('platforms.web.healthcheck.late_errors', async () => {
     const renderer = new Renderer();
     const target = await renderer.createTextureTarget([8, 8]);
     const fail = (message) => { throw new Error(message); };
     const pause = () => new Promise((resolve) => setTimeout(resolve, 10));
+    // Checks that `run` throws the frame's error as an Error, with the text render throws.
+    const throwsLate = async (label, run) => {
+      try { await run(); } catch (e) {
+        if (!(e instanceof Error)) fail(`${label} threw a ${typeof e}, not an Error`);
+        if (!e.message.startsWith('GPU validation error')) fail(`${label} threw: ${e.message}`);
+        return console.log(`${label} threw:`, e.message);
+      }
+      fail(`${label} never reported the failed frame`);
+    };
     // Calls `run` until the error lands and it throws, then checks what it threw.
     const surfaces = async (label, run) => {
       for (let attempt = 0; attempt < 200; attempt++) {
         await pause();
         try { await run(); } catch (e) {
-          if (!(e instanceof Error)) fail(`${label} threw a ${typeof e}, not an Error`);
-          if (!e.message.includes('GPU validation error')) fail(`${label} threw: ${e.message}`);
-          return console.log(`${label} threw:`, e.message);
+          return throwsLate(label, () => { throw e; });
         }
       }
       fail(`${label} never reported the failed frame`);
     };
 
-    // The fragment stage reads @location(0), which the vertex stage never writes,
-    // so the shader parses and only its pipeline fails.
-    const unfed = new Shader(`
+    // A late error fails the run anywhere else, through its console.error.
+    // This module expects them, so it collects them instead.
+    const logged = [];
+    const consoleError = console.error;
+    console.error = (...args) => {
+      const text = args.map(String).join(' ');
+      if (text.includes('GPU validation error')) logged.push(text);
+      else consoleError.apply(console, args);
+    };
+    // Waits until a new error has logged, and then until no more arrive.
+    const settleLog = async (label, count) => {
+      for (let attempt = 0; attempt < 200 && logged.length === count; attempt++) await pause();
+      if (logged.length === count) fail(`${label} logged nothing`);
+      let seen = -1;
+      while (seen !== logged.length) { seen = logged.length; for (let i = 0; i < 10; i++) await pause(); }
+    };
+    const pipelineErrors = () => logged.filter((text) => text.includes("'render pipeline'")).length;
+
+    try {
+      // The fragment stage reads @location(0), which the vertex stage never writes,
+      // so the shader parses and only its pipeline fails.
+      const unfed = new Shader(`
 struct VOut { @builtin(position) pos: vec4<f32> };
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
   let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
@@ -706,19 +733,102 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 }
 @fragment fn fs_main(@location(0) tint: vec4<f32>) -> @location(0) vec4<f32> { return tint; }
 `);
-    const valid = Shader.default();
+      const valid = Shader.default();
+      const storage = new Shader(`
+struct Data { values: array<f32, 4> };
+@group(0) @binding(0) var<storage, read_write> data: Data;
+@compute @workgroup_size(1) fn cs_main() { data.values[0] = 7.0; }
+`);
 
-    renderer.render(unfed, target);
-    await surfaces('render after a failed frame', () => renderer.render(valid, target));
-    renderer.render(valid, target);
+      renderer.render(unfed, target);
+      await surfaces('render after a failed frame', () => renderer.render(valid, target));
+      renderer.render(valid, target);
 
-    renderer.render(unfed, target);
-    await surfaces('getImage after a failed frame', () => target.getImage());
-    await target.getImage();
+      // A readback or load in the same task as the failed frame waits for its error.
+      renderer.render(unfed, target);
+      await throwsLate('getImage right after a failed frame', () => target.getImage());
+      await target.getImage();
 
-    renderer.render(unfed, target);
-    await surfaces('load after a failed frame', () => renderer.load(valid));
-    await renderer.load(valid);
+      renderer.render(unfed, target);
+      await throwsLate('readTexture right after a failed frame', () => renderer.readTexture(target.texture().id()));
+      await renderer.readTexture(target.texture().id());
+
+      // readTexture waits once, for the frames rendered before it. A frame that fails
+      // while it waits reports to the next call, never as a texture error from readTexture.
+      renderer.render(valid, target);
+      const reading = renderer.readTexture(target.texture().id());
+      await Promise.resolve();
+      await Promise.resolve();
+      renderer.render(unfed, target);
+      await reading;
+      await throwsLate('getImage after a frame that failed during readTexture', () => target.getImage());
+
+      renderer.render(storage, target);
+      await renderer.readStorage(storage, 'data');
+      renderer.render(unfed, target);
+      await throwsLate('readStorage right after a failed frame', () => renderer.readStorage(storage, 'data'));
+      await renderer.readStorage(storage, 'data');
+
+      renderer.render(unfed, target);
+      await throwsLate('load right after a failed frame', () => renderer.load(valid));
+      await renderer.load(valid);
+
+      // A pipeline whose error landed left the cache, so the next
+      // failed frame builds it again and logs its cause again.
+      const reported = pipelineErrors();
+      renderer.render(unfed, target);
+      await surfaces('getImage after the pipeline failed again', () => target.getImage());
+      if (pipelineErrors() !== reported + 1) fail('a failed pipeline stayed in the cache');
+
+      // A frame no later call follows still reports its error, through the console.
+      const lone = new Renderer();
+      const loneTarget = await lone.createTextureTarget([8, 8]);
+      const count = logged.length;
+      lone.render(unfed, loneTarget);
+      await settleLog('a failed frame that no call follows', count);
+    } finally {
+      console.error = consoleError;
+    }
+});
+
+// A wasm frame opens error scopes only for the frame and for each pipeline it builds.
+// Its texture views and bind groups, placeholders included, run under the frame's scopes.
+await withModule('platforms.web.healthcheck.error_scopes', async () => {
+    const device = globalThis.GPUDevice;
+    if (!device) return console.log('error_scopes: no WebGPU, skipped');
+    const push = device.prototype.pushErrorScope;
+    let pushed = 0;
+    device.prototype.pushErrorScope = function (filter) {
+      pushed++;
+      return push.call(this, filter);
+    };
+    try {
+      const renderer = new Renderer();
+      const target = await renderer.createTextureTarget([8, 8]);
+      // Group 0 holds nothing, so the pipeline binds an empty placeholder group there.
+      const shader = new Shader(`
+@group(1) @binding(0) var image: texture_2d<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  return vec4<f32>(p[i], 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(image, vec2<i32>(0, 0), 0); }
+`);
+      const texture = await renderer.createTexture(new Uint8Array([255, 0, 0, 255]), { size: [1, 1] });
+      shader.set('image', texture);
+
+      renderer.render(shader, target);
+      await target.getImage();
+      if (pushed === 0) return console.log('error_scopes: the device opens no WebGPU scopes, skipped');
+      pushed = 0;
+      renderer.render(shader, target);
+      const frame = pushed;
+      await target.getImage();
+
+      if (frame !== 3) throw new Error(`a frame with a cached pipeline opened ${frame} error scopes, not 3`);
+    } finally {
+      device.prototype.pushErrorScope = push;
+    }
 });
 
 // WebGPU bins lights into clusters with a compute pass, so a PBR shader takes
@@ -782,6 +892,7 @@ await withModule('platforms.web.healthcheck.lights.clustered', async () => {
 // Auto-generated: run all extracted examples (after init)
 await withModule('platforms.web.healthcheck.generated_examples', async () => {
   const mod = await import('./generated_examples.mjs');
+  // The runner waits for each example's GPU errors to land before the next one starts.
   const { passed, failed } = await mod.runExamples();
   if (failed === 0) {
     console.log(`\n✅ test result: ok. ${passed} passed; ${failed} failed`);

@@ -142,18 +142,26 @@ fn extract_pixels(plan: &ReadbackPlan) -> Result<Vec<u8>, TextureError> {
 }
 
 /// Read the mip-0 contents of `texture` as tightly-packed bytes in the texture's
-/// native format.
-///
-/// On native the caller must still drive the device forward for the map callback to fire;
-/// this function does a synchronous `device.poll(Wait)` before awaiting so callers do not
-/// have to. On web, WebGPU schedules the callback itself, while the WebGL2 backend only
-/// fires it from a poll, so the web path issues a non-blocking poll before awaiting.
+/// native format, once the frames rendered before the call have reported their GPU errors.
 pub(crate) async fn read_pixels(
     context: &RenderContext,
     texture: &TextureObject,
 ) -> Result<Vec<u8>, TextureError> {
     #[cfg(wasm)]
-    context.late.take()?;
+    context.late.settle().await?;
+    copy_pixels(context, texture).await
+}
+
+/// Copies the mip-0 contents of `texture` to the CPU, for a caller that settled the late errors.
+///
+/// On native the caller must still drive the device forward for the map callback to fire;
+/// this function does a synchronous `device.poll(Wait)` before awaiting so callers do not
+/// have to. On web, WebGPU schedules the callback itself, while the WebGL2 backend only
+/// fires it from a poll, so the web path issues a non-blocking poll before awaiting.
+pub(crate) async fn copy_pixels(
+    context: &RenderContext,
+    texture: &TextureObject,
+) -> Result<Vec<u8>, TextureError> {
     let plan = prepare_readback(context, texture, "Texture readback encoder")?;
     let readback = PendingReadback::new(&context.readback_pool, plan.buffer.clone());
 

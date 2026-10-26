@@ -7,6 +7,7 @@ Read back the mip-0 contents of a registered texture as tightly-packed bytes in 
 - The texture must have `COPY_SRC` usage. Creation helpers like `create_storage_texture` enable it by default.
 - GLES and WebGL2 can't copy a depth texture to a buffer, so reading one back there returns `TextureError::Readback`. So does a texture whose readback needs a buffer past the device's largest, `max_buffer_size`.
 - A block-compressed texture, such as one loaded from a BC7 or ASTC KTX2 file, has no size per pixel, so reading it back is an `InvalidInput` error.
+- In JavaScript, `readTexture` first waits for the frames rendered before it to report their GPU errors and throws the first one, as [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render) describes.
 
 ## Example
 ```rust

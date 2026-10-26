@@ -610,16 +610,17 @@ impl ShaderObject {
         Ok(uniform.clone())
     }
 
-    /// Reflect the vertex entry-point inputs as (name, location, format).
-    /// Returns only parameters with @location decorations; builtins are ignored.
+    /// The `@location` arguments of the vertex entry point, by location.
+    /// Builtins are skipped. Meshes feed only arguments, so a struct argument
+    /// with a `@location` member returns `ShaderError::InvalidKey` naming that member.
     pub(crate) fn reflect_vertex_inputs(&self) -> Result<Vec<VertexInputDesc>, ShaderError> {
         let mut inputs: Vec<VertexInputDesc> = Vec::new();
 
         // The same entry point create_render_pipeline runs.
         if let Some(entry_point) = self.find_entry_point(naga::ShaderStage::Vertex) {
             for argument in entry_point.function.arguments.iter() {
-                // Only consider @location bindings
                 let Some(binding) = argument.binding.as_ref() else {
+                    self.check_members(argument.ty)?;
                     continue;
                 };
                 let naga::Binding::Location { location, .. } = binding else {
@@ -641,6 +642,30 @@ impl ShaderObject {
         // Sort by location to keep a stable order
         inputs.sort_by_key(|vertex_input| vertex_input.location);
         Ok(inputs)
+    }
+
+    /// Refuses a struct argument with `@location` members, which no mesh can feed.
+    fn check_members(&self, ty: naga::Handle<naga::Type>) -> Result<(), ShaderError> {
+        let naga::TypeInner::Struct { members, .. } = &self.module.types[ty].inner else {
+            return Ok(());
+        };
+        let member = members
+            .iter()
+            .filter_map(|member| match member.binding {
+                Some(naga::Binding::Location { location, .. }) => Some((member, location)),
+                _ => None,
+            })
+            .min_by_key(|(_, location)| *location);
+        let Some((member, location)) = member else {
+            return Ok(());
+        };
+        let name = member
+            .name
+            .clone()
+            .unwrap_or_else(|| format!("attr{location}"));
+        Err(ShaderError::InvalidKey(format!(
+            "shader input '{name}' @location({location}) is a struct member, and a mesh feeds only @location arguments; declare it as an argument of the vertex entry point"
+        )))
     }
 
     /// Apply any queued updates if we can acquire the write lock;
@@ -1912,6 +1937,34 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
         let float = Shader::new(FLOAT_ID).expect("shader");
         float.add_mesh(&mesh).expect("floats take -1");
         assert_eq!(float.object.meshes.read().len(), 1);
+    }
+
+    // Story: a struct argument with a @location member refuses a mesh, even beside
+    // plain @location arguments, since no mesh can feed the member.
+    #[test]
+    fn struct_members_refuse_a_mesh() {
+        let shader = Shader::new(
+            r#"
+struct Extra { @location(1) offset: vec2<f32> };
+@vertex fn vs_main(@location(0) pos: vec2<f32>, extra: Extra) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(pos + extra.offset, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+"#,
+        )
+        .expect("shader");
+        let mesh = crate::mesh::Mesh::new();
+        mesh.add_vertex(crate::mesh::Vertex::new([0.0, 0.0]).set("offset", [0.0, 0.0]));
+
+        let error = shader.add_mesh(&mesh).expect_err("struct member");
+
+        assert!(
+            error
+                .to_string()
+                .contains("'offset' @location(1) is a struct member"),
+            "{error}"
+        );
+        assert!(shader.object.meshes.read().is_empty());
     }
 
     // Story: the shader Shader::from_vertex builds reads a color of four plain numbers.

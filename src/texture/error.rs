@@ -60,6 +60,9 @@ pub enum TextureError {
     ShaderError(#[from] crate::shader::error::ShaderError),
     #[error("Bind Group Layout error: {0}")]
     BindGroupLayoutError(String),
+    /// A GPU error an earlier frame left, which a readback reports before it reads.
+    #[error("GPU validation error in '{label}': {message}")]
+    ValidationError { label: String, message: String },
     #[error("Renderer error: {0}")]
     Error(String),
 }
