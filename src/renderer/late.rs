@@ -4,7 +4,7 @@ use super::RendererError;
 use crate::texture::TextureError;
 use parking_lot::Mutex;
 
-/// A validation error that an error scope caught after its call returned.
+/// A GPU error that an error scope caught after its call returned.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct LateError {
     pub(crate) label: String,
@@ -44,32 +44,38 @@ impl ErrorSlot {
         }
     }
 
-    /// Stores the error that `popped` resolves to, when it resolves.
+    /// Reports the error that `caught` resolves to, when it resolves.
     ///
-    /// A call that `failure` says already failed has returned its own error,
-    /// so a GPU error caught alongside it goes to the log as a warning. The
-    /// browser turns `log::error!` into a `console.error`, which the web healthcheck fails on.
+    /// Every error that lands goes to the log as an error, which the browser
+    /// shows as a `console.error`, so a frame no later call follows still reports it.
+    /// It also waits in the slot for the next call, unless `failure`
+    /// says the call already failed and returned its own error.
     #[cfg(wasm)]
     pub(crate) fn watch(
         self: &std::sync::Arc<Self>,
         label: &str,
-        popped: impl std::future::Future<Output = Option<wgpu::Error>> + 'static,
+        caught: impl std::future::Future<Output = Option<wgpu::Error>> + 'static,
         failure: Option<String>,
     ) {
         let slot = self.clone();
         let label = label.to_string();
         wasm_bindgen_futures::spawn_local(async move {
-            let Some(gpu) = popped.await else {
+            let Some(gpu) = caught.await else {
                 return;
             };
+            let error = LateError {
+                label,
+                message: gpu.to_string(),
+            };
             match failure {
-                Some(failure) => {
-                    log::warn!("{label} failed: {failure}. The GPU also reported: {gpu}")
+                Some(failure) => log::error!(
+                    "{}. The call had already failed: {failure}",
+                    RendererError::from(error)
+                ),
+                None => {
+                    log::error!("{}", RendererError::from(error.clone()));
+                    slot.store(error);
                 }
-                None => slot.store(LateError {
-                    label,
-                    message: gpu.to_string(),
-                }),
             }
         });
     }

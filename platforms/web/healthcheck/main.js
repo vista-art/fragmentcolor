@@ -605,7 +605,8 @@ struct Data { items: array<vec4<f32>, 2> };
     if (levels.length !== chain.count() || !(levels[0] instanceof Uint8Array)) fail('Mipmap.levels is wrong');
 });
 
-// WebGPU reports a GPU error after render returns, so the next call throws it, once.
+// WebGPU reports a GPU error after render returns. Each one logs a
+// console.error as it lands, and the next call throws it, once.
 await withModule('platforms.web.healthcheck.late_errors', async () => {
     const renderer = new Renderer();
     const target = await renderer.createTextureTarget([8, 8]);
@@ -624,9 +625,27 @@ await withModule('platforms.web.healthcheck.late_errors', async () => {
       fail(`${label} never reported the failed frame`);
     };
 
-    // The fragment stage reads @location(0), which the vertex stage never writes,
-    // so the shader parses and only its pipeline fails.
-    const unfed = new Shader(`
+    // A late error fails the run anywhere else, through its console.error.
+    // This module expects them, so it collects them instead.
+    const logged = [];
+    const consoleError = console.error;
+    console.error = (...args) => {
+      const text = args.map(String).join(' ');
+      if (text.includes('GPU validation error')) logged.push(text);
+      else consoleError.apply(console, args);
+    };
+    // Waits until a new error has logged, and then until no more arrive.
+    const settleLog = async (label, count) => {
+      for (let attempt = 0; attempt < 200 && logged.length === count; attempt++) await pause();
+      if (logged.length === count) fail(`${label} logged nothing`);
+      let seen = -1;
+      while (seen !== logged.length) { seen = logged.length; for (let i = 0; i < 10; i++) await pause(); }
+    };
+
+    try {
+      // The fragment stage reads @location(0), which the vertex stage never writes,
+      // so the shader parses and only its pipeline fails.
+      const unfed = new Shader(`
 struct VOut { @builtin(position) pos: vec4<f32> };
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
   let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
@@ -634,25 +653,38 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 }
 @fragment fn fs_main(@location(0) tint: vec4<f32>) -> @location(0) vec4<f32> { return tint; }
 `);
-    const valid = Shader.default();
+      const valid = Shader.default();
 
-    renderer.render(unfed, target);
-    await surfaces('render after a failed frame', () => renderer.render(valid, target));
-    renderer.render(valid, target);
+      renderer.render(unfed, target);
+      await surfaces('render after a failed frame', () => renderer.render(valid, target));
+      renderer.render(valid, target);
 
-    renderer.render(unfed, target);
-    await surfaces('getImage after a failed frame', () => target.getImage());
-    await target.getImage();
+      renderer.render(unfed, target);
+      await surfaces('getImage after a failed frame', () => target.getImage());
+      await target.getImage();
 
-    renderer.render(unfed, target);
-    await surfaces('load after a failed frame', () => renderer.load(valid));
-    await renderer.load(valid);
+      renderer.render(unfed, target);
+      await surfaces('load after a failed frame', () => renderer.load(valid));
+      await renderer.load(valid);
+
+      // A frame no later call follows still reports its error, through the console.
+      const lone = new Renderer();
+      const loneTarget = await lone.createTextureTarget([8, 8]);
+      const count = logged.length;
+      lone.render(unfed, loneTarget);
+      await settleLog('a failed frame that no call follows', count);
+    } finally {
+      console.error = consoleError;
+    }
 });
 
 // Auto-generated: run all extracted examples (after init)
 await withModule('platforms.web.healthcheck.generated_examples', async () => {
   const mod = await import('./generated_examples.mjs');
   const { passed, failed } = await mod.runExamples();
+  // A GPU error from an example's last frame logs its console.error once WebGPU
+  // reports it, so let it land before the marker ends the run.
+  await new Promise((resolve) => setTimeout(resolve, 100));
   if (failed === 0) {
     console.log(`\n✅ test result: ok. ${passed} passed; ${failed} failed`);
   } else {
