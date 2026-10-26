@@ -2,21 +2,21 @@
 
 A GPU error that an error scope caught. [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render) returns one when a pipeline fails to build or a frame's commands fail, in place of drawing nothing without a word.
 
-It holds three values:
+It holds three values, under the same names in every language:
 
 - `kind`, an [ErrorKind](https://fragmentcolor.org/api/core/errorkind): `Validation`, `Internal` or `Memory`.
 - `label`, the step that raised it: `render pipeline`, `compute pipeline`, `light binning pipeline` or `frame`, and in Rust, Python, Swift and Kotlin also a bind group or texture view inside the frame.
-- `message`, the GPU's own text.
+- `detail`, the device's own words about what went wrong.
 
 Each language raises it in its own form:
 
-- Rust returns `RendererError::DeviceError { kind, label, message }`. On the web a readback, such as `get_image`, returns `TextureError::DeviceError` with the same fields.
-- JavaScript throws an `Error` with `kind` and `label` properties.
-- Python raises `DeviceError`, a `FragmentColorError`, with `kind` and `label` attributes.
-- Swift throws `FragmentColorError.Device(kind:label:message:)`.
-- Kotlin throws `FragmentColorException.Device`, which holds `kind`, `label` and `detail`. A Kotlin exception's `message` is its own text, so the GPU's message is `detail` there.
+- Rust returns `RendererError::DeviceError { kind, label, detail }`. On the web a readback, such as `get_image`, returns `TextureError::DeviceError` with the same fields.
+- JavaScript throws an `Error` with `kind`, `label` and `detail` properties.
+- Python raises `DeviceError`, a `FragmentColorError`, with `kind`, `label` and `detail` attributes.
+- Swift throws `FragmentColorError.Device(kind:label:detail:)`.
+- Kotlin throws `FragmentColorException.Device(kind, label, detail)`.
 
-The text of each error reads `Device error (validation) in 'frame': ...`, with the kind, the label and the message.
+Each language's own text for the error carries all three, as `Device error (validation) in 'frame': ...`: `Error.message` in JavaScript, `str(e)` in Python, `localizedDescription` and `description` in Swift, and `toString()` in Kotlin. Kotlin's `Throwable.message` lists the fields instead, as `kind=VALIDATION, label=frame, detail=...`.
 
 On the web the GPU reports an error after `render` has returned, so the next call throws it, as `Renderer::render` describes.
 
