@@ -4208,6 +4208,40 @@ struct VIn { @builtin(vertex_index) index: u32, @location(0) pos: vec2<f32> };
         });
     }
 
+    // Story: a fullscreen shader that takes its built-ins through a struct argument
+    // reads no vertex input, so it renders with no mesh.
+    #[test]
+    fn builtin_struct_renders_fullscreen() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8u32, 8u32])
+                .await
+                .expect("texture target");
+            let shader = crate::Shader::new(
+                r#"
+struct VIn { @builtin(vertex_index) index: u32 };
+@vertex fn vs_main(input: VIn) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  return vec4<f32>(p[input.index], 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+"#,
+            )
+            .expect("shader");
+
+            let rendered = renderer.render(&shader, &target);
+            let image = target.get_image().await.expect("image");
+
+            assert!(rendered.is_ok(), "got {rendered:?}");
+            assert_eq!(
+                image[..4],
+                [255, 255, 255, 255],
+                "the triangle covers the target"
+            );
+        });
+    }
+
     const SIDE: u32 = 16;
     const BLUE: [f32; 4] = [0.0, 0.0, 1.0, 1.0];
     /// A pixel inside the left strip, and one inside the right strip.
