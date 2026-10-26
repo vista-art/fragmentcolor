@@ -20,7 +20,7 @@ Decode and mipmap generation run on a background worker on native platforms. On 
 | Form | Treatment |
 |------|-----------|
 | `bytes` (no size) | Encoded image; decoded internally (PNG, JPEG, BMP, HDR, etc.). |
-| `(bytes, size)` / options with `size` set | Raw pixel bytes; `bpp(format) * width * height` long, no decode. The default `Rgba` format uploads them as linear `Rgba8Unorm`. |
+| `(bytes, size)` / options with `size` set | Raw pixel bytes; exactly `bpp(format) * width * height * depth` long, no decode, and any other length is an `InvalidInput` error. The default `Rgba` format uploads them as linear `Rgba8Unorm`. |
 | `(bytes, format)` / options with `format` set | Encoded image reinterpreted as `format` (e.g. `Rgba8Unorm` for normal-map data, `R16Unorm` for 16-bit grayscale, `Rgba32Float` for full float precision). |
 | `path` / `URL` | File or HTTP fetch, then decoded. |
 | `Mipmap` | Pre-built CPU mip chain; GPU-only upload. Build via [Mipmap::build](https://fragmentcolor.org/api/texture/mipmap#build) on a worker thread. |

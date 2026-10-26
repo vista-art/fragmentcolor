@@ -94,8 +94,8 @@ pub enum TextureData {
 /// to [`crate::Renderer::create_texture`] (the unified entry point
 /// dispatches via `From<Mipmap> for TextureInput`).
 ///
-/// Levels are tightly-packed bytes, level 0 first, with `texel_size(format) *
-/// max(1, base_w >> level) * max(1, base_h >> level)` bytes per level.
+/// Levels are tightly-packed bytes, level 0 first, with the format's bytes per pixel
+/// times `max(1, base_w >> level) * max(1, base_h >> level)` bytes per level.
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Object))]
@@ -166,9 +166,15 @@ impl Mipmap {
                             "build: size must be non-zero in both dimensions".into(),
                         ));
                     }
+                    if extent.depth_or_array_layers != 1 {
+                        return Err(TextureError::InvalidInput(format!(
+                            "build: a mip chain resamples one layer, got a depth of {}",
+                            extent.depth_or_array_layers
+                        )));
+                    }
                     let bpp = texel_size(wfmt)? as usize;
                     let expected = bpp * (extent.width as usize) * (extent.height as usize);
-                    if bytes.len() < expected {
+                    if bytes.len() != expected {
                         return Err(TextureError::InvalidInput(format!(
                             "build: expected {} bytes for {}x{} @ {} bpp, got {}",
                             expected,
@@ -178,7 +184,7 @@ impl Mipmap {
                             bytes.len()
                         )));
                     }
-                    bytes_as_image(&bytes[..expected], extent.width, extent.height, wfmt)?
+                    bytes_as_image(&bytes, extent.width, extent.height, wfmt)?
                 }
             },
             TextureData::Path(path) => image::open(path)?,
@@ -849,10 +855,16 @@ impl TextureObject {
             .saturating_mul(size.height as usize)
             .saturating_mul(size.depth_or_array_layers as usize)
             .saturating_mul(bpp as usize);
-        if data.len() < expected {
-            return Err(TextureError::CreateTextureError(
-                "Insufficient raw data for declared size/format".into(),
-            ));
+        if data.len() != expected {
+            let wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: depth,
+            } = size;
+            return Err(TextureError::InvalidInput(format!(
+                "raw bytes are {} long, and {width}x{height}x{depth} {format:?} takes {expected}",
+                data.len()
+            )));
         }
 
         // CPU mipmaps resample one slice, so a 3D texture keeps one level and every slice.

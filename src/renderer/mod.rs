@@ -253,12 +253,12 @@ impl Renderer {
                 .saturating_mul(wgpu_size.height as usize)
                 .saturating_mul(wgpu_size.depth_or_array_layers.max(1) as usize)
                 .saturating_mul(bpp as usize);
-            if bytes.len() < expected {
-                return Err(RendererError::CreateTextureError(format!(
-                    "Seed data is {} bytes but the texture needs {}",
-                    bytes.len(),
-                    expected
-                )));
+            if bytes.len() != expected {
+                return Err(crate::texture::TextureError::InvalidInput(format!(
+                    "seed data is {} bytes, and the texture takes {expected}",
+                    bytes.len()
+                ))
+                .into());
             }
         }
 

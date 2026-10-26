@@ -196,6 +196,47 @@ fn decoded_images_fill_bgra_in_order() {
     });
 }
 
+// Story: raw bytes are exactly the size their region takes, so a buffer for a
+// larger image, or a 3D size for a mip chain, is refused instead of uploading
+// cropped, where only a short buffer was refused.
+#[test]
+fn raw_bytes_match_their_size() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let long = vec![0; 2 * 2 * 4 + 4];
+        let result = renderer.create_texture((long.as_slice(), [2, 2])).await;
+        assert!(refused(&result), "create_texture with extra bytes");
+        let result = renderer
+            .create_storage_texture(([2, 2], TextureFormat::Rgba, long.clone()))
+            .await;
+        assert!(refused(&result), "a storage seed with extra bytes");
+
+        let texture = renderer
+            .create_storage_texture(([64, 64], TextureFormat::Rgba))
+            .await
+            .expect("create_storage_texture");
+        let large = vec![0; 128 * 128 * 4];
+        let invalid = |result: Result<(), TextureError>| {
+            matches!(result, Err(TextureError::InvalidInput(_)))
+        };
+        assert!(invalid(texture.write(&large)), "write with a larger image");
+        let frame = vec![0; 64 * 64 * 4];
+        assert!(
+            invalid(texture.write_region(&frame, [0, 0, 32, 32])),
+            "a whole frame for a smaller region without a stride"
+        );
+        texture
+            .write_region(&frame[..32 * 32 * 4], [0, 0, 32, 32])
+            .expect("tight rows for the region");
+
+        let pixels = vec![0; 4 * 4 * 4 * 3];
+        let deep = Mipmap::build((pixels.as_slice(), TextureFormat::Rgba, [4, 4, 3]));
+        assert!(matches!(deep, Err(TextureError::InvalidInput(_))), "a 3D chain");
+        let longer = Mipmap::build((pixels.as_slice(), TextureFormat::Rgba, [4, 4]));
+        assert!(matches!(longer, Err(TextureError::InvalidInput(_))), "extra bytes");
+    });
+}
+
 // Story: a buffer copy can't fill a depth texture, so raw pixels, seed bytes
 // and a write into Depth32Float are refused before they reach wgpu.
 #[test]

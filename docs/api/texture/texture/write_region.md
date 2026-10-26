@@ -11,7 +11,7 @@ The `region` argument is required; use `Texture::write` to replace the whole tex
 
 ## Notes
 - See `Texture::write` for format and row layout details.
-- `bytes_per_row` (set via `.with_stride(...)`) defaults to the region width times the bytes per pixel, or to that row padded to 256 bytes when the data is exactly that size. A larger value skips the padding at the end of each source row.
+- `bytes_per_row` (set via `.with_stride(...)`) defaults to the region width times the bytes per pixel, or to that row padded to 256 bytes when the data is exactly that size. Without it, data of any other length is an `InvalidInput` error. A larger value skips the padding at the end of each source row, and the data may then run past the region.
 - `rows_per_image` (set via `.with_rows(...)`) defaults to the region height.
 
 ## Example

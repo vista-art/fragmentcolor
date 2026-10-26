@@ -75,20 +75,10 @@ pub(super) fn write(
             }
             bpr
         }
-        None => default_stride(data.len(), row_stride, rows_per_image, region.size[2]),
+        None => default_stride(data.len(), row_stride, rows_per_image, region.size)?,
     };
 
-    // Required minimum size per WebGPU: bpr*(h-1) + width_in_bytes + (depth-1)*rows_per_image*bpr
-    let width_in_bytes = (region.size[0] as u64).saturating_mul(bpp as u64);
-    let required = (bytes_per_row as u64)
-        .saturating_mul(region.size[1].saturating_sub(1) as u64)
-        .saturating_add(width_in_bytes)
-        .saturating_add(
-            (region.size[2].saturating_sub(1) as u64)
-                .saturating_mul(rows_per_image as u64)
-                .saturating_mul(bytes_per_row as u64),
-        );
-
+    let required = least_bytes(bytes_per_row, row_stride, rows_per_image, region.size);
     if (data.len() as u64) < required {
         return Err(TextureError::Error(
             "Input data smaller than required for layout".into(),
@@ -123,18 +113,75 @@ pub(super) fn write(
     Ok(())
 }
 
-/// Row stride for data passed without `bytes_per_row`.
-/// Rows are tightly packed, since `Queue::write_texture` takes any stride.
-/// Data sized exactly for rows padded to 256 bytes reads at the padded stride.
-fn default_stride(len: usize, row_stride: u32, rows_per_image: u32, depth: u32) -> u32 {
+/// The fewest bytes WebGPU reads for a region of `size` at `bytes_per_row`:
+/// every full row but the last, then the last row's `row_stride`.
+fn least_bytes(bytes_per_row: u32, row_stride: u32, rows_per_image: u32, size: [u32; 3]) -> u64 {
+    let rows = (size[2].saturating_sub(1) as u64)
+        .saturating_mul(rows_per_image as u64)
+        .saturating_add(size[1].saturating_sub(1) as u64);
+    (bytes_per_row as u64)
+        .saturating_mul(rows)
+        .saturating_add(row_stride as u64)
+}
+
+/// Row stride for data of `len` bytes passed without `bytes_per_row`.
+/// Rows are tightly packed, since `Queue::write_texture` takes any stride,
+/// and data sized exactly for rows padded to 256 bytes reads at the padded stride.
+/// Any other length is an error, so a buffer for a different region never uploads cropped.
+fn default_stride(
+    len: usize,
+    row_stride: u32,
+    rows_per_image: u32,
+    size: [u32; 3],
+) -> Result<u32, TextureError> {
     let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
     let padded = row_stride.div_ceil(align).saturating_mul(align);
-    let padded_len = (padded as u64)
-        .saturating_mul(rows_per_image as u64)
-        .saturating_mul(depth as u64);
-    if padded != row_stride && len as u64 == padded_len {
-        padded
-    } else {
-        row_stride
+    let full = |stride: u32| {
+        (stride as u64)
+            .saturating_mul(rows_per_image as u64)
+            .saturating_mul(size[2] as u64)
+    };
+    let len = len as u64;
+    if len == full(row_stride) || len == least_bytes(row_stride, row_stride, rows_per_image, size)
+    {
+        return Ok(row_stride);
+    }
+    if len == full(padded) {
+        return Ok(padded);
+    }
+    let [width, height, depth] = size;
+    Err(TextureError::InvalidInput(format!(
+        "{len} bytes don't fit a {width}x{height}x{depth} region, which takes {} in tight rows or {} in rows padded to {align} bytes; give the region a bytes per row for any other layout",
+        full(row_stride),
+        full(padded)
+    )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Story: data without a stride is the region's size in tight or padded rows,
+    // and any other length is refused, where it cropped or read past the region.
+    #[test]
+    fn default_stride_takes_tight_or_padded_rows() {
+        let size = [32, 32, 1];
+        let tight = 32 * 4;
+        assert_eq!(default_stride(tight * 32, tight as u32, 32, size).ok(), Some(128));
+        assert_eq!(default_stride(256 * 32, tight as u32, 32, size).ok(), Some(256));
+        for len in [64 * 64 * 4, tight * 32 - 1, tight * 32 + 4] {
+            assert!(
+                matches!(
+                    default_stride(len, tight as u32, 32, size),
+                    Err(TextureError::InvalidInput(_))
+                ),
+                "{len} bytes should be refused"
+            );
+        }
+        // Layers spaced 40 rows apart take the full spacing or the WebGPU minimum.
+        let layered = [32, 32, 2];
+        let least = (40 + 31) * tight + tight;
+        assert_eq!(default_stride(least, tight as u32, 40, layered).ok(), Some(128));
+        assert_eq!(default_stride(tight * 80, tight as u32, 40, layered).ok(), Some(128));
     }
 }

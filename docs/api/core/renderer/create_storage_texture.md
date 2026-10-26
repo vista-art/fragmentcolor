@@ -5,7 +5,7 @@ Create a storage-class texture for compute shaders, image store/load, or as a re
 Common forms:
 
 - `(size, format)`: empty storage texture, no initial data.
-- `(size, format, bytes)`: storage texture pre-seeded with `bytes`.
+- `(size, format, bytes)`: storage texture pre-seeded with `bytes`, exactly the size's pixel count times the format's bytes per pixel.
 - A full `TextureInput { data, options }` literal: pass `options.usage` (via `TextureOptions::with_usage(...)`) for non-default usage flags.
 
 `size` is required; storage textures have no source to infer dimensions from. Missing it returns `RendererError::CreateTextureError`.

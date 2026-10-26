@@ -189,7 +189,7 @@ class Renderer:
         | Form | Treatment |
         |------|-----------|
         | `bytes` (no size) | Encoded image; decoded internally (PNG, JPEG, BMP, HDR, etc.). |
-        | `(bytes, size)` / options with `size` set | Raw pixel bytes; `bpp(format) * width * height` long, no decode. The default `Rgba` format uploads them as linear `Rgba8Unorm`. |
+        | `(bytes, size)` / options with `size` set | Raw pixel bytes; exactly `bpp(format) * width * height * depth` long, no decode, and any other length is an `InvalidInput` error. The default `Rgba` format uploads them as linear `Rgba8Unorm`. |
         | `(bytes, format)` / options with `format` set | Encoded image reinterpreted as `format` (e.g. `Rgba8Unorm` for normal-map data, `R16Unorm` for 16-bit grayscale, `Rgba32Float` for full float precision). |
         | `path` / `URL` | File or HTTP fetch, then decoded. |
         | `Mipmap` | Pre-built CPU mip chain; GPU-only upload. Build via [Mipmap::build](https://fragmentcolor.org/api/texture/mipmap#build) on a worker thread. |
@@ -357,7 +357,7 @@ class Renderer:
         Common forms:
 
         - `(size, format)`: empty storage texture, no initial data.
-        - `(size, format, bytes)`: storage texture pre-seeded with `bytes`.
+        - `(size, format, bytes)`: storage texture pre-seeded with `bytes`, exactly the size's pixel count times the format's bytes per pixel.
         - A full `TextureInput { data, options }` literal: pass `options.usage` (via `TextureOptions::with_usage(...)`) for non-default usage flags.
 
         `size` is required; storage textures have no source to infer dimensions from. Missing it returns `RendererError::CreateTextureError`.
@@ -4539,7 +4539,7 @@ class Texture:
 
         - Whole texture updates: use `Texture.write(&bytes)`.
         - Sub-rectangle updates or explicit data layout: use `Texture.write_region(&bytes, region)`.
-        - `bytes` holds tightly packed rows: each row is the texture width times the bytes per pixel, with no padding. Data sized exactly for rows padded to 256 bytes reads at that padded stride. For any other padding, pass the stride to `Texture.write_region`.
+        - `bytes` holds tightly packed rows: each row is the texture width times the bytes per pixel, with no padding. Data sized exactly for rows padded to 256 bytes reads at that padded stride. For any other padding, pass the stride to `Texture.write_region`. Data of any other length is an `InvalidInput` error, so a frame of the wrong size never uploads cropped.
 
         ## Notes
         - Any format with a fixed size per pixel works, from 1-byte `R8Unorm` to 16-byte `Rgba32Float`. A block-compressed texture, such as one loaded from a BC7 or ASTC KTX2 file, is an `InvalidInput` error.
@@ -4571,7 +4571,7 @@ class Texture:
 
         ## Notes
         - See `Texture::write` for format and row layout details.
-        - `bytes_per_row` (set via `.with_stride(...)`) defaults to the region width times the bytes per pixel, or to that row padded to 256 bytes when the data is exactly that size. A larger value skips the padding at the end of each source row.
+        - `bytes_per_row` (set via `.with_stride(...)`) defaults to the region width times the bytes per pixel, or to that row padded to 256 bytes when the data is exactly that size. Without it, data of any other length is an `InvalidInput` error. A larger value skips the padding at the end of each source row, and the data may then run past the region.
         - `rows_per_image` (set via `.with_rows(...)`) defaults to the region height.
 
         Example:
@@ -4718,7 +4718,7 @@ class Mipmap:
         `build(input)` takes the same input shapes as `Renderer::create_texture` and `Renderer::create_storage_texture`, so you write the call the same way regardless of which entry point you target. Whether `build` decodes the bytes depends on whether you pass a `size`:
 
         - **Encoded path, `size` absent.** The bytes get decoded as PNG / JPEG / BMP / HDR / etc., and the chain inherits the image's dimensions. Use this when you have an encoded blob from disk, the network, or a decoder that emits encoded data.
-        - **Raw path, `size` present.** The bytes are treated as already laid out for `format` at `size`. Use this when your decoder already produced pixel-format-matching bytes (typical for tile-cache pipelines that fold mip generation into the same step that produced the tile).
+        - **Raw path, `size` present.** The bytes are treated as already laid out for `format` at `size`, one layer deep and exactly that long. Use this when your decoder already produced pixel-format-matching bytes (typical for tile-cache pipelines that fold mip generation into the same step that produced the tile).
 
         `build` runs synchronously and accepts only sync-friendly inputs: bytes or a file path. URL inputs (which need an async fetch), KTX2 inputs (already pre-baked), an existing chain, an existing texture, and empty inputs all return `TextureError::InvalidInput` with a message pointing at the right entry point.
 
