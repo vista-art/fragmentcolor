@@ -55,9 +55,10 @@ fn float_target_keeps_the_clear_color() {
             .read_texture(texture.id())
             .await
             .expect("read_texture failed");
-        let pixel: Vec<f32> = bytes[8..16]
-            .chunks_exact(2)
-            .map(|half| half_to_float(u16::from_le_bytes([half[0], half[1]])))
+        let (halves, _) = bytes[8..16].as_chunks::<2>();
+        let pixel: Vec<f32> = halves
+            .iter()
+            .map(|half| half_to_float(u16::from_le_bytes(*half)))
             .collect();
         assert_eq!(pixel, [4.0, -1.0, 0.25, 1.0]);
     });
