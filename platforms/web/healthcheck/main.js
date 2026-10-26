@@ -514,6 +514,9 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     throws('new ScreenRegion([0, 0], [1.5, 2])', () => new fc.ScreenRegion([0, 0], [1.5, 2]));
     throws('Pass.setViewport([0, 0, 1.5, 2])', () => first.setViewport([0, 0, 1.5, 2]));
     await rejects('createTextureTarget([1.5, 2])', () => renderer.createTextureTarget([1.5, 2]));
+    await rejects('createTexture(bytes, [1.5, 2])', () => renderer.createTexture(new Uint8Array(16), [1.5, 2]));
+    await rejects('createTexture(bytes, { width: 1.5, height: 2 })',
+      () => renderer.createTexture(new Uint8Array(16), { width: 1.5, height: 2 }));
 
     // A region or viewport with a width or height of 0 throws.
     throws('new ScreenRegion([0, 0], [0, 4])', () => new fc.ScreenRegion([0, 0], [0, 4]));

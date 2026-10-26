@@ -86,7 +86,10 @@ impl Pass {
 
     #[wasm_bindgen(js_name = "setClearColor")]
     #[lsp_doc("docs/api/core/pass/set_clear_color.md")]
-    pub fn set_clear_color_js(&self, color: &JsValue) -> Result<(), JsError> {
+    pub fn set_clear_color_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] color: &JsValue,
+    ) -> Result<(), JsError> {
         Ok(self.set_clear_color(Color::try_from(color)?)?)
     }
 

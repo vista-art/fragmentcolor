@@ -278,8 +278,10 @@ fn read_texture_options(value: &JsValue) -> Result<TextureOptions, JsError> {
             "texture options take the size under `size`, as in { size: [w, h] }",
         ));
     }
-    if !options && let Ok(size) = Size::try_from(value) {
-        return Ok(TextureOptions::from(size));
+    // A bare size, as a list or as an object with a width and a height, reports its own error.
+    let list = js_sys::Array::is_array(value) || js_sys::ArrayBuffer::is_view(value);
+    if list || (!options && given(&["width", "height", "depth"])) {
+        return Ok(TextureOptions::from(Size::try_from(value)?));
     }
     if !value.is_object() {
         return Err(JsError::new(
