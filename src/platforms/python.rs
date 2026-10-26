@@ -175,9 +175,12 @@ pub(crate) fn read_unsigned<T: Unsigned>(value: &Bound<'_, PyAny>, label: &str) 
 
 /// A color, a vector or another list of floats from Python: any sequence of numbers, NumPy arrays
 /// included, except the bytes forms. Its readers name the parameter in their errors.
+/// The hint's ndarray leaves out the uint8 and bool arrays the readers refuse.
 #[derive(FromPyObject)]
 pub enum PyChannels<'py> {
-    #[pyo3(annotation = "Sequence[float]")]
+    #[pyo3(
+        annotation = "Sequence[float] | npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64]"
+    )]
     Numbers(Bound<'py, PyAny>),
 }
 
@@ -232,7 +235,7 @@ fn is_bool(value: &Bound<'_, PyAny>) -> bool {
 }
 
 /// One item as an `f64`, before the float vector rule checks its value.
-fn read_number(value: &Bound<'_, PyAny>, label: &str, index: usize) -> PyResult<f64> {
+pub(crate) fn read_number(value: &Bound<'_, PyAny>, label: &str, index: usize) -> PyResult<f64> {
     let py = value.py();
     if is_bool(value) {
         return Err(PyTypeError::new_err(format!(

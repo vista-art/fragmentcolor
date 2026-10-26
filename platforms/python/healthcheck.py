@@ -35,6 +35,7 @@ from fragmentcolor import (
     TextureFormat,
     TextureSlot,
     TextureUsage,
+    Quad,
     Vertex,
     WindowTarget,
 )
@@ -138,6 +139,13 @@ def check_size(renderer, texture):
     size.width = 32
     target.resize(size)
     assert (target.size().width, target.size().height) == (32, 8)
+    # A size's fields come in any mapping, as the stub's Mapping hint says.
+    import collections
+    import types
+    for fields in ({"width": 8, "height": 4}, collections.UserDict(width=8, height=4),
+                   types.MappingProxyType({"width": 8, "height": 4, "depth": 1})):
+        target.resize(fields)
+        assert (target.size().width, target.size().height) == (8, 4), f"{type(fields).__name__} size"
     print("Size reads its fields and passes back in")
 
 
@@ -659,6 +667,40 @@ def check_vectors():
         raises_invalid(f"Model.set_transform with {label}", lambda: model.set_transform(matrix))
     for label, matrix in (("a string", ["1"] + [0.0] * 15), ("a bool", [True] + [0.0] * 15), ("bytes", bytes(16))):
         raises_type(f"Model.set_transform with {label}", lambda: model.set_transform(matrix))
+
+    # A Quad corner takes two numbers and a vertex position 1 to 4, under the same rule.
+    points = {
+        "Quad: min": lambda v: Quad(v, [1.0, 1.0]),
+        "Quad: max": lambda v: Quad([0.0, 0.0], v),
+        "Vertex: position": lambda v: Vertex(v),
+        "Vertex.pbr: position": lambda v: Vertex.pbr(v),
+        "Mesh.add_vertex: vertex": lambda v: Mesh().add_vertex(v),
+        "Mesh.add_vertices: vertex 0": lambda v: Mesh().add_vertices([v]),
+        "Mesh.from_vertices: vertex 0": lambda v: Mesh.from_vertices([v]),
+    }
+    for name, apply in points.items():
+        apply([0.5, 1])
+        apply((0.5, 1.0))
+        apply(np.array([0.5, 1.0], dtype=np.float32))
+        for bytes_form in (bytes(2), bytearray(2), memoryview(bytes(2)), np.zeros(2, dtype=np.uint8)):
+            raises_type(f"{name}({type(bytes_form).__name__})", lambda: apply(bytes_form))
+        raises_type(f"{name} with a bool", lambda: apply([True, 1]))
+        raises_type(f"{name} with a string", lambda: apply(["0", 1]))
+        for bad in (10**400, 1e39, float("nan"), float("inf"), float("-inf")):
+            try:
+                apply([bad, 1.0])
+            except InvalidInputError as e:
+                assert str(e).startswith(name), f"{name} with {bad} raised {e}"
+            else:
+                raise AssertionError(f"{name} with {bad} should raise InvalidInputError")
+    raises_invalid("Quad with 3 numbers", lambda: Quad([0.0, 0.0, 0.0], [1.0, 1.0]))
+    raises_invalid("Vertex with 5 numbers", lambda: Vertex([0.0] * 5))
+    raises_invalid("Vertex(nan)", lambda: Vertex(float("nan")))
+    raises_type("Vertex(True)", lambda: Vertex(True))
+    Vertex(0.5)
+    Mesh().add_vertex(([0.0, 0.0, 0.0], [0.0, 1.0]))
+    raises_invalid("Mesh.add_vertex((position with NaN, uv))",
+                   lambda: Mesh().add_vertex(([float("nan"), 0.0, 0.0], [0.0, 1.0])))
     print("Vectors take three numbers and refuse bytes, bools and out-of-range items")
 
 
@@ -902,7 +944,7 @@ def check_mesh_inputs():
             return
         raise AssertionError(f"{label} should raise TypeError")
 
-    rejects("a five-number position", lambda: Vertex([1, 2, 3, 4, 5]))
+    raises_invalid("a five-number position", lambda: Vertex([1, 2, 3, 4, 5]))
     rejects("a string attribute", lambda: Vertex([0, 0]).set("w", "x"))
     rejects("a number as an instance", lambda: Mesh().add_instance(3.0))
     rejects("a string instance attribute", lambda: Mesh().add_instance({"offset": "x"}))

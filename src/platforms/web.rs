@@ -80,6 +80,15 @@ fn read_vector_items(
         .collect()
 }
 
+/// The numbers of a float vector of any length, each checked by [`super::vector::read_floats`].
+pub(crate) fn read_floats(
+    value: &wasm_bindgen::JsValue,
+    label: &str,
+) -> Result<Vec<f32>, wasm_bindgen::JsError> {
+    let items = read_vector_items(value, label)?;
+    Ok(super::vector::read_floats(items, label)?)
+}
+
 /// Exactly `N` numbers of a float vector, such as a position, each checked by [`super::vector::read_floats`].
 pub(crate) fn read_vector<const N: usize>(
     value: &wasm_bindgen::JsValue,

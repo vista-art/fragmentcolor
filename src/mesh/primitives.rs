@@ -4,6 +4,8 @@ use std::sync::Arc;
 use super::{Mesh, MeshObject, Vertex};
 
 #[cfg(python)]
+use crate::platforms::python::PyChannels;
+#[cfg(python)]
 use pyo3::prelude::*;
 
 #[cfg(wasm)]
@@ -63,8 +65,11 @@ impl Quad {
 impl Quad {
     #[new]
     #[lsp_doc("docs/api/geometry/quad/new.md")]
-    pub fn new_py(min: [f32; 2], max: [f32; 2]) -> Self {
-        Self::new(min, max)
+    pub fn new_py(min: PyChannels<'_>, max: PyChannels<'_>) -> PyResult<Self> {
+        Ok(Self::new(
+            min.read_array("Quad: min")?,
+            max.read_array("Quad: max")?,
+        ))
     }
 
     #[pyo3(name = "get_mesh")]

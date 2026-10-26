@@ -244,6 +244,12 @@ final class Healthcheck: ExampleCase {
             ("Material.baseColor", { _ = try material.baseColor([1, 1, Float.nan, 1]) }),
             ("Material.uvTransform: offset", { _ = try material.uvTransform([1e39, 0] as [Double], [1, 1], 0) }),
             ("Material.textureTransform: scale", { _ = try material.textureTransform(.normal, [0, 0], [Float.infinity, 1], 0) }),
+            ("Vertex: position", { _ = try Vertex([1e39, 0, 0] as [Double]) }),
+            ("Vertex: position", { _ = try Vertex([Float.nan, 0]) }),
+            ("Vertex.pbr: position", { _ = try Vertex.pbr([0, Double.infinity, 0]) }),
+            ("Vertex: position", { try Mesh().addVertex([0, Double.nan, 0]) }),
+            ("Quad: min", { _ = try Quad([1e39, 0] as [Double], [1, 1]) }),
+            ("Quad: max", { _ = try Quad([0, 0], [Float.infinity, 1]) }),
         ]
         for (label, call) in cases {
             do {
