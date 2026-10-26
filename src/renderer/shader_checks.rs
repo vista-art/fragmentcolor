@@ -62,7 +62,9 @@ impl RenderContext {
                     &texture,
                     self.device.features(),
                 )?,
-                None if PbrDefaults::has_slot(&uniform.name) => {}
+                // An unset PBR map takes its default. One set to a texture this
+                // context doesn't hold, removed or from another Renderer, is refused.
+                None if meta.id.id == 0 && PbrDefaults::has_slot(&uniform.name) => {}
                 None => return Err(report_missing(&uniform.name, meta)),
             }
         }

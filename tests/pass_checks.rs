@@ -396,6 +396,33 @@ fn racing_calls_share_one_context() {
     }
 }
 
+// Story: a PBR map set to a texture from another Renderer is refused, where it drew
+// the slot's 1x1 default without a word.
+#[test]
+fn a_pbr_map_from_another_renderer_errors() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let frame = target(&renderer, 8).await;
+        let other = Renderer::new();
+        let foreign = other
+            .create_texture((vec![255; 16], [2, 2]))
+            .await
+            .expect("a texture");
+        let material = Material::pbr().base_color_texture(&foreign);
+        let pass = Pass::new("pbr");
+        pass.add(&cover(material)).expect("add");
+
+        let result = renderer.render(&pass, &frame);
+        assert!(
+            matches!(result, Err(RendererError::TextureNotFoundError(id)) if id == *foreign.id()),
+            "{result:?}"
+        );
+        renderer
+            .render(&Pass::from_shader("plain", &Shader::default()), &frame)
+            .expect("a pass without the texture");
+    });
+}
+
 // Story: a shader that samples the texture its pass draws into is refused, for the
 // frame of a TextureTarget and for a pass target alike, while a later pass reads it.
 #[test]
