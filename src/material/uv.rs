@@ -40,7 +40,7 @@ impl TextureSlot {
     ];
 
     /// The uniform key of one field of this slot's `material.uv` entry.
-    fn key(self, field: &str) -> String {
+    fn format_key(self, field: &str) -> String {
         format!("material.uv[{}].{field}", self as usize)
     }
 }
@@ -60,11 +60,12 @@ pub(crate) enum UvSet {
     Second,
 }
 
-impl UvSet {
-    fn index(self) -> u32 {
-        match self {
-            Self::First => 0,
-            Self::Second => 1,
+/// The number glTF gives the set, the `n` of `TEXCOORD_<n>`.
+impl From<UvSet> for u32 {
+    fn from(set: UvSet) -> Self {
+        match set {
+            UvSet::First => 0,
+            UvSet::Second => 1,
         }
     }
 }
@@ -109,14 +110,18 @@ impl Material {
 
     /// Sets the UV set one texture slot samples.
     pub(crate) fn set_slot_set(&self, slot: TextureSlot, set: UvSet) {
-        set_or_warn(&self.shader, &slot.key("uv_set"), set.index());
+        set_or_warn(&self.shader, &slot.format_key("uv_set"), u32::from(set));
     }
 
     /// Sets the transform one texture slot applies to its UVs.
     pub(crate) fn set_slot_transform(&self, slot: TextureSlot, transform: UvTransform) {
-        set_or_warn(&self.shader, &slot.key("offset"), transform.offset);
-        set_or_warn(&self.shader, &slot.key("scale"), transform.scale);
-        set_or_warn(&self.shader, &slot.key("rotation"), transform.rotation);
+        set_or_warn(&self.shader, &slot.format_key("offset"), transform.offset);
+        set_or_warn(&self.shader, &slot.format_key("scale"), transform.scale);
+        set_or_warn(
+            &self.shader,
+            &slot.format_key("rotation"),
+            transform.rotation,
+        );
     }
 
     /// Sets the same transform on all five texture slots.
@@ -219,7 +224,7 @@ mod tests {
     ) -> T {
         material
             .shader()
-            .get(&slot.key(field))
+            .get(&slot.format_key(field))
             .unwrap_or_else(|error| panic!("read {field} of {slot:?}: {error:?}"))
     }
 
