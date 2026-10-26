@@ -341,6 +341,22 @@ def check_pass_targets(renderer):
     foreign = Renderer().create_texture_target([8, 8])
     refuses("a target from another Renderer", "another Renderer",
             lambda: renderer.render(Shader(SOLID_SHADER), foreign))
+    refuses("a Renderer with no context", "another Renderer",
+            lambda: Renderer().render(Shader(SOLID_SHADER), target))
+
+    # A pass error keeps its class whichever call raises it: render raises
+    # InvalidInputError for a target format the shader can't fill, as set_target does.
+    usage = TextureUsage.RENDER_ATTACHMENT | TextureUsage.TEXTURE_BINDING
+    integer = renderer.create_storage_texture([8, 8], TextureFormat.Rgba32Uint, usage=usage)
+    floats = Pass("floats into integers")
+    floats.add_shader(Shader(SOLID_SHADER))
+    floats.set_target(integer)
+    raises_invalid("render of vec4<f32> into Rgba32Uint", lambda: renderer.render(floats, target))
+
+    wide = Pass("wide viewport")
+    wide.add_shader(Shader(SOLID_SHADER))
+    wide.set_viewport([0, 0, 1 << 24, 8])
+    raises_invalid("render of a viewport past the device limit", lambda: renderer.render(wide, target))
     renderer.render(Shader(SOLID_SHADER), target)
 
 

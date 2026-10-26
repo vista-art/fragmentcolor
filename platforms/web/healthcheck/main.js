@@ -772,6 +772,39 @@ await withModule('platforms.web.healthcheck.pass_checks', async () => {
       refuses('a dispatch past the device limit', 'dispatches', () => renderer.render(compute, target));
     }
 
+    refuses('a Renderer with no context', 'another Renderer', () => new Renderer().render(solid(), target));
+
+    // Blending reads the source alpha, which the browser requires the output to have:
+    // a one-channel output blended into R8Unorm throws from render itself.
+    const usage = TextureUsage.RENDER_ATTACHMENT | TextureUsage.TEXTURE_BINDING;
+    const red = await renderer.createStorageTexture([8, 8], TextureFormat.R8Unorm, null, usage);
+    const single = new Shader(`
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  return vec4<f32>(p[i], 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) f32 { return 0.5; }
+`);
+    Material.custom(single).alphaMode(fc.AlphaMode.Blend);
+    const blend = Pass.fromShader('blend', single);
+    blend.setTarget(red);
+    refuses('a one-channel output blended', 'reads an alpha channel', () => renderer.render(blend, target));
+
+    // A shader that writes no color draws with an empty write mask, which the browser
+    // requires, so it renders without a late error and keeps the clear color.
+    const silent = new Shader(`
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  return vec4<f32>(p[i], 0.0, 1.0);
+}
+@fragment fn fs_main() {}
+`);
+    const quiet = Pass.fromShader('no color', silent);
+    quiet.setClearColor([1.0, 0.0, 0.0, 1.0]);
+    renderer.render(quiet, target);
+    const kept = await target.getImage();
+    if (kept[0] !== 255 || kept[1] !== 0) fail(`a shader without color drew over the clear: ${kept.slice(0, 4)}`);
+
     renderer.render(solid(), target);
     await target.getImage();
 });
