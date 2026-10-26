@@ -12,6 +12,9 @@ on:
       - 'tools/**'
       - '.github/workflows/docs-ci.yml'
 
+permissions:
+  contents: read
+
 jobs:
   deps-up-to-date:
     name: Dependencies up-to-date
@@ -19,6 +22,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v5
@@ -50,6 +55,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v5
@@ -66,6 +73,9 @@ jobs:
 
       - name: Install dependencies (docs/website)
         run: pnpm --dir docs/website install
+
+      - name: Test docs (node --test)
+        run: pnpm --dir docs/website test
 
       - name: Build docs (astro)
         run: pnpm --dir docs/website build
