@@ -101,61 +101,35 @@ impl TryFrom<PyTextureSource<'_>> for crate::TextureInput {
             PyTextureSource::Tuple(tuple) => TextureData::Bytes(tuple.extract()?),
             PyTextureSource::Source(source) => TextureData::from(source.as_str()),
             PyTextureSource::Path(path) => TextureData::Path(path),
-            PyTextureSource::Array(array) => {
-                let (rgba, size) = ndarray_to_rgba(&array)?;
-                return Ok((rgba, size).into());
-            }
+            PyTextureSource::Array(array) => return Ok(ndarray_input(&array, None, None)?),
             PyTextureSource::Mipmap(chain) => TextureData::Prepared(chain),
         };
         Ok(data.into())
     }
 }
 
-/// Expands an `(h, w)` or `(h, w, 1 | 3 | 4)` uint8 array to RGBA8 bytes.
-fn ndarray_to_rgba(
+/// The texture input for a `uint8` array, which brings its own size. A `size` keyword
+/// must match it, and the channels must fit the `format`, `Rgba` when unset.
+pub(crate) fn ndarray_input(
     array: &numpy::PyReadonlyArrayDyn<'_, u8>,
-) -> Result<(Vec<u8>, crate::Size), PyErr> {
+    size: Option<crate::Size>,
+    format: Option<TextureFormat>,
+) -> Result<crate::TextureInput, crate::texture::TextureError> {
     use numpy::PyUntypedArrayMethods;
 
-    let shape = array.shape();
-    if shape.len() != 2 && shape.len() != 3 {
-        return Err(crate::error::PyFragmentColorError::new_err(format!(
-            "ndarray must have 2 or 3 dimensions, got {}",
-            shape.len()
+    let format = format.unwrap_or_default();
+    let read = || ndarray_bytes(array);
+    let (pixels, own) = crate::texture::array_pixels(array.shape(), read, format.into())?;
+    let fits = |size: &crate::Size| {
+        (size.width, size.height, size.depth.unwrap_or(1)) == (own.width, own.height, 1)
+    };
+    if let Some(size) = size.filter(|size| !fits(size)) {
+        return Err(crate::texture::TextureError::InvalidInput(format!(
+            "size {size:?} differs from the ndarray's {}x{}",
+            own.width, own.height
         )));
     }
-    let h = shape[0] as u32;
-    let w = shape[1] as u32;
-    let c = if shape.len() == 3 { shape[2] } else { 1 };
-    let mut rgba = vec![0u8; (w as usize) * (h as usize) * 4];
-    let data = ndarray_bytes(array);
-    for y in 0..(h as usize) {
-        for x in 0..(w as usize) {
-            let src_idx = (y * (w as usize) + x) * c;
-            let dst_idx = (y * (w as usize) + x) * 4;
-            match c {
-                1 => {
-                    let v = data[src_idx];
-                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&[v, v, v, 255]);
-                }
-                3 => {
-                    let r = data[src_idx];
-                    let g = data[src_idx + 1];
-                    let b = data[src_idx + 2];
-                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&[r, g, b, 255]);
-                }
-                4 => {
-                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&data[src_idx..src_idx + 4]);
-                }
-                _ => {
-                    return Err(crate::error::PyFragmentColorError::new_err(
-                        "ndarray last dimension must be 1, 3, or 4",
-                    ));
-                }
-            }
-        }
-    }
-    Ok((rgba, crate::Size::new(w, h, None)))
+    Ok((pixels, format, own).into())
 }
 
 /// A texture usage from Python: a `TextureUsage`, such as

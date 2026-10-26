@@ -7,6 +7,7 @@ from fragmentcolor import (
     CompareFunction,
     FragmentColorError,
     Instance,
+    InvalidInputError,
     MalformedImageError,
     Mesh,
     OccludedSurfaceError,
@@ -304,6 +305,29 @@ def check_texture_inputs(renderer):
     else:
         raise AssertionError("undecodable bytes should raise MalformedImageError")
     print("create_texture takes every byte form, a Texture, and usage")
+
+
+def check_ndarray_formats(renderer):
+    """An ndarray fills the format it is given, or raises InvalidInputError."""
+    gray = np.arange(16, dtype=np.uint8).reshape(4, 4)
+    texture = renderer.create_texture(
+        gray, format=TextureFormat.R8Unorm, mipmaps=False, usage=TextureUsage.COPY_SRC
+    )
+    assert bytes(renderer.read_texture(texture.id())) == gray.tobytes(), "R8Unorm read the gray bytes"
+
+    def invalid(label, call):
+        try:
+            call()
+        except InvalidInputError as e:
+            print(f"{label} raised InvalidInputError: {e}")
+            return
+        raise AssertionError(f"{label} should raise InvalidInputError")
+
+    invalid("a gray ndarray as Rgba32Float", lambda: renderer.create_texture(gray, format=TextureFormat.Rgba32Float))
+    invalid("an ndarray with another size", lambda: renderer.create_texture(gray, size=[2, 8]))
+    invalid("an ndarray with 5 channels", lambda: renderer.create_texture(np.zeros((2, 2, 5), np.uint8)))
+    invalid("a 4D ndarray", lambda: renderer.create_texture(np.zeros((2, 2, 2, 4), np.uint8)))
+    print("create_texture fits an ndarray to its format and size")
 
 
 def check_scene_errors():
@@ -613,6 +637,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_require_graph(renderer)
     check_value_types()
     check_texture_inputs(renderer)
+    check_ndarray_formats(renderer)
     check_scene_errors()
     check_stub()
 

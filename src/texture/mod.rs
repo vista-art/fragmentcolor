@@ -22,7 +22,9 @@ pub(crate) mod ktx2_loader;
 
 mod platform;
 #[cfg(python)]
-pub(crate) use platform::{PySamplerOptions, PyTextureId, PyTextureSource, PyTextureUsage};
+pub(crate) use platform::{
+    PySamplerOptions, PyTextureId, PyTextureSource, PyTextureUsage, ndarray_input,
+};
 #[cfg(wasm)]
 pub(crate) use platform::{read_texture_input, read_usage};
 
@@ -1506,6 +1508,52 @@ pub(crate) fn write_image_levels(
     Ok(())
 }
 
+/// The texel bytes of a `uint8` array of `shape`, `(h, w)` or `(h, w, channels)`, for `format`,
+/// and the array's size. Channels that match the format's bytes per pixel pass as they are,
+/// and 1 or 3 channels gain an opaque alpha for an 8-bit RGBA or BGRA format.
+/// The shape is checked before `read` collects the array's bytes.
+#[cfg(any(python, test))]
+pub(crate) fn array_pixels(
+    shape: &[usize],
+    read: impl FnOnce() -> Vec<u8>,
+    format: wgpu::TextureFormat,
+) -> Result<(Vec<u8>, Size), TextureError> {
+    let invalid = || TextureError::InvalidInput(format!("an ndarray of shape {shape:?} doesn't fit a {format:?} texture"));
+    let (height, width, channels) = match *shape {
+        [height, width] => (height, width, 1),
+        [height, width, channels] => (height, width, channels),
+        _ => return Err(invalid()),
+    };
+    let side = |value: usize| u32::try_from(value).ok().ok_or_else(invalid);
+    let size = Size::new(side(width)?, side(height)?, None);
+    let rgba = matches!(
+        format,
+        wgpu::TextureFormat::Rgba8Unorm
+            | wgpu::TextureFormat::Rgba8UnormSrgb
+            | wgpu::TextureFormat::Bgra8Unorm
+            | wgpu::TextureFormat::Bgra8UnormSrgb
+    );
+    if channels == texel_size(format)? as usize {
+        return Ok((read(), size));
+    }
+    if !rgba || !matches!(channels, 1 | 3) {
+        return Err(invalid());
+    }
+    let length = width
+        .checked_mul(height)
+        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or_else(invalid)?;
+    let mut pixels = Vec::with_capacity(length);
+    for texel in read().chunks_exact(channels) {
+        match *texel {
+            [value] => pixels.extend_from_slice(&[value, value, value, 255]),
+            [red, green, blue] => pixels.extend_from_slice(&[red, green, blue, 255]),
+            _ => return Err(invalid()),
+        }
+    }
+    Ok((pixels, size))
+}
+
 /// Swaps red and blue in 4-byte `pixels` when `format` stores BGRA.
 /// The swap is its own inverse, so it turns RGBA into BGRA and back.
 pub(crate) fn swap_bgra(pixels: &mut [u8], format: wgpu::TextureFormat) {
@@ -1921,6 +1969,41 @@ mod tests {
         assert_eq!(chain.level(0).expect("level 0").len(), 4 * 4 * 4);
         assert_eq!(chain.level(2).expect("level 2").len(), 4);
         assert!(matches!(chain.level(3), Err(TextureError::InvalidInput(_))));
+    }
+
+    // Story: an ndarray's bytes pass as they are when its channels match the
+    // format, gain alpha for an 8-bit RGBA format, and anything else, a shape
+    // past u32 included, is refused before its bytes are read.
+    #[test]
+    fn array_pixels_fit_the_format() {
+        let gray = [1u8, 2, 3, 4];
+        let read = || gray.to_vec();
+        let (bytes, size) =
+            array_pixels(&[2, 2], read, wgpu::TextureFormat::R8Unorm).expect("gray as R8");
+        assert_eq!((bytes, size), (gray.to_vec(), Size::new(2, 2, None)));
+        let (bytes, _) =
+            array_pixels(&[2, 2], read, wgpu::TextureFormat::Rgba8Unorm).expect("gray as RGBA");
+        assert_eq!(&bytes[..8], &[1, 1, 1, 255, 2, 2, 2, 255]);
+        let (bytes, size) = array_pixels(&[1, 2, 2], read, wgpu::TextureFormat::Rg8Unorm)
+            .expect("two channels as Rg8");
+        assert_eq!((bytes, size), (gray.to_vec(), Size::new(2, 1, None)));
+
+        let unread = || -> Vec<u8> { panic!("the bytes of a refused shape are never read") };
+        for (shape, format) in [
+            (vec![2, 2], wgpu::TextureFormat::Rgba32Float),
+            (vec![2, 2, 3], wgpu::TextureFormat::Rg16Unorm),
+            (vec![2, 2, 5], wgpu::TextureFormat::Rgba8Unorm),
+            (vec![2, 2, 2, 2], wgpu::TextureFormat::Rgba8Unorm),
+            (vec![1, (1 << 32) + 4, 3], wgpu::TextureFormat::Rgba8Unorm),
+        ] {
+            assert!(
+                matches!(
+                    array_pixels(&shape, unread, format),
+                    Err(TextureError::InvalidInput(_))
+                ),
+                "{shape:?} as {format:?}"
+            );
+        }
     }
 
     // Story: Create a texture from encoded image bytes and verify aspect.
