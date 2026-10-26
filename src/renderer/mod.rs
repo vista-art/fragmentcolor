@@ -1080,6 +1080,7 @@ impl RenderContext {
     /// The draw loop takes each shader's layouts and buffers from the plan.
     fn plan_pass(&self, pass: &PassObject) -> Result<PassDraws, RendererError> {
         self.check_light_cap(pass)?;
+        self.check_viewport(pass)?;
         let targets = self.find_targets(pass)?;
         let mut draws = self.build_pass_draws(pass);
         let model_shaders = find_model_shaders(pass);
@@ -1620,8 +1621,7 @@ impl RenderContext {
             if scissor.width() == 0 || scissor.height() == 0 {
                 return Ok(());
             }
-            let (x, y, width, height) =
-                viewport_rect(&region, self.device.limits().max_texture_dimension_2d);
+            let (x, y, width, height) = viewport_rect(&region);
             render_pass.set_viewport(x, y, width, height, 0.0, 1.0);
             render_pass.set_scissor_rect(
                 scissor.min_x,
@@ -2540,15 +2540,13 @@ fn vertex_buffer_layouts(
     Ok(Some(VertexLayouts { vertex, instance }))
 }
 
-/// The viewport for `region` within the bounds wgpu accepts:
-/// a size up to `max_dimension`, and a far edge below twice that.
-fn viewport_rect(region: &ScreenRegion, max_dimension: u32) -> (f32, f32, f32, f32) {
-    let range = 2.0 * max_dimension as f32 - 1.0;
-    let width = (region.max_x.abs_diff(region.min_x) as f32).min(max_dimension as f32);
-    let height = (region.max_y.abs_diff(region.min_y) as f32).min(max_dimension as f32);
-    let x = (region.min_x.min(region.max_x) as f32).min(range - width);
-    let y = (region.min_y.min(region.max_y) as f32).min(range - height);
-    (x, y, width, height)
+/// The viewport for `region`, as given. `check_viewport` keeps each side within
+/// the device's 2D limit, and a region that starts past the attachment draws nothing,
+/// so the far edge stays below twice that limit, the bound wgpu takes.
+fn viewport_rect(region: &ScreenRegion) -> (f32, f32, f32, f32) {
+    let x = region.min_x.min(region.max_x) as f32;
+    let y = region.min_y.min(region.max_y) as f32;
+    (x, y, region.width() as f32, region.height() as f32)
 }
 
 /// The override a shader declares to learn whether its target stores colors

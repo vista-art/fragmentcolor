@@ -122,6 +122,23 @@ impl RenderContext {
         Ok(())
     }
 
+    /// Refuses a viewport with a side past the device's 2D texture limit, the largest
+    /// viewport wgpu takes. A region within it keeps its size, past the target too.
+    pub(super) fn check_viewport(&self, pass: &PassObject) -> Result<(), RendererError> {
+        let limit = self.device.limits().max_texture_dimension_2d;
+        match *pass.viewport.read() {
+            Some(region) if region.width() > limit || region.height() > limit => {
+                Err(PassError::ViewportLimit {
+                    pass: pass.name.to_string(),
+                    size: [region.width(), region.height()],
+                    limit,
+                }
+                .into())
+            }
+            _ => Ok(()),
+        }
+    }
+
     /// Looks up the textures `pass` draws into. One this context doesn't hold,
     /// because `unregister_texture` removed it or another Renderer created it,
     /// returns `TextureNotFoundError`.

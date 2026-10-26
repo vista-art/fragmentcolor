@@ -32,6 +32,16 @@ pub enum PassError {
         dispatch: [u32; 3],
         limit: u32,
     },
+    /// A viewport with a side past the device's 2D texture limit.
+    #[error(
+        "Pass '{pass}' has a viewport of {}x{}, and this device takes at most {limit} on each side",
+        .size[0], .size[1]
+    )]
+    ViewportLimit {
+        pass: String,
+        size: [u32; 2],
+        limit: u32,
+    },
     /// A texture one pass both writes and reads, or writes in two ways.
     #[error("Texture conflict in pass '{pass}': {detail}")]
     TextureConflict { pass: String, detail: String },

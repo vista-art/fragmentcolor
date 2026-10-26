@@ -146,6 +146,37 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     });
 }
 
+// Story: A viewport with a side past the device's 2D texture limit is refused before
+// the frame, where it shrank to the limit and squeezed the image to another zoom.
+#[test]
+fn refuses_a_viewport_past_the_device_limit() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let target = renderer
+            .create_texture_target([16, 8])
+            .await
+            .expect("create_texture_target failed");
+        // No device takes a side of 2^24, while a side of 4096 fits every one.
+        let pass = fill_pass([0, 0, 1 << 24, 8], [1.0, 0.0, 0.0, 1.0]);
+
+        let result = renderer.render(&pass, &target);
+        assert!(
+            matches!(
+                &result,
+                Err(fragmentcolor::RendererError::PassError(PassError::ViewportLimit { size, .. }))
+                    if *size == [1 << 24, 8]
+            ),
+            "{result:?}"
+        );
+
+        pass.set_viewport([0, 0, 4096, 8])
+            .expect("set_viewport failed");
+        renderer
+            .render(&pass, &target)
+            .expect("a viewport within the limit");
+    });
+}
+
 // Story: A viewport outside the target draws nothing, and the pass still clears.
 #[test]
 fn skips_draws_for_a_viewport_outside_the_target() {
