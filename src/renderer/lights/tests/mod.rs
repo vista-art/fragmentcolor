@@ -570,6 +570,51 @@ fn sixteen_thousand_lights_grow_every_buffer() {
 }
 
 #[test]
+fn a_light_along_the_view_ray_shades_every_pixel() {
+    pollster::block_on(async {
+        // Each pixel gets a light shining back along its view ray, so the half
+        // vector meets the view direction and rounding can put their dot past 1.
+        // Shading that turns NaN writes black, and the ambient lights every other pixel.
+        const SIDE: u32 = 16;
+        let camera = Camera::perspective(1.0, 1.0, 0.1, 100.0)
+            .expect("camera")
+            .look_at([0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0])
+            .expect("camera");
+        let wall = quad(
+            [
+                [-4.0, -4.0, -5.0],
+                [4.0, -4.0, -5.0],
+                [4.0, 4.0, -5.0],
+                [-4.0, 4.0, -5.0],
+            ],
+            [0.0, 0.0, 1.0],
+        );
+        let pass = Pass::new("view rays");
+        pass.add(&Model::new(wall, rough())).expect("wall");
+        pass.add(&camera).expect("camera");
+        let reach = 5.0 * 0.5f32.tan();
+        let pixel = |index: u32| (index as f32 + 0.5) / SIDE as f32 * 2.0 - 1.0;
+        for row in 0..SIDE {
+            for column in 0..SIDE {
+                let toward = [pixel(column) * reach, -pixel(row) * reach, -5.0];
+                let light = Light::directional(toward, [1.0; 3]).set_intensity(0.002);
+                pass.add(&light).expect("light");
+            }
+        }
+        let (renderer, target, _) = open(Mode::Clustered, SIDE).await;
+        renderer.render(&pass, &target).expect("render");
+        let image = target.get_image().await.expect("read back");
+        let black: Vec<usize> = image
+            .chunks(4)
+            .enumerate()
+            .filter(|(_, pixel)| pixel[..3] == [0, 0, 0])
+            .map(|(index, _)| index)
+            .collect();
+        assert!(black.is_empty(), "black pixels {black:?}");
+    });
+}
+
+#[test]
 fn a_small_storage_limit_promotes_lights() {
     pollster::block_on(async {
         let limit = 256 * 1024;
