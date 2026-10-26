@@ -47,14 +47,10 @@ pub(crate) async fn read_buffer_bytes(
     });
 
     #[cfg(not(wasm))]
-    if let Err(e) = context.device.poll(wgpu::PollType::Wait {
-        submission_index: None,
-        timeout: Some(std::time::Duration::from_secs(5)),
-    }) {
-        log::error!("Device poll error during storage readback mapping: {:?}", e);
-        return Err(RendererError::Error(format!(
-            "storage readback poll: {e:?}"
-        )));
+    {
+        let mut rx = rx;
+        crate::wait_for_map(&context.device, &mut rx, crate::MAP_LIMIT)
+            .map_err(|error| RendererError::Error(format!("storage readback: {error}")))?;
     }
 
     #[cfg(wasm)]
@@ -62,21 +58,6 @@ pub(crate) async fn read_buffer_bytes(
         return Err(RendererError::Error(
             "storage readback mapping did not complete".into(),
         ));
-    }
-
-    #[cfg(not(wasm))]
-    match rx.await {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => {
-            return Err(RendererError::Error(format!(
-                "storage readback map_async failed: {e:?}"
-            )));
-        }
-        Err(_) => {
-            return Err(RendererError::Error(
-                "storage readback map_async channel dropped".into(),
-            ));
-        }
     }
 
     let view = slice.get_mapped_range().map_err(|e| {

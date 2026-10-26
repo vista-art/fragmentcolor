@@ -133,6 +133,69 @@ impl Drop for PendingReadback<'_> {
     }
 }
 
+/// What a buffer's `map_async` callback sends.
+pub(crate) type MapReceiver =
+    futures::channel::oneshot::Receiver<Result<(), wgpu::BufferAsyncError>>;
+
+/// How long a native readback waits for its buffer to map.
+#[cfg(not(wasm))]
+pub(crate) const MAP_LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// The longest one device poll inside a map wait blocks.
+#[cfg(not(wasm))]
+const POLL_STEP: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// Why a readback stopped waiting for its buffer to map.
+#[cfg(not(wasm))]
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum MapError {
+    #[error("the buffer did not map within {0:?}")]
+    Timeout(std::time::Duration),
+    #[error("map_async failed: {0}")]
+    Failed(#[from] wgpu::BufferAsyncError),
+    #[error("the map callback was dropped")]
+    Dropped,
+    #[error("device poll failed: {0}")]
+    Poll(#[from] wgpu::PollError),
+}
+
+/// Polls `device` until `receiver` holds the map result, for at most `limit`.
+///
+/// The map callback fires only from a device poll, and nothing else may poll this device.
+/// So every turn of the wait polls it, for at most `POLL_STEP`, and a map
+/// that never lands returns `MapError::Timeout` instead of blocking forever.
+#[cfg(not(wasm))]
+pub(crate) fn wait_for_map(
+    device: &wgpu::Device,
+    receiver: &mut MapReceiver,
+    limit: std::time::Duration,
+) -> Result<(), MapError> {
+    let deadline = std::time::Instant::now() + limit;
+    loop {
+        match receiver.try_recv() {
+            Ok(Some(result)) => return Ok(result?),
+            Ok(None) => {}
+            Err(_) => return Err(MapError::Dropped),
+        }
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        if left.is_zero() {
+            return Err(MapError::Timeout(limit));
+        }
+        let wait = wgpu::PollType::Wait {
+            submission_index: None,
+            timeout: Some(left.min(POLL_STEP)),
+        };
+        match device.poll(wait) {
+            // Nothing is in flight, so the map waits on no submission: check again shortly.
+            Ok(wgpu::PollStatus::QueueEmpty) => {
+                std::thread::sleep(left.min(std::time::Duration::from_millis(1)))
+            }
+            Ok(_) | Err(wgpu::PollError::Timeout) => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::PendingReadback;
@@ -202,6 +265,75 @@ mod tests {
                 .expect("poll");
             assert!(receiver.recv().expect("map callback").is_ok());
         });
+    }
+
+    /// Runs `wait` on a thread of its own and returns what it gives back,
+    /// or `None` when it is still waiting after `watchdog`.
+    fn run_within<T: Send + 'static>(
+        watchdog: std::time::Duration,
+        wait: impl FnOnce() -> T + Send + 'static,
+    ) -> Option<T> {
+        let (done, finished) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = done.send(wait());
+        });
+        finished.recv_timeout(watchdog).ok()
+    }
+
+    // Story: a readback's map lands though no other code polls the device,
+    // because the wait polls it itself. A wait that only awaited the callback never returned.
+    #[test]
+    fn map_wait_polls_the_device_itself() {
+        // Arrange
+        let waiting = move || {
+            pollster::block_on(async move {
+                let device = device().await;
+                let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("map wait"),
+                    size: 256,
+                    usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                    mapped_at_creation: false,
+                });
+                let (sender, mut receiver) = futures::channel::oneshot::channel();
+                buffer
+                    .slice(..)
+                    .map_async(wgpu::MapMode::Read, move |result| {
+                        let _ = sender.send(result);
+                    });
+
+                // Act
+                super::wait_for_map(&device, &mut receiver, super::MAP_LIMIT)
+                    .map_err(|error| error.to_string())
+            })
+        };
+
+        // Assert
+        let result = run_within(std::time::Duration::from_secs(30), waiting);
+        assert!(matches!(result, Some(Ok(()))), "got {result:?}");
+    }
+
+    // Story: a map that never lands ends the wait at its limit with a timeout,
+    // so a readback returns an error instead of blocking forever.
+    #[test]
+    fn map_wait_stops_at_its_limit() {
+        // Arrange
+        let limit = std::time::Duration::from_millis(200);
+        let waiting = move || {
+            pollster::block_on(async move {
+                let device = device().await;
+                let (_sender, mut receiver) = futures::channel::oneshot::channel();
+
+                // Act
+                super::wait_for_map(&device, &mut receiver, limit)
+            })
+        };
+
+        // Assert
+        let result = run_within(std::time::Duration::from_secs(30), waiting);
+        assert!(
+            matches!(result, Some(Err(super::MapError::Timeout(waited))) if waited == limit),
+            "got {result:?}"
+        );
     }
 
     // Story: a finished readback keeps its buffer for the next one.
