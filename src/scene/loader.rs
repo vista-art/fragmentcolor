@@ -11,8 +11,9 @@
 //! flow into the Material as pending [`crate::TextureInput`] entries and
 //! the renderer drains them on first render (see [`crate::Renderer::load`]).
 //!
-//! Today the loader covers static glTF: mesh primitives (positions,
-//! normals, UVs, indices), PBR-MR materials with all five texture slots,
+//! The loader covers static glTF: mesh primitives (positions, normals,
+//! two UV sets, colors, tangents, indices), PBR-MR materials with all five
+//! texture slots, each with the UV set and `KHR_texture_transform` it names,
 //! per-node transforms flattened into Model matrices, glTF camera nodes,
 //! and `KHR_lights_punctual` lights. Animation, skinning, morph targets,
 //! and material extensions beyond PBR-MR are out of scope here.
@@ -24,6 +25,7 @@ use glam::{Mat4, Quat, Vec3};
 use gltf::Semantic;
 use gltf::accessor::{DataType, Dimensions};
 
+use crate::material::{TextureSlot, UvSet, UvTransform};
 use crate::scene::{Camera, Light, Scene};
 use crate::{Material, Mesh, Model, TextureData, TextureInput};
 
@@ -652,10 +654,11 @@ fn build_mesh(
             .as_ref()
             .and_then(|us| us.get(i).copied())
             .unwrap_or(fallback_uv);
+        // A primitive without TEXCOORD_1 gives its UV0 to the slots on set 1.
         let uv1 = uv1s
             .as_ref()
             .and_then(|us| us.get(i).copied())
-            .unwrap_or(fallback_uv);
+            .unwrap_or(uv);
         let color = colors
             .as_ref()
             .and_then(|cs| cs.get(i).copied())
@@ -868,50 +871,113 @@ fn build_material(
 
     if let Some(info) = pbr.base_color_texture() {
         material = material.base_color_texture(convert_image(&info.texture(), images)?);
-        // KHR_texture_transform on the base-color slot is the most common
-        // usage of the extension; promote it to the Material's global
-        // transform. The non-base-color slots warn-and-ignore — see the
-        // `warn_unused_*` helpers below.
-        if let Some(t) = info.texture_transform() {
-            let offset = t.offset();
-            let scale = t.scale();
-            let rotation = t.rotation();
-            material = material.uv_transform(offset, scale, rotation);
-        }
+        apply_uv(&material, TextureSlot::BaseColor, read_info_uv(&info))?;
     }
     if let Some(info) = pbr.metallic_roughness_texture() {
-        warn_unused_uv_transform(&info, "metallic_roughness");
         material = material.metallic_roughness_texture(convert_image(&info.texture(), images)?);
+        apply_uv(
+            &material,
+            TextureSlot::MetallicRoughness,
+            read_info_uv(&info),
+        )?;
     }
     if let Some(info) = gltf_material.normal_texture() {
         material = material.normal_texture(convert_image(&info.texture(), images)?);
+        let extension = info.extension_value(TEXTURE_TRANSFORM);
+        let uv = read_extension_uv(info.tex_coord(), extension)?;
+        apply_uv(&material, TextureSlot::Normal, uv)?;
     }
     if let Some(info) = gltf_material.occlusion_texture() {
         material = material.occlusion_texture(convert_image(&info.texture(), images)?);
+        let extension = info.extension_value(TEXTURE_TRANSFORM);
+        let uv = read_extension_uv(info.tex_coord(), extension)?;
+        apply_uv(&material, TextureSlot::Occlusion, uv)?;
     }
     if let Some(info) = gltf_material.emissive_texture() {
-        warn_unused_uv_transform(&info, "emissive");
         material = material.emissive_texture(convert_image(&info.texture(), images)?);
+        apply_uv(&material, TextureSlot::Emissive, read_info_uv(&info))?;
     }
 
     Ok(material)
 }
 
-/// Warn when a non-base-color glTF texture carries a
-/// `KHR_texture_transform` payload that the current PBR shader can't
-/// apply. Only `base_color` plumbs through to the Material's global
-/// `uv_transform`; the other four slots silently use the identity
-/// transform, so a glTF file that ships per-map transforms on those
-/// slots will render at the wrong UVs without this warning. The gltf
-/// crate's `NormalTexture` / `OcclusionTexture` don't expose
-/// `texture_transform()` so the helper only covers the three slots
-/// reached through `texture::Info` (metallic_roughness, emissive,
-/// base_color — base_color itself reads its transform separately).
-fn warn_unused_uv_transform(info: &gltf::texture::Info<'_>, slot: &str) {
-    if info.texture_transform().is_some() {
-        log::warn!(
-            "Scene::load ignoring KHR_texture_transform on `{slot}` slot — only `base_color` honors per-map transforms today"
-        );
+/// The extension that gives a glTF texture reference its own UV transform.
+const TEXTURE_TRANSFORM: &str = "KHR_texture_transform";
+
+/// The UVs a glTF texture reference reads: the `TEXCOORD_<n>` set it
+/// names, and the transform from its `KHR_texture_transform`.
+struct TextureUv {
+    tex_coord: u32,
+    transform: UvTransform,
+}
+
+/// Read the UVs of a texture reference the gltf crate types, whose
+/// `KHR_texture_transform` it parses. The extension's `texCoord` wins
+/// over the reference's own.
+fn read_info_uv(info: &gltf::texture::Info<'_>) -> TextureUv {
+    match info.texture_transform() {
+        Some(transform) => TextureUv {
+            tex_coord: transform.tex_coord().unwrap_or(info.tex_coord()),
+            transform: UvTransform {
+                offset: transform.offset(),
+                scale: transform.scale(),
+                rotation: transform.rotation(),
+            },
+        },
+        None => TextureUv {
+            tex_coord: info.tex_coord(),
+            transform: UvTransform::default(),
+        },
+    }
+}
+
+/// Read the UVs of a normal or occlusion texture reference. The gltf crate
+/// keeps their `KHR_texture_transform` as raw JSON, parsed here.
+fn read_extension_uv(
+    tex_coord: u32,
+    extension: Option<&gltf::json::Value>,
+) -> Result<TextureUv, SceneLoadError> {
+    use gltf::json::extensions::texture::TextureTransform;
+    let Some(value) = extension else {
+        return Ok(TextureUv {
+            tex_coord,
+            transform: UvTransform::default(),
+        });
+    };
+    let transform: TextureTransform = gltf::json::deserialize::from_value(value.clone())
+        .map_err(|error| SceneLoadError::Invalid(format!("{TEXTURE_TRANSFORM}: {error}")))?;
+    Ok(TextureUv {
+        tex_coord: transform.tex_coord.unwrap_or(tex_coord),
+        transform: UvTransform {
+            offset: transform.offset.0,
+            scale: transform.scale.0,
+            rotation: transform.rotation.0,
+        },
+    })
+}
+
+/// Point one material slot at the UV set and transform its glTF texture reads.
+/// The PBR shader samples two UV sets, so `TEXCOORD_2` and above are an error.
+fn apply_uv(material: &Material, slot: TextureSlot, uv: TextureUv) -> Result<(), SceneLoadError> {
+    let Ok(set) = UvSet::try_from(uv.tex_coord) else {
+        return Err(SceneLoadError::Invalid(format!(
+            "glTF {} reads TEXCOORD_{}, and the PBR material samples TEXCOORD_0 and TEXCOORD_1 only",
+            name_slot(slot),
+            uv.tex_coord
+        )));
+    };
+    material.set_slot_uv(slot, set, uv.transform);
+    Ok(())
+}
+
+/// The glTF property that holds a slot's texture reference.
+fn name_slot(slot: TextureSlot) -> &'static str {
+    match slot {
+        TextureSlot::BaseColor => "baseColorTexture",
+        TextureSlot::MetallicRoughness => "metallicRoughnessTexture",
+        TextureSlot::Normal => "normalTexture",
+        TextureSlot::Occlusion => "occlusionTexture",
+        TextureSlot::Emissive => "emissiveTexture",
     }
 }
 
@@ -1082,6 +1148,7 @@ fn add_light(
 mod tests {
     use super::*;
     use crate::Renderable;
+    use crate::mesh::VertexData;
 
     /// The minimal triangle: positions only, read through accessor 0 from
     /// bufferView 0. Views 1 (12 bytes) and 2 (24 bytes) sit unused, so a
@@ -1588,6 +1655,158 @@ mod tests {
         match &pending[0].input.data {
             TextureData::Bytes(bytes) => [bytes[0], bytes[1], bytes[2], bytes[3]],
             other => panic!("expected decoded bytes, got {other:?}"),
+        }
+    }
+
+    /// The base color material of the textured triangle, which the UV tests replace.
+    const TEXTURED_MATERIAL: &str =
+        r#""materials":[{"pbrMetallicRoughness":{"baseColorTexture":{"index":0}}}]"#;
+
+    /// Load the textured triangle with `materials` in place of its own,
+    /// every texture reading one 2×2 PNG.
+    fn load_textured(materials: &str) -> Result<Scene, SceneLoadError> {
+        let white = image::ImageBuffer::from_pixel(2, 2, image::Rgba([255u8; 4]));
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(white)
+            .write_to(&mut png, image::ImageFormat::Png)
+            .expect("encode PNG");
+        let png = png.into_inner();
+        #[rustfmt::skip]
+        let positions: [f32; 9] = [
+             0.0,  0.5, 0.0,
+            -0.5, -0.5, 0.0,
+             0.5, -0.5, 0.0,
+        ];
+        let mut bin: Vec<u8> = positions.iter().flat_map(|f| f.to_le_bytes()).collect();
+        bin.extend_from_slice(&png);
+        assert!(TEXTURED_JSON.contains(TEXTURED_MATERIAL));
+        let json = TEXTURED_JSON
+            .replace(TEXTURED_MATERIAL, materials)
+            .replace("BUFFER_LENGTH", &bin.len().to_string())
+            .replace("PNG_LENGTH", &png.len().to_string());
+        while !bin.len().is_multiple_of(4) {
+            bin.push(0);
+        }
+        Scene::load(build_glb(&json, &bin))
+    }
+
+    /// The UV set and transform of the material slot at `index`.
+    fn read_slot(material: &Material, index: usize) -> (u32, [f32; 2], [f32; 2], f32) {
+        let read = |field: &str| format!("material.uv[{index}].{field}");
+        let shader = material.shader();
+        (
+            shader.get(&read("uv_set")).expect("uv_set"),
+            shader.get(&read("offset")).expect("offset"),
+            shader.get(&read("scale")).expect("scale"),
+            shader.get(&read("rotation")).expect("rotation"),
+        )
+    }
+
+    /// JSON written with single quotes, so each line stays one Rust string.
+    fn quote(lines: &[&str]) -> String {
+        lines.concat().replace('\'', "\"")
+    }
+
+    #[test]
+    fn load_reads_each_texture_coord_and_transform() {
+        // Base color and occlusion carry different transforms. Normal moves to
+        // set 1 and emissive back to set 0 through the extension's texCoord.
+        let materials = quote(&[
+            "'materials':[{'pbrMetallicRoughness':{'baseColorTexture':{'index':0,",
+            "'extensions':{'KHR_texture_transform':{'offset':[0.5,0.0],'scale':[2.0,2.0],'rotation':0.25}}}},",
+            "'occlusionTexture':{'index':0,'texCoord':1,",
+            "'extensions':{'KHR_texture_transform':{'offset':[0.0,0.25],'scale':[4.0,4.0],'rotation':1.0}}},",
+            "'normalTexture':{'index':0,'extensions':{'KHR_texture_transform':{'texCoord':1}}},",
+            "'emissiveTexture':{'index':0,'texCoord':1,'extensions':{'KHR_texture_transform':{'texCoord':0}}}}]",
+        ]);
+        let scene = load_textured(&materials).expect("load");
+        let models = scene.models();
+        let material = models[0].material();
+        assert_eq!(read_slot(material, 0), (0, [0.5, 0.0], [2.0, 2.0], 0.25));
+        assert_eq!(read_slot(material, 1), (0, [0.0, 0.0], [1.0, 1.0], 0.0));
+        assert_eq!(read_slot(material, 2), (1, [0.0, 0.0], [1.0, 1.0], 0.0));
+        assert_eq!(read_slot(material, 3), (1, [0.0, 0.25], [4.0, 4.0], 1.0));
+        assert_eq!(read_slot(material, 4), (0, [0.0, 0.0], [1.0, 1.0], 0.0));
+    }
+
+    #[test]
+    fn load_refuses_a_third_texture_coord() {
+        let occlusion = quote(&["'materials':[{'occlusionTexture':{'index':0,'texCoord':2}}]"]);
+        match load_textured(&occlusion) {
+            Err(SceneLoadError::Invalid(message)) => {
+                assert!(
+                    message.contains("occlusionTexture reads TEXCOORD_2"),
+                    "{message}"
+                );
+            }
+            other => panic!("expected SceneLoadError::Invalid, got {other:?}"),
+        }
+        let base = quote(&[
+            "'materials':[{'pbrMetallicRoughness':{'baseColorTexture':{'index':0,",
+            "'extensions':{'KHR_texture_transform':{'texCoord':3}}}}}]",
+        ]);
+        match load_textured(&base) {
+            Err(SceneLoadError::Invalid(message)) => {
+                assert!(
+                    message.contains("baseColorTexture reads TEXCOORD_3"),
+                    "{message}"
+                );
+            }
+            other => panic!("expected SceneLoadError::Invalid, got {other:?}"),
+        }
+    }
+
+    /// Load the triangle with `attributes` and the 0.5 pairs of view 2 and
+    /// the position floats of view 0 as two VEC2 accessors, 1 and 2.
+    /// Returns the UV0 and UV1 of each vertex.
+    fn load_vertex_uvs(attributes: &str) -> Vec<(VertexData, VertexData)> {
+        let bytes = mutate_triangle(&[
+            (ATTRIBUTES, attributes),
+            (
+                LAST_ACCESSOR,
+                r#""max":[0.5,0.5,0.0]},{"bufferView":2,"componentType":5126,"count":3,"type":"VEC2"},{"bufferView":0,"componentType":5126,"count":3,"type":"VEC2"}]"#,
+            ),
+        ]);
+        let scene = Scene::load(bytes).expect("load");
+        let models = scene.models();
+        let verts = models[0].mesh().object.verts.read();
+        verts
+            .iter()
+            .map(|vertex| {
+                let read = |key: &str| vertex.properties.get(key).copied().expect(key);
+                (read(crate::Vertex::UV0), read(crate::Vertex::UV1))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn load_reads_texcoord_1_into_uv1() {
+        let uvs = load_vertex_uvs(r#"{"POSITION":0,"TEXCOORD_0":1,"TEXCOORD_1":2}"#);
+        let uv1: Vec<VertexData> = uvs.iter().map(|(_, uv1)| *uv1).collect();
+        assert_eq!(
+            uv1,
+            [
+                VertexData::F32x2([0.0, 0.5]),
+                VertexData::F32x2([0.0, -0.5]),
+                VertexData::F32x2([-0.5, 0.0]),
+            ]
+        );
+        assert!(
+            uvs.iter()
+                .all(|(uv0, _)| *uv0 == VertexData::F32x2([0.5, 0.5]))
+        );
+    }
+
+    #[test]
+    fn load_gives_uv0_to_uv1_without_texcoord_1() {
+        let uvs = load_vertex_uvs(r#"{"POSITION":0,"TEXCOORD_0":2}"#);
+        for (uv0, uv1) in uvs {
+            assert_eq!(uv1, uv0);
+            assert_ne!(
+                uv0,
+                VertexData::F32x2([0.0, 0.0]),
+                "UV0 comes from the file"
+            );
         }
     }
 

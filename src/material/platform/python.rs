@@ -4,7 +4,7 @@ use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 
 use crate::Shader;
-use crate::material::{AlphaMode, Material};
+use crate::material::{AlphaMode, Material, MaterialError, TextureSlot};
 use crate::texture::PyTextureSource;
 
 #[pymethods]
@@ -81,6 +81,25 @@ impl Material {
         self.uv_transform(offset, scale, rotation)
     }
 
+    #[pyo3(name = "texture_uv")]
+    #[lsp_doc("docs/api/scene/material/texture_uv.md")]
+    pub fn texture_uv_py(&self, slot: TextureSlot, set: f64) -> PyResult<Self> {
+        let set = crate::platforms::python::read_unsigned(set, "set")?;
+        Ok(self.texture_uv(slot, set)?)
+    }
+
+    #[pyo3(name = "texture_transform")]
+    #[lsp_doc("docs/api/scene/material/texture_transform.md")]
+    pub fn texture_transform_py(
+        &self,
+        slot: TextureSlot,
+        offset: [f32; 2],
+        scale: [f32; 2],
+        rotation: f32,
+    ) -> Self {
+        self.texture_transform(slot, offset, scale, rotation)
+    }
+
     #[pyo3(name = "alpha_mode")]
     #[lsp_doc("docs/api/scene/material/alpha_mode.md")]
     pub fn alpha_mode_py(&self, mode: AlphaMode) -> Self {
@@ -121,5 +140,13 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/emissive_texture.md")]
     pub fn emissive_texture_py(&self, texture: PyTextureSource<'_>) -> PyResult<Self> {
         Ok(self.emissive_texture(crate::TextureInput::try_from(texture)?))
+    }
+}
+
+/// A value the material can't use raises `MaterialError`,
+/// a `FragmentColorError` that is also a `ValueError`.
+impl From<MaterialError> for PyErr {
+    fn from(error: MaterialError) -> Self {
+        crate::error::PythonError::Material.new_err(error.to_string())
     }
 }

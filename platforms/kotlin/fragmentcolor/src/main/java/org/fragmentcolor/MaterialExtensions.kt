@@ -38,6 +38,16 @@ fun Material.uvTransform(offset: List<Double>, scale: List<Double>, rotation: Do
 fun Material.uvTransform(offset: DoubleArray, scale: DoubleArray, rotation: Double): Material =
     uvTransform(offset.map { it.toFloat() }, scale.map { it.toFloat() }, rotation.toFloat())
 
+fun Material.textureTransform(slot: TextureSlot, offset: FloatArray, scale: FloatArray, rotation: Float): Material =
+    textureTransform(slot, offset.toList(), scale.toList(), rotation)
+
+@JvmName("textureTransformDoubles")
+fun Material.textureTransform(slot: TextureSlot, offset: List<Double>, scale: List<Double>, rotation: Double): Material =
+    textureTransform(slot, offset.map { it.toFloat() }, scale.map { it.toFloat() }, rotation.toFloat())
+
+fun Material.textureTransform(slot: TextureSlot, offset: DoubleArray, scale: DoubleArray, rotation: Double): Material =
+    textureTransform(slot, offset.map { it.toFloat() }, scale.map { it.toFloat() }, rotation.toFloat())
+
 // Each texture setter takes what `Renderer.createTexture` takes: a Texture, or
 // encoded bytes, a file path or http(s) URL, or a Mipmap. Inputs other than a
 // Texture upload when the scene loads, as in Rust.

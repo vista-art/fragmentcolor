@@ -1418,6 +1418,10 @@ public protocol MaterialProtocol: AnyObject, Sendable {
     
     func shader()  -> Shader
     
+    func textureTransform(slot: TextureSlot, offset: [Float], scale: [Float], rotation: Float) throws  -> Material
+    
+    func textureUv(slot: TextureSlot, set: UInt32) throws  -> Material
+    
     func uvTransform(offset: [Float], scale: [Float], rotation: Float) throws  -> Material
     
 }
@@ -1711,6 +1715,30 @@ open func shader() -> Shader  {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_material_shader(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func textureTransform(slot: TextureSlot, offset: [Float], scale: [Float], rotation: Float)throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_texturetransform(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTextureSlot_lower(slot),
+        FfiConverterSequenceFloat.lower(offset),
+        FfiConverterSequenceFloat.lower(scale),
+        FfiConverterFloat.lower(rotation),uniffiCallStatus
+    )
+})
+}
+    
+open func textureUv(slot: TextureSlot, set: UInt32)throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_textureuv(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTextureSlot_lower(slot),
+        FfiConverterUInt32.lower(set),uniffiCallStatus
     )
 })
 }
@@ -7429,6 +7457,108 @@ public func FfiConverterTypeTextureScalarKind_lower(_ value: TextureScalarKind) 
 
 
 
+
+public enum TextureSlot: Equatable, Hashable {
+    
+    /**
+     * The base color map, set by `base_color_texture`.
+     */
+    case baseColor
+    /**
+     * The metallic-roughness map, set by `metallic_roughness_texture`.
+     */
+    case metallicRoughness
+    /**
+     * The normal map, set by `normal_texture`.
+     */
+    case normal
+    /**
+     * The occlusion map, set by `occlusion_texture`.
+     */
+    case occlusion
+    /**
+     * The emissive map, set by `emissive_texture`.
+     */
+    case emissive
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension TextureSlot: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTextureSlot: FfiConverterRustBuffer {
+    typealias SwiftType = TextureSlot
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextureSlot {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .baseColor
+        
+        case 2: return .metallicRoughness
+        
+        case 3: return .normal
+        
+        case 4: return .occlusion
+        
+        case 5: return .emissive
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: TextureSlot, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .baseColor:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .metallicRoughness:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .normal:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .occlusion:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .emissive:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTextureSlot_lift(_ buf: RustBuffer) throws -> TextureSlot {
+    return try FfiConverterTypeTextureSlot.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTextureSlot_lower(_ value: TextureSlot) -> RustBuffer {
+    return FfiConverterTypeTextureSlot.lower(value)
+}
+
+
+
 /**
  * Storage-texture format. Mirrors `naga::StorageFormat`.
  *
@@ -9020,6 +9150,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_material_shader() != 3459) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_texturetransform() != 4369) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_textureuv() != 10868) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_material_uvtransform() != 378) {
