@@ -2347,7 +2347,7 @@ mod tests {
     }
 
     /// The bytes of `texels` in the float `format`.
-    fn float_bytes(texels: &[f32], format: crate::TextureFormat) -> Vec<u8> {
+    fn encode_floats(texels: &[f32], format: crate::TextureFormat) -> Vec<u8> {
         match format {
             crate::TextureFormat::Rgba16Float => texels
                 .iter()
@@ -2360,8 +2360,8 @@ mod tests {
         }
     }
 
-    /// The first texel of `bytes` in the float `format`.
-    fn first_texel(bytes: &[u8], format: crate::TextureFormat) -> Vec<f32> {
+    /// The first texel of `bytes`, read as the float `format`.
+    fn read_texel(bytes: &[u8], format: crate::TextureFormat) -> Vec<f32> {
         read_floats(bytes, format.into())[..4].to_vec()
     }
 
@@ -2378,7 +2378,7 @@ mod tests {
                 crate::TextureFormat::Rgba16Float,
                 crate::TextureFormat::Rgba32Float,
             ] {
-                let bytes = float_bytes(&sky.repeat(4), format);
+                let bytes = encode_floats(&sky.repeat(4), format);
                 let options = TextureOptions {
                     size: Some([2u32, 2].into()),
                     format,
@@ -2390,16 +2390,16 @@ mod tests {
                     .await
                     .expect("raw float texture");
                 assert_eq!(tex.object().inner.mip_level_count(), 2);
-                assert_eq!(first_texel(&read_level(&tex, 1), format), sky, "{format:?}");
+                assert_eq!(read_texel(&read_level(&tex, 1), format), sky, "{format:?}");
 
-                tex.write(&float_bytes(&night.repeat(4), format))
+                tex.write(&encode_floats(&night.repeat(4), format))
                     .expect("a whole write");
                 let level = read_level(&tex, 1);
-                assert_eq!(first_texel(&level, format), night, "{format:?} write");
+                assert_eq!(read_texel(&level, format), night, "{format:?} write");
 
                 let chain = Mipmap::build((bytes.as_slice(), format, [2u32, 2])).expect("chain");
                 let level = chain.level(1).expect("level 1");
-                assert_eq!(first_texel(level, format), sky, "{format:?} Mipmap");
+                assert_eq!(read_texel(level, format), sky, "{format:?} Mipmap");
             }
 
             let hdr_sky = image::Rgb32FImage::from_pixel(2, 2, image::Rgb([10.0, 5.0, 2.5]));
@@ -2413,7 +2413,7 @@ mod tests {
                 .await
                 .expect("an HDR file");
             let format = crate::TextureFormat::Rgba16Float;
-            let texel = first_texel(&read_level(&tex, 1), format);
+            let texel = read_texel(&read_level(&tex, 1), format);
             assert!(
                 (texel[0] - 10.0).abs() < 0.2,
                 "HDR level 1 keeps 10, got {texel:?}"
@@ -2454,6 +2454,24 @@ mod tests {
                 "Mipmap keeps level 0"
             );
         });
+    }
+
+    // Story: on an odd side the last texel joins the span before it,
+    // so every texel of a 5x3 or a 3x1 image counts once in the level below.
+    #[test]
+    fn halve_averages_odd_sides() {
+        let gradient = |width, height| {
+            image::Rgba32FImage::from_fn(width, height, |column, row| {
+                image::Rgba([(column + 10 * row) as f32; 4])
+            })
+        };
+        let level = halve(&gradient(5, 3));
+        assert_eq!(level.dimensions(), (2, 1));
+        assert_eq!(level.get_pixel(0, 0).0, [10.5; 4], "6 texels on the left");
+        assert_eq!(level.get_pixel(1, 0).0, [13.0; 4], "9 texels on the right");
+        let level = halve(&gradient(3, 1));
+        assert_eq!(level.dimensions(), (1, 1));
+        assert_eq!(level.get_pixel(0, 0).0, [1.0; 4], "all 3 texels");
     }
 
     // Story: an HDR file and a float format get the full mip chain every other
