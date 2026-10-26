@@ -161,7 +161,7 @@ impl Pass {
     }
 
     /// Set the compute dispatch dimensions for this pass.
-    /// All zero values are clamped to 1.
+    /// A 0 in any dimension dispatches nothing.
     #[uniffi::method(name = "setComputeDispatch")]
     #[lsp_doc("docs/api/core/pass/set_compute_dispatch.md")]
     pub fn set_compute_dispatch_mobile(&self, x: u32, y: u32, z: u32) {

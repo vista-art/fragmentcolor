@@ -505,6 +505,42 @@ fn a_pbr_map_from_another_renderer_errors() {
     });
 }
 
+// Story: a dispatch of 0 workgroups runs nothing and leaves storage as it was,
+// where a 0 became 1 and ran one workgroup.
+#[test]
+fn a_zero_dispatch_runs_nothing() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let frame = target(&renderer, 4).await;
+        let shader = Shader::new(
+            r#"
+@group(0) @binding(0) var<storage, read_write> zero_dispatch_counts: array<f32, 4>;
+
+@compute @workgroup_size(4)
+fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
+    zero_dispatch_counts[id.x] += 1.0;
+}
+"#,
+        )
+        .expect("compute shader");
+        let pass = Pass::from_shader("count", &shader);
+        renderer.render(&pass, &frame).expect("one dispatch");
+
+        pass.set_compute_dispatch(0, 1, 1);
+        renderer.render(&pass, &frame).expect("a zero dispatch");
+        let bytes = renderer
+            .read_storage(&shader, "zero_dispatch_counts")
+            .await
+            .expect("read_storage");
+        let (counts, _) = bytes.as_chunks::<4>();
+        let counts: Vec<f32> = counts
+            .iter()
+            .map(|chunk| f32::from_le_bytes(*chunk))
+            .collect();
+        assert_eq!(counts, [1.0; 4], "the zero dispatch ran");
+    });
+}
+
 // Story: a shader that samples the texture its pass draws into is refused, for the
 // frame of a TextureTarget and for a pass target alike, while a later pass reads it.
 #[test]

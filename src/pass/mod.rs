@@ -483,9 +483,9 @@ impl PassObject {
         *self.input.write() = PassInput::Load;
     }
 
-    /// Set compute dispatch size for compute passes.
+    /// Sets the workgroup counts of a compute pass, as given. A 0 dispatches nothing.
     pub fn set_compute_dispatch(&self, x: u32, y: u32, z: u32) {
-        *self.compute_dispatch.write() = (x.max(1), y.max(1), z.max(1));
+        *self.compute_dispatch.write() = (x, y, z);
     }
 
     /// Get the compute dispatch size for compute passes.
@@ -897,12 +897,12 @@ mod tests {
         assert_eq!(*pass.object.viewport.read(), kept);
     }
 
-    // Story: compute dispatch clamps zeros to 1 per dimension.
+    // Story: compute dispatch keeps a 0 in any dimension, which dispatches nothing.
     #[test]
-    fn compute_dispatch_clamps_zeros() {
+    fn compute_dispatch_keeps_zeros() {
         let p = Pass::compute("c");
         p.set_compute_dispatch(0, 2, 0);
-        assert_eq!(*p.object.compute_dispatch.read(), (1, 2, 1));
+        assert_eq!(*p.object.compute_dispatch.read(), (0, 2, 0));
     }
 
     // Story: ColorTarget/DepthTarget validations pass/fail as per format and usage.

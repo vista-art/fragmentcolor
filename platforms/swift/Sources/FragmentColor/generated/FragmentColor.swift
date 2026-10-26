@@ -2553,7 +2553,7 @@ public protocol PassProtocol: AnyObject, Sendable {
     
     /**
      * Set the compute dispatch dimensions for this pass.
-     * All zero values are clamped to 1.
+     * A 0 in any dimension dispatches nothing.
      */
     func setComputeDispatch(x: UInt32, y: UInt32, z: UInt32) 
     
@@ -2788,7 +2788,7 @@ open func setClearColor(color: [Float])throws   {try rustCallWithError(FfiConver
     
     /**
      * Set the compute dispatch dimensions for this pass.
-     * All zero values are clamped to 1.
+     * A 0 in any dimension dispatches nothing.
      */
 open func setComputeDispatch(x: UInt32, y: UInt32, z: UInt32)  {try! rustCall() {
         uniffiCallStatus in
@@ -9330,7 +9330,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_pass_setclearcolor() != 51774) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_setcomputedispatch() != 59690) {
+    if (uniffi_fragmentcolor_checksum_method_pass_setcomputedispatch() != 14571) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_pass_setdepthtarget() != 17216) {
