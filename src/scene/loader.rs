@@ -910,7 +910,7 @@ fn add_light(
 ) -> Result<(), SceneLoadError> {
     let color = gltf_light.color();
     let intensity = gltf_light.intensity();
-    let range = gltf_light.range().unwrap_or(0.0).max(0.0);
+    let range = gltf_light.range().unwrap_or(0.0);
     let (_, rotation, translation) = world.to_scale_rotation_translation();
     // glTF spec: lights look down `-Z` in their local frame.
     let direction: [f32; 3] = (rotation * Vec3::new(0.0, 0.0, -1.0)).into();
@@ -1012,8 +1012,16 @@ mod tests {
     /// Same triangle as `build_minimal_triangle_glb` but with one extra
     /// node that holds a perspective camera, and one directional light
     /// declared via `KHR_lights_punctual`. Gives the filter tests a real
-    /// camera + light to drop.
+    /// camera + light to drop. The scene has three nodes: mesh (0),
+    /// camera (1) and light (2).
+    const CAMERA_LIGHT_JSON: &str = r#"{"asset":{"version":"2.0"},"extensionsUsed":["KHR_lights_punctual"],"extensions":{"KHR_lights_punctual":{"lights":[{"type":"directional","color":[1.0,0.95,0.9],"intensity":2.0}]}},"scene":0,"scenes":[{"nodes":[0,1,2]}],"nodes":[{"mesh":0},{"camera":0},{"extensions":{"KHR_lights_punctual":{"light":0}}}],"cameras":[{"type":"perspective","perspective":{"aspectRatio":1.5,"yfov":1.0,"znear":0.1,"zfar":100.0}}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"mode":4}]}],"buffers":[{"byteLength":36}],"bufferViews":[{"buffer":0,"byteLength":36,"byteOffset":0}],"accessors":[{"bufferView":0,"byteOffset":0,"componentType":5126,"count":3,"type":"VEC3","min":[-0.5,-0.5,0.0],"max":[0.5,0.5,0.0]}]}"#;
+
     fn build_triangle_with_camera_and_light_glb() -> Vec<u8> {
+        build_camera_light_glb(CAMERA_LIGHT_JSON)
+    }
+
+    /// Pack a variant of `CAMERA_LIGHT_JSON` with the triangle's positions.
+    fn build_camera_light_glb(json: &str) -> Vec<u8> {
         #[rustfmt::skip]
         let positions: [f32; 9] = [
              0.0,  0.5, 0.0,
@@ -1021,34 +1029,16 @@ mod tests {
              0.5, -0.5, 0.0,
         ];
         let bin: Vec<u8> = positions.iter().flat_map(|f| f.to_le_bytes()).collect();
-        let bin_len = bin.len() as u32;
+        build_glb(json, &bin)
+    }
 
-        // Scene with three nodes: mesh (0), camera (1), light (2).
-        // glTF camera uses perspective; KHR_lights_punctual adds one
-        // directional light at extension index 0.
-        // (Kept on one line — `scripts/no_panics.rs` does a line-by-line
-        // brace scan that doesn't track multi-line raw strings, and an
-        // un-tracked raw string in test code throws off the test-region
-        // detection elsewhere in this file.)
-        let json = r#"{"asset":{"version":"2.0"},"extensionsUsed":["KHR_lights_punctual"],"extensions":{"KHR_lights_punctual":{"lights":[{"type":"directional","color":[1.0,0.95,0.9],"intensity":2.0}]}},"scene":0,"scenes":[{"nodes":[0,1,2]}],"nodes":[{"mesh":0},{"camera":0},{"extensions":{"KHR_lights_punctual":{"light":0}}}],"cameras":[{"type":"perspective","perspective":{"aspectRatio":1.5,"yfov":1.0,"znear":0.1,"zfar":100.0}}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"mode":4}]}],"buffers":[{"byteLength":36}],"bufferViews":[{"buffer":0,"byteLength":36,"byteOffset":0}],"accessors":[{"bufferView":0,"byteOffset":0,"componentType":5126,"count":3,"type":"VEC3","min":[-0.5,-0.5,0.0],"max":[0.5,0.5,0.0]}]}"#;
-        let mut json_bytes = json.as_bytes().to_vec();
-        while !json_bytes.len().is_multiple_of(4) {
-            json_bytes.push(b' ');
-        }
-        let json_len = json_bytes.len() as u32;
-        let total = 12 + 8 + json_len + 8 + bin_len;
+    const DIRECTIONAL_LIGHT: &str =
+        r#"{"type":"directional","color":[1.0,0.95,0.9],"intensity":2.0}"#;
 
-        let mut glb = Vec::with_capacity(total as usize);
-        glb.extend_from_slice(b"glTF");
-        glb.extend_from_slice(&2u32.to_le_bytes());
-        glb.extend_from_slice(&total.to_le_bytes());
-        glb.extend_from_slice(&json_len.to_le_bytes());
-        glb.extend_from_slice(b"JSON");
-        glb.extend_from_slice(&json_bytes);
-        glb.extend_from_slice(&bin_len.to_le_bytes());
-        glb.extend_from_slice(b"BIN\0");
-        glb.extend_from_slice(&bin);
-        glb
+    #[test]
+    fn load_refuses_a_negative_light_range() {
+        let json = CAMERA_LIGHT_JSON.replace(DIRECTIONAL_LIGHT, r#"{"type":"point","range":-5.0}"#);
+        assert_invalid(build_camera_light_glb(&json), "non-negative number, got -5");
     }
 
     #[test]

@@ -46,7 +46,7 @@ pub enum LightError {
         kind: LightKind,
         field: &'static str,
     },
-    #[error("Light::set_range expects a non-negative value, got {0}")]
+    #[error("Light::set_range expects a non-negative number, got {0}")]
     NegativeRange(f32),
 }
 
@@ -396,10 +396,10 @@ impl Light {
     }
 
     /// Update the influence-radius cap. Errors on a directional light and
-    /// on any negative value regardless of kind.
+    /// on a negative or NaN value regardless of kind.
     #[lsp_doc("docs/api/scene/light/set_range.md")]
     pub fn set_range(&self, range: f32) -> Result<Self, LightError> {
-        if range < 0.0 {
+        if range.is_nan() || range < 0.0 {
             return Err(LightError::NegativeRange(range));
         }
         let kind = self.object.state.read().kind;
@@ -534,6 +534,16 @@ mod tests {
             point.set_range(-1.0),
             Err(LightError::NegativeRange(_))
         ));
+    }
+
+    #[test]
+    fn set_range_refuses_nan() {
+        let point = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        assert!(matches!(
+            point.set_range(f32::NAN),
+            Err(LightError::NegativeRange(_))
+        ));
+        assert_eq!(point.range(), Some(0.0), "the old range stays");
     }
 
     #[test]

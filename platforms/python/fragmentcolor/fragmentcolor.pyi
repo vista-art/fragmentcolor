@@ -3699,8 +3699,8 @@ class Light:
         returns `Ok(self)` for chaining. Calling this on a directional light
         returns `Err(LightError::FieldNotApplicable { kind: Directional, field:
         "set_range" })` because parallel rays have no distance falloff. Passing a
-        negative value returns `Err(LightError::NegativeRange(value))` regardless
-        of kind.
+        negative value or NaN returns `Err(LightError::NegativeRange(value))`
+        regardless of kind, and the light keeps its range.
 
         A value of `0.0` means "unlimited", matching glTF `KHR_lights_punctual`'s
         default; positive values cut the contribution off smoothly past that

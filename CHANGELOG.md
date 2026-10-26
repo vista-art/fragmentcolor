@@ -18,6 +18,7 @@
 ### Scene
 
 - `Scene.load` refuses a malformed glTF file with `SceneLoadError::Invalid`, which names the accessor or node, in every language. A `byteStride` shorter than one element, an index or attribute type its semantic doesn't take, a count of 0, an accessor past the end of its buffer view, a view past the end of its buffer, or a node that is its own ancestor stopped the program: Rust panicked, the web build aborted, and Python, Swift and Kotlin raised a panic exception instead of the scene error.
+- A spot light with equal inner and outer cone angles draws the hard edge its docs promise on every GPU. The PBR shader handed both edges to `smoothstep`, which WGSL leaves undefined when they meet.
 
 ### JavaScript
 
@@ -51,6 +52,8 @@
 - `RendererError::MsaaViewMissing` is gone. No code returned it.
 - `Scene.load` fails on a glTF attribute or index accessor the file declares but whose bytes can't be read. It computed normals, used default UVs and colors, or drew without indices instead.
 - `Scene.load` fails on a glTF file that reaches one node twice, through a cycle or a node with two parents. glTF requires nodes to form trees.
+- `Light.set_range` refuses NaN with `LightError::NegativeRange`, the error a negative number gets. NaN passed the check and lit as an unlimited range.
+- `Scene.load` fails on a `KHR_lights_punctual` light with a negative `range`, with the same `set_range` error. It clamped the range to 0, which means unlimited.
 
 ## 0.12.6: Binding and renderer fixes
 
