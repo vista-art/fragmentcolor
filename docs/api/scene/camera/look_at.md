@@ -16,13 +16,13 @@ The vectors must be finite, `target` must differ from `position`, and
 those leaves no way to orient the camera, so the call returns
 `Err(CameraError::View)` and the Camera keeps its view.
 
-An `up` whose angle to that line has a sine below about 4.8e-7
-(4 × `f32::EPSILON`) counts as on it, since at that size rounding would
-pick the roll. A top-down camera 1000 units up, with its target offset by
-0.001, has a sine of 1e-6 and works.
+The view is built in double precision, from a normalized `up`, and stored
+as `f32`. So an `up` counts as on that line only when the sine of its angle
+to it is below 1e-12, and one just off the line still gets the roll its
+numbers describe. A top-down camera 10,000 units up, with its target offset
+by 0.001, has a sine of 1e-7 and gets an exact roll.
 
-Internally builds the view matrix with `glam::Mat4::look_at_rh`. The
-result is a right-handed view matrix that pairs with the right-handed
+The result is a right-handed view matrix that pairs with the right-handed
 projection produced by [`perspective`](https://fragmentcolor.org/api/scene/camera#perspective)
 and [`orthographic`](https://fragmentcolor.org/api/scene/camera#orthographic).
 
