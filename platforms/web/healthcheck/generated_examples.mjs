@@ -1,6 +1,8 @@
 // Auto-generated: runs all JS examples with cargo-like output.
 const GREEN='\u001b[1;32m'; const RED='\u001b[1;31m'; const RESET='\u001b[0m';
 const EXAMPLES = [
+  ['../examples/core/device_error/DeviceError.js', 'docs/api/core/device_error/device_error.md'],
+  ['../examples/core/error_kind/ErrorKind.js', 'docs/api/core/error_kind/error_kind.md'],
   ['../examples/core/pass/Pass.js', 'docs/api/core/pass/pass.md'],
   ['../examples/core/pass/add.js', 'docs/api/core/pass/add.md'],
   ['../examples/core/pass/add_mesh.js', 'docs/api/core/pass/add_mesh.md'],

@@ -1036,7 +1036,8 @@ impl RenderContext {
                 let (buffers, counts) = mesh.vertex_buffers(&self.device, &self.queue)?;
                 let models = overrides.get(&(shader_ptr, Arc::as_ptr(mesh) as usize));
                 let own = buffers.instance_buffer.as_ref();
-                let instances = pick_instances(models, own, mesh, model, layouts.as_ref(), counts)?;
+                let instances =
+                    pick_instances(&shader, models, own, mesh, model, layouts.as_ref(), counts)?;
                 if let Some(instances) = instances {
                     batched.push(MeshDraw {
                         index_count: counts.index_count,
@@ -1195,9 +1196,9 @@ impl RenderContext {
 
     /// Runs `op` inside error scopes for out of memory, internal and validation errors.
     ///
-    /// A wgpu error that `op` causes returns as `ValidationError` instead of reaching the
-    /// device's uncaptured error handler. Pipeline builds and each frame go through here,
-    /// and on native so does each bind group and view inside a frame. The scopes pop on every path.
+    /// A wgpu error that `op` causes returns as `DeviceError`, with the kind of its scope,
+    /// instead of reaching the device's uncaptured error handler. Pipeline builds and each frame
+    /// go through here, and on native so does each bind group and view inside a frame. The scopes pop on every path.
     /// Of the errors they catch, the cause returns: out of memory, then internal, then validation.
     ///
     /// On native the scopes resolve before this returns. When `op` fails with a GPU error
@@ -1216,7 +1217,7 @@ impl RenderContext {
         on_error: impl FnOnce() + 'static,
     ) -> Result<T, RendererError> {
         let [memory, internal, validation] =
-            SCOPES.map(|filter| self.device.push_error_scope(filter));
+            SCOPES.map(|(filter, _)| self.device.push_error_scope(filter));
         #[cfg(not(wasm))]
         Origin::Cpu.record();
         let result = op();
@@ -2126,8 +2127,9 @@ struct Instances {
 /// The pass's Models win over the mesh's own instance buffer: `models` holds one matrix
 /// for each visible Model that draws this mesh through this shader. Otherwise the mesh
 /// draws its own instances, such as a crowd built with `Mesh::add_instance`. `model` is
-/// true for a shader that draws the pass's Models, hidden ones included.
+/// true for `shader` when it draws the pass's Models, hidden ones included.
 fn pick_instances(
+    shader: &ShaderObject,
     models: Option<&(wgpu::Buffer, u32)>,
     own: Option<&wgpu::Buffer>,
     mesh: &crate::mesh::MeshObject,
@@ -2148,7 +2150,7 @@ fn pick_instances(
         // is hidden or in another pass. Slot 1 may hold an earlier mesh's buffer.
         (None, None) if model && mesh.awaits_models() => Ok(None),
         (None, buffer) => {
-            check_instance_count(layouts, counts, mesh)?;
+            check_instance_count(shader, layouts, counts, mesh)?;
             Ok(Some(Instances {
                 buffer: buffer.cloned(),
                 count: counts.instance_count,
@@ -2161,18 +2163,23 @@ fn pick_instances(
 /// when the pipeline reads instance attributes from its buffer.
 /// A Model's mesh holds none, and only its Models fill the columns.
 fn check_instance_count(
+    shader: &ShaderObject,
     layouts: Option<&VertexLayouts>,
     counts: crate::mesh::DrawCounts,
     mesh: &crate::mesh::MeshObject,
 ) -> Result<(), RendererError> {
     let rows = counts.instance_rows.unwrap_or(0);
-    let stepped = layouts.is_some_and(|layouts| layouts.instance.is_some());
-    if !stepped || counts.instance_count <= rows {
+    let Some(instance) = layouts.and_then(|layouts| layouts.instance.as_ref()) else {
+        return Ok(());
+    };
+    if counts.instance_count <= rows {
         return Ok(());
     }
     let message = if mesh.awaits_models() {
-        "the shader reads the Model columns, and no Model in this pass draws this mesh through it"
-            .to_string()
+        format!(
+            "the shader reads the Model columns {}, and no Model in this pass draws this mesh with this shader",
+            name_columns(shader, instance)?
+        )
     } else {
         format!(
             "instance count {} exceeds the {rows} instances the mesh holds",
@@ -2180,6 +2187,29 @@ fn check_instance_count(
         )
     };
     Err(crate::mesh::MeshError::InvalidInstance(message).into())
+}
+
+/// Names the inputs `shader` reads from the instance stream, in location order:
+/// `'model_0', 'model_1', 'model_2' and 'model_3'`.
+fn name_columns(shader: &ShaderObject, instance: &VertexStream) -> Result<String, ShaderError> {
+    let mut names: Vec<String> = shader
+        .reflect_vertex_inputs()?
+        .into_iter()
+        .filter(|input| {
+            instance
+                .attributes
+                .iter()
+                .any(|attribute| attribute.shader_location == input.location)
+        })
+        .map(|input| format!("'{}'", input.name))
+        .collect();
+    let Some(last) = names.pop() else {
+        return Ok(String::new());
+    };
+    if names.is_empty() {
+        return Ok(last);
+    }
+    Ok(format!("{} and {last}", names.join(", ")))
 }
 
 /// The shaders that draw the pass's Models, hidden ones included.
@@ -3065,7 +3095,7 @@ mod more_error_path_tests {
     }
 
     // Story: validate() surfaces wgpu validation errors as
-    // RendererError::ValidationError instead of leaking through the device's
+    // RendererError::DeviceError instead of leaking through the device's
     // uncaptured-error handler. Repro: a layout that requires one uniform
     // buffer entry, paired with a descriptor that supplies zero entries.
     #[test]
@@ -3101,7 +3131,12 @@ mod more_error_path_tests {
             });
 
             match result {
-                Err(RendererError::ValidationError { label, message }) => {
+                Err(RendererError::DeviceError {
+                    kind,
+                    label,
+                    message,
+                }) => {
+                    assert_eq!(kind, ErrorKind::Validation);
                     assert_eq!(label, "intentionally invalid bind group");
                     assert!(
                         !message.is_empty(),
@@ -3109,12 +3144,12 @@ mod more_error_path_tests {
                     );
                 }
                 Err(other) => panic!(
-                    "expected ValidationError, got different RendererError: {:?}",
+                    "expected DeviceError, got different RendererError: {:?}",
                     other
                 ),
-                Ok(_) => panic!(
-                    "expected ValidationError for layout/entries mismatch, got Ok bind group"
-                ),
+                Ok(_) => {
+                    panic!("expected DeviceError for layout/entries mismatch, got Ok bind group")
+                }
             }
         });
     }
@@ -4250,40 +4285,49 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
         });
     }
 
-    // Story: a shader that reads its vertex inputs through a struct argument
-    // can't take a mesh, and render and add_mesh both name the struct member.
+    const STRUCT_SHADER: &str = r#"
+struct VIn {
+  @builtin(vertex_index) index: u32,
+  @location(0) pos: vec2<f32>,
+  @location(1) color: vec4<f32>,
+};
+struct VOut { @builtin(position) position: vec4<f32>, @location(0) color: vec4<f32> };
+@vertex fn vs_main(input: VIn, @location(2) offset: vec2<f32>) -> VOut {
+  return VOut(vec4<f32>(input.pos + offset, 0.0, 1.0), input.color);
+}
+@fragment fn fs_main(input: VOut) -> @location(0) vec4<f32> { return input.color; }
+"#;
+
+    // Story: a shader that reads its vertex inputs through a struct argument takes
+    // a mesh, and each @location member reads the mesh property of its name.
     #[test]
-    fn struct_vertex_inputs_error() {
+    fn struct_vertex_inputs_render() {
         pollster::block_on(async move {
+            // Arrange
             let renderer = Renderer::new();
             let target = renderer
                 .create_texture_target([8u32, 8u32])
                 .await
                 .expect("texture target");
-            let shader = crate::Shader::new(
-                r#"
-struct VIn { @builtin(vertex_index) index: u32, @location(0) pos: vec2<f32> };
-@vertex fn vs_main(input: VIn) -> @builtin(position) vec4<f32> {
-  return vec4<f32>(input.pos, 0.0, 1.0);
-}
-@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
-"#,
-            )
-            .expect("shader");
+            let shader = crate::Shader::new(STRUCT_SHADER).expect("shader");
             let mesh = crate::Mesh::new();
-            mesh.add_vertices(TRIANGLE.map(crate::Vertex::new));
-
-            let rendered = renderer.render(&shader, &target);
+            let green =
+                |corner: [f32; 2]| crate::Vertex::new(corner).set("color", [0.0, 1.0, 0.0, 1.0]);
+            mesh.add_vertices(TRIANGLE.map(green));
+            mesh.add_instances([crate::Instance::new().set("offset", [0.0, 0.0])]);
             let attached = shader.add_mesh(&mesh);
 
-            let member = "'pos' @location(0) is a struct member";
-            assert!(
-                matches!(&rendered, Err(RendererError::ShaderError(crate::ShaderError::InvalidKey(message))) if message.contains(member) && !message.contains("add_mesh")),
-                "got {rendered:?}"
-            );
-            assert!(
-                matches!(&attached, Err(crate::ShaderError::InvalidKey(message)) if message.contains(member)),
-                "got {attached:?}"
+            // Act
+            let rendered = renderer.render(&shader, &target);
+            let image = target.get_image().await.expect("image");
+
+            // Assert
+            assert!(attached.is_ok(), "got {attached:?}");
+            assert!(rendered.is_ok(), "got {rendered:?}");
+            assert_eq!(
+                image[..4],
+                [0, 255, 0, 255],
+                "the member's color reaches the target"
             );
         });
     }
@@ -4518,7 +4562,7 @@ struct VIn { @builtin(vertex_index) index: u32 };
     }
 
     // Story: a Material's shader rendered without its Models reads Model columns
-    // that nothing fills, and render says so where it drew nothing.
+    // that nothing fills, and render names the columns where it drew nothing.
     #[test]
     fn model_columns_without_a_model_error() {
         pollster::block_on(async move {
@@ -4533,8 +4577,10 @@ struct VIn { @builtin(vertex_index) index: u32 };
 
             let res = renderer.render(model.material().shader(), &target);
 
+            let columns = "'model_0', 'model_1', 'model_2' and 'model_3'";
             assert!(
-                matches!(&res, Err(RendererError::MeshError(crate::mesh::MeshError::InvalidInstance(message))) if message.contains("no Model in this pass")),
+                matches!(&res, Err(RendererError::MeshError(crate::mesh::MeshError::InvalidInstance(message)))
+                    if message.contains(columns) && message.contains("no Model in this pass draws this mesh")),
                 "got {res:?}"
             );
         });

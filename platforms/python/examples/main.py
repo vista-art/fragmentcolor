@@ -25,6 +25,8 @@ def take_gpu_errors():
 def run_all():
     base = pathlib.Path(__file__).parent
     examples = [
+        ('core/device_error/DeviceError.py', 'docs/api/core/device_error/device_error.md'),
+        ('core/error_kind/ErrorKind.py', 'docs/api/core/error_kind/error_kind.md'),
         ('core/pass/Pass.py', 'docs/api/core/pass/pass.md'),
         ('core/pass/add.py', 'docs/api/core/pass/add.md'),
         ('core/pass/add_mesh.py', 'docs/api/core/pass/add_mesh.md'),

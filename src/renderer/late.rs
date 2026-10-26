@@ -1,8 +1,8 @@
 //! GPU errors that a wasm frame reports after `render` has returned.
 
-use super::RendererError;
 #[cfg(wasm)]
-use super::scope::Caught;
+use super::scope::{Caught, Fault};
+use super::{ErrorKind, RendererError};
 #[cfg(wasm)]
 use crate::platforms::web::yield_to_event_loop;
 use crate::texture::TextureError;
@@ -16,13 +16,15 @@ use std::sync::Arc;
 /// A GPU error that an error scope caught after its call returned.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct LateError {
+    pub(crate) kind: ErrorKind,
     pub(crate) label: String,
     pub(crate) message: String,
 }
 
 impl From<LateError> for RendererError {
     fn from(error: LateError) -> Self {
-        RendererError::ValidationError {
+        RendererError::DeviceError {
+            kind: error.kind,
             label: error.label,
             message: error.message,
         }
@@ -31,7 +33,8 @@ impl From<LateError> for RendererError {
 
 impl From<LateError> for TextureError {
     fn from(error: LateError) -> Self {
-        TextureError::ValidationError {
+        TextureError::DeviceError {
+            kind: error.kind,
             label: error.label,
             message: error.message,
         }
@@ -39,10 +42,21 @@ impl From<LateError> for TextureError {
 }
 
 /// Holds the first late error until the next call that reports it takes it.
+///
+/// The error keeps the ticket of the scope that stored it. A call that waits for
+/// the scopes opened before it takes only an error one of those scopes stored,
+/// so an error from a frame rendered while it waits stays for the next call.
 #[derive(Debug, Default)]
 pub(crate) struct ErrorSlot {
-    first: Mutex<Option<LateError>>,
+    first: Mutex<Option<Stored>>,
     scopes: Mutex<OpenScopes>,
+}
+
+/// A late error and the ticket of the scope that caught it.
+#[derive(Debug)]
+struct Stored {
+    ticket: u64,
+    error: LateError,
 }
 
 /// The scopes whose errors haven't landed yet, by the ticket each one opened with.
@@ -57,21 +71,31 @@ struct OpenScopes {
 const SETTLE_ROUNDS: usize = 2000;
 
 impl ErrorSlot {
-    /// Keeps `error`, unless an earlier one is still waiting.
-    pub(crate) fn store(&self, error: LateError) {
-        self.first.lock().get_or_insert(error);
+    /// Keeps `error`, caught by the scope with `ticket`, unless an earlier one is still waiting.
+    fn store(&self, ticket: u64, error: LateError) {
+        self.first.lock().get_or_insert(Stored { ticket, error });
     }
 
     /// Returns the waiting error, once, and empties the slot.
     pub(crate) fn take(&self) -> Result<(), LateError> {
         match self.first.lock().take() {
-            Some(error) => Err(error),
+            Some(stored) => Err(stored.error),
             None => Ok(()),
         }
     }
 
-    /// Waits until every scope opened before this call has landed,
-    /// then returns the waiting error, once, like `take`.
+    /// Returns the waiting error, once, when a scope with a ticket below `before` stored it.
+    /// An error from a later scope stays in the slot.
+    fn take_before(&self, before: u64) -> Result<(), LateError> {
+        let mut first = self.first.lock();
+        match first.take_if(|stored| stored.ticket < before) {
+            Some(stored) => Err(stored.error),
+            None => Ok(()),
+        }
+    }
+
+    /// Waits until every scope opened before this call has landed, then returns
+    /// the error one of them stored, once. An error from a later scope stays for the next call.
     #[cfg(wasm)]
     pub(crate) async fn settle(&self) -> Result<(), LateError> {
         let before = self.scopes.lock().next;
@@ -81,7 +105,7 @@ impl ErrorSlot {
             }
             yield_to_event_loop().await;
         }
-        self.take()
+        self.take_before(before)
     }
 
     /// Whether every scope with a ticket below `before` has landed.
@@ -110,9 +134,10 @@ impl ErrorSlot {
         wasm_bindgen_futures::spawn_local(async move {
             if let Some(Caught { cause, symptoms }) = caught.await {
                 on_error();
-                let late = |error: wgpu::Error| LateError {
+                let late = |fault: Fault| LateError {
+                    kind: fault.kind,
                     label: label.clone(),
-                    message: error.to_string(),
+                    message: fault.error.to_string(),
                 };
                 let error = late(cause);
                 match failure {
@@ -122,7 +147,7 @@ impl ErrorSlot {
                     ),
                     None => {
                         log::error!("{}", RendererError::from(error.clone()));
-                        slot.store(error);
+                        slot.store(ticket, error);
                     }
                 }
                 for symptom in symptoms {
@@ -155,6 +180,7 @@ mod tests {
 
     fn late(label: &str) -> LateError {
         LateError {
+            kind: ErrorKind::Validation,
             label: label.into(),
             message: format!("{label} failed"),
         }
@@ -167,8 +193,8 @@ mod tests {
         let slot = ErrorSlot::default();
 
         // Act
-        slot.store(late("render pipeline"));
-        slot.store(late("frame"));
+        slot.store(0, late("render pipeline"));
+        slot.store(1, late("frame"));
 
         // Assert
         assert_eq!(slot.take(), Err(late("render pipeline")));
@@ -179,12 +205,12 @@ mod tests {
     fn reports_each_error_once() {
         // Arrange
         let slot = ErrorSlot::default();
-        slot.store(late("frame"));
+        slot.store(0, late("frame"));
 
         // Act
         let first = slot.take();
         let second = slot.take();
-        slot.store(late("compute pipeline"));
+        slot.store(1, late("compute pipeline"));
         let third = slot.take();
 
         // Assert
@@ -216,12 +242,38 @@ mod tests {
         assert!(done, "only the later scope {later} is open");
     }
 
+    // Story: a readback takes only an error that a scope opened before it stored.
+    // A frame rendered while it waits keeps its error for the next call.
+    #[test]
+    fn settles_only_earlier_errors() {
+        // Arrange
+        let slot = ErrorSlot::default();
+        let earlier = slot.open();
+        let before = slot.scopes.lock().next;
+        let later = slot.open();
+        slot.store(later, late("frame"));
+
+        // Act
+        let waiting = slot.take_before(before);
+        let next = slot.take();
+        slot.store(earlier, late("render pipeline"));
+        let own = slot.take_before(before);
+
+        // Assert
+        assert_eq!(waiting, Ok(()), "the later frame's error waits");
+        assert_eq!(next, Err(late("frame")), "the next call takes it");
+        assert_eq!(own, Err(late("render pipeline")));
+    }
+
     // Story: render and a readback report a late error as the same typed
-    // ValidationError, with the same label and the same message.
+    // DeviceError, with the same kind, label and message.
     #[test]
     fn converts_to_each_call_error() {
         // Arrange
-        let error = late("frame");
+        let error = LateError {
+            kind: ErrorKind::Memory,
+            ..late("frame")
+        };
 
         // Act
         let renderer = RendererError::from(error.clone());
@@ -229,11 +281,11 @@ mod tests {
 
         // Assert
         assert!(
-            matches!(&renderer, RendererError::ValidationError { label, .. } if label == "frame"),
+            matches!(&renderer, RendererError::DeviceError { kind: ErrorKind::Memory, label, .. } if label == "frame"),
             "got {renderer:?}"
         );
         assert!(
-            matches!(&texture, TextureError::ValidationError { label, .. } if label == "frame"),
+            matches!(&texture, TextureError::DeviceError { kind: ErrorKind::Memory, label, .. } if label == "frame"),
             "got {texture:?}"
         );
         assert_eq!(texture.to_string(), renderer.to_string());

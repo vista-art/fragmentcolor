@@ -27,6 +27,7 @@ use crate::{Renderer, Size};
 
 /// Mobile-facing error type. Flattens every internal error to its `Display`
 /// representation so Swift/Kotlin callers get a single typed error to match on.
+/// A GPU error keeps its kind, its step's label and its message apart.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum FragmentColorError {
     #[error("{0}")]
@@ -35,6 +36,12 @@ pub enum FragmentColorError {
     Render(String),
     #[error("{0}")]
     Shader(String),
+    #[error("Device error ({kind}) in '{label}': {message}")]
+    Device {
+        kind: crate::ErrorKind,
+        label: String,
+        message: String,
+    },
 }
 
 impl From<crate::InitializationError> for FragmentColorError {
@@ -50,6 +57,15 @@ impl From<crate::RendererError> for FragmentColorError {
     fn from(e: crate::RendererError) -> Self {
         match e {
             crate::RendererError::InitializationError(e) => e.into(),
+            crate::RendererError::DeviceError {
+                kind,
+                label,
+                message,
+            } => FragmentColorError::Device {
+                kind,
+                label,
+                message,
+            },
             e => FragmentColorError::Render(e.to_string()),
         }
     }
@@ -63,7 +79,18 @@ impl From<crate::ShaderError> for FragmentColorError {
 
 impl From<crate::texture::TextureError> for FragmentColorError {
     fn from(e: crate::texture::TextureError) -> Self {
-        FragmentColorError::Render(e.to_string())
+        match e {
+            crate::texture::TextureError::DeviceError {
+                kind,
+                label,
+                message,
+            } => FragmentColorError::Device {
+                kind,
+                label,
+                message,
+            },
+            e => FragmentColorError::Render(e.to_string()),
+        }
     }
 }
 
@@ -237,8 +264,8 @@ impl Renderer {
     /// Read back the mip-0 contents of a registered texture as tightly-packed
     /// bytes in the texture's native format. Uniffi exposes this as a Swift
     /// `async throws` / Kotlin `suspend fun` automatically. Foreign callers
-    /// await this in a coroutine or `Task`; the underlying GPU readback is
-    /// driven by the async `texture::read::read_pixels` path.
+    /// await this in a coroutine or `Task`. It runs `Renderer::read_texture`,
+    /// whose GPU readback goes through `texture::read::copy_pixels`.
     #[uniffi::method(name = "readTexture")]
     #[lsp_doc("docs/api/core/renderer/read_texture.md")]
     pub async fn read_texture_mobile(

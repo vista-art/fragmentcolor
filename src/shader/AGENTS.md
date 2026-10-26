@@ -4,7 +4,7 @@ Ownership & validation
 - `Shader` owns `Mesh` attachments; validate at attach time and reject incompatible meshes with a typed `ShaderError`.
 - No invalid mesh may be attached to a shader under any circumstance.
 - If the shader has no `@location` vertex inputs (fullscreen / builtin-only), attaching a mesh must be rejected.
-- A mesh feeds only `@location` arguments of the vertex entry point. `reflect_vertex_inputs` returns `ShaderError::InvalidKey` naming the member for a struct argument with `@location` members, so `add_mesh` rejects such a shader and `render` reports the same error. A struct of built-ins only stays a fullscreen input.
+- `reflect_vertex_inputs` is the one list of vertex inputs. It holds each `@location` argument of the vertex entry point and each `@location` member of a struct argument, under the member's name, so `bind_mesh`, the renderer's vertex layouts and its no-mesh check read struct members as they read arguments. A struct of built-ins only adds nothing and stays a fullscreen input.
 - Attach checks every vertex and instance value, not only the first, and each one must hold every attribute the shader reads. A failed attach records nothing on the mesh, so `Pass::add_mesh` can try the next shader.
 
 Constructors

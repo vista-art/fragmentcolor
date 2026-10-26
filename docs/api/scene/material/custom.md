@@ -46,7 +46,7 @@ struct PbrMaterial {
   shares the Material, draws nothing. A shader that draws none of the pass's
   Models and reads these columns for a Model's Mesh, such as this Material's
   shader rendered on its own, makes `Renderer::render` return
-  `MeshError::InvalidInstance`.
+  `MeshError::InvalidInstance`, which names the columns the shader reads.
 
 Without these the Material still draws. The factor setters do nothing, and
 every Model draws at its Mesh's own coordinates, whatever its transform.

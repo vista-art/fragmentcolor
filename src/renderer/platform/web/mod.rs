@@ -170,7 +170,7 @@ impl Renderer {
         let bytes = self
             .read_texture(id)
             .await
-            .map_err(|e| JsError::new(&e.to_string()))?;
+            .map_err(RendererError::into_js)?;
         Ok(js_sys::Uint8Array::from(bytes.as_slice()))
     }
 
@@ -193,7 +193,9 @@ impl Renderer {
         renderable: &JsValue,
     ) -> Result<(), JsError> {
         let renderables = RenderableList::read(renderable, "Renderer.load")?;
-        Ok(self.load(&renderables).await?)
+        self.load(&renderables)
+            .await
+            .map_err(RendererError::into_js)
     }
 
     #[wasm_bindgen(js_name = "readStorage")]
@@ -205,7 +207,7 @@ impl Renderer {
     ) -> Result<Vec<u8>, JsError> {
         self.read_storage(shader, &binding)
             .await
-            .map_err(|e| JsError::new(&e.to_string()))
+            .map_err(RendererError::into_js)
     }
 
     #[wasm_bindgen(js_name = "render")]
@@ -220,10 +222,14 @@ impl Renderer {
     ) -> Result<(), JsError> {
         let renderables = RenderableList::read(renderable, "Renderer.render")?;
         if let Ok(window) = CanvasTarget::try_from(target) {
-            return Ok(self.render(&renderables, &window)?);
+            return self
+                .render(&renderables, &window)
+                .map_err(RendererError::into_js);
         }
         if let Ok(texture) = TextureTarget::try_from(target) {
-            return Ok(self.render(&renderables, &texture)?);
+            return self
+                .render(&renderables, &texture)
+                .map_err(RendererError::into_js);
         }
         Err(JsError::new(
             "Renderer.render: expected a WindowTarget or a TextureTarget",

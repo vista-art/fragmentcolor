@@ -610,33 +610,20 @@ impl ShaderObject {
         Ok(uniform.clone())
     }
 
-    /// The `@location` arguments of the vertex entry point, by location.
-    /// Builtins are skipped. Meshes feed only arguments, so a struct argument
-    /// with a `@location` member returns `ShaderError::InvalidKey` naming that member.
+    /// The `@location` inputs of the vertex entry point, by location. Builtins are skipped.
+    /// A struct argument gives its `@location` members, each under its own name.
     pub(crate) fn reflect_vertex_inputs(&self) -> Result<Vec<VertexInputDesc>, ShaderError> {
         let mut inputs: Vec<VertexInputDesc> = Vec::new();
 
         // The same entry point create_render_pipeline runs.
         if let Some(entry_point) = self.find_entry_point(naga::ShaderStage::Vertex) {
             for argument in entry_point.function.arguments.iter() {
-                let Some(binding) = argument.binding.as_ref() else {
-                    self.check_members(argument.ty)?;
-                    continue;
-                };
-                let naga::Binding::Location { location, .. } = binding else {
-                    continue;
-                };
-                let ty = &self.module.types[argument.ty];
-                let format = naga_ty_to_vertex_format(ty)?;
-                let name = argument
-                    .name
-                    .clone()
-                    .unwrap_or_else(|| format!("attr{}", location));
-                inputs.push(VertexInputDesc {
-                    name,
-                    location: *location,
-                    format,
-                });
+                match argument.binding.as_ref() {
+                    Some(binding) => {
+                        self.push_input(&mut inputs, binding, argument.ty, &argument.name)?
+                    }
+                    None => self.push_members(&mut inputs, argument.ty)?,
+                }
             }
         }
         // Sort by location to keep a stable order
@@ -644,28 +631,42 @@ impl ShaderObject {
         Ok(inputs)
     }
 
-    /// Refuses a struct argument with `@location` members, which no mesh can feed.
-    fn check_members(&self, ty: naga::Handle<naga::Type>) -> Result<(), ShaderError> {
+    /// Adds the `@location` members of the struct `ty` to `inputs`.
+    fn push_members(
+        &self,
+        inputs: &mut Vec<VertexInputDesc>,
+        ty: naga::Handle<naga::Type>,
+    ) -> Result<(), ShaderError> {
         let naga::TypeInner::Struct { members, .. } = &self.module.types[ty].inner else {
             return Ok(());
         };
-        let member = members
-            .iter()
-            .filter_map(|member| match member.binding {
-                Some(naga::Binding::Location { location, .. }) => Some((member, location)),
-                _ => None,
-            })
-            .min_by_key(|(_, location)| *location);
-        let Some((member, location)) = member else {
+        for member in members {
+            if let Some(binding) = member.binding.as_ref() {
+                self.push_input(inputs, binding, member.ty, &member.name)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Adds one input to `inputs` when `binding` is a `@location`, named `attr<N>` when it has no name.
+    fn push_input(
+        &self,
+        inputs: &mut Vec<VertexInputDesc>,
+        binding: &naga::Binding,
+        ty: naga::Handle<naga::Type>,
+        name: &Option<String>,
+    ) -> Result<(), ShaderError> {
+        let naga::Binding::Location { location, .. } = binding else {
             return Ok(());
         };
-        let name = member
-            .name
-            .clone()
-            .unwrap_or_else(|| format!("attr{location}"));
-        Err(ShaderError::InvalidKey(format!(
-            "shader input '{name}' @location({location}) is a struct member, and a mesh feeds only @location arguments; declare it as an argument of the vertex entry point"
-        )))
+        let format = naga_ty_to_vertex_format(&self.module.types[ty])?;
+        let name = name.clone().unwrap_or_else(|| format!("attr{location}"));
+        inputs.push(VertexInputDesc {
+            name,
+            location: *location,
+            format,
+        });
+        Ok(())
     }
 
     /// Apply any queued updates if we can acquire the write lock;
@@ -1939,13 +1940,14 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
         assert_eq!(float.object.meshes.read().len(), 1);
     }
 
-    // Story: a struct argument with a @location member refuses a mesh, even beside
-    // plain @location arguments, since no mesh can feed the member.
+    // Story: the @location members of a struct argument are vertex inputs like plain
+    // @location arguments, each under its own name, so a mesh property feeds each one.
     #[test]
-    fn struct_members_refuse_a_mesh() {
+    fn struct_members_take_a_mesh() {
+        // Arrange
         let shader = Shader::new(
             r#"
-struct Extra { @location(1) offset: vec2<f32> };
+struct Extra { @builtin(vertex_index) index: u32, @location(1) offset: vec2<f32> };
 @vertex fn vs_main(@location(0) pos: vec2<f32>, extra: Extra) -> @builtin(position) vec4<f32> {
   return vec4<f32>(pos + extra.offset, 0.0, 1.0);
 }
@@ -1956,15 +1958,18 @@ struct Extra { @location(1) offset: vec2<f32> };
         let mesh = crate::mesh::Mesh::new();
         mesh.add_vertex(crate::mesh::Vertex::new([0.0, 0.0]).set("offset", [0.0, 0.0]));
 
-        let error = shader.add_mesh(&mesh).expect_err("struct member");
+        // Act
+        let inputs = shader.object.reflect_vertex_inputs().expect("inputs");
+        let attached = shader.add_mesh(&mesh);
 
-        assert!(
-            error
-                .to_string()
-                .contains("'offset' @location(1) is a struct member"),
-            "{error}"
-        );
-        assert!(shader.object.meshes.read().is_empty());
+        // Assert
+        let names: Vec<(&str, u32)> = inputs
+            .iter()
+            .map(|input| (input.name.as_str(), input.location))
+            .collect();
+        assert_eq!(names, [("pos", 0), ("offset", 1)]);
+        assert!(attached.is_ok(), "{attached:?}");
+        assert_eq!(shader.object.meshes.read().len(), 1);
     }
 
     // Story: the shader Shader::from_vertex builds reads a color of four plain numbers.

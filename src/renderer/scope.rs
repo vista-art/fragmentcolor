@@ -1,21 +1,29 @@
 //! The error scopes GPU work runs in, and which of their errors a call reports.
 
+use super::ErrorKind;
 #[cfg(not(wasm))]
 use super::RendererError;
 #[cfg(not(wasm))]
 use std::cell::Cell;
 
-/// The kinds of GPU error each error scope catches, outermost first.
-pub(super) const SCOPES: [wgpu::ErrorFilter; 3] = [
-    wgpu::ErrorFilter::OutOfMemory,
-    wgpu::ErrorFilter::Internal,
-    wgpu::ErrorFilter::Validation,
+/// The kinds of GPU error each error scope catches, outermost first,
+/// each with the kind its errors report.
+pub(super) const SCOPES: [(wgpu::ErrorFilter, ErrorKind); 3] = [
+    (wgpu::ErrorFilter::OutOfMemory, ErrorKind::Memory),
+    (wgpu::ErrorFilter::Internal, ErrorKind::Internal),
+    (wgpu::ErrorFilter::Validation, ErrorKind::Validation),
 ];
+
+/// One error a scope caught, and the kind its filter catches.
+pub(crate) struct Fault {
+    pub(crate) kind: ErrorKind,
+    pub(crate) error: wgpu::Error,
+}
 
 /// What one set of error scopes caught: the error that caused the others, and those others.
 pub(crate) struct Caught {
-    pub(crate) cause: wgpu::Error,
-    pub(crate) symptoms: Vec<wgpu::Error>,
+    pub(crate) cause: Fault,
+    pub(crate) symptoms: Vec<Fault>,
 }
 
 impl Caught {
@@ -25,11 +33,19 @@ impl Caught {
     /// and each later use of that object raises a validation error, never the reverse.
     /// So the first kind in `SCOPES` order that caught an error is the cause of the rest.
     pub(super) fn split(caught: [Option<wgpu::Error>; 3]) -> Option<Self> {
-        let mut errors = caught.into_iter().flatten();
-        let cause = errors.next()?;
+        let mut faults = SCOPES
+            .into_iter()
+            .zip(caught)
+            .filter_map(|((_, kind), error)| {
+                Some(Fault {
+                    kind,
+                    error: error?,
+                })
+            });
+        let cause = faults.next()?;
         Some(Self {
             cause,
-            symptoms: errors.collect(),
+            symptoms: faults.collect(),
         })
     }
 }
@@ -82,19 +98,25 @@ pub(super) fn resolve<T>(
         return (result, origin);
     };
     for symptom in symptoms {
-        log::warn!("{label}: the GPU then reported: {symptom}");
+        log::warn!(
+            "{label}: the GPU then reported ({}): {}",
+            symptom.kind,
+            symptom.error
+        );
     }
-    let scoped = RendererError::ValidationError {
+    let cause_text = cause.error.to_string();
+    let scoped = RendererError::DeviceError {
+        kind: cause.kind,
         label: label.to_string(),
-        message: cause.to_string(),
+        message: cause_text.clone(),
     };
     match (result, origin) {
         (Err(error), Origin::Cpu) => {
-            log::warn!("{label} failed: {error}. The GPU also reported: {cause}");
+            log::warn!("{label} failed: {error}. The GPU also reported: {cause_text}");
             (Err(error), Origin::Cpu)
         }
         (Err(error), Origin::Gpu) => {
-            log::warn!("{label} failed: {cause}. It then caused: {error}");
+            log::warn!("{label} failed: {cause_text}. It then caused: {error}");
             (Err(scoped), Origin::Gpu)
         }
         (Ok(_), _) => (Err(scoped), Origin::Gpu),
@@ -138,22 +160,57 @@ mod tests {
         let second = Caught::split(later).expect("two errors");
 
         // Assert
-        assert!(matches!(first.cause, wgpu::Error::OutOfMemory { .. }));
+        assert!(matches!(first.cause.error, wgpu::Error::OutOfMemory { .. }));
         assert_eq!(first.symptoms.len(), 2, "both symptoms are kept");
-        assert!(matches!(second.cause, wgpu::Error::Internal { .. }));
+        assert!(matches!(second.cause.error, wgpu::Error::Internal { .. }));
         assert!(matches!(
             second.symptoms[..],
-            [wgpu::Error::Validation { .. }]
+            [Fault {
+                error: wgpu::Error::Validation { .. },
+                ..
+            }]
         ));
         assert!(Caught::split([None, None, None]).is_none());
     }
 
-    // Story: a CPU check that fails with a ValidationError of its own, such as a limit
+    // Story: each error reports the kind of the scope that caught it,
+    // so a frame that ran out of memory never reads as a validation error.
+    #[test]
+    fn each_scope_reports_its_kind() {
+        // Arrange
+        let every = [Some(memory()), Some(internal()), Some(validation())];
+        let frame = Caught::split([Some(memory()), None, Some(validation())]);
+
+        // Act
+        let caught = Caught::split(every).expect("three errors");
+        let (result, _) = resolve::<()>("frame", Ok(()), Origin::Cpu, frame);
+
+        // Assert
+        let kinds: Vec<ErrorKind> = std::iter::once(&caught.cause)
+            .chain(&caught.symptoms)
+            .map(|fault| fault.kind)
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                ErrorKind::Memory,
+                ErrorKind::Internal,
+                ErrorKind::Validation
+            ]
+        );
+        assert!(
+            matches!(&result, Err(RendererError::DeviceError { kind: ErrorKind::Memory, label, .. }) if label == "frame"),
+            "got {result:?}"
+        );
+    }
+
+    // Story: a CPU check that fails with a DeviceError of its own, such as a limit
     // check, still names the input to fix, even when the scope caught a GPU error first.
     #[test]
     fn cpu_error_wins_whatever_its_variant() {
         // Arrange
-        let limit = RendererError::ValidationError {
+        let limit = RendererError::DeviceError {
+            kind: ErrorKind::Validation,
             label: "storage".into(),
             message: "past max_buffer_size".into(),
         };
@@ -164,7 +221,7 @@ mod tests {
 
         // Assert
         assert!(
-            matches!(&result, Err(RendererError::ValidationError { label, .. }) if label == "storage"),
+            matches!(&result, Err(RendererError::DeviceError { label, .. }) if label == "storage"),
             "got {result:?}"
         );
         assert_eq!(origin, Origin::Cpu);

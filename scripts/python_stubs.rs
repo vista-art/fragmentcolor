@@ -263,7 +263,12 @@ mod python_stubs {
                 "FragmentColorError" => "Exception",
                 _ => "FragmentColorError",
             };
-            body.push_str(&format!("class {exception}({base}): ...\n\n"));
+            let attributes = exception_attributes(exception, &ctx);
+            if attributes.is_empty() {
+                body.push_str(&format!("class {exception}({base}): ...\n\n"));
+            } else {
+                body.push_str(&format!("class {exception}({base}):\n{attributes}\n"));
+            }
         }
         for rust in order {
             body.push_str(&rendered[rust]);
@@ -1413,6 +1418,37 @@ mod python_stubs {
     // ---------------------------------------------------------------------
     // Rendering
     // ---------------------------------------------------------------------
+
+    /// The attributes `exception` carries, one line each: the named fields of the crate
+    /// error variant that shares its name, such as `RendererError::DeviceError`.
+    /// `message` is left out, since it is the exception's text.
+    fn exception_attributes(exception: &str, ctx: &Ctx) -> String {
+        let variant = ctx
+            .model
+            .types_in(Build::Python)
+            .filter(|ty| ty.kind == TypeKind::Enum)
+            .flat_map(|ty| &ty.variants)
+            .find(|variant| {
+                variant.ident == exception
+                    && !variant.names.is_empty()
+                    && variant.names.iter().all(Option::is_some)
+            });
+        let Some(variant) = variant else {
+            return String::new();
+        };
+        let mut out = String::new();
+        for (name, ty) in variant.names.iter().flatten().zip(&variant.fields) {
+            if name == "message" {
+                continue;
+            }
+            let hint = render(
+                &expand(ty, Mode::Return, &Scope::default(), "", ctx),
+                Mode::Return,
+            );
+            out.push_str(&format!("    {name}: {hint}\n"));
+        }
+        out
+    }
 
     fn render_class(
         root: &Path,

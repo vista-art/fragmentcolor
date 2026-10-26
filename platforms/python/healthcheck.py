@@ -6,6 +6,8 @@ import numpy as np
 from fragmentcolor import (
     Camera,
     CompareFunction,
+    DeviceError,
+    ErrorKind,
     FragmentColorError,
     Instance,
     InvalidInputError,
@@ -244,6 +246,28 @@ def check_error_types(renderer):
     raises("a second unregister_texture", lambda: renderer.unregister_texture(texture.id()))
     # A hidden window can't be made headless, so only the class is checked.
     assert issubclass(OccludedSurfaceError, FragmentColorError)
+
+    # A pipeline the GPU refuses raises DeviceError, with its kind and the step's label.
+    # The fragment stage reads @location(0), which the vertex stage never writes.
+    unfed = Shader("""
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+  let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+  return VOut(vec4f(p[i], 0., 1.));
+}
+@fragment fn fs_main(@location(0) tint: vec4<f32>) -> @location(0) vec4<f32> { return tint; }
+""")
+    target = renderer.create_texture_target([8, 8])
+    try:
+        renderer.render(unfed, target)
+    except DeviceError as e:
+        assert isinstance(e, FragmentColorError)
+        assert e.kind == ErrorKind.Validation, f"kind {e.kind}"
+        assert e.label == "render pipeline", f"label {e.label}"
+        assert str(e).startswith("Device error (validation) in 'render pipeline'"), str(e)
+        print(f"render of a refused pipeline raised DeviceError: {e}")
+    else:
+        raise AssertionError("render of a refused pipeline should raise DeviceError")
 
 
 SOLID_SHADER = """

@@ -46,7 +46,7 @@ fn record_uncaptured(context: &RenderContext) -> Uncaptured {
 
 /// Whether `result` is a validation error filed under `expected`.
 fn is_validation(result: &Result<(), RendererError>, expected: &str) -> bool {
-    matches!(result, Err(RendererError::ValidationError { label, .. }) if label == expected)
+    matches!(result, Err(RendererError::DeviceError { kind: ErrorKind::Validation, label, .. }) if label == expected)
 }
 
 /// Raises one validation error outside any renderer scope.
@@ -454,7 +454,7 @@ fn outer_error_reports_the_root_cause() {
 
         // Assert
         assert!(
-            matches!(&result, Err(RendererError::ValidationError { label, message })
+            matches!(&result, Err(RendererError::DeviceError { label, message, .. })
                 if label == "outer" && message.contains("the cause")),
             "got {result:?}"
         );
@@ -505,7 +505,7 @@ fn surface_validation_reports_the_device_error() {
 
         // Assert
         assert!(
-            matches!(&result, Err(RendererError::ValidationError { label, message })
+            matches!(&result, Err(RendererError::DeviceError { label, message, .. })
                 if label == "frame" && message.contains("the surface detail")),
             "got {result:?}"
         );
@@ -538,19 +538,20 @@ fn cpu_error_wins_over_the_scope() {
 
 // Story: every scope catches internal and out of memory errors along with validation
 // errors, so a backend compiler that rejects a pipeline keeps it out of the cache too.
+// Each filter reports its own kind.
 #[test]
 fn scopes_catch_every_error_kind() {
     // Arrange
     let expected = [
-        wgpu::ErrorFilter::OutOfMemory,
-        wgpu::ErrorFilter::Internal,
-        wgpu::ErrorFilter::Validation,
+        (wgpu::ErrorFilter::OutOfMemory, ErrorKind::Memory),
+        (wgpu::ErrorFilter::Internal, ErrorKind::Internal),
+        (wgpu::ErrorFilter::Validation, ErrorKind::Validation),
     ];
 
     // Act
     let missing: Vec<_> = expected
         .iter()
-        .filter(|filter| !SCOPES.contains(filter))
+        .filter(|scope| !SCOPES.contains(scope))
         .collect();
 
     // Assert

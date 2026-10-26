@@ -351,6 +351,8 @@ mod reflect {
         pub is_unit: bool,
         /// Field types, named or positional.
         pub fields: Vec<Type>,
+        /// Field names, `None` for a positional field.
+        pub names: Vec<Option<String>>,
     }
 
     /// An `impl` block, inherent or for a trait.
@@ -670,6 +672,11 @@ mod reflect {
                             cfg: Cfg::All(cfgs_of(&v.attrs)),
                             is_unit: matches!(v.fields, Fields::Unit),
                             fields: v.fields.iter().map(|f| f.ty.clone()).collect(),
+                            names: v
+                                .fields
+                                .iter()
+                                .map(|f| f.ident.as_ref().map(ToString::to_string))
+                                .collect(),
                         })
                         .collect();
                     model.types.push(TypeDef {
