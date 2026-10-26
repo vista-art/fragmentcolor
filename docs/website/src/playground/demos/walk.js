@@ -197,7 +197,7 @@ export function frame(state, renderer, target, time, size, pointer, gesture = { 
 // A new canvas size changes the camera's aspect.
 function fit(state, size) {
   if (size[0] === state.size[0] && size[1] === state.size[1]) return;
-  state.camera.setAspect(size[0] / size[1]);
+  state.camera.setAspect(Math.max(size[0], 1) / Math.max(size[1], 1));
   state.size = size;
 }
 
@@ -648,7 +648,7 @@ ${setCalls("rust", "sky", sky, { after: "?;" })}
 
     let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
     let moon = Light::directional([0.3, -1.0, 0.5], [0.45, 0.55, 0.85]);
-    let camera = Camera::perspective(FOV, 1.0, 0.05, 200.0);
+    let camera = Camera::perspective(FOV, 1.0, 0.05, 200.0)?;
     scene
         .add_to("world", &sun)?
         .add_to("world", &moon)?
@@ -696,7 +696,7 @@ fn frame(
     // A new window size changes the camera's aspect.
     let size = [size[0].max(1.0) as u32, size[1].max(1.0) as u32];
     if size != state.size {
-        state.camera.set_aspect(size[0] as f32 / size[1] as f32);
+        state.camera.set_aspect(size[0] as f32 / size[1] as f32)?;
         state.size = size;
     }
     walk(state, delta, gesture, keys)?;
@@ -763,7 +763,7 @@ fn walk(state: &mut State, delta: f32, gesture: Gesture, keys: &Keys) -> Result<
     let look = [-sin * walker.pitch.cos(), walker.pitch.sin(), -cos * walker.pitch.cos()];
     let eye = [walker.x, walker.y + bob, walker.z];
     let toward = [eye[0] + look[0], eye[1] + look[1], eye[2] + look[2]];
-    state.camera.look_at(eye, toward, [0.0, 1.0, 0.0]);
+    state.camera.look_at(eye, toward, [0.0, 1.0, 0.0])?;
     let right = normalize(cross(look, [0.0, 1.0, 0.0]));
     state.sky.set("sky.forward", look)?;
     state.sky.set("sky.right", right)?;
@@ -1612,7 +1612,7 @@ ${setCalls("swift", "sky", sky, { before: "try " })}
 
     let sun = try Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
     let moon = try Light.directional([0.3, -1, 0.5], [0.45, 0.55, 0.85])
-    let camera = Camera.perspective(fieldOfView, 1, 0.05, 200)
+    let camera = try Camera.perspective(fieldOfView, 1, 0.05, 200)
     try scene.addTo("world", sun).addTo("world", moon).addTo("world", camera)
 
     return State(
@@ -1638,7 +1638,7 @@ func frame(
     // A new view size changes the camera's aspect.
     let pixels = [UInt32(max(size[0], 1)), UInt32(max(size[1], 1))]
     if pixels != state.size {
-        state.camera.setAspect(Float(pixels[0]) / Float(pixels[1]))
+        try state.camera.setAspect(Float(pixels[0]) / Float(pixels[1]))
         state.size = pixels
     }
     try walk(&state, delta, gesture, keys)
