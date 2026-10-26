@@ -1873,6 +1873,9 @@ class Vertex:
         A 1-component position becomes 2D with `y` at 0. A 4-component position
         uploads as 3D: the mesh drops the 4th component.
 
+        In JavaScript, Python, Swift and Kotlin, a position of another length, or a number
+        that is NaN, infinite or past the 32-bit float range, is an error that names the call.
+
         Example:
 
         ```python
@@ -2090,6 +2093,8 @@ class Quad:
     def __new__(cls, min: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], max: npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]) -> Quad:
         """
         Create a quad from two corners (min.xy, max.xy) in clip-space coordinates.
+
+        Each corner holds 2 numbers. In JavaScript, Python, Swift and Kotlin, another count, or a number that is NaN, infinite or past the 32-bit float range, is an error that names the corner.
 
         - Position layout: @location(0) vec2<f32>
         - UV layout: @location(1) vec2<f32>
