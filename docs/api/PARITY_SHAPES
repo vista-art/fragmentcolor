@@ -18,6 +18,9 @@ docs/api/core/renderer/create_texture.md kotlin Renderer.createTexture: (Texture
 docs/api/core/renderer/create_texture.md swift Renderer.createTexture: (TextureInputMobile, TextureOptions) -> Texture throws async | rust (into TextureInput) -> Texture throws async
 docs/api/core/shader/set_registry.md kotlin Shader.useRegistry: (text) -> self | rust (text) -> unit
 docs/api/core/shader/set_registry.md swift Shader.useRegistry: (text) -> self | rust (text) -> unit
+docs/api/geometry/mesh/add_vertex.md python Mesh.add_vertex: (PyIntoVertex) -> unit throws | rust (into Vertex) -> unit
+docs/api/geometry/mesh/add_vertices.md python Mesh.add_vertices: (list(PyIntoVertex)) -> unit throws | rust (list(into Vertex)) -> unit
+docs/api/geometry/mesh/from_vertices.md python Mesh.from_vertices: (list(PyIntoVertex)) -> self throws | rust (list(into Vertex)) -> self
 docs/api/scene/camera/view_proj.md kotlin Camera.viewProj: () -> floats | rust () -> matrix
 docs/api/scene/camera/view_proj.md swift Camera.viewProj: () -> floats | rust () -> matrix
 docs/api/scene/camera/view_proj.md web Camera.viewProj: () -> floats | rust () -> matrix

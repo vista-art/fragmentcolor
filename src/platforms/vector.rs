@@ -1,6 +1,6 @@
 //! The float vector rule every binding shares: colors, positions, directions, axes and UV transforms.
 
-use crate::Color;
+use crate::{Color, Vertex};
 
 /// A float vector from a binding that no setter can use, such as a color or a position.
 #[derive(Debug, thiserror::Error)]
@@ -90,6 +90,24 @@ pub(crate) fn read_color(
     }
 }
 
+/// A vertex from a position of 1 to 4 numbers, read as [`read_floats`] reads them.
+pub(crate) fn read_position(
+    numbers: impl IntoIterator<Item = impl Into<f64>>,
+    label: &str,
+) -> Result<Vertex, VectorError> {
+    match *read_floats(numbers, label)? {
+        [x] => Ok(Vertex::new(x)),
+        [x, y] => Ok(Vertex::new([x, y])),
+        [x, y, z] => Ok(Vertex::new([x, y, z])),
+        [x, y, z, w] => Ok(Vertex::new([x, y, z, w])),
+        ref other => Err(VectorError::Length {
+            label: label.to_string(),
+            expected: "1 to 4".to_string(),
+            count: other.len(),
+        }),
+    }
+}
+
 /// A float vector Python can't use raises `InvalidInputError`.
 #[cfg(python)]
 impl From<VectorError> for pyo3::PyErr {
@@ -159,5 +177,36 @@ mod tests {
             message.as_deref(),
             Some("Pass.setClearColor takes 3 or 4 numbers, got 5")
         );
+    }
+
+    // Story: a vertex position takes 1 to 4 numbers under the same rule,
+    // so a Vertex and a Quad corner refuse what a color refuses.
+    #[test]
+    fn reads_vertex_positions() {
+        let fields = |vertex: Vertex| (vertex.position, vertex.dimensions);
+        let vertex = read_position([0.5, -1.0, 2.0], "Vertex: position").ok();
+        assert_eq!(
+            vertex.map(fields),
+            Some(fields(Vertex::new([0.5, -1.0, 2.0])))
+        );
+        let vertex = read_position([0.25_f32], "Vertex: position").ok();
+        assert_eq!(vertex.map(fields), Some(fields(Vertex::new(0.25))));
+        let message = read_position([0.0, f64::NAN], "Vertex: position")
+            .err()
+            .map(|error| error.to_string());
+        assert_eq!(
+            message.as_deref(),
+            Some(
+                "Vertex: position: item 1 must be a finite number that fits a 32-bit float, got NaN"
+            )
+        );
+        let message = read_position([0.0; 5], "Vertex: position")
+            .err()
+            .map(|error| error.to_string());
+        assert_eq!(
+            message.as_deref(),
+            Some("Vertex: position takes 1 to 4 numbers, got 5")
+        );
+        assert!(read_position(Vec::<f64>::new(), "Vertex: position").is_err());
     }
 }

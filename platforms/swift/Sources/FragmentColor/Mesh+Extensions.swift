@@ -27,7 +27,7 @@ extension Mesh {
     /// Append a single vertex from a Double array (converted to Float).
     @_disfavoredOverload
     public func addVertex(_ position: [Double]) throws {
-        try addVertex(v: Vertex(position: position.map { Float($0) }))
+        try addVertex(v: Vertex(position: readFloats(position, "Vertex: position")))
     }
 
     /// Append a vertex at `position` with a `"uv"` attribute, as Rust's `(position, uv)` tuple does.
@@ -59,7 +59,7 @@ extension Mesh {
     /// Append multiple vertices from an array of double-array positions.
     @_disfavoredOverload
     public func addVertices(_ positions: [[Double]]) throws {
-        try addVertices(vertices: positions.map { try Vertex(position: $0.map { Float($0) }) })
+        try addVertices(vertices: positions.map { try Vertex(position: readFloats($0, "Vertex: position")) })
     }
 
     /// Append multiple already-constructed vertices (drops the `vertices:` label).
@@ -115,7 +115,7 @@ extension Vertex {
     /// Convenience: construct a Vertex from an unlabeled double array.
     @_disfavoredOverload
     public convenience init(_ position: [Double]) throws {
-        try self.init(position: position.map { Float($0) })
+        try self.init(position: readFloats(position, "Vertex: position"))
     }
 
     /// Unlabeled `Vertex.pbr([x, y, z])` matching the JS / Python spelling.
@@ -124,7 +124,7 @@ extension Vertex {
     }
     @_disfavoredOverload
     public static func pbr(_ position: [Double]) throws -> Vertex {
-        return try Vertex.pbr(position: position.map { Float($0) })
+        return try Vertex.pbr(position: readFloats(position, "Vertex.pbr: position"))
     }
 
     // MARK: - Attributes
@@ -245,7 +245,7 @@ extension Quad {
     /// Create a Quad from unlabeled Double corner arrays.
     @_disfavoredOverload
     public convenience init(_ min: [Double], _ max: [Double]) throws {
-        try self.init(min: min.map { Float($0) }, max: max.map { Float($0) })
+        try self.init(min: readFloats(min, "Quad: min"), max: readFloats(max, "Quad: max"))
     }
 }
 

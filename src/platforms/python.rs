@@ -228,7 +228,7 @@ fn is_bool(value: &Bound<'_, PyAny>) -> bool {
 }
 
 /// One item as an `f64`, before the float vector rule checks its value.
-fn read_number(value: &Bound<'_, PyAny>, label: &str, index: usize) -> PyResult<f64> {
+pub(crate) fn read_number(value: &Bound<'_, PyAny>, label: &str, index: usize) -> PyResult<f64> {
     let py = value.py();
     if is_bool(value) {
         return Err(PyTypeError::new_err(format!(
