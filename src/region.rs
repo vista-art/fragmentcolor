@@ -80,8 +80,7 @@ impl ScreenRegion {
         }
     }
 
-    /// A region from the `[w, h]` or `[x, y, w, h]` numbers a binding received,
-    /// each checked by [`crate::size::read_dimension`].
+    /// Reads a binding's `[w, h]` or `[x, y, w, h]`, each number checked by [`crate::size::read_dimension`].
     #[cfg(any(wasm, python))]
     pub(crate) fn from_numbers(numbers: &[f64]) -> Result<Self, ScreenRegionError> {
         let numbers = numbers
