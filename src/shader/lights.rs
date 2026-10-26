@@ -1,13 +1,14 @@
 //! The lights a shader with light roots takes, and its ambient term.
 
 use std::collections::HashSet;
+use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Weak};
 
 use super::ShaderObject;
 use crate::PassError;
-use crate::scene::{GpuLight, LightObject, bump_epoch};
+use crate::scene::{GpuLight, LightObject, bump_epoch, current_epoch};
 
 /// The most lights one shader takes on every device this process opened.
 static LIGHT_CAP: AtomicU32 = AtomicU32::new(u32::MAX);
@@ -54,6 +55,18 @@ pub(crate) struct ShaderLights {
     ambient: [f32; 3],
     /// Whether the shader draws with `GpuLight::placeholder` while no light reaches it.
     placeholder: bool,
+    /// The summary at the light epoch it was taken at.
+    summary: Option<(u64, LightSummary)>,
+}
+
+/// What a render reads of a shader's lights. Every change to them moves
+/// the light epoch, so one summary holds for the epoch it was taken at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LightSummary {
+    /// A hash of the live light ids in order, the ambient term and the placeholder flag.
+    pub(crate) hash: u64,
+    /// The live lights.
+    pub(crate) count: u64,
 }
 
 impl ShaderLights {
@@ -114,27 +127,32 @@ impl ShaderObject {
         Ok(())
     }
 
-    /// The ids of the live lights, in attach order.
-    pub(crate) fn light_ids(&self) -> Vec<u64> {
-        self.lights
-            .read()
-            .list
-            .iter()
-            .filter(|(_, weak)| weak.strong_count() > 0)
-            .map(|(id, _)| *id)
-            .collect()
-    }
-
-    /// Feeds the live light ids, the ambient term and the placeholder flag to `hasher`.
-    pub(crate) fn hash_lights(&self, hasher: &mut impl Hasher) {
-        let lights = self.lights.read();
+    /// The hash and count of the live lights, taken once per light epoch.
+    pub(crate) fn light_summary(&self) -> LightSummary {
+        // Read the epoch first, so a change that lands meanwhile moves it past the stored one.
+        let epoch = current_epoch();
+        if let Some((taken, summary)) = self.lights.read().summary
+            && taken == epoch
+        {
+            return summary;
+        }
+        let mut lights = self.lights.write();
+        let mut hasher = DefaultHasher::new();
+        let mut count = 0;
         for (id, weak) in &lights.list {
             if weak.strong_count() > 0 {
-                id.hash(hasher);
+                id.hash(&mut hasher);
+                count += 1;
             }
         }
-        lights.ambient.map(f32::to_bits).hash(hasher);
-        lights.placeholder.hash(hasher);
+        lights.ambient.map(f32::to_bits).hash(&mut hasher);
+        lights.placeholder.hash(&mut hasher);
+        let summary = LightSummary {
+            hash: hasher.finish(),
+            count,
+        };
+        lights.summary = Some((epoch, summary));
+        summary
     }
 
     /// The live lights and the placeholder flag.
@@ -175,5 +193,43 @@ impl ShaderObject {
             return vec![GpuLight::placeholder()];
         }
         list.lights.iter().map(|light| light.gpu()).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use crate::scene::{Light, bump_epoch, current_epoch};
+
+    // Story: a shader's light summary holds for the light epoch it was taken at,
+    // so a render reads it without walking the lights, and the next epoch takes it again.
+    #[test]
+    fn the_light_summary_holds_for_one_epoch() {
+        let shader = crate::Material::pbr().shader().object.clone();
+        let lamp = Light::point([0.0, 0.0, 0.0], [1.0; 3]);
+        let push = || {
+            let entry = (lamp.object.id, Arc::downgrade(&lamp.object));
+            shader.lights.write().list.push(entry);
+        };
+        // A list change that skips the epoch stays out of the summary. Another
+        // test can move the epoch between the reads, so a few tries are allowed.
+        let held = (0..64).any(|_| {
+            let epoch = current_epoch();
+            let before = shader.light_summary();
+            push();
+            let during = shader.light_summary();
+            shader.lights.write().list.pop();
+            current_epoch() == epoch && during == before
+        });
+        assert!(held, "the summary walked the lights again within one epoch");
+
+        push();
+        bump_epoch();
+        assert_eq!(
+            shader.light_summary().count,
+            1,
+            "a new epoch counts the lamp"
+        );
     }
 }

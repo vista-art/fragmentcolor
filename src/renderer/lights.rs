@@ -703,7 +703,7 @@ impl LightProbe {
 /// bits, the shape, and the shader when the pass has no camera to bin in.
 fn set_key(shader: &ShaderObject, shape: SetShape, own_matrix: bool) -> u64 {
     let mut hasher = DefaultHasher::new();
-    shader.hash_lights(&mut hasher);
+    shader.light_summary().hash.hash(&mut hasher);
     shape.hash(&mut hasher);
     if own_matrix {
         (shader as *const ShaderObject as usize).hash(&mut hasher);
@@ -746,10 +746,24 @@ impl RenderContext {
         }
     }
 
+    /// Checks that no lit shader on `pass` holds more lights than this device
+    /// takes. `plan_pass` runs it before the frame is acquired.
+    pub(crate) fn check_light_cap(&self, pass: &PassObject) -> Result<(), RendererError> {
+        let path = self.light_path();
+        for shader in pass.shaders.read().iter() {
+            if let Some(roots) = shader.light_roots.as_ref() {
+                let cap = path.cap().min(roots.capacity());
+                if shader.light_summary().count > u64::from(cap) {
+                    return Err(PassError::LightCapReached { cap }.into());
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Packs and bins the lights of every lit shader on `pass`, at most once
     /// per render for each light set, and returns each shader's buffers by
-    /// its address. A shader holding more lights than the device takes fails
-    /// here, before any light buffer is touched.
+    /// its address.
     pub(crate) fn prepare_lights(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -767,14 +781,6 @@ impl RenderContext {
             return Ok(prepared);
         }
         let path = self.light_path();
-        for shader in &lit {
-            if let Some(roots) = shader.light_roots.as_ref() {
-                let cap = path.cap().min(roots.capacity());
-                if shader.light_ids().len() as u64 > u64::from(cap) {
-                    return Err(PassError::LightCapReached { cap }.into());
-                }
-            }
-        }
         let limit = match path {
             LightPath::Clustered { limit } => limit,
             LightPath::Uniform { .. } => 0,

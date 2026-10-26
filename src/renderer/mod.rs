@@ -997,10 +997,12 @@ impl RenderContext {
 
     /// Decides what a render pass draws, before any frame is acquired.
     ///
-    /// The checks that need no frame run here, so a shader that reads vertex inputs
-    /// with no mesh, or a mesh asked for more instances than it holds, fails without drawing,
-    /// and the target keeps its last frame. The draw loop takes each shader's layouts and buffers from it.
+    /// The checks that need no frame run here. The target keeps its last frame
+    /// when a lit shader holds more lights than the device takes, a shader reads
+    /// vertex inputs with no mesh, or a mesh is asked for more instances than it holds.
+    /// The draw loop takes each shader's layouts and buffers from the plan.
     fn plan_pass(&self, pass: &PassObject) -> Result<PassDraws, RendererError> {
+        self.check_light_cap(pass)?;
         let mut draws = self.build_pass_draws(pass);
         let model_shaders = find_model_shaders(pass);
         draws.has_models = !model_shaders.is_empty();
