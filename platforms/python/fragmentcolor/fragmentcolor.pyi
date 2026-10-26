@@ -4632,7 +4632,7 @@ class Texture:
         - See `Texture::write` for format and row layout details.
         - `bytes_per_row` (set via `.with_stride(...)`) defaults to the region width times the bytes per pixel, or to that row padded to 256 bytes when the data is exactly that size. Without it, data of any other length is an `InvalidInput` error. A larger value skips the padding at the end of each source row, and the data may then run past the region.
         - `rows_per_image` (set via `.with_rows(...)`) defaults to the region height.
-        - A texture with a mip chain, which `create_texture` builds by default, takes whole writes only, since a partial one would leave the smaller levels stale. Any other region is an `InvalidInput` error, so create a texture you update in parts with `mipmaps: false`.
+        - A texture with a mip chain, which `create_texture` builds by default, takes whole writes only, since a partial one would leave the smaller levels stale. Any other region is an `InvalidInput` error, so create a texture you update in parts with `mipmaps: false`, or from a KTX2 file with one level.
 
         Example:
 
@@ -4784,7 +4784,7 @@ class Mipmap:
 
         A decoded image built for `Bgra8Unorm` or `Bgra` stores blue first, as `create_texture` does, and raw bytes keep their order.
 
-        Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`, and the `Rgba`, `Bgra`, `L8` and `Lab` aliases. Anything else returns `TextureError::UnsupportedMipmapFormat`. Decode failures surface as `MalformedImageError`; size and byte-count mismatches as `InvalidInput`.
+        Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`, `Rgba16Float`, `Rgba32Float`, and the `Rgba`, `Bgra`, `L8` and `Lab` aliases. Anything else returns `TextureError::UnsupportedMipmapFormat`. Decode failures surface as `MalformedImageError`; size and byte-count mismatches as `InvalidInput`.
 
         ## Per-language shapes
 

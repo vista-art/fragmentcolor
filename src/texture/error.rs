@@ -16,10 +16,10 @@ pub enum TextureError {
     /// The requested target format isn't supported by the CPU mipmap
     /// dispatcher. Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`,
     /// `Bgra8Unorm`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`,
-    /// `Rgba16Unorm`, and the aliases for them. For other formats, ship a pre-baked KTX2
+    /// `Rgba16Unorm`, `Rgba16Float`, `Rgba32Float`, and the aliases for them. For other formats, ship a pre-baked KTX2
     /// chain (`TextureInput::Ktx2*`) or set `TextureOptions { mipmaps: false, .. }`.
     #[error(
-        "Unsupported format for CPU mipmap generation: {format:?}. Supported formats: Rgba8/Bgra8 (Unorm + Srgb), R8Unorm, Rg8Unorm, R16Unorm, Rg16Unorm, Rgba16Unorm. Use TextureInput::Ktx2* for other formats, or set mipmaps=false."
+        "Unsupported format for CPU mipmap generation: {format:?}. Supported formats: Rgba8/Bgra8 (Unorm + Srgb), R8Unorm, Rg8Unorm, R16Unorm, Rg16Unorm, Rgba16Unorm, Rgba16Float, Rgba32Float. Use TextureInput::Ktx2* for other formats, or set mipmaps=false."
     )]
     UnsupportedMipmapFormat { format: crate::TextureFormat },
     /// The provided buffer didn't match the declared shape: zero size, byte

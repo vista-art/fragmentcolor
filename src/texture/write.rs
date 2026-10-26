@@ -91,10 +91,15 @@ pub(super) fn write(
     let levels = object.inner.mip_level_count();
     if levels > 1 {
         let whole = region.origin == [0; 3] && region.size == [size.width, size.height, 1];
-        if !whole || !super::supports_cpu_mipmaps(format) {
+        if !whole {
             return Err(TextureError::InvalidInput(
-                "the texture has a mip chain, which a partial write would leave stale; create it with mipmaps: false to write regions".into(),
+                "the texture has a mip chain, which a partial write would leave stale; write the whole texture, or make it with one level, as mipmaps: false does".into(),
             ));
+        }
+        if !super::supports_cpu_mipmaps(format) {
+            return Err(TextureError::InvalidInput(format!(
+                "a write can't rebuild the mip chain of a {format:?} texture"
+            )));
         }
         let rows = tight_rows(data, bytes_per_row, row_stride, region.size[1]);
         return super::write_levels(&tex.context, &rows, &object.inner, size, format, levels);
