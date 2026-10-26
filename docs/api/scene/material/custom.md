@@ -190,7 +190,8 @@ struct LightArray { count: u32, ambient: vec3<f32>, lights: array<Light, N> }
 ```
 
 A shader of this shape takes at most `N` lights, and the `add` past them
-fails with `PassError::LightCapReached { cap: N }`. A uniform `lights` that
+fails with `PassError::LightCapReached { cap: N }`. `lights.lights[i]` holds
+the lights in the order they reached the shader. A uniform `lights` that
 matches neither shape stays an ordinary uniform, which `set` reaches, and
 logs a warning.
 

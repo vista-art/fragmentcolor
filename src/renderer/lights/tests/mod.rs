@@ -912,6 +912,34 @@ struct Lights { count: u32, global_count: u32, promoted_count: u32, ambient: vec
     });
 }
 
+#[test]
+fn the_older_light_array_reads_lights_in_attach_order() {
+    pollster::block_on(async {
+        // A bounded light added first stays at index 0, ahead of a light without a range.
+        let lamp = bulb([0.0, 0.0, 0.0], [0.4, 0.0, 0.0], 1.0, 5.0);
+        let sun = Light::directional([0.0, -1.0, 0.0], [0.0, 0.0, 0.8]);
+        for mode in [Mode::Clustered, Mode::Uniform(8)] {
+            let build = || {
+                let shader = fullscreen(
+                    "struct LightArray { count: u32, ambient: vec3<f32>, lights: array<Light, 4> }
+@group(0) @binding(1) var<uniform> lights: LightArray;",
+                    "vec4<f32>(lights.lights[0].color, 1.0)",
+                );
+                let pass = Pass::from_shader("attach order", &shader);
+                pass.add(&lamp).expect("lamp");
+                pass.add(&sun).expect("sun");
+                pass
+            };
+            let drawn = draw(build, mode, 4).await;
+            assert_eq!(
+                drawn.image[..4],
+                [102, 0, 0, 255],
+                "the lamp first, {mode:?}"
+            );
+        }
+    });
+}
+
 const STORAGE_ROOT: &str = "struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>, slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }
 struct Lights { count: u32, global_count: u32, promoted_count: u32, ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }
 @group(0) @binding(1) var<storage, read> lights: Lights;";

@@ -189,7 +189,7 @@ impl SetShape {
     }
 }
 
-/// A set's lights packed for the GPU: the lights without a range first.
+/// A set's lights packed for the GPU.
 #[derive(Debug, Default, PartialEq)]
 struct Packed {
     array: Vec<u8>,
@@ -200,6 +200,27 @@ struct Packed {
 }
 
 impl Packed {
+    /// Packs the lights of a set with `shape`. A storage root reads the lights
+    /// without a range first, and the older `LightArray` reads them in attach order.
+    fn for_shape(lights: &[GpuLight], shape: SetShape) -> Self {
+        match shape {
+            SetShape::Array { .. } => Packed::in_order(lights),
+            SetShape::Clustered { .. } | SetShape::Uniform { .. } => Packed::new(lights),
+        }
+    }
+
+    /// The lights in attach order, with no bounds, since nothing bins them.
+    fn in_order(lights: &[GpuLight]) -> Self {
+        let mut packed = Packed::default();
+        for light in lights {
+            light.write(&mut packed.array);
+        }
+        packed.count = lights.len() as u32;
+        packed.global_count = packed.count;
+        packed
+    }
+
+    /// The lights without a range first, then the bounded ones, each part in attach order.
     fn new(lights: &[GpuLight]) -> Self {
         let mut packed = Packed::default();
         let bounds: Vec<Option<Sphere>> = lights.iter().map(Sphere::around).collect();
@@ -372,7 +393,7 @@ impl LightSet {
         if self.epoch != epoch {
             self.epoch = epoch;
             self.ambient = shader.ambient();
-            let packed = Packed::new(&shader.gpu_lights());
+            let packed = Packed::for_shape(&shader.gpu_lights(), self.shape);
             rebin = packed.spheres != self.packed.spheres;
             self.packed = packed;
             changed = true;
