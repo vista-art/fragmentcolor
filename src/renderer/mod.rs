@@ -1436,7 +1436,7 @@ impl RenderContext {
 
         let load_op = match *pass.input.read() {
             PassInput::Load => wgpu::LoadOp::Load,
-            PassInput::Clear(color) => wgpu::LoadOp::Clear(color.into()),
+            PassInput::Clear(color) => wgpu::LoadOp::Clear(color.to_wgpu()),
         };
 
         // Choose color attachment: per-pass override or default frame view.

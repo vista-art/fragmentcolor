@@ -5,8 +5,25 @@ pub mod error;
 use error::ColorError;
 
 /// A linear RGBA color with one float per channel.
-/// `From<u32>` reads `0xRRGGBBAA` bytes, and `from_css` reads a CSS color.
-/// Values past 0 to 1 survive: a float target clears to them, and a unorm target clamps them on the GPU.
+///
+/// A color is a list in every language, `[r, g, b]` with an opaque alpha or `[r, g, b, a]`,
+/// and `from_css` reads a CSS color. Values past 0 to 1 survive: a float target clears to them,
+/// and a unorm target clamps them on the GPU.
+///
+/// ```
+/// let color: fragmentcolor::Color = [1.0, 0.5, 0.0].into();
+/// assert_eq!(color.to_f32_array(), [1.0, 0.5, 0.0, 1.0]);
+/// ```
+///
+/// A tuple or a packed `u32` is not a color:
+///
+/// ```compile_fail
+/// let color: fragmentcolor::Color = (1.0, 0.5, 0.0).into();
+/// ```
+///
+/// ```compile_fail
+/// let color = fragmentcolor::Color::from(0xFF8000FFu32);
+/// ```
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyo3::pyclass(from_py_object))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
@@ -87,6 +104,12 @@ impl Color {
         self.0
     }
 
+    /// The color as wgpu clears to it, each channel widened to `f64`.
+    pub(crate) fn to_wgpu(self) -> wgpu::Color {
+        let [r, g, b, a] = self.0.map(f64::from);
+        wgpu::Color { r, g, b, a }
+    }
+
     /// The color, or an error naming the first channel that is NaN or infinite.
     pub(crate) fn check_finite(self) -> Result<Self, ColorError> {
         for (channel, value) in CHANNELS.into_iter().zip(self.0) {
@@ -95,32 +118,6 @@ impl Color {
             }
         }
         Ok(self)
-    }
-}
-
-crate::impl_from_into_with_refs!(
-    Color,
-    wgpu::Color,
-    |c: Color| wgpu::Color {
-        r: c.red() as f64,
-        g: c.green() as f64,
-        b: c.blue() as f64,
-        a: c.alpha() as f64,
-    },
-    |wc: wgpu::Color| Color::new(wc.r as f32, wc.g as f32, wc.b as f32, wc.a as f32)
-);
-
-/// Reads `0xRRGGBBAA`, one byte per channel.
-impl From<u32> for Color {
-    fn from(bytes: u32) -> Self {
-        let channel = |shift: u32| ((bytes >> shift) & 0xFF) as f32 / 255.0;
-        Self::new(channel(24), channel(16), channel(8), channel(0))
-    }
-}
-
-impl From<&u32> for Color {
-    fn from(bytes: &u32) -> Self {
-        Self::from(*bytes)
     }
 }
 
@@ -136,20 +133,6 @@ crate::impl_from_into_with_refs!(
     [f32; 3],
     |c: Color| [c.red(), c.green(), c.blue()],
     |rgb: [f32; 3]| Color::from_rgb_alpha(rgb, 1.0)
-);
-
-crate::impl_from_into_with_refs!(
-    Color,
-    (f32, f32, f32),
-    |c: Color| (c.red(), c.green(), c.blue()),
-    |t: (f32, f32, f32)| Color::from_rgb_alpha([t.0, t.1, t.2], 1.0)
-);
-
-crate::impl_from_into_with_refs!(
-    Color,
-    (f32, f32, f32, f32),
-    |c: Color| (c.red(), c.green(), c.blue(), c.alpha()),
-    |t: (f32, f32, f32, f32)| Color::from_rgba([t.0, t.1, t.2, t.3])
 );
 
 /// Reads `[r, g, b]` with an opaque alpha, or `[r, g, b, a]`, as a binding passes them.
@@ -220,16 +203,11 @@ mod tests {
         let rgba = [0.2, 0.4, 0.6, 0.8];
         let rgb = [0.2, 0.4, 0.6];
         let c1: Color = (&rgba).into();
-        let _c2: Color = (&rgb).into();
-        let _c3: Color = (&(0.2f32, 0.4f32, 0.6f32)).into();
-        let _c4: Color = (&(0.2f32, 0.4f32, 0.6f32, 0.8f32)).into();
+        let c2: Color = (&rgb).into();
+        assert_eq!(c2, Color::new(0.2, 0.4, 0.6, 1.0));
 
         let out_rgba: [f32; 4] = (&c1).into();
         assert_eq!(out_rgba, rgba);
-
-        let wc = wgpu::Color::from(c1);
-        let back: Color = (&wc).into();
-        assert_eq!(back, Color::from(rgba));
     }
 
     // Story: a color keeps values past 0 to 1, which a float target clears to,
@@ -238,19 +216,9 @@ mod tests {
     fn keeps_every_channel_exactly() {
         let color = Color::from([4.0, -1.0, 0.25, 1.0]);
         assert_eq!(color.to_f32_array(), [4.0, -1.0, 0.25, 1.0]);
-        let clear = wgpu::Color::from(color);
+        let clear = color.to_wgpu();
         assert_eq!([clear.r, clear.g, clear.b, clear.a], [4.0, -1.0, 0.25, 1.0]);
         assert_eq!(Color::from([0.3, 0.6, 0.9]).green(), 0.6);
-    }
-
-    // Story: 0xRRGGBBAA reads one byte per channel.
-    #[test]
-    fn reads_bytes_from_a_u32() {
-        let color = Color::from(0xFF8000FFu32);
-        assert_eq!(color.red(), 1.0);
-        assert_eq!(color.green(), 128.0 / 255.0);
-        assert_eq!(color.blue(), 0.0);
-        assert_eq!(color.alpha(), 1.0);
     }
 
     // Story: a binding's list of 3 or 4 channels becomes a color, and any
