@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use crate::ShaderError;
 
+use super::coerce::byte_count;
+
 use super::uniform::{ArrayElement, PushEntry, StorageEntry, StructField, StructShape};
 use super::{Uniform, UniformData};
 
@@ -244,44 +246,24 @@ impl UniformStorage {
         }
     }
 
-    /// Directly replace the CPU-side bytes of a storage buffer root.
-    /// - root must be a top-level storage buffer name (e.g., "particles").
-    /// - bytes will be copied into the blob up to the declared span; remaining region is zeroed.
+    /// Replaces the bytes of the storage root `root`, which must be exactly its size.
     pub fn set_storage_bytes(&mut self, root: &str, bytes: &[u8]) -> Result<(), ShaderError> {
-        if let Some(blob) = self.storage_blobs.get_mut(root) {
-            let span = blob.len();
-            let n = span.min(bytes.len());
-            blob[..n].copy_from_slice(&bytes[..n]);
-            if n < span {
-                for b in blob[n..].iter_mut() {
-                    *b = 0;
-                }
-            }
-            // Mark root dirty for next GPU upload
-            self.storage_dirty.insert(root.to_string());
-            Ok(())
-        } else {
-            Err(ShaderError::UniformNotFound(root.into()))
-        }
+        let blob = self
+            .storage_blobs
+            .get_mut(root)
+            .ok_or_else(|| ShaderError::UniformNotFound(root.into()))?;
+        replace_blob(root, blob, bytes)?;
+        self.storage_dirty.insert(root.to_string());
+        Ok(())
     }
 
-    /// Directly replace the CPU-side bytes of a push-constant root.
-    /// - root must be a top-level push-constant name (e.g., "pc").
-    /// - bytes will be copied into the blob up to the declared span; remaining region is zeroed.
+    /// Replaces the bytes of the push-constant root `root`, which must be exactly its size.
     pub fn set_push_bytes(&mut self, root: &str, bytes: &[u8]) -> Result<(), ShaderError> {
-        if let Some(blob) = self.push_blobs.get_mut(root) {
-            let span = blob.len();
-            let n = span.min(bytes.len());
-            blob[..n].copy_from_slice(&bytes[..n]);
-            if n < span {
-                for b in blob[n..].iter_mut() {
-                    *b = 0;
-                }
-            }
-            Ok(())
-        } else {
-            Err(ShaderError::UniformNotFound(root.into()))
-        }
+        let blob = self
+            .push_blobs
+            .get_mut(root)
+            .ok_or_else(|| ShaderError::UniformNotFound(root.into()))?;
+        replace_blob(root, blob, bytes)
     }
 
     /// Update a single uniform
@@ -566,6 +548,15 @@ impl UniformStorage {
     pub(crate) fn has_storage(&self, root: &str) -> bool {
         self.storage_blobs.contains_key(root)
     }
+}
+
+/// Copies `bytes` over `blob`, refusing any other length.
+fn replace_blob(root: &str, blob: &mut [u8], bytes: &[u8]) -> Result<(), ShaderError> {
+    if bytes.len() != blob.len() {
+        return Err(byte_count(root, blob.len(), bytes.len()));
+    }
+    blob.copy_from_slice(bytes);
+    Ok(())
 }
 
 // -------------------------------

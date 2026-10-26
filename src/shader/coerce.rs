@@ -28,12 +28,7 @@ impl UniformInput {
                     _ => Err(mismatch(key, slot, "a texture")),
                 };
             }
-            Self::Bytes(bytes) => {
-                return match slot {
-                    U::Storage(_) | U::PushConstant(_) => Ok(U::Bytes(bytes)),
-                    _ => Err(mismatch(key, slot, "raw bytes")),
-                };
-            }
+            Self::Bytes(bytes) => return fill_root(key, slot, bytes),
             Self::Bool(value) => vec![f64::from(u8::from(value))],
             Self::Number(value) => vec![value],
             Self::Numbers(values) => values,
@@ -83,6 +78,25 @@ impl TryFrom<UniformData> for UniformInput {
             other => return Err(other),
         })
     }
+}
+
+/// Raw bytes for a storage or push-constant root, which must be exactly its size.
+fn fill_root(key: &str, slot: &UniformData, bytes: Vec<u8>) -> Result<UniformData, ShaderError> {
+    let span = match slot {
+        UniformData::Storage(entries) => entries.first().map(|entry| entry.span),
+        UniformData::PushConstant(entries) => entries.first().map(|entry| entry.span),
+        _ => None,
+    };
+    match span {
+        Some(span) if bytes.len() == span as usize => Ok(UniformData::Bytes(bytes)),
+        Some(span) => Err(byte_count(key, span as usize, bytes.len())),
+        None => Err(mismatch(key, slot, "raw bytes")),
+    }
+}
+
+/// Builds an error like `particles: expected 8192 bytes, got 3`.
+pub(crate) fn byte_count(key: &str, span: usize, count: usize) -> ShaderError {
+    ShaderError::TypeMismatch(format!("{key}: expected {span} bytes, got {count}"))
 }
 
 fn floats(
@@ -306,8 +320,8 @@ mod tests {
     fn bytes_fill_only_buffer_roots() {
         let bytes = UniformInput::Bytes(vec![1, 2, 3, 4]);
         let storage = UniformData::Storage(vec![StorageEntry {
-            inner: vec![UniformData::Vec4(vec![0.0; 4])],
-            span: 16,
+            inner: vec![UniformData::Float(0.0)],
+            span: 4,
             access: StorageAccess::Read,
         }]);
         let push = UniformData::PushConstant(vec![PushEntry {
@@ -328,6 +342,29 @@ mod tests {
             size: 4,
         };
         assert!(resolve(bytes, UniformData::Struct(shape)).is_err());
+    }
+
+    // Story: raw bytes replace a whole root, so too few and too many both fail.
+    #[test]
+    fn bytes_must_fill_the_whole_root() {
+        let storage = UniformData::Storage(vec![StorageEntry {
+            inner: vec![UniformData::Vec4(vec![0.0; 4])],
+            span: 16,
+            access: StorageAccess::Read,
+        }]);
+        let push = UniformData::PushConstant(vec![PushEntry {
+            inner: vec![UniformData::Vec2(vec![0.0; 2])],
+            span: 8,
+        }]);
+        let short = UniformInput::Bytes(vec![0; 3]);
+        let err = resolve(short.clone(), storage.clone()).unwrap_err();
+        assert!(err.ends_with("key: expected 16 bytes, got 3"), "{err}");
+        let long = UniformInput::Bytes(vec![0; 20]);
+        let err = resolve(long.clone(), storage).unwrap_err();
+        assert!(err.ends_with("key: expected 16 bytes, got 20"), "{err}");
+        let err = resolve(short, push.clone()).unwrap_err();
+        assert!(err.ends_with("key: expected 8 bytes, got 3"), "{err}");
+        assert!(resolve(long, push).is_err());
     }
 
     // Story: typed Rust values flatten into the same loose input the bindings send.

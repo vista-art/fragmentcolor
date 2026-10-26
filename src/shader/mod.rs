@@ -2153,6 +2153,32 @@ struct Arr { arr: array<vec4<f32>, 2> };
         assert!(shader.object.set_input("buf.items[0].v", bytes).is_err());
     }
 
+    // Story: raw bytes of any other length than the root's leave the root as it was.
+    #[test]
+    fn set_refuses_bytes_that_miss_the_root_size() {
+        let shader = Shader::new(TYPED).expect("shader");
+        let blob: Vec<u8> = (0..48).collect();
+        shader.set("buf", blob.as_slice()).expect("exact bytes");
+        for length in [3, 47, 49, 96] {
+            let err = shader.set("buf", vec![9u8; length]).unwrap_err();
+            assert!(
+                err.to_string()
+                    .ends_with(&format!("buf: expected 48 bytes, got {length}")),
+                "{err}"
+            );
+        }
+        let err = shader
+            .object
+            .set("buf", UniformData::Bytes(vec![9; 3]))
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("expected 48 bytes, got 3"),
+            "{err}"
+        );
+        let storage = shader.object.storage.read();
+        assert_eq!(storage.get_bytes("buf").expect("blob"), &blob[..]);
+    }
+
     // Story: get on a struct root reads the bytes as they are now, not the reflected defaults.
     #[test]
     fn get_reads_struct_roots_from_current_bytes() {
