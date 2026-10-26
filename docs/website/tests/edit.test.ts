@@ -194,7 +194,11 @@ describe("auth", () => {
 
 describe("paths", () => {
   const refused = [
-    "docs/website/src/content/docs/welcome.mdx",
+    "docs/website/src/content/docs/api/core/renderer.mdx",
+    "docs/website/src/content/docs/api/index.md",
+    "docs/website/src/content/docs/tutorials/../api/renderer.mdx",
+    "docs/website/src/pages/api/edit.ts",
+    "docs/api/core/renderer/renderer.md",
     "docs/website/src/content/docs/blog/first.ts",
     "docs/website/src/content/docs/blog/../../../../../.github/workflows/ci.md",
     "docs/website/src/content/docs/blog/./first.mdx",
@@ -207,7 +211,7 @@ describe("paths", () => {
     `${POST}\n`,
   ];
 
-  it("refuses anything outside the blog's Markdown", async () => {
+  it("refuses generated pages and anything but the site's Markdown pages", async () => {
     for (const path of refused) {
       assert.equal((await handleEdit(load(path), ENV)).status, 403, path);
       assert.equal((await handleEdit(save(path, "x", "sha2"), ENV)).status, 403, path);
@@ -247,16 +251,29 @@ describe("edits", () => {
     assert.equal(github.branches.get("main")!.files.get(POST)!.text, "# First\n");
   });
 
-  it("commits the message docs(blog): edit <slug>", async () => {
+  it("edits every hand-written page, scoping the commit by its folder", async () => {
+    const pages = {
+      [POST]: "docs(blog): edit first",
+      "docs/website/src/content/docs/tutorials/infinite-zoom.mdx": "docs(tutorials): edit infinite-zoom",
+      "docs/website/src/content/docs/shaders/camera.mdx": "docs(shaders): edit camera",
+      "docs/website/src/content/docs/welcome/index.mdx": "docs(welcome): edit index",
+      "docs/website/src/content/docs/index.mdx": "docs(website): edit index",
+    };
+    const main = github.branches.get("main")!;
+    for (const path of Object.keys(pages)) main.files.set(path, { text: "# Page\n", sha: github.nextSha() });
+
     const messages: string[] = [];
     const route = github.route.bind(github);
     github.route = (method, path, query, body) => {
       if (method === "PUT") messages.push(body.message);
       return route(method, path, query, body);
     };
-    const sha = (await handleEdit(load(POST), ENV)).headers.get("x-edit-sha")!;
-    await handleEdit(save(POST, "# Edit\n", sha), ENV);
-    assert.deepEqual(messages, ["docs(blog): edit first"]);
+    for (const path of Object.keys(pages)) {
+      const sha = (await handleEdit(load(path), ENV)).headers.get("x-edit-sha")!;
+      assert.equal((await handleEdit(save(path, "# Edit\n", sha), ENV)).status, 200, path);
+    }
+    assert.deepEqual(messages, Object.values(pages));
+    assert.equal(github.pulls.length, 1);
   });
 
   it("builds the second save on the branch and reuses the pull request", async () => {
