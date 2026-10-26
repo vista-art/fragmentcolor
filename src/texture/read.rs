@@ -29,12 +29,7 @@ fn prepare_readback(
         adapter.get_downlevel_capabilities().flags
     });
     check_copy(format, flags)?;
-    let bpp = super::bytes_per_pixel(format);
-    if bpp == 0 {
-        return Err(TextureError::Error(
-            "Unsupported format for readback (bytes-per-pixel is 0)".into(),
-        ));
-    }
+    let bpp = super::texel_size(format)?;
 
     let size = texture.size;
     let width = size.width;

@@ -447,7 +447,7 @@ impl Texture {
         let object = self.object();
         let data = pollster::block_on(crate::texture::read_pixels(&self.context, &object))?;
         let extent = object.size;
-        let bpp = crate::texture::bytes_per_pixel(object.format) as usize;
+        let bpp = crate::texture::texel_size(object.format)? as usize;
         let (width, height) = (extent.width as usize, extent.height as usize);
         let layers = extent.depth_or_array_layers.max(1) as usize;
         let shape = match layers {

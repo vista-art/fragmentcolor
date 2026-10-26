@@ -17,7 +17,7 @@ pub(super) fn write(
 
     let size = object.size;
     let format = object.format;
-    let bpp = super::bytes_per_pixel(format);
+    let bpp = super::texel_size(format)?;
 
     // Infer per-dimension size when caller used the "whole texture" defaults
     // (TextureRegion::default() has size [0, 0, 0]); always respect origin.

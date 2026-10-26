@@ -248,13 +248,7 @@ impl Renderer {
                         .into(),
                 ));
             }
-            let bpp = crate::texture::bytes_per_pixel(wgpu_format);
-            if bpp == 0 {
-                return Err(RendererError::CreateTextureError(
-                    "Unsupported format for create_storage_texture seed data (bytes-per-pixel is 0)"
-                        .into(),
-                ));
-            }
+            let bpp = crate::texture::texel_size(wgpu_format)?;
             let expected = (wgpu_size.width as usize)
                 .saturating_mul(wgpu_size.height as usize)
                 .saturating_mul(wgpu_size.depth_or_array_layers.max(1) as usize)
@@ -277,7 +271,7 @@ impl Renderer {
         )?;
 
         if let Some(bytes) = bytes_opt {
-            let bpp = crate::texture::bytes_per_pixel(wgpu_format);
+            let bpp = crate::texture::texel_size(wgpu_format)?;
             context.queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
                     aspect: wgpu::TextureAspect::All,

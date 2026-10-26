@@ -410,6 +410,7 @@ class Renderer:
         - Equivalent to calling [`Texture::get_image`] on the texture handle. Use this entry point when you only kept the `TextureId` around.
         - The texture must have `COPY_SRC` usage. Creation helpers like `create_storage_texture` enable it by default.
         - GLES and WebGL2 can't copy a depth texture to a buffer, so reading one back there returns `TextureError::Readback`.
+        - A block-compressed texture, such as one loaded from a BC7 or ASTC KTX2 file, has no size per pixel, so reading it back is an `InvalidInput` error.
 
         Example:
 
@@ -4539,7 +4540,7 @@ class Texture:
         - `bytes` holds tightly packed rows: each row is the texture width times the bytes per pixel, with no padding. Data sized exactly for rows padded to 256 bytes reads at that padded stride. For any other padding, pass the stride to `Texture.write_region`.
 
         ## Notes
-        - Any format with a fixed size per pixel works, from 1-byte `R8Unorm` to 16-byte `Rgba32Float`.
+        - Any format with a fixed size per pixel works, from 1-byte `R8Unorm` to 16-byte `Rgba32Float`. A block-compressed texture, such as one loaded from a BC7 or ASTC KTX2 file, is an `InvalidInput` error.
         - The texture must have COPY_DST usage.
         - A depth texture such as `Depth32Float` takes no uploaded pixels, so writing into one is an `InvalidInput` error. Draw into it instead.
 
@@ -4622,6 +4623,7 @@ class Texture:
         - For multi-layer textures, layers come first in the byte layout (layer-major).
         - The texture must have `COPY_SRC` usage. Creation helpers like `create_storage_texture` enable it by default.
         - GLES and WebGL2 can't copy a depth texture to a buffer, so reading one back there returns `TextureError::Readback`.
+        - A block-compressed texture, such as one loaded from a BC7 or ASTC KTX2 file, has no size per pixel, so reading it back is an `InvalidInput` error.
         - Python returns the same bytes as a uint8 NumPy array shaped `(height, width, bytes per pixel)`, with a leading layer axis for array textures. A float format reads as floats through `image.view(numpy.float32)`.
 
         Example:

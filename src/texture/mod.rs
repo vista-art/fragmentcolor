@@ -94,7 +94,7 @@ pub enum TextureData {
 /// to [`crate::Renderer::create_texture`] (the unified entry point
 /// dispatches via `From<Mipmap> for TextureInput`).
 ///
-/// Levels are tightly-packed bytes, level 0 first, with `bytes_per_pixel(format) *
+/// Levels are tightly-packed bytes, level 0 first, with `texel_size(format) *
 /// max(1, base_w >> level) * max(1, base_h >> level)` bytes per level.
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(from_py_object))]
@@ -166,7 +166,7 @@ impl Mipmap {
                             "build: size must be non-zero in both dimensions".into(),
                         ));
                     }
-                    let bpp = bytes_per_pixel(wfmt) as usize;
+                    let bpp = texel_size(wfmt)? as usize;
                     let expected = bpp * (extent.width as usize) * (extent.height as usize);
                     if bytes.len() < expected {
                         return Err(TextureError::InvalidInput(format!(
@@ -843,7 +843,7 @@ impl TextureObject {
         check_format(context, format, usage, dimension(size))?;
         check_upload(format)?;
         check_extent(&context.device.limits(), size, dimension(size))?;
-        let bpp = bytes_per_pixel(format);
+        let bpp = texel_size(format)?;
 
         let expected = (size.width as usize)
             .saturating_mul(size.height as usize)
@@ -952,13 +952,7 @@ impl TextureObject {
         let levels = chain.levels.as_slice();
         let format = chain.format;
         check_format(context, format, usage, wgpu::TextureDimension::D2)?;
-        let bpp = bytes_per_pixel(format);
-        if bpp == 0 {
-            return Err(TextureError::CreateTextureError(format!(
-                "Mipmap format {:?} has zero bytes-per-pixel",
-                format
-            )));
-        }
+        let bpp = texel_size(format)?;
 
         for (i, level_bytes) in levels.iter().enumerate() {
             let level_w = (w >> i).max(1);
@@ -1615,7 +1609,7 @@ pub(crate) fn write_levels(
     mip_level_count: u32,
 ) -> Result<(), TextureError> {
     if mip_level_count == 1 {
-        let bpp = bytes_per_pixel(format);
+        let bpp = texel_size(format)?;
         context.queue.write_texture(
             wgpu::TexelCopyTextureInfo {
                 aspect: wgpu::TextureAspect::All,
@@ -1688,7 +1682,7 @@ pub(crate) fn write_levels(
         _ => {
             // Caller should have caught this via supports_cpu_mipmaps;
             // be defensive and write a single level.
-            let bpp = bytes_per_pixel(format);
+            let bpp = texel_size(format)?;
             context.queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
                     aspect: wgpu::TextureAspect::All,
@@ -1780,59 +1774,14 @@ pub(crate) fn write_pixel_levels<P>(
     }
 }
 
-pub(crate) fn bytes_per_pixel(format: wgpu::TextureFormat) -> u32 {
-    match format {
-        wgpu::TextureFormat::R8Unorm
-        | wgpu::TextureFormat::R8Uint
-        | wgpu::TextureFormat::R8Sint
-        | wgpu::TextureFormat::R8Snorm
-        | wgpu::TextureFormat::Stencil8 => 1,
-        wgpu::TextureFormat::Rg8Uint
-        | wgpu::TextureFormat::Rg8Sint
-        | wgpu::TextureFormat::R16Uint
-        | wgpu::TextureFormat::R16Sint
-        | wgpu::TextureFormat::Rg16Uint
-        | wgpu::TextureFormat::Rg16Sint
-        | wgpu::TextureFormat::R16Float
-        | wgpu::TextureFormat::Rg8Unorm
-        | wgpu::TextureFormat::Rg8Snorm
-        | wgpu::TextureFormat::R16Unorm
-        | wgpu::TextureFormat::R16Snorm
-        | wgpu::TextureFormat::Rg16Unorm
-        | wgpu::TextureFormat::Rg16Snorm
-        | wgpu::TextureFormat::Depth16Unorm => 2,
-        wgpu::TextureFormat::R32Uint
-        | wgpu::TextureFormat::R32Sint
-        | wgpu::TextureFormat::R32Float
-        | wgpu::TextureFormat::Rgba8Uint
-        | wgpu::TextureFormat::Rgba8Sint
-        | wgpu::TextureFormat::Rg16Float
-        | wgpu::TextureFormat::Rgba8Unorm
-        | wgpu::TextureFormat::Rgba8Snorm
-        | wgpu::TextureFormat::Bgra8Unorm
-        | wgpu::TextureFormat::Rgb10a2Uint
-        | wgpu::TextureFormat::Depth24Plus
-        | wgpu::TextureFormat::Rgb9e5Ufloat
-        | wgpu::TextureFormat::Depth32Float
-        | wgpu::TextureFormat::Rgb10a2Unorm
-        | wgpu::TextureFormat::Rg11b10Ufloat
-        | wgpu::TextureFormat::Bgra8UnormSrgb
-        | wgpu::TextureFormat::Rgba8UnormSrgb
-        | wgpu::TextureFormat::Depth24PlusStencil8 => 4,
-        wgpu::TextureFormat::R64Uint
-        | wgpu::TextureFormat::Rg32Uint
-        | wgpu::TextureFormat::Rg32Sint
-        | wgpu::TextureFormat::Rg32Float
-        | wgpu::TextureFormat::Rgba16Uint
-        | wgpu::TextureFormat::Rgba16Sint
-        | wgpu::TextureFormat::Rgba16Float
-        | wgpu::TextureFormat::Rgba16Unorm
-        | wgpu::TextureFormat::Rgba16Snorm
-        | wgpu::TextureFormat::Depth32FloatStencil8 => 8,
-        wgpu::TextureFormat::Rgba32Float
-        | wgpu::TextureFormat::Rgba32Uint
-        | wgpu::TextureFormat::Rgba32Sint => 16,
-        _ => 4,
+/// The bytes one texel of `format` takes, for a format a copy moves one texel at a time.
+/// A block-compressed format, and a depth format with no copy size, are refused.
+pub(crate) fn texel_size(format: wgpu::TextureFormat) -> Result<u32, TextureError> {
+    match (format.block_dimensions(), format.block_copy_size(None)) {
+        ((1, 1), Some(size)) => Ok(size),
+        _ => Err(TextureError::InvalidInput(format!(
+            "can't copy pixels of {format:?}, write and read take formats with a fixed size per pixel"
+        ))),
     }
 }
 
