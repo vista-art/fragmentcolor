@@ -7,8 +7,8 @@ including Lights the loader instantiated from glTF
 on [`Scene::load`](https://fragmentcolor.org/api/scene/scene#load)).
 
 Each entry is an Arc-shared clone. Mutating a returned handle
-(`set_color`, `set_intensity`, `set_position`, …) propagates to every
-shader the Light occupies a slot in.
+(`set_color`, `set_intensity`, `set_position`, …) reaches every shader
+the Light lights at the next render.
 
 The default-injected Light (auto-fired when the Scene first renders with
 no user-supplied Light) appears in this list too, so consumers can grab

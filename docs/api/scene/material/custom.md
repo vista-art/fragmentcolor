@@ -173,11 +173,12 @@ stay exact. The `Material::pbr` shader's `shade_light` uses the
 `KHR_lights_punctual` falloff, `(1 - (d / range)^4)` scaled by the inverse
 square distance.
 
-WebGL2 and native OpenGL have no storage buffers in fragment shaders. There
-the same source runs with `lights` turned into a uniform block that holds as
-many lights as the device allows, and with no grid, so `light_cell` returns
-`CELL_EVERY`. A shader that calls `arrayLength` on either root can't run
-there, and its first render returns `ShaderError::TypeMismatch`.
+On every OpenGL backend, WebGL2 included, and on a device without compute
+shaders or storage buffers in fragment shaders, the same source runs with
+`lights` turned into a uniform block that holds as many lights as the device
+allows, and with no grid, so `light_cell` returns `CELL_EVERY`. A shader that
+calls `arrayLength` on either root can't run there, and its first render
+returns `ShaderError::TypeMismatch`.
 
 ### The older interface
 

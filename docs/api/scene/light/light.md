@@ -38,12 +38,14 @@ at the next render.
 
 ## Lifetime
 
-A Light stops lighting once nothing holds it. Each `Pass` holds the
-lights added to it, and so does each `Scene`. `scene.add(&light)` keeps
-lighting after the local `light` handle drops, and a `Model` that joins
-the pass later takes every light the pass holds. Once the last pass,
-scene and handle holding a Light are gone, the shaders it reached draw
-without it.
+A Light lights as long as a `Scene`, a `Pass` or a handle of yours holds
+it. Each `Pass` and each `Scene` holds the lights added to it, so
+`scene.add(&light)` keeps lighting after the local `light` handle drops.
+A `Model` holds no lights. When it joins a pass, its shader takes every
+light that pass holds, and so does a shader added with
+[`Pass::add_shader`](https://fragmentcolor.org/api/core/pass#add_shader).
+Once the last pass, scene and handle holding a Light are gone, the
+shaders it reached draw without it.
 
 ## Cost model
 
@@ -65,11 +67,12 @@ first one that changed to the last.
 
 ### How many lights a shader takes
 
-The device sets the cap. A device with storage buffers in fragment
-shaders, as on WebGPU, Vulkan, Metal and DirectX 12, takes as many
-lights as its largest storage buffer binding holds: about two million at
-the common 128 MiB. WebGL2 and native OpenGL take the lights through a
-uniform block, so the cap is what the device's largest uniform block
+The device sets the cap. A device with compute shaders and storage
+buffers in fragment shaders, as on WebGPU, Vulkan, Metal and DirectX 12,
+takes as many lights as its largest storage buffer binding holds: about
+two million at the common 128 MiB. Every OpenGL backend, WebGL2
+included, takes the lights through a uniform block, and so does any
+other device, so the cap is what the device's largest uniform block
 holds, from 253 lights in 16 KiB up to 1,021.
 
 Past the cap, `pass.add(&light)` returns
