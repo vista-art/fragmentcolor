@@ -1182,6 +1182,17 @@ impl RenderContext {
         self.sample_count.load(Ordering::Relaxed).max(1)
     }
 
+    /// Runs `op` like `validate_with`, with nothing to run for a late error.
+    /// Only native code calls it, since the wasm callers each pass `on_error`.
+    #[cfg(not(wasm))]
+    fn validate<T>(
+        &self,
+        label: &str,
+        op: impl FnOnce() -> Result<T, RendererError>,
+    ) -> Result<T, RendererError> {
+        self.validate_with(label, op, || {})
+    }
+
     /// Runs `op` inside error scopes for out of memory, internal and validation errors.
     ///
     /// A wgpu error that `op` causes returns as `ValidationError` instead of reaching the
@@ -1197,15 +1208,7 @@ impl RenderContext {
     /// On wasm the scopes resolve after `render` returns, so `op`'s own result always returns.
     /// `ErrorSlot::watch` logs each error that lands at error level, and keeps the cause in `late`
     /// for the next call only when `op` succeeded. When `op` failed, the cause is logged and dropped.
-    fn validate<T>(
-        &self,
-        label: &str,
-        op: impl FnOnce() -> Result<T, RendererError>,
-    ) -> Result<T, RendererError> {
-        self.validate_with(label, op, || {})
-    }
-
-    /// Runs `op` like `validate`, and on wasm runs `on_error` when an error lands after it returned.
+    /// In both cases `on_error` runs when the error lands. On native it never runs, since the error returns.
     fn validate_with<T>(
         &self,
         label: &str,
