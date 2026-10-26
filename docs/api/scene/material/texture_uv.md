@@ -8,7 +8,10 @@ tiled UVs of the color maps. Every slot starts on set 0.
 A set other than 0 or 1 returns `MaterialError::UvSet` and keeps the
 slot's set. JavaScript throws an `Error`, Python raises `MaterialError`, a
 `FragmentColorError` that is also a `ValueError`, Swift throws
-`FragmentColorError`, and Kotlin throws `FragmentColorException`.
+`FragmentColorError`, and Kotlin throws `FragmentColorException`. The set
+is a count like any other: JavaScript throws for a fraction or a negative
+number, and Python takes an `int`, raising `TypeError` for a float and
+`InvalidInputError` for an int below 0 or past `2**32 - 1`.
 
 The PBR shader reads `UV1` from every vertex, and a mesh whose vertices
 lack it fails to attach with an error that names `uv1`. `Vertex::pbr`

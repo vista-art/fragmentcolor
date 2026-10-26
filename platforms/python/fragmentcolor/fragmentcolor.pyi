@@ -4297,7 +4297,7 @@ class Material:
         brick = Material.pbr().uv_transform([0.5, 0.0], [4.0, 4.0], 0.785) # 45° in radians
         ```
         """
-    def texture_uv(self, slot: TextureSlot, set: float) -> Material:
+    def texture_uv(self, slot: TextureSlot, set: int) -> Material:
         """
         Pick the vertex UV set one texture slot samples: `0` reads `Vertex::UV0`
         and `1` reads `Vertex::UV1`. glTF calls this choice `texCoord`. Baked
@@ -4307,7 +4307,10 @@ class Material:
         A set other than 0 or 1 returns `MaterialError::UvSet` and keeps the
         slot's set. JavaScript throws an `Error`, Python raises `MaterialError`, a
         `FragmentColorError` that is also a `ValueError`, Swift throws
-        `FragmentColorError`, and Kotlin throws `FragmentColorException`.
+        `FragmentColorError`, and Kotlin throws `FragmentColorException`. The set
+        is a count like any other: JavaScript throws for a fraction or a negative
+        number, and Python takes an `int`, raising `TypeError` for a float and
+        `InvalidInputError` for an int below 0 or past `2**32 - 1`.
 
         The PBR shader reads `UV1` from every vertex, and a mesh whose vertices
         lack it fails to attach with an error that names `uv1`. `Vertex::pbr`

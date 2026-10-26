@@ -97,7 +97,7 @@ impl Material {
         #[wasm_bindgen(unchecked_param_type = "TextureSlot")] slot: &JsValue,
         set: f64,
     ) -> Result<Material, JsError> {
-        let set = crate::platforms::web::read_unsigned(set, "set")?;
+        let set = crate::platforms::web::read_unsigned(set, "Material.textureUv: set")?;
         Ok(self.texture_uv(read_texture_slot(slot)?, set)?)
     }
 
