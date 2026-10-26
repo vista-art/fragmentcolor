@@ -344,6 +344,18 @@ def check_number_errors(renderer):
     raises(MaterialError, "Material.texture_uv(2)", lambda: material.texture_uv(TextureSlot.Occlusion, 2))
     assert isinstance(material.texture_uv(TextureSlot.Occlusion, np.uint32(1)), Material)
 
+    # An offset or scale takes two numbers. Another count is a value error, and a string the wrong type.
+    transforms = {
+        "Material.texture_transform offset": lambda v: material.texture_transform(TextureSlot.Normal, v, [1.0, 1.0], 0.0),
+        "Material.texture_transform scale": lambda v: material.texture_transform(TextureSlot.Normal, [0.0, 0.0], v, 0.0),
+        "Material.uv_transform offset": lambda v: material.uv_transform(v, [1.0, 1.0], 0.0),
+        "Material.uv_transform scale": lambda v: material.uv_transform([0.0, 0.0], v, 0.0),
+    }
+    for name, apply in transforms.items():
+        raises(InvalidInputError, f"{name} with 3 numbers", lambda: apply([0.0, 0.0, 0.0]))
+        raises(TypeError, f"{name} with a string", lambda: apply("ab"))
+        assert isinstance(apply(np.array([0.5, 2.0])), Material)
+
     size = Size(4, 2)
     for field in ("width", "height", "depth"):
         raises(InvalidInputError, f"Size.{field} = -1", lambda: setattr(size, field, -1))

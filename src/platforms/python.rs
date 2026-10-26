@@ -123,6 +123,20 @@ pub(crate) fn read_pair(value: &Bound<'_, PyAny>) -> PyResult<(u32, u32)> {
     Ok((read_unsigned(&first)?, read_unsigned(&second)?))
 }
 
+/// Reads a sequence of exactly `N` numbers, such as an offset or a scale.
+/// A value that isn't a sequence of numbers raises `TypeError`,
+/// and a sequence of another length raises `InvalidInputError`.
+pub(crate) fn read_floats<const N: usize>(value: &Bound<'_, PyAny>) -> PyResult<[f32; N]> {
+    let numbers: Vec<f32> = value.extract()?;
+    let count = numbers.len();
+    let Ok(floats) = <[f32; N]>::try_from(numbers) else {
+        return Err(InvalidInputError::new_err(format!(
+            "expected {N} numbers, got {count}"
+        )));
+    };
+    Ok(floats)
+}
+
 /// Reads a sequence of ints, such as a list or a NumPy array, as [`read_unsigned`] does.
 pub(crate) fn read_list(value: &Bound<'_, PyAny>) -> PyResult<Vec<u32>> {
     value

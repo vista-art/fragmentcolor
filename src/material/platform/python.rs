@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 
 use crate::Shader;
 use crate::material::{AlphaMode, Material, MaterialError, TextureSlot};
-use crate::platforms::python::read_unsigned;
+use crate::platforms::python::{read_floats, read_unsigned};
 use crate::texture::PyTextureSource;
 
 #[pymethods]
@@ -78,7 +78,12 @@ impl Material {
 
     #[pyo3(name = "uv_transform")]
     #[lsp_doc("docs/api/scene/material/uv_transform.md")]
-    pub fn uv_transform_py(&self, offset: [f32; 2], scale: [f32; 2], rotation: f32) -> Self {
+    pub fn uv_transform_py(
+        &self,
+        #[pyo3(from_py_with = read_floats::<2>)] offset: [f32; 2],
+        #[pyo3(from_py_with = read_floats::<2>)] scale: [f32; 2],
+        rotation: f32,
+    ) -> Self {
         self.uv_transform(offset, scale, rotation)
     }
 
@@ -97,8 +102,8 @@ impl Material {
     pub fn texture_transform_py(
         &self,
         slot: TextureSlot,
-        offset: [f32; 2],
-        scale: [f32; 2],
+        #[pyo3(from_py_with = read_floats::<2>)] offset: [f32; 2],
+        #[pyo3(from_py_with = read_floats::<2>)] scale: [f32; 2],
         rotation: f32,
     ) -> Self {
         self.texture_transform(slot, offset, scale, rotation)
