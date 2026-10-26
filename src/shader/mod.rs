@@ -8,7 +8,7 @@ use lsp_doc::lsp_doc;
 use naga::front::wgsl::{Frontend, Options};
 use naga::{
     AddressSpace, Module,
-    valid::{Capabilities, ValidationFlags, Validator},
+    valid::{Capabilities, ModuleInfo, ValidationFlags, Validator},
 };
 use parking_lot::RwLock;
 use sha2::{Digest, Sha256};
@@ -482,7 +482,7 @@ impl ShaderObject {
             .as_ref()
             .map(LightRoots::handles)
             .unwrap_or_default();
-        let uniforms = parse_uniforms(&module, &filled)?;
+        let uniforms = parse_uniforms(&module, &info, &filled)?;
         let storage = RwLock::new(UniformStorage::new(&uniforms)?);
         let hash = hash(source);
 
@@ -794,9 +794,45 @@ fn claim_slot(
     }
 }
 
+/// The stages whose entry points use the global `handle`.
+fn find_stages(
+    module: &Module,
+    info: &ModuleInfo,
+    handle: naga::Handle<naga::GlobalVariable>,
+) -> wgpu::ShaderStages {
+    let mut stages = wgpu::ShaderStages::NONE;
+    for (index, entry) in module.entry_points.iter().enumerate() {
+        if info.get_entry_point(index)[handle].is_empty() {
+            continue;
+        }
+        stages |= match entry.stage {
+            naga::ShaderStage::Vertex => wgpu::ShaderStages::VERTEX,
+            naga::ShaderStage::Fragment => wgpu::ShaderStages::FRAGMENT,
+            naga::ShaderStage::Compute => wgpu::ShaderStages::COMPUTE,
+            _ => wgpu::ShaderStages::NONE,
+        };
+    }
+    stages
+}
+
+/// Whether the global writes to its storage, as a `read_write` buffer or a writable storage texture.
+fn writes_storage(module: &Module, variable: &naga::GlobalVariable) -> bool {
+    match variable.space {
+        AddressSpace::Storage { access } => access.contains(naga::StorageAccess::STORE),
+        _ => matches!(
+            module.types[variable.ty].inner,
+            naga::TypeInner::Image {
+                class: naga::ImageClass::Storage { access, .. },
+                ..
+            } if access.contains(naga::StorageAccess::STORE)
+        ),
+    }
+}
+
 /// Reflects the module's bindings, leaving out the `filled` globals, which the renderer fills.
 fn parse_uniforms(
     module: &Module,
+    info: &ModuleInfo,
     filled: &[naga::Handle<naga::GlobalVariable>],
 ) -> Result<HashMap<String, Uniform>, ShaderError> {
     let mut uniforms = HashMap::new();
@@ -807,6 +843,7 @@ fn parse_uniforms(
         if filled.contains(&handle) {
             continue;
         }
+        let stages = find_stages(module, info, handle);
         // Handle WorkGroup specially: ignore unbound; error on bound (unexpected)
         match variable.space {
             AddressSpace::WorkGroup => {
@@ -834,6 +871,7 @@ fn parse_uniforms(
                         name: uniform_name,
                         group: 0,
                         binding: 0,
+                        stages,
                         data: UniformData::PushConstant(vec![crate::shader::uniform::PushEntry {
                             inner: vec![inner],
                             span,
@@ -863,6 +901,12 @@ fn parse_uniforms(
             .as_ref()
             .ok_or(ShaderError::ParseError("Missing binding".into()))?;
         claim_slot(&mut slots, binding, &uniform_name)?;
+        // No device FragmentColor opens takes writable storage in the vertex stage.
+        if stages.contains(wgpu::ShaderStages::VERTEX) && writes_storage(module, variable) {
+            return Err(ShaderError::ParseError(format!(
+                "`{uniform_name}` is writable storage, which a @vertex entry point can't use"
+            )));
+        }
 
         let ty = &module.types[variable.ty];
 
@@ -893,6 +937,7 @@ fn parse_uniforms(
                 name: uniform_name,
                 group: binding.group,
                 binding: binding.binding,
+                stages,
                 data,
             },
         );

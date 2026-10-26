@@ -1,4 +1,5 @@
 use crate::pass::PassInput;
+use crate::shader::Uniform;
 use crate::{PassObject, ShaderError, ShaderHash, ShaderObject, Target, TargetFrame};
 use crate::{ScreenRegion, Size, WindowTarget};
 use crate::{TextureData, TextureTarget, UniformData};
@@ -2411,6 +2412,20 @@ fn viewport_rect(region: &ScreenRegion, max_dimension: u32) -> (f32, f32, f32, f
     (x, y, width, height)
 }
 
+/// Every stage, the visibility of a global no entry point uses.
+const EVERY_STAGE: wgpu::ShaderStages = wgpu::ShaderStages::VERTEX
+    .union(wgpu::ShaderStages::FRAGMENT)
+    .union(wgpu::ShaderStages::COMPUTE);
+
+/// The stages `uniform` is visible to: the stages that use it,
+/// or `unused` for a global no entry point uses.
+fn pick_visibility(uniform: &Uniform, unused: wgpu::ShaderStages) -> wgpu::ShaderStages {
+    match uniform.stages.is_empty() {
+        true => unused,
+        false => uniform.stages,
+    }
+}
+
 fn bind_group_entries(shader: &crate::ShaderObject) -> BindGroupEntries {
     let uniforms = &shader.storage.read().uniforms;
     let mut group_entries = BindGroupEntries::new();
@@ -2450,9 +2465,7 @@ fn bind_group_entries(shader: &crate::ShaderObject) -> BindGroupEntries {
                 match &meta.class {
                     TextureClass::Depth { .. } => wgpu::BindGroupLayoutEntry {
                         binding: uniform.binding,
-                        visibility: wgpu::ShaderStages::VERTEX
-                            | wgpu::ShaderStages::FRAGMENT
-                            | wgpu::ShaderStages::COMPUTE,
+                        visibility: pick_visibility(uniform, EVERY_STAGE),
                         ty: wgpu::BindingType::Texture {
                             sample_type: wgpu::TextureSampleType::Depth,
                             view_dimension,
@@ -2470,9 +2483,7 @@ fn bind_group_entries(shader: &crate::ShaderObject) -> BindGroupEntries {
                         };
                         wgpu::BindGroupLayoutEntry {
                             binding: uniform.binding,
-                            visibility: wgpu::ShaderStages::VERTEX
-                                | wgpu::ShaderStages::FRAGMENT
-                                | wgpu::ShaderStages::COMPUTE,
+                            visibility: pick_visibility(uniform, EVERY_STAGE),
                             ty: wgpu::BindingType::Texture {
                                 sample_type,
                                 view_dimension,
@@ -2525,7 +2536,7 @@ fn bind_group_entries(shader: &crate::ShaderObject) -> BindGroupEntries {
                         };
                         wgpu::BindGroupLayoutEntry {
                             binding: uniform.binding,
-                            visibility: wgpu::ShaderStages::COMPUTE,
+                            visibility: pick_visibility(uniform, wgpu::ShaderStages::COMPUTE),
                             ty: wgpu::BindingType::StorageTexture {
                                 access,
                                 format,
@@ -2537,7 +2548,7 @@ fn bind_group_entries(shader: &crate::ShaderObject) -> BindGroupEntries {
                     // External textures (Web): bind as ExternalTexture when available.
                     TextureClass::External() => wgpu::BindGroupLayoutEntry {
                         binding: uniform.binding,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        visibility: pick_visibility(uniform, wgpu::ShaderStages::FRAGMENT),
                         ty: wgpu::BindingType::ExternalTexture,
                         count: None,
                     },
@@ -2545,9 +2556,7 @@ fn bind_group_entries(shader: &crate::ShaderObject) -> BindGroupEntries {
             }
             UniformData::Sampler(info) => wgpu::BindGroupLayoutEntry {
                 binding: uniform.binding,
-                visibility: wgpu::ShaderStages::VERTEX
-                    | wgpu::ShaderStages::FRAGMENT
-                    | wgpu::ShaderStages::COMPUTE,
+                visibility: pick_visibility(uniform, EVERY_STAGE),
                 ty: wgpu::BindingType::Sampler(if info.comparison {
                     wgpu::SamplerBindingType::Comparison
                 } else {
@@ -2565,12 +2574,9 @@ fn bind_group_entries(shader: &crate::ShaderObject) -> BindGroupEntries {
                     wgpu::BindGroupLayoutEntry {
                         binding: uniform.binding,
                         visibility: if access.is_readonly() {
-                            wgpu::ShaderStages::VERTEX
-                                | wgpu::ShaderStages::FRAGMENT
-                                | wgpu::ShaderStages::COMPUTE
+                            pick_visibility(uniform, EVERY_STAGE)
                         } else {
-                            // Writable storage buffers are not allowed in VERTEX stage without special features
-                            wgpu::ShaderStages::COMPUTE
+                            pick_visibility(uniform, wgpu::ShaderStages::COMPUTE)
                         },
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage {
@@ -2584,9 +2590,7 @@ fn bind_group_entries(shader: &crate::ShaderObject) -> BindGroupEntries {
                 } else {
                     wgpu::BindGroupLayoutEntry {
                         binding: uniform.binding,
-                        visibility: wgpu::ShaderStages::VERTEX
-                            | wgpu::ShaderStages::FRAGMENT
-                            | wgpu::ShaderStages::COMPUTE,
+                        visibility: pick_visibility(uniform, EVERY_STAGE),
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
@@ -2598,9 +2602,7 @@ fn bind_group_entries(shader: &crate::ShaderObject) -> BindGroupEntries {
             }
             _ => wgpu::BindGroupLayoutEntry {
                 binding: uniform.binding,
-                visibility: wgpu::ShaderStages::VERTEX
-                    | wgpu::ShaderStages::FRAGMENT
-                    | wgpu::ShaderStages::COMPUTE,
+                visibility: pick_visibility(uniform, EVERY_STAGE),
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,

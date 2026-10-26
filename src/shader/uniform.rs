@@ -13,6 +13,8 @@ pub(crate) struct Uniform {
     pub(crate) group: u32,
     /// The binding number in the shader source
     pub(crate) binding: u32,
+    /// The stages whose entry points use it, none for a global no entry point uses.
+    pub(crate) stages: wgpu::ShaderStages,
     /// The uniform data
     pub(crate) data: UniformData,
 }
