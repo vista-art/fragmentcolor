@@ -859,7 +859,8 @@ impl RenderContext {
     ///
     /// A frame that acquired a surface texture presents it on every path, failed
     /// frames included, since Vulkan takes an acquired image back only through a present.
-    /// wgpu clears a texture that no valid submit drew into, so a failed frame shows a cleared image.
+    /// wgpu clears a texture that no valid submit drew into, so a failed frame shows
+    /// a cleared image, unless the Apple compute split already submitted the passes before it failed.
     fn render(
         &self,
         renderable: &impl Renderable,

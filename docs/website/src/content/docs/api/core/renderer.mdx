@@ -1148,7 +1148,9 @@ first bind).
 In JavaScript, `readStorage` waits for the frames rendered before it to
 report their GPU errors and throws the first one, as
 [`Renderer::render`](/api/core/renderer#render)
-describes, so it never returns the bytes a failed frame left behind.
+describes. An error throws only once, so when another call, such as the next
+`render`, has already thrown it, `readStorage` returns the bytes the failed
+frame left behind.
 
 #### Example
 
@@ -1438,11 +1440,11 @@ A window that is hidden or minimized has no frame to draw on. `render` then retu
 
 A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input. Meshes feed only `@location` arguments of the vertex entry point, so when a shader takes its inputs as members of a struct, the error names the member instead.
 
-`render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail, it returns `RendererError::ValidationError`, labeled with the step that failed: the render pipeline, the compute pipeline, the frame, or a bind group or texture view inside the frame. That covers validation errors, internal errors such as a shader the backend compiler refuses, and running out of memory. When one error causes another, `render` returns the first. A pipeline that failed is never kept, and the next frame builds it again and returns the same error.
+`render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail, it returns `RendererError::ValidationError`, labeled with the step that failed: the render pipeline, the compute pipeline, the frame, or a bind group or texture view inside the frame. That covers validation errors, internal errors such as a shader the backend compiler refuses, and running out of memory. When one error causes another, `render` returns the first. In Rust, Python, Swift and Kotlin, a pipeline that failed is never kept, and the next frame builds it again and returns the same error.
 
-A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window shows a cleared frame. A shader without its mesh and an instance count past the mesh's instances fail before `render` takes a frame, and the window keeps its last image.
+A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. A shader without its mesh and an instance count past the mesh's instances fail before `render` takes a frame, and the window keeps its last image.
 
-JavaScript gets the GPU's errors late, because WebGPU reports them after `render` has returned. Each error logs a `console.error` when it lands, and the next `render` throws the first one as an `Error` before doing any work. `load`, `readTexture`, `readStorage`, and `getImage` on a `Texture` or `TextureTarget` wait for the frames before them to report, so they throw a frame's error even when called right after it. An error throws once; the ones that land after it, before a call takes it, only log. The label names the render pipeline, the compute pipeline or the frame. A pipeline that failed leaves the cache when its error lands, so the next frame that draws with it builds it again and reports the same error.
+JavaScript gets the GPU's errors late, because WebGPU reports them after `render` has returned. Each error logs a `console.error` when it lands, and the next `render` throws the first one as an `Error` before doing any work. `load`, `readTexture`, `readStorage`, and `getImage` on a `Texture` or `TextureTarget` wait for the frames before them to report, so they throw a frame's error even when called right after it. Only the first error to land throws, and only once; the ones that land after it, before a call takes it, only log. The label names the render pipeline, the compute pipeline or the frame. A pipeline that failed stays in the cache until its error lands, and a frame that draws with it before then reports a frame error. Once the error lands, the pipeline leaves the cache. In a loop that renders each frame, the next `render` throws the error before doing any work, and the one after it builds the pipeline again and reports the same error.
 
 #### Example
 

@@ -24,7 +24,9 @@ first bind).
 In JavaScript, `readStorage` waits for the frames rendered before it to
 report their GPU errors and throws the first one, as
 [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render)
-describes, so it never returns the bytes a failed frame left behind.
+describes. An error throws only once, so when another call, such as the next
+`render`, has already thrown it, `readStorage` returns the bytes the failed
+frame left behind.
 
 ## Example
 
