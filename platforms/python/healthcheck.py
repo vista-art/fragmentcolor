@@ -347,7 +347,8 @@ def check_number_errors(renderer):
         raises(InvalidInputError, f"Renderer.unregister_texture({bad})", lambda: renderer.unregister_texture(bad))
     raises(TypeError, "Renderer.read_texture(1.5)", lambda: renderer.read_texture(1.5))
     raises(TypeError, "Renderer.read_texture(True)", lambda: renderer.read_texture(True))
-    assert len(renderer.read_texture(texture.id().id)) == len(renderer.read_texture(texture.id())) == 64
+    readable = renderer.create_texture(bytes(64), size=[4, 4], usage=TextureUsage.COPY_SRC)
+    assert len(renderer.read_texture(readable.id().id)) == len(renderer.read_texture(readable.id())) == 64
     raises(InvalidInputError, "Pass.set_viewport([0, 0, 4])", lambda: rpass.set_viewport([0, 0, 4]))
 
     # A UV set past 1 fits a u32, but no texture can sample it.
