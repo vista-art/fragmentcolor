@@ -542,6 +542,16 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       format: TextureFormat.Bgra8Unorm, mipmaps: false, usage: TextureUsage.COPY_SRC,
     });
     same('ImageData into Bgra8Unorm', await renderer.readTexture(bgra.id()), [0, 0, 255, 255]);
+    // A region object needs its extent, and its bounds in order.
+    const canvasTexture = await renderer.createStorageTexture([16, 16], TextureFormat.Rgba);
+    const patch = new Uint8Array(4 * 4 * 4);
+    canvasTexture.writeRegion(patch, { minX: 4, maxX: 8, minY: 0, maxY: 4 });
+    throws('writeRegion with reversed bounds', () =>
+      canvasTexture.writeRegion(patch, { minX: 8, maxX: 4, minY: 0, maxY: 4 }));
+    throws('writeRegion with misspelled keys', () => canvasTexture.writeRegion(patch, { x: 0, y: 0, w: 4, h: 4 }));
+    throws('writeRegion with minZ 2**32 - 1', () =>
+      canvasTexture.writeRegion(patch, { minX: 0, maxX: 4, minY: 0, maxY: 4, minZ: 4294967295 }));
+    throws('setSamplerOptions with compare 1.5', () => canvasTexture.setSamplerOptions({ compare: 1.5 }));
     // An options object keeps its size under `size`, so a width beside format is an error.
     await rejects('createTexture options with width and format', () =>
       renderer.createTexture(new Uint8Array(4), { width: 1, height: 1, format: TextureFormat.Rgba8Unorm }));

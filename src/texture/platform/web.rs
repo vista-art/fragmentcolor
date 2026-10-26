@@ -186,9 +186,8 @@ fn parse_compare(value: &JsValue) -> Result<Option<CompareFunction>, JsError> {
         };
         return Ok(Some(cf));
     }
-    if let Some(n) = value.as_f64() {
-        let code = n as i32;
-        let cf = match code {
+    if let Some(number) = value.as_f64() {
+        let cf = match read_unsigned(number, "compare")? {
             1 => CompareFunction::Never,
             2 => CompareFunction::Less,
             3 => CompareFunction::Equal,

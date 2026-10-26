@@ -180,45 +180,18 @@ impl TryFrom<PyTextureRegion<'_>> for TextureRegion {
     }
 }
 
-/// Reads the known keys of the dict form, so any other entry is ignored.
-/// A key like `bytes_per_row` also takes its camelCase form, `bytesPerRow`.
+/// Reads the dict form through the reader every binding shares. A key like
+/// `bytes_per_row` also takes its camelCase form, `bytesPerRow`.
 fn layout_region(layout: &Bound<'_, PyDict>) -> PyResult<TextureRegion> {
-    let read = |names: &[&str]| -> PyResult<Option<u32>> {
-        for name in names {
-            if let Some(value) = layout.get_item(*name)? {
+    let read = |(camel, snake): crate::texture::region::Key| -> PyResult<Option<u32>> {
+        for name in [snake, camel] {
+            if let Some(value) = layout.get_item(name)? {
                 return value.extract::<Option<u32>>();
             }
         }
         Ok(None)
     };
-
-    let mut region = if read(&["min_x", "minX"])?.is_some() || read(&["max_x", "maxX"])?.is_some() {
-        let min_x = read(&["min_x", "minX"])?.unwrap_or(0);
-        let min_y = read(&["min_y", "minY"])?.unwrap_or(0);
-        let max_x = read(&["max_x", "maxX"])?.unwrap_or(min_x);
-        let max_y = read(&["max_y", "maxY"])?.unwrap_or(min_y);
-        let min_z = read(&["min_z", "minZ"])?.unwrap_or(0);
-        let max_z = read(&["max_z", "maxZ"])?.unwrap_or(min_z.saturating_add(1));
-        TextureRegion::new(
-            [min_x, min_y, min_z],
-            [
-                max_x.saturating_sub(min_x),
-                max_y.saturating_sub(min_y),
-                max_z.saturating_sub(min_z).max(1),
-            ],
-        )
-    } else {
-        let x = read(&["x"])?.unwrap_or(0);
-        let y = read(&["y"])?.unwrap_or(0);
-        let z = read(&["z"])?.unwrap_or(0);
-        let w = read(&["width"])?.unwrap_or(0);
-        let h = read(&["height"])?.unwrap_or(0);
-        let d = read(&["depth"])?.unwrap_or(1);
-        TextureRegion::new([x, y, z], [w, h, d])
-    };
-    region.bytes_per_row = read(&["bytes_per_row", "bytesPerRow"])?;
-    region.rows_per_image = read(&["rows_per_image", "rowsPerImage"])?;
-    Ok(region)
+    crate::texture::region::read_region(read)
 }
 
 /// `SamplerOptions` from Python: the class itself, or a dict of its fields.

@@ -329,6 +329,14 @@ def check_ndarray_formats(renderer):
     invalid("a 4D ndarray", lambda: renderer.create_texture(np.zeros((2, 2, 2, 4), np.uint8)))
     print("create_texture fits an ndarray to its format and size")
 
+    storage = renderer.create_storage_texture([16, 16], TextureFormat.Rgba)
+    patch = bytes(4 * 4 * 4)
+    storage.write_region(patch, {"min_x": 4, "max_x": 8, "min_y": 0, "max_y": 4})
+    invalid("reversed bounds", lambda: storage.write_region(patch, {"min_x": 8, "max_x": 4, "max_y": 4}))
+    invalid("misspelled keys", lambda: storage.write_region(patch, {"x": 0, "w": 4, "h": 4}))
+    invalid("both region forms", lambda: storage.write_region(patch, {"x": 0, "width": 4, "height": 4, "max_x": 4}))
+    print("write_region reads a dict region or raises InvalidInputError")
+
 
 def check_scene_errors():
     """A failed Scene.load raises a FragmentColorError that is also a RuntimeError."""
