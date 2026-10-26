@@ -2149,12 +2149,27 @@ class Scene:
         lights. Animation, skinning, morph targets, and material extensions beyond
         PBR-MR are out of scope; they parse cleanly and the loader ignores them.
 
-        Triangle strips and fans load as triangle lists. A file that breaks the
-        glTF rules returns `SceneLoadError::Invalid`, which names the accessor,
-        node or index at fault. That covers a primitive drawn as points or lines,
-        an accessor whose type, count or byte range doesn't fit its buffer, an
-        attribute with a different element count than `POSITION`, an index past
-        the last vertex, and a node that is its own ancestor.
+        Triangle strips and fans load as triangle lists. glTF also allows two
+        things the loader can't draw, and it returns `SceneLoadError::Invalid` for
+        them: a primitive drawn as points or lines, and an accessor with more
+        elements than 32-bit indices reach.
+
+        A file that breaks the glTF rules returns the same error. That covers:
+
+        - an accessor with a count of 0, a type its semantic doesn't take, or a
+          byte range outside its buffer view or buffer
+        - an attribute with a different element count than `POSITION`
+        - an index past the last vertex
+        - a node reached twice, through a cycle or a child with two parents
+        - a point or spot light with a negative `range`
+        - a camera whose `zfar` isn't past its `znear`
+
+        Each of these messages names the accessor, node, light or camera at fault.
+        When no single accessor is to blame, it names the mesh and the primitive.
+
+        A camera whose values build no finite matrix, such as a `yfov` of 0 or a
+        camera node scaled to zero, returns `SceneLoadError::Camera`. Load with
+        `cameras(false)` to skip the file's cameras.
 
         ## Skipping embedded cameras and lights
 

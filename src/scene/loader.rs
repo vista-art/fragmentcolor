@@ -303,7 +303,7 @@ fn visit_node(
 
     if let Some(mesh) = node.mesh() {
         for primitive in mesh.primitives() {
-            let fc_mesh = build_mesh(&primitive, buffers)?;
+            let fc_mesh = build_mesh(&mesh, &primitive, buffers)?;
             let mat_key = primitive.material().index();
             let fc_material = match material_cache.get(&mat_key) {
                 Some(m) => m.clone(),
@@ -569,9 +569,16 @@ fn read_items<Item>(
 }
 
 fn build_mesh(
+    gltf_mesh: &gltf::Mesh<'_>,
     primitive: &gltf::Primitive<'_>,
     buffers: &[gltf::buffer::Data],
 ) -> Result<Mesh, SceneLoadError> {
+    // Errors that name no accessor name the primitive, so a large file can be searched.
+    let label = format!(
+        "glTF mesh {} primitive {}",
+        gltf_mesh.index(),
+        primitive.index()
+    );
     check_primitive(primitive, buffers)?;
     let mesh = Mesh::new();
     let reader = primitive.reader(|buffer| buffers.get(buffer.index()).map(|data| &data[..]));
@@ -581,7 +588,7 @@ fn build_mesh(
         reader.read_positions(),
         "POSITION",
     )?
-    .ok_or_else(|| SceneLoadError::Invalid("glTF primitive has no POSITION attribute".into()))?;
+    .ok_or_else(|| SceneLoadError::Invalid(format!("{label} has no POSITION attribute")))?;
     let supplied_normals: Option<Vec<[f32; 3]>> = read_items(
         primitive.get(&Semantic::Normals),
         reader.read_normals(),
@@ -612,8 +619,8 @@ fn build_mesh(
         reader.read_indices().map(|it| it.into_u32()),
         "indices",
     )?;
-    let indices = list_triangles(primitive.mode(), indices, positions.len())?;
-    check_indices(indices.as_deref(), positions.len())?;
+    let indices = list_triangles(&label, primitive.mode(), indices, positions.len())?;
+    check_indices(&label, indices.as_deref(), positions.len())?;
 
     // glTF normals are optional; when missing, compute per-vertex normals
     // by accumulating face normals across every triangle that touches the
@@ -679,6 +686,7 @@ fn build_mesh(
 /// list, or every vertex in order when it has none, into one triangle per
 /// step. Points and lines have no triangles, so the loader refuses them.
 fn list_triangles(
+    label: &str,
     mode: gltf::mesh::Mode,
     indices: Option<Vec<u32>>,
     vertex_count: usize,
@@ -690,7 +698,7 @@ fn list_triangles(
         Mode::TriangleFan => expand_fan,
         other => {
             return Err(SceneLoadError::Invalid(format!(
-                "glTF primitive mode {other:?} is not supported; Scene.load draws triangles"
+                "{label} draws in mode {other:?}, and Scene.load draws only triangles"
             )));
         }
     };
@@ -699,7 +707,7 @@ fn list_triangles(
         None => {
             let Ok(count) = u32::try_from(vertex_count) else {
                 return Err(SceneLoadError::Invalid(format!(
-                    "glTF primitive has {vertex_count} vertices, more than 32-bit indices reach"
+                    "{label} has {vertex_count} vertices, more than 32-bit indices reach"
                 )));
             };
             (0..count).collect()
@@ -732,14 +740,18 @@ fn expand_fan(order: &[u32]) -> Vec<u32> {
 }
 
 /// Refuse an index that points past the last vertex.
-fn check_indices(indices: Option<&[u32]>, vertex_count: usize) -> Result<(), SceneLoadError> {
+fn check_indices(
+    label: &str,
+    indices: Option<&[u32]>,
+    vertex_count: usize,
+) -> Result<(), SceneLoadError> {
     let past_end = indices
         .unwrap_or_default()
         .iter()
         .find(|&&index| index as usize >= vertex_count);
     match past_end {
         Some(index) => Err(SceneLoadError::Invalid(format!(
-            "glTF primitive index {index} points past the last of {vertex_count} vertices"
+            "{label} index {index} points past the last of {vertex_count} vertices"
         ))),
         None => Ok(()),
     }
@@ -1038,7 +1050,10 @@ fn add_light(
         SceneLoadError::Invalid(format!("attaching glTF Light to Scene: {e}"))
     };
     let setter_err = |e: crate::scene::LightError| {
-        SceneLoadError::Invalid(format!("configuring glTF Light: {e}"))
+        SceneLoadError::Invalid(format!(
+            "configuring glTF light {}: {e}",
+            gltf_light.index()
+        ))
     };
 
     let light = match gltf_light.kind() {
@@ -1156,7 +1171,10 @@ mod tests {
     #[test]
     fn load_refuses_a_negative_light_range() {
         let json = CAMERA_LIGHT_JSON.replace(DIRECTIONAL_LIGHT, r#"{"type":"point","range":-5.0}"#);
-        assert_invalid(build_camera_light_glb(&json), "non-negative number, got -5");
+        assert_invalid(
+            build_camera_light_glb(&json),
+            "glTF light 0: Light::set_range expects a non-negative number, got -5",
+        );
     }
 
     /// Load a variant of the camera file and expect `SceneLoadError::Camera`.
@@ -1503,7 +1521,10 @@ mod tests {
             ("3", "LineStrip"),
         ] {
             let bytes = mutate_triangle(&[(MODE, &format!(r#""mode":{mode}}}"#))]);
-            assert_invalid(bytes, &format!("mode {name} is not supported"));
+            assert_invalid(
+                bytes,
+                &format!("glTF mesh 0 primitive 0 draws in mode {name}"),
+            );
         }
     }
 
@@ -1529,7 +1550,10 @@ mod tests {
                 r#""max":[0.5,0.5,0.0]},{"bufferView":2,"componentType":5125,"count":3,"type":"SCALAR"}]"#,
             ),
         ]);
-        assert_invalid(bytes, "index 1056964608 points past the last of 3 vertices");
+        assert_invalid(
+            bytes,
+            "glTF mesh 0 primitive 0 index 1056964608 points past the last of 3 vertices",
+        );
     }
 
     /// The minimal triangle with a base color texture read from an embedded PNG.
