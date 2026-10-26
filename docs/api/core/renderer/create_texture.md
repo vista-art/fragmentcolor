@@ -28,6 +28,8 @@ Decode and mipmap generation run on a background worker on native platforms. On 
 
 A full mipmap chain is generated for source images by default (`options.mipmaps = true`). Set to `false` to skip the CPU work for textures that won't be sampled at distance.
 
+`options.usage` adds `TextureUsage` flags to the `TEXTURE_BINDING | COPY_DST` every texture made from data has, such as `COPY_SRC` to read it back. A bit outside the five `TextureUsage` flags is an `InvalidInput` error.
+
 ## Example
 
 ```rust

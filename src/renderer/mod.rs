@@ -205,15 +205,6 @@ impl Renderer {
     ) -> Result<crate::texture::Texture, RendererError> {
         let crate::TextureInput { data, options } = input.into();
         let context = self.context(None).await?;
-        let usage = options
-            .usage
-            .map(wgpu::TextureUsages::from_bits_truncate)
-            .unwrap_or(
-                wgpu::TextureUsages::STORAGE_BINDING
-                    | wgpu::TextureUsages::TEXTURE_BINDING
-                    | wgpu::TextureUsages::COPY_DST
-                    | wgpu::TextureUsages::COPY_SRC,
-            );
         let size = options.size.ok_or_else(|| {
             RendererError::CreateTextureError(
                 "create_storage_texture requires options.size — pass `(size, format)` or set the field explicitly".into(),
@@ -224,6 +215,19 @@ impl Renderer {
         // The size comes first, so a bad one reports the same error whatever the seed.
         let limits = context.device.limits();
         crate::texture::check_extent(&limits, wgpu_size, crate::texture::dimension(wgpu_size))?;
+        let usage = options.usage.map(crate::texture::check_usage).transpose()?;
+        let usage = usage.unwrap_or(
+            wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::COPY_SRC,
+        );
+        if usage.is_empty() {
+            return Err(crate::texture::TextureError::InvalidInput(
+                "create_storage_texture needs at least one usage flag".into(),
+            )
+            .into());
+        }
 
         let bytes_opt: Option<Vec<u8>> = match data {
             crate::TextureData::Empty => None,

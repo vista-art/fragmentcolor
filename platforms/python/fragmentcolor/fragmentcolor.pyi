@@ -197,6 +197,8 @@ class Renderer:
 
         A full mipmap chain is generated for source images by default (`options.mipmaps = true`). Set to `false` to skip the CPU work for textures that won't be sampled at distance.
 
+        `options.usage` adds `TextureUsage` flags to the `TEXTURE_BINDING | COPY_DST` every texture made from data has, such as `COPY_SRC` to read it back. A bit outside the five `TextureUsage` flags is an `InvalidInput` error.
+
         Example:
 
         ```python
@@ -360,7 +362,7 @@ class Renderer:
 
         A depth of 1, or none, makes a 2D texture, and a larger depth makes a 3D texture. A side of zero, or a size past the device's limits for that kind of texture, is an error that reaches no GPU call: `TextureError::InvalidInput` inside `RendererError::TextureError` in Rust, a thrown `Error` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
 
-        `options.usage` overrides the default mask of `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`. Every binding has the same named `TextureUsage` flags, combined with `|` (`or` in Kotlin). The other bindings take the size, format, optional bytes and optional usage as separate arguments.
+        `options.usage` overrides the default mask of `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`. Every binding has the same named `TextureUsage` flags, combined with `|` (`or` in Kotlin). The other bindings take the size, format, optional bytes and optional usage as separate arguments. An empty mask, or a bit outside the five `TextureUsage` flags, is the same `InvalidInput` error.
 
         Example:
 

@@ -47,6 +47,7 @@ pub use region::TextureRegion;
 pub use region::TextureRegionMobile;
 pub(crate) use registration::Registration;
 pub(crate) use resize::{check_extent, check_plane, check_size, resize};
+pub(crate) use usage::check_usage;
 
 pub mod meta;
 pub use meta::{
@@ -761,7 +762,7 @@ impl TextureObject {
         let opt_size = options.size;
         let opt_format = options.format;
         let sampler = options.sampler;
-        let usage = source_usage(options.usage);
+        let usage = source_usage(options.usage)?;
 
         // URL variants need an async fetch on the calling thread; everything
         // else runs on the background worker. Pre-fetch and forward the
@@ -1217,13 +1218,10 @@ fn read_ktx2_file(
 /// Usage of a texture made from source data.
 /// It always holds `TEXTURE_BINDING | COPY_DST`, since the upload and sampling need them,
 /// plus any bits from `TextureOptions::usage`, such as `COPY_SRC` for `read_texture`.
-pub(crate) fn source_usage(extra: Option<u32>) -> wgpu::TextureUsages {
+pub(crate) fn source_usage(extra: Option<u32>) -> Result<wgpu::TextureUsages, TextureError> {
     let required = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
-    required
-        | extra.map_or(
-            wgpu::TextureUsages::empty(),
-            wgpu::TextureUsages::from_bits_truncate,
-        )
+    let extra = extra.map(check_usage).transpose()?;
+    Ok(required | extra.unwrap_or(wgpu::TextureUsages::empty()))
 }
 
 /// The dimension a texture of `size` gets: 2D with one layer, and 3D with more.
