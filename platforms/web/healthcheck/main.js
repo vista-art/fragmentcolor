@@ -1,5 +1,5 @@
 import init, {
-  Renderer, Shader, Pass, Mesh, Vertex, Instance, Scene, Model, Material, Camera, Mipmap,
+  Renderer, Shader, Pass, Mesh, Vertex, Instance, Scene, Model, Material, Camera, Light, Mipmap,
   TextureFormat, TextureUsage, set_log_level,
 } from "fragmentcolor";
 import * as fc from "fragmentcolor";
@@ -719,6 +719,64 @@ struct VOut { @builtin(position) pos: vec4<f32> };
     renderer.render(unfed, target);
     await surfaces('load after a failed frame', () => renderer.load(valid));
     await renderer.load(valid);
+});
+
+// WebGPU bins lights into clusters with a compute pass, so a PBR shader takes
+// far more lights than a WebGL2 uniform block holds. 300 lights render with
+// no GPU error, captured or not. The runner requires a WebGPU adapter on CI.
+await withModule('platforms.web.healthcheck.lights.clustered', async () => {
+    const adapter = navigator.gpu ? await navigator.gpu.requestAdapter() : null;
+    if (!adapter) {
+      console.log('clustered lights: no WebGPU adapter, so the WebGL2 pass covers lights');
+      return;
+    }
+    const gpuErrors = [];
+    const original = console.error;
+    console.error = (...parts) => {
+      const text = parts.map(String).join(' ');
+      if (text.includes('GPU error')) gpuErrors.push(text);
+      original.apply(console, parts);
+    };
+    try {
+      const renderer = new Renderer();
+      const target = await renderer.createTextureTarget([64, 64]);
+      const floor = new Mesh();
+      const corners = [[-6, -6], [-6, 6], [6, 6], [-6, -6], [6, 6], [6, -6]];
+      for (const [x, z] of corners) {
+        floor.addVertex(Vertex.pbr([x, 0.0, z]).set('normal', [0.0, 1.0, 0.0]));
+      }
+      const pass = new Pass('300 lights');
+      pass.add(new Model(floor, Material.pbr()));
+      pass.add(Camera.perspective(1.0, 1.0, 0.1, 100.0)
+        .lookAt([0.0, 6.0, 8.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]));
+      for (let index = 0; index < 300; index++) {
+        const x = (index % 20) * 0.6 - 5.7;
+        const z = Math.floor(index / 20) * 0.8 - 5.6;
+        const hue = index / 300 * Math.PI * 2;
+        const color = [0.5 + 0.5 * Math.cos(hue), 0.5 + 0.5 * Math.cos(hue + 2.1), 0.5 + 0.5 * Math.cos(hue + 4.2)];
+        const light = Light.point([x, 0.3, z], color).setIntensity(0.5);
+        light.setRange(1.5);
+        pass.add(light);
+      }
+      renderer.render(pass, target);
+      const image = await target.getImage();
+      // A scope that catches an error resolves after render returns, so the
+      // next render or readback throws it.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      renderer.render(pass, target);
+      await target.getImage();
+      let lit = 0;
+      for (let pixel = 0; pixel < image.length; pixel += 4) {
+        if (image[pixel] > 100 || image[pixel + 1] > 100 || image[pixel + 2] > 100) lit++;
+      }
+      if (lit < 64) throw new Error(`300 lights lit only ${lit} pixels`);
+      console.log(`clustered lights: 300 lights lit ${lit} pixels`);
+    } finally {
+      console.error = original;
+    }
+    if (gpuErrors.length) {
+      throw new Error(`300 lights raised ${gpuErrors.length} uncaptured GPU error(s): ${gpuErrors[0]}`);
+    }
 });
 
 // Auto-generated: run all extracted examples (after init)
