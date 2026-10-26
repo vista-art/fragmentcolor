@@ -29,7 +29,11 @@ pub enum FragmentColorError {
 // Python-specific conversions
 
 #[cfg(python)]
-use pyo3::{create_exception, exceptions::PyException, prelude::*};
+use pyo3::{
+    create_exception,
+    exceptions::{PyBaseException, PyException},
+    prelude::*,
+};
 #[cfg(python)]
 create_exception!(fragment_color, PyFragmentColorError, PyException);
 #[cfg(python)]
@@ -67,6 +71,50 @@ create_exception!(
     PyFragmentColorError,
     "A GPU error an error scope caught, with its kind, the label of the step that raised it and the device's own detail."
 );
+
+#[cfg(python)]
+create_exception!(
+    fragment_color,
+    LimitError,
+    PyFragmentColorError,
+    "Something in a shader past one of the device's limits, with the item, the limit's name, the value it needs and the device's maximum."
+);
+#[cfg(python)]
+create_exception!(
+    fragment_color,
+    FeatureError,
+    PyFragmentColorError,
+    "Something in a shader that needs a feature the device lacks, with the item and the feature."
+);
+#[cfg(python)]
+create_exception!(
+    fragment_color,
+    BindingError,
+    PyFragmentColorError,
+    "A resource bound to a shader slot that can't take it, with the slot's name, what it takes and what it got."
+);
+#[cfg(python)]
+create_exception!(
+    fragment_color,
+    EntryError,
+    PyFragmentColorError,
+    "A shader without the entry point its pass runs, with the stage."
+);
+
+/// An exception of class `T` with the full `message`, carrying the attributes `fields` sets.
+#[cfg(python)]
+pub(crate) fn raise<T: pyo3::PyTypeInfo>(
+    message: String,
+    fields: impl FnOnce(&Bound<'_, PyBaseException>) -> PyResult<()>,
+) -> PyErr {
+    Python::attach(|py| {
+        let error = PyErr::new::<T, _>(message);
+        match fields(error.value(py)) {
+            Ok(()) => error,
+            Err(failure) => failure,
+        }
+    })
+}
 
 #[cfg(python)]
 impl DeviceError {
