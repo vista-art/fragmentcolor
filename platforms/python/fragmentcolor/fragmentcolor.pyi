@@ -343,9 +343,11 @@ class Renderer:
 
         A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input. The inputs are the `@location` arguments of the vertex entry point and the `@location` members of its struct arguments, and each one reads the mesh attribute of its own name.
 
+        A `Renderer` draws only into the targets it created. A target from another `Renderer` returns `RendererError::ForeignTarget`, unless every pass is a compute pass, which draws into no target. Each pass is checked against what it draws into before it records: a [depth target](https://fragmentcolor.org/api/core/pass#set_depth_target) of the color attachment's size and sample count, shader outputs and blending the [target](https://fragmentcolor.org/api/core/pass#set_target)'s format takes, no texture both drawn into and bound, and a [compute dispatch](https://fragmentcolor.org/api/core/pass#set_compute_dispatch) the device takes.
+
         `render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail, it returns a [DeviceError](https://fragmentcolor.org/api/core/deviceerror), `RendererError::DeviceError` in Rust. Its `kind` tells validation errors, internal errors such as a shader the backend compiler refuses, and running out of memory apart, and its `label` names the step that failed: the render pipeline, the compute pipeline, the light binning pipeline, the frame, or a bind group or texture view inside the frame. When one error causes another, `render` returns the first. In Rust, Python, Swift and Kotlin, a pipeline that failed is never kept, and the next frame builds it again and returns the same error.
 
-        A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. A shader without its mesh and an instance count past the mesh's instances fail before `render` takes a frame, and the window keeps its last image.
+        A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. A shader without its mesh, an instance count past the mesh's instances, a target from another `Renderer`, a pass target that is missing, and a pass whose own target or compute dispatch fails its checks fail before `render` takes a frame, and the window keeps its last image.
 
         JavaScript gets the GPU's errors late, because WebGPU reports them after `render` has returned. Each error logs a `console.error` when it lands, and the next `render` still throws the first one, as an `Error` with `kind`, `label` and `detail` properties, before doing any work. `load`, `readTexture`, `readStorage`, and `getImage` on a `Texture` or `TextureTarget` wait for the frames before them to report, so they throw a frame's error even when called right after it. A call that waits throws only the error of a frame rendered before it began: the error of a frame rendered while it waits stays for the next call. Only the first error to land throws, and only once; the ones that land after it, before a call takes it, only log. The label names the render pipeline, the compute pipeline, the light binning pipeline or the frame. A pipeline that failed stays in the cache until its error lands, and a frame that draws with it before then reports a frame error. Once the error lands, the pipeline leaves the cache. In a loop that renders each frame, the next `render` throws the error before doing any work, and the one after it builds the pipeline again and reports the same error.
 
@@ -424,7 +426,7 @@ class Renderer:
         shader uniform or pass target that binds it. Call this to release one sooner,
         for example when a video stream stops.
 
-        - After the call, the id names no texture, and shaders and passes that bind it can't draw it.
+        - After the call, the id names no texture, and shaders and passes that bind it can't draw it. A pass that keeps it as its color or depth target makes `render` return `TextureNotFoundError`.
         - A `Texture` handle you still hold keeps its GPU memory until it drops.
 
         Example:
@@ -1381,6 +1383,11 @@ class Pass:
         where the per-workgroup size comes from the WGSL `@workgroup_size`
         attribute. A 0 in any dimension becomes 1. Has no effect on render passes.
 
+        Each count must fit the device, which takes at most 65535 workgroups per
+        dimension on most GPUs. A larger one makes `render` return
+        `PassError::DispatchLimit`, which names the counts and the limit, before
+        anything runs.
+
         Example:
 
         ```python
@@ -1395,6 +1402,14 @@ class Pass:
         Attach a per-pass color render target. When set, this pass renders into the provided texture instead of the final Target.
 
         A Pass has at most one color target. Call `set_target` again to swap it. Use this to render intermediate results (e.g., a shadow map) that later passes can sample.
+
+        The texture needs `RENDER_ATTACHMENT` usage, a color format, one mip level and one layer. A pass draws into one level of one layer, so a texture with a mip chain or with layers returns `PassError::InvalidColorTarget`, and so does a depth format. `create_texture` builds a mip chain unless `mipmaps` is false.
+
+        `render` checks the pass against its target before it takes a frame:
+
+        - Each shader writes at `@location(0)` the values the format takes: the same scalar type, in at least as many channels. An `Rgba32Uint` target takes `vec4<u32>`, so a shader that writes `vec4<f32>` returns `PassError::InvalidColorTarget`.
+        - A shader with `AlphaMode::Blend` needs a format the device blends. `Rgba32Float` and the integer formats don't, and return the same error.
+        - The pass can't bind the texture it draws into. A shader that samples it returns `PassError::TextureConflict`. Sample it in a later pass.
 
         Example:
 
@@ -1414,7 +1429,9 @@ class Pass:
 
         A Pass has at most one depth attachment. Call `set_depth_target` again to swap it.
 
-        The target must be a depth `Texture` (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](https://fragmentcolor.org/api/core/renderer#create_depth_texture). A `TextureTarget` always has a color format, so passing one returns an error. The depth attachment's sample count must match the color attachments'. Mixing 1× and 4× MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
+        The target must be a depth `Texture` (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](https://fragmentcolor.org/api/core/renderer#create_depth_texture). A `TextureTarget` always has a color format, so passing one returns an error. A depth texture from another `Renderer`, or one that `unregister_texture` removed, makes `render` return `RendererError::TextureNotFoundError`.
+
+        The depth attachment matches the pass's color attachment, the pass's own target or the frame it draws into. A different width or height returns `RendererError::DepthSizeMismatch`, which names both sizes, so a window that resizes needs a depth texture of the new size, or a `resize` of the one it has. A different sample count returns `RendererError::DepthSampleCountMismatch`, so mixing 1× and 4× MSAA in the same pass fails. A shader in the pass that reads the depth texture returns `PassError::TextureConflict`. Read it in a later pass.
 
         A pass that draws a `Model` and has no depth target gets a depth buffer from the renderer. It matches the pass's color attachment in size and sample count and clears at the start of the pass. In a pass that draws models, the shaders that draw none, such as a fullscreen backdrop or an overlay, ignore depth and draw in order, with that buffer or a depth target you set. A pass without models draws without depth unless you call `set_depth_target`, and then every shader in it tests depth.
 
