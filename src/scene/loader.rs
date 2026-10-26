@@ -831,7 +831,7 @@ fn build_material(
     }
 
     if let Some(info) = pbr.base_color_texture() {
-        material = material.base_color_texture(image_to_texture_input(&info.texture(), images)?);
+        material = material.base_color_texture(convert_image(&info.texture(), images)?);
         // KHR_texture_transform on the base-color slot is the most common
         // usage of the extension; promote it to the Material's global
         // transform. The non-base-color slots warn-and-ignore — see the
@@ -845,18 +845,17 @@ fn build_material(
     }
     if let Some(info) = pbr.metallic_roughness_texture() {
         warn_unused_uv_transform(&info, "metallic_roughness");
-        material =
-            material.metallic_roughness_texture(image_to_texture_input(&info.texture(), images)?);
+        material = material.metallic_roughness_texture(convert_image(&info.texture(), images)?);
     }
     if let Some(info) = gltf_material.normal_texture() {
-        material = material.normal_texture(image_to_texture_input(&info.texture(), images)?);
+        material = material.normal_texture(convert_image(&info.texture(), images)?);
     }
     if let Some(info) = gltf_material.occlusion_texture() {
-        material = material.occlusion_texture(image_to_texture_input(&info.texture(), images)?);
+        material = material.occlusion_texture(convert_image(&info.texture(), images)?);
     }
     if let Some(info) = gltf_material.emissive_texture() {
         warn_unused_uv_transform(&info, "emissive");
-        material = material.emissive_texture(image_to_texture_input(&info.texture(), images)?);
+        material = material.emissive_texture(convert_image(&info.texture(), images)?);
     }
 
     Ok(material)
@@ -883,7 +882,7 @@ fn warn_unused_uv_transform(info: &gltf::texture::Info<'_>, slot: &str) {
 /// Convert a glTF image reference into the TextureInput the lazy Material
 /// setter queues. Every pixel format the importer decodes converts to RGBA8,
 /// and an image with fewer bytes than its size needs is an error.
-fn image_to_texture_input(
+fn convert_image(
     texture: &gltf::Texture<'_>,
     images: &[gltf::image::Data],
 ) -> Result<TextureInput, SceneLoadError> {

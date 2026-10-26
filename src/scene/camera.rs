@@ -100,7 +100,7 @@ enum Projection {
 
 impl Projection {
     /// Rebuild this projection for a new aspect, with its matrix.
-    fn with_aspect(self, aspect: f32) -> Result<(Self, Mat4), CameraError> {
+    fn reshape(self, aspect: f32) -> Result<(Self, Mat4), CameraError> {
         if !aspect.is_finite() || aspect == 0.0 {
             return Err(CameraError::Aspect(aspect));
         }
@@ -330,7 +330,7 @@ impl Camera {
     /// The camera a Scene injects when it has none: a 60° perspective with
     /// a square aspect over [0.1, 100], five units back from the origin and
     /// looking at it. Its constants build finite matrices, so it skips the checks.
-    pub(crate) fn stock() -> Self {
+    pub(crate) fn create_stock() -> Self {
         let projection = Projection::Perspective {
             fovy_radians: std::f32::consts::FRAC_PI_3,
             near: 0.1,
@@ -402,7 +402,7 @@ impl Camera {
     /// refused aspect never reaches the state.
     fn apply_aspect(&self, aspect: f32) -> Result<Self, CameraError> {
         let projection = self.object.state.read().projection;
-        let (projection, proj) = projection.with_aspect(aspect)?;
+        let (projection, proj) = projection.reshape(aspect)?;
         {
             let mut state = self.object.state.write();
             state.projection = projection;

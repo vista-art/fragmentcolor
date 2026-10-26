@@ -436,7 +436,7 @@ impl Scene {
                 .default_camera
                 .read()
                 .clone()
-                .unwrap_or_else(Camera::stock);
+                .unwrap_or_else(Camera::create_stock);
             // Camera::attach always succeeds — discard the never-error result.
             let _ = pass.add(&camera);
             self.inner.cameras.write().push(camera);
