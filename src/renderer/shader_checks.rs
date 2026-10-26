@@ -8,45 +8,159 @@ use super::layout::{Layout, Slot, build_module, plan_layout, texture_binding};
 use super::lights::LightPath;
 use super::{PbrDefaults, PushMode, RenderContext, RendererError, report_missing};
 use crate::shader::error::describe;
+use crate::shader::{list_explicit, write_layouts};
 use crate::texture::format_features;
-use crate::{ShaderError, ShaderObject, TextureObject, UniformData};
+use crate::{ShaderObject, TextureObject, UniformData};
 use naga::ShaderStage;
+use naga::valid::ModuleInfo;
 use std::sync::atomic::Ordering;
 use wgpu::{BindingType, BufferBindingType, DownlevelFlags, ShaderStages, StorageTextureAccess};
+
+/// What `check_shader` decided for a shader source on one device.
+#[derive(Debug, Clone)]
+pub(super) enum Verdict {
+    Passed,
+    Refused(Refusal),
+}
+
+/// A refusal `check_shader` keeps, so the next frame returns it without checking again.
+#[derive(Debug, Clone)]
+pub(super) enum Refusal {
+    Limit {
+        item: String,
+        limit: String,
+        value: u64,
+        max: u64,
+    },
+    Feature {
+        item: String,
+        feature: String,
+    },
+    Entry {
+        stage: String,
+    },
+}
+
+impl From<Refusal> for RendererError {
+    fn from(refusal: Refusal) -> Self {
+        match refusal {
+            Refusal::Limit {
+                item,
+                limit,
+                value,
+                max,
+            } => RendererError::LimitError {
+                item,
+                limit,
+                value,
+                max,
+            },
+            Refusal::Feature { item, feature } => RendererError::FeatureError { item, feature },
+            Refusal::Entry { stage } => RendererError::EntryError { stage },
+        }
+    }
+}
+
+/// The facts about a texture that decide which slots take it.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct TextureFacts {
+    pub(super) format: wgpu::TextureFormat,
+    pub(super) usage: wgpu::TextureUsages,
+    pub(super) dimension: wgpu::TextureViewDimension,
+    pub(super) samples: u32,
+    pub(super) levels: u32,
+}
+
+impl TextureFacts {
+    /// The facts about `texture` and the view `TextureObject::create_view` makes of it.
+    pub(super) fn read(texture: &TextureObject) -> Self {
+        let dimension = match texture.inner.dimension() {
+            wgpu::TextureDimension::D1 => wgpu::TextureViewDimension::D1,
+            wgpu::TextureDimension::D2 => match texture.inner.depth_or_array_layers() {
+                1 => wgpu::TextureViewDimension::D2,
+                _ => wgpu::TextureViewDimension::D2Array,
+            },
+            wgpu::TextureDimension::D3 => wgpu::TextureViewDimension::D3,
+        };
+        Self {
+            format: texture.format(),
+            usage: texture.usage,
+            dimension,
+            samples: texture.inner.sample_count(),
+            levels: texture.inner.mip_level_count(),
+        }
+    }
+
+    /// The 1x1 default an unset PBR map binds.
+    const PBR_DEFAULT: Self = Self {
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING.union(wgpu::TextureUsages::COPY_DST),
+        dimension: wgpu::TextureViewDimension::D2,
+        samples: 1,
+        levels: 1,
+    };
+}
 
 impl RenderContext {
     /// Refuses a shader this device can't run, before any GPU work: groups and bindings past
     /// the device's limits, too many bindings of a kind in one stage, buffers past their size
     /// limits, storage the device can't bind, missing entry points, a workgroup past the limits,
-    /// and anything else the device's own shader validator refuses. A shader that passes
-    /// is remembered by its source hash, so each source is checked once per context.
+    /// explicit layouts the backend can't keep, and anything else the device's own shader
+    /// validator refuses. The verdict is kept by source hash, so each source is checked once
+    /// per context, whether it passes or not.
     pub(super) fn check_shader(&self, shader: &ShaderObject) -> Result<(), RendererError> {
-        if self.checked.contains_key(&shader.hash) {
-            return Ok(());
+        if let Some(verdict) = self.checked.get(&shader.hash) {
+            return match verdict.value() {
+                Verdict::Passed => Ok(()),
+                Verdict::Refused(refusal) => Err(refusal.clone().into()),
+            };
         }
+        let verdict = match self.judge_shader(shader)? {
+            Ok(()) => Verdict::Passed,
+            Err(refusal) => Verdict::Refused(refusal),
+        };
+        self.checked.insert(shader.hash, verdict.clone());
+        match verdict {
+            Verdict::Passed => Ok(()),
+            Verdict::Refused(refusal) => Err(refusal.into()),
+        }
+    }
+
+    /// Checks `shader` against the device. The outer error is one no verdict keeps,
+    /// such as a lowering that fails, and the inner one is the device's refusal.
+    fn judge_shader(&self, shader: &ShaderObject) -> Result<Result<(), Refusal>, RendererError> {
         let compute = shader.is_compute();
         let lights = (!compute).then(|| self.light_path());
-        let layout = plan_layout(shader, &self.device, lights);
-        let limits = self.device.limits();
-        let downlevel = self.read_downlevel();
-        for slot in &layout.slots {
-            let name = describe_slot(&layout, slot);
-            check_slot(&name, slot, &limits)?;
-            self.check_storage(&name, slot, downlevel)?;
+        let layout = plan_layout(shader, self, lights);
+        let judged = || -> Result<(), Refusal> {
+            for slot in &layout.slots {
+                let name = describe_slot(&layout, slot);
+                check_slot(&name, slot, &self.limits)?;
+                self.check_storage(&name, slot)?;
+            }
+            check_counts(&layout.slots, &self.limits)?;
+            if !compute {
+                check_entries(shader)?;
+            }
+            Ok(())
+        };
+        if let Err(refusal) = judged() {
+            return Ok(Err(refusal));
         }
-        check_counts(&layout.slots, &limits)?;
-        let module = self.check_module(shader, &layout, lights)?;
-        match compute {
-            true => check_compute(&module, &limits, downlevel)?,
-            false => check_entries(shader)?,
+        let (module, info) = match self.check_module(shader, &layout, lights)? {
+            Ok(checked) => checked,
+            Err(refusal) => return Ok(Err(refusal)),
+        };
+        if compute && let Err(refusal) = self.check_compute_stage(&module, &info) {
+            return Ok(Err(refusal));
         }
-        self.checked.insert(shader.hash, ());
-        Ok(())
+        Ok(Ok(()))
     }
 
     /// Refuses a texture uniform with no texture, or with a texture its slot can't take.
-    /// A PBR map slot with no texture takes its 1x1 default instead.
+    /// An unset PBR map in a render shader takes its 1x1 default, when its slot takes that.
     pub(super) fn check_textures(&self, shader: &ShaderObject) -> Result<(), RendererError> {
+        let compute = shader.is_compute();
         let storage = shader.storage.read();
         for (_, _, uniform) in storage.uniforms.values() {
             let UniformData::Texture(meta) = &uniform.data else {
@@ -55,50 +169,36 @@ impl RenderContext {
             if uniform.name.contains('.') {
                 continue;
             }
+            let slot = texture_binding(meta);
             match self.get_texture(&meta.id) {
-                Some(texture) => check_texture(
-                    &uniform.name,
-                    &texture_binding(meta),
-                    &texture,
-                    self.device.features(),
-                )?,
-                // An unset PBR map takes its default. One set to a texture this
-                // context doesn't hold, removed or from another Renderer, is refused.
-                None if meta.id.id == 0 && PbrDefaults::has_slot(&uniform.name) => {}
+                Some(texture) => {
+                    let facts = TextureFacts::read(&texture);
+                    check_texture(&uniform.name, &slot, &facts, self.features)?
+                }
+                // An unset PBR map takes its default, which a compute pass never binds.
+                // One set to a texture this context doesn't hold, removed or from another
+                // Renderer, is refused.
+                None if !compute && meta.id.id == 0 && PbrDefaults::has_slot(&uniform.name) => {
+                    let facts = TextureFacts::PBR_DEFAULT;
+                    check_texture(&uniform.name, &slot, &facts, self.features)?
+                }
                 None => return Err(report_missing(&uniform.name, meta)),
             }
         }
         Ok(())
     }
 
-    /// The downlevel flags of the context's adapter, or every flag when it has none.
-    pub(super) fn read_downlevel(&self) -> DownlevelFlags {
-        self.adapter
-            .as_ref()
-            .map(|adapter| adapter.get_downlevel_capabilities().flags)
-            .unwrap_or(DownlevelFlags::all())
-    }
-
     /// Refuses storage the device can't bind: a storage texture format or access it lacks,
     /// a storage buffer the vertex stage reads, and storage the fragment stage writes.
-    fn check_storage(
-        &self,
-        name: &str,
-        slot: &Slot,
-        downlevel: DownlevelFlags,
-    ) -> Result<(), RendererError> {
+    pub(super) fn check_storage(&self, name: &str, slot: &Slot) -> Result<(), Refusal> {
         let visibility = slot.entry.visibility;
         let writes = match slot.entry.ty {
             BindingType::Buffer {
                 ty: BufferBindingType::Storage { read_only },
                 ..
             } => {
-                if visibility.contains(ShaderStages::VERTEX)
-                    && !downlevel.contains(DownlevelFlags::VERTEX_STORAGE)
-                {
-                    return Err(refuse(format!(
-                        "{name} is a storage buffer the vertex stage reads, and this device has no storage in the vertex stage"
-                    )));
+                if visibility.contains(ShaderStages::VERTEX) {
+                    require(name, self.downlevel, DownlevelFlags::VERTEX_STORAGE)?;
                 }
                 !read_only
             }
@@ -108,13 +208,12 @@ impl RenderContext {
             }
             _ => return Ok(()),
         };
-        if writes
-            && visibility.contains(ShaderStages::FRAGMENT)
-            && !downlevel.contains(DownlevelFlags::FRAGMENT_WRITABLE_STORAGE)
-        {
-            return Err(refuse(format!(
-                "{name} is storage the fragment stage writes, and this device takes no writes there"
-            )));
+        if writes && visibility.contains(ShaderStages::FRAGMENT) {
+            require(
+                name,
+                self.downlevel,
+                DownlevelFlags::FRAGMENT_WRITABLE_STORAGE,
+            )?;
         }
         Ok(())
     }
@@ -125,12 +224,13 @@ impl RenderContext {
         name: &str,
         format: wgpu::TextureFormat,
         access: StorageTextureAccess,
-    ) -> Result<(), RendererError> {
-        let missing = format.required_features() - self.device.features();
+    ) -> Result<(), Refusal> {
+        let missing = format.required_features() - self.features;
         if !missing.is_empty() {
-            return Err(refuse(format!(
-                "{name} is a {format:?} storage texture, which needs the device feature {missing:?}"
-            )));
+            return Err(Refusal::Feature {
+                item: name.to_string(),
+                feature: format!("{missing} for a {format:?} storage texture"),
+            });
         }
         let features = format_features(self, format);
         let flag = match access {
@@ -143,52 +243,166 @@ impl RenderContext {
             .allowed_usages
             .contains(wgpu::TextureUsages::STORAGE_BINDING);
         if !binds || !features.flags.contains(flag) {
-            return Err(refuse(format!(
-                "{name} is a {format:?} storage texture with {access:?} access, which this device doesn't bind"
-            )));
+            return Err(Refusal::Feature {
+                item: name.to_string(),
+                feature: format!("{access:?} storage access to {format:?}"),
+            });
         }
         Ok(())
     }
 
     /// Refuses a module the device's own shader validator refuses, such as one that needs
-    /// a downlevel flag the device lacks. It checks the module the pipeline compiles,
-    /// and returns it with its overrides at their defaults, as the pipeline sets them.
+    /// a downlevel flag the device lacks, and explicit layouts the backend can't keep.
+    /// It checks the module the pipeline compiles, and returns it with its overrides at
+    /// their defaults, as the pipeline sets them, and its validation.
     fn check_module(
         &self,
         shader: &ShaderObject,
         layout: &Layout,
         lights: Option<LightPath>,
-    ) -> Result<naga::Module, RendererError> {
-        let pad = lights.is_some() && self.aligned_uniform_bindings.load(Ordering::Relaxed);
+    ) -> Result<Result<(naga::Module, ModuleInfo), Refusal>, RendererError> {
+        let pad = self.aligned_uniform_bindings.load(Ordering::Relaxed);
         let uniform_lights = lights.and_then(|path| path.uniform_lights());
         let module = build_module(shader, layout, pad, uniform_lights)?;
+        if let Err(refusal) = self.check_layouts(&module) {
+            return Ok(Err(refusal));
+        }
         let mut validator = wgpu_naga_bridge::create_validator(
-            self.device.features(),
-            self.read_downlevel(),
+            self.features,
+            self.downlevel,
             naga::valid::ValidationFlags::all(),
         );
-        let info = validator
-            .validate(&module)
-            .map_err(|error| refuse_module(&error))?;
+        let info = match validator.validate(&module) {
+            Ok(info) => info,
+            Err(error) => return Ok(Err(refuse_module(&error))),
+        };
+        if self.writes_wgsl.load(Ordering::Relaxed) {
+            write_layouts(&module, &info)?;
+        }
         let constants = naga::back::PipelineConstants::default();
         match naga::back::pipeline_constants::process_overrides(&module, &info, None, &constants) {
-            Ok((resolved, _)) => Ok(resolved.into_owned()),
-            Err(error) => Err(refuse_module(&error)),
+            Ok((resolved, info)) => Ok(Ok((resolved.into_owned(), info.into_owned()))),
+            Err(error) => Ok(Err(refuse_module(&error))),
         }
+    }
+
+    /// Refuses on a GL backend a buffer struct whose layout `@size` or `@align` sets.
+    /// naga writes such a struct into a std140 block member by member, at the offsets its
+    /// member types give, so its explicit layout can't hold there.
+    fn check_layouts(&self, module: &naga::Module) -> Result<(), Refusal> {
+        if self.backend != wgpu::Backend::Gl {
+            return Ok(());
+        }
+        match list_explicit(module).ok().and_then(|names| names.into_iter().next()) {
+            Some(name) => Err(Refusal::Feature {
+                item: format!("struct `{name}`"),
+                feature: "the @size and @align layout of its members, which the GL backend can't keep; spell its padding out as members".into(),
+            }),
+            None => Ok(()),
+        }
+    }
+
+    /// Refuses a compute shader on a device without compute, a workgroup past the limits,
+    /// and more workgroup memory than the device holds. `module` has its overrides set,
+    /// so an override that sizes a workgroup or its memory is checked too.
+    fn check_compute_stage(&self, module: &naga::Module, info: &ModuleInfo) -> Result<(), Refusal> {
+        require(
+            "the compute shader",
+            self.downlevel,
+            DownlevelFlags::COMPUTE_SHADERS,
+        )?;
+        let compute = |(_, entry): &(usize, &naga::EntryPoint)| entry.stage == ShaderStage::Compute;
+        let Some((index, entry)) = module.entry_points.iter().enumerate().find(compute) else {
+            return Ok(());
+        };
+        let item = format!("`{}`", entry.name);
+        let limits = &self.limits;
+        let maxes = [
+            (
+                limits.max_compute_workgroup_size_x,
+                "max_compute_workgroup_size_x",
+            ),
+            (
+                limits.max_compute_workgroup_size_y,
+                "max_compute_workgroup_size_y",
+            ),
+            (
+                limits.max_compute_workgroup_size_z,
+                "max_compute_workgroup_size_z",
+            ),
+        ];
+        for (size, (max, limit)) in entry.workgroup_size.iter().zip(maxes) {
+            check_limit(&item, limit, u64::from(*size), u64::from(max))?;
+        }
+        let invocations = entry
+            .workgroup_size
+            .iter()
+            .map(|&size| u64::from(size))
+            .product();
+        let max = u64::from(limits.max_compute_invocations_per_workgroup);
+        check_limit(
+            &item,
+            "max_compute_invocations_per_workgroup",
+            invocations,
+            max,
+        )?;
+        let memory = measure_workgroup(module, info.get_entry_point(index));
+        let max = u64::from(limits.max_compute_workgroup_storage_size);
+        check_limit(&item, "max_compute_workgroup_storage_size", memory, max)
     }
 }
 
-/// A refusal of what this device can't run.
-fn refuse(message: String) -> RendererError {
-    RendererError::Error(message)
+/// The bytes of workgroup memory the entry point `uses` reaches, each variable
+/// rounded up to 16 bytes, as WebGPU counts them.
+fn measure_workgroup(module: &naga::Module, uses: &naga::valid::FunctionInfo) -> u64 {
+    let mut layouter = naga::proc::Layouter::default();
+    if layouter.update(module.to_ctx()).is_err() {
+        return 0;
+    }
+    module
+        .global_variables
+        .iter()
+        .filter(|(handle, global)| {
+            global.space == naga::AddressSpace::WorkGroup && !uses[*handle].is_empty()
+        })
+        .map(|(_, global)| wgpu::util::align_to(u64::from(layouter[global.ty].size), 16))
+        .sum()
+}
+
+/// Refuses a value past the device's `max` for `limit`.
+fn check_limit(item: &str, limit: &str, value: u64, max: u64) -> Result<(), Refusal> {
+    if value <= max {
+        return Ok(());
+    }
+    Err(Refusal::Limit {
+        item: item.to_string(),
+        limit: limit.to_string(),
+        value,
+        max,
+    })
+}
+
+/// Refuses `item` on a device whose downlevel flags `downlevel` lack `flag`.
+fn require(item: &str, downlevel: DownlevelFlags, flag: DownlevelFlags) -> Result<(), Refusal> {
+    if downlevel.contains(flag) {
+        return Ok(());
+    }
+    let names: Vec<&str> = flag.iter_names().map(|(name, _)| name).collect();
+    Err(Refusal::Feature {
+        item: item.to_string(),
+        feature: names.join(" | "),
+    })
 }
 
 /// The refusal of a module the device's shader validator refused with `error`.
-fn refuse_module(error: &dyn std::error::Error) -> RendererError {
-    refuse(format!(
-        "this device can't run the shader: {}",
-        describe(error)
-    ))
+fn refuse_module(error: &dyn std::error::Error) -> Refusal {
+    Refusal::Feature {
+        item: "the shader".into(),
+        feature: format!(
+            "what the device's shader validator refuses: {}",
+            describe(error)
+        ),
+    }
 }
 
 /// How a message names `slot`: by its root, and as a lowered uniform for an immediate root.
@@ -200,7 +414,7 @@ fn describe_slot(layout: &Layout, slot: &Slot) -> String {
             bindings,
         }) if *lowered == group && bindings.contains_key(&slot.name) => {
             format!(
-                "immediate root '{}', which this device binds as a uniform at @group({group}) @binding({binding}),",
+                "immediate root '{}', bound as a uniform at @group({group}) @binding({binding}),",
                 slot.name
             )
         }
@@ -209,23 +423,17 @@ fn describe_slot(layout: &Layout, slot: &Slot) -> String {
 }
 
 /// Refuses a slot past the device's groups, bindings or buffer sizes.
-pub(super) fn check_slot(
-    name: &str,
-    slot: &Slot,
-    limits: &wgpu::Limits,
-) -> Result<(), RendererError> {
-    if slot.group >= limits.max_bind_groups {
-        return Err(RendererError::BindGroupLayoutError(format!(
-            "{name} is past the device's {} bind groups",
-            limits.max_bind_groups
-        )));
-    }
-    if slot.entry.binding >= limits.max_bindings_per_bind_group {
-        return Err(RendererError::BindGroupLayoutError(format!(
-            "{name} is past the device's {} bindings in a group",
-            limits.max_bindings_per_bind_group
-        )));
-    }
+pub(super) fn check_slot(name: &str, slot: &Slot, limits: &wgpu::Limits) -> Result<(), Refusal> {
+    let groups = u64::from(slot.group) + 1;
+    check_limit(
+        name,
+        "max_bind_groups",
+        groups,
+        u64::from(limits.max_bind_groups),
+    )?;
+    let bindings = u64::from(slot.entry.binding) + 1;
+    let max = u64::from(limits.max_bindings_per_bind_group);
+    check_limit(name, "max_bindings_per_bind_group", bindings, max)?;
     let BindingType::Buffer {
         ty,
         min_binding_size: Some(size),
@@ -234,28 +442,20 @@ pub(super) fn check_slot(
     else {
         return Ok(());
     };
-    let (bound, max, limit) = match ty {
+    match ty {
         // The uniform pool binds each upload padded to the device's offset alignment.
         BufferBindingType::Uniform => {
             let align = u64::from(limits.min_uniform_buffer_offset_alignment.max(16));
             let bound = wgpu::util::align_to(size.get(), align);
             let max = limits.max_uniform_buffer_binding_size;
-            (bound, max, "max_uniform_buffer_binding_size")
+            check_limit(name, "max_uniform_buffer_binding_size", bound, max)
         }
         BufferBindingType::Storage { .. } => {
-            let binding = limits.max_storage_buffer_binding_size;
-            match binding <= limits.max_buffer_size {
-                true => (size.get(), binding, "max_storage_buffer_binding_size"),
-                false => (size.get(), limits.max_buffer_size, "max_buffer_size"),
-            }
+            let max = limits.max_storage_buffer_binding_size;
+            check_limit(name, "max_storage_buffer_binding_size", size.get(), max)?;
+            check_limit(name, "max_buffer_size", size.get(), limits.max_buffer_size)
         }
-    };
-    if bound > max {
-        return Err(RendererError::BindGroupLayoutError(format!(
-            "{name} binds {bound} bytes, past the device's {limit} of {max}"
-        )));
     }
-    Ok(())
 }
 
 /// The kinds of binding a stage counts against its limits.
@@ -285,31 +485,26 @@ impl Kind {
     }
 
     /// The limit on this kind in one stage, and its name.
-    fn limit(self, limits: &wgpu::Limits) -> (u32, &'static str, &'static str) {
+    fn limit(self, limits: &wgpu::Limits) -> (u32, &'static str) {
         match self {
             Kind::UniformBuffer => (
                 limits.max_uniform_buffers_per_shader_stage,
-                "uniform buffers",
                 "max_uniform_buffers_per_shader_stage",
             ),
             Kind::StorageBuffer => (
                 limits.max_storage_buffers_per_shader_stage,
-                "storage buffers",
                 "max_storage_buffers_per_shader_stage",
             ),
             Kind::SampledTexture => (
                 limits.max_sampled_textures_per_shader_stage,
-                "sampled textures",
                 "max_sampled_textures_per_shader_stage",
             ),
             Kind::Sampler => (
                 limits.max_samplers_per_shader_stage,
-                "samplers",
                 "max_samplers_per_shader_stage",
             ),
             Kind::StorageTexture => (
                 limits.max_storage_textures_per_shader_stage,
-                "storage textures",
                 "max_storage_textures_per_shader_stage",
             ),
         }
@@ -318,11 +513,11 @@ impl Kind {
 
 /// Refuses more bindings of one kind in a stage than the device takes, counting each binding
 /// in every stage it is visible to, as wgpu does. Buffers of both kinds also count together.
-fn check_counts(slots: &[Slot], limits: &wgpu::Limits) -> Result<(), RendererError> {
+fn check_counts(slots: &[Slot], limits: &wgpu::Limits) -> Result<(), Refusal> {
     let stages = [
-        (ShaderStages::VERTEX, "vertex"),
-        (ShaderStages::FRAGMENT, "fragment"),
-        (ShaderStages::COMPUTE, "compute"),
+        (ShaderStages::VERTEX, "the vertex stage"),
+        (ShaderStages::FRAGMENT, "the fragment stage"),
+        (ShaderStages::COMPUTE, "the compute stage"),
     ];
     let kinds = [
         Kind::UniformBuffer,
@@ -331,89 +526,41 @@ fn check_counts(slots: &[Slot], limits: &wgpu::Limits) -> Result<(), RendererErr
         Kind::Sampler,
         Kind::StorageTexture,
     ];
-    for (stage, stage_name) in stages {
+    for (stage, item) in stages {
         let visible: Vec<Kind> = slots
             .iter()
             .filter(|slot| slot.entry.visibility.contains(stage))
             .filter_map(|slot| Kind::read(&slot.entry.ty))
             .collect();
         for kind in kinds {
-            let count = visible.iter().filter(|seen| **seen == kind).count();
-            let (max, what, limit) = kind.limit(limits);
-            if count > max as usize {
-                return Err(RendererError::BindGroupLayoutError(format!(
-                    "{count} {what} in the {stage_name} stage, past the device's {limit} of {max}"
-                )));
-            }
+            let count = visible.iter().filter(|seen| **seen == kind).count() as u64;
+            let (max, limit) = kind.limit(limits);
+            check_limit(item, limit, count, u64::from(max))?;
         }
         let buffers = visible
             .iter()
             .filter(|kind| matches!(kind, Kind::UniformBuffer | Kind::StorageBuffer))
-            .count();
-        let max = limits.max_buffers_and_acceleration_structures_per_shader_stage;
-        if buffers > max as usize {
-            return Err(RendererError::BindGroupLayoutError(format!(
-                "{buffers} buffers in the {stage_name} stage, past the device's max_buffers_and_acceleration_structures_per_shader_stage of {max}"
-            )));
-        }
+            .count() as u64;
+        let max = u64::from(limits.max_buffers_and_acceleration_structures_per_shader_stage);
+        check_limit(
+            item,
+            "max_buffers_and_acceleration_structures_per_shader_stage",
+            buffers,
+            max,
+        )?;
     }
     Ok(())
 }
 
 /// Refuses a render shader without the vertex and fragment entry points a render pass runs.
-fn check_entries(shader: &ShaderObject) -> Result<(), RendererError> {
+fn check_entries(shader: &ShaderObject) -> Result<(), Refusal> {
     for (stage, name) in [
         (ShaderStage::Vertex, "@vertex"),
         (ShaderStage::Fragment, "@fragment"),
     ] {
         if shader.find_entry_point(stage).is_none() {
-            return Err(ShaderError::ParseError(format!(
-                "the shader has no {name} entry point, which a render pass runs"
-            ))
-            .into());
+            return Err(Refusal::Entry { stage: name.into() });
         }
-    }
-    Ok(())
-}
-
-/// Refuses a compute shader on a device without compute, or with a workgroup past its limits.
-/// `module` has its overrides set, so a workgroup an override sizes is checked too.
-fn check_compute(
-    module: &naga::Module,
-    limits: &wgpu::Limits,
-    downlevel: DownlevelFlags,
-) -> Result<(), RendererError> {
-    if !downlevel.contains(DownlevelFlags::COMPUTE_SHADERS) {
-        return Err(refuse("this device runs no compute shaders".into()));
-    }
-    let compute = |entry: &&naga::EntryPoint| entry.stage == ShaderStage::Compute;
-    let Some(entry) = module.entry_points.iter().find(compute) else {
-        return Ok(());
-    };
-    let maxes = [
-        limits.max_compute_workgroup_size_x,
-        limits.max_compute_workgroup_size_y,
-        limits.max_compute_workgroup_size_z,
-    ];
-    for ((size, max), axis) in entry.workgroup_size.iter().zip(maxes).zip(["x", "y", "z"]) {
-        if *size > max {
-            return Err(refuse(format!(
-                "`{}` has a workgroup {size} wide on {axis}, past the device's max_compute_workgroup_size_{axis} of {max}",
-                entry.name
-            )));
-        }
-    }
-    let invocations: u64 = entry
-        .workgroup_size
-        .iter()
-        .map(|&size| u64::from(size))
-        .product();
-    let max = limits.max_compute_invocations_per_workgroup;
-    if invocations > u64::from(max) {
-        return Err(refuse(format!(
-            "`{}` runs {invocations} invocations per workgroup, past the device's max_compute_invocations_per_workgroup of {max}",
-            entry.name
-        )));
     }
     Ok(())
 }
@@ -422,43 +569,49 @@ fn check_compute(
 pub(super) fn check_texture(
     name: &str,
     slot: &BindingType,
-    texture: &TextureObject,
+    texture: &TextureFacts,
     features: wgpu::Features,
 ) -> Result<(), RendererError> {
-    let format = texture.format();
-    let samples = texture.inner.sample_count();
-    let dimension = read_view_dimension(texture);
-    let wrong = |problem: String| {
-        RendererError::BindGroupLayoutError(format!("texture '{name}' can't take {problem}"))
+    let wrong = |expected: String, found: String| RendererError::BindingError {
+        name: name.to_string(),
+        expected,
+        found,
     };
+    let TextureFacts {
+        format,
+        usage,
+        dimension,
+        samples,
+        levels,
+    } = *texture;
     match *slot {
         BindingType::Texture {
             sample_type,
             view_dimension,
             multisampled,
         } => {
-            if !texture.usage.contains(wgpu::TextureUsages::TEXTURE_BINDING) {
-                return Err(wrong(format!(
-                    "a texture without TEXTURE_BINDING usage ({:?})",
-                    texture.usage
-                )));
+            if !usage.contains(wgpu::TextureUsages::TEXTURE_BINDING) {
+                let expected = "a texture with TEXTURE_BINDING usage".into();
+                return Err(wrong(expected, format!("usage {usage:?}")));
             }
-            if dimension != view_dimension {
-                return Err(wrong(format!(
-                    "a {dimension:?} texture in a {view_dimension:?} slot"
-                )));
-            }
+            check_view(name, view_dimension, dimension)?;
             if multisampled != (samples > 1) {
-                return Err(wrong(format!(
-                    "a texture with {samples} samples in a slot that is{} multisampled",
-                    if multisampled { "" } else { " not" }
-                )));
+                let expected = match multisampled {
+                    true => "a multisampled texture",
+                    false => "a single-sampled texture",
+                };
+                return Err(wrong(expected.into(), format!("{samples} samples")));
             }
             let found = format.sample_type(None, Some(features));
             if !fits_sample_type(sample_type, found) {
-                return Err(wrong(format!(
-                    "{format:?}, which samples as {found:?}, in a slot that samples as {sample_type:?}"
-                )));
+                let found = match found {
+                    Some(found) => format!("{format:?}, which samples as {found:?}"),
+                    None => format!("{format:?}, which no texture slot samples"),
+                };
+                return Err(wrong(
+                    format!("a texture that samples as {sample_type:?}"),
+                    found,
+                ));
             }
             Ok(())
         }
@@ -467,33 +620,52 @@ pub(super) fn check_texture(
             view_dimension,
             ..
         } => {
-            if !texture.usage.contains(wgpu::TextureUsages::STORAGE_BINDING) {
-                return Err(wrong(format!(
-                    "a texture without STORAGE_BINDING usage ({:?})",
-                    texture.usage
-                )));
+            if !usage.contains(wgpu::TextureUsages::STORAGE_BINDING) {
+                let expected = "a texture with STORAGE_BINDING usage".into();
+                return Err(wrong(expected, format!("usage {usage:?}")));
             }
             if format != declared {
-                return Err(wrong(format!("{format:?} in a {declared:?} storage slot")));
+                return Err(wrong(format!("{declared:?}"), format!("{format:?}")));
             }
-            if dimension != view_dimension {
-                return Err(wrong(format!(
-                    "a {dimension:?} texture in a {view_dimension:?} slot"
-                )));
-            }
-            let levels = texture.inner.mip_level_count();
+            check_view(name, view_dimension, dimension)?;
             if levels != 1 {
-                return Err(wrong(format!(
-                    "a texture with {levels} mip levels in a storage slot, which binds one"
-                )));
+                return Err(wrong(
+                    "one mip level".into(),
+                    format!("{levels} mip levels"),
+                ));
             }
             Ok(())
         }
         BindingType::ExternalTexture => Err(wrong(
-            "a texture in a texture_external slot, which no texture fills yet".into(),
+            "a video frame, which no texture fills yet".into(),
+            "a texture".into(),
         )),
         _ => Ok(()),
     }
+}
+
+/// Refuses a texture whose view has another dimension than the slot. A FragmentColor
+/// texture's view is a 1D, 2D or 3D view of all of it, so a cube or array slot takes none.
+fn check_view(
+    name: &str,
+    slot: wgpu::TextureViewDimension,
+    view: wgpu::TextureViewDimension,
+) -> Result<(), RendererError> {
+    if slot == view {
+        return Ok(());
+    }
+    use wgpu::TextureViewDimension as View;
+    let expected = match slot {
+        View::Cube | View::CubeArray | View::D2Array => {
+            format!("a {slot:?} view, which no FragmentColor texture makes yet")
+        }
+        _ => format!("a {slot:?} texture"),
+    };
+    Err(RendererError::BindingError {
+        name: name.to_string(),
+        expected,
+        found: format!("a {view:?} texture"),
+    })
 }
 
 /// Whether a texture that samples as `found` fills a slot that samples as `slot`.
@@ -515,16 +687,4 @@ fn fits_sample_type(slot: wgpu::TextureSampleType, found: Option<wgpu::TextureSa
                 Some(Sample::Float { filterable: true })
             )
     )
-}
-
-/// The dimension of the view `TextureObject::create_view` makes, wgpu's default for the texture.
-fn read_view_dimension(texture: &TextureObject) -> wgpu::TextureViewDimension {
-    match texture.inner.dimension() {
-        wgpu::TextureDimension::D1 => wgpu::TextureViewDimension::D1,
-        wgpu::TextureDimension::D2 => match texture.inner.depth_or_array_layers() {
-            1 => wgpu::TextureViewDimension::D2,
-            _ => wgpu::TextureViewDimension::D2Array,
-        },
-        wgpu::TextureDimension::D3 => wgpu::TextureViewDimension::D3,
-    }
 }

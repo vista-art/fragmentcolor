@@ -70,6 +70,28 @@ pub enum RendererError {
         .depth[0], .depth[1], .pass[0], .pass[1]
     )]
     DepthSizeMismatch { depth: [u32; 2], pass: [u32; 2] },
+    /// Something in a shader past one of the device's limits, such as a bind group
+    /// index past `max_bind_groups` or a uniform past `max_uniform_buffer_binding_size`.
+    #[error("{item} needs {limit} of at least {value}, and the device has {max}")]
+    LimitError {
+        item: String,
+        limit: String,
+        value: u64,
+        max: u64,
+    },
+    /// Something in a shader that needs a feature or capability the device lacks.
+    #[error("{item} needs {feature}, which the device lacks")]
+    FeatureError { item: String, feature: String },
+    /// A resource bound to a shader slot that can't take it, or a slot with nothing bound.
+    #[error("'{name}' takes {expected}, not {found}")]
+    BindingError {
+        name: String,
+        expected: String,
+        found: String,
+    },
+    /// A shader without the entry point its pass runs.
+    #[error("the shader has no {stage} entry point, which its pass runs")]
+    EntryError { stage: String },
     /// A target that another Renderer created, whose frames work on another device.
     #[error("The target belongs to another Renderer; render it with the Renderer that created it")]
     ForeignTarget,
@@ -126,6 +148,37 @@ impl From<RendererError> for pyo3::PyErr {
                 label,
                 detail,
             } => crate::error::DeviceError::raise(kind, label, detail, message),
+            RendererError::LimitError {
+                item,
+                limit,
+                value,
+                max,
+            } => crate::error::raise::<crate::error::LimitError>(message, |error| {
+                error.setattr("item", item)?;
+                error.setattr("limit", limit)?;
+                error.setattr("value", value)?;
+                error.setattr("max", max)
+            }),
+            RendererError::FeatureError { item, feature } => {
+                crate::error::raise::<crate::error::FeatureError>(message, |error| {
+                    error.setattr("item", item)?;
+                    error.setattr("feature", feature)
+                })
+            }
+            RendererError::BindingError {
+                name,
+                expected,
+                found,
+            } => crate::error::raise::<crate::error::BindingError>(message, |error| {
+                error.setattr("name", name)?;
+                error.setattr("expected", expected)?;
+                error.setattr("found", found)
+            }),
+            RendererError::EntryError { stage } => {
+                crate::error::raise::<crate::error::EntryError>(message, |error| {
+                    error.setattr("stage", stage)
+                })
+            }
             _ => crate::PyFragmentColorError::new_err(message),
         }
     }
@@ -173,6 +226,39 @@ impl RendererError {
                 label,
                 detail,
             } => throw_device(kind, &label, &detail, &message),
+            RendererError::LimitError {
+                item,
+                limit,
+                value,
+                max,
+            } => throw_fields(
+                &message,
+                &[
+                    ("item", item.into()),
+                    ("limit", limit.into()),
+                    ("value", JsValue::from_f64(value as f64)),
+                    ("max", JsValue::from_f64(max as f64)),
+                ],
+            ),
+            RendererError::FeatureError { item, feature } => throw_fields(
+                &message,
+                &[("item", item.into()), ("feature", feature.into())],
+            ),
+            RendererError::BindingError {
+                name,
+                expected,
+                found,
+            } => throw_fields(
+                &message,
+                &[
+                    ("name", name.into()),
+                    ("expected", expected.into()),
+                    ("found", found.into()),
+                ],
+            ),
+            RendererError::EntryError { stage } => {
+                throw_fields(&message, &[("stage", stage.into())])
+            }
             _ => JsError::new(&message),
         }
     }
@@ -184,6 +270,19 @@ impl From<RendererError> for wasm_bindgen::JsValue {
         let error: JsError = error.into_js();
         error.into()
     }
+}
+
+/// A JS `Error` with the full `message` that carries each of `fields` as a property.
+#[cfg(wasm)]
+fn throw_fields(message: &str, fields: &[(&str, JsValue)]) -> JsError {
+    let error = JsError::new(message);
+    // A clone holds the same JS object, so the properties land on the error itself.
+    let value = JsValue::from(error.clone());
+    for (name, field) in fields {
+        // Setting a property on a new Error object never throws.
+        let _ = js_sys::Reflect::set(&value, &JsValue::from_str(name), field);
+    }
+    error
 }
 
 /// A JS `Error` with the full `message` that carries the GPU error's `kind`,

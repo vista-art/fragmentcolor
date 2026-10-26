@@ -908,10 +908,10 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
 @group(0) @binding(0) var image: texture_2d<f32>;
 @group(0) @binding(1) var linear: sampler;
 @fragment fn fs_main() -> @location(0) vec4<f32> { return textureSample(image, linear, vec2<f32>(0.5)); }`);
-    refuses('render with an unset texture', /texture 'image' is not set/, () => renderer.render(sampled, target));
+    refuses('render with an unset texture', /'image' takes a texture, not none/, () => renderer.render(sampled, target));
     const depth = await renderer.createDepthTexture([8, 8]);
     sampled.set('image', depth);
-    refuses('render with a depth texture in a texture_2d<f32> slot', /texture 'image' can't take Depth32Float/,
+    refuses('render with a depth texture in a texture_2d<f32> slot', /'image' takes a texture that samples as Float \{ filterable: true \}, not Depth32Float/,
       () => renderer.render(sampled, target));
     const plain = await renderer.createTexture(new Uint8Array(4 * 4 * 4), { size: [4, 4] });
     sampled.set('image', plain);
@@ -927,17 +927,23 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
     const sampledOnly = await renderer.createTexture(new Uint8Array(4 * 4 * 4), { size: [4, 4] });
     marks.set('marks', sampledOnly);
     // WebGL2 binds no storage textures at all, which the same check reports first.
-    refuses('render with a sampled texture in a storage slot', /without STORAGE_BINDING usage|storage textures in the fragment stage/,
+    refuses('render with a sampled texture in a storage slot', /takes a texture with STORAGE_BINDING usage|max_storage_textures_per_shader_stage/,
       () => renderer.render(marks, target));
 
     const far = new Shader(`${vertex}
 @group(100) @binding(0) var<uniform> tint: vec4<f32>;
 @fragment fn fs_main() -> @location(0) vec4<f32> { return tint; }`);
-    refuses('render with a group past the device', /bind groups/, () => renderer.render(far, target));
+    refuses('render with a group past the device', /needs max_bind_groups of at least 101/,
+      () => renderer.render(far, target));
+    try { renderer.render(far, target); } catch (e) {
+      if (e.limit !== 'max_bind_groups' || e.value !== 101 || !(e.max < 101) || !e.item.startsWith("'tint'")) {
+        fail(`a group past the device threw item ${e.item}, limit ${e.limit}, value ${e.value}, max ${e.max}`);
+      }
+    }
     const lone = new Shader(`@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }`);
     refuses('render without a vertex entry point', /no @vertex entry point/, () => renderer.render(lone, target));
     const wide = new Shader(`@compute @workgroup_size(4096) fn cs_main() {}`);
-    refuses('dispatch of a workgroup past the device', /max_compute_workgroup_size_x|runs no compute shaders/,
+    refuses('dispatch of a workgroup past the device', /max_compute_workgroup_size_x|needs COMPUTE_SHADERS/,
       () => renderer.render(wide, target));
     const integer = new Shader(`${vertex}
 @fragment fn fs_main() -> @location(0) vec4<u32> { return vec4<u32>(1u); }`);

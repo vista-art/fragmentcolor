@@ -140,6 +140,31 @@ class Healthcheck : ExampleCase() {
         assertTrue(error.message.orEmpty().contains("property named 'position'"), error.message)
     }
 
+    // render refuses a shader the device can't run before any GPU work, with a case
+    // that names the kind of refusal and carries its fields.
+    @Test
+    fun shaderRefusalsThrowTypedCases() = runBlocking {
+        val renderer = Renderer()
+        val target = renderer.createTextureTarget(listOf(8u, 8u))
+        val far = Shader(
+            """
+            @group(100) @binding(0) var<uniform> tint: vec4<f32>;
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+              let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+              return vec4f(p[i], 0., 1.);
+            }
+            @fragment fn fs_main() -> @location(0) vec4<f32> { return tint; }
+            """.trimIndent()
+        )
+        val limit = assertFailsWith<FragmentColorException.Limit> { renderer.render(far, target) }
+        assertEquals("max_bind_groups", limit.limit)
+        assertEquals(101uL, limit.value)
+        assertTrue(limit.max < 101uL && limit.item.startsWith("'tint'"), limit.toString())
+        val lone = Shader("@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }")
+        val entry = assertFailsWith<FragmentColorException.Entry> { renderer.render(lone, target) }
+        assertEquals("@vertex", entry.stage)
+    }
+
     // A region or viewport with a side of 0, or a far edge past UInt.MAX_VALUE,
     // throws instead of shrinking, and a clear color is a list of floats or doubles.
     @Test

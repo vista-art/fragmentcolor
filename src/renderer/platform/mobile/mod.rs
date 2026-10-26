@@ -27,7 +27,8 @@ use crate::{Renderer, Size};
 
 /// Mobile-facing error type. Flattens every internal error to its `Display`
 /// representation so Swift/Kotlin callers get a single typed error to match on.
-/// A GPU error keeps its kind, its step's label and the device's own detail apart.
+/// A GPU error keeps its kind, its step's label and the device's own detail apart,
+/// and a shader the device refuses keeps the fields of its refusal.
 /// The exported `Display` gives Swift's `description` and `localizedDescription`,
 /// and Kotlin's `toString()`, the full text of every case.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -45,6 +46,57 @@ pub enum FragmentColorError {
         label: String,
         detail: String,
     },
+    #[error("{item} needs {limit} of at least {value}, and the device has {max}")]
+    Limit {
+        item: String,
+        limit: String,
+        value: u64,
+        max: u64,
+    },
+    #[error("{item} needs {feature}, which the device lacks")]
+    Feature { item: String, feature: String },
+    #[error("'{name}' takes {expected}, not {found}")]
+    Binding {
+        name: String,
+        expected: String,
+        found: String,
+    },
+    #[error("the shader has no {stage} entry point, which its pass runs")]
+    Entry { stage: String },
+}
+
+impl FragmentColorError {
+    /// The case a renderer error that isn't a GPU error takes.
+    fn from_refusal(error: crate::RendererError) -> Self {
+        use crate::RendererError as Refusal;
+        match error {
+            Refusal::LimitError {
+                item,
+                limit,
+                value,
+                max,
+            } => FragmentColorError::Limit {
+                item,
+                limit,
+                value,
+                max,
+            },
+            Refusal::FeatureError { item, feature } => {
+                FragmentColorError::Feature { item, feature }
+            }
+            Refusal::BindingError {
+                name,
+                expected,
+                found,
+            } => FragmentColorError::Binding {
+                name,
+                expected,
+                found,
+            },
+            Refusal::EntryError { stage } => FragmentColorError::Entry { stage },
+            other => FragmentColorError::Render(other.to_string()),
+        }
+    }
 }
 
 impl From<crate::InitializationError> for FragmentColorError {
@@ -69,7 +121,7 @@ impl From<crate::RendererError> for FragmentColorError {
                 label,
                 detail,
             },
-            e => FragmentColorError::Render(e.to_string()),
+            e => FragmentColorError::from_refusal(e),
         }
     }
 }

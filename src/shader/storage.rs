@@ -517,12 +517,11 @@ fn reserve(bytes: &mut Vec<u8>, name: &str, size: usize) -> Result<(), ShaderErr
     })
 }
 
-/// `span` zero bytes for the root `name`.
+/// `span` zero bytes for the root `name`. A reservation probes for the memory first,
+/// and `vec!` then asks the allocator for zeroed pages, which stay untouched until written.
 fn zeros(name: &str, span: u32) -> Result<Vec<u8>, ShaderError> {
-    let mut bytes = Vec::new();
-    reserve(&mut bytes, name, span as usize)?;
-    bytes.resize(span as usize, 0);
-    Ok(bytes)
+    reserve(&mut Vec::new(), name, span as usize)?;
+    Ok(vec![0u8; span as usize])
 }
 
 /// Copies `bytes` over `blob`, refusing any other length.

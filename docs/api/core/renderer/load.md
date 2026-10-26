@@ -13,8 +13,10 @@ for each, and writes the resulting `Texture` into the matching uniform.
 An upload that fails stays pending and the others still bind, so a good
 normal map binds even when the base color path is missing. `load` returns
 the first failure, and so does every later `load`, and every native
-`render`, until the input is fixed or replaced. The latest setter call for
-a map wins, so setting a map again replaces the pending upload.
+`render`, until the input is fixed or replaced. A map the shader doesn't
+declare fails the `load` that uploads it, once, and the other maps still
+bind. The latest setter call for a map wins, even one made while `load` is
+uploading the older input, which is then dropped.
 
 On native targets, [`Renderer::render`](https://fragmentcolor.org/api/core/renderer)
 runs `load` first whenever the renderable has pending uploads, so an

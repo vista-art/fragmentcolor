@@ -6393,7 +6393,8 @@ public func FfiConverterTypeErrorKind_lower(_ value: ErrorKind) -> RustBuffer {
 /**
  * Mobile-facing error type. Flattens every internal error to its `Display`
  * representation so Swift/Kotlin callers get a single typed error to match on.
- * A GPU error keeps its kind, its step's label and the device's own detail apart.
+ * A GPU error keeps its kind, its step's label and the device's own detail apart,
+ * and a shader the device refuses keeps the fields of its refusal.
  * The exported `Display` gives Swift's `description` and `localizedDescription`,
  * and Kotlin's `toString()`, the full text of every case.
  */
@@ -6409,6 +6410,14 @@ enum FragmentColorError: Swift.Error, Equatable, Hashable, Foundation.LocalizedE
     case Shader(String
     )
     case Device(kind: ErrorKind, label: String, detail: String
+    )
+    case Limit(item: String, limit: String, value: UInt64, max: UInt64
+    )
+    case Feature(item: String, feature: String
+    )
+    case Binding(name: String, expected: String, found: String
+    )
+    case Entry(stage: String
     )
 
     
@@ -6464,6 +6473,24 @@ public struct FfiConverterTypeFragmentColorError: FfiConverterRustBuffer {
             label: try FfiConverterString.read(from: &buf), 
             detail: try FfiConverterString.read(from: &buf)
             )
+        case 5: return .Limit(
+            item: try FfiConverterString.read(from: &buf), 
+            limit: try FfiConverterString.read(from: &buf), 
+            value: try FfiConverterUInt64.read(from: &buf), 
+            max: try FfiConverterUInt64.read(from: &buf)
+            )
+        case 6: return .Feature(
+            item: try FfiConverterString.read(from: &buf), 
+            feature: try FfiConverterString.read(from: &buf)
+            )
+        case 7: return .Binding(
+            name: try FfiConverterString.read(from: &buf), 
+            expected: try FfiConverterString.read(from: &buf), 
+            found: try FfiConverterString.read(from: &buf)
+            )
+        case 8: return .Entry(
+            stage: try FfiConverterString.read(from: &buf)
+            )
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -6496,6 +6523,32 @@ public struct FfiConverterTypeFragmentColorError: FfiConverterRustBuffer {
             FfiConverterTypeErrorKind.write(kind, into: &buf)
             FfiConverterString.write(label, into: &buf)
             FfiConverterString.write(detail, into: &buf)
+            
+        
+        case let .Limit(item,limit,value,max):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(item, into: &buf)
+            FfiConverterString.write(limit, into: &buf)
+            FfiConverterUInt64.write(value, into: &buf)
+            FfiConverterUInt64.write(max, into: &buf)
+            
+        
+        case let .Feature(item,feature):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(item, into: &buf)
+            FfiConverterString.write(feature, into: &buf)
+            
+        
+        case let .Binding(name,expected,found):
+            writeInt(&buf, Int32(7))
+            FfiConverterString.write(name, into: &buf)
+            FfiConverterString.write(expected, into: &buf)
+            FfiConverterString.write(found, into: &buf)
+            
+        
+        case let .Entry(stage):
+            writeInt(&buf, Int32(8))
+            FfiConverterString.write(stage, into: &buf)
             
         }
     }

@@ -862,8 +862,10 @@ for each, and writes the resulting `Texture` into the matching uniform.
 An upload that fails stays pending and the others still bind, so a good
 normal map binds even when the base color path is missing. `load` returns
 the first failure, and so does every later `load`, and every native
-`render`, until the input is fixed or replaced. The latest setter call for
-a map wins, so setting a map again replaces the pending upload.
+`render`, until the input is fixed or replaced. A map the shader doesn't
+declare fails the `load` that uploads it, once, and the other maps still
+bind. The latest setter call for a map wins, even one made while `load` is
+uploading the older input, which is then dropped.
 
 On native targets, [`Renderer::render`](/api/core/renderer)
 runs `load` first whenever the renderable has pending uploads, so an
@@ -1450,7 +1452,7 @@ A shader that reads `@location` vertex inputs needs a mesh. Without one, `render
 
 Each mesh a shader draws is checked against the device. An input at a location past the device's `max_vertex_attributes` returns `RendererError::Error` naming the input. A vertex or instance stride past `max_vertex_buffer_array_stride` returns `MeshError::InvalidVertex` or `MeshError::InvalidInstance`, and mesh data that needs a buffer past `max_buffer_size` returns `MeshError::BufferSize`, which names the buffer. WebGL2 takes strides up to 255 bytes. A mesh draws with every `Renderer` that renders it, each from buffers of its own.
 
-Before it takes a frame, `render` checks each shader against the device and each texture uniform against its slot, so every language returns these errors from the call that caused them, the web included. A group, binding, binding count or buffer size past the device's limits returns `RendererError::BindGroupLayoutError`, and so does a texture uniform with no texture or with a texture its slot can't take. A texture `unregister_texture` removed, or one from another `Renderer`, returns `RendererError::TextureNotFoundError`, in a PBR map slot too. A render shader without its vertex or fragment entry point returns `ShaderError::ParseError`. A compute shader on a device without compute, a workgroup past the device's limits, and anything else the device's shader validator refuses return `RendererError::Error`. The [Shader](/api/core/shader) page lists the checks.
+Before it takes a frame, `render` checks each shader against the device and each texture uniform against its slot, so every language returns these errors from the call that caused them, the web included. A group, binding, binding count, buffer size or workgroup past the device's limits returns `RendererError::LimitError`, a feature the device lacks `RendererError::FeatureError`, a texture uniform that was never set or whose texture its slot can't take `RendererError::BindingError`, and a render shader without its vertex or fragment entry point `RendererError::EntryError`, each with its fields. An unset PBR map slot binds its 1x1 default instead, when the slot takes a 2D float texture. A texture `unregister_texture` removed, or one from another `Renderer`, returns `RendererError::TextureNotFoundError`, in a PBR map slot too. The [Shader](/api/core/shader) page lists the checks and each language's form of these errors.
 
 A `Renderer` draws only into the targets it created. A target from another `Renderer` returns `RendererError::ForeignTarget`, unless every pass is a compute pass, which draws into no target. Each pass is checked against what it draws into before it records: a [depth target](/api/core/pass#set_depth_target) of the color attachment's size and sample count, shader outputs and blending the [target](/api/core/pass#set_target)'s format takes, a [viewport](/api/core/pass#set_viewport) and a [compute dispatch](/api/core/pass#set_compute_dispatch) the device takes, and textures that one pass doesn't both write and read. A render pass can't bind a texture it draws into, and no pass can read a texture one of its bindings writes, so a compute dispatch that samples a texture and stores into it returns `PassError::TextureConflict` too.
 

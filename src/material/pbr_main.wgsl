@@ -47,8 +47,8 @@ struct PbrMaterial {
   // (depth-write, blend equation) rather than fragment-shader logic.
   alpha_mode_flag: u32,
   // Move `uv` to offset 64, since an array in a uniform starts on 16 bytes.
-  // The padding is spelled out because the WGSL a browser receives
-  // drops @align and @size, so a layout that needs them breaks on the web.
+  // The padding is spelled out because the GL backends, WebGL2 among them,
+  // write the struct into a std140 block member by member, without @align and @size.
   pad0: u32,
   pad1: u32,
   pad2: u32,

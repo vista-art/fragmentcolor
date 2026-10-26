@@ -95,6 +95,44 @@ final class Healthcheck: ExampleCase {
         }
     }
 
+    // render refuses a shader the device can't run before any GPU work, with a case
+    // that names the kind of refusal and carries its fields.
+    func testShaderRefusalsThrowTypedCases() async throws {
+        let renderer = Renderer()
+        let target = try await renderer.createTextureTarget([8, 8])
+        let far = try Shader(source: """
+            @group(100) @binding(0) var<uniform> tint: vec4<f32>;
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+              let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+              return vec4f(p[i], 0., 1.);
+            }
+            @fragment fn fs_main() -> @location(0) vec4<f32> { return tint; }
+        """)
+        do {
+            try renderer.render(far, target)
+            throw HealthcheckError.assertion("a group past the device should throw")
+        } catch let error as FragmentColorError {
+            guard case let .Limit(item, limit, value, max) = error else {
+                throw HealthcheckError.assertion("render threw \(error), not Limit")
+            }
+            try assertEqual(limit, "max_bind_groups", "Limit limit")
+            try assertEqual(value, 101, "Limit value")
+            guard max < 101, item.hasPrefix("'tint'") else {
+                throw HealthcheckError.assertion("Limit item \(item), max \(max)")
+            }
+        }
+        let lone = try Shader(source: "@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }")
+        do {
+            try renderer.render(lone, target)
+            throw HealthcheckError.assertion("a shader without a vertex stage should throw")
+        } catch let error as FragmentColorError {
+            guard case let .Entry(stage) = error else {
+                throw HealthcheckError.assertion("render threw \(error), not Entry")
+            }
+            try assertEqual(stage, "@vertex", "Entry stage")
+        }
+    }
+
     // A size with layers reaches the check the other languages run: a texture
     // target has one layer, so a depth of 2 throws.
     func testTextureTargetRefusesLayers() async throws {

@@ -213,6 +213,7 @@ Core holds `Renderer`, the targets, `Shader` with `Pipeline`, `Pass`, `Mesh`, `T
 ### Textures and samplers
 
 - [ ] `SamplerOptions` gains `anisotropy` and a mirror wrap mode. It holds `repeat_x`, `repeat_y`, `smooth` and `compare` today, and the glTF loader reads `MIRRORED_REPEAT` as plain repeat. Floors blur at grazing angles without anisotropy
+- [ ] A texture uniform binds a view of the dimension its slot declares, so `texture_cube`, `texture_cube_array` and `texture_2d_array` slots take cube and layered textures. `Renderer::render` refuses those slots with `BindingError` today, since every view covers the whole texture
 - [ ] `TextureOptions` gains `dimension` (2D, cube, array or 3D) and a layer count, picked from the container when unset. `TextureFormat` gains the BC family, ASTC (4×4 to 12×12, Unorm, UnormSrgb and HDR), ETC2 and EAC, which the KTX2 path reads as `wgpu::TextureFormat` today. Cube, array and 3D uploads from KTX2 follow as 0.13.x patches
 - [ ] `create_external_texture` goes from every binding, with its pages. Each returns an error today, and reshaping it later would break callers. Video without a copy returns as a new call once wgpu supports it everywhere
 

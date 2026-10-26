@@ -9,8 +9,8 @@
 use super::ShaderError;
 use naga::proc::Layouter;
 use naga::valid::ModuleInfo;
-use naga::{AddressSpace, Handle, Module, Type, TypeInner};
-use std::collections::HashSet;
+use naga::{AddressSpace, ArraySize, Handle, Module, Type, TypeInner};
+use std::collections::{HashMap, HashSet};
 
 /// The WGSL the browser gets for `module`: what wgpu writes from it, with a `@size` on each
 /// member of a buffer struct whose explicit layout that text would lose. `None` when no
@@ -26,20 +26,40 @@ pub(crate) fn write_layouts(
     if pinned.is_empty() {
         return Ok(None);
     }
+    // naga's writer renames a type whose name ends in a digit or an underscore,
+    // repeats another, or isn't ASCII, so each pinned struct takes a name it keeps.
+    let names = name_pinned(module, &pinned);
+    let mut renamed = module.clone();
+    for (handle, name) in &names {
+        let ty = &renamed.types[*handle];
+        let replaced = Type {
+            name: Some(name.clone()),
+            inner: ty.inner.clone(),
+        };
+        renamed.types.replace(*handle, replaced);
+    }
     let flags = naga::back::wgsl::WriterFlags::empty();
-    let written = naga::back::wgsl::write_string(module, info, flags)?;
-    let text = pin_sizes(module, &pinned, &written)?;
-    check_layouts(module, &pinned, &text)?;
+    let written = naga::back::wgsl::write_string(&renamed, info, flags)?;
+    let text = pin_sizes(module, &names, &written)?;
+    check_layouts(module, &names, &text)?;
     Ok(Some(text))
+}
+
+/// The names of the buffer structs whose layout `@size` or `@align` sets,
+/// which a backend that drops those attributes can't keep.
+pub(crate) fn list_explicit(module: &Module) -> Result<Vec<String>, ShaderError> {
+    let pinned = find_explicit(module)?;
+    Ok(pinned
+        .into_iter()
+        .map(|handle| name_struct(module, handle))
+        .collect())
 }
 
 /// The buffer structs whose members or size sit past where their member types put them.
 fn find_explicit(module: &Module) -> Result<Vec<Handle<Type>>, ShaderError> {
     let mut layouter = Layouter::default();
-    layouter
-        .update(module.to_ctx())
-        .map_err(|error| ShaderError::TypeMismatch(error.to_string()))?;
-    let mut found: Vec<Handle<Type>> = find_buffer_structs(module)
+    layouter.update(module.to_ctx())?;
+    let mut found: Vec<Handle<Type>> = find_buffers(module)
         .into_iter()
         .filter(|handle| is_explicit(module, &layouter, *handle))
         .collect();
@@ -47,8 +67,28 @@ fn find_explicit(module: &Module) -> Result<Vec<Handle<Type>>, ShaderError> {
     Ok(found)
 }
 
+/// A name for each of the `pinned` structs that naga's writer keeps as it is:
+/// ASCII, ending in a letter, and unlike any other name in the module.
+fn name_pinned(module: &Module, pinned: &[Handle<Type>]) -> HashMap<Handle<Type>, String> {
+    let taken: HashSet<&str> = module
+        .types
+        .iter()
+        .filter_map(|(_, ty)| ty.name.as_deref())
+        .collect();
+    pinned
+        .iter()
+        .map(|handle| {
+            let mut name = format!("fc_layout{}s", handle.index());
+            while taken.contains(name.as_str()) {
+                name.push('s');
+            }
+            (*handle, name)
+        })
+        .collect()
+}
+
 /// The structs a uniform, storage or immediate root holds, at any depth.
-fn find_buffer_structs(module: &Module) -> HashSet<Handle<Type>> {
+fn find_buffers(module: &Module) -> HashSet<Handle<Type>> {
     let mut found = HashSet::new();
     let mut stack: Vec<Handle<Type>> = module
         .global_variables
@@ -91,23 +131,24 @@ fn is_explicit(module: &Module, layouter: &Layouter, handle: Handle<Type>) -> bo
     layouter[handle].alignment.round_up(cursor) != *span
 }
 
-/// `written` with a `@size` on each member of the `pinned` structs: the bytes up to the next
-/// member, or to the end of the struct for the last one.
+/// `written` with a `@size` on each member of the pinned structs, which `names` lists
+/// under the names they take in it: the bytes up to the next member, or to the end
+/// of the struct for the last one. A runtime-sized array keeps its open size.
 fn pin_sizes(
     module: &Module,
-    pinned: &[Handle<Type>],
+    names: &HashMap<Handle<Type>, String>,
     written: &str,
 ) -> Result<String, ShaderError> {
     let mut lines: Vec<String> = written.lines().map(str::to_string).collect();
-    for handle in pinned {
+    for (handle, written_name) in names {
         let TypeInner::Struct { members, span } = &module.types[*handle].inner else {
             continue;
         };
-        let name = name_struct(module, *handle);
-        let header = format!("struct {name} {{");
+        let header = format!("struct {written_name} {{");
         let missing = || {
             ShaderError::TypeMismatch(format!(
-                "struct `{name}` sets its layout with @size or @align, and FragmentColor can't find it in the WGSL the web gets"
+                "struct `{}` sets its layout with @size or @align, and FragmentColor can't find it in the WGSL the web gets",
+                name_struct(module, *handle)
             ))
         };
         let start = lines
@@ -123,6 +164,9 @@ fn pin_sizes(
             .map(|member| member.offset)
             .chain([*span]);
         for ((line, member), end) in body.iter_mut().zip(members).zip(ends) {
+            if is_open(module, member.ty) {
+                continue;
+            }
             let indent = line.len() - line.trim_start().len();
             line.insert_str(indent, &format!("@size({}) ", end - member.offset));
         }
@@ -132,16 +176,34 @@ fn pin_sizes(
     Ok(text)
 }
 
-/// Refuses `text` when a `pinned` struct read back from it has another size or puts a member elsewhere.
-fn check_layouts(module: &Module, pinned: &[Handle<Type>], text: &str) -> Result<(), ShaderError> {
+/// Whether `ty` is a runtime-sized array, which takes no `@size`.
+fn is_open(module: &Module, ty: Handle<Type>) -> bool {
+    matches!(
+        module.types[ty].inner,
+        TypeInner::Array {
+            size: ArraySize::Dynamic,
+            ..
+        }
+    )
+}
+
+/// Refuses `text` when a pinned struct read back from it, under the name `names` gives it,
+/// has another size or puts a member elsewhere.
+fn check_layouts(
+    module: &Module,
+    names: &HashMap<Handle<Type>, String>,
+    text: &str,
+) -> Result<(), ShaderError> {
     let read = naga::front::wgsl::parse_str(text)?;
-    for handle in pinned {
+    for (handle, written_name) in names {
         let name = name_struct(module, *handle);
         let TypeInner::Struct { members, span } = &module.types[*handle].inner else {
             continue;
         };
         let found = read.types.iter().find_map(|(_, ty)| match &ty.inner {
-            TypeInner::Struct { members, span } if ty.name.as_deref() == Some(name.as_str()) => {
+            TypeInner::Struct { members, span }
+                if ty.name.as_deref() == Some(written_name.as_str()) =>
+            {
                 Some((members, *span))
             }
             _ => None,
@@ -170,7 +232,7 @@ fn check_layouts(module: &Module, pinned: &[Handle<Type>], text: &str) -> Result
     Ok(())
 }
 
-/// How the WGSL names the struct `handle`.
+/// How errors name the struct `handle`: by the name the shader gives it.
 fn name_struct(module: &Module, handle: Handle<Type>) -> String {
     module.types[handle]
         .name
@@ -183,20 +245,19 @@ mod tests {
     use super::*;
     use crate::Shader;
 
-    /// Each struct's name and span, and the offset of each of its members.
-    type Layouts = Vec<(String, u32, Vec<u32>)>;
+    /// Each struct's span and the offset of each of its members, without names,
+    /// since the WGSL the web gets renames the pinned structs.
+    type Layouts = Vec<(u32, Vec<u32>)>;
 
-    /// The layouts of `module`, sorted by struct name.
+    /// The layouts of `module`, sorted.
     fn read_layouts(module: &Module) -> Layouts {
         let mut layouts: Layouts = module
             .types
             .iter()
             .filter_map(|(_, ty)| match &ty.inner {
-                TypeInner::Struct { members, span } => Some((
-                    ty.name.clone().unwrap_or_default(),
-                    *span,
-                    members.iter().map(|member| member.offset).collect(),
-                )),
+                TypeInner::Struct { members, span } => {
+                    Some((*span, members.iter().map(|member| member.offset).collect()))
+                }
                 _ => None,
             })
             .collect();
@@ -220,7 +281,7 @@ mod tests {
         naga::back::wgsl::write_string(module, info, flags).expect("writes WGSL")
     }
 
-    const SOURCES: [&str; 4] = [
+    const SOURCES: [&str; 6] = [
         "struct Tail { a: vec4<f32>, @size(32) b: f32 };
 @group(0) @binding(0) var<uniform> tail: Tail;
 @compute @workgroup_size(1) fn cs_main() { let x = tail.b; }",
@@ -235,6 +296,20 @@ struct Outer { x: f32, inner: Inner, y: f32 };
 struct Items { items: array<Item, 3>, count: u32 };
 @group(0) @binding(0) var<storage, read_write> list: Items;
 @compute @workgroup_size(1) fn cs_main() { list.items[2].w = f32(list.count); }",
+        // Names naga's writer changes: a trailing digit, a trailing underscore, non-ASCII letters.
+        "struct Params2 { a: f32, @align(16) b: vec2<f32> };
+struct Light_ { @size(32) c: f32, d: f32 };
+struct Données { @align(16) e: f32 };
+@group(0) @binding(0) var<uniform> params: Params2;
+@group(0) @binding(1) var<uniform> light: Light_;
+@group(0) @binding(2) var<uniform> données: Données;
+@compute @workgroup_size(1) fn cs_main() { let x = params.b.x + light.d + données.e; }",
+        // Two names that collapse to one: the writer names them `Foo` and `Foo_1`.
+        "struct Foo_ { a: vec4<f32> };
+struct Foo { a: f32, @align(16) b: f32 };
+@group(0) @binding(0) var<uniform> plain: Foo_;
+@group(0) @binding(1) var<uniform> pinned: Foo;
+@compute @workgroup_size(1) fn cs_main() { let x = plain.a.x + pinned.b; }",
     ];
 
     // Story: the plain WGSL wgpu writes for the browser drops @size and @align,
@@ -248,8 +323,9 @@ struct Items { items: array<Item, 3>, count: u32 };
         }
     }
 
-    // Story: @size on the last member, @align gaps, nested structs and arrays of
-    // structs keep every member's offset and every struct's size in the WGSL the web gets.
+    // Story: @size on the last member, @align gaps, nested structs, arrays of structs and
+    // names the writer would change keep every member's offset and every struct's size in
+    // the WGSL the web gets.
     #[test]
     fn explicit_layouts_survive_the_web() {
         for source in SOURCES {
@@ -268,12 +344,33 @@ struct Items { items: array<Item, 3>, count: u32 };
         }
     }
 
+    // Story: a struct that ends in a runtime-sized array keeps its open size and its layout.
+    #[test]
+    fn runtime_arrays_keep_their_open_size() {
+        let source = "struct Buf { @size(16) count: u32, data: array<f32> };
+@group(0) @binding(0) var<storage, read_write> buf: Buf;
+@compute @workgroup_size(1) fn cs_main() { buf.data[0] = f32(buf.count); }";
+        let module = naga::front::wgsl::parse_str(source).expect("parses");
+        let info = super::super::create_validator()
+            .validate(&module)
+            .expect("validates");
+        let text = write_layouts(&module, &info)
+            .expect("writes")
+            .expect("pins sizes");
+        let web = naga::front::wgsl::parse_str(&text).expect("parses");
+        assert_eq!(read_layouts(&module), read_layouts(&web), "{text}");
+    }
+
     // Story: WGSL whose struct takes another layout is refused, naming the struct and the member.
     #[test]
     fn a_layout_the_web_loses_fails() {
         let (module, info) = compile(SOURCES[1]);
         let pinned = find_explicit(&module).expect("finds");
-        let err = check_layouts(&module, &pinned, &write_plain(&module, &info))
+        let names: HashMap<Handle<Type>, String> = pinned
+            .iter()
+            .map(|handle| (*handle, name_struct(&module, *handle)))
+            .collect();
+        let err = check_layouts(&module, &names, &write_plain(&module, &info))
             .unwrap_err()
             .to_string();
         assert!(
@@ -292,5 +389,6 @@ struct Local { a: f32, @align(16) b: f32 };
 @compute @workgroup_size(1) fn cs_main() { var local = Local(1.0, 2.0); let x = plain.b + local.b; }",
         );
         assert!(write_layouts(&module, &info).expect("writes").is_none());
+        assert!(list_explicit(&module).expect("lists").is_empty());
     }
 }

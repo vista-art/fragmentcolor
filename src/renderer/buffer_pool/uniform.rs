@@ -13,6 +13,10 @@ pub(crate) struct UniformBufferPool {
     label: String,
     usage: wgpu::BufferUsages,
     buffers: Vec<wgpu::Buffer>,
+    /// Buffers for uploads past a chunk. The n-th such upload of a render takes the
+    /// n-th buffer, which grows only when the upload passes its size.
+    dedicated: Vec<wgpu::Buffer>,
+    next_dedicated: usize,
     chunk_size: u64,
     current_chunk: usize,
     current_offset: u64,
@@ -25,6 +29,8 @@ pub(crate) struct BufferLocation {
     pub chunk_index: usize,
     pub offset: u64,
     pub size: u64,
+    /// Whether `chunk_index` names one of the buffers for uploads past a chunk.
+    pub dedicated: bool,
 }
 
 impl UniformBufferPool {
@@ -61,6 +67,8 @@ impl UniformBufferPool {
             label: label.to_string(),
             usage,
             buffers: vec![initial_buffer],
+            dedicated: Vec::new(),
+            next_dedicated: 0,
             chunk_size,
             current_chunk: 0,
             current_offset: 0,
@@ -104,30 +112,32 @@ impl UniformBufferPool {
         let size = data.len() as u64;
         let aligned_size = wgpu::util::align_to(size, self.alignment);
 
-        // If a single upload does not fit in current chunk size, allocate a dedicated buffer
+        // An upload past a chunk takes a buffer of its own, kept for the next render.
         if aligned_size > self.chunk_size {
-            let idx = {
-                self.buffers
-                    .push(device.create_buffer(&wgpu::BufferDescriptor {
-                        label: Some(&self.label),
-                        size: aligned_size,
-                        usage: self.usage,
-                        mapped_at_creation: false,
-                    }));
-                self.buffers.len() - 1
-            };
-
-            // Write directly to the dedicated buffer at offset 0
-            queue.write_buffer(&self.buffers[idx], 0, data);
-
-            // Update cursor to the end of this dedicated buffer so subsequent writes advance
-            self.current_chunk = idx;
-            self.current_offset = aligned_size;
-
+            let index = self.next_dedicated;
+            self.next_dedicated += 1;
+            let fits = self
+                .dedicated
+                .get(index)
+                .is_some_and(|buffer| buffer.size() >= aligned_size);
+            if !fits {
+                let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some(&self.label),
+                    size: aligned_size,
+                    usage: self.usage,
+                    mapped_at_creation: false,
+                });
+                match self.dedicated.get_mut(index) {
+                    Some(slot) => *slot = buffer,
+                    None => self.dedicated.push(buffer),
+                }
+            }
+            queue.write_buffer(&self.dedicated[index], 0, data);
             return BufferLocation {
-                chunk_index: idx,
+                chunk_index: index,
                 offset: 0,
                 size,
+                dedicated: true,
             };
         }
 
@@ -154,6 +164,7 @@ impl UniformBufferPool {
             chunk_index: self.current_chunk,
             offset: self.current_offset,
             size,
+            dedicated: false,
         };
 
         self.current_offset += aligned_size;
@@ -171,8 +182,12 @@ impl UniformBufferPool {
             wgpu::util::align_to(location.size, align)
         };
 
+        let buffers = match location.dedicated {
+            true => &self.dedicated,
+            false => &self.buffers,
+        };
         wgpu::BufferBinding {
-            buffer: &self.buffers[location.chunk_index],
+            buffer: &buffers[location.chunk_index],
             offset: location.offset,
             size: match padded_size {
                 0 => None,
@@ -189,6 +204,7 @@ impl UniformBufferPool {
     pub fn reset(&mut self) {
         self.current_chunk = 0;
         self.current_offset = 0;
+        self.next_dedicated = 0;
     }
 }
 
@@ -251,6 +267,44 @@ mod tests {
             let loc0 = pool.upload(&zero, &queue, &device);
             let b0 = pool.get_binding(loc0);
             assert!(b0.size.is_none());
+        });
+    }
+
+    // Story: an upload past a chunk reuses its buffer on every render, so a large
+    // uniform drawn each frame holds one buffer instead of one per frame.
+    #[test]
+    fn large_uploads_reuse_their_buffer() {
+        pollster::block_on(async move {
+            let (device, queue) = device_and_queue().await;
+            let mut pool = UniformBufferPool::with_params(
+                "large pool",
+                &device,
+                wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                1024,
+            );
+            let large = vec![7u8; 4096];
+            let chunks = pool.buffers.len();
+            let mut first_render = Vec::new();
+
+            for _ in 0..3 {
+                pool.reset();
+                let first = pool.upload(&large, &queue, &device);
+                let second = pool.upload(&large, &queue, &device);
+                assert!(first.dedicated && second.dedicated);
+                assert_ne!(
+                    first.chunk_index, second.chunk_index,
+                    "one render keeps two apart"
+                );
+                if first_render.is_empty() {
+                    first_render = pool.dedicated.clone();
+                }
+            }
+
+            assert_eq!(
+                pool.dedicated, first_render,
+                "the same two buffers serve every render"
+            );
+            assert_eq!(pool.buffers.len(), chunks, "no chunk was added");
         });
     }
 

@@ -20,7 +20,8 @@ pub(crate) fn pad_uniform_blocks(source: &str, module: &Module) -> Option<String
     let mut wrapped: HashMap<Handle<naga::GlobalVariable>, String> = HashMap::new();
 
     for (handle, var) in module.global_variables.iter() {
-        if var.space != AddressSpace::Uniform {
+        // Immediate roots too: on these backends they always bind as uniforms.
+        if !matches!(var.space, AddressSpace::Uniform | AddressSpace::Immediate) {
             continue;
         }
         let size = module.types[var.ty].inner.size(ctx);
