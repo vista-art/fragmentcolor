@@ -2,8 +2,10 @@
 
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
+use pyo3::types::PyString;
 
-use crate::platforms::python::{PyChannels, PyUnsigned, read_unsigned};
+use crate::error::InvalidInputError;
+use crate::platforms::python::{PyChannels, PyUnsigned, read_numbers, read_unsigned};
 use crate::scene::{
     Camera, CameraError, Light, LightError, LightKind, Model, Scene, SceneLoadError,
 };
@@ -39,8 +41,9 @@ impl Model {
 
     #[pyo3(name = "set_transform")]
     #[lsp_doc("docs/api/scene/model/set_transform.md")]
-    pub fn set_transform_py(&self, matrix: PyMatrix) {
-        self.set_transform(matrix.into());
+    pub fn set_transform_py(&self, matrix: PyMatrix<'_>) -> PyResult<()> {
+        self.set_transform(matrix.read("Model.set_transform")?);
+        Ok(())
     }
 
     #[pyo3(name = "translate")]
@@ -134,23 +137,59 @@ impl Camera {
     }
 }
 
-/// A 4x4 matrix from Python: four columns of four, or 16 numbers column after column.
+/// A 4x4 matrix from Python: four columns of four numbers, or 16 numbers column after column.
+/// [`PyMatrix::read`] tells the forms apart by the first item: a list, but no string, starts a column.
 #[derive(FromPyObject)]
-pub enum PyMatrix {
-    #[pyo3(annotation = "Sequence[Sequence[float]]")]
-    Columns([[f32; 4]; 4]),
-    #[pyo3(annotation = "Sequence[float]")]
-    Flat([f32; 16]),
+pub enum PyMatrix<'py> {
+    #[pyo3(annotation = "Sequence[Sequence[float]] | Sequence[float]")]
+    Numbers(Bound<'py, PyAny>),
 }
 
-impl From<PyMatrix> for [[f32; 4]; 4] {
-    fn from(matrix: PyMatrix) -> Self {
-        match matrix {
-            PyMatrix::Columns(columns) => columns,
-            PyMatrix::Flat(flat) => {
-                std::array::from_fn(|column| std::array::from_fn(|row| flat[column * 4 + row]))
-            }
+impl PyMatrix<'_> {
+    /// The matrix's columns. A list of another length raises `InvalidInputError`
+    /// that names `label`, and an item that isn't a number raises `TypeError`.
+    pub(crate) fn read(&self, label: &str) -> PyResult<[[f32; 4]; 4]> {
+        let PyMatrix::Numbers(value) = self;
+        let items = value.extract::<Vec<Bound<'_, PyAny>>>()?;
+        let columns = match items.first() {
+            Some(first) if !first.is_instance_of::<PyString>() && first.len().is_ok() => items,
+            _ => return read_flat(value, label),
+        };
+        if columns.len() != 4 {
+            return Err(InvalidInputError::new_err(format!(
+                "{label} takes 4 columns of 4 numbers, got {} columns",
+                columns.len()
+            )));
         }
+        let mut matrix = [[0.0; 4]; 4];
+        for (index, (column, slot)) in columns.iter().zip(matrix.iter_mut()).enumerate() {
+            let label = format!("{label}: column {index}");
+            let numbers = read_numbers(column, &label)?;
+            *slot = match <[f64; 4]>::try_from(numbers.as_slice()) {
+                Ok(column) => column.map(|number| number as f32),
+                Err(_) => {
+                    return Err(InvalidInputError::new_err(format!(
+                        "{label} takes 4 numbers, got {}",
+                        numbers.len()
+                    )));
+                }
+            };
+        }
+        Ok(matrix)
+    }
+}
+
+/// A matrix of 16 numbers, column after column.
+fn read_flat(value: &Bound<'_, PyAny>, label: &str) -> PyResult<[[f32; 4]; 4]> {
+    let numbers = read_numbers(value, label)?;
+    match <[f64; 16]>::try_from(numbers.as_slice()) {
+        Ok(flat) => Ok(std::array::from_fn(|column| {
+            std::array::from_fn(|row| flat[column * 4 + row] as f32)
+        })),
+        Err(_) => Err(InvalidInputError::new_err(format!(
+            "{label} takes 16 numbers or 4 columns of 4 numbers, got {} numbers",
+            numbers.len()
+        ))),
     }
 }
 

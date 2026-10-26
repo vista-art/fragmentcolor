@@ -17,9 +17,10 @@ use lsp_doc::lsp_doc;
 
 use crate::pass::Pass;
 use crate::pass::error::PassError;
+use crate::platforms::vector::read_color;
 use crate::renderer::platform::mobile::FragmentColorError;
 use crate::renderer::renderable::{RenderableHandle, SceneObjectHandle, TargetHandle};
-use crate::{Color, Mesh, ScreenRegion, Shader, Texture};
+use crate::{Mesh, ScreenRegion, Shader, Texture};
 
 // -----------------------------------------------------------------
 // Pass (uniffi bindings)
@@ -149,7 +150,7 @@ impl Pass {
     #[uniffi::method(name = "setClearColor")]
     #[lsp_doc("docs/api/core/pass/hidden/set_clear_color_mobile.md")]
     pub fn set_clear_color_mobile(&self, color: Vec<f32>) -> Result<(), FragmentColorError> {
-        Ok(self.set_clear_color(Color::try_from(color.as_slice())?)?)
+        Ok(self.set_clear_color(read_color(color, "Pass.setClearColor")?)?)
     }
 
     /// Set the viewport (scissor + render region) for this pass.

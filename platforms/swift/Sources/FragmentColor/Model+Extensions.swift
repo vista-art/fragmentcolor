@@ -41,7 +41,7 @@ extension Model {
     }
     @_disfavoredOverload
     public func translate(_ offset: [Double]) throws {
-        try translate(offset: offset.map { Float($0) })
+        try translate(offset: readFloats(offset, "Model.translate"))
     }
 
     public func rotate(_ axis: [Float], _ radians: Float) throws {
@@ -49,7 +49,7 @@ extension Model {
     }
     @_disfavoredOverload
     public func rotate(_ axis: [Double], _ radians: Double) throws {
-        try rotate(axis: axis.map { Float($0) }, radians: Float(radians))
+        try rotate(axis: readFloats(axis, "Model.rotate: axis"), radians: Float(radians))
     }
 
     public func scale(_ factor: [Float]) throws {
@@ -57,7 +57,7 @@ extension Model {
     }
     @_disfavoredOverload
     public func scale(_ factor: [Double]) throws {
-        try scale(factor: factor.map { Float($0) })
+        try scale(factor: readFloats(factor, "Model.scale"))
     }
 
     public func setVisible(_ visible: Bool) {

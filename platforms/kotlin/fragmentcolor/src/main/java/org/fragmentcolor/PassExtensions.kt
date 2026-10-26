@@ -80,10 +80,10 @@ fun Pass.setClearColor(color: FloatArray) = setClearColor(color.toList())
 
 /** Set the clear color from `[r, g, b]` or `[r, g, b, a]` as doubles. */
 @JvmName("setClearColorDoubles")
-fun Pass.setClearColor(color: List<Double>) = setClearColor(color.map { it.toFloat() })
+fun Pass.setClearColor(color: List<Double>) = setClearColor(readFloats(color, "Pass.setClearColor"))
 
 /** Set the clear color from `[r, g, b]` or `[r, g, b, a]` as doubles. */
-fun Pass.setClearColor(color: DoubleArray) = setClearColor(color.map { it.toFloat() })
+fun Pass.setClearColor(color: DoubleArray) = setClearColor(readFloats(color, "Pass.setClearColor"))
 
 // ── Viewport ──────────────────────────────────────────────────────────────────
 

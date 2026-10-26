@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use crate::Shader;
 use crate::material::{AlphaMode, Material, MaterialError, TextureSlot};
+use crate::platforms::vector::read_vector;
 use crate::renderer::platform::mobile::FragmentColorError;
 use crate::texture::{Texture, TextureInput, TextureInputMobile, TextureOptions};
 
@@ -34,7 +35,7 @@ impl Material {
         self: Arc<Self>,
         color: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let arr = take_vec4(&color, "base_color")?;
+        let arr = read_vector::<4>(color, "Material.baseColor")?;
         Ok(Arc::new(self.base_color(arr)))
     }
 
@@ -68,7 +69,7 @@ impl Material {
         self: Arc<Self>,
         factor: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let arr = take_vec3(&factor, "emissive")?;
+        let arr = read_vector::<3>(factor, "Material.emissive")?;
         Ok(Arc::new(self.emissive(arr)))
     }
 
@@ -86,8 +87,8 @@ impl Material {
         scale: Vec<f32>,
         rotation: f32,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let o = take_vec2(&offset, "uvTransform offset")?;
-        let s = take_vec2(&scale, "uvTransform scale")?;
+        let o = read_vector::<2>(offset, "Material.uvTransform: offset")?;
+        let s = read_vector::<2>(scale, "Material.uvTransform: scale")?;
         Ok(Arc::new(self.uv_transform(o, s, rotation)))
     }
 
@@ -110,8 +111,8 @@ impl Material {
         scale: Vec<f32>,
         rotation: f32,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let o = take_vec2(&offset, "textureTransform offset")?;
-        let s = take_vec2(&scale, "textureTransform scale")?;
+        let o = read_vector::<2>(offset, "Material.textureTransform: offset")?;
+        let s = read_vector::<2>(scale, "Material.textureTransform: scale")?;
         Ok(Arc::new(self.texture_transform(slot, o, s, rotation)))
     }
 
@@ -231,34 +232,4 @@ fn texture_input(input: TextureInputMobile, options: Option<TextureOptions>) -> 
         data: input.into(),
         options: options.unwrap_or_default(),
     }
-}
-
-fn take_vec2(v: &[f32], field: &str) -> Result<[f32; 2], FragmentColorError> {
-    if v.len() != 2 {
-        return Err(FragmentColorError::Render(format!(
-            "Material.{field}: expected an array of length 2, got {}",
-            v.len()
-        )));
-    }
-    Ok([v[0], v[1]])
-}
-
-fn take_vec3(v: &[f32], field: &str) -> Result<[f32; 3], FragmentColorError> {
-    if v.len() != 3 {
-        return Err(FragmentColorError::Render(format!(
-            "Material.{field}: expected an array of length 3, got {}",
-            v.len()
-        )));
-    }
-    Ok([v[0], v[1], v[2]])
-}
-
-fn take_vec4(v: &[f32], field: &str) -> Result<[f32; 4], FragmentColorError> {
-    if v.len() != 4 {
-        return Err(FragmentColorError::Render(format!(
-            "Material.{field}: expected an array of length 4, got {}",
-            v.len()
-        )));
-    }
-    Ok([v[0], v[1], v[2], v[3]])
 }

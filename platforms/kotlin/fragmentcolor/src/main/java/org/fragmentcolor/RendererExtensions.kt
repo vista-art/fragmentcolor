@@ -229,6 +229,23 @@ internal fun sizeRecord(size: List<UInt>, method: String): Size {
     return Size(width = size[0], height = size[1], depth = size.getOrNull(2))
 }
 
+/**
+ * Each number of a color or vector as a [Float], the rule every binding shares.
+ * Throws [FragmentColorException] for NaN, an infinity, or a finite number past the [Float] range.
+ */
+internal fun readFloats(values: List<Double>, label: String): List<Float> =
+    values.mapIndexed { index, value ->
+        val float = value.toFloat()
+        if (!float.isFinite()) {
+            throw FragmentColorException.Render(
+                "$label: item $index must be a finite number that fits a 32-bit float, got $value",
+            )
+        }
+        float
+    }
+
+internal fun readFloats(values: DoubleArray, label: String): List<Float> = readFloats(values.toList(), label)
+
 /** Bytes from one [Int] per byte. Throws [FragmentColorException] for a value outside 0..255. */
 internal fun byteArray(bytes: List<Int>, method: String): ByteArray =
     ByteArray(bytes.size) { index ->

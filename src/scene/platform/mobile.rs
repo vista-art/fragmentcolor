@@ -3,6 +3,7 @@
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
+use crate::platforms::vector::read_vector;
 use crate::renderer::platform::mobile::FragmentColorError;
 use crate::renderer::renderable::SceneObjectHandle;
 use crate::scene::{Camera, CameraError, Light, LightKind, Model, Scene, SceneSource};
@@ -85,7 +86,7 @@ impl Model {
     #[uniffi::method(name = "translate")]
     #[lsp_doc("docs/api/scene/model/translate.md")]
     pub fn translate_mobile(self: Arc<Self>, offset: Vec<f32>) -> Result<(), FragmentColorError> {
-        let arr = take_vec3(&offset, "Model.translate")?;
+        let arr = read_vector::<3>(offset, "Model.translate")?;
         self.translate(arr);
         Ok(())
     }
@@ -97,7 +98,7 @@ impl Model {
         axis: Vec<f32>,
         radians: f32,
     ) -> Result<(), FragmentColorError> {
-        let arr = take_vec3(&axis, "Model.rotate")?;
+        let arr = read_vector::<3>(axis, "Model.rotate: axis")?;
         self.rotate(arr, radians);
         Ok(())
     }
@@ -105,7 +106,7 @@ impl Model {
     #[uniffi::method(name = "scale")]
     #[lsp_doc("docs/api/scene/model/scale.md")]
     pub fn scale_mobile(self: Arc<Self>, factor: Vec<f32>) -> Result<(), FragmentColorError> {
-        let arr = take_vec3(&factor, "Model.scale")?;
+        let arr = read_vector::<3>(factor, "Model.scale")?;
         self.scale(arr);
         Ok(())
     }
@@ -164,9 +165,9 @@ impl Camera {
         target: Vec<f32>,
         up: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let pos = take_vec3(&position, "Camera.lookAt position")?;
-        let target = take_vec3(&target, "Camera.lookAt target")?;
-        let up = take_vec3(&up, "Camera.lookAt up")?;
+        let pos = read_vector::<3>(position, "Camera.lookAt: position")?;
+        let target = read_vector::<3>(target, "Camera.lookAt: target")?;
+        let up = read_vector::<3>(up, "Camera.lookAt: up")?;
         Ok(Arc::new(self.look_at(pos, target, up)?))
     }
 
@@ -205,8 +206,8 @@ impl Light {
         direction: Vec<f32>,
         color: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let direction = take_vec3(&direction, "Light.directional direction")?;
-        let color = take_vec3(&color, "Light.directional color")?;
+        let direction = read_vector::<3>(direction, "Light.directional: direction")?;
+        let color = read_vector::<3>(color, "Light.directional: color")?;
         Ok(Arc::new(Light::directional(direction, color)))
     }
 
@@ -216,8 +217,8 @@ impl Light {
         position: Vec<f32>,
         color: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let position = take_vec3(&position, "Light.point position")?;
-        let color = take_vec3(&color, "Light.point color")?;
+        let position = read_vector::<3>(position, "Light.point: position")?;
+        let color = read_vector::<3>(color, "Light.point: color")?;
         Ok(Arc::new(Light::point(position, color)))
     }
 
@@ -228,9 +229,9 @@ impl Light {
         direction: Vec<f32>,
         color: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let position = take_vec3(&position, "Light.spot position")?;
-        let direction = take_vec3(&direction, "Light.spot direction")?;
-        let color = take_vec3(&color, "Light.spot color")?;
+        let position = read_vector::<3>(position, "Light.spot: position")?;
+        let direction = read_vector::<3>(direction, "Light.spot: direction")?;
+        let color = read_vector::<3>(color, "Light.spot: color")?;
         Ok(Arc::new(Light::spot(position, direction, color)))
     }
 
@@ -292,7 +293,7 @@ impl Light {
         self: Arc<Self>,
         color: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let color = take_vec3(&color, "Light.setColor")?;
+        let color = read_vector::<3>(color, "Light.setColor")?;
         Ok(Arc::new(self.set_color(color)))
     }
 
@@ -308,7 +309,7 @@ impl Light {
         self: Arc<Self>,
         position: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let position = take_vec3(&position, "Light.setPosition")?;
+        let position = read_vector::<3>(position, "Light.setPosition")?;
         self.set_position(position)
             .map(Arc::new)
             .map_err(|e| FragmentColorError::Render(e.to_string()))
@@ -320,7 +321,7 @@ impl Light {
         self: Arc<Self>,
         direction: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let direction = take_vec3(&direction, "Light.setDirection")?;
+        let direction = read_vector::<3>(direction, "Light.setDirection")?;
         self.set_direction(direction)
             .map(Arc::new)
             .map_err(|e| FragmentColorError::Render(e.to_string()))
@@ -499,7 +500,7 @@ impl Scene {
         self: Arc<Self>,
         color: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let c = take_vec3(&color, "Scene.ambient")?;
+        let c = read_vector::<3>(color, "Scene.ambient")?;
         self.ambient(c);
         Ok(self)
     }
@@ -521,14 +522,4 @@ impl Scene {
     pub fn lights_mobile(self: Arc<Self>) -> Vec<Arc<Light>> {
         self.lights().into_iter().map(Arc::new).collect()
     }
-}
-
-fn take_vec3(v: &[f32], field: &str) -> Result<[f32; 3], FragmentColorError> {
-    if v.len() != 3 {
-        return Err(FragmentColorError::Render(format!(
-            "{field}: expected an array of length 3, got {}",
-            v.len()
-        )));
-    }
-    Ok([v[0], v[1], v[2]])
 }

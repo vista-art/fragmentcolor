@@ -48,6 +48,35 @@ class Healthcheck : ExampleCase() {
         pass.setClearColor(listOf(0.1, 0.2, 0.3))
     }
 
+    // A color or vector item that is NaN, an infinity or past the Float range
+    // throws, and the message names the call, as in every binding.
+    @Test
+    fun floatVectorsRefuseNonFiniteNumbers() {
+        val material = Material.pbr()
+        val cases: List<Pair<String, () -> Unit>> = listOf(
+            "Light.point: position" to { Light.point(doubleArrayOf(1e39, 0.0, 0.0), doubleArrayOf(1.0, 1.0, 1.0)) },
+            "Light.point: position" to { Light.point(listOf(Float.NaN, 0f, 0f), listOf(1f, 1f, 1f)) },
+            "Light.setColor" to { Light.point(listOf(0f, 1f, 0f), listOf(1f, 1f, 1f)).setColor(listOf(Double.POSITIVE_INFINITY, 0.0, 0.0)) },
+            "Pass.setClearColor" to { Pass("p").setClearColor(doubleArrayOf(0.0, -1e39, 0.0)) },
+            "Pass.setClearColor" to { Pass("p").setClearColor(floatArrayOf(Float.NaN, 0f, 0f)) },
+            "Scene.ambient" to { Scene().ambient(listOf(Float.POSITIVE_INFINITY, 0f, 0f)) },
+            "Model.translate" to { Model(Mesh(), material).translate(doubleArrayOf(0.0, Double.NaN, 0.0)) },
+            "Model.rotate: axis" to { Model(Mesh(), material).rotate(floatArrayOf(0f, Float.POSITIVE_INFINITY, 0f), 1f) },
+            "Camera.lookAt: up" to {
+                Camera.perspective(1f, 1f, 0.1f, 100f).lookAt(listOf(0.0, 0.0, 5.0), listOf(0.0, 0.0, 0.0), listOf(0.0, 1e39, 0.0))
+            },
+            "Material.baseColor" to { material.baseColor(listOf(1f, 1f, Float.NaN, 1f)) },
+            "Material.uvTransform: offset" to { material.uvTransform(doubleArrayOf(1e39, 0.0), doubleArrayOf(1.0, 1.0), 0.0) },
+            "Material.textureTransform: scale" to {
+                material.textureTransform(TextureSlot.NORMAL, listOf(0f, 0f), listOf(Float.POSITIVE_INFINITY, 1f), 0f)
+            },
+        )
+        for ((label, call) in cases) {
+            val error = assertFailsWith<FragmentColorException> { call() }
+            assertTrue(error.message.orEmpty().contains(label), "$label threw ${error.message}")
+        }
+    }
+
     // Shader.set shapes each Kotlin value to the uniform's declared WGSL type.
     // Setting and reading uniforms touches no GPU, so this runs on any emulator.
     @Test
