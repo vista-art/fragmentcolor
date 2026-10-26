@@ -12,6 +12,7 @@ use objc2::msg_send;
 use objc2::runtime::AnyObject;
 
 use crate::MobileWindowTarget;
+use crate::renderer::platform::metal_layer::{check_metal_layer, read_side};
 use crate::{Renderer, WindowTarget};
 
 use super::FragmentColorError;
@@ -55,16 +56,19 @@ impl Renderer {
         metal_layer_ptr: u64,
     ) -> Result<Arc<MobileWindowTarget>, FragmentColorError> {
         let layer = metal_layer_ptr as *mut AnyObject;
-        if layer.is_null() {
+        // SAFETY: Swift passes the address of a live Objective-C object, and `as_ref`
+        // turns a null pointer into `None`. No other address can be checked here.
+        let Some(object) = (unsafe { layer.as_ref() }) else {
             return Err(FragmentColorError::Init(
                 "createTarget: the CAMetalLayer pointer is null".into(),
             ));
-        }
-        // Read drawableSize off the CAMetalLayer via Objective-C runtime.
+        };
+        // Only a CAMetalLayer answers drawableSize, so check the class before asking.
+        check_metal_layer(object)?;
         let size: CGSize = unsafe { msg_send![layer, drawableSize] };
         let extent = wgpu::Extent3d {
-            width: u32::max(size.width as u32, 1),
-            height: u32::max(size.height as u32, 1),
+            width: read_side(size.width)?,
+            height: read_side(size.height)?,
             depth_or_array_layers: 1,
         };
 

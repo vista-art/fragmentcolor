@@ -15,6 +15,10 @@ pub use python::*;
 #[cfg(mobile)]
 pub mod mobile;
 
+/// Checks on the `CAMetalLayer` behind an iOS window target.
+#[cfg(any(ios, all(test, macos)))]
+pub(crate) mod metal_layer;
+
 /// Desktop window integration (winit)
 #[cfg(all(desktop, feature = "winit"))]
 pub mod winit;

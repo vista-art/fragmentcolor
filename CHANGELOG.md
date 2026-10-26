@@ -33,6 +33,7 @@
 ### Swift
 
 - `TextureTarget.resize([w, h])` and `WindowTarget.resize([w, h])` throw `FragmentColorError` for an array that isn't 2 or 3 numbers long, where they stopped the app.
+- `createTarget` checks that the layer address it receives names a `CAMetalLayer` and throws `FragmentColorError` for any other object. A plain `CALayer` passed to the raw uniffi method aborted the app. A drawable size that is negative or NaN throws too, where it became 1 pixel.
 - The `Camera`, `Light` and `Material` setters that return their receiver, such as `lookAt`, `setAspect` and `setDirection`, are `@discardableResult`, as `Scene` and `Pass` were. A per-frame update no longer needs `_ =` in front.
 
 ### Breaking and behavior changes

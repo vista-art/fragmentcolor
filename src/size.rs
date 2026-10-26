@@ -57,7 +57,7 @@ impl Size {
 
 /// One size or region dimension from a binding.
 /// It must be a finite number from 0 to `u32::MAX`, and a fraction rounds down.
-#[cfg(any(wasm, python))]
+#[cfg(any(wasm, python, ios, all(test, macos)))]
 pub(crate) fn read_dimension(number: f64) -> Option<u32> {
     (number.is_finite() && (0.0..=u32::MAX as f64).contains(&number)).then_some(number as u32)
 }
