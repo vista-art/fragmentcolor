@@ -23,7 +23,7 @@ use crate::pass::{CameraSnapshot, PassObject};
 use crate::scene::SceneObject;
 use crate::shader::ShaderObject;
 
-/// Errors from camera parameters that can't build a finite matrix.
+/// Errors from camera parameters that leave no usable view.
 #[derive(Debug, thiserror::Error)]
 pub enum CameraError {
     #[error(

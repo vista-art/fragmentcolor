@@ -22,7 +22,7 @@ Internally a Camera carries:
   shaders that need it (specular highlights, fresnel) don't have to invert
   the view matrix on every frame.
 
-Parameters that can't build a finite matrix fail instead of hiding every
+Parameters that leave no usable view fail instead of hiding every
 model: `perspective`, `orthographic`, `look_at` and `set_aspect` return a
 `CameraError` in Rust, throw an `Error` in JavaScript, raise `CameraError`
 (a `FragmentColorError` and a `ValueError`) in Python, throw
