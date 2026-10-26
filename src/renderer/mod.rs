@@ -1,3 +1,4 @@
+use crate::mesh::vertex::POSITION;
 use crate::pass::PassInput;
 use crate::{PassObject, ShaderError, ShaderHash, ShaderObject, Target, TargetFrame};
 use crate::{ScreenRegion, Size, WindowTarget};
@@ -87,7 +88,7 @@ enum PushMode {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct RenderPipeline {
     pipeline: wgpu::RenderPipeline,
     // Map of bind group index -> layout (keeps group indices stable)
@@ -745,8 +746,11 @@ struct PassDraws {
 /// What one shader of a render pass draws, decided before the frame is acquired.
 struct ShaderDraw {
     shader: Arc<ShaderObject>,
-    /// The vertex layouts the shader reads from its first mesh, or `None` when it reads none.
-    layouts: Option<VertexLayouts>,
+    /// The vertex layouts its meshes read, in the order they first appear, one pipeline
+    /// each. Empty for a shader with no mesh, which draws with one pipeline that reads no vertex buffer.
+    layouts: Vec<VertexLayouts>,
+    /// The entry of `layouts` each mesh reads, by mesh pointer.
+    readers: HashMap<usize, usize>,
     /// Whether the shader draws the pass's Models, hidden ones included.
     model: bool,
     draws: MeshDraws,
@@ -762,11 +766,39 @@ enum MeshDraws {
     Blend,
 }
 
-/// One mesh draw: the mesh's buffers, its index count, and the instances it draws.
+/// One mesh draw: the mesh's buffers, its index count, the instances it draws,
+/// and the entry of its shader's `layouts` it reads.
 struct MeshDraw {
     buffers: crate::mesh::VertexBuffers,
     index_count: u32,
     instances: Instances,
+    layout: usize,
+}
+
+/// A shader's pipelines and bind groups in one render pass. The blend phase binds them
+/// again for each translucent draw. The pipelines share their bind group layouts.
+struct ShaderState<'plan> {
+    /// One pipeline for each entry of the plan's `layouts`, or one for a shader with no mesh.
+    pipelines: Vec<wgpu::RenderPipeline>,
+    /// The pipeline each mesh draws with, by mesh pointer.
+    readers: &'plan HashMap<usize, usize>,
+    bind_groups: Vec<(u32, wgpu::BindGroup)>,
+    immediates: Option<Vec<u8>>,
+}
+
+impl ShaderState<'_> {
+    /// Sets the pipeline of `layout`, the bind groups and the native immediates.
+    fn bind(&self, render_pass: &mut wgpu::RenderPass<'_>, layout: usize) {
+        if let Some(pipeline) = self.pipelines.get(layout) {
+            render_pass.set_pipeline(pipeline);
+        }
+        for (group, bind_group) in self.bind_groups.iter() {
+            render_pass.set_bind_group(*group, bind_group, &[]);
+        }
+        if let Some(bytes) = self.immediates.as_deref() {
+            render_pass.set_immediates(0, bytes);
+        }
+    }
 }
 
 /// Key for caching render pipelines
@@ -1169,7 +1201,7 @@ impl RenderContext {
         self.check_light_cap(pass)?;
         self.check_viewport(pass)?;
         let targets = self.find_targets(pass)?;
-        let mut draws = self.build_pass_draws(pass);
+        let mut draws = self.build_pass_draws(pass)?;
         let model_shaders = find_model_shaders(pass);
         draws.has_models = !model_shaders.is_empty();
         let shaders = pass.shaders.read().clone();
@@ -1197,52 +1229,63 @@ impl RenderContext {
         self.check_shader(&shader)?;
         self.check_textures(&shader)?;
         let meshes = shader.meshes.read().clone();
-        let layouts = self.read_layouts(&shader, &meshes)?;
-        let draws = if meshes.is_empty() {
-            MeshDraws::Fullscreen
-        } else if *shader.alpha_mode.read() == crate::material::AlphaMode::Blend {
-            MeshDraws::Blend
-        } else {
-            let shader_ptr = Arc::as_ptr(&shader) as usize;
-            let mut batched = Vec::with_capacity(meshes.len());
-            for mesh in meshes.iter() {
-                let (buffers, counts) = mesh.vertex_buffers(self)?;
-                let models = overrides.get(&(shader_ptr, Arc::as_ptr(mesh) as usize));
-                let own = buffers.instance_buffer.as_ref();
-                let instances =
-                    pick_instances(&shader, models, own, mesh, model, layouts.as_ref(), counts)?;
-                if let Some(instances) = instances {
-                    batched.push(MeshDraw {
-                        index_count: counts.index_count,
-                        instances,
-                        buffers,
-                    });
+        if meshes.is_empty() {
+            require_mesh(&shader)?;
+            return Ok(ShaderDraw {
+                shader,
+                layouts: Vec::new(),
+                readers: HashMap::new(),
+                model,
+                draws: MeshDraws::Fullscreen,
+            });
+        }
+        let blend = *shader.alpha_mode.read() == crate::material::AlphaMode::Blend;
+        let shader_ptr = Arc::as_ptr(&shader) as usize;
+        let limits = self.device.limits();
+        let mut layouts: Vec<VertexLayouts> = Vec::new();
+        let mut readers = HashMap::with_capacity(meshes.len());
+        let mut batched = Vec::with_capacity(meshes.len());
+        for mesh in meshes.iter() {
+            // Packing the buffers derives the schemas the layouts read.
+            let (buffers, counts) = mesh.vertex_buffers(self)?;
+            let read = vertex_buffer_layouts(&shader, mesh, &limits)?;
+            let layout = match layouts.iter().position(|known| *known == read) {
+                Some(index) => index,
+                None => {
+                    layouts.push(read);
+                    layouts.len() - 1
                 }
+            };
+            let mesh_ptr = Arc::as_ptr(mesh) as usize;
+            readers.insert(mesh_ptr, layout);
+            // A translucent shader's Models draw in the pass's blend phase.
+            if blend {
+                continue;
             }
-            MeshDraws::Batched(batched)
+            let models = overrides.get(&(shader_ptr, mesh_ptr));
+            let own = buffers.instance_buffer.as_ref();
+            let reads = layouts.get(layout);
+            let instances = pick_instances(&shader, models, own, mesh, model, reads, counts)?;
+            if let Some(instances) = instances {
+                batched.push(MeshDraw {
+                    index_count: counts.index_count,
+                    instances,
+                    buffers,
+                    layout,
+                });
+            }
+        }
+        let draws = match blend {
+            true => MeshDraws::Blend,
+            false => MeshDraws::Batched(batched),
         };
         Ok(ShaderDraw {
             shader,
             layouts,
+            readers,
             model,
             draws,
         })
-    }
-
-    /// The vertex layouts a shader reads from its first mesh,
-    /// or `None` for a shader that reads no vertex input.
-    fn read_layouts(
-        &self,
-        shader: &crate::ShaderObject,
-        meshes: &[Arc<crate::mesh::MeshObject>],
-    ) -> Result<Option<VertexLayouts>, RendererError> {
-        if let Some(first) = meshes.first() {
-            // Derive the schemas (and pack the buffers) before reading the layouts.
-            first.vertex_buffers(self)?;
-            return vertex_buffer_layouts(shader, first.as_ref());
-        }
-        require_mesh(shader)?;
-        Ok(None)
     }
 
     /// Try to get a frame once, and on Lost/Outdated, retry exactly once.
@@ -1484,11 +1527,11 @@ impl RenderContext {
     /// `pass.add(&camera)` call), `eye_z` defaults to 0.0 and the
     /// resulting order is insertion-order — correct for a single
     /// translucent object, best-effort for multiple.
-    fn build_pass_draws(&self, pass: &PassObject) -> PassDraws {
+    fn build_pass_draws(&self, pass: &PassObject) -> Result<PassDraws, RendererError> {
         let entries = pass.model_entries.read();
         let mut out = PassDraws::default();
         if entries.is_empty() {
-            return out;
+            return Ok(out);
         }
 
         // Compute eye-Z via the cached view matrix; `None` means no Camera
@@ -1570,7 +1613,9 @@ impl RenderContext {
             }
         }
 
+        let limit = self.device.limits().max_buffer_size;
         for (key, bytes) in opaque_groups.iter() {
+            crate::mesh::check_buffer("Model instance", bytes.len() as u64, limit)?;
             let count = (bytes.len() / 64) as u32;
             let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Pass model instance buffer"),
@@ -1609,7 +1654,7 @@ impl RenderContext {
             draw.instance_buffer = Some(buffer);
         }
 
-        out
+        Ok(out)
     }
 
     fn process_render_pass(
@@ -1727,17 +1772,11 @@ impl RenderContext {
         // looked up again in the global blend phase so translucent draws
         // can switch pipelines/bind-groups as they walk `blend_draws` in
         // back-to-front order across every Material on the pass.
-        struct ShaderRenderState {
-            pipeline: wgpu::RenderPipeline,
-            bind_groups: Vec<(u32, wgpu::BindGroup)>,
-            immediates: Option<Vec<u8>>,
-        }
-        let mut shader_states: HashMap<usize, ShaderRenderState> = HashMap::new();
+        let mut shader_states: HashMap<usize, ShaderState> = HashMap::new();
 
         for plan in pass_draws.shaders.iter() {
             let shader = &plan.shader;
             shader.flush_pending();
-            let layouts = &plan.layouts;
 
             // Snapshot the Material-owned pipeline-state flags from the
             // shader's back-references. Drop the read locks immediately so
@@ -1746,37 +1785,56 @@ impl RenderContext {
             let double_sided = *shader.double_sided.read();
             // In a pass with models, the shaders that draw none ignore the depth attachment.
             let depth_use = depth.pick(pass_draws.has_models && !plan.model);
-            let pipeline_key = RenderPipelineKey {
-                shader_hash: shader.hash,
-                color_format,
-                depth: depth_use,
-                sample_count,
-                alpha_mode,
-                double_sided,
-                vertex_layouts: layouts.clone(),
+            // One pipeline for each vertex layout the shader's meshes read,
+            // or one that reads no vertex buffer for a shader with no mesh.
+            let keys: Vec<Option<&VertexLayouts>> = match plan.layouts.is_empty() {
+                true => vec![None],
+                false => plan.layouts.iter().map(Some).collect(),
             };
-            let cached_pipeline = self.fetch_pipeline(
-                &self.render_pipelines,
-                pipeline_key,
-                "render pipeline",
-                || {
-                    let layout = plan_layout(shader, &self.device, Some(self.light_path()));
-                    create_render_pipeline(
-                        &self.device,
-                        shader,
-                        &layout,
-                        color_format,
-                        sample_count,
-                        layouts.as_ref(),
-                        depth_use,
-                        alpha_mode,
-                        double_sided,
-                        self.aligned_uniform_bindings.load(Ordering::Relaxed),
-                        self.light_path(),
-                        self.writes_wgsl.load(Ordering::Relaxed),
-                    )
-                },
-            )?;
+            let mut pipelines = Vec::with_capacity(keys.len());
+            for layouts in keys {
+                let pipeline_key = RenderPipelineKey {
+                    shader_hash: shader.hash,
+                    color_format,
+                    depth: depth_use,
+                    sample_count,
+                    alpha_mode,
+                    double_sided,
+                    vertex_layouts: layouts.cloned(),
+                };
+                // The pipeline leaves the cache guard here, so the next lookup takes no other guard.
+                let pipeline = self
+                    .fetch_pipeline(
+                        &self.render_pipelines,
+                        pipeline_key,
+                        "render pipeline",
+                        || {
+                            let layout = plan_layout(shader, &self.device, Some(self.light_path()));
+                            create_render_pipeline(
+                                &self.device,
+                                shader,
+                                &layout,
+                                color_format,
+                                sample_count,
+                                layouts,
+                                depth_use,
+                                alpha_mode,
+                                double_sided,
+                                self.aligned_uniform_bindings.load(Ordering::Relaxed),
+                                self.light_path(),
+                                self.writes_wgsl.load(Ordering::Relaxed),
+                            )
+                        },
+                    )?
+                    .value()
+                    .clone();
+                pipelines.push(pipeline);
+            }
+            // Every pipeline of a shader has the same bind group layouts, and wgpu
+            // dedupes equal layouts, so one set of bind groups serves them all.
+            let Some(cached_pipeline) = pipelines.first() else {
+                continue;
+            };
 
             // Collect resources per bind group to build entries safely with owned views/samplers
             #[derive(Default)]
@@ -1979,44 +2037,44 @@ impl RenderContext {
 
             // Sort by group index to match pipeline layout order
             bind_groups.sort_by_key(|(g, _)| *g);
-            render_pass.set_pipeline(&cached_pipeline.pipeline);
-            for (group, bind_group) in bind_groups.iter() {
-                render_pass.set_bind_group(*group, bind_group, &[]);
-            }
 
-            // Set native immediate data just before draw if applicable.
+            // Native immediate data, set right after each pipeline.
             // Blocking read for the same reason as the storage-buffer snapshot
             // earlier in this function.
             let mut immediate_bytes: Option<Vec<u8>> = None;
             if let Some(PushMode::Native { root, .. }) = &cached_pipeline.push_mode {
                 let storage = shader.storage.read();
-                if let Some(bytes) = storage.get_bytes(root) {
-                    render_pass.set_immediates(0, bytes);
-                    immediate_bytes = Some(bytes.to_vec());
-                }
+                immediate_bytes = storage.get_bytes(root).map(<[u8]>::to_vec);
             }
 
-            let shader_ptr = Arc::as_ptr(shader) as usize;
-            // Snapshot the pipeline + bind-groups + native immediate bytes
-            // so the blend phase below can re-bind them per draw without
+            // Snapshot the pipelines + bind-groups + native immediate bytes
+            // so the draws below and the blend phase can bind them again without
             // walking the bind-group construction again. wgpu types are
             // Arc-backed, so the clones are cheap (single refcount bump).
-            shader_states.insert(
-                shader_ptr,
-                ShaderRenderState {
-                    pipeline: cached_pipeline.pipeline.clone(),
-                    bind_groups: bind_groups.clone(),
-                    immediates: immediate_bytes,
-                },
-            );
+            let state = ShaderState {
+                pipelines: pipelines
+                    .into_iter()
+                    .map(|cached| cached.pipeline)
+                    .collect(),
+                readers: &plan.readers,
+                bind_groups,
+                immediates: immediate_bytes,
+            };
+            state.bind(&mut render_pass, 0);
 
             match &plan.draws {
                 MeshDraws::Fullscreen => render_pass.draw(0..3, 0..1),
                 // Auto-instancing path: one batched draw per (shader, mesh) pair
                 // regardless of how many Models contributed. The pass packs all
                 // queued model matrices into one vertex buffer at slot 1.
+                // A mesh with another layout than the one before switches pipelines.
                 MeshDraws::Batched(meshes) => {
+                    let mut current = 0;
                     for mesh in meshes {
+                        if mesh.layout != current {
+                            state.bind(&mut render_pass, mesh.layout);
+                            current = mesh.layout;
+                        }
                         if let Some(buffer) = mesh.instances.buffer.as_ref() {
                             render_pass.set_vertex_buffer(1, buffer.slice(..));
                         }
@@ -2032,16 +2090,17 @@ impl RenderContext {
                 // shader has registered its pipeline and bind groups in `shader_states`.
                 MeshDraws::Blend => {}
             }
+            shader_states.insert(Arc::as_ptr(shader) as usize, state);
         }
 
         // Global blend phase: walk every `BlendDraw` in eye-Z far→near
         // order (already sorted in `build_pass_draws`) and rebind the
-        // owning shader's pipeline + bind groups whenever the active
-        // shader_ptr changes. Two translucent Materials in one Pass now
+        // owning shader's pipeline + bind groups whenever the shader or
+        // the mesh's layout changes. Two translucent Materials in one Pass
         // interleave correctly — A-far, B-mid, A-near sequences emit in
         // global Z order rather than per-shader buckets.
         if !blend_draws.is_empty() {
-            let mut current_shader_ptr: Option<usize> = None;
+            let mut current: Option<(usize, usize)> = None;
             for draw in blend_draws.iter() {
                 let Some(buf) = draw.instance_buffer.as_ref() else {
                     continue;
@@ -2049,15 +2108,12 @@ impl RenderContext {
                 let Some(state) = shader_states.get(&draw.shader_ptr) else {
                     continue;
                 };
-                if current_shader_ptr != Some(draw.shader_ptr) {
-                    render_pass.set_pipeline(&state.pipeline);
-                    for (group, bg) in state.bind_groups.iter() {
-                        render_pass.set_bind_group(*group, bg, &[]);
-                    }
-                    if let Some(bytes) = state.immediates.as_deref() {
-                        render_pass.set_immediates(0, bytes);
-                    }
-                    current_shader_ptr = Some(draw.shader_ptr);
+                let Some(&layout) = state.readers.get(&(Arc::as_ptr(&draw.mesh) as usize)) else {
+                    continue;
+                };
+                if current != Some((draw.shader_ptr, layout)) {
+                    state.bind(&mut render_pass, layout);
+                    current = Some((draw.shader_ptr, layout));
                 }
                 let (refs, counts) = draw.mesh.vertex_buffers(self)?;
                 if counts.index_count == 0 {
@@ -2463,18 +2519,15 @@ fn require_mesh(shader: &ShaderObject) -> Result<(), ShaderError> {
     )))
 }
 
-// @TODO the Shader should provide this
-//.      - heck if the logic in the Shader is the same
-//.      - Create and persist the layouts in the ShaderObject
+/// The vertex layouts `shader` reads from `mesh`, checked against the device's
+/// vertex `limits`: each input's location, and the stride of each stream it reads.
+/// The checks run on the CPU, so a refusal builds no pipeline, on the web too.
 fn vertex_buffer_layouts(
     shader: &crate::ShaderObject,
     mesh: &crate::mesh::MeshObject,
-) -> Result<Option<VertexLayouts>, RendererError> {
-    // Reflect inputs; if none, return None so callers can fall back to triangle path
+    limits: &wgpu::Limits,
+) -> Result<VertexLayouts, RendererError> {
     let vertex_inputs = shader.reflect_vertex_inputs()?;
-    if vertex_inputs.is_empty() {
-        return Ok(None);
-    }
 
     // Read schemas
     let Some(vertex_schema) = mesh.vertex_schema.read().clone() else {
@@ -2515,6 +2568,13 @@ fn vertex_buffer_layouts(
     // shader's input name doesn't appear in either map (raw / generated
     // shaders).
     for vertex_input in vertex_inputs.iter() {
+        // Locations are unique, so this also keeps the count within the limit.
+        if vertex_input.location >= limits.max_vertex_attributes {
+            return Err(RendererError::Error(format!(
+                "shader input '{}' @location({}) is past this device's max_vertex_attributes ({})",
+                vertex_input.name, vertex_input.location, limits.max_vertex_attributes
+            )));
+        }
         let mut placed = false;
 
         let assert_format = |format_mesh: wgpu::VertexFormat,
@@ -2559,7 +2619,7 @@ fn vertex_buffer_layouts(
         //    unnamed in the mesh map.
         if !placed
             && vertex_input.location == vertex_location
-            && let Some((offset, format_mesh)) = vertex_map.get("position").cloned()
+            && let Some((offset, format_mesh)) = vertex_map.get(POSITION).cloned()
         {
             assert_format(format_mesh, "vertex/position")?;
             vertex_attributes.push(wgpu::VertexAttribute {
@@ -2605,6 +2665,11 @@ fn vertex_buffer_layouts(
         }
     }
 
+    let limit = u64::from(limits.max_vertex_buffer_array_stride);
+    if vertex_stride > limit {
+        let reason = explain_stride("vertex", vertex_stride, limit);
+        return Err(crate::mesh::MeshError::InvalidVertex(reason).into());
+    }
     vertex_attributes.sort_by_key(|attr| attr.shader_location);
     let vertex = VertexStream {
         stride: vertex_stride,
@@ -2612,7 +2677,12 @@ fn vertex_buffer_layouts(
         attributes: vertex_attributes,
     };
 
+    // The instance stream counts against the limit only when the shader reads it.
     let instance = match (instance_attributes.is_empty(), instance_stride) {
+        (false, Some(stride)) if stride > limit => {
+            let reason = explain_stride("instance", stride, limit);
+            return Err(crate::mesh::MeshError::InvalidInstance(reason).into());
+        }
         (false, Some(stride)) => {
             instance_attributes.sort_by_key(|attr| attr.shader_location);
             Some(VertexStream {
@@ -2624,7 +2694,14 @@ fn vertex_buffer_layouts(
         _ => None,
     };
 
-    Ok(Some(VertexLayouts { vertex, instance }))
+    Ok(VertexLayouts { vertex, instance })
+}
+
+/// Why a `stream` whose items take `stride` bytes can't draw on a device of `limit`.
+fn explain_stride(stream: &str, stride: u64, limit: u64) -> String {
+    format!(
+        "the {stream} stride of {stride} bytes is past this device's max_vertex_buffer_array_stride ({limit})"
+    )
 }
 
 /// The viewport for `region`, as given. `check_viewport` keeps each side within
@@ -4595,6 +4672,177 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat)
 
             assert!(is_blue(pixel(&images[0], LEFT)), "opaque");
             assert!(is_blue(pixel(&images[1], LEFT)), "blended");
+        });
+    }
+
+    /// `strip`, with one more property on each vertex, which widens its stride.
+    fn wide_strip(material: &crate::Material, left: f32, right: f32) -> crate::Model {
+        let narrow = strip(material, left, right);
+        let mesh = crate::Mesh::new();
+        let vertices = narrow.mesh().object.verts.read().clone();
+        mesh.add_vertices(vertices.into_iter().map(|vertex| vertex.set("weight", 1.0)));
+        crate::Model::new(mesh, material.clone())
+    }
+
+    // Story: two Models that share a material draw, opaque or blended, though
+    // their meshes lay out vertices differently, where the second one read the first one's layout.
+    #[test]
+    fn models_with_other_layouts_share_a_material() {
+        pollster::block_on(async move {
+            use crate::Target;
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([SIDE, SIDE])
+                .await
+                .expect("texture target");
+            let mut images = Vec::new();
+            for material in [
+                red_glow(),
+                red_glow().alpha_mode(crate::material::AlphaMode::Blend),
+            ] {
+                let pass = Pass::new("layouts");
+                pass.set_clear_color(BLUE).expect("set clear color");
+                pass.add(&strip(&material, -1.0, -0.2)).expect("add left");
+                pass.add(&wide_strip(&material, 0.2, 1.0))
+                    .expect("add right");
+                pass.add(&camera()).expect("add camera");
+                renderer.render(&pass, &target).expect("render");
+                images.push(target.get_image().await.expect("read back"));
+            }
+
+            for (image, mode) in images.iter().zip(["opaque", "blended"]) {
+                assert!(is_red(pixel(image, LEFT)), "{mode}, left");
+                assert!(is_red(pixel(image, RIGHT)), "{mode}, right");
+            }
+        });
+    }
+
+    // Story: the transforms of more Models than the device's largest buffer holds
+    // fail the plan, before any frame is taken or any buffer is made.
+    #[test]
+    fn model_buffers_stay_within_the_buffer_limit() {
+        pollster::block_on(async move {
+            let (device, queue) = platform::all::request_small_device(65536).await;
+            let ctx = RenderContext::new(device, queue);
+            let material = red_glow();
+            let mesh = strip(&material, -1.0, 1.0).mesh().clone();
+            let pass = Pass::new("crowd");
+            // One more Model than 64 KiB of 64-byte transforms holds.
+            for _ in 0..1025 {
+                pass.add(&crate::Model::new(mesh.clone(), material.clone()))
+                    .expect("add");
+            }
+
+            let planned = ctx.plan_pass(&pass.object);
+
+            let message = "The Model instance buffer takes 65600 bytes, past this device's max_buffer_size (65536)";
+            assert!(
+                matches!(&planned, Err(RendererError::MeshError(error)) if error.to_string() == message),
+                "got {:?}",
+                planned.err()
+            );
+        });
+    }
+
+    /// A shader that reads one input at `location` past the position.
+    fn read_location(location: u32) -> String {
+        format!(
+            "@vertex fn vs_main(@location(0) position: vec2<f32>, @location({location}) extra: f32) -> @builtin(position) vec4<f32> {{
+  return vec4<f32>(position * extra, 0.0, 1.0);
+}}
+@fragment fn fs_main() -> @location(0) vec4<f32> {{ return vec4<f32>(1.0); }}"
+        )
+    }
+
+    // Story: a vertex input at a location past the device's attribute limit fails
+    // render on the CPU, before any pipeline builds, and one below the limit draws.
+    #[test]
+    fn vertex_locations_stay_below_the_device_limit() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8u32, 8u32])
+                .await
+                .expect("texture target");
+            let limit = target.context.device.limits().max_vertex_attributes;
+            let mesh = crate::Mesh::new();
+            mesh.add_vertices(TRIANGLE.map(|corner| crate::Vertex::new(corner).set("extra", 1.0)));
+            let past = crate::Shader::new(read_location(limit)).expect("shader");
+            past.add_mesh(&mesh).expect("mesh attaches");
+            let last = crate::Shader::new(read_location(limit - 1)).expect("shader");
+            last.add_mesh(&mesh).expect("mesh attaches");
+
+            let refused = renderer.render(&past, &target);
+            let drawn = renderer.render(&last, &target);
+
+            let expected = format!(
+                "shader input 'extra' @location({limit}) is past this device's max_vertex_attributes ({limit})"
+            );
+            assert!(
+                matches!(&refused, Err(RendererError::Error(message)) if *message == expected),
+                "got {refused:?}"
+            );
+            assert!(drawn.is_ok(), "got {drawn:?}");
+        });
+    }
+
+    // Story: a vertex or instance stride past the device's limit fails render on the
+    // CPU, before any pipeline builds, though the shader reads few of the attributes.
+    #[test]
+    fn strides_stay_within_the_device_limit() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8u32, 8u32])
+                .await
+                .expect("texture target");
+            let limit = target
+                .context
+                .device
+                .limits()
+                .max_vertex_buffer_array_stride;
+            if limit > 1 << 16 {
+                eprintln!("the device reports no practical stride limit");
+                return;
+            }
+            // Enough four-float properties to pass the limit.
+            let count = limit / 16 + 1;
+            let widen = |vertex: crate::Vertex| {
+                (0..count).fold(vertex, |vertex, index| {
+                    vertex.set(&format!("p{index}"), [0.0, 0.0, 0.0, 0.0])
+                })
+            };
+            let vertices = crate::Mesh::new();
+            vertices.add_vertices(TRIANGLE.map(|corner| widen(crate::Vertex::new(corner))));
+            let plain = crate::Shader::new(INDEXED_SHADER).expect("shader");
+            plain.add_mesh(&vertices).expect("mesh attaches");
+            let instances = crate::Mesh::new();
+            instances.add_vertices(TRIANGLE.map(crate::Vertex::new));
+            let instance = widen(crate::Vertex::new([0.0, 0.0])).set("offset", [0.0, 0.0]);
+            instances.add_instance(instance);
+            let offset = crate::Shader::new(OFFSET_SHADER).expect("shader");
+            offset.add_mesh(&instances).expect("mesh attaches");
+
+            let vertex = renderer.render(&plain, &target);
+            let instance = renderer.render(&offset, &target);
+
+            let stride = |extra: u32| u64::from(count * 16 + extra);
+            let vertex_message = format!(
+                "Invalid vertex: the vertex stride of {} bytes is past this device's max_vertex_buffer_array_stride ({limit})",
+                stride(8)
+            );
+            let instance_message = format!(
+                "Invalid instance: the instance stride of {} bytes is past this device's max_vertex_buffer_array_stride ({limit})",
+                stride(8)
+            );
+            assert!(
+                matches!(&vertex, Err(RendererError::MeshError(error)) if error.to_string() == vertex_message),
+                "got {vertex:?}"
+            );
+            assert!(
+                matches!(&instance, Err(RendererError::MeshError(error)) if error.to_string() == instance_message),
+                "got {instance:?}"
+            );
         });
     }
 

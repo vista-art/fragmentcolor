@@ -74,7 +74,7 @@ pub(crate) async fn request_device(
     // wgpu-hal "Missing features:" log line because the constraint is on
     // limits, not features.
     let requested_features = adapter.features() & CANDIDATES;
-    let requested_limits = adapter.limits();
+    let requested_limits = cap_limits(adapter);
 
     let (device, queue) = adapter
         .request_device(&wgpu::DeviceDescriptor {
@@ -111,6 +111,20 @@ pub(crate) async fn request_small_device(limit: u64) -> (wgpu::Device, wgpu::Que
         })
         .await
         .expect("device")
+}
+
+/// The adapter's limits, with the vertex stride WebGL2 takes. wgpu reports no stride
+/// limit there, and WebGL's `vertexAttribPointer` refuses a stride past 255 bytes.
+fn cap_limits(adapter: &wgpu::Adapter) -> wgpu::Limits {
+    let limits = adapter.limits();
+    #[cfg(wasm)]
+    if adapter.get_info().backend == wgpu::Backend::Gl {
+        return wgpu::Limits {
+            max_vertex_buffer_array_stride: limits.max_vertex_buffer_array_stride.min(255),
+            ..limits
+        };
+    }
+    limits
 }
 
 /// The variable that names the file collecting uncaptured GPU errors.
