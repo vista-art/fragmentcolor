@@ -1,6 +1,6 @@
 import init, {
   Renderer, Shader, Pass, Mesh, Vertex, Instance, Scene, Model, Material, Camera, Light, Mipmap,
-  TextureFormat, TextureUsage, set_log_level,
+  TextureFormat, TextureUsage, ErrorKind, set_log_level,
 } from "fragmentcolor";
 import * as fc from "fragmentcolor";
 
@@ -697,11 +697,16 @@ await withModule('platforms.web.healthcheck.late_errors', async () => {
     const target = await renderer.createTextureTarget([8, 8]);
     const fail = (message) => { throw new Error(message); };
     const pause = () => new Promise((resolve) => setTimeout(resolve, 10));
-    // Checks that `run` throws the frame's error as an Error, with the text render throws.
+    // Checks that `run` throws the frame's error as an Error, with the text render throws
+    // and the error's kind and label as properties.
     const throwsLate = async (label, run) => {
       try { await run(); } catch (e) {
         if (!(e instanceof Error)) fail(`${label} threw a ${typeof e}, not an Error`);
-        if (!e.message.startsWith('GPU validation error')) fail(`${label} threw: ${e.message}`);
+        if (!e.message.startsWith('Device error (validation)')) fail(`${label} threw: ${e.message}`);
+        if (e.kind !== ErrorKind.Validation) fail(`${label} threw kind ${e.kind}`);
+        if (typeof e.label !== 'string' || !e.message.includes(`'${e.label}'`)) {
+          fail(`${label} threw label ${e.label} for: ${e.message}`);
+        }
         return console.log(`${label} threw:`, e.message);
       }
       fail(`${label} never reported the failed frame`);
@@ -723,7 +728,7 @@ await withModule('platforms.web.healthcheck.late_errors', async () => {
     const consoleError = console.error;
     console.error = (...args) => {
       const text = args.map(String).join(' ');
-      if (text.includes('GPU validation error')) logged.push(text);
+      if (text.includes('Device error (')) logged.push(text);
       else consoleError.apply(console, args);
     };
     // Waits until a new error has logged, and then until no more arrive.
@@ -766,14 +771,17 @@ struct Data { values: array<f32, 4> };
       await throwsLate('readTexture right after a failed frame', () => renderer.readTexture(target.texture().id()));
       await renderer.readTexture(target.texture().id());
 
-      // readTexture waits once, for the frames rendered before it. A frame that fails
-      // while it waits reports to the next call, never as a texture error from readTexture.
+      // readTexture waits once, for the frames rendered before it, and throws only their
+      // error. A frame that fails while it waits keeps its error for the next call.
       renderer.render(valid, target);
       const reading = renderer.readTexture(target.texture().id());
       await Promise.resolve();
       await Promise.resolve();
       renderer.render(unfed, target);
-      await reading;
+      const bytes = await reading;
+      if (!(bytes instanceof Uint8Array) || bytes.length !== 8 * 8 * 4) {
+        fail(`readTexture during a failed frame returned ${bytes}`);
+      }
       await throwsLate('getImage after a frame that failed during readTexture', () => target.getImage());
 
       renderer.render(storage, target);
