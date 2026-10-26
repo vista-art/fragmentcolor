@@ -46,6 +46,7 @@ fn prepare_readback(
     let padded_row_bytes =
         wgpu::util::align_to(row_bytes as u64, wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u64) as u32;
     let output_size = padded_row_bytes as u64 * height as u64 * depth as u64;
+    check_buffer(output_size, context.device.limits().max_buffer_size, size)?;
 
     let buffer = {
         let mut pool = context.readback_pool.write();
@@ -97,6 +98,21 @@ fn check_copy(format: wgpu::TextureFormat, flags: wgpu::DownlevelFlags) -> Resul
         )));
     }
     Ok(())
+}
+
+/// Checks that a readback buffer of `bytes` for a texture of `size` fits the device's `limit`.
+fn check_buffer(bytes: u64, limit: u64, size: wgpu::Extent3d) -> Result<(), TextureError> {
+    if bytes <= limit {
+        return Ok(());
+    }
+    let wgpu::Extent3d {
+        width,
+        height,
+        depth_or_array_layers: depth,
+    } = size;
+    Err(TextureError::Readback(format!(
+        "can't read back a {width}x{height}x{depth} texture, the copy needs {bytes} bytes and the device allows {limit}"
+    )))
 }
 
 fn extract_pixels(plan: &ReadbackPlan) -> Result<Vec<u8>, TextureError> {
@@ -205,5 +221,20 @@ mod tests {
         assert!(matches!(check_copy(depth, gles), Err(TextureError::Readback(_))));
         check_copy(color, gles).expect("color copies everywhere");
         check_copy(depth, wgpu::DownlevelFlags::all()).expect("depth copies on WebGPU");
+    }
+
+    // Story: a readback whose padded buffer is past the device's largest buffer
+    // is refused before the buffer is made, and one that fits passes. Pure, no GPU.
+    #[test]
+    fn check_buffer_refuses_a_copy_past_the_limit() {
+        let size = wgpu::Extent3d {
+            width: 16384,
+            height: 16384,
+            depth_or_array_layers: 1,
+        };
+        let limit = 256 << 20;
+        let refused = check_buffer(16384 * 16 * 16384, limit, size);
+        assert!(matches!(refused, Err(TextureError::Readback(_))));
+        check_buffer(limit, limit, size).expect("a copy at the limit fits");
     }
 }

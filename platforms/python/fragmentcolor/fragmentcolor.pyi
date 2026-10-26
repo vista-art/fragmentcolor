@@ -409,7 +409,7 @@ class Renderer:
         - Works on native and on the web; the call awaits the GPU readback mapping.
         - Equivalent to calling [`Texture::get_image`] on the texture handle. Use this entry point when you only kept the `TextureId` around.
         - The texture must have `COPY_SRC` usage. Creation helpers like `create_storage_texture` enable it by default.
-        - GLES and WebGL2 can't copy a depth texture to a buffer, so reading one back there returns `TextureError::Readback`.
+        - GLES and WebGL2 can't copy a depth texture to a buffer, so reading one back there returns `TextureError::Readback`. So does a texture whose readback needs a buffer past the device's largest, `max_buffer_size`.
         - A block-compressed texture, such as one loaded from a BC7 or ASTC KTX2 file, has no size per pixel, so reading it back is an `InvalidInput` error.
 
         Example:
@@ -4622,7 +4622,7 @@ class Texture:
         - Works on native and on the web; the call awaits the GPU readback mapping.
         - For multi-layer textures, layers come first in the byte layout (layer-major).
         - The texture must have `COPY_SRC` usage. Creation helpers like `create_storage_texture` enable it by default.
-        - GLES and WebGL2 can't copy a depth texture to a buffer, so reading one back there returns `TextureError::Readback`.
+        - GLES and WebGL2 can't copy a depth texture to a buffer, so reading one back there returns `TextureError::Readback`. So does a texture whose readback needs a buffer past the device's largest, `max_buffer_size`.
         - A block-compressed texture, such as one loaded from a BC7 or ASTC KTX2 file, has no size per pixel, so reading it back is an `InvalidInput` error.
         - Python returns the same bytes as a uint8 NumPy array shaped `(height, width, bytes per pixel)`, with a leading layer axis for array textures. A float format reads as floats through `image.view(numpy.float32)`.
 
@@ -4901,7 +4901,7 @@ class TextureTarget:
 
         Python returns a NumPy array of shape `(height, width, 4)`, indexed `image[y, x]`. That is the layout `Renderer.create_texture` reads, so `renderer.create_texture(target.get_image())` uploads the same image.
 
-        A readback that fails or times out returns an error: a thrown `Error` in JavaScript, a `FragmentColorError` in Python and Swift, and a `FragmentColorException` in Kotlin.
+        A readback that fails or times out, or that needs a buffer past the device's largest, returns an error: a thrown `Error` in JavaScript, a `FragmentColorError` in Python and Swift, and a `FragmentColorException` in Kotlin.
 
         Example:
 
