@@ -74,7 +74,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
   let index = id.y * view.image.x + id.x;
 
   // In a wide view, the main cardioid and the bulb left of it cover many pixels
-  // that never escape. A direct test skips their loop. orbit[1] is the target's c.
+  // that never escape. A direct test skips their loop. orbit[1] is the reference's c.
   if (e > -20) {
     let c = orbit[1] + scale(d, e);
     let q = dot(c - vec2<f32>(0.25, 0.0), c - vec2<f32>(0.25, 0.0));
