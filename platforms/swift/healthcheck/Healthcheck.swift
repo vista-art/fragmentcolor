@@ -61,6 +61,40 @@ final class Healthcheck: ExampleCase {
         // Tracked in CHANGELOG "Unfinished work" for v0.11.x.
     }
 
+    // A pipeline the GPU refuses throws FragmentColorError.Device, with its kind, the
+    // step's label and the device's own detail. An error scope catches it, so the
+    // GPU error log stays empty, and localizedDescription carries the full text.
+    func testRefusedPipelineThrowsDevice() async throws {
+        let renderer = Renderer()
+        let target = try await renderer.createTextureTarget([8, 8])
+        // The fragment stage reads @location(0), which the vertex stage never writes.
+        let unfed = try Shader(source: """
+            struct VOut { @builtin(position) pos: vec4<f32> };
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+              let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+              return VOut(vec4f(p[i], 0., 1.));
+            }
+            @fragment fn fs_main(@location(0) tint: vec4<f32>) -> @location(0) vec4<f32> { return tint; }
+        """)
+        do {
+            try renderer.render(unfed, target)
+            throw HealthcheckError.assertion("render of a refused pipeline should throw")
+        } catch let error as FragmentColorError {
+            guard case let .Device(kind, label, detail) = error else {
+                throw HealthcheckError.assertion("render threw \(error), not Device")
+            }
+            try assertEqual(kind, .validation, "Device kind")
+            try assertEqual(label, "render pipeline", "Device label")
+            guard !detail.isEmpty else {
+                throw HealthcheckError.assertion("Device detail is empty")
+            }
+            let text = error.localizedDescription
+            guard text == "Device error (validation) in 'render pipeline': \(detail)" else {
+                throw HealthcheckError.assertion("localizedDescription is \(text)")
+            }
+        }
+    }
+
     // A size with layers reaches the check the other languages run: a texture
     // target has one layer, so a depth of 2 throws.
     func testTextureTargetRefusesLayers() async throws {

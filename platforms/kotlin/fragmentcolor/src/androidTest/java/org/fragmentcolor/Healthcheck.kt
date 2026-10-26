@@ -24,6 +24,31 @@ class Healthcheck : ExampleCase() {
         runHeadlessRenderSmoke()
     }
 
+    // A pipeline the GPU refuses throws FragmentColorException.Device, with its kind, the
+    // step's label and the device's own detail. An error scope catches it, so the
+    // GPU error log stays empty, and toString() carries the full text.
+    @Test
+    fun refusedPipelineThrowsDevice() = runBlocking {
+        val renderer = Renderer()
+        val target = renderer.createTextureTarget(listOf(8u, 8u))
+        // The fragment stage reads @location(0), which the vertex stage never writes.
+        val unfed = Shader(
+            """
+            struct VOut { @builtin(position) pos: vec4<f32> };
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+              let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+              return VOut(vec4f(p[i], 0., 1.));
+            }
+            @fragment fn fs_main(@location(0) tint: vec4<f32>) -> @location(0) vec4<f32> { return tint; }
+            """.trimIndent()
+        )
+        val error = assertFailsWith<FragmentColorException.Device> { renderer.render(unfed, target) }
+        assertEquals(ErrorKind.VALIDATION, error.kind)
+        assertEquals("render pipeline", error.label)
+        assertTrue(error.detail.isNotEmpty(), "Device detail is empty")
+        assertEquals("Device error (validation) in 'render pipeline': ${error.detail}", error.toString())
+    }
+
     // A size with layers reaches the check the other languages run: a texture
     // target has one layer, so a depth of 2 throws.
     @Test
