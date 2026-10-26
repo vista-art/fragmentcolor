@@ -1,6 +1,6 @@
 ---
 title: TextureSlot
-description: "Names one of the five texture slots of a PBR `Material`, the maps glTF 2.0 defines for metallic-roughness materials:"
+description: "Names one of the five texture slots of a PBR `Material`, the maps glTF 2.0 defines for metallic-roughness materials."
 category: scene
 categoryLabel: Scene
 sidebar:
@@ -12,7 +12,9 @@ import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 ## Description
 
 Names one of the five texture slots of a PBR `Material`, the maps glTF 2.0
-defines for metallic-roughness materials:
+defines for metallic-roughness materials.
+
+Each slot and the setter that binds its texture:
 
 - `BaseColor`, which `Material::base_color_texture` binds
 - `MetallicRoughness`, which `Material::metallic_roughness_texture` binds
@@ -100,6 +102,3 @@ lang="kotlin"
 </TabItem>
 
 </Tabs>
-
-
-## Methods

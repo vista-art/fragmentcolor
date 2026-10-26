@@ -1,7 +1,9 @@
 # TextureSlot
 
 Names one of the five texture slots of a PBR `Material`, the maps glTF 2.0
-defines for metallic-roughness materials:
+defines for metallic-roughness materials.
+
+Each slot and the setter that binds its texture:
 
 - `BaseColor`, which `Material::base_color_texture` binds
 - `MetallicRoughness`, which `Material::metallic_roughness_texture` binds

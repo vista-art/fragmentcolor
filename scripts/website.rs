@@ -368,8 +368,11 @@ mod website {
                 headings.push(Heading::new("Example"));
             }
 
-            out.push_str("\n## Methods\n\n");
-            headings.push(Heading::new("Methods"));
+            // An object with no methods, such as an enum, gets no Methods heading.
+            if !method_files.is_empty() {
+                out.push_str("\n## Methods\n\n");
+                headings.push(Heading::new("Methods"));
+            }
             for file in method_files.iter() {
                 let md = std::fs::read_to_string(obj_dir.join(format!("{}.md", file)))
                     .unwrap_or_default();
