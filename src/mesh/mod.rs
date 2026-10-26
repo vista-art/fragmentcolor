@@ -418,13 +418,30 @@ impl MeshObject {
     /// instance VertexBufferLayout matching the PBR vertex shader's
     /// `@location(3..6)` inputs. Idempotent: a no-op if the Mesh already has
     /// an instance schema (set either by the user via `add_instance` or by a
-    /// prior `Pass::add_model` call).
-    pub(crate) fn declare_model_instance_schema(&self) {
-        if self.instance_schema.read().is_some() {
-            return;
+    /// prior `Pass::add_model` call). Returns whether it declared the columns.
+    pub(crate) fn declare_model_instance_schema(&self) -> bool {
+        let mut schema = self.instance_schema.write();
+        if schema.is_some() {
+            return false;
         }
-        *self.instance_schema.write() = Some(model_schema());
+        *schema = Some(model_schema());
+        drop(schema);
         self.invalidate_cache();
+        true
+    }
+
+    /// Drops the Model columns a failed `Model` attach declared,
+    /// so the next instance sets the instance layout as before.
+    pub(crate) fn forget_model_instance_schema(&self) {
+        // The instances lock comes first, as in `ensure_packed`.
+        let insts = self.insts.read();
+        let mut schema = self.instance_schema.write();
+        if insts.is_empty() && schema.as_ref() == Some(&model_schema()) {
+            *schema = None;
+            drop(schema);
+            drop(insts);
+            self.invalidate_cache();
+        }
     }
 
     /// Whether only Models give this mesh instances:
