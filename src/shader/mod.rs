@@ -756,12 +756,30 @@ fn sampled_image_globals(
     sampled
 }
 
+/// Records that `name` holds the slot `binding` names, refusing a slot another global holds.
+/// naga only refuses two globals on one slot when one entry point uses both.
+fn claim_slot(
+    slots: &mut HashMap<(u32, u32), String>,
+    binding: &naga::ResourceBinding,
+    name: &str,
+) -> Result<(), ShaderError> {
+    let slot = (binding.group, binding.binding);
+    match slots.insert(slot, name.to_string()) {
+        Some(first) => Err(ShaderError::ParseError(format!(
+            "`{first}` and `{name}` both use @group({}) @binding({})",
+            binding.group, binding.binding
+        ))),
+        None => Ok(()),
+    }
+}
+
 /// Reflects the module's bindings, leaving out the `filled` globals, which the renderer fills.
 fn parse_uniforms(
     module: &Module,
     filled: &[naga::Handle<naga::GlobalVariable>],
 ) -> Result<HashMap<String, Uniform>, ShaderError> {
     let mut uniforms = HashMap::new();
+    let mut slots: HashMap<(u32, u32), String> = HashMap::new();
     let sampled_set = sampled_image_globals(module);
 
     for (handle, variable) in module.global_variables.iter() {
@@ -823,6 +841,7 @@ fn parse_uniforms(
             .binding
             .as_ref()
             .ok_or(ShaderError::ParseError("Missing binding".into()))?;
+        claim_slot(&mut slots, binding, &uniform_name)?;
 
         let ty = &module.types[variable.ty];
 
@@ -2151,6 +2170,43 @@ struct Arr { arr: array<vec4<f32>, 2> };
         let bytes = UniformInput::Bytes(vec![0; 8]);
         assert!(shader.object.set_input("cell", bytes.clone()).is_err());
         assert!(shader.object.set_input("buf.items[0].v", bytes).is_err());
+    }
+
+    // Story: two globals on one slot fail at Shader::new, used by different entry points or not used at all.
+    #[test]
+    fn two_globals_on_one_slot_fail() {
+        let split = r#"
+@group(0) @binding(0) var<uniform> a: vec4<f32>;
+@group(0) @binding(0) var<uniform> b: vec4<f32>;
+@vertex fn vs_main() -> @builtin(position) vec4<f32> { return a; }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return b; }
+"#;
+        let unused = r#"
+@group(1) @binding(2) var<uniform> a: vec4<f32>;
+@group(1) @binding(2) var tex: texture_2d<f32>;
+@vertex fn vs_main() -> @builtin(position) vec4<f32> { return a; }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+"#;
+        for (source, slot) in [
+            (split, "@group(0) @binding(0)"),
+            (unused, "@group(1) @binding(2)"),
+        ] {
+            let err = Shader::new(source).unwrap_err().to_string();
+            assert!(err.contains(&format!("both use {slot}")), "{err}");
+        }
+        let parts = Shader::new([
+            "@group(0) @binding(0) var<uniform> a: vec4<f32>;",
+            "@group(0) @binding(0) var<uniform> b: vec4<f32>;\n@vertex fn vs_main() -> @builtin(position) vec4<f32> { return b; }\n@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+        ]);
+        assert!(parts.is_err());
+        // An immediate root never takes a binding slot.
+        let immediate = r#"
+var<immediate> pc: vec4<f32>;
+@group(0) @binding(0) var<uniform> a: vec4<f32>;
+@vertex fn vs_main() -> @builtin(position) vec4<f32> { return a + pc; }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+"#;
+        assert!(Shader::new(immediate).is_ok());
     }
 
     // Story: raw bytes of any other length than the root's leave the root as it was.
