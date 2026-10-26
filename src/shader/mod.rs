@@ -40,6 +40,8 @@ pub(crate) mod registry;
 pub(crate) mod embedded;
 
 mod glsl;
+mod immediates;
+pub(crate) use immediates::lower_immediates;
 mod input;
 pub(crate) mod light_roots;
 use light_roots::LightRoots;
@@ -476,6 +478,7 @@ impl ShaderObject {
     pub fn wgsl(source: &str) -> Result<Self, ShaderError> {
         let module = create_parser().parse(source)?;
         let info = create_validator().validate(&module).map_err(Box::new)?;
+        immediates::check_immediates(&module)?;
 
         let light_roots = light_roots::find_roots(&module, &info)?;
         let filled = light_roots
@@ -2289,6 +2292,32 @@ struct U { items: array<Item, 4096> };
             "var<immediate> pc: vec4<f32>;\n@fragment fn fs_main() -> @location(0) vec4<f32> { return pc; }",
         );
         assert!(Shader::new(immediate.as_str()).is_ok());
+    }
+
+    // Story: an immediate root a uniform can't hold fails at Shader::new on every device,
+    // since a device without native immediates binds it as a uniform.
+    #[test]
+    fn immediates_follow_uniform_rules() {
+        let shader = |declaration: &str| {
+            format!(
+                "{declaration}
+@vertex fn vs_main() -> @builtin(position) vec4<f32> {{ return vec4<f32>(0.0); }}
+@fragment fn fs_main() -> @location(0) vec4<f32> {{ return vec4<f32>(read()); }}"
+            )
+        };
+        let array = shader("var<immediate> pc: array<f32, 4>;\nfn read() -> f32 { return pc[1]; }");
+        let field = shader(
+            "struct Weights { weights: array<f32, 4> };\nvar<immediate> pc: Weights;\nfn read() -> f32 { return pc.weights[1]; }",
+        );
+        for source in [array, field] {
+            let err = Shader::new(source.as_str()).unwrap_err().to_string();
+            assert!(
+                err.contains("immediate roots pc must also follow the uniform layout rules"),
+                "{err}"
+            );
+        }
+        let vector = shader("var<immediate> pc: vec4<f32>;\nfn read() -> f32 { return pc.y; }");
+        assert!(Shader::new(vector.as_str()).is_ok());
     }
 
     // Story: two globals on one slot fail at Shader::new, used by different entry points or not used at all.
