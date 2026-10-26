@@ -843,8 +843,9 @@ await withModule('platforms.web.healthcheck.error_scopes', async () => {
 });
 
 // WebGPU bins lights into clusters with a compute pass, so a PBR shader takes
-// far more lights than a WebGL2 uniform block holds. 300 lights render with
-// no GPU error, captured or not. The runner requires a WebGPU adapter on CI.
+// more lights than any uniform block holds: the largest block takes 1,021, so
+// 1,100 lights fit only on the clustered path. They render with no GPU error,
+// captured or not. The runner requires a WebGPU adapter on CI.
 await withModule('platforms.web.healthcheck.lights.clustered', async () => {
     const adapter = navigator.gpu ? await navigator.gpu.requestAdapter() : null;
     if (!adapter) {
@@ -866,17 +867,17 @@ await withModule('platforms.web.healthcheck.lights.clustered', async () => {
       for (const [x, z] of corners) {
         floor.addVertex(Vertex.pbr([x, 0.0, z]).set('normal', [0.0, 1.0, 0.0]));
       }
-      const pass = new Pass('300 lights');
+      const pass = new Pass('1100 lights');
       pass.add(new Model(floor, Material.pbr()));
       pass.add(Camera.perspective(1.0, 1.0, 0.1, 100.0)
         .lookAt([0.0, 6.0, 8.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]));
-      for (let index = 0; index < 300; index++) {
-        const x = (index % 20) * 0.6 - 5.7;
-        const z = Math.floor(index / 20) * 0.8 - 5.6;
-        const hue = index / 300 * Math.PI * 2;
+      for (let index = 0; index < 1100; index++) {
+        const x = (index % 44) * 0.26 - 5.6;
+        const z = Math.floor(index / 44) * 0.46 - 5.5;
+        const hue = index / 1100 * Math.PI * 2;
         const color = [0.5 + 0.5 * Math.cos(hue), 0.5 + 0.5 * Math.cos(hue + 2.1), 0.5 + 0.5 * Math.cos(hue + 4.2)];
-        const light = Light.point([x, 0.3, z], color).setIntensity(0.5);
-        light.setRange(1.5);
+        const light = Light.point([x, 0.3, z], color).setIntensity(0.15);
+        light.setRange(1.0);
         pass.add(light);
       }
       renderer.render(pass, target);
@@ -890,13 +891,13 @@ await withModule('platforms.web.healthcheck.lights.clustered', async () => {
       for (let pixel = 0; pixel < image.length; pixel += 4) {
         if (image[pixel] > 100 || image[pixel + 1] > 100 || image[pixel + 2] > 100) lit++;
       }
-      if (lit < 64) throw new Error(`300 lights lit only ${lit} pixels`);
-      console.log(`clustered lights: 300 lights lit ${lit} pixels`);
+      if (lit < 64) throw new Error(`1100 lights lit only ${lit} pixels`);
+      console.log(`clustered lights: 1100 lights lit ${lit} pixels`);
     } finally {
       console.error = original;
     }
     if (gpuErrors.length) {
-      throw new Error(`300 lights raised ${gpuErrors.length} uncaptured GPU error(s): ${gpuErrors[0]}`);
+      throw new Error(`1100 lights raised ${gpuErrors.length} uncaptured GPU error(s): ${gpuErrors[0]}`);
     }
 });
 
