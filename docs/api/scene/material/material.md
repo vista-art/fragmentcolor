@@ -54,6 +54,13 @@ the explicit-fresh-Material path is the escape hatch.
   `normal_map`, `occlusion_map`, `emissive_map`) and sampled by the default
   shader. Unset slots resolve to the renderer's 1×1 defaults so the shader's
   bind group is always complete.
+- **UV sources**: each texture slot samples its own UV set (`UV0` or `UV1`)
+  through its own `KHR_texture_transform`. The PBR shader keeps them in
+  `material.uv`, five entries in
+  [`TextureSlot`](https://fragmentcolor.org/api/scene/textureslot) order,
+  each with `uv_set`, `offset`, `scale` and `rotation`.
+  `Material::texture_uv`, `Material::texture_transform` and
+  `Material::uv_transform` set them.
 - **Per-Model transform** rides the **per-instance vertex attribute** stream
   as `model_0` to `model_3` (four `vec4<f32>` columns of a `mat4x4<f32>`, at
   locations 3 to 6 in the PBR shader). The renderer fills it from each

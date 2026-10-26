@@ -1418,6 +1418,10 @@ public protocol MaterialProtocol: AnyObject, Sendable {
     
     func shader()  -> Shader
     
+    func textureTransform(slot: TextureSlot, offset: [Float], scale: [Float], rotation: Float) throws  -> Material
+    
+    func textureUv(slot: TextureSlot, set: UInt32) throws  -> Material
+    
     func uvTransform(offset: [Float], scale: [Float], rotation: Float) throws  -> Material
     
 }
@@ -1711,6 +1715,30 @@ open func shader() -> Shader  {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_material_shader(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func textureTransform(slot: TextureSlot, offset: [Float], scale: [Float], rotation: Float)throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_texturetransform(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTextureSlot_lower(slot),
+        FfiConverterSequenceFloat.lower(offset),
+        FfiConverterSequenceFloat.lower(scale),
+        FfiConverterFloat.lower(rotation),uniffiCallStatus
+    )
+})
+}
+    
+open func textureUv(slot: TextureSlot, set: UInt32)throws  -> Material  {
+    return try  FfiConverterTypeMaterial_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_method_material_textureuv(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTextureSlot_lower(slot),
+        FfiConverterUInt32.lower(set),uniffiCallStatus
     )
 })
 }
@@ -2560,7 +2588,7 @@ public protocol PassProtocol: AnyObject, Sendable {
     /**
      * Set the viewport (scissor + render region) for this pass.
      */
-    func setViewport(region: ScreenRegion) 
+    func setViewport(region: ScreenRegion) throws 
     
 }
 open class Pass: PassProtocol, @unchecked Sendable {
@@ -2832,7 +2860,7 @@ open func setTargetTexture(texture: Texture)throws   {try rustCallWithError(FfiC
     /**
      * Set the viewport (scissor + render region) for this pass.
      */
-open func setViewport(region: ScreenRegion)  {try! rustCall() {
+open func setViewport(region: ScreenRegion)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_pass_setviewport(
             self.uniffiCloneHandle(),
@@ -4255,9 +4283,8 @@ public protocol TextureProtocol: AnyObject, Sendable {
     func write(bytes: Data) throws 
     
     /**
-     * Upload raw pixel data into a sub-region of the texture. Pass a
-     * `TextureRegionMobile` with all-zero `size_*` fields for a whole-texture
-     * write (equivalent to `write()`). Mirrors `Texture::write_region`.
+     * Upload raw pixel data into a sub-region of the texture, each side at least 1.
+     * Call `write()` for the whole texture. Mirrors `Texture::write_region`.
      */
     func writeRegion(bytes: Data, region: TextureRegion) throws 
     
@@ -4421,9 +4448,8 @@ open func write(bytes: Data)throws   {try rustCallWithError(FfiConverterTypeFrag
 }
     
     /**
-     * Upload raw pixel data into a sub-region of the texture. Pass a
-     * `TextureRegionMobile` with all-zero `size_*` fields for a whole-texture
-     * write (equivalent to `write()`). Mirrors `Texture::write_region`.
+     * Upload raw pixel data into a sub-region of the texture, each side at least 1.
+     * Call `write()` for the whole texture. Mirrors `Texture::write_region`.
      */
 open func writeRegion(bytes: Data, region: TextureRegion)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
@@ -5832,9 +5858,7 @@ public func FfiConverterTypeTextureOptions_lower(_ value: TextureOptions) -> Rus
  *
  * Uniffi cannot marshal fixed-size arrays (`[u32; 3]`), so the mobile
  * binding exposes the 3D origin and size as individual `u32` fields.
- * Use `origin_x/y/z = 0` and `size_width/height/depth = 0` (the defaults)
- * to target the whole texture; the write path interprets zeros as
- * "infer the full extent from the texture dimensions".
+ * Each size is at least 1, and a write without a region covers the whole texture.
  *
  * Swift and Kotlin see it as `TextureRegion`, the name every other binding uses.
  */
@@ -5843,15 +5867,15 @@ public struct TextureRegion: Equatable, Hashable {
     public var originY: UInt32
     public var originZ: UInt32
     /**
-     * Width of the region to write. `0` → infer (full texture width).
+     * Width of the region to write, at least 1.
      */
     public var sizeWidth: UInt32
     /**
-     * Height of the region to write. `0` → infer (full texture height).
+     * Height of the region to write, at least 1.
      */
     public var sizeHeight: UInt32
     /**
-     * Depth of the region to write. `0` → infer (full texture depth, usually 1).
+     * Depth of the region to write, at least 1.
      */
     public var sizeDepth: UInt32
     public var bytesPerRow: UInt32?
@@ -5861,13 +5885,13 @@ public struct TextureRegion: Equatable, Hashable {
     // declare one manually.
     public init(originX: UInt32, originY: UInt32, originZ: UInt32, 
         /**
-         * Width of the region to write. `0` → infer (full texture width).
+         * Width of the region to write, at least 1.
          */sizeWidth: UInt32, 
         /**
-         * Height of the region to write. `0` → infer (full texture height).
+         * Height of the region to write, at least 1.
          */sizeHeight: UInt32, 
         /**
-         * Depth of the region to write. `0` → infer (full texture depth, usually 1).
+         * Depth of the region to write, at least 1.
          */sizeDepth: UInt32, bytesPerRow: UInt32?, rowsPerImage: UInt32?) {
         self.originX = originX
         self.originY = originY
@@ -7429,6 +7453,108 @@ public func FfiConverterTypeTextureScalarKind_lift(_ buf: RustBuffer) throws -> 
 #endif
 public func FfiConverterTypeTextureScalarKind_lower(_ value: TextureScalarKind) -> RustBuffer {
     return FfiConverterTypeTextureScalarKind.lower(value)
+}
+
+
+
+
+public enum TextureSlot: Equatable, Hashable {
+    
+    /**
+     * The base color map, set by `base_color_texture`.
+     */
+    case baseColor
+    /**
+     * The metallic-roughness map, set by `metallic_roughness_texture`.
+     */
+    case metallicRoughness
+    /**
+     * The normal map, set by `normal_texture`.
+     */
+    case normal
+    /**
+     * The occlusion map, set by `occlusion_texture`.
+     */
+    case occlusion
+    /**
+     * The emissive map, set by `emissive_texture`.
+     */
+    case emissive
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension TextureSlot: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTextureSlot: FfiConverterRustBuffer {
+    typealias SwiftType = TextureSlot
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextureSlot {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .baseColor
+        
+        case 2: return .metallicRoughness
+        
+        case 3: return .normal
+        
+        case 4: return .occlusion
+        
+        case 5: return .emissive
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: TextureSlot, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .baseColor:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .metallicRoughness:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .normal:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .occlusion:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .emissive:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTextureSlot_lift(_ buf: RustBuffer) throws -> TextureSlot {
+    return try FfiConverterTypeTextureSlot.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTextureSlot_lower(_ value: TextureSlot) -> RustBuffer {
+    return FfiConverterTypeTextureSlot.lower(value)
 }
 
 
@@ -9026,6 +9152,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_material_shader() != 3459) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_fragmentcolor_checksum_method_material_texturetransform() != 4369) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_material_textureuv() != 10868) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_fragmentcolor_checksum_method_material_uvtransform() != 378) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -9104,7 +9236,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_pass_settargettexture() != 11684) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_setviewport() != 4614) {
+    if (uniffi_fragmentcolor_checksum_method_pass_setviewport() != 57239) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_renderer_createdepthtexture() != 43106) {
@@ -9365,7 +9497,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_texture_write() != 15815) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texture_writeregion() != 41639) {
+    if (uniffi_fragmentcolor_checksum_method_texture_writeregion() != 22138) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_material_custom() != 28686) {

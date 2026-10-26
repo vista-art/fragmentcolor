@@ -147,7 +147,7 @@ type StructField:swift,kotlin:part of UniformData, which mobile Shader.get retur
 type StructShape:swift,kotlin:part of UniformData, which mobile Shader.get returns and Rust keeps crate-private.
 type ExternalTextureHandle:web,swift,kotlin:Renderer.createExternalTexture returns this stub on the platforms with a native video frame source; Rust has no external texture API yet.
 type RenderCanvasFrame:python:the frame object of the rendercanvas present protocol, which only Python uses.
-type InvalidInputError:python:Python raises a FragmentColorError subclass for texture bytes that don't match their size or format; Rust reports a TextureError.
+type InvalidInputError:python:Python raises a FragmentColorError subclass for a value the call can't take, such as an int past u32, a bad size, or texture bytes that don't match their size; Rust reports a TextureError, SizeError or ScreenRegionError, and JavaScript an Error.
 type UnsupportedMipmapFormatError:python:Python raises a FragmentColorError subclass for a format the CPU mipmap builder can't fill; Rust reports a TextureError.
 type MalformedImageError:python:Python raises a FragmentColorError subclass for image bytes that can't be decoded; Rust reports a TextureError.
 type OccludedSurfaceError:python:Python raises a FragmentColorError subclass for a hidden or minimized window; Rust reports SurfaceError::Occluded.

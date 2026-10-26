@@ -1,7 +1,8 @@
+use pyo3::exceptions::PyOverflowError;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 
-use crate::error::PythonError;
+use crate::error::{InvalidInputError, PythonError};
 
 use crate::{
     Pass, Renderer, ScreenRegion, Shader, Size,
@@ -40,6 +41,7 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<crate::scene::LightKind>()?;
     m.add_class::<crate::material::Material>()?;
     m.add_class::<crate::material::AlphaMode>()?;
+    m.add_class::<crate::material::TextureSlot>()?;
 
     // Texture handle + format
     m.add_class::<crate::texture::Texture>()?;
@@ -83,18 +85,49 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("SceneLoadError", PythonError::SceneLoad.class(py)?)?;
     m.add("LightError", PythonError::Light.class(py)?)?;
     m.add("CameraError", PythonError::Camera.class(py)?)?;
+    m.add("MaterialError", PythonError::Material.class(py)?)?;
 
     Ok(())
 }
 
-/// Reads a Python number as an unsigned 32-bit integer, such as an index or a count.
-/// Negative, fractional, NaN and out-of-range values raise a `FragmentColorError` that names `what`.
-pub(crate) fn read_unsigned(value: f64, what: &str) -> PyResult<u32> {
-    Ok(super::read_unsigned(value, what)?)
+/// Reads a Python int as an unsigned 32-bit integer, such as a count, an index or a size.
+/// An object with `__index__`, such as a NumPy integer, counts as an int, and any other type
+/// raises `TypeError`. An int below 0 or past `u32::MAX` raises `InvalidInputError`, however large.
+pub(crate) fn read_unsigned(value: &Bound<'_, PyAny>) -> PyResult<u32> {
+    match value.extract::<u32>() {
+        Err(error) if error.is_instance_of::<PyOverflowError>(value.py()) => {
+            let shown = match value.str() {
+                Ok(text) => text.to_string(),
+                Err(_) => "an int too long to print".to_string(),
+            };
+            Err(InvalidInputError::new_err(format!(
+                "expected an int from 0 to {}, got {shown}",
+                u32::MAX
+            )))
+        }
+        result => result,
+    }
 }
 
-impl From<super::NumberError> for PyErr {
-    fn from(error: super::NumberError) -> Self {
-        crate::error::PyFragmentColorError::new_err(error.to_string())
+/// Reads `None`, or an int as [`read_unsigned`] does.
+pub(crate) fn read_optional(value: &Bound<'_, PyAny>) -> PyResult<Option<u32>> {
+    if value.is_none() {
+        return Ok(None);
     }
+    read_unsigned(value).map(Some)
+}
+
+/// Reads a pair of ints, such as an origin or a size, as [`read_unsigned`] does.
+pub(crate) fn read_pair(value: &Bound<'_, PyAny>) -> PyResult<(u32, u32)> {
+    let (first, second) = value.extract::<(Bound<'_, PyAny>, Bound<'_, PyAny>)>()?;
+    Ok((read_unsigned(&first)?, read_unsigned(&second)?))
+}
+
+/// Reads a sequence of ints, such as a list or a NumPy array, as [`read_unsigned`] does.
+pub(crate) fn read_list(value: &Bound<'_, PyAny>) -> PyResult<Vec<u32>> {
+    value
+        .extract::<Vec<Bound<'_, PyAny>>>()?
+        .iter()
+        .map(read_unsigned)
+        .collect()
 }

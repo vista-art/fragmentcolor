@@ -141,24 +141,26 @@ extension Pass {
 
     // MARK: - Viewport
 
-    /// Set the viewport (unlabeled overload).
-    public func setViewport(_ region: ScreenRegion) {
-        setViewport(region: region)
+    /// Set the viewport (unlabeled overload). A width or height of 0 throws.
+    public func setViewport(_ region: ScreenRegion) throws {
+        try setViewport(region: region)
     }
 
     /// Set the viewport from `[(x, y), (width, height)]`, an origin and a size,
     /// as `ScreenRegion(origin, size)` reads them.
-    public func setViewport(_ originAndSize: [(UInt32, UInt32)]) {
-        precondition(originAndSize.count == 2, "setViewport: expected [(x, y), (width, height)]")
-        setViewport(region: ScreenRegion(originAndSize[0], originAndSize[1]))
+    public func setViewport(_ originAndSize: [(UInt32, UInt32)]) throws {
+        guard originAndSize.count == 2 else {
+            throw FragmentColorError.Render("setViewport: expected [(x, y), (width, height)], got \(originAndSize.count) pairs")
+        }
+        try setViewport(region: ScreenRegion(originAndSize[0], originAndSize[1]))
     }
 
     /// Set the viewport from `[x, y, width, height]`, or `[width, height]` at the origin.
-    public func setViewport(_ rect: [UInt32]) {
+    public func setViewport(_ rect: [UInt32]) throws {
         switch rect.count {
-        case 2: setViewport(region: ScreenRegion([0, 0], rect))
-        case 4: setViewport(region: ScreenRegion(Array(rect[0..<2]), Array(rect[2..<4])))
-        default: preconditionFailure("setViewport: expected [width, height] or [x, y, width, height], got \(rect.count) numbers")
+        case 2: try setViewport(region: ScreenRegion([0, 0], rect))
+        case 4: try setViewport(region: ScreenRegion(Array(rect[0..<2]), Array(rect[2..<4])))
+        default: throw FragmentColorError.Render("setViewport: expected [width, height] or [x, y, width, height], got \(rect.count) numbers")
         }
     }
 
@@ -172,8 +174,11 @@ extension Pass {
 
 extension ScreenRegion {
     /// A region at `origin` (x, y) that is `size` (width, height) large,
-    /// as Rust's `ScreenRegion::new(origin, size)` reads them.
-    public init(_ origin: (UInt32, UInt32), _ size: (UInt32, UInt32)) {
+    /// as Rust's `ScreenRegion::new(origin, size)` reads them. A side of 0 throws.
+    public init(_ origin: (UInt32, UInt32), _ size: (UInt32, UInt32)) throws {
+        guard size.0 > 0 && size.1 > 0 else {
+            throw FragmentColorError.Render("ScreenRegion: a region needs a width and a height of at least 1, got \(size.0) by \(size.1)")
+        }
         self.init(
             minX: origin.0,
             minY: origin.1,
@@ -183,8 +188,10 @@ extension ScreenRegion {
     }
 
     /// A region at `origin` `[x, y]` that is `size` `[width, height]` large.
-    public init(_ origin: [UInt32], _ size: [UInt32]) {
-        precondition(origin.count == 2 && size.count == 2, "ScreenRegion: origin and size hold 2 numbers each")
-        self.init((origin[0], origin[1]), (size[0], size[1]))
+    public init(_ origin: [UInt32], _ size: [UInt32]) throws {
+        guard origin.count == 2 && size.count == 2 else {
+            throw FragmentColorError.Render("ScreenRegion: origin and size hold 2 numbers each")
+        }
+        try self.init((origin[0], origin[1]), (size[0], size[1]))
     }
 }

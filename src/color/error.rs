@@ -7,8 +7,6 @@ pub enum ColorError {
     /// A channel that is NaN or infinite, which no target can clear to.
     #[error("the {channel} channel must be a finite number, got {value}")]
     NotFinite { channel: &'static str, value: f32 },
-    #[error("invalid CSS color: {0}")]
-    Css(#[from] csscolorparser::ParseColorError),
     #[cfg(wasm)]
     #[error("WASM Color Error: {0}")]
     Error(String),

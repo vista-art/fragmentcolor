@@ -16,10 +16,10 @@ pub enum TextureError {
     /// The requested target format isn't supported by the CPU mipmap
     /// dispatcher. Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`,
     /// `Bgra8Unorm`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`,
-    /// `Rgba16Unorm`, and the aliases for them. For other formats, ship a pre-baked KTX2
+    /// `Rgba16Unorm`, `Rgba16Float`, `Rgba32Float`, and the aliases for them. For other formats, ship a pre-baked KTX2
     /// chain (`TextureInput::Ktx2*`) or set `TextureOptions { mipmaps: false, .. }`.
     #[error(
-        "Unsupported format for CPU mipmap generation: {format:?}. Supported formats: Rgba8/Bgra8 (Unorm + Srgb), R8Unorm, Rg8Unorm, R16Unorm, Rg16Unorm, Rgba16Unorm. Use TextureInput::Ktx2* for other formats, or set mipmaps=false."
+        "Unsupported format for CPU mipmap generation: {format:?}. Supported formats: Rgba8/Bgra8 (Unorm + Srgb), R8Unorm, Rg8Unorm, R16Unorm, Rg16Unorm, Rgba16Unorm, Rgba16Float, Rgba32Float. Use TextureInput::Ktx2* for other formats, or set mipmaps=false."
     )]
     UnsupportedMipmapFormat { format: crate::TextureFormat },
     /// The provided buffer didn't match the declared shape: zero size, byte
@@ -38,10 +38,11 @@ pub enum TextureError {
     /// The active device doesn't have the wgpu feature required to use the
     /// requested format. Common case: `R16Unorm` (and its Rg/Rgba/Snorm
     /// cousins) need [`wgpu::Features::TEXTURE_FORMAT_16BIT_NORM`].
-    /// FragmentColor requests every feature the adapter advertises at
-    /// device creation (see `request_device` in `renderer/platform/all.rs`),
-    /// so the only path to this error is a device that genuinely doesn't
-    /// advertise the format-feature this format needs. Surfaces capability constraints at the API boundary
+    /// FragmentColor requests a fixed set of features at device creation,
+    /// each one the adapter advertises (see `request_device` in
+    /// `renderer/platform/all.rs`). The texture format features in that set,
+    /// such as `TEXTURE_FORMAT_16BIT_NORM` and the compressed formats, reach
+    /// this error only on a device that doesn't advertise them. Surfaces capability constraints at the API boundary
     /// instead of letting them detonate as runtime validation cascades on
     /// first use. The `format` field carries the underlying
     /// `wgpu::TextureFormat` so the message stays accurate for variants

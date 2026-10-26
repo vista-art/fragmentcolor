@@ -495,6 +495,12 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     throws('Mesh.setInstanceCount(-1)', () => mesh.setInstanceCount(-1));
     throws('Mesh.setIndices([0.5])', () => mesh.setIndices([0.5]));
     throws('Pass.setComputeDispatch(-1, 1, 1)', () => first.setComputeDispatch(-1, 1, 1));
+    const occlusion = fc.TextureSlot.Occlusion;
+    throws('Material.textureUv(Occlusion, 1.5)', () => Material.pbr().textureUv(occlusion, 1.5));
+    throws('Material.textureUv(Occlusion, -1)', () => Material.pbr().textureUv(occlusion, -1));
+    // A UV set past 1 is a whole number, but no texture can sample it.
+    throws('Material.textureUv(Occlusion, 2)', () => Material.pbr().textureUv(occlusion, 2));
+    if (!(Material.pbr().textureUv(occlusion, 1) instanceof Material)) fail('textureUv should return the material');
 
     // Size fields take only the numbers the constructor takes, and ScreenRegion has no setters.
     const extent = new fc.Size(64, 64);
@@ -507,6 +513,20 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     if (extent.width !== 32 || extent.depth !== 2) fail('Size fields did not take valid numbers');
     extent.depth = undefined;
     if (extent.depth !== undefined) fail('Size.depth = undefined did not clear the depth');
+
+    // A size or region takes whole numbers, as counts do, and a fraction throws.
+    throws('new Size(1.5, 2)', () => new fc.Size(1.5, 2));
+    throws('Size.width = 1.5', () => { extent.width = 1.5; });
+    throws('new ScreenRegion([0, 0], [1.5, 2])', () => new fc.ScreenRegion([0, 0], [1.5, 2]));
+    throws('Pass.setViewport([0, 0, 1.5, 2])', () => first.setViewport([0, 0, 1.5, 2]));
+    await rejects('createTextureTarget([1.5, 2])', () => renderer.createTextureTarget([1.5, 2]));
+
+    // A region or viewport with a width or height of 0 throws.
+    throws('new ScreenRegion([0, 0], [0, 4])', () => new fc.ScreenRegion([0, 0], [0, 4]));
+    throws('Pass.setViewport([0, 0, 0, 4])', () => first.setViewport([0, 0, 0, 4]));
+    throws('Pass.setViewport([4, 0])', () => first.setViewport([4, 0]));
+    throws('Pass.setViewport({ minX: 2, minY: 2, maxX: 2, maxY: 6 })',
+      () => first.setViewport({ minX: 2, minY: 2, maxX: 2, maxY: 6 }));
     const region = new fc.ScreenRegion([0, 0], [64, 64]);
     region.max_x = -1;
     if (region.maxX !== 64) fail(`ScreenRegion.max_x wrote ${region.maxX} past the checks`);
@@ -527,7 +547,8 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     throws('Pass.setClearColor([undefined, 0, 0])', () => first.setClearColor([undefined, 0, 0]));
     throws("Pass.setClearColor(['1', 0, 0])", () => first.setClearColor(['1', 0, 0]));
     throws('Pass.setClearColor([NaN, 0, 0])', () => first.setClearColor([NaN, 0, 0]));
-    throws("Pass.setClearColor({ r: 1, g: 0, b: 0, a: 'x' })", () => first.setClearColor({ r: 1, g: 0, b: 0, a: 'x' }));
+    throws("Pass.setClearColor({ r: 1, g: 0, b: 0 })", () => first.setClearColor({ r: 1, g: 0, b: 0 }));
+    throws("Pass.setClearColor('#ff8800')", () => first.setClearColor('#ff8800'));
     throws('Pass.setClearColor([0, 0])', () => first.setClearColor([0, 0]));
     const clear = Pass.fromShader('clear', Shader.default());
     clear.setViewport([0, 0, 1, 1]);
@@ -570,13 +591,26 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       format: TextureFormat.Bgra8Unorm, mipmaps: false, usage: TextureUsage.COPY_SRC,
     });
     same('ImageData into Bgra8Unorm', await renderer.readTexture(bgra.id()), [0, 0, 255, 255]);
+    // Every path that takes an ImageData reads it as RGBA, as createTexture does.
+    bgra.write(red);
+    same('Texture.write(ImageData) into Bgra8Unorm', await renderer.readTexture(bgra.id()), [0, 0, 255, 255]);
+    bgra.writeRegion(red, [0, 0, 1, 1]);
+    same('writeRegion(ImageData) into Bgra8Unorm', await renderer.readTexture(bgra.id()), [0, 0, 255, 255]);
+    throws('writeRegion with an ImageData of another size', () => bgra.writeRegion(image, [0, 0, 1, 1]));
+    same('Mipmap.build(ImageData) as Bgra8Unorm', Mipmap.build(red, TextureFormat.Bgra8Unorm).level(0), [0, 0, 255, 255]);
+    const seeded = await renderer.createStorageTexture([1, 1], TextureFormat.Bgra8Unorm, red,
+      TextureUsage.TEXTURE_BINDING | TextureUsage.COPY_DST | TextureUsage.COPY_SRC);
+    same('createStorageTexture seeded with an ImageData', await renderer.readTexture(seeded.id()), [0, 0, 255, 255]);
     // A region object needs its extent, and its bounds in order.
     const canvasTexture = await renderer.createStorageTexture([16, 16], TextureFormat.Rgba);
     const patch = new Uint8Array(4 * 4 * 4);
     canvasTexture.writeRegion(patch, { minX: 4, maxX: 8, minY: 0, maxY: 4 });
+    canvasTexture.writeRegion(patch, new fc.ScreenRegion([4, 0], [4, 4]));
     throws('writeRegion with reversed bounds', () =>
       canvasTexture.writeRegion(patch, { minX: 8, maxX: 4, minY: 0, maxY: 4 }));
     throws('writeRegion with misspelled keys', () => canvasTexture.writeRegion(patch, { x: 0, y: 0, w: 4, h: 4 }));
+    throws('writeRegion with a zero width', () => canvasTexture.writeRegion(patch, [0, 0, 0, 4]));
+    canvasTexture.writeRegion(new Uint8Array(16 * 16 * 4), undefined);
     throws('writeRegion with minZ 2**32 - 1', () =>
       canvasTexture.writeRegion(patch, { minX: 0, maxX: 4, minY: 0, maxY: 4, minZ: 4294967295 }));
     throws('setSamplerOptions with compare 1.5', () => canvasTexture.setSamplerOptions({ compare: 1.5 }));
@@ -634,6 +668,9 @@ struct Data { items: array<vec4<f32>, 2> };
     throws('Mipmap.build without a format', () => Mipmap.build(new Uint8Array(4 * 4 * 4), undefined, [4, 4]));
     throws('Material.alphaMode(undefined)', () => Material.pbr().alphaMode(undefined));
     throws('Material.alphaMode(0.5)', () => Material.pbr().alphaMode(0.5));
+    throws('Material.textureUv(undefined, 0)', () => Material.pbr().textureUv(undefined, 0));
+    throws('Material.textureTransform(5, ...)', () =>
+      Material.pbr().textureTransform(5, [0, 0], [1, 1], 0));
     await rejects('createStorageTexture with a format string', () =>
       renderer.createStorageTexture([4, 4], 'rgba8unorm'));
     await rejects('createStorageTexture with usage 32', () =>

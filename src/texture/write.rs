@@ -2,10 +2,11 @@ use std::borrow::Cow;
 
 use crate::texture::{Texture, TextureError, TextureRegion};
 
+/// Writes `data` into `region` of the texture, or into all of it without a region.
 pub(super) fn write(
     tex: &Texture,
     data: &[u8],
-    mut region: TextureRegion,
+    region: Option<TextureRegion>,
 ) -> Result<(), TextureError> {
     // One snapshot of the texture drives the checks and the write, even across a resize.
     let object = tex.object();
@@ -21,26 +22,17 @@ pub(super) fn write(
     let format = object.format;
     let bpp = super::texel_size(format)?;
 
-    // Infer per-dimension size when caller used the "whole texture" defaults
-    // (TextureRegion::default() has size [0, 0, 0]); always respect origin.
-    if region.size[0] == 0 {
-        region.size[0] = size.width.saturating_sub(region.origin[0]);
-    }
-    if region.size[1] == 0 {
-        region.size[1] = size.height.saturating_sub(region.origin[1]);
-    }
-    if region.size[2] == 0 {
-        let d = size.depth_or_array_layers.max(1);
-        // For 2D textures depth is 1; clamp to at least 1 after subtracting origin.
-        region.size[2] = d.saturating_sub(region.origin[2]).max(1);
-    }
-
-    // Validate non-zero sizes
-    if region.size[0] == 0 || region.size[1] == 0 || region.size[2] == 0 {
-        return Err(TextureError::Error(
-            "Write size must be non-zero in all dimensions".into(),
-        ));
-    }
+    let whole = [size.width, size.height, size.depth_or_array_layers];
+    let region = match region {
+        None => TextureRegion::new([0; 3], whole),
+        Some(region) if region.size.contains(&0) => {
+            let [width, height, depth] = region.size;
+            return Err(TextureError::InvalidInput(format!(
+                "a region needs a width, height and depth of at least 1, got {width}x{height}x{depth}"
+            )));
+        }
+        Some(region) => region,
+    };
 
     // Bounds check: origin and region must lie within texture extent
     if region.origin[0] >= size.width
@@ -91,10 +83,15 @@ pub(super) fn write(
     let levels = object.inner.mip_level_count();
     if levels > 1 {
         let whole = region.origin == [0; 3] && region.size == [size.width, size.height, 1];
-        if !whole || !super::supports_cpu_mipmaps(format) {
+        if !whole {
             return Err(TextureError::InvalidInput(
-                "the texture has a mip chain, which a partial write would leave stale; create it with mipmaps: false to write regions".into(),
+                "the texture has a mip chain, which a partial write would leave stale; write the whole texture, or make it with one level, as mipmaps: false does".into(),
             ));
+        }
+        if !super::supports_cpu_mipmaps(format) {
+            return Err(TextureError::InvalidInput(format!(
+                "a write can't rebuild the mip chain of a {format:?} texture"
+            )));
         }
         let rows = tight_rows(data, bytes_per_row, row_stride, region.size[1]);
         return super::write_levels(&tex.context, &rows, &object.inner, size, format, levels);

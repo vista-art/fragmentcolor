@@ -25,9 +25,7 @@ pub struct TextureRegion {
 ///
 /// Uniffi cannot marshal fixed-size arrays (`[u32; 3]`), so the mobile
 /// binding exposes the 3D origin and size as individual `u32` fields.
-/// Use `origin_x/y/z = 0` and `size_width/height/depth = 0` (the defaults)
-/// to target the whole texture; the write path interprets zeros as
-/// "infer the full extent from the texture dimensions".
+/// Each size is at least 1, and a write without a region covers the whole texture.
 ///
 /// Swift and Kotlin see it as `TextureRegion`, the name every other binding uses.
 #[cfg(mobile)]
@@ -37,58 +35,24 @@ pub struct TextureRegionMobile {
     pub origin_x: u32,
     pub origin_y: u32,
     pub origin_z: u32,
-    /// Width of the region to write. `0` → infer (full texture width).
+    /// Width of the region to write, at least 1.
     pub size_width: u32,
-    /// Height of the region to write. `0` → infer (full texture height).
+    /// Height of the region to write, at least 1.
     pub size_height: u32,
-    /// Depth of the region to write. `0` → infer (full texture depth, usually 1).
+    /// Depth of the region to write, at least 1.
     pub size_depth: u32,
     pub bytes_per_row: Option<u32>,
     pub rows_per_image: Option<u32>,
 }
 
 #[cfg(mobile)]
-impl Default for TextureRegionMobile {
-    /// "Whole texture" sentinel — all zeros tells the write path to infer the
-    /// full extent. Equivalent to `TextureRegion::default()` on the Rust side.
-    fn default() -> Self {
-        Self {
-            origin_x: 0,
-            origin_y: 0,
-            origin_z: 0,
-            size_width: 0,
-            size_height: 0,
-            size_depth: 0,
-            bytes_per_row: None,
-            rows_per_image: None,
-        }
-    }
-}
-
-#[cfg(mobile)]
 impl From<TextureRegionMobile> for TextureRegion {
     fn from(m: TextureRegionMobile) -> Self {
-        // Zeros are preserved — the write path interprets [0,0,0] size as
-        // "infer the full extent from the texture dimensions", matching
-        // TextureRegion::default() semantics.
         TextureRegion {
             origin: [m.origin_x, m.origin_y, m.origin_z],
             size: [m.size_width, m.size_height, m.size_depth],
             bytes_per_row: m.bytes_per_row,
             rows_per_image: m.rows_per_image,
-        }
-    }
-}
-
-impl Default for TextureRegion {
-    /// "Whole texture" sentinel — `size` of `[0, 0, 0]` is interpreted by the
-    /// write path as "infer the full extent from the texture itself".
-    fn default() -> Self {
-        Self {
-            origin: [0, 0, 0],
-            size: [0, 0, 0],
-            bytes_per_row: None,
-            rows_per_image: None,
         }
     }
 }
@@ -280,17 +244,12 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
         use js_sys::{Array, ArrayBuffer, Reflect};
 
-        // undefined / null → whole-texture default
-        if value.is_undefined() || value.is_null() {
-            return Ok(Self::default());
-        }
-
         let dimension = |item: &wasm_bindgen::JsValue| {
             item.as_f64()
                 .and_then(crate::size::read_dimension)
                 .ok_or_else(|| {
                     TextureError::InvalidInput(format!(
-                        "a region takes numbers from 0 up, got {item:?}"
+                        "a region takes whole numbers from 0 up, got {item:?}"
                     ))
                 })
         };
@@ -314,12 +273,14 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
 
         // Object: { x?, y?, z?, width, height, depth?, bytesPerRow?, rowsPerImage? }
         // or       { minX?, minY?, maxX, maxY, minZ?, maxZ?, bytesPerRow?, rowsPerImage? }
+        // A method is no key: a `ScreenRegion` reads by its `minX` to `maxY`
+        // getters, and its `width()` and `height()` methods stay out of the way.
         if value.is_object() {
             let read = |(camel, snake): Key| -> Result<Option<u32>, TextureError> {
                 for name in [camel, snake] {
                     let field = Reflect::get(value, &wasm_bindgen::JsValue::from_str(name))
                         .unwrap_or(wasm_bindgen::JsValue::UNDEFINED);
-                    if !field.is_undefined() && !field.is_null() {
+                    if !field.is_undefined() && !field.is_null() && !field.is_function() {
                         return dimension(&field).map(Some);
                     }
                 }

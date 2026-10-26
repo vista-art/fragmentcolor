@@ -100,7 +100,7 @@ fun Pass.setViewport(rect: List<UInt>) {
 /**
  * A region at [origin] `[x, y]` that is [size] `[width, height]` large,
  * as Rust's `ScreenRegion::new(origin, size)` reads them.
- * Throws [FragmentColorException] unless each holds two numbers.
+ * Throws [FragmentColorException] unless each holds two numbers, and for a side of 0.
  */
 operator fun ScreenRegion.Companion.invoke(origin: List<UInt>, size: List<UInt>): ScreenRegion {
     if (origin.size != 2 || size.size != 2) {
@@ -108,6 +108,11 @@ operator fun ScreenRegion.Companion.invoke(origin: List<UInt>, size: List<UInt>)
     }
     val (x, y) = origin
     val (width, height) = size
+    if (width == 0u || height == 0u) {
+        throw FragmentColorException.Render(
+            "ScreenRegion: a region needs a width and a height of at least 1, got $width by $height",
+        )
+    }
     return ScreenRegion(
         minX = x,
         minY = y,

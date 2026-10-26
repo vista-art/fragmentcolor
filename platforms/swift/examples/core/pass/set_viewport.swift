@@ -8,6 +8,6 @@ let shader = Shader.default()
 let pass = Pass("clipped")
 pass.addShader(shader)
 
-pass.setViewport(ScreenRegion((0, 0), (32, 32)))
+try pass.setViewport(try ScreenRegion((0, 0), (32, 32)))
 
 try renderer.render(pass, target)

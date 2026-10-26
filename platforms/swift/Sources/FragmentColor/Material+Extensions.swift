@@ -111,6 +111,29 @@ extension Material {
         )
     }
 
+    @discardableResult
+    public func textureUv(_ slot: TextureSlot, _ set: UInt32) throws -> Material {
+        return try textureUv(slot: slot, set: set)
+    }
+
+    @discardableResult
+    public func textureTransform(
+        _ slot: TextureSlot, _ offset: [Float], _ scale: [Float], _ rotation: Float
+    ) throws -> Material {
+        return try textureTransform(slot: slot, offset: offset, scale: scale, rotation: rotation)
+    }
+    @discardableResult
+    public func textureTransform(
+        _ slot: TextureSlot, _ offset: [Double], _ scale: [Double], _ rotation: Double
+    ) throws -> Material {
+        return try textureTransform(
+            slot: slot,
+            offset: offset.map { Float($0) },
+            scale: scale.map { Float($0) },
+            rotation: Float(rotation)
+        )
+    }
+
     // MARK: - Texture setters — drop the `texture:` label.
     //
     // Each setter takes what `Renderer.createTexture` takes: a `Texture`, or
