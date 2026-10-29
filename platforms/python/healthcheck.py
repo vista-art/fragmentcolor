@@ -261,6 +261,9 @@ def check_error_types(renderer):
     # A WindowTarget made by its constructor has no surface until Renderer.create_target makes one.
     unready = RenderCanvasTarget(object(), None)
     raises("WindowTarget.resize with no surface", lambda: unready.resize([4, 4]))
+    # The frame a texture target hands rendercanvas reads the target's own format.
+    frame_format = renderer.create_texture_target([4, 4]).get_current_frame().format()
+    assert frame_format.startswith("Rgba8") or frame_format.startswith("Bgra8"), frame_format
 
     # A pipeline the GPU refuses raises DeviceError, with its kind and the step's label.
     # The fragment stage reads @location(0), which the vertex stage never writes.
