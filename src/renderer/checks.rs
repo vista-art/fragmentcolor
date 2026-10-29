@@ -8,7 +8,7 @@ use super::access::{Access, Accesses, Writer};
 use super::{PassDraws, RenderContext, RendererError};
 use crate::material::AlphaMode;
 use crate::pass::PassError;
-use crate::texture::{Registration, read_format_features};
+use crate::texture::{Registration, format_features};
 use crate::{
     PassObject, Renderable, ShaderObject, Target, TargetFrame, TextureObject, UniformData,
 };
@@ -95,26 +95,63 @@ impl std::fmt::Display for Channels {
     }
 }
 
-/// Refuses a target another Renderer created, before a render loads or uploads anything.
+/// Refuses a render that uses what another Renderer created, before it loads anything.
 ///
-/// `context` is the rendering Renderer's, or `None` before it has one. A Renderer
-/// without a context created no target, so every target that has an owner is another's.
-/// A render of compute passes alone draws into no target, so it takes any.
+/// `context` is the rendering Renderer's, or `None` before it has one.
+/// A Renderer with no context created no target or texture, so it refuses any render:
+/// `ForeignTarget` when a render pass draws into a target that has an owner, else `NoContext`.
+///
+/// With a context, a frame target another Renderer made is `ForeignTarget`,
+/// unless every pass is a compute pass, and a pass target or a bound texture
+/// this context doesn't hold is `TextureNotFoundError`, as the plan returns it.
+/// The passes come from `peek_passes`, so a refusal leaves the renderable as it was.
 pub(super) fn check_target(
     context: Option<&Arc<RenderContext>>,
     renderable: &impl Renderable,
     target: &impl Target,
 ) -> Result<(), RendererError> {
-    if renderable.passes().iter().all(|pass| pass.is_compute()) {
-        return Ok(());
+    let owner = target.owner();
+    let foreign = match (context, &owner) {
+        (Some(context), Some(owner)) => !Arc::ptr_eq(context, owner),
+        _ => false,
+    };
+    let passes = renderable.peek_passes();
+    let draws = passes.iter().any(|pass| !pass.is_compute());
+    let Some(context) = context else {
+        return Err(match draws && owner.is_some() {
+            true => RendererError::ForeignTarget,
+            false => RendererError::NoContext,
+        });
+    };
+    if foreign && draws {
+        return Err(RendererError::ForeignTarget);
     }
-    match (context, target.owner()) {
-        (Some(context), Some(owner)) if !Arc::ptr_eq(context, &owner) => {
-            Err(RendererError::ForeignTarget)
+    for pass in passes.iter() {
+        check_held(context, pass)?;
+    }
+    Ok(())
+}
+
+/// Refuses a texture `pass` draws into or binds that `context` doesn't hold.
+/// `find_targets` and `check_textures` refuse the same in the plan, after `load` has run.
+fn check_held(context: &RenderContext, pass: &PassObject) -> Result<(), RendererError> {
+    let refuse = |registration: &Registration| match registration.belongs_to(context) {
+        true => Ok(()),
+        false => Err(RendererError::TextureNotFoundError(*registration.id())),
+    };
+    if !pass.is_compute() {
+        for target in [&pass.color_target, &pass.depth_target] {
+            if let Some(registration) = target.read().as_deref() {
+                refuse(registration)?;
+            }
         }
-        (None, Some(_)) => Err(RendererError::ForeignTarget),
-        _ => Ok(()),
     }
+    for shader in pass.shaders.read().iter() {
+        for binding in shader.bound_textures.iter() {
+            refuse(binding.value())?;
+        }
+    }
+    Ok(())
 }
 
 impl RenderContext {
@@ -220,13 +257,15 @@ impl RenderContext {
         Ok(())
     }
 
-    /// Refuses `AlphaMode::Blend` into a `format` this device can't blend,
-    /// and from a `shader` whose `@location(0)` output has no alpha channel.
+    /// Refuses an `AlphaMode::Blend` shader that a `format` target can't draw.
     ///
-    /// `AlphaMode::Blend` uses `BlendState::ALPHA_BLENDING`, whose factors read the source alpha.
-    /// The WebGPU spec ("validating GPUFragmentState") refuses a blend factor that reads
-    /// the source alpha when the output isn't a `vec4`. wgpu-core doesn't check that rule,
-    /// and the browser does, so the check runs everywhere.
+    /// The refusals every device makes come first, so a shader gets one error everywhere.
+    /// A format no device blends, such as an integer one, returns `InvalidColorTarget`, and
+    /// so does an output without alpha: `ALPHA_BLENDING` reads the source alpha, which the WebGPU
+    /// spec ("validating GPUFragmentState") takes only from a `vec4`, a rule wgpu-core leaves out.
+    ///
+    /// Last, `FeatureError` comes from a format this device can't blend
+    /// and another can, such as `Rgba32Float` on a device without float32 blending.
     fn check_blend(
         &self,
         pass: &PassObject,
@@ -234,19 +273,32 @@ impl RenderContext {
         format: wgpu::TextureFormat,
     ) -> Result<(), RendererError> {
         let blendable = wgpu::TextureFormatFeatureFlags::BLENDABLE;
-        let adapter = self.adapter.as_ref();
-        let flags = read_format_features(adapter, self.features, format).flags;
-        if !flags.contains(blendable) {
-            return Err(refuse_blend(pass, format));
+        let anywhere = format
+            .guaranteed_format_features(wgpu::Features::all())
+            .flags;
+        if !anywhere.contains(blendable) {
+            return Err(PassError::InvalidColorTarget(format!(
+                "pass '{}' draws into {format:?}, which never blends, and a shader uses AlphaMode::Blend",
+                pass.name
+            ))
+            .into());
         }
-        match read_output(shader) {
-            Some(output) if output.count < 4 => Err(PassError::InvalidColorTarget(format!(
+        if let Some(output) = read_output(shader)
+            && output.count < 4
+        {
+            return Err(PassError::InvalidColorTarget(format!(
                 "pass '{}' blends a shader that writes {output} at @location(0), and AlphaMode::Blend reads an alpha channel; write a vec4",
                 pass.name
             ))
-            .into()),
-            _ => Ok(()),
+            .into());
         }
+        if format_features(self, format).flags.contains(blendable) {
+            return Ok(());
+        }
+        Err(RendererError::FeatureError {
+            item: format!("AlphaMode::Blend in pass '{}'", pass.name),
+            feature: format!("blending into {format:?}"),
+        })
     }
 
     /// Records each registered texture `shader` binds, in binding order.
@@ -280,27 +332,6 @@ impl RenderContext {
             }
         }
         Ok(())
-    }
-}
-
-/// The refusal of `AlphaMode::Blend` into a `format` the device can't blend. A format some
-/// device blends, such as `Rgba32Float`, needs a feature this one lacks. One that no device
-/// blends, such as an integer format, can't be the target of a blend at all.
-fn refuse_blend(pass: &PassObject, format: wgpu::TextureFormat) -> RendererError {
-    let blendable = wgpu::TextureFormatFeatureFlags::BLENDABLE;
-    let anywhere = format
-        .guaranteed_format_features(wgpu::Features::all())
-        .flags;
-    match anywhere.contains(blendable) {
-        true => RendererError::FeatureError {
-            item: format!("AlphaMode::Blend in pass '{}'", pass.name),
-            feature: format!("blending into {format:?}"),
-        },
-        false => PassError::InvalidColorTarget(format!(
-            "pass '{}' draws into {format:?}, which never blends, and a shader uses AlphaMode::Blend",
-            pass.name
-        ))
-        .into(),
     }
 }
 
@@ -415,7 +446,10 @@ fn read_channels(format: wgpu::TextureFormat) -> Option<Channels> {
 mod tests {
     use super::*;
     use crate::renderer::platform::all::{create_instance, request_adapter};
-    use crate::{PassType, Shader};
+    use crate::texture::TextureId;
+    use crate::{
+        Material, Mesh, Model, Pass, PassType, Renderer, Scene, Shader, Size, SurfaceError, Vertex,
+    };
 
     /// A fullscreen triangle that samples `source`.
     const SAMPLE: &str = r#"
@@ -449,13 +483,14 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
         };
         let (device, queue) = adapter.request_device(&descriptor).await.ok()?;
         let mut context = RenderContext::new(device, queue);
+        context.downlevel = adapter.get_downlevel_capabilities().flags;
         context.adapter = Some(adapter);
         Some(context)
     }
 
-    /// Whether `context` blends into Rgba32Float by wgpu's rule: a backend below WebGPU,
-    /// such as GL with color_buffer_float, reports its own table, and every other one
-    /// blends it when the device opened with FLOAT32_BLENDABLE.
+    /// Whether `context` blends Rgba32Float, by the rule wgpu follows:
+    /// a backend at WebGPU's level blends it when the device has FLOAT32_BLENDABLE,
+    /// and one below that level, such as GL with color_buffer_float, reports its own table.
     fn blends_float32(context: &RenderContext) -> bool {
         let adapter = context.adapter.as_ref().expect("an adapter");
         let flags = adapter.get_downlevel_capabilities().flags;
@@ -468,28 +503,58 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
         }
     }
 
-    // Story: AlphaMode::Blend into Rgba32Float blends on a device that blends the format
-    // and returns FeatureError on one that doesn't, on a device opened with float32
-    // blending and on one opened without it.
+    /// Checks `check_blend` of Rgba32Float on `context` against `blends_float32`.
+    fn check_float32(context: &RenderContext) {
+        let pass = PassObject::new("glass", PassType::Render);
+        let shader = Shader::default();
+        let result = context.check_blend(&pass, &shader.object, wgpu::TextureFormat::Rgba32Float);
+        match blends_float32(context) {
+            true => assert!(result.is_ok(), "{result:?}"),
+            false => assert!(
+                matches!(result, Err(RendererError::FeatureError { .. })),
+                "{result:?}"
+            ),
+        }
+    }
+
+    // Story: AlphaMode::Blend into Rgba32Float blends where the device blends it,
+    // and returns FeatureError where it doesn't, on a device opened without float32
+    // blending and, when the adapter offers float32 blending, on one opened with it.
     #[test]
     fn rgba32float_blends_where_the_device_can() {
         pollster::block_on(async move {
+            let plain = open(wgpu::Features::empty()).await.expect("a device");
+            check_float32(&plain);
+            match open(wgpu::Features::FLOAT32_BLENDABLE).await {
+                Some(blending) => check_float32(&blending),
+                None => eprintln!("skipped the float32 blending device: the adapter offers none"),
+            }
+        });
+    }
+
+    // Story: a blended shader that writes no alpha gets the same InvalidColorTarget on
+    // every device, where a device that can't blend Rg32Float returned FeatureError first.
+    #[test]
+    fn a_blend_without_alpha_fails_the_same_everywhere() {
+        pollster::block_on(async move {
             let pass = PassObject::new("glass", PassType::Render);
-            let shader = Shader::default();
-            let float = wgpu::TextureFormat::Rgba32Float;
-            for features in [wgpu::Features::empty(), wgpu::Features::FLOAT32_BLENDABLE] {
-                let Some(context) = open(features).await else {
-                    eprintln!("the adapter offers no {features:?}");
-                    continue;
-                };
-                let result = context.check_blend(&pass, &shader.object, float);
-                match blends_float32(&context) {
-                    true => assert!(result.is_ok(), "{features:?}: {result:?}"),
-                    false => assert!(
-                        matches!(result, Err(RendererError::FeatureError { .. })),
-                        "{features:?}: {result:?}"
+            let source =
+                "@vertex fn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(0.0); }
+@fragment fn fs_main() -> @location(0) vec2<f32> { return vec2<f32>(0.5); }";
+            let shader = Shader::new(source).expect("a shader");
+            let plain = open(wgpu::Features::empty()).await.expect("a device");
+            let blending = open(wgpu::Features::FLOAT32_BLENDABLE).await;
+            for context in std::iter::once(&plain).chain(blending.as_ref()) {
+                let result =
+                    context.check_blend(&pass, &shader.object, wgpu::TextureFormat::Rg32Float);
+                assert!(
+                    matches!(
+                        &result,
+                        Err(RendererError::PassError(PassError::InvalidColorTarget(message)))
+                            if message.contains("reads an alpha channel")
                     ),
-                }
+                    "{result:?}"
+                );
             }
         });
     }
@@ -498,7 +563,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     #[test]
     fn the_device_takes_float32_blending_when_offered() {
         pollster::block_on(async move {
-            let renderer = crate::Renderer::new();
+            let renderer = Renderer::new();
             let context = renderer.context(None).await.expect("a context");
             let adapter = context.adapter.as_ref().expect("an adapter");
             let blending = wgpu::Features::FLOAT32_BLENDABLE;
@@ -536,7 +601,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     #[test]
     fn a_queued_binding_is_checked() {
         pollster::block_on(async move {
-            let renderer = crate::Renderer::new();
+            let renderer = Renderer::new();
             let frame = renderer
                 .create_texture_target([8, 8])
                 .await
@@ -564,27 +629,73 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
         });
     }
 
-    /// A pass that draws one Model whose PBR base color map waits for an upload, and that map's shader.
-    fn queued_map_pass() -> (crate::Pass, Shader) {
-        let mesh = crate::Mesh::new();
+    /// A Model that covers the view, drawn with `material`.
+    fn build_model(material: Material) -> Model {
+        let mesh = Mesh::new();
         let corners = [[-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0]];
         mesh.add_vertices(
-            corners.map(|corner| {
-                crate::Vertex::pbr(corner).set(crate::Vertex::NORMAL, [0.0, 0.0, 1.0])
-            }),
+            corners.map(|corner| Vertex::pbr(corner).set(Vertex::NORMAL, [0.0, 0.0, 1.0])),
         );
-        let material = crate::Material::pbr().base_color_texture((vec![255; 16], [2, 2]));
+        Model::new(mesh, material)
+    }
+
+    /// A pass that draws `material`, whose base color map waits for an upload, and its shader.
+    fn build_pass(material: Material) -> (Pass, Shader) {
+        let material = material.base_color_texture((vec![255; 16], [2, 2]));
         let shader = material.shader.clone();
-        let pass = crate::Pass::new("queued map");
-        pass.add(&crate::Model::new(mesh, material)).expect("add");
+        let pass = Pass::new("queued map");
+        pass.add(&build_model(material)).expect("add");
         (pass, shader)
     }
 
     /// The texture id the shader binds to `key`.
-    fn bound_id(shader: &Shader, key: &str) -> crate::texture::TextureId {
+    fn read_bound(shader: &Shader, key: &str) -> TextureId {
         match shader.object.get_uniform(key).map(|uniform| uniform.data) {
             Ok(UniformData::Texture(meta)) => meta.id,
             other => panic!("{key} holds no texture: {other:?}"),
+        }
+    }
+
+    /// Checks that `shader`'s base color map waits in its queue, uploaded nowhere.
+    fn check_queued(shader: &Shader) {
+        let queued = shader.object.pending_textures.read().len();
+        assert_eq!(queued, 1, "the map left the queue");
+    }
+
+    /// Checks that `renderer` drew `shader`'s base color map from its own context.
+    fn check_drawn(renderer: &Renderer, shader: &Shader) {
+        let context = renderer.context.read().clone().expect("a context");
+        let id = read_bound(shader, "base_color_map");
+        assert!(
+            context.get_texture(&id).is_some(),
+            "the map isn't the owner's"
+        );
+    }
+
+    /// A target with no owner yet, like Python's WindowTarget before it has a surface.
+    struct Ownerless;
+
+    impl crate::target::FrameSource for Ownerless {
+        fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
+            Err(SurfaceError::Lost)
+        }
+
+        fn owner(&self) -> Option<Arc<RenderContext>> {
+            None
+        }
+    }
+
+    impl Target for Ownerless {
+        fn size(&self) -> Size {
+            Size::from((1u32, 1u32))
+        }
+
+        fn resize(&mut self, _size: impl Into<Size>) -> Result<(), crate::texture::TextureError> {
+            Ok(())
+        }
+
+        async fn get_image(&self) -> Result<Vec<u8>, crate::texture::TextureError> {
+            Ok(Vec::new())
         }
     }
 
@@ -593,27 +704,99 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     #[test]
     fn a_refused_render_leaves_a_queued_map_to_the_owner() {
         pollster::block_on(async move {
-            let owner = crate::Renderer::new();
+            let owner = Renderer::new();
             let frame = owner.create_texture_target([8, 8]).await.expect("a target");
-            let other = crate::Renderer::new();
+            let other = Renderer::new();
             let _context = other.create_texture_target([8, 8]).await.expect("a target");
-            let (pass, shader) = queued_map_pass();
+            let (pass, shader) = build_pass(Material::pbr());
 
             let refused = other.render(&pass, &frame);
             assert!(
                 matches!(refused, Err(RendererError::ForeignTarget)),
                 "{refused:?}"
             );
+            check_queued(&shader);
             owner
                 .render(&pass, &frame)
                 .expect("the owner draws the pass");
+            check_drawn(&owner, &shader);
+        });
+    }
 
-            let context = owner.context.read().clone().expect("a context");
-            let id = bound_id(&shader, "base_color_map");
+    // Story: a pass whose own target another Renderer created is refused before load,
+    // so the Material's queued map stays queued for the Renderer that draws the pass.
+    #[test]
+    fn a_foreign_pass_target_leaves_a_queued_map() {
+        pollster::block_on(async move {
+            let owner = Renderer::new();
+            let frame = owner.create_texture_target([8, 8]).await.expect("a target");
+            let offscreen = owner.create_texture_target([8, 8]).await.expect("a target");
+            let other = Renderer::new();
+            let other_frame = other.create_texture_target([8, 8]).await.expect("a target");
+            let (pass, shader) = build_pass(Material::pbr());
+            pass.set_target(&offscreen).expect("set_target");
+
+            let refused = other.render(&pass, &other_frame);
+            let id = *offscreen.texture().id();
             assert!(
-                context.get_texture(&id).is_some(),
-                "the map isn't the owner's"
+                matches!(refused, Err(RendererError::TextureNotFoundError(found)) if found == id),
+                "{refused:?}"
             );
+            check_queued(&shader);
+            owner
+                .render(&pass, &frame)
+                .expect("the owner draws the pass");
+            check_drawn(&owner, &shader);
+        });
+    }
+
+    // Story: a texture uniform bound to another Renderer's texture is refused before
+    // load, so the Material's queued map stays queued for the Renderer that draws it.
+    #[test]
+    fn a_foreign_texture_leaves_a_queued_map() {
+        pollster::block_on(async move {
+            let owner = Renderer::new();
+            let frame = owner.create_texture_target([8, 8]).await.expect("a target");
+            let normal = owner
+                .create_texture((vec![128; 16], [2, 2]))
+                .await
+                .expect("a texture");
+            let other = Renderer::new();
+            let other_frame = other.create_texture_target([8, 8]).await.expect("a target");
+            let (pass, shader) = build_pass(Material::pbr().normal_texture(&normal));
+
+            let refused = other.render(&pass, &other_frame);
+            assert!(
+                matches!(refused, Err(RendererError::TextureNotFoundError(found)) if found == *normal.id()),
+                "{refused:?}"
+            );
+            check_queued(&shader);
+            owner
+                .render(&pass, &frame)
+                .expect("the owner draws the pass");
+            check_drawn(&owner, &shader);
+        });
+    }
+
+    // Story: a Scene that a Renderer refuses for a foreign target
+    // gets no default camera or light, so it stays as the app built it.
+    #[test]
+    fn a_refused_scene_render_adds_no_defaults() {
+        pollster::block_on(async move {
+            let owner = Renderer::new();
+            let frame = owner.create_texture_target([8, 8]).await.expect("a target");
+            let other = Renderer::new();
+            let _context = other.create_texture_target([8, 8]).await.expect("a target");
+            let scene = Scene::new();
+            scene.add(&build_model(Material::pbr())).expect("add");
+
+            let refused = other.render(&scene, &frame);
+            assert!(
+                matches!(refused, Err(RendererError::ForeignTarget)),
+                "{refused:?}"
+            );
+            assert!(scene.cameras().is_empty(), "the refusal added a camera");
+            assert!(scene.lights().is_empty(), "the refusal added a light");
         });
     }
 
@@ -622,10 +805,10 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     #[test]
     fn a_renderer_without_a_context_opens_no_device() {
         pollster::block_on(async move {
-            let owner = crate::Renderer::new();
+            let owner = Renderer::new();
             let frame = owner.create_texture_target([8, 8]).await.expect("a target");
-            let (pass, shader) = queued_map_pass();
-            let other = crate::Renderer::new();
+            let (pass, shader) = build_pass(Material::pbr());
+            let other = Renderer::new();
 
             let refused = other.render(&pass, &frame);
             assert!(
@@ -636,8 +819,26 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
                 other.context.read().is_none(),
                 "the refusal opened a device"
             );
-            let queued = shader.object.pending_textures.read().len();
-            assert_eq!(queued, 1, "the map left the queue");
+            check_queued(&shader);
         });
+    }
+
+    // Story: a Renderer with no context refuses a target with no owner,
+    // such as a window without a surface, with NoContext, before it opens a device.
+    #[test]
+    fn a_renderer_without_a_context_refuses_an_ownerless_target() {
+        let (pass, shader) = build_pass(Material::pbr());
+        let renderer = Renderer::new();
+
+        let refused = renderer.render(&pass, &Ownerless);
+        assert!(
+            matches!(refused, Err(RendererError::NoContext)),
+            "{refused:?}"
+        );
+        assert!(
+            renderer.context.read().is_none(),
+            "the refusal opened a device"
+        );
+        check_queued(&shader);
     }
 }

@@ -466,6 +466,11 @@ impl Scene {
 impl Renderable for Scene {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
         self.ensure_render_defaults();
+        self.peek_passes()
+    }
+
+    /// The scene's passes, without adding the default camera and light it draws with.
+    fn peek_passes(&self) -> Arc<[Arc<PassObject>]> {
         let mut all: Vec<Arc<PassObject>> = Vec::new();
         for pass in self.inner.passes.read().iter() {
             all.extend(pass.passes().iter().cloned());

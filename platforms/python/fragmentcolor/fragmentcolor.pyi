@@ -377,7 +377,7 @@ class Renderer:
 
         Before it takes a frame, `render` checks each shader against the device and each texture uniform against its slot, so every language returns these errors from the call that caused them, the web included. A group, binding, binding count, buffer size or workgroup past the device's limits returns `RendererError::LimitError`, a feature the device lacks `RendererError::FeatureError`, a texture uniform that was never set or whose texture its slot can't take `RendererError::BindingError`, and a render shader without its vertex or fragment entry point `RendererError::EntryError`, each with its fields. An unset PBR map slot binds its 1x1 default instead, when the slot takes a 2D float texture. A texture `unregister_texture` removed, or one from another `Renderer`, returns `RendererError::TextureNotFoundError`, in a PBR map slot too. The [Shader](https://fragmentcolor.org/api/core/shader) page lists the checks and each language's form of these errors.
 
-        A `Renderer` draws only into the targets it created. A target from another `Renderer` returns `RendererError::ForeignTarget`, unless every pass is a compute pass, which draws into no target. Each pass is checked against what it draws into before it records: a [depth target](https://fragmentcolor.org/api/core/pass#set_depth_target) of the color attachment's size and sample count, shader outputs and blending the [target](https://fragmentcolor.org/api/core/pass#set_target)'s format takes, a [viewport](https://fragmentcolor.org/api/core/pass#set_viewport) and a [compute dispatch](https://fragmentcolor.org/api/core/pass#set_compute_dispatch) the device takes, and textures that one pass doesn't both write and read. A render pass can't bind a texture it draws into, and no pass can read a texture one of its bindings writes, so a compute dispatch that samples a texture and stores into it returns `PassError::TextureConflict` too.
+        A `Renderer` draws only into the targets it created. A target from another `Renderer` returns `RendererError::ForeignTarget`, unless every pass is a compute pass, which draws into no target, and a pass target or texture uniform from another `Renderer` returns `RendererError::TextureNotFoundError`. These come before `render` uploads a queued `Material` map or opens a device, so a refused render changes nothing. A `Renderer` that has opened no device yet returns `RendererError::NoContext` for a target without an owner. Each pass is checked against what it draws into before it records: a [depth target](https://fragmentcolor.org/api/core/pass#set_depth_target) of the color attachment's size and sample count, shader outputs and blending the [target](https://fragmentcolor.org/api/core/pass#set_target)'s format takes, a [viewport](https://fragmentcolor.org/api/core/pass#set_viewport) and a [compute dispatch](https://fragmentcolor.org/api/core/pass#set_compute_dispatch) the device takes, and textures that one pass doesn't both write and read. A render pass can't bind a texture it draws into, and no pass can read a texture one of its bindings writes, so a compute dispatch that samples a texture and stores into it returns `PassError::TextureConflict` too.
 
         `render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail, it returns a [DeviceError](https://fragmentcolor.org/api/core/deviceerror), `RendererError::DeviceError` in Rust. Its `kind` tells validation errors, internal errors such as a shader the backend compiler refuses, and running out of memory apart, and its `label` names the step that failed: the render pipeline, the compute pipeline, the light binning pipeline, the frame, or a bind group or texture view inside the frame. When one error causes another, `render` returns the first. In Rust, Python, Swift and Kotlin, a pipeline that failed is never kept, and the next frame builds it again and returns the same error.
 
@@ -713,7 +713,7 @@ class Shader:
 
         If the key does not exist or the value format is incorrect, the `set` method throws an exception. The shader remains valid, and if the exception is caught, the shader can still be used with the renderer.
 
-        `set` never blocks. When another thread holds the shader's storage, the value is queued and applied before the next draw. A bad value that can't be checked right away is dropped later with a logged warning instead of throwing.
+        `set` never waits for a draw. When another thread holds the shader's storage, the value is queued and applied before the next draw. A texture can wait a moment while another thread binds a texture to the same shader, so the latest one wins. A bad value that can't be checked right away is dropped later with a logged warning instead of throwing.
 
         The uniform's declared WGSL type decides how the value is read, so a call behaves the same in every language:
 
@@ -1458,7 +1458,7 @@ class Pass:
         `render` checks the pass against its target before it takes a frame:
 
         - Each shader writes at `@location(0)` the values the format takes: the same scalar type, in at least as many channels. An `Rgba32Uint` target takes `vec4<u32>`, so a shader that writes `vec4<f32>` returns `PassError::InvalidColorTarget`.
-        - A shader with `AlphaMode::Blend` needs a format the device blends. The integer formats never blend and return the same error. `Rgba32Float` blends only on a device with float32 blending, and on any other one returns `RendererError::FeatureError`, which Python raises as `FeatureError` and Swift and Kotlin throw as `Feature`. Blending reads the alpha channel, so the shader writes a `vec4`, whatever the format holds.
+        - A shader with `AlphaMode::Blend` needs a format the device blends. The integer formats never blend and return the same error. `Rgba32Float` blends only on a device with float32 blending, and on any other one returns `RendererError::FeatureError`, which Python raises as `FeatureError` and Swift and Kotlin throw as `Feature`. Blending reads the alpha channel, so the shader writes a `vec4`, whatever the format holds. A format that never blends and an output without alpha are refused first, so such a shader gets the same error on every device.
         - The pass can't bind the texture it draws into. A shader that samples it returns `PassError::TextureConflict`. Sample it in a later pass.
 
         A shader that writes nothing at `@location(0)`, such as one that only tests depth, leaves the target's color as it is.
@@ -4855,11 +4855,12 @@ class Material:
           so self-intersecting or interpenetrating translucent meshes can still show artifacts.
           Cross-Material interleaving works correctly: translucent draws across every shader
           in the Pass merge into one globally-sorted back-to-front pass.
-          Blending needs a color target that blends and a shader that writes a `vec4`, or `render`
-          returns `PassError::InvalidColorTarget`. Integer formats never blend. Whether
-          `Rgba32Float` blends depends on the device: the renderer asks for float32 blending
-          wherever the GPU offers it, and a device without it returns `RendererError::FeatureError`.
-          `Rgba16Float` and the 8-bit unorm formats blend everywhere.
+          Blending needs a color target that blends and a shader that writes a `vec4`.
+          A format that never blends, such as an integer one, and an output without alpha
+          return `PassError::InvalidColorTarget` on every device. Whether `Rgba32Float` blends
+          depends on the device: the renderer asks for float32 blending wherever the GPU offers it,
+          and a device without it returns `RendererError::FeatureError`. `Rgba16Float` and the 8-bit
+          unorm formats blend everywhere.
 
         This is a pipeline-state flag. Changing it forces the renderer to rebuild the pipeline
         for the affected `(shader, alpha_mode, double_sided)` key. Switching it every frame is

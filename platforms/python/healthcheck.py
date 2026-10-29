@@ -416,6 +416,13 @@ def check_pass_targets(renderer):
     refuses("a Renderer with no context", "another Renderer",
             lambda: Renderer().render(Shader(SOLID_SHADER), target))
 
+    # A refused Scene render runs no setup, so it adds no default camera or light.
+    scene = Scene()
+    scene.add(Model(Mesh(), Material.pbr()))
+    refuses("a Scene render into another Renderer's target", "another Renderer",
+            lambda: Renderer().render(scene, target))
+    assert not scene.cameras() and not scene.lights(), "the refused render added defaults"
+
     # A pass error keeps its class whichever call raises it: render raises
     # InvalidInputError for a target format the shader can't fill, as set_target does.
     usage = TextureUsage.RENDER_ATTACHMENT | TextureUsage.TEXTURE_BINDING
