@@ -139,17 +139,18 @@ impl Mesh {
 /// a `Pass::require` of the mesh included, and a mesh it refuses makes `render` say why.
 impl Renderable for Mesh {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        // The guard drops here, before the checks read the vertices again.
-        let first = self.object.verts.read().first().cloned();
-        if let Some(first) = first {
-            let shader = self
-                .pass
-                .ensure_shader(|| match Shader::from_vertex(&first) {
-                    Ok(shader) => shader.object,
-                    Err(_) => Shader::default().object,
-                });
-            shader.preview(&self.object);
+        if self.object.verts.read().is_empty() {
+            return vec![self.pass.clone()].into();
         }
+        let shader = self.pass.ensure_shader(|| {
+            // Copied once, so no vertex guard is held while the shader compiles or checks.
+            let first = self.object.verts.read().first().cloned();
+            match first.as_ref().map(Shader::from_vertex) {
+                Some(Ok(shader)) => shader.object,
+                _ => Shader::default().object,
+            }
+        });
+        shader.preview(&self.object);
         vec![self.pass.clone()].into()
     }
 
@@ -335,6 +336,15 @@ impl VertexSchema {
         let stride = fields.iter().map(|field| field.size).sum();
         Self { stride, fields }
     }
+
+    /// Whether this is the instance layout of a `Model`, without building one to compare.
+    fn is_model(&self) -> bool {
+        let columns = self
+            .fields
+            .iter()
+            .map(|field| (field.name.as_str(), field.fmt));
+        columns.eq(MODEL_COLUMNS.map(|name| (name, wgpu::VertexFormat::Float32x4)))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -464,10 +474,7 @@ impl MeshObject {
         insts.clear();
         // The next instance sets the layout again, but the model columns stay.
         let mut schema = self.instance_schema.write();
-        if schema
-            .as_ref()
-            .is_some_and(|schema| *schema != model_schema())
-        {
+        if schema.as_ref().is_some_and(|schema| !schema.is_model()) {
             *schema = None;
         }
         drop(schema);
@@ -541,7 +548,11 @@ impl MeshObject {
     /// it declares the Model columns and holds no instance of its own.
     pub(crate) fn awaits_models(&self) -> bool {
         self.insts.read().is_empty()
-            && self.instance_schema.read().as_ref() == Some(&model_schema())
+            && self
+                .instance_schema
+                .read()
+                .as_ref()
+                .is_some_and(VertexSchema::is_model)
     }
 
     /// Records what a shader's attach found: the types it gave untyped attributes,
@@ -1014,9 +1025,12 @@ impl MeshObject {
     }
 }
 
+/// The names of the four `vec4<f32>` columns of a `Model`'s transform.
+const MODEL_COLUMNS: [&str; 4] = ["model_0", "model_1", "model_2", "model_3"];
+
 /// The instance layout of a `Model`: the four `vec4<f32>` columns of its transform.
 pub(crate) fn model_schema() -> VertexSchema {
-    let fields = ["model_0", "model_1", "model_2", "model_3"]
+    let fields = MODEL_COLUMNS
         .into_iter()
         .map(|name| Field::new(name, wgpu::VertexFormat::Float32x4))
         .collect();
@@ -1235,6 +1249,29 @@ mod tests {
             instances: packed.instances_at
                 != Some(mesh.object.instance_changes.load(Ordering::Acquire)),
         }
+    }
+
+    // Story: the Model columns are told apart by name and format alone, so the
+    // per-frame check that skips a Model's mesh builds no layout to compare with.
+    #[test]
+    fn the_model_columns_match_by_name_and_format() {
+        let floats = |names: &[&str]| {
+            let fields = names
+                .iter()
+                .map(|name| Field::new(name, wgpu::VertexFormat::Float32x4));
+            VertexSchema::new(fields.collect())
+        };
+        let integers = VertexSchema::new(
+            MODEL_COLUMNS
+                .map(|name| Field::new(name, wgpu::VertexFormat::Uint32x4))
+                .to_vec(),
+        );
+
+        assert!(model_schema().is_model());
+        assert!(floats(&MODEL_COLUMNS).is_model());
+        assert!(!floats(&MODEL_COLUMNS[..3]).is_model(), "three columns");
+        assert!(!floats(&["model_0", "model_1", "model_2", "tint"]).is_model());
+        assert!(!integers.is_model(), "another format");
     }
 
     #[test]

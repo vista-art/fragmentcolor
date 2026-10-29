@@ -1309,7 +1309,7 @@ impl RenderContext {
         let mut batched = Vec::with_capacity(meshes.len());
         for mesh in meshes.iter() {
             let mesh_ptr = Arc::as_ptr(mesh) as usize;
-            if model && mesh.awaits_models() && !drawn.contains(&(shader_ptr, mesh_ptr)) {
+            if model && !drawn.contains(&(shader_ptr, mesh_ptr)) && mesh.awaits_models() {
                 continue;
             }
             // The layouts follow the schemas of the pack the buffers came from.
