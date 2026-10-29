@@ -989,7 +989,7 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
 // WGSL that keeps them: each member reads and writes the bytes its explicit layout gives it.
 await withModule('platforms.web.healthcheck.explicit_layouts', async () => {
     if (!navigator.gpu || !(await navigator.gpu.requestAdapter())) {
-      return console.log('explicit layouts: no WebGPU adapter, so WebGL2 keeps the module as it is');
+      return console.log('explicit layouts: no WebGPU adapter, and WebGL2 refuses them, as webgl2.js checks');
     }
     const renderer = new Renderer();
     const target = await renderer.createTextureTarget([8, 8]);
