@@ -21,9 +21,17 @@ let shader = Shader::new(r#"
 "#)?;
 
 let m1 = Mesh::new();
-m1.add_vertex([0.0, 0.0]);
+m1.add_vertices([
+    [-0.5, -0.5],
+    [0.0, -0.5],
+    [-0.5, 0.0],
+]);
 let m2 = Mesh::new();
-m2.add_vertex([0.5, 0.0]);
+m2.add_vertices([
+    [0.0, 0.0],
+    [0.5, 0.0],
+    [0.0, 0.5],
+]);
 
 shader.add_mesh(&m1)?;
 shader.add_mesh(&m2)?;

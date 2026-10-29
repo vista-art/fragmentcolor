@@ -16,7 +16,7 @@ Returns a handle to the same Scene (Arc-shared) for chaining.
 
 ## Example
 
-```rust,no_run
+```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Light, Material, Mesh, Model, Renderer, Scene, Vertex};
 
@@ -24,9 +24,11 @@ let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
 
 let mesh = Mesh::new();
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
-);
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
 
 let scene = Scene::new();
 // A warm dusk ambient. It applies to every Material added below.

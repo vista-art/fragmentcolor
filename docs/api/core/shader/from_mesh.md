@@ -23,7 +23,11 @@ has another dimension than the first one's.
 use fragmentcolor::{Mesh, Shader};
 
 let mut mesh = Mesh::new();
-mesh.add_vertex([0.0, 0.0, 0.0]);
+mesh.add_vertices([
+    [-0.5, -0.5, 0.0],
+    [0.5, -0.5, 0.0],
+    [0.0, 0.5, 0.0],
+]);
 let shader = Shader::from_mesh(&mesh)?;
 
 # let _ = shader;
