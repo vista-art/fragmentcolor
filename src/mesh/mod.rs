@@ -29,7 +29,7 @@ pub(crate) mod builtins;
 
 mod platform;
 
-use crate::renderer::RenderContext;
+use crate::renderer::{RenderContext, RendererError, check_limit};
 use crate::{PassObject, Renderable, Shader, ShaderError};
 
 #[derive(Clone, Debug)]
@@ -584,7 +584,7 @@ impl MeshObject {
     pub(crate) fn vertex_buffers(
         &self,
         context: &RenderContext,
-    ) -> Result<(VertexBuffers, DrawCounts), MeshError> {
+    ) -> Result<(VertexBuffers, DrawCounts), RendererError> {
         let owned = self
             .gpu
             .read()
@@ -608,7 +608,7 @@ impl MeshObject {
     fn upload_vertex_buffers(
         &self,
         context: &RenderContext,
-    ) -> Result<(VertexBuffers, DrawCounts), MeshError> {
+    ) -> Result<(VertexBuffers, DrawCounts), RendererError> {
         let (device, queue) = (&context.device, &context.queue);
         // Capture dirty flags before packing; ensure_packed() clears them
         let was_dirty_v = *self.dirty_vertices.read();
@@ -623,16 +623,21 @@ impl MeshObject {
         // count, and a list that shrinks into the old buffer draws its own length.
         let instance_rows = match self.insts.read().len() {
             0 => None,
-            rows => Some(u32::try_from(rows)?),
+            rows => Some(count(rows)?),
         };
-        let index_count = u32::try_from(idx.len())?;
+        let index_count = count(idx.len())?;
 
         // Checked on every upload: the packing above clears the dirty flags, so
         // data that stays too large fails again instead of drawing old buffers.
         let limit = device.limits().max_buffer_size;
-        check_buffer("vertex", pv.len() as u64, limit)?;
-        check_buffer("index", u64::from(index_count) * 4, limit)?;
-        check_buffer("instance", pi.len() as u64, limit)?;
+        let sizes = [
+            ("the mesh's vertex buffer", pv.len() as u64),
+            ("the mesh's index buffer", u64::from(index_count) * 4),
+            ("the mesh's instance buffer", pi.len() as u64),
+        ];
+        for (buffer, size) in sizes {
+            check_limit(buffer, "max_buffer_size", size, limit)?;
+        }
 
         // Create or grow buffers
         let mut gpu = self.gpu.write();
@@ -715,7 +720,7 @@ impl MeshObject {
         }
 
         let Some(g) = gpu.as_ref() else {
-            return Err(MeshError::NoGpuStreams);
+            return Err(MeshError::NoGpuStreams.into());
         };
         let vertex_buffers = VertexBuffers {
             vertex_buffer: g.vertex_buffer.clone(),
@@ -967,16 +972,9 @@ fn check_indices(indices: &[u32], vertices: usize) -> Result<(), MeshError> {
     }
 }
 
-/// Refuses a `buffer` of `size` bytes past the device's `limit`.
-pub(crate) fn check_buffer(buffer: &'static str, size: u64, limit: u64) -> Result<(), MeshError> {
-    match size > limit {
-        true => Err(MeshError::BufferSize {
-            buffer,
-            size,
-            limit,
-        }),
-        false => Ok(()),
-    }
+/// `length` as a 32-bit count, the width the GPU draws indices and instances with.
+fn count(length: usize) -> Result<u32, MeshError> {
+    Ok(u32::try_from(length)?)
 }
 
 #[cfg(test)]
@@ -1078,20 +1076,20 @@ mod tests {
 
             assert_eq!(
                 message(&vertices),
-                "The vertex buffer takes 65544 bytes, past this device's max_buffer_size (65536)"
+                "the mesh's vertex buffer needs max_buffer_size of at least 65544, and the device has 65536"
             );
             assert_eq!(
                 message(&vertices),
-                "The vertex buffer takes 65544 bytes, past this device's max_buffer_size (65536)",
+                "the mesh's vertex buffer needs max_buffer_size of at least 65544, and the device has 65536",
                 "the next upload"
             );
             assert_eq!(
                 message(&indices),
-                "The index buffer takes 65544 bytes, past this device's max_buffer_size (65536)"
+                "the mesh's index buffer needs max_buffer_size of at least 65544, and the device has 65536"
             );
             assert_eq!(
                 message(&instances),
-                "The instance buffer takes 65552 bytes, past this device's max_buffer_size (65536)"
+                "the mesh's instance buffer needs max_buffer_size of at least 65552, and the device has 65536"
             );
         });
     }

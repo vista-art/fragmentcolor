@@ -40,6 +40,7 @@ pub(crate) use texture_pool::*;
 
 mod access;
 mod checks;
+pub(crate) use checks::check_limit;
 use checks::{Attachment, PassTargets, refuse_without_context};
 mod depth;
 mod shader_checks;
@@ -1638,7 +1639,12 @@ impl RenderContext {
 
         let limit = self.device.limits().max_buffer_size;
         for (key, bytes) in opaque_groups.iter() {
-            crate::mesh::check_buffer("Model instance", bytes.len() as u64, limit)?;
+            check_limit(
+                "the pass's Model instance buffer",
+                "max_buffer_size",
+                bytes.len() as u64,
+                limit,
+            )?;
             let count = (bytes.len() / 64) as u32;
             let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Pass model instance buffer"),
@@ -2597,12 +2603,15 @@ fn vertex_buffer_layouts(
     // shaders).
     for vertex_input in vertex_inputs.iter() {
         // Locations are unique, so this also keeps the count within the limit.
-        if vertex_input.location >= limits.max_vertex_attributes {
-            return Err(RendererError::Error(format!(
-                "shader input '{}' @location({}) is past this device's max_vertex_attributes ({})",
-                vertex_input.name, vertex_input.location, limits.max_vertex_attributes
-            )));
-        }
+        check_limit(
+            &format!(
+                "shader input '{}' @location({})",
+                vertex_input.name, vertex_input.location
+            ),
+            "max_vertex_attributes",
+            u64::from(vertex_input.location) + 1,
+            u64::from(limits.max_vertex_attributes),
+        )?;
         let mut placed = false;
 
         let assert_format = |format_mesh: wgpu::VertexFormat,
@@ -2694,10 +2703,7 @@ fn vertex_buffer_layouts(
     }
 
     let limit = u64::from(limits.max_vertex_buffer_array_stride);
-    if vertex_stride > limit {
-        let reason = explain_stride("vertex", vertex_stride, limit);
-        return Err(crate::mesh::MeshError::InvalidVertex(reason).into());
-    }
+    check_limit("the mesh's vertex stride", STRIDE, vertex_stride, limit)?;
     vertex_attributes.sort_by_key(|attr| attr.shader_location);
     let vertex = VertexStream {
         stride: vertex_stride,
@@ -2707,11 +2713,8 @@ fn vertex_buffer_layouts(
 
     // The instance stream counts against the limit only when the shader reads it.
     let instance = match (instance_attributes.is_empty(), instance_stride) {
-        (false, Some(stride)) if stride > limit => {
-            let reason = explain_stride("instance", stride, limit);
-            return Err(crate::mesh::MeshError::InvalidInstance(reason).into());
-        }
         (false, Some(stride)) => {
+            check_limit("the mesh's instance stride", STRIDE, stride, limit)?;
             instance_attributes.sort_by_key(|attr| attr.shader_location);
             Some(VertexStream {
                 stride,
@@ -2725,12 +2728,8 @@ fn vertex_buffer_layouts(
     Ok(VertexLayouts { vertex, instance })
 }
 
-/// Why a `stream` whose items take `stride` bytes can't draw on a device of `limit`.
-fn explain_stride(stream: &str, stride: u64, limit: u64) -> String {
-    format!(
-        "the {stream} stride of {stride} bytes is past this device's max_vertex_buffer_array_stride ({limit})"
-    )
-}
+/// The limit a vertex or instance stride counts against.
+const STRIDE: &str = "max_vertex_buffer_array_stride";
 
 /// The viewport for `region`, as given. `check_viewport` keeps each side within
 /// the device's 2D limit, and a region that starts past the attachment draws nothing,
@@ -4766,9 +4765,9 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat)
 
             let planned = ctx.plan_pass(&pass.object);
 
-            let message = "The Model instance buffer takes 65600 bytes, past this device's max_buffer_size (65536)";
             assert!(
-                matches!(&planned, Err(RendererError::MeshError(error)) if error.to_string() == message),
+                matches!(&planned, Err(RendererError::LimitError { item, limit, value: 65600, max: 65536 })
+                    if item == "the pass's Model instance buffer" && limit == "max_buffer_size"),
                 "got {:?}",
                 planned.err()
             );
@@ -4807,10 +4806,11 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat)
             let drawn = renderer.render(&last, &target);
 
             let expected = format!(
-                "shader input 'extra' @location({limit}) is past this device's max_vertex_attributes ({limit})"
+                "shader input 'extra' @location({limit}) needs max_vertex_attributes of at least {}, and the device has {limit}",
+                limit + 1
             );
             assert!(
-                matches!(&refused, Err(RendererError::Error(message)) if *message == expected),
+                matches!(&refused, Err(error @ RendererError::LimitError { .. }) if error.to_string() == expected),
                 "got {refused:?}"
             );
             assert!(drawn.is_ok(), "got {drawn:?}");
@@ -4857,21 +4857,18 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat)
             let vertex = renderer.render(&plain, &target);
             let instance = renderer.render(&offset, &target);
 
-            let stride = |extra: u32| u64::from(count * 16 + extra);
-            let vertex_message = format!(
-                "Invalid vertex: the vertex stride of {} bytes is past this device's max_vertex_buffer_array_stride ({limit})",
-                stride(8)
-            );
-            let instance_message = format!(
-                "Invalid instance: the instance stride of {} bytes is past this device's max_vertex_buffer_array_stride ({limit})",
-                stride(8)
-            );
+            let stride = u64::from(count * 16 + 8);
+            let message = |stream: &str| {
+                format!(
+                    "the mesh's {stream} stride needs max_vertex_buffer_array_stride of at least {stride}, and the device has {limit}"
+                )
+            };
             assert!(
-                matches!(&vertex, Err(RendererError::MeshError(error)) if error.to_string() == vertex_message),
+                matches!(&vertex, Err(error @ RendererError::LimitError { .. }) if error.to_string() == message("vertex")),
                 "got {vertex:?}"
             );
             assert!(
-                matches!(&instance, Err(RendererError::MeshError(error)) if error.to_string() == instance_message),
+                matches!(&instance, Err(error @ RendererError::LimitError { .. }) if error.to_string() == message("instance")),
                 "got {instance:?}"
             );
         });

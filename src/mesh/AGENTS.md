@@ -14,7 +14,7 @@ Schema & packing
 GPU buffers
 - `vertex_buffers(context)` must create / update and cache GPU buffers; avoid re-allocating unless a dirty flag demands it.
 - The buffers belong to one `RenderContext` at a time (`GpuStreams::owner`, its `id`). Another context gets buffers of its own, uploaded from the packed bytes, so a mesh draws with any `Renderer`.
-- Every upload checks each buffer against `max_buffer_size` (`check_buffer`, `MeshError::BufferSize`) before deciding what to write. The packing clears the dirty flags, so data that stays too large fails on each upload instead of drawing the old buffers.
+- Every upload checks each buffer against `max_buffer_size` (`check_limit`, `RendererError::LimitError`, which is why `vertex_buffers` returns a `RendererError`) before deciding what to write. The packing clears the dirty flags, so data that stays too large fails on each upload instead of drawing the old buffers.
 - Instance buffers are optional; `instance_count` can be overridden to drive non-instanced draws.
 
 Validation contract

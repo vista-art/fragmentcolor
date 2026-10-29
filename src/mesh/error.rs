@@ -22,13 +22,6 @@ pub enum MeshError {
     /// An index from `set_indices` past the last vertex the mesh holds.
     #[error("Index {index} points past the last of {vertices} vertices")]
     IndexRange { index: u32, vertices: usize },
-    /// Mesh data that needs a GPU buffer larger than the device makes.
-    #[error("The {buffer} buffer takes {size} bytes, past this device's max_buffer_size ({limit})")]
-    BufferSize {
-        buffer: &'static str,
-        size: u64,
-        limit: u64,
-    },
     #[cfg(wasm)]
     #[error("WASM Mesh Error: {0}")]
     Error(String),
