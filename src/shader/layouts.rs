@@ -7,7 +7,7 @@
 //! member of such a struct, which pins every member and the struct's size.
 
 use super::ShaderError;
-use super::error::describe;
+use super::error::{Diagnostic, describe};
 use naga::keywords::wgsl::{BUILTIN_IDENTIFIER_SET, RESERVED_SET};
 use naga::proc::{CaseInsensitiveKeywordSet, Layouter, NameKey, Namer};
 use naga::valid::ModuleInfo;
@@ -32,8 +32,8 @@ pub(crate) enum LayoutLoss {
 impl From<LayoutLoss> for ShaderError {
     fn from(loss: LayoutLoss) -> Self {
         match loss {
-            LayoutLoss::Write(error) => error.into(),
-            LayoutLoss::Parse(error) => error.into(),
+            LayoutLoss::Write(error) => ShaderError::WgslError(Diagnostic::from_error(&error)),
+            LayoutLoss::Parse(error) => ShaderError::WgslParseError(Diagnostic::from_error(&error)),
             other => ShaderError::LayoutError(describe(&other)),
         }
     }

@@ -1,45 +1,33 @@
-use super::create_validator;
+use super::validate_module;
+use super::error::Diagnostic;
 use crate::{ShaderError, ShaderObject};
+use naga::back::wgsl;
+use naga::front::glsl;
 
 impl ShaderObject {
     /// Create a Shader object from a GLSL source pair (vertex and fragment shaders).
     pub fn glsl(vertex_source: &str, fragment_source: &str) -> Result<Self, ShaderError> {
-        use naga::back::wgsl;
-        use naga::front::glsl;
+        let vertex = convert_stage(vertex_source, naga::ShaderStage::Vertex)?;
+        let fragment = convert_stage(fragment_source, naga::ShaderStage::Fragment)?;
+        let vertex = vertex.replace("fn main", "fn vs_main");
+        let fragment = fragment.replace("fn main", "fn fs_main");
+        Self::wgsl(&format!("{vertex}\n{fragment}"))
+    }
+}
 
-        let mut parser = glsl::Frontend::default();
-        let mut validator = create_validator();
-
-        let wgsl_vertex_source = {
-            let vertex_module = parser.parse(
-                &glsl::Options::from(naga::ShaderStage::Vertex),
-                vertex_source,
-            )?;
-            let vertex_module_info = validator.validate(&vertex_module).map_err(Box::new)?;
-
-            wgsl::write_string(
-                &vertex_module,
-                &vertex_module_info,
-                wgsl::WriterFlags::empty(),
-            )?
-            .replace("fn main", "fn vs_main")
-        };
-
-        let wgsl_fragment_source = {
-            let fragment_module = parser.parse(
-                &glsl::Options::from(naga::ShaderStage::Fragment),
-                fragment_source,
-            )?;
-            let fragment_module_info = validator.validate(&fragment_module).map_err(Box::new)?;
-
-            wgsl::write_string(
-                &fragment_module,
-                &fragment_module_info,
-                wgsl::WriterFlags::empty(),
-            )?
-            .replace("fn main", "fn fs_main")
-        };
-
-        Self::wgsl(&format!("{}\n{}", wgsl_vertex_source, wgsl_fragment_source))
+/// The WGSL for the GLSL `source` of one `stage`, or naga's report on a source
+/// its parser, validator or writer refuses.
+fn convert_stage(source: &str, stage: naga::ShaderStage) -> Result<String, ShaderError> {
+    let module = match glsl::Frontend::default().parse(&glsl::Options::from(stage), source) {
+        Ok(module) => module,
+        Err(errors) => {
+            let diagnostic = Diagnostic::from_glsl(&errors, source);
+            return Err(ShaderError::GlslParseErrors(diagnostic));
+        }
+    };
+    let info = validate_module(&module, Some(source))?;
+    match wgsl::write_string(&module, &info, wgsl::WriterFlags::empty()) {
+        Ok(text) => Ok(text),
+        Err(error) => Err(ShaderError::WgslError(Diagnostic::from_error(&error))),
     }
 }
