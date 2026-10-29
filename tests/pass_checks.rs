@@ -339,7 +339,7 @@ fn blending_into_a_target_that_cannot_blend_errors() {
             matches!(
                 &result,
                 Err(RendererError::PassError(PassError::InvalidColorTarget(message)))
-                    if message.contains("can't blend")
+                    if message.contains("never blends")
             ),
             "{result:?}"
         );
