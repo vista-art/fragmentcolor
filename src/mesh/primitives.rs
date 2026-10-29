@@ -50,12 +50,10 @@ impl Quad {
 
     #[lsp_doc("docs/api/geometry/quad/get_mesh.md")]
     pub fn get_mesh(&self) -> Mesh {
+        let pass = crate::pass::PassObject::for_mesh("Quad Mesh Debug Pass", self.object.clone());
         Mesh {
             object: self.object.clone(),
-            pass: Arc::new(crate::pass::PassObject::new(
-                "Quad Mesh Debug Pass",
-                crate::pass::PassType::Render,
-            )),
+            pass: Arc::new(pass),
         }
     }
 }

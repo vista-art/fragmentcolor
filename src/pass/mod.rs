@@ -447,6 +447,8 @@ pub struct PassObject {
     // an Arc to itself would keep the pass and its shaders alive forever.
     pub(crate) flat: RwLock<Arc<[Arc<PassObject>]>>,
     pub(crate) built_version: AtomicU64,
+    /// The mesh whose quick view this pass draws, on a mesh's own pass.
+    preview: Option<Arc<crate::mesh::MeshObject>>,
 }
 
 impl PassObject {
@@ -471,6 +473,24 @@ impl PassObject {
             dependency_ids: RwLock::new(std::collections::HashSet::new()),
             flat: RwLock::new(Arc::from(Vec::<Arc<PassObject>>::new().into_boxed_slice())),
             built_version: AtomicU64::new(0),
+            preview: None,
+        }
+    }
+
+    /// The pass that draws `mesh` for its quick view.
+    pub(crate) fn for_mesh(name: &str, mesh: Arc<crate::mesh::MeshObject>) -> Self {
+        Self {
+            preview: Some(mesh),
+            ..Self::new(name, PassType::Render)
+        }
+    }
+
+    /// Builds the quick view of the pass's mesh once the mesh has a vertex, and checks
+    /// the mesh. The renderer calls it on every render, so a mesh that a pass required
+    /// while it was empty draws once it has vertices. Any other pass does nothing.
+    pub(crate) fn ensure_preview(&self) {
+        if let Some(mesh) = self.preview.as_ref() {
+            mesh.preview_in(self);
         }
     }
 

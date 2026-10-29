@@ -54,12 +54,11 @@ impl Default for Mesh {
 impl Mesh {
     #[lsp_doc("docs/api/geometry/mesh/new.md")]
     pub fn new() -> Self {
+        let object = Arc::new(MeshObject::new());
+        let pass = crate::pass::PassObject::for_mesh("Mesh Internal Pass", object.clone());
         Self {
-            object: Arc::new(MeshObject::new()),
-            pass: Arc::new(crate::pass::PassObject::new(
-                "Mesh Internal Pass",
-                crate::pass::PassType::Render,
-            )),
+            object,
+            pass: Arc::new(pass),
         }
     }
 
@@ -134,23 +133,12 @@ impl Mesh {
 // Renderable impl ( for Mesh quick-view)
 // -----------------------------
 /// The quick view draws the mesh with a shader built from its first vertex.
-/// That shader records no reads, so the mesh's other shaders keep their own rules.
-/// It checks the mesh itself whenever it changed, on every render that draws it,
+/// That shader fixes the types it gives plain numbers, and it records no reads.
+/// The renderer builds it and checks the mesh on every render that reaches its pass,
 /// a `Pass::require` of the mesh included, and a mesh it refuses makes `render` say why.
 impl Renderable for Mesh {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        if self.object.verts.read().is_empty() {
-            return vec![self.pass.clone()].into();
-        }
-        let shader = self.pass.ensure_shader(|| {
-            // Copied once, so no vertex guard is held while the shader compiles or checks.
-            let first = self.object.verts.read().first().cloned();
-            match first.as_ref().map(Shader::from_vertex) {
-                Some(Ok(shader)) => shader.object,
-                _ => Shader::default().object,
-            }
-        });
-        shader.preview(&self.object);
+        self.pass.ensure_preview();
         vec![self.pass.clone()].into()
     }
 
@@ -520,6 +508,23 @@ impl MeshObject {
     /// The count of changes to the mesh, which moves on every one.
     pub(crate) fn generation(&self) -> u64 {
         self.generation.load(Ordering::Acquire)
+    }
+
+    /// Builds the quick view's shader on `pass` from the first vertex, once there is one,
+    /// and checks the mesh against it. An empty mesh builds nothing and draws nothing.
+    pub(crate) fn preview_in(self: &Arc<Self>, pass: &PassObject) {
+        if self.verts.read().is_empty() {
+            return;
+        }
+        let shader = pass.ensure_shader(|| {
+            // Copied once, so no vertex guard is held while the shader compiles or checks.
+            let first = self.verts.read().first().cloned();
+            match first.as_ref().map(Shader::from_vertex) {
+                Some(Ok(shader)) => shader.object,
+                _ => Shader::default().object,
+            }
+        });
+        shader.preview(self);
     }
 
     /// The layouts `build` makes for the attached shader `shader` from the upload at
@@ -1561,6 +1566,44 @@ mod tests {
 
             assert!(error.contains("color"), "{error}");
             assert!(error.contains("vertex 3"), "{error}");
+        });
+    }
+
+    // Story: a pass that requires a mesh while it is empty draws the mesh
+    // once it has vertices, and reports a vertex the quick view refuses.
+    #[test]
+    fn a_mesh_required_while_empty_draws_once_it_has_vertices() {
+        pollster::block_on(async move {
+            use crate::Target;
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+            let mesh = Mesh::new();
+            let pass = crate::Pass::new("main");
+            pass.load_previous();
+            pass.require(&mesh).expect("require");
+            mesh.add_vertices(corners.map(|corner| Vertex::new(corner).set("color", [1.0; 4])));
+
+            renderer.render(&pass, &target).expect("render");
+            let image = target.get_image().await.expect("read back");
+
+            let refused = Mesh::new();
+            let other = crate::Pass::new("other");
+            other.require(&refused).expect("require");
+            refused.add_vertices(
+                corners.map(|corner| Vertex::new(corner).set("position", [5.0, 5.0])),
+            );
+            let error = renderer
+                .render(&other, &target)
+                .expect_err("a position property")
+                .to_string();
+
+            assert_eq!(mesh.pass.shaders.read().len(), 1, "the quick view's shader");
+            assert_eq!(image[..4], [255, 255, 255, 255], "the white mesh");
+            assert!(error.contains("property named 'position'"), "{error}");
         });
     }
 

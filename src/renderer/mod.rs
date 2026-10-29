@@ -1263,6 +1263,8 @@ impl RenderContext {
     /// The draw loop takes each shader's layouts and buffers from the plan.
     /// A pass that draws into the frame checks its attachments once it has one.
     fn plan_pass(&self, pass: &PassObject) -> Result<PassDraws, RendererError> {
+        // A mesh's own pass builds its quick view here too, whatever reached the pass.
+        pass.ensure_preview();
         self.check_light_cap(pass)?;
         self.check_viewport(pass)?;
         let targets = self.find_targets(pass)?;
