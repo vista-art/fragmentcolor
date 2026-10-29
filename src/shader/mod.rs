@@ -10,7 +10,7 @@ use naga::{
     AddressSpace, Module,
     valid::{Capabilities, ModuleInfo, ValidationFlags, Validator},
 };
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -238,6 +238,9 @@ pub(crate) struct ShaderObject {
     /// The stamp of the latest texture setter call for each texture uniform. An upload
     /// that finishes after a newer setter call for its key is dropped, so the latest call wins.
     texture_stamps: DashMap<String, u64>,
+    /// Held while a texture uniform is written or stamped. An upload checks its stamp
+    /// and writes under it, so a setter call can't land between the check and the write.
+    pub(crate) texture_writes: Mutex<()>,
 }
 
 /// A `set` queued while the storage was busy, applied by `flush_pending`.
@@ -284,6 +287,14 @@ impl ShaderObject {
                 .map_err(|_| ShaderError::TypeMismatch(AMBIENT_KEY.into()))?;
             return self.set_input(key, input);
         }
+        let texture = matches!(&val, UniformData::Texture(meta) if meta.id.id != 0);
+        let _writing = texture.then(|| self.texture_writes.lock());
+        self.write_value(key, val)
+    }
+
+    /// Writes `val` under `key`, or queues it when the storage is busy, and holds the
+    /// texture it names. A caller writing a texture holds `texture_writes`.
+    fn write_value(&self, key: &str, val: UniformData) -> Result<(), ShaderError> {
         let texture = match &val {
             UniformData::Texture(meta) if meta.id.id != 0 => Some(meta.id),
             _ => None,
@@ -320,6 +331,7 @@ impl ShaderObject {
             UniformInput::Texture(id) => Some(*id),
             _ => None,
         };
+        let _writing = texture.map(|_| self.texture_writes.lock());
         if let Some(mut storage) = self.storage.try_write() {
             let value = input.resolve(key, storage.shape(key)?)?;
             self.pending.remove(key);
@@ -530,6 +542,7 @@ impl ShaderObject {
             lowered: RwLock::new(HashMap::new()),
             bound_textures: DashMap::new(),
             texture_stamps: DashMap::new(),
+            texture_writes: Mutex::new(()),
         };
         // Refuses vertex inputs no mesh can feed, such as two with one name.
         object.reflect_vertex_inputs()?;
@@ -610,6 +623,7 @@ impl ShaderObject {
             let meta = TextureMeta::with_id_only(*tex.id());
             return self.set(&key, UniformData::Texture(meta));
         }
+        let _writing = self.texture_writes.lock();
         let stamp = self.stamp_texture(&key);
         self.pending_textures
             .write()
@@ -623,6 +637,23 @@ impl ShaderObject {
         let stamp = NEXT.fetch_add(1, Ordering::Relaxed);
         self.texture_stamps.insert(key.to_string(), stamp);
         stamp
+    }
+
+    /// Binds the texture `id` an upload for `entry` made, unless a setter call for its key
+    /// came after the upload was queued. Returns whether it bound. The stamp check and the
+    /// write happen under `texture_writes`, so a setter call lands before or after both.
+    pub(crate) fn set_latest(
+        &self,
+        entry: &PendingTexture,
+        id: TextureId,
+    ) -> Result<bool, ShaderError> {
+        let _writing = self.texture_writes.lock();
+        if !self.is_latest(entry) {
+            return Ok(false);
+        }
+        let meta = crate::texture::TextureMeta::with_id_only(id);
+        self.write_value(&entry.key, UniformData::Texture(meta))?;
+        Ok(true)
     }
 
     /// Whether `entry` still holds the latest setter call for its key.
@@ -2489,6 +2520,98 @@ struct VertexIn { @location(0) position: vec2<f32>, @location(1) uv: vec2<f32> }
             object.pending_textures.read().is_empty(),
             "the stale upload stays out"
         );
+    }
+
+    /// A shader with one texture uniform, `image`.
+    fn image_shader() -> Shader {
+        Shader::new(
+            r#"
+@group(0) @binding(0) var image: texture_2d<f32>;
+@vertex fn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(0.0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(image, vec2<i32>(0), 0); }
+"#,
+        )
+        .expect("shader")
+    }
+
+    /// The texture id `image` holds.
+    fn image_id(object: &ShaderObject) -> u64 {
+        match object.get_uniform("image").map(|uniform| uniform.data) {
+            Ok(UniformData::Texture(meta)) => meta.id.id,
+            other => panic!("image holds no texture: {other:?}"),
+        }
+    }
+
+    // Story: a finished upload binds its texture while its setter call is the latest,
+    // and leaves a texture a later setter call bound.
+    #[test]
+    fn an_upload_binds_only_while_latest() {
+        let shader = image_shader();
+        let object = &shader.object;
+        let lazy = || crate::TextureInput::from("tests/assets/missing.png");
+
+        object
+            .queue_or_set_texture("image", lazy())
+            .expect("queues");
+        let first = object.drain_pending_textures().remove(0);
+        let bound = object
+            .set_latest(&first, TextureId { id: 5 })
+            .expect("binds");
+        assert!(bound);
+        assert_eq!(image_id(object), 5);
+
+        object
+            .queue_or_set_texture("image", lazy())
+            .expect("queues");
+        let second = object.drain_pending_textures().remove(0);
+        object
+            .set_input("image", UniformInput::Texture(TextureId { id: 9 }))
+            .expect("sets");
+        let bound = object
+            .set_latest(&second, TextureId { id: 6 })
+            .expect("skips");
+        assert!(!bound);
+        assert_eq!(image_id(object), 9, "the older upload overwrote the setter");
+    }
+
+    // Story: every texture write and stamp waits for `texture_writes`, which an upload
+    // holds from its stamp check to its write, so no setter call lands in between.
+    #[test]
+    fn texture_writes_wait_for_an_upload() {
+        use std::sync::atomic::AtomicUsize;
+        let shader = image_shader();
+        let object = &shader.object;
+        let done = AtomicUsize::new(0);
+        let count = |result: Result<(), ShaderError>| {
+            done.fetch_add(1, Ordering::SeqCst);
+            result
+        };
+        std::thread::scope(|scope| {
+            let held = object.texture_writes.lock();
+            let meta = crate::texture::TextureMeta::with_id_only(TextureId { id: 7 });
+            let writers = [
+                scope.spawn(|| count(object.set("image", UniformData::Texture(meta)))),
+                scope.spawn(|| {
+                    let id = UniformInput::Texture(TextureId { id: 8 });
+                    count(object.set_input("image", id))
+                }),
+                scope.spawn(|| {
+                    let lazy = crate::TextureInput::from("tests/assets/missing.png");
+                    count(object.queue_or_set_texture("image", lazy))
+                }),
+            ];
+            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(200);
+            while std::time::Instant::now() < deadline {
+                let finished = done.load(Ordering::SeqCst);
+                assert_eq!(finished, 0, "a texture write didn't wait for the lock");
+                std::thread::yield_now();
+            }
+            drop(held);
+            for writer in writers {
+                writer.join().expect("a writer").expect("a write");
+            }
+        });
+        assert_eq!(done.load(Ordering::SeqCst), 3);
     }
 
     // Story: two globals on one slot fail at Shader::new, used by different entry points or not used at all.

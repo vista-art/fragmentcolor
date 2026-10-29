@@ -41,7 +41,7 @@ pub(crate) use texture_pool::*;
 mod access;
 mod checks;
 pub(crate) use checks::check_limit;
-use checks::{Attachment, PassTargets, refuse_without_context};
+use checks::{Attachment, PassTargets, check_target};
 mod depth;
 mod shader_checks;
 use depth::DepthUse;
@@ -524,15 +524,15 @@ impl Renderer {
         renderable: &impl Renderable,
         target: &impl Target,
     ) -> Result<(), RendererError> {
-        // Drain any pending texture uploads from lazy Material setters before
-        // we touch the GPU. Cheap when nothing is pending, since the load future
-        // then awaits nothing. Wasm has no blocking executor, so pending uploads
-        // wait there until the caller awaits `load`.
+        // A foreign target is refused first, since load uploads into this Renderer's device.
+        check_target(self.context.read().as_ref(), renderable, target)?;
+        // Native render drains the lazy Material uploads. Wasm can't block,
+        // so they wait there until the caller awaits `load`.
         #[cfg(not(wasm))]
         futures::executor::block_on(self.load(renderable))?;
         match self.context.read().as_ref() {
             Some(context) => context.render(renderable, target),
-            None => Err(refuse_without_context(renderable, target)),
+            None => Err(RendererError::NoContext),
         }
     }
 
@@ -548,22 +548,18 @@ impl Renderer {
             for shader in shaders {
                 let mut failed = Vec::new();
                 for entry in shader.drain_pending_textures() {
-                    let created = self.create_texture(entry.input.clone()).await;
                     // A setter call for the key while this upload ran wins over it.
-                    if !shader.is_latest(&entry) {
-                        continue;
-                    }
-                    match created {
+                    match self.create_texture(entry.input.clone()).await {
                         Ok(texture) => {
-                            let meta = crate::texture::TextureMeta::with_id_only(*texture.id());
-                            if let Err(error) = shader.set(&entry.key, UniformData::Texture(meta)) {
+                            if let Err(error) = shader.set_latest(&entry, *texture.id()) {
                                 first.get_or_insert(error.into());
                             }
                         }
-                        Err(error) => {
+                        Err(error) if shader.is_latest(&entry) => {
                             first.get_or_insert(error);
                             failed.push(entry);
                         }
+                        Err(_) => {}
                     }
                 }
                 shader.requeue_textures(failed);
@@ -1217,8 +1213,9 @@ impl RenderContext {
     /// when a lit shader holds more lights than the device takes, a shader reads
     /// vertex inputs with no mesh, a mesh is asked for more instances than it holds,
     /// a shader asks for more than the device has (`check_shader`), a texture uniform
-    /// has no texture or one its slot can't take (`check_textures`), or a target the
-    /// pass set is missing. A pass with a target of its own checks its attachments
+    /// has no texture or one its slot can't take (`check_textures`), a viewport side
+    /// passes the device's 2D limit (`check_viewport`), or a target the pass set is
+    /// missing. A pass with a target of its own checks its attachments
     /// here too, and a pass that draws into the frame checks them once it has one.
     /// The draw loop takes each shader's layouts and buffers from the plan.
     fn plan_pass(&self, pass: &PassObject) -> Result<PassDraws, RendererError> {

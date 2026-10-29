@@ -381,7 +381,7 @@ class Renderer:
 
         `render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail, it returns a [DeviceError](https://fragmentcolor.org/api/core/deviceerror), `RendererError::DeviceError` in Rust. Its `kind` tells validation errors, internal errors such as a shader the backend compiler refuses, and running out of memory apart, and its `label` names the step that failed: the render pipeline, the compute pipeline, the light binning pipeline, the frame, or a bind group or texture view inside the frame. When one error causes another, `render` returns the first. In Rust, Python, Swift and Kotlin, a pipeline that failed is never kept, and the next frame builds it again and returns the same error.
 
-        A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. A shader without its mesh, an instance count past the mesh's instances, a mesh the device's limits or its own checks refuse, a shader or texture the device checks refuse, a target from another `Renderer`, a pass target that is missing, and a pass whose own target or compute dispatch fails its checks fail before `render` takes a frame, and the window keeps its last image.
+        A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. A shader without its mesh, an instance count past the mesh's instances, a mesh the device's limits or its own checks refuse, a shader or texture the device checks refuse, a target from another `Renderer`, a pass target that is missing, a viewport past the device's 2D limit, and a pass whose own target or compute dispatch fails its checks fail before `render` takes a frame, and the window keeps its last image.
 
         JavaScript gets the GPU's errors late, because WebGPU reports them after `render` has returned. Each error logs a `console.error` when it lands, and the next `render` still throws the first one, as an `Error` with `kind`, `label` and `detail` properties, before doing any work. `load`, `readTexture`, `readStorage`, and `getImage` on a `Texture` or `TextureTarget` wait for the frames before them to report, so they throw a frame's error even when called right after it. A call that waits throws only the error of a frame rendered before it began: the error of a frame rendered while it waits, even one rendered in the same task right after the call, stays for the next call. Only the first error to land throws, and only once; the ones that land after it, before a call takes it, only log. The label names the render pipeline, the compute pipeline, the light binning pipeline or the frame. A pipeline that failed stays in the cache until its error lands, and a frame that draws with it before then reports a frame error. Once the error lands, the pipeline leaves the cache. In a loop that renders each frame, the next `render` throws the error before doing any work, and the one after it builds the pipeline again and reports the same error.
 
@@ -1458,7 +1458,7 @@ class Pass:
         `render` checks the pass against its target before it takes a frame:
 
         - Each shader writes at `@location(0)` the values the format takes: the same scalar type, in at least as many channels. An `Rgba32Uint` target takes `vec4<u32>`, so a shader that writes `vec4<f32>` returns `PassError::InvalidColorTarget`.
-        - A shader with `AlphaMode::Blend` needs a format the device blends, and returns the same error otherwise. The integer formats never blend, and `Rgba32Float` blends only on a device with float32 blending. Blending reads the alpha channel, so the shader writes a `vec4`, whatever the format holds.
+        - A shader with `AlphaMode::Blend` needs a format the device blends. The integer formats never blend and return the same error. `Rgba32Float` blends only on a device with float32 blending, and on any other one returns `RendererError::FeatureError`, which Python raises as `FeatureError` and Swift and Kotlin throw as `Feature`. Blending reads the alpha channel, so the shader writes a `vec4`, whatever the format holds.
         - The pass can't bind the texture it draws into. A shader that samples it returns `PassError::TextureConflict`. Sample it in a later pass.
 
         A shader that writes nothing at `@location(0)`, such as one that only tests depth, leaves the target's color as it is.
@@ -4856,9 +4856,10 @@ class Material:
           Cross-Material interleaving works correctly: translucent draws across every shader
           in the Pass merge into one globally-sorted back-to-front pass.
           Blending needs a color target that blends and a shader that writes a `vec4`, or `render`
-          returns `PassError::InvalidColorTarget`. Integer formats never blend, and whether
+          returns `PassError::InvalidColorTarget`. Integer formats never blend. Whether
           `Rgba32Float` blends depends on the device: the renderer asks for float32 blending
-          wherever the GPU offers it. `Rgba16Float` and the 8-bit unorm formats blend everywhere.
+          wherever the GPU offers it, and a device without it returns `RendererError::FeatureError`.
+          `Rgba16Float` and the 8-bit unorm formats blend everywhere.
 
         This is a pipeline-state flag. Changing it forces the renderer to rebuild the pipeline
         for the affected `(shader, alpha_mode, double_sided)` key. Switching it every frame is

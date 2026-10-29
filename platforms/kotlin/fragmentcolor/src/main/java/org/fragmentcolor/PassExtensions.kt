@@ -56,8 +56,9 @@ fun Pass.setTarget(target: TextureTarget) {
 }
 
 /**
- * Render into a [Texture] with `RENDER_ATTACHMENT` usage and one mip level, such as
- * one from `Renderer.createStorageTexture` or `createTexture` with `mipmaps = false`.
+ * Render into a [Texture] with `RENDER_ATTACHMENT` usage and one mip level, such as a
+ * [TextureTarget]'s `texture()`, or one from `Renderer.createStorageTexture` with a usage
+ * that includes `RENDER_ATTACHMENT`. A texture without that usage, or with mip levels, throws.
  */
 fun Pass.setTarget(texture: Texture) {
     setTargetTexture(texture)

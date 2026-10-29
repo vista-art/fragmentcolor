@@ -156,7 +156,8 @@ fn refuses_a_viewport_past_the_device_limit() {
             .create_texture_target([16, 8])
             .await
             .expect("create_texture_target failed");
-        // No device takes a side of 2^24, while a side of 4096 fits every one.
+        // A side of 2^24 passes every device's 2D limit, and one of 2048 fits every
+        // device, since it's the lowest limit wgpu allows, which WebGL2 and some GL devices have.
         let pass = fill_pass([0, 0, 1 << 24, 8], [1.0, 0.0, 0.0, 1.0]);
 
         let result = renderer.render(&pass, &target);
@@ -169,7 +170,7 @@ fn refuses_a_viewport_past_the_device_limit() {
             "{result:?}"
         );
 
-        pass.set_viewport([0, 0, 4096, 8])
+        pass.set_viewport([0, 0, 2048, 8])
             .expect("set_viewport failed");
         renderer
             .render(&pass, &target)

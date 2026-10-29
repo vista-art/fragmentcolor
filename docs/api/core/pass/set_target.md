@@ -9,7 +9,7 @@ The texture needs `RENDER_ATTACHMENT` usage, a color format, one mip level and o
 `render` checks the pass against its target before it takes a frame:
 
 - Each shader writes at `@location(0)` the values the format takes: the same scalar type, in at least as many channels. An `Rgba32Uint` target takes `vec4<u32>`, so a shader that writes `vec4<f32>` returns `PassError::InvalidColorTarget`.
-- A shader with `AlphaMode::Blend` needs a format the device blends, and returns the same error otherwise. The integer formats never blend, and `Rgba32Float` blends only on a device with float32 blending. Blending reads the alpha channel, so the shader writes a `vec4`, whatever the format holds.
+- A shader with `AlphaMode::Blend` needs a format the device blends. The integer formats never blend and return the same error. `Rgba32Float` blends only on a device with float32 blending, and on any other one returns `RendererError::FeatureError`, which Python raises as `FeatureError` and Swift and Kotlin throw as `Feature`. Blending reads the alpha channel, so the shader writes a `vec4`, whatever the format holds.
 - The pass can't bind the texture it draws into. A shader that samples it returns `PassError::TextureConflict`. Sample it in a later pass.
 
 A shader that writes nothing at `@location(0)`, such as one that only tests depth, leaves the target's color as it is.

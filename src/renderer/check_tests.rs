@@ -144,8 +144,13 @@ var<immediate> spare: f32;
 #[test]
 fn stage_counts_follow_the_stages_that_use_each_binding() {
     pollster::block_on(async move {
-        let (renderer, context, uncaptured) = setup().await.expect("render context");
-        let max = context.device.limits().max_samplers_per_shader_stage;
+        let (_renderer, context, uncaptured) = setup().await.expect("render context");
+        // WebGPU's sampler limit. Lavapipe takes a million, too many to declare in a test.
+        let mut small = copy_context(&context);
+        small.limits.max_samplers_per_shader_stage =
+            context.limits.max_samplers_per_shader_stage.min(16);
+        let max = small.limits.max_samplers_per_shader_stage;
+        let (renderer, context) = adopt(small);
         let declare = |count: u32| -> String {
             (0..count)
                 .map(|index| format!("@group(0) @binding({index}) var s{index}: sampler;\n"))
@@ -587,6 +592,14 @@ fn copy_context(context: &RenderContext) -> RenderContext {
     copy.downlevel = context.downlevel;
     copy.backend = context.backend;
     copy
+}
+
+/// A renderer that draws with `context`, for a test that lowers a device's limits.
+fn adopt(context: RenderContext) -> (Renderer, Arc<RenderContext>) {
+    let renderer = Renderer::new();
+    let context = Arc::new(context);
+    renderer.context.write().replace(context.clone());
+    (renderer, context)
 }
 
 // Story: the GL backends write a buffer struct member by member into a std140 block,
