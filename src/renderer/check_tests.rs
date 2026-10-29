@@ -1,4 +1,4 @@
-// Tests that render refuses, before any GPU work, what the device can't run.
+// Tests that render refuses, before it takes a frame, what the device can't run.
 use super::layout::build_module;
 use super::layout::{find_entry, pick_source, plan_layout, texture_binding};
 use super::scope_tests::{SpyTarget, Uncaptured, setup};

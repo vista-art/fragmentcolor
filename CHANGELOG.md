@@ -143,7 +143,7 @@
 
 ### Breaking and behavior changes
 
-- `Renderer.render` refuses, before any GPU work, a shader or texture uniform the device can't take, with the errors the Shaders notes list. A shader that rendered nothing with a GPU error now returns an error.
+- `Renderer.render` refuses, before it takes a frame, a shader or texture uniform the device can't take, with the errors the Shaders notes list. A shader that rendered nothing with a GPU error now returns an error.
 - `RendererError` gains `DeviceError`, `PassError`, `LimitError`, `FeatureError`, `BindingError`, `EntryError`, `DepthSizeMismatch` and `ForeignTarget`, and `PassError` gains `ShaderKind`, `Color`, `Viewport`, `DispatchLimit`, `TextureConflict` and `ViewportLimit`. Neither enum is `#[non_exhaustive]`, so a Rust `match` that lists every variant needs new arms. Python gains the exception classes `DeviceError`, `LimitError`, `FeatureError`, `BindingError` and `EntryError`. A Swift `switch` over `FragmentColorError` and a Kotlin `when` over `FragmentColorException` need the new `Limit`, `Feature`, `Binding`, `Entry`, `Device` and `Occluded` cases. A hidden window's frame is `Occluded` there, where it was `Render`.
 - A texture uniform with no texture is an error in render and compute passes, except an unset PBR map slot of a render shader whose slot takes a 2D float texture, which binds its 1x1 default.
 - `Shader.new` refuses features no device FragmentColor opens supports, two globals on one binding (a `lights` root included), writable storage in a vertex entry point, an immediate root a uniform can't hold, a filtering sampler that samples a depth texture, and two vertex inputs with one name.
@@ -151,7 +151,7 @@
 - The GL backends refuse a uniform, storage or immediate struct whose layout `@size` or `@align` sets.
 - `Shader.set` with raw bytes throws unless they fill the whole storage or immediate root.
 - `Shader.list_keys` doesn't list array elements.
-- `ShaderError` gains `LayoutError(String)` for a type whose layout naga can't compute, with naga's message as its text.
+- `ShaderError` gains `LayoutError(String)` for a type whose layout naga can't compute, or a struct whose explicit layout the WGSL the browser's WebGPU gets can't keep. Its text is naga's message in the first case and names the struct and the member that moves in the second.
 - A binding no entry point uses is visible to the compute stage only.
 - `get_image` on a target returns an error where it returned an empty array. A `WindowTarget` always does, because a frame on screen can't be read back, and a `TextureTarget` does when its readback fails or times out. JavaScript throws an `Error`, Python and Swift throw `FragmentColorError`, Kotlin throws `FragmentColorException`, and Rust's `Target::get_image` returns `Result<Vec<u8>, TextureError>`.
 - The raw uniffi `createTextureTarget` and `createDepthTexture` take a `Size`, so Swift's `createTextureTarget(width:height:)` and Kotlin's `createTextureTarget(32u, 64u)` are gone. The `[w, h]` and `Size` overloads stay and now carry the depth to the checks the other languages run, where they dropped it and a depth of 2 built a flat target.
