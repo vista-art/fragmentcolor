@@ -195,7 +195,10 @@ handle, the `TextureTarget` that owns it, or a shader uniform or pass target
 that binds it. An id on its own doesn't keep the texture in the registry.
 
 A `Material` map set from bytes, a path, a URL or a `Mipmap` keeps one id
-in every `Renderer`, where it names the copy that `Renderer` loaded.
+in every `Renderer`, where it names the copy that `Renderer` loaded. The
+copies go when the map does, so only the map's own slot binds that id, and
+any other slot refuses it with `ShaderError::ForeignMap`. To share a map,
+pass the same source to each Material.
 
 #### Example
 
