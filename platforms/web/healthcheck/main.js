@@ -970,9 +970,9 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
     if (entry.stage !== '@vertex' || entry.name !== 'Error') fail(`a shader without a vertex stage threw stage ${entry.stage}, name ${entry.name}`);
     const storage = new Shader(`@group(0) @binding(0) var img: texture_storage_2d<bgra8unorm, write>;
 @compute @workgroup_size(1) fn cs_main() { textureStore(img, vec2<i32>(0), vec4<f32>(1.0)); }`);
-    // WebGL2 runs no compute shaders, which the same error reports first.
+    // Storage slots are checked before the compute stage, so WebGL2 refuses the format too.
     const feature = refuses('render with a storage format the device lacks',
-      /'img' at @group\(0\) @binding\(0\) needs WriteOnly storage access to Bgra8Unorm|needs COMPUTE_SHADERS/,
+      /'img' at @group\(0\) @binding\(0\) needs WriteOnly storage access to Bgra8Unorm/,
       () => renderer.render(storage, target));
     if (feature.message !== `${feature.item} needs ${feature.feature}, which the device lacks` || feature.name !== 'Error') {
       fail(`a storage format the device lacks threw item ${feature.item}, feature ${feature.feature}, name ${feature.name}`);
