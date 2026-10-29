@@ -524,16 +524,20 @@ impl Renderer {
         renderable: &impl Renderable,
         target: &impl Target,
     ) -> Result<(), RendererError> {
-        // A foreign target is refused first, since load uploads into this Renderer's device.
-        check_target(self.context.read().as_ref(), renderable, target)?;
-        // Native render drains the lazy Material uploads. Wasm can't block,
-        // so they wait there until the caller awaits `load`.
+        let context = self.context.read().clone();
+        // On the web a GPU error an earlier frame left comes first.
+        #[cfg(wasm)]
+        if let Some(context) = context.as_ref() {
+            context.late.take()?;
+        }
+        // What another Renderer made is refused before load uploads into this one.
+        check_target(context.as_ref(), renderable, target)?;
+        // Native render drains the lazy Material uploads. Wasm can't block, so they wait for `load`.
         #[cfg(not(wasm))]
         futures::executor::block_on(self.load(renderable))?;
-        match self.context.read().as_ref() {
-            Some(context) => context.render(renderable, target),
-            None => Err(RendererError::NoContext),
-        }
+        context
+            .ok_or(RendererError::NoContext)?
+            .render(renderable, target)
     }
 
     /// Uploads every texture a lazy setter queued on the shaders of `renderable`.

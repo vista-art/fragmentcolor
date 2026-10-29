@@ -95,26 +95,61 @@ impl std::fmt::Display for Channels {
     }
 }
 
-/// Refuses a target another Renderer created, before a render loads or uploads anything.
+/// Refuses a render that uses what another Renderer created, before it loads anything.
 ///
-/// `context` is the rendering Renderer's, or `None` before it has one. A Renderer
-/// without a context created no target, so every target that has an owner is another's.
-/// A render of compute passes alone draws into no target, so it takes any.
+/// `context` is the rendering Renderer's, or `None` before it has one. A Renderer with no
+/// context created no target or texture, so it refuses every render: `ForeignTarget` when a
+/// render pass draws into a target that has an owner, else `NoContext`. With a context, a frame
+/// target from another Renderer is `ForeignTarget`, unless every pass is a compute pass, and a
+/// pass target or bound texture that this context doesn't hold is `TextureNotFoundError`.
+/// The passes come from `peek_passes`, so a refusal leaves the renderable as it was.
 pub(super) fn check_target(
     context: Option<&Arc<RenderContext>>,
     renderable: &impl Renderable,
     target: &impl Target,
 ) -> Result<(), RendererError> {
-    if renderable.passes().iter().all(|pass| pass.is_compute()) {
-        return Ok(());
+    let owner = target.owner();
+    let foreign = match (context, &owner) {
+        (Some(context), Some(owner)) => !Arc::ptr_eq(context, owner),
+        _ => false,
+    };
+    let passes = renderable.peek_passes();
+    let draws = passes.iter().any(|pass| !pass.is_compute());
+    let Some(context) = context else {
+        return Err(match draws && owner.is_some() {
+            true => RendererError::ForeignTarget,
+            false => RendererError::NoContext,
+        });
+    };
+    if foreign && draws {
+        return Err(RendererError::ForeignTarget);
     }
-    match (context, target.owner()) {
-        (Some(context), Some(owner)) if !Arc::ptr_eq(context, &owner) => {
-            Err(RendererError::ForeignTarget)
+    for pass in passes.iter() {
+        check_held(context, pass)?;
+    }
+    Ok(())
+}
+
+/// Refuses a texture `pass` draws into or binds that `context` doesn't hold.
+/// `find_targets` and `check_textures` refuse the same in the plan, after `load` has run.
+fn check_held(context: &RenderContext, pass: &PassObject) -> Result<(), RendererError> {
+    let refuse = |registration: &Registration| match registration.belongs_to(context) {
+        true => Ok(()),
+        false => Err(RendererError::TextureNotFoundError(*registration.id())),
+    };
+    if !pass.is_compute() {
+        for target in [&pass.color_target, &pass.depth_target] {
+            if let Some(registration) = target.read().as_deref() {
+                refuse(registration)?;
+            }
         }
-        (None, Some(_)) => Err(RendererError::ForeignTarget),
-        _ => Ok(()),
     }
+    for shader in pass.shaders.read().iter() {
+        for binding in shader.bound_textures.iter() {
+            refuse(binding.value())?;
+        }
+    }
+    Ok(())
 }
 
 impl RenderContext {
@@ -564,8 +599,8 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
         });
     }
 
-    /// A pass that draws one Model whose PBR base color map waits for an upload, and that map's shader.
-    fn queued_map_pass() -> (crate::Pass, Shader) {
+    /// A Model that covers the view, drawn with `material`.
+    fn build_model(material: crate::Material) -> crate::Model {
         let mesh = crate::Mesh::new();
         let corners = [[-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0]];
         mesh.add_vertices(
@@ -573,18 +608,69 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
                 crate::Vertex::pbr(corner).set(crate::Vertex::NORMAL, [0.0, 0.0, 1.0])
             }),
         );
-        let material = crate::Material::pbr().base_color_texture((vec![255; 16], [2, 2]));
+        crate::Model::new(mesh, material)
+    }
+
+    /// A pass that draws `material`, whose base color map waits for an upload, and its shader.
+    fn build_pass(material: crate::Material) -> (crate::Pass, Shader) {
+        let material = material.base_color_texture((vec![255; 16], [2, 2]));
         let shader = material.shader.clone();
         let pass = crate::Pass::new("queued map");
-        pass.add(&crate::Model::new(mesh, material)).expect("add");
+        pass.add(&build_model(material)).expect("add");
         (pass, shader)
     }
 
     /// The texture id the shader binds to `key`.
-    fn bound_id(shader: &Shader, key: &str) -> crate::texture::TextureId {
+    fn read_bound(shader: &Shader, key: &str) -> crate::texture::TextureId {
         match shader.object.get_uniform(key).map(|uniform| uniform.data) {
             Ok(UniformData::Texture(meta)) => meta.id,
             other => panic!("{key} holds no texture: {other:?}"),
+        }
+    }
+
+    /// Checks that `shader`'s base color map waits in its queue, uploaded nowhere.
+    fn check_queued(shader: &Shader) {
+        let queued = shader.object.pending_textures.read().len();
+        assert_eq!(queued, 1, "the map left the queue");
+    }
+
+    /// Checks that `renderer` drew `shader`'s base color map from its own context.
+    fn check_drawn(renderer: &crate::Renderer, shader: &Shader) {
+        let context = renderer.context.read().clone().expect("a context");
+        let id = read_bound(shader, "base_color_map");
+        assert!(
+            context.get_texture(&id).is_some(),
+            "the map isn't the owner's"
+        );
+    }
+
+    /// A target with no owner yet, like Python's WindowTarget before it has a surface.
+    struct Ownerless;
+
+    impl crate::target::FrameSource for Ownerless {
+        fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
+            Err(crate::SurfaceError::Lost)
+        }
+
+        fn owner(&self) -> Option<Arc<RenderContext>> {
+            None
+        }
+    }
+
+    impl Target for Ownerless {
+        fn size(&self) -> crate::Size {
+            crate::Size::from((1u32, 1u32))
+        }
+
+        fn resize(
+            &mut self,
+            _size: impl Into<crate::Size>,
+        ) -> Result<(), crate::texture::TextureError> {
+            Ok(())
+        }
+
+        async fn get_image(&self) -> Result<Vec<u8>, crate::texture::TextureError> {
+            Ok(Vec::new())
         }
     }
 
@@ -597,23 +683,97 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
             let frame = owner.create_texture_target([8, 8]).await.expect("a target");
             let other = crate::Renderer::new();
             let _context = other.create_texture_target([8, 8]).await.expect("a target");
-            let (pass, shader) = queued_map_pass();
+            let (pass, shader) = build_pass(crate::Material::pbr());
 
             let refused = other.render(&pass, &frame);
             assert!(
                 matches!(refused, Err(RendererError::ForeignTarget)),
                 "{refused:?}"
             );
+            check_queued(&shader);
             owner
                 .render(&pass, &frame)
                 .expect("the owner draws the pass");
+            check_drawn(&owner, &shader);
+        });
+    }
 
-            let context = owner.context.read().clone().expect("a context");
-            let id = bound_id(&shader, "base_color_map");
+    // Story: a pass whose own target another Renderer created is refused before load,
+    // so the Material's queued map stays queued for the Renderer that draws the pass.
+    #[test]
+    fn a_foreign_pass_target_leaves_a_queued_map() {
+        pollster::block_on(async move {
+            let owner = crate::Renderer::new();
+            let frame = owner.create_texture_target([8, 8]).await.expect("a target");
+            let offscreen = owner.create_texture_target([8, 8]).await.expect("a target");
+            let other = crate::Renderer::new();
+            let other_frame = other.create_texture_target([8, 8]).await.expect("a target");
+            let (pass, shader) = build_pass(crate::Material::pbr());
+            pass.set_target(&offscreen).expect("set_target");
+
+            let refused = other.render(&pass, &other_frame);
+            let id = *offscreen.texture().id();
             assert!(
-                context.get_texture(&id).is_some(),
-                "the map isn't the owner's"
+                matches!(refused, Err(RendererError::TextureNotFoundError(found)) if found == id),
+                "{refused:?}"
             );
+            check_queued(&shader);
+            owner
+                .render(&pass, &frame)
+                .expect("the owner draws the pass");
+            check_drawn(&owner, &shader);
+        });
+    }
+
+    // Story: a texture uniform bound to another Renderer's texture is refused before
+    // load, so the Material's queued map stays queued for the Renderer that draws it.
+    #[test]
+    fn a_foreign_texture_leaves_a_queued_map() {
+        pollster::block_on(async move {
+            let owner = crate::Renderer::new();
+            let frame = owner.create_texture_target([8, 8]).await.expect("a target");
+            let normal = owner
+                .create_texture((vec![128; 16], [2, 2]))
+                .await
+                .expect("a texture");
+            let other = crate::Renderer::new();
+            let other_frame = other.create_texture_target([8, 8]).await.expect("a target");
+            let (pass, shader) = build_pass(crate::Material::pbr().normal_texture(&normal));
+
+            let refused = other.render(&pass, &other_frame);
+            assert!(
+                matches!(refused, Err(RendererError::TextureNotFoundError(found)) if found == *normal.id()),
+                "{refused:?}"
+            );
+            check_queued(&shader);
+            owner
+                .render(&pass, &frame)
+                .expect("the owner draws the pass");
+            check_drawn(&owner, &shader);
+        });
+    }
+
+    // Story: a Scene refused for a foreign target gets no default camera or light, so a
+    // light added afterwards is the only one the owner draws with.
+    #[test]
+    fn a_refused_scene_render_adds_no_defaults() {
+        pollster::block_on(async move {
+            let owner = crate::Renderer::new();
+            let frame = owner.create_texture_target([8, 8]).await.expect("a target");
+            let other = crate::Renderer::new();
+            let _context = other.create_texture_target([8, 8]).await.expect("a target");
+            let scene = crate::Scene::new();
+            scene
+                .add(&build_model(crate::Material::pbr()))
+                .expect("add");
+
+            let refused = other.render(&scene, &frame);
+            assert!(
+                matches!(refused, Err(RendererError::ForeignTarget)),
+                "{refused:?}"
+            );
+            assert!(scene.cameras().is_empty(), "the refusal added a camera");
+            assert!(scene.lights().is_empty(), "the refusal added a light");
         });
     }
 
@@ -624,7 +784,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
         pollster::block_on(async move {
             let owner = crate::Renderer::new();
             let frame = owner.create_texture_target([8, 8]).await.expect("a target");
-            let (pass, shader) = queued_map_pass();
+            let (pass, shader) = build_pass(crate::Material::pbr());
             let other = crate::Renderer::new();
 
             let refused = other.render(&pass, &frame);
@@ -636,8 +796,26 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
                 other.context.read().is_none(),
                 "the refusal opened a device"
             );
-            let queued = shader.object.pending_textures.read().len();
-            assert_eq!(queued, 1, "the map left the queue");
+            check_queued(&shader);
         });
+    }
+
+    // Story: a Renderer with no context refuses a target with no owner, such as a
+    // window without a surface, with NoContext, before it opens a device.
+    #[test]
+    fn a_renderer_without_a_context_refuses_an_ownerless_target() {
+        let (pass, shader) = build_pass(crate::Material::pbr());
+        let renderer = crate::Renderer::new();
+
+        let refused = renderer.render(&pass, &Ownerless);
+        assert!(
+            matches!(refused, Err(RendererError::NoContext)),
+            "{refused:?}"
+        );
+        assert!(
+            renderer.context.read().is_none(),
+            "the refusal opened a device"
+        );
+        check_queued(&shader);
     }
 }

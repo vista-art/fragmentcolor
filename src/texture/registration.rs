@@ -62,6 +62,13 @@ impl Registration {
         &self.id
     }
 
+    /// Whether `context`, which a caller holds, is the registry this entry is in.
+    pub(crate) fn belongs_to(&self, context: &RenderContext) -> bool {
+        self.context
+            .upgrade()
+            .is_some_and(|owner| std::ptr::eq(Arc::as_ptr(&owner), context))
+    }
+
     /// The texture this entry holds now.
     pub(crate) fn object(&self) -> Arc<TextureObject> {
         self.object.read().clone()
