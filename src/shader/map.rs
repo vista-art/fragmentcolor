@@ -37,6 +37,8 @@ struct Upload {
 impl Drop for TextureMap {
     /// Each context still alive drops its copy.
     fn drop(&mut self) {
+        #[cfg(test)]
+        crate::hooks::run("map dropped");
         for upload in &self.uploads {
             if let Some(context) = upload.context.upgrade() {
                 context.release_texture(&self.id);
@@ -118,14 +120,11 @@ impl ShaderObject {
     }
 
     /// Ends `key`'s map, unless `id` is the map's own, as when a `get` comes back through `set`.
-    /// The map drops after the lock, and its copy in each live context goes with it.
-    pub(crate) fn remove_map(&self, key: &str, id: TextureId) {
-        let removed = {
-            let mut maps = self.maps.write();
-            let index = maps.iter().position(|map| map.key == key && map.id != id);
-            index.map(|index| maps.swap_remove(index))
-        };
-        drop(removed);
+    /// Returns the map, which the caller drops after its locks, and its copies go with it.
+    pub(crate) fn remove_map(&self, key: &str, id: TextureId) -> Option<TextureMap> {
+        let mut maps = self.maps.write();
+        let index = maps.iter().position(|map| map.key == key && map.id != id);
+        index.map(|index| maps.swap_remove(index))
     }
 
     /// Whether `key` is a map, which a Renderer that hasn't loaded it holds no copy of.
@@ -260,6 +259,27 @@ mod tests {
             assert!(job.stamp > older.stamp, "the job holds the older stamp");
             assert!(Arc::ptr_eq(&job.source.data, &data), "{:?}", job.source);
         });
+    }
+
+    // Story: an explicit texture that ends a map drops the map after `texture_writes`,
+    // so no Renderer frees its copy while a flush on another thread waits for that lock.
+    #[test]
+    fn an_explicit_set_drops_the_map_after_its_lock() {
+        let shader = build_shader();
+        shader
+            .object
+            .set_map("image", build_source([255, 0, 0, 255]))
+            .expect("a map");
+        let object = shader.object.clone();
+        crate::hooks::once("map dropped", move || {
+            let free = object.texture_writes.try_lock().is_some();
+            assert!(free, "the map dropped under texture_writes");
+        });
+
+        let input = crate::shader::UniformInput::Texture(TextureId { id: 9 });
+        shader.object.set_input("image", input).expect("a set");
+
+        assert!(!shader.object.has_map("image"), "the map stayed");
     }
 
     // Story: the id a map slot returns comes back through `set` as the map's own,
