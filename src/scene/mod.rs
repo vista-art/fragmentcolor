@@ -70,31 +70,21 @@ impl SceneObject for Model {
     /// A refusal leaves the pass and the mesh as they were.
     fn attach(&self, pass: &crate::Pass) -> Result<(), crate::PassError> {
         let shader_arc = &self.material.shader.object;
-        let shader_present = pass
-            .object
-            .shaders
-            .read()
-            .iter()
-            .any(|s| Arc::ptr_eq(s, shader_arc));
 
         // Dedupe shader-attach: many Models that share one Material's Shader
         // should result in one entry on the pass. The renderer iterates
         // shaders linearly and a doubled entry would set pipeline + bind
         // groups twice for the same draws. A shader that joins must fit the
-        // pass, its kind and its lights, which is checked before the mesh changes.
-        if !shader_present {
-            pass.object.admit(shader_arc)?;
-        }
-        let attached = self.attach_mesh()?;
+        // pass, its kind and its lights, which is checked before the mesh
+        // attaches, and the join can't fail once the mesh has.
+        let joined = pass
+            .object
+            .join(shader_arc.clone(), || self.attach_mesh())?;
 
         // A shader that joins takes every light on the pass. Every other scene
         // object on the pass replays against it, so order-of-add (Camera before
         // Model, lights after Model, …) doesn't matter.
-        if !shader_present {
-            if let Err(error) = pass.add_shader(&self.material.shader) {
-                attached.undo(&self.mesh, shader_arc);
-                return Err(error);
-            }
+        if joined {
             pass.replay_scene_objects(&self.material.shader);
         }
 
@@ -107,31 +97,11 @@ impl SceneObject for Model {
     }
 }
 
-/// What one `Model` attach changed on its mesh, so a later refusal can undo it.
-struct MeshChanges {
-    /// The attach declared the Model columns on the mesh.
-    columns: bool,
-    /// The attach added the mesh to the material's shader.
-    attached: bool,
-}
-
-impl MeshChanges {
-    /// Takes the mesh back off the shader and drops the columns, where this attach made each change.
-    fn undo(&self, mesh: &Mesh, shader: &Arc<ShaderObject>) {
-        if self.attached {
-            shader.remove_mesh(&mesh.object);
-        }
-        if self.columns {
-            mesh.object.forget_model_instance_schema();
-        }
-    }
-}
-
 impl Model {
     /// Attaches the mesh to the material's shader, unless it already is, after declaring
     /// the Model columns on a mesh with no instance layout. When the shader refuses the
     /// mesh, the columns go again and the mesh is left as it was.
-    fn attach_mesh(&self) -> Result<MeshChanges, crate::PassError> {
+    fn attach_mesh(&self) -> Result<(), crate::PassError> {
         // The columns come first, so the shader's mesh check (inside `add_mesh`) sees
         // `model_0..3` at the instance slot and accepts the layout. The Mesh's `insts`
         // stays empty; per-Model transforms ride the Pass's `model_entries` queue and
@@ -148,11 +118,11 @@ impl Model {
             .any(|m| Arc::ptr_eq(m, &self.mesh.object));
         if attached && let Err(error) = shader.add_mesh(&self.mesh) {
             if columns {
-                self.mesh.object.forget_model_instance_schema();
+                self.mesh.object.forget_columns();
             }
             return Err(error.into());
         }
-        Ok(MeshChanges { columns, attached })
+        Ok(())
     }
 }
 
@@ -448,6 +418,64 @@ mod tests {
                 );
             }
         });
+    }
+
+    // Story: a refused Model drops the Model columns from a mesh whose own instances
+    // aren't packed yet, so a shader that reads them draws, before and after clear_instances.
+    #[test]
+    fn a_refused_model_leaves_unpacked_instances_their_layout() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([16u32, 16u32])
+                .await
+                .expect("texture target");
+            let bare = Mesh::new();
+            bare.add_vertices([[0.0, 0.5, 0.0], [-0.5, -0.5, 0.0], [0.5, -0.5, 0.0]]);
+            bare.add_instance(crate::mesh::Instance::new().set("offset", [0.0, 0.0]));
+            let scene = crate::Scene::new();
+
+            let refused = scene.add(&Model::new(bare.clone(), Material::pbr()));
+            let shader = crate::Shader::new(
+                "@vertex fn vs_main(@location(0) position: vec3<f32>, @location(1) offset: vec2<f32>) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(position.xy + offset, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+            )
+            .expect("shader");
+            shader.add_mesh(&bare).expect("attach");
+            let drawn = renderer.render(&shader, &target);
+            bare.clear_instances();
+            bare.add_instance(crate::mesh::Instance::new().set("offset", [0.1, 0.0]));
+            let again = renderer.render(&shader, &target);
+
+            assert!(refused.is_err(), "the bare mesh has no normals");
+            assert!(drawn.is_ok(), "got {drawn:?}");
+            assert!(again.is_ok(), "got {again:?}");
+        });
+    }
+
+    // Story: a shader joins a pass in one step with the mesh attach, so an attach
+    // that fails leaves the pass without the shader and the shader without its lights.
+    #[test]
+    fn a_failed_join_changes_neither_pass_nor_shader() {
+        let pass = crate::Pass::new("lit");
+        let light = crate::Light::point([0.0, 1.0, 0.0], [1.0, 1.0, 1.0]);
+        pass.add(&light).expect("add light");
+        let material = Material::pbr();
+        let shader = material.shader.object.clone();
+
+        let joined = pass.object.join(shader.clone(), || {
+            Err(crate::PassError::PassNotFound("refused".into()))
+        });
+
+        assert!(joined.is_err());
+        assert!(pass.object.shaders.read().is_empty(), "no shader joined");
+        assert_eq!(
+            shader.light_summary().count,
+            0,
+            "no light reached the shader"
+        );
     }
 
     // Story: a Model whose mesh its material refuses leaves the scene and the mesh

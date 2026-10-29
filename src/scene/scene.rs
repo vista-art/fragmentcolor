@@ -162,9 +162,19 @@ impl Scene {
 
     #[lsp_doc("docs/api/scene/scene/add.md")]
     pub fn add<O: SceneObject + 'static>(&self, object: &O) -> Result<&Self, PassError> {
-        let pass = self.ensure_default_pass();
-        self.record_add(&pass, object)?;
+        self.add_default(object)?;
         Ok(self)
+    }
+
+    /// Adds `object` to the default pass. A pass this call created goes again
+    /// when the attach fails, unless something landed on it meanwhile.
+    fn add_default<O: SceneObject + 'static>(&self, object: &O) -> Result<(), PassError> {
+        let (pass, created) = self.ensure_default_pass();
+        let added = self.record_add(&pass, object);
+        if added.is_err() && created && pass.object.holds_nothing() {
+            self.remove_pass(&pass);
+        }
+        added
     }
 
     #[lsp_doc("docs/api/scene/scene/add_to.md")]
@@ -390,19 +400,20 @@ impl Scene {
     /// Lock order: `passes` is taken first, `default_pass` second — the same
     /// order [`Scene::remove_pass`] and [`Scene::set_passes`] use, so the
     /// three can't deadlock against each other under concurrent mutation.
-    fn ensure_default_pass(&self) -> Pass {
+    /// The default pass, and whether this call created it.
+    fn ensure_default_pass(&self) -> (Pass, bool) {
         let mut passes = self.inner.passes.write();
         // Reuse the existing default Pass only if it's still in the graph.
         let existing = self.inner.default_pass.read().clone();
         if let Some(p) = existing
             && passes.iter().any(|x| Arc::ptr_eq(&x.object, &p.object))
         {
-            return p;
+            return (p, false);
         }
         let pass = Pass::new("Scene Default Pass");
         passes.push(pass.clone());
         *self.inner.default_pass.write() = Some(pass.clone());
-        pass
+        (pass, true)
     }
 
     /// Inject default Camera / Light into the default Pass when injection is
@@ -804,6 +815,29 @@ mod tests {
         assert!(scene.add_to("nope", &model).is_err(), "unknown name errors");
         // A failed add_to records nothing.
         assert!(scene.models().is_empty());
+    }
+
+    // Story: a refused first add takes the default pass it made back out, so the
+    // scene keeps the passes it had and a later add makes a new default pass.
+    #[test]
+    fn refused_first_add_leaves_no_default_pass() {
+        let scene = Scene::new();
+        let backdrop = Pass::new("backdrop");
+        scene.add_pass(&backdrop);
+        let bare = crate::Mesh::new();
+        bare.add_vertices([[0.0, 0.5, 0.0], [-0.5, -0.5, 0.0], [0.5, -0.5, 0.0]]);
+
+        let refused = scene.add(&crate::Model::new(bare, crate::Material::pbr()));
+        let passes = scene.list_passes().len();
+        let default_pass = scene.inner.default_pass.read().is_some();
+        scene
+            .add(&crate::Camera::create_stock())
+            .expect("add a camera");
+
+        assert!(refused.is_err(), "the bare mesh has no normals");
+        assert_eq!(passes, 1, "only the backdrop stays");
+        assert!(!default_pass, "no default pass is left");
+        assert_eq!(scene.list_passes().len(), 2, "a later add makes one");
     }
 
     #[test]

@@ -470,16 +470,14 @@ impl MeshObject {
         true
     }
 
-    /// Drops the Model columns a failed `Model` attach declared,
-    /// so the next instance sets the instance layout as before.
-    pub(crate) fn forget_model_instance_schema(&self) {
-        // The instances lock comes first, as in `ensure_packed`.
-        let insts = self.insts.read();
+    /// Drops the Model columns a refused `Model` attach declared, so the mesh's
+    /// own instances set the instance layout again, packed or not.
+    pub(crate) fn forget_columns(&self) {
         let mut schema = self.instance_schema.write();
-        if insts.is_empty() && schema.as_ref() == Some(&model_schema()) {
+        if schema.as_ref() == Some(&model_schema()) {
             *schema = None;
             drop(schema);
-            drop(insts);
+            *self.dirty_instances.write() = true;
             self.invalidate_cache();
         }
     }

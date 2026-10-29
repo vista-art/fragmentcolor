@@ -1,3 +1,4 @@
+use crate::scene::LightObject;
 use crate::texture::Registration;
 use crate::{Color, Mesh, Renderable, ScreenRegion, Shader, ShaderObject};
 use lsp_doc::lsp_doc;
@@ -497,45 +498,80 @@ impl PassObject {
     /// a later one must match it. A lit shader takes every light the pass holds,
     /// and when they don't fit, the pass stays as it was.
     pub(crate) fn add_shader(&self, shader: Arc<ShaderObject>) -> Result<(), PassError> {
-        let lights = self.lights.read();
-        self.check_shader(&shader, &lights)?;
-        for light in lights.iter() {
-            shader.add_light(&light.object);
-        }
-        self.push_shader(shader);
-        Ok(())
+        let mut shaders = self.shaders.write();
+        self.insert(&mut shaders, shader, || Ok(()))
     }
 
-    /// Checks that `shader` can join this pass, changing nothing: its kind
-    /// matches the pass's, and it has room for every light the pass holds.
-    pub(crate) fn admit(&self, shader: &Arc<ShaderObject>) -> Result<(), PassError> {
-        self.check_shader(shader, &self.lights.read())
-    }
-
-    /// The checks of `add_shader`, against the pass's `lights`.
-    fn check_shader(
+    /// Adds the shader of a `Model` unless the pass holds it already, running `attach`
+    /// in the same step, and returns whether the shader joined. The pass's shader lock
+    /// is held throughout, so no shader joins and no light arrives in between, and a
+    /// refusal from a check or from `attach` leaves the pass as it was.
+    pub(crate) fn join(
         &self,
-        shader: &Arc<ShaderObject>,
-        lights: &crate::scene::PassLights,
+        shader: Arc<ShaderObject>,
+        attach: impl FnOnce() -> Result<(), PassError>,
+    ) -> Result<bool, PassError> {
+        let mut shaders = self.shaders.write();
+        if shaders.iter().any(|held| Arc::ptr_eq(held, &shader)) {
+            attach()?;
+            return Ok(false);
+        }
+        self.insert(&mut shaders, shader, attach)?;
+        Ok(true)
+    }
+
+    /// Checks `shader` against the pass, runs `attach`, then gives the shader the pass's
+    /// lights and adds it. Only the checks and `attach` can fail, and both run first.
+    fn insert(
+        &self,
+        shaders: &mut Vec<Arc<ShaderObject>>,
+        shader: Arc<ShaderObject>,
+        attach: impl FnOnce() -> Result<(), PassError>,
     ) -> Result<(), PassError> {
         let kind = PassType::from(shader.clone());
-        if !self.shaders.read().is_empty() {
+        if !shaders.is_empty() {
             let pass = *self.pass_type.read();
             if pass != kind {
                 return Err(PassError::ShaderKind { pass, shader: kind });
             }
         }
-        let incoming: Vec<u64> = lights.iter().map(|light| light.object.id).collect();
-        shader.check_light_room(&incoming)
+        let lights = self.lights.read();
+        let incoming: Vec<&Arc<LightObject>> = lights.iter().map(|light| &light.object).collect();
+        shader.join_lights(&incoming, attach)?;
+        drop(lights);
+        Self::push_into(&self.pass_type, &self.required_buffer_size, shaders, shader);
+        Ok(())
+    }
+
+    /// Whether nothing has landed on the pass: no shader, scene object or Model.
+    pub(crate) fn holds_nothing(&self) -> bool {
+        self.shaders.read().is_empty()
+            && self.scene_objects.read().is_empty()
+            && self.model_entries.read().is_empty()
     }
 
     /// Adds a shader with no checks, for a pass that has no shader and no light.
     pub(crate) fn push_shader(&self, shader: Arc<ShaderObject>) {
         let mut shaders = self.shaders.write();
+        Self::push_into(
+            &self.pass_type,
+            &self.required_buffer_size,
+            &mut shaders,
+            shader,
+        );
+    }
+
+    /// Pushes `shader` onto `shaders`, the first one setting the pass's `kind`.
+    fn push_into(
+        kind: &RwLock<PassType>,
+        size: &RwLock<u64>,
+        shaders: &mut Vec<Arc<ShaderObject>>,
+        shader: Arc<ShaderObject>,
+    ) {
         if shaders.is_empty() {
-            *self.pass_type.write() = PassType::from(shader.clone());
+            *kind.write() = PassType::from(shader.clone());
         }
-        *self.required_buffer_size.write() += shader.total_bytes;
+        *size.write() += shader.total_bytes;
         shaders.push(shader);
     }
 
