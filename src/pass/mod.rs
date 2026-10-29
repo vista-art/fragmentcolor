@@ -498,6 +498,26 @@ impl PassObject {
     /// and when they don't fit, the pass stays as it was.
     pub(crate) fn add_shader(&self, shader: Arc<ShaderObject>) -> Result<(), PassError> {
         let lights = self.lights.read();
+        self.check_shader(&shader, &lights)?;
+        for light in lights.iter() {
+            shader.add_light(&light.object);
+        }
+        self.push_shader(shader);
+        Ok(())
+    }
+
+    /// Checks that `shader` can join this pass, changing nothing: its kind
+    /// matches the pass's, and it has room for every light the pass holds.
+    pub(crate) fn admit(&self, shader: &Arc<ShaderObject>) -> Result<(), PassError> {
+        self.check_shader(shader, &self.lights.read())
+    }
+
+    /// The checks of `add_shader`, against the pass's `lights`.
+    fn check_shader(
+        &self,
+        shader: &Arc<ShaderObject>,
+        lights: &crate::scene::PassLights,
+    ) -> Result<(), PassError> {
         let kind = PassType::from(shader.clone());
         if !self.shaders.read().is_empty() {
             let pass = *self.pass_type.read();
@@ -506,12 +526,7 @@ impl PassObject {
             }
         }
         let incoming: Vec<u64> = lights.iter().map(|light| light.object.id).collect();
-        shader.check_light_room(&incoming)?;
-        for light in lights.iter() {
-            shader.add_light(&light.object);
-        }
-        self.push_shader(shader);
-        Ok(())
+        shader.check_light_room(&incoming)
     }
 
     /// Adds a shader with no checks, for a pass that has no shader and no light.

@@ -66,6 +66,8 @@ pub struct Model {
 }
 
 impl SceneObject for Model {
+    /// Adds the material's shader to the pass, attaches the mesh to it, and queues the Model.
+    /// A refusal leaves the pass and the mesh as they were.
     fn attach(&self, pass: &crate::Pass) -> Result<(), crate::PassError> {
         let shader_arc = &self.material.shader.object;
         let shader_present = pass
@@ -78,33 +80,22 @@ impl SceneObject for Model {
         // Dedupe shader-attach: many Models that share one Material's Shader
         // should result in one entry on the pass. The renderer iterates
         // shaders linearly and a doubled entry would set pipeline + bind
-        // groups twice for the same draws. A shader that joins takes every
-        // light on the pass, or fails before anything changes. Every other
-        // scene object on the pass replays against it, so order-of-add
-        // (Camera before Model, lights after Model, …) doesn't matter.
+        // groups twice for the same draws. A shader that joins must fit the
+        // pass, its kind and its lights, which is checked before the mesh changes.
         if !shader_present {
-            pass.add_shader(&self.material.shader)?;
+            pass.object.admit(shader_arc)?;
+        }
+        let attached = self.attach_mesh()?;
+
+        // A shader that joins takes every light on the pass. Every other scene
+        // object on the pass replays against it, so order-of-add (Camera before
+        // Model, lights after Model, …) doesn't matter.
+        if !shader_present {
+            if let Err(error) = pass.add_shader(&self.material.shader) {
+                attached.undo(&self.mesh, shader_arc);
+                return Err(error);
+            }
             pass.replay_scene_objects(&self.material.shader);
-        }
-
-        // Declare the model-instance vertex schema on the Mesh first, so the
-        // shader's mesh-validation (inside `add_mesh` below) sees `model_0..3`
-        // at the per-instance slot and accepts the layout. The Mesh's `insts`
-        // stays empty; per-Model transforms ride the Pass's `model_entries`
-        // queue and the renderer builds the buffer at draw time.
-        if self.mesh.object.instance_schema.read().is_none() {
-            self.mesh.object.declare_model_instance_schema();
-        }
-
-        // Dedupe mesh-attach onto the shader. Without this the renderer
-        // would iterate the doubly-attached mesh and draw it twice.
-        let mesh_attached = shader_arc
-            .meshes
-            .read()
-            .iter()
-            .any(|m| Arc::ptr_eq(m, &self.mesh.object));
-        if !mesh_attached {
-            self.material.shader.add_mesh(&self.mesh)?;
         }
 
         pass.object.model_entries.write().push(ModelEntry {
@@ -113,6 +104,55 @@ impl SceneObject for Model {
             state: self.state.clone(),
         });
         Ok(())
+    }
+}
+
+/// What one `Model` attach changed on its mesh, so a later refusal can undo it.
+struct MeshChanges {
+    /// The attach declared the Model columns on the mesh.
+    columns: bool,
+    /// The attach added the mesh to the material's shader.
+    attached: bool,
+}
+
+impl MeshChanges {
+    /// Takes the mesh back off the shader and drops the columns, where this attach made each change.
+    fn undo(&self, mesh: &Mesh, shader: &Arc<ShaderObject>) {
+        if self.attached {
+            shader.remove_mesh(&mesh.object);
+        }
+        if self.columns {
+            mesh.object.forget_model_instance_schema();
+        }
+    }
+}
+
+impl Model {
+    /// Attaches the mesh to the material's shader, unless it already is, after declaring
+    /// the Model columns on a mesh with no instance layout. When the shader refuses the
+    /// mesh, the columns go again and the mesh is left as it was.
+    fn attach_mesh(&self) -> Result<MeshChanges, crate::PassError> {
+        // The columns come first, so the shader's mesh check (inside `add_mesh`) sees
+        // `model_0..3` at the instance slot and accepts the layout. The Mesh's `insts`
+        // stays empty; per-Model transforms ride the Pass's `model_entries` queue and
+        // the renderer builds the buffer at draw time.
+        let columns = self.mesh.object.declare_model_instance_schema();
+        let shader = &self.material.shader;
+        // Dedupe mesh-attach onto the shader. Without this the renderer
+        // would iterate the doubly-attached mesh and draw it twice.
+        let attached = !shader
+            .object
+            .meshes
+            .read()
+            .iter()
+            .any(|m| Arc::ptr_eq(m, &self.mesh.object));
+        if attached && let Err(error) = shader.add_mesh(&self.mesh) {
+            if columns {
+                self.mesh.object.forget_model_instance_schema();
+            }
+            return Err(error.into());
+        }
+        Ok(MeshChanges { columns, attached })
     }
 }
 
@@ -407,6 +447,50 @@ mod tests {
                     "hidden model should not contribute to the rendered pixels"
                 );
             }
+        });
+    }
+
+    // Story: a Model whose mesh its material refuses leaves the scene and the mesh
+    // as they were, so the scene still renders its other models, and the mesh
+    // takes instances of its own for another shader.
+    #[test]
+    fn a_failed_attach_leaves_nothing_behind() {
+        pollster::block_on(async move {
+            use crate::Target;
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([16u32, 16u32])
+                .await
+                .expect("texture target");
+            let bare = Mesh::new();
+            bare.add_vertices([[0.0, 0.5, 0.0], [-0.5, -0.5, 0.0], [0.5, -0.5, 0.0]]);
+            let scene = crate::Scene::new();
+            let refused = scene.add(&Model::new(bare.clone(), Material::pbr()));
+            let glow = Material::pbr()
+                .base_color([0.0, 0.0, 0.0, 1.0])
+                .emissive([1.0, 0.0, 0.0]);
+            scene
+                .add(&Model::new(pbr_triangle_mesh(), glow))
+                .expect("add");
+
+            let rendered = renderer.render(&scene, &target);
+            let image = target.get_image().await.expect("read back");
+            bare.add_instance(crate::mesh::Instance::new().set("offset", [0.0, 0.0]));
+            let shader = crate::Shader::new(
+                "@vertex fn vs_main(@location(0) position: vec3<f32>, @location(1) offset: vec2<f32>) -> @builtin(position) vec4<f32> {
+  return vec4<f32>(position.xy + offset, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+            )
+            .expect("shader");
+            shader.add_mesh(&bare).expect("attach");
+            let instanced = renderer.render(&shader, &target);
+
+            assert!(refused.is_err(), "the bare mesh has no normals");
+            assert!(rendered.is_ok(), "got {rendered:?}");
+            let center = ((8 * 16 + 8) * 4) as usize;
+            assert!(image[center] > 200, "the glowing model draws");
+            assert!(instanced.is_ok(), "got {instanced:?}");
         });
     }
 }

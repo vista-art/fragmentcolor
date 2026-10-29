@@ -1,6 +1,6 @@
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
@@ -16,6 +16,7 @@ pub use error::*;
 
 pub mod vertex;
 pub use vertex::*;
+use vertex::{POSITION, explain_position};
 
 mod data;
 pub use data::VertexData;
@@ -28,6 +29,7 @@ pub(crate) mod builtins;
 
 mod platform;
 
+use crate::renderer::{RenderContext, RendererError, check_limit};
 use crate::{PassObject, Renderable, Shader, ShaderError};
 
 #[derive(Clone, Debug)]
@@ -217,6 +219,9 @@ pub(crate) struct MeshObject {
     /// The format the first shader to read each untyped attribute gave it.
     /// A leaf lock: never take another lock while holding this one.
     pub(crate) types: RwLock<AttributeTypes>,
+    /// The attributes an attached shader reads, which every vertex and instance must hold.
+    /// Like `types`, they stay for the mesh's lifetime.
+    required: RwLock<AttributeNames>,
 
     // Dirty flags
     dirty_vertices: RwLock<bool>,
@@ -233,10 +238,10 @@ pub(crate) struct MeshObject {
     aabb_min: RwLock<glam::Vec3>,
     aabb_max: RwLock<glam::Vec3>,
 
-    // GPU resources (created lazily)
+    /// GPU buffers on the device that drew the mesh last, created lazily.
     gpu: RwLock<Option<GpuStreams>>,
 
-    // Cache for ensure_gpu results
+    /// The last `vertex_buffers` result, for the device `gpu` lives on.
     gpu_cache: RwLock<Option<(VertexBuffers, DrawCounts)>>,
     cache_valid: RwLock<bool>,
 }
@@ -284,11 +289,30 @@ impl AttributeTypes {
     }
 }
 
+/// Attribute names, by stream.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct AttributeNames {
+    pub(crate) vertex: HashSet<String>,
+    pub(crate) instance: HashSet<String>,
+}
+
+/// What a shader's attach records on a mesh: the types it gives
+/// untyped attributes, and the attributes it reads.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Binding {
+    pub(crate) types: AttributeTypes,
+    pub(crate) read: AttributeNames,
+}
+
+/// A mesh's buffers on the device of one `Renderer`. Another `Renderer`
+/// that draws the mesh uploads buffers of its own in their place.
 #[derive(Debug)]
 struct GpuStreams {
+    /// The `RenderContext::id` of the context whose device holds the buffers.
+    owner: u64,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
-    instance_buffer_len: u32,
+    index_count: u32,
     instance_buffer: Option<wgpu::Buffer>,
     instance_buffer_capacity: u64,
 }
@@ -305,6 +329,7 @@ impl MeshObject {
             vertex_schema: RwLock::new(None),
             instance_schema: RwLock::new(None),
             types: RwLock::new(AttributeTypes::default()),
+            required: RwLock::new(AttributeNames::default()),
             dirty_vertices: RwLock::new(false),
             dirty_instances: RwLock::new(false),
             override_instances: RwLock::new(None),
@@ -393,13 +418,30 @@ impl MeshObject {
     /// instance VertexBufferLayout matching the PBR vertex shader's
     /// `@location(3..6)` inputs. Idempotent: a no-op if the Mesh already has
     /// an instance schema (set either by the user via `add_instance` or by a
-    /// prior `Pass::add_model` call).
-    pub(crate) fn declare_model_instance_schema(&self) {
-        if self.instance_schema.read().is_some() {
-            return;
+    /// prior `Pass::add_model` call). Returns whether it declared the columns.
+    pub(crate) fn declare_model_instance_schema(&self) -> bool {
+        let mut schema = self.instance_schema.write();
+        if schema.is_some() {
+            return false;
         }
-        *self.instance_schema.write() = Some(model_schema());
+        *schema = Some(model_schema());
+        drop(schema);
         self.invalidate_cache();
+        true
+    }
+
+    /// Drops the Model columns a failed `Model` attach declared,
+    /// so the next instance sets the instance layout as before.
+    pub(crate) fn forget_model_instance_schema(&self) {
+        // The instances lock comes first, as in `ensure_packed`.
+        let insts = self.insts.read();
+        let mut schema = self.instance_schema.write();
+        if insts.is_empty() && schema.as_ref() == Some(&model_schema()) {
+            *schema = None;
+            drop(schema);
+            drop(insts);
+            self.invalidate_cache();
+        }
     }
 
     /// Whether only Models give this mesh instances:
@@ -409,18 +451,27 @@ impl MeshObject {
             && self.instance_schema.read().as_ref() == Some(&model_schema())
     }
 
-    /// Records the types a shader gave untyped attributes and repacks what they change.
-    /// Records nothing when another shader has typed one of them another way meanwhile.
-    pub(crate) fn declare(&self, added: AttributeTypes) -> Result<(), ShaderError> {
-        if added.is_empty() {
-            return Ok(());
-        }
-        {
+    /// Records what a shader's attach found: the types it gave untyped attributes,
+    /// which repack what they change, and the attributes it reads, which every
+    /// vertex and instance added later must hold. The attach checked the ones the
+    /// mesh holds now. Records nothing when another shader has typed one of them
+    /// another way meanwhile.
+    pub(crate) fn declare(&self, binding: Binding) -> Result<(), ShaderError> {
+        let Binding { types: added, read } = binding;
+        if !added.is_empty() {
             let mut types = self.types.write();
             check_conflicts(&types.vertex, &added.vertex)?;
             check_conflicts(&types.instance, &added.instance)?;
             types.vertex.extend(added.vertex.clone());
             types.instance.extend(added.instance.clone());
+        }
+        {
+            let mut required = self.required.write();
+            required.vertex.extend(read.vertex);
+            required.instance.extend(read.instance);
+        }
+        if added.is_empty() {
+            return Ok(());
         }
         if !added.vertex.is_empty() {
             reset_schema(&self.vertex_schema, &added.vertex);
@@ -435,6 +486,11 @@ impl MeshObject {
     }
 
     fn ensure_packed(&self) -> Result<(), MeshError> {
+        // Indices from `set_indices` are checked against the vertices on every repack,
+        // and the vertices stay dirty until they fit, so each upload fails the same way.
+        if *self.indices_overridden.read() && *self.dirty_vertices.read() {
+            check_indices(&self.indices.read(), self.verts.read().len())?;
+        }
         // Derive and store each missing schema under its own lock, so a `declare`
         // either lands before the derive reads `types` or resets the stored schema.
         {
@@ -457,6 +513,7 @@ impl MeshObject {
             }
         }
 
+        let required = self.required.read().clone();
         // Pack vertices if dirty
         if *self.dirty_vertices.read() {
             let verts = self.verts.read();
@@ -469,7 +526,7 @@ impl MeshObject {
                     let Some(schema_ref) = schema.as_ref() else {
                         return Err(MeshError::NoVertexSchema);
                     };
-                    pack_vertex(&mut bytes, index, v, schema_ref)?;
+                    pack_vertex(&mut bytes, index, v, schema_ref, &required.vertex)?;
                 }
             } else {
                 // Dedup by full equality and derive indices.
@@ -491,7 +548,7 @@ impl MeshObject {
                     let Some(schema_ref) = schema.as_ref() else {
                         return Err(MeshError::NoVertexSchema);
                     };
-                    pack_vertex(&mut bytes, index, v, schema_ref)?;
+                    pack_vertex(&mut bytes, index, v, schema_ref, &required.vertex)?;
                 }
                 *self.indices.write() = idx;
             }
@@ -511,7 +568,7 @@ impl MeshObject {
                     let Some(schema_ref) = schema.as_ref() else {
                         return Err(MeshError::NoInstanceSchema);
                     };
-                    pack_instance(&mut bytes, index, ins, schema_ref)?;
+                    pack_instance(&mut bytes, index, ins, schema_ref, &required.instance)?;
                 }
                 *self.packed_insts.write() = bytes;
                 *self.dirty_instances.write() = false;
@@ -522,19 +579,25 @@ impl MeshObject {
     }
 
     /// Get Vertex Buffers and Draw counts for this mesh,
-    /// creating or updating GPU resources as needed.
+    /// creating or updating GPU resources on the device of `context` as needed.
+    /// Buffers on another context's device give way to new ones.
     pub(crate) fn vertex_buffers(
         &self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) -> Result<(VertexBuffers, DrawCounts), MeshError> {
-        if *self.cache_valid.read()
+        context: &RenderContext,
+    ) -> Result<(VertexBuffers, DrawCounts), RendererError> {
+        let owned = self
+            .gpu
+            .read()
+            .as_ref()
+            .is_some_and(|gpu| gpu.owner == context.id);
+        if owned
+            && *self.cache_valid.read()
             && let Some(cached) = self.gpu_cache.read().as_ref()
         {
             return Ok(cached.clone());
         }
 
-        let result = self.upload_vertex_buffers(device, queue)?;
+        let result = self.upload_vertex_buffers(context)?;
 
         *self.gpu_cache.write() = Some(result.clone());
         *self.cache_valid.write() = true;
@@ -544,9 +607,9 @@ impl MeshObject {
 
     fn upload_vertex_buffers(
         &self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) -> Result<(VertexBuffers, DrawCounts), MeshError> {
+        context: &RenderContext,
+    ) -> Result<(VertexBuffers, DrawCounts), RendererError> {
+        let (device, queue) = (&context.device, &context.queue);
         // Capture dirty flags before packing; ensure_packed() clears them
         let was_dirty_v = *self.dirty_vertices.read();
         let was_dirty_i = *self.dirty_instances.read();
@@ -555,25 +618,35 @@ impl MeshObject {
         let pv = self.packed_verts.read();
         let pi = self.packed_insts.read();
         let idx = self.indices.read();
-        let si = self.instance_schema.read();
 
-        // Count rows on every upload, so a list that shrinks into the old buffer draws its own length.
-        let instance_rows = if pi.is_empty() {
-            None
-        } else {
-            let Some(schema) = si.as_ref() else {
-                return Err(MeshError::NoInstanceSchema);
-            };
-            Some((pi.len() as u64 / schema.stride) as u32)
+        // Count rows from the list on every upload, so instances without properties
+        // count, and a list that shrinks into the old buffer draws its own length.
+        let instance_rows = match self.insts.read().len() {
+            0 => None,
+            rows => Some(count(rows)?),
         };
+        let index_count = count(idx.len())?;
+
+        // Checked on every upload: the packing above clears the dirty flags, so
+        // data that stays too large fails again instead of drawing old buffers.
+        let limit = device.limits().max_buffer_size;
+        let sizes = [
+            ("the mesh's vertex buffer", pv.len() as u64),
+            ("the mesh's index buffer", u64::from(index_count) * 4),
+            ("the mesh's instance buffer", pi.len() as u64),
+        ];
+        for (buffer, size) in sizes {
+            check_limit(buffer, "max_buffer_size", size, limit)?;
+        }
 
         // Create or grow buffers
         let mut gpu = self.gpu.write();
 
-        // Decide whether we need to recreate GPU buffers
+        // Decide whether we need to recreate GPU buffers. Buffers on
+        // another device can't draw here, so they give way to new ones.
         let mut need_new = match gpu.as_ref() {
             None => true,
-            Some(g) => g.instance_buffer_len as usize != idx.len() || was_dirty_v,
+            Some(g) => g.owner != context.id || g.index_count != index_count || was_dirty_v,
         };
 
         if let Some(g) = gpu.as_ref() {
@@ -622,9 +695,10 @@ impl MeshObject {
             };
 
             gpu.replace(GpuStreams {
+                owner: context.id,
                 vertex_buffer,
                 index_buffer,
-                instance_buffer_len: idx.len() as u32,
+                index_count,
                 instance_buffer,
                 instance_buffer_capacity: instance_bytes,
             });
@@ -646,7 +720,7 @@ impl MeshObject {
         }
 
         let Some(g) = gpu.as_ref() else {
-            return Err(MeshError::NoGpuStreams);
+            return Err(MeshError::NoGpuStreams.into());
         };
         let vertex_buffers = VertexBuffers {
             vertex_buffer: g.vertex_buffer.clone(),
@@ -656,7 +730,7 @@ impl MeshObject {
 
         let override_count = *self.override_instances.read();
         let draw_counts = DrawCounts {
-            index_count: g.instance_buffer_len,
+            index_count: g.index_count,
             instance_count: override_count.or(instance_rows).unwrap_or(1),
             instance_rows,
         };
@@ -745,7 +819,7 @@ fn derive_vertex_schema(
         0..=2 => wgpu::VertexFormat::Float32x2,
         _ => wgpu::VertexFormat::Float32x3,
     };
-    let mut fields = vec![Field::new("position", position)];
+    let mut fields = vec![Field::new(POSITION, position)];
     fields.extend(derive_fields(&vertex.properties, types));
     VertexSchema::new(fields)
 }
@@ -806,15 +880,21 @@ fn reset_schema(
     }
 }
 
+/// Packs vertex `index` in the mesh layout `schema`. A field an attached shader reads
+/// (`required`) must hold a value, and any other field the vertex leaves out packs as zeros.
 fn pack_vertex(
     out: &mut Vec<u8>,
     index: usize,
     v: &Vertex,
     schema: &VertexSchema,
+    required: &HashSet<String>,
 ) -> Result<(), MeshError> {
+    if v.properties.contains_key(POSITION) {
+        return Err(MeshError::InvalidVertex(explain_position(index)));
+    }
     for f in schema.fields.iter() {
         match f.name.as_str() {
-            "position" => {
+            POSITION => {
                 let [x, y, z, _] = v.position.0.to_array();
                 match (v.dimensions, f.fmt) {
                     (0..=2, wgpu::VertexFormat::Float32x2) => {
@@ -834,7 +914,10 @@ fn pack_vertex(
                 Some(value) => value.write(f.fmt, out).map_err(|misfit| {
                     MeshError::InvalidVertex(misfit.explain(name, &format!("vertex {index}")))
                 })?,
-                // zero-fill absent optional properties
+                None if required.contains(name) => {
+                    let place = format!("vertex {index}");
+                    return Err(MeshError::InvalidVertex(explain_missing(f, &place)));
+                }
                 None => out.extend(std::iter::repeat_n(0u8, f.size as usize)),
             },
         }
@@ -842,21 +925,56 @@ fn pack_vertex(
     Ok(())
 }
 
+/// Packs instance `index` in the instance layout `schema`, as `pack_vertex` packs a vertex.
 fn pack_instance(
     out: &mut Vec<u8>,
     index: usize,
     i: &Instance,
     schema: &VertexSchema,
+    required: &HashSet<String>,
 ) -> Result<(), MeshError> {
     for f in schema.fields.iter() {
         match i.properties.get(&f.name) {
             Some(value) => value.write(f.fmt, out).map_err(|misfit| {
                 MeshError::InvalidInstance(misfit.explain(&f.name, &format!("instance {index}")))
             })?,
+            None if required.contains(&f.name) => {
+                let place = format!("instance {index}");
+                return Err(MeshError::InvalidInstance(explain_missing(f, &place)));
+            }
             None => out.extend(std::iter::repeat_n(0u8, f.size as usize)),
         }
     }
     Ok(())
+}
+
+/// Why the item at `place` can't leave out `field`, worded as the attach words it.
+fn explain_missing(field: &Field, place: &str) -> String {
+    format!(
+        "{}: expected {}, got no value at {place}",
+        field.name,
+        describe(field.fmt)
+    )
+}
+
+/// Refuses an index list that ends partway through a triangle,
+/// or that points past the last of `vertices`.
+fn check_indices(indices: &[u32], vertices: usize) -> Result<(), MeshError> {
+    if !indices.len().is_multiple_of(3) {
+        return Err(MeshError::IndexCount(indices.len()));
+    }
+    match indices.iter().find(|index| **index as usize >= vertices) {
+        Some(index) => Err(MeshError::IndexRange {
+            index: *index,
+            vertices,
+        }),
+        None => Ok(()),
+    }
+}
+
+/// `length` as a 32-bit count, the width the GPU draws indices and instances with.
+fn count(length: usize) -> Result<u32, MeshError> {
+    Ok(u32::try_from(length)?)
 }
 
 #[cfg(test)]
@@ -917,6 +1035,65 @@ mod tests {
         }
     }
 
+    // Story: a vertex that sets a property named position fails the pack, since its
+    // position comes from Vertex::new, and the mesh layout would list it twice.
+    #[test]
+    fn ensure_packed_refuses_a_position_property() {
+        let mesh = Mesh::new();
+        mesh.add_vertex(Vertex::new([0.0, 0.0]).set("position", [5.0, 5.0]));
+
+        match mesh.object.ensure_packed() {
+            Err(MeshError::InvalidVertex(text)) => assert_eq!(
+                text,
+                "vertex 0 sets a property named 'position', and a vertex takes its position from Vertex::new"
+            ),
+            other => panic!("expected an invalid vertex, got {other:?}"),
+        }
+    }
+
+    // Story: vertex, index and instance data past the device's buffer limit fail
+    // the upload with an error that names the buffer, before any buffer is made,
+    // and fail again on the next upload while the data stays too large.
+    #[test]
+    fn uploads_stay_within_the_buffer_limit() {
+        pollster::block_on(async move {
+            let (device, queue) = crate::renderer::platform::all::request_small_device(65536).await;
+            let context = RenderContext::new(device, queue);
+            let corners = (0..8193).map(|index| [index as f32, 0.0]);
+            let vertices = Mesh::new();
+            vertices.add_vertices(corners);
+            let indices = Mesh::new();
+            indices.add_vertices([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]);
+            indices.set_indices((0..16386).map(|index| index % 3));
+            let instances = Mesh::new();
+            instances.add_vertices([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]);
+            instances.add_instances((0..4097).map(|_| Instance::new().set("tint", [1.0; 4])));
+
+            let message = |mesh: &Mesh| match mesh.object.vertex_buffers(&context) {
+                Err(error) => error.to_string(),
+                Ok(_) => panic!("expected an error"),
+            };
+
+            assert_eq!(
+                message(&vertices),
+                "the mesh's vertex buffer needs max_buffer_size of at least 65544, and the device has 65536"
+            );
+            assert_eq!(
+                message(&vertices),
+                "the mesh's vertex buffer needs max_buffer_size of at least 65544, and the device has 65536",
+                "the next upload"
+            );
+            assert_eq!(
+                message(&indices),
+                "the mesh's index buffer needs max_buffer_size of at least 65544, and the device has 65536"
+            );
+            assert_eq!(
+                message(&instances),
+                "the mesh's instance buffer needs max_buffer_size of at least 65552, and the device has 65536"
+            );
+        });
+    }
+
     // Story: a plain number packs as a float until a shader types it, then
     // the mesh repacks it in that type and keeps it for the mesh's lifetime.
     #[test]
@@ -947,7 +1124,11 @@ mod tests {
         added
             .vertex
             .insert("id".to_string(), wgpu::VertexFormat::Uint32);
-        mesh.object.declare(added).expect("declare");
+        let binding = Binding {
+            types: added,
+            ..Default::default()
+        };
+        mesh.object.declare(binding).expect("declare");
         assert!(mesh.object.vertex_schema.read().is_none());
         assert!(*mesh.object.dirty_vertices.read());
 
@@ -960,7 +1141,11 @@ mod tests {
         conflict
             .vertex
             .insert("id".to_string(), wgpu::VertexFormat::Float32);
-        let error = mesh.object.declare(conflict).expect_err("conflict");
+        let binding = Binding {
+            types: conflict,
+            ..Default::default()
+        };
+        let error = mesh.object.declare(binding).expect_err("conflict");
         assert_eq!(
             error.to_string(),
             "Mesh attribute id is u32 on this mesh, but the shader declares f32"
@@ -1000,9 +1185,8 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
             let (device, queue) = crate::renderer::platform::all::request_device(&adapter)
                 .await
                 .expect("device");
-            mesh.object
-                .vertex_buffers(&device, &queue)
-                .expect("buffers");
+            let context = RenderContext::new(device, queue);
+            mesh.object.vertex_buffers(&context).expect("buffers");
             assert!(*mesh.object.cache_valid.read());
 
             let second = crate::Shader::new(wgsl).expect("shader");
@@ -1054,27 +1238,28 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
             let (device, queue) = crate::renderer::platform::all::request_device(&adapter)
                 .await
                 .expect("device");
+            let context = RenderContext::new(device, queue);
 
             // Without override, instance_count == 2 (matches buffer)
-            let (_bufs, counts) = mesh.object.vertex_buffers(&device, &queue).expect("vb");
+            let (_bufs, counts) = mesh.object.vertex_buffers(&context).expect("vb");
             assert_eq!(counts.instance_count, 2);
 
             // With override, instance_count == 5
             mesh.set_instance_count(5);
-            let (_bufs2, counts2) = mesh.object.vertex_buffers(&device, &queue).expect("vb2");
+            let (_bufs2, counts2) = mesh.object.vertex_buffers(&context).expect("vb2");
             assert_eq!(counts2.instance_count, 5);
 
             // Adding an instance auto-clears the override (otherwise the GPU would
             // draw past the actual buffer end and read garbage). count falls back
             // to the new buffer length (3).
             mesh.add_instance(Instance::new().set("id", 8u32));
-            let (_bufs3, counts3) = mesh.object.vertex_buffers(&device, &queue).expect("vb3");
+            let (_bufs3, counts3) = mesh.object.vertex_buffers(&context).expect("vb3");
             assert_eq!(counts3.instance_count, 3);
 
             // clear_instances resets everything: empty buffer + no override → 1.
             mesh.set_instance_count(99);
             mesh.clear_instances();
-            let (_bufs4, counts4) = mesh.object.vertex_buffers(&device, &queue).expect("vb4");
+            let (_bufs4, counts4) = mesh.object.vertex_buffers(&context).expect("vb4");
             assert_eq!(counts4.instance_count, 1);
         });
     }

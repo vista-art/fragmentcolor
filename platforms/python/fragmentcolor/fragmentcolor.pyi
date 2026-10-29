@@ -373,13 +373,15 @@ class Renderer:
 
         A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input. The inputs are the `@location` arguments of the vertex entry point and the `@location` members of its struct arguments, and each one reads the mesh attribute of its own name.
 
+        Each mesh a shader draws is checked against the device, and a mesh past one of its limits returns `RendererError::LimitError`, as a shader does: an input at a location past `max_vertex_attributes`, a vertex or instance stride past `max_vertex_buffer_array_stride`, and mesh data that needs a buffer past `max_buffer_size`. Its `item` names the input, the stride or the buffer. WebGL2 takes strides up to 255 bytes. A mesh draws with every `Renderer` that renders it, each from buffers of its own.
+
         Before it takes a frame, `render` checks each shader against the device and each texture uniform against its slot, so every language returns these errors from the call that caused them, the web included. A group, binding, binding count, buffer size or workgroup past the device's limits returns `RendererError::LimitError`, a feature the device lacks `RendererError::FeatureError`, a texture uniform that was never set or whose texture its slot can't take `RendererError::BindingError`, and a render shader without its vertex or fragment entry point `RendererError::EntryError`, each with its fields. An unset PBR map slot binds its 1x1 default instead, when the slot takes a 2D float texture. A texture `unregister_texture` removed, or one from another `Renderer`, returns `RendererError::TextureNotFoundError`, in a PBR map slot too. The [Shader](https://fragmentcolor.org/api/core/shader) page lists the checks and each language's form of these errors.
 
         A `Renderer` draws only into the targets it created. A target from another `Renderer` returns `RendererError::ForeignTarget`, unless every pass is a compute pass, which draws into no target. Each pass is checked against what it draws into before it records: a [depth target](https://fragmentcolor.org/api/core/pass#set_depth_target) of the color attachment's size and sample count, shader outputs and blending the [target](https://fragmentcolor.org/api/core/pass#set_target)'s format takes, a [viewport](https://fragmentcolor.org/api/core/pass#set_viewport) and a [compute dispatch](https://fragmentcolor.org/api/core/pass#set_compute_dispatch) the device takes, and textures that one pass doesn't both write and read. A render pass can't bind a texture it draws into, and no pass can read a texture one of its bindings writes, so a compute dispatch that samples a texture and stores into it returns `PassError::TextureConflict` too.
 
         `render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail, it returns a [DeviceError](https://fragmentcolor.org/api/core/deviceerror), `RendererError::DeviceError` in Rust. Its `kind` tells validation errors, internal errors such as a shader the backend compiler refuses, and running out of memory apart, and its `label` names the step that failed: the render pipeline, the compute pipeline, the light binning pipeline, the frame, or a bind group or texture view inside the frame. When one error causes another, `render` returns the first. In Rust, Python, Swift and Kotlin, a pipeline that failed is never kept, and the next frame builds it again and returns the same error.
 
-        A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. A shader without its mesh, an instance count past the mesh's instances, a shader or texture the device checks refuse, a target from another `Renderer`, a pass target that is missing, a viewport past the device's 2D limit, and a pass whose own target or compute dispatch fails its checks fail before `render` takes a frame, and the window keeps its last image.
+        A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. A shader without its mesh, an instance count past the mesh's instances, a mesh the device's limits or its own checks refuse, a shader or texture the device checks refuse, a target from another `Renderer`, a pass target that is missing, a viewport past the device's 2D limit, and a pass whose own target or compute dispatch fails its checks fail before `render` takes a frame, and the window keeps its last image.
 
         JavaScript gets the GPU's errors late, because WebGPU reports them after `render` has returned. Each error logs a `console.error` when it lands, and the next `render` still throws the first one, as an `Error` with `kind`, `label` and `detail` properties, before doing any work. `load`, `readTexture`, `readStorage`, and `getImage` on a `Texture` or `TextureTarget` wait for the frames before them to report, so they throw a frame's error even when called right after it. A call that waits throws only the error of a frame rendered before it began: the error of a frame rendered while it waits, even one rendered in the same task right after the call, stays for the next call. Only the first error to land throws, and only once; the ones that land after it, before a call takes it, only log. The label names the render pipeline, the compute pipeline, the light binning pipeline or the frame. A pipeline that failed stays in the cache until its error lands, and a frame that draws with it before then reports a frame error. Once the error lands, the pipeline leaves the cache. In a loop that renders each frame, the next `render` throws the error before doing any work, and the one after it builds the pipeline again and reports the same error.
 
@@ -792,7 +794,7 @@ class Shader:
         """
     def add_mesh(self, mesh: Mesh) -> None:
         """
-        Attach a Mesh to this Shader. The Renderer draws every mesh attached to it, one draw call per mesh, with the same pipeline.
+        Attach a Mesh to this Shader. The Renderer draws every mesh attached to it, one draw call per mesh. Meshes that lay out their data alike share one pipeline, and a mesh whose stride, attribute offsets or instance stream differ draws with a pipeline of its own.
 
         `add_mesh` checks every vertex and instance of the mesh against the shader's `@location` inputs and returns `Result<(), ShaderError>`.
 
@@ -800,6 +802,8 @@ class Shader:
         - On success, the mesh is attached, its attributes keep those types for as long as the mesh lives, and it is drawn when this shader renders.
         - On a missing attribute or a value that doesn't fit, the error names the attribute, the declared type and the value, or the vertex or instance that lacks it. The mesh isn't attached and records no type.
         - A shader that declares another type for an attribute an earlier shader already typed on this mesh fails to attach.
+        - A vertex that sets a property named `position` fails with `ShaderError::InvalidKey`, since its position comes from `Vertex::new`.
+        - A vertex or instance added after the attach must hold every attribute the shader reads. `Renderer.render` returns `MeshError::InvalidVertex` or `MeshError::InvalidInstance` naming the attribute otherwise.
         - The `@location` members of a struct argument are inputs too, each read from the attribute of its own name, so `struct VIn { @location(1) color: vec4<f32> }` reads `color`. Built-in members such as `@builtin(vertex_index)` read nothing from the mesh.
         - A shader with no `@location` inputs, in its arguments or their members, draws fullscreen and rejects every mesh with `ShaderError::InvalidKey`.
 
@@ -827,9 +831,8 @@ class Shader:
         shader.add_mesh(mesh)
 
         # Renderer will draw the mesh when rendering this pass.
-        # Each Shader represents a RenderPipeline or ComputePipeline
-        # in the GPU. Adding multiple meshes to it will draw all meshes
-        # and all its instances in the same Pipeline.
+        # Meshes that lay out their vertices alike draw with one
+        # RenderPipeline, and each other layout gets one of its own.
         ```
         """
     def remove_mesh(self, mesh: Mesh) -> None:
@@ -1325,7 +1328,8 @@ class Pass:
 
         Returns `Result<&Pass, PassError>`. A Model fails at attach time when
         the Mesh layout doesn't match the Material's shader, and with
-        `PassError::ShaderKind` on a pass of compute shaders. Cameras always
+        `PassError::ShaderKind` on a pass of compute shaders. A Model that fails
+        leaves the pass and its mesh as they were. Cameras always
         succeed. A Light fails with `PassError::LightCapReached { cap }` when a
         shader on the pass already holds as many lights as it takes on this
         device, and a Model fails the same way when its shader would take more
@@ -1644,7 +1648,14 @@ class Mesh:
 
     A plain number takes the type the shader declares for its input. The attach
     checks every vertex and instance, and it fails with an error that names the
-    attribute when an input finds no data or a value doesn't fit its type.
+    attribute when an input finds no data or a value doesn't fit its type. A vertex
+    or instance added after the attach holds every attribute the shader reads, or
+    `Renderer.render` returns `MeshError::InvalidVertex` or
+    `MeshError::InvalidInstance` naming the attribute and the item. An attribute
+    no attached shader reads can be left out, and it uploads as zeros.
+
+    A mesh draws with every `Renderer` that renders it. Each one uploads buffers
+    of its own from the mesh's vertices, indices and instances.
 
     Example:
 
@@ -1694,6 +1705,10 @@ class Mesh:
         or other per-vertex attributes, build a [Vertex](https://fragmentcolor.org/api/geometry/vertex)
         first and pass it in.
 
+        A vertex added after the mesh attaches to a shader holds every attribute that
+        shader reads. `Renderer.render` returns `MeshError::InvalidVertex` for one
+        that lacks an attribute, naming the attribute and the vertex.
+
         Example:
 
         ```python
@@ -1705,6 +1720,10 @@ class Mesh:
     def add_vertices(self, vertices: Sequence[float | numpy.floating[Any] | numpy.integer[Any] | Vertex | npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat] | tuple[npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], Sequence[SupportsFloat] | npt.NDArray[Any], Sequence[SupportsFloat] | npt.NDArray[Any]] | tuple[npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], Sequence[SupportsFloat] | npt.NDArray[Any]]]) -> None:
         """
         Add many vertices to the mesh.
+
+        As with `add_vertex`, a vertex added after the mesh attaches to a shader
+        holds every attribute that shader reads, or `Renderer.render` returns
+        `MeshError::InvalidVertex` naming the attribute and the vertex.
 
         Example:
 
@@ -1728,6 +1747,11 @@ class Mesh:
         Adding an instance also clears any previously set instance count override
         (see `Mesh::set_instance_count`).
 
+        An instance added after the mesh attaches to a shader holds every instance
+        attribute that shader reads. `Renderer.render` returns
+        `MeshError::InvalidInstance` for one that lacks an attribute, naming the
+        attribute and the instance.
+
         Example:
 
         ```python
@@ -1747,6 +1771,11 @@ class Mesh:
 
         Adding instances also clears any previously set instance count override
         (see `Mesh::set_instance_count`).
+
+        Every instance counts, even one without attributes: three empty instances
+        draw the mesh three times, and the shader tells them apart with
+        `@builtin(instance_index)`. As with `add_instance`, an instance added after
+        the mesh attaches to a shader holds every instance attribute that shader reads.
 
         Example:
 
@@ -1825,6 +1854,12 @@ class Mesh:
         with `add_vertex` is packed in insertion order and the indices you supply
         are used verbatim. Call `clear_indices` to return to the auto-derived
         path.
+
+        The list draws whole triangles of vertices the mesh holds. `Renderer.render`
+        returns `MeshError::IndexRange` for an index past the last vertex, and
+        `MeshError::IndexCount` for a count that isn't a multiple of 3, where the GPU
+        read a vertex of zeros or dropped the last indices. The check runs on every
+        render until the indices fit the vertices. An empty list draws nothing.
 
         Example:
 
@@ -1989,6 +2024,10 @@ class Vertex:
           then looks by the property's own location (instance first, then vertex).
         - The first shader that reads a property fixes its type for that mesh. A
           shader that declares another type for it fails to attach.
+        - `position` names the position `Vertex::new` sets, so no property takes it.
+          A mesh with a vertex that sets `position` fails to attach with
+          `ShaderError::InvalidKey`, and `Renderer.render` returns
+          `MeshError::InvalidVertex` for one added later. Both name the vertex.
 
         Example:
 
@@ -2442,7 +2481,9 @@ class Scene:
         lighting after the caller drops its handle.
 
         Returns `Result<&Scene, PassError>` so Models can fail at attach time when
-        the Mesh layout doesn't match the Material's shader. Cameras always
+        the Mesh layout doesn't match the Material's shader. A Model that fails
+        leaves the scene and its mesh as they were, so the scene renders its other
+        objects, and the mesh takes instances of its own for another shader. Cameras always
         succeed. A Light fails with `PassError::LightCapReached { cap }` when a
         shader on the default pass already holds as many lights as it takes on
         this device, and a Model fails the same way when its shader would take more
@@ -2664,7 +2705,8 @@ class Scene:
         An index out of range, or a name that matches nothing, is an error. The
         Scene-level bookkeeping is identical to `add`: the object surfaces in
         `models()` / `cameras()` / `lights()`, and a Camera or Light there still
-        suppresses the matching default-injection.
+        suppresses the matching default-injection. A Model that fails to attach
+        leaves the pass and its mesh as they were, as with `add`.
 
         Example:
 

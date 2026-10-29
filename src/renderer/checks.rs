@@ -15,6 +15,24 @@ use crate::{
 use parking_lot::RwLock;
 use std::sync::Arc;
 
+/// Refuses `item`, which needs `value` of the device's `limit`, when the device has less.
+pub(crate) fn check_limit(
+    item: &str,
+    limit: &str,
+    value: u64,
+    max: u64,
+) -> Result<(), RendererError> {
+    match value > max {
+        true => Err(RendererError::LimitError {
+            item: item.to_string(),
+            limit: limit.to_string(),
+            value,
+            max,
+        }),
+        false => Ok(()),
+    }
+}
+
 /// The color attachment of a render pass, which its depth target and pipelines must fit.
 pub(super) struct Attachment {
     texture: wgpu::Texture,

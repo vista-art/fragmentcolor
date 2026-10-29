@@ -23,7 +23,14 @@ attribute's own location (instance first, then vertex).
 
 A plain number takes the type the shader declares for its input. The attach
 checks every vertex and instance, and it fails with an error that names the
-attribute when an input finds no data or a value doesn't fit its type.
+attribute when an input finds no data or a value doesn't fit its type. A vertex
+or instance added after the attach holds every attribute the shader reads, or
+`Renderer.render` returns `MeshError::InvalidVertex` or
+`MeshError::InvalidInstance` naming the attribute and the item. An attribute
+no attached shader reads can be left out, and it uploads as zeros.
+
+A mesh draws with every `Renderer` that renders it. Each one uploads buffers
+of its own from the mesh's vertices, indices and instances.
 
 
 
@@ -277,6 +284,10 @@ position (`[x, y]` or `[x, y, z]`); for vertices that carry `uv`, `color`,
 or other per-vertex attributes, build a [Vertex](/api/geometry/vertex)
 first and pass it in.
 
+A vertex added after the mesh attaches to a shader holds every attribute that
+shader reads. `Renderer.render` returns `MeshError::InvalidVertex` for one
+that lacks an attribute, naming the attribute and the vertex.
+
 #### Example
 
 <Tabs>
@@ -349,6 +360,10 @@ lang="kotlin"
 ### Mesh::add_vertices \{#add_vertices\}
 
 Add many vertices to the mesh.
+
+As with `add_vertex`, a vertex added after the mesh attaches to a shader
+holds every attribute that shader reads, or `Renderer.render` returns
+`MeshError::InvalidVertex` naming the attribute and the vertex.
 
 #### Example
 
@@ -439,6 +454,11 @@ are reused for every instance.
 Adding an instance also clears any previously set instance count override
 (see `Mesh::set_instance_count`).
 
+An instance added after the mesh attaches to a shader holds every instance
+attribute that shader reads. `Renderer.render` returns
+`MeshError::InvalidInstance` for one that lacks an attribute, naming the
+attribute and the instance.
+
 #### Example
 
 <Tabs>
@@ -523,6 +543,11 @@ vertices are reused for every instance.
 
 Adding instances also clears any previously set instance count override
 (see `Mesh::set_instance_count`).
+
+Every instance counts, even one without attributes: three empty instances
+draw the mesh three times, and the shader tells them apart with
+`@builtin(instance_index)`. As with `add_instance`, an instance added after
+the mesh attaches to a shader holds every instance attribute that shader reads.
 
 #### Example
 
@@ -820,6 +845,12 @@ their other attributes differ. After `set_indices`, every vertex you added
 with `add_vertex` is packed in insertion order and the indices you supply
 are used verbatim. Call `clear_indices` to return to the auto-derived
 path.
+
+The list draws whole triangles of vertices the mesh holds. `Renderer.render`
+returns `MeshError::IndexRange` for an index past the last vertex, and
+`MeshError::IndexCount` for a count that isn't a multiple of 3, where the GPU
+read a vertex of zeros or dropped the last indices. The check runs on every
+render until the indices fit the vertices. An empty list draws nothing.
 
 #### Example
 

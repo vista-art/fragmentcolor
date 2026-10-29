@@ -326,6 +326,10 @@ Locations and mapping:
   then looks by the property's own location (instance first, then vertex).
 - The first shader that reads a property fixes its type for that mesh. A
   shader that declares another type for it fails to attach.
+- `position` names the position `Vertex::new` sets, so no property takes it.
+  A mesh with a vertex that sets `position` fails to attach with
+  `ShaderError::InvalidKey`, and `Renderer.render` returns
+  `MeshError::InvalidVertex` for one added later. Both name the vertex.
 
 #### Example
 

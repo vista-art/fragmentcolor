@@ -423,7 +423,9 @@ The Scene holds every Light added to it, so `scene.add(&light)` keeps
 lighting after the caller drops its handle.
 
 Returns `Result<&Scene, PassError>` so Models can fail at attach time when
-the Mesh layout doesn't match the Material's shader. Cameras always
+the Mesh layout doesn't match the Material's shader. A Model that fails
+leaves the scene and its mesh as they were, so the scene renders its other
+objects, and the mesh takes instances of its own for another shader. Cameras always
 succeed. A Light fails with `PassError::LightCapReached { cap }` when a
 shader on the default pass already holds as many lights as it takes on
 this device, and a Model fails the same way when its shader would take more
@@ -610,7 +612,8 @@ or a name (matching [`find_pass`](/api/scene/scene#find_pass)).
 An index out of range, or a name that matches nothing, is an error. The
 Scene-level bookkeeping is identical to `add`: the object surfaces in
 `models()` / `cameras()` / `lights()`, and a Camera or Light there still
-suppresses the matching default-injection.
+suppresses the matching default-injection. A Model that fails to attach
+leaves the pass and its mesh as they were, as with `add`.
 
 #### Example
 

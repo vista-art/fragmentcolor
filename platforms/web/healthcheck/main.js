@@ -823,6 +823,82 @@ await withModule('platforms.web.healthcheck.pass_checks', async () => {
 
 // A shader the device can't run, or a texture its slot can't take, throws from render
 // itself, before any GPU work, so no late error or console.error follows.
+// One shader draws meshes with other vertex and instance layouts, each with a pipeline of
+// its own that shares the shader's bind groups, so the browser takes them with no late error,
+// and a second Renderer draws the same meshes. The mesh checks throw from the call that breaks them.
+await withModule('platforms.web.healthcheck.mesh_checks', async () => {
+    const fail = (message) => { throw new Error(message); };
+    const refuses = (label, words, run) => {
+      try { run(); } catch (e) {
+        if (!(e instanceof Error)) fail(`${label} threw a ${typeof e}, not an Error`);
+        if (!e.message.includes(words)) fail(`${label} threw: ${e.message}`);
+        return console.log(`${label} threw:`, e.message);
+      }
+      fail(`${label} should throw`);
+    };
+    const source = `
+struct VOut { @builtin(position) pos: vec4<f32>, @location(0) color: vec4<f32> };
+@group(0) @binding(0) var<uniform> gain: f32;
+@vertex fn vs_main(@location(0) position: vec2<f32>, @location(1) color: vec4<f32>) -> VOut {
+  return VOut(vec4<f32>(position, 0.0, 1.0), color * gain);
+}
+@fragment fn fs_main(v: VOut) -> @location(0) vec4<f32> { return v.color; }
+`;
+    const column = (left, right) => [[left, -1], [right, -1], [right, 1], [left, -1], [right, 1], [left, 1]];
+    const shader = new Shader(source);
+    shader.set('gain', 1.0);
+    const painted = new Mesh();
+    painted.addVertices(column(-1, 0).map((corner) => new Vertex(corner).set('color', [1, 0, 0, 1])));
+    const tinted = new Mesh();
+    tinted.addVertices(column(0, 1).map((corner) => new Vertex(corner)));
+    tinted.addInstance(new Instance().set('color', [0, 0, 1, 1]));
+    shader.addMesh(painted);
+    shader.addMesh(tinted);
+
+    const draw = async (renderer) => {
+      const target = await renderer.createTextureTarget([8, 2]);
+      renderer.render(shader, target);
+      const image = await target.getImage();
+      return (x) => Array.from(image.slice(x * 4, x * 4 + 4)).join(',');
+    };
+    const renderer = new Renderer();
+    for (const [label, pixel] of [['one Renderer', await draw(renderer)], ['a second Renderer', await draw(new Renderer())]]) {
+      if (pixel(1) !== '255,0,0,255') fail(`${label}: the vertex color column drew ${pixel(1)}`);
+      if (pixel(6) !== '0,0,255,255') fail(`${label}: the instance color column drew ${pixel(6)}`);
+    }
+
+    const target = await renderer.createTextureTarget([8, 2]);
+    painted.setIndices([0, 1, 7]);
+    refuses('an index past the last vertex', 'points past the last of 6 vertices', () => renderer.render(shader, target));
+    painted.setIndices([0, 1, 2, 0]);
+    refuses('a partial triangle', 'multiple of 3 indices', () => renderer.render(shader, target));
+    painted.clearIndices();
+    tinted.addInstance(new Instance());
+    refuses('an instance without the color the shader reads', 'got no value at instance 1', () => renderer.render(shader, target));
+    tinted.clearInstances();
+    tinted.addInstance(new Instance().set('color', [0, 0, 1, 1]));
+    const named = new Mesh();
+    named.addVertex(new Vertex([0, 0]).set('position', [5, 5]).set('color', [1, 1, 1, 1]));
+    refuses('a position property', "property named 'position'", () => new Shader(source).addMesh(named));
+
+    // No device takes 65 vertex attributes, so an input at @location(64) is past every limit.
+    const far = new Shader(`
+@vertex fn vs_main(@location(0) position: vec2<f32>, @location(64) extra: f32) -> @builtin(position) vec4<f32> { return vec4<f32>(position * extra, 0.0, 1.0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+`);
+    const reaching = new Mesh();
+    reaching.addVertices([[-1, -1], [3, -1], [-1, 3]].map((corner) => new Vertex(corner).set('extra', 1)));
+    far.addMesh(reaching);
+    let past = null;
+    try { renderer.render(far, target); } catch (e) { past = e; }
+    if (!(past instanceof Error) || past.limit !== 'max_vertex_attributes' || past.value !== 65) {
+      fail(`a vertex input past the attribute limit threw ${past?.message ?? 'nothing'}`);
+    }
+
+    renderer.render(shader, target);
+    await target.getImage();
+});
+
 await withModule('platforms.web.healthcheck.device_checks', async () => {
     const renderer = new Renderer();
     const target = await renderer.createTextureTarget([8, 8]);

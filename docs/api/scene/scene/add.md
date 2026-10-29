@@ -21,7 +21,9 @@ The Scene holds every Light added to it, so `scene.add(&light)` keeps
 lighting after the caller drops its handle.
 
 Returns `Result<&Scene, PassError>` so Models can fail at attach time when
-the Mesh layout doesn't match the Material's shader. Cameras always
+the Mesh layout doesn't match the Material's shader. A Model that fails
+leaves the scene and its mesh as they were, so the scene renders its other
+objects, and the mesh takes instances of its own for another shader. Cameras always
 succeed. A Light fails with `PassError::LightCapReached { cap }` when a
 shader on the default pass already holds as many lights as it takes on
 this device, and a Model fails the same way when its shader would take more
