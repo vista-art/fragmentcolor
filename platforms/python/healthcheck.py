@@ -258,6 +258,9 @@ def check_error_types(renderer):
     raises("a second unregister_texture", lambda: renderer.unregister_texture(texture.id()))
     # A hidden window can't be made headless, so only the class is checked.
     assert issubclass(OccludedSurfaceError, FragmentColorError)
+    # A WindowTarget made by its constructor has no surface until Renderer.create_target makes one.
+    unready = RenderCanvasTarget(object(), None)
+    raises("WindowTarget.resize with no surface", lambda: unready.resize([4, 4]))
 
     # A pipeline the GPU refuses raises DeviceError, with its kind and the step's label.
     # The fragment stage reads @location(0), which the vertex stage never writes.

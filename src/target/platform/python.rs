@@ -132,10 +132,12 @@ impl Target for RenderCanvasTarget {
         }
     }
 
+    /// Resizes the surface, or refuses while the target has none, as one made by its
+    /// constructor instead of `Renderer.create_target` is.
     fn resize(&mut self, size: impl Into<Size>) -> Result<(), TextureError> {
         match &mut self.target {
             Some(target) => target.resize(size.into()),
-            None => Ok(()),
+            None => Err(TextureError::NoContext),
         }
     }
 
