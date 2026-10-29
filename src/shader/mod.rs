@@ -3,6 +3,7 @@ use crate::renderer::platform::all::CANDIDATES;
 use crate::texture::{Registration, TextureId};
 use crate::{PassObject, Renderable};
 use dashmap::DashMap;
+use error::Source;
 pub use error::{Diagnostic, ShaderError, SourceLocation};
 use lsp_doc::lsp_doc;
 use naga::front::wgsl::{Frontend, Options};
@@ -595,7 +596,7 @@ impl ShaderObject {
     /// Create a Shader object from a WGSL source.
     pub fn wgsl(source: &str) -> Result<Self, ShaderError> {
         let module = parse_wgsl(source)?;
-        let info = validate_module(&module, Some(source))?;
+        let info = validate_module(&module, Some(Source::wgsl(source)))?;
         immediates::check_immediates(&module)?;
         check_samplers(&module, &info)?;
 
@@ -852,7 +853,7 @@ pub(crate) fn parse_wgsl(source: &str) -> Result<Module, ShaderError> {
 /// with its places located in `source` when the module came from it.
 pub(crate) fn validate_module(
     module: &Module,
-    source: Option<&str>,
+    source: Option<Source<'_>>,
 ) -> Result<ModuleInfo, ShaderError> {
     match create_validator().validate(module) {
         Ok(info) => Ok(info),
