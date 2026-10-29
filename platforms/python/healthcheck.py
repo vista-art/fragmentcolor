@@ -728,6 +728,34 @@ def check_vectors():
     Mesh().add_vertex(([0.0, 0.0, 0.0], [0.0, 1.0]))
     raises_invalid("Mesh.add_vertex((position with NaN, uv))",
                    lambda: Mesh().add_vertex(([float("nan"), 0.0, 0.0], [0.0, 1.0])))
+
+    # The uv and color of a vertex tuple take 2 and 4 numbers under the same rule.
+    position, uv, color = [0.0, 0.0, 0.0], [0.0, 1.0], [1.0, 1.0, 1.0, 1.0]
+    parts = {
+        "Mesh.add_vertex: vertex: uv": (2, lambda v: Mesh().add_vertex((position, v))),
+        "Mesh.add_vertices: vertex 0: uv": (2, lambda v: Mesh().add_vertices([(position, v, color)])),
+        "Mesh.from_vertices: vertex 0: color": (4, lambda v: Mesh.from_vertices([(position, uv, v)])),
+    }
+    for name, (count, apply) in parts.items():
+        apply([0.5] * count)
+        apply((0.5,) * count)
+        apply(np.full(count, 0.5, dtype=np.float32))
+        for bytes_form in (bytes(count), bytearray(count), memoryview(bytes(count)), np.zeros(count, dtype=np.uint8)):
+            raises_type(f"{name}({type(bytes_form).__name__})", lambda: apply(bytes_form))
+        raises_type(f"{name} with a bool", lambda: apply([True] + [1.0] * (count - 1)))
+        for bad in (10**400, 1e39, float("nan"), float("inf"), float("-inf")):
+            try:
+                apply([1.0] * (count - 1) + [bad])
+            except InvalidInputError as e:
+                assert str(e).startswith(f"{name}: item {count - 1}"), f"{name} with {bad} raised {e}"
+            else:
+                raise AssertionError(f"{name} with {bad} should raise InvalidInputError")
+        try:
+            apply([0.5] * (count + 1))
+        except InvalidInputError as e:
+            assert str(e) == f"{name} takes {count} numbers, got {count + 1}", f"{name} raised {e}"
+        else:
+            raise AssertionError(f"{name} with {count + 1} numbers should raise InvalidInputError")
     print("Vectors take three numbers and refuse bytes, bools and out-of-range items")
 
 

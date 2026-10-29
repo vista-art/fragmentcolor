@@ -38,9 +38,8 @@ fn read_position(value: &JsValue, label: &str) -> Result<Vertex, JsError> {
 }
 
 /// Reads a vertex for the `Mesh` methods: anything `new Vertex` takes, or the
-/// `[position, uv]` and `[position, uv, color]` forms of Rust's `Into<Vertex>`.
-/// The position follows the float vector rule under `{label}: position` in either form,
-/// and the uv and color read as attribute values, as `Vertex.set` reads them.
+/// `[position, uv]` and `[position, uv, color]` forms of Rust's `Into<Vertex>`,
+/// whose parts take exactly 3, 2 and 4 numbers under the float vector rule, each named after `label`.
 fn read_vertex(value: &JsValue, label: &str) -> Result<Vertex, JsError> {
     let parts = match value.dyn_ref::<js_sys::Array>() {
         Some(array) if array.length() > 1 && array.iter().all(|part| part.is_object()) => {
@@ -49,33 +48,15 @@ fn read_vertex(value: &JsValue, label: &str) -> Result<Vertex, JsError> {
         _ => return read_position(value, label),
     };
     let position = |part: &JsValue| read_vector::<3>(part, &format!("{label}: position"));
-    let attribute = |part: &JsValue, size: usize| {
-        read_numbers(part)
-            .filter(|numbers| numbers.len() == size)
-            .map(|numbers| {
-                numbers
-                    .into_iter()
-                    .map(|number| number as f32)
-                    .collect::<Vec<f32>>()
-            })
-    };
-    let shape = || {
-        JsError::new(
-            "a vertex given in parts is [position, uv] or [position, uv, color], with 3, 2 and 4 numbers",
-        )
-    };
+    let uv = |part: &JsValue| read_vector::<2>(part, &format!("{label}: uv"));
+    let color = |part: &JsValue| read_vector::<4>(part, &format!("{label}: color"));
     match parts.as_slice() {
-        [first, uv] => {
-            let uv = attribute(uv, 2).ok_or_else(shape)?;
-            Ok(Vertex::from((position(first)?, [uv[0], uv[1]])))
-        }
-        [first, uv, color] => {
-            let uv = attribute(uv, 2).ok_or_else(shape)?;
-            let color = attribute(color, 4).ok_or_else(shape)?;
-            let color = [color[0], color[1], color[2], color[3]];
-            Ok(Vertex::from((position(first)?, [uv[0], uv[1]], color)))
-        }
-        _ => Err(shape()),
+        [first, second] => Ok(Vertex::from((position(first)?, uv(second)?))),
+        [first, second, third] => Ok(Vertex::from((position(first)?, uv(second)?, color(third)?))),
+        _ => Err(JsError::new(&format!(
+            "{label} takes [position, uv] or [position, uv, color] in parts, got {} parts",
+            parts.len()
+        ))),
     }
 }
 

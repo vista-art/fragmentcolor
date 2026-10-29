@@ -271,6 +271,40 @@ class Healthcheck : ExampleCase() {
         }
     }
 
+    // A vertex in parts takes 3, 2 and 4 finite numbers, as in every binding,
+    // and the message names the call and the part.
+    @Test
+    fun vertexPartsTakeExactFloats() {
+        val cases: List<Pair<String, () -> Unit>> = listOf(
+            "Mesh.addVertex: vertex: position takes 3 numbers, got 2" to { Mesh().addVertex(listOf(0f, 0f), listOf(0f, 0f)) },
+            "Mesh.addVertex: vertex: position takes 3 numbers, got 4" to {
+                Mesh().addVertex(listOf(0.0, 0.0, 0.0, 1.0), listOf(0.0, 0.0), listOf(1.0, 1.0, 1.0, 1.0))
+            },
+            "Mesh.addVertex: vertex: uv takes 2 numbers, got 3" to { Mesh().addVertex(listOf(0.0, 0.0, 0.0), listOf(0.0, 0.0, 0.0)) },
+            "Mesh.addVertex: vertex: uv takes 2 numbers, got 1" to {
+                Mesh().addVertex(listOf(0f, 0f, 0f), listOf(0f), listOf(1f, 1f, 1f, 1f))
+            },
+            "Mesh.addVertex: vertex: color takes 4 numbers, got 3" to {
+                Mesh().addVertex(listOf(0f, 0f, 0f), listOf(0f, 0f), listOf(1f, 1f, 1f))
+            },
+            "Mesh.addVertex: vertex: color takes 4 numbers, got 3" to {
+                Mesh().addVertex(listOf(0.0, 0.0, 0.0), listOf(0.0, 0.0), listOf(1.0, 1.0, 1.0))
+            },
+            "Mesh.addVertex: vertex: uv: item 1" to { Mesh().addVertex(listOf(0.0, 0.0, 0.0), listOf(0.0, Double.NaN)) },
+            "Mesh.addVertex: vertex: color: item 0" to {
+                Mesh().addVertex(listOf(0f, 0f, 0f), listOf(0f, 0f), listOf(Float.POSITIVE_INFINITY, 1f, 1f, 1f))
+            },
+            "Mesh.addVertex: vertex: color: item 3" to {
+                Mesh().addVertex(listOf(0.0, 0.0, 0.0), listOf(0.0, 0.0), listOf(1.0, 1.0, 1.0, 1e39))
+            },
+        )
+        for ((message, call) in cases) {
+            val error = assertFailsWith<FragmentColorException> { call() }
+            assertTrue(error.message.orEmpty().contains(message), "expected $message, got ${error.message}")
+        }
+        Mesh().addVertex(listOf(0f, 0f, 0f), listOf(0f, 1f), listOf(1f, 1f, 1f, 1f))
+    }
+
     // Shader.set shapes each Kotlin value to the uniform's declared WGSL type.
     // Setting and reading uniforms touches no GPU, so this runs on any emulator.
     @Test

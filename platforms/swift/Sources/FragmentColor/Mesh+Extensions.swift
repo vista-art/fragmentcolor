@@ -30,28 +30,35 @@ extension Mesh {
         try addVertex(v: Vertex(position: readPosition(position, "Mesh.addVertex: vertex")))
     }
 
-    /// Append a vertex at `position` with a `"uv"` attribute, as Rust's `(position, uv)` tuple does.
+    /// Append a vertex at `position` with a `"uv"` attribute,
+    /// as Rust's `(position, uv)` tuple does: 3 and 2 finite numbers.
     public func addVertex(_ position: [Float], _ uv: [Float]) throws {
-        let position = try readPosition(position, "Mesh.addVertex: vertex: position")
+        let position = try readVector(position, 3, "Mesh.addVertex: vertex: position")
+        let uv = try readVector(uv, 2, "Mesh.addVertex: vertex: uv")
         addVertex(try Vertex(position: position).set("uv", uv))
     }
 
     @_disfavoredOverload
     public func addVertex(_ position: [Double], _ uv: [Double]) throws {
-        let position = try readPosition(position, "Mesh.addVertex: vertex: position")
+        let position = try readVector(position, 3, "Mesh.addVertex: vertex: position")
+        let uv = try readVector(uv, 2, "Mesh.addVertex: vertex: uv")
         addVertex(try Vertex(position: position).set("uv", uv))
     }
 
     /// Append a vertex at `position` with `"uv"` and `"color"` attributes,
-    /// as Rust's `(position, uv, color)` tuple does.
+    /// as Rust's `(position, uv, color)` tuple does: 3, 2 and 4 finite numbers.
     public func addVertex(_ position: [Float], _ uv: [Float], _ color: [Float]) throws {
-        let position = try readPosition(position, "Mesh.addVertex: vertex: position")
+        let position = try readVector(position, 3, "Mesh.addVertex: vertex: position")
+        let uv = try readVector(uv, 2, "Mesh.addVertex: vertex: uv")
+        let color = try readVector(color, 4, "Mesh.addVertex: vertex: color")
         addVertex(try Vertex(position: position).set("uv", uv).set("color", color))
     }
 
     @_disfavoredOverload
     public func addVertex(_ position: [Double], _ uv: [Double], _ color: [Double]) throws {
-        let position = try readPosition(position, "Mesh.addVertex: vertex: position")
+        let position = try readVector(position, 3, "Mesh.addVertex: vertex: position")
+        let uv = try readVector(uv, 2, "Mesh.addVertex: vertex: uv")
+        let color = try readVector(color, 4, "Mesh.addVertex: vertex: color")
         addVertex(try Vertex(position: position).set("uv", uv).set("color", color))
     }
 

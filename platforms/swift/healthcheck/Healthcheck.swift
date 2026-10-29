@@ -391,6 +391,35 @@ final class Healthcheck: ExampleCase {
         }
     }
 
+    // A vertex in parts takes 3, 2 and 4 finite numbers, as in every binding,
+    // and the message names the call and the part.
+    func testVertexPartsTakeExactFloats() throws {
+        let cases: [(String, () throws -> Void)] = [
+            ("Mesh.addVertex: vertex: position takes 3 numbers, got 2", { try Mesh().addVertex([0, 0] as [Float], [0, 0]) }),
+            ("Mesh.addVertex: vertex: position takes 3 numbers, got 4", {
+                try Mesh().addVertex([0, 0, 0, 1] as [Double], [0, 0], [1, 1, 1, 1])
+            }),
+            ("Mesh.addVertex: vertex: uv takes 2 numbers, got 3", { try Mesh().addVertex([0, 0, 0] as [Double], [0, 0, 0]) }),
+            ("Mesh.addVertex: vertex: uv takes 2 numbers, got 1", { try Mesh().addVertex([0, 0, 0] as [Float], [0], [1, 1, 1, 1]) }),
+            ("Mesh.addVertex: vertex: color takes 4 numbers, got 3", { try Mesh().addVertex([0, 0, 0] as [Float], [0, 0], [1, 1, 1]) }),
+            ("Mesh.addVertex: vertex: color takes 4 numbers, got 3", { try Mesh().addVertex([0, 0, 0] as [Double], [0, 0], [1, 1, 1]) }),
+            ("Mesh.addVertex: vertex: uv: item 1", { try Mesh().addVertex([0, 0, 0] as [Double], [0, Double.nan]) }),
+            ("Mesh.addVertex: vertex: color: item 0", { try Mesh().addVertex([0, 0, 0] as [Float], [0, 0], [Float.infinity, 1, 1, 1]) }),
+            ("Mesh.addVertex: vertex: color: item 3", { try Mesh().addVertex([0, 0, 0] as [Double], [0, 0], [1, 1, 1, 1e39]) }),
+        ]
+        for (message, call) in cases {
+            do {
+                try call()
+                throw HealthcheckError.assertion("\(message): the call should throw")
+            } catch let error as FragmentColorError {
+                guard "\(error)".contains(message) else {
+                    throw HealthcheckError.assertion("expected \(message), got \(error)")
+                }
+            }
+        }
+        try Mesh().addVertex([0, 0, 0], [0, 1], [1, 1, 1, 1])
+    }
+
     // A region of 3 numbers throws, as in Kotlin, where it stopped the app.
     func testTextureRegionRefusesBadLengths() throws {
         do {

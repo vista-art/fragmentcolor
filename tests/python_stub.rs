@@ -110,6 +110,10 @@ fn float_vector_hints_name_their_ndarray() {
         ("Quad.__new__", "max"),
         ("Vertex.__new__", "position"),
         ("Vertex.pbr", "position"),
+        // The position, uv and color of a vertex tuple.
+        ("Mesh.add_vertex", "vertex"),
+        ("Mesh.add_vertices", "vertices"),
+        ("Mesh.from_vertices", "vertices"),
     ];
     for (method, parameter) in readers {
         let hint = hint(&hints, method, parameter);
