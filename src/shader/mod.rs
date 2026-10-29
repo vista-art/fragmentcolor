@@ -303,13 +303,16 @@ impl ShaderObject {
     }
 
     /// Writes `val` under `key` and holds the texture it names. A texture with id 0 unsets
-    /// the key, which then holds neither a map nor a texture. A caller writing a texture
-    /// holds `texture_writes` and drops what this returns after that lock, as `Released` says.
+    /// the key, which then holds neither a map nor a texture, and another slot's map is refused.
+    /// A caller writing a texture holds `texture_writes` and drops what this returns after it.
     fn write_value(&self, key: &str, val: UniformData) -> Result<Released, ShaderError> {
         let texture = match &val {
             UniformData::Texture(meta) => Some(meta.id),
             _ => None,
         };
+        if let Some(id) = texture {
+            self.check_bind(key, id)?;
+        }
         self.write_slot(key, val)?;
         Ok(match texture {
             Some(id) => self.bind_texture(key, id),
@@ -350,6 +353,9 @@ impl ShaderObject {
             _ => None,
         };
         let writing = texture.map(|_| self.texture_writes.lock());
+        if let Some(id) = texture {
+            self.check_bind(key, id)?;
+        }
         if let Some(mut storage) = self.storage.try_write() {
             let value = input.resolve(key, storage.shape(key)?)?;
             self.pending.remove(key);

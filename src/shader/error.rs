@@ -57,6 +57,12 @@ pub enum ShaderError {
         fixed: String,
         declared: String,
     },
+    /// A Material map's id set on a slot that doesn't hold the map.
+    /// The map's copies go when the map does, so the slot couldn't keep them.
+    #[error(
+        "Texture id {id} is a Material map of another slot, so '{key}' can't bind it. Set the map's source or a Texture on '{key}' instead"
+    )]
+    ForeignMap { key: String, id: u64 },
     #[cfg(wasm)]
     #[error("WASM Shader Error: {0}")]
     Error(String),

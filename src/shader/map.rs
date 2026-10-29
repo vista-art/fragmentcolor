@@ -7,8 +7,14 @@
 use super::{ShaderError, ShaderObject, UniformData};
 use crate::RenderContext;
 use crate::texture::{TextureId, TextureMeta, TextureObject, TextureSource};
+use parking_lot::Mutex;
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
+
+/// The ids of the maps alive now. A map's copies go when the map does,
+/// so a slot that doesn't hold the map refuses its id (`check_bind`).
+static LIVE: Mutex<BTreeSet<u64>> = parking_lot::const_mutex(BTreeSet::new());
 
 /// A texture uniform filled from a source the shader keeps.
 /// Each Renderer that loads it holds a copy under `id` in its own registry.
@@ -39,6 +45,7 @@ impl Drop for TextureMap {
     fn drop(&mut self) {
         #[cfg(test)]
         crate::hooks::run("map dropped");
+        LIVE.lock().remove(&self.id.id);
         for upload in &self.uploads {
             if let Some(context) = upload.context.upgrade() {
                 context.release_texture(&self.id);
@@ -123,6 +130,7 @@ impl ShaderObject {
             return (map.id, Some(std::mem::replace(&mut map.source, source)));
         }
         let id = TextureId::create();
+        LIVE.lock().insert(id.id);
         maps.push(TextureMap {
             key: key.to_string(),
             id,
@@ -131,6 +139,25 @@ impl ShaderObject {
             uploads: Vec::new(),
         });
         (id, None)
+    }
+
+    /// Refuses `id` for `key` when it names a live map that `key` doesn't hold.
+    /// The map's copies go when the map does, so no other slot can keep them.
+    pub(crate) fn check_bind(&self, key: &str, id: TextureId) -> Result<(), ShaderError> {
+        let mapped = LIVE.lock().contains(&id.id);
+        let owned = || {
+            self.maps
+                .read()
+                .iter()
+                .any(|map| map.key == key && map.id == id)
+        };
+        match !mapped || owned() {
+            true => Ok(()),
+            false => Err(ShaderError::ForeignMap {
+                key: key.into(),
+                id: id.id,
+            }),
+        }
     }
 
     /// Ends `key`'s map, unless `id` is the map's own, as when a `get` comes back through `set`.
@@ -426,6 +453,50 @@ mod tests {
             );
             assert_eq!(read_image(object), 0, "set kept the texture's id");
         });
+    }
+
+    // Story: a map's id binds only the slot that holds the map, since its copies go with
+    // the map. Another shader and another slot of the same shader refuse it and keep their value.
+    #[test]
+    fn a_map_id_binds_only_its_own_slot() {
+        let shader = Shader::new(
+            r#"
+@group(0) @binding(0) var image: texture_2d<f32>;
+@group(0) @binding(1) var other: texture_2d<f32>;
+@vertex fn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(0.0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> {
+    return textureLoad(image, vec2<i32>(0), 0) + textureLoad(other, vec2<i32>(0), 0);
+}
+"#,
+        )
+        .expect("a shader");
+        let object = &shader.object;
+        object
+            .set_map("image", build_source([255, 0, 0, 255]))
+            .expect("a map");
+        let id = match object.get_uniform_data("image") {
+            Ok(UniformData::Texture(meta)) => meta.id,
+            other => panic!("image holds no texture: {other:?}"),
+        };
+        let stranger = build_shader();
+        let foreign = |error: &ShaderError| matches!(error, ShaderError::ForeignMap { id: found, .. } if *found == id.id);
+
+        let input = crate::shader::UniformInput::Texture(id);
+        let refused = stranger
+            .object
+            .set_input("image", input)
+            .expect_err("another shader");
+        assert!(foreign(&refused), "{refused:?}");
+        assert_eq!(
+            read_image(&stranger.object),
+            0,
+            "the refused id was written"
+        );
+
+        let meta = UniformData::Texture(TextureMeta::with_id_only(id));
+        let refused = object.set("other", meta).expect_err("another slot");
+        assert!(foreign(&refused), "{refused:?}");
+        assert!(object.has_map("image"), "the refusal ended the map");
     }
 
     // Story: the id a map slot returns comes back through `set` as the map's own,
