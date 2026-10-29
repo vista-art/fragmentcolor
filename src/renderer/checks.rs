@@ -797,6 +797,63 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
         });
     }
 
+    // Story: a depth target from another Renderer is refused before load,
+    // so the Material's queued map stays queued for the Renderer that draws the pass.
+    #[test]
+    fn a_foreign_depth_target_leaves_a_queued_map() {
+        pollster::block_on(async move {
+            let owner = Renderer::new();
+            let frame = owner.create_texture_target([8, 8]).await.expect("a target");
+            let depth = owner
+                .create_depth_texture([8, 8])
+                .await
+                .expect("a depth texture");
+            let other = Renderer::new();
+            let other_frame = other.create_texture_target([8, 8]).await.expect("a target");
+            let (pass, shader) = build_pass(Material::pbr());
+            pass.set_depth_target(&depth).expect("set_depth_target");
+
+            let refused = other.render(&pass, &other_frame);
+            assert!(
+                matches!(refused, Err(RendererError::TextureNotFoundError(found)) if found == *depth.id()),
+                "{refused:?}"
+            );
+            check_queued(&shader);
+            owner
+                .render(&pass, &frame)
+                .expect("the owner draws the pass");
+            check_drawn(&owner, &shader);
+        });
+    }
+
+    // Story: a compute pass that binds another Renderer's texture is refused
+    // before load, so the render pass before it in the list keeps its queued map.
+    #[test]
+    fn a_foreign_compute_texture_leaves_a_queued_map() {
+        pollster::block_on(async move {
+            let owner = Renderer::new();
+            let image = owner
+                .create_texture((vec![0; 16], [2, 2]))
+                .await
+                .expect("a texture");
+            let other = Renderer::new();
+            let other_frame = other.create_texture_target([8, 8]).await.expect("a target");
+            let source = "@group(0) @binding(0) var image: texture_2d<f32>;
+@compute @workgroup_size(1) fn cs_main() { _ = textureLoad(image, vec2<i32>(0), 0); }";
+            let compute = Shader::new(source).expect("a compute shader");
+            compute.set("image", &image).expect("set");
+            let dispatch = Pass::from_shader("dispatch", &compute);
+            let (pass, shader) = build_pass(Material::pbr());
+
+            let refused = other.render(&vec![pass, dispatch], &other_frame);
+            assert!(
+                matches!(refused, Err(RendererError::TextureNotFoundError(found)) if found == *image.id()),
+                "{refused:?}"
+            );
+            check_queued(&shader);
+        });
+    }
+
     // Story: a Material map set again from bytes replaces another Renderer's texture,
     // so the Renderer that draws the pass uploads the new map first and draws with it.
     #[test]
