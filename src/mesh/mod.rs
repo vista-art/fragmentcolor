@@ -531,7 +531,8 @@ impl MeshObject {
     /// vertex and instance added later must hold. The attach checked the ones the
     /// mesh holds now. Records nothing when another shader has typed one of them
     /// another way meanwhile. A binding that assumed the Model columns sets them
-    /// as the instance layout, unless an instance or a layout arrived since.
+    /// as the instance layout, unless an instance or a layout arrived since. The
+    /// layout lands before the reads that need it, so a pack between the two passes.
     pub(crate) fn declare(&self, shader: u64, binding: Binding) -> Result<(), ShaderError> {
         let Binding {
             types: added,
@@ -545,17 +546,17 @@ impl MeshObject {
             types.vertex.extend(added.vertex.clone());
             types.instance.extend(added.instance.clone());
         }
+        let assumed = columns && self.assume_columns();
+        #[cfg(test)]
+        crate::hooks::run("columns");
         let fresh = self.require(shader, read);
         let vertices = fresh.vertices || !added.vertex.is_empty();
-        let mut instances = fresh.instances || !added.instance.is_empty();
+        let instances = fresh.instances || !added.instance.is_empty() || assumed;
         if !added.vertex.is_empty() {
             reset_schema(&self.vertex_schema, &added.vertex);
         }
         if !added.instance.is_empty() {
             reset_schema(&self.instance_schema, &added.instance);
-        }
-        if columns {
-            instances |= self.assume_columns();
         }
         if vertices {
             self.touch_vertices();
@@ -1629,6 +1630,45 @@ mod tests {
                 "the late instance packs next time"
             );
             assert_eq!(mesh.object.packed.read().rows, 3);
+        });
+    }
+
+    // Story: a Model attach sets the Model columns before it records the columns
+    // as reads, so a render of the mesh's other shaders that packs in between passes.
+    #[test]
+    fn a_pack_during_a_model_attach_finds_the_columns() {
+        pollster::block_on(async move {
+            let instance = crate::renderer::platform::all::create_instance().await;
+            let adapter = crate::renderer::platform::all::request_adapter(&instance, None)
+                .await
+                .expect("adapter");
+            let (device, queue) = crate::renderer::platform::all::request_device(&adapter)
+                .await
+                .expect("device");
+            let context = RenderContext::new(device, queue);
+            let mesh = Mesh::new();
+            mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
+            let mut read = AttributeTypes::default();
+            for field in model_schema().fields {
+                read.instance.insert(field.name, field.fmt);
+            }
+            let binding = Binding {
+                read,
+                columns: true,
+                ..Default::default()
+            };
+
+            let object = mesh.object.clone();
+            let packed = std::rc::Rc::new(std::cell::RefCell::new(None));
+            let seen = packed.clone();
+            crate::hooks::once("columns", move || {
+                let upload = object.vertex_buffers(&context).map(drop);
+                *seen.borrow_mut() = Some(upload);
+            });
+            mesh.object.declare(1, binding).expect("declare");
+
+            let upload = packed.borrow_mut().take().expect("a pack in between");
+            assert!(upload.is_ok(), "{upload:?}");
         });
     }
 

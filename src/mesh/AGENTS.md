@@ -17,7 +17,7 @@ GPU buffers
 - The cached result holds its owner, its buffers and the mesh's `generation` in one value (`Cached`), so a result never reaches another context. An upload holds the `gpu` lock from the pack to the cache it fills. `invalidate_cache` only moves `generation`, takes no lock, and makes every older result and layout stale.
 - The mesh keeps each attached shader's vertex layouts (`fetch_layouts`), in the same `required` entry as its reads, until the mesh changes or the shader lets it go, so a still scene builds none and a dropped shader leaves none. The renderer checks them against each device's limits on every frame.
 - Every upload checks each buffer against `max_buffer_size` (`check_limit`, `RendererError::LimitError`, which is why `vertex_buffers` returns a `RendererError`) before deciding what to write. An upload that fails, on a pack, a count or a limit, leaves each stream it packed unpacked (`Packed::forget`), so the next one packs and writes it again instead of drawing old buffers.
-- A `Model` attach assumes the Model columns for a mesh with no instances and no instance layout (`bind_mesh_with`), and `declare` sets them only when it records the reads, so a refused Model sets nothing and leaves nothing to undo.
+- A `Model` attach assumes the Model columns for a mesh with no instances and no instance layout (`bind_mesh_with`), and `declare` sets them only when it records the reads, so a refused Model sets nothing and leaves nothing to undo. It sets them before it records the reads, so a pack in between finds the layout those reads need.
 - Instance buffers are optional; `instance_count` can be overridden to drive non-instanced draws.
 
 Validation contract
