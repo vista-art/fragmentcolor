@@ -242,19 +242,13 @@ impl UniformStorage {
                 return Ok(());
             }
 
-            // Allow updating Texture with TextureMeta (id + image metadata) and preserve shader metadata if caller passed id-only
+            // A texture takes the incoming id and keeps the slot's reflected metadata.
+            // Id 0 unsets the slot.
             match (&uniform.data, value) {
                 (UniformData::Texture(existing), UniformData::Texture(incoming)) => {
-                    let merged = if incoming.id.id != 0 {
-                        crate::texture::TextureMeta {
-                            id: incoming.id,
-                            dim: existing.dim,
-                            arrayed: existing.arrayed,
-                            class: existing.class,
-                            sampled: existing.sampled,
-                        }
-                    } else {
-                        existing.clone()
+                    let merged = crate::texture::TextureMeta {
+                        id: incoming.id,
+                        ..existing.clone()
                     };
                     uniform.data = UniformData::Texture(merged);
                 }

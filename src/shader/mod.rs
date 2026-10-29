@@ -302,9 +302,9 @@ impl ShaderObject {
         Ok(())
     }
 
-    /// Writes `val` under `key` and holds the texture it names. A texture with id 0
-    /// clears the key's map. A caller writing a texture holds `texture_writes`
-    /// and drops what this returns after that lock, as `Released` says.
+    /// Writes `val` under `key` and holds the texture it names. A texture with id 0 unsets
+    /// the key, which then holds neither a map nor a texture. A caller writing a texture
+    /// holds `texture_writes` and drops what this returns after that lock, as `Released` says.
     fn write_value(&self, key: &str, val: UniformData) -> Result<Released, ShaderError> {
         let texture = match &val {
             UniformData::Texture(meta) => Some(meta.id),
@@ -312,8 +312,7 @@ impl ShaderObject {
         };
         self.write_slot(key, val)?;
         Ok(match texture {
-            Some(id) if id.id != 0 => self.bind_texture(key, id),
-            Some(id) => (None, self.remove_map(key, id)),
+            Some(id) => self.bind_texture(key, id),
             None => (None, None),
         })
     }

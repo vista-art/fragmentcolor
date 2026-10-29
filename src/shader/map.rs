@@ -282,6 +282,51 @@ mod tests {
         assert!(!shader.object.has_map("image"), "the map stayed");
     }
 
+    /// The texture id `image` holds.
+    fn read_image(object: &ShaderObject) -> u64 {
+        match object.get_uniform_data("image") {
+            Ok(UniformData::Texture(meta)) => meta.id.id,
+            other => panic!("image holds no texture: {other:?}"),
+        }
+    }
+
+    // Story: a texture write with id 0 unsets the slot through either write path.
+    // The slot reads 0 and the key keeps neither its map nor the texture bound before.
+    #[test]
+    fn an_unset_texture_ends_the_map() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let pixels = ([0, 0, 255, 255].repeat(4), [2u32, 2u32]);
+            let texture = renderer.create_texture(pixels).await.expect("a texture");
+            let shader = build_shader();
+            let object = &shader.object;
+            let unset = || UniformData::Texture(TextureMeta::with_id_only(TextureId { id: 0 }));
+
+            object
+                .set_map("image", build_source([255, 0, 0, 255]))
+                .expect("a map");
+            object.set("image", unset()).expect("unsets");
+            assert!(!object.has_map("image"), "set kept the map");
+            assert_eq!(read_image(object), 0, "set kept the map's id");
+
+            object
+                .set_map("image", build_source([255, 0, 0, 255]))
+                .expect("a map");
+            let input = crate::shader::UniformInput::Texture(TextureId { id: 0 });
+            object.set_input("image", input).expect("unsets");
+            assert!(!object.has_map("image"), "set_input kept the map");
+            assert_eq!(read_image(object), 0, "set_input kept the map's id");
+
+            shader.set("image", &texture).expect("binds");
+            object.set("image", unset()).expect("unsets");
+            assert!(
+                !object.bound_textures.contains_key("image"),
+                "set kept the texture bound before"
+            );
+            assert_eq!(read_image(object), 0, "set kept the texture's id");
+        });
+    }
+
     // Story: the id a map slot returns comes back through `set` as the map's own,
     // so the round trip keeps the map and its source.
     #[test]

@@ -1159,6 +1159,27 @@ fn fs_main() -> @location(0) vec4<f32> {
         });
     }
 
+    // Story: a map slot unset with id 0 frees the map's copy and draws its PBR default,
+    // where it named the freed copy and returned TextureNotFoundError.
+    #[test]
+    fn an_unset_map_draws_the_default() {
+        pollster::block_on(async move {
+            let (renderer, frame) = open_target().await;
+            let (pass, shader) = build_pass(Material::pbr());
+            renderer.render(&pass, &frame).expect("the pass draws");
+            let id = read_bound(&shader, "base_color_map");
+
+            let unset = crate::texture::TextureMeta::with_id_only(TextureId { id: 0 });
+            shader
+                .object
+                .set("base_color_map", UniformData::Texture(unset))
+                .expect("unsets");
+
+            assert!(!frame.context.has_texture(&id), "the map's copy stayed");
+            renderer.render(&pass, &frame).expect("the default draws");
+        });
+    }
+
     // Story: a copy that `unregister_texture` removed uploads again at the next render.
     #[test]
     fn an_unregistered_copy_uploads_again() {
