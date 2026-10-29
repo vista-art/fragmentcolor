@@ -2,6 +2,8 @@ use lsp_doc::lsp_doc;
 use thiserror::Error;
 
 #[cfg(python)]
+use crate::error::raise_fields;
+#[cfg(python)]
 use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
@@ -106,6 +108,50 @@ pub enum RendererError {
     Error(String),
 }
 
+/// A property a typed refusal carries on the error a binding raises.
+#[cfg(any(python, wasm, test))]
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Field {
+    Text(String),
+    Number(u64),
+}
+
+#[cfg(any(python, wasm, test))]
+impl RendererError {
+    /// The properties a typed refusal sets on its Python and JavaScript error,
+    /// by name. Other errors carry none.
+    pub(crate) fn fields(&self) -> Vec<(&'static str, Field)> {
+        let text = |value: &String| Field::Text(value.clone());
+        match self {
+            RendererError::LimitError {
+                item,
+                limit,
+                value,
+                max,
+            } => vec![
+                ("item", text(item)),
+                ("limit", text(limit)),
+                ("value", Field::Number(*value)),
+                ("max", Field::Number(*max)),
+            ],
+            RendererError::FeatureError { item, feature } => {
+                vec![("item", text(item)), ("feature", text(feature))]
+            }
+            RendererError::BindingError {
+                uniform,
+                expected,
+                found,
+            } => vec![
+                ("uniform", text(uniform)),
+                ("expected", text(expected)),
+                ("found", text(found)),
+            ],
+            RendererError::EntryError { stage } => vec![("stage", text(stage))],
+            _ => Vec::new(),
+        }
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum InitializationError {
     #[error("Failed to find a compatible GPU adapter")]
@@ -148,36 +194,17 @@ impl From<RendererError> for pyo3::PyErr {
                 label,
                 detail,
             } => crate::error::DeviceError::raise(kind, label, detail, message),
-            RendererError::LimitError {
-                item,
-                limit,
-                value,
-                max,
-            } => crate::error::raise::<crate::error::LimitError>(message, |error| {
-                error.setattr("item", item)?;
-                error.setattr("limit", limit)?;
-                error.setattr("value", value)?;
-                error.setattr("max", max)
-            }),
-            RendererError::FeatureError { item, feature } => {
-                crate::error::raise::<crate::error::FeatureError>(message, |error| {
-                    error.setattr("item", item)?;
-                    error.setattr("feature", feature)
-                })
+            refusal @ RendererError::LimitError { .. } => {
+                raise_fields::<crate::error::LimitError>(message, refusal.fields())
             }
-            RendererError::BindingError {
-                uniform,
-                expected,
-                found,
-            } => crate::error::raise::<crate::error::BindingError>(message, |error| {
-                error.setattr("uniform", uniform)?;
-                error.setattr("expected", expected)?;
-                error.setattr("found", found)
-            }),
-            RendererError::EntryError { stage } => {
-                crate::error::raise::<crate::error::EntryError>(message, |error| {
-                    error.setattr("stage", stage)
-                })
+            refusal @ RendererError::FeatureError { .. } => {
+                raise_fields::<crate::error::FeatureError>(message, refusal.fields())
+            }
+            refusal @ RendererError::BindingError { .. } => {
+                raise_fields::<crate::error::BindingError>(message, refusal.fields())
+            }
+            refusal @ RendererError::EntryError { .. } => {
+                raise_fields::<crate::error::EntryError>(message, refusal.fields())
             }
             _ => crate::PyFragmentColorError::new_err(message),
         }
@@ -226,40 +253,7 @@ impl RendererError {
                 label,
                 detail,
             } => throw_device(kind, &label, &detail, &message),
-            RendererError::LimitError {
-                item,
-                limit,
-                value,
-                max,
-            } => throw_fields(
-                &message,
-                &[
-                    ("item", item.into()),
-                    ("limit", limit.into()),
-                    ("value", JsValue::from_f64(value as f64)),
-                    ("max", JsValue::from_f64(max as f64)),
-                ],
-            ),
-            RendererError::FeatureError { item, feature } => throw_fields(
-                &message,
-                &[("item", item.into()), ("feature", feature.into())],
-            ),
-            RendererError::BindingError {
-                uniform,
-                expected,
-                found,
-            } => throw_fields(
-                &message,
-                &[
-                    ("uniform", uniform.into()),
-                    ("expected", expected.into()),
-                    ("found", found.into()),
-                ],
-            ),
-            RendererError::EntryError { stage } => {
-                throw_fields(&message, &[("stage", stage.into())])
-            }
-            _ => JsError::new(&message),
+            other => throw_fields(&message, &other.fields()),
         }
     }
 }
@@ -274,13 +268,17 @@ impl From<RendererError> for wasm_bindgen::JsValue {
 
 /// A JS `Error` with the full `message` that carries each of `fields` as a property.
 #[cfg(wasm)]
-fn throw_fields(message: &str, fields: &[(&str, JsValue)]) -> JsError {
+fn throw_fields(message: &str, fields: &[(&str, Field)]) -> JsError {
     let error = JsError::new(message);
     // A clone holds the same JS object, so the properties land on the error itself.
     let value = JsValue::from(error.clone());
     for (name, field) in fields {
+        let field = match field {
+            Field::Text(text) => JsValue::from_str(text),
+            Field::Number(number) => JsValue::from_f64(*number as f64),
+        };
         // Setting a property on a new Error object never throws.
-        let _ = js_sys::Reflect::set(&value, &JsValue::from_str(name), field);
+        let _ = js_sys::Reflect::set(&value, &JsValue::from_str(name), &field);
     }
     error
 }
@@ -289,14 +287,12 @@ fn throw_fields(message: &str, fields: &[(&str, JsValue)]) -> JsError {
 /// the `label` of its step and the device's own `detail`.
 #[cfg(wasm)]
 pub(crate) fn throw_device(kind: ErrorKind, label: &str, detail: &str, message: &str) -> JsError {
-    let error = JsError::new(message);
-    // A clone holds the same JS object, so the properties land on the error itself.
-    let value = JsValue::from(error.clone());
-    // Setting a property on a new Error object never throws.
-    let _ = js_sys::Reflect::set(&value, &"kind".into(), &JsValue::from(kind as u32));
-    let _ = js_sys::Reflect::set(&value, &"label".into(), &JsValue::from(label));
-    let _ = js_sys::Reflect::set(&value, &"detail".into(), &JsValue::from(detail));
-    error
+    let fields = [
+        ("kind", Field::Number(kind as u64)),
+        ("label", Field::Text(label.into())),
+        ("detail", Field::Text(detail.into())),
+    ];
+    throw_fields(message, &fields)
 }
 
 #[cfg(wasm)]
@@ -363,6 +359,61 @@ mod tests {
 
         // Assert
         assert_eq!(text, "Device error (memory) in 'frame': Out of Memory");
+    }
+
+    // Story: each typed refusal carries its own fields, and none of them shadows
+    // the `name` or `message` that Python and JavaScript errors already have.
+    #[test]
+    fn refusals_carry_their_fields() {
+        // Arrange
+        let text = |value: &str| Field::Text(value.into());
+        let limit = RendererError::LimitError {
+            item: "group 9".into(),
+            limit: "max_bind_groups".into(),
+            value: 10,
+            max: 4,
+        };
+        let feature = RendererError::FeatureError {
+            item: "a bgra8unorm storage texture".into(),
+            feature: "BGRA8UNORM_STORAGE".into(),
+        };
+        let binding = RendererError::BindingError {
+            uniform: "image".into(),
+            expected: "a texture".into(),
+            found: "none, since it was never set".into(),
+        };
+        let entry = RendererError::EntryError {
+            stage: "fragment".into(),
+        };
+
+        // Act
+        let fields = [&limit, &feature, &binding, &entry].map(|error| error.fields());
+
+        // Assert
+        let [limit, feature, binding, entry] = fields;
+        let expected = vec![
+            ("item", text("group 9")),
+            ("limit", text("max_bind_groups")),
+            ("value", Field::Number(10)),
+            ("max", Field::Number(4)),
+        ];
+        assert_eq!(limit, expected);
+        let expected = vec![
+            ("item", text("a bgra8unorm storage texture")),
+            ("feature", text("BGRA8UNORM_STORAGE")),
+        ];
+        assert_eq!(feature, expected);
+        let expected = vec![
+            ("uniform", text("image")),
+            ("expected", text("a texture")),
+            ("found", text("none, since it was never set")),
+        ];
+        assert_eq!(binding, expected);
+        assert_eq!(entry, vec![("stage", text("fragment"))]);
+        for (name, _) in [limit, feature, binding, entry].iter().flatten() {
+            assert!(!["name", "message"].contains(name), "{name}");
+        }
+        assert!(RendererError::NoContext.fields().is_empty());
     }
 
     // Story: SurfaceError variants are wrapped with a helpful message in Display.
