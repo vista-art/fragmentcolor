@@ -39,6 +39,28 @@ impl TextureSlot {
         Self::Emissive,
     ];
 
+    /// The uniform the built-in PBR shader reads this slot's map from.
+    pub(crate) fn pick_key(self) -> &'static str {
+        match self {
+            Self::BaseColor => "base_color_map",
+            Self::MetallicRoughness => "metallic_roughness_map",
+            Self::Normal => "normal_map",
+            Self::Occlusion => "occlusion_map",
+            Self::Emissive => "emissive_map",
+        }
+    }
+
+    /// The format a map in this slot takes when the caller picks none,
+    /// sRGB for the two color maps and linear for the three that hold data.
+    pub(crate) fn pick_format(self) -> crate::TextureFormat {
+        match self {
+            Self::BaseColor | Self::Emissive => crate::TextureFormat::Rgba8UnormSrgb,
+            Self::MetallicRoughness | Self::Normal | Self::Occlusion => {
+                crate::TextureFormat::Rgba8Unorm
+            }
+        }
+    }
+
     /// The uniform key of one field of this slot's `material.uv` entry.
     fn format_key(self, field: &str) -> String {
         format!("material.uv[{}].{field}", self as usize)

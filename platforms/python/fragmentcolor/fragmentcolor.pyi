@@ -250,33 +250,37 @@ class Renderer:
         """
     def load(self, renderable: _Renderable) -> None:
         """
-        Realize every pending GPU upload referenced by a renderable. Material's
-        texture setters (`base_color_texture`, `metallic_roughness_texture`, …)
-        accept paths, bytes, and URLs in addition to
+        Uploads into this `Renderer` every Material map of a renderable that it
+        lacks, or holds from an older set. Material's texture setters
+        (`base_color_texture`, `metallic_roughness_texture`, …) take an
         already-uploaded [`Texture`](https://fragmentcolor.org/api/texture/texture)
-        handles; the path / bytes / URL variants are stored on the Material's
-        Shader as *pending* uploads. `load` walks every Shader the renderable
-        visits, drains its pending list, calls
-        [`Renderer::create_texture`](https://fragmentcolor.org/api/core/renderer#create_texture)
-        for each, and writes the resulting `Texture` into the matching uniform.
+        or a source: bytes, a path, a URL or a `Mipmap`. The Material keeps a source
+        as a map with one texture id. `load` walks every Shader the renderable visits
+        and decodes each map this `Renderer` needs into a copy of its own, under that id.
 
-        An upload that fails stays pending and the others still bind, so a good
-        normal map binds even when the base color path is missing. `load` returns
-        the first failure, and so does every later `load`, and every native
-        `render`, until the input is fixed or replaced. A map the shader doesn't
-        declare fails the `load` that uploads it, once, and the other maps still
-        bind. The latest setter call for a map wins, even one made while `load` is
-        uploading the older input, which is then dropped.
+        An upload that fails keeps no copy, and the others still upload: a good
+        normal map draws even when the base color path is missing. `load` returns
+        the first failure, as does every later `load` and every native `render`,
+        until the source is fixed or replaced. The latest setter call for a map
+        wins, even one made while `load` is uploading the older source, which is
+        then dropped. A slot the shader doesn't declare never becomes a map, since
+        the setter logs a warning and leaves the Material as it was.
 
-        On native targets, [`Renderer::render`](https://fragmentcolor.org/api/core/renderer)
-        runs `load` first whenever the renderable has pending uploads, so an
-        explicit `load` is optional there. Reach for it when you want to pay the
-        decode and upload cost outside the render loop, for example in a loading
-        screen that prepares the scene before the first frame goes out.
+        Each `Renderer` holds copies of its own. One Material draws with every
+        `Renderer` that loads it, and a copy goes when its `Renderer` or the
+        Material drops. A map set again draws its old copy until this `Renderer`
+        loads the new one.
 
-        On the web, `render` can't wait for an upload, so it leaves pending uploads
-        alone. Await `load` before the first `render`. Until then, a PBR Material
-        draws with its 1×1 default maps.
+        On native targets, [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render)
+        runs `load` first, which makes an explicit `load` optional there. Reach for
+        it when you want to pay the decode and upload cost outside the render loop,
+        for example in a loading screen that prepares the scene before the first
+        frame goes out.
+
+        On the web, `render` can't wait for an upload and uploads nothing. Await
+        `load` in each `Renderer` before its first `render`. Until then, a PBR
+        Material draws with its 1×1 default maps, and a custom shader's map slot
+        fails the render with a `BindingError` that asks for `load`.
 
         In JavaScript, `load` first waits for the frames rendered before it to
         report their GPU errors, and throws the first one, as
@@ -298,7 +302,7 @@ class Renderer:
             Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
         ])
 
-        # The material keeps the encoded image as a pending upload.
+        # The material keeps the encoded image as a map.
         material = Material.pbr().base_color_texture(image)
         model = Model(mesh, material)
         scene = Scene()
@@ -307,6 +311,12 @@ class Renderer:
         # Decode and upload it now, so the first render only draws.
         renderer.load(scene)
         renderer.render(scene, target)
+
+        # A second Renderer draws the same map from a copy of its own.
+        other = Renderer()
+        frame = other.create_texture_target([64, 64])
+        other.load(scene)
+        other.render(scene, frame)
         ```
         """
     def read_storage(self, shader: Shader, binding: str) -> bytes:
@@ -383,7 +393,7 @@ class Renderer:
 
         Before it takes a frame, `render` checks each shader against the device and each texture uniform against its slot, so every language returns these errors from the call that caused them, the web included. A group, binding, binding count, buffer size or workgroup past the device's limits, or a vertex input at a location past `max_vertex_attributes`, returns `RendererError::LimitError`, a feature the device lacks `RendererError::FeatureError`, a texture uniform that was never set or whose texture its slot can't take `RendererError::BindingError`, and a render shader without its vertex or fragment entry point `RendererError::EntryError`, each with its fields. An unset PBR map slot binds its 1x1 default instead, when the slot takes a 2D float texture. A texture `unregister_texture` removed, or one from another `Renderer`, returns `RendererError::TextureNotFoundError`, in a PBR map slot too. The [Shader](https://fragmentcolor.org/api/core/shader) page lists the checks and each language's form of these errors.
 
-        A `Renderer` draws only into the targets it created. A target from another `Renderer` returns `RendererError::ForeignTarget`, unless every pass is a compute pass, which draws into no target, and a pass target or texture uniform from another `Renderer` returns `RendererError::TextureNotFoundError`. A texture uniform whose `Material` map was set again from a path or bytes is the exception on native, where `render` uploads the new map first and draws it. These come before `render` uploads a queued `Material` map or opens a device, so a refused render changes nothing. A `Renderer` that has opened no device yet returns `RendererError::NoContext` for a target without an owner. Each pass is checked against what it draws into before it records: a [depth target](https://fragmentcolor.org/api/core/pass#set_depth_target) of the color attachment's size and sample count, shader outputs and blending the [target](https://fragmentcolor.org/api/core/pass#set_target)'s format takes, a [viewport](https://fragmentcolor.org/api/core/pass#set_viewport) and a [compute dispatch](https://fragmentcolor.org/api/core/pass#set_compute_dispatch) the device takes, and textures that one pass doesn't both write and read. A render pass can't bind a texture it draws into, and no pass can read a texture one of its bindings writes, so a compute dispatch that samples a texture and stores into it returns `PassError::TextureConflict` too.
+        A `Renderer` draws only into the targets it created. A target from another `Renderer` returns `RendererError::ForeignTarget`, unless every pass is a compute pass, which draws into no target, and a pass target or texture uniform from another `Renderer` returns `RendererError::TextureNotFoundError`. A `Material` map set from bytes, a path, a URL or a `Mipmap` belongs to no `Renderer`: each one draws it from a copy of its own. These checks come before `render` uploads a map or opens a device, so a refused render changes nothing. A `Renderer` that has opened no device yet returns `RendererError::NoContext` for a target without an owner. Each pass is checked against what it draws into before it records: a [depth target](https://fragmentcolor.org/api/core/pass#set_depth_target) of the color attachment's size and sample count, shader outputs and blending the [target](https://fragmentcolor.org/api/core/pass#set_target)'s format takes, a [viewport](https://fragmentcolor.org/api/core/pass#set_viewport) and a [compute dispatch](https://fragmentcolor.org/api/core/pass#set_compute_dispatch) the device takes, and textures that one pass doesn't both write and read. A render pass can't bind a texture it draws into, and no pass can read a texture one of its bindings writes, so a compute dispatch that samples a texture and stores into it returns `PassError::TextureConflict` too.
 
         `render` also returns what the GPU rejects. When a pipeline fails to build or a frame's commands fail, it returns a [DeviceError](https://fragmentcolor.org/api/core/deviceerror), `RendererError::DeviceError` in Rust. Its `kind` tells validation errors, internal errors such as a shader the backend compiler refuses, and running out of memory apart, and its `label` names the step that failed: the render pipeline, the compute pipeline, the light binning pipeline, the frame, or a bind group or texture view inside the frame. When one error causes another, `render` returns the first. In Rust, Python, Swift and Kotlin, a pipeline that failed is never kept, and the next frame builds it again and returns the same error.
 
@@ -470,6 +480,7 @@ class Renderer:
 
         - After the call, the id names no texture, and shaders and passes that bind it can't draw it. A pass that keeps it as its color or depth target makes `render` return `TextureNotFoundError`.
         - A `Texture` handle you still hold keeps its GPU memory until it drops.
+        - The id of a `Material` map removes this `Renderer`'s copy of it. The Material keeps the map, and the next `load`, or native `render`, uploads it again.
 
         Example:
 
@@ -759,6 +770,10 @@ class Shader:
         those bytes back for that root. Set a struct one field at a time
         (`"light.color"`) and an array one element at a time (`"weights[0]"`).
         Only a storage-buffer or push-constant root takes its whole bytes.
+
+        A texture slot reads back the id of what it binds. A `Material` map's slot
+        holds the map's id from the setter call on, before any `Renderer` loads it,
+        and setting that id back keeps the map.
 
         Example:
 
@@ -2393,11 +2408,13 @@ class Scene:
         or in-memory **`.glb` bytes** straight to `Scene::load`. The format is
         inferred from the input, so there's nothing extra to name.
 
-        `Scene::load` is synchronous and takes no `Renderer`. Any textures the parser
-        encounters are queued as pending uploads on the resulting Materials.
-        [`Renderer::load`](https://fragmentcolor.org/api/core/renderer) uploads
-        them. On native targets the first render runs it for you; on the web, await
-        it before the first render.
+        `Scene::load` is synchronous and takes no `Renderer`. Each image the parser
+        finds decodes once, and every texture slot that reads it becomes a map of
+        those pixels on the resulting Materials.
+        [`Renderer::load`](https://fragmentcolor.org/api/core/renderer#load) uploads
+        a copy of each map into that `Renderer`, so the Scene draws with every
+        `Renderer` that loads it. On native targets the first render runs it for
+        you; on the web, await it in each `Renderer` before its first render.
 
         The loader reads static glTF: mesh primitives (`POSITION`, `NORMAL`,
         `TEXCOORD_0`, `TEXCOORD_1`, `COLOR_0`, `TANGENT` and indices), PBR-MR
@@ -5050,8 +5067,10 @@ class Material:
 
         Accepts any `Into<TextureInput>`, the inputs [`Renderer::create_texture`](https://fragmentcolor.org/api/core/renderer#create_texture) takes:
 
-        - A pre-built [`&Texture`](https://fragmentcolor.org/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations.
-        - Encoded bytes, raw pixels with their size as `(bytes, [w, h])`, bytes with a format as `(bytes, format)`, bytes with every option as `(bytes, options)`, a path, a URL, or a [`Mipmap`](https://fragmentcolor.org/api/texture/mipmap). The setter queues the input on the Material's Shader. [`Renderer::load`](https://fragmentcolor.org/api/core/renderer) uploads it, and on native targets the first [`Renderer::render`](https://fragmentcolor.org/api/core/renderer) runs `load` for you.
+        - A pre-built [`&Texture`](https://fragmentcolor.org/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations. The texture belongs to the `Renderer` that created it, and another `Renderer` refuses to draw it.
+        - Encoded bytes, raw pixels with their size as `(bytes, [w, h])`, bytes with a format as `(bytes, format)`, bytes with every option as `(bytes, options)`, a path, a URL, or a [`Mipmap`](https://fragmentcolor.org/api/texture/mipmap). The Material keeps this source as a map. Each `Renderer` that draws the Material uploads a copy of its own at [`Renderer::load`](https://fragmentcolor.org/api/core/renderer#load), or on native targets at its first [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render), and frees it when the `Renderer` or the Material drops. A map set again draws its old copy until the `Renderer` loads the new one.
+
+        To share a map across Renderers, pass bytes, a path, a URL or a `Mipmap`.
 
         Each language spells these inputs the way its `create_texture` does, and the other four texture setters take the same ones:
 
@@ -5063,16 +5082,30 @@ class Material:
         lazily, so calling `Material::pbr()` without binding a
         texture renders correctly under the factor alone.
 
-        ## Errors are surfaced lazily
+        ## Memory
 
-        The setter itself is infallible: it queues the upload (lazy path) or
-        takes an Arc-clone (eager path) and returns. Failures from the lazy
-        path (file not found, decode error, unsupported format) surface when
-        the queue drains: when you call
-        [`Renderer::load(&material).await`](https://fragmentcolor.org/api/core/renderer),
-        or at the first render on native targets.
-        Until then the Material renders against its 1×1 default and a
-        `log::warn!` line names the slot.
+        A map holds its source for as long as the slot keeps it. That is the file's
+        bytes for an encoded PNG or JPEG, the pixels for raw bytes, a NumPy array or
+        a glTF image, the container for KTX2, and the chain for a `Mipmap`. A path or
+        a URL holds only its string, and each `Renderer` reads or fetches it again.
+        `renderer.create_texture` keeps nothing on the CPU, and the texture it returns
+        draws in that one `Renderer`.
+
+        ## Errors
+
+        The setter checks the slot at once. A slot the shader doesn't declare as a
+        texture, or an empty input, logs a warning and leaves the Material as it was.
+
+        A source that fails to upload (file not found, decode error, unsupported
+        format) fails [`Renderer::load(&material).await`](https://fragmentcolor.org/api/core/renderer#load),
+        or the native render that runs it. That `Renderer` keeps no copy and tries
+        again at each later call, until the source is fixed or replaced, while the
+        other maps upload.
+
+        On the web, `render` uploads nothing, so await `load` in each `Renderer`
+        before its first frame. Until then a built-in PBR slot draws its 1×1 default,
+        and a custom shader's slot fails the render with a `BindingError` that asks
+        for `load`.
 
         For deterministic error handling, pre-build the texture eagerly:
         `renderer.create_texture(path).await?` returns a `Texture` that can't
@@ -5115,7 +5148,7 @@ class Material:
         the factor multiplication passes both `material.metallic` and
         `material.roughness` through unchanged.
 
-        Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`, which upload when the scene loads.
+        Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
 
         Example:
 
@@ -5145,7 +5178,7 @@ class Material:
         `(128, 128, 255, 255)` so the decoded normal is `(0, 0, 1)` and the world
         normal passes through unchanged.
 
-        Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`, which upload when the scene loads.
+        Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
 
         Example:
 
@@ -5172,7 +5205,7 @@ class Material:
         Unset, this slot resolves to a 1×1 white default so the multiplied
         occlusion factor is `1.0` and no darkening is applied.
 
-        Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`, which upload when the scene loads.
+        Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
 
         Example:
 
@@ -5200,7 +5233,7 @@ class Material:
         Unset, this slot resolves to a 1×1 white default so the multiplied
         emission falls back to the `material.emissive` factor as-is.
 
-        Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`, which upload when the scene loads.
+        Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
 
         Example:
 
@@ -5303,6 +5336,9 @@ class Texture:
         the texture. It names the texture while something holds it: a `Texture`
         handle, the `TextureTarget` that owns it, or a shader uniform or pass target
         that binds it. An id on its own doesn't keep the texture in the registry.
+
+        A `Material` map set from bytes, a path, a URL or a `Mipmap` keeps one id
+        in every `Renderer`, where it names the copy that `Renderer` loaded.
 
         Example:
 

@@ -879,6 +879,39 @@ def check_material_textures(renderer):
     print("The Material texture setters take create_texture's keywords, and raw pixels draw")
 
 
+MAPPED_SHADER = """
+@group(0) @binding(0) var base_color_map: texture_2d<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(base_color_map, vec2<i32>(0), 0); }
+"""
+
+
+def check_material_maps():
+    """One Material map draws in two Renderers, and the second draws after the first is gone."""
+    import gc
+
+    red = np.array([[[255, 0, 0, 255]]], dtype=np.uint8)
+    material = Material.custom(Shader(MAPPED_SHADER)).base_color_texture(red)
+    first = Renderer()
+    first_target = first.create_texture_target([4, 4])
+    second = Renderer()
+    second_target = second.create_texture_target([4, 4])
+    for label, renderer, target in (("first", first, first_target), ("second", second, second_target)):
+        renderer.render(material.shader(), target)
+        pixel = target.get_image()[0, 0].tolist()
+        assert pixel == [255, 0, 0, 255], f"the {label} Renderer drew {pixel}"
+
+    del first, first_target
+    gc.collect()
+    second.render(material.shader(), second_target)
+    pixel = second_target.get_image()[0, 0].tolist()
+    assert pixel == [255, 0, 0, 255], f"the second Renderer drew {pixel} after the first was gone"
+    print("One Material map draws in two Renderers, each from a copy of its own")
+
+
 def check_invalid_textures(renderer):
     """Texture inputs fill the format they are given, or raise InvalidInputError."""
     gray = np.arange(16, dtype=np.uint8).reshape(4, 4)
@@ -1326,6 +1359,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_clear_color()
     check_texture_inputs(renderer)
     check_material_textures(renderer)
+    check_material_maps()
     check_invalid_textures(renderer)
     check_scene_errors()
     check_stub()

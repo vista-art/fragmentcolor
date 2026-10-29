@@ -980,6 +980,63 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) color: vec4<f32> }
     await target.getImage();
 });
 
+// One Material map draws with every Renderer that awaits load, each from a copy of its own.
+// A set right after a load starts wins, a custom slot asks for load before it, and
+// a freed Renderer leaves the others drawing.
+await withModule('platforms.web.healthcheck.material_maps', async () => {
+    const fail = (message) => { throw new Error(message); };
+    const mapped = () => Material.custom(new Shader(`
+@group(0) @binding(0) var base_color_map: texture_2d<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  return vec4<f32>(p[i], 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(base_color_map, vec2<i32>(0), 0); }
+`));
+    const open = async () => {
+      const renderer = new Renderer();
+      return [renderer, await renderer.createTextureTarget([4, 4])];
+    };
+    const reads = async (label, target, expected) => {
+      const pixel = Array.from((await target.getImage()).slice(0, 4));
+      if (pixel.join() !== expected.join()) fail(`${label} drew [${pixel}], not [${expected}]`);
+    };
+    const red = [255, 0, 0, 255];
+    const blue = [0, 0, 255, 255];
+
+    const material = mapped().baseColorTexture(new Uint8Array(red), [1, 1]);
+    const shader = material.shader();
+    const [first, firstTarget] = await open();
+    const [second, secondTarget] = await open();
+    await first.load(shader);
+    await second.load(shader);
+    first.render(shader, firstTarget);
+    second.render(shader, secondTarget);
+    await reads('the first Renderer', firstTarget, red);
+    await reads('the second Renderer', secondTarget, red);
+
+    const loading = first.load(shader);
+    material.baseColorTexture(new Uint8Array(blue), [1, 1]);
+    await loading;
+    await second.load(shader);
+    first.render(shader, firstTarget);
+    second.render(shader, secondTarget);
+    await reads('the first Renderer after a set during its load', firstTarget, blue);
+    await reads('the second Renderer after the set', secondTarget, blue);
+
+    const [third, thirdTarget] = await open();
+    let early = null;
+    try { third.render(shader, thirdTarget); } catch (e) { early = e; }
+    if (!(early instanceof Error) || !early.message.includes('load')) {
+      fail(`a custom map before load threw ${early?.message ?? 'nothing'}`);
+    }
+
+    first.free();
+    firstTarget.free();
+    second.render(shader, secondTarget);
+    await reads('the second Renderer after the first was freed', secondTarget, blue);
+});
+
 // A shader the device can't run, or a texture its slot can't take, throws from render
 // itself, before any GPU work, so no late error or console.error follows.
 await withModule('platforms.web.healthcheck.device_checks', async () => {

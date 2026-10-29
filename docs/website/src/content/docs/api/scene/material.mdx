@@ -527,8 +527,10 @@ Bind a texture to the `base_color_map` slot. The default PBR shader samples it i
 
 Accepts any `Into<TextureInput>`, the inputs [`Renderer::create_texture`](/api/core/renderer#create_texture) takes:
 
-- A pre-built [`&Texture`](/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations.
-- Encoded bytes, raw pixels with their size as `(bytes, [w, h])`, bytes with a format as `(bytes, format)`, bytes with every option as `(bytes, options)`, a path, a URL, or a [`Mipmap`](/api/texture/mipmap). The setter queues the input on the Material's Shader. [`Renderer::load`](/api/core/renderer) uploads it, and on native targets the first [`Renderer::render`](/api/core/renderer) runs `load` for you.
+- A pre-built [`&Texture`](/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations. The texture belongs to the `Renderer` that created it, and another `Renderer` refuses to draw it.
+- Encoded bytes, raw pixels with their size as `(bytes, [w, h])`, bytes with a format as `(bytes, format)`, bytes with every option as `(bytes, options)`, a path, a URL, or a [`Mipmap`](/api/texture/mipmap). The Material keeps this source as a map. Each `Renderer` that draws the Material uploads a copy of its own at [`Renderer::load`](/api/core/renderer#load), or on native targets at its first [`Renderer::render`](/api/core/renderer#render), and frees it when the `Renderer` or the Material drops. A map set again draws its old copy until the `Renderer` loads the new one.
+
+To share a map across Renderers, pass bytes, a path, a URL or a `Mipmap`.
 
 Each language spells these inputs the way its `create_texture` does, and the other four texture setters take the same ones:
 
@@ -540,16 +542,30 @@ Unset, this slot resolves to a 1×1 white default the renderer hands out
 lazily, so calling `Material::pbr()` without binding a
 texture renders correctly under the factor alone.
 
-#### Errors are surfaced lazily
+#### Memory
 
-The setter itself is infallible: it queues the upload (lazy path) or
-takes an Arc-clone (eager path) and returns. Failures from the lazy
-path (file not found, decode error, unsupported format) surface when
-the queue drains: when you call
-[`Renderer::load(&material).await`](/api/core/renderer),
-or at the first render on native targets.
-Until then the Material renders against its 1×1 default and a
-`log::warn!` line names the slot.
+A map holds its source for as long as the slot keeps it. That is the file's
+bytes for an encoded PNG or JPEG, the pixels for raw bytes, a NumPy array or
+a glTF image, the container for KTX2, and the chain for a `Mipmap`. A path or
+a URL holds only its string, and each `Renderer` reads or fetches it again.
+`renderer.create_texture` keeps nothing on the CPU, and the texture it returns
+draws in that one `Renderer`.
+
+#### Errors
+
+The setter checks the slot at once. A slot the shader doesn't declare as a
+texture, or an empty input, logs a warning and leaves the Material as it was.
+
+A source that fails to upload (file not found, decode error, unsupported
+format) fails [`Renderer::load(&material).await`](/api/core/renderer#load),
+or the native render that runs it. That `Renderer` keeps no copy and tries
+again at each later call, until the source is fixed or replaced, while the
+other maps upload.
+
+On the web, `render` uploads nothing, so await `load` in each `Renderer`
+before its first frame. Until then a built-in PBR slot draws its 1×1 default,
+and a custom shader's slot fails the render with a `BindingError` that asks
+for `load`.
 
 For deterministic error handling, pre-build the texture eagerly:
 `renderer.create_texture(path).await?` returns a `Texture` that can't
@@ -1359,7 +1375,7 @@ set through its own transform.
 Unset, this slot resolves to a 1×1 white default so the multiplied
 emission falls back to the `material.emissive` factor as-is.
 
-Takes the inputs [`Material::base_color_texture`](/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`, which upload when the scene loads.
+Takes the inputs [`Material::base_color_texture`](/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
 
 #### Example
 
@@ -1553,7 +1569,7 @@ Unset, this slot resolves to a 1×1 default with `(R=0, G=1, B=1, A=1)` so
 the factor multiplication passes both `material.metallic` and
 `material.roughness` through unchanged.
 
-Takes the inputs [`Material::base_color_texture`](/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`, which upload when the scene loads.
+Takes the inputs [`Material::base_color_texture`](/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
 
 #### Example
 
@@ -1746,7 +1762,7 @@ Unset, this slot resolves to a 1×1 flat tangent-space default
 `(128, 128, 255, 255)` so the decoded normal is `(0, 0, 1)` and the world
 normal passes through unchanged.
 
-Takes the inputs [`Material::base_color_texture`](/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`, which upload when the scene loads.
+Takes the inputs [`Material::base_color_texture`](/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
 
 #### Example
 
@@ -1938,7 +1954,7 @@ default PBR shader, then multiplied into the diffuse term.
 Unset, this slot resolves to a 1×1 white default so the multiplied
 occlusion factor is `1.0` and no darkening is applied.
 
-Takes the inputs [`Material::base_color_texture`](/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`, which upload when the scene loads.
+Takes the inputs [`Material::base_color_texture`](/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
 
 #### Example
 

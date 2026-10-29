@@ -1,6 +1,6 @@
 pub mod error;
 use crate::renderer::platform::all::CANDIDATES;
-use crate::texture::{Registration, TextureId, TextureMeta};
+use crate::texture::{Registration, TextureId};
 use crate::{PassObject, Renderable};
 use dashmap::DashMap;
 pub use error::{Diagnostic, ShaderError, SourceLocation};
@@ -49,6 +49,7 @@ mod input;
 pub(crate) mod light_roots;
 use light_roots::LightRoots;
 mod lights;
+pub(crate) mod map;
 #[cfg(test)]
 pub(crate) use lights::lower_test_cap;
 pub(crate) use lights::{ShaderLights, lower_light_cap, share_light};
@@ -221,20 +222,15 @@ pub(crate) struct ShaderObject {
     pub(crate) lights: RwLock<ShaderLights>,
     /// Modules with the light roots lowered to a uniform block, by light count and padding.
     lowered: RwLock<HashMap<(u32, bool), Module>>,
-    /// Texture uploads queued by lazy setters (typically the Material's
-    /// `*_texture(impl Into<TextureInput>)` family). The renderer drains
-    /// this list at first render and via the explicit `Renderer::load`
-    /// surface; each entry becomes a real GPU texture + a
-    /// `UniformData::Texture` write under the recorded key.
-    pub(crate) pending_textures: RwLock<Vec<PendingTexture>>,
-    /// The textures bound to texture uniforms, by uniform name. Holding their
-    /// registrations keeps them in the registry after their handles drop.
+    /// The texture uniforms filled from a source the shader keeps, such as the Material's
+    /// lazy maps. Nothing drains them: each Renderer that loads one uploads a copy of its own.
+    pub(crate) maps: RwLock<Vec<map::TextureMap>>,
+    /// The explicit textures bound to texture uniforms, by uniform name. Holding their
+    /// registrations keeps them in the registry after their handles drop. A key is here
+    /// or in `maps`, never in both.
     pub(crate) bound_textures: DashMap<String, Arc<Registration>>,
-    /// The stamp of the latest texture setter call for each texture uniform. An upload
-    /// that finishes after a newer setter call for its key is dropped, so the latest call wins.
-    texture_stamps: DashMap<String, u64>,
-    /// Held while a texture uniform is written or stamped. An upload checks its stamp
-    /// and writes under it, so a setter call can't land between the check and the write.
+    /// Held while a texture uniform is written, made a map or bound, and while a flush
+    /// applies the queue, so a setter call lands before or after each of those, never between.
     pub(crate) texture_writes: Mutex<()>,
     /// The mesh the quick view draws with this shader, and the mesh generation that
     /// last passed this shader's checks.
@@ -268,16 +264,6 @@ pub(crate) enum PendingUpdate {
     Input(UniformInput),
 }
 
-/// A texture upload waiting to be realized — slot key plus the TextureInput
-/// the renderer will hand to `create_texture`.
-#[derive(Debug, Clone)]
-pub(crate) struct PendingTexture {
-    pub key: String,
-    pub input: crate::TextureInput,
-    /// The stamp its setter call took. A later setter for the key takes a newer one.
-    pub stamp: u64,
-}
-
 impl Default for ShaderObject {
     fn default() -> Self {
         Self::new(DEFAULT_SHADER).expect("SAFETY: DEFAULT_SHADER is a known-good built-in")
@@ -304,27 +290,35 @@ impl ShaderObject {
                 .map_err(|_| ShaderError::TypeMismatch(AMBIENT_KEY.into()))?;
             return self.set_input(key, input);
         }
-        let texture = matches!(&val, UniformData::Texture(meta) if meta.id.id != 0);
+        let texture = matches!(&val, UniformData::Texture(_));
         let _writing = texture.then(|| self.texture_writes.lock());
         self.write_value(key, val)
     }
 
-    /// Writes `val` under `key`, or queues it when the storage is busy, and holds the
-    /// texture it names. A caller writing a texture holds `texture_writes`.
+    /// Writes `val` under `key` and holds the texture it names. A texture with id 0
+    /// clears the key's map. A caller writing a texture holds `texture_writes`.
     fn write_value(&self, key: &str, val: UniformData) -> Result<(), ShaderError> {
         let texture = match &val {
-            UniformData::Texture(meta) if meta.id.id != 0 => Some(meta.id),
+            UniformData::Texture(meta) => Some(meta.id),
             _ => None,
         };
+        self.write_slot(key, val)?;
+        match texture {
+            Some(id) if id.id != 0 => self.bind_texture(key, id),
+            Some(id) => self.remove_map(key, id),
+            None => {}
+        }
+        Ok(())
+    }
+
+    /// Writes `val` under `key`, or queues it in `pending` when the storage is busy.
+    fn write_slot(&self, key: &str, val: UniformData) -> Result<(), ShaderError> {
         if let Some(mut storage) = self.storage.try_write() {
             self.pending.remove(key);
             storage.update(key, &val)?;
         } else {
             self.pending
                 .insert(key.to_string(), PendingUpdate::Value(val));
-        }
-        if let Some(id) = texture {
-            self.bind_texture(key, id);
         }
         Ok(())
     }
@@ -372,14 +366,17 @@ impl ShaderObject {
         key == AMBIENT_KEY && self.light_roots.is_some()
     }
 
-    /// Holds the texture `id` names for `key`, releasing the one bound before.
+    /// Holds the texture `id` names for `key`, releasing the one bound before,
+    /// and ends the key's map, unless `id` is that map's own.
     fn bind_texture(&self, key: &str, id: TextureId) {
-        self.stamp_texture(key);
-        if let Some(registration) = Registration::find(id) {
-            self.bound_textures.insert(key.to_string(), registration);
-        } else {
-            self.bound_textures.remove(key);
-        }
+        match Registration::find(id) {
+            Some(registration) => self.bound_textures.insert(key.to_string(), registration),
+            None => self
+                .bound_textures
+                .remove(key)
+                .map(|(_, registration)| registration),
+        };
+        self.remove_map(key, id);
     }
 
     // getters
@@ -640,12 +637,11 @@ impl ShaderObject {
             // path follows the glTF 2.0 default (single-sided = back-face
             // cull on).
             double_sided: RwLock::new(true),
-            pending_textures: RwLock::new(Vec::new()),
+            maps: RwLock::new(Vec::new()),
             light_roots,
             lights: RwLock::new(ShaderLights::default()),
             lowered: RwLock::new(HashMap::new()),
             bound_textures: DashMap::new(),
-            texture_stamps: DashMap::new(),
             texture_writes: Mutex::new(()),
             preview: Mutex::new(None),
         };
@@ -703,84 +699,6 @@ impl ShaderObject {
             })
             .as_ref()
             .unwrap_or(&self.module)
-    }
-
-    /// Either set a texture uniform immediately (if the input wraps an
-    /// already-uploaded `Texture` via `TextureData::CloneOf`) or queue the
-    /// upload for the renderer to drain on the next `load` / `render`.
-    ///
-    /// Used by the Material `*_texture` setters so callers can pass either
-    /// a pre-built `Texture` (eager path) or a path / bytes / URL
-    /// (lazy path) through the same builder method.
-    pub(crate) fn queue_or_set_texture(
-        &self,
-        key: impl Into<String>,
-        input: crate::TextureInput,
-    ) -> Result<(), ShaderError> {
-        let key = key.into();
-        // The latest setter call wins, so an upload queued before can't overwrite it.
-        self.pending_textures
-            .write()
-            .retain(|entry| entry.key != key);
-        if let crate::TextureData::CloneOf(ref tex) = input.data {
-            let meta = TextureMeta::with_id_only(*tex.id());
-            return self.set(&key, UniformData::Texture(meta));
-        }
-        let _writing = self.texture_writes.lock();
-        let stamp = self.stamp_texture(&key);
-        self.pending_textures
-            .write()
-            .push(PendingTexture { key, input, stamp });
-        Ok(())
-    }
-
-    /// Gives `key` a new stamp, newer than every stamp before it, and returns it.
-    fn stamp_texture(&self, key: &str) -> u64 {
-        static NEXT: AtomicU64 = AtomicU64::new(1);
-        let stamp = NEXT.fetch_add(1, Ordering::Relaxed);
-        self.texture_stamps.insert(key.to_string(), stamp);
-        stamp
-    }
-
-    /// Binds the texture `id` an upload for `entry` made, unless a setter call for its key
-    /// came after the upload was queued. Returns whether it bound. The stamp check and the
-    /// write happen under `texture_writes`, so a setter call lands before or after both.
-    pub(crate) fn set_latest(
-        &self,
-        entry: &PendingTexture,
-        id: TextureId,
-    ) -> Result<bool, ShaderError> {
-        let _writing = self.texture_writes.lock();
-        if !self.is_latest(entry) {
-            return Ok(false);
-        }
-        let meta = TextureMeta::with_id_only(id);
-        self.write_value(&entry.key, UniformData::Texture(meta))?;
-        Ok(true)
-    }
-
-    /// Whether `entry` still holds the latest setter call for its key.
-    pub(crate) fn is_latest(&self, entry: &PendingTexture) -> bool {
-        self.texture_stamps
-            .get(&entry.key)
-            .is_none_or(|stamp| *stamp == entry.stamp)
-    }
-
-    /// Take the current pending-texture queue, leaving the slot empty.
-    pub(crate) fn drain_pending_textures(&self) -> Vec<PendingTexture> {
-        std::mem::take(&mut *self.pending_textures.write())
-    }
-
-    /// Puts the uploads that `failed` back at the front of the queue, so the next
-    /// `load` or `render` tries them again. A key set again in the meantime keeps its newer value.
-    pub(crate) fn requeue_textures(&self, failed: Vec<PendingTexture>) {
-        let mut queue = self.pending_textures.write();
-        let kept: Vec<PendingTexture> = failed
-            .into_iter()
-            .filter(|entry| self.is_latest(entry))
-            .filter(|entry| queue.iter().all(|queued| queued.key != entry.key))
-            .collect();
-        queue.splice(0..0, kept);
     }
 
     /// Get a uniform value as Uniform struct.
@@ -868,7 +786,7 @@ impl ShaderObject {
     /// A caller that needs every update applied calls it until `pending` is empty.
     /// Each update leaves the queue before it applies, so a set that lands after the flush
     /// took its key stays queued for the next one. While it applies, it holds `texture_writes`,
-    /// so a texture setter waits, and an upload's stamp check and write never interleave with it.
+    /// so a texture setter or a new map waits for it to finish.
     pub(crate) fn flush_pending(&self) {
         self.apply_queue(|_| {});
     }
@@ -2688,36 +2606,6 @@ struct VertexIn { @location(0) position: vec2<f32>, @location(1) uv: vec2<f32> }
         assert!(Shader::new(compared).is_ok());
     }
 
-    // Story: a texture set while the upload queued for its key is in flight wins,
-    // so the older upload neither binds nor goes back in the queue.
-    #[test]
-    fn a_setter_during_an_upload_wins() {
-        let shader = Shader::new(
-            r#"
-@group(0) @binding(0) var image: texture_2d<f32>;
-@vertex fn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(0.0); }
-@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(image, vec2<i32>(0), 0); }
-"#,
-        )
-        .expect("shader");
-        let object = &shader.object;
-        let lazy = crate::TextureInput::from("tests/assets/missing.png");
-        object.queue_or_set_texture("image", lazy).expect("queues");
-        let in_flight = object.drain_pending_textures();
-        assert_eq!(in_flight.len(), 1);
-
-        object
-            .set_input("image", UniformInput::Texture(TextureId { id: 77 }))
-            .expect("sets");
-
-        assert!(!object.is_latest(&in_flight[0]), "the newer setter wins");
-        object.requeue_textures(in_flight);
-        assert!(
-            object.pending_textures.read().is_empty(),
-            "the stale upload stays out"
-        );
-    }
-
     /// A shader with one texture uniform, `image`.
     fn build_shader() -> Shader {
         Shader::new(
@@ -2738,46 +2626,10 @@ struct VertexIn { @location(0) position: vec2<f32>, @location(1) uv: vec2<f32> }
         }
     }
 
-    // Story: a finished upload binds its texture while its setter call is the latest,
-    // and leaves a texture a later setter call bound.
+    // Story: every texture write and every map a setter makes waits for `texture_writes`,
+    // which a flush holds while it applies the queue, so no setter call lands in between.
     #[test]
-    fn an_upload_binds_only_while_latest() {
-        let shader = build_shader();
-        let object = &shader.object;
-        let lazy = || crate::TextureInput::from("tests/assets/missing.png");
-
-        object
-            .queue_or_set_texture("image", lazy())
-            .expect("queues");
-        let first = object.drain_pending_textures().remove(0);
-        let bound = object
-            .set_latest(&first, TextureId { id: 5 })
-            .expect("binds");
-        assert!(bound);
-        assert_eq!(read_image(object), 5);
-
-        object
-            .queue_or_set_texture("image", lazy())
-            .expect("queues");
-        let second = object.drain_pending_textures().remove(0);
-        object
-            .set_input("image", UniformInput::Texture(TextureId { id: 9 }))
-            .expect("sets");
-        let bound = object
-            .set_latest(&second, TextureId { id: 6 })
-            .expect("skips");
-        assert!(!bound);
-        assert_eq!(
-            read_image(object),
-            9,
-            "the older upload overwrote the setter"
-        );
-    }
-
-    // Story: every texture write and stamp waits for `texture_writes`, which an upload
-    // holds from its stamp check to its write, so no setter call lands in between.
-    #[test]
-    fn texture_writes_wait_for_an_upload() {
+    fn texture_writes_wait_for_the_lock() {
         use std::sync::atomic::AtomicUsize;
         let shader = build_shader();
         let object = &shader.object;
@@ -2788,7 +2640,7 @@ struct VertexIn { @location(0) position: vec2<f32>, @location(1) uv: vec2<f32> }
         };
         std::thread::scope(|scope| {
             let held = object.texture_writes.lock();
-            let meta = TextureMeta::with_id_only(TextureId { id: 7 });
+            let meta = crate::texture::TextureMeta::with_id_only(TextureId { id: 7 });
             let writers = [
                 scope.spawn(|| count(object.set("image", UniformData::Texture(meta)))),
                 scope.spawn(|| {
@@ -2797,7 +2649,8 @@ struct VertexIn { @location(0) position: vec2<f32>, @location(1) uv: vec2<f32> }
                 }),
                 scope.spawn(|| {
                     let lazy = crate::TextureInput::from("tests/assets/missing.png");
-                    count(object.queue_or_set_texture("image", lazy))
+                    let source = crate::texture::TextureSource::try_from(lazy).expect("a source");
+                    count(object.set_map("image", source))
                 }),
             ];
             let deadline = std::time::Instant::now() + std::time::Duration::from_millis(200);

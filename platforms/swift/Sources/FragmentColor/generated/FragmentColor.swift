@@ -5615,8 +5615,8 @@ public func FfiConverterTypeStructShape_lower(_ value: StructShape) -> RustBuffe
 
 public struct TextureId: Equatable, Hashable {
     /**
-     * The underlying numeric identifier. Valid within the `Renderer` that
-     * created it; stable for the lifetime of the texture registration.
+     * Names a texture while it stays registered, in the `Renderer` that made it.
+     * A Material map's id names the copy in each `Renderer` that loaded that map.
      */
     public var id: UInt64
 
@@ -5624,8 +5624,8 @@ public struct TextureId: Equatable, Hashable {
     // declare one manually.
     public init(
         /**
-         * The underlying numeric identifier. Valid within the `Renderer` that
-         * created it; stable for the lifetime of the texture registration.
+         * Names a texture while it stays registered, in the `Renderer` that made it.
+         * A Material map's id names the copy in each `Renderer` that loaded that map.
          */id: UInt64) {
         self.id = id
     }

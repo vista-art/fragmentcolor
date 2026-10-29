@@ -92,11 +92,13 @@ Build a `Scene` from a serialized 3D file. Pass a **path** (`.gltf` or `.glb`)
 or in-memory **`.glb` bytes** straight to `Scene::load`. The format is
 inferred from the input, so there's nothing extra to name.
 
-`Scene::load` is synchronous and takes no `Renderer`. Any textures the parser
-encounters are queued as pending uploads on the resulting Materials.
-[`Renderer::load`](/api/core/renderer) uploads
-them. On native targets the first render runs it for you; on the web, await
-it before the first render.
+`Scene::load` is synchronous and takes no `Renderer`. Each image the parser
+finds decodes once, and every texture slot that reads it becomes a map of
+those pixels on the resulting Materials.
+[`Renderer::load`](/api/core/renderer#load) uploads
+a copy of each map into that `Renderer`, so the Scene draws with every
+`Renderer` that loads it. On native targets the first render runs it for
+you; on the web, await it in each `Renderer` before its first render.
 
 The loader reads static glTF: mesh primitives (`POSITION`, `NORMAL`,
 `TEXCOORD_0`, `TEXCOORD_1`, `COLOR_0`, `TANGENT` and indices), PBR-MR

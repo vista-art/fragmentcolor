@@ -53,7 +53,7 @@ Big‑picture architecture (how things fit together)
 - Renderer and context
   - Renderer lazily creates a RenderContext (wgpu::Device/Queue). It caches render/compute pipelines keyed by descriptive structs; manages uniform/storage/readback buffer pools and a small texture pool for transient MSAA.
   - In Rust, create_target prefers a surface; on failure it logs and falls back to an offscreen TextureTarget so headless/CI runs still work. The bindings don't fall back: their create_target returns the error. MSAA for surface targets uses transient textures resolved into the swapchain view.
-  - Uniforms/textures are reflected from Shader storage. Textures are registered in a Renderer‑owned registry and referenced by an integer TextureId.
+  - Uniforms/textures are reflected from Shader storage. Textures are registered in a Renderer‑owned registry and referenced by an integer TextureId. A Material map set from a source keeps that source on its shader, and each Renderer that loads it holds a copy of its own under the map's one TextureId.
   - Push constants: native push constants are used when available; otherwise they are lowered to a fallback uniform buffer per root on platforms without push‑constant support (e.g., Web).
 - Shader, Mesh, Pass
   - Shader owns attached meshes and validates every vertex and instance at attach time. Typed Rust values (`f32`, `u32`) must match the input's format exactly; plain numbers take the type the shader declares, and the first shader that types an attribute fixes it for the mesh. Fullscreen shaders (no @location vertex inputs) reject mesh attachments.
