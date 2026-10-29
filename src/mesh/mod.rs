@@ -780,15 +780,6 @@ impl MeshObject {
         Ok(())
     }
 
-    /// The buffers and draw counts of the mesh's `upload` to `context`.
-    pub(crate) fn vertex_buffers(
-        &self,
-        context: &RenderContext,
-    ) -> Result<(VertexBuffers, DrawCounts), RendererError> {
-        let upload = self.upload(context)?;
-        Ok((upload.buffers, upload.counts))
-    }
-
     /// Get Vertex Buffers, Draw counts and the layouts they follow for this mesh,
     /// creating or updating GPU resources on the device of `context` as needed.
     /// Buffers on another context's device give way to new ones.
@@ -1370,7 +1361,7 @@ mod tests {
             instances.add_vertices([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]);
             instances.add_instances((0..4097).map(|_| Instance::new().set("tint", [1.0; 4])));
 
-            let message = |mesh: &Mesh| match mesh.object.vertex_buffers(&context) {
+            let message = |mesh: &Mesh| match mesh.object.upload(&context) {
                 Err(error) => error.to_string(),
                 Ok(_) => panic!("expected an error"),
             };
@@ -1685,10 +1676,7 @@ mod tests {
             derived.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
             let late = derived.clone();
             crate::hooks::once("pack", move || late.add_vertex([0.5, 0.5]));
-            let error = derived
-                .object
-                .vertex_buffers(&context)
-                .expect_err("4 vertices");
+            let error = derived.object.upload(&context).expect_err("4 vertices");
             assert_eq!(
                 error.to_string(),
                 RendererError::from(MeshError::VertexCount(4)).to_string(),
@@ -1700,10 +1688,7 @@ mod tests {
             given.set_indices([0, 1, 2]);
             let late = given.clone();
             crate::hooks::once("pack", move || late.set_indices([0, 1, 2, 0]));
-            let error = given
-                .object
-                .vertex_buffers(&context)
-                .expect_err("4 indices");
+            let error = given.object.upload(&context).expect_err("4 indices");
             assert_eq!(
                 error.to_string(),
                 RendererError::from(MeshError::IndexCount(4)).to_string(),
@@ -1729,14 +1714,14 @@ mod tests {
             mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
             let tint = || Instance::new().set("tint", [1.0; 4]);
             mesh.add_instances([tint(), tint(), tint()]);
-            mesh.object.vertex_buffers(&context).expect("first upload");
+            mesh.object.upload(&context).expect("first upload");
             mesh.clear_instances();
             mesh.add_instances([tint(), tint()]);
 
             let late = mesh.clone();
             crate::hooks::once("packed", move || late.add_instance(tint()));
-            let (_, during) = mesh.object.vertex_buffers(&context).expect("second upload");
-            let (_, after) = mesh.object.vertex_buffers(&context).expect("third upload");
+            let during = mesh.object.upload(&context).expect("second upload").counts;
+            let after = mesh.object.upload(&context).expect("third upload").counts;
 
             assert_eq!(during.instance_rows, Some(2), "the rows the pack made");
             assert_eq!(
@@ -1777,7 +1762,7 @@ mod tests {
             let packed = std::rc::Rc::new(std::cell::RefCell::new(None));
             let seen = packed.clone();
             crate::hooks::once("columns", move || {
-                let upload = object.vertex_buffers(&context).map(drop);
+                let upload = object.upload(&context).map(drop);
                 *seen.borrow_mut() = Some(upload);
             });
             mesh.object.declare(1, binding).expect("declare");
@@ -1807,7 +1792,7 @@ mod tests {
             mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
 
             for context in [&contexts[0], &contexts[1], &contexts[0], &contexts[1]] {
-                mesh.object.vertex_buffers(context).expect("buffers");
+                mesh.object.upload(context).expect("buffers");
                 let cache = mesh.object.cache.read();
                 let gpu = mesh.object.gpu.read();
                 assert_eq!(cache.as_ref().map(|cached| cached.owner), Some(context.id));
@@ -1909,7 +1894,7 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
                 .await
                 .expect("device");
             let context = RenderContext::new(device, queue);
-            mesh.object.vertex_buffers(&context).expect("buffers");
+            mesh.object.upload(&context).expect("buffers");
             let cached = |mesh: &Mesh| {
                 let generation = mesh.object.generation.load(Ordering::Acquire);
                 mesh.object.find_cached(context.id, generation).is_some()
@@ -1968,25 +1953,25 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
             let context = RenderContext::new(device, queue);
 
             // Without override, instance_count == 2 (matches buffer)
-            let (_bufs, counts) = mesh.object.vertex_buffers(&context).expect("vb");
+            let counts = mesh.object.upload(&context).expect("vb").counts;
             assert_eq!(counts.instance_count, 2);
 
             // With override, instance_count == 5
             mesh.set_instance_count(5);
-            let (_bufs2, counts2) = mesh.object.vertex_buffers(&context).expect("vb2");
+            let counts2 = mesh.object.upload(&context).expect("vb2").counts;
             assert_eq!(counts2.instance_count, 5);
 
             // Adding an instance auto-clears the override (otherwise the GPU would
             // draw past the actual buffer end and read garbage). count falls back
             // to the new buffer length (3).
             mesh.add_instance(Instance::new().set("id", 8u32));
-            let (_bufs3, counts3) = mesh.object.vertex_buffers(&context).expect("vb3");
+            let counts3 = mesh.object.upload(&context).expect("vb3").counts;
             assert_eq!(counts3.instance_count, 3);
 
             // clear_instances resets everything: empty buffer + no override → 1.
             mesh.set_instance_count(99);
             mesh.clear_instances();
-            let (_bufs4, counts4) = mesh.object.vertex_buffers(&context).expect("vb4");
+            let counts4 = mesh.object.upload(&context).expect("vb4").counts;
             assert_eq!(counts4.instance_count, 1);
         });
     }

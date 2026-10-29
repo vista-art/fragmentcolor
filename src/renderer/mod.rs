@@ -780,8 +780,6 @@ struct ShaderDraw {
     /// The vertex layouts its meshes read, in the order they first appear, one pipeline
     /// each. Empty for a shader with no mesh, which draws with one pipeline that reads no vertex buffer.
     layouts: Vec<VertexLayouts>,
-    /// The entry of `layouts` each mesh reads, by mesh pointer.
-    readers: HashMap<usize, usize>,
     /// Whether the shader draws the pass's Models, hidden ones included.
     model: bool,
     draws: MeshDraws,
@@ -793,8 +791,9 @@ enum MeshDraws {
     Fullscreen,
     /// One draw for each mesh of an opaque or masked shader that has something to draw.
     Batched(Vec<MeshDraw>),
-    /// None: a translucent shader's Models draw in the pass's blend phase.
-    Blend,
+    /// None in its own turn: a translucent shader's Models draw in the pass's
+    /// blend phase, from the meshes the plan uploaded, by mesh pointer.
+    Blend(HashMap<usize, BlendMesh>),
     /// None, with no pipeline: every mesh belongs to Models this frame doesn't draw.
     Skipped,
 }
@@ -808,13 +807,22 @@ struct MeshDraw {
     layout: usize,
 }
 
+/// A translucent mesh as the plan uploaded and checked it: its buffers, its index
+/// count and the entry of its shader's `layouts` it reads. Each of its Models draws
+/// these in the blend phase, so a change after the plan waits for the next render.
+struct BlendMesh {
+    buffers: crate::mesh::VertexBuffers,
+    index_count: u32,
+    layout: usize,
+}
+
 /// A shader's pipelines and bind groups in one render pass. The blend phase binds them
 /// again for each translucent draw. The pipelines share their bind group layouts.
 struct ShaderState<'plan> {
     /// One pipeline for each entry of the plan's `layouts`, or one for a shader with no mesh.
     pipelines: Vec<wgpu::RenderPipeline>,
-    /// The pipeline each mesh draws with, by mesh pointer.
-    readers: &'plan HashMap<usize, usize>,
+    /// What the plan has the shader draw, the blend phase's meshes included.
+    draws: &'plan MeshDraws,
     bind_groups: Vec<(u32, wgpu::BindGroup)>,
     immediates: Option<Vec<u8>>,
 }
@@ -1298,7 +1306,6 @@ impl RenderContext {
             return Ok(ShaderDraw {
                 shader,
                 layouts: Vec::new(),
-                readers: HashMap::new(),
                 model,
                 draws: MeshDraws::Fullscreen,
             });
@@ -1307,7 +1314,7 @@ impl RenderContext {
         let shader_ptr = Arc::as_ptr(&shader) as usize;
         let limits = &self.limits;
         let mut layouts: Vec<VertexLayouts> = Vec::new();
-        let mut readers = HashMap::with_capacity(meshes.len());
+        let mut blended = HashMap::new();
         let mut batched = Vec::with_capacity(meshes.len());
         for mesh in meshes.iter() {
             let mesh_ptr = Arc::as_ptr(mesh) as usize;
@@ -1334,9 +1341,17 @@ impl RenderContext {
                     layouts.len() - 1
                 }
             };
-            readers.insert(mesh_ptr, layout);
-            // A translucent shader's Models draw in the pass's blend phase.
+            // A translucent shader's Models draw in the pass's blend phase, from these buffers.
             if blend {
+                let index_count = counts.index_count;
+                blended.insert(
+                    mesh_ptr,
+                    BlendMesh {
+                        buffers,
+                        index_count,
+                        layout,
+                    },
+                );
                 continue;
             }
             let models = overrides.get(&(shader_ptr, mesh_ptr));
@@ -1357,13 +1372,12 @@ impl RenderContext {
         shader.check_preview()?;
         let draws = match (layouts.is_empty(), blend) {
             (true, _) => MeshDraws::Skipped,
-            (false, true) => MeshDraws::Blend,
+            (false, true) => MeshDraws::Blend(blended),
             (false, false) => MeshDraws::Batched(batched),
         };
         Ok(ShaderDraw {
             shader,
             layouts,
-            readers,
             model,
             draws,
         })
@@ -2160,7 +2174,7 @@ impl RenderContext {
                     .into_iter()
                     .map(|cached| cached.pipeline)
                     .collect(),
-                readers: &plan.readers,
+                draws: &plan.draws,
                 bind_groups,
                 immediates: immediate_bytes,
             };
@@ -2192,7 +2206,7 @@ impl RenderContext {
                 }
                 // Blend draws run in the global back-to-front phase below, after every
                 // shader has registered its pipeline and bind groups in `shader_states`.
-                MeshDraws::Blend | MeshDraws::Skipped => {}
+                MeshDraws::Blend(_) | MeshDraws::Skipped => {}
             }
             shader_states.insert(Arc::as_ptr(shader) as usize, state);
         }
@@ -2203,6 +2217,8 @@ impl RenderContext {
         // the mesh's layout changes. Two translucent Materials in one Pass
         // interleave correctly — A-far, B-mid, A-near sequences emit in
         // global Z order rather than per-shader buckets.
+        #[cfg(test)]
+        crate::hooks::run("blend phase");
         if !blend_draws.is_empty() {
             let mut current: Option<(usize, usize)> = None;
             for draw in blend_draws.iter() {
@@ -2212,26 +2228,31 @@ impl RenderContext {
                 let Some(state) = shader_states.get(&draw.shader_ptr) else {
                     continue;
                 };
-                let Some(&layout) = state.readers.get(&(Arc::as_ptr(&draw.mesh) as usize)) else {
+                // The buffers the plan uploaded, read with the layout the plan built for them.
+                let MeshDraws::Blend(meshes) = state.draws else {
+                    continue;
+                };
+                let Some(mesh) = meshes.get(&(Arc::as_ptr(&draw.mesh) as usize)) else {
                     continue;
                 };
                 match current {
-                    Some((shader, bound)) if shader == draw.shader_ptr && bound == layout => {}
+                    Some((shader, bound)) if shader == draw.shader_ptr && bound == mesh.layout => {}
                     Some((shader, _)) if shader == draw.shader_ptr => {
-                        state.switch(&mut render_pass, layout)
+                        state.switch(&mut render_pass, mesh.layout)
                     }
-                    _ => state.bind(&mut render_pass, layout),
+                    _ => state.bind(&mut render_pass, mesh.layout),
                 }
-                current = Some((draw.shader_ptr, layout));
-                let (refs, counts) = draw.mesh.vertex_buffers(self)?;
-                if counts.index_count == 0 {
+                current = Some((draw.shader_ptr, mesh.layout));
+                if mesh.index_count == 0 {
                     continue;
                 }
-                render_pass.set_vertex_buffer(0, refs.vertex_buffer.slice(..));
+                render_pass.set_vertex_buffer(0, mesh.buffers.vertex_buffer.slice(..));
                 render_pass.set_vertex_buffer(1, buf.slice(..));
-                render_pass
-                    .set_index_buffer(refs.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                render_pass.draw_indexed(0..counts.index_count, 0, 0..1);
+                render_pass.set_index_buffer(
+                    mesh.buffers.index_buffer.slice(..),
+                    wgpu::IndexFormat::Uint32,
+                );
+                render_pass.draw_indexed(0..mesh.index_count, 0, 0..1);
             }
         }
 
@@ -4764,6 +4785,44 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat)
 
             assert!(is_blue(pixel(&images[0], LEFT)), "opaque");
             assert!(is_blue(pixel(&images[1], LEFT)), "blended");
+        });
+    }
+
+    // Story: a blended Model draws the buffers the plan uploaded and checked, so a
+    // vertex added between the plan and the blend phase waits for the next render.
+    #[test]
+    fn the_blend_phase_draws_the_planned_buffers() {
+        pollster::block_on(async move {
+            use crate::Target;
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([SIDE, SIDE])
+                .await
+                .expect("texture target");
+            let model = strip(
+                &red_glow().alpha_mode(crate::material::AlphaMode::Blend),
+                -1.0,
+                1.0,
+            );
+            let pass = Pass::new("blended");
+            pass.set_clear_color(BLUE).expect("set clear color");
+            pass.add(&model).expect("add model");
+            pass.add(&camera()).expect("add camera");
+            // A seventh vertex leaves a partial triangle, which a pack refuses.
+            let late = model.mesh().clone();
+            crate::hooks::once("blend phase", move || {
+                late.add_vertex(crate::Vertex::pbr([0.0, 0.0, 0.0]));
+            });
+
+            let drawn = renderer.render(&pass, &target);
+            let image = target.get_image().await.expect("read back");
+            let next = renderer.render(&pass, &target);
+
+            assert!(drawn.is_ok(), "{drawn:?}");
+            assert!(is_red(pixel(&image, LEFT)), "the planned strip");
+            let error = next.expect_err("the next plan packs seven vertices");
+            let expected = RendererError::from(crate::mesh::MeshError::VertexCount(7));
+            assert_eq!(error.to_string(), expected.to_string());
         });
     }
 
