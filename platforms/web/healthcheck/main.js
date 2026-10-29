@@ -966,8 +966,9 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
 }`);
     const sampledOnly = await renderer.createTexture(new Uint8Array(4 * 4 * 4), { size: [4, 4] });
     marks.set('marks', sampledOnly);
-    // WebGL2 binds no storage textures at all, which the same check reports first.
-    refuses('render with a sampled texture in a storage slot', /takes a texture with STORAGE_BINDING usage|max_storage_textures_per_shader_stage/,
+    // WebGL2 writes no storage from the fragment stage, and the shader check refuses that before any texture check.
+    refuses('render with a sampled texture in a storage slot',
+      /takes a texture with STORAGE_BINDING usage|'marks' at @group\(0\) @binding\(0\) needs FRAGMENT_WRITABLE_STORAGE/,
       () => renderer.render(marks, target));
 
     const far = new Shader(`${vertex}
