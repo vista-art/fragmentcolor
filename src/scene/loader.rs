@@ -7,9 +7,9 @@
 //! format without changing the public method.
 //!
 //! The shape mirrors `Material::pbr()` and `Camera::perspective(...)`: sync
-//! return, no `Renderer` argument. Each image the parser decodes becomes
-//! a Material map, which every Renderer that draws the Scene uploads
-//! as a copy of its own (see [`crate::Renderer::load`]).
+//! return, no `Renderer` argument. Each image decodes once, and every slot
+//! that reads it becomes a Material map of those shared pixels, which each
+//! Renderer that draws the Scene uploads as a copy of its own (see [`crate::Renderer::load`]).
 //!
 //! The loader covers static glTF: mesh primitives (positions, normals,
 //! two UV sets, colors, tangents, indices), PBR-MR materials with all five
@@ -18,8 +18,10 @@
 //! and `KHR_lights_punctual` lights. Animation, skinning, morph targets,
 //! and material extensions beyond PBR-MR are out of scope here.
 
-use std::collections::HashSet;
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use glam::{Mat4, Quat, Vec3};
 use gltf::Semantic;
@@ -27,7 +29,8 @@ use gltf::accessor::{DataType, Dimensions};
 
 use crate::material::{TextureSlot, UvSet, UvTransform};
 use crate::scene::{Camera, Light, Scene};
-use crate::{Material, Mesh, Model, TextureData, TextureInput};
+use crate::texture::{SourceData, TextureSource};
+use crate::{Material, Mesh, Model, TextureOptions};
 
 /// Top-level loader input. Every variant names the format explicitly so
 /// `Scene::load` doesn't have to guess. Today: glTF 2.0; future additions
@@ -275,12 +278,7 @@ fn load_gltf(source: GltfSource) -> Result<Scene, SceneLoadError> {
         .default_scene()
         .or_else(|| document.scenes().next());
 
-    // glTF files routinely share one Material across many primitives. The
-    // cache key is the glTF material index (`None` is the spec's default
-    // material) so a file with 100 indexed primitives produces one
-    // Material handle instead of 100 shader allocations.
-    let mut material_cache: std::collections::HashMap<Option<usize>, Material> =
-        std::collections::HashMap::new();
+    let mut cache = Cache::default();
 
     if let Some(gltf_scene) = default_gltf_scene {
         // An explicit stack walks the tree depth first in file order. A deep
@@ -306,7 +304,7 @@ fn load_gltf(source: GltfSource) -> Result<Scene, SceneLoadError> {
                 &buffers,
                 &images,
                 &scene,
-                &mut material_cache,
+                &mut cache,
                 &options,
             )?;
             let first_child = stack.len();
@@ -316,6 +314,17 @@ fn load_gltf(source: GltfSource) -> Result<Scene, SceneLoadError> {
     }
 
     Ok(scene)
+}
+
+/// What one load builds once and shares while it walks the nodes.
+#[derive(Default)]
+struct Cache {
+    /// One Material per glTF material index (`None` is the spec's default material),
+    /// since files routinely share one Material across many primitives.
+    materials: HashMap<Option<usize>, Material>,
+    /// The decoded pixels of each image by index. Every slot that reads one image,
+    /// in any material, shares its one buffer.
+    pixels: HashMap<usize, Arc<SourceData>>,
 }
 
 /// Load one glTF node and return its world matrix for its children.
@@ -330,7 +339,7 @@ fn visit_node(
     buffers: &[gltf::buffer::Data],
     images: &[gltf::image::Data],
     scene: &Scene,
-    material_cache: &mut std::collections::HashMap<Option<usize>, Material>,
+    cache: &mut Cache,
     options: &GltfOptions,
 ) -> Result<Mat4, SceneLoadError> {
     let local = local_transform(node);
@@ -340,11 +349,11 @@ fn visit_node(
         for primitive in mesh.primitives() {
             let fc_mesh = build_mesh(&mesh, &primitive, buffers)?;
             let mat_key = primitive.material().index();
-            let fc_material = match material_cache.get(&mat_key) {
+            let fc_material = match cache.materials.get(&mat_key) {
                 Some(m) => m.clone(),
                 None => {
-                    let m = build_material(&primitive.material(), images)?;
-                    material_cache.insert(mat_key, m.clone());
+                    let m = build_material(&primitive.material(), images, &mut cache.pixels)?;
+                    cache.materials.insert(mat_key, m.clone());
                     m
                 }
             };
@@ -935,9 +944,12 @@ fn map_sampler_options(sampler: &gltf::texture::Sampler<'_>) -> crate::SamplerOp
     }
 }
 
+/// Build the PBR Material of a glTF material. Each texture slot becomes a map
+/// of its image's decoded pixels, which `pixels` keeps for every slot that reads them.
 fn build_material(
     gltf_material: &gltf::Material<'_>,
     images: &[gltf::image::Data],
+    pixels: &mut HashMap<usize, Arc<SourceData>>,
 ) -> Result<Material, SceneLoadError> {
     let pbr = gltf_material.pbr_metallic_roughness();
     let mut material = Material::pbr()
@@ -963,12 +975,13 @@ fn build_material(
         material = material.occlusion_strength(strength);
     }
 
+    let mut read = |texture: gltf::Texture<'_>| convert_image(&texture, images, pixels);
     if let Some(info) = pbr.base_color_texture() {
-        material = material.base_color_texture(convert_image(&info.texture(), images)?);
+        material.set_map(TextureSlot::BaseColor, read(info.texture())?);
         apply_uv(&material, TextureSlot::BaseColor, read_info_uv(&info))?;
     }
     if let Some(info) = pbr.metallic_roughness_texture() {
-        material = material.metallic_roughness_texture(convert_image(&info.texture(), images)?);
+        material.set_map(TextureSlot::MetallicRoughness, read(info.texture())?);
         apply_uv(
             &material,
             TextureSlot::MetallicRoughness,
@@ -976,19 +989,19 @@ fn build_material(
         )?;
     }
     if let Some(info) = gltf_material.normal_texture() {
-        material = material.normal_texture(convert_image(&info.texture(), images)?);
+        material.set_map(TextureSlot::Normal, read(info.texture())?);
         let extension = info.extension_value(TEXTURE_TRANSFORM);
         let uv = read_extension_uv(info.tex_coord(), extension)?;
         apply_uv(&material, TextureSlot::Normal, uv)?;
     }
     if let Some(info) = gltf_material.occlusion_texture() {
-        material = material.occlusion_texture(convert_image(&info.texture(), images)?);
+        material.set_map(TextureSlot::Occlusion, read(info.texture())?);
         let extension = info.extension_value(TEXTURE_TRANSFORM);
         let uv = read_extension_uv(info.tex_coord(), extension)?;
         apply_uv(&material, TextureSlot::Occlusion, uv)?;
     }
     if let Some(info) = gltf_material.emissive_texture() {
-        material = material.emissive_texture(convert_image(&info.texture(), images)?);
+        material.set_map(TextureSlot::Emissive, read(info.texture())?);
         apply_uv(&material, TextureSlot::Emissive, read_info_uv(&info))?;
     }
 
@@ -1079,26 +1092,33 @@ fn name_slot(slot: TextureSlot) -> &'static str {
     }
 }
 
-/// Convert a glTF image reference into the TextureInput a Material setter
-/// makes a map of. Every pixel format the importer decodes converts to RGBA8,
-/// and an image with fewer bytes than its size needs is an error.
+/// Convert a glTF texture reference into the source a Material map keeps, with the
+/// texture's own sampler. Each image decodes once into RGBA8, which `pixels` shares
+/// with every later reference to it. An image with fewer bytes than its size needs is an error.
 fn convert_image(
     texture: &gltf::Texture<'_>,
     images: &[gltf::image::Data],
-) -> Result<TextureInput, SceneLoadError> {
+    pixels: &mut HashMap<usize, Arc<SourceData>>,
+) -> Result<TextureSource, SceneLoadError> {
+    let index = texture.source().index();
     let image = images
-        .get(texture.source().index())
+        .get(index)
         .ok_or_else(|| SceneLoadError::Invalid("glTF texture references missing image".into()))?;
-    let rgba = decode_image(image)?;
-    let sampler_options = map_sampler_options(&texture.sampler());
-    Ok(TextureInput {
-        data: TextureData::Bytes(rgba.into_raw()),
-        options: crate::TextureOptions {
-            size: Some(crate::Size::from([image.width, image.height])),
-            sampler: sampler_options,
-            ..Default::default()
-        },
-    })
+    let data = match pixels.entry(index) {
+        Entry::Occupied(entry) => entry.get().clone(),
+        Entry::Vacant(entry) => {
+            let rgba = decode_image(image)?;
+            entry
+                .insert(Arc::new(SourceData::Bytes(rgba.into_raw())))
+                .clone()
+        }
+    };
+    let options = TextureOptions {
+        size: Some(crate::Size::from([image.width, image.height])),
+        sampler: map_sampler_options(&texture.sampler()),
+        ..Default::default()
+    };
+    Ok(TextureSource::new(data, options))
 }
 
 /// Decode imported glTF pixels into RGBA8.
@@ -1265,7 +1285,6 @@ mod tests {
     use super::*;
     use crate::Renderable;
     use crate::mesh::VertexData;
-    use crate::texture::SourceData;
 
     /// The minimal triangle: positions only, read through accessor 0 from
     /// bufferView 0. Views 1 (12 bytes) and 2 (24 bytes) sit unused, so a
@@ -2040,6 +2059,31 @@ mod tests {
     /// JSON written with single quotes, so each line stays one Rust string.
     fn quote(lines: &[&str]) -> String {
         lines.concat().replace('\'', "\"")
+    }
+
+    // Story: an ORM image that the metallic-roughness and occlusion slots both read
+    // decodes once, and the two maps share its pixels.
+    #[test]
+    fn two_slots_that_read_one_image_share_its_pixels() {
+        let materials = quote(&[
+            "'materials':[{'pbrMetallicRoughness':{'metallicRoughnessTexture':{'index':0}},",
+            "'occlusionTexture':{'index':0}}]",
+        ]);
+        let scene = load_textured(&materials).expect("load");
+        let models = scene.models();
+        let maps = models[0].material().shader().object.maps.read();
+        let read = |key: &str| {
+            let map = maps.iter().find(|map| map.key == key);
+            map.map(|map| map.source.data.clone()).expect("a map")
+        };
+
+        let roughness = read("metallic_roughness_map");
+        let occlusion = read("occlusion_map");
+
+        assert!(
+            Arc::ptr_eq(&roughness, &occlusion),
+            "each slot decoded a copy of its own"
+        );
     }
 
     #[test]
