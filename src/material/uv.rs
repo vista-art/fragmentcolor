@@ -39,6 +39,17 @@ impl TextureSlot {
         Self::Emissive,
     ];
 
+    /// The Material setter that fills this slot, as an error names it.
+    pub(crate) fn name_setter(self) -> &'static str {
+        match self {
+            Self::BaseColor => "Material::base_color_texture",
+            Self::MetallicRoughness => "Material::metallic_roughness_texture",
+            Self::Normal => "Material::normal_texture",
+            Self::Occlusion => "Material::occlusion_texture",
+            Self::Emissive => "Material::emissive_texture",
+        }
+    }
+
     /// The uniform the built-in PBR shader reads this slot's map from.
     pub(crate) fn pick_key(self) -> &'static str {
         match self {

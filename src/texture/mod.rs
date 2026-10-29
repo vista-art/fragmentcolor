@@ -838,7 +838,10 @@ impl TextureObject {
                     Self::from_image(context, &image, format, options.mipmaps, usage)
                 }
                 SourceData::Ktx2Path(path) => read_ktx2_file(context, path, usage),
-                SourceData::Prepared(chain) => Self::from_chain(context, chain.clone(), usage),
+                SourceData::Prepared(chain) => {
+                    let wanted = pick_override(&options);
+                    Self::from_chain(context, chain.clone(), wanted, usage)
+                }
             }?;
             object.set_sampler_options(&context.device, options.sampler);
             Ok(object)
@@ -982,11 +985,12 @@ impl TextureObject {
         })
     }
 
-    /// Create a TextureObject from a pre-built CPU mip chain. Pure GPU writes —
-    /// no decode, no resize. Used by the `TextureInput::Prepared` path.
+    /// Creates a texture from a mip chain built on the CPU, with GPU writes only.
+    /// It takes the chain's own format, or `wanted` when that reads the same bytes.
     fn from_chain(
         context: &RenderContext,
         chain: Mipmap,
+        wanted: Option<wgpu::TextureFormat>,
         usage: wgpu::TextureUsages,
     ) -> Result<Self, TextureError> {
         let (w, h) = chain.base_size;
@@ -1001,7 +1005,7 @@ impl TextureObject {
             ));
         }
         let levels = chain.levels.as_slice();
-        let format = chain.format;
+        let format = match_format(chain.format, wanted)?;
         check_format(context, format, usage, wgpu::TextureDimension::D2)?;
         let bpp = texel_size(format)?;
 
@@ -1261,6 +1265,27 @@ fn read_ktx2_file(
 }
 
 /// The format `options` names, or `None` for the default, which lets the image pick.
+/// The format a mip chain built in `built` uploads as: its own when the caller picked none,
+/// or `wanted` when it reads the same bytes, such as the sRGB form of an 8-bit format.
+/// Any other format is an error, since the chain's bytes can't be read in it.
+fn match_format(
+    built: wgpu::TextureFormat,
+    wanted: Option<wgpu::TextureFormat>,
+) -> Result<wgpu::TextureFormat, TextureError> {
+    match wanted {
+        None => Ok(built),
+        Some(format) if reads_as(built, format) => Ok(format),
+        Some(format) => Err(TextureError::InvalidInput(format!(
+            "a Mipmap built in {built:?} can't upload as {format:?}; pass its own format, its sRGB form, or none"
+        ))),
+    }
+}
+
+/// Whether bytes laid out in `built` read correctly as `format`, which differs at most in sRGB.
+pub(crate) fn reads_as(built: wgpu::TextureFormat, format: wgpu::TextureFormat) -> bool {
+    built.remove_srgb_suffix() == format.remove_srgb_suffix()
+}
+
 fn pick_override(options: &TextureOptions) -> Option<wgpu::TextureFormat> {
     match options.format {
         crate::TextureFormat::Rgba => None,
@@ -2848,5 +2873,68 @@ mod tests {
             check(wgpu::TextureFormat::Depth32Float, sampled, deep),
             Err(TextureError::InvalidInput(_))
         ));
+    }
+
+    /// Whether `result` failed with `InvalidInput` whose message holds `text`.
+    fn refused<T: std::fmt::Debug>(
+        result: &Result<T, crate::renderer::error::RendererError>,
+        text: &str,
+    ) -> bool {
+        use crate::renderer::error::RendererError;
+        matches!(result, Err(RendererError::TextureError(TextureError::InvalidInput(message))) if message.contains(text))
+    }
+
+    /// A 4x4 chain built from raw pixels in its default format, `Rgba8Unorm`, as an input
+    /// that asks for `format`.
+    fn ask_format(format: crate::TextureFormat) -> TextureInput {
+        let chain = Mipmap::build((vec![255u8; 4 * 4 * 4], [4u32, 4u32])).expect("a chain");
+        TextureInput {
+            data: chain.into(),
+            options: TextureOptions {
+                format,
+                ..Default::default()
+            },
+        }
+    }
+
+    // Story: a Mipmap uploads in the format it was built in, or in that format's sRGB form,
+    // which reads the same bytes. Any other format given with it is refused, where it was dropped.
+    #[test]
+    fn a_mipmap_takes_only_a_format_its_bytes_read_as() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+
+            let srgb = ask_format(crate::TextureFormat::Rgba8UnormSrgb);
+            let texture = renderer.create_texture(srgb).await.expect("the sRGB form");
+            assert_eq!(texture.object().format, wgpu::TextureFormat::Rgba8UnormSrgb);
+
+            let own = ask_format(crate::TextureFormat::default());
+            let texture = renderer.create_texture(own).await.expect("its own format");
+            assert_eq!(texture.object().format, wgpu::TextureFormat::Rgba8Unorm);
+
+            let float = ask_format(crate::TextureFormat::Rgba32Float);
+            let result = renderer.create_texture(float).await;
+            assert!(refused(&result, "Mipmap"), "{result:?}");
+        });
+    }
+
+    // Story: a Texture keeps the options it was created with, so `create_texture` refuses
+    // options beside one with an error that names the call, and takes the Texture alone as it is.
+    #[test]
+    fn create_texture_refuses_options_beside_a_texture() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let pixels = (vec![255u8; 4 * 4 * 4], [4u32, 4u32]);
+            let texture = renderer.create_texture(pixels).await.expect("a texture");
+
+            let given = (&texture, crate::TextureFormat::Rgba32Float);
+            let result = renderer.create_texture(given).await;
+            assert!(refused(&result, "create_texture:"), "{result:?}");
+            let same = renderer
+                .create_texture(&texture)
+                .await
+                .expect("the Texture alone");
+            assert_eq!(same.id(), texture.id());
+        });
     }
 }

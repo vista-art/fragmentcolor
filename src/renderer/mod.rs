@@ -246,6 +246,7 @@ impl Renderer {
         spec: impl Into<crate::texture::TextureInput>,
     ) -> Result<crate::texture::Texture, RendererError> {
         let input = spec.into();
+        input.check_options("create_texture")?;
 
         // CloneOf returns the texture it holds, and Empty has nothing to upload.
         if let TextureData::CloneOf(tex) = input.data {

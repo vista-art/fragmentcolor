@@ -318,6 +318,10 @@ impl Material {
     /// a map. An input the slot can't take warns and leaves the slot as it was.
     fn set_texture(&self, slot: TextureSlot, input: TextureInput) -> Self {
         let key = slot.pick_key();
+        if let Err(error) = input.check_options(slot.name_setter()) {
+            warn_texture(key, error);
+            return self.clone();
+        }
         if let TextureData::CloneOf(texture) = &input.data {
             let meta = TextureMeta::with_id_only(*texture.id());
             if let Err(error) = self.shader.object.set(key, UniformData::Texture(meta)) {
@@ -332,10 +336,12 @@ impl Material {
         self.clone()
     }
 
-    /// Sets `slot` to a map of `source`, in the slot's format when the source left the default.
+    /// Sets `slot` to a map of `source`, in the slot's format when the source left the default
+    /// and can take it. A Mipmap keeps a format its bytes can't be read in, such as a float chain.
     pub(crate) fn set_map(&self, slot: TextureSlot, mut source: TextureSource) {
-        if source.options.format == crate::TextureFormat::default() {
-            source.options.format = slot.pick_format();
+        let hint = slot.pick_format();
+        if source.options.format == crate::TextureFormat::default() && source.takes_format(hint) {
+            source.options.format = hint;
         }
         let key = slot.pick_key();
         if let Err(error) = self.shader.object.set_map(key, source) {
@@ -774,6 +780,67 @@ mod tests {
             second.render(mat.shader(), &second_target).expect("draws");
             assert_eq!(read_pixel(&first_target).await, [0, 0, 255, 255]);
             assert_eq!(read_pixel(&second_target).await, [0, 0, 255, 255]);
+        });
+    }
+
+    // Story: a `Texture` keeps the options it was created with, so the setter refuses
+    // options beside one with a warning, and the slot keeps the texture it held.
+    #[test]
+    fn a_texture_with_options_leaves_the_slot() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let first = renderer
+                .create_texture(paint([255, 0, 0, 255]))
+                .await
+                .expect("a texture");
+            let second = renderer
+                .create_texture(paint([0, 0, 255, 255]))
+                .await
+                .expect("a texture");
+
+            let mat = Material::pbr()
+                .base_color_texture(&first)
+                .base_color_texture((&second, crate::TextureFormat::Rgba8Unorm));
+
+            let slot = mat.shader.object.get_uniform_data("base_color_map");
+            assert!(
+                matches!(&slot, Ok(UniformData::Texture(meta)) if meta.id == *first.id()),
+                "{slot:?}"
+            );
+        });
+    }
+
+    // Story: a map takes its slot's format when its source can be read in it. A Mipmap built
+    // in a float format keeps that format, so it uploads where the sRGB hint would be refused.
+    #[test]
+    fn a_mipmap_map_takes_the_slot_format_only_where_it_reads() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("a target");
+            let input = |format| (vec![0u8; 4 * 4 * 8], format, [4u32, 4u32]);
+            let float = crate::Mipmap::build(input(crate::TextureFormat::Rgba16Float));
+            let float = float.expect("a float chain");
+            let plain = crate::Mipmap::build((vec![255u8; 4 * 4 * 4], [4u32, 4u32]));
+            let plain = plain.expect("a chain");
+            let format = |mat: &Material| mat.shader.object.maps.read()[0].source.options.format;
+
+            let hdr = build_mapped().base_color_texture(float);
+            assert_eq!(format(&hdr), crate::TextureFormat::default());
+            renderer
+                .load(hdr.shader())
+                .await
+                .expect("the float chain uploads");
+            renderer.render(hdr.shader(), &target).expect("draws");
+
+            let srgb = build_mapped().base_color_texture(plain);
+            assert_eq!(format(&srgb), crate::TextureFormat::Rgba8UnormSrgb);
+            renderer
+                .load(srgb.shader())
+                .await
+                .expect("the chain uploads as sRGB");
         });
     }
 

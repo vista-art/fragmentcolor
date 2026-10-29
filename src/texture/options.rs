@@ -166,7 +166,7 @@ impl<S: Into<Size>, F: Into<TextureFormat>> From<(S, F, &[u8])> for TextureInput
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyo3::pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Record))]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TextureOptions {
     #[cfg_attr(mobile, uniffi(default = None))]
     pub size: Option<Size>,
