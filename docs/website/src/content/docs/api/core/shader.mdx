@@ -79,7 +79,7 @@ Access flags are preserved from WGSL and mapped to the device:
 @group(0) @binding(0) var img: texture_storage_2d<rgba8unorm, write>;
 ```
 
-Every storage format binds as the format the shader declares. A format or access the device can't bind fails in `Renderer::render` before any GPU work, and so does a bound texture of another format, one without `STORAGE_BINDING` usage, or one with more than one mip level.
+Every storage format binds as the format the shader declares. A format or access the device can't bind fails in `Renderer::render` before it takes a frame, and so does a bound texture of another format, one without `STORAGE_BINDING` usage, or one with more than one mip level.
 
 ## Storage Buffers
 

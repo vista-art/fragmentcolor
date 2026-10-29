@@ -1,9 +1,10 @@
 // Tests that render refuses, before any GPU work, what the device can't run.
 use super::layout::build_module;
-use super::layout::{plan_layout, texture_binding};
+use super::layout::{find_entry, pick_source, plan_layout, texture_binding};
 use super::scope_tests::{SpyTarget, Uncaptured, setup};
-use super::shader_checks::{TextureFacts, Verdict, check_texture};
+use super::shader_checks::{TextureFacts, Verdict, check_texture, refuse_layout};
 use super::*;
+use crate::shader::LayoutLoss;
 use crate::texture::{Registration, Texture, TextureObject};
 use crate::{Material, Shader};
 
@@ -286,13 +287,19 @@ fn storage_formats_the_device_lacks_fail() {
     )
     .expect("shader");
     let error = refuse_alone(&shader).expect("refused");
-    let fields = error.fields();
+    let expected = vec![
+        ("item", Field::Text("'img' at @group(0) @binding(0)".into())),
+        (
+            "feature",
+            Field::Text("WriteOnly storage access to Bgra8Unorm".into()),
+        ),
+    ];
+    assert_eq!(error.list_fields(), expected);
     assert_refused!(
         error,
         RendererError::FeatureError { .. },
         "'img' at @group(0) @binding(0) needs WriteOnly storage access to Bgra8Unorm, which the device lacks"
     );
-    assert_eq!(fields.len(), 2, "{fields:?}");
 }
 
 // Story: a storage texture binds in the format the shader declares,
@@ -605,7 +612,7 @@ fn texture_checks_follow_wgpu_rules() {
 }
 
 /// A context on the device of `context`, with its own verdicts, for a test to set
-/// the backend, downlevel flags or padding of a device it can't open.
+/// the backend, downlevel flags, limits, padding or light path of a device it can't open.
 fn copy_context(context: &RenderContext) -> RenderContext {
     let mut copy = RenderContext::new(context.device.clone(), context.queue.clone());
     copy.adapter = context.adapter.clone();
@@ -655,15 +662,56 @@ fn gl_refuses_explicit_layouts() {
         assert_refused!(
             error,
             RendererError::FeatureError { .. },
-            "struct `Params` (spell its padding out as members instead) needs @size and @align offsets in a std140 block, which the device lacks"
+            "struct `Params` needs @size and @align offsets in a std140 block, which the device lacks"
         );
         assert_refused!(
             short_error,
             RendererError::FeatureError { .. },
-            "struct `P` (spell its padding out"
+            "struct `P` needs @size and @align offsets"
         );
         assert!(copy_context(&context).check_shader(&shader.object).is_ok());
     });
+}
+
+// Story: on the browser's WebGPU a pipeline asks for each entry point under the name naga's
+// writer gives it, since wgpu hands the browser that writer's text, and elsewhere under its own.
+#[test]
+fn browser_pipelines_ask_for_written_entry_names() {
+    let shader = Shader::new("@compute @workgroup_size(1) fn blur2() {}").expect("shader");
+
+    let web = pick_source(shader.object.module.clone(), true).expect("web source");
+    let native = pick_source(shader.object.module.clone(), false).expect("native source");
+
+    let compute = naga::ShaderStage::Compute;
+    assert_eq!(find_entry(&web.entries, compute).expect("entry"), "blur2_");
+    assert_eq!(
+        find_entry(&native.entries, compute).expect("entry"),
+        "blur2"
+    );
+}
+
+// Story: a struct whose layout the WGSL wgpu writes for the browser can't keep is refused
+// with the item the GL refusal gives, and the feature says where that text moves the struct.
+#[test]
+fn browser_layout_refusals_name_the_struct() {
+    let loss = LayoutLoss::Moved {
+        name: "Gaps".into(),
+        reason: "there `b` sits at byte 8, not 16".into(),
+    };
+
+    let error = RendererError::from(refuse_layout(loss));
+
+    let feature = "@size and @align offsets in the WGSL wgpu writes for the browser (there `b` sits at byte 8, not 16)";
+    let expected = vec![
+        ("item", Field::Text("struct `Gaps`".into())),
+        ("feature", Field::Text(feature.into())),
+    ];
+    assert_eq!(error.list_fields(), expected);
+    assert_refused!(
+        error,
+        RendererError::FeatureError { .. },
+        &format!("struct `Gaps` needs {feature}, which the device lacks")
+    );
 }
 
 // Story: a device that takes lights through a uniform block refuses a shader that
@@ -690,7 +738,7 @@ struct Lights { count: u32, global_count: u32, promoted_count: u32, ambient: vec
         assert_refused!(
             first,
             RendererError::FeatureError { .. },
-            "a shader that measures `lights` or `light_grid` with `arrayLength` (loop to `lights.count` instead) needs clustered lights in storage buffers"
+            "a shader that measures `lights` or `light_grid` with `arrayLength` needs clustered lights in storage buffers, which the device lacks"
         );
         let verdict = uniform.checked.get(&shader.object.hash).expect("a verdict");
         assert!(
