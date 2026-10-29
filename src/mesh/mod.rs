@@ -254,7 +254,8 @@ struct Packed {
     indices: Vec<u32>,
     /// The instances `insts` holds, those without properties included.
     rows: usize,
-    /// The layouts `verts` and `insts` follow.
+    /// The layouts `verts` and `insts` follow. A repack while an upload or a kept layout
+    /// holds them makes new ones, so `Arc::ptr_eq` tells two packs apart.
     schemas: Arc<Schemas>,
     /// The `vertex_changes` and `instance_changes` the bytes come from, `None` until packed.
     vertices_at: Option<u64>,
@@ -288,11 +289,11 @@ struct Repacked {
 }
 
 /// What one attached shader reads from the mesh, and the
-/// vertex layouts it read, with the generation they came from.
+/// vertex layouts it read, with the schemas of the pack they came from.
 #[derive(Debug, Default)]
 struct Attached {
     reads: AttributeTypes,
-    layouts: Option<(u64, VertexLayouts)>,
+    layouts: Option<(Arc<Schemas>, VertexLayouts)>,
 }
 
 /// An upload and the context whose device holds its buffers,
@@ -533,24 +534,25 @@ impl MeshObject {
         shader.preview(self);
     }
 
-    /// The layouts `build` makes for the attached shader `shader` from the upload at
-    /// `generation`, kept until the mesh changes or the shader lets the mesh go.
+    /// The layouts `build` makes for the attached shader `shader` from the pack whose
+    /// `schemas` an upload carries. They stay until another pack's schemas arrive or the
+    /// shader lets the mesh go, so two Renderers that packed different data never share them.
     /// A shader that doesn't hold the mesh keeps none.
     pub(crate) fn fetch_layouts(
         &self,
         shader: u64,
-        generation: u64,
+        schemas: &Arc<Schemas>,
         build: impl FnOnce() -> Result<VertexLayouts, RendererError>,
     ) -> Result<VertexLayouts, RendererError> {
         if let Some(attached) = self.required.read().get(&shader)
             && let Some((kept, layouts)) = attached.layouts.as_ref()
-            && *kept == generation
+            && Arc::ptr_eq(kept, schemas)
         {
             return Ok(layouts.clone());
         }
         let layouts = build()?;
         if let Some(attached) = self.required.write().get_mut(&shader) {
-            attached.layouts = Some((generation, layouts.clone()));
+            attached.layouts = Some((schemas.clone(), layouts.clone()));
         }
         Ok(layouts)
     }
@@ -796,6 +798,8 @@ impl MeshObject {
     /// Buffers on another context's device give way to new ones.
     pub(crate) fn upload(&self, context: &RenderContext) -> Result<Upload, RendererError> {
         let generation = self.generation();
+        #[cfg(test)]
+        crate::hooks::run("upload");
         if let Some(found) = self.find_cached(context.id, generation) {
             return Ok(found);
         }
@@ -1397,10 +1401,10 @@ mod tests {
         });
     }
 
-    // Story: the mesh builds a shader's layouts once and keeps them until it
-    // changes, and a shader that lets the mesh go leaves no layouts behind.
+    // Story: the mesh builds a shader's layouts once for each pack and keeps them
+    // until it packs again, and a shader that lets the mesh go leaves none behind.
     #[test]
-    fn layouts_stay_until_the_mesh_changes() {
+    fn layouts_stay_until_the_mesh_packs_again() {
         pollster::block_on(async move {
             let renderer = crate::Renderer::new();
             let target = renderer
@@ -1418,21 +1422,28 @@ mod tests {
             renderer.render(&shader, &target).expect("render");
             let id = shader.object.id;
             let refuse = || Err(RendererError::Error("rebuilt".into()));
-            let fetch = |mesh: &Mesh| {
-                mesh.object
-                    .fetch_layouts(id, mesh.object.generation(), refuse)
+            let latest = |mesh: &Mesh| {
+                let cache = mesh.object.cache.read();
+                cache.as_ref().map(|cached| cached.upload.schemas.clone())
+            };
+            let fetch = |schemas: Option<Arc<Schemas>>| {
+                let schemas = schemas.expect("an upload");
+                mesh.object.fetch_layouts(id, &schemas, refuse)
             };
 
-            let kept = fetch(&mesh);
+            let first = latest(&mesh);
+            let kept = fetch(first.clone());
             mesh.add_vertices([[0.0, 0.0], [0.1, 0.0], [0.0, 0.1]]);
-            let changed = fetch(&mesh);
             renderer.render(&shader, &target).expect("render again");
+            let older = fetch(first);
+            let newer = fetch(latest(&mesh));
             shader.remove_mesh(&mesh);
             let entries = mesh.object.required.read().len();
-            let released = fetch(&mesh);
+            let released = fetch(latest(&mesh));
 
             assert!(kept.is_ok(), "a still mesh keeps its layouts: {kept:?}");
-            assert!(changed.is_err(), "a changed mesh builds them again");
+            assert!(older.is_err(), "an older pack builds them again");
+            assert!(newer.is_ok(), "the render kept the new pack's: {newer:?}");
             assert_eq!(entries, 0, "a shader that let go keeps no entry");
             assert!(released.is_err(), "and no layouts");
         });

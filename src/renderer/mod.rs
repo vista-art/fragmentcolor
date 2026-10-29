@@ -1327,14 +1327,14 @@ impl RenderContext {
                 buffers,
                 counts,
                 schemas,
-                generation,
+                ..
             } = match passed {
                 Some(passed) => self.upload_checked(&shader, mesh, passed)?,
                 None => mesh.upload(self)?,
             };
             #[cfg(test)]
             crate::hooks::run("uploaded");
-            let read = mesh.fetch_layouts(shader.id, generation, || {
+            let read = mesh.fetch_layouts(shader.id, &schemas, || {
                 vertex_buffer_layouts(&shader, mesh, &schemas)
             })?;
             check_strides(&read, limits)?;
@@ -4816,6 +4816,55 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat)
 
             assert!(is_blue(pixel(&images[0], LEFT)), "opaque");
             assert!(is_blue(pixel(&images[1], LEFT)), "blended");
+        });
+    }
+
+    // Story: a shader keeps layouts for the pack they came from, so a second Renderer
+    // whose upload packed newer instances under the same generation builds its own.
+    #[test]
+    fn kept_layouts_belong_to_their_pack() {
+        pollster::block_on(async move {
+            let mut contexts = Vec::new();
+            for _ in 0..2 {
+                let (_, device, queue) = create_device_and_queue().await;
+                contexts.push(RenderContext::new(device, queue));
+            }
+            let shader = crate::Shader::new(
+                "@vertex fn vs_main(@location(0) p: vec2<f32>, @location(1) offset: vec2<f32>) -> @builtin(position) vec4<f32> { return vec4<f32>(p + offset, 0.0, 1.0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+            )
+            .expect("shader");
+            let mesh = crate::Mesh::new();
+            mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
+            let wide = || {
+                crate::Instance::new()
+                    .set("color", [1.0; 4])
+                    .set("offset", [0.0, 0.0])
+            };
+            mesh.add_instances([wide(), wide()]);
+            shader.add_mesh(&mesh).expect("attach");
+            let stride = |context: &RenderContext| {
+                let upload = mesh.object.upload(context).expect("upload");
+                let build = || vertex_buffer_layouts(&shader.object, &mesh.object, &upload.schemas);
+                let layouts = mesh
+                    .object
+                    .fetch_layouts(shader.object.id, &upload.schemas, build)
+                    .expect("layouts");
+                layouts.instance.map(|instance| instance.stride)
+            };
+            let first = stride(&contexts[0]);
+            // The instances change after the second upload read the generation.
+            let late = mesh.clone();
+            crate::hooks::once("upload", move || {
+                late.clear_instances();
+                late.add_instances(
+                    [(); 2].map(|_| crate::Instance::new().set("offset", [0.0, 0.0])),
+                );
+            });
+            let second = stride(&contexts[1]);
+
+            assert_eq!(first, Some(24), "color and offset");
+            assert_eq!(second, Some(8), "offset alone");
         });
     }
 
