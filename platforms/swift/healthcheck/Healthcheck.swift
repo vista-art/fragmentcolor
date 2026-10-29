@@ -432,8 +432,8 @@ final class Healthcheck: ExampleCase {
         try Mesh().addVertex([0, 0, 0], [0, 1], [1, 1, 1, 1])
     }
 
-    // The Material texture setters take what createTexture takes,
-    // and raw pixels with their size or format reach the upload.
+    // The Material texture setters take what createTexture takes, in every bytes form,
+    // and raw pixels with their size, format or options reach the upload.
     func testMaterialTexturesTakeCreateTextureForms() async throws {
         let renderer = Renderer()
         // A black surface lit only by its emissive map, over the whole target.
@@ -450,13 +450,19 @@ final class Healthcheck: ExampleCase {
             return Array(try await target.getImage().prefix(4))
         }
         let red: [UInt8] = [255, 0, 0, 255]
-        let options = TextureOptions(size: Size(width: 1, height: 1, depth: nil), format: .r8Unorm)
+        let one = Size(width: 1, height: 1, depth: nil)
+        let options = TextureOptions(size: one, format: .r8Unorm)
+        let chain = try Mipmap.build(red, .rgba8UnormSrgb, [1, 1])
         let forms: [(String, (Material) throws -> Material)] = [
             ("[UInt8] and [w, h]", { try $0.emissiveTexture(red, [1, 1]) }),
             ("[Int] and [w, h]", { try $0.emissiveTexture([255, 0, 0, 255] as [Int], [1, 1]) }),
-            ("Data and a Size", { $0.emissiveTexture(Data(red), Size(width: 1, height: 1, depth: nil)) }),
-            ("options with R8Unorm", { $0.emissiveTexture([255] as [UInt8], options) }),
+            ("Data and a Size", { $0.emissiveTexture(Data(red), one) }),
+            ("[UInt8] and a Size", { $0.emissiveTexture(red, one) }),
+            ("[Int] and a Size", { try $0.emissiveTexture([255, 0, 0, 255] as [Int], one) }),
+            ("[UInt8] with R8Unorm options", { $0.emissiveTexture([255] as [UInt8], options) }),
+            ("[Int] with R8Unorm options", { try $0.emissiveTexture([255] as [Int], options) }),
             ("a size and usage", { try $0.emissiveTexture(Data(red), [1, 1], usage: .COPY_SRC) }),
+            ("a Mipmap with options", { $0.emissiveTexture(chain, TextureOptions(format: .rgba, usage: TextureUsage.COPY_SRC.bits)) }),
         ]
         for (label, form) in forms {
             let pixel = try await glow(form)
@@ -482,7 +488,30 @@ final class Healthcheck: ExampleCase {
                 }
             }
         }
-        Material.pbr().normalTexture(Data(red), .rgba8Unorm).occlusionTexture(Data(red), options)
+        // 32 is outside the five TextureUsage flags, so the upload at render refuses
+        // options that reach it, from bytes and from a Mipmap.
+        let outside = TextureOptions(size: one, format: .rgba, usage: 32)
+        let refused: [(String, (Material) throws -> Material)] = [
+            ("baseColorTexture", { $0.baseColorTexture(red, outside) }),
+            ("metallicRoughnessTexture", { try $0.metallicRoughnessTexture([255, 0, 0, 255] as [Int], outside) }),
+            ("normalTexture", { $0.normalTexture(Data(red), outside) }),
+            ("occlusionTexture", { $0.occlusionTexture(red, outside) }),
+            ("emissiveTexture", { $0.emissiveTexture(chain, TextureOptions(format: .rgba, usage: 32)) }),
+        ]
+        for (name, setter) in refused {
+            do {
+                _ = try await glow(setter)
+                throw HealthcheckError.assertion("Material.\(name) with usage 32 should throw at render")
+            } catch is FragmentColorError {}
+        }
+        let byte = try await renderer.createTexture([255] as [Int], options)
+        try assertEqual(byte.size(), one, "createTexture([Int], options)")
+        _ = try await renderer.createTexture(red, one)
+        _ = try await renderer.createTexture(chain, TextureOptions(format: .rgba, usage: TextureUsage.COPY_SRC.bits))
+        Material.pbr()
+            .normalTexture(Data(red), .rgba8Unorm)
+            .occlusionTexture(Data(red), options)
+            .metallicRoughnessTexture("examples/assets/logo.png", .rgba8Unorm)
     }
 
     // A region of 3 numbers throws, as in Kotlin, where it stopped the app.

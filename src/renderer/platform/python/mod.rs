@@ -170,14 +170,8 @@ impl Renderer {
         sampler: Option<crate::texture::PySamplerOptions<'py>>,
         usage: Option<crate::texture::PyTextureUsage<'py>>,
     ) -> Result<crate::texture::Texture, PyErr> {
-        let options = TextureKeywords {
-            size,
-            format,
-            mipmaps,
-            sampler,
-            usage,
-        };
-        let spec = py_to_texture_spec(input, options)?;
+        let keywords = TextureKeywords::new(size, format, mipmaps, sampler, usage);
+        let spec = py_to_texture_spec(input, keywords, "Renderer.create_texture")?;
         Ok(pollster::block_on(self.create_texture(spec))?)
     }
 
@@ -295,11 +289,19 @@ impl Renderer {
 }
 
 /// Builds the `TextureInput` for `create_texture` and the Material texture setters.
-/// An ndarray brings its own size, which a `size` keyword must match; the other kwargs apply to every source.
+/// An ndarray brings its own size, which a `size` keyword must match, and the other kwargs apply to it too.
+/// A `Texture` keeps the options it was created with, so a kwarg beside one raises an error that names `call`.
 pub(crate) fn py_to_texture_spec(
     input: PyTextureSource<'_>,
     options: TextureKeywords<'_>,
+    call: &str,
 ) -> Result<crate::texture::TextureInput, PyErr> {
+    if matches!(input, PyTextureSource::Texture(_)) && !options.is_empty() {
+        return Err(crate::texture::TextureError::InvalidInput(format!(
+            "{call}: a Texture keeps the options it was created with, so it takes no size, format, mipmaps, sampler or usage"
+        ))
+        .into());
+    }
     let size = options.size.map(Size::try_from).transpose()?;
     let mut spec = match input {
         PyTextureSource::Array(array) => {
@@ -325,9 +327,36 @@ pub(crate) fn py_to_texture_spec(
 
 /// The keyword arguments of `create_texture` and the Material texture setters, each optional.
 pub(crate) struct TextureKeywords<'py> {
-    pub(crate) size: Option<PySize<'py>>,
-    pub(crate) format: Option<crate::TextureFormat>,
-    pub(crate) mipmaps: Option<bool>,
-    pub(crate) sampler: Option<crate::texture::PySamplerOptions<'py>>,
-    pub(crate) usage: Option<crate::texture::PyTextureUsage<'py>>,
+    size: Option<PySize<'py>>,
+    format: Option<crate::TextureFormat>,
+    mipmaps: Option<bool>,
+    sampler: Option<crate::texture::PySamplerOptions<'py>>,
+    usage: Option<crate::texture::PyTextureUsage<'py>>,
+}
+
+impl<'py> TextureKeywords<'py> {
+    pub(crate) fn new(
+        size: Option<PySize<'py>>,
+        format: Option<crate::TextureFormat>,
+        mipmaps: Option<bool>,
+        sampler: Option<crate::texture::PySamplerOptions<'py>>,
+        usage: Option<crate::texture::PyTextureUsage<'py>>,
+    ) -> Self {
+        Self {
+            size,
+            format,
+            mipmaps,
+            sampler,
+            usage,
+        }
+    }
+
+    /// Whether the call passed none of the keywords.
+    fn is_empty(&self) -> bool {
+        self.size.is_none()
+            && self.format.is_none()
+            && self.mipmaps.is_none()
+            && self.sampler.is_none()
+            && self.usage.is_none()
+    }
 }
