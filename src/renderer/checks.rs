@@ -255,13 +255,15 @@ impl RenderContext {
         Ok(())
     }
 
-    /// Refuses `AlphaMode::Blend` into a `format` this device can't blend,
-    /// and from a `shader` whose `@location(0)` output has no alpha channel.
+    /// Refuses an `AlphaMode::Blend` shader that a `format` target can't draw.
     ///
-    /// `AlphaMode::Blend` uses `BlendState::ALPHA_BLENDING`, whose factors read the source alpha.
-    /// The WebGPU spec ("validating GPUFragmentState") refuses a blend factor that reads
-    /// the source alpha when the output isn't a `vec4`. wgpu-core doesn't check that rule,
-    /// and the browser does, so the check runs everywhere.
+    /// The refusals every device makes come first, so a shader gets one error everywhere.
+    /// A format no device blends, such as an integer one, returns `InvalidColorTarget`, and
+    /// so does an output without alpha: `ALPHA_BLENDING` reads the source alpha, which the WebGPU
+    /// spec ("validating GPUFragmentState") takes only from a `vec4`, a rule wgpu-core leaves out.
+    ///
+    /// Last, `FeatureError` comes from a format this device can't blend
+    /// and another can, such as `Rgba32Float` on a device without float32 blending.
     fn check_blend(
         &self,
         pass: &PassObject,
@@ -269,18 +271,32 @@ impl RenderContext {
         format: wgpu::TextureFormat,
     ) -> Result<(), RendererError> {
         let blendable = wgpu::TextureFormatFeatureFlags::BLENDABLE;
-        let flags = format_features(self, format).flags;
-        if !flags.contains(blendable) {
-            return Err(refuse_blend(pass, format));
+        let anywhere = format
+            .guaranteed_format_features(wgpu::Features::all())
+            .flags;
+        if !anywhere.contains(blendable) {
+            return Err(PassError::InvalidColorTarget(format!(
+                "pass '{}' draws into {format:?}, which never blends, and a shader uses AlphaMode::Blend",
+                pass.name
+            ))
+            .into());
         }
-        match read_output(shader) {
-            Some(output) if output.count < 4 => Err(PassError::InvalidColorTarget(format!(
+        if let Some(output) = read_output(shader)
+            && output.count < 4
+        {
+            return Err(PassError::InvalidColorTarget(format!(
                 "pass '{}' blends a shader that writes {output} at @location(0), and AlphaMode::Blend reads an alpha channel; write a vec4",
                 pass.name
             ))
-            .into()),
-            _ => Ok(()),
+            .into());
         }
+        if format_features(self, format).flags.contains(blendable) {
+            return Ok(());
+        }
+        Err(RendererError::FeatureError {
+            item: format!("AlphaMode::Blend in pass '{}'", pass.name),
+            feature: format!("blending into {format:?}"),
+        })
     }
 
     /// Records each registered texture `shader` binds, in binding order.
@@ -314,27 +330,6 @@ impl RenderContext {
             }
         }
         Ok(())
-    }
-}
-
-/// The refusal of `AlphaMode::Blend` into a `format` the device can't blend. A format some
-/// device blends, such as `Rgba32Float`, needs a feature this one lacks. One that no device
-/// blends, such as an integer format, can't be the target of a blend at all.
-fn refuse_blend(pass: &PassObject, format: wgpu::TextureFormat) -> RendererError {
-    let blendable = wgpu::TextureFormatFeatureFlags::BLENDABLE;
-    let anywhere = format
-        .guaranteed_format_features(wgpu::Features::all())
-        .flags;
-    match anywhere.contains(blendable) {
-        true => RendererError::FeatureError {
-            item: format!("AlphaMode::Blend in pass '{}'", pass.name),
-            feature: format!("blending into {format:?}"),
-        },
-        false => PassError::InvalidColorTarget(format!(
-            "pass '{}' draws into {format:?}, which never blends, and a shader uses AlphaMode::Blend",
-            pass.name
-        ))
-        .into(),
     }
 }
 
@@ -488,9 +483,9 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
         Some(context)
     }
 
-    /// Whether `context` blends into Rgba32Float by wgpu's rule: a backend below WebGPU,
-    /// such as GL with color_buffer_float, reports its own table, and every other one
-    /// blends it when the device opened with FLOAT32_BLENDABLE.
+    /// Whether `context` blends Rgba32Float, by the rule wgpu follows:
+    /// a backend at WebGPU's level blends it when the device has FLOAT32_BLENDABLE,
+    /// and one below that level, such as GL with color_buffer_float, reports its own table.
     fn blends_float32(context: &RenderContext) -> bool {
         let adapter = context.adapter.as_ref().expect("an adapter");
         let flags = adapter.get_downlevel_capabilities().flags;
@@ -503,28 +498,58 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
         }
     }
 
-    // Story: AlphaMode::Blend into Rgba32Float blends on a device that blends the format
-    // and returns FeatureError on one that doesn't, on a device opened with float32
-    // blending and on one opened without it.
+    /// Checks `check_blend` of Rgba32Float on `context` against `blends_float32`.
+    fn check_float32(context: &RenderContext) {
+        let pass = PassObject::new("glass", PassType::Render);
+        let shader = Shader::default();
+        let result = context.check_blend(&pass, &shader.object, wgpu::TextureFormat::Rgba32Float);
+        match blends_float32(context) {
+            true => assert!(result.is_ok(), "{result:?}"),
+            false => assert!(
+                matches!(result, Err(RendererError::FeatureError { .. })),
+                "{result:?}"
+            ),
+        }
+    }
+
+    // Story: AlphaMode::Blend into Rgba32Float blends where the device blends it,
+    // and returns FeatureError where it doesn't, on a device opened without float32
+    // blending and, when the adapter offers float32 blending, on one opened with it.
     #[test]
     fn rgba32float_blends_where_the_device_can() {
         pollster::block_on(async move {
+            let plain = open(wgpu::Features::empty()).await.expect("a device");
+            check_float32(&plain);
+            match open(wgpu::Features::FLOAT32_BLENDABLE).await {
+                Some(blending) => check_float32(&blending),
+                None => eprintln!("skipped the float32 blending device: the adapter offers none"),
+            }
+        });
+    }
+
+    // Story: a blended shader that writes no alpha gets the same InvalidColorTarget on
+    // every device, where a device that can't blend Rg32Float returned FeatureError first.
+    #[test]
+    fn a_blend_without_alpha_fails_the_same_everywhere() {
+        pollster::block_on(async move {
             let pass = PassObject::new("glass", PassType::Render);
-            let shader = Shader::default();
-            let float = wgpu::TextureFormat::Rgba32Float;
-            for features in [wgpu::Features::empty(), wgpu::Features::FLOAT32_BLENDABLE] {
-                let Some(context) = open(features).await else {
-                    eprintln!("the adapter offers no {features:?}");
-                    continue;
-                };
-                let result = context.check_blend(&pass, &shader.object, float);
-                match blends_float32(&context) {
-                    true => assert!(result.is_ok(), "{features:?}: {result:?}"),
-                    false => assert!(
-                        matches!(result, Err(RendererError::FeatureError { .. })),
-                        "{features:?}: {result:?}"
+            let source =
+                "@vertex fn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(0.0); }
+@fragment fn fs_main() -> @location(0) vec2<f32> { return vec2<f32>(0.5); }";
+            let shader = Shader::new(source).expect("a shader");
+            let plain = open(wgpu::Features::empty()).await.expect("a device");
+            let blending = open(wgpu::Features::FLOAT32_BLENDABLE).await;
+            for context in std::iter::once(&plain).chain(blending.as_ref()) {
+                let result =
+                    context.check_blend(&pass, &shader.object, wgpu::TextureFormat::Rg32Float);
+                assert!(
+                    matches!(
+                        &result,
+                        Err(RendererError::PassError(PassError::InvalidColorTarget(message)))
+                            if message.contains("reads an alpha channel")
                     ),
-                }
+                    "{result:?}"
+                );
             }
         });
     }
