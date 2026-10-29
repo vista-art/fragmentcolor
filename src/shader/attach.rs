@@ -1,6 +1,6 @@
 use super::{ShaderError, ShaderObject, VertexInputDesc};
 use crate::mesh::vertex::{POSITION, explain_position};
-use crate::mesh::{AttributeTypes, Binding, Instance, MeshObject, Shape};
+use crate::mesh::{AttributeTypes, Binding, Instance, MeshObject, Shape, VertexSchema};
 use crate::mesh::{Vertex, VertexData, describe};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
@@ -56,6 +56,16 @@ impl ShaderObject {
     /// result to `MeshObject::declare`, so a mesh that fails here, or one only validated,
     /// keeps its types and its buffers.
     pub(crate) fn bind_mesh(&self, mesh: &MeshObject) -> Result<Binding, ShaderError> {
+        self.bind_mesh_with(mesh, None)
+    }
+
+    /// Matches the mesh as `bind_mesh` does. For a mesh with no instances and no instance
+    /// layout, it reads the instance stream from `assumed`, and the binding says it did.
+    pub(crate) fn bind_mesh_with(
+        &self,
+        mesh: &MeshObject,
+        assumed: Option<&VertexSchema>,
+    ) -> Result<Binding, ShaderError> {
         let inputs = self.reflect_vertex_inputs()?;
         if inputs.is_empty() {
             return Err(ShaderError::InvalidKey(
@@ -77,22 +87,13 @@ impl ShaderObject {
         let position = first.map(|vertex| position_format(vertex.dimensions));
         let vertex =
             first.map(|vertex| read_attributes(&vertex.properties, &vertex.prop_locations));
-        // `Model::attach` declares the model columns as a schema with no instances behind it.
+        // With no instances, the instance layout is a Model's columns: the ones a Model
+        // attach set before, or the ones this one assumes.
+        let declared = mesh.instance_schema.read().clone();
+        let columns = insts.is_empty() && declared.is_none() && assumed.is_some();
         let instance = match insts.first() {
             Some(first) => Some(read_attributes(&first.properties, &first.prop_locations)),
-            None => mesh.instance_schema.read().as_ref().map(|schema| {
-                schema
-                    .fields
-                    .iter()
-                    .map(|field| {
-                        let attribute = Attribute {
-                            location: None,
-                            shape: Shape::Typed(field.fmt),
-                        };
-                        (field.name.clone(), attribute)
-                    })
-                    .collect()
-            }),
+            None => declared.as_ref().or(assumed).map(read_fields),
         };
 
         let mut added = AttributeTypes::default();
@@ -126,8 +127,24 @@ impl ShaderObject {
         Ok(Binding {
             types: added,
             read: names,
+            columns,
         })
     }
+}
+
+/// The attributes of an instance layout with no instances behind it, each in its field's format.
+fn read_fields(schema: &VertexSchema) -> HashMap<String, Attribute> {
+    schema
+        .fields
+        .iter()
+        .map(|field| {
+            let attribute = Attribute {
+                location: None,
+                shape: Shape::Typed(field.fmt),
+            };
+            (field.name.clone(), attribute)
+        })
+        .collect()
 }
 
 /// Finds the data for `input` by name (instance, then vertex), then as the position

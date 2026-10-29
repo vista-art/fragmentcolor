@@ -51,7 +51,7 @@ use light_roots::LightRoots;
 mod lights;
 #[cfg(test)]
 pub(crate) use lights::lower_test_cap;
-pub(crate) use lights::{ShaderLights, lower_light_cap};
+pub(crate) use lights::{ShaderLights, lower_light_cap, share_light};
 mod pad_uniforms;
 mod platform;
 mod storage;
@@ -236,9 +236,18 @@ pub(crate) struct ShaderObject {
     /// Held while a texture uniform is written or stamped. An upload checks its stamp
     /// and writes under it, so a setter call can't land between the check and the write.
     pub(crate) texture_writes: Mutex<()>,
-    /// The error of the attach the mesh quick view tried last, which `render`
-    /// returns for this shader in place of the error for a shader with no mesh.
-    refusal: Mutex<Option<ShaderError>>,
+    /// The mesh the quick view draws with this shader, and the mesh generation that
+    /// last passed this shader's checks.
+    preview: Mutex<Option<Preview>>,
+}
+
+/// The mesh of a quick view and the generation it passed the checks at, or `None`
+/// while it fails them. The shader then holds no mesh, and `render` checks it again
+/// to report why, in place of the error for a shader with no mesh.
+#[derive(Debug)]
+struct Preview {
+    mesh: Arc<crate::mesh::MeshObject>,
+    checked: Option<u64>,
 }
 
 impl Drop for ShaderObject {
@@ -414,20 +423,91 @@ impl ShaderObject {
     /// Every vertex and instance the mesh takes later must hold the attributes this shader reads.
     pub fn add_mesh(&self, mesh: Arc<crate::mesh::MeshObject>) -> Result<(), ShaderError> {
         let binding = self.bind_mesh(&mesh)?;
+        self.record(mesh, binding, false)
+    }
+
+    /// Adds the mesh of a `Model` unless the shader holds it already. For a mesh with
+    /// no instances and no instance layout, the check assumes the Model columns, and
+    /// the mesh takes them as its layout only once the attach succeeds.
+    pub(crate) fn add_model_mesh(
+        &self,
+        mesh: Arc<crate::mesh::MeshObject>,
+    ) -> Result<(), ShaderError> {
+        if self.holds(&mesh) {
+            return Ok(());
+        }
+        #[cfg(test)]
+        crate::hooks::run("model attach");
+        let columns = crate::mesh::model_schema();
+        let binding = self.bind_mesh_with(&mesh, Some(&columns))?;
+        self.record(mesh, binding, true)
+    }
+
+    /// Records `binding` on the mesh and holds the mesh, in one step against `remove_mesh`
+    /// and `clear_meshes`, so neither can drop the reads between the two. With `once`,
+    /// a mesh the shader holds already stays as it is.
+    fn record(
+        &self,
+        mesh: Arc<crate::mesh::MeshObject>,
+        binding: crate::mesh::Binding,
+        once: bool,
+    ) -> Result<(), ShaderError> {
+        let mut meshes = self.meshes.write();
+        if once && meshes.iter().any(|held| Arc::ptr_eq(held, &mesh)) {
+            return Ok(());
+        }
         mesh.declare(self.id, binding)?;
-        self.meshes.write().push(mesh);
+        #[cfg(test)]
+        crate::hooks::run("declared");
+        meshes.push(mesh);
         Ok(())
     }
 
-    /// Keeps the error of an attach that a caller can't return, for `render` to report.
-    /// A successful attach clears it.
-    pub(crate) fn keep_refusal(&self, attached: Result<(), ShaderError>) {
-        *self.refusal.lock() = attached.err();
+    /// Whether this shader holds `mesh`.
+    fn holds(&self, mesh: &Arc<crate::mesh::MeshObject>) -> bool {
+        self.meshes.read().iter().any(|held| Arc::ptr_eq(held, mesh))
     }
 
-    /// Takes the error `keep_refusal` kept, if any.
-    pub(crate) fn take_refusal(&self) -> Option<ShaderError> {
-        self.refusal.lock().take()
+    /// Draws `mesh` for the quick view. It checks the mesh whenever the mesh changed,
+    /// holds it while it passes and lets it go while it fails. It records the types it
+    /// gives untyped attributes but none of its reads, so the mesh's other shaders keep
+    /// their own rules.
+    pub(crate) fn preview(&self, mesh: &Arc<crate::mesh::MeshObject>) {
+        #[cfg(test)]
+        crate::hooks::run("preview");
+        let generation = mesh.generation();
+        let mut preview = self.preview.lock();
+        if preview
+            .as_ref()
+            .is_some_and(|kept| kept.checked == Some(generation))
+        {
+            return;
+        }
+        let passed = self
+            .bind_mesh(mesh)
+            .and_then(|binding| self.record(mesh.clone(), binding.without_reads(), true));
+        let checked = match passed {
+            Ok(()) => Some(generation),
+            Err(_) => {
+                self.remove_mesh(mesh);
+                None
+            }
+        };
+        *preview = Some(Preview {
+            mesh: mesh.clone(),
+            checked,
+        });
+    }
+
+    /// The error the quick view's mesh fails this shader's checks with, while it fails them.
+    pub(crate) fn check_preview(&self) -> Result<(), ShaderError> {
+        match self.preview.lock().as_ref() {
+            Some(Preview {
+                mesh,
+                checked: None,
+            }) => self.validate_mesh(mesh),
+            _ => Ok(()),
+        }
     }
 
     /// Check that a mesh can attach to this shader, without attaching it or recording any type.
@@ -560,7 +640,7 @@ impl ShaderObject {
             bound_textures: DashMap::new(),
             texture_stamps: DashMap::new(),
             texture_writes: Mutex::new(()),
-            refusal: Mutex::new(None),
+            preview: Mutex::new(None),
         };
         // Refuses vertex inputs no mesh can feed, such as two with one name.
         object.reflect_vertex_inputs()?;
@@ -2082,6 +2162,40 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
         mesh
     }
 
+    // Story: a remove that comes while the same mesh attaches again waits for the
+    // attach, so the shader keeps the reads it records for the copy it still holds.
+    #[test]
+    fn a_remove_during_an_attach_keeps_the_reads() {
+        let shader = Shader::new(FLOAT_ID).expect("shader");
+        let mesh = mesh_with_ids(&[1.0, 2.0, 3.0]);
+        shader.add_mesh(&mesh).expect("first attach");
+        let remover = std::rc::Rc::new(std::cell::RefCell::new(None));
+        let handle = remover.clone();
+        let (removing, removed) = (shader.clone(), mesh.clone());
+        crate::hooks::once("declared", move || {
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let thread = std::thread::spawn(move || {
+                removing.remove_mesh(&removed);
+                let _ = sender.send(());
+            });
+            let _ = receiver.recv_timeout(std::time::Duration::from_millis(200));
+            *handle.borrow_mut() = Some(thread);
+        });
+
+        shader.add_mesh(&mesh).expect("second attach");
+        if let Some(thread) = remover.borrow_mut().take() {
+            thread.join().expect("the remover thread");
+        }
+
+        let held = shader.object.meshes.read().len();
+        let reads = mesh.object.reads_of(shader.object.id);
+        assert_eq!(held, 1, "one copy stays");
+        assert!(
+            reads.is_some_and(|reads| reads.vertex.contains_key("id")),
+            "the copy it holds keeps its reads"
+        );
+    }
+
     // Story: validate_mesh is a dry run. It checks the mesh, and a later
     // shader may still give its plain numbers another type.
     #[test]
@@ -2187,7 +2301,10 @@ struct Extra { @builtin(vertex_index) index: u32, @location(1) offset: vec2<f32>
         )
         .expect("shader");
         let mesh = crate::mesh::Mesh::new();
-        mesh.add_vertex(crate::mesh::Vertex::new([0.0, 0.0]).set("offset", [0.0, 0.0]));
+        mesh.add_vertices(
+            [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]
+                .map(|corner| crate::mesh::Vertex::new(corner).set("offset", [0.0, 0.0])),
+        );
 
         // Act
         let inputs = shader.object.reflect_vertex_inputs().expect("inputs");
@@ -2229,7 +2346,10 @@ struct Extra { @builtin(vertex_index) index: u32, @location(1) offset: vec2<f32>
             && input.format == wgpu::VertexFormat::Float32x4));
 
         let mesh = crate::mesh::Mesh::new();
-        mesh.add_vertex(vertex);
+        mesh.add_vertices(
+            [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]
+                .map(|corner| crate::mesh::Vertex::new(corner).set("color", [1.0, 0.0, 0.0, 1.0])),
+        );
         shader.add_mesh(&mesh).expect("color attaches");
     }
 

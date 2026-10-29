@@ -738,7 +738,7 @@ struct BlendDraw {
 #[derive(Default)]
 struct PassDraws {
     /// Per-(shader_ptr, mesh_ptr) instance buffer + instance count. Keys
-    /// match the `Pass::add_model` dedupe identity. Bound at vertex slot 1
+    /// match the (shader, mesh) identity a Model attach dedupes on. Bound at vertex slot 1
     /// for the corresponding shader+mesh draw.
     opaque_overrides: HashMap<(usize, usize), (wgpu::Buffer, u32)>,
     /// Translucent draws, **sorted back-to-front** by eye-space Z. The
@@ -751,6 +751,18 @@ struct PassDraws {
     has_models: bool,
     /// The color and depth targets the pass set.
     targets: PassTargets,
+}
+
+impl PassDraws {
+    /// The `(shader, mesh)` pairs a visible Model of the pass draws, opaque or translucent.
+    fn drawn_models(&self) -> HashSet<(usize, usize)> {
+        let opaque = self.opaque_overrides.keys().copied();
+        let blend = self
+            .blend_draws
+            .iter()
+            .map(|draw| (draw.shader_ptr, Arc::as_ptr(&draw.mesh) as usize));
+        opaque.chain(blend).collect()
+    }
 }
 
 /// What one shader of a render pass draws, decided before the frame is acquired.
@@ -774,6 +786,8 @@ enum MeshDraws {
     Batched(Vec<MeshDraw>),
     /// None: a translucent shader's Models draw in the pass's blend phase.
     Blend,
+    /// None, with no pipeline: every mesh belongs to Models this frame doesn't draw.
+    Skipped,
 }
 
 /// One mesh draw: the mesh's buffers, its index count, the instances it draws,
@@ -1238,10 +1252,11 @@ impl RenderContext {
         let mut draws = self.build_pass_draws(pass)?;
         let model_shaders = find_model_shaders(pass);
         draws.has_models = !model_shaders.is_empty();
+        let drawn = draws.drawn_models();
         let shaders = pass.shaders.read().clone();
         for shader in shaders {
             let model = model_shaders.contains(&(Arc::as_ptr(&shader) as usize));
-            let plan = self.plan_shader(shader, model, &draws.opaque_overrides)?;
+            let plan = self.plan_shader(shader, model, &draws.opaque_overrides, &drawn)?;
             draws.shaders.push(plan);
         }
         draws.targets = targets;
@@ -1253,21 +1268,22 @@ impl RenderContext {
 
     /// Decides what `shader` draws in its turn of a pass, given the pass's Model `overrides`.
     /// `model` is true for a shader that draws the pass's Models, hidden ones included.
+    /// A Model mesh that no visible Model of the pass draws through this shader, a key
+    /// `drawn` lacks, is skipped before it packs, so its checks and limits don't apply.
     fn plan_shader(
         &self,
         shader: Arc<ShaderObject>,
         model: bool,
         overrides: &HashMap<(usize, usize), (wgpu::Buffer, u32)>,
+        drawn: &HashSet<(usize, usize)>,
     ) -> Result<ShaderDraw, RendererError> {
         shader.flush_pending();
         self.check_shader(&shader)?;
         self.check_textures(&shader)?;
         let meshes = shader.meshes.read().clone();
         if meshes.is_empty() {
-            // The mesh quick view keeps the reason its attach failed.
-            if let Some(refusal) = shader.take_refusal() {
-                return Err(refusal.into());
-            }
+            // A mesh the quick view refuses says why on every render.
+            shader.check_preview()?;
             require_mesh(&shader)?;
             return Ok(ShaderDraw {
                 shader,
@@ -1284,9 +1300,13 @@ impl RenderContext {
         let mut readers = HashMap::with_capacity(meshes.len());
         let mut batched = Vec::with_capacity(meshes.len());
         for mesh in meshes.iter() {
+            let mesh_ptr = Arc::as_ptr(mesh) as usize;
+            if model && mesh.awaits_models() && !drawn.contains(&(shader_ptr, mesh_ptr)) {
+                continue;
+            }
             // Packing the buffers derives the schemas the layouts read.
             let (buffers, counts) = mesh.vertex_buffers(self)?;
-            let read = mesh.fetch_layouts(shader.hash, || vertex_buffer_layouts(&shader, mesh))?;
+            let read = mesh.fetch_layouts(shader.id, || vertex_buffer_layouts(&shader, mesh))?;
             check_strides(&read, limits)?;
             let layout = match layouts.iter().position(|known| *known == read) {
                 Some(index) => index,
@@ -1295,7 +1315,6 @@ impl RenderContext {
                     layouts.len() - 1
                 }
             };
-            let mesh_ptr = Arc::as_ptr(mesh) as usize;
             readers.insert(mesh_ptr, layout);
             // A translucent shader's Models draw in the pass's blend phase.
             if blend {
@@ -1304,7 +1323,7 @@ impl RenderContext {
             let models = overrides.get(&(shader_ptr, mesh_ptr));
             let own = buffers.instance_buffer.as_ref();
             let reads = layouts.get(layout);
-            let instances = pick_instances(&shader, models, own, mesh, model, reads, counts)?;
+            let instances = pick_instances(&shader, models, own, mesh, reads, counts)?;
             if let Some(instances) = instances {
                 batched.push(MeshDraw {
                     index_count: counts.index_count,
@@ -1314,9 +1333,10 @@ impl RenderContext {
                 });
             }
         }
-        let draws = match blend {
-            true => MeshDraws::Blend,
-            false => MeshDraws::Batched(batched),
+        let draws = match (layouts.is_empty(), blend) {
+            (true, _) => MeshDraws::Skipped,
+            (false, true) => MeshDraws::Blend,
+            (false, false) => MeshDraws::Batched(batched),
         };
         Ok(ShaderDraw {
             shader,
@@ -1819,6 +1839,10 @@ impl RenderContext {
         let mut shader_states: HashMap<usize, ShaderState> = HashMap::new();
 
         for plan in pass_draws.shaders.iter() {
+            // A shader whose meshes all belong to Models this frame skips builds no pipeline.
+            if matches!(plan.draws, MeshDraws::Skipped) {
+                continue;
+            }
             let shader = &plan.shader;
             shader.flush_pending();
 
@@ -2132,7 +2156,7 @@ impl RenderContext {
                 }
                 // Blend draws run in the global back-to-front phase below, after every
                 // shader has registered its pipeline and bind groups in `shader_states`.
-                MeshDraws::Blend => {}
+                MeshDraws::Blend | MeshDraws::Skipped => {}
             }
             shader_states.insert(Arc::as_ptr(shader) as usize, state);
         }
@@ -2466,14 +2490,13 @@ struct Instances {
 ///
 /// The pass's Models win over the mesh's own instance buffer: `models` holds one matrix
 /// for each visible Model that draws this mesh through this shader. Otherwise the mesh
-/// draws its own instances, such as a crowd built with `Mesh::add_instance`. `model` is
-/// true for `shader` when it draws the pass's Models, hidden ones included.
+/// draws its own instances, such as a crowd built with `Mesh::add_instance`. A Model
+/// mesh that no visible Model draws never gets here: `plan_shader` skips it.
 fn pick_instances(
     shader: &ShaderObject,
     models: Option<&(wgpu::Buffer, u32)>,
     own: Option<&wgpu::Buffer>,
     mesh: &crate::mesh::MeshObject,
-    model: bool,
     layouts: Option<&VertexLayouts>,
     counts: crate::mesh::DrawCounts,
 ) -> Result<Option<Instances>, RendererError> {
@@ -2486,9 +2509,6 @@ fn pick_instances(
             buffer: Some(buffer.clone()),
             count: *count,
         })),
-        // A shader that draws this pass's Models skips a Model mesh whose Model
-        // is hidden or in another pass. Slot 1 may hold an earlier mesh's buffer.
-        (None, None) if model && mesh.awaits_models() => Ok(None),
         (None, buffer) => {
             check_instance_count(shader, layouts, counts, mesh)?;
             Ok(Some(Instances {

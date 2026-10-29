@@ -395,7 +395,7 @@ pub struct PassObject {
     pub(crate) name: Arc<str>,
     pub(crate) input: RwLock<PassInput>,
     pub(crate) shaders: RwLock<Vec<Arc<ShaderObject>>>,
-    // Per-Pass live references to Models queued via `Pass::add_model`. Each entry
+    // Per-Pass live references to Models queued via `Pass::add`. Each entry
     // carries an Arc-shared transform so the renderer reads the current value at
     // draw time. Grouped by (shader, mesh) the entries become the rows of a
     // Pass-owned instance buffer — that's the batched-instancing path: many
@@ -543,11 +543,27 @@ impl PassObject {
         Ok(())
     }
 
-    /// Whether nothing has landed on the pass: no shader, scene object or Model.
-    pub(crate) fn holds_nothing(&self) -> bool {
-        self.shaders.read().is_empty()
-            && self.scene_objects.read().is_empty()
-            && self.model_entries.read().is_empty()
+    /// The pass's last shader, or, for a pass with none, the one `build` makes,
+    /// added with no checks in the same step, so two callers never add two.
+    pub(crate) fn ensure_shader(
+        &self,
+        build: impl FnOnce() -> Arc<ShaderObject>,
+    ) -> Arc<ShaderObject> {
+        if let Some(last) = self.shaders.read().last() {
+            return last.clone();
+        }
+        let mut shaders = self.shaders.write();
+        if let Some(last) = shaders.last() {
+            return last.clone();
+        }
+        let shader = build();
+        Self::push_into(
+            &self.pass_type,
+            &self.required_buffer_size,
+            &mut shaders,
+            shader.clone(),
+        );
+        shader
     }
 
     /// Adds a shader with no checks, for a pass that has no shader and no light.

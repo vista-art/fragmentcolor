@@ -13,7 +13,7 @@
 //!
 //! Per-Model transform is *not* a Material uniform — it rides on a Pass-
 //! owned per-instance vertex-attribute buffer that the renderer builds from
-//! `Pass::add_model` entries. That means many Models can share one Material's
+//! the Model entries `Pass::add` queues. That means many Models can share one Material's
 //! Shader without colliding on a `mesh.model` slot; the renderer batches them
 //! by pipeline hash and pays one bind-group setup for the whole group.
 //! Material itself is `Clone` (shallow, Arc-share) — cloning gives you another

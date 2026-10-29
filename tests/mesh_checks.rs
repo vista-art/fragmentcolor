@@ -1,7 +1,8 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use fragmentcolor::{
-    Instance, Mesh, Pass, Renderer, RendererError, Shader, ShaderError, Target, Vertex,
+    Instance, Material, Mesh, MeshError, Model, Pass, Renderer, RendererError, Shader,
+    ShaderError, Target, Vertex,
 };
 
 const WHITE: &str = r#"
@@ -245,5 +246,56 @@ fn a_mesh_draws_with_two_renderers() {
         assert_eq!(pixels[0], white, "the first renderer");
         assert_eq!(pixels[1], white, "the second renderer");
         assert_eq!(pixels[2], white, "the first renderer again");
+    });
+}
+
+/// A Model of `material` on `corners`, drawn without indices.
+fn model_on(material: &Material, corners: &[[f32; 3]]) -> Model {
+    let mesh = Mesh::new();
+    mesh.add_vertices(corners.iter().map(|corner| Vertex::pbr(*corner)));
+    Model::new(mesh, material.clone())
+}
+
+const TRIANGLE: [[f32; 3]; 3] = [[-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0]];
+const EDGE: [[f32; 3]; 2] = [[-1.0, -1.0, 0.0], [1.0, -1.0, 0.0]];
+
+// Story: a frame checks only the meshes it draws. A hidden Model, or a Model of
+// another pass, can hold a mesh that is still taking its vertices, and the visible
+// Models that share its material draw. A visible partial mesh still fails.
+#[test]
+fn a_frame_checks_only_the_meshes_it_draws() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let target = renderer
+            .create_texture_target([8, 8])
+            .await
+            .expect("texture target");
+        let material = Material::pbr();
+        let floor = model_on(&material, &TRIANGLE);
+        let growing = model_on(&material, &EDGE);
+        growing.set_visible(false);
+
+        let shared = Pass::new("shared");
+        shared.add(&floor).expect("floor");
+        shared.add(&growing).expect("growing");
+        let hidden = renderer.render(&shared, &target);
+
+        let alone = Pass::new("alone");
+        alone.add(&growing).expect("growing alone");
+        let skipped = renderer.render(&alone, &target);
+
+        let elsewhere = Pass::new("elsewhere");
+        elsewhere
+            .add(&model_on(&material, &EDGE))
+            .expect("partial");
+        let other = renderer.render(&shared, &target);
+
+        growing.set_visible(true);
+        let visible = mesh_error(renderer.render(&shared, &target));
+
+        assert!(hidden.is_ok(), "a hidden partial Model: {hidden:?}");
+        assert!(skipped.is_ok(), "a pass of hidden Models only: {skipped:?}");
+        assert!(other.is_ok(), "a partial Model of another pass: {other:?}");
+        assert_eq!(visible, MeshError::VertexCount(2).to_string());
     });
 }
