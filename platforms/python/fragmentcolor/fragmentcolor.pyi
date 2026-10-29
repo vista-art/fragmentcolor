@@ -373,7 +373,7 @@ class Renderer:
 
         `renderable` can be a `Shader`, a `Pass`, a `Mesh`, a `Scene`, or any iterable of `Pass` (`Vec<Pass>`, `&[Pass]`, `&[&Pass]`). Passes in an iterable are rendered in order.
 
-        A window that is hidden or minimized has no frame to draw on. `render` then returns `RendererError::SurfaceError(SurfaceError::Occluded)`, which Python raises as `OccludedSurfaceError`, a `FragmentColorError`. Skip that frame and draw the next one.
+        A window that is hidden or minimized has no frame to draw on. `render` then returns `RendererError::SurfaceError(SurfaceError::Occluded)`, which Python raises as `OccludedSurfaceError`, a `FragmentColorError`, Swift throws as `FragmentColorError.Occluded` and Kotlin as `FragmentColorException.Occluded`. Skip that frame and draw the next one.
 
         A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input. The inputs are the `@location` arguments of the vertex entry point and the `@location` members of its struct arguments, and each one reads the mesh attribute of its own name.
 
@@ -1209,10 +1209,8 @@ class Pass:
         (RenderDoc, Xcode GPU capture) show for the pass.
 
         Names aren't required to be unique. If two passes share a name, name lookup
-        returns the first one. `require` tells dependencies apart by name, though: a
-        pass can't require two passes with the same name
-        (`PassError::DuplicateDependency`), or a pass with its own name
-        (`PassError::SelfDependency`).
+        returns the first one. `require` tells passes apart by identity, so a pass can
+        require two passes of one name, or another pass of its own name.
 
         Example:
 
@@ -1408,7 +1406,7 @@ class Pass:
 
         The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly. Pixels count from the top-left corner of the target.
 
-        A width or height of 0 is an error that leaves the pass's viewport as it was, and so is a far edge past `u32::MAX`, the largest pixel coordinate. To draw on the whole target, leave the viewport unset.
+        A width or height of 0 is an error that leaves the pass's viewport as it was, and so is a far edge past `u32::MAX`, the largest pixel coordinate. A region whose max lies before its min, which a region built field by field or a JavaScript `{ minX, minY, maxX, maxY }` object can hold, returns `ScreenRegionError::Reversed` and is never swapped back. To draw on the whole target, leave the viewport unset.
 
         A region that reaches past the target keeps its size and loses the part outside, and a region wholly outside the target draws nothing. When the pass has its own target from `set_target`, the region is measured against that target. A side past the device's largest 2D texture, `max_texture_dimension_2d`, makes `render` return `PassError::ViewportLimit`, which names the size and the limit, before it takes a frame.
 
@@ -1552,7 +1550,7 @@ class Pass:
 
         - Ok(()) on success
         - Err(PassError::SelfDependency) if a pass requires itself
-        - Err(PassError::DuplicateDependency(name)) if the dependency is already present
+        - Err(PassError::DuplicateDependency(name)) if the same pass is already a dependency
         - Err(PassError::DependencyCycle { via }) if adding the dependency would create a cycle
 
         ## Description
@@ -1562,6 +1560,7 @@ class Pass:
         This allows you to build DAG render graphs directly from passes.
         The graph is validated at build time and does not perform cycle checks at render time.
 
+        - A pass is the same pass by identity, never by name, so two passes that share a name are two dependencies.
         - Dependencies are stored in insertion order.
         - Traversal is dependencies-first, then the current pass, with deduplication.
         - Creation order of passes does not matter.
@@ -4394,7 +4393,8 @@ class Material:
         A render shader takes the [Lights](https://fragmentcolor.org/api/scene/light)
         that reach it by declaring a root named `lights`, and optionally one named
         `light_grid`, at any group and binding. The member names, types and offsets
-        must match the ones below, and the struct names are free. The renderer fills
+        must match the ones below, and so must the struct's size, so no `@align` may
+        raise its alignment. The struct names are free. The renderer fills
         both roots in render passes, so they don't appear in `list_uniforms` or
         `list_keys`, and `set` and `get` reach only `lights.ambient`.
 
