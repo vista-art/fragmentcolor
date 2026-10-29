@@ -4,7 +4,7 @@ use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
-use crate::platforms::web::{read_bytes, read_numbers, read_rows, read_unsigned, read_vector};
+use crate::platforms::web::{read_bytes, read_unsigned, read_vector, read_vector_items};
 use crate::scene::{Camera, Light, LightKind, Model, Scene, SceneSource};
 use crate::{Material, Mesh, Pass};
 
@@ -46,7 +46,9 @@ impl Model {
     #[lsp_doc("docs/api/scene/model/set_transform.md")]
     pub fn set_transform_js(
         &self,
-        #[wasm_bindgen(unchecked_param_type = "ArrayLike<number> | ArrayLike<ArrayLike<number>>")]
+        #[wasm_bindgen(
+            unchecked_param_type = "number[] | Float32Array | (number[] | Float32Array)[]"
+        )]
         matrix: &JsValue,
     ) -> Result<(), JsError> {
         self.set_transform(read_matrix(matrix)?);
@@ -506,25 +508,51 @@ crate::impl_js_bridge!(Scene, crate::PassError);
 crate::impl_js_bridge!(Model, crate::PassError);
 crate::impl_js_bridge!(Camera, crate::PassError);
 
-/// Reads a column-major 4x4 matrix, as 16 numbers or as four columns of four.
+/// Reads a column-major 4x4 matrix: 16 numbers, or four columns of four, each list an array
+/// or a `Float32Array` as a float vector is. Any other list, or another count, throws naming the call.
 fn read_matrix(value: &JsValue) -> Result<[[f32; 4]; 4], JsError> {
-    let columns = match read_numbers(value) {
-        Some(flat) if flat.len() == 16 => flat.chunks(4).map(<[f64]>::to_vec).collect(),
-        Some(_) => Vec::new(),
-        None => read_rows(value).unwrap_or_default(),
+    const LABEL: &str = "Model.setTransform";
+    let columns = match value.dyn_ref::<js_sys::Array>() {
+        Some(array) if array.length() > 0 && array.iter().all(|column| column.is_object()) => {
+            array.to_vec()
+        }
+        _ => return read_flat_matrix(value, LABEL),
     };
-    if columns.len() != 4 || columns.iter().any(|column| column.len() != 4) {
-        return Err(JsError::new(
-            "Model.setTransform: expected 16 numbers or 4 columns of 4 (column-major)",
-        ));
+    if columns.len() != 4 {
+        return Err(JsError::new(&format!(
+            "{LABEL} takes 4 columns of 4 numbers, got {} columns",
+            columns.len()
+        )));
     }
     let mut matrix = [[0.0; 4]; 4];
-    for (target, column) in matrix.iter_mut().zip(&columns) {
-        for (cell, value) in target.iter_mut().zip(column) {
-            *cell = *value as f32;
-        }
+    for (index, (column, slot)) in columns.iter().zip(matrix.iter_mut()).enumerate() {
+        let label = format!("{LABEL}: column {index}");
+        let numbers = read_vector_items(column, &label)?;
+        *slot = match <[f64; 4]>::try_from(numbers.as_slice()) {
+            Ok(column) => column.map(|number| number as f32),
+            Err(_) => {
+                return Err(JsError::new(&format!(
+                    "{label} takes 4 numbers, got {}",
+                    numbers.len()
+                )));
+            }
+        };
     }
     Ok(matrix)
+}
+
+/// A matrix of 16 numbers, column after column.
+fn read_flat_matrix(value: &JsValue, label: &str) -> Result<[[f32; 4]; 4], JsError> {
+    let numbers = read_vector_items(value, label)?;
+    match <[f64; 16]>::try_from(numbers.as_slice()) {
+        Ok(flat) => Ok(std::array::from_fn(|column| {
+            std::array::from_fn(|row| flat[column * 4 + row] as f32)
+        })),
+        Err(_) => Err(JsError::new(&format!(
+            "{label} takes 16 numbers or 4 columns of 4 numbers, got {} numbers",
+            numbers.len()
+        ))),
+    }
 }
 
 /// Reads one boolean flag of the `Scene.load` options. A missing flag is `true`.

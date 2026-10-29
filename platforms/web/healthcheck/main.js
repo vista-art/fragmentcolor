@@ -567,6 +567,16 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     named('Mesh.fromVertices: vertex 0: position',
       () => Mesh.fromVertices([[new Uint8Array([0, 0, 0]), [0, 0], [1, 1, 1, 1]]]));
     new Mesh().addVertex([new Float32Array([0, 0, 0]), [0, 1]]);
+    // A matrix takes the float vector forms too, flat or as four columns.
+    const identity = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]];
+    named('Model.setTransform', () => model.setTransform(new Float64Array(16)));
+    named('Model.setTransform: column 2', () => model.setTransform([identity[0], identity[1], new Int32Array(4), identity[3]]));
+    named('Model.setTransform', () => model.setTransform(new Array(15).fill(0)));
+    named('Model.setTransform', () => model.setTransform(identity.slice(0, 3)));
+    named('Model.setTransform: column 1', () => model.setTransform([identity[0], [0, 1, 0], identity[2], identity[3]]));
+    model.setTransform(new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]));
+    model.setTransform(identity.map((column) => new Float32Array(column)));
+    model.setTransform(identity);
     if (!(new fc.Quad(new Float32Array([0, 0]), [1, 1]) instanceof fc.Quad)) fail('Quad took no Float32Array');
     if (!(new Vertex(0.5) instanceof Vertex)) fail('Vertex took no single number');
     if (!(Light.point([0, 1, 0], new Float32Array([1, 1, 1])) instanceof Light)) fail('Light.point took no Float32Array');
