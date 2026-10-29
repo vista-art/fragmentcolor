@@ -309,8 +309,8 @@ class Healthcheck : ExampleCase() {
         Mesh().addVertex(listOf(0f, 0f, 0f), listOf(0f, 1f), listOf(1f, 1f, 1f, 1f))
     }
 
-    // The Material texture setters take what createTexture takes,
-    // and raw pixels with their size or format reach the upload.
+    // The Material texture setters take what createTexture takes, in every bytes form,
+    // and raw pixels with their size, format or options reach the upload.
     @Test
     fun materialTexturesTakeCreateTextureForms() = runBlocking {
         val renderer = Renderer()
@@ -328,14 +328,20 @@ class Healthcheck : ExampleCase() {
             return target.getImage().take(4).map { it.toInt() and 0xff }
         }
         val red = byteArrayOf(0xff.toByte(), 0, 0, 0xff.toByte())
+        val redInts = listOf(255, 0, 0, 255)
         val one = Size(width = 1u, height = 1u, depth = null)
         val options = TextureOptions(size = one, format = TextureFormat.R8_UNORM)
+        val chain = Mipmap.build(red, TextureFormat.RGBA8_UNORM_SRGB, listOf(1u, 1u))
+        val copyable = TextureOptions(format = TextureFormat.RGBA, usage = TextureUsage.COPY_SRC.bits)
         val forms: List<Pair<String, (Material) -> Material>> = listOf(
             "ByteArray and [w, h]" to { it.emissiveTexture(red, listOf(1u, 1u)) },
-            "List<Int> and [w, h]" to { it.emissiveTexture(listOf(255, 0, 0, 255), listOf(1u, 1u)) },
+            "List<Int> and [w, h]" to { it.emissiveTexture(redInts, listOf(1u, 1u)) },
             "ByteArray and a Size" to { it.emissiveTexture(red, one) },
-            "options with R8Unorm" to { it.emissiveTexture(byteArrayOf(0xff.toByte()), options) },
+            "List<Int> and a Size" to { it.emissiveTexture(redInts, one) },
+            "ByteArray with R8Unorm options" to { it.emissiveTexture(byteArrayOf(0xff.toByte()), options) },
+            "List<Int> with R8Unorm options" to { it.emissiveTexture(listOf(255), options) },
             "a size and usage" to { it.emissiveTexture(red, listOf(1u, 1u), TextureUsage.COPY_SRC) },
+            "a Mipmap with options" to { it.emissiveTexture(chain, copyable) },
         )
         for ((label, form) in forms) {
             val pixel = glow(form)
@@ -353,7 +359,28 @@ class Healthcheck : ExampleCase() {
             val error = assertFailsWith<FragmentColorException> { setter(Material.pbr(), red, listOf(1u)) }
             assertTrue(error.message.orEmpty().contains("Material.$name"), "Material.$name threw ${error.message}")
         }
-        Material.pbr().normalTexture(red, TextureFormat.RGBA8_UNORM).occlusionTexture(red, options)
+        val byteError = assertFailsWith<FragmentColorException> { Material.pbr().normalTexture(listOf(256, 0, 0, 255), one) }
+        assertTrue(byteError.message.orEmpty().contains("Material.normalTexture"), "a byte of 256 threw ${byteError.message}")
+        // 32 is outside the five TextureUsage flags, so the upload at render refuses
+        // options that reach it, from bytes and from a Mipmap.
+        val outside = TextureOptions(size = one, format = TextureFormat.RGBA, usage = 32u)
+        val refused: List<Pair<String, (Material) -> Material>> = listOf(
+            "baseColorTexture" to { it.baseColorTexture(red, outside) },
+            "metallicRoughnessTexture" to { it.metallicRoughnessTexture(redInts, outside) },
+            "normalTexture" to { it.normalTexture(red, outside) },
+            "occlusionTexture" to { it.occlusionTexture(redInts, outside) },
+            "emissiveTexture" to { it.emissiveTexture(chain, TextureOptions(format = TextureFormat.RGBA, usage = 32u)) },
+        )
+        for ((name, setter) in refused) {
+            assertFailsWith<FragmentColorException>("Material.$name with usage 32") { glow(setter) }
+        }
+        assertEquals(one, renderer.createTexture(listOf(255), options).size())
+        renderer.createTexture(red, one)
+        renderer.createTexture(chain, copyable)
+        Material.pbr()
+            .normalTexture(red, TextureFormat.RGBA8_UNORM)
+            .occlusionTexture(red, options)
+            .metallicRoughnessTexture("examples/assets/logo.png", TextureFormat.RGBA8_UNORM)
         Unit
     }
 
