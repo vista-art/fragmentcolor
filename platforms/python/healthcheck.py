@@ -1018,6 +1018,24 @@ def check_mesh_draws(renderer):
     named = Mesh()
     named.add_vertex(Vertex([0.0, 0.0]).set("position", [5.0, 5.0]).set("color", [1.0, 1.0, 1.0, 1.0]))
     refuses("a position property", "property named 'position'", lambda: Shader(COLOR_SHADER).add_mesh(named))
+
+    # No device takes 65 vertex attributes, so an input at @location(64) is past every limit.
+    far = Shader("""
+@vertex fn vs_main(@location(0) position: vec2<f32>, @location(64) extra: f32) -> @builtin(position) vec4<f32> { return vec4<f32>(position * extra, 0.0, 1.0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+""")
+    reaching = Mesh()
+    for corner in FULLSCREEN:
+        reaching.add_vertex(Vertex(corner).set("extra", 1.0))
+    far.add_mesh(reaching)
+    try:
+        renderer.render(far, target)
+    except LimitError as e:
+        assert e.limit == "max_vertex_attributes" and e.value == 65, f"limit {e.limit}, value {e.value}"
+        assert e.item == "shader input 'extra' @location(64)", f"item {e.item}"
+        print(f"a vertex input past the attribute limit raised LimitError: {e}")
+    else:
+        raise AssertionError("a vertex input past the attribute limit should raise LimitError")
     renderer.render(shader, target)
     print("One shader draws meshes with other layouts, and refuses mesh data it can't draw")
 

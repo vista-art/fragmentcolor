@@ -138,6 +138,22 @@ class Healthcheck : ExampleCase() {
         )
         val error = assertFailsWith<FragmentColorException> { Shader(source).addMesh(named) }
         assertTrue(error.message.orEmpty().contains("property named 'position'"), error.message)
+
+        // No device takes 65 vertex attributes, so an input at @location(64) is past every limit.
+        val far = Shader(
+            """
+            @vertex fn vs_main(@location(0) position: vec2<f32>, @location(64) extra: f32) -> @builtin(position) vec4<f32> { return vec4<f32>(position * extra, 0.0, 1.0); }
+            @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+            """.trimIndent()
+        )
+        val reaching = Mesh()
+        for (corner in corners) {
+            reaching.addVertex(Vertex(corner).set("extra", 1.0))
+        }
+        far.addMesh(reaching)
+        val limit = assertFailsWith<FragmentColorException.Limit> { renderer.render(far, target) }
+        assertEquals("max_vertex_attributes", limit.limit)
+        assertEquals(65uL, limit.value)
     }
 
     // render refuses a shader the device can't run before any GPU work, with a case

@@ -225,6 +225,27 @@ final class Healthcheck: ExampleCase {
                 throw HealthcheckError.assertion("a position property: unexpected message \(message)")
             }
         }
+
+        // No device takes 65 vertex attributes, so an input at @location(64) is past every limit.
+        let far = try Shader("""
+            @vertex fn vs_main(@location(0) position: vec2<f32>, @location(64) extra: f32) -> @builtin(position) vec4<f32> { return vec4<f32>(position * extra, 0.0, 1.0); }
+            @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+        """)
+        let reaching = Mesh()
+        for corner in corners {
+            reaching.addVertex(try Vertex(corner).set("extra", 1.0))
+        }
+        try far.addMesh(reaching)
+        do {
+            try renderer.render(far, target)
+            throw HealthcheckError.assertion("a vertex input past the attribute limit should throw")
+        } catch let error as FragmentColorError {
+            guard case let .Limit(_, limit, value, _) = error else {
+                throw HealthcheckError.assertion("render threw \(error), not Limit")
+            }
+            try assertEqual(limit, "max_vertex_attributes", "Limit limit")
+            try assertEqual(value, 65, "Limit value")
+        }
     }
 
     /// Checks that `run` throws `FragmentColorError.Render` with `words` in its text.

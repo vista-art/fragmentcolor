@@ -881,6 +881,20 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) color: vec4<f32> }
     named.addVertex(new Vertex([0, 0]).set('position', [5, 5]).set('color', [1, 1, 1, 1]));
     refuses('a position property', "property named 'position'", () => new Shader(source).addMesh(named));
 
+    // No device takes 65 vertex attributes, so an input at @location(64) is past every limit.
+    const far = new Shader(`
+@vertex fn vs_main(@location(0) position: vec2<f32>, @location(64) extra: f32) -> @builtin(position) vec4<f32> { return vec4<f32>(position * extra, 0.0, 1.0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+`);
+    const reaching = new Mesh();
+    reaching.addVertices([[-1, -1], [3, -1], [-1, 3]].map((corner) => new Vertex(corner).set('extra', 1)));
+    far.addMesh(reaching);
+    let past = null;
+    try { renderer.render(far, target); } catch (e) { past = e; }
+    if (!(past instanceof Error) || past.limit !== 'max_vertex_attributes' || past.value !== 65) {
+      fail(`a vertex input past the attribute limit threw ${past?.message ?? 'nothing'}`);
+    }
+
     renderer.render(shader, target);
     await target.getImage();
 });
