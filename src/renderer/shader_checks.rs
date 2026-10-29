@@ -464,14 +464,14 @@ pub(super) fn refuse_layout(loss: LayoutLoss) -> Refusal {
         other => Refusal::Feature {
             item: "the shader".into(),
             feature: format!(
-                "WGSL that naga can write for the browser: {}",
+                "WGSL that naga can write for the browser ({})",
                 describe(&other)
             ),
         },
     }
 }
 
-/// How a message names `slot`: by its root, and as a lowered uniform for an immediate root.
+/// How a refusal names `slot`: by its root, and as a lowered uniform for an immediate root.
 fn describe_slot(layout: &Layout, slot: &Slot) -> String {
     let (group, binding) = (slot.group, slot.entry.binding);
     match &layout.push {
@@ -480,7 +480,7 @@ fn describe_slot(layout: &Layout, slot: &Slot) -> String {
             bindings,
         }) if *lowered == group && bindings.contains_key(&slot.name) => {
             format!(
-                "immediate root '{}', bound as a uniform at @group({group}) @binding({binding}),",
+                "immediate root '{}' as a uniform at @group({group}) @binding({binding})",
                 slot.name
             )
         }
