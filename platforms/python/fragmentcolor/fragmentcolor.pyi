@@ -4500,8 +4500,8 @@ class Material:
         shaders or storage buffers in fragment shaders, the same source runs with
         `lights` turned into a uniform block that holds as many lights as the device
         allows, and with no grid, so `light_cell` returns `CELL_EVERY`. A shader that
-        calls `arrayLength` on either root can't run there, and its first render
-        returns `ShaderError::TypeMismatch`.
+        calls `arrayLength` on either root can't run there, and `Renderer::render`
+        refuses it with `RendererError::FeatureError` before any GPU work.
 
         ### The older interface
 
