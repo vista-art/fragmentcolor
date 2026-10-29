@@ -29,6 +29,8 @@ pub enum FragmentColorError {
 // Python-specific conversions
 
 #[cfg(python)]
+use crate::renderer::error::Field;
+#[cfg(python)]
 use pyo3::{
     create_exception,
     exceptions::{PyBaseException, PyException},
@@ -91,7 +93,7 @@ create_exception!(
     fragment_color,
     BindingError,
     PyFragmentColorError,
-    "A resource bound to a shader slot that can't take it, with the slot's name, what it takes and what it got."
+    "A texture uniform whose slot can't take its texture, or that was never set, with the uniform's name, what the slot takes and what it got."
 );
 #[cfg(python)]
 create_exception!(
@@ -120,9 +122,8 @@ pub(crate) fn raise<T: pyo3::PyTypeInfo>(
 #[cfg(python)]
 pub(crate) fn raise_fields<T: pyo3::PyTypeInfo>(
     message: String,
-    fields: Vec<(&'static str, crate::renderer::error::Field)>,
+    fields: Vec<(&'static str, Field)>,
 ) -> PyErr {
-    use crate::renderer::error::Field;
     raise::<T>(message, |error| {
         for (name, field) in fields {
             match field {
