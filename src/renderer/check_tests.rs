@@ -735,7 +735,8 @@ fn lowered_immediates_fill_sixteen_bytes() {
 }
 
 // Story: more workgroup memory than the device holds fails before any GPU work,
-// where the browser refused the pipeline after render returned.
+// where the browser refused the pipeline after render returned. An array that an
+// override sizes counts at the override's default, also one computed from another.
 #[test]
 fn workgroup_memory_past_the_device_fails() {
     let max = pollster::block_on(async {
@@ -757,6 +758,25 @@ fn workgroup_memory_past_the_device_fails() {
         &format!(
             "`cs_main` needs max_compute_workgroup_storage_size of at least {}, and the device has {max}",
             count * 16
+        )
+    );
+    let half = max / 32 + 1;
+    let computed = Shader::new(
+        format!(
+            "override half: u32 = {half};
+override count: u32 = half * 2;
+var<workgroup> tile: array<vec4<f32>, count>;
+@compute @workgroup_size(1) fn cs_main() {{ tile[0] = vec4<f32>(1.0); }}"
+        )
+        .as_str(),
+    )
+    .expect("shader");
+    assert_refused!(
+        refuse_alone(&computed).expect("refused"),
+        RendererError::LimitError { .. },
+        &format!(
+            "`cs_main` needs max_compute_workgroup_storage_size of at least {}, and the device has {max}",
+            half * 32
         )
     );
 }
