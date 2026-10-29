@@ -292,7 +292,11 @@ class Renderer:
         target = renderer.create_texture_target([64, 64])
 
         mesh = Mesh()
-        mesh.add_vertex(Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]))
+        mesh.add_vertices([
+            Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
 
         # The material keeps the encoded image as a pending upload.
         material = Material.pbr().base_color_texture(image)
@@ -838,7 +842,9 @@ class Shader:
     def remove_mesh(self, mesh: Mesh) -> None:
         """
         Remove a single Mesh previously attached to this Shader.
-        If the Mesh is attached multiple times, removes the first match.
+        If the Mesh is attached multiple times, removes the first match. Once the
+        shader holds the mesh no more, a vertex or instance added to the mesh may
+        leave out what this shader reads.
 
         Example:
 
@@ -901,7 +907,8 @@ class Shader:
         """
     def clear_meshes(self) -> None:
         """
-        Remove all meshes attached to this Shader.
+        Remove all meshes attached to this Shader. A vertex or instance added to one
+        of them afterwards may leave out what this shader reads.
 
         Example:
 
@@ -1043,9 +1050,11 @@ class Shader:
 
         This inspects the vertex position dimensionality (2D or 3D) and optional properties.
         It generates a minimal vertex shader that consumes `@location(0)` position and a fragment shader that returns a flat color by default.
-        If a `color: vec4<f32>` property exists, it is passed through to the fragment stage and used as output.
+        If a `color: vec4<f32>` property exists, the shader reads it at `@location(1)`, whatever its place among the vertex's properties, and uses it as the output.
 
         This is intended as a fallback and for quick debugging. Canonical usage is the opposite: write your own shader and then build Meshes that match it.
+
+        It returns `Result<Shader, ShaderError>`, like `Shader::new`.
 
         Example:
 
@@ -1068,10 +1077,12 @@ class Shader:
 
         It generates a minimal vertex shader that consumes `@location(0)` position and a fragment shader that returns a flat color by default. If a `color: vec4<f32>` property exists, it is passed through to the fragment stage and used as output.
 
-        ## Empty Mesh Handling
+        ## Errors
 
-        If the Mesh has no vertices, `from_mesh` returns the default shader and logs a warning.
-        The default shader takes no vertex inputs, so it rejects the mesh and the empty mesh is not attached.
+        `from_mesh` returns `Result<Shader, ShaderError>`. A mesh with no vertices returns
+        `ShaderError::InvalidKey`, since there is no first vertex to build from. A mesh the new
+        shader refuses returns the error `Shader::add_mesh` gives, such as a vertex whose position
+        has another dimension than the first one's.
 
         Example:
 
@@ -1502,7 +1513,6 @@ class Pass:
         mesh.add_vertex([0.0, 0.0, 0.0])
         mesh.add_vertex([1.0, 0.0, 0.0])
         mesh.add_vertex([0.0, 1.0, 0.0])
-        mesh.add_vertex([1.0, 1.0, 0.0])
         shader = Shader.from_mesh(mesh)
         rpass = Pass.from_shader("meshes", shader)
 
@@ -1638,7 +1648,9 @@ class Mesh:
     """
     High-level geometry container. A Mesh owns a list of vertices and optional instances.
     Internally it deduplicates vertices and always draws indexed and instanced
-    (instance_count defaults to 1 when none are provided).
+    (instance_count defaults to 1 when none are provided). It draws a triangle list: without
+    `set_indices`, each three vertices make a triangle, and `Renderer.render` returns
+    `MeshError::VertexCount` for a count that isn't a multiple of 3.
 
     The shader decides the vertex layout. When the mesh attaches through
     `Shader::add_mesh` or `Pass::add_mesh`, each `@location` input of the
@@ -1652,7 +1664,10 @@ class Mesh:
     or instance added after the attach holds every attribute the shader reads, or
     `Renderer.render` returns `MeshError::InvalidVertex` or
     `MeshError::InvalidInstance` naming the attribute and the item. An attribute
-    no attached shader reads can be left out, and it uploads as zeros.
+    no attached shader reads can be left out, and it uploads as zeros: a shader
+    that lets go of the mesh, through `Shader.remove_mesh`, `Shader.clear_meshes`
+    or by dropping, takes what it reads along. The types a shader gave the
+    attributes stay for as long as the mesh lives.
 
     A mesh draws with every `Renderer` that renders it. Each one uploads buffers
     of its own from the mesh's vertices, indices and instances.
@@ -1857,9 +1872,8 @@ class Mesh:
 
         The list draws whole triangles of vertices the mesh holds. `Renderer.render`
         returns `MeshError::IndexRange` for an index past the last vertex, and
-        `MeshError::IndexCount` for a count that isn't a multiple of 3, where the GPU
-        read a vertex of zeros or dropped the last indices. The check runs on every
-        render until the indices fit the vertices. An empty list draws nothing.
+        `MeshError::IndexCount` for a count that isn't a multiple of 3. The check runs
+        on every render until the indices fit the vertices. An empty list draws nothing.
 
         Example:
 
@@ -3102,7 +3116,8 @@ class Model:
 
         If you want several Models that share a look, clone the Material before each
         `Model::new`. `Material::clone` shares the handle and copies nothing, so the
-        Models share one pipeline and one bind-group setup. The transform belongs to
+        Models share one bind-group setup, and Models whose meshes lay out their
+        vertices alike share one pipeline. The transform belongs to
         the Model, not to the Material's Shader or the Mesh, so Models can share
         both. Models with the same Material and Mesh draw in one instanced call.
 

@@ -3830,9 +3830,8 @@ public func FfiConverterTypeScene_lower(_ value: Scene) -> UInt64 {
 public protocol ShaderProtocol: AnyObject, Sendable {
     
     /**
-     * Attach a `Mesh` to this shader. The Renderer will draw all attached
-     * meshes in the same pipeline. Validates layout compatibility first;
-     * returns an error and does not attach on mismatch.
+     * Attach a `Mesh` to this shader, or return an error and leave it detached.
+     * Meshes with the same layout share a pipeline, and each other layout gets its own.
      */
     func addMesh(mesh: Mesh) throws 
     
@@ -3982,8 +3981,8 @@ public static func `default`() -> Shader  {
      * `addMesh` call. Mobile shim because uniffi cannot marshal `&Mesh`
      * (shared reference) across the FFI boundary — it requires `Arc<T>`.
      */
-public static func fromMesh(mesh: Mesh) -> Shader  {
-    return try!  FfiConverterTypeShader_lift(try! rustCall() {
+public static func fromMesh(mesh: Mesh)throws  -> Shader  {
+    return try  FfiConverterTypeShader_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_constructor_shader_frommesh(
         FfiConverterTypeMesh_lower(mesh),uniffiCallStatus
@@ -3996,8 +3995,8 @@ public static func fromMesh(mesh: Mesh) -> Shader  {
      * Mobile shim because uniffi cannot marshal `&Vertex` across the FFI
      * boundary — it requires `Arc<T>`.
      */
-public static func fromVertex(vertex: Vertex) -> Shader  {
-    return try!  FfiConverterTypeShader_lift(try! rustCall() {
+public static func fromVertex(vertex: Vertex)throws  -> Shader  {
+    return try  FfiConverterTypeShader_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_constructor_shader_fromvertex(
         FfiConverterTypeVertex_lower(vertex),uniffiCallStatus
@@ -4025,9 +4024,8 @@ public static func useRegistry(baseUrl: String) -> Shader  {
 
     
     /**
-     * Attach a `Mesh` to this shader. The Renderer will draw all attached
-     * meshes in the same pipeline. Validates layout compatibility first;
-     * returns an error and does not attach on mismatch.
+     * Attach a `Mesh` to this shader, or return an error and leave it detached.
+     * Meshes with the same layout share a pipeline, and each other layout gets its own.
      */
 open func addMesh(mesh: Mesh)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
@@ -9566,7 +9564,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_scene_setpasses() != 10864) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_addmesh() != 44921) {
+    if (uniffi_fragmentcolor_checksum_method_shader_addmesh() != 8237) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_shader_clearmeshes() != 28200) {
@@ -9731,10 +9729,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_constructor_shader_default() != 8333) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_shader_frommesh() != 50203) {
+    if (uniffi_fragmentcolor_checksum_constructor_shader_frommesh() != 51780) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_shader_fromvertex() != 21833) {
+    if (uniffi_fragmentcolor_checksum_constructor_shader_fromvertex() != 47937) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_shader_new() != 55745) {
