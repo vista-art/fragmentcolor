@@ -566,7 +566,21 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     named('Mesh.addVertices: vertex 0: position', () => new Mesh().addVertices([[new Int32Array([0, 0, 0]), [0, 0]]]));
     named('Mesh.fromVertices: vertex 0: position',
       () => Mesh.fromVertices([[new Uint8Array([0, 0, 0]), [0, 0], [1, 1, 1, 1]]]));
+    // Parts take 3, 2 and 4 numbers under the float vector rule,
+    // and each error names the call, the vertex and the part.
+    named('Mesh.addVertex: vertex: position', () => new Mesh().addVertex([[0, 0], [0, 0]]));
+    named('Mesh.addVertex: vertex: uv', () => new Mesh().addVertex([[0, 0, 0], [0, 0, 0]]));
+    named('Mesh.addVertices: vertex 0: color', () => new Mesh().addVertices([[[0, 0, 0], [0, 0], [1, 1, 1]]]));
+    named('Mesh.fromVertices: vertex 0: uv', () => Mesh.fromVertices([[[0, 0, 0], {}]]));
+    named('Mesh.addVertex: vertex', () => new Mesh().addVertex([[0, 0, 0], [0, 0], [1, 1, 1, 1], [0]]));
+    named('Mesh.addVertex: vertex: uv: item 0', () => new Mesh().addVertex([[0, 0, 0], [1e39, 0]]));
+    named('Mesh.addVertex: vertex: uv: item 1', () => new Mesh().addVertex([[0, 0, 0], [0, NaN], [1, 1, 1, 1]]));
+    named('Mesh.addVertices: vertex 1: color: item 3',
+      () => new Mesh().addVertices([[0, 0, 0], [[0, 0, 0], [0, 0], [1, 1, 1, Infinity]]]));
+    named('Mesh.fromVertices: vertex 0: uv', () => Mesh.fromVertices([[[0, 0, 0], new Float64Array([0, 0])]]));
+    named('Mesh.addVertex: vertex: color', () => new Mesh().addVertex([[0, 0, 0], [0, 0], new Uint8Array(4)]));
     new Mesh().addVertex([new Float32Array([0, 0, 0]), [0, 1]]);
+    new Mesh().addVertex([[0, 0, 0], new Float32Array([0, 1]), new Float32Array([1, 1, 1, 1])]);
     // A matrix takes the float vector forms too, flat or as four columns.
     const identity = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]];
     named('Model.setTransform', () => model.setTransform(new Float64Array(16)));
