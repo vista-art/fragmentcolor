@@ -629,7 +629,7 @@ impl MeshObject {
 
         // Checked on every upload: the packing above clears the dirty flags, so
         // data that stays too large fails again instead of drawing old buffers.
-        let limit = device.limits().max_buffer_size;
+        let limit = context.limits.max_buffer_size;
         let sizes = [
             ("the mesh's vertex buffer", pv.len() as u64),
             ("the mesh's index buffer", u64::from(index_count) * 4),

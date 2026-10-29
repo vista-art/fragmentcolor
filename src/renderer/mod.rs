@@ -883,7 +883,7 @@ pub(crate) struct RenderContext {
     /// The device's features, limits and downlevel flags, read once,
     /// since each read crosses into JavaScript on the browser's WebGPU.
     features: wgpu::Features,
-    limits: wgpu::Limits,
+    pub(crate) limits: wgpu::Limits,
     downlevel: wgpu::DownlevelFlags,
     /// The adapter's backend, which decides what the GL path can keep.
     backend: wgpu::Backend,
@@ -1262,14 +1262,14 @@ impl RenderContext {
         }
         let blend = *shader.alpha_mode.read() == crate::material::AlphaMode::Blend;
         let shader_ptr = Arc::as_ptr(&shader) as usize;
-        let limits = self.device.limits();
+        let limits = &self.limits;
         let mut layouts: Vec<VertexLayouts> = Vec::new();
         let mut readers = HashMap::with_capacity(meshes.len());
         let mut batched = Vec::with_capacity(meshes.len());
         for mesh in meshes.iter() {
             // Packing the buffers derives the schemas the layouts read.
             let (buffers, counts) = mesh.vertex_buffers(self)?;
-            let read = vertex_buffer_layouts(&shader, mesh, &limits)?;
+            let read = vertex_buffer_layouts(&shader, mesh, limits)?;
             let layout = match layouts.iter().position(|known| *known == read) {
                 Some(index) => index,
                 None => {
@@ -1634,7 +1634,7 @@ impl RenderContext {
             }
         }
 
-        let limit = self.device.limits().max_buffer_size;
+        let limit = self.limits.max_buffer_size;
         for (key, bytes) in opaque_groups.iter() {
             check_limit(
                 "the pass's Model instance buffer",
