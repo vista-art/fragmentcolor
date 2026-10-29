@@ -6,7 +6,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::mesh::{Instance, Mesh, Quad, Vertex, VertexData};
 use crate::platforms::vector;
-use crate::platforms::web::{read_floats, read_numbers, read_rows, read_unsigned, read_vector};
+use crate::platforms::web::{read_floats, read_numbers, read_unsigned, read_vector};
 
 // -----------------------------
 // JS helpers
@@ -39,26 +39,43 @@ fn read_position(value: &JsValue, label: &str) -> Result<Vertex, JsError> {
 
 /// Reads a vertex for the `Mesh` methods: anything `new Vertex` takes, or the
 /// `[position, uv]` and `[position, uv, color]` forms of Rust's `Into<Vertex>`.
-/// The position follows the float vector rule under `label`.
+/// The position follows the float vector rule under `{label}: position` in either form,
+/// and the uv and color read as attribute values, as `Vertex.set` reads them.
 fn read_vertex(value: &JsValue, label: &str) -> Result<Vertex, JsError> {
-    let Some(parts) = read_rows(value).filter(|parts| parts.len() > 1) else {
-        return read_position(value, label);
+    let parts = match value.dyn_ref::<js_sys::Array>() {
+        Some(array) if array.length() > 1 && array.iter().all(|part| part.is_object()) => {
+            array.to_vec()
+        }
+        _ => return read_position(value, label),
     };
-    let floats = |part: &Vec<f64>| part.iter().map(|&n| n as f32).collect::<Vec<f32>>();
-    let position = |part: &Vec<f64>| vector::read_vector::<3>(part.iter().copied(), label);
+    let position = |part: &JsValue| read_vector::<3>(part, &format!("{label}: position"));
+    let attribute = |part: &JsValue, size: usize| {
+        read_numbers(part)
+            .filter(|numbers| numbers.len() == size)
+            .map(|numbers| {
+                numbers
+                    .into_iter()
+                    .map(|number| number as f32)
+                    .collect::<Vec<f32>>()
+            })
+    };
+    let shape = || {
+        JsError::new(
+            "a vertex given in parts is [position, uv] or [position, uv, color], with 3, 2 and 4 numbers",
+        )
+    };
     match parts.as_slice() {
-        [first, uv] if first.len() == 3 && uv.len() == 2 => {
-            let uv = floats(uv);
+        [first, uv] => {
+            let uv = attribute(uv, 2).ok_or_else(shape)?;
             Ok(Vertex::from((position(first)?, [uv[0], uv[1]])))
         }
-        [first, uv, color] if first.len() == 3 && uv.len() == 2 && color.len() == 4 => {
-            let (uv, color) = (floats(uv), floats(color));
+        [first, uv, color] => {
+            let uv = attribute(uv, 2).ok_or_else(shape)?;
+            let color = attribute(color, 4).ok_or_else(shape)?;
             let color = [color[0], color[1], color[2], color[3]];
             Ok(Vertex::from((position(first)?, [uv[0], uv[1]], color)))
         }
-        _ => Err(JsError::new(
-            "a vertex given in parts is [position, uv] or [position, uv, color], with 3, 2 and 4 numbers",
-        )),
+        _ => Err(shape()),
     }
 }
 

@@ -561,6 +561,12 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     named('Mesh.addVertex: vertex', () => new Mesh().addVertex([0, 1e39, 0]));
     named('Mesh.addVertex: vertex', () => new Mesh().addVertex([[0, NaN, 0], [0, 0]]));
     named('Mesh.addVertices: vertex 1', () => new Mesh().addVertices([[0, 0, 0], [-Infinity, 0, 0]]));
+    // A position given in parts is a float vector too, so it takes an array or a Float32Array.
+    named('Mesh.addVertex: vertex: position', () => new Mesh().addVertex([new Float64Array([0, 0, 0]), [0, 0]]));
+    named('Mesh.addVertices: vertex 0: position', () => new Mesh().addVertices([[new Int32Array([0, 0, 0]), [0, 0]]]));
+    named('Mesh.fromVertices: vertex 0: position',
+      () => Mesh.fromVertices([[new Uint8Array([0, 0, 0]), [0, 0], [1, 1, 1, 1]]]));
+    new Mesh().addVertex([new Float32Array([0, 0, 0]), [0, 1]]);
     if (!(new fc.Quad(new Float32Array([0, 0]), [1, 1]) instanceof fc.Quad)) fail('Quad took no Float32Array');
     if (!(new Vertex(0.5) instanceof Vertex)) fail('Vertex took no single number');
     if (!(Light.point([0, 1, 0], new Float32Array([1, 1, 1])) instanceof Light)) fail('Light.point took no Float32Array');
