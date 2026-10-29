@@ -280,8 +280,13 @@ impl RenderContext {
             Ok(info) => info,
             Err(error) => return Ok(Err(refuse_module(&error))),
         };
-        if self.writes_wgsl.load(Ordering::Relaxed) {
-            write_layouts(&module, &info)?;
+        if self.writes_wgsl.load(Ordering::Relaxed)
+            && let Err(error) = write_layouts(&module, &info)
+        {
+            return Ok(Err(Refusal::Feature {
+                item: "a struct that sets its layout with @size or @align".into(),
+                feature: format!("WGSL that keeps that layout on the browser's WebGPU ({error})"),
+            }));
         }
         let constants = naga::back::PipelineConstants::default();
         match naga::back::pipeline_constants::process_overrides(&module, &info, None, &constants) {
