@@ -903,12 +903,13 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
     const renderer = new Renderer();
     const target = await renderer.createTextureTarget([8, 8]);
     const fail = (message) => { throw new Error(message); };
-    // Checks that `run` throws an Error whose message holds `text`.
+    // Checks that `run` throws an Error whose message holds `text`, and returns it.
     const refuses = (label, text, run) => {
       try { run(); } catch (e) {
         if (!(e instanceof Error)) fail(`${label} threw a ${typeof e}, not an Error`);
         if (!text.test(e.message)) fail(`${label} threw: ${e.message}`);
-        return console.log(`${label} threw:`, e.message);
+        console.log(`${label} threw:`, e.message);
+        return e;
       }
       fail(`${label} should throw`);
     };
@@ -922,7 +923,11 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
 @group(0) @binding(0) var image: texture_2d<f32>;
 @group(0) @binding(1) var linear: sampler;
 @fragment fn fs_main() -> @location(0) vec4<f32> { return textureSample(image, linear, vec2<f32>(0.5)); }`);
-    refuses('render with an unset texture', /'image' takes a texture, not none/, () => renderer.render(sampled, target));
+    const unset = refuses('render with an unset texture', /'image' takes a texture, not none/, () => renderer.render(sampled, target));
+    // A typed refusal carries its fields as properties, and the Error keeps its own name.
+    if (unset.uniform !== 'image' || unset.expected !== 'a texture' || unset.found !== 'none, since it was never set' || unset.name !== 'Error') {
+      fail(`an unset texture threw uniform ${unset.uniform}, expected ${unset.expected}, found ${unset.found}, name ${unset.name}`);
+    }
     const depth = await renderer.createDepthTexture([8, 8]);
     sampled.set('image', depth);
     refuses('render with a depth texture in a texture_2d<f32> slot', /'image' takes a texture that samples as Float \{ filterable: true \}, not Depth32Float/,
@@ -955,7 +960,17 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
       }
     }
     const lone = new Shader(`@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }`);
-    refuses('render without a vertex entry point', /no @vertex entry point/, () => renderer.render(lone, target));
+    const entry = refuses('render without a vertex entry point', /no @vertex entry point/, () => renderer.render(lone, target));
+    if (entry.stage !== '@vertex' || entry.name !== 'Error') fail(`a shader without a vertex stage threw stage ${entry.stage}, name ${entry.name}`);
+    const storage = new Shader(`@group(0) @binding(0) var img: texture_storage_2d<bgra8unorm, write>;
+@compute @workgroup_size(1) fn cs_main() { textureStore(img, vec2<i32>(0), vec4<f32>(1.0)); }`);
+    // WebGL2 runs no compute shaders, which the same error reports first.
+    const feature = refuses('render with a storage format the device lacks',
+      /'img' at @group\(0\) @binding\(0\) needs WriteOnly storage access to Bgra8Unorm|needs COMPUTE_SHADERS/,
+      () => renderer.render(storage, target));
+    if (feature.message !== `${feature.item} needs ${feature.feature}, which the device lacks` || feature.name !== 'Error') {
+      fail(`a storage format the device lacks threw item ${feature.item}, feature ${feature.feature}, name ${feature.name}`);
+    }
     const wide = new Shader(`@compute @workgroup_size(4096) fn cs_main() {}`);
     refuses('dispatch of a workgroup past the device', /max_compute_workgroup_size_x|needs COMPUTE_SHADERS/,
       () => renderer.render(wide, target));
