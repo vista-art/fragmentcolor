@@ -1015,17 +1015,18 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) color: vec4<f32> }
 });
 
 // One Material map draws with every Renderer that awaits load, each from a copy of its own.
-// A set right after a load starts wins, a custom slot asks for load before it, and
-// a freed Renderer leaves the others drawing.
+// A set made before a load runs wins. Before load, a map draws its PBR default where the
+// default fits the slot and throws, asking for load, where it doesn't. A freed Renderer
+// leaves the others drawing.
 await withModule('platforms.web.healthcheck.material_maps', async () => {
     const fail = (message) => { throw new Error(message); };
-    const mapped = () => Material.custom(new Shader(`
-@group(0) @binding(0) var base_color_map: texture_2d<f32>;
+    const mapped = (texel, value) => Material.custom(new Shader(`
+@group(0) @binding(0) var base_color_map: texture_2d<${texel}>;
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
   return vec4<f32>(p[i], 0.0, 1.0);
 }
-@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(base_color_map, vec2<i32>(0), 0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { let t = textureLoad(base_color_map, vec2<i32>(0), 0); return ${value}; }
 `));
     const open = async () => {
       const renderer = new Renderer();
@@ -1038,7 +1039,7 @@ await withModule('platforms.web.healthcheck.material_maps', async () => {
     const red = [255, 0, 0, 255];
     const blue = [0, 0, 255, 255];
 
-    const material = mapped().baseColorTexture(new Uint8Array(red), [1, 1]);
+    const material = mapped('f32', 't').baseColorTexture(new Uint8Array(red), [1, 1]);
     const shader = material.shader();
     const [first, firstTarget] = await open();
     const [second, secondTarget] = await open();
@@ -1049,21 +1050,36 @@ await withModule('platforms.web.healthcheck.material_maps', async () => {
     await reads('the first Renderer', firstTarget, red);
     await reads('the second Renderer', secondTarget, red);
 
+    // `load` starts on a later microtask, so this set lands before the load collects its maps.
+    // The crate tests cover a set that lands during an upload.
     const loading = first.load(shader);
     material.baseColorTexture(new Uint8Array(blue), [1, 1]);
     await loading;
     await second.load(shader);
     first.render(shader, firstTarget);
     second.render(shader, secondTarget);
-    await reads('the first Renderer after a set during its load', firstTarget, blue);
+    await reads('the first Renderer after a set before its load ran', firstTarget, blue);
     await reads('the second Renderer after the set', secondTarget, blue);
 
     const [third, thirdTarget] = await open();
+    third.render(shader, thirdTarget);
+    await reads('a Renderer that has not loaded the map', thirdTarget, [255, 255, 255, 255]);
+    await third.load(shader);
+    third.render(shader, thirdTarget);
+    await reads('that Renderer after load', thirdTarget, blue);
+
+    // The 1x1 default can't fill an integer slot, so before load the render throws.
+    const integer = mapped('u32', 'vec4<f32>(t) / 255.0').baseColorTexture(
+      new Uint8Array(new Uint32Array(red).buffer),
+      { size: [1, 1], format: TextureFormat.Rgba32Uint, mipmaps: false });
     let early = null;
-    try { third.render(shader, thirdTarget); } catch (e) { early = e; }
+    try { third.render(integer.shader(), thirdTarget); } catch (e) { early = e; }
     if (!(early instanceof Error) || !early.message.includes('load')) {
-      fail(`a custom map before load threw ${early?.message ?? 'nothing'}`);
+      fail(`an integer map before load threw ${early?.message ?? 'nothing'}`);
     }
+    await third.load(integer.shader());
+    third.render(integer.shader(), thirdTarget);
+    await reads('an integer map after load', thirdTarget, red);
 
     first.free();
     firstTarget.free();

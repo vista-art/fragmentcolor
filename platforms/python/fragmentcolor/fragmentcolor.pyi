@@ -279,9 +279,15 @@ class Renderer:
         frame goes out.
 
         On the web, `render` can't wait for an upload and uploads nothing. Await
-        `load` in each `Renderer` before its first `render`. Until then, a PBR
-        Material draws with its 1×1 default maps, and a custom shader's map slot
-        fails the render with a `BindingError` that asks for `load`.
+        `load` in each `Renderer` before its first `render`. Until then, each map
+        draws its 1×1 PBR default wherever that default fits the slot, in the
+        built-in shader or a custom one. A slot it doesn't fit, such as an integer
+        texture, and a map in a compute shader fail the render with a
+        `BindingError` that asks for `load`.
+
+        On native, a map that another thread sets while `render` runs, on a slot
+        this `Renderer` holds no copy for, draws the same way for that one frame,
+        and the next `render` uploads it.
 
         In JavaScript, `load` first waits for the frames rendered before it to
         report their GPU errors, and throws the first one, as
@@ -5112,9 +5118,11 @@ class Material:
         other maps upload.
 
         On the web, `render` uploads nothing, so await `load` in each `Renderer`
-        before its first frame. Until then a built-in PBR slot draws its 1×1 default,
-        and a custom shader's slot fails the render with a `BindingError` that asks
-        for `load`.
+        before its first frame. Until then the slot draws its 1×1 default, in a custom
+        shader too, where the default fits the slot. Otherwise, as for an integer
+        texture or a compute shader, the render fails with a `BindingError` that asks
+        for `load`. On native, only a map set on another thread during a `render`
+        meets this, for that frame.
 
         For deterministic error handling, pre-build the texture eagerly:
         `renderer.create_texture(path).await?` returns a `Texture` that can't

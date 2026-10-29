@@ -571,9 +571,11 @@ again at each later call, until the source is fixed or replaced, while the
 other maps upload.
 
 On the web, `render` uploads nothing, so await `load` in each `Renderer`
-before its first frame. Until then a built-in PBR slot draws its 1×1 default,
-and a custom shader's slot fails the render with a `BindingError` that asks
-for `load`.
+before its first frame. Until then the slot draws its 1×1 default, in a custom
+shader too, where the default fits the slot. Otherwise, as for an integer
+texture or a compute shader, the render fails with a `BindingError` that asks
+for `load`. On native, only a map set on another thread during a `render`
+meets this, for that frame.
 
 For deterministic error handling, pre-build the texture eagerly:
 `renderer.create_texture(path).await?` returns a `Texture` that can't
