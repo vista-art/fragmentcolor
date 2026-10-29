@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
@@ -29,7 +30,8 @@ pub(crate) mod builtins;
 
 mod platform;
 
-use crate::renderer::{RenderContext, RendererError, check_limit};
+use crate::renderer::{RenderContext, RendererError, VertexLayouts, check_limit};
+use crate::shader::ShaderHash;
 use crate::{PassObject, Renderable, Shader, ShaderError};
 
 #[derive(Clone, Debug)]
@@ -239,11 +241,25 @@ pub(crate) struct MeshObject {
     aabb_max: RwLock<glam::Vec3>,
 
     /// GPU buffers on the device that drew the mesh last, created lazily.
+    /// An upload holds this lock from the pack to the cache it fills.
     gpu: RwLock<Option<GpuStreams>>,
 
-    /// The last `vertex_buffers` result, for the device `gpu` lives on.
-    gpu_cache: RwLock<Option<(VertexBuffers, DrawCounts)>>,
-    cache_valid: RwLock<bool>,
+    /// The last `vertex_buffers` result, with the context it belongs to.
+    cache: RwLock<Option<Cached>>,
+    /// Counts the changes to the mesh. A cached result or layout from an older one is stale.
+    generation: AtomicU64,
+    /// The vertex layouts each shader source reads from the mesh, with the generation they came from.
+    layouts: RwLock<HashMap<ShaderHash, (u64, VertexLayouts)>>,
+}
+
+/// A `vertex_buffers` result and the context whose device holds its buffers, in one value,
+/// so a result never reaches another context. `generation` is the mesh's when the upload began.
+#[derive(Debug)]
+struct Cached {
+    owner: u64,
+    generation: u64,
+    buffers: VertexBuffers,
+    counts: DrawCounts,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -336,8 +352,9 @@ impl MeshObject {
             aabb_min: RwLock::new(glam::Vec3::splat(f32::INFINITY)),
             aabb_max: RwLock::new(glam::Vec3::splat(f32::NEG_INFINITY)),
             gpu: RwLock::new(None),
-            gpu_cache: RwLock::new(None),
-            cache_valid: RwLock::new(false),
+            cache: RwLock::new(None),
+            generation: AtomicU64::new(0),
+            layouts: RwLock::new(HashMap::new()),
         }
     }
 
@@ -406,9 +423,29 @@ impl MeshObject {
         self.invalidate_cache();
     }
 
+    /// Marks every cached result and layout stale. It takes no lock, so a
+    /// mutator may call it whatever it holds.
     pub(crate) fn invalidate_cache(&self) {
-        *self.cache_valid.write() = false;
-        *self.gpu_cache.write() = None;
+        self.generation.fetch_add(1, Ordering::AcqRel);
+    }
+
+    /// The layouts `build` makes for the shader source `shader`, kept until the mesh changes.
+    pub(crate) fn fetch_layouts(
+        &self,
+        shader: ShaderHash,
+        build: impl FnOnce() -> Result<VertexLayouts, RendererError>,
+    ) -> Result<VertexLayouts, RendererError> {
+        let generation = self.generation.load(Ordering::Acquire);
+        if let Some((kept, layouts)) = self.layouts.read().get(&shader)
+            && *kept == generation
+        {
+            return Ok(layouts.clone());
+        }
+        let layouts = build()?;
+        self.layouts
+            .write()
+            .insert(shader, (generation, layouts.clone()));
+        Ok(layouts)
     }
 
     /// Declare the per-Model instance vertex schema (four `vec4<f32>` columns
@@ -585,34 +622,62 @@ impl MeshObject {
         &self,
         context: &RenderContext,
     ) -> Result<(VertexBuffers, DrawCounts), RendererError> {
-        let owned = self
-            .gpu
-            .read()
-            .as_ref()
-            .is_some_and(|gpu| gpu.owner == context.id);
-        if owned
-            && *self.cache_valid.read()
-            && let Some(cached) = self.gpu_cache.read().as_ref()
-        {
-            return Ok(cached.clone());
+        let generation = self.generation.load(Ordering::Acquire);
+        if let Some(found) = self.find_cached(context.id, generation) {
+            return Ok(found);
         }
-
-        let result = self.upload_vertex_buffers(context)?;
-
-        *self.gpu_cache.write() = Some(result.clone());
-        *self.cache_valid.write() = true;
-
-        Ok(result)
+        // One upload at a time, and the result it caches names the context it uploaded for.
+        let mut gpu = self.gpu.write();
+        if let Some(found) = self.find_cached(context.id, generation) {
+            return Ok(found);
+        }
+        let (buffers, counts) = self.upload_vertex_buffers(context, &mut gpu)?;
+        *self.cache.write() = Some(Cached {
+            owner: context.id,
+            generation,
+            buffers: buffers.clone(),
+            counts,
+        });
+        Ok((buffers, counts))
     }
 
+    /// The cached result for the context `owner`, unless the mesh changed since `generation`.
+    fn find_cached(&self, owner: u64, generation: u64) -> Option<(VertexBuffers, DrawCounts)> {
+        let cache = self.cache.read();
+        let cached = cache.as_ref()?;
+        let current = cached.owner == owner && cached.generation == generation;
+        current.then(|| (cached.buffers.clone(), cached.counts))
+    }
+
+    /// Packs and uploads the mesh into `gpu`. An upload that fails leaves each stream
+    /// it would have written dirty, so the next one packs and writes it again.
     fn upload_vertex_buffers(
         &self,
         context: &RenderContext,
+        gpu: &mut Option<GpuStreams>,
     ) -> Result<(VertexBuffers, DrawCounts), RendererError> {
-        let (device, queue) = (&context.device, &context.queue);
-        // Capture dirty flags before packing; ensure_packed() clears them
         let was_dirty_v = *self.dirty_vertices.read();
         let was_dirty_i = *self.dirty_instances.read();
+        let uploaded = self.write_buffers(context, gpu, was_dirty_v, was_dirty_i);
+        if uploaded.is_err() {
+            if was_dirty_v {
+                *self.dirty_vertices.write() = true;
+            }
+            if was_dirty_i {
+                *self.dirty_instances.write() = true;
+            }
+        }
+        uploaded
+    }
+
+    fn write_buffers(
+        &self,
+        context: &RenderContext,
+        gpu: &mut Option<GpuStreams>,
+        was_dirty_v: bool,
+        was_dirty_i: bool,
+    ) -> Result<(VertexBuffers, DrawCounts), RendererError> {
+        let (device, queue) = (&context.device, &context.queue);
 
         self.ensure_packed()?;
         let pv = self.packed_verts.read();
@@ -627,8 +692,8 @@ impl MeshObject {
         };
         let index_count = count(idx.len())?;
 
-        // Checked on every upload: the packing above clears the dirty flags, so
-        // data that stays too large fails again instead of drawing old buffers.
+        // Checked on every upload: a failed one leaves the streams dirty,
+        // so data that stays too large fails again instead of drawing old buffers.
         let limit = context.limits.max_buffer_size;
         let sizes = [
             ("the mesh's vertex buffer", pv.len() as u64),
@@ -638,9 +703,6 @@ impl MeshObject {
         for (buffer, size) in sizes {
             check_limit(buffer, "max_buffer_size", size, limit)?;
         }
-
-        // Create or grow buffers
-        let mut gpu = self.gpu.write();
 
         // Decide whether we need to recreate GPU buffers. Buffers on
         // another device can't draw here, so they give way to new ones.
@@ -1094,6 +1156,65 @@ mod tests {
         });
     }
 
+    // Story: the mesh builds a shader's layouts once and keeps them until it changes.
+    #[test]
+    fn layouts_stay_until_the_mesh_changes() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let shader = crate::Shader::new(
+                "@vertex fn vs_main(@location(0) p: vec2<f32>) -> @builtin(position) vec4<f32> { return vec4<f32>(p, 0.0, 1.0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+            )
+            .expect("shader");
+            let mesh = Mesh::new();
+            mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
+            shader.add_mesh(&mesh).expect("attach");
+            renderer.render(&shader, &target).expect("render");
+            let hash = shader.object.hash;
+            let refuse = || Err(RendererError::Error("rebuilt".into()));
+
+            let kept = mesh.object.fetch_layouts(hash, refuse);
+            mesh.add_vertices([[0.0, 0.0], [0.1, 0.0], [0.0, 0.1]]);
+            let changed = mesh.object.fetch_layouts(hash, refuse);
+
+            assert!(kept.is_ok(), "a still mesh keeps its layouts: {kept:?}");
+            assert!(changed.is_err(), "a changed mesh builds them again");
+        });
+    }
+
+    // Story: the cached upload names the context it belongs to, so after two
+    // contexts take turns, the cache and the buffers belong to the last one.
+    #[test]
+    fn the_cache_belongs_to_the_context_that_filled_it() {
+        pollster::block_on(async move {
+            let mut contexts = Vec::new();
+            for _ in 0..2 {
+                let instance = crate::renderer::platform::all::create_instance().await;
+                let adapter = crate::renderer::platform::all::request_adapter(&instance, None)
+                    .await
+                    .expect("adapter");
+                let (device, queue) = crate::renderer::platform::all::request_device(&adapter)
+                    .await
+                    .expect("device");
+                contexts.push(RenderContext::new(device, queue));
+            }
+            let mesh = Mesh::new();
+            mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
+
+            for context in [&contexts[0], &contexts[1], &contexts[0], &contexts[1]] {
+                mesh.object.vertex_buffers(context).expect("buffers");
+                let cache = mesh.object.cache.read();
+                let gpu = mesh.object.gpu.read();
+                assert_eq!(cache.as_ref().map(|cached| cached.owner), Some(context.id));
+                assert_eq!(gpu.as_ref().map(|streams| streams.owner), Some(context.id));
+            }
+        });
+    }
+
     // Story: a plain number packs as a float until a shader types it, then
     // the mesh repacks it in that type and keeps it for the mesh's lifetime.
     #[test]
@@ -1187,12 +1308,16 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
                 .expect("device");
             let context = RenderContext::new(device, queue);
             mesh.object.vertex_buffers(&context).expect("buffers");
-            assert!(*mesh.object.cache_valid.read());
+            let cached = |mesh: &Mesh| {
+                let generation = mesh.object.generation.load(Ordering::Acquire);
+                mesh.object.find_cached(context.id, generation).is_some()
+            };
+            assert!(cached(&mesh));
 
             let second = crate::Shader::new(wgsl).expect("shader");
             second.add_mesh(&mesh).expect("second attach");
             first.validate_mesh(&mesh).expect("validate again");
-            assert!(*mesh.object.cache_valid.read());
+            assert!(cached(&mesh));
             assert!(!*mesh.object.dirty_vertices.read());
         });
     }
