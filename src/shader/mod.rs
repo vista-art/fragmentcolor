@@ -1,6 +1,6 @@
 pub mod error;
 use crate::renderer::platform::all::CANDIDATES;
-use crate::texture::{Registration, TextureId};
+use crate::texture::{Registration, TextureId, TextureMeta};
 use crate::{PassObject, Renderable};
 use dashmap::DashMap;
 pub use error::ShaderError;
@@ -278,8 +278,8 @@ impl ShaderObject {
         Self::wgsl(source)
     }
 
-    /// Set a uniform value.
-    /// Non-blocking: applies immediately when storage is available, otherwise enqueues a last-wins update.
+    /// Sets a uniform value, now when the storage is free, or queued, last write wins.
+    /// It never waits for a draw. A texture waits while the shader binds another texture.
     pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
         let val: UniformData = value.into();
         if self.routes_ambient(key) {
@@ -313,7 +313,8 @@ impl ShaderObject {
     }
 
     /// Sets a uniform from a loose value, shaped to the key's declared WGSL type.
-    /// Never blocks: when the storage is busy the update is queued, already shaped
+    /// A texture waits on `texture_writes` while the shader binds another texture.
+    /// Nothing else waits for the storage: when it's busy the update is queued, shaped
     /// when a read lock is free, so a type error still surfaces here in the common case.
     pub(crate) fn set_input(&self, key: &str, input: UniformInput) -> Result<(), ShaderError> {
         if self.routes_ambient(key) {
@@ -612,8 +613,6 @@ impl ShaderObject {
         key: impl Into<String>,
         input: crate::TextureInput,
     ) -> Result<(), ShaderError> {
-        use crate::shader::UniformData;
-        use crate::texture::TextureMeta;
         let key = key.into();
         // The latest setter call wins, so an upload queued before can't overwrite it.
         self.pending_textures
@@ -651,7 +650,7 @@ impl ShaderObject {
         if !self.is_latest(entry) {
             return Ok(false);
         }
-        let meta = crate::texture::TextureMeta::with_id_only(id);
+        let meta = TextureMeta::with_id_only(id);
         self.write_value(&entry.key, UniformData::Texture(meta))?;
         Ok(true)
     }
@@ -760,30 +759,37 @@ impl ShaderObject {
         Ok(())
     }
 
-    /// Apply any queued updates if we can acquire the write lock;
-    /// otherwise leave them queued for later. Best-effort: callers
-    /// that need a guaranteed flush re-call until `pending.is_empty()`.
+    /// Applies the queued updates when the storage is free, or leaves them queued.
+    ///
+    /// Each update leaves the queue before it applies, so a set that lands during
+    /// the flush stays queued for the next one. The flush holds `texture_writes`, so a
+    /// texture setter waits for it, and an upload's stamp check and write never interleave
+    /// with it. A caller that needs every update applied calls it until `pending` is empty.
     pub(crate) fn flush_pending(&self) {
         if self.pending.is_empty() {
             return;
         }
-        if let Some(mut storage) = self.storage.try_write() {
-            let updates: Vec<(String, PendingUpdate)> = self
-                .pending
-                .iter()
-                .map(|e| (e.key().clone(), e.value().clone()))
-                .collect();
-            for (k, update) in updates.into_iter() {
-                let value = match update {
-                    PendingUpdate::Value(value) => Ok(value),
-                    PendingUpdate::Input(input) => {
-                        storage.shape(&k).and_then(|slot| input.resolve(&k, slot))
-                    }
-                };
-                if let Err(e) = value.and_then(|value| storage.update(&k, &value)) {
-                    log::warn!("flush_pending: dropping update for '{}': {}", k, e);
-                }
-                self.pending.remove(&k);
+        let Some(mut storage) = self.storage.try_write() else {
+            return;
+        };
+        let _writing = self.texture_writes.lock();
+        let keys: Vec<String> = self
+            .pending
+            .iter()
+            .map(|entry| entry.key().clone())
+            .collect();
+        for key in keys {
+            let Some((key, update)) = self.pending.remove(&key) else {
+                continue;
+            };
+            let value = match update {
+                PendingUpdate::Value(value) => Ok(value),
+                PendingUpdate::Input(input) => storage
+                    .shape(&key)
+                    .and_then(|slot| input.resolve(&key, slot)),
+            };
+            if let Err(error) = value.and_then(|value| storage.update(&key, &value)) {
+                log::warn!("flush_pending: dropping update for '{key}': {error}");
             }
         }
     }
@@ -2523,7 +2529,7 @@ struct VertexIn { @location(0) position: vec2<f32>, @location(1) uv: vec2<f32> }
     }
 
     /// A shader with one texture uniform, `image`.
-    fn image_shader() -> Shader {
+    fn build_shader() -> Shader {
         Shader::new(
             r#"
 @group(0) @binding(0) var image: texture_2d<f32>;
@@ -2535,7 +2541,7 @@ struct VertexIn { @location(0) position: vec2<f32>, @location(1) uv: vec2<f32> }
     }
 
     /// The texture id `image` holds.
-    fn image_id(object: &ShaderObject) -> u64 {
+    fn read_image(object: &ShaderObject) -> u64 {
         match object.get_uniform("image").map(|uniform| uniform.data) {
             Ok(UniformData::Texture(meta)) => meta.id.id,
             other => panic!("image holds no texture: {other:?}"),
@@ -2546,7 +2552,7 @@ struct VertexIn { @location(0) position: vec2<f32>, @location(1) uv: vec2<f32> }
     // and leaves a texture a later setter call bound.
     #[test]
     fn an_upload_binds_only_while_latest() {
-        let shader = image_shader();
+        let shader = build_shader();
         let object = &shader.object;
         let lazy = || crate::TextureInput::from("tests/assets/missing.png");
 
@@ -2558,7 +2564,7 @@ struct VertexIn { @location(0) position: vec2<f32>, @location(1) uv: vec2<f32> }
             .set_latest(&first, TextureId { id: 5 })
             .expect("binds");
         assert!(bound);
-        assert_eq!(image_id(object), 5);
+        assert_eq!(read_image(object), 5);
 
         object
             .queue_or_set_texture("image", lazy())
@@ -2571,7 +2577,11 @@ struct VertexIn { @location(0) position: vec2<f32>, @location(1) uv: vec2<f32> }
             .set_latest(&second, TextureId { id: 6 })
             .expect("skips");
         assert!(!bound);
-        assert_eq!(image_id(object), 9, "the older upload overwrote the setter");
+        assert_eq!(
+            read_image(object),
+            9,
+            "the older upload overwrote the setter"
+        );
     }
 
     // Story: every texture write and stamp waits for `texture_writes`, which an upload
@@ -2579,7 +2589,7 @@ struct VertexIn { @location(0) position: vec2<f32>, @location(1) uv: vec2<f32> }
     #[test]
     fn texture_writes_wait_for_an_upload() {
         use std::sync::atomic::AtomicUsize;
-        let shader = image_shader();
+        let shader = build_shader();
         let object = &shader.object;
         let done = AtomicUsize::new(0);
         let count = |result: Result<(), ShaderError>| {
@@ -2588,7 +2598,7 @@ struct VertexIn { @location(0) position: vec2<f32>, @location(1) uv: vec2<f32> }
         };
         std::thread::scope(|scope| {
             let held = object.texture_writes.lock();
-            let meta = crate::texture::TextureMeta::with_id_only(TextureId { id: 7 });
+            let meta = TextureMeta::with_id_only(TextureId { id: 7 });
             let writers = [
                 scope.spawn(|| count(object.set("image", UniformData::Texture(meta)))),
                 scope.spawn(|| {
@@ -2612,6 +2622,42 @@ struct VertexIn { @location(0) position: vec2<f32>, @location(1) uv: vec2<f32> }
             }
         });
         assert_eq!(done.load(Ordering::SeqCst), 3);
+    }
+
+    // Story: a flush holds `texture_writes` while it applies the queue, so a texture
+    // setter can't slip a newer value into the queue between its read and its removal.
+    #[test]
+    fn a_flush_waits_for_texture_writes() {
+        use std::sync::atomic::AtomicBool;
+        let shader = build_shader();
+        let object = &shader.object;
+        {
+            let _busy = object.storage.read();
+            let id = UniformInput::Texture(TextureId { id: 5 });
+            object.set_input("image", id).expect("queues");
+        }
+        assert!(!object.pending.is_empty(), "the set was applied at once");
+        let done = AtomicBool::new(false);
+        std::thread::scope(|scope| {
+            let held = object.texture_writes.lock();
+            let flush = scope.spawn(|| {
+                object.flush_pending();
+                done.store(true, Ordering::SeqCst);
+            });
+            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(200);
+            while std::time::Instant::now() < deadline {
+                let flushed = done.load(Ordering::SeqCst);
+                assert!(!flushed, "the flush didn't wait for texture_writes");
+                std::thread::yield_now();
+            }
+            drop(held);
+            flush.join().expect("the flush");
+        });
+        assert!(
+            object.pending.is_empty(),
+            "the flush left the update queued"
+        );
+        assert_eq!(read_image(object), 5);
     }
 
     // Story: two globals on one slot fail at Shader::new, used by different entry points or not used at all.
