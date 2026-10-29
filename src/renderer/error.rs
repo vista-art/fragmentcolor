@@ -83,9 +83,9 @@ pub enum RendererError {
     #[error("{item} needs {feature}, which the device lacks")]
     FeatureError { item: String, feature: String },
     /// A resource bound to a shader slot that can't take it, or a slot with nothing bound.
-    #[error("'{name}' takes {expected}, not {found}")]
+    #[error("'{uniform}' takes {expected}, not {found}")]
     BindingError {
-        name: String,
+        uniform: String,
         expected: String,
         found: String,
     },
@@ -166,11 +166,11 @@ impl From<RendererError> for pyo3::PyErr {
                 })
             }
             RendererError::BindingError {
-                name,
+                uniform,
                 expected,
                 found,
             } => crate::error::raise::<crate::error::BindingError>(message, |error| {
-                error.setattr("name", name)?;
+                error.setattr("uniform", uniform)?;
                 error.setattr("expected", expected)?;
                 error.setattr("found", found)
             }),
@@ -245,13 +245,13 @@ impl RendererError {
                 &[("item", item.into()), ("feature", feature.into())],
             ),
             RendererError::BindingError {
-                name,
+                uniform,
                 expected,
                 found,
             } => throw_fields(
                 &message,
                 &[
-                    ("name", name.into()),
+                    ("uniform", uniform.into()),
                     ("expected", expected.into()),
                     ("found", found.into()),
                 ],

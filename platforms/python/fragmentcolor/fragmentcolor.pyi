@@ -85,7 +85,7 @@ class FeatureError(FragmentColorError):
     feature: str
 
 class BindingError(FragmentColorError):
-    name: str
+    uniform: str
     expected: str
     found: str
 

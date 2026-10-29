@@ -355,7 +355,7 @@ def check_shader_refusals(renderer):
     try:
         renderer.render(unset, target)
     except BindingError as e:
-        assert e.name == "source", f"name {e.name}"
+        assert e.uniform == "source", f"uniform {e.uniform}"
         assert e.expected == "a texture", f"expected {e.expected}"
         print(f"an unset texture raised BindingError: {e}")
     else:

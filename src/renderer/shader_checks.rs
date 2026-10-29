@@ -595,7 +595,7 @@ pub(super) fn check_texture(
     features: wgpu::Features,
 ) -> Result<(), RendererError> {
     let wrong = |expected: String, found: String| RendererError::BindingError {
-        name: name.to_string(),
+        uniform: name.to_string(),
         expected,
         found,
     };
@@ -684,7 +684,7 @@ fn check_view(
         _ => format!("a {slot:?} texture"),
     };
     Err(RendererError::BindingError {
-        name: name.to_string(),
+        uniform: name.to_string(),
         expected,
         found: format!("a {view:?} texture"),
     })
