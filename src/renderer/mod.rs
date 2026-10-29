@@ -1312,9 +1312,18 @@ impl RenderContext {
             if model && mesh.awaits_models() && !drawn.contains(&(shader_ptr, mesh_ptr)) {
                 continue;
             }
-            // Packing the buffers derives the schemas the layouts read.
-            let (buffers, counts) = mesh.vertex_buffers(self)?;
-            let read = mesh.fetch_layouts(shader.id, || vertex_buffer_layouts(&shader, mesh))?;
+            // The layouts follow the schemas of the pack the buffers came from.
+            let crate::mesh::Upload {
+                buffers,
+                counts,
+                schemas,
+                generation,
+            } = mesh.upload(self)?;
+            #[cfg(test)]
+            crate::hooks::run("uploaded");
+            let read = mesh.fetch_layouts(shader.id, generation, || {
+                vertex_buffer_layouts(&shader, mesh, &schemas)
+            })?;
             check_strides(&read, limits)?;
             let layout = match layouts.iter().position(|known| *known == read) {
                 Some(index) => index,
@@ -2603,25 +2612,25 @@ fn require_mesh(shader: &ShaderObject) -> Result<(), ShaderError> {
     )))
 }
 
-/// The vertex layouts `shader` reads from `mesh`. The mesh keeps them until it changes
-/// (`MeshObject::fetch_layouts`), and `check_strides` checks them against each device.
+/// The vertex layouts `shader` reads from `mesh`.
+/// Its buffers follow `schemas`, and it keeps the layouts until it changes
+/// (`MeshObject::fetch_layouts`). `check_strides` checks them against each device.
 fn vertex_buffer_layouts(
     shader: &crate::ShaderObject,
     mesh: &crate::mesh::MeshObject,
+    schemas: &crate::mesh::Schemas,
 ) -> Result<VertexLayouts, RendererError> {
     let vertex_inputs = shader.reflect_vertex_inputs()?;
 
-    // Read schemas
-    let Some(vertex_schema) = mesh.vertex_schema.read().clone() else {
+    let Some(vertex_schema) = schemas.vertex.as_ref() else {
         return Err(RendererError::Error(
             "Mesh attribute mapping failed: no vertex schema".into(),
         ));
     };
-    let instance_schema = mesh.instance_schema.read().clone();
 
     // Precompute name -> (offset, fmt) for both streams
-    let (vertex_map, vertex_stride) = schema_offsets(&vertex_schema);
-    let (instance_map, instance_stride) = if let Some(ref schema) = instance_schema {
+    let (vertex_map, vertex_stride) = schema_offsets(vertex_schema);
+    let (instance_map, instance_stride) = if let Some(schema) = schemas.instance.as_ref() {
         let (map, stride) = schema_offsets(schema);
         (Some(map), Some(stride))
     } else {

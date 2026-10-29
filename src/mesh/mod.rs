@@ -249,7 +249,7 @@ pub(crate) struct MeshObject {
     /// An upload holds this lock from the pack to the cache it fills.
     gpu: RwLock<Option<GpuStreams>>,
 
-    /// The last `vertex_buffers` result, with the context it belongs to.
+    /// The last upload, with the context it belongs to.
     cache: RwLock<Option<Cached>>,
     /// Counts the changes to the mesh. A cached result or layout from an older one is stale.
     generation: AtomicU64,
@@ -265,9 +265,18 @@ struct Packed {
     indices: Vec<u32>,
     /// The instances `insts` holds, those without properties included.
     rows: usize,
+    /// The layouts `verts` and `insts` follow.
+    schemas: Arc<Schemas>,
     /// The `vertex_changes` and `instance_changes` the bytes come from, `None` until packed.
     vertices_at: Option<u64>,
     instances_at: Option<u64>,
+}
+
+/// The vertex and instance layouts the bytes of one pack follow.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Schemas {
+    pub(crate) vertex: Option<VertexSchema>,
+    pub(crate) instance: Option<VertexSchema>,
 }
 
 impl Packed {
@@ -297,14 +306,22 @@ struct Attached {
     layouts: Option<(u64, VertexLayouts)>,
 }
 
-/// A `vertex_buffers` result and the context whose device holds its buffers, in one value,
-/// so a result never reaches another context. `generation` is the mesh's when the upload began.
+/// An upload and the context whose device holds its buffers,
+/// in one value, so an upload never reaches another context.
 #[derive(Debug)]
 struct Cached {
     owner: u64,
-    generation: u64,
-    buffers: VertexBuffers,
-    counts: DrawCounts,
+    upload: Upload,
+}
+
+/// The buffers an upload wrote, the counts that draw them and the layouts their
+/// bytes follow, all from one pack, with the mesh's generation when the upload began.
+#[derive(Clone, Debug)]
+pub(crate) struct Upload {
+    pub(crate) buffers: VertexBuffers,
+    pub(crate) counts: DrawCounts,
+    pub(crate) schemas: Arc<Schemas>,
+    pub(crate) generation: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -498,14 +515,15 @@ impl MeshObject {
         self.generation.load(Ordering::Acquire)
     }
 
-    /// The layouts `build` makes for the attached shader `shader`, kept until the mesh
-    /// changes or the shader lets the mesh go. A shader that doesn't hold the mesh keeps none.
+    /// The layouts `build` makes for the attached shader `shader` from the upload at
+    /// `generation`, kept until the mesh changes or the shader lets the mesh go.
+    /// A shader that doesn't hold the mesh keeps none.
     pub(crate) fn fetch_layouts(
         &self,
         shader: u64,
+        generation: u64,
         build: impl FnOnce() -> Result<VertexLayouts, RendererError>,
     ) -> Result<VertexLayouts, RendererError> {
-        let generation = self.generation();
         if let Some(attached) = self.required.read().get(&shader)
             && let Some((kept, layouts)) = attached.layouts.as_ref()
             && *kept == generation
@@ -719,6 +737,7 @@ impl MeshObject {
         };
         packed.verts = bytes;
         packed.indices = indices;
+        Arc::make_mut(&mut packed.schemas).vertex = schema.clone();
         Ok(())
     }
 
@@ -746,17 +765,24 @@ impl MeshObject {
         }
         packed.insts = bytes;
         packed.rows = insts.len();
+        Arc::make_mut(&mut packed.schemas).instance = schema.clone();
         Ok(())
     }
 
-    /// Get Vertex Buffers and Draw counts for this mesh,
-    /// creating or updating GPU resources on the device of `context` as needed.
-    /// Buffers on another context's device give way to new ones.
+    /// The buffers and draw counts of the mesh's `upload` to `context`.
     pub(crate) fn vertex_buffers(
         &self,
         context: &RenderContext,
     ) -> Result<(VertexBuffers, DrawCounts), RendererError> {
-        let generation = self.generation.load(Ordering::Acquire);
+        let upload = self.upload(context)?;
+        Ok((upload.buffers, upload.counts))
+    }
+
+    /// Get Vertex Buffers, Draw counts and the layouts they follow for this mesh,
+    /// creating or updating GPU resources on the device of `context` as needed.
+    /// Buffers on another context's device give way to new ones.
+    pub(crate) fn upload(&self, context: &RenderContext) -> Result<Upload, RendererError> {
+        let generation = self.generation();
         if let Some(found) = self.find_cached(context.id, generation) {
             return Ok(found);
         }
@@ -765,22 +791,20 @@ impl MeshObject {
         if let Some(found) = self.find_cached(context.id, generation) {
             return Ok(found);
         }
-        let (buffers, counts) = self.upload_vertex_buffers(context, &mut gpu)?;
+        let upload = self.upload_vertex_buffers(context, &mut gpu, generation)?;
         *self.cache.write() = Some(Cached {
             owner: context.id,
-            generation,
-            buffers: buffers.clone(),
-            counts,
+            upload: upload.clone(),
         });
-        Ok((buffers, counts))
+        Ok(upload)
     }
 
-    /// The cached result for the context `owner`, unless the mesh changed since `generation`.
-    fn find_cached(&self, owner: u64, generation: u64) -> Option<(VertexBuffers, DrawCounts)> {
+    /// The cached upload for the context `owner`, unless the mesh changed since `generation`.
+    fn find_cached(&self, owner: u64, generation: u64) -> Option<Upload> {
         let cache = self.cache.read();
         let cached = cache.as_ref()?;
-        let current = cached.owner == owner && cached.generation == generation;
-        current.then(|| (cached.buffers.clone(), cached.counts))
+        let current = cached.owner == owner && cached.upload.generation == generation;
+        current.then(|| cached.upload.clone())
     }
 
     /// Packs and uploads the mesh into `gpu`. An upload that fails to write a stream
@@ -789,11 +813,12 @@ impl MeshObject {
         &self,
         context: &RenderContext,
         gpu: &mut Option<GpuStreams>,
-    ) -> Result<(VertexBuffers, DrawCounts), RendererError> {
+        generation: u64,
+    ) -> Result<Upload, RendererError> {
         let repacked = self.ensure_packed()?;
         #[cfg(test)]
         crate::hooks::run("packed");
-        let uploaded = self.write_buffers(context, gpu, repacked);
+        let uploaded = self.write_buffers(context, gpu, repacked, generation);
         if uploaded.is_err() {
             self.packed.write().forget(repacked);
         }
@@ -806,7 +831,8 @@ impl MeshObject {
         context: &RenderContext,
         gpu: &mut Option<GpuStreams>,
         repacked: Repacked,
-    ) -> Result<(VertexBuffers, DrawCounts), RendererError> {
+        generation: u64,
+    ) -> Result<Upload, RendererError> {
         let (device, queue) = (&context.device, &context.queue);
 
         let packed = self.packed.read();
@@ -916,7 +942,12 @@ impl MeshObject {
             instance_rows,
         };
 
-        Ok((vertex_buffers, draw_counts))
+        Ok(Upload {
+            buffers: vertex_buffers,
+            counts: draw_counts,
+            schemas: packed.schemas.clone(),
+            generation,
+        })
     }
 }
 
@@ -1348,19 +1379,66 @@ mod tests {
             renderer.render(&shader, &target).expect("render");
             let id = shader.object.id;
             let refuse = || Err(RendererError::Error("rebuilt".into()));
+            let fetch = |mesh: &Mesh| {
+                mesh.object
+                    .fetch_layouts(id, mesh.object.generation(), refuse)
+            };
 
-            let kept = mesh.object.fetch_layouts(id, refuse);
+            let kept = fetch(&mesh);
             mesh.add_vertices([[0.0, 0.0], [0.1, 0.0], [0.0, 0.1]]);
-            let changed = mesh.object.fetch_layouts(id, refuse);
+            let changed = fetch(&mesh);
             renderer.render(&shader, &target).expect("render again");
             shader.remove_mesh(&mesh);
             let entries = mesh.object.required.read().len();
-            let released = mesh.object.fetch_layouts(id, refuse);
+            let released = fetch(&mesh);
 
             assert!(kept.is_ok(), "a still mesh keeps its layouts: {kept:?}");
             assert!(changed.is_err(), "a changed mesh builds them again");
             assert_eq!(entries, 0, "a shader that let go keeps no entry");
             assert!(released.is_err(), "and no layouts");
+        });
+    }
+
+    // Story: a shader draws a mesh with the layouts of the pack its buffers came
+    // from, so another shader that types an attribute meanwhile doesn't fail the frame.
+    #[test]
+    fn layouts_follow_the_pack_the_buffers_came_from() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let reads_color = crate::Shader::new(
+                "@vertex fn vs_main(@location(0) p: vec2<f32>, @location(1) color: vec4<f32>) -> @builtin(position) vec4<f32> { return vec4<f32>(p, 0.0, color.a); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+            )
+            .expect("shader");
+            let reads_weight = crate::Shader::new(
+                "@vertex fn vs_main(@location(0) p: vec2<f32>, @location(1) weight: u32) -> @builtin(position) vec4<f32> { return vec4<f32>(p, f32(weight), 1.0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+            )
+            .expect("shader");
+            let mesh = Mesh::new();
+            mesh.add_vertices(
+                [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]
+                    .map(|corner| Vertex::new(corner).set("color", [1.0; 4]).set("weight", 2)),
+            );
+            reads_color.add_mesh(&mesh).expect("attach");
+            let late = mesh.clone();
+            let attached = std::rc::Rc::new(std::cell::RefCell::new(None));
+            let seen = attached.clone();
+            // The weight shader types the plain numbers as u32, which resets the
+            // mesh layout after the color shader's upload and before its layouts.
+            crate::hooks::once("uploaded", move || {
+                *seen.borrow_mut() = Some(reads_weight.add_mesh(&late).map(drop));
+            });
+
+            let rendered = renderer.render(&reads_color, &target);
+
+            let attached = attached.borrow_mut().take().expect("an attach in between");
+            assert!(attached.is_ok(), "{attached:?}");
+            assert!(rendered.is_ok(), "{rendered:?}");
         });
     }
 
