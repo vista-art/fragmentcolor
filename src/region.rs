@@ -1,4 +1,6 @@
 #[cfg(wasm)]
+use crate::error::WebError;
+#[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
 pub mod error;
@@ -502,7 +504,7 @@ fn js_to_pair(value: &JsValue) -> Result<(u32, u32), ScreenRegionError> {
 impl ScreenRegion {
     #[doc(hidden)]
     #[wasm_bindgen(constructor)]
-    pub fn new_js(origin: &JsValue, size: &JsValue) -> Result<ScreenRegion, JsError> {
+    pub fn new_js(origin: &JsValue, size: &JsValue) -> Result<ScreenRegion, WebError> {
         Ok(ScreenRegion::new(js_to_pair(origin)?, js_to_pair(size)?)?)
     }
 
@@ -1009,7 +1011,10 @@ mod tests {
         let Err(error) = checked else {
             panic!("expected an error, got {checked:?}");
         };
-        assert!(matches!(error, ScreenRegionError::Reversed { .. }), "{error:?}");
+        assert!(
+            matches!(error, ScreenRegionError::Reversed { .. }),
+            "{error:?}"
+        );
         assert_eq!(
             error.to_string(),
             "a region needs each max past its min, got x from 8 to 2 and y from 0 to 4"

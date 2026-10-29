@@ -146,6 +146,6 @@ A root that isn't a struct takes its bytes whole through `set`, as a storage roo
 - `RendererError::BindingError { uniform, expected, found }` for a texture uniform that was never set, or whose texture its slot can't take by format, usage, dimension, sample count or mip levels.
 - `RendererError::EntryError { stage }` for a render shader without its `@vertex` or `@fragment` entry point.
 
-JavaScript throws an `Error` with the same fields as properties. Python raises `LimitError`, `FeatureError`, `BindingError` and `EntryError`, each a `FragmentColorError` with the fields as attributes. Swift throws `FragmentColorError.Limit`, `.Feature`, `.Binding` and `.Entry`, and Kotlin the `FragmentColorException` subclasses of the same names.
+JavaScript throws an `Error` named after the class Python raises, such as `LimitError`, with the same fields as properties. Python raises `LimitError`, `FeatureError`, `BindingError` and `EntryError`, each a `FragmentColorError` with the fields as attributes. Swift throws `FragmentColorError.Limit`, `.Feature`, `.Binding` and `.Entry`, and Kotlin the `FragmentColorException` subclasses of the same names.
 
 An unset PBR map slot, such as `base_color_map`, binds a 1x1 default in a render shader, when the slot takes a 2D float texture. One set to a texture `unregister_texture` removed, or one another `Renderer` created, returns `RendererError::TextureNotFoundError`.

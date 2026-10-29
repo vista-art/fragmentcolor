@@ -79,26 +79,32 @@ impl From<pyo3::PyErr> for TextureError {
     }
 }
 
-/// Four texture errors raise their own subclass of `FragmentColorError`, so Python can tell them apart.
+/// Four texture errors take their own class of `FragmentColorError`, so a caller can tell them apart.
+#[cfg(any(python, wasm, test))]
+impl crate::error::Classify for TextureError {
+    fn classify(&self) -> crate::error::ErrorClass {
+        use crate::error::ErrorClass;
+        match self {
+            TextureError::InvalidInput(_) => ErrorClass::InvalidInput,
+            TextureError::UnsupportedMipmapFormat { .. } => ErrorClass::UnsupportedMipmapFormat,
+            TextureError::MalformedImageError(_) => ErrorClass::MalformedImage,
+            TextureError::DeviceError { .. } => ErrorClass::Device,
+            _ => ErrorClass::Base,
+        }
+    }
+}
+
 #[cfg(python)]
 impl From<TextureError> for pyo3::PyErr {
     fn from(e: TextureError) -> Self {
-        use crate::error::{
-            DeviceError, InvalidInputError, MalformedImageError, UnsupportedMipmapFormatError,
-        };
         let message = e.to_string();
         match e {
-            TextureError::InvalidInput(_) => InvalidInputError::new_err(message),
-            TextureError::UnsupportedMipmapFormat { .. } => {
-                UnsupportedMipmapFormatError::new_err(message)
-            }
-            TextureError::MalformedImageError(_) => MalformedImageError::new_err(message),
             TextureError::DeviceError {
                 kind,
                 label,
                 detail,
-            } => DeviceError::raise(kind, label, detail, message),
-            _ => crate::PyFragmentColorError::new_err(message),
+            } => crate::error::DeviceError::raise(kind, label, detail, message),
+            other => crate::error::raise_error(&other),
         }
     }
 }
@@ -117,18 +123,19 @@ impl From<wasm_bindgen::JsValue> for TextureError {
     }
 }
 
+/// The JS `Error` a texture error throws, named after its class.
+/// A device error also carries its `kind`, `label` and `detail`.
 #[cfg(wasm)]
-impl TextureError {
-    /// The JS `Error` this error throws. A device error also carries its `kind`, `label` and `detail`.
-    pub(crate) fn into_js(self) -> wasm_bindgen::JsError {
-        let message = self.to_string();
-        match self {
+impl From<TextureError> for crate::error::WebError {
+    fn from(error: TextureError) -> Self {
+        let message = error.to_string();
+        match error {
             TextureError::DeviceError {
                 kind,
                 label,
                 detail,
             } => crate::renderer::error::throw_device(kind, &label, &detail, &message),
-            _ => wasm_bindgen::JsError::new(&message),
+            other => crate::error::WebError::from_error(&other),
         }
     }
 }
@@ -136,8 +143,7 @@ impl TextureError {
 #[cfg(wasm)]
 impl From<TextureError> for wasm_bindgen::JsValue {
     fn from(error: TextureError) -> Self {
-        let error: wasm_bindgen::JsError = error.into_js();
-        error.into()
+        crate::error::WebError::from(error).into()
     }
 }
 

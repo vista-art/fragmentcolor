@@ -132,6 +132,13 @@ impl Material {
     }
 }
 
+#[cfg(any(python, wasm, test))]
+impl crate::error::Classify for MaterialError {
+    fn classify(&self) -> crate::error::ErrorClass {
+        crate::error::ErrorClass::Material
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

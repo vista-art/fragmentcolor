@@ -1253,6 +1253,13 @@ fn add_light(
     Ok(())
 }
 
+#[cfg(any(python, wasm, test))]
+impl crate::error::Classify for SceneLoadError {
+    fn classify(&self) -> crate::error::ErrorClass {
+        crate::error::ErrorClass::SceneLoad
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

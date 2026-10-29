@@ -34,9 +34,16 @@ pub enum ScreenRegionError {
     Error(String),
 }
 
+#[cfg(any(python, wasm, test))]
+impl crate::error::Classify for ScreenRegionError {
+    fn classify(&self) -> crate::error::ErrorClass {
+        crate::error::ErrorClass::InvalidInput
+    }
+}
+
 #[cfg(python)]
 impl From<ScreenRegionError> for pyo3::PyErr {
     fn from(error: ScreenRegionError) -> Self {
-        crate::error::InvalidInputError::new_err(error.to_string())
+        crate::error::raise_error(&error)
     }
 }

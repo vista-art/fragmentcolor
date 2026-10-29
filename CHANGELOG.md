@@ -101,6 +101,7 @@
 - Setting `size.width`, `size.height` or `size.depth` checks the number as `new Size` does and throws an `Error` for a negative, NaN or out-of-range one, keeping the old value. The setters wrapped it modulo 2^32, so `size.width = 2 ** 32 + 64` made a 64-pixel-wide target.
 - `Pass.setClearColor` declares its argument as `number[] | Float32Array` in the TypeScript types, where it was `any`.
 - `Pass.setClearColor([1.2, 0.5, 0.25])` clears to the color every other language gets. One channel above 1 switched all of them to a 0 to 255 scale, so this color cleared near black. A channel that isn't a number, such as `undefined` or `'1'`, throws an `Error` where it became 0.
+- Every `Error` FragmentColor throws has the `name` of the class Python raises for the same error: `FragmentColorError`, `InvalidInputError`, `UnsupportedMipmapFormatError`, `MalformedImageError`, `DeviceError`, `LimitError`, `FeatureError`, `BindingError`, `EntryError`, `SceneLoadError`, `LightError`, `CameraError` or `MaterialError`, so a caller can tell them apart without reading the message. An argument of the wrong type throws a `TypeError`, as Python raises one. Every error was a plain `Error`.
 
 ### Python
 
@@ -146,6 +147,7 @@
 
 - `Renderer.render` refuses, before it takes a frame, a shader or texture uniform the device can't take, with the errors the Shaders notes list. A shader that rendered nothing with a GPU error now returns an error.
 - `RendererError` gains `DeviceError`, `PassError`, `LimitError`, `FeatureError`, `BindingError`, `EntryError`, `DepthSizeMismatch` and `ForeignTarget`, and `PassError` gains `ShaderKind`, `Color`, `Viewport`, `DispatchLimit`, `TextureConflict` and `ViewportLimit`. Neither enum is `#[non_exhaustive]`, so a Rust `match` that lists every variant needs new arms. Python gains the exception classes `DeviceError`, `LimitError`, `FeatureError`, `BindingError` and `EntryError`. A Swift `switch` over `FragmentColorError` and a Kotlin `when` over `FragmentColorException` need the new `Limit`, `Feature`, `Binding`, `Entry`, `Device` and `Occluded` cases. A hidden window's frame is `Occluded` there, where it was `Render`.
+- A JavaScript error's `name` is the class Python raises for it, such as `InvalidInputError`, where it was `Error`, and an argument of the wrong type throws a `TypeError`. Code that compares `e.name` with `'Error'` needs the class name, and `instanceof Error` still holds.
 - A texture uniform with no texture is an error in render and compute passes, except an unset PBR map slot of a render shader whose slot takes a 2D float texture, which binds its 1x1 default.
 - `Shader.new` refuses features no device FragmentColor opens supports, two globals on one binding (a `lights` root included), writable storage in a vertex entry point, an immediate root a uniform can't hold, a filtering sampler that samples a depth texture, and two vertex inputs with one name.
 - A `Material` map that fails to upload fails every native `render`, and every `load`, until its input is fixed or replaced, where only the first render failed and later ones drew the 1x1 default.

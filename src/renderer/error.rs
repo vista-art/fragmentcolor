@@ -1,8 +1,10 @@
 use lsp_doc::lsp_doc;
 use thiserror::Error;
 
+#[cfg(any(python, wasm, test))]
+use crate::error::{Classify, ErrorClass};
 #[cfg(python)]
-use crate::error::raise_fields;
+use crate::error::{raise_class, raise_fields};
 #[cfg(python)]
 use pyo3::prelude::*;
 #[cfg(wasm)]
@@ -153,6 +155,26 @@ impl RendererError {
     }
 }
 
+#[cfg(any(python, wasm, test))]
+impl Classify for RendererError {
+    fn classify(&self) -> ErrorClass {
+        match self {
+            RendererError::TextureError(error) => error.classify(),
+            RendererError::InitializationError(error) => error.classify(),
+            RendererError::PassError(error) => error.classify(),
+            RendererError::SurfaceError(crate::target::SurfaceError::Occluded) => {
+                ErrorClass::OccludedSurface
+            }
+            RendererError::DeviceError { .. } => ErrorClass::Device,
+            RendererError::LimitError { .. } => ErrorClass::Limit,
+            RendererError::FeatureError { .. } => ErrorClass::Feature,
+            RendererError::BindingError { .. } => ErrorClass::Binding,
+            RendererError::EntryError { .. } => ErrorClass::Entry,
+            _ => ErrorClass::Base,
+        }
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum InitializationError {
     /// No GPU adapter fits, with wgpu's reason.
@@ -173,6 +195,16 @@ pub enum InitializationError {
     Error(String),
 }
 
+#[cfg(any(python, wasm, test))]
+impl Classify for InitializationError {
+    fn classify(&self) -> ErrorClass {
+        match self {
+            InitializationError::TextureError(error) => error.classify(),
+            _ => ErrorClass::Base,
+        }
+    }
+}
+
 // Python-specific conversions
 
 #[cfg(python)]
@@ -189,28 +221,12 @@ impl From<RendererError> for pyo3::PyErr {
         match e {
             RendererError::TextureError(texture) => texture.into(),
             RendererError::InitializationError(init) => init.into(),
-            RendererError::PassError(pass) => pass.raise(message),
-            RendererError::SurfaceError(crate::target::SurfaceError::Occluded) => {
-                crate::error::OccludedSurfaceError::new_err(message)
-            }
             RendererError::DeviceError {
                 kind,
                 label,
                 detail,
             } => crate::error::DeviceError::raise(kind, label, detail, message),
-            refusal @ RendererError::LimitError { .. } => {
-                raise_fields::<crate::error::LimitError>(message, refusal.list_fields())
-            }
-            refusal @ RendererError::FeatureError { .. } => {
-                raise_fields::<crate::error::FeatureError>(message, refusal.list_fields())
-            }
-            refusal @ RendererError::BindingError { .. } => {
-                raise_fields::<crate::error::BindingError>(message, refusal.list_fields())
-            }
-            refusal @ RendererError::EntryError { .. } => {
-                raise_fields::<crate::error::EntryError>(message, refusal.list_fields())
-            }
-            _ => crate::PyFragmentColorError::new_err(message),
+            other => raise_fields(other.classify(), message, other.list_fields()),
         }
     }
 }
@@ -227,7 +243,7 @@ impl From<InitializationError> for pyo3::PyErr {
     fn from(e: InitializationError) -> Self {
         match e {
             InitializationError::TextureError(texture) => texture.into(),
-            other => crate::PyFragmentColorError::new_err(other.to_string()),
+            other => raise_class(other.classify(), other.to_string()),
         }
     }
 }
@@ -246,18 +262,19 @@ impl From<wasm_bindgen::JsValue> for RendererError {
     }
 }
 
+/// The JS `Error` a renderer error throws, named after its class, with the fields of a
+/// typed refusal, or the `kind`, `label` and `detail` of a device error.
 #[cfg(wasm)]
-impl RendererError {
-    /// The JS `Error` this error throws. A device error also carries its `kind`, `label` and `detail`.
-    pub(crate) fn into_js(self) -> JsError {
-        let message = self.to_string();
-        match self {
+impl From<RendererError> for crate::error::WebError {
+    fn from(error: RendererError) -> Self {
+        let message = error.to_string();
+        match error {
             RendererError::DeviceError {
                 kind,
                 label,
                 detail,
             } => throw_device(kind, &label, &detail, &message),
-            other => throw_fields(&message, &other.list_fields()),
+            other => Self::with_fields(other.classify(), &message, &other.list_fields()),
         }
     }
 }
@@ -265,38 +282,25 @@ impl RendererError {
 #[cfg(wasm)]
 impl From<RendererError> for wasm_bindgen::JsValue {
     fn from(error: RendererError) -> Self {
-        let error: JsError = error.into_js();
-        error.into()
+        crate::error::WebError::from(error).into()
     }
 }
 
-/// A JS `Error` with the full `message` that carries each of `fields` as a property.
-#[cfg(wasm)]
-fn throw_fields(message: &str, fields: &[(&str, Field)]) -> JsError {
-    let error = JsError::new(message);
-    // A clone holds the same JS object, so the properties land on the error itself.
-    let value = JsValue::from(error.clone());
-    for (name, field) in fields {
-        let field = match field {
-            Field::Text(text) => JsValue::from_str(text),
-            Field::Number(number) => JsValue::from_f64(*number as f64),
-        };
-        // Setting a property on a new Error object never throws.
-        let _ = js_sys::Reflect::set(&value, &JsValue::from_str(name), &field);
-    }
-    error
-}
-
-/// A JS `Error` with the full `message` that carries the GPU error's `kind`,
+/// A `DeviceError` with the full `message` that carries the GPU error's `kind`,
 /// the `label` of its step and the device's own `detail`.
 #[cfg(wasm)]
-pub(crate) fn throw_device(kind: ErrorKind, label: &str, detail: &str, message: &str) -> JsError {
+pub(crate) fn throw_device(
+    kind: ErrorKind,
+    label: &str,
+    detail: &str,
+    message: &str,
+) -> crate::error::WebError {
     let fields = [
         ("kind", Field::Number(kind as u64)),
         ("label", Field::Text(label.into())),
         ("detail", Field::Text(detail.into())),
     ];
-    throw_fields(message, &fields)
+    crate::error::WebError::with_fields(ErrorClass::Device, message, &fields)
 }
 
 #[cfg(wasm)]
@@ -314,7 +318,7 @@ impl From<wasm_bindgen::JsValue> for InitializationError {
 #[cfg(wasm)]
 impl From<InitializationError> for wasm_bindgen::JsValue {
     fn from(error: InitializationError) -> Self {
-        js_sys::Error::new(&error.to_string()).into()
+        crate::error::WebError::from(error).into()
     }
 }
 

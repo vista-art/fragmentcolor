@@ -95,7 +95,9 @@ impl std::fmt::Display for Diagnostic {
 impl Diagnostic {
     /// naga's report on WGSL `source` that its parser refuses.
     pub(crate) fn from_parse(error: &naga::front::wgsl::ParseError, source: &str) -> Self {
-        let labels = error.labels().map(|(span, label)| (span, label.to_string()));
+        let labels = error
+            .labels()
+            .map(|(span, label)| (span, label.to_string()));
         Self {
             message: error.emit_to_string(source),
             locations: locate(labels, source),
@@ -139,10 +141,7 @@ impl Diagnostic {
 }
 
 /// Each labeled span in `source`, skipping a span naga leaves undefined.
-fn locate(
-    labels: impl Iterator<Item = (naga::Span, String)>,
-    source: &str,
-) -> Vec<SourceLocation> {
+fn locate(labels: impl Iterator<Item = (naga::Span, String)>, source: &str) -> Vec<SourceLocation> {
     labels
         .filter(|(span, _)| span.is_defined())
         .map(|(span, label)| {
@@ -178,10 +177,17 @@ impl From<pyo3::PyErr> for ShaderError {
     }
 }
 
+#[cfg(any(python, wasm, test))]
+impl crate::error::Classify for ShaderError {
+    fn classify(&self) -> crate::error::ErrorClass {
+        crate::error::ErrorClass::Base
+    }
+}
+
 #[cfg(python)]
 impl From<ShaderError> for pyo3::PyErr {
     fn from(e: ShaderError) -> Self {
-        crate::PyFragmentColorError::new_err(e.to_string())
+        crate::error::raise_error(&e)
     }
 }
 
@@ -202,7 +208,7 @@ impl From<wasm_bindgen::JsValue> for ShaderError {
 #[cfg(wasm)]
 impl From<ShaderError> for wasm_bindgen::JsValue {
     fn from(error: ShaderError) -> Self {
-        js_sys::Error::new(&error.to_string()).into()
+        crate::error::WebError::from(error).into()
     }
 }
 
@@ -271,8 +277,11 @@ mod tests {
     // line it points at, and the place it labels as a line, a column and a length.
     #[test]
     fn wgsl_parse_errors_keep_naga_message_and_place() {
-        let source = "@fragment fn fs_main() -> @location(0) vec4<f32> {\n  return vec4<f32>(1.0;\n}";
-        let naga = naga::front::wgsl::parse_str(source).err().map(|error| error.emit_to_string(source));
+        let source =
+            "@fragment fn fs_main() -> @location(0) vec4<f32> {\n  return vec4<f32>(1.0;\n}";
+        let naga = naga::front::wgsl::parse_str(source)
+            .err()
+            .map(|error| error.emit_to_string(source));
 
         let diagnostic = take_diagnostic(crate::Shader::new(source), |error| match error {
             ShaderError::WgslParseError(diagnostic) => Some(diagnostic),
@@ -280,7 +289,11 @@ mod tests {
         });
 
         assert_eq!(Some(diagnostic.message.clone()), naga);
-        assert!(diagnostic.message.contains("wgsl:2:"), "{}", diagnostic.message);
+        assert!(
+            diagnostic.message.contains("wgsl:2:"),
+            "{}",
+            diagnostic.message
+        );
         let place = diagnostic.locations.first().expect("a place");
         assert_eq!(place.line, 2);
         assert!(place.column > 1 && place.length > 0, "{place:?}");

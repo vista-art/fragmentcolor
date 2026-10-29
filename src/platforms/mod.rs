@@ -19,6 +19,20 @@ pub(crate) struct NumberError {
     value: f64,
 }
 
+#[cfg(any(wasm, test))]
+impl crate::error::Classify for NumberError {
+    fn classify(&self) -> crate::error::ErrorClass {
+        crate::error::ErrorClass::InvalidInput
+    }
+}
+
+#[cfg(wasm)]
+impl From<NumberError> for crate::error::WebError {
+    fn from(error: NumberError) -> Self {
+        crate::error::WebError::from_error(&error)
+    }
+}
+
 /// Reads a JavaScript number as an unsigned 32-bit integer, such as an index or a count.
 /// Negative, fractional, NaN and out-of-range values fail with an error that names `what`.
 #[cfg(any(wasm, test))]

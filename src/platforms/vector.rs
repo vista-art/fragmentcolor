@@ -112,7 +112,14 @@ pub(crate) fn read_position(
 #[cfg(python)]
 impl From<VectorError> for pyo3::PyErr {
     fn from(error: VectorError) -> Self {
-        crate::error::InvalidInputError::new_err(error.to_string())
+        crate::error::raise_error(&error)
+    }
+}
+
+#[cfg(any(python, wasm, test))]
+impl crate::error::Classify for VectorError {
+    fn classify(&self) -> crate::error::ErrorClass {
+        crate::error::ErrorClass::InvalidInput
     }
 }
 

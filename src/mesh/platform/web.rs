@@ -1,5 +1,6 @@
 #![cfg(wasm)]
 
+use crate::error::{ErrorClass, WebError};
 use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -14,19 +15,19 @@ use crate::platforms::web::{read_floats, read_numbers, read_unsigned, read_vecto
 /// Reads a vertex attribute value: a number,
 /// or an array or typed array of 1 to 4 numbers.
 /// They take the type the shader declares when the mesh attaches to it.
-fn read_attribute(value: &JsValue) -> Result<VertexData, JsError> {
+fn read_attribute(value: &JsValue) -> Result<VertexData, WebError> {
     if let Some(number) = value.as_f64() {
         return Ok(number.into());
     }
     let numbers = read_numbers(value).ok_or_else(|| {
-        JsError::new("a vertex attribute is a number or a list of 1 to 4 numbers")
+        WebError::type_error("a vertex attribute is a number or a list of 1 to 4 numbers")
     })?;
     Ok(VertexData::try_from(numbers.as_slice())?)
 }
 
 /// Reads a vertex position: a `Vertex`, a number, or an array or `Float32Array`
 /// of 1 to 4 numbers, each checked by the float vector rule under `label`.
-fn read_position(value: &JsValue, label: &str) -> Result<Vertex, JsError> {
+fn read_position(value: &JsValue, label: &str) -> Result<Vertex, WebError> {
     if let Ok(vertex) = Vertex::try_from(value) {
         return Ok(vertex);
     }
@@ -41,7 +42,7 @@ fn read_position(value: &JsValue, label: &str) -> Result<Vertex, JsError> {
 /// `[position, uv]` and `[position, uv, color]` forms of Rust's `Into<Vertex>`.
 /// The position follows the float vector rule under `{label}: position` in either form,
 /// and the uv and color read as attribute values, as `Vertex.set` reads them.
-fn read_vertex(value: &JsValue, label: &str) -> Result<Vertex, JsError> {
+fn read_vertex(value: &JsValue, label: &str) -> Result<Vertex, WebError> {
     let parts = match value.dyn_ref::<js_sys::Array>() {
         Some(array) if array.length() > 1 && array.iter().all(|part| part.is_object()) => {
             array.to_vec()
@@ -60,7 +61,8 @@ fn read_vertex(value: &JsValue, label: &str) -> Result<Vertex, JsError> {
             })
     };
     let shape = || {
-        JsError::new(
+        WebError::new(
+            ErrorClass::InvalidInput,
             "a vertex given in parts is [position, uv] or [position, uv, color], with 3, 2 and 4 numbers",
         )
     };
@@ -79,7 +81,7 @@ fn read_vertex(value: &JsValue, label: &str) -> Result<Vertex, JsError> {
     }
 }
 
-fn js_to_instance_into(value: &JsValue) -> Result<Instance, JsError> {
+fn js_to_instance_into(value: &JsValue) -> Result<Instance, WebError> {
     // 1. Already an Instance JS object?
     if let Ok(instance) = Instance::try_from(value) {
         return Ok(instance);
@@ -98,12 +100,12 @@ fn js_to_instance_into(value: &JsValue) -> Result<Instance, JsError> {
             let key = pair
                 .get(0)
                 .as_string()
-                .ok_or_else(|| JsError::new("Instance attribute keys must be strings"))?;
+                .ok_or_else(|| WebError::type_error("Instance attribute keys must be strings"))?;
             instance = instance.set(&key, read_attribute(&pair.get(1))?);
         }
         return Ok(instance);
     }
-    Err(JsError::new(
+    Err(WebError::type_error(
         "Expected an Instance, a Vertex, or an object of named attributes",
     ))
 }
@@ -162,7 +164,7 @@ impl Vertex {
 
     #[wasm_bindgen(constructor)]
     #[lsp_doc("docs/api/geometry/vertex/new.md")]
-    pub fn new_js(position: &JsValue) -> Result<Vertex, JsError> {
+    pub fn new_js(position: &JsValue) -> Result<Vertex, WebError> {
         read_position(position, "Vertex: position")
     }
 
@@ -170,13 +172,13 @@ impl Vertex {
     // JS compat shim — same entry point as the constructor; not separately documented.
     #[doc(hidden)]
     #[wasm_bindgen(js_name = "new")]
-    pub fn new_static(position: &JsValue) -> Result<Vertex, JsError> {
+    pub fn new_static(position: &JsValue) -> Result<Vertex, WebError> {
         read_position(position, "Vertex: position")
     }
 
     #[wasm_bindgen(js_name = "pbr")]
     #[lsp_doc("docs/api/geometry/vertex/pbr.md")]
-    pub fn pbr_js(position: &JsValue) -> Result<Vertex, JsError> {
+    pub fn pbr_js(position: &JsValue) -> Result<Vertex, WebError> {
         let v = read_position(position, "Vertex.pbr: position")?;
         Ok(v.set(Self::NORMAL, [0.0_f32, 0.0, 1.0])
             .set(Self::UV0, [0.0_f32, 0.0])
@@ -191,7 +193,7 @@ impl Vertex {
         &self,
         key: &str,
         #[wasm_bindgen(unchecked_param_type = "number | ArrayLike<number>")] value: &JsValue,
-    ) -> Result<Vertex, JsError> {
+    ) -> Result<Vertex, WebError> {
         Ok(self.clone().set(key, read_attribute(value)?))
     }
 
@@ -226,7 +228,7 @@ impl Instance {
         &self,
         key: &str,
         #[wasm_bindgen(unchecked_param_type = "number | ArrayLike<number>")] value: &JsValue,
-    ) -> Result<Instance, JsError> {
+    ) -> Result<Instance, WebError> {
         Ok(self.clone().set(key, read_attribute(value)?))
     }
 }
@@ -244,10 +246,10 @@ impl Mesh {
 
     #[wasm_bindgen(js_name = "fromVertices")]
     #[lsp_doc("docs/api/geometry/mesh/from_vertices.md")]
-    pub fn from_vertices_js(list: &JsValue) -> Result<Mesh, JsError> {
+    pub fn from_vertices_js(list: &JsValue) -> Result<Mesh, WebError> {
         let arr = js_sys::Array::is_array(list)
             .then(|| js_sys::Array::from(list))
-            .ok_or_else(|| JsError::new("Expected an array"))?;
+            .ok_or_else(|| WebError::type_error("Expected an array"))?;
         let m = Mesh::new();
         for (index, v) in arr.iter().enumerate() {
             let vertex = read_vertex(&v, &format!("Mesh.fromVertices: vertex {index}"))?;
@@ -258,7 +260,7 @@ impl Mesh {
 
     #[wasm_bindgen(js_name = "addVertex")]
     #[lsp_doc("docs/api/geometry/mesh/add_vertex.md")]
-    pub fn add_vertex_js(&mut self, v: &JsValue) -> Result<(), JsError> {
+    pub fn add_vertex_js(&mut self, v: &JsValue) -> Result<(), WebError> {
         let vertex = read_vertex(v, "Mesh.addVertex: vertex")?;
         self.add_vertex(vertex);
         Ok(())
@@ -266,10 +268,10 @@ impl Mesh {
 
     #[wasm_bindgen(js_name = "addVertices")]
     #[lsp_doc("docs/api/geometry/mesh/add_vertices.md")]
-    pub fn add_vertices_js(&mut self, list: &JsValue) -> Result<(), JsError> {
+    pub fn add_vertices_js(&mut self, list: &JsValue) -> Result<(), WebError> {
         let arr = js_sys::Array::is_array(list)
             .then(|| js_sys::Array::from(list))
-            .ok_or_else(|| JsError::new("Expected an array"))?;
+            .ok_or_else(|| WebError::type_error("Expected an array"))?;
         let mut verts: Vec<Vertex> = Vec::with_capacity(arr.length() as usize);
         for (index, v) in arr.iter().enumerate() {
             let vertex = read_vertex(&v, &format!("Mesh.addVertices: vertex {index}"))?;
@@ -281,7 +283,7 @@ impl Mesh {
 
     #[wasm_bindgen(js_name = "addInstance")]
     #[lsp_doc("docs/api/geometry/mesh/add_instance.md")]
-    pub fn add_instance_js(&mut self, item: &JsValue) -> Result<(), JsError> {
+    pub fn add_instance_js(&mut self, item: &JsValue) -> Result<(), WebError> {
         let inst = js_to_instance_into(item)?;
         self.add_instance(inst);
         Ok(())
@@ -289,10 +291,10 @@ impl Mesh {
 
     #[wasm_bindgen(js_name = "addInstances")]
     #[lsp_doc("docs/api/geometry/mesh/add_instances.md")]
-    pub fn add_instances_js(&mut self, list: &JsValue) -> Result<(), JsError> {
+    pub fn add_instances_js(&mut self, list: &JsValue) -> Result<(), WebError> {
         let arr = js_sys::Array::is_array(list)
             .then(|| js_sys::Array::from(list))
-            .ok_or_else(|| JsError::new("Expected an array"))?;
+            .ok_or_else(|| WebError::type_error("Expected an array"))?;
         let mut instances: Vec<Instance> = Vec::with_capacity(arr.length() as usize);
         for instance in arr.iter() {
             let instance = js_to_instance_into(&instance)?;
@@ -310,7 +312,7 @@ impl Mesh {
 
     #[wasm_bindgen(js_name = "setInstanceCount")]
     #[lsp_doc("docs/api/geometry/mesh/set_instance_count.md")]
-    pub fn set_instance_count_js(&mut self, count: f64) -> Result<(), JsError> {
+    pub fn set_instance_count_js(&mut self, count: f64) -> Result<(), WebError> {
         self.set_instance_count(read_unsigned(count, "Mesh.setInstanceCount: count")?);
         Ok(())
     }
@@ -320,19 +322,19 @@ impl Mesh {
     pub fn set_indices_js(
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] indices: &JsValue,
-    ) -> Result<(), JsError> {
+    ) -> Result<(), WebError> {
         if let Some(array) = indices.dyn_ref::<js_sys::Uint32Array>() {
             self.set_indices(array.to_vec());
             return Ok(());
         }
         let numbers = read_numbers(indices).ok_or_else(|| {
-            JsError::new("Mesh.setIndices: expected an array or typed array of numbers")
+            WebError::type_error("Mesh.setIndices: expected an array or typed array of numbers")
         })?;
         let read = |(index, number): (usize, f64)| {
             read_unsigned(number, &format!("Mesh.setIndices: item {index}"))
         };
         let indices = numbers.into_iter().enumerate().map(read);
-        self.set_indices(indices.collect::<Result<Vec<u32>, JsError>>()?);
+        self.set_indices(indices.collect::<Result<Vec<u32>, WebError>>()?);
         Ok(())
     }
 
@@ -350,7 +352,7 @@ impl Mesh {
 impl Quad {
     #[wasm_bindgen(constructor)]
     #[lsp_doc("docs/api/geometry/quad/new.md")]
-    pub fn new_js(min: &JsValue, max: &JsValue) -> Result<Quad, JsError> {
+    pub fn new_js(min: &JsValue, max: &JsValue) -> Result<Quad, WebError> {
         Ok(Quad::new(
             read_vector::<2>(min, "Quad: min")?,
             read_vector::<2>(max, "Quad: max")?,
