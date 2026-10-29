@@ -267,6 +267,9 @@ impl RenderContext {
         if let Err(refusal) = self.check_layouts(&shader.module) {
             return Ok(Err(refusal));
         }
+        if let Err(refusal) = check_measured(shader, uniform_lights) {
+            return Ok(Err(refusal));
+        }
         let module = build_module(shader, layout, pad, uniform_lights)?;
         let mut validator = wgpu_naga_bridge::create_validator(
             self.features,
@@ -351,6 +354,19 @@ impl RenderContext {
         let max = u64::from(limits.max_compute_workgroup_storage_size);
         check_limit(&item, "max_compute_workgroup_storage_size", memory, max)
     }
+}
+
+/// Refuses a shader that measures its light roots with `arrayLength` on a device that
+/// takes lights through a uniform block of `uniform_lights`, where nothing can measure them.
+fn check_measured(shader: &ShaderObject, uniform_lights: Option<u32>) -> Result<(), Refusal> {
+    let measured = shader.light_roots.as_ref().is_some_and(|roots| roots.is_measured());
+    if uniform_lights.is_none() || !measured {
+        return Ok(());
+    }
+    Err(Refusal::Feature {
+        item: "a shader that measures `lights` or `light_grid` with `arrayLength` (loop to `lights.count` instead)".into(),
+        feature: "clustered lights in storage buffers".into(),
+    })
 }
 
 /// The bytes of workgroup memory the entry point `uses` reaches, each variable

@@ -633,6 +633,41 @@ fn gl_refuses_explicit_layouts() {
     });
 }
 
+// Story: a device that takes lights through a uniform block refuses a shader that
+// measures a light root with `arrayLength`, and keeps that verdict like any other.
+#[test]
+fn uniform_lights_refuse_measured_roots() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let shader = fullscreen(
+            "struct Light { kind: u32, intensity: f32, range: f32, inner_cone_cos: f32, position: vec3<f32>, outer_cone_cos: f32, direction: vec3<f32>, color: vec3<f32> }
+struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>, slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }
+struct Lights { count: u32, global_count: u32, promoted_count: u32, ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }
+@group(0) @binding(0) var<storage, read> lights: Lights;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(f32(arrayLength(&lights.lights))); }",
+        )
+        .expect("shader");
+        let uniform = copy_context(&context);
+        *uniform.light_path.write() = LightPath::Uniform { count: 4 };
+
+        let first = uniform.check_shader(&shader.object).unwrap_err();
+        let second = uniform.check_shader(&shader.object).unwrap_err();
+
+        assert_eq!(first.to_string(), second.to_string());
+        assert_refused!(
+            first,
+            RendererError::FeatureError { .. },
+            "a shader that measures `lights` or `light_grid` with `arrayLength` (loop to `lights.count` instead) needs clustered lights in storage buffers"
+        );
+        let verdict = uniform.checked.get(&shader.object.hash).expect("a verdict");
+        assert!(
+            matches!(verdict.value(), Verdict::Refused(_)),
+            "got {:?}",
+            verdict.value()
+        );
+    });
+}
+
 // Story: a binding no entry point uses is visible to the compute stage only, so a render
 // pipeline with an unused storage buffer builds on a device without vertex storage.
 #[test]
