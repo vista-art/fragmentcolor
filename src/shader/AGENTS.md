@@ -46,5 +46,5 @@ Light roots (`light_roots.rs`, `lights.rs`)
 
 Errors & API shape
 - Return `ShaderError` from shader APIs; avoid `unwrap` / `expect` / `panic`.
-- `set()` never waits for the storage, so it never waits for a draw: it queues a last-wins update when the storage is busy. A texture value waits on `texture_writes` while the shader binds another texture, which takes no longer than a write. Reads may return `ShaderError::Busy` under contention, which is expected.
+- `set()` never waits for the storage, so it never waits for a draw: it queues a last-wins update when the storage is busy. A texture value waits on `texture_writes` while the shader binds another texture or `flush_pending` applies its queue. Neither waits on the GPU. Reads may return `ShaderError::Busy` under contention, which is expected.
 - Keep public methods thin; delegate to internal state.

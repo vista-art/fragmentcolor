@@ -286,7 +286,8 @@ impl ShaderObject {
     }
 
     /// Sets a uniform value, now when the storage is free, or queued, last write wins.
-    /// It never waits for a draw. A texture waits while the shader binds another texture.
+    /// It never waits for a draw. A texture waits while the shader binds another texture
+    /// or applies its queued values, since both hold `texture_writes`, so the latest one wins.
     pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
         let val: UniformData = value.into();
         if self.routes_ambient(key) {
@@ -320,7 +321,7 @@ impl ShaderObject {
     }
 
     /// Sets a uniform from a loose value, shaped to the key's declared WGSL type.
-    /// A texture waits on `texture_writes` while the shader binds another texture.
+    /// A texture waits on `texture_writes`, which a texture write and a flush hold.
     /// Nothing else waits for the storage: when it's busy the update is queued, shaped
     /// when a read lock is free, so a type error still surfaces here in the common case.
     pub(crate) fn set_input(&self, key: &str, input: UniformInput) -> Result<(), ShaderError> {
