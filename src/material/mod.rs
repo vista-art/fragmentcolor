@@ -711,8 +711,43 @@ mod tests {
         });
     }
 
-    // Story: a set that lands while a load uploads the older source wins. The load keeps
-    // no copy of the older one, and each Renderer then draws the latest.
+    // Story: a texture set while a map's upload fails wins. The load drops the failure
+    // of the map that ended and returns Ok, and the render draws the texture.
+    #[test]
+    fn a_texture_set_during_a_failed_upload_wins() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("a target");
+            let texture = renderer
+                .create_texture(paint([0, 255, 0, 255]))
+                .await
+                .expect("a texture");
+            let mat = build_mapped().base_color_texture("tests/assets/missing.png");
+            let late = mat.clone();
+            crate::hooks::once("map uploaded", move || {
+                late.base_color_texture(&texture);
+            });
+
+            let loaded = renderer.load(mat.shader()).await;
+
+            assert!(
+                loaded.is_ok(),
+                "the ended map's failure came back: {loaded:?}"
+            );
+            assert!(
+                !mat.shader.object.has_map("base_color_map"),
+                "the map stayed"
+            );
+            renderer.render(mat.shader(), &target).expect("draws");
+            assert_eq!(read_pixel(&target).await, [0, 255, 0, 255]);
+        });
+    }
+
+    // Story: a set that lands while a load uploads the older source wins. The older upload
+    // stands in as that Renderer's copy, and each Renderer then draws the latest.
     #[test]
     fn a_set_during_an_upload_ends_on_the_last_value() {
         pollster::block_on(async move {
@@ -731,8 +766,8 @@ mod tests {
 
             first.load(mat.shader()).await.expect("the load");
             assert!(
-                !holds_copy(&first_target, &mat, "base_color_map"),
-                "the load kept the older upload"
+                holds_copy(&first_target, &mat, "base_color_map"),
+                "the older upload left the first Renderer without a copy"
             );
 
             first.render(mat.shader(), &first_target).expect("draws");
