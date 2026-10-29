@@ -25,6 +25,9 @@ pub enum MeshError {
     /// An index from `set_indices` past the last vertex the mesh holds.
     #[error("Index {index} points past the last of {vertices} vertices")]
     IndexRange { index: u32, vertices: usize },
+    /// A quick view whose mesh changed on another thread between its check and each upload it tried.
+    #[error("The mesh changed on another thread during each of {0} checks of its quick view")]
+    Busy(usize),
     #[cfg(wasm)]
     #[error("WASM Mesh Error: {0}")]
     Error(String),

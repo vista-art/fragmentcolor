@@ -1673,8 +1673,75 @@ mod tests {
         });
     }
 
-    // Story: a vertex counts as a change before any other thread can see it, so a
-    // vertex the quick view packs after its check is checked by the same render.
+    // Story: a check of the quick view on another thread can't let the mesh go between
+    // this render's check and its read of the mesh list, so a vertex without color
+    // added meanwhile fails the render with its own error, not a shader with no mesh.
+    #[test]
+    fn a_concurrent_check_leaves_the_render_its_error() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let mesh = Mesh::new();
+            let corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+            mesh.add_vertices(corners.map(|corner| Vertex::new(corner).set("color", [1.0; 4])));
+            renderer.render(&mesh, &target).expect("first render");
+            let shader = mesh.pass.shaders.read()[0].clone();
+            let late = mesh.clone();
+            let checker = Arc::new(parking_lot::Mutex::new(None));
+            let slot = checker.clone();
+            // Vertices without color arrive, and another thread checks the quick view
+            // and gets a while to let the mesh go, before this render reads its meshes.
+            crate::hooks::once("preview checked", move || {
+                late.add_vertices(corners.map(Vertex::new));
+                let (sender, receiver) = std::sync::mpsc::channel();
+                let thread = std::thread::spawn(move || {
+                    let _ = shader.check_preview();
+                    let _ = sender.send(());
+                });
+                let _ = receiver.recv_timeout(std::time::Duration::from_millis(200));
+                *slot.lock() = Some(thread);
+            });
+
+            let rendered = renderer.render(&mesh, &target);
+            if let Some(thread) = checker.lock().take() {
+                thread.join().expect("the checker thread");
+            }
+
+            let error = rendered.expect_err("vertex 3 has no color").to_string();
+            assert!(error.contains("vertex 3"), "{error}");
+        });
+    }
+
+    // Story: the quick view draws only a pack of the state its check passed, so an
+    // instance added during the pack and cleared after it never reaches the frame.
+    #[test]
+    fn the_quick_view_draws_only_a_checked_pack() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let mesh = Mesh::new();
+            let corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+            mesh.add_vertices(corners.map(|corner| Vertex::new(corner).set("color", [1.0; 4])));
+            // The quick view reads the instance color before the vertex one.
+            mesh.add_instance(Instance::new().set("color", [1.0; 4]));
+            let (added, cleared) = (mesh.clone(), mesh.clone());
+            crate::hooks::once("pack", move || added.add_instance(Instance::new()));
+            crate::hooks::once("packed", move || cleared.clear_instances());
+
+            renderer.render(&mesh, &target).expect("render");
+
+            assert_eq!(mesh.object.packed.read().rows, 0, "the drawn pack");
+        });
+    }
+
+    // Story: the render checks the quick view's mesh again after the pack,
+    // so a vertex another thread adds while the pack runs fails the same render.
     #[test]
     fn a_vertex_added_during_the_quick_view_pack_is_checked() {
         pollster::block_on(async move {

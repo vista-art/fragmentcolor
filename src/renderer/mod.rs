@@ -1301,8 +1301,7 @@ impl RenderContext {
         self.check_textures(&shader)?;
         // The quick view checks its mesh on every render, however the render
         // reached it, and a mesh it refuses says why on every render.
-        shader.check_preview()?;
-        let meshes = shader.meshes.read().clone();
+        let (meshes, passed) = shader.read_meshes()?;
         if meshes.is_empty() {
             require_mesh(&shader)?;
             return Ok(ShaderDraw {
@@ -1329,7 +1328,10 @@ impl RenderContext {
                 counts,
                 schemas,
                 generation,
-            } = mesh.upload(self)?;
+            } = match passed {
+                Some(passed) => self.upload_checked(&shader, mesh, passed)?,
+                None => mesh.upload(self)?,
+            };
             #[cfg(test)]
             crate::hooks::run("uploaded");
             let read = mesh.fetch_layouts(shader.id, generation, || {
@@ -1369,9 +1371,6 @@ impl RenderContext {
                 });
             }
         }
-        // A pack sees no change its generation doesn't count, so a vertex that
-        // reached the quick view's pack after its check is checked here.
-        shader.check_preview()?;
         let draws = match (layouts.is_empty(), blend) {
             (true, _) => MeshDraws::Skipped,
             (false, true) => MeshDraws::Blend(blended),
@@ -1383,6 +1382,33 @@ impl RenderContext {
             model,
             draws,
         })
+    }
+
+    /// Uploads the mesh of a quick view whose check passed at `passed`.
+    ///
+    /// The upload counts only when the mesh's generation stayed at `passed` to its end.
+    /// Every mutator moves the generation before it lets the data go, so the pack then
+    /// saw the state the check saw. A mesh that changed meanwhile is checked and uploaded
+    /// again, and one that keeps changing returns `MeshError::Busy`, so no frame draws
+    /// a pack the check didn't see, such as an instance that `clear_instances` removed.
+    fn upload_checked(
+        &self,
+        shader: &ShaderObject,
+        mesh: &crate::mesh::MeshObject,
+        passed: u64,
+    ) -> Result<crate::mesh::Upload, RendererError> {
+        let mut passed = passed;
+        for _ in 0..PREVIEW_TRIES {
+            let upload = mesh.upload(self)?;
+            if mesh.generation() == passed {
+                return Ok(upload);
+            }
+            match shader.check_preview()? {
+                Some(again) => passed = again,
+                None => return Ok(upload),
+            }
+        }
+        Err(crate::mesh::MeshError::Busy(PREVIEW_TRIES).into())
     }
 
     /// Try to get a frame once, and on Lost/Outdated, retry exactly once.
@@ -2839,6 +2865,9 @@ fn viewport_rect(region: &ScreenRegion) -> (f32, f32, f32, f32) {
 /// The override a shader declares to learn whether its target stores colors
 /// encoded for display. `Material::pbr` encodes its linear light when it does.
 const ENCODE_SRGB: &str = "ENCODE_SRGB";
+
+/// How many times a render checks and uploads a quick view's mesh that keeps changing.
+const PREVIEW_TRIES: usize = 4;
 
 /// Whether `format` stores colors encoded for display without encoding them
 /// on write, which a shader that works in linear light has to do itself.
