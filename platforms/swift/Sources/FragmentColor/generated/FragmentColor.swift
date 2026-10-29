@@ -6415,7 +6415,7 @@ enum FragmentColorError: Swift.Error, Equatable, Hashable, Foundation.LocalizedE
     )
     case Feature(item: String, feature: String
     )
-    case Binding(name: String, expected: String, found: String
+    case Binding(uniform: String, expected: String, found: String
     )
     case Entry(stage: String
     )
@@ -6484,7 +6484,7 @@ public struct FfiConverterTypeFragmentColorError: FfiConverterRustBuffer {
             feature: try FfiConverterString.read(from: &buf)
             )
         case 7: return .Binding(
-            name: try FfiConverterString.read(from: &buf), 
+            uniform: try FfiConverterString.read(from: &buf), 
             expected: try FfiConverterString.read(from: &buf), 
             found: try FfiConverterString.read(from: &buf)
             )
@@ -6539,9 +6539,9 @@ public struct FfiConverterTypeFragmentColorError: FfiConverterRustBuffer {
             FfiConverterString.write(feature, into: &buf)
             
         
-        case let .Binding(name,expected,found):
+        case let .Binding(uniform,expected,found):
             writeInt(&buf, Int32(7))
-            FfiConverterString.write(name, into: &buf)
+            FfiConverterString.write(uniform, into: &buf)
             FfiConverterString.write(expected, into: &buf)
             FfiConverterString.write(found, into: &buf)
             
