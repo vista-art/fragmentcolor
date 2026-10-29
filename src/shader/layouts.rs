@@ -4,7 +4,8 @@
 //! and that writer drops `@size` and `@align`. A buffer struct whose members sit
 //! past where their types alone put them would then change layout on the web.
 //! `write_layouts` writes the module as wgpu does and puts back a `@size` on each
-//! member of such a struct, which pins every member and the struct's size.
+//! member of such a struct, which pins every member and the struct's size. A struct
+//! that ends in a runtime-sized array takes an `@align` on its first member for its size.
 
 use super::ShaderError;
 use super::error::describe;
@@ -57,7 +58,7 @@ pub(crate) fn write_layouts(
     let names = name_pinned(module, &pinned);
     let flags = naga::back::wgsl::WriterFlags::empty();
     let written = naga::back::wgsl::write_string(module, info, flags)?;
-    let text = pin_sizes(module, &names, &written)?;
+    let text = pin_sizes(module, &layouter, &names, &written)?;
     check_layouts(module, &names, &text)?;
     Ok(Some(text))
 }
@@ -161,9 +162,11 @@ fn is_explicit(module: &Module, layouter: &Layouter, handle: Handle<Type>) -> bo
 
 /// `written` with a `@size` on each member of the pinned structs, which `names` lists
 /// under the names they take in it: the bytes up to the next member, or to the end
-/// of the struct for the last one. A runtime-sized array keeps its open size.
+/// of the struct for the last one. A runtime-sized array keeps its open size, and the
+/// first member of its struct takes the `@align` that gives the struct back its size.
 fn pin_sizes(
     module: &Module,
+    layouter: &Layouter,
     names: &HashMap<Handle<Type>, String>,
     written: &str,
 ) -> Result<String, LayoutLoss> {
@@ -196,10 +199,29 @@ fn pin_sizes(
             let indent = line.len() - line.trim_start().len();
             line.insert_str(indent, &format!("@size({}) ", end - member.offset));
         }
+        if let (Some(align), Some(first)) = (find_align(module, layouter, *handle), body.first_mut()) {
+            let indent = first.len() - first.trim_start().len();
+            first.insert_str(indent, &format!("@align({align}) "));
+        }
     }
     let mut text = lines.join("\n");
     text.push('\n');
     Ok(text)
+}
+
+/// The `@align` the first member of the struct `handle` takes on the web, if any.
+///
+/// Only a struct that ends in a runtime-sized array, which takes no `@size`, needs one,
+/// when its member types alone give it a smaller size. The smallest power of two that
+/// rounds the struct's end up to its size is never below its members' own alignment.
+fn find_align(module: &Module, layouter: &Layouter, handle: Handle<Type>) -> Option<u32> {
+    let TypeInner::Struct { members, span } = &module.types[handle].inner else {
+        return None;
+    };
+    let last = members.last().filter(|member| is_open(module, member.ty))?;
+    let end = last.offset + layouter[last.ty].size;
+    let natural = layouter[handle].alignment.round_up(end);
+    (natural != *span).then(|| (span.saturating_sub(end) + 1).next_power_of_two())
 }
 
 /// Whether `ty` is a runtime-sized array, which takes no `@size`.
@@ -385,21 +407,34 @@ struct Foo { a: f32, @align(16) b: f32 };
         }
     }
 
-    // Story: a struct that ends in a runtime-sized array keeps its open size and its layout.
+    // Story: a struct that ends in a runtime-sized array keeps its open size and its layout,
+    // also when an @align raises its alignment past what its member types give it.
     #[test]
     fn runtime_arrays_keep_their_open_size() {
-        let source = "struct Buf { @size(16) count: u32, data: array<f32> };
+        let structs = [
+            "struct Buf { @size(16) count: u32, data: array<u32> };",
+            "struct Buf { count: u32, @align(16) data: array<u32> };",
+            "struct Buf { @align(16) count: u32, data: array<u32> };",
+            "struct Buf { @align(16) data: array<u32> };",
+        ];
+        for declaration in structs {
+            let source = format!(
+                "{declaration}
 @group(0) @binding(0) var<storage, read_write> buf: Buf;
-@compute @workgroup_size(1) fn cs_main() { buf.data[0] = f32(buf.count); }";
-        let module = naga::front::wgsl::parse_str(source).expect("parses");
-        let info = super::super::create_validator()
-            .validate(&module)
-            .expect("validates");
-        let text = write_layouts(&module, &info)
-            .expect("writes")
-            .expect("pins sizes");
-        let web = naga::front::wgsl::parse_str(&text).expect("parses");
-        assert_eq!(read_layouts(&module), read_layouts(&web), "{text}");
+@compute @workgroup_size(1) fn cs_main() {{ buf.data[0] = arrayLength(&buf.data); }}"
+            );
+            let module = naga::front::wgsl::parse_str(&source).expect("parses");
+            let info = super::super::create_validator()
+                .validate(&module)
+                .expect("validates");
+            let text = write_layouts(&module, &info)
+                .expect("writes")
+                .expect("pins sizes");
+            let web = naga::front::wgsl::parse_str(&text).expect("parses");
+            assert_eq!(read_layouts(&module), read_layouts(&web), "{text}");
+            let checked = super::super::create_validator().validate(&web);
+            assert!(checked.is_ok(), "{checked:?}\n{text}");
+        }
     }
 
     // Story: WGSL whose struct takes another layout is refused, naming the struct and the member.
