@@ -432,6 +432,59 @@ final class Healthcheck: ExampleCase {
         try Mesh().addVertex([0, 0, 0], [0, 1], [1, 1, 1, 1])
     }
 
+    // The Material texture setters take what createTexture takes,
+    // and raw pixels with their size or format reach the upload.
+    func testMaterialTexturesTakeCreateTextureForms() async throws {
+        let renderer = Renderer()
+        // A black surface lit only by its emissive map, over the whole target.
+        func glow(_ setTexture: (Material) throws -> Material) async throws -> [UInt8] {
+            let mesh = Mesh()
+            for corner in [[-1, -1, 0], [3, -1, 0], [-1, 3, 0]] as [[Float]] {
+                mesh.addVertex(try Vertex.pbr(corner).set(Vertex.NORMAL, [0, 0, 1]))
+            }
+            let material = try Material.pbr().baseColor([0, 0, 0, 1]).emissive([1, 1, 1])
+            let pass = Pass("glow")
+            try pass.add(Model(mesh, try setTexture(material)))
+            let target = try await renderer.createTextureTarget([4, 4])
+            try renderer.render(pass, target)
+            return Array(try await target.getImage().prefix(4))
+        }
+        let red: [UInt8] = [255, 0, 0, 255]
+        let options = TextureOptions(size: Size(width: 1, height: 1, depth: nil), format: .r8Unorm)
+        let forms: [(String, (Material) throws -> Material)] = [
+            ("[UInt8] and [w, h]", { try $0.emissiveTexture(red, [1, 1]) }),
+            ("[Int] and [w, h]", { try $0.emissiveTexture([255, 0, 0, 255] as [Int], [1, 1]) }),
+            ("Data and a Size", { $0.emissiveTexture(Data(red), Size(width: 1, height: 1, depth: nil)) }),
+            ("options with R8Unorm", { $0.emissiveTexture([255] as [UInt8], options) }),
+            ("a size and usage", { try $0.emissiveTexture(Data(red), [1, 1], usage: .COPY_SRC) }),
+        ]
+        for (label, form) in forms {
+            let pixel = try await glow(form)
+            guard pixel[0] > 200 && pixel[1] < 40 && pixel[2] < 40 else {
+                throw HealthcheckError.assertion("emissiveTexture with \(label) drew \(pixel)")
+            }
+        }
+        let setters: [(String, (Material, [UInt8], [UInt32]) throws -> Material)] = [
+            ("baseColorTexture", { try $0.baseColorTexture($1, $2) }),
+            ("metallicRoughnessTexture", { try $0.metallicRoughnessTexture($1, $2) }),
+            ("normalTexture", { try $0.normalTexture($1, $2) }),
+            ("occlusionTexture", { try $0.occlusionTexture($1, $2) }),
+            ("emissiveTexture", { try $0.emissiveTexture($1, $2) }),
+        ]
+        for (name, setter) in setters {
+            _ = try setter(Material.pbr(), red, [1, 1])
+            do {
+                _ = try setter(Material.pbr(), red, [1])
+                throw HealthcheckError.assertion("Material.\(name) with a size of 1 number should throw")
+            } catch let error as FragmentColorError {
+                guard "\(error)".contains("Material.\(name)") else {
+                    throw HealthcheckError.assertion("Material.\(name) threw \(error)")
+                }
+            }
+        }
+        Material.pbr().normalTexture(Data(red), .rgba8Unorm).occlusionTexture(Data(red), options)
+    }
+
     // A region of 3 numbers throws, as in Kotlin, where it stopped the app.
     func testTextureRegionRefusesBadLengths() throws {
         do {

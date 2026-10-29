@@ -363,13 +363,13 @@ func showNumber(_ value: Double) -> String {
 }
 
 /// A URL input for `http(s)`, otherwise a file path.
-private func pathInput(_ path: String) -> TextureInputMobile {
+func pathInput(_ path: String) -> TextureInputMobile {
     path.hasPrefix("http://") || path.hasPrefix("https://") ? .url(path) : .path(path)
 }
 
 /// Rust's default `TextureOptions` with an optional size, format and usage,
 /// or `nil` when nothing differs, so the renderer applies its own defaults.
-private func textureOptions(
+func textureOptions(
     size: Size? = nil,
     format: TextureFormat? = nil,
     usage: TextureUsage? = nil

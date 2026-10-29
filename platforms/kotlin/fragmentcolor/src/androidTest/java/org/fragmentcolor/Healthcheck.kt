@@ -309,6 +309,54 @@ class Healthcheck : ExampleCase() {
         Mesh().addVertex(listOf(0f, 0f, 0f), listOf(0f, 1f), listOf(1f, 1f, 1f, 1f))
     }
 
+    // The Material texture setters take what createTexture takes,
+    // and raw pixels with their size or format reach the upload.
+    @Test
+    fun materialTexturesTakeCreateTextureForms() = runBlocking {
+        val renderer = Renderer()
+        // A black surface lit only by its emissive map, over the whole target.
+        suspend fun glow(setTexture: (Material) -> Material): List<Int> {
+            val mesh = Mesh()
+            for (corner in listOf(listOf(-1f, -1f, 0f), listOf(3f, -1f, 0f), listOf(-1f, 3f, 0f))) {
+                mesh.addVertex(Vertex.pbr(corner).set(Vertex.NORMAL, listOf(0f, 0f, 1f)))
+            }
+            val material = Material.pbr().baseColor(listOf(0f, 0f, 0f, 1f)).emissive(listOf(1f, 1f, 1f))
+            val pass = Pass("glow")
+            pass.add(Model(mesh, setTexture(material)))
+            val target = renderer.createTextureTarget(listOf(4u, 4u))
+            renderer.render(pass, target)
+            return target.getImage().take(4).map { it.toInt() and 0xff }
+        }
+        val red = byteArrayOf(0xff.toByte(), 0, 0, 0xff.toByte())
+        val one = Size(width = 1u, height = 1u, depth = null)
+        val options = TextureOptions(size = one, format = TextureFormat.R8_UNORM)
+        val forms: List<Pair<String, (Material) -> Material>> = listOf(
+            "ByteArray and [w, h]" to { it.emissiveTexture(red, listOf(1u, 1u)) },
+            "List<Int> and [w, h]" to { it.emissiveTexture(listOf(255, 0, 0, 255), listOf(1u, 1u)) },
+            "ByteArray and a Size" to { it.emissiveTexture(red, one) },
+            "options with R8Unorm" to { it.emissiveTexture(byteArrayOf(0xff.toByte()), options) },
+            "a size and usage" to { it.emissiveTexture(red, listOf(1u, 1u), TextureUsage.COPY_SRC) },
+        )
+        for ((label, form) in forms) {
+            val pixel = glow(form)
+            assertTrue(pixel[0] > 200 && pixel[1] < 40 && pixel[2] < 40, "emissiveTexture with $label drew $pixel")
+        }
+        val setters: List<Pair<String, (Material, ByteArray, List<UInt>) -> Material>> = listOf(
+            "baseColorTexture" to { material, bytes, size -> material.baseColorTexture(bytes, size) },
+            "metallicRoughnessTexture" to { material, bytes, size -> material.metallicRoughnessTexture(bytes, size) },
+            "normalTexture" to { material, bytes, size -> material.normalTexture(bytes, size) },
+            "occlusionTexture" to { material, bytes, size -> material.occlusionTexture(bytes, size) },
+            "emissiveTexture" to { material, bytes, size -> material.emissiveTexture(bytes, size) },
+        )
+        for ((name, setter) in setters) {
+            setter(Material.pbr(), red, listOf(1u, 1u))
+            val error = assertFailsWith<FragmentColorException> { setter(Material.pbr(), red, listOf(1u)) }
+            assertTrue(error.message.orEmpty().contains("Material.$name"), "Material.$name threw ${error.message}")
+        }
+        Material.pbr().normalTexture(red, TextureFormat.RGBA8_UNORM).occlusionTexture(red, options)
+        Unit
+    }
+
     // Shader.set shapes each Kotlin value to the uniform's declared WGSL type.
     // Setting and reading uniforms touches no GPU, so this runs on any emulator.
     @Test

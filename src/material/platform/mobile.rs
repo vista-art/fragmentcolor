@@ -158,8 +158,8 @@ impl Material {
         Arc::new(self.emissive_texture(&*texture))
     }
 
-    /// The texture input form of `baseColorTexture`: bytes, a path, a URL or a mipmap chain,
-    /// uploaded when the scene loads. Swift and Kotlin expose it as `baseColorTexture(source)`.
+    /// The texture input form of `baseColorTexture`, uploaded when the scene loads.
+    /// Swift and Kotlin reach it through the `baseColorTexture` overloads, which match `createTexture`.
     #[uniffi::method(name = "baseColorSource", default(options = None))]
     #[lsp_doc("docs/api/scene/material/hidden/base_color_source_mobile.md")]
     pub fn base_color_source_mobile(
@@ -170,8 +170,8 @@ impl Material {
         Arc::new(self.base_color_texture(texture_input(input, options)))
     }
 
-    /// The texture input form of `metallicRoughnessTexture`: bytes, a path, a URL or a mipmap chain,
-    /// uploaded when the scene loads. Swift and Kotlin expose it as `metallicRoughnessTexture(source)`.
+    /// The texture input form of `metallicRoughnessTexture`, uploaded when the scene loads.
+    /// Swift and Kotlin reach it through the `metallicRoughnessTexture` overloads, which match `createTexture`.
     #[uniffi::method(name = "metallicRoughnessSource", default(options = None))]
     #[lsp_doc("docs/api/scene/material/hidden/metallic_roughness_source_mobile.md")]
     pub fn metallic_roughness_source_mobile(
@@ -182,8 +182,8 @@ impl Material {
         Arc::new(self.metallic_roughness_texture(texture_input(input, options)))
     }
 
-    /// The texture input form of `normalTexture`: bytes, a path, a URL or a mipmap chain,
-    /// uploaded when the scene loads. Swift and Kotlin expose it as `normalTexture(source)`.
+    /// The texture input form of `normalTexture`, uploaded when the scene loads.
+    /// Swift and Kotlin reach it through the `normalTexture` overloads, which match `createTexture`.
     #[uniffi::method(name = "normalSource", default(options = None))]
     #[lsp_doc("docs/api/scene/material/hidden/normal_source_mobile.md")]
     pub fn normal_source_mobile(
@@ -194,8 +194,8 @@ impl Material {
         Arc::new(self.normal_texture(texture_input(input, options)))
     }
 
-    /// The texture input form of `occlusionTexture`: bytes, a path, a URL or a mipmap chain,
-    /// uploaded when the scene loads. Swift and Kotlin expose it as `occlusionTexture(source)`.
+    /// The texture input form of `occlusionTexture`, uploaded when the scene loads.
+    /// Swift and Kotlin reach it through the `occlusionTexture` overloads, which match `createTexture`.
     #[uniffi::method(name = "occlusionSource", default(options = None))]
     #[lsp_doc("docs/api/scene/material/hidden/occlusion_source_mobile.md")]
     pub fn occlusion_source_mobile(
@@ -206,8 +206,8 @@ impl Material {
         Arc::new(self.occlusion_texture(texture_input(input, options)))
     }
 
-    /// The texture input form of `emissiveTexture`: bytes, a path, a URL or a mipmap chain,
-    /// uploaded when the scene loads. Swift and Kotlin expose it as `emissiveTexture(source)`.
+    /// The texture input form of `emissiveTexture`, uploaded when the scene loads.
+    /// Swift and Kotlin reach it through the `emissiveTexture` overloads, which match `createTexture`.
     #[uniffi::method(name = "emissiveSource", default(options = None))]
     #[lsp_doc("docs/api/scene/material/hidden/emissive_source_mobile.md")]
     pub fn emissive_source_mobile(

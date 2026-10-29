@@ -138,150 +138,358 @@ extension Material {
         )
     }
 
-    // MARK: - Texture setters — drop the `texture:` label.
-    //
-    // Each setter takes what `Renderer.createTexture` takes: a `Texture`, or
-    // encoded bytes, a file path or `http(s)` URL, or a `Mipmap`. Inputs other
-    // than a `Texture` upload when the scene loads, as in Rust.
+    // MARK: - Texture setters
+
+    // Each texture setter takes what `Renderer.createTexture` takes, spelled the same way.
+    // A `Texture` binds at once, and every other input uploads when the scene loads, as in Rust.
 
     @discardableResult
     public func baseColorTexture(_ texture: Texture) -> Material {
-        return baseColorTexture(texture: texture)
+        baseColorTexture(texture: texture)
     }
 
     @discardableResult
-    public func baseColorTexture(_ bytes: Data) -> Material {
-        return baseColorSource(input: .bytes(bytes))
+    public func baseColorTexture(_ bytes: Data, usage: TextureUsage? = nil) -> Material {
+        baseColorSource(input: .bytes(bytes), options: textureOptions(usage: usage))
     }
 
     @discardableResult
-    public func baseColorTexture(_ bytes: Data, _ format: TextureFormat) -> Material {
-        return baseColorSource(input: .bytes(bytes), options: formatOptions(format))
+    public func baseColorTexture(_ bytes: [UInt8], usage: TextureUsage? = nil) -> Material {
+        baseColorTexture(Data(bytes), usage: usage)
+    }
+
+    @discardableResult
+    public func baseColorTexture(_ bytes: Data, _ format: TextureFormat, usage: TextureUsage? = nil) -> Material {
+        baseColorSource(input: .bytes(bytes), options: textureOptions(format: format, usage: usage))
+    }
+
+    @discardableResult
+    public func baseColorTexture(_ bytes: [UInt8], _ format: TextureFormat, usage: TextureUsage? = nil) -> Material {
+        baseColorTexture(Data(bytes), format, usage: usage)
+    }
+
+    @discardableResult
+    public func baseColorTexture(_ bytes: Data, _ size: Size, usage: TextureUsage? = nil) -> Material {
+        baseColorSource(input: .bytes(bytes), options: textureOptions(size: size, usage: usage))
+    }
+
+    @discardableResult
+    public func baseColorTexture(_ bytes: Data, _ size: [UInt32], usage: TextureUsage? = nil) throws -> Material {
+        baseColorTexture(bytes, try sizeRecord(size, "Material.baseColorTexture"), usage: usage)
+    }
+
+    @discardableResult
+    public func baseColorTexture(_ bytes: [UInt8], _ size: [UInt32], usage: TextureUsage? = nil) throws -> Material {
+        try baseColorTexture(Data(bytes), size, usage: usage)
+    }
+
+    @discardableResult
+    public func baseColorTexture(_ bytes: [Int], _ size: [UInt32], usage: TextureUsage? = nil) throws -> Material {
+        try baseColorTexture(try byteData(bytes, "Material.baseColorTexture"), size, usage: usage)
+    }
+
+    @discardableResult
+    public func baseColorTexture(_ bytes: Data, _ options: TextureOptions) -> Material {
+        baseColorSource(input: .bytes(bytes), options: options)
+    }
+
+    @discardableResult
+    public func baseColorTexture(_ bytes: [UInt8], _ options: TextureOptions) -> Material {
+        baseColorTexture(Data(bytes), options)
     }
 
     @discardableResult
     public func baseColorTexture(_ path: String) -> Material {
-        return baseColorSource(input: textureSource(path))
+        baseColorSource(input: pathInput(path))
+    }
+
+    @discardableResult
+    public func baseColorTexture(_ path: String, _ options: TextureOptions) -> Material {
+        baseColorSource(input: pathInput(path), options: options)
     }
 
     @discardableResult
     public func baseColorTexture(_ chain: Mipmap) -> Material {
-        return baseColorSource(input: .prepared(chain))
+        baseColorSource(input: .prepared(chain))
     }
 
     @discardableResult
     public func metallicRoughnessTexture(_ texture: Texture) -> Material {
-        return metallicRoughnessTexture(texture: texture)
+        metallicRoughnessTexture(texture: texture)
     }
 
     @discardableResult
-    public func metallicRoughnessTexture(_ bytes: Data) -> Material {
-        return metallicRoughnessSource(input: .bytes(bytes))
+    public func metallicRoughnessTexture(_ bytes: Data, usage: TextureUsage? = nil) -> Material {
+        metallicRoughnessSource(input: .bytes(bytes), options: textureOptions(usage: usage))
     }
 
     @discardableResult
-    public func metallicRoughnessTexture(_ bytes: Data, _ format: TextureFormat) -> Material {
-        return metallicRoughnessSource(input: .bytes(bytes), options: formatOptions(format))
+    public func metallicRoughnessTexture(_ bytes: [UInt8], usage: TextureUsage? = nil) -> Material {
+        metallicRoughnessTexture(Data(bytes), usage: usage)
+    }
+
+    @discardableResult
+    public func metallicRoughnessTexture(_ bytes: Data, _ format: TextureFormat, usage: TextureUsage? = nil) -> Material {
+        metallicRoughnessSource(input: .bytes(bytes), options: textureOptions(format: format, usage: usage))
+    }
+
+    @discardableResult
+    public func metallicRoughnessTexture(_ bytes: [UInt8], _ format: TextureFormat, usage: TextureUsage? = nil) -> Material {
+        metallicRoughnessTexture(Data(bytes), format, usage: usage)
+    }
+
+    @discardableResult
+    public func metallicRoughnessTexture(_ bytes: Data, _ size: Size, usage: TextureUsage? = nil) -> Material {
+        metallicRoughnessSource(input: .bytes(bytes), options: textureOptions(size: size, usage: usage))
+    }
+
+    @discardableResult
+    public func metallicRoughnessTexture(_ bytes: Data, _ size: [UInt32], usage: TextureUsage? = nil) throws -> Material {
+        metallicRoughnessTexture(bytes, try sizeRecord(size, "Material.metallicRoughnessTexture"), usage: usage)
+    }
+
+    @discardableResult
+    public func metallicRoughnessTexture(_ bytes: [UInt8], _ size: [UInt32], usage: TextureUsage? = nil) throws -> Material {
+        try metallicRoughnessTexture(Data(bytes), size, usage: usage)
+    }
+
+    @discardableResult
+    public func metallicRoughnessTexture(_ bytes: [Int], _ size: [UInt32], usage: TextureUsage? = nil) throws -> Material {
+        try metallicRoughnessTexture(try byteData(bytes, "Material.metallicRoughnessTexture"), size, usage: usage)
+    }
+
+    @discardableResult
+    public func metallicRoughnessTexture(_ bytes: Data, _ options: TextureOptions) -> Material {
+        metallicRoughnessSource(input: .bytes(bytes), options: options)
+    }
+
+    @discardableResult
+    public func metallicRoughnessTexture(_ bytes: [UInt8], _ options: TextureOptions) -> Material {
+        metallicRoughnessTexture(Data(bytes), options)
     }
 
     @discardableResult
     public func metallicRoughnessTexture(_ path: String) -> Material {
-        return metallicRoughnessSource(input: textureSource(path))
+        metallicRoughnessSource(input: pathInput(path))
+    }
+
+    @discardableResult
+    public func metallicRoughnessTexture(_ path: String, _ options: TextureOptions) -> Material {
+        metallicRoughnessSource(input: pathInput(path), options: options)
     }
 
     @discardableResult
     public func metallicRoughnessTexture(_ chain: Mipmap) -> Material {
-        return metallicRoughnessSource(input: .prepared(chain))
+        metallicRoughnessSource(input: .prepared(chain))
     }
 
     @discardableResult
     public func normalTexture(_ texture: Texture) -> Material {
-        return normalTexture(texture: texture)
+        normalTexture(texture: texture)
     }
 
     @discardableResult
-    public func normalTexture(_ bytes: Data) -> Material {
-        return normalSource(input: .bytes(bytes))
+    public func normalTexture(_ bytes: Data, usage: TextureUsage? = nil) -> Material {
+        normalSource(input: .bytes(bytes), options: textureOptions(usage: usage))
     }
 
     @discardableResult
-    public func normalTexture(_ bytes: Data, _ format: TextureFormat) -> Material {
-        return normalSource(input: .bytes(bytes), options: formatOptions(format))
+    public func normalTexture(_ bytes: [UInt8], usage: TextureUsage? = nil) -> Material {
+        normalTexture(Data(bytes), usage: usage)
+    }
+
+    @discardableResult
+    public func normalTexture(_ bytes: Data, _ format: TextureFormat, usage: TextureUsage? = nil) -> Material {
+        normalSource(input: .bytes(bytes), options: textureOptions(format: format, usage: usage))
+    }
+
+    @discardableResult
+    public func normalTexture(_ bytes: [UInt8], _ format: TextureFormat, usage: TextureUsage? = nil) -> Material {
+        normalTexture(Data(bytes), format, usage: usage)
+    }
+
+    @discardableResult
+    public func normalTexture(_ bytes: Data, _ size: Size, usage: TextureUsage? = nil) -> Material {
+        normalSource(input: .bytes(bytes), options: textureOptions(size: size, usage: usage))
+    }
+
+    @discardableResult
+    public func normalTexture(_ bytes: Data, _ size: [UInt32], usage: TextureUsage? = nil) throws -> Material {
+        normalTexture(bytes, try sizeRecord(size, "Material.normalTexture"), usage: usage)
+    }
+
+    @discardableResult
+    public func normalTexture(_ bytes: [UInt8], _ size: [UInt32], usage: TextureUsage? = nil) throws -> Material {
+        try normalTexture(Data(bytes), size, usage: usage)
+    }
+
+    @discardableResult
+    public func normalTexture(_ bytes: [Int], _ size: [UInt32], usage: TextureUsage? = nil) throws -> Material {
+        try normalTexture(try byteData(bytes, "Material.normalTexture"), size, usage: usage)
+    }
+
+    @discardableResult
+    public func normalTexture(_ bytes: Data, _ options: TextureOptions) -> Material {
+        normalSource(input: .bytes(bytes), options: options)
+    }
+
+    @discardableResult
+    public func normalTexture(_ bytes: [UInt8], _ options: TextureOptions) -> Material {
+        normalTexture(Data(bytes), options)
     }
 
     @discardableResult
     public func normalTexture(_ path: String) -> Material {
-        return normalSource(input: textureSource(path))
+        normalSource(input: pathInput(path))
+    }
+
+    @discardableResult
+    public func normalTexture(_ path: String, _ options: TextureOptions) -> Material {
+        normalSource(input: pathInput(path), options: options)
     }
 
     @discardableResult
     public func normalTexture(_ chain: Mipmap) -> Material {
-        return normalSource(input: .prepared(chain))
+        normalSource(input: .prepared(chain))
     }
 
     @discardableResult
     public func occlusionTexture(_ texture: Texture) -> Material {
-        return occlusionTexture(texture: texture)
+        occlusionTexture(texture: texture)
     }
 
     @discardableResult
-    public func occlusionTexture(_ bytes: Data) -> Material {
-        return occlusionSource(input: .bytes(bytes))
+    public func occlusionTexture(_ bytes: Data, usage: TextureUsage? = nil) -> Material {
+        occlusionSource(input: .bytes(bytes), options: textureOptions(usage: usage))
     }
 
     @discardableResult
-    public func occlusionTexture(_ bytes: Data, _ format: TextureFormat) -> Material {
-        return occlusionSource(input: .bytes(bytes), options: formatOptions(format))
+    public func occlusionTexture(_ bytes: [UInt8], usage: TextureUsage? = nil) -> Material {
+        occlusionTexture(Data(bytes), usage: usage)
+    }
+
+    @discardableResult
+    public func occlusionTexture(_ bytes: Data, _ format: TextureFormat, usage: TextureUsage? = nil) -> Material {
+        occlusionSource(input: .bytes(bytes), options: textureOptions(format: format, usage: usage))
+    }
+
+    @discardableResult
+    public func occlusionTexture(_ bytes: [UInt8], _ format: TextureFormat, usage: TextureUsage? = nil) -> Material {
+        occlusionTexture(Data(bytes), format, usage: usage)
+    }
+
+    @discardableResult
+    public func occlusionTexture(_ bytes: Data, _ size: Size, usage: TextureUsage? = nil) -> Material {
+        occlusionSource(input: .bytes(bytes), options: textureOptions(size: size, usage: usage))
+    }
+
+    @discardableResult
+    public func occlusionTexture(_ bytes: Data, _ size: [UInt32], usage: TextureUsage? = nil) throws -> Material {
+        occlusionTexture(bytes, try sizeRecord(size, "Material.occlusionTexture"), usage: usage)
+    }
+
+    @discardableResult
+    public func occlusionTexture(_ bytes: [UInt8], _ size: [UInt32], usage: TextureUsage? = nil) throws -> Material {
+        try occlusionTexture(Data(bytes), size, usage: usage)
+    }
+
+    @discardableResult
+    public func occlusionTexture(_ bytes: [Int], _ size: [UInt32], usage: TextureUsage? = nil) throws -> Material {
+        try occlusionTexture(try byteData(bytes, "Material.occlusionTexture"), size, usage: usage)
+    }
+
+    @discardableResult
+    public func occlusionTexture(_ bytes: Data, _ options: TextureOptions) -> Material {
+        occlusionSource(input: .bytes(bytes), options: options)
+    }
+
+    @discardableResult
+    public func occlusionTexture(_ bytes: [UInt8], _ options: TextureOptions) -> Material {
+        occlusionTexture(Data(bytes), options)
     }
 
     @discardableResult
     public func occlusionTexture(_ path: String) -> Material {
-        return occlusionSource(input: textureSource(path))
+        occlusionSource(input: pathInput(path))
+    }
+
+    @discardableResult
+    public func occlusionTexture(_ path: String, _ options: TextureOptions) -> Material {
+        occlusionSource(input: pathInput(path), options: options)
     }
 
     @discardableResult
     public func occlusionTexture(_ chain: Mipmap) -> Material {
-        return occlusionSource(input: .prepared(chain))
+        occlusionSource(input: .prepared(chain))
     }
 
     @discardableResult
     public func emissiveTexture(_ texture: Texture) -> Material {
-        return emissiveTexture(texture: texture)
+        emissiveTexture(texture: texture)
     }
 
     @discardableResult
-    public func emissiveTexture(_ bytes: Data) -> Material {
-        return emissiveSource(input: .bytes(bytes))
+    public func emissiveTexture(_ bytes: Data, usage: TextureUsage? = nil) -> Material {
+        emissiveSource(input: .bytes(bytes), options: textureOptions(usage: usage))
     }
 
     @discardableResult
-    public func emissiveTexture(_ bytes: Data, _ format: TextureFormat) -> Material {
-        return emissiveSource(input: .bytes(bytes), options: formatOptions(format))
+    public func emissiveTexture(_ bytes: [UInt8], usage: TextureUsage? = nil) -> Material {
+        emissiveTexture(Data(bytes), usage: usage)
+    }
+
+    @discardableResult
+    public func emissiveTexture(_ bytes: Data, _ format: TextureFormat, usage: TextureUsage? = nil) -> Material {
+        emissiveSource(input: .bytes(bytes), options: textureOptions(format: format, usage: usage))
+    }
+
+    @discardableResult
+    public func emissiveTexture(_ bytes: [UInt8], _ format: TextureFormat, usage: TextureUsage? = nil) -> Material {
+        emissiveTexture(Data(bytes), format, usage: usage)
+    }
+
+    @discardableResult
+    public func emissiveTexture(_ bytes: Data, _ size: Size, usage: TextureUsage? = nil) -> Material {
+        emissiveSource(input: .bytes(bytes), options: textureOptions(size: size, usage: usage))
+    }
+
+    @discardableResult
+    public func emissiveTexture(_ bytes: Data, _ size: [UInt32], usage: TextureUsage? = nil) throws -> Material {
+        emissiveTexture(bytes, try sizeRecord(size, "Material.emissiveTexture"), usage: usage)
+    }
+
+    @discardableResult
+    public func emissiveTexture(_ bytes: [UInt8], _ size: [UInt32], usage: TextureUsage? = nil) throws -> Material {
+        try emissiveTexture(Data(bytes), size, usage: usage)
+    }
+
+    @discardableResult
+    public func emissiveTexture(_ bytes: [Int], _ size: [UInt32], usage: TextureUsage? = nil) throws -> Material {
+        try emissiveTexture(try byteData(bytes, "Material.emissiveTexture"), size, usage: usage)
+    }
+
+    @discardableResult
+    public func emissiveTexture(_ bytes: Data, _ options: TextureOptions) -> Material {
+        emissiveSource(input: .bytes(bytes), options: options)
+    }
+
+    @discardableResult
+    public func emissiveTexture(_ bytes: [UInt8], _ options: TextureOptions) -> Material {
+        emissiveTexture(Data(bytes), options)
     }
 
     @discardableResult
     public func emissiveTexture(_ path: String) -> Material {
-        return emissiveSource(input: textureSource(path))
+        emissiveSource(input: pathInput(path))
+    }
+
+    @discardableResult
+    public func emissiveTexture(_ path: String, _ options: TextureOptions) -> Material {
+        emissiveSource(input: pathInput(path), options: options)
     }
 
     @discardableResult
     public func emissiveTexture(_ chain: Mipmap) -> Material {
-        return emissiveSource(input: .prepared(chain))
+        emissiveSource(input: .prepared(chain))
     }
-}
-
-/// A URL input for `http(s)`, otherwise a file path.
-private func textureSource(_ path: String) -> TextureInputMobile {
-    path.hasPrefix("http://") || path.hasPrefix("https://") ? .url(path) : .path(path)
-}
-
-/// Rust's default `TextureOptions` with `format`.
-private func formatOptions(_ format: TextureFormat) -> TextureOptions {
-    TextureOptions(
-        size: nil,
-        format: format,
-        sampler: SamplerOptions(repeatX: false, repeatY: false, smooth: true, compare: nil),
-        mipmaps: true,
-        usage: nil
-    )
 }
