@@ -12,7 +12,7 @@ use super::error::describe;
 use naga::keywords::wgsl::{BUILTIN_IDENTIFIER_SET, RESERVED_SET};
 use naga::proc::{CaseInsensitiveKeywordSet, Layouter, NameKey, Namer};
 use naga::valid::ModuleInfo;
-use naga::{AddressSpace, ArraySize, Handle, Module, Type, TypeInner};
+use naga::{AddressSpace, ArraySize, FastHashMap, Handle, Module, ShaderStage, Type, TypeInner};
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
@@ -74,6 +74,26 @@ pub(crate) fn list_explicit(module: &Module) -> Result<Vec<String>, LayoutLoss> 
         .collect())
 }
 
+/// The name naga's WGSL writer gives each entry point of `module`, with its stage.
+///
+/// wgpu hands the browser's WebGPU that writer's text, so a pipeline there asks for these
+/// names. They differ from the module's where the writer renames one: `blur2` is `blur2_`,
+/// `blur_` is `blur`, and `cs_main` next to a struct named `cs_main_` is `cs_main_1`.
+pub(crate) fn name_entries(module: &Module) -> Vec<(ShaderStage, String)> {
+    let names = name_module(module);
+    module
+        .entry_points
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| {
+            let key = u16::try_from(index).ok().map(NameKey::EntryPoint);
+            let name = key.and_then(|key| names.get(&key));
+            let name = name.cloned().unwrap_or_else(|| entry.name.clone());
+            (entry.stage, name)
+        })
+        .collect()
+}
+
 /// The size and alignment of each type of `module`, by its member types.
 fn measure_types(module: &Module) -> Result<Layouter, LayoutLoss> {
     let mut layouter = Layouter::default();
@@ -91,14 +111,10 @@ fn find_explicit(module: &Module, layouter: &Layouter) -> Vec<Handle<Type>> {
     found
 }
 
-/// The names naga's WGSL writer gives the `pinned` structs.
-///
-/// They come from a run of the namer that writer uses, set up as it sets it up,
-/// since it renames a name that repeats another, holds `__`, isn't ASCII, or ends
-/// in a digit or an underscore. `check_layouts` reads the text back under these names,
-/// so a namer that names otherwise refuses the module instead of pinning the wrong struct.
-fn name_pinned(module: &Module, pinned: &[Handle<Type>]) -> HashMap<Handle<Type>, String> {
-    let mut names = naga::FastHashMap::default();
+/// Every name naga's WGSL writer gives in `module`, from a run
+/// of the namer that writer uses, set up as the writer sets it up.
+fn name_module(module: &Module) -> FastHashMap<NameKey, String> {
+    let mut names = FastHashMap::default();
     Namer::default().reset(
         module,
         &RESERVED_SET,
@@ -107,11 +123,24 @@ fn name_pinned(module: &Module, pinned: &[Handle<Type>]) -> HashMap<Handle<Type>
         &["__", "_naga"],
         &mut names,
     );
+    names
+}
+
+/// The names naga's WGSL writer gives the `pinned` structs.
+///
+/// That writer renames a name that repeats another, holds `__`, isn't ASCII,
+/// or ends in a digit or an underscore. `check_layouts` reads the text back under
+/// these names, so a namer that names otherwise refuses the module instead of pinning the wrong struct.
+fn name_pinned(module: &Module, pinned: &[Handle<Type>]) -> HashMap<Handle<Type>, String> {
+    let names = name_module(module);
     pinned
         .iter()
-        .filter_map(|handle| {
-            let name = names.get(&NameKey::Type(*handle))?;
-            Some((*handle, name.clone()))
+        .map(|handle| {
+            let name = names.get(&NameKey::Type(*handle)).cloned();
+            (
+                *handle,
+                name.unwrap_or_else(|| name_struct(module, *handle)),
+            )
         })
         .collect()
 }
@@ -199,7 +228,9 @@ fn pin_sizes(
             let indent = line.len() - line.trim_start().len();
             line.insert_str(indent, &format!("@size({}) ", end - member.offset));
         }
-        if let (Some(align), Some(first)) = (find_align(module, layouter, *handle), body.first_mut()) {
+        if let (Some(align), Some(first)) =
+            (find_align(module, layouter, *handle), body.first_mut())
+        {
             let indent = first.len() - first.trim_start().len();
             first.insert_str(indent, &format!("@align({align}) "));
         }
@@ -327,7 +358,15 @@ mod tests {
         naga::back::wgsl::write_string(module, info, flags).expect("writes WGSL")
     }
 
-    const SOURCES: [&str; 7] = [
+    /// Asserts that each entry point of `module` sits in `text` under the name `name_entries` gives it.
+    fn assert_entries(module: &Module, text: &str) {
+        for (_, name) in name_entries(module) {
+            let header = format!("fn {name}(");
+            assert!(text.contains(&header), "no `{header}` in\n{text}");
+        }
+    }
+
+    const SOURCES: [&str; 9] = [
         "struct Tail { a: vec4<f32>, @size(32) b: f32 };
 @group(0) @binding(0) var<uniform> tail: Tail;
 @compute @workgroup_size(1) fn cs_main() { let x = tail.b; }",
@@ -350,15 +389,26 @@ struct Données { @align(16) e: f32 };
 @group(0) @binding(1) var<uniform> light: Light_;
 @group(0) @binding(2) var<uniform> données: Données;
 @compute @workgroup_size(1) fn cs_main() { let x = params.b.x + light.d + données.e; }",
-        // User names that look like generated ones: `fc_layout4s_` writes as `fc_layout4s`,
-        // `Params_` as `Params_1` after `Params`, and the entry point `fc_layout5s` keeps its name.
-        "struct fc_layout4s_ { a: vec4<f32> };
+        // A struct the writer shortens, `Tile_` to `Tile`, a pinned struct that repeats
+        // a name, `Params_` as `Params_1` after `Params`, and an entry point `blur2` as `blur2_`.
+        "struct Tile_ { a: vec4<f32> };
 struct Params { a: f32, @align(16) b: vec2<f32> };
 struct Params_ { @size(32) c: f32, d: f32 };
-@group(0) @binding(0) var<uniform> user: fc_layout4s_;
+@group(0) @binding(0) var<uniform> user: Tile_;
 @group(0) @binding(1) var<uniform> pinned: Params;
 @group(0) @binding(2) var<uniform> later: Params_;
-@compute @workgroup_size(1) fn fc_layout5s() { let x = user.a.x + pinned.b.x + later.d; }",
+@compute @workgroup_size(1) fn blur2() { let x = user.a.x + pinned.b.x + later.d; }",
+        // An entry point the writer shortens, `blur_` to `blur`.
+        "struct Params { a: f32, @align(16) b: vec2<f32> };
+@group(0) @binding(0) var<uniform> pinned: Params;
+@compute @workgroup_size(1) fn blur_() { let x = pinned.b.x; }",
+        // An entry point a buffer struct takes the name of: `cs_main_` writes as `cs_main`,
+        // so the entry point `cs_main` writes as `cs_main_1`.
+        "struct cs_main_ { a: vec4<f32> };
+struct Params { a: f32, @align(16) b: vec2<f32> };
+@group(0) @binding(0) var<uniform> user: cs_main_;
+@group(0) @binding(1) var<uniform> pinned: Params;
+@compute @workgroup_size(1) fn cs_main() { let x = user.a.x + pinned.b.x; }",
         // Two names that collapse to one: the writer names them `Foo` and `Foo_1`.
         "struct Foo_ { a: vec4<f32> };
 struct Foo { a: f32, @align(16) b: f32 };
@@ -380,7 +430,7 @@ struct Foo { a: f32, @align(16) b: f32 };
 
     // Story: @size on the last member, @align gaps, nested structs, arrays of structs and
     // names the writer would change keep every member's offset and every struct's size in
-    // the WGSL the web gets.
+    // the WGSL the web gets, and each entry point sits there under the name the pipeline asks for.
     #[test]
     fn explicit_layouts_survive_the_web() {
         for source in SOURCES {
@@ -396,14 +446,31 @@ struct Foo { a: f32, @align(16) b: f32 };
             );
             let checked = super::super::create_validator().validate(&web);
             assert!(checked.is_ok(), "{checked:?}\n{text}");
-            for entry in &module.entry_points {
-                let header = format!("fn {}(", entry.name);
-                assert!(
-                    text.contains(&header),
-                    "{} keeps its name\n{text}",
-                    entry.name
-                );
-            }
+            assert_entries(&module, &text);
+        }
+    }
+
+    // Story: the writer renames an entry point that ends in a digit or an underscore, or whose
+    // name a type took, in the WGSL wgpu writes from any module, so the browser's pipelines ask
+    // for the names `name_entries` gives, which match the text.
+    #[test]
+    fn entry_points_take_the_names_the_writer_gives() {
+        let cases = [
+            ("@compute @workgroup_size(1) fn blur2() {}", "blur2_"),
+            ("@compute @workgroup_size(1) fn blur_() {}", "blur"),
+            (
+                "struct cs_main_ { a: vec4<f32> };
+@group(0) @binding(0) var<uniform> user: cs_main_;
+@compute @workgroup_size(1) fn cs_main() { let x = user.a.x; }",
+                "cs_main_1",
+            ),
+            ("@compute @workgroup_size(1) fn cs_main() {}", "cs_main"),
+        ];
+        for (source, expected) in cases {
+            let (module, info) = compile(source);
+            let names = name_entries(&module);
+            assert_eq!(names, vec![(ShaderStage::Compute, expected.to_string())]);
+            assert_entries(&module, &write_plain(&module, &info));
         }
     }
 

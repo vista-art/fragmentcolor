@@ -1,6 +1,6 @@
 // Tests that render refuses, before any GPU work, what the device can't run.
 use super::layout::build_module;
-use super::layout::{plan_layout, texture_binding};
+use super::layout::{find_entry, pick_source, plan_layout, texture_binding};
 use super::scope_tests::{SpyTarget, Uncaptured, setup};
 use super::shader_checks::{TextureFacts, Verdict, check_texture, refuse_layout};
 use super::*;
@@ -289,7 +289,10 @@ fn storage_formats_the_device_lacks_fail() {
     let error = refuse_alone(&shader).expect("refused");
     let expected = vec![
         ("item", Field::Text("'img' at @group(0) @binding(0)".into())),
-        ("feature", Field::Text("WriteOnly storage access to Bgra8Unorm".into())),
+        (
+            "feature",
+            Field::Text("WriteOnly storage access to Bgra8Unorm".into()),
+        ),
     ];
     assert_eq!(error.list_fields(), expected);
     assert_refused!(
@@ -668,6 +671,23 @@ fn gl_refuses_explicit_layouts() {
         );
         assert!(copy_context(&context).check_shader(&shader.object).is_ok());
     });
+}
+
+// Story: on the browser's WebGPU a pipeline asks for each entry point under the name naga's
+// writer gives it, since wgpu hands the browser that writer's text, and elsewhere under its own.
+#[test]
+fn browser_pipelines_ask_for_written_entry_names() {
+    let shader = Shader::new("@compute @workgroup_size(1) fn blur2() {}").expect("shader");
+
+    let web = pick_source(shader.object.module.clone(), true).expect("web source");
+    let native = pick_source(shader.object.module.clone(), false).expect("native source");
+
+    let compute = naga::ShaderStage::Compute;
+    assert_eq!(find_entry(&web.entries, compute).expect("entry"), "blur2_");
+    assert_eq!(
+        find_entry(&native.entries, compute).expect("entry"),
+        "blur2"
+    );
 }
 
 // Story: a struct whose layout the WGSL wgpu writes for the browser can't keep is refused
