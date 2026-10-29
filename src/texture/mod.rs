@@ -1336,13 +1336,22 @@ pub(crate) fn format_features(
     context: &RenderContext,
     format: wgpu::TextureFormat,
 ) -> wgpu::TextureFormatFeatures {
-    let features = context.device.features();
+    read_format_features(context.adapter.as_ref(), context.device.features(), format)
+}
+
+/// What `format` can do on `adapter`, whose device opened with `features`, as
+/// `format_features` decides it. A caller that runs each frame passes the features it cached.
+pub(crate) fn read_format_features(
+    adapter: Option<&wgpu::Adapter>,
+    features: wgpu::Features,
+    format: wgpu::TextureFormat,
+) -> wgpu::TextureFormatFeatures {
     let reports = |adapter: &&wgpu::Adapter| {
         let flags = adapter.get_downlevel_capabilities().flags;
         features.contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
             || !flags.contains(wgpu::DownlevelFlags::WEBGPU_TEXTURE_FORMAT_SUPPORT)
     };
-    match context.adapter.as_ref().filter(reports) {
+    match adapter.filter(reports) {
         Some(adapter) => adapter.get_texture_format_features(format),
         None => format.guaranteed_format_features(features),
     }

@@ -8,7 +8,7 @@ use super::access::{Access, Accesses, Writer};
 use super::{PassDraws, RenderContext, RendererError};
 use crate::material::AlphaMode;
 use crate::pass::PassError;
-use crate::texture::Registration;
+use crate::texture::{Registration, read_format_features};
 use crate::{
     PassObject, Renderable, ShaderObject, Target, TargetFrame, TextureObject, UniformData,
 };
@@ -114,7 +114,7 @@ impl RenderContext {
     /// the device, and no shader writes a texture it also reads. A device
     /// without compute shaders has a limit of 0, and its pipeline build says why.
     pub(super) fn check_compute(&self, pass: &PassObject) -> Result<(), RendererError> {
-        let limit = self.device.limits().max_compute_workgroups_per_dimension;
+        let limit = self.limits.max_compute_workgroups_per_dimension;
         let (x, y, z) = pass.compute_dispatch();
         if limit > 0 && [x, y, z].into_iter().any(|count| count > limit) {
             return Err(PassError::DispatchLimit {
@@ -134,7 +134,7 @@ impl RenderContext {
     /// Refuses a viewport with a side past the device's 2D texture limit, the largest
     /// viewport wgpu takes. A region within it keeps its size, past the target too.
     pub(super) fn check_viewport(&self, pass: &PassObject) -> Result<(), RendererError> {
-        let limit = self.device.limits().max_texture_dimension_2d;
+        let limit = self.limits.max_texture_dimension_2d;
         match *pass.viewport.read() {
             Some(region) if region.width() > limit || region.height() > limit => {
                 Err(PassError::ViewportLimit {
@@ -215,8 +215,10 @@ impl RenderContext {
         shader: &ShaderObject,
         format: wgpu::TextureFormat,
     ) -> Result<(), RendererError> {
-        let flags = crate::texture::format_features(self, format).flags;
-        if !flags.contains(wgpu::TextureFormatFeatureFlags::BLENDABLE) {
+        let blendable = wgpu::TextureFormatFeatureFlags::BLENDABLE;
+        let adapter = self.adapter.as_ref();
+        let flags = read_format_features(adapter, self.features, format).flags;
+        if !flags.contains(blendable) {
             return Err(PassError::InvalidColorTarget(format!(
                 "pass '{}' draws into {format:?}, which this device can't blend, and a shader uses AlphaMode::Blend",
                 pass.name
