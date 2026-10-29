@@ -78,7 +78,7 @@ impl ShaderObject {
     /// until a load replaces it. The map is in place before the slot names its id,
     /// so a plan that reads the id finds the map. An explicit texture the key held is released.
     pub(crate) fn set_map(&self, key: &str, source: TextureSource) -> Result<(), ShaderError> {
-        self.check_map_key(key)?;
+        self.check_key(key)?;
         let writing = self.texture_writes.lock();
         let (id, replaced) = self.keep_source(key, source);
         let written = self.write_slot(key, UniformData::Texture(TextureMeta::with_id_only(id)));
@@ -90,7 +90,7 @@ impl ShaderObject {
 
     /// Refuses a `key` the shader doesn't declare as a texture. It reads the storage before
     /// the caller takes `texture_writes`, since a flush holds the storage while it waits for it.
-    fn check_map_key(&self, key: &str) -> Result<(), ShaderError> {
+    fn check_key(&self, key: &str) -> Result<(), ShaderError> {
         match self.storage.read().shape(key)? {
             UniformData::Texture(_) => Ok(()),
             _ => Err(ShaderError::TypeMismatch(key.into())),
