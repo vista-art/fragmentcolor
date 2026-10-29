@@ -838,6 +838,47 @@ def check_texture_inputs(renderer):
     print("create_texture takes every byte form, a Texture, and usage")
 
 
+def check_material_textures(renderer):
+    """The Material texture setters take create_texture's keywords, and raw pixels reach the upload."""
+    corners = ([-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0])
+
+    def glow(set_texture):
+        # A black surface lit only by its emissive map, over the whole target.
+        mesh = Mesh()
+        mesh.add_vertices([Vertex.pbr(corner).set(Vertex.NORMAL, [0.0, 0.0, 1.0]) for corner in corners])
+        material = Material.pbr().base_color([0.0, 0.0, 0.0, 1.0]).emissive([1.0, 1.0, 1.0])
+        rpass = Pass("glow")
+        rpass.add(Model(mesh, set_texture(material)))
+        target = renderer.create_texture_target([4, 4])
+        renderer.render(rpass, target)
+        return target.get_image()[0, 0]
+
+    red = [255, 0, 0, 255]
+    forms = {
+        "size=[1, 1]": lambda m: m.emissive_texture(red, size=[1, 1]),
+        "a positional size": lambda m: m.emissive_texture(bytes(red), [1, 1]),
+        "a Size": lambda m: m.emissive_texture(bytearray(red), size=Size(1, 1)),
+        "format=R8Unorm": lambda m: m.emissive_texture(bytes([255]), size=[1, 1], format=TextureFormat.R8Unorm),
+        "an ndarray": lambda m: m.emissive_texture(np.array([[red]], dtype=np.uint8)),
+        "every keyword": lambda m: m.emissive_texture(
+            red, size=[1, 1], format=TextureFormat.Rgba, mipmaps=False,
+            sampler=SamplerOptions(repeat_x=True), usage=TextureUsage.COPY_SRC),
+    }
+    for label, form in forms.items():
+        pixel = glow(form)
+        assert pixel[0] > 200 and pixel[1] < 40 and pixel[2] < 40, f"emissive_texture with {label} drew {pixel}"
+    setters = ("base_color_texture", "metallic_roughness_texture", "normal_texture",
+               "occlusion_texture", "emissive_texture")
+    for name in setters:
+        setter = getattr(Material.pbr(), name)
+        setter(red, size=[1, 1], format=TextureFormat.Rgba8Unorm, mipmaps=False, usage=TextureUsage.COPY_SRC)
+        raises_invalid(f"Material.{name} with an ndarray of another size",
+                       lambda: setter(np.zeros((2, 2, 4), dtype=np.uint8), size=[1, 1]))
+        raises_type(f"Material.{name} with a float size", lambda: setter(red, size=[1.0, 1.0]))
+        raises_type(f"Material.{name} with a string format", lambda: setter(red, format="rgba"))
+    print("The Material texture setters take create_texture's keywords, and raw pixels draw")
+
+
 def check_invalid_textures(renderer):
     """Texture inputs fill the format they are given, or raise InvalidInputError."""
     gray = np.arange(16, dtype=np.uint8).reshape(4, 4)
@@ -1284,6 +1325,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_example_resize(renderer)
     check_clear_color()
     check_texture_inputs(renderer)
+    check_material_textures(renderer)
     check_invalid_textures(renderer)
     check_scene_errors()
     check_stub()

@@ -294,9 +294,9 @@ impl Renderer {
     }
 }
 
-/// Builds the `TextureInput` for `create_texture`. An ndarray brings its own
-/// size, which a `size` keyword must match; the other kwargs apply to every source.
-fn py_to_texture_spec(
+/// Builds the `TextureInput` for `create_texture` and the Material texture setters.
+/// An ndarray brings its own size, which a `size` keyword must match; the other kwargs apply to every source.
+pub(crate) fn py_to_texture_spec(
     input: PyTextureSource<'_>,
     options: TextureKeywords<'_>,
 ) -> Result<crate::texture::TextureInput, PyErr> {
@@ -323,11 +323,11 @@ fn py_to_texture_spec(
     Ok(spec)
 }
 
-/// The keyword arguments of `create_texture`, each optional.
-struct TextureKeywords<'py> {
-    size: Option<PySize<'py>>,
-    format: Option<crate::TextureFormat>,
-    mipmaps: Option<bool>,
-    sampler: Option<crate::texture::PySamplerOptions<'py>>,
-    usage: Option<crate::texture::PyTextureUsage<'py>>,
+/// The keyword arguments of `create_texture` and the Material texture setters, each optional.
+pub(crate) struct TextureKeywords<'py> {
+    pub(crate) size: Option<PySize<'py>>,
+    pub(crate) format: Option<crate::TextureFormat>,
+    pub(crate) mipmaps: Option<bool>,
+    pub(crate) sampler: Option<crate::texture::PySamplerOptions<'py>>,
+    pub(crate) usage: Option<crate::texture::PyTextureUsage<'py>>,
 }

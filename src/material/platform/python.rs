@@ -6,7 +6,9 @@ use pyo3::prelude::*;
 use crate::Shader;
 use crate::material::{AlphaMode, Material, MaterialError, TextureSlot};
 use crate::platforms::python::{PyChannels, PyUnsigned};
-use crate::texture::PyTextureSource;
+use crate::renderer::platform::python::{TextureKeywords, py_to_texture_spec};
+use crate::texture::{PySamplerOptions, PyTextureSource, PyTextureUsage};
+use crate::{PySize, TextureFormat, TextureInput};
 
 #[pymethods]
 impl Material {
@@ -121,35 +123,114 @@ impl Material {
         self.double_sided(value)
     }
 
-    #[pyo3(name = "base_color_texture")]
+    #[pyo3(
+        name = "base_color_texture",
+        signature = (texture, size=None, format=None, mipmaps=None, sampler=None, usage=None)
+    )]
     #[lsp_doc("docs/api/scene/material/base_color_texture.md")]
-    pub fn base_color_texture_py(&self, texture: PyTextureSource<'_>) -> PyResult<Self> {
-        Ok(self.base_color_texture(crate::TextureInput::try_from(texture)?))
+    pub fn base_color_texture_py<'py>(
+        &self,
+        texture: PyTextureSource<'py>,
+        size: Option<PySize<'py>>,
+        format: Option<TextureFormat>,
+        mipmaps: Option<bool>,
+        sampler: Option<PySamplerOptions<'py>>,
+        usage: Option<PyTextureUsage<'py>>,
+    ) -> PyResult<Self> {
+        let input = read_source(texture, size, format, mipmaps, sampler, usage)?;
+        Ok(self.base_color_texture(input))
     }
 
-    #[pyo3(name = "metallic_roughness_texture")]
+    #[pyo3(
+        name = "metallic_roughness_texture",
+        signature = (texture, size=None, format=None, mipmaps=None, sampler=None, usage=None)
+    )]
     #[lsp_doc("docs/api/scene/material/metallic_roughness_texture.md")]
-    pub fn metallic_roughness_texture_py(&self, texture: PyTextureSource<'_>) -> PyResult<Self> {
-        Ok(self.metallic_roughness_texture(crate::TextureInput::try_from(texture)?))
+    pub fn metallic_roughness_texture_py<'py>(
+        &self,
+        texture: PyTextureSource<'py>,
+        size: Option<PySize<'py>>,
+        format: Option<TextureFormat>,
+        mipmaps: Option<bool>,
+        sampler: Option<PySamplerOptions<'py>>,
+        usage: Option<PyTextureUsage<'py>>,
+    ) -> PyResult<Self> {
+        let input = read_source(texture, size, format, mipmaps, sampler, usage)?;
+        Ok(self.metallic_roughness_texture(input))
     }
 
-    #[pyo3(name = "normal_texture")]
+    #[pyo3(
+        name = "normal_texture",
+        signature = (texture, size=None, format=None, mipmaps=None, sampler=None, usage=None)
+    )]
     #[lsp_doc("docs/api/scene/material/normal_texture.md")]
-    pub fn normal_texture_py(&self, texture: PyTextureSource<'_>) -> PyResult<Self> {
-        Ok(self.normal_texture(crate::TextureInput::try_from(texture)?))
+    pub fn normal_texture_py<'py>(
+        &self,
+        texture: PyTextureSource<'py>,
+        size: Option<PySize<'py>>,
+        format: Option<TextureFormat>,
+        mipmaps: Option<bool>,
+        sampler: Option<PySamplerOptions<'py>>,
+        usage: Option<PyTextureUsage<'py>>,
+    ) -> PyResult<Self> {
+        let input = read_source(texture, size, format, mipmaps, sampler, usage)?;
+        Ok(self.normal_texture(input))
     }
 
-    #[pyo3(name = "occlusion_texture")]
+    #[pyo3(
+        name = "occlusion_texture",
+        signature = (texture, size=None, format=None, mipmaps=None, sampler=None, usage=None)
+    )]
     #[lsp_doc("docs/api/scene/material/occlusion_texture.md")]
-    pub fn occlusion_texture_py(&self, texture: PyTextureSource<'_>) -> PyResult<Self> {
-        Ok(self.occlusion_texture(crate::TextureInput::try_from(texture)?))
+    pub fn occlusion_texture_py<'py>(
+        &self,
+        texture: PyTextureSource<'py>,
+        size: Option<PySize<'py>>,
+        format: Option<TextureFormat>,
+        mipmaps: Option<bool>,
+        sampler: Option<PySamplerOptions<'py>>,
+        usage: Option<PyTextureUsage<'py>>,
+    ) -> PyResult<Self> {
+        let input = read_source(texture, size, format, mipmaps, sampler, usage)?;
+        Ok(self.occlusion_texture(input))
     }
 
-    #[pyo3(name = "emissive_texture")]
+    #[pyo3(
+        name = "emissive_texture",
+        signature = (texture, size=None, format=None, mipmaps=None, sampler=None, usage=None)
+    )]
     #[lsp_doc("docs/api/scene/material/emissive_texture.md")]
-    pub fn emissive_texture_py(&self, texture: PyTextureSource<'_>) -> PyResult<Self> {
-        Ok(self.emissive_texture(crate::TextureInput::try_from(texture)?))
+    pub fn emissive_texture_py<'py>(
+        &self,
+        texture: PyTextureSource<'py>,
+        size: Option<PySize<'py>>,
+        format: Option<TextureFormat>,
+        mipmaps: Option<bool>,
+        sampler: Option<PySamplerOptions<'py>>,
+        usage: Option<PyTextureUsage<'py>>,
+    ) -> PyResult<Self> {
+        let input = read_source(texture, size, format, mipmaps, sampler, usage)?;
+        Ok(self.emissive_texture(input))
     }
+}
+
+/// A texture setter's source and keywords, read as `create_texture` reads them.
+fn read_source<'py>(
+    texture: PyTextureSource<'py>,
+    size: Option<PySize<'py>>,
+    format: Option<TextureFormat>,
+    mipmaps: Option<bool>,
+    sampler: Option<PySamplerOptions<'py>>,
+    usage: Option<PyTextureUsage<'py>>,
+) -> PyResult<TextureInput> {
+    let keywords = TextureKeywords {
+        size,
+        format,
+        mipmaps,
+        sampler,
+        usage,
+    };
+    py_to_texture_spec(texture, keywords)
 }
 
 /// A value the material can't use raises `MaterialError`,
