@@ -142,7 +142,7 @@
 - A GPU error that `render` returns throws `FragmentColorException.Device(kind, label, detail)`, with an `ErrorKind`, the step that failed and the device's own words. Every `FragmentColorException` has the error's full text as its `toString()`, and its `message` lists the fields, such as `kind=VALIDATION, label=frame, detail=...`.
 - `setClearColor` takes a `FloatArray`, a `DoubleArray` and a `List<Double>` as well as a `List<Float>`, the forms every other color setter takes.
 - A hidden window's frame throws `FragmentColorException.Occluded`, as Python raises `OccludedSurfaceError`, so a render loop can skip the frame without reading the message. It threw `FragmentColorException.Render` with the text.
-- `Renderer.createTarget(surface)` throws `FragmentColorException.Init`, naming the size, when the window reports a width or height below 0, as `ANativeWindow_getWidth` and `getHeight` do on failure. The negative side wrapped to a huge size and failed later with a size error that named the wrong number.
+- `Renderer.createTarget(surface)` throws `FragmentColorException.Init`, naming the size, when the window reports a width or height below 0, as `ANativeWindow_getWidth` and `getHeight` do on failure. Its text starts with `Initialization error:`, as the iOS refusal of a bad drawable size does. The negative side wrapped to a huge size and failed later with a size error that named the wrong number.
 
 ### Breaking and behavior changes
 

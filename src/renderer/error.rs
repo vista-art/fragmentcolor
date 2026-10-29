@@ -110,6 +110,17 @@ pub enum RendererError {
     Error(String),
 }
 
+impl RendererError {
+    /// Whether the frame failed because the window is hidden or minimized, which every
+    /// binding raises as its own class or case, so a render loop can skip the frame.
+    pub(crate) fn is_occluded(&self) -> bool {
+        matches!(
+            self,
+            RendererError::SurfaceError(crate::target::SurfaceError::Occluded)
+        )
+    }
+}
+
 /// A property a typed refusal carries on the error a binding raises.
 #[cfg(any(python, wasm, test))]
 #[derive(Debug, Clone, PartialEq)]
@@ -159,12 +170,10 @@ impl RendererError {
 impl Classify for RendererError {
     fn classify(&self) -> ErrorClass {
         match self {
+            error if error.is_occluded() => ErrorClass::OccludedSurface,
             RendererError::TextureError(error) => error.classify(),
             RendererError::InitializationError(error) => error.classify(),
             RendererError::PassError(error) => error.classify(),
-            RendererError::SurfaceError(crate::target::SurfaceError::Occluded) => {
-                ErrorClass::OccludedSurface
-            }
             RendererError::DeviceError { .. } => ErrorClass::Device,
             RendererError::LimitError { .. } => ErrorClass::Limit,
             RendererError::FeatureError { .. } => ErrorClass::Feature,
@@ -428,5 +437,25 @@ mod tests {
         let s = e.to_string();
         assert!(s.contains("Surface error"));
         assert!(s.contains("failed to acquire frame"));
+    }
+
+    // Story: only a hidden window's frame counts as occluded, the one decision Python,
+    // JavaScript, Swift and Kotlin read to raise their occluded class or case.
+    #[test]
+    fn only_a_hidden_window_is_occluded() {
+        use crate::target::SurfaceError;
+        let hidden = RendererError::SurfaceError(SurfaceError::Occluded);
+        assert!(hidden.is_occluded());
+        assert_eq!(
+            hidden.to_string(),
+            "Surface error: failed to acquire frame: surface is occluded"
+        );
+        for other in [
+            RendererError::SurfaceError(SurfaceError::Lost),
+            RendererError::SurfaceError(SurfaceError::OutOfMemory),
+            RendererError::NoContext,
+        ] {
+            assert!(!other.is_occluded(), "{other}");
+        }
     }
 }

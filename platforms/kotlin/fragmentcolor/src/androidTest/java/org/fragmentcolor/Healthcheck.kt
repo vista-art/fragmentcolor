@@ -49,6 +49,14 @@ class Healthcheck : ExampleCase() {
         assertEquals("Device error (validation) in 'render pipeline': ${error.detail}", error.toString())
     }
 
+    // A hidden window's frame throws FragmentColorException.Occluded, whose text is the
+    // Rust error's. An emulator can't hide a texture target, so the case is built here.
+    @Test
+    fun occludedDescribesFrame() {
+        val occluded = FragmentColorException.Occluded()
+        assertEquals("Surface error: failed to acquire frame: surface is occluded", occluded.toString())
+    }
+
     // A size with layers reaches the check the other languages run: a texture
     // target has one layer, so a depth of 2 throws.
     @Test
