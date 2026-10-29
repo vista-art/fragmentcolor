@@ -749,7 +749,7 @@ class GeneratedExamples : ExampleCase() {
     fun geometry_mesh_clear_instances() = example("docs/api/geometry/mesh/clear_instances.md") {
         val m = Mesh()
         m.addInstance(Instance().set("tint", listOf(1.0f, 0.0f, 0.0f, 1.0f)))
-        m.clearInstances() // back to a single uninstanced draw
+        m.clearInstances() // no instances left
     }
 
     @Test

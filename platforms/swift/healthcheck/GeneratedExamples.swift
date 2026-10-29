@@ -861,7 +861,7 @@ final class GeneratedExamples: ExampleCase {
         await example("docs/api/geometry/mesh/clear_instances.md") {
             let m = Mesh()
             try m.addInstance(Instance().set("tint", [1.0, 0.0, 0.0, 1.0]))
-            m.clearInstances() // back to a single uninstanced draw
+            m.clearInstances() // no instances left
         }
     }
 

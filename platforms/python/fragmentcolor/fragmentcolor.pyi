@@ -375,11 +375,13 @@ class Renderer:
 
         A window that is hidden or minimized has no frame to draw on. `render` then returns `RendererError::SurfaceError(SurfaceError::Occluded)`, which Python raises as `OccludedSurfaceError`, a `FragmentColorError`. Skip that frame and draw the next one.
 
-        A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input. The inputs are the `@location` arguments of the vertex entry point and the `@location` members of its struct arguments, and each one reads the mesh attribute of its own name.
+        A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input. The inputs are the `@location` arguments of the vertex entry point and the `@location` members of its struct arguments, and each one reads the mesh attribute of its own name. The checks on the shader and its textures come first, so an input past `max_vertex_attributes` returns `RendererError::LimitError` instead.
 
-        Each mesh a shader draws is checked against the device, and a mesh past one of its limits returns `RendererError::LimitError`, as a shader does: an input at a location past `max_vertex_attributes`, a vertex or instance stride past `max_vertex_buffer_array_stride`, and mesh data that needs a buffer past `max_buffer_size`. Its `item` names the input, the stride or the buffer. WebGL2 takes strides up to 255 bytes. A mesh draws with every `Renderer` that renders it, each from buffers of its own.
+        Each mesh a shader draws is checked against the device, and a mesh past one of its limits returns `RendererError::LimitError`, as a shader does: a vertex or instance stride past `max_vertex_buffer_array_stride`, and mesh data that needs a buffer past `max_buffer_size`. Its `item` names the stride or the buffer. WebGL2 takes strides up to 255 bytes. A mesh draws with every `Renderer` that renders it, each from buffers of its own. These checks, and the mesh's own, apply only to the meshes the frame draws: the mesh of a hidden `Model`, or of a `Model` in another pass, isn't checked.
 
-        Before it takes a frame, `render` checks each shader against the device and each texture uniform against its slot, so every language returns these errors from the call that caused them, the web included. A group, binding, binding count, buffer size or workgroup past the device's limits returns `RendererError::LimitError`, a feature the device lacks `RendererError::FeatureError`, a texture uniform that was never set or whose texture its slot can't take `RendererError::BindingError`, and a render shader without its vertex or fragment entry point `RendererError::EntryError`, each with its fields. An unset PBR map slot binds its 1x1 default instead, when the slot takes a 2D float texture. A texture `unregister_texture` removed, or one from another `Renderer`, returns `RendererError::TextureNotFoundError`, in a PBR map slot too. The [Shader](https://fragmentcolor.org/api/core/shader) page lists the checks and each language's form of these errors.
+        `render(mesh)` draws the mesh with a shader of its own, built from its first vertex. That shader reads `position`, and `color` when the first vertex sets it as four numbers, and it checks the mesh again whenever the mesh changed, so it asks nothing of the mesh's other shaders.
+
+        Before it takes a frame, `render` checks each shader against the device and each texture uniform against its slot, so every language returns these errors from the call that caused them, the web included. A group, binding, binding count, buffer size or workgroup past the device's limits, or a vertex input at a location past `max_vertex_attributes`, returns `RendererError::LimitError`, a feature the device lacks `RendererError::FeatureError`, a texture uniform that was never set or whose texture its slot can't take `RendererError::BindingError`, and a render shader without its vertex or fragment entry point `RendererError::EntryError`, each with its fields. An unset PBR map slot binds its 1x1 default instead, when the slot takes a 2D float texture. A texture `unregister_texture` removed, or one from another `Renderer`, returns `RendererError::TextureNotFoundError`, in a PBR map slot too. The [Shader](https://fragmentcolor.org/api/core/shader) page lists the checks and each language's form of these errors.
 
         A `Renderer` draws only into the targets it created. A target from another `Renderer` returns `RendererError::ForeignTarget`, unless every pass is a compute pass, which draws into no target, and a pass target or texture uniform from another `Renderer` returns `RendererError::TextureNotFoundError`. These come before `render` uploads a queued `Material` map or opens a device, so a refused render changes nothing. A `Renderer` that has opened no device yet returns `RendererError::NoContext` for a target without an owner. Each pass is checked against what it draws into before it records: a [depth target](https://fragmentcolor.org/api/core/pass#set_depth_target) of the color attachment's size and sample count, shader outputs and blending the [target](https://fragmentcolor.org/api/core/pass#set_target)'s format takes, a [viewport](https://fragmentcolor.org/api/core/pass#set_viewport) and a [compute dispatch](https://fragmentcolor.org/api/core/pass#set_compute_dispatch) the device takes, and textures that one pass doesn't both write and read. A render pass can't bind a texture it draws into, and no pass can read a texture one of its bindings writes, so a compute dispatch that samples a texture and stores into it returns `PassError::TextureConflict` too.
 
@@ -1696,8 +1698,10 @@ class Mesh:
     `MeshError::InvalidInstance` naming the attribute and the item. An attribute
     no attached shader reads can be left out, and it uploads as zeros: a shader
     that lets go of the mesh, through `Shader.remove_mesh`, `Shader.clear_meshes`
-    or by dropping, takes what it reads along. The types a shader gave the
-    attributes stay for as long as the mesh lives.
+    or by dropping, takes what it reads along. `Renderer.render(mesh)` draws with
+    a shader of its own that checks the mesh again whenever it changes, so it adds
+    nothing to that list. The types a shader gave the attributes stay for as long as the
+    mesh lives.
 
     A mesh draws with every `Renderer` that renders it. Each one uploads buffers
     of its own from the mesh's vertices, indices and instances.
@@ -1840,14 +1844,19 @@ class Mesh:
         """
     def clear_instances(self) -> None:
         """
-        Reset the mesh's instance state to the default (1 draw, no per-instance data).
+        Remove the mesh's instances and its instance count override.
 
         Specifically, this:
         - Drops any per-instance attributes added via `add_instance` / `add_instances`.
         - Clears any count override previously set with `set_instance_count`.
 
-        After calling, the mesh renders as a single instance unless you populate it
-        again or call `set_instance_count`.
+        After calling, a shader that reads no instance attributes draws the mesh once,
+        unless you add instances again or call `set_instance_count`. A shader that
+        reads instance attributes needs instances that hold them, so while it holds
+        the mesh, `Renderer.render` returns `MeshError::InvalidInstance` naming the
+        attribute until you add them again, or until the shader lets the mesh go
+        through `Shader.remove_mesh`, `Shader.clear_meshes` or by dropping.
+        `set_instance_count` doesn't stand in for them.
 
         Example:
 
@@ -1856,7 +1865,7 @@ class Mesh:
 
         m = Mesh()
         m.add_instance(Instance().set("tint", [1.0, 0.0, 0.0, 1.0]))
-        m.clear_instances() # back to a single uninstanced draw
+        m.clear_instances() # no instances left
         ```
         """
     def set_instance_count(self, n: SupportsIndex) -> None:
