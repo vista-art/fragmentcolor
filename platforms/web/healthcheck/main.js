@@ -718,13 +718,14 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     await rejects('createTexture options with width and format', () =>
       renderer.createTexture(new Uint8Array(4), { width: 1, height: 1, format: TextureFormat.Rgba8Unorm }));
 
-    // Material texture setters take what createTexture takes, and raw pixels reach the upload.
+    // Material texture setters take what createTexture takes, and each option reaches the upload.
     Material.pbr().baseColorTexture(fromImage);
-    const glow = async (setTexture) => {
+    const flat = [[0, 0], [0, 0], [0, 0]];
+    const glow = async (setTexture, uvs = flat) => {
       // A black surface lit only by its emissive map, over the whole target.
       const surface = new Mesh();
       surface.addVertices([[-1, -1, 0], [3, -1, 0], [-1, 3, 0]]
-        .map((corner) => Vertex.pbr(corner).set(Vertex.NORMAL, [0, 0, 1])));
+        .map((corner, i) => Vertex.pbr(corner).set(Vertex.NORMAL, [0, 0, 1]).set(Vertex.UV0, uvs[i])));
       const material = Material.pbr().baseColor([0, 0, 0, 1]).emissive([1, 1, 1]);
       const glowing = new Pass('glow');
       glowing.add(new Model(surface, setTexture(material)));
@@ -733,6 +734,7 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       renderer.render(glowing, frame);
       return Array.from((await frame.getImage()).slice(0, 4));
     };
+    const isRed = ([r, g, b]) => r > 200 && g < 40 && b < 40;
     const redPixel = [255, 0, 0, 255];
     const forms = {
       'a bare size': (m) => m.emissiveTexture(new Uint8Array(redPixel), [1, 1]),
@@ -740,17 +742,49 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       '{ size, format: R8Unorm }': (m) =>
         m.emissiveTexture(new Uint8Array([255]), { size: [1, 1], format: TextureFormat.R8Unorm }),
       'an ImageData': (m) => m.emissiveTexture(new ImageData(new Uint8ClampedArray(redPixel), 1, 1)),
-      'every option': (m) => m.emissiveTexture(new Uint8Array(redPixel), {
-        size: [1, 1], format: TextureFormat.Rgba, mipmaps: false, sampler: { repeatX: true }, usage: TextureUsage.COPY_SRC,
-      }),
     };
     for (const [label, form] of Object.entries(forms)) {
-      const [r, g, b] = await glow(form);
-      if (r < 200 || g > 40 || b > 40) fail(`emissiveTexture with ${label} drew [${r}, ${g}, ${b}]`);
+      const pixel = await glow(form);
+      if (!isRed(pixel)) fail(`emissiveTexture with ${label} drew [${pixel}]`);
+    }
+    // Each option changes what draws, so an option the setter drops fails here.
+    const gray = new Uint8Array([128, 128, 128, 255]);
+    const linear = await glow((m) => m.emissiveTexture(gray, { size: [1, 1], format: TextureFormat.Rgba8Unorm }));
+    const srgb = await glow((m) => m.emissiveTexture(gray, [1, 1]));
+    if (linear[0] < srgb[0] + 30) fail(`format: Rgba8Unorm drew [${linear}], the sRGB default [${srgb}]`);
+    const pair = new Uint8Array([...redPixel, 0, 255, 0, 255]);
+    const shift = (m, offset) => m.textureTransform(fc.TextureSlot.Emissive, [offset, 0], [1, 1], 0);
+    const wrapped = await glow((m) => shift(m, 1.25).emissiveTexture(pair, { size: [2, 1], sampler: { repeatX: true } }));
+    const clamped = await glow((m) => shift(m, 1.25).emissiveTexture(pair, [2, 1]));
+    if (!isRed(wrapped)) fail(`sampler: { repeatX: true } drew [${wrapped}] past the edge`);
+    if (clamped[1] < 200 || clamped[0] > 40) fail(`the clamped default drew [${clamped}] past the edge`);
+    // 16 texels to a pixel: a mip chain samples its 1x1 level, a mix of red and green.
+    const dense = [[0, 0], [64, 0], [0, 64]];
+    const repeat = { repeatX: true };
+    const chained = await glow((m) => shift(m, 0.25).emissiveTexture(pair, { size: [2, 1], sampler: repeat }), dense);
+    const single = await glow((m) =>
+      shift(m, 0.25).emissiveTexture(pair, { size: [2, 1], sampler: repeat, mipmaps: false }), dense);
+    if (!isRed(single)) fail(`mipmaps: false drew [${single}]`);
+    if (chained[1] < 60) fail(`the default mip chain drew [${chained}]`);
+    const refusesBesideTexture = (name, run) => {
+      try { run(); } catch (e) {
+        if (e.name !== 'InvalidInputError' || !e.message.includes(name)) fail(`${name} beside a Texture threw ${e.name}: ${e.message}`);
+        return;
+      }
+      fail(`${name} with options beside a Texture should throw`);
+    };
+    const besideTexture = await renderer.createTexture(fromImage, { format: TextureFormat.Rgba8Unorm })
+      .then(() => null, (e) => e);
+    if (besideTexture?.name !== 'InvalidInputError' || !besideTexture.message.includes('Renderer.createTexture')) {
+      fail(`createTexture with a format beside a Texture gave ${besideTexture}`);
     }
     for (const name of ['baseColorTexture', 'metallicRoughnessTexture', 'normalTexture', 'occlusionTexture', 'emissiveTexture']) {
       const material = Material.pbr();
       material[name](new Uint8Array(redPixel), { size: [1, 1], format: TextureFormat.Rgba8Unorm, mipmaps: false });
+      material[name](fromImage);
+      // 32 is outside the five TextureUsage flags, so the upload at load refuses it.
+      await rejects(`Material.${name} with usage 32`, () => glow((m) => m[name](redPixel, { size: [1, 1], usage: 32 })));
+      refusesBesideTexture(`Material.${name}`, () => material[name](fromImage, { sampler: { repeatX: true } }));
       throws(`Material.${name} with a fractional size`, () => material[name](new Uint8Array(redPixel), [1.5, 1]));
       throws(`Material.${name} with mipmaps: "yes"`, () => material[name](new Uint8Array(redPixel), { size: [1, 1], mipmaps: 'yes' }));
     }
