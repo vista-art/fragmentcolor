@@ -700,6 +700,7 @@ def check_vectors():
         for bytes_form in (bytes(2), bytearray(2), memoryview(bytes(2)), np.zeros(2, dtype=np.uint8)):
             raises_type(f"{name}({type(bytes_form).__name__})", lambda: apply(bytes_form))
         raises_type(f"{name} with a bool", lambda: apply([True, 1]))
+        raises_type(f"{name} with a 0-d bool array", lambda: apply([np.array(True), 1.0]))
         raises_type(f"{name} with a string", lambda: apply(["0", 1]))
         for bad in (10**400, 1e39, float("nan"), float("inf"), float("-inf")):
             try:
@@ -712,6 +713,8 @@ def check_vectors():
     raises_invalid("Vertex with 5 numbers", lambda: Vertex([0.0] * 5))
     raises_invalid("Vertex(nan)", lambda: Vertex(float("nan")))
     raises_type("Vertex(True)", lambda: Vertex(True))
+    raises_type("Vertex(np.array(True))", lambda: Vertex(np.array(True)))
+    raises_type("Vertex(np.bool_(True))", lambda: Vertex(np.bool_(True)))
     Vertex(0.5)
     Mesh().add_vertex(([0.0, 0.0, 0.0], [0.0, 1.0]))
     raises_invalid("Mesh.add_vertex((position with NaN, uv))",

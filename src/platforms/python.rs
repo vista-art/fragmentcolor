@@ -226,9 +226,11 @@ fn is_bytes(value: &Bound<'_, PyAny>) -> bool {
         || value.is_instance_of::<PyArrayDyn<u8>>()
 }
 
-/// Whether the value is a Python `bool` or a NumPy `bool_`, which read as numbers but aren't.
+/// Whether the value is a Python `bool`, a NumPy `bool_` or a bool ndarray, such as the
+/// 0-d `np.array(True)`, which read as numbers but aren't.
 fn is_bool(value: &Bound<'_, PyAny>) -> bool {
     value.is_instance_of::<PyBool>()
+        || value.is_instance_of::<PyArrayDyn<bool>>()
         || value
             .is_instance(&dtype::<bool>(value.py()).typeobj())
             .unwrap_or(false)
