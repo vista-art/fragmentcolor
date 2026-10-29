@@ -12,7 +12,7 @@ pub enum TextureError {
     /// `image::load_from_memory` / `image::open` for callers that want to
     /// log "this tile is corrupt" specifically.
     #[error("Image decode failed: {0}")]
-    MalformedImageError(#[from] image::ImageError),
+    MalformedImageError(String),
     /// The requested target format isn't supported by the CPU mipmap
     /// dispatcher. Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`,
     /// `Bgra8Unorm`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`,
@@ -37,22 +37,21 @@ pub enum TextureError {
     FixedSize,
     /// The active device doesn't have the wgpu feature required to use the
     /// requested format. Common case: `R16Unorm` (and its Rg/Rgba/Snorm
-    /// cousins) need [`wgpu::Features::TEXTURE_FORMAT_16BIT_NORM`].
+    /// cousins) need `TEXTURE_FORMAT_16BIT_NORM`.
     /// FragmentColor requests a fixed set of features at device creation,
     /// each one the adapter advertises (see `request_device` in
     /// `renderer/platform/all.rs`). The texture format features in that set,
     /// such as `TEXTURE_FORMAT_16BIT_NORM` and the compressed formats, reach
     /// this error only on a device that doesn't advertise them. Surfaces capability constraints at the API boundary
     /// instead of letting them detonate as runtime validation cascades on
-    /// first use. The `format` field carries the underlying
-    /// `wgpu::TextureFormat` so the message stays accurate for variants
-    /// (e.g. `R16Snorm`) that don't have a corresponding `crate::TextureFormat`.
+    /// first use. `format` names the format, such as `R16Snorm`, which has no
+    /// `TextureFormat`, and `missing_feature` names the features it needs.
     #[error(
-        "Texture format {format:?} is not supported by the active device for the requested usage (missing wgpu feature {missing_feature:?}). The adapter does not advertise this feature; pick a different format or run on a device that supports it."
+        "Texture format {format} is not supported by the active device for the requested usage (missing wgpu feature {missing_feature}). The adapter does not advertise this feature; pick a different format or run on a device that supports it."
     )]
     UnsupportedFormatForUsage {
-        format: wgpu::TextureFormat,
-        missing_feature: wgpu::Features,
+        format: String,
+        missing_feature: String,
     },
     #[error("Failed to create texture: {0}")]
     CreateTextureError(String),

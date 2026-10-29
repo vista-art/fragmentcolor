@@ -130,7 +130,7 @@ The API must look the same in Rust, JavaScript, Python, Swift, and Kotlin in eve
 11. **Names.** Type names in public signatures are identical everywhere. A binding-only wrapper name (`Mobile*`, `Py*`, `RenderCanvas*`) never appears in a signature. Old names survive only as aliases.
 12. **Return values.** If Rust returns `&Self` or `Self` from a mutator, every binding returns the receiver. `Option<T>` maps to `undefined`, `None`, `nil`, and `null`. Getters return the same shape everywhere: matrices in Rust's shape and sizes as `Size`, never a tagged enum.
 13. **Value types** (`Size`, `ScreenRegion`, `TextureFormat`, `TextureId`, `SamplerOptions`) compare by value in Python, Swift, and Kotlin. Identity comparison in JS is accepted.
-14. **Rust-only items.** Trait implementations (`SceneObject`, `Target`, `Renderable`) and the generic `get::<T>` are Rust idioms. Third-party types (glam, wgpu, image) never appear in the public API, Rust included.
+14. **Rust-only items.** Trait implementations (`SceneObject`, `Target`, `Renderable`) and the generic `get::<T>` are Rust idioms. Third-party types (glam, wgpu, naga, image, gltf) never appear in the public API, Rust included: not in a variant, a field or a public `From` impl. An upstream error reaches a public error as crate-owned data, such as naga's message and places in a `Diagnostic`, through a crate-private conversion, so `?` stays at the call site.
 
 ### How the build checks it
 

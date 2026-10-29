@@ -1,6 +1,7 @@
 use crate::mesh::vertex::POSITION;
 use crate::pass::PassInput;
 use crate::{PassObject, ShaderError, ShaderHash, ShaderObject, Target, TargetFrame};
+use crate::shader::error::describe;
 use crate::{ScreenRegion, Size, WindowTarget};
 use crate::{TextureData, TextureTarget, UniformData};
 use dashmap::DashMap;
@@ -585,7 +586,10 @@ impl Renderer {
         InitializationError,
     > {
         let instance = self.instance().await;
-        let surface = instance.create_surface(handle)?;
+        let surface = match instance.create_surface(handle) {
+            Ok(surface) => surface,
+            Err(error) => return Err(InitializationError::SurfaceError(describe(&error))),
+        };
         self.configure_surface(surface, size).await
     }
 
@@ -608,7 +612,10 @@ impl Renderer {
         let instance = self.instance().await;
         // SAFETY: the caller promises the underlying handle (CAMetalLayer / ANativeWindow / ...)
         // remains valid for the lifetime of the returned Surface.
-        let surface = unsafe { instance.create_surface_unsafe(target)? };
+        let surface = match unsafe { instance.create_surface_unsafe(target) } {
+            Ok(surface) => surface,
+            Err(error) => return Err(InitializationError::SurfaceError(describe(&error))),
+        };
         self.configure_surface(surface, size).await
     }
 

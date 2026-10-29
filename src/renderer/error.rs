@@ -155,14 +155,17 @@ impl RendererError {
 
 #[derive(Error, Debug)]
 pub enum InitializationError {
-    #[error("Failed to find a compatible GPU adapter")]
-    AdapterError(#[from] wgpu::RequestAdapterError),
+    /// No GPU adapter fits, with wgpu's reason.
+    #[error("Failed to find a compatible GPU adapter: {0}")]
+    AdapterError(String),
     #[error("Adapter not set after context()")]
     AdapterNotSet,
-    #[error("Failed to create device")]
-    DeviceError(#[from] wgpu::RequestDeviceError),
-    #[error("Failed to create surface")]
-    SurfaceError(#[from] wgpu::CreateSurfaceError),
+    /// The adapter refused to open a device, with wgpu's reason.
+    #[error("Failed to create device: {0}")]
+    DeviceError(String),
+    /// The window or canvas gave no surface, with wgpu's reason.
+    #[error("Failed to create surface: {0}")]
+    SurfaceError(String),
     /// The target's size doesn't fit the device, the error `resize` returns too.
     #[error(transparent)]
     TextureError(#[from] crate::texture::TextureError),
