@@ -39,7 +39,7 @@ pub(crate) use texture_pool::*;
 
 mod access;
 mod checks;
-use checks::{Attachment, PassTargets, refuse_without_context};
+use checks::{Attachment, PassTargets, check_target};
 mod depth;
 mod shader_checks;
 use depth::DepthUse;
@@ -522,15 +522,15 @@ impl Renderer {
         renderable: &impl Renderable,
         target: &impl Target,
     ) -> Result<(), RendererError> {
-        // Drain any pending texture uploads from lazy Material setters before
-        // we touch the GPU. Cheap when nothing is pending, since the load future
-        // then awaits nothing. Wasm has no blocking executor, so pending uploads
-        // wait there until the caller awaits `load`.
+        // A foreign target is refused first, since load uploads into this Renderer's device.
+        check_target(self.context.read().as_ref(), renderable, target)?;
+        // Native render drains the lazy Material uploads. Wasm can't block,
+        // so they wait there until the caller awaits `load`.
         #[cfg(not(wasm))]
         futures::executor::block_on(self.load(renderable))?;
         match self.context.read().as_ref() {
             Some(context) => context.render(renderable, target),
-            None => Err(refuse_without_context(renderable, target)),
+            None => Err(RendererError::NoContext),
         }
     }
 
