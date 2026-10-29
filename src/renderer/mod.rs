@@ -246,9 +246,7 @@ impl Renderer {
     ) -> Result<crate::texture::Texture, RendererError> {
         let input = spec.into();
 
-        // CloneOf and Empty don't produce a new TextureObject — handle them
-        // here so the dispatcher in `TextureObject::from_input` only sees
-        // variants it can actually upload.
+        // CloneOf returns the texture it holds, and Empty has nothing to upload.
         if let TextureData::CloneOf(tex) = input.data {
             return Ok(tex);
         }
@@ -258,8 +256,9 @@ impl Renderer {
             ));
         }
 
+        let source = crate::texture::TextureSource::try_from(input)?;
         let context = self.context(None).await?;
-        let object = crate::TextureObject::from_input(context.clone(), input).await?;
+        let object = crate::TextureObject::from_source(context.clone(), source).await?;
         let object = std::sync::Arc::new(object);
         let registration = crate::texture::Registration::create(&context, object);
         Ok(crate::texture::Texture::new(context, registration))
@@ -1399,11 +1398,9 @@ impl RenderContext {
         &self,
         texture: Arc<crate::TextureObject>,
     ) -> crate::texture::TextureId {
-        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
-        let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-        let texture_id = crate::texture::TextureId { id };
-        self.textures.insert(texture_id, texture);
-        texture_id
+        let id = crate::texture::TextureId::create();
+        self.textures.insert(id, texture);
+        id
     }
 
     pub(crate) fn release_texture(&self, id: &crate::texture::TextureId) {
