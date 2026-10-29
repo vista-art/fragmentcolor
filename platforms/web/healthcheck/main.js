@@ -642,6 +642,8 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       ["Model.setVisible('yes')", () => model.setVisible('yes'), 'TypeError'],
       ["Camera.setAspect('wide')", () => camera.setAspect('wide'), 'TypeError'],
       ["Light.setIntensity('x')", () => Light.point([0, 1, 0], [1, 1, 1]).setIntensity('x'), 'TypeError'],
+      ["SamplerOptions.repeat_x = 'yes'", () => { new fc.SamplerOptions().repeat_x = 'yes'; }, 'TypeError'],
+      ["new SamplerOptions('yes')", () => new fc.SamplerOptions('yes'), 'TypeError'],
       ['Mesh.addVertex with 4 parts', () => new Mesh().addVertex([[0, 0, 0], [0, 0], [1, 1, 1, 1], [0]]), 'TypeError'],
     ]) {
       try { await run(); } catch (e) {

@@ -6,12 +6,16 @@ use wasm_bindgen::prelude::*;
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct SamplerOptions {
+    #[cfg_attr(wasm, wasm_bindgen(skip))]
     #[cfg_attr(mobile, uniffi(default = false))]
     pub repeat_x: bool,
+    #[cfg_attr(wasm, wasm_bindgen(skip))]
     #[cfg_attr(mobile, uniffi(default = false))]
     pub repeat_y: bool,
+    #[cfg_attr(wasm, wasm_bindgen(skip))]
     #[cfg_attr(mobile, uniffi(default = true))]
     pub smooth: bool,
+    #[cfg_attr(wasm, wasm_bindgen(skip))]
     #[cfg_attr(mobile, uniffi(default = None))]
     pub compare: Option<CompareFunction>,
 }
@@ -48,6 +52,63 @@ impl SamplerOptions {
             smooth: flag(smooth, "SamplerOptions: smooth", defaults.smooth)?,
             compare: compare.or(defaults.compare),
         })
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter = repeat_x)]
+    pub fn repeat_x_js(&self) -> bool {
+        self.repeat_x
+    }
+
+    /// A value that isn't a boolean throws a `TypeError` and keeps the old one.
+    #[doc(hidden)]
+    #[wasm_bindgen(setter = repeat_x)]
+    pub fn set_repeat_x_js(&mut self, value: JsValue) -> Result<(), crate::error::WebError> {
+        self.repeat_x = crate::platforms::web::read_flag(&value, "SamplerOptions.repeat_x")?;
+        Ok(())
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter = repeat_y)]
+    pub fn repeat_y_js(&self) -> bool {
+        self.repeat_y
+    }
+
+    /// A value that isn't a boolean throws a `TypeError` and keeps the old one.
+    #[doc(hidden)]
+    #[wasm_bindgen(setter = repeat_y)]
+    pub fn set_repeat_y_js(&mut self, value: JsValue) -> Result<(), crate::error::WebError> {
+        self.repeat_y = crate::platforms::web::read_flag(&value, "SamplerOptions.repeat_y")?;
+        Ok(())
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter = smooth)]
+    pub fn smooth_js(&self) -> bool {
+        self.smooth
+    }
+
+    /// A value that isn't a boolean throws a `TypeError` and keeps the old one.
+    #[doc(hidden)]
+    #[wasm_bindgen(setter = smooth)]
+    pub fn set_smooth_js(&mut self, value: JsValue) -> Result<(), crate::error::WebError> {
+        self.smooth = crate::platforms::web::read_flag(&value, "SamplerOptions.smooth")?;
+        Ok(())
+    }
+
+    #[doc(hidden)]
+    #[wasm_bindgen(getter = compare)]
+    pub fn compare_js(&self) -> Option<CompareFunction> {
+        self.compare
+    }
+
+    /// `undefined` or `null` clears the compare function, and any other value
+    /// that isn't one throws and keeps the old one.
+    #[doc(hidden)]
+    #[wasm_bindgen(setter = compare)]
+    pub fn set_compare_js(&mut self, value: JsValue) -> Result<(), crate::error::WebError> {
+        self.compare = super::parse_compare(&value)?;
+        Ok(())
     }
 }
 
