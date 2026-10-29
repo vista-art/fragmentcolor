@@ -587,6 +587,9 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     throws('Pass.setViewport([4, 0])', () => first.setViewport([4, 0]));
     throws('Pass.setViewport({ minX: 2, minY: 2, maxX: 2, maxY: 6 })',
       () => first.setViewport({ minX: 2, minY: 2, maxX: 2, maxY: 6 }));
+    // A region whose max lies before its min throws, never swapped back.
+    throws('Pass.setViewport({ minX: 8, minY: 0, maxX: 2, maxY: 4 })',
+      () => first.setViewport({ minX: 8, minY: 0, maxX: 2, maxY: 4 }));
     const region = new fc.ScreenRegion([0, 0], [64, 64]);
     region.max_x = -1;
     if (region.maxX !== 64) fail(`ScreenRegion.max_x wrote ${region.maxX} past the checks`);

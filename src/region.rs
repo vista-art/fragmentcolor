@@ -77,9 +77,18 @@ impl ScreenRegion {
         Self::from_size(size.0, size.1)
     }
 
-    /// The region, or [`ScreenRegionError::Empty`] when it has no width or no height.
+    /// The region, or [`ScreenRegionError::Reversed`] when a max lies before its min,
+    /// and [`ScreenRegionError::Empty`] when it has no width or no height.
     /// The fields are public, so a viewport checks the region it receives too.
     pub(crate) fn check(self) -> Result<Self, ScreenRegionError> {
+        if self.max_x < self.min_x || self.max_y < self.min_y {
+            return Err(ScreenRegionError::Reversed {
+                min_x: self.min_x,
+                min_y: self.min_y,
+                max_x: self.max_x,
+                max_y: self.max_y,
+            });
+        }
         if self.width() == 0 || self.height() == 0 {
             return Err(ScreenRegionError::Empty {
                 width: self.width(),
@@ -158,13 +167,13 @@ impl ScreenRegion {
         *self = self.clip(width, height);
     }
 
-    /// The part of this region inside a `width` by `height` area, min corner first.
+    /// The part of this region inside a `width` by `height` area.
     pub(crate) fn clip(&self, width: u32, height: u32) -> ScreenRegion {
         Self {
-            min_x: self.min_x.min(self.max_x).min(width),
-            min_y: self.min_y.min(self.max_y).min(height),
-            max_x: self.min_x.max(self.max_x).min(width),
-            max_y: self.min_y.max(self.max_y).min(height),
+            min_x: self.min_x.min(width),
+            min_y: self.min_y.min(height),
+            max_x: self.max_x.min(width),
+            max_y: self.max_y.min(height),
         }
     }
 
@@ -219,12 +228,14 @@ impl ScreenRegion {
             && self.max_y == other.max_y
     }
 
+    /// The pixels from `min_x` up to `max_x`, and 0 for a region whose max lies before its min.
     pub fn width(&self) -> u32 {
-        u32::abs_diff(self.max_x, self.min_x)
+        self.max_x.saturating_sub(self.min_x)
     }
 
+    /// The pixels from `min_y` up to `max_y`, and 0 for a region whose max lies before its min.
     pub fn height(&self) -> u32 {
-        u32::abs_diff(self.max_y, self.min_y)
+        self.max_y.saturating_sub(self.min_y)
     }
 
     pub fn width_f32(&self) -> f32 {
@@ -421,10 +432,10 @@ impl TryFrom<&wasm_bindgen::JsValue> for ScreenRegion {
             );
             if let (Some(min_x), Some(min_y), Some(max_x), Some(max_y)) = bounds {
                 return ScreenRegion {
-                    min_x: min_x.min(max_x),
-                    min_y: min_y.min(max_y),
-                    max_x: max_x.max(min_x),
-                    max_y: max_y.max(min_y),
+                    min_x,
+                    min_y,
+                    max_x,
+                    max_y,
                 }
                 .check();
             }
@@ -959,7 +970,7 @@ mod tests {
         assert!((square.outbound_radius() - (2.0f32.hypot(2.0))).abs() < 1e-6);
     }
 
-    // Story: Clip keeps the part of a region inside an area and orders its corners.
+    // Story: Clip keeps the part of a region inside an area, and leaves reversed bounds as they are.
     #[test]
     fn clips_to_an_area() {
         let inside = build_region(2, 2, 4, 4);
@@ -977,6 +988,33 @@ mod tests {
             max_x: 1,
             max_y: 2,
         };
-        assert_eq!(flipped.clip(8, 8), build_region(1, 2, 4, 4));
+        assert_eq!(flipped.clip(8, 8), flipped);
+        assert_eq!(flipped.area(), 0);
+    }
+
+    // Story: a region whose max lies before its min is an error, never swapped back,
+    // whether it comes field by field or as a viewport.
+    #[test]
+    fn refuses_reversed_bounds() {
+        use super::error::ScreenRegionError;
+        let reversed = ScreenRegion {
+            min_x: 8,
+            min_y: 0,
+            max_x: 2,
+            max_y: 4,
+        };
+
+        let checked = reversed.check();
+
+        let Err(error) = checked else {
+            panic!("expected an error, got {checked:?}");
+        };
+        assert!(matches!(error, ScreenRegionError::Reversed { .. }), "{error:?}");
+        assert_eq!(
+            error.to_string(),
+            "a region needs each max past its min, got x from 8 to 2 and y from 0 to 4"
+        );
+        assert_eq!((reversed.width(), reversed.height()), (0, 4));
+        assert!(crate::Pass::new("p").set_viewport(reversed).is_err());
     }
 }

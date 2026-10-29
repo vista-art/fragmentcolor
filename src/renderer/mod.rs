@@ -2753,8 +2753,7 @@ fn check_strides(layouts: &VertexLayouts, limits: &wgpu::Limits) -> Result<(), R
 /// the device's 2D limit, and a region that starts past the attachment draws nothing,
 /// so the far edge stays below twice that limit, the bound wgpu takes.
 fn viewport_rect(region: &ScreenRegion) -> (f32, f32, f32, f32) {
-    let x = region.min_x.min(region.max_x) as f32;
-    let y = region.min_y.min(region.max_y) as f32;
+    let (x, y) = (region.min_x as f32, region.min_y as f32);
     (x, y, region.width() as f32, region.height() as f32)
 }
 

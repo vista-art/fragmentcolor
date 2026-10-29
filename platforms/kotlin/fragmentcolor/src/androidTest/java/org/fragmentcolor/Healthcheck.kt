@@ -218,6 +218,10 @@ class Healthcheck : ExampleCase() {
         assertFailsWith<FragmentColorException> { ScreenRegion(listOf(UInt.MAX_VALUE, 0u), listOf(5u, 5u)) }
         assertFailsWith<FragmentColorException> { pass.setViewport(listOf(4u, 0u)) }
         assertFailsWith<FragmentColorException> { pass.setViewport(listOf(1u, 2u, 3u)) }
+        // A region whose max lies before its min throws, never swapped back.
+        val reversed = ScreenRegion(minX = 8u, minY = 0u, maxX = 2u, maxY = 4u)
+        assertFailsWith<FragmentColorException> { pass.setViewport(reversed) }
+        assertFailsWith<FragmentColorException> { TextureRegion.from(reversed) }
         pass.setViewport(listOf(0u, 0u, 4u, 4u))
         pass.setClearColor(floatArrayOf(0.1f, 0.2f, 0.3f))
         pass.setClearColor(doubleArrayOf(0.1, 0.2, 0.3, 1.0))
