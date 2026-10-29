@@ -60,7 +60,8 @@ every Model draws at its Mesh's own coordinates, whatever its transform.
 A render shader takes the [Lights](https://fragmentcolor.org/api/scene/light)
 that reach it by declaring a root named `lights`, and optionally one named
 `light_grid`, at any group and binding. The member names, types and offsets
-must match the ones below, and the struct names are free. The renderer fills
+must match the ones below, and so must the struct's size, so no `@align` may
+raise its alignment. The struct names are free. The renderer fills
 both roots in render passes, so they don't appear in `list_uniforms` or
 `list_keys`, and `set` and `get` reach only `lights.ambient`.
 

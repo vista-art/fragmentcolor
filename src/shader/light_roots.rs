@@ -26,7 +26,7 @@ const STORAGE_LAYOUT: &str = "lights: a storage `lights` root takes `var<storage
 `struct Lights { count: u32, global_count: u32, promoted_count: u32, ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }`, \
 `struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>, slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }` \
 and `struct Light { kind: u32, intensity: f32, range: f32, inner_cone_cos: f32, position: vec3<f32>, outer_cone_cos: f32, direction: vec3<f32>, color: vec3<f32> }`, \
-which puts `grid` at byte 32 and the lights at byte 144";
+which puts `grid` at byte 32 and the lights at byte 144, and no `@align` may raise the struct's alignment past 16";
 
 /// The layout a `light_grid` root must have, quoted in its error.
 const GRID_LAYOUT: &str =
@@ -353,13 +353,20 @@ fn matches_fields(module: &Module, ty: Handle<Type>, fields: &[(&str, u32, Check
             })
 }
 
+/// Whether `ty` is the storage `Lights` struct, field by field and in size, since
+/// an `@align` can raise its size past the bytes the renderer binds without moving a field.
 fn matches_lights(module: &Module, ty: Handle<Type>) -> bool {
-    matches_fields(module, ty, &LIGHTS_FIELDS)
+    let span = match module.types[ty].inner {
+        TypeInner::Struct { span, .. } => span,
+        _ => return false,
+    };
+    span == LIGHTS_HEADER + LIGHT_SIZE && matches_fields(module, ty, &LIGHTS_FIELDS)
 }
 
-/// The light count of the older `LightArray` shape, or `None` for any other type.
+/// The light count of the older `LightArray` shape, or `None` for any other type,
+/// one whose `@align` raises its size past the bytes the renderer binds included.
 fn array_count(module: &Module, ty: Handle<Type>) -> Option<u32> {
-    let TypeInner::Struct { members, .. } = &module.types[ty].inner else {
+    let TypeInner::Struct { members, span } = &module.types[ty].inner else {
         return None;
     };
     let [count, ambient, lights] = members.as_slice() else {
@@ -378,7 +385,11 @@ fn array_count(module: &Module, ty: Handle<Type>) -> Option<u32> {
             base,
             size: ArraySize::Constant(length),
             stride: LIGHT_SIZE,
-        } if header && is_light(module, base) => Some(length.get()),
+        } if header && is_light(module, base) => {
+            let length = length.get();
+            let bound = LIGHT_SIZE.checked_mul(length)?.checked_add(ARRAY_HEADER)?;
+            (*span == bound).then_some(length)
+        }
         _ => None,
     }
 }
@@ -507,6 +518,36 @@ mod tests {
             Some((0, 2))
         );
         assert_eq!(roots.stages, wgpu::ShaderStages::FRAGMENT);
+    }
+
+    // Story: an @align that raises a light root's alignment grows its size past the bytes the
+    // renderer binds, though every field keeps its offset. A storage `Lights` like that fails
+    // at Shader::new, and a uniform `LightArray` like that takes no lights and stays a uniform.
+    #[test]
+    fn raised_light_alignment_is_no_light_root() {
+        let raised = [
+            LIGHTS.replace("Lights { count: u32", "Lights { @align(32) count: u32"),
+            LIGHTS.replace("grid: LightGrid", "@align(32) grid: LightGrid"),
+        ];
+        for lights in raised {
+            let declarations =
+                format!("{lights}\n@group(0) @binding(1) var<storage, read> lights: Lights;");
+            let body = "return vec4<f32>(lights.ambient, 1.0);";
+
+            let result = Shader::new(source(&declarations, body).as_str());
+
+            let Err(error) = result else {
+                panic!("expected an error for {lights}");
+            };
+            assert!(matches!(error, ShaderError::TypeMismatch(_)), "{error:?}");
+            assert!(error.to_string().contains("no `@align`"), "{error}");
+        }
+        let older = array_source(4).replace("LightArray { count: u32", "LightArray { @align(64) count: u32");
+
+        let shader = Shader::new(older.as_str()).expect("a plain uniform");
+
+        assert_eq!(shape(&shader), None);
+        assert!(!shader.list_uniforms().is_empty());
     }
 
     #[test]
