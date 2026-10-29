@@ -302,7 +302,10 @@ impl RenderContext {
         if self.backend != wgpu::Backend::Gl {
             return Ok(());
         }
-        match list_explicit(module).ok().and_then(|names| names.into_iter().next()) {
+        match list_explicit(module)
+            .ok()
+            .and_then(|names| names.into_iter().next())
+        {
             Some(name) => Err(Refusal::Feature {
                 item: format!("struct `{name}` (spell its padding out as members instead)"),
                 feature: "@size and @align offsets in a std140 block".into(),
@@ -364,7 +367,10 @@ impl RenderContext {
 /// Refuses a shader that measures its light roots with `arrayLength` on a device that
 /// takes lights through a uniform block of `uniform_lights`, where nothing can measure them.
 fn check_measured(shader: &ShaderObject, uniform_lights: Option<u32>) -> Result<(), Refusal> {
-    let measured = shader.light_roots.as_ref().is_some_and(|roots| roots.is_measured());
+    let measured = shader
+        .light_roots
+        .as_ref()
+        .is_some_and(|roots| roots.is_measured());
     if uniform_lights.is_none() || !measured {
         return Ok(());
     }

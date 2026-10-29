@@ -346,7 +346,11 @@ struct Foo { a: f32, @align(16) b: f32 };
             assert!(checked.is_ok(), "{checked:?}\n{text}");
             for entry in &module.entry_points {
                 let header = format!("fn {}(", entry.name);
-                assert!(text.contains(&header), "{} keeps its name\n{text}", entry.name);
+                assert!(
+                    text.contains(&header),
+                    "{} keeps its name\n{text}",
+                    entry.name
+                );
             }
         }
     }
