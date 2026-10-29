@@ -472,6 +472,13 @@ impl SceneObject for Light {
     }
 }
 
+#[cfg(any(python, wasm, test))]
+impl crate::error::Classify for LightError {
+    fn classify(&self) -> crate::error::ErrorClass {
+        crate::error::ErrorClass::Light
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

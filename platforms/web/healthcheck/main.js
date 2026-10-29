@@ -595,12 +595,27 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     if (!(new Vertex(0.5) instanceof Vertex)) fail('Vertex took no single number');
     if (!(Light.point([0, 1, 0], new Float32Array([1, 1, 1])) instanceof Light)) fail('Light.point took no Float32Array');
 
-    // A region or viewport with a width or height of 0 throws.
+    // A region or viewport with a width or height of 0 throws an InvalidInputError, as Python
+    // raises, and an argument of the wrong type throws a TypeError, as Python raises one.
     throws('new ScreenRegion([0, 0], [0, 4])', () => new fc.ScreenRegion([0, 0], [0, 4]));
+    for (const [label, run, name] of [
+      ['new ScreenRegion([0, 0], [0, 4])', () => new fc.ScreenRegion([0, 0], [0, 4]), 'InvalidInputError'],
+      ["Pass.add('nope')", () => first.add('nope'), 'TypeError'],
+    ]) {
+      try { run(); } catch (e) {
+        if (e.name !== name) fail(`${label} threw ${e.name}, not ${name}`);
+        if (name === 'TypeError' && !(e instanceof TypeError)) fail(`${label} threw no TypeError`);
+        continue;
+      }
+      fail(`${label} should throw`);
+    }
     throws('Pass.setViewport([0, 0, 0, 4])', () => first.setViewport([0, 0, 0, 4]));
     throws('Pass.setViewport([4, 0])', () => first.setViewport([4, 0]));
     throws('Pass.setViewport({ minX: 2, minY: 2, maxX: 2, maxY: 6 })',
       () => first.setViewport({ minX: 2, minY: 2, maxX: 2, maxY: 6 }));
+    // A region whose max lies before its min throws, never swapped back.
+    throws('Pass.setViewport({ minX: 8, minY: 0, maxX: 2, maxY: 4 })',
+      () => first.setViewport({ minX: 8, minY: 0, maxX: 2, maxY: 4 }));
     const region = new fc.ScreenRegion([0, 0], [64, 64]);
     region.max_x = -1;
     if (region.maxX !== 64) fail(`ScreenRegion.max_x wrote ${region.maxX} past the checks`);
@@ -956,8 +971,8 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
 @group(0) @binding(1) var linear: sampler;
 @fragment fn fs_main() -> @location(0) vec4<f32> { return textureSample(image, linear, vec2<f32>(0.5)); }`);
     const unset = refuses('render with an unset texture', /'image' takes a texture, not none/, () => renderer.render(sampled, target));
-    // A typed refusal carries its fields as properties, and the Error keeps its own name.
-    if (unset.uniform !== 'image' || unset.expected !== 'a texture' || unset.found !== 'none, since it was never set' || unset.name !== 'Error') {
+    // A typed refusal carries its fields as properties, and its name is the class Python raises.
+    if (unset.uniform !== 'image' || unset.expected !== 'a texture' || unset.found !== 'none, since it was never set' || unset.name !== 'BindingError') {
       fail(`an unset texture threw uniform ${unset.uniform}, expected ${unset.expected}, found ${unset.found}, name ${unset.name}`);
     }
     const depth = await renderer.createDepthTexture([8, 8]);
@@ -977,8 +992,9 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
 }`);
     const sampledOnly = await renderer.createTexture(new Uint8Array(4 * 4 * 4), { size: [4, 4] });
     marks.set('marks', sampledOnly);
-    // WebGL2 binds no storage textures at all, which the same check reports first.
-    refuses('render with a sampled texture in a storage slot', /takes a texture with STORAGE_BINDING usage|max_storage_textures_per_shader_stage/,
+    // WebGL2 writes no storage from the fragment stage, and the shader check refuses that before any texture check.
+    refuses('render with a sampled texture in a storage slot',
+      /takes a texture with STORAGE_BINDING usage|'marks' at @group\(0\) @binding\(0\) needs FRAGMENT_WRITABLE_STORAGE/,
       () => renderer.render(marks, target));
 
     const far = new Shader(`${vertex}
@@ -987,20 +1003,20 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
     refuses('render with a group past the device', /needs max_bind_groups of at least 101/,
       () => renderer.render(far, target));
     try { renderer.render(far, target); } catch (e) {
-      if (e.limit !== 'max_bind_groups' || e.value !== 101 || !(e.max < 101) || !e.item.startsWith("'tint'")) {
+      if (e.name !== 'LimitError' || e.limit !== 'max_bind_groups' || e.value !== 101 || !(e.max < 101) || !e.item.startsWith("'tint'")) {
         fail(`a group past the device threw item ${e.item}, limit ${e.limit}, value ${e.value}, max ${e.max}`);
       }
     }
     const lone = new Shader(`@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }`);
     const entry = refuses('render without a vertex entry point', /no @vertex entry point/, () => renderer.render(lone, target));
-    if (entry.stage !== '@vertex' || entry.name !== 'Error') fail(`a shader without a vertex stage threw stage ${entry.stage}, name ${entry.name}`);
+    if (entry.stage !== '@vertex' || entry.name !== 'EntryError') fail(`a shader without a vertex stage threw stage ${entry.stage}, name ${entry.name}`);
     const storage = new Shader(`@group(0) @binding(0) var img: texture_storage_2d<bgra8unorm, write>;
 @compute @workgroup_size(1) fn cs_main() { textureStore(img, vec2<i32>(0), vec4<f32>(1.0)); }`);
     // Storage slots are checked before the compute stage, so WebGL2 refuses the format too.
     const feature = refuses('render with a storage format the device lacks',
       /'img' at @group\(0\) @binding\(0\) needs WriteOnly storage access to Bgra8Unorm/,
       () => renderer.render(storage, target));
-    if (feature.message !== `${feature.item} needs ${feature.feature}, which the device lacks` || feature.name !== 'Error') {
+    if (feature.message !== `${feature.item} needs ${feature.feature}, which the device lacks` || feature.name !== 'FeatureError') {
       fail(`a storage format the device lacks threw item ${feature.item}, feature ${feature.feature}, name ${feature.name}`);
     }
     const wide = new Shader(`@compute @workgroup_size(4096) fn cs_main() {}`);

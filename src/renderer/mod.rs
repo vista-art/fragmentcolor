@@ -1,5 +1,6 @@
 use crate::mesh::vertex::POSITION;
 use crate::pass::PassInput;
+use crate::shader::error::describe;
 use crate::{PassObject, ShaderError, ShaderHash, ShaderObject, Target, TargetFrame};
 use crate::{ScreenRegion, Size, WindowTarget};
 use crate::{TextureData, TextureTarget, UniformData};
@@ -585,7 +586,10 @@ impl Renderer {
         InitializationError,
     > {
         let instance = self.instance().await;
-        let surface = instance.create_surface(handle)?;
+        let surface = match instance.create_surface(handle) {
+            Ok(surface) => surface,
+            Err(error) => return Err(InitializationError::SurfaceError(describe(&error))),
+        };
         self.configure_surface(surface, size).await
     }
 
@@ -608,7 +612,10 @@ impl Renderer {
         let instance = self.instance().await;
         // SAFETY: the caller promises the underlying handle (CAMetalLayer / ANativeWindow / ...)
         // remains valid for the lifetime of the returned Surface.
-        let surface = unsafe { instance.create_surface_unsafe(target)? };
+        let surface = match unsafe { instance.create_surface_unsafe(target) } {
+            Ok(surface) => surface,
+            Err(error) => return Err(InitializationError::SurfaceError(describe(&error))),
+        };
         self.configure_surface(surface, size).await
     }
 
@@ -2753,8 +2760,7 @@ fn check_strides(layouts: &VertexLayouts, limits: &wgpu::Limits) -> Result<(), R
 /// the device's 2D limit, and a region that starts past the attachment draws nothing,
 /// so the far edge stays below twice that limit, the bound wgpu takes.
 fn viewport_rect(region: &ScreenRegion) -> (f32, f32, f32, f32) {
-    let x = region.min_x.min(region.max_x) as f32;
-    let y = region.min_y.min(region.max_y) as f32;
+    let (x, y) = (region.min_x as f32, region.min_y as f32);
     (x, y, region.width() as f32, region.height() as f32)
 }
 

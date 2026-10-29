@@ -12,9 +12,16 @@ pub enum ColorError {
     Error(String),
 }
 
+#[cfg(any(python, wasm, test))]
+impl crate::error::Classify for ColorError {
+    fn classify(&self) -> crate::error::ErrorClass {
+        crate::error::ErrorClass::InvalidInput
+    }
+}
+
 #[cfg(python)]
 impl From<ColorError> for pyo3::PyErr {
     fn from(error: ColorError) -> Self {
-        crate::error::InvalidInputError::new_err(error.to_string())
+        crate::error::raise_error(&error)
     }
 }

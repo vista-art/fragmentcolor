@@ -7,7 +7,7 @@ All dependencies will render before this Pass.
 
 - Ok(()) on success
 - Err(PassError::SelfDependency) if a pass requires itself
-- Err(PassError::DuplicateDependency(name)) if the dependency is already present
+- Err(PassError::DuplicateDependency(name)) if the same pass is already a dependency
 - Err(PassError::DependencyCycle { via }) if adding the dependency would create a cycle
 
 ## Description
@@ -17,6 +17,7 @@ All dependencies will render before this Pass.
 This allows you to build DAG render graphs directly from passes.
 The graph is validated at build time and does not perform cycle checks at render time.
 
+- A pass is the same pass by identity, never by name, so two passes that share a name are two dependencies.
 - Dependencies are stored in insertion order.
 - Traversal is dependencies-first, then the current pass, with deduplication.
 - Creation order of passes does not matter.

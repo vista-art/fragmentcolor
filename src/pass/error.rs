@@ -83,19 +83,20 @@ impl From<pyo3::PyErr> for PassError {
     }
 }
 
-#[cfg(python)]
-impl PassError {
-    /// The Python exception for this error, with `message`, whether a setter or `render`
-    /// raises it. A value the caller passed raises `InvalidInputError`: a color, a
-    /// viewport, a target texture or a dispatch. Any other error raises `FragmentColorError`.
-    pub(crate) fn raise(&self, message: String) -> pyo3::PyErr {
+/// A value the caller passed is an `InvalidInputError`, whether a setter or `render`
+/// refuses it: a color, a viewport, a target texture or a dispatch. Any other error
+/// is a `FragmentColorError`.
+#[cfg(any(python, wasm, test))]
+impl crate::error::Classify for PassError {
+    fn classify(&self) -> crate::error::ErrorClass {
+        use crate::error::ErrorClass;
         match self {
             PassError::Color(_)
             | PassError::Viewport(_)
             | PassError::ViewportLimit { .. }
             | PassError::InvalidColorTarget(_)
-            | PassError::DispatchLimit { .. } => crate::error::InvalidInputError::new_err(message),
-            _ => crate::PyFragmentColorError::new_err(message),
+            | PassError::DispatchLimit { .. } => ErrorClass::InvalidInput,
+            _ => ErrorClass::Base,
         }
     }
 }
@@ -103,8 +104,7 @@ impl PassError {
 #[cfg(python)]
 impl From<PassError> for pyo3::PyErr {
     fn from(error: PassError) -> Self {
-        let message = error.to_string();
-        error.raise(message)
+        crate::error::raise_error(&error)
     }
 }
 
@@ -125,7 +125,7 @@ impl From<wasm_bindgen::JsValue> for PassError {
 #[cfg(wasm)]
 impl From<PassError> for wasm_bindgen::JsValue {
     fn from(error: PassError) -> Self {
-        js_sys::Error::new(&error.to_string()).into()
+        crate::error::WebError::from(error).into()
     }
 }
 

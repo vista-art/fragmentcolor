@@ -11,7 +11,7 @@ It holds three values, under the same names in every language:
 Each language raises it in its own form:
 
 - Rust returns `RendererError::DeviceError { kind, label, detail }`. On the web a readback, such as `get_image`, returns `TextureError::DeviceError` with the same fields.
-- JavaScript throws an `Error` with `kind`, `label` and `detail` properties.
+- JavaScript throws an `Error` named `DeviceError`, with `kind`, `label` and `detail` properties.
 - Python raises `DeviceError`, a `FragmentColorError`, with `kind`, `label` and `detail` attributes.
 - Swift throws `FragmentColorError.Device(kind:label:detail:)`.
 - Kotlin throws `FragmentColorException.Device(kind, label, detail)`.

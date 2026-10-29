@@ -238,7 +238,7 @@ fn failed_compute_pipeline_returns_an_error_each_frame() {
         let context = renderer.context(None).await.expect("render context");
         let uncaptured = record_uncaptured(&context);
         let shader = Shader::new(OVERSIZED_WORKGROUP).expect("naga checks no device limit");
-        // `check_shader` refuses this workgroup before any GPU work, so mark it
+        // `check_shader` refuses this workgroup before the frame, so mark it
         // checked to reach the pipeline build and its error scopes.
         context
             .checked

@@ -1,4 +1,4 @@
-// Tests that render refuses, before any GPU work, what the device can't run.
+// Tests that render refuses, before it takes a frame, what the device can't run.
 use super::layout::build_module;
 use super::layout::{find_entry, pick_source, plan_layout, texture_binding};
 use super::scope_tests::{SpyTarget, Uncaptured, setup};
@@ -98,6 +98,46 @@ fn group_past_the_device_fails() {
         RendererError::LimitError { .. },
         &format!(
             "'tint' at @group({groups}) @binding(0) needs max_bind_groups of at least {}, and the device has {groups}",
+            groups + 1
+        )
+    );
+}
+
+// Story: an immediate root lowered to a uniform in a group past the device's groups fails
+// with an item that names the root and its slot, with nothing shaped for the sentence.
+#[test]
+fn lowered_immediates_past_the_groups_fail() {
+    let groups = pollster::block_on(async {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        context.device.limits().max_bind_groups
+    });
+    let uniforms: String = (0..groups)
+        .map(|group| format!("@group({group}) @binding(0) var<uniform> u{group}: f32;\n"))
+        .collect();
+    let reads: String = (0..groups).map(|group| format!(" + u{group}")).collect();
+    // Two immediate roots never take native immediates. An entry point reads one at most.
+    let shader = fullscreen(&format!(
+        "var<immediate> red: f32;
+var<immediate> spare: f32;
+{uniforms}@fragment fn fs_main() -> @location(0) vec4<f32> {{ return vec4<f32>(red{reads}); }}"
+    ))
+    .expect("shader");
+
+    let error = refuse_alone(&shader).expect("refused");
+
+    let item = format!("immediate root 'red' as a uniform at @group({groups}) @binding(0)");
+    let expected = vec![
+        ("item", Field::Text(item.clone())),
+        ("limit", Field::Text("max_bind_groups".into())),
+        ("value", Field::Number(u64::from(groups) + 1)),
+        ("max", Field::Number(u64::from(groups))),
+    ];
+    assert_eq!(error.list_fields(), expected);
+    assert_refused!(
+        error,
+        RendererError::LimitError { .. },
+        &format!(
+            "{item} needs max_bind_groups of at least {}, and the device has {groups}",
             groups + 1
         )
     );
@@ -687,6 +727,32 @@ fn browser_pipelines_ask_for_written_entry_names() {
     assert_eq!(
         find_entry(&native.entries, compute).expect("entry"),
         "blur2"
+    );
+}
+
+// Story: a module naga's writer can't write for the browser is refused in one sentence,
+// with naga's reason in parentheses.
+#[test]
+fn browser_writer_refusals_read_as_one_sentence() {
+    let reason = "fall-through switch case block";
+    let loss = LayoutLoss::Write(naga::back::wgsl::Error::Unimplemented(reason.into()));
+
+    let error = RendererError::from(refuse_layout(loss));
+
+    let fields = error.list_fields();
+    assert_eq!(fields[0], ("item", Field::Text("the shader".into())));
+    let ("feature", Field::Text(feature)) = &fields[1] else {
+        panic!("expected a feature, got {fields:?}");
+    };
+    assert!(
+        feature.starts_with("WGSL that naga can write for the browser (") && feature.ends_with(')'),
+        "{feature}"
+    );
+    assert!(feature.contains(reason), "{feature}");
+    assert_refused!(
+        error,
+        RendererError::FeatureError { .. },
+        &format!("the shader needs {feature}, which the device lacks")
     );
 }
 

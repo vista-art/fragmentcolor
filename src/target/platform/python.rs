@@ -132,10 +132,12 @@ impl Target for RenderCanvasTarget {
         }
     }
 
+    /// Resizes the surface, or refuses while the target has none, as one made by its
+    /// constructor instead of `Renderer.create_target` is.
     fn resize(&mut self, size: impl Into<Size>) -> Result<(), TextureError> {
         match &mut self.target {
             Some(target) => target.resize(size.into()),
-            None => Ok(()),
+            None => Err(TextureError::NoContext),
         }
     }
 
@@ -187,13 +189,10 @@ impl PyTextureTarget {
     // PyTargetFrame is an internal plumbing type that exposes a minimal
     // RenderCanvas-compatible interface; it has no canonical API doc entry.
     #[doc(hidden)]
-    pub fn get_current_frame(&self) -> PyTargetFrame {
-        // TextureTarget::get_current_frame format mirrors inner texture format; fall back to a sane default
-        let format = match <crate::TextureTarget as FrameSource>::get_current_frame(&self.inner) {
-            Ok(frame) => frame.format(),
-            Err(_) => wgpu::TextureFormat::Rgba8Unorm,
-        };
-        PyTargetFrame { format }
+    pub fn get_current_frame(&self) -> PyResult<PyTargetFrame> {
+        let frame = <crate::TextureTarget as FrameSource>::get_current_frame(&self.inner)?;
+        let format = frame.format();
+        Ok(PyTargetFrame { format })
     }
 
     /// Read back the RGBA image as a `(height, width, 4)` uint8 NumPy array.
@@ -226,6 +225,12 @@ impl PyTextureTarget {
     #[lsp_doc("docs/api/targets/texture_target/texture.md")]
     pub fn texture(&self) -> crate::texture::Texture {
         self.inner.texture()
+    }
+}
+
+impl From<crate::SurfaceError> for PyErr {
+    fn from(error: crate::SurfaceError) -> Self {
+        crate::RendererError::SurfaceError(error).into()
     }
 }
 

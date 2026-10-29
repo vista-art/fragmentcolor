@@ -27,11 +27,17 @@ extension TextureRegion {
     }
 
     /// The pixels a `ScreenRegion` covers, at depth 0.
-    public static func from(_ region: ScreenRegion) -> TextureRegion {
-        TextureRegion(
+    /// Throws `FragmentColorError` for a region whose max isn't past its min, as Kotlin does.
+    public static func from(_ region: ScreenRegion) throws -> TextureRegion {
+        guard region.maxX > region.minX, region.maxY > region.minY else {
+            throw FragmentColorError.Render(
+                "TextureRegion.from: a region needs each max past its min, got x from \(region.minX) to \(region.maxX) and y from \(region.minY) to \(region.maxY)"
+            )
+        }
+        return TextureRegion(
             originX: region.minX, originY: region.minY, originZ: 0,
-            sizeWidth: max(region.minX, region.maxX) - min(region.minX, region.maxX),
-            sizeHeight: max(region.minY, region.maxY) - min(region.minY, region.maxY),
+            sizeWidth: region.maxX - region.minX,
+            sizeHeight: region.maxY - region.minY,
             sizeDepth: 1,
             bytesPerRow: nil, rowsPerImage: nil
         )

@@ -323,6 +323,16 @@ final class Healthcheck: ExampleCase {
             try pass.setViewport([1, 2, 3] as [UInt32])
             throw HealthcheckError.assertion("setViewport([1, 2, 3]) should throw")
         } catch is FragmentColorError {}
+        // A region whose max lies before its min throws, never swapped back.
+        let reversed = ScreenRegion(minX: 8, minY: 0, maxX: 2, maxY: 4)
+        do {
+            try pass.setViewport(reversed)
+            throw HealthcheckError.assertion("setViewport of a reversed region should throw")
+        } catch is FragmentColorError {}
+        do {
+            _ = try TextureRegion.from(reversed)
+            throw HealthcheckError.assertion("TextureRegion.from of a reversed region should throw")
+        } catch is FragmentColorError {}
         try pass.setViewport([0, 0, 4, 4] as [UInt32])
         try pass.setClearColor([0.1, 0.2, 0.3] as [Double])
         try pass.setClearColor([0.1, 0.2, 0.3, 1.0] as [Float])

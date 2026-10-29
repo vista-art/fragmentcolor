@@ -199,7 +199,7 @@ fn read_flat(value: &Bound<'_, PyAny>, label: &str) -> PyResult<[[f32; 4]; 4]> {
 /// a `FragmentColorError` that is also a `ValueError`.
 impl From<LightError> for PyErr {
     fn from(error: LightError) -> Self {
-        crate::error::PythonError::Light.new_err(error.to_string())
+        crate::error::raise_error(&error)
     }
 }
 
@@ -207,7 +207,7 @@ impl From<LightError> for PyErr {
 /// a `FragmentColorError` that is also a `ValueError`.
 impl From<CameraError> for PyErr {
     fn from(error: CameraError) -> Self {
-        crate::error::PythonError::Camera.new_err(error.to_string())
+        crate::error::raise_error(&error)
     }
 }
 
@@ -215,7 +215,7 @@ impl From<CameraError> for PyErr {
 /// a `FragmentColorError` that is also a `RuntimeError`.
 impl From<SceneLoadError> for PyErr {
     fn from(error: SceneLoadError) -> Self {
-        crate::error::PythonError::SceneLoad.new_err(error.to_string())
+        crate::error::raise_error(&error)
     }
 }
 

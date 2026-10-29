@@ -1,13 +1,14 @@
 #![cfg(wasm)]
 
+use crate::error::{ErrorClass, WebError};
 use js_sys::Reflect;
 use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
 use crate::platforms::web::read_unsigned;
 use crate::{
-    CompareFunction, Mipmap, SamplerOptions, Size, Texture, TextureData, TextureError,
-    TextureFormat, TextureId, TextureInput, TextureOptions,
+    CompareFunction, Mipmap, SamplerOptions, Size, Texture, TextureData, TextureFormat, TextureId,
+    TextureInput, TextureOptions,
 };
 
 #[wasm_bindgen]
@@ -33,7 +34,7 @@ impl Mipmap {
         #[wasm_bindgen(unchecked_optional_param_type = "ArrayLike<number> | Size")] size: Option<
             JsValue,
         >,
-    ) -> Result<Mipmap, JsError> {
+    ) -> Result<Mipmap, WebError> {
         let format = read_format(format)?;
         let size = size.filter(|size| !size.is_undefined() && !size.is_null());
         let size: Option<Size> = size.as_ref().map(Size::try_from).transpose()?;
@@ -84,10 +85,10 @@ impl Mipmap {
     pub fn level_js(
         &self,
         #[wasm_bindgen(unchecked_param_type = "number")] index: &JsValue,
-    ) -> Result<js_sys::Uint8Array, JsError> {
+    ) -> Result<js_sys::Uint8Array, WebError> {
         let number = index
             .as_f64()
-            .ok_or_else(|| JsError::new("level index must be a number"))?;
+            .ok_or_else(|| WebError::type_error("level index must be a number"))?;
         let index = read_unsigned(number, "level index")?;
         Ok(js_sys::Uint8Array::from(self.level(index as usize)?))
     }
@@ -115,7 +116,7 @@ impl Texture {
 
     #[wasm_bindgen(js_name = "setSamplerOptions")]
     #[lsp_doc("docs/api/texture/texture/set_sampler_options.md")]
-    pub fn set_sampler_options_js(&self, options: &JsValue) -> Result<(), JsError> {
+    pub fn set_sampler_options_js(&self, options: &JsValue) -> Result<(), WebError> {
         let opts = js_to_sampler_options(options)?;
         self.set_sampler_options(opts);
         Ok(())
@@ -123,7 +124,7 @@ impl Texture {
 
     #[wasm_bindgen(js_name = "write")]
     #[lsp_doc("docs/api/texture/texture/write.md")]
-    pub fn write_js(&self, data: &JsValue) -> Result<(), JsError> {
+    pub fn write_js(&self, data: &JsValue) -> Result<(), WebError> {
         let object = self.object();
         let (bytes, _) =
             crate::texture::js_to_texture_bytes(data, Some(object.size()), object.format)?;
@@ -133,7 +134,7 @@ impl Texture {
 
     #[wasm_bindgen(js_name = "writeRegion")]
     #[lsp_doc("docs/api/texture/texture/write_region.md")]
-    pub fn write_region_js(&self, data: &JsValue, region: &JsValue) -> Result<(), JsError> {
+    pub fn write_region_js(&self, data: &JsValue, region: &JsValue) -> Result<(), WebError> {
         if region.is_undefined() || region.is_null() {
             return self.write_js(data);
         }
@@ -151,7 +152,7 @@ impl Texture {
     pub fn resize_js(
         &self,
         #[wasm_bindgen(unchecked_param_type = "ArrayLike<number> | Size")] size: &JsValue,
-    ) -> Result<(), JsError> {
+    ) -> Result<(), WebError> {
         let size: Size = size.try_into()?;
         self.resize(size)?;
         Ok(())
@@ -165,9 +166,7 @@ impl Texture {
         let texture = self.clone();
         wasm_bindgen_futures::future_to_promise(async move {
             let object = texture.object();
-            let bytes = crate::texture::read_pixels_from(&texture.context, &object, start)
-                .await
-                .map_err(TextureError::into_js)?;
+            let bytes = crate::texture::read_pixels_from(&texture.context, &object, start).await?;
             Ok(js_sys::Uint8Array::from(bytes.as_slice()).into())
         })
     }
@@ -176,7 +175,7 @@ impl Texture {
 // Helper: parse JS values into CompareFunction. Accepts string names (case-insensitive)
 // or numeric enum codes (1..=8). Returns Ok(Some(...)) if present, Ok(None) if undefined/null,
 // and Err for type mismatches.
-fn parse_compare(value: &JsValue) -> Result<Option<CompareFunction>, JsError> {
+fn parse_compare(value: &JsValue) -> Result<Option<CompareFunction>, WebError> {
     if value.is_undefined() || value.is_null() {
         return Ok(None);
     }
@@ -192,7 +191,8 @@ fn parse_compare(value: &JsValue) -> Result<Option<CompareFunction>, JsError> {
             ">=" | "ge" | "greaterequal" | "greater_equal" => CompareFunction::GreaterEqual,
             "*" | "always" => CompareFunction::Always,
             _ => {
-                return Err(JsError::new(
+                return Err(WebError::new(
+                    ErrorClass::InvalidInput,
                     "Invalid compare string; expected one of Never, Less, Equal, LessEqual, Greater, NotEqual, GreaterEqual, Always",
                 ));
             }
@@ -209,28 +209,35 @@ fn parse_compare(value: &JsValue) -> Result<Option<CompareFunction>, JsError> {
             6 => CompareFunction::NotEqual,
             7 => CompareFunction::GreaterEqual,
             8 => CompareFunction::Always,
-            _ => return Err(JsError::new("Invalid numeric compare code; expected 1..=8")),
+            _ => {
+                return Err(WebError::new(
+                    ErrorClass::InvalidInput,
+                    "Invalid numeric compare code; expected 1..=8",
+                ));
+            }
         };
         return Ok(Some(cf));
     }
     // Accept a CompareFunction instance if provided (from wasm-bindgen enum)
     // On wasm-bindgen, exported enums are numbers under the hood; above branch should catch it.
-    Err(JsError::new("Unsupported compare value type"))
+    Err(WebError::type_error("Unsupported compare value type"))
 }
 
-pub(crate) fn js_to_sampler_options(value: &JsValue) -> Result<SamplerOptions, JsError> {
+pub(crate) fn js_to_sampler_options(value: &JsValue) -> Result<SamplerOptions, WebError> {
     if !value.is_object() {
-        return Err(JsError::new(
+        return Err(WebError::type_error(
             "sampler options must be an object { repeatX?, repeatY?, smooth?, compare? }",
         ));
     }
     // Each flag reads its camelCase key, then its snake_case key, which wins.
-    let flag = |names: &[&str], default: bool| -> Result<bool, JsError> {
+    let flag = |names: &[&str], default: bool| -> Result<bool, WebError> {
         let mut flag = default;
         for name in names {
             if let Some(field) = read_field(value, name) {
                 let message = format!("{name} must be a boolean");
-                flag = field.as_bool().ok_or_else(|| JsError::new(&message))?;
+                flag = field
+                    .as_bool()
+                    .ok_or_else(|| WebError::type_error(&message))?;
             }
         }
         Ok(flag)
@@ -251,7 +258,7 @@ pub(crate) fn js_to_sampler_options(value: &JsValue) -> Result<SamplerOptions, J
 pub(crate) fn read_texture_input(
     source: &JsValue,
     options: Option<&JsValue>,
-) -> Result<TextureInput, JsError> {
+) -> Result<TextureInput, WebError> {
     let mut input = TextureInput::try_from(source)?;
     if let Some(options) = options.filter(|options| !options.is_undefined() && !options.is_null()) {
         let source_size = input.options.size;
@@ -273,14 +280,15 @@ const OPTION_KEYS: [&str; 5] = ["size", "format", "mipmaps", "sampler", "usage"]
 /// The options are a `TextureFormat`, a bare size such as `[w, h]` or `{ width, height }`, or an
 /// object `{ size?, format?, mipmaps?, sampler?, usage? }`, which reads as options whenever it holds
 /// one of those keys and then refuses a `width`, `height` or `depth`.
-fn read_texture_options(value: &JsValue) -> Result<TextureOptions, JsError> {
+fn read_texture_options(value: &JsValue) -> Result<TextureOptions, WebError> {
     if value.as_f64().is_some() {
         return Ok(TextureOptions::from(read_format(value)?));
     }
     let given = |keys: &[&str]| keys.iter().any(|key| read_field(value, key).is_some());
     let options = value.is_object() && given(&OPTION_KEYS);
     if options && given(&["width", "height", "depth"]) {
-        return Err(JsError::new(
+        return Err(WebError::new(
+            ErrorClass::InvalidInput,
             "texture options take the size under `size`, as in { size: [w, h] }",
         ));
     }
@@ -289,7 +297,7 @@ fn read_texture_options(value: &JsValue) -> Result<TextureOptions, JsError> {
         return Ok(TextureOptions::from(Size::try_from(value)?));
     }
     if !value.is_object() {
-        return Err(JsError::new(
+        return Err(WebError::type_error(
             "texture options must be a size, a TextureFormat, or an options object",
         ));
     }
@@ -303,7 +311,7 @@ fn read_texture_options(value: &JsValue) -> Result<TextureOptions, JsError> {
     if let Some(mipmaps) = read_field(value, "mipmaps") {
         options.mipmaps = mipmaps
             .as_bool()
-            .ok_or_else(|| JsError::new("options.mipmaps must be a boolean"))?;
+            .ok_or_else(|| WebError::type_error("options.mipmaps must be a boolean"))?;
     }
     if let Some(sampler) = read_field(value, "sampler") {
         options.sampler = js_to_sampler_options(&sampler)?;
@@ -315,12 +323,12 @@ fn read_texture_options(value: &JsValue) -> Result<TextureOptions, JsError> {
 }
 
 /// Reads a `TextureUsage` or its bits as a number.
-pub(crate) fn read_usage(value: &JsValue) -> Result<u32, JsError> {
+pub(crate) fn read_usage(value: &JsValue) -> Result<u32, WebError> {
     let bits = match value.as_f64() {
         Some(bits) => bits,
         None => read_field(value, "bits")
             .and_then(|bits| bits.as_f64())
-            .ok_or_else(|| JsError::new("usage must be a TextureUsage or a number"))?,
+            .ok_or_else(|| WebError::type_error("usage must be a TextureUsage or a number"))?,
     };
     read_unsigned(bits, "usage")
 }
@@ -335,10 +343,10 @@ fn read_field(object: &JsValue, name: &str) -> Option<JsValue> {
 /// Maps a `TextureFormat` from JS, a number in the variant order of
 /// `src/texture/format.rs`, to the format. Anything else is an error,
 /// where wasm-bindgen would read `undefined`, `NaN` or a fraction as a code.
-pub(crate) fn read_format(value: &JsValue) -> Result<TextureFormat, JsError> {
-    let code = value
-        .as_f64()
-        .ok_or_else(|| JsError::new(&format!("format must be a TextureFormat, got {value:?}")))?;
+pub(crate) fn read_format(value: &JsValue) -> Result<TextureFormat, WebError> {
+    let code = value.as_f64().ok_or_else(|| {
+        WebError::type_error(&format!("format must be a TextureFormat, got {value:?}"))
+    })?;
     let format = match read_unsigned(code, "format")? {
         0 => TextureFormat::R8Unorm,
         1 => TextureFormat::Rg8Unorm,
@@ -357,7 +365,12 @@ pub(crate) fn read_format(value: &JsValue) -> Result<TextureFormat, JsError> {
         14 => TextureFormat::Bgra,
         15 => TextureFormat::Lab,
         16 => TextureFormat::L8,
-        _ => return Err(JsError::new(&format!("{code} is not a TextureFormat"))),
+        _ => {
+            return Err(WebError::new(
+                ErrorClass::InvalidInput,
+                &format!("{code} is not a TextureFormat"),
+            ));
+        }
     };
     Ok(format)
 }

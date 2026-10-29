@@ -29,3 +29,10 @@ pub enum MeshError {
     #[error("WASM Mesh Error: {0}")]
     Error(String),
 }
+
+#[cfg(any(python, wasm, test))]
+impl crate::error::Classify for MeshError {
+    fn classify(&self) -> crate::error::ErrorClass {
+        crate::error::ErrorClass::Base
+    }
+}

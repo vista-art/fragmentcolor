@@ -1,5 +1,6 @@
 #![cfg(wasm)]
 
+use crate::error::{ErrorClass, WebError};
 use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
@@ -33,7 +34,7 @@ impl Material {
     pub fn base_color_js(
         &self,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] color: &JsValue,
-    ) -> Result<Material, JsError> {
+    ) -> Result<Material, WebError> {
         let arr = read_vector::<4>(color, "Material.baseColor")?;
         Ok(self.base_color(arr))
     }
@@ -67,7 +68,7 @@ impl Material {
     pub fn emissive_js(
         &self,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] factor: &JsValue,
-    ) -> Result<Material, JsError> {
+    ) -> Result<Material, WebError> {
         let arr = read_vector::<3>(factor, "Material.emissive")?;
         Ok(self.emissive(arr))
     }
@@ -85,7 +86,7 @@ impl Material {
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] offset: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] scale: &JsValue,
         rotation: f32,
-    ) -> Result<Material, JsError> {
+    ) -> Result<Material, WebError> {
         let o = read_vector::<2>(offset, "Material.uvTransform: offset")?;
         let s = read_vector::<2>(scale, "Material.uvTransform: scale")?;
         Ok(self.uv_transform(o, s, rotation))
@@ -97,7 +98,7 @@ impl Material {
         &self,
         #[wasm_bindgen(unchecked_param_type = "TextureSlot")] slot: &JsValue,
         set: f64,
-    ) -> Result<Material, JsError> {
+    ) -> Result<Material, WebError> {
         let set = crate::platforms::web::read_unsigned(set, "Material.textureUv: set")?;
         Ok(self.texture_uv(read_texture_slot(slot)?, set)?)
     }
@@ -110,7 +111,7 @@ impl Material {
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] offset: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] scale: &JsValue,
         rotation: f32,
-    ) -> Result<Material, JsError> {
+    ) -> Result<Material, WebError> {
         let o = read_vector::<2>(offset, "Material.textureTransform: offset")?;
         let s = read_vector::<2>(scale, "Material.textureTransform: scale")?;
         Ok(self.texture_transform(read_texture_slot(slot)?, o, s, rotation))
@@ -121,7 +122,7 @@ impl Material {
     pub fn alpha_mode_js(
         &self,
         #[wasm_bindgen(unchecked_param_type = "AlphaMode")] mode: &JsValue,
-    ) -> Result<Material, JsError> {
+    ) -> Result<Material, WebError> {
         Ok(self.alpha_mode(read_alpha_mode(mode)?))
     }
 
@@ -137,7 +138,7 @@ impl Material {
         &self,
         source: &JsValue,
         options: Option<JsValue>,
-    ) -> Result<Self, JsError> {
+    ) -> Result<Self, WebError> {
         Ok(self.base_color_texture(read_texture_input(source, options.as_ref())?))
     }
 
@@ -147,7 +148,7 @@ impl Material {
         &self,
         source: &JsValue,
         options: Option<JsValue>,
-    ) -> Result<Self, JsError> {
+    ) -> Result<Self, WebError> {
         Ok(self.metallic_roughness_texture(read_texture_input(source, options.as_ref())?))
     }
 
@@ -157,7 +158,7 @@ impl Material {
         &self,
         source: &JsValue,
         options: Option<JsValue>,
-    ) -> Result<Self, JsError> {
+    ) -> Result<Self, WebError> {
         Ok(self.normal_texture(read_texture_input(source, options.as_ref())?))
     }
 
@@ -167,7 +168,7 @@ impl Material {
         &self,
         source: &JsValue,
         options: Option<JsValue>,
-    ) -> Result<Self, JsError> {
+    ) -> Result<Self, WebError> {
         Ok(self.occlusion_texture(read_texture_input(source, options.as_ref())?))
     }
 
@@ -177,34 +178,42 @@ impl Material {
         &self,
         source: &JsValue,
         options: Option<JsValue>,
-    ) -> Result<Self, JsError> {
+    ) -> Result<Self, WebError> {
         Ok(self.emissive_texture(read_texture_input(source, options.as_ref())?))
     }
 }
 
 /// Maps an `AlphaMode` from JS, a number in variant order, to the mode.
 /// Anything else is an error, which wasm-bindgen would read as `Opaque`.
-fn read_alpha_mode(value: &JsValue) -> Result<AlphaMode, JsError> {
-    let code = value
-        .as_f64()
-        .ok_or_else(|| JsError::new(&format!("mode must be an AlphaMode, got {value:?}")))?;
+fn read_alpha_mode(value: &JsValue) -> Result<AlphaMode, WebError> {
+    let code = value.as_f64().ok_or_else(|| {
+        WebError::type_error(&format!("mode must be an AlphaMode, got {value:?}"))
+    })?;
     match crate::platforms::web::read_unsigned(code, "mode")? {
         0 => Ok(AlphaMode::Opaque),
         1 => Ok(AlphaMode::Mask),
         2 => Ok(AlphaMode::Blend),
-        _ => Err(JsError::new(&format!("{code} is not an AlphaMode"))),
+        _ => Err(WebError::new(
+            ErrorClass::InvalidInput,
+            &format!("{code} is not an AlphaMode"),
+        )),
     }
 }
 
 /// Maps a `TextureSlot` from JS, a number in variant order, to the slot.
 /// Anything else is an error, which wasm-bindgen would read as `BaseColor`.
-fn read_texture_slot(value: &JsValue) -> Result<TextureSlot, JsError> {
-    let code = value
-        .as_f64()
-        .ok_or_else(|| JsError::new(&format!("slot must be a TextureSlot, got {value:?}")))?;
+fn read_texture_slot(value: &JsValue) -> Result<TextureSlot, WebError> {
+    let code = value.as_f64().ok_or_else(|| {
+        WebError::type_error(&format!("slot must be a TextureSlot, got {value:?}"))
+    })?;
     let index = crate::platforms::web::read_unsigned(code, "slot")?;
     TextureSlot::ALL
         .get(index as usize)
         .copied()
-        .ok_or_else(|| JsError::new(&format!("{code} is not a TextureSlot")))
+        .ok_or_else(|| {
+            WebError::new(
+                ErrorClass::InvalidInput,
+                &format!("{code} is not a TextureSlot"),
+            )
+        })
 }

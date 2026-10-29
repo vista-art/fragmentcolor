@@ -53,12 +53,17 @@ impl AndroidNativeWindow {
         unsafe { ndk_sys::ANativeWindow_fromSurface(env as *mut _, surface as *mut _) }
     }
 
-    fn width(&self) -> u32 {
-        unsafe { ndk_sys::ANativeWindow_getWidth(self.window) as u32 }
-    }
-
-    fn height(&self) -> u32 {
-        unsafe { ndk_sys::ANativeWindow_getHeight(self.window) as u32 }
+    /// The window's width and height, or the error for a side Android reports below 0,
+    /// which `ANativeWindow_getWidth` and `ANativeWindow_getHeight` return on failure.
+    fn read_size(&self) -> Result<[u32; 2], FragmentColorError> {
+        let width = unsafe { ndk_sys::ANativeWindow_getWidth(self.window) };
+        let height = unsafe { ndk_sys::ANativeWindow_getHeight(self.window) };
+        match (u32::try_from(width), u32::try_from(height)) {
+            (Ok(width), Ok(height)) => Ok([width, height]),
+            _ => Err(FragmentColorError::Init(format!(
+                "createTarget: the ANativeWindow reports a size of {width} by {height}, and a side below 0 is an error"
+            ))),
+        }
     }
 }
 
@@ -136,9 +141,10 @@ impl Renderer {
         // ANativeWindow_acquire and release in AndroidNativeWindow::drop.
         unsafe { ndk_sys::ANativeWindow_acquire(raw) };
         let window = AndroidNativeWindow { window: raw };
+        let [width, height] = window.read_size()?;
         let size = wgpu::Extent3d {
-            width: u32::max(window.width(), 1),
-            height: u32::max(window.height(), 1),
+            width: width.max(1),
+            height: height.max(1),
             depth_or_array_layers: 1,
         };
         // The instance has no display handle, so wgpu takes it from the window.

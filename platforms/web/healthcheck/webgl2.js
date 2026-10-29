@@ -119,7 +119,7 @@ for (const c of EXPLICIT) {
     if (!(error instanceof Error)) throw new Error(`render should throw an Error, got ${error}`);
     const item = `struct \`${c.struct}\``;
     const feature = "@size and @align offsets in a std140 block";
-    if (error.item !== item || error.feature !== feature || error.name !== "Error") {
+    if (error.item !== item || error.feature !== feature || error.name !== "FeatureError") {
       throw new Error(`threw item ${error.item}, feature ${error.feature}, name ${error.name}`);
     }
     if (error.message !== `${item} needs ${feature}, which the device lacks`) {

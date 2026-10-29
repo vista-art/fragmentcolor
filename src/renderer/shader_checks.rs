@@ -105,11 +105,13 @@ impl RenderContext {
     /// Refuses a shader this device can't run, before it takes a frame or builds a pipeline.
     ///
     /// That covers groups and bindings past the device's limits, too many bindings of a kind
-    /// in one stage, buffers past their size limits, storage the device can't bind, missing
-    /// entry points, a workgroup past the limits, explicit layouts the backend can't keep,
-    /// light roots measured with `arrayLength` where lights come through a uniform block, and
-    /// anything else the device's own shader validator refuses. The verdict is kept by source hash,
-    /// so each source is checked once per context, whether it passes or not.
+    /// in one stage, a vertex input at a location past `max_vertex_attributes`, buffers past
+    /// their size limits, storage the device can't bind, missing entry points, a compute shader
+    /// on a device without compute, a workgroup past its size, invocation or memory limits,
+    /// explicit layouts the backend can't keep, light roots measured with `arrayLength` where
+    /// lights come through a uniform block, and anything else the device's shader validator
+    /// refuses. The verdict is kept by source hash, so each source is checked once per context,
+    /// whether it passes or not.
     pub(super) fn check_shader(&self, shader: &ShaderObject) -> Result<(), RendererError> {
         if let Some(verdict) = self.checked.get(&shader.hash) {
             return match verdict.value() {
@@ -272,11 +274,10 @@ impl RenderContext {
         Ok(())
     }
 
-    /// Refuses explicit layouts the backend can't keep, light roots measured on the uniform
-    /// light path, and a module the device's own shader validator refuses. The GL layouts
-    /// and the measured roots read the shader's own module, before padding renames a struct.
-    /// The rest check the module the pipeline compiles, which it returns with its overrides
-    /// at their defaults, as the pipeline sets them, and its validation.
+    /// Refuses a shader module this device can't compile.
+    /// GL layouts and measured light roots read the shader's own module,
+    /// before padding renames a struct. The validator and browser layouts read the module
+    /// the pipeline compiles, returned with its overrides at their defaults and its validation.
     fn check_module(
         &self,
         shader: &ShaderObject,
@@ -464,14 +465,14 @@ pub(super) fn refuse_layout(loss: LayoutLoss) -> Refusal {
         other => Refusal::Feature {
             item: "the shader".into(),
             feature: format!(
-                "WGSL that naga can write for the browser: {}",
+                "WGSL that naga can write for the browser ({})",
                 describe(&other)
             ),
         },
     }
 }
 
-/// How a message names `slot`: by its root, and as a lowered uniform for an immediate root.
+/// How a refusal names `slot`: by its root, and as a lowered uniform for an immediate root.
 fn describe_slot(layout: &Layout, slot: &Slot) -> String {
     let (group, binding) = (slot.group, slot.entry.binding);
     match &layout.push {
@@ -480,7 +481,7 @@ fn describe_slot(layout: &Layout, slot: &Slot) -> String {
             bindings,
         }) if *lowered == group && bindings.contains_key(&slot.name) => {
             format!(
-                "immediate root '{}', bound as a uniform at @group({group}) @binding({binding}),",
+                "immediate root '{}' as a uniform at @group({group}) @binding({binding})",
                 slot.name
             )
         }

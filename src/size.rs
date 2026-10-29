@@ -1,4 +1,6 @@
 #[cfg(wasm)]
+use crate::error::WebError;
+#[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
 #[cfg(python)]
@@ -173,7 +175,7 @@ impl Size {
     // methods that take and return it, so its constructor has no doc page.
     #[doc(hidden)]
     #[wasm_bindgen(constructor)]
-    pub fn new_js(width: f64, height: f64, depth: Option<f64>) -> Result<Size, JsError> {
+    pub fn new_js(width: f64, height: f64, depth: Option<f64>) -> Result<Size, WebError> {
         let numbers = match depth {
             Some(depth) => vec![width, height, depth],
             None => vec![width, height],
@@ -190,7 +192,7 @@ impl Size {
     /// Checks the number as the constructor does, and keeps the old width on an error.
     #[doc(hidden)]
     #[wasm_bindgen(setter = width)]
-    pub fn set_width_js(&mut self, value: f64) -> Result<(), JsError> {
+    pub fn set_width_js(&mut self, value: f64) -> Result<(), WebError> {
         self.width = check_dimension(value)?;
         Ok(())
     }
@@ -203,7 +205,7 @@ impl Size {
 
     #[doc(hidden)]
     #[wasm_bindgen(setter = height)]
-    pub fn set_height_js(&mut self, value: f64) -> Result<(), JsError> {
+    pub fn set_height_js(&mut self, value: f64) -> Result<(), WebError> {
         self.height = check_dimension(value)?;
         Ok(())
     }
@@ -217,7 +219,7 @@ impl Size {
     /// `undefined` or `null` clears the depth.
     #[doc(hidden)]
     #[wasm_bindgen(setter = depth)]
-    pub fn set_depth_js(&mut self, value: Option<f64>) -> Result<(), JsError> {
+    pub fn set_depth_js(&mut self, value: Option<f64>) -> Result<(), WebError> {
         self.depth = value.map(check_dimension).transpose()?;
         Ok(())
     }

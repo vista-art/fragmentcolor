@@ -258,6 +258,12 @@ def check_error_types(renderer):
     raises("a second unregister_texture", lambda: renderer.unregister_texture(texture.id()))
     # A hidden window can't be made headless, so only the class is checked.
     assert issubclass(OccludedSurfaceError, FragmentColorError)
+    # A WindowTarget made by its constructor has no surface until Renderer.create_target makes one.
+    unready = RenderCanvasTarget(object(), None)
+    raises("WindowTarget.resize with no surface", lambda: unready.resize([4, 4]))
+    # The frame a texture target hands rendercanvas reads the target's own format.
+    frame_format = renderer.create_texture_target([4, 4]).get_current_frame().format()
+    assert frame_format.startswith("Rgba8") or frame_format.startswith("Bgra8"), frame_format
 
     # A pipeline the GPU refuses raises DeviceError, with its kind and the step's label.
     # The fragment stage reads @location(0), which the vertex stage never writes.
@@ -569,6 +575,14 @@ def check_empty_regions():
             raise AssertionError(f"{label} should raise InvalidInputError")
     rpass.set_viewport([0, 0, 1, 1])
     assert ScreenRegion((2**32 - 6, 0), (5, 5)).max_x == 2**32 - 1
+    # A ScreenRegion is frozen and every constructor takes an origin and a size,
+    # so Python can't build one whose max lies before its min.
+    try:
+        ScreenRegion((8, 0), (4, 4)).max_x = 2
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError("a ScreenRegion's max_x should be read-only")
     print("Regions refuse a side of 0 and a far edge past 2**32 - 1")
 
 

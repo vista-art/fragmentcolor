@@ -156,6 +156,6 @@ impl Material {
 /// a `FragmentColorError` that is also a `ValueError`.
 impl From<MaterialError> for PyErr {
     fn from(error: MaterialError) -> Self {
-        crate::error::PythonError::Material.new_err(error.to_string())
+        crate::error::raise_error(&error)
     }
 }

@@ -1,5 +1,6 @@
 #![cfg(wasm)]
 
+use crate::error::WebError;
 use crate::texture::TextureError;
 use crate::{RenderContext, ShaderError, Size, Target, TargetFrame, TextureTarget, WindowTarget};
 use lsp_doc::lsp_doc;
@@ -46,10 +47,8 @@ impl CanvasTarget {
 impl CanvasTarget {
     #[wasm_bindgen(js_name = "resize")]
     #[lsp_doc("docs/api/targets/window_target/resize.md")]
-    pub fn resize_js(&mut self, size: &JsValue) -> Result<(), JsError> {
-        let sz: Size = size
-            .try_into()
-            .map_err(|e: crate::size::error::SizeError| JsError::new(&format!("{e}")))?;
+    pub fn resize_js(&mut self, size: &JsValue) -> Result<(), WebError> {
+        let sz = Size::try_from(size)?;
         Target::resize(self, sz)?;
         Ok(())
     }
@@ -96,7 +95,7 @@ impl Target for CanvasTarget {
 impl TextureTarget {
     #[wasm_bindgen(js_name = "resize")]
     #[lsp_doc("docs/api/targets/texture_target/resize.md")]
-    pub fn resize_js(&mut self, size: &JsValue) -> Result<(), JsError> {
+    pub fn resize_js(&mut self, size: &JsValue) -> Result<(), WebError> {
         let size: Size = size.try_into()?;
         self.resize(size)?;
         Ok(())
@@ -115,10 +114,7 @@ impl TextureTarget {
         let start = crate::renderer::Start::now(Some(&self.context));
         let target = self.clone();
         wasm_bindgen_futures::future_to_promise(async move {
-            let pixels = target
-                .read_image_from(start)
-                .await
-                .map_err(TextureError::into_js)?;
+            let pixels = target.read_image_from(start).await?;
             Ok(js_sys::Uint8Array::from(pixels.as_slice()).into())
         })
     }
