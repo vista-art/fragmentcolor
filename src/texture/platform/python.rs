@@ -1,6 +1,6 @@
 #![cfg(python)]
 
-use crate::platforms::python::{PyUnsigned, read_list, read_unsigned};
+use crate::platforms::python::{PyUnsigned, read_bytes, read_list, read_unsigned};
 use crate::texture::{Mipmap, Texture, TextureError, TextureId, TextureRegion};
 use crate::{CompareFunction, SamplerOptions, TextureFormat};
 use lsp_doc::lsp_doc;
@@ -31,20 +31,21 @@ impl PyTextureId<'_> {
 }
 
 /// Raw texture bytes from Python: a `uint8` ndarray of any shape and layout,
-/// or `bytes` or a sequence of ints, tried in that order.
+/// or `bytes` or a sequence of ints, tried in that order. [`PyTextureBytes::read`] checks each int.
 #[derive(FromPyObject)]
 pub enum PyTextureBytes<'py> {
     #[pyo3(annotation = "ndarray[uint8]")]
     Array(numpy::PyReadonlyArrayDyn<'py, u8>),
     #[pyo3(annotation = "bytes | Sequence[int]")]
-    Bytes(Vec<u8>),
+    Bytes(Bound<'py, PyAny>),
 }
 
-impl From<PyTextureBytes<'_>> for Vec<u8> {
-    fn from(value: PyTextureBytes<'_>) -> Self {
-        match value {
-            PyTextureBytes::Array(array) => ndarray_bytes(&array),
-            PyTextureBytes::Bytes(bytes) => bytes,
+impl PyTextureBytes<'_> {
+    /// The bytes, or an error that names `label` and the item, as [`read_bytes`] reads them.
+    pub(crate) fn read(&self, label: &str) -> PyResult<Vec<u8>> {
+        match self {
+            PyTextureBytes::Array(array) => Ok(ndarray_bytes(array)),
+            PyTextureBytes::Bytes(bytes) => read_bytes(bytes, label),
         }
     }
 }
@@ -86,21 +87,20 @@ pub enum PyTextureSource<'py> {
     Mipmap(Mipmap),
 }
 
-/// The texture input a Python source stands for. An ndarray brings its own size.
-impl TryFrom<PyTextureSource<'_>> for crate::TextureInput {
-    type Error = PyErr;
-
-    fn try_from(source: PyTextureSource<'_>) -> PyResult<Self> {
+impl PyTextureSource<'_> {
+    /// The texture input the source stands for, or an error that names `label`.
+    /// An ndarray brings its own size, and each int of a list or tuple must be a byte.
+    pub(crate) fn read(self, label: &str) -> PyResult<crate::TextureInput> {
         use crate::TextureData;
-        let data = match source {
+        let data = match self {
             PyTextureSource::Texture(texture) => TextureData::CloneOf(texture),
             PyTextureSource::Bytes(bytes) => TextureData::Bytes(bytes.as_bytes().to_vec()),
             PyTextureSource::ByteArray(bytes) => TextureData::Bytes(bytes.to_vec()),
             PyTextureSource::MemoryView(view) => {
                 TextureData::Bytes(view.call_method0("tobytes")?.extract()?)
             }
-            PyTextureSource::List(list) => TextureData::Bytes(list.extract()?),
-            PyTextureSource::Tuple(tuple) => TextureData::Bytes(tuple.extract()?),
+            PyTextureSource::List(list) => TextureData::Bytes(read_bytes(list.as_any(), label)?),
+            PyTextureSource::Tuple(tuple) => TextureData::Bytes(read_bytes(tuple.as_any(), label)?),
             PyTextureSource::Source(source) => TextureData::from(source.as_str()),
             PyTextureSource::Path(path) => TextureData::Path(path),
             PyTextureSource::Array(array) => return Ok(ndarray_input(&array, None, None)?),
@@ -171,7 +171,7 @@ impl TryFrom<PyTextureRegion<'_>> for TextureRegion {
     fn try_from(region: PyTextureRegion<'_>) -> Result<Self, Self::Error> {
         let items = match region {
             PyTextureRegion::Numbers(items) => items,
-            PyTextureRegion::Screen(screen) => return Ok(screen.into()),
+            PyTextureRegion::Screen(screen) => return Ok(TextureRegion::try_from(screen)?),
             PyTextureRegion::Layout(layout) => return layout_region(&layout),
         };
         let numbers = read_list(&items, "Texture.write_region")?;
@@ -290,7 +290,7 @@ impl Mipmap {
         size: Option<crate::size::PySize<'_>>,
     ) -> pyo3::PyResult<Mipmap> {
         let input = crate::TextureInput {
-            data: crate::TextureData::Bytes(bytes.into()),
+            data: crate::TextureData::Bytes(bytes.read("Mipmap.build: bytes")?),
             options: crate::TextureOptions {
                 size: size.map(crate::Size::try_from).transpose()?,
                 format,
@@ -368,7 +368,7 @@ impl Texture {
     #[pyo3(name = "write")]
     #[lsp_doc("docs/api/texture/texture/write.md")]
     pub fn write_py(&self, data: PyTextureBytes<'_>) -> pyo3::PyResult<()> {
-        let bytes: Vec<u8> = data.into();
+        let bytes = data.read("Texture.write: data")?;
         self.write(&bytes)?;
         Ok(())
     }
@@ -380,7 +380,7 @@ impl Texture {
         data: PyTextureBytes<'_>,
         region: Option<PyTextureRegion<'_>>,
     ) -> pyo3::PyResult<()> {
-        let bytes: Vec<u8> = data.into();
+        let bytes = data.read("Texture.write_region: data")?;
         match region {
             Some(region) => self.write_region(&bytes, TextureRegion::try_from(region)?)?,
             None => self.write(&bytes)?,

@@ -1,4 +1,5 @@
 use crate::error::WebError;
+use crate::platforms::web::read_text;
 use crate::texture::{js_to_texture_bytes, read_format, read_texture_input, read_usage};
 use crate::{
     Mesh, Pass, PassObject, Renderable, Renderer, RendererError, Scene, Shader, Size, Texture,
@@ -133,7 +134,8 @@ impl Renderer {
         let usage = usage.filter(given).as_ref().map(read_usage).transpose()?;
         let data = match data.filter(given) {
             Some(bytes) => {
-                let (bytes, _) = js_to_texture_bytes(&bytes, Some(size), format.into())?;
+                let label = "Renderer.createStorageTexture: data";
+                let (bytes, _) = js_to_texture_bytes(&bytes, Some(size), format.into(), label)?;
                 TextureData::Bytes(bytes)
             }
             None => TextureData::Empty,
@@ -157,9 +159,9 @@ impl Renderer {
 
     #[wasm_bindgen(js_name = "unregisterTexture")]
     #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
-    pub fn unregister_texture_js(&self, texture_id: &JsValue) -> Result<(), RendererError> {
+    pub fn unregister_texture_js(&self, texture_id: &JsValue) -> Result<(), WebError> {
         let id = crate::texture::js_to_texture_id(texture_id)?;
-        self.unregister_texture(id)
+        Ok(self.unregister_texture(id)?)
     }
 
     // The readbacks and load are plain functions, so each call takes its start
@@ -207,11 +209,17 @@ impl Renderer {
 
     #[wasm_bindgen(js_name = "readStorage", unchecked_return_type = "Promise<Uint8Array>")]
     #[lsp_doc("docs/api/core/renderer/read_storage.md")]
-    pub fn read_storage_js(&self, shader: &Shader, binding: String) -> js_sys::Promise {
+    pub fn read_storage_js(
+        &self,
+        shader: &Shader,
+        #[wasm_bindgen(unchecked_param_type = "string")] binding: &JsValue,
+    ) -> js_sys::Promise {
         let start = self.start();
         let renderer = self.share();
         let shader = shader.clone();
+        let binding = read_text(binding, "Renderer.readStorage: binding");
         future_to_promise(async move {
+            let binding = binding?;
             let bytes = renderer.read_storage_from(&shader, &binding, start).await?;
             Ok(js_sys::Uint8Array::from(bytes.as_slice()).into())
         })

@@ -1,13 +1,15 @@
 #![cfg(wasm)]
 
-use crate::error::{ErrorClass, WebError};
+use crate::error::WebError;
 use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::mesh::{Instance, Mesh, Quad, Vertex, VertexData};
 use crate::platforms::vector;
-use crate::platforms::web::{read_floats, read_numbers, read_unsigned, read_vector};
+use crate::platforms::web::{
+    read_count, read_floats, read_numbers, read_text, read_unsigned, read_vector,
+};
 
 // -----------------------------
 // JS helpers
@@ -54,13 +56,10 @@ fn read_vertex(value: &JsValue, label: &str) -> Result<Vertex, WebError> {
     match parts.as_slice() {
         [first, second] => Ok(Vertex::from((position(first)?, uv(second)?))),
         [first, second, third] => Ok(Vertex::from((position(first)?, uv(second)?, color(third)?))),
-        _ => Err(WebError::new(
-            ErrorClass::InvalidInput,
-            &format!(
-                "{label} takes [position, uv] or [position, uv, color] in parts, got {} parts",
-                parts.len()
-            ),
-        )),
+        _ => Err(WebError::type_error(&format!(
+            "{label} takes [position, uv] or [position, uv, color] in parts, got {} parts",
+            parts.len()
+        ))),
     }
 }
 
@@ -174,10 +173,11 @@ impl Vertex {
     #[lsp_doc("docs/api/geometry/vertex/set.md")]
     pub fn set_js(
         &self,
-        key: &str,
+        #[wasm_bindgen(unchecked_param_type = "string")] key: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "number | ArrayLike<number>")] value: &JsValue,
     ) -> Result<Vertex, WebError> {
-        Ok(self.clone().set(key, read_attribute(value)?))
+        let key = read_text(key, "Vertex.set: key")?;
+        Ok(self.clone().set(&key, read_attribute(value)?))
     }
 
     #[wasm_bindgen(js_name = "createInstance")]
@@ -209,10 +209,11 @@ impl Instance {
     #[lsp_doc("docs/api/geometry/instance/set.md")]
     pub fn set_js(
         &self,
-        key: &str,
+        #[wasm_bindgen(unchecked_param_type = "string")] key: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "number | ArrayLike<number>")] value: &JsValue,
     ) -> Result<Instance, WebError> {
-        Ok(self.clone().set(key, read_attribute(value)?))
+        let key = read_text(key, "Instance.set: key")?;
+        Ok(self.clone().set(&key, read_attribute(value)?))
     }
 }
 
@@ -295,8 +296,11 @@ impl Mesh {
 
     #[wasm_bindgen(js_name = "setInstanceCount")]
     #[lsp_doc("docs/api/geometry/mesh/set_instance_count.md")]
-    pub fn set_instance_count_js(&mut self, count: f64) -> Result<(), WebError> {
-        self.set_instance_count(read_unsigned(count, "Mesh.setInstanceCount: count")?);
+    pub fn set_instance_count_js(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "number")] count: &JsValue,
+    ) -> Result<(), WebError> {
+        self.set_instance_count(read_count(count, "Mesh.setInstanceCount: count")?);
         Ok(())
     }
 

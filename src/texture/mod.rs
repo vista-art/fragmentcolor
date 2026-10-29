@@ -24,10 +24,10 @@ pub(crate) mod ktx2_loader;
 mod platform;
 #[cfg(python)]
 pub(crate) use platform::{
-    PySamplerOptions, PyTextureId, PyTextureSource, PyTextureUsage, ndarray_input,
+    PySamplerOptions, PyTextureBytes, PyTextureId, PyTextureSource, PyTextureUsage, ndarray_input,
 };
 #[cfg(wasm)]
-pub(crate) use platform::{read_format, read_texture_input, read_usage};
+pub(crate) use platform::{parse_compare, read_format, read_texture_input, read_usage};
 
 use crate::{RenderContext, Size};
 use image::{DynamicImage, GenericImageView};
@@ -415,113 +415,99 @@ impl From<TextureInputMobile> for TextureData {
     }
 }
 
-/// A texture source decoded from JS.
+/// A texture source decoded from JS, for the call `label` names.
 /// `ImageData` and canvases carry their pixel size in `options.size`,
 /// so their raw RGBA bytes upload without a size argument.
+/// A value no source takes, or an item of a byte list that isn't a number, is a `TypeError`,
+/// as Python raises, and a byte that isn't a whole number from 0 to 255 an `InvalidInputError`.
 #[cfg(wasm)]
-impl TryFrom<&wasm_bindgen::JsValue> for TextureInput {
-    type Error = crate::texture::error::TextureError;
+pub(crate) fn read_source(
+    value: &wasm_bindgen::JsValue,
+    label: &str,
+) -> Result<TextureInput, crate::error::WebError> {
+    use crate::error::WebError;
+    use js_sys::{Array, ArrayBuffer, Uint8Array, Uint8ClampedArray};
+    use wasm_bindgen::JsCast;
 
-    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
-        use js_sys::{Array, ArrayBuffer, Uint8Array, Uint8ClampedArray};
-        use wasm_bindgen::JsCast;
+    let pixels = |bytes: Vec<u8>, width: u32, height: u32| TextureInput {
+        data: TextureData::Bytes(bytes),
+        options: TextureOptions::from(Size::from([width, height])),
+    };
 
-        let pixels = |bytes: Vec<u8>, width: u32, height: u32| TextureInput {
-            data: TextureData::Bytes(bytes),
-            options: TextureOptions::from(Size::from([width, height])),
-        };
+    // Case: Mipmap handle (built off-thread via Mipmap.build).
+    // Detected through the branded __fc_kind + __wbg_ptr anchor so it
+    // survives bundler renaming. Must come before the Uint8Array / object
+    // cases because wasm-bindgen handles also satisfy `is_object()`.
+    if let Ok(chain) = Mipmap::try_from(value) {
+        return Ok(TextureData::Prepared(chain).into());
+    }
 
-        // Case: Mipmap handle (built off-thread via Mipmap.build).
-        // Detected through the branded __fc_kind + __wbg_ptr anchor so it
-        // survives bundler renaming. Must come before the Uint8Array / object
-        // cases because wasm-bindgen handles also satisfy `is_object()`.
-        if let Ok(chain) = Mipmap::try_from(value) {
-            return Ok(TextureData::Prepared(chain).into());
+    // Case: an existing Texture handle, shared as is
+    if let Ok(texture) = Texture::try_from(value) {
+        return Ok(TextureData::CloneOf(texture).into());
+    }
+
+    // Case: Uint8Array (fast path)
+    if let Some(u8a) = value.dyn_ref::<Uint8Array>() {
+        let mut bytes = vec![0u8; u8a.length() as usize];
+        u8a.copy_to(&mut bytes[..]);
+        return Ok(TextureData::Bytes(bytes).into());
+    }
+
+    // Case: Uint8ClampedArray (ImageData.data)
+    if let Some(u8c) = value.dyn_ref::<Uint8ClampedArray>() {
+        let mut bytes = vec![0u8; u8c.length() as usize];
+        u8c.copy_to(&mut bytes[..]);
+        return Ok(TextureData::Bytes(bytes).into());
+    }
+
+    // Case: ArrayBuffer
+    if let Some(buf) = value.dyn_ref::<ArrayBuffer>() {
+        // Guard against detached buffers via byte_length() == 0; safe fallback for empty too.
+        if buf.byte_length() == 0 {
+            return Ok(TextureData::Bytes(Vec::new()).into());
         }
+        let u8a = Uint8Array::new(buf);
+        let mut bytes = vec![0u8; u8a.length() as usize];
+        u8a.copy_to(&mut bytes[..]);
+        return Ok(TextureData::Bytes(bytes).into());
+    }
 
-        // Case: an existing Texture handle, shared as is
-        if let Ok(texture) = Texture::try_from(value) {
-            return Ok(TextureData::CloneOf(texture).into());
-        }
+    // Case: ImageData -> its RGBA pixels and size
+    if let Some(image_data) = value.dyn_ref::<web_sys::ImageData>() {
+        let bytes = image_data.data().0;
+        return Ok(pixels(bytes, image_data.width(), image_data.height()));
+    }
 
-        // Case: Uint8Array (fast path)
-        if let Some(u8a) = value.dyn_ref::<Uint8Array>() {
-            let mut bytes = vec![0u8; u8a.length() as usize];
-            u8a.copy_to(&mut bytes[..]);
-            return Ok(TextureData::Bytes(bytes).into());
-        }
+    // Case: HTMLCanvasElement or OffscreenCanvas -> raw pixel bytes via 2D context
+    if let Some(input) = read_canvas(value)? {
+        return Ok(input);
+    }
 
-        // Case: Uint8ClampedArray (ImageData.data)
-        if let Some(u8c) = value.dyn_ref::<Uint8ClampedArray>() {
-            let mut bytes = vec![0u8; u8c.length() as usize];
-            u8c.copy_to(&mut bytes[..]);
-            return Ok(TextureData::Bytes(bytes).into());
-        }
+    // Case: HTMLImageElement -> pass through as URL
+    if let Some(img) = value.dyn_ref::<web_sys::HtmlImageElement>() {
+        return Ok(TextureData::Url(img.src()).into());
+    }
 
-        // Case: ArrayBuffer
-        if let Some(buf) = value.dyn_ref::<ArrayBuffer>() {
-            // Guard against detached buffers via byte_length() == 0; safe fallback for empty too.
-            if buf.byte_length() == 0 {
-                return Ok(TextureData::Bytes(Vec::new()).into());
-            }
-            let u8a = Uint8Array::new(buf);
-            let mut bytes = vec![0u8; u8a.length() as usize];
-            u8a.copy_to(&mut bytes[..]);
-            return Ok(TextureData::Bytes(bytes).into());
-        }
+    // Case: Plain JS Array of numbers
+    if Array::is_array(value) {
+        let bytes = Array::from(value)
+            .iter()
+            .enumerate()
+            .map(|(index, item)| js_to_byte(&item, &format!("{label}: item {index}")))
+            .collect::<Result<Vec<u8>, WebError>>()?;
+        return Ok(TextureData::Bytes(bytes).into());
+    }
 
-        // Case: ImageData -> its RGBA pixels and size
-        if let Some(image_data) = value.dyn_ref::<web_sys::ImageData>() {
-            let bytes = image_data.data().0;
-            return Ok(pixels(bytes, image_data.width(), image_data.height()));
-        }
-
-        // Case: HTMLCanvasElement -> raw pixel bytes via 2D context
-        if let Some(canvas) = value.dyn_ref::<web_sys::HtmlCanvasElement>()
-            && let Ok(Some(ctx_js)) = canvas.get_context("2d")
-            && let Ok(ctx) = ctx_js.dyn_into::<web_sys::CanvasRenderingContext2d>()
-        {
-            let (width, height) = (canvas.width(), canvas.height());
-            let image = ctx.get_image_data(0.0, 0.0, width as f64, height as f64)?;
-            return Ok(pixels(image.data().0, width, height));
-        }
-
-        // Case: OffscreenCanvas -> raw pixel bytes via 2D context
-        if let Some(canvas) = value.dyn_ref::<web_sys::OffscreenCanvas>()
-            && let Ok(Some(ctx_js)) = canvas.get_context("2d")
-            && let Ok(ctx) = ctx_js.dyn_into::<web_sys::OffscreenCanvasRenderingContext2d>()
-        {
-            let (width, height) = (canvas.width(), canvas.height());
-            let image = ctx.get_image_data(0.0, 0.0, width as f64, height as f64)?;
-            return Ok(pixels(image.data().0, width, height));
-        }
-
-        // Case: HTMLImageElement -> pass through as URL
-        if let Some(img) = value.dyn_ref::<web_sys::HtmlImageElement>() {
-            return Ok(TextureData::Url(img.src()).into());
-        }
-
-        // Case: Plain JS Array of numbers
-        if Array::is_array(value) {
-            let bytes = Array::from(value)
-                .iter()
-                .map(|item| js_to_byte(&item))
-                .collect::<Result<Vec<u8>, TextureError>>()?;
-            return Ok(TextureData::Bytes(bytes).into());
-        }
-
-        // Case: String -> selector or URL
-        if let Some(s) = value.as_string() {
-            let url = if s.starts_with('#') || s.starts_with('.') {
-                if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
-                    if let Ok(Some(elem)) = doc.query_selector(&s) {
-                        if let Some(img) = elem.dyn_ref::<web_sys::HtmlImageElement>() {
-                            img.src()
-                        } else if let Some(canvas) = elem.dyn_ref::<web_sys::HtmlCanvasElement>() {
-                            canvas.to_data_url().unwrap_or(s.clone())
-                        } else {
-                            s.clone()
-                        }
+    // Case: String -> selector or URL
+    if let Some(s) = value.as_string() {
+        let url = if s.starts_with('#') || s.starts_with('.') {
+            if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
+                if let Ok(Some(elem)) = doc.query_selector(&s) {
+                    if let Some(img) = elem.dyn_ref::<web_sys::HtmlImageElement>() {
+                        img.src()
+                    } else if let Some(canvas) = elem.dyn_ref::<web_sys::HtmlCanvasElement>() {
+                        canvas.to_data_url().unwrap_or(s.clone())
                     } else {
                         s.clone()
                     }
@@ -530,36 +516,57 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureInput {
                 }
             } else {
                 s.clone()
-            };
-            return Ok(TextureData::Url(url).into());
-        }
-
-        Err(crate::texture::error::TextureError::Error(
-            "Unsupported input for TextureInput".into(),
-        ))
+            }
+        } else {
+            s.clone()
+        };
+        return Ok(TextureData::Url(url).into());
     }
+
+    Err(WebError::type_error(&format!(
+        "{label} takes bytes (a Uint8Array, an ArrayBuffer or an array of numbers), an ImageData, a canvas, an image, a URL, a Texture or a Mipmap, got {value:?}"
+    )))
 }
 
-/// One item of a JS byte list: a whole number from 0 to 255.
+/// The RGBA pixels and size of an `HTMLCanvasElement` or `OffscreenCanvas` with a 2D context,
+/// or `None` for any other value.
 #[cfg(wasm)]
-fn js_to_byte(value: &wasm_bindgen::JsValue) -> Result<u8, TextureError> {
-    match value.as_f64() {
-        Some(number) if number.fract() == 0.0 && (0.0..=255.0).contains(&number) => {
-            Ok(number as u8)
-        }
-        _ => Err(TextureError::InvalidInput(format!(
-            "a byte list takes whole numbers from 0 to 255, got {value:?}"
-        ))),
-    }
+fn read_canvas(value: &wasm_bindgen::JsValue) -> Result<Option<TextureInput>, TextureError> {
+    use wasm_bindgen::JsCast;
+    let image = if let Some(canvas) = value.dyn_ref::<web_sys::HtmlCanvasElement>()
+        && let Ok(Some(context)) = canvas.get_context("2d")
+        && let Ok(context) = context.dyn_into::<web_sys::CanvasRenderingContext2d>()
+    {
+        let (width, height) = (canvas.width(), canvas.height());
+        context.get_image_data(0.0, 0.0, width as f64, height as f64)?
+    } else if let Some(canvas) = value.dyn_ref::<web_sys::OffscreenCanvas>()
+        && let Ok(Some(context)) = canvas.get_context("2d")
+        && let Ok(context) = context.dyn_into::<web_sys::OffscreenCanvasRenderingContext2d>()
+    {
+        let (width, height) = (canvas.width(), canvas.height());
+        context.get_image_data(0.0, 0.0, width as f64, height as f64)?
+    } else {
+        return Ok(None);
+    };
+    let size = Size::from([image.width(), image.height()]);
+    Ok(Some(TextureInput {
+        data: TextureData::Bytes(image.data().0),
+        options: TextureOptions::from(size),
+    }))
 }
 
+/// One item of a JS byte list, named `label`: a `TypeError` for a value that isn't a number,
+/// as Python raises, and an `InvalidInputError` for one that isn't a whole number from 0 to 255.
 #[cfg(wasm)]
-impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
-    type Error = crate::texture::error::TextureError;
-
-    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
-        TextureInput::try_from(value).map(|input| input.data)
+fn js_to_byte(value: &wasm_bindgen::JsValue, label: &str) -> Result<u8, crate::error::WebError> {
+    let number = crate::platforms::web::read_number(value, label)?;
+    if number.fract() == 0.0 && (0.0..=255.0).contains(&number) {
+        return Ok(number as u8);
     }
+    Err(TextureError::InvalidInput(format!(
+        "{label} must be a whole number from 0 to 255, got {number}"
+    ))
+    .into())
 }
 
 #[cfg_attr(wasm, wasm_bindgen)]
@@ -604,37 +611,50 @@ impl From<TextureId> for u64 {
 crate::impl_fc_kind!(TextureId, "TextureId");
 crate::impl_js_bridge!(TextureId, crate::texture::TextureError);
 
+/// A texture id from JS: a `TextureId`, a whole number or a bigint. A value of another type
+/// is a `TypeError`, as Python raises, and a negative, fractional or out-of-range number an
+/// `InvalidInputError`.
 #[cfg(wasm)]
 pub(crate) fn js_to_texture_id(
     value: &wasm_bindgen::JsValue,
-) -> Result<TextureId, crate::texture::TextureError> {
+) -> Result<TextureId, crate::error::WebError> {
     let invalid = || TextureError::InvalidInput(format!("not a texture id: {value:?}"));
     if let Some(number) = value.as_f64() {
         if number.fract() != 0.0 || !(0.0..=u64::MAX as f64).contains(&number) {
-            return Err(invalid());
+            return Err(invalid().into());
         }
         return Ok(TextureId { id: number as u64 });
     }
     if value.is_bigint() {
-        return u64::try_from(value.clone())
-            .map(TextureId::from)
-            .map_err(|_| invalid());
+        let Ok(id) = u64::try_from(value.clone()) else {
+            return Err(invalid().into());
+        };
+        return Ok(TextureId::from(id));
     }
-    TextureId::try_from(value)
+    if let Ok(id) = TextureId::try_from(value) {
+        return Ok(id);
+    }
+    Err(crate::error::WebError::type_error(&format!(
+        "a texture id is a TextureId or a whole number, got {value:?}"
+    )))
 }
 
 #[cfg(wasm)]
 /// The bytes of a JS source for a texture of `format` and, when known, `size`,
 /// with the size the source brings. An `ImageData` or canvas holds RGBA pixels,
 /// like a decoded image, so it gets the checks and the BGRA swap `createTexture` gives it.
+/// A value of another type, such as a string or a `Texture`, is a `TypeError` that names `label`.
 pub(crate) fn js_to_texture_bytes(
     value: &wasm_bindgen::JsValue,
     size: Option<Size>,
     format: wgpu::TextureFormat,
-) -> Result<(Vec<u8>, Option<Size>), crate::texture::TextureError> {
-    let TextureInput { data, options } = TextureInput::try_from(value)?;
+    label: &str,
+) -> Result<(Vec<u8>, Option<Size>), crate::error::WebError> {
+    let TextureInput { data, options } = read_source(value, label)?;
     let TextureData::Bytes(mut bytes) = data else {
-        return Err(TextureError::Error("Expected raw byte data".into()));
+        return Err(crate::error::WebError::type_error(&format!(
+            "{label} takes bytes (a Uint8Array, an ArrayBuffer or an array of numbers), an ImageData or a canvas, got {value:?}"
+        )));
     };
     if let Some(own) = options.size {
         check_pixels(own, size, format)?;
@@ -704,12 +724,12 @@ impl Texture {
     }
 
     #[lsp_doc("docs/api/texture/texture/write_region.md")]
-    pub fn write_region(
-        &self,
-        data: &[u8],
-        region: impl Into<TextureRegion>,
-    ) -> Result<(), TextureError> {
-        write::write(self, data, Some(region.into()))
+    pub fn write_region<R>(&self, data: &[u8], region: R) -> Result<(), TextureError>
+    where
+        R: TryInto<TextureRegion>,
+        TextureError: From<R::Error>,
+    {
+        write::write(self, data, Some(region.try_into()?))
     }
 
     #[lsp_doc("docs/api/texture/texture/get_image.md")]
@@ -1338,9 +1358,10 @@ impl From<std::io::Error> for ImageFailure {
     }
 }
 
+/// The image library's own text, which already holds the decoder's reason.
 impl From<ImageFailure> for TextureError {
     fn from(failure: ImageFailure) -> Self {
-        TextureError::MalformedImageError(crate::shader::error::describe(&failure.0))
+        TextureError::MalformedImageError(failure.0.to_string())
     }
 }
 
@@ -2133,6 +2154,29 @@ mod tests {
             )
             .expect("encode png");
         bytes
+    }
+
+    // Story: a PNG whose pixel data is corrupt names the decoder's reason once,
+    // where the reason was printed again after the text that already held it.
+    #[test]
+    fn malformed_images_name_their_reason_once() {
+        let mut bytes = encode_png(&DynamicImage::new_rgba8(1, 1));
+        let data = bytes
+            .windows(4)
+            .position(|window| window == b"IDAT")
+            .map(|start| start + 4)
+            .expect("an IDAT chunk");
+        bytes[data] ^= 0xFF;
+        let reason = decode_pixels(&bytes)
+            .err()
+            .and_then(|failure| std::error::Error::source(&failure.0).map(ToString::to_string))
+            .expect("a decoder reason");
+
+        let error = decode(&bytes, 64).err().map(|error| error.to_string());
+
+        let text = error.expect("a decode error");
+        assert!(text.starts_with("Image decode failed: "), "{text}");
+        assert_eq!(text.matches(reason.as_str()).count(), 1, "{text}");
     }
 
     // Story: TextureInput conversions from common Rust types produce expected variants.

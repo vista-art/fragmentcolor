@@ -18,7 +18,6 @@ pub enum ScreenRegionError {
         max_y: u32,
     },
     /// A region whose far edge would pass `u32::MAX`, which no pixel coordinate can hold.
-    /// The size is the one asked for, which two corners can put at `u32::MAX + 1`.
     #[error(
         "a region at {x}, {y} sized {width} by {height} reaches past {}",
         u32::MAX
@@ -26,8 +25,8 @@ pub enum ScreenRegionError {
     Overflow {
         x: u32,
         y: u32,
-        width: u64,
-        height: u64,
+        width: u32,
+        height: u32,
     },
     #[cfg(wasm)]
     #[error("WASM ScreenRegion Error: {0}")]

@@ -38,7 +38,8 @@ impl Mipmap {
         let format = read_format(format)?;
         let size = size.filter(|size| !size.is_undefined() && !size.is_null());
         let size: Option<Size> = size.as_ref().map(Size::try_from).transpose()?;
-        let (bytes, own) = crate::texture::js_to_texture_bytes(bytes, size, format.into())?;
+        let (bytes, own) =
+            crate::texture::js_to_texture_bytes(bytes, size, format.into(), "Mipmap.build: bytes")?;
         let size = size.or(own);
         let input = crate::TextureInput {
             data: crate::TextureData::Bytes(bytes),
@@ -126,8 +127,12 @@ impl Texture {
     #[lsp_doc("docs/api/texture/texture/write.md")]
     pub fn write_js(&self, data: &JsValue) -> Result<(), WebError> {
         let object = self.object();
-        let (bytes, _) =
-            crate::texture::js_to_texture_bytes(data, Some(object.size()), object.format)?;
+        let (bytes, _) = crate::texture::js_to_texture_bytes(
+            data,
+            Some(object.size()),
+            object.format,
+            "Texture.write: data",
+        )?;
         self.write(&bytes)?;
         Ok(())
     }
@@ -142,7 +147,8 @@ impl Texture {
         let [width, height, depth] = region.size;
         let size = Size::new(width, height, Some(depth));
         let format = self.object().format;
-        let (bytes, _) = crate::texture::js_to_texture_bytes(data, Some(size), format)?;
+        let label = "Texture.writeRegion: data";
+        let (bytes, _) = crate::texture::js_to_texture_bytes(data, Some(size), format, label)?;
         self.write_region(&bytes, region)?;
         Ok(())
     }
@@ -175,7 +181,7 @@ impl Texture {
 // Helper: parse JS values into CompareFunction. Accepts string names (case-insensitive)
 // or numeric enum codes (1..=8). Returns Ok(Some(...)) if present, Ok(None) if undefined/null,
 // and Err for type mismatches.
-fn parse_compare(value: &JsValue) -> Result<Option<CompareFunction>, WebError> {
+pub(crate) fn parse_compare(value: &JsValue) -> Result<Option<CompareFunction>, WebError> {
     if value.is_undefined() || value.is_null() {
         return Ok(None);
     }
@@ -261,7 +267,7 @@ pub(crate) fn read_texture_input(
     options: Option<&JsValue>,
     call: &str,
 ) -> Result<TextureInput, WebError> {
-    let mut input = TextureInput::try_from(source)?;
+    let mut input = crate::texture::read_source(source, call)?;
     if let Some(options) = options.filter(|options| !options.is_undefined() && !options.is_null()) {
         if matches!(input.data, TextureData::CloneOf(_)) {
             return Err(WebError::new(

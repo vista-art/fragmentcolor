@@ -166,7 +166,7 @@ class Renderer:
 
         In Rust, we officially support Winit. Check the examples folder for details.
 
-        A window with no area yet gets one pixel on that side, and `resize` gives it the real size later. A side past the device limit is an error, the one `resize` returns: `TextureError::InvalidInput` inside `InitializationError::TextureError` in Rust, a thrown `Error` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
+        A window with no area yet gets one pixel on that side, and `resize` gives it the real size later. A side past the device limit is an error, the one `resize` returns: `TextureError::InvalidInput` inside `InitializationError::TextureError` in Rust, a thrown `Error` named `InvalidInputError` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
 
         Example:
 
@@ -187,7 +187,7 @@ class Renderer:
 
         This is useful for tests, server-side rendering, or running examples in CI.
 
-        A width or height of zero, a side past the device limit, or a depth other than 1 is an error, the one `resize` returns: `TextureError::InvalidInput` inside `InitializationError::TextureError` in Rust, a thrown `Error` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
+        A width or height of zero, a side past the device limit, or a depth other than 1 is an error, the one `resize` returns: `TextureError::InvalidInput` inside `InitializationError::TextureError` in Rust, a thrown `Error` named `InvalidInputError` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
 
         Example:
 
@@ -210,7 +210,7 @@ class Renderer:
 
         When you pass a `size`, the bytes are treated as raw pixels in the chosen format. Without a size, the bytes (or the file/URL contents) are decoded as PNG, JPEG, BMP, HDR, etc. A size applies to bytes only: a path, a URL, a KTX2 file and a `Mipmap` carry their own, so a size with one is an `InvalidInput` error, raised before any file read or fetch.
 
-        A size with a side of zero, or one past the device's limits, is an error that reaches no GPU call, and so is an image larger than the device takes, which is checked from its header before the pixels decode: `TextureError::InvalidInput` inside `RendererError::TextureError` in Rust, a thrown `Error` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
+        A size with a side of zero, or one past the device's limits, is an error that reaches no GPU call, and so is an image larger than the device takes, which is checked from its header before the pixels decode: `TextureError::InvalidInput` inside `RendererError::TextureError` in Rust, a thrown `Error` named `InvalidInputError` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
 
         Decode and mipmap generation run on a background worker on native platforms. On the web they run inline on the caller's thread; move heavy decode into a Web Worker if you need parallelism.
 
@@ -408,7 +408,7 @@ class Renderer:
 
         A frame that fails is still presented. wgpu clears an image that no valid command drew into, so after a GPU error the window usually shows a cleared frame. On Apple GPUs the renderer submits the commands recorded so far before each compute pass that follows another compute pass. When a pass after that point fails, what the earlier passes drew stays on the image. A shader without its mesh, an instance count past the mesh's instances, a mesh the device's limits or its own checks refuse, a shader or texture the device checks refuse, a target from another `Renderer`, a pass target that is missing, a viewport past the device's 2D limit, and a pass whose own target or compute dispatch fails its checks fail before `render` takes a frame, and the window keeps its last image.
 
-        JavaScript gets the GPU's errors late, because WebGPU reports them after `render` has returned. Each error logs a `console.error` when it lands, and the next `render` still throws the first one, as an `Error` with `kind`, `label` and `detail` properties, before doing any work. `load`, `readTexture`, `readStorage`, and `getImage` on a `Texture` or `TextureTarget` wait for the frames before them to report, so they throw a frame's error even when called right after it. A call that waits throws only the error of a frame rendered before it began: the error of a frame rendered while it waits, even one rendered in the same task right after the call, stays for the next call. Only the first error to land throws, and only once; the ones that land after it, before a call takes it, only log. The label names the render pipeline, the compute pipeline, the light binning pipeline or the frame. A pipeline that failed stays in the cache until its error lands, and a frame that draws with it before then reports a frame error. Once the error lands, the pipeline leaves the cache. In a loop that renders each frame, the next `render` throws the error before doing any work, and the one after it builds the pipeline again and reports the same error.
+        JavaScript gets the GPU's errors late, because WebGPU reports them after `render` has returned. Each error logs a `console.error` when it lands, and the next `render` still throws the first one, as an `Error` named `DeviceError`, with `kind`, `label` and `detail` properties, before doing any work. `load`, `readTexture`, `readStorage`, and `getImage` on a `Texture` or `TextureTarget` wait for the frames before them to report, so they throw a frame's error even when called right after it. A call that waits throws only the error of a frame rendered before it began: the error of a frame rendered while it waits, even one rendered in the same task right after the call, stays for the next call. Only the first error to land throws, and only once; the ones that land after it, before a call takes it, only log. The label names the render pipeline, the compute pipeline, the light binning pipeline or the frame. A pipeline that failed stays in the cache until its error lands, and a frame that draws with it before then reports a frame error. Once the error lands, the pipeline leaves the cache. In a loop that renders each frame, the next `render` throws the error before doing any work, and the one after it builds the pipeline again and reports the same error.
 
         Example:
 
@@ -448,7 +448,7 @@ class Renderer:
         depth = r.create_depth_texture([800, 600])
         ```
         """
-    def create_storage_texture(self, size: _PySize, format: TextureFormat, data: bytes | Sequence[SupportsIndex] | npt.NDArray[numpy.integer[Any]] | None = ..., usage: SupportsIndex | TextureUsage | None = ..., usage_bits: SupportsIndex | None = ...) -> Texture:
+    def create_storage_texture(self, size: _PySize, format: TextureFormat, data: _PyTextureBytes | None = ..., usage: SupportsIndex | TextureUsage | None = ..., usage_bits: SupportsIndex | None = ...) -> Texture:
         """
         Create a storage-class texture for compute shaders, image store/load, or as a render target.
 
@@ -460,7 +460,7 @@ class Renderer:
 
         `size` is required; storage textures have no source to infer dimensions from. Missing it returns `RendererError::CreateTextureError`.
 
-        A depth of 1, or none, makes a 2D texture, and a larger depth makes a 3D texture. A side of zero, or a size past the device's limits for that kind of texture, is an error that reaches no GPU call: `TextureError::InvalidInput` inside `RendererError::TextureError` in Rust, a thrown `Error` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
+        A depth of 1, or none, makes a 2D texture, and a larger depth makes a 3D texture. A side of zero, or a size past the device's limits for that kind of texture, is an error that reaches no GPU call: `TextureError::InvalidInput` inside `RendererError::TextureError` in Rust, a thrown `Error` named `InvalidInputError` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
 
         `options.usage` overrides the default mask of `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`. Every binding has the same named `TextureUsage` flags, combined with `|` (`or` in Kotlin). The other bindings take the size, format, optional bytes and optional usage as separate arguments. An empty mask, or a bit outside the five `TextureUsage` flags, is the same `InvalidInput` error. So is a usage the format can't take on this device, such as `STORAGE_BINDING` on `Depth32Float` or `Rgba8UnormSrgb`, and a depth texture with a depth past 1.
 
@@ -1459,7 +1459,7 @@ class Pass:
 
         The pass's shaders draw only inside this rectangle of the [Target](https://fragmentcolor.org/api/targets/target), and each shader's output scales to fill it.
 
-        The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly. Pixels count from the top-left corner of the target.
+        The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, an origin and a size as `((x, y), (w, h))`, or a `ScreenRegion` constructed explicitly. Pixels count from the top-left corner of the target.
 
         A width or height of 0 is an error that leaves the pass's viewport as it was, and so is a far edge past `u32::MAX`, the largest pixel coordinate. A region whose max lies before its min, which a region built field by field or a JavaScript `{ minX, minY, maxX, maxY }` object can hold, returns `ScreenRegionError::Reversed` and is never swapped back. To draw on the whole target, leave the viewport unset.
 
@@ -3549,8 +3549,8 @@ class Camera:
 
     Parameters that leave no usable view return an error, and a Camera that
     already exists keeps its state. `perspective`, `orthographic`, `look_at`
-    and `set_aspect` return a `CameraError` in Rust, throw an `Error` in
-    JavaScript, raise `CameraError` (a `FragmentColorError` and a `ValueError`)
+    and `set_aspect` return a `CameraError` in Rust, throw an `Error` named
+    `CameraError` in JavaScript, raise `CameraError` (a `FragmentColorError` and a `ValueError`)
     in Python, throw `FragmentColorError` in Swift and throw
     `FragmentColorException` in Kotlin.
 
@@ -4924,7 +4924,7 @@ class Material:
         tiled UVs of the color maps. Every slot starts on set 0.
 
         A set other than 0 or 1 returns `MaterialError::UvSet` and keeps the
-        slot's set. JavaScript throws an `Error`, Python raises `MaterialError`, a
+        slot's set. JavaScript throws an `Error` named `MaterialError`, Python raises `MaterialError`, a
         `FragmentColorError` that is also a `ValueError`, Swift throws
         `FragmentColorError`, and Kotlin throws `FragmentColorException`. The set
         is a count like any other: JavaScript throws for a fraction or a negative
@@ -5473,7 +5473,7 @@ class Texture:
         - `[w, h]` / `(w, h)`: a `w` by `h` rectangle at origin `(0, 0, 0)`
         - `[x, y, w, h]` / `(x, y, w, h)`: 2D rectangle
         - `[x, y, z, w, h, d]`: 3D box (for layered or 3D textures)
-        - A `ScreenRegion`: its pixel rectangle at `z = 0`, one layer deep
+        - A `ScreenRegion`: its pixel rectangle at `z = 0`, one layer deep. One whose max lies before its min, which a region built field by field can hold, returns `TextureError::Region` with `ScreenRegionError::Reversed`
         - A `TextureRegion` constructed explicitly with `.with_stride(...)` / `.with_rows(...)` for advanced data-layout control
 
         ## Notes
@@ -5816,7 +5816,7 @@ class TextureTarget:
 
         Python returns a NumPy array of shape `(height, width, 4)`, indexed `image[y, x]`. That is the layout `Renderer.create_texture` reads, so `renderer.create_texture(target.get_image())` uploads the same image.
 
-        A readback that fails or times out, or that needs a buffer past the device's largest, returns an error: a thrown `Error` in JavaScript, a `FragmentColorError` in Python and Swift, and a `FragmentColorException` in Kotlin.
+        A readback that fails or times out, or that needs a buffer past the device's largest, returns an error: a thrown `Error` named `FragmentColorError` in JavaScript, a `FragmentColorError` in Python and Swift, and a `FragmentColorException` in Kotlin.
 
         In JavaScript, `getImage` also throws the GPU error of a frame rendered before it. It waits for that frame to report first, so a call right after a failed `render` throws, as [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render) describes.
 
@@ -5931,7 +5931,7 @@ class WindowTarget:
         """
     def get_image(self) -> npt.NDArray[numpy.uint8]:
         """
-        Returns an error for a [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget): a frame on screen can't be read back. JavaScript throws an `Error`, Python and Swift throw a `FragmentColorError`, and Kotlin throws a `FragmentColorException`.
+        Returns an error for a [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget): a frame on screen can't be read back. JavaScript throws an `Error` named `FragmentColorError`, Python and Swift throw a `FragmentColorError`, and Kotlin throws a `FragmentColorException`.
 
         To read the pixels of a frame, draw it into a [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) and call `get_image` there, as the example does.
 

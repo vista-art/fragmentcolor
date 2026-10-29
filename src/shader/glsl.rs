@@ -1,4 +1,4 @@
-use super::error::Diagnostic;
+use super::error::{Diagnostic, Source};
 use super::validate_module;
 use crate::{ShaderError, ShaderObject};
 use naga::back::wgsl;
@@ -7,18 +7,27 @@ use naga::front::glsl;
 impl ShaderObject {
     /// Create a Shader object from a GLSL source pair (vertex and fragment shaders).
     pub fn glsl(vertex_source: &str, fragment_source: &str) -> Result<Self, ShaderError> {
-        let vertex = convert_stage(vertex_source, naga::ShaderStage::Vertex)?;
-        let fragment = convert_stage(fragment_source, naga::ShaderStage::Fragment)?;
+        let vertex = convert_stage(vertex_source, naga::ShaderStage::Vertex, "vertex.glsl")?;
+        let fragment = convert_stage(
+            fragment_source,
+            naga::ShaderStage::Fragment,
+            "fragment.glsl",
+        )?;
         let vertex = vertex.replace("fn main", "fn vs_main");
         let fragment = fragment.replace("fn main", "fn fs_main");
         Self::wgsl(&format!("{vertex}\n{fragment}"))
     }
 }
 
-/// The WGSL for the GLSL `source` of one `stage`, or naga's report on a source
-/// its parser, validator or writer refuses.
-fn convert_stage(source: &str, stage: naga::ShaderStage) -> Result<String, ShaderError> {
-    let module = match glsl::Frontend::default().parse(&glsl::Options::from(stage), source) {
+/// The WGSL for the GLSL `text` of one `stage`, or naga's report on a source its parser,
+/// validator or writer refuses, which names the stage's source as `path`.
+fn convert_stage(
+    text: &str,
+    stage: naga::ShaderStage,
+    path: &'static str,
+) -> Result<String, ShaderError> {
+    let source = Source { text, path };
+    let module = match glsl::Frontend::default().parse(&glsl::Options::from(stage), text) {
         Ok(module) => module,
         Err(errors) => {
             let diagnostic = Diagnostic::from_glsl(&errors, source);

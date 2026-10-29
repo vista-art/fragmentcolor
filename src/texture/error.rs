@@ -1,4 +1,8 @@
+use std::convert::Infallible;
+
 use thiserror::Error;
+
+use crate::region::error::ScreenRegionError;
 
 #[derive(Error, Debug)]
 pub enum TextureError {
@@ -30,6 +34,9 @@ pub enum TextureError {
     #[error("Invalid texture input: {0}")]
     InvalidInput(String),
 
+    /// A `ScreenRegion` given as a write region whose bounds don't make a region.
+    #[error(transparent)]
+    Region(#[from] ScreenRegionError),
     #[error("Texture readback failed: {0}")]
     Readback(String),
     /// Only a texture with `RENDER_ATTACHMENT` usage, one a pass can draw into, resizes.
@@ -70,6 +77,13 @@ pub enum TextureError {
     Error(String),
 }
 
+/// A region form that always converts, such as `[x, y, w, h]`, lifts with `?`.
+impl From<Infallible> for TextureError {
+    fn from(never: Infallible) -> Self {
+        match never {}
+    }
+}
+
 // Python-specific conversions
 
 #[cfg(python)]
@@ -85,7 +99,7 @@ impl crate::error::Classify for TextureError {
     fn classify(&self) -> crate::error::ErrorClass {
         use crate::error::ErrorClass;
         match self {
-            TextureError::InvalidInput(_) => ErrorClass::InvalidInput,
+            TextureError::InvalidInput(_) | TextureError::Region(_) => ErrorClass::InvalidInput,
             TextureError::UnsupportedMipmapFormat { .. } => ErrorClass::UnsupportedMipmapFormat,
             TextureError::MalformedImageError(_) => ErrorClass::MalformedImage,
             TextureError::DeviceError { .. } => ErrorClass::Device,

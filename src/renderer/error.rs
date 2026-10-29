@@ -1,6 +1,8 @@
 use lsp_doc::lsp_doc;
 use thiserror::Error;
 
+use crate::shader::error::describe;
+
 #[cfg(any(python, wasm, test))]
 use crate::error::{Classify, ErrorClass};
 #[cfg(python)]
@@ -110,6 +112,18 @@ pub enum RendererError {
     Error(String),
 }
 
+#[cfg(any(python, wasm, mobile, test))]
+impl RendererError {
+    /// Whether the frame failed because the window is hidden or minimized, which every
+    /// binding raises as its own class or case, so a render loop can skip the frame.
+    pub(crate) fn is_occluded(&self) -> bool {
+        matches!(
+            self,
+            RendererError::SurfaceError(crate::target::SurfaceError::Occluded)
+        )
+    }
+}
+
 /// A property a typed refusal carries on the error a binding raises.
 #[cfg(any(python, wasm, test))]
 #[derive(Debug, Clone, PartialEq)]
@@ -159,12 +173,12 @@ impl RendererError {
 impl Classify for RendererError {
     fn classify(&self) -> ErrorClass {
         match self {
+            error if error.is_occluded() => ErrorClass::OccludedSurface,
             RendererError::TextureError(error) => error.classify(),
             RendererError::InitializationError(error) => error.classify(),
             RendererError::PassError(error) => error.classify(),
-            RendererError::SurfaceError(crate::target::SurfaceError::Occluded) => {
-                ErrorClass::OccludedSurface
-            }
+            RendererError::MeshError(error) => error.classify(),
+            RendererError::ShaderError(error) => error.classify(),
             RendererError::DeviceError { .. } => ErrorClass::Device,
             RendererError::LimitError { .. } => ErrorClass::Limit,
             RendererError::FeatureError { .. } => ErrorClass::Feature,
@@ -193,6 +207,27 @@ pub enum InitializationError {
     TextureError(#[from] crate::texture::TextureError),
     #[error("Initialization error: {0}")]
     Error(String),
+}
+
+/// A failure of wgpu while it opens the GPU, which `InitializationError` carries as text.
+#[derive(Debug, Error)]
+pub(crate) enum WgpuFailure {
+    #[error(transparent)]
+    Adapter(#[from] wgpu::RequestAdapterError),
+    #[error(transparent)]
+    Device(#[from] wgpu::RequestDeviceError),
+    #[error(transparent)]
+    Surface(#[from] wgpu::CreateSurfaceError),
+}
+
+impl From<WgpuFailure> for InitializationError {
+    fn from(failure: WgpuFailure) -> Self {
+        match failure {
+            WgpuFailure::Adapter(error) => Self::AdapterError(describe(&error)),
+            WgpuFailure::Device(error) => Self::DeviceError(describe(&error)),
+            WgpuFailure::Surface(error) => Self::SurfaceError(describe(&error)),
+        }
+    }
 }
 
 #[cfg(any(python, wasm, test))]
@@ -428,5 +463,25 @@ mod tests {
         let s = e.to_string();
         assert!(s.contains("Surface error"));
         assert!(s.contains("failed to acquire frame"));
+    }
+
+    // Story: only a hidden window's frame counts as occluded, the one decision Python,
+    // JavaScript, Swift and Kotlin read to raise their occluded class or case.
+    #[test]
+    fn only_a_hidden_window_is_occluded() {
+        use crate::target::SurfaceError;
+        let hidden = RendererError::SurfaceError(SurfaceError::Occluded);
+        assert!(hidden.is_occluded());
+        assert_eq!(
+            hidden.to_string(),
+            "Surface error: failed to acquire frame: surface is occluded"
+        );
+        for other in [
+            RendererError::SurfaceError(SurfaceError::Lost),
+            RendererError::SurfaceError(SurfaceError::OutOfMemory),
+            RendererError::NoContext,
+        ] {
+            assert!(!other.is_occluded(), "{other}");
+        }
     }
 }

@@ -16,8 +16,11 @@ pub fn wasm_start() {
 
 /// Allow raising/lowering log level at runtime from JS (e.g., for verbose healthchecks)
 #[wasm_bindgen::prelude::wasm_bindgen]
-pub fn set_log_level(level: &str) {
+pub fn set_log_level(
+    #[wasm_bindgen(unchecked_param_type = "string")] level: &wasm_bindgen::JsValue,
+) -> Result<(), WebError> {
     use log::LevelFilter;
+    let level = read_text(level, "set_log_level: level")?;
     let lvl = match level.to_ascii_lowercase().as_str() {
         "trace" => LevelFilter::Trace,
         "debug" => LevelFilter::Debug,
@@ -27,6 +30,7 @@ pub fn set_log_level(level: &str) {
         _ => LevelFilter::Info,
     };
     log::set_max_level(lvl);
+    Ok(())
 }
 
 /// Resolves after one turn of the browser event loop (a zero-delay timer).
@@ -54,6 +58,61 @@ pub(crate) async fn yield_to_event_loop() {
 /// Negative, fractional, NaN and out-of-range values fail with an error that names `what`.
 pub(crate) fn read_unsigned(value: f64, what: &str) -> Result<u32, WebError> {
     Ok(super::read_unsigned(value, what)?)
+}
+
+/// A number argument. Any other value is a `TypeError` that names `label`, as Python raises one.
+pub(crate) fn read_number(value: &wasm_bindgen::JsValue, label: &str) -> Result<f64, WebError> {
+    value
+        .as_f64()
+        .ok_or_else(|| WebError::type_error(&format!("{label} must be a number, got {value:?}")))
+}
+
+/// A number argument for a 32-bit float, such as a roughness or an angle, read as [`read_number`] reads it.
+pub(crate) fn read_float(value: &wasm_bindgen::JsValue, label: &str) -> Result<f32, WebError> {
+    Ok(read_number(value, label)? as f32)
+}
+
+/// A count or index: a `TypeError` for a value that isn't a number, as [`read_number`] gives,
+/// and an `InvalidInputError` for a negative, fractional or out-of-range one, as Python raises.
+pub(crate) fn read_count(value: &wasm_bindgen::JsValue, label: &str) -> Result<u32, WebError> {
+    read_unsigned(read_number(value, label)?, label)
+}
+
+/// A string argument. Any other value is a `TypeError` that names `label`.
+pub(crate) fn read_text(value: &wasm_bindgen::JsValue, label: &str) -> Result<String, WebError> {
+    value
+        .as_string()
+        .ok_or_else(|| WebError::type_error(&format!("{label} must be a string, got {value:?}")))
+}
+
+/// A boolean argument. Any other value is a `TypeError` that names `label`, so `'yes'` is no `true`.
+pub(crate) fn read_flag(value: &wasm_bindgen::JsValue, label: &str) -> Result<bool, WebError> {
+    value
+        .as_bool()
+        .ok_or_else(|| WebError::type_error(&format!("{label} must be a boolean, got {value:?}")))
+}
+
+/// An optional argument, `None` for `undefined` or `null`.
+pub(crate) fn read_given(value: Option<wasm_bindgen::JsValue>) -> Option<wasm_bindgen::JsValue> {
+    value.filter(|value| !value.is_undefined() && !value.is_null())
+}
+
+/// The numbers of a plain or typed array, or `None` for a value that isn't one.
+/// An item that isn't a number is a `TypeError` that names `label` and the item.
+pub(crate) fn read_list(
+    value: &wasm_bindgen::JsValue,
+    label: &str,
+) -> Result<Option<Vec<f64>>, WebError> {
+    use js_sys::{Array, ArrayBuffer};
+    if !(Array::is_array(value) || ArrayBuffer::is_view(value)) {
+        return Ok(None);
+    }
+    let items = Array::from(value)
+        .iter()
+        .enumerate()
+        .map(|(index, item)| read_number(&item, &format!("{label}: item {index}")))
+        .collect::<Result<Vec<f64>, WebError>>()?;
+    Ok(Some(items))
 }
 
 /// The numbers of a float vector or matrix from JavaScript: an array or a `Float32Array`, as AGENTS.md

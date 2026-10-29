@@ -95,6 +95,17 @@ final class Healthcheck: ExampleCase {
         }
     }
 
+    // A hidden window's frame throws FragmentColorError.Occluded, whose text is the Rust error's.
+    // A simulator can't hide a texture target, so the case is built here.
+    func testOccludedDescribesFrame() throws {
+        let occluded = FragmentColorError.Occluded
+        try assertEqual(
+            occluded.description,
+            "Surface error: failed to acquire frame: surface is occluded",
+            "Occluded description"
+        )
+    }
+
     // render refuses a shader the device can't run before any GPU work, with a case
     // that names the kind of refusal and carries its fields.
     func testShaderRefusalsThrowTypedCases() async throws {
