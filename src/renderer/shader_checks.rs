@@ -8,7 +8,7 @@ use super::layout::{Layout, Slot, build_module, plan_layout, texture_binding};
 use super::lights::LightPath;
 use super::{PbrDefaults, PushMode, RenderContext, RendererError, report_missing};
 use crate::shader::error::describe;
-use crate::shader::{list_explicit, write_layouts};
+use crate::shader::{LayoutLoss, list_explicit, write_layouts};
 use crate::texture::format_features;
 use crate::{ShaderObject, TextureObject, UniformData};
 use naga::ShaderStage;
@@ -102,12 +102,14 @@ impl TextureFacts {
 }
 
 impl RenderContext {
-    /// Refuses a shader this device can't run, before any GPU work: groups and bindings past
-    /// the device's limits, too many bindings of a kind in one stage, buffers past their size
-    /// limits, storage the device can't bind, missing entry points, a workgroup past the limits,
-    /// explicit layouts the backend can't keep, and anything else the device's own shader
-    /// validator refuses. The verdict is kept by source hash, so each source is checked once
-    /// per context, whether it passes or not.
+    /// Refuses a shader this device can't run, before it takes a frame or builds a pipeline.
+    ///
+    /// That covers groups and bindings past the device's limits, too many bindings of a kind
+    /// in one stage, buffers past their size limits, storage the device can't bind, missing
+    /// entry points, a workgroup past the limits, explicit layouts the backend can't keep,
+    /// light roots measured with `arrayLength` where lights come through a uniform block, and
+    /// anything else the device's own shader validator refuses. The verdict is kept by source hash,
+    /// so each source is checked once per context, whether it passes or not.
     pub(super) fn check_shader(&self, shader: &ShaderObject) -> Result<(), RendererError> {
         if let Some(verdict) = self.checked.get(&shader.hash) {
             return match verdict.value() {
@@ -251,10 +253,11 @@ impl RenderContext {
         Ok(())
     }
 
-    /// Refuses a module the device's own shader validator refuses, such as one that needs
-    /// a downlevel flag the device lacks, and explicit layouts the backend can't keep.
-    /// It checks the module the pipeline compiles, and returns it with its overrides at
-    /// their defaults, as the pipeline sets them, and its validation.
+    /// Refuses explicit layouts the backend can't keep, light roots measured on the uniform
+    /// light path, and a module the device's own shader validator refuses. The GL layouts
+    /// and the measured roots read the shader's own module, before padding renames a struct.
+    /// The rest check the module the pipeline compiles, which it returns with its overrides
+    /// at their defaults, as the pipeline sets them, and its validation.
     fn check_module(
         &self,
         shader: &ShaderObject,
@@ -263,7 +266,6 @@ impl RenderContext {
     ) -> Result<Result<(naga::Module, ModuleInfo), Refusal>, RendererError> {
         let pad = self.aligned_uniform_bindings.load(Ordering::Relaxed);
         let uniform_lights = lights.and_then(|path| path.uniform_lights());
-        // The shader's own module, before padding renames a padded struct's copy.
         if let Err(refusal) = self.check_layouts(&shader.module) {
             return Ok(Err(refusal));
         }
@@ -281,12 +283,9 @@ impl RenderContext {
             Err(error) => return Ok(Err(refuse_module(&error))),
         };
         if self.writes_wgsl.load(Ordering::Relaxed)
-            && let Err(error) = write_layouts(&module, &info)
+            && let Err(loss) = write_layouts(&module, &info)
         {
-            return Ok(Err(Refusal::Feature {
-                item: "a struct that sets its layout with @size or @align".into(),
-                feature: format!("WGSL that keeps that layout on the browser's WebGPU ({error})"),
-            }));
+            return Ok(Err(refuse_layout(loss)));
         }
         let constants = naga::back::PipelineConstants::default();
         match naga::back::pipeline_constants::process_overrides(&module, &info, None, &constants) {
@@ -307,7 +306,7 @@ impl RenderContext {
             .and_then(|names| names.into_iter().next())
         {
             Some(name) => Err(Refusal::Feature {
-                item: format!("struct `{name}` (spell its padding out as members instead)"),
+                item: format!("struct `{name}`"),
                 feature: "@size and @align offsets in a std140 block".into(),
             }),
             None => Ok(()),
@@ -375,7 +374,7 @@ fn check_measured(shader: &ShaderObject, uniform_lights: Option<u32>) -> Result<
         return Ok(());
     }
     Err(Refusal::Feature {
-        item: "a shader that measures `lights` or `light_grid` with `arrayLength` (loop to `lights.count` instead)".into(),
+        item: "a shader that measures `lights` or `light_grid` with `arrayLength`".into(),
         feature: "clustered lights in storage buffers".into(),
     })
 }
@@ -430,6 +429,21 @@ fn refuse_module(error: &dyn std::error::Error) -> Refusal {
             "what the device's shader validator refuses: {}",
             describe(error)
         ),
+    }
+}
+
+/// The refusal for a module whose explicit layouts the WGSL the browser's WebGPU gets can't keep.
+/// It names the struct as the GL refusal does, and says where that text moves it.
+pub(super) fn refuse_layout(loss: LayoutLoss) -> Refusal {
+    match loss {
+        LayoutLoss::Moved { name, reason } => Refusal::Feature {
+            item: format!("struct `{name}`"),
+            feature: format!("@size and @align offsets in the WGSL wgpu writes for the browser ({reason})"),
+        },
+        other => Refusal::Feature {
+            item: "the shader".into(),
+            feature: format!("WGSL that naga can write for the browser: {}", describe(&other)),
+        },
     }
 }
 

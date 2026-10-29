@@ -44,7 +44,7 @@ mod glsl;
 mod immediates;
 pub(crate) use immediates::lower_immediates;
 mod layouts;
-pub(crate) use layouts::{list_explicit, write_layouts};
+pub(crate) use layouts::{LayoutLoss, list_explicit, write_layouts};
 mod input;
 pub(crate) mod light_roots;
 use light_roots::LightRoots;

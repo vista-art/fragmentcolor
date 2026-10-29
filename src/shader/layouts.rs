@@ -7,11 +7,37 @@
 //! member of such a struct, which pins every member and the struct's size.
 
 use super::ShaderError;
+use super::error::describe;
 use naga::keywords::wgsl::{BUILTIN_IDENTIFIER_SET, RESERVED_SET};
 use naga::proc::{CaseInsensitiveKeywordSet, Layouter, NameKey, Namer};
 use naga::valid::ModuleInfo;
 use naga::{AddressSpace, ArraySize, Handle, Module, Type, TypeInner};
 use std::collections::{HashMap, HashSet};
+use thiserror::Error;
+
+/// Why the WGSL the browser's WebGPU gets can't keep a module's explicit layouts.
+#[derive(Debug, Error)]
+pub(crate) enum LayoutLoss {
+    /// A pinned struct that the text leaves out or lays out otherwise, as `reason` says.
+    #[error("struct `{name}` loses its layout in the WGSL the web gets: {reason}")]
+    Moved { name: String, reason: String },
+    #[error(transparent)]
+    Layout(#[from] naga::proc::LayoutError),
+    #[error(transparent)]
+    Write(#[from] naga::back::wgsl::Error),
+    #[error(transparent)]
+    Parse(#[from] naga::front::wgsl::ParseError),
+}
+
+impl From<LayoutLoss> for ShaderError {
+    fn from(loss: LayoutLoss) -> Self {
+        match loss {
+            LayoutLoss::Write(error) => error.into(),
+            LayoutLoss::Parse(error) => error.into(),
+            other => ShaderError::LayoutError(describe(&other)),
+        }
+    }
+}
 
 /// The WGSL the browser gets for `module`: what wgpu writes from it, with a `@size` on each
 /// member of a buffer struct whose explicit layout that text would lose. `None` when no
@@ -22,8 +48,9 @@ use std::collections::{HashMap, HashSet};
 pub(crate) fn write_layouts(
     module: &Module,
     info: &ModuleInfo,
-) -> Result<Option<String>, ShaderError> {
-    let pinned = find_explicit(module)?;
+) -> Result<Option<String>, LayoutLoss> {
+    let layouter = measure_types(module)?;
+    let pinned = find_explicit(module, &layouter);
     if pinned.is_empty() {
         return Ok(None);
     }
@@ -37,24 +64,30 @@ pub(crate) fn write_layouts(
 
 /// The names of the buffer structs whose layout `@size` or `@align` sets,
 /// which a backend that drops those attributes can't keep.
-pub(crate) fn list_explicit(module: &Module) -> Result<Vec<String>, ShaderError> {
-    let pinned = find_explicit(module)?;
+pub(crate) fn list_explicit(module: &Module) -> Result<Vec<String>, LayoutLoss> {
+    let layouter = measure_types(module)?;
+    let pinned = find_explicit(module, &layouter);
     Ok(pinned
         .into_iter()
         .map(|handle| name_struct(module, handle))
         .collect())
 }
 
-/// The buffer structs whose members or size sit past where their member types put them.
-fn find_explicit(module: &Module) -> Result<Vec<Handle<Type>>, ShaderError> {
+/// The size and alignment of each type of `module`, by its member types.
+fn measure_types(module: &Module) -> Result<Layouter, LayoutLoss> {
     let mut layouter = Layouter::default();
     layouter.update(module.to_ctx())?;
+    Ok(layouter)
+}
+
+/// The buffer structs whose members or size sit past where their member types put them.
+fn find_explicit(module: &Module, layouter: &Layouter) -> Vec<Handle<Type>> {
     let mut found: Vec<Handle<Type>> = find_buffers(module)
         .into_iter()
-        .filter(|handle| is_explicit(module, &layouter, *handle))
+        .filter(|handle| is_explicit(module, layouter, *handle))
         .collect();
     found.sort_by_key(|handle| handle.index());
-    Ok(found)
+    found
 }
 
 /// The names naga's WGSL writer gives the `pinned` structs.
@@ -133,18 +166,16 @@ fn pin_sizes(
     module: &Module,
     names: &HashMap<Handle<Type>, String>,
     written: &str,
-) -> Result<String, ShaderError> {
+) -> Result<String, LayoutLoss> {
     let mut lines: Vec<String> = written.lines().map(str::to_string).collect();
     for (handle, written_name) in names {
         let TypeInner::Struct { members, span } = &module.types[*handle].inner else {
             continue;
         };
         let header = format!("struct {written_name} {{");
-        let missing = || {
-            ShaderError::TypeMismatch(format!(
-                "struct `{}` sets its layout with @size or @align, and FragmentColor can't find it in the WGSL the web gets",
-                name_struct(module, *handle)
-            ))
+        let missing = || LayoutLoss::Moved {
+            name: name_struct(module, *handle),
+            reason: format!("naga's writer leaves out `struct {written_name}`"),
         };
         let start = lines
             .iter()
@@ -188,7 +219,7 @@ fn check_layouts(
     module: &Module,
     names: &HashMap<Handle<Type>, String>,
     text: &str,
-) -> Result<(), ShaderError> {
+) -> Result<(), LayoutLoss> {
     let read = naga::front::wgsl::parse_str(text)?;
     for (handle, written_name) in names {
         let name = name_struct(module, *handle);
@@ -204,24 +235,22 @@ fn check_layouts(
             _ => None,
         });
         let Some((web, web_span)) = found else {
-            return Err(ShaderError::TypeMismatch(format!(
-                "struct `{name}` is missing from the WGSL the web gets"
-            )));
+            let reason = format!("naga's parser finds no `struct {written_name}`");
+            return Err(LayoutLoss::Moved { name, reason });
         };
         for (member, moved) in members.iter().zip(web) {
             if member.offset != moved.offset {
-                return Err(ShaderError::TypeMismatch(format!(
-                    "struct `{name}` puts `{}` at byte {} on the web, not at byte {}",
-                    member.name.as_deref().unwrap_or("?"),
-                    moved.offset,
-                    member.offset
-                )));
+                let member_name = member.name.as_deref().unwrap_or("?");
+                let reason = format!(
+                    "there `{member_name}` sits at byte {}, not {}",
+                    moved.offset, member.offset
+                );
+                return Err(LayoutLoss::Moved { name, reason });
             }
         }
         if *span != web_span {
-            return Err(ShaderError::TypeMismatch(format!(
-                "struct `{name}` spans {web_span} bytes on the web, not {span}"
-            )));
+            let reason = format!("there the struct spans {web_span} bytes, not {span}");
+            return Err(LayoutLoss::Moved { name, reason });
         }
     }
     Ok(())
@@ -240,8 +269,8 @@ mod tests {
     use super::*;
     use crate::Shader;
 
-    /// Each struct's span and the offset of each of its members, without names,
-    /// since the WGSL the web gets renames the pinned structs.
+    /// Each struct's span and the offset of each of its members.
+    /// Names are left out, since naga's writer renames a struct whose name it can't keep.
     type Layouts = Vec<(u32, Vec<u32>)>;
 
     /// The layouts of `module`, sorted.
@@ -377,18 +406,20 @@ struct Foo { a: f32, @align(16) b: f32 };
     #[test]
     fn a_layout_the_web_loses_fails() {
         let (module, info) = compile(SOURCES[1]);
-        let pinned = find_explicit(&module).expect("finds");
+        let layouter = measure_types(&module).expect("measures");
+        let pinned = find_explicit(&module, &layouter);
         let names: HashMap<Handle<Type>, String> = pinned
             .iter()
             .map(|handle| (*handle, name_struct(&module, *handle)))
             .collect();
-        let err = check_layouts(&module, &names, &write_plain(&module, &info))
-            .unwrap_err()
-            .to_string();
-        assert!(
-            err.contains("struct `Gaps` puts `b` at byte 8 on the web, not at byte 16"),
-            "{err}"
-        );
+
+        let loss = check_layouts(&module, &names, &write_plain(&module, &info)).unwrap_err();
+
+        let LayoutLoss::Moved { name, reason } = loss else {
+            panic!("expected a moved struct, got {loss:?}");
+        };
+        assert_eq!(name, "Gaps");
+        assert_eq!(reason, "there `b` sits at byte 8, not 16");
     }
 
     // Story: a struct that sits where its types put it, or one no buffer holds, keeps the plain WGSL.

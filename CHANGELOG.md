@@ -141,7 +141,7 @@
 - The GL backends refuse a uniform, storage or immediate struct whose layout `@size` or `@align` sets.
 - `Shader.set` with raw bytes throws unless they fill the whole storage or immediate root.
 - `Shader.list_keys` doesn't list array elements.
-- `ShaderError` gains `LayoutError(String)` for a type whose layout naga can't compute. It holds naga's message as text, not naga's error type, and `From<naga::proc::LayoutError>` keeps `?` working.
+- `ShaderError` gains `LayoutError(String)` for a type whose layout naga can't compute, with naga's message as its text.
 - A binding no entry point uses is visible to the compute stage only.
 - `get_image` on a target returns an error where it returned an empty array. A `WindowTarget` always does, because a frame on screen can't be read back, and a `TextureTarget` does when its readback fails or times out. JavaScript throws an `Error`, Python and Swift throw `FragmentColorError`, Kotlin throws `FragmentColorException`, and Rust's `Target::get_image` returns `Result<Vec<u8>, TextureError>`.
 - The raw uniffi `createTextureTarget` and `createDepthTexture` take a `Size`, so Swift's `createTextureTarget(width:height:)` and Kotlin's `createTextureTarget(32u, 64u)` are gone. The `[w, h]` and `Size` overloads stay and now carry the depth to the checks the other languages run, where they dropped it and a depth of 2 built a flat target.
