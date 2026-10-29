@@ -166,10 +166,10 @@ pub(crate) async fn read_pixels_from(
 
 /// Copies the mip-0 contents of `texture` to the CPU, for a caller that settled the late errors.
 ///
-/// On native the caller must still drive the device forward for the map callback to fire;
-/// this function does a synchronous `device.poll(Wait)` before awaiting so callers do not
-/// have to. On web, WebGPU schedules the callback itself, while the WebGL2 backend only
-/// fires it from a poll, so the web path issues a non-blocking poll before awaiting.
+/// The map callback fires only from a device poll. On native `wait_for_map` polls the device
+/// until it fires and returns `TextureError::Readback` after `MAP_LIMIT`, so the readback ends
+/// whether or not other code polls the device. On web, WebGPU schedules the callback itself,
+/// while the WebGL2 backend only fires it from a poll, so `await_map_on_web` polls between turns.
 pub(crate) async fn copy_pixels(
     context: &RenderContext,
     texture: &TextureObject,
@@ -185,18 +185,9 @@ pub(crate) async fn copy_pixels(
 
     #[cfg(not(wasm))]
     {
-        context
-            .device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: Some(std::time::Duration::from_secs(5)),
-            })
-            .map_err(|e| TextureError::Readback(format!("device poll: {e:?}")))?;
-        match rx.await {
-            Ok(Ok(())) => {}
-            Ok(Err(e)) => return Err(TextureError::Readback(format!("map_async: {e:?}"))),
-            Err(_) => return Err(TextureError::Readback("map callback dropped".into())),
-        }
+        let mut rx = rx;
+        crate::wait_for_map(&context.device, &mut rx, crate::MAP_LIMIT)
+            .map_err(|error| TextureError::Readback(error.to_string()))?;
     }
 
     #[cfg(wasm)]
@@ -219,10 +210,7 @@ pub(super) async fn get_image(texture: &Texture) -> Result<Vec<u8>, TextureError
 /// on its own, but the WebGL2 backend only signals it from a poll after its
 /// fence completes, so the loop yields to the event loop between polls.
 #[cfg(wasm)]
-pub(crate) async fn await_map_on_web(
-    context: &RenderContext,
-    mut rx: futures::channel::oneshot::Receiver<Result<(), wgpu::BufferAsyncError>>,
-) -> bool {
+pub(crate) async fn await_map_on_web(context: &RenderContext, mut rx: crate::MapReceiver) -> bool {
     // ~10 s of zero-delay timers before giving up
     for _ in 0..2000 {
         let _ = context.device.poll(wgpu::PollType::Poll);
