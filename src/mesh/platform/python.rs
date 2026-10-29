@@ -73,22 +73,40 @@ impl PyVertexPosition<'_> {
 #[derive(FromPyObject)]
 pub enum PyIntoVertex<'py> {
     #[pyo3(annotation = "(position, uv)")]
-    Uv(PyChannels<'py>, [f32; 2]),
+    Uv(
+        PyChannels<'py>,
+        #[pyo3(from_py_with = read_part)] PyChannels<'py>,
+    ),
     #[pyo3(annotation = "(position, uv, color)")]
-    UvColor(PyChannels<'py>, [f32; 2], [f32; 4]),
+    UvColor(
+        PyChannels<'py>,
+        #[pyo3(from_py_with = read_part)] PyChannels<'py>,
+        #[pyo3(from_py_with = read_part)] PyChannels<'py>,
+    ),
     #[pyo3(annotation = "Vertex | position")]
     Position(PyVertexPosition<'py>),
 }
 
+/// The uv or color of a vertex tuple: a value with a length, other than a string.
+/// A tuple of plain numbers fails here, so it reads as a position, as in `Mesh.add_vertex((0.5, 1.0))`.
+fn read_part<'py>(value: &Bound<'py, PyAny>) -> PyResult<PyChannels<'py>> {
+    if value.is_instance_of::<PyString>() || value.len().is_err() {
+        return Err(PyTypeError::new_err("a vertex part is a list of numbers"));
+    }
+    Ok(PyChannels::Numbers(value.clone()))
+}
+
 impl PyIntoVertex<'_> {
-    /// The vertex, with its position checked by the float vector rule under `label`.
+    /// The vertex, each part checked by the float vector rule.
+    /// A part's errors name it after `label`, as in `Mesh.add_vertex: vertex: uv`.
     pub(crate) fn read(&self, label: &str) -> PyResult<Vertex> {
-        let position =
-            |channels: &PyChannels<'_>| channels.read_array::<3>(&format!("{label}: position"));
+        let position = |part: &PyChannels<'_>| part.read_array::<3>(&format!("{label}: position"));
+        let uv = |part: &PyChannels<'_>| part.read_array::<2>(&format!("{label}: uv"));
+        let color = |part: &PyChannels<'_>| part.read_array::<4>(&format!("{label}: color"));
         match self {
-            PyIntoVertex::Uv(channels, uv) => Ok((position(channels)?, *uv).into()),
-            PyIntoVertex::UvColor(channels, uv, color) => {
-                Ok((position(channels)?, *uv, *color).into())
+            PyIntoVertex::Uv(first, second) => Ok((position(first)?, uv(second)?).into()),
+            PyIntoVertex::UvColor(first, second, third) => {
+                Ok((position(first)?, uv(second)?, color(third)?).into())
             }
             PyIntoVertex::Position(position) => position.read(label),
         }
