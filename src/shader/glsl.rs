@@ -1,5 +1,5 @@
-use super::validate_module;
 use super::error::Diagnostic;
+use super::validate_module;
 use crate::{ShaderError, ShaderObject};
 use naga::back::wgsl;
 use naga::front::glsl;

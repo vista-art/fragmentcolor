@@ -542,7 +542,10 @@ mod tests {
             assert!(matches!(error, ShaderError::TypeMismatch(_)), "{error:?}");
             assert!(error.to_string().contains("no `@align`"), "{error}");
         }
-        let older = array_source(4).replace("LightArray { count: u32", "LightArray { @align(64) count: u32");
+        let older = array_source(4).replace(
+            "LightArray { count: u32",
+            "LightArray { @align(64) count: u32",
+        );
 
         let shader = Shader::new(older.as_str()).expect("a plain uniform");
 

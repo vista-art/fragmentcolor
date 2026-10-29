@@ -1074,9 +1074,15 @@ mod tests {
         let second = Pass::new("blur");
         let compose = Pass::new("compose");
 
-        first.require(&second).expect("a pass requires another of its name");
-        compose.require(&first).expect("compose requires the first blur");
-        compose.require(&second).expect("compose requires the second blur");
+        first
+            .require(&second)
+            .expect("a pass requires another of its name");
+        compose
+            .require(&first)
+            .expect("compose requires the first blur");
+        compose
+            .require(&second)
+            .expect("compose requires the second blur");
 
         let order: Vec<u64> = compose.passes().iter().map(|pass| pass.id).collect();
         assert_eq!(
