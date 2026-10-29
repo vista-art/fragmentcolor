@@ -238,9 +238,9 @@ pub(crate) struct ShaderObject {
     preview: Mutex<Option<Preview>>,
 }
 
-/// The mesh of a quick view and the generation it passed the checks at, or `None`
-/// while it fails them. The shader then holds no mesh, and `render` checks it again
-/// to report why, in place of the error for a shader with no mesh.
+/// The mesh of a quick view, the same one for the shader's lifetime,
+/// and the generation it passed the checks at, or `None` while it fails them.
+/// The shader then holds no mesh, and `render` checks it again to report why.
 #[derive(Debug)]
 struct Preview {
     mesh: Arc<crate::mesh::MeshObject>,
@@ -470,46 +470,49 @@ impl ShaderObject {
             .any(|held| Arc::ptr_eq(held, mesh))
     }
 
-    /// Draws `mesh` for the quick view. It checks the mesh whenever the mesh changed,
-    /// holds it while it passes and lets it go while it fails. It records the types it
-    /// gives untyped attributes but none of its reads, so the mesh's other shaders keep
-    /// their own rules.
+    /// Draws `mesh` for the quick view and checks it, as `check_preview` does.
     pub(crate) fn preview(&self, mesh: &Arc<crate::mesh::MeshObject>) {
         #[cfg(test)]
         crate::hooks::run("preview");
-        let generation = mesh.generation();
         let mut preview = self.preview.lock();
-        if preview
-            .as_ref()
-            .is_some_and(|kept| kept.checked == Some(generation))
-        {
-            return;
-        }
-        let passed = self
-            .bind_mesh(mesh)
-            .and_then(|binding| self.record(mesh.clone(), binding.without_reads(), true));
-        let checked = match passed {
-            Ok(()) => Some(generation),
-            Err(_) => {
-                self.remove_mesh(mesh);
-                None
-            }
-        };
-        *preview = Some(Preview {
+        let kept = preview.get_or_insert_with(|| Preview {
             mesh: mesh.clone(),
-            checked,
+            checked: None,
         });
+        // The refusal reaches `render` through `check_preview`.
+        let _ = self.review(kept);
     }
 
-    /// The error the quick view's mesh fails this shader's checks with, while it fails them.
+    /// Checks the quick view's mesh again when it changed since it last passed,
+    /// and returns why it fails. The renderer calls it on every render of this
+    /// shader, however the render reached it.
     pub(crate) fn check_preview(&self) -> Result<(), ShaderError> {
-        match self.preview.lock().as_ref() {
-            Some(Preview {
-                mesh,
-                checked: None,
-            }) => self.validate_mesh(mesh),
-            _ => Ok(()),
+        match self.preview.lock().as_mut() {
+            Some(kept) => self.review(kept),
+            None => Ok(()),
         }
+    }
+
+    /// Checks the kept mesh unless it passed at its current generation. It holds
+    /// the mesh while it passes and lets it go while it fails. It records the types
+    /// it gives untyped attributes but none of its reads, so the mesh's other
+    /// shaders keep their own rules.
+    fn review(&self, kept: &mut Preview) -> Result<(), ShaderError> {
+        let generation = kept.mesh.generation();
+        if kept.checked == Some(generation) {
+            return Ok(());
+        }
+        let passed = self
+            .bind_mesh(&kept.mesh)
+            .and_then(|binding| self.record(kept.mesh.clone(), binding.without_reads(), true));
+        match passed {
+            Ok(()) => kept.checked = Some(generation),
+            Err(_) => {
+                self.remove_mesh(&kept.mesh);
+                kept.checked = None;
+            }
+        }
+        passed
     }
 
     /// Check that a mesh can attach to this shader, without attaching it or recording any type.

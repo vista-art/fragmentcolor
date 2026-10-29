@@ -133,23 +133,24 @@ impl Mesh {
 // -----------------------------
 // Renderable impl ( for Mesh quick-view)
 // -----------------------------
-/// The quick view draws the mesh with a shader built from its first vertex. That shader
-/// checks the mesh itself whenever it changed and records no reads on it, so the mesh's
-/// other shaders keep their own rules. `passes` can't return an error, so a mesh that
-/// fails the checks leaves the shader with no mesh, and `render` checks it again to say why.
+/// The quick view draws the mesh with a shader built from its first vertex.
+/// That shader records no reads, so the mesh's other shaders keep their own rules.
+/// It checks the mesh itself whenever it changed, on every render that draws it,
+/// a `Pass::require` of the mesh included, and a mesh it refuses makes `render` say why.
 impl Renderable for Mesh {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        // The guard drops here, before the checks read the vertices again.
-        let first = self.object.verts.read().first().cloned();
-        if let Some(first) = first {
-            let shader = self
-                .pass
-                .ensure_shader(|| match Shader::from_vertex(&first) {
-                    Ok(shader) => shader.object,
-                    Err(_) => Shader::default().object,
-                });
-            shader.preview(&self.object);
+        if self.object.verts.read().is_empty() {
+            return vec![self.pass.clone()].into();
         }
+        let shader = self.pass.ensure_shader(|| {
+            // Copied once, so no vertex guard is held while the shader compiles or checks.
+            let first = self.object.verts.read().first().cloned();
+            match first.as_ref().map(Shader::from_vertex) {
+                Some(Ok(shader)) => shader.object,
+                _ => Shader::default().object,
+            }
+        });
+        shader.preview(&self.object);
         vec![self.pass.clone()].into()
     }
 
@@ -212,8 +213,9 @@ pub(crate) struct MeshObject {
     /// What the last pack made. Only `ensure_packed` writes it.
     packed: RwLock<Packed>,
     /// Count the changes to each stream. A stream whose count moved past the one
-    /// its packed bytes hold packs again. A mutator bumps them after it changes the
-    /// data and before `generation`, so a pack that reads a count sees that change.
+    /// its packed bytes hold packs again. A mutator bumps them after it changes the data
+    /// and before `generation`, both before it lets the data go, so a pack that reads
+    /// a count sees that change, and a pack that sees a change finds `generation` moved.
     vertex_changes: AtomicU64,
     instance_changes: AtomicU64,
 
@@ -248,7 +250,7 @@ pub(crate) struct MeshObject {
     /// An upload holds this lock from the pack to the cache it fills.
     gpu: RwLock<Option<GpuStreams>>,
 
-    /// The last `vertex_buffers` result, with the context it belongs to.
+    /// The last upload, with the context it belongs to.
     cache: RwLock<Option<Cached>>,
     /// Counts the changes to the mesh. A cached result or layout from an older one is stale.
     generation: AtomicU64,
@@ -264,9 +266,18 @@ struct Packed {
     indices: Vec<u32>,
     /// The instances `insts` holds, those without properties included.
     rows: usize,
+    /// The layouts `verts` and `insts` follow.
+    schemas: Arc<Schemas>,
     /// The `vertex_changes` and `instance_changes` the bytes come from, `None` until packed.
     vertices_at: Option<u64>,
     instances_at: Option<u64>,
+}
+
+/// The vertex and instance layouts the bytes of one pack follow.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Schemas {
+    pub(crate) vertex: Option<VertexSchema>,
+    pub(crate) instance: Option<VertexSchema>,
 }
 
 impl Packed {
@@ -296,14 +307,22 @@ struct Attached {
     layouts: Option<(u64, VertexLayouts)>,
 }
 
-/// A `vertex_buffers` result and the context whose device holds its buffers, in one value,
-/// so a result never reaches another context. `generation` is the mesh's when the upload began.
+/// An upload and the context whose device holds its buffers,
+/// in one value, so an upload never reaches another context.
 #[derive(Debug)]
 struct Cached {
     owner: u64,
-    generation: u64,
-    buffers: VertexBuffers,
-    counts: DrawCounts,
+    upload: Upload,
+}
+
+/// The buffers an upload wrote, the counts that draw them and the layouts their
+/// bytes follow, all from one pack, with the mesh's generation when the upload began.
+#[derive(Clone, Debug)]
+pub(crate) struct Upload {
+    pub(crate) buffers: VertexBuffers,
+    pub(crate) counts: DrawCounts,
+    pub(crate) schemas: Arc<Schemas>,
+    pub(crate) generation: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -316,6 +335,15 @@ impl VertexSchema {
     fn new(fields: Vec<Field>) -> Self {
         let stride = fields.iter().map(|field| field.size).sum();
         Self { stride, fields }
+    }
+
+    /// Whether this is the instance layout of a `Model`, without building one to compare.
+    fn is_model(&self) -> bool {
+        let columns = self
+            .fields
+            .iter()
+            .map(|field| (field.name.as_str(), field.fmt));
+        columns.eq(MODEL_COLUMNS.map(|name| (name, wgpu::VertexFormat::Float32x4)))
     }
 }
 
@@ -416,8 +444,12 @@ impl MeshObject {
         *hi = hi.max(p);
         drop(lo);
         drop(hi);
-        self.verts.write().push(v);
+        let mut verts = self.verts.write();
+        verts.push(v);
         self.touch_vertices();
+        drop(verts);
+        #[cfg(test)]
+        crate::hooks::run("added");
     }
 
     /// Local-space AABB of every Vertex added so far. Returns the sentinel
@@ -429,7 +461,8 @@ impl MeshObject {
     }
 
     fn add_instance(&self, i: Instance) {
-        self.insts.write().push(i);
+        let mut insts = self.insts.write();
+        insts.push(i);
         // Adding a real instance invalidates any prior set_instance_count override
         // (otherwise the GPU would draw past the actual buffer end).
         *self.override_instances.write() = None;
@@ -437,13 +470,11 @@ impl MeshObject {
     }
 
     fn clear_instances(&self) {
-        self.insts.write().clear();
+        let mut insts = self.insts.write();
+        insts.clear();
         // The next instance sets the layout again, but the model columns stay.
         let mut schema = self.instance_schema.write();
-        if schema
-            .as_ref()
-            .is_some_and(|schema| *schema != model_schema())
-        {
+        if schema.as_ref().is_some_and(|schema| !schema.is_model()) {
             *schema = None;
         }
         drop(schema);
@@ -453,14 +484,17 @@ impl MeshObject {
     }
 
     fn set_indices(&self, indices: Vec<u32>) {
+        // Taken in the pack's order: whether the indices were given, then the list.
+        let mut overridden = self.indices_overridden.write();
         *self.indices.write() = indices;
-        *self.indices_overridden.write() = true;
+        *overridden = true;
         // Vertices need to be re-packed in insertion order (no dedup).
         self.touch_vertices();
     }
 
     fn clear_indices(&self) {
-        *self.indices_overridden.write() = false;
+        let mut overridden = self.indices_overridden.write();
+        *overridden = false;
         // The next pack derives the indices again, deduplicating the vertices.
         self.touch_vertices();
     }
@@ -488,14 +522,15 @@ impl MeshObject {
         self.generation.load(Ordering::Acquire)
     }
 
-    /// The layouts `build` makes for the attached shader `shader`, kept until the mesh
-    /// changes or the shader lets the mesh go. A shader that doesn't hold the mesh keeps none.
+    /// The layouts `build` makes for the attached shader `shader` from the upload at
+    /// `generation`, kept until the mesh changes or the shader lets the mesh go.
+    /// A shader that doesn't hold the mesh keeps none.
     pub(crate) fn fetch_layouts(
         &self,
         shader: u64,
+        generation: u64,
         build: impl FnOnce() -> Result<VertexLayouts, RendererError>,
     ) -> Result<VertexLayouts, RendererError> {
-        let generation = self.generation();
         if let Some(attached) = self.required.read().get(&shader)
             && let Some((kept, layouts)) = attached.layouts.as_ref()
             && *kept == generation
@@ -513,7 +548,11 @@ impl MeshObject {
     /// it declares the Model columns and holds no instance of its own.
     pub(crate) fn awaits_models(&self) -> bool {
         self.insts.read().is_empty()
-            && self.instance_schema.read().as_ref() == Some(&model_schema())
+            && self
+                .instance_schema
+                .read()
+                .as_ref()
+                .is_some_and(VertexSchema::is_model)
     }
 
     /// Records what a shader's attach found: the types it gave untyped attributes,
@@ -521,7 +560,8 @@ impl MeshObject {
     /// vertex and instance added later must hold. The attach checked the ones the
     /// mesh holds now. Records nothing when another shader has typed one of them
     /// another way meanwhile. A binding that assumed the Model columns sets them
-    /// as the instance layout, unless an instance or a layout arrived since.
+    /// as the instance layout, unless an instance or a layout arrived since. The
+    /// layout lands before the reads that need it, so a pack between the two passes.
     pub(crate) fn declare(&self, shader: u64, binding: Binding) -> Result<(), ShaderError> {
         let Binding {
             types: added,
@@ -535,17 +575,17 @@ impl MeshObject {
             types.vertex.extend(added.vertex.clone());
             types.instance.extend(added.instance.clone());
         }
+        let assumed = columns && self.assume_columns();
+        #[cfg(test)]
+        crate::hooks::run("columns");
         let fresh = self.require(shader, read);
         let vertices = fresh.vertices || !added.vertex.is_empty();
-        let mut instances = fresh.instances || !added.instance.is_empty();
+        let instances = fresh.instances || !added.instance.is_empty() || assumed;
         if !added.vertex.is_empty() {
             reset_schema(&self.vertex_schema, &added.vertex);
         }
         if !added.instance.is_empty() {
             reset_schema(&self.instance_schema, &added.instance);
-        }
-        if columns {
-            instances |= self.assume_columns();
         }
         if vertices {
             self.touch_vertices();
@@ -708,6 +748,7 @@ impl MeshObject {
         };
         packed.verts = bytes;
         packed.indices = indices;
+        Arc::make_mut(&mut packed.schemas).vertex = schema.clone();
         Ok(())
     }
 
@@ -735,17 +776,15 @@ impl MeshObject {
         }
         packed.insts = bytes;
         packed.rows = insts.len();
+        Arc::make_mut(&mut packed.schemas).instance = schema.clone();
         Ok(())
     }
 
-    /// Get Vertex Buffers and Draw counts for this mesh,
+    /// Get Vertex Buffers, Draw counts and the layouts they follow for this mesh,
     /// creating or updating GPU resources on the device of `context` as needed.
     /// Buffers on another context's device give way to new ones.
-    pub(crate) fn vertex_buffers(
-        &self,
-        context: &RenderContext,
-    ) -> Result<(VertexBuffers, DrawCounts), RendererError> {
-        let generation = self.generation.load(Ordering::Acquire);
+    pub(crate) fn upload(&self, context: &RenderContext) -> Result<Upload, RendererError> {
+        let generation = self.generation();
         if let Some(found) = self.find_cached(context.id, generation) {
             return Ok(found);
         }
@@ -754,22 +793,20 @@ impl MeshObject {
         if let Some(found) = self.find_cached(context.id, generation) {
             return Ok(found);
         }
-        let (buffers, counts) = self.upload_vertex_buffers(context, &mut gpu)?;
+        let upload = self.upload_vertex_buffers(context, &mut gpu, generation)?;
         *self.cache.write() = Some(Cached {
             owner: context.id,
-            generation,
-            buffers: buffers.clone(),
-            counts,
+            upload: upload.clone(),
         });
-        Ok((buffers, counts))
+        Ok(upload)
     }
 
-    /// The cached result for the context `owner`, unless the mesh changed since `generation`.
-    fn find_cached(&self, owner: u64, generation: u64) -> Option<(VertexBuffers, DrawCounts)> {
+    /// The cached upload for the context `owner`, unless the mesh changed since `generation`.
+    fn find_cached(&self, owner: u64, generation: u64) -> Option<Upload> {
         let cache = self.cache.read();
         let cached = cache.as_ref()?;
-        let current = cached.owner == owner && cached.generation == generation;
-        current.then(|| (cached.buffers.clone(), cached.counts))
+        let current = cached.owner == owner && cached.upload.generation == generation;
+        current.then(|| cached.upload.clone())
     }
 
     /// Packs and uploads the mesh into `gpu`. An upload that fails to write a stream
@@ -778,11 +815,12 @@ impl MeshObject {
         &self,
         context: &RenderContext,
         gpu: &mut Option<GpuStreams>,
-    ) -> Result<(VertexBuffers, DrawCounts), RendererError> {
+        generation: u64,
+    ) -> Result<Upload, RendererError> {
         let repacked = self.ensure_packed()?;
         #[cfg(test)]
         crate::hooks::run("packed");
-        let uploaded = self.write_buffers(context, gpu, repacked);
+        let uploaded = self.write_buffers(context, gpu, repacked, generation);
         if uploaded.is_err() {
             self.packed.write().forget(repacked);
         }
@@ -795,7 +833,8 @@ impl MeshObject {
         context: &RenderContext,
         gpu: &mut Option<GpuStreams>,
         repacked: Repacked,
-    ) -> Result<(VertexBuffers, DrawCounts), RendererError> {
+        generation: u64,
+    ) -> Result<Upload, RendererError> {
         let (device, queue) = (&context.device, &context.queue);
 
         let packed = self.packed.read();
@@ -905,7 +944,12 @@ impl MeshObject {
             instance_rows,
         };
 
-        Ok((vertex_buffers, draw_counts))
+        Ok(Upload {
+            buffers: vertex_buffers,
+            counts: draw_counts,
+            schemas: packed.schemas.clone(),
+            generation,
+        })
     }
 }
 
@@ -972,9 +1016,12 @@ impl MeshObject {
     }
 }
 
+/// The names of the four `vec4<f32>` columns of a `Model`'s transform.
+const MODEL_COLUMNS: [&str; 4] = ["model_0", "model_1", "model_2", "model_3"];
+
 /// The instance layout of a `Model`: the four `vec4<f32>` columns of its transform.
 pub(crate) fn model_schema() -> VertexSchema {
-    let fields = ["model_0", "model_1", "model_2", "model_3"]
+    let fields = MODEL_COLUMNS
         .into_iter()
         .map(|name| Field::new(name, wgpu::VertexFormat::Float32x4))
         .collect();
@@ -1195,6 +1242,29 @@ mod tests {
         }
     }
 
+    // Story: the Model columns are told apart by name and format alone, so the
+    // per-frame check that skips a Model's mesh builds no layout to compare with.
+    #[test]
+    fn the_model_columns_match_by_name_and_format() {
+        let floats = |names: &[&str]| {
+            let fields = names
+                .iter()
+                .map(|name| Field::new(name, wgpu::VertexFormat::Float32x4));
+            VertexSchema::new(fields.collect())
+        };
+        let integers = VertexSchema::new(
+            MODEL_COLUMNS
+                .map(|name| Field::new(name, wgpu::VertexFormat::Uint32x4))
+                .to_vec(),
+        );
+
+        assert!(model_schema().is_model());
+        assert!(floats(&MODEL_COLUMNS).is_model());
+        assert!(!floats(&MODEL_COLUMNS[..3]).is_model(), "three columns");
+        assert!(!floats(&["model_0", "model_1", "model_2", "tint"]).is_model());
+        assert!(!integers.is_model(), "another format");
+    }
+
     #[test]
     fn derives_schema_and_stride_for_vertex() {
         let v = Vertex::new([0.1f32, 0.2f32])
@@ -1291,7 +1361,7 @@ mod tests {
             instances.add_vertices([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]);
             instances.add_instances((0..4097).map(|_| Instance::new().set("tint", [1.0; 4])));
 
-            let message = |mesh: &Mesh| match mesh.object.vertex_buffers(&context) {
+            let message = |mesh: &Mesh| match mesh.object.upload(&context) {
                 Err(error) => error.to_string(),
                 Ok(_) => panic!("expected an error"),
             };
@@ -1337,19 +1407,66 @@ mod tests {
             renderer.render(&shader, &target).expect("render");
             let id = shader.object.id;
             let refuse = || Err(RendererError::Error("rebuilt".into()));
+            let fetch = |mesh: &Mesh| {
+                mesh.object
+                    .fetch_layouts(id, mesh.object.generation(), refuse)
+            };
 
-            let kept = mesh.object.fetch_layouts(id, refuse);
+            let kept = fetch(&mesh);
             mesh.add_vertices([[0.0, 0.0], [0.1, 0.0], [0.0, 0.1]]);
-            let changed = mesh.object.fetch_layouts(id, refuse);
+            let changed = fetch(&mesh);
             renderer.render(&shader, &target).expect("render again");
             shader.remove_mesh(&mesh);
             let entries = mesh.object.required.read().len();
-            let released = mesh.object.fetch_layouts(id, refuse);
+            let released = fetch(&mesh);
 
             assert!(kept.is_ok(), "a still mesh keeps its layouts: {kept:?}");
             assert!(changed.is_err(), "a changed mesh builds them again");
             assert_eq!(entries, 0, "a shader that let go keeps no entry");
             assert!(released.is_err(), "and no layouts");
+        });
+    }
+
+    // Story: a shader draws a mesh with the layouts of the pack its buffers came
+    // from, so another shader that types an attribute meanwhile doesn't fail the frame.
+    #[test]
+    fn layouts_follow_the_pack_the_buffers_came_from() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let reads_color = crate::Shader::new(
+                "@vertex fn vs_main(@location(0) p: vec2<f32>, @location(1) color: vec4<f32>) -> @builtin(position) vec4<f32> { return vec4<f32>(p, 0.0, color.a); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+            )
+            .expect("shader");
+            let reads_weight = crate::Shader::new(
+                "@vertex fn vs_main(@location(0) p: vec2<f32>, @location(1) weight: u32) -> @builtin(position) vec4<f32> { return vec4<f32>(p, f32(weight), 1.0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+            )
+            .expect("shader");
+            let mesh = Mesh::new();
+            mesh.add_vertices(
+                [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]
+                    .map(|corner| Vertex::new(corner).set("color", [1.0; 4]).set("weight", 2)),
+            );
+            reads_color.add_mesh(&mesh).expect("attach");
+            let late = mesh.clone();
+            let attached = std::rc::Rc::new(std::cell::RefCell::new(None));
+            let seen = attached.clone();
+            // The weight shader types the plain numbers as u32, which resets the
+            // mesh layout after the color shader's upload and before its layouts.
+            crate::hooks::once("uploaded", move || {
+                *seen.borrow_mut() = Some(reads_weight.add_mesh(&late).map(drop));
+            });
+
+            let rendered = renderer.render(&reads_color, &target);
+
+            let attached = attached.borrow_mut().take().expect("an attach in between");
+            assert!(attached.is_ok(), "{attached:?}");
+            assert!(rendered.is_ok(), "{rendered:?}");
         });
     }
 
@@ -1418,6 +1535,107 @@ mod tests {
         });
     }
 
+    // Story: a pass that requires a mesh draws it through the quick view, which
+    // checks the mesh on each render of that pass, so a vertex added later without
+    // the color the quick view reads fails the render instead of drawing zeros.
+    #[test]
+    fn a_required_quick_view_checks_each_render() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let mesh = Mesh::new();
+            let corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+            mesh.add_vertices(corners.map(|corner| Vertex::new(corner).set("color", [1.0; 4])));
+            let pass = crate::Pass::new("main");
+            pass.require(&mesh).expect("require");
+            renderer.render(&pass, &target).expect("first render");
+
+            mesh.add_vertices(corners.map(Vertex::new));
+            let error = renderer
+                .render(&pass, &target)
+                .expect_err("vertex 3 has no color")
+                .to_string();
+
+            assert!(error.contains("color"), "{error}");
+            assert!(error.contains("vertex 3"), "{error}");
+        });
+    }
+
+    // Story: a mesh the quick view refused when a pass required it draws
+    // once it fits, instead of failing as a shader with no mesh.
+    #[test]
+    fn a_required_quick_view_draws_a_mesh_fixed_later() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let mesh = Mesh::new();
+            let corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+            mesh.add_vertices(corners.map(|corner| Vertex::new(corner).set("color", [1.0; 4])));
+            // An instance color is read first, and two floats don't fit the vec4.
+            mesh.add_instance(Instance::new().set("color", [1.0f32, 0.0]));
+            let pass = crate::Pass::new("main");
+            pass.require(&mesh).expect("require");
+
+            let refused = renderer.render(&pass, &target);
+            mesh.clear_instances();
+            let fixed = renderer.render(&pass, &target);
+
+            let error = refused.expect_err("the instance color").to_string();
+            assert!(error.contains("color"), "{error}");
+            assert!(fixed.is_ok(), "{fixed:?}");
+        });
+    }
+
+    // Story: a vertex counts as a change before any other thread can see it, so a
+    // vertex the quick view packs after its check is checked by the same render.
+    #[test]
+    fn a_vertex_added_during_the_quick_view_pack_is_checked() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let mesh = Mesh::new();
+            let corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+            mesh.add_vertices(corners.map(|corner| Vertex::new(corner).set("color", [1.0; 4])));
+            mesh.set_indices([0, 1, 2]);
+            let late = mesh.clone();
+            let (visible, seen) = std::sync::mpsc::channel();
+            let (finish, finished) = std::sync::mpsc::channel::<()>();
+            let adder = Arc::new(parking_lot::Mutex::new(None));
+            let slot = adder.clone();
+            // Another thread adds a vertex without color and holds still once other
+            // threads can see it, while this one packs.
+            crate::hooks::once("pack", move || {
+                let thread = std::thread::spawn(move || {
+                    crate::hooks::once("added", move || {
+                        let _ = visible.send(());
+                        let _ = finished.recv();
+                    });
+                    late.add_vertex([0.0, 0.0]);
+                });
+                let _ = seen.recv_timeout(std::time::Duration::from_secs(10));
+                *slot.lock() = Some(thread);
+            });
+
+            let rendered = renderer.render(&mesh, &target);
+            let _ = finish.send(());
+            if let Some(thread) = adder.lock().take() {
+                thread.join().expect("the adder thread");
+            }
+
+            let error = rendered.expect_err("vertex 3 has no color").to_string();
+            assert!(error.contains("vertex 3"), "{error}");
+        });
+    }
+
     // Story: the quick view reads the first vertex in a statement of its own,
     // so it holds no vertex guard while the shader checks the vertices again.
     // Under a fair lock, a writer waiting between the two reads would hang both.
@@ -1458,10 +1676,7 @@ mod tests {
             derived.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
             let late = derived.clone();
             crate::hooks::once("pack", move || late.add_vertex([0.5, 0.5]));
-            let error = derived
-                .object
-                .vertex_buffers(&context)
-                .expect_err("4 vertices");
+            let error = derived.object.upload(&context).expect_err("4 vertices");
             assert_eq!(
                 error.to_string(),
                 RendererError::from(MeshError::VertexCount(4)).to_string(),
@@ -1473,10 +1688,7 @@ mod tests {
             given.set_indices([0, 1, 2]);
             let late = given.clone();
             crate::hooks::once("pack", move || late.set_indices([0, 1, 2, 0]));
-            let error = given
-                .object
-                .vertex_buffers(&context)
-                .expect_err("4 indices");
+            let error = given.object.upload(&context).expect_err("4 indices");
             assert_eq!(
                 error.to_string(),
                 RendererError::from(MeshError::IndexCount(4)).to_string(),
@@ -1502,14 +1714,14 @@ mod tests {
             mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
             let tint = || Instance::new().set("tint", [1.0; 4]);
             mesh.add_instances([tint(), tint(), tint()]);
-            mesh.object.vertex_buffers(&context).expect("first upload");
+            mesh.object.upload(&context).expect("first upload");
             mesh.clear_instances();
             mesh.add_instances([tint(), tint()]);
 
             let late = mesh.clone();
             crate::hooks::once("packed", move || late.add_instance(tint()));
-            let (_, during) = mesh.object.vertex_buffers(&context).expect("second upload");
-            let (_, after) = mesh.object.vertex_buffers(&context).expect("third upload");
+            let during = mesh.object.upload(&context).expect("second upload").counts;
+            let after = mesh.object.upload(&context).expect("third upload").counts;
 
             assert_eq!(during.instance_rows, Some(2), "the rows the pack made");
             assert_eq!(
@@ -1518,6 +1730,45 @@ mod tests {
                 "the late instance packs next time"
             );
             assert_eq!(mesh.object.packed.read().rows, 3);
+        });
+    }
+
+    // Story: a Model attach sets the Model columns before it records the columns
+    // as reads, so a render of the mesh's other shaders that packs in between passes.
+    #[test]
+    fn a_pack_during_a_model_attach_finds_the_columns() {
+        pollster::block_on(async move {
+            let instance = crate::renderer::platform::all::create_instance().await;
+            let adapter = crate::renderer::platform::all::request_adapter(&instance, None)
+                .await
+                .expect("adapter");
+            let (device, queue) = crate::renderer::platform::all::request_device(&adapter)
+                .await
+                .expect("device");
+            let context = RenderContext::new(device, queue);
+            let mesh = Mesh::new();
+            mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
+            let mut read = AttributeTypes::default();
+            for field in model_schema().fields {
+                read.instance.insert(field.name, field.fmt);
+            }
+            let binding = Binding {
+                read,
+                columns: true,
+                ..Default::default()
+            };
+
+            let object = mesh.object.clone();
+            let packed = std::rc::Rc::new(std::cell::RefCell::new(None));
+            let seen = packed.clone();
+            crate::hooks::once("columns", move || {
+                let upload = object.upload(&context).map(drop);
+                *seen.borrow_mut() = Some(upload);
+            });
+            mesh.object.declare(1, binding).expect("declare");
+
+            let upload = packed.borrow_mut().take().expect("a pack in between");
+            assert!(upload.is_ok(), "{upload:?}");
         });
     }
 
@@ -1541,7 +1792,7 @@ mod tests {
             mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
 
             for context in [&contexts[0], &contexts[1], &contexts[0], &contexts[1]] {
-                mesh.object.vertex_buffers(context).expect("buffers");
+                mesh.object.upload(context).expect("buffers");
                 let cache = mesh.object.cache.read();
                 let gpu = mesh.object.gpu.read();
                 assert_eq!(cache.as_ref().map(|cached| cached.owner), Some(context.id));
@@ -1643,7 +1894,7 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
                 .await
                 .expect("device");
             let context = RenderContext::new(device, queue);
-            mesh.object.vertex_buffers(&context).expect("buffers");
+            mesh.object.upload(&context).expect("buffers");
             let cached = |mesh: &Mesh| {
                 let generation = mesh.object.generation.load(Ordering::Acquire);
                 mesh.object.find_cached(context.id, generation).is_some()
@@ -1702,25 +1953,25 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
             let context = RenderContext::new(device, queue);
 
             // Without override, instance_count == 2 (matches buffer)
-            let (_bufs, counts) = mesh.object.vertex_buffers(&context).expect("vb");
+            let counts = mesh.object.upload(&context).expect("vb").counts;
             assert_eq!(counts.instance_count, 2);
 
             // With override, instance_count == 5
             mesh.set_instance_count(5);
-            let (_bufs2, counts2) = mesh.object.vertex_buffers(&context).expect("vb2");
+            let counts2 = mesh.object.upload(&context).expect("vb2").counts;
             assert_eq!(counts2.instance_count, 5);
 
             // Adding an instance auto-clears the override (otherwise the GPU would
             // draw past the actual buffer end and read garbage). count falls back
             // to the new buffer length (3).
             mesh.add_instance(Instance::new().set("id", 8u32));
-            let (_bufs3, counts3) = mesh.object.vertex_buffers(&context).expect("vb3");
+            let counts3 = mesh.object.upload(&context).expect("vb3").counts;
             assert_eq!(counts3.instance_count, 3);
 
             // clear_instances resets everything: empty buffer + no override → 1.
             mesh.set_instance_count(99);
             mesh.clear_instances();
-            let (_bufs4, counts4) = mesh.object.vertex_buffers(&context).expect("vb4");
+            let counts4 = mesh.object.upload(&context).expect("vb4").counts;
             assert_eq!(counts4.instance_count, 1);
         });
     }

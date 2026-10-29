@@ -860,44 +860,89 @@ def check_texture_inputs(renderer):
 
 
 def check_material_textures(renderer):
-    """The Material texture setters take create_texture's keywords, and raw pixels reach the upload."""
+    """The Material texture setters take create_texture's keywords, and each keyword reaches the upload."""
     corners = ([-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0])
+    flat = ([0.0, 0.0], [0.0, 0.0], [0.0, 0.0])
 
-    def glow(set_texture):
+    def glow(set_texture, uvs=flat):
         # A black surface lit only by its emissive map, over the whole target.
         mesh = Mesh()
-        mesh.add_vertices([Vertex.pbr(corner).set(Vertex.NORMAL, [0.0, 0.0, 1.0]) for corner in corners])
+        mesh.add_vertices([
+            Vertex.pbr(corner).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, uv)
+            for corner, uv in zip(corners, uvs)
+        ])
         material = Material.pbr().base_color([0.0, 0.0, 0.0, 1.0]).emissive([1.0, 1.0, 1.0])
         rpass = Pass("glow")
         rpass.add(Model(mesh, set_texture(material)))
         target = renderer.create_texture_target([4, 4])
         renderer.render(rpass, target)
-        return target.get_image()[0, 0]
+        return [int(channel) for channel in target.get_image()[0, 0]]
+
+    def is_red(pixel):
+        return pixel[0] > 200 and pixel[1] < 40 and pixel[2] < 40
 
     red = [255, 0, 0, 255]
     forms = {
         "size=[1, 1]": lambda m: m.emissive_texture(red, size=[1, 1]),
+        "input= and size=": lambda m: m.emissive_texture(input=red, size=[1, 1]),
         "a positional size": lambda m: m.emissive_texture(bytes(red), [1, 1]),
         "a Size": lambda m: m.emissive_texture(bytearray(red), size=Size(1, 1)),
         "format=R8Unorm": lambda m: m.emissive_texture(bytes([255]), size=[1, 1], format=TextureFormat.R8Unorm),
         "an ndarray": lambda m: m.emissive_texture(np.array([[red]], dtype=np.uint8)),
-        "every keyword": lambda m: m.emissive_texture(
-            red, size=[1, 1], format=TextureFormat.Rgba, mipmaps=False,
-            sampler=SamplerOptions(repeat_x=True), usage=TextureUsage.COPY_SRC),
     }
     for label, form in forms.items():
         pixel = glow(form)
-        assert pixel[0] > 200 and pixel[1] < 40 and pixel[2] < 40, f"emissive_texture with {label} drew {pixel}"
+        assert is_red(pixel), f"emissive_texture with {label} drew {pixel}"
+
+    # Each keyword changes what draws, so a keyword the setter drops fails here.
+    gray = [128, 128, 128, 255]
+    linear = glow(lambda m: m.emissive_texture(gray, size=[1, 1], format=TextureFormat.Rgba8Unorm))
+    srgb = glow(lambda m: m.emissive_texture(gray, size=[1, 1]))
+    assert linear[0] > srgb[0] + 30, f"format=Rgba8Unorm drew {linear}, the sRGB default {srgb}"
+    pair = red + [0, 255, 0, 255]
+
+    def shift(m, offset):
+        return m.texture_transform(TextureSlot.Emissive, [offset, 0.0], [1.0, 1.0], 0.0)
+
+    repeat = SamplerOptions(repeat_x=True)
+    wrapped = glow(lambda m: shift(m, 1.25).emissive_texture(pair, size=[2, 1], sampler=repeat))
+    clamped = glow(lambda m: shift(m, 1.25).emissive_texture(pair, size=[2, 1]))
+    assert is_red(wrapped), f"sampler=repeat_x drew {wrapped} past the edge"
+    assert clamped[1] > 200 and clamped[0] < 40, f"the clamped default drew {clamped} past the edge"
+    # 16 texels to a pixel: a mip chain samples its 1x1 level, a mix of red and green.
+    wide = ([0.0, 0.0], [64.0, 0.0], [0.0, 64.0])
+    chained = glow(lambda m: shift(m, 0.25).emissive_texture(pair, size=[2, 1], sampler=repeat), wide)
+    single = glow(lambda m: shift(m, 0.25).emissive_texture(pair, size=[2, 1], sampler=repeat, mipmaps=False), wide)
+    assert is_red(single), f"mipmaps=False drew {single}"
+    assert chained[1] > 60, f"the default mip chain drew {chained}"
+
     setters = ("base_color_texture", "metallic_roughness_texture", "normal_texture",
                "occlusion_texture", "emissive_texture")
+    albedo = renderer.create_texture(red, size=[1, 1])
     for name in setters:
         setter = getattr(Material.pbr(), name)
         setter(red, size=[1, 1], format=TextureFormat.Rgba8Unorm, mipmaps=False, usage=TextureUsage.COPY_SRC)
+        setter(albedo)
+        # 32 is outside the five TextureUsage flags, so the upload at render refuses it.
+        raises_invalid(f"Material.{name} with usage 32",
+                       lambda: glow(lambda m: getattr(m, name)(red, size=[1, 1], usage=32)))
         raises_invalid(f"Material.{name} with an ndarray of another size",
                        lambda: setter(np.zeros((2, 2, 4), dtype=np.uint8), size=[1, 1]))
+        raises_invalid(f"Material.{name} with a size beside a Texture", lambda: setter(albedo, size=[1, 1]))
+        raises_invalid(f"Material.{name} with a sampler beside a Texture",
+                       lambda: setter(albedo, sampler=SamplerOptions(repeat_x=True)))
+        try:
+            setter(albedo, usage=TextureUsage.COPY_SRC)
+        except InvalidInputError as e:
+            assert f"Material.{name}" in str(e), f"usage beside a Texture raised {e}"
+        else:
+            raise AssertionError(f"Material.{name} with usage beside a Texture should raise InvalidInputError")
         raises_type(f"Material.{name} with a float size", lambda: setter(red, size=[1.0, 1.0]))
         raises_type(f"Material.{name} with a string format", lambda: setter(red, format="rgba"))
-    print("The Material texture setters take create_texture's keywords, and raw pixels draw")
+    raises_invalid("create_texture with a format beside a Texture",
+                   lambda: renderer.create_texture(albedo, format=TextureFormat.Rgba8Unorm))
+    assert renderer.create_texture(albedo).size() == albedo.size()
+    print("The Material texture setters take create_texture's keywords, and each keyword reaches the upload")
 
 
 MAPPED_SHADER = """

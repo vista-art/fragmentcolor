@@ -617,10 +617,10 @@ Decode and mipmap generation run on a background worker on native platforms. On 
 
 #### Per-language shapes
 
-- **Rust:** `create_texture(input)`. `input` accepts bare bytes, `(bytes, [w, h])`, `(bytes, format)`, `(bytes, options)`, a path, a URL string, a `Texture`, a `Mipmap`, or a KTX2 input. A string that starts with `http://` or `https://` is a URL; any other string is a path.
-- **JS:** `await renderer.createTexture(input, options?)`. `input` is `Uint8Array` / `ArrayBuffer` / URL string / CSS selector / `HTMLImageElement` / `HTMLCanvasElement` / `OffscreenCanvas` / `ImageData` / a `Texture` / a `Mipmap`. `options` is `{ size?, format?, mipmaps?, sampler?, usage? }`; when `size` is set, `input` is read as raw pixel bytes. `ImageData` and canvases bring their own size and RGBA pixels, so their options may repeat that size and pick an 8-bit RGBA or BGRA format, and anything else throws. The options object takes the size under `size`, and a `width` or `height` beside another option throws.
-- **Python:** `renderer.create_texture(input, size=None, format=None, mipmaps=None, sampler=None, usage=None)`. `input` is `bytes` / `bytearray` / `memoryview` / a list or tuple of ints / a path or URL `str` / `os.PathLike` / uint8 numpy `ndarray[H, W, C]` / `Texture` / `Mipmap`. Numpy arrays fill in `size` for you, and a `size` that differs from the array's raises `InvalidInputError`. An array is raw bytes in the named format: one whose channels match the format's bytes per pixel uploads as it is, such as an `(H, W)` array as `R8Unorm` or a 4-channel array as `Bgra8Unorm` with no swap, and one with 1 or 3 channels gains an opaque alpha for an 8-bit RGBA or BGRA format. Any other shape raises `InvalidInputError`.
-- **Swift / Kotlin:** `try await renderer.createTexture(bytes)`, `createTexture(bytes, format)`, `createTexture(bytes, [w, h])`, `createTexture(bytes, options)`, `createTexture(path)` or `createTexture(chain)`. Bytes are `Data` or `[UInt8]` in Swift and `ByteArray` in Kotlin. Every bytes form also takes an optional `usage`.
+- **Rust:** `create_texture(input)`. `input` accepts bare bytes, `(bytes, [w, h])`, `(bytes, format)`, `(bytes, options)`, a path or a URL string, alone or as `(path, format)` or `(path, options)`, a `Texture`, a `Mipmap`, alone or as `(chain, options)`, or a KTX2 input. A string that starts with `http://` or `https://` is a URL; any other string is a path.
+- **JS:** `await renderer.createTexture(input, options?)`. `input` is `Uint8Array` / `ArrayBuffer` / URL string / CSS selector / `HTMLImageElement` / `HTMLCanvasElement` / `OffscreenCanvas` / `ImageData` / a `Texture` / a `Mipmap`. `options` is `{ size?, format?, mipmaps?, sampler?, usage? }`; when `size` is set, `input` is read as raw pixel bytes. `ImageData` and canvases bring their own size and RGBA pixels, so their options may repeat that size and pick an 8-bit RGBA or BGRA format, and anything else throws. The options object takes the size under `size`, and a `width` or `height` beside another option throws. A `Texture` keeps the options it was created with, so options beside one throw an `InvalidInputError`.
+- **Python:** `renderer.create_texture(input, size=None, format=None, mipmaps=None, sampler=None, usage=None)`. `input` is `bytes` / `bytearray` / `memoryview` / a list or tuple of ints / a path or URL `str` / `os.PathLike` / uint8 numpy `ndarray[H, W, C]` / `Texture` / `Mipmap`. Numpy arrays fill in `size` for you, and a `size` that differs from the array's raises `InvalidInputError`, as does any keyword beside a `Texture`, which keeps the options it was created with. An array is raw bytes in the named format: one whose channels match the format's bytes per pixel uploads as it is, such as an `(H, W)` array as `R8Unorm` or a 4-channel array as `Bgra8Unorm` with no swap, and one with 1 or 3 channels gains an opaque alpha for an 8-bit RGBA or BGRA format. Any other shape raises `InvalidInputError`.
+- **Swift / Kotlin:** `try await renderer.createTexture(bytes)`, `createTexture(bytes, format)`, `createTexture(bytes, [w, h])`, `createTexture(bytes, size)`, `createTexture(bytes, options)`, `createTexture(path)`, `createTexture(path, format)`, `createTexture(path, options)`, `createTexture(chain)` or `createTexture(chain, options)`. Bytes are `Data`, `[UInt8]` or `[Int]` in Swift and `ByteArray` or `List<Int>` in Kotlin, in every bytes form, and an `Int` outside 0 to 255 throws. The bytes forms without `options` also take an optional `usage`.
 
 #### How the discriminator works
 
@@ -877,9 +877,15 @@ for example in a loading screen that prepares the scene before the first
 frame goes out.
 
 On the web, `render` can't wait for an upload and uploads nothing. Await
-`load` in each `Renderer` before its first `render`. Until then, a PBR
-Material draws with its 1×1 default maps, and a custom shader's map slot
-fails the render with a `BindingError` that asks for `load`.
+`load` in each `Renderer` before its first `render`. Until then, each map
+draws its 1×1 PBR default wherever that default fits the slot, in the
+built-in shader or a custom one. A slot it doesn't fit, such as an integer
+texture, and a map in a compute shader fail the render with a
+`BindingError` that asks for `load`.
+
+On native, a map that another thread sets while `render` runs, on a slot
+this `Renderer` holds no copy for, draws the same way for that one frame,
+and the next `render` uploads it.
 
 In JavaScript, `load` first waits for the frames rendered before it to
 report their GPU errors, and throws the first one, as
@@ -1498,7 +1504,7 @@ A shader that reads `@location` vertex inputs needs a mesh. Without one, `render
 
 Each mesh a shader draws is checked against the device, and a mesh past one of its limits returns `RendererError::LimitError`, as a shader does: a vertex or instance stride past `max_vertex_buffer_array_stride`, and mesh data that needs a buffer past `max_buffer_size`. Its `item` names the stride or the buffer. WebGL2 takes strides up to 255 bytes. A mesh draws with every `Renderer` that renders it, each from buffers of its own. These checks, and the mesh's own, apply only to the meshes the frame draws: the mesh of a hidden `Model`, or of a `Model` in another pass, isn't checked.
 
-`render(mesh)` draws the mesh with a shader of its own, built from its first vertex. That shader reads `position`, and `color` when the first vertex sets it as four numbers, and it checks the mesh again whenever the mesh changed, so it asks nothing of the mesh's other shaders.
+`render(mesh)` draws the mesh with a shader of its own, built from its first vertex. That shader reads `position`, and `color` when the first vertex sets it as four numbers. It checks the mesh again on every render that draws it after the mesh changed, a render of a pass that requires the mesh included, and adds nothing that vertices must hold for the mesh's other shaders. The types it gives plain numbers stay for as long as the mesh lives, as any shader's do: once it reads `color` as four floats, a shader that reads `color` as `vec4<u32>` fails to attach with `ShaderError::AttributeConflict`. A mesh it refuses returns the error an attach would, such as `ShaderError::AttributeMismatch` for a vertex without `color`, where a shader the mesh is attached to returns `MeshError::InvalidVertex`.
 
 Before it takes a frame, `render` checks each shader against the device and each texture uniform against its slot, so every language returns these errors from the call that caused them, the web included. A group, binding, binding count, buffer size or workgroup past the device's limits, or a vertex input at a location past `max_vertex_attributes`, returns `RendererError::LimitError`, a feature the device lacks `RendererError::FeatureError`, a texture uniform that was never set or whose texture its slot can't take `RendererError::BindingError`, and a render shader without its vertex or fragment entry point `RendererError::EntryError`, each with its fields. An unset PBR map slot binds its 1x1 default instead, when the slot takes a 2D float texture. A texture `unregister_texture` removed, or one from another `Renderer`, returns `RendererError::TextureNotFoundError`, in a PBR map slot too. The [Shader](/api/core/shader) page lists the checks and each language's form of these errors.
 

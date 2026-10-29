@@ -759,13 +759,14 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     await rejects('createTexture options with width and format', () =>
       renderer.createTexture(new Uint8Array(4), { width: 1, height: 1, format: TextureFormat.Rgba8Unorm }));
 
-    // Material texture setters take what createTexture takes, and raw pixels reach the upload.
+    // Material texture setters take what createTexture takes, and each option reaches the upload.
     Material.pbr().baseColorTexture(fromImage);
-    const glow = async (setTexture) => {
+    const flat = [[0, 0], [0, 0], [0, 0]];
+    const glow = async (setTexture, uvs = flat) => {
       // A black surface lit only by its emissive map, over the whole target.
       const surface = new Mesh();
       surface.addVertices([[-1, -1, 0], [3, -1, 0], [-1, 3, 0]]
-        .map((corner) => Vertex.pbr(corner).set(Vertex.NORMAL, [0, 0, 1])));
+        .map((corner, i) => Vertex.pbr(corner).set(Vertex.NORMAL, [0, 0, 1]).set(Vertex.UV0, uvs[i])));
       const material = Material.pbr().baseColor([0, 0, 0, 1]).emissive([1, 1, 1]);
       const glowing = new Pass('glow');
       glowing.add(new Model(surface, setTexture(material)));
@@ -774,6 +775,7 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       renderer.render(glowing, frame);
       return Array.from((await frame.getImage()).slice(0, 4));
     };
+    const isRed = ([r, g, b]) => r > 200 && g < 40 && b < 40;
     const redPixel = [255, 0, 0, 255];
     const forms = {
       'a bare size': (m) => m.emissiveTexture(new Uint8Array(redPixel), [1, 1]),
@@ -781,17 +783,49 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       '{ size, format: R8Unorm }': (m) =>
         m.emissiveTexture(new Uint8Array([255]), { size: [1, 1], format: TextureFormat.R8Unorm }),
       'an ImageData': (m) => m.emissiveTexture(new ImageData(new Uint8ClampedArray(redPixel), 1, 1)),
-      'every option': (m) => m.emissiveTexture(new Uint8Array(redPixel), {
-        size: [1, 1], format: TextureFormat.Rgba, mipmaps: false, sampler: { repeatX: true }, usage: TextureUsage.COPY_SRC,
-      }),
     };
     for (const [label, form] of Object.entries(forms)) {
-      const [r, g, b] = await glow(form);
-      if (r < 200 || g > 40 || b > 40) fail(`emissiveTexture with ${label} drew [${r}, ${g}, ${b}]`);
+      const pixel = await glow(form);
+      if (!isRed(pixel)) fail(`emissiveTexture with ${label} drew [${pixel}]`);
+    }
+    // Each option changes what draws, so an option the setter drops fails here.
+    const gray = new Uint8Array([128, 128, 128, 255]);
+    const linear = await glow((m) => m.emissiveTexture(gray, { size: [1, 1], format: TextureFormat.Rgba8Unorm }));
+    const srgb = await glow((m) => m.emissiveTexture(gray, [1, 1]));
+    if (linear[0] < srgb[0] + 30) fail(`format: Rgba8Unorm drew [${linear}], the sRGB default [${srgb}]`);
+    const pair = new Uint8Array([...redPixel, 0, 255, 0, 255]);
+    const shift = (m, offset) => m.textureTransform(fc.TextureSlot.Emissive, [offset, 0], [1, 1], 0);
+    const wrapped = await glow((m) => shift(m, 1.25).emissiveTexture(pair, { size: [2, 1], sampler: { repeatX: true } }));
+    const clamped = await glow((m) => shift(m, 1.25).emissiveTexture(pair, [2, 1]));
+    if (!isRed(wrapped)) fail(`sampler: { repeatX: true } drew [${wrapped}] past the edge`);
+    if (clamped[1] < 200 || clamped[0] > 40) fail(`the clamped default drew [${clamped}] past the edge`);
+    // 16 texels to a pixel: a mip chain samples its 1x1 level, a mix of red and green.
+    const dense = [[0, 0], [64, 0], [0, 64]];
+    const repeat = { repeatX: true };
+    const chained = await glow((m) => shift(m, 0.25).emissiveTexture(pair, { size: [2, 1], sampler: repeat }), dense);
+    const single = await glow((m) =>
+      shift(m, 0.25).emissiveTexture(pair, { size: [2, 1], sampler: repeat, mipmaps: false }), dense);
+    if (!isRed(single)) fail(`mipmaps: false drew [${single}]`);
+    if (chained[1] < 60) fail(`the default mip chain drew [${chained}]`);
+    const refusesBesideTexture = (name, run) => {
+      try { run(); } catch (e) {
+        if (e.name !== 'InvalidInputError' || !e.message.includes(name)) fail(`${name} beside a Texture threw ${e.name}: ${e.message}`);
+        return;
+      }
+      fail(`${name} with options beside a Texture should throw`);
+    };
+    const besideTexture = await renderer.createTexture(fromImage, { format: TextureFormat.Rgba8Unorm })
+      .then(() => null, (e) => e);
+    if (besideTexture?.name !== 'InvalidInputError' || !besideTexture.message.includes('Renderer.createTexture')) {
+      fail(`createTexture with a format beside a Texture gave ${besideTexture}`);
     }
     for (const name of ['baseColorTexture', 'metallicRoughnessTexture', 'normalTexture', 'occlusionTexture', 'emissiveTexture']) {
       const material = Material.pbr();
       material[name](new Uint8Array(redPixel), { size: [1, 1], format: TextureFormat.Rgba8Unorm, mipmaps: false });
+      material[name](fromImage);
+      // 32 is outside the five TextureUsage flags, so the upload at load refuses it.
+      await rejects(`Material.${name} with usage 32`, () => glow((m) => m[name](redPixel, { size: [1, 1], usage: 32 })));
+      refusesBesideTexture(`Material.${name}`, () => material[name](fromImage, { sampler: { repeatX: true } }));
       throws(`Material.${name} with a fractional size`, () => material[name](new Uint8Array(redPixel), [1.5, 1]));
       throws(`Material.${name} with mipmaps: "yes"`, () => material[name](new Uint8Array(redPixel), { size: [1, 1], mipmaps: 'yes' }));
     }
@@ -1022,17 +1056,18 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) color: vec4<f32> }
 });
 
 // One Material map draws with every Renderer that awaits load, each from a copy of its own.
-// A set right after a load starts wins, a custom slot asks for load before it, and
-// a freed Renderer leaves the others drawing.
+// A set made before a load runs wins. Before load, a map draws its PBR default where the
+// default fits the slot and throws, asking for load, where it doesn't. A freed Renderer
+// leaves the others drawing.
 await withModule('platforms.web.healthcheck.material_maps', async () => {
     const fail = (message) => { throw new Error(message); };
-    const mapped = () => Material.custom(new Shader(`
-@group(0) @binding(0) var base_color_map: texture_2d<f32>;
+    const mapped = (texel, value) => Material.custom(new Shader(`
+@group(0) @binding(0) var base_color_map: texture_2d<${texel}>;
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   let p = array<vec2<f32>, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
   return vec4<f32>(p[i], 0.0, 1.0);
 }
-@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(base_color_map, vec2<i32>(0), 0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { let t = textureLoad(base_color_map, vec2<i32>(0), 0); return ${value}; }
 `));
     const open = async () => {
       const renderer = new Renderer();
@@ -1045,7 +1080,7 @@ await withModule('platforms.web.healthcheck.material_maps', async () => {
     const red = [255, 0, 0, 255];
     const blue = [0, 0, 255, 255];
 
-    const material = mapped().baseColorTexture(new Uint8Array(red), [1, 1]);
+    const material = mapped('f32', 't').baseColorTexture(new Uint8Array(red), [1, 1]);
     const shader = material.shader();
     const [first, firstTarget] = await open();
     const [second, secondTarget] = await open();
@@ -1056,21 +1091,36 @@ await withModule('platforms.web.healthcheck.material_maps', async () => {
     await reads('the first Renderer', firstTarget, red);
     await reads('the second Renderer', secondTarget, red);
 
+    // `load` starts on a later microtask, so this set lands before the load collects its maps.
+    // The crate tests cover a set that lands during an upload.
     const loading = first.load(shader);
     material.baseColorTexture(new Uint8Array(blue), [1, 1]);
     await loading;
     await second.load(shader);
     first.render(shader, firstTarget);
     second.render(shader, secondTarget);
-    await reads('the first Renderer after a set during its load', firstTarget, blue);
+    await reads('the first Renderer after a set before its load ran', firstTarget, blue);
     await reads('the second Renderer after the set', secondTarget, blue);
 
     const [third, thirdTarget] = await open();
+    third.render(shader, thirdTarget);
+    await reads('a Renderer that has not loaded the map', thirdTarget, [255, 255, 255, 255]);
+    await third.load(shader);
+    third.render(shader, thirdTarget);
+    await reads('that Renderer after load', thirdTarget, blue);
+
+    // The 1x1 default can't fill an integer slot, so before load the render throws.
+    const integer = mapped('u32', 'vec4<f32>(t) / 255.0').baseColorTexture(
+      new Uint8Array(new Uint32Array(red).buffer),
+      { size: [1, 1], format: TextureFormat.Rgba32Uint, mipmaps: false });
     let early = null;
-    try { third.render(shader, thirdTarget); } catch (e) { early = e; }
+    try { third.render(integer.shader(), thirdTarget); } catch (e) { early = e; }
     if (!(early instanceof Error) || !early.message.includes('load')) {
-      fail(`a custom map before load threw ${early?.message ?? 'nothing'}`);
+      fail(`an integer map before load threw ${early?.message ?? 'nothing'}`);
     }
+    await third.load(integer.shader());
+    third.render(integer.shader(), thirdTarget);
+    await reads('an integer map after load', thirdTarget, red);
 
     first.free();
     firstTarget.free();

@@ -39,15 +39,22 @@ The shader uses:
   target's format, through the shader's `override ENCODE_SRGB: bool`. A custom
   shader that declares the same override gets the same value.
 
-The vertex inputs the shader expects, in this order:
+The vertex inputs the shader reads from the mesh, each matched by name, so
+the order a vertex sets them in doesn't matter:
 
-- `@location(0) position : vec3<f32>`, set as `Vertex::new([...])`.
+- `@location(0) position : vec3<f32>`, a 3D position from `Vertex::new([...])` or `Vertex::pbr([...])`.
 - `@location(1) normal   : vec3<f32>`, set as `.set(Vertex::NORMAL, ...)`.
 - `@location(2) uv0      : vec2<f32>`, set as `.set(Vertex::UV0, ...)`.
+- `@location(7) color0   : vec4<f32>`, set as `.set(Vertex::COLOR0, ...)`, which tints the base color.
+- `@location(8) uv1      : vec2<f32>`, set as `.set(Vertex::UV1, ...)`, which the texture slots on UV set 1 sample.
+- `@location(9) tangent  : vec4<f32>`, set as `.set(Vertex::TANGENT, ...)`, with the bitangent sign in `w`.
 
-If your Mesh's first vertex doesn't carry these three properties in this
-order, attaching it to the Material's shader will fail with a layout
-mismatch. Use `Material::custom(...)` to bring your own vertex layout.
+Locations 3 to 6 hold `model_0` to `model_3`, the columns of the Model's
+transform, which come from the Model rather than the mesh. The shader has
+no default for any mesh input, so a Model whose mesh lacks one fails to
+attach with an error that names the input. `Vertex::pbr` sets every input
+after the position to a neutral value. Use `Material::custom(...)` to bring
+your own vertex layout.
 
 ## Defaults (post-construction)
 

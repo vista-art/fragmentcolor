@@ -156,55 +156,56 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/base_color_texture.md")]
     pub fn base_color_texture_js(
         &self,
-        source: &JsValue,
+        input: &JsValue,
         options: Option<JsValue>,
     ) -> Result<Self, WebError> {
-        let label = "Material.baseColorTexture: source";
-        Ok(self.base_color_texture(read_texture_input(source, options.as_ref(), label)?))
+        let source = read_texture_input(input, options.as_ref(), "Material.baseColorTexture")?;
+        Ok(self.base_color_texture(source))
     }
 
     #[wasm_bindgen(js_name = "metallicRoughnessTexture")]
     #[lsp_doc("docs/api/scene/material/metallic_roughness_texture.md")]
     pub fn metallic_roughness_texture_js(
         &self,
-        source: &JsValue,
+        input: &JsValue,
         options: Option<JsValue>,
     ) -> Result<Self, WebError> {
-        let label = "Material.metallicRoughnessTexture: source";
-        Ok(self.metallic_roughness_texture(read_texture_input(source, options.as_ref(), label)?))
+        let source =
+            read_texture_input(input, options.as_ref(), "Material.metallicRoughnessTexture")?;
+        Ok(self.metallic_roughness_texture(source))
     }
 
     #[wasm_bindgen(js_name = "normalTexture")]
     #[lsp_doc("docs/api/scene/material/normal_texture.md")]
     pub fn normal_texture_js(
         &self,
-        source: &JsValue,
+        input: &JsValue,
         options: Option<JsValue>,
     ) -> Result<Self, WebError> {
-        let label = "Material.normalTexture: source";
-        Ok(self.normal_texture(read_texture_input(source, options.as_ref(), label)?))
+        let source = read_texture_input(input, options.as_ref(), "Material.normalTexture")?;
+        Ok(self.normal_texture(source))
     }
 
     #[wasm_bindgen(js_name = "occlusionTexture")]
     #[lsp_doc("docs/api/scene/material/occlusion_texture.md")]
     pub fn occlusion_texture_js(
         &self,
-        source: &JsValue,
+        input: &JsValue,
         options: Option<JsValue>,
     ) -> Result<Self, WebError> {
-        let label = "Material.occlusionTexture: source";
-        Ok(self.occlusion_texture(read_texture_input(source, options.as_ref(), label)?))
+        let source = read_texture_input(input, options.as_ref(), "Material.occlusionTexture")?;
+        Ok(self.occlusion_texture(source))
     }
 
     #[wasm_bindgen(js_name = "emissiveTexture")]
     #[lsp_doc("docs/api/scene/material/emissive_texture.md")]
     pub fn emissive_texture_js(
         &self,
-        source: &JsValue,
+        input: &JsValue,
         options: Option<JsValue>,
     ) -> Result<Self, WebError> {
-        let label = "Material.emissiveTexture: source";
-        Ok(self.emissive_texture(read_texture_input(source, options.as_ref(), label)?))
+        let source = read_texture_input(input, options.as_ref(), "Material.emissiveTexture")?;
+        Ok(self.emissive_texture(source))
     }
 }
 

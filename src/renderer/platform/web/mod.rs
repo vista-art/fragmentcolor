@@ -99,7 +99,7 @@ impl Renderer {
         input: &JsValue,
         options: Option<JsValue>,
     ) -> Result<Texture, WebError> {
-        let input = read_texture_input(input, options.as_ref(), "Renderer.createTexture: input")?;
+        let input = read_texture_input(input, options.as_ref(), "Renderer.createTexture")?;
         Ok(self.create_texture(input).await?)
     }
 

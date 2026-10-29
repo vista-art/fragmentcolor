@@ -122,6 +122,11 @@ extension Renderer {
         try await createTexture(Data(bytes), usage: usage)
     }
 
+    /// Create a texture from encoded image bytes, one `Int` per byte.
+    public func createTexture(_ bytes: [Int], usage: TextureUsage? = nil) async throws -> Texture {
+        try await createTexture(try byteData(bytes, "createTexture"), usage: usage)
+    }
+
     /// Create a texture from encoded image bytes, decoded into `format`.
     public func createTexture(_ bytes: Data, _ format: TextureFormat, usage: TextureUsage? = nil) async throws -> Texture {
         try await createTexture(input: .bytes(bytes), options: textureOptions(format: format, usage: usage))
@@ -132,9 +137,24 @@ extension Renderer {
         try await createTexture(Data(bytes), format, usage: usage)
     }
 
+    /// Create a texture from encoded image bytes, one `Int` per byte, decoded into `format`.
+    public func createTexture(_ bytes: [Int], _ format: TextureFormat, usage: TextureUsage? = nil) async throws -> Texture {
+        try await createTexture(try byteData(bytes, "createTexture"), format, usage: usage)
+    }
+
     /// Create a texture from raw RGBA pixels and their `Size`, so the bytes are never decoded.
     public func createTexture(_ bytes: Data, _ size: Size, usage: TextureUsage? = nil) async throws -> Texture {
         try await createTexture(input: .bytes(bytes), options: textureOptions(size: size, usage: usage))
+    }
+
+    /// Create a texture from raw RGBA pixels given as `[UInt8]`, and their `Size`.
+    public func createTexture(_ bytes: [UInt8], _ size: Size, usage: TextureUsage? = nil) async throws -> Texture {
+        try await createTexture(Data(bytes), size, usage: usage)
+    }
+
+    /// Create a texture from raw RGBA pixels, one `Int` per byte, and their `Size`.
+    public func createTexture(_ bytes: [Int], _ size: Size, usage: TextureUsage? = nil) async throws -> Texture {
+        try await createTexture(try byteData(bytes, "createTexture"), size, usage: usage)
     }
 
     /// Create a texture from raw RGBA pixels and their `[width, height]`.
@@ -162,9 +182,19 @@ extension Renderer {
         try await createTexture(Data(bytes), options)
     }
 
+    /// Create a texture from bytes, one `Int` per byte, with every option spelled out.
+    public func createTexture(_ bytes: [Int], _ options: TextureOptions) async throws -> Texture {
+        try await createTexture(try byteData(bytes, "createTexture"), options)
+    }
+
     /// Create a texture from an image file path or an `http(s)` URL.
     public func createTexture(_ path: String) async throws -> Texture {
         try await createTexture(input: pathInput(path), options: nil)
+    }
+
+    /// Create a texture from an image file path or an `http(s)` URL, decoded into `format`.
+    public func createTexture(_ path: String, _ format: TextureFormat) async throws -> Texture {
+        try await createTexture(input: pathInput(path), options: textureOptions(format: format))
     }
 
     /// Create a texture from an image file path or an `http(s)` URL, with every option spelled out.
@@ -175,6 +205,11 @@ extension Renderer {
     /// Create a texture from a `Mipmap`.
     public func createTexture(_ chain: Mipmap) async throws -> Texture {
         try await createTexture(input: .prepared(chain), options: nil)
+    }
+
+    /// Create a texture from a `Mipmap`, with a sampler and usage from `options`.
+    public func createTexture(_ chain: Mipmap, _ options: TextureOptions) async throws -> Texture {
+        try await createTexture(input: .prepared(chain), options: options)
     }
 
     /// Default-options overload: drop the trailing `options: nil` from
