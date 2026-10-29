@@ -9,23 +9,20 @@ Unset, this slot resolves to a 1×1 default with `(R=0, G=1, B=1, A=1)` so
 the factor multiplication passes both `material.metallic` and
 `material.roughness` through unchanged.
 
+Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`, which upload when the scene loads.
+
 ## Example
 
-```rust,no_run
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Renderer};
+```rust
+use fragmentcolor::Material;
 
-let renderer = Renderer::new();
+// Raw pixels with their size upload when the scene loads.
 let mr_map_bytes: Vec<u8> = vec![
     0, 200, 50, 255,
-    0,   240, 80, 255,
-    0,   180, 30, 255,
-    0,   220, 60, 255,
+    0, 240, 80, 255,
+    0, 180, 30, 255,
+    0, 220, 60, 255,
 ];
-let mr_map = renderer.create_texture((mr_map_bytes, [2, 2])).await?;
-let mat = Material::pbr().metallic_roughness_texture(&mr_map);
+let mat = Material::pbr().metallic_roughness_texture((mr_map_bytes, [2, 2]));
 # let _ = mat;
-# Ok(())
-# }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
