@@ -3,6 +3,7 @@ use crate::renderer::platform::all::CANDIDATES;
 use crate::texture::{Registration, TextureId};
 use crate::{PassObject, Renderable};
 use dashmap::DashMap;
+use error::Source;
 pub use error::{Diagnostic, ShaderError, SourceLocation};
 use lsp_doc::lsp_doc;
 use naga::front::wgsl::{Frontend, Options};
@@ -255,6 +256,10 @@ impl Drop for ShaderObject {
     }
 }
 
+/// What a texture write lets go of: the registration bound before, and the key's map.
+/// The caller drops it after `texture_writes`, so no GPU copy is freed under that lock.
+type Released = (Option<Arc<Registration>>, Option<map::TextureMap>);
+
 /// A `set` queued while the storage was busy, applied by `flush_pending`.
 #[derive(Debug, Clone)]
 pub(crate) enum PendingUpdate {
@@ -291,24 +296,29 @@ impl ShaderObject {
             return self.set_input(key, input);
         }
         let texture = matches!(&val, UniformData::Texture(_));
-        let _writing = texture.then(|| self.texture_writes.lock());
-        self.write_value(key, val)
+        let writing = texture.then(|| self.texture_writes.lock());
+        let released = self.write_value(key, val)?;
+        drop(writing);
+        drop(released);
+        Ok(())
     }
 
-    /// Writes `val` under `key` and holds the texture it names. A texture with id 0
-    /// clears the key's map. A caller writing a texture holds `texture_writes`.
-    fn write_value(&self, key: &str, val: UniformData) -> Result<(), ShaderError> {
+    /// Writes `val` under `key` and holds the texture it names. A texture with id 0 unsets
+    /// the key, which then holds neither a map nor a texture, and another slot's map is refused.
+    /// A caller writing a texture holds `texture_writes` and drops what this returns after it.
+    fn write_value(&self, key: &str, val: UniformData) -> Result<Released, ShaderError> {
         let texture = match &val {
             UniformData::Texture(meta) => Some(meta.id),
             _ => None,
         };
-        self.write_slot(key, val)?;
-        match texture {
-            Some(id) if id.id != 0 => self.bind_texture(key, id),
-            Some(id) => self.remove_map(key, id),
-            None => {}
+        if let Some(id) = texture {
+            self.check_bind(key, id)?;
         }
-        Ok(())
+        self.write_slot(key, val)?;
+        Ok(match texture {
+            Some(id) => self.bind_texture(key, id),
+            None => (None, None),
+        })
     }
 
     /// Writes `val` under `key`, or queues it in `pending` when the storage is busy.
@@ -343,7 +353,10 @@ impl ShaderObject {
             UniformInput::Texture(id) => Some(*id),
             _ => None,
         };
-        let _writing = texture.map(|_| self.texture_writes.lock());
+        let writing = texture.map(|_| self.texture_writes.lock());
+        if let Some(id) = texture {
+            self.check_bind(key, id)?;
+        }
         if let Some(mut storage) = self.storage.try_write() {
             let value = input.resolve(key, storage.shape(key)?)?;
             self.pending.remove(key);
@@ -355,9 +368,9 @@ impl ShaderObject {
             };
             self.pending.insert(key.to_string(), update);
         }
-        if let Some(id) = texture {
-            self.bind_texture(key, id);
-        }
+        let released = texture.map(|id| self.bind_texture(key, id));
+        drop(writing);
+        drop(released);
         Ok(())
     }
 
@@ -366,17 +379,17 @@ impl ShaderObject {
         key == AMBIENT_KEY && self.light_roots.is_some()
     }
 
-    /// Holds the texture `id` names for `key`, releasing the one bound before,
-    /// and ends the key's map, unless `id` is that map's own.
-    fn bind_texture(&self, key: &str, id: TextureId) {
-        match Registration::find(id) {
+    /// Holds the texture `id` names for `key` and ends the key's map, unless `id` is
+    /// that map's own. Returns the registration bound before and the map it ended.
+    fn bind_texture(&self, key: &str, id: TextureId) -> Released {
+        let bound = match Registration::find(id) {
             Some(registration) => self.bound_textures.insert(key.to_string(), registration),
             None => self
                 .bound_textures
                 .remove(key)
                 .map(|(_, registration)| registration),
         };
-        self.remove_map(key, id);
+        (bound, self.remove_map(key, id))
     }
 
     // getters
@@ -630,7 +643,7 @@ impl ShaderObject {
     /// Create a Shader object from a WGSL source.
     pub fn wgsl(source: &str) -> Result<Self, ShaderError> {
         let module = parse_wgsl(source)?;
-        let info = validate_module(&module, Some(source))?;
+        let info = validate_module(&module, Some(Source::wgsl(source)))?;
         immediates::check_immediates(&module)?;
         check_samplers(&module, &info)?;
 
@@ -887,7 +900,7 @@ pub(crate) fn parse_wgsl(source: &str) -> Result<Module, ShaderError> {
 /// with its places located in `source` when the module came from it.
 pub(crate) fn validate_module(
     module: &Module,
-    source: Option<&str>,
+    source: Option<Source<'_>>,
 ) -> Result<ModuleInfo, ShaderError> {
     match create_validator().validate(module) {
         Ok(info) => Ok(info),

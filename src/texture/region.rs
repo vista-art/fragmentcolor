@@ -1,8 +1,8 @@
 //! TextureRegion — internal transport type for `Texture::write_region(...)`.
 //!
 //! Describes where in a texture data should be written and (optionally) how
-//! the source bytes are laid out. Public methods accept `impl Into<TextureRegion>`
-//! so JS / Python callers pass raw arrays or objects, never the type itself.
+//! the source bytes are laid out. `Texture::write_region` takes anything that converts
+//! into a `TextureRegion`, so JS / Python callers pass raw arrays or objects, never the type itself.
 
 /// Where in a texture to write, and how source bytes are laid out.
 ///
@@ -131,11 +131,17 @@ impl From<(u32, u32, u32, u32, u32, u32)> for TextureRegion {
     }
 }
 
-// Bridge from ScreenRegion (2D pixel rect → 2D texture region, z=0, depth=1).
-impl From<crate::ScreenRegion> for TextureRegion {
-    #[inline]
-    fn from(r: crate::ScreenRegion) -> Self {
-        Self::new([r.min_x, r.min_y, 0], [r.width(), r.height(), 1])
+/// The pixels a `ScreenRegion` covers, at `z = 0` and one layer deep.
+/// A region whose max lies before its min, or with a side of 0, is an error.
+impl TryFrom<crate::ScreenRegion> for TextureRegion {
+    type Error = crate::region::error::ScreenRegionError;
+
+    fn try_from(region: crate::ScreenRegion) -> Result<Self, Self::Error> {
+        let region = region.check()?;
+        Ok(Self::new(
+            [region.min_x, region.min_y, 0],
+            [region.width(), region.height(), 1],
+        ))
     }
 }
 
@@ -237,27 +243,32 @@ fn from_box(origin: [u32; 3], extent: [Option<u32>; 3]) -> Result<TextureRegion,
 // JS conversion (#[cfg(wasm)])
 // -------------------------------------------
 
+/// Reads a write region from JavaScript. A value of another type, or an item that isn't a
+/// number, is a `TypeError`, as Python raises, and a negative or fractional number is an
+/// `InvalidInputError`.
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
-    type Error = TextureError;
+    type Error = crate::error::WebError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+        use crate::error::WebError;
+        use crate::platforms::web::{read_list, read_number};
         use crate::size::read_dimension;
-        use js_sys::{Array, ArrayBuffer, Reflect};
+        use js_sys::Reflect;
 
-        let dimension = |item: &wasm_bindgen::JsValue| {
-            item.as_f64().and_then(read_dimension).ok_or_else(|| {
+        let dimension = |number: f64| {
+            read_dimension(number).ok_or_else(|| {
                 TextureError::InvalidInput(format!(
-                    "a region takes whole numbers from 0 up, got {item:?}"
+                    "a region takes whole numbers from 0 up, got {number}"
                 ))
             })
         };
 
         // Plain or typed array: [w,h] | [x,y,w,h] | [x,y,z,w,h,d]
-        if Array::is_array(value) || ArrayBuffer::is_view(value) {
-            let numbers = Array::from(value)
-                .iter()
-                .map(|item| dimension(&item))
+        if let Some(numbers) = read_list(value, "Texture.writeRegion: region")? {
+            let numbers = numbers
+                .into_iter()
+                .map(dimension)
                 .collect::<Result<Vec<u32>, TextureError>>()?;
             return match numbers[..] {
                 [w, h] => Ok([w, h].into()),
@@ -266,7 +277,8 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
                 _ => Err(TextureError::InvalidInput(format!(
                     "TextureRegion array must have length 2, 4, or 6, got {}",
                     numbers.len()
-                ))),
+                ))
+                .into()),
             };
         }
 
@@ -279,13 +291,14 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
                 .ok()
                 .and_then(|brand| brand.as_string());
             let screen = brand.as_deref() == Some(<crate::ScreenRegion as crate::FcKind>::KIND);
-            let read = |(camel, snake): Key| -> Result<Option<u32>, TextureError> {
+            let read = |(camel, snake): Key| -> Result<Option<u32>, WebError> {
                 for name in [camel, snake] {
                     let field = Reflect::get(value, &wasm_bindgen::JsValue::from_str(name))
                         .unwrap_or(wasm_bindgen::JsValue::UNDEFINED);
                     let method = screen && field.is_function();
                     if !field.is_undefined() && !field.is_null() && !method {
-                        return dimension(&field).map(Some);
+                        let label = format!("Texture.writeRegion: {camel}");
+                        return Ok(Some(dimension(read_number(&field, &label)?)?));
                     }
                 }
                 Ok(None)
@@ -293,10 +306,9 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
             return read_region(read);
         }
 
-        Err(TextureError::Error(
-            "Cannot convert JavaScript value to TextureRegion (expected [w,h], [x,y,w,h], [x,y,z,w,h,d], or {x,y,width,height,...})"
-                .into(),
-        ))
+        Err(WebError::type_error(&format!(
+            "Texture.writeRegion: a region is [w, h], [x, y, w, h], [x, y, z, w, h, d] or an object such as {{ x, y, width, height }}, got {value:?}"
+        )))
     }
 }
 

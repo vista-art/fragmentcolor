@@ -145,7 +145,7 @@ extension Pass {
 
     // MARK: - Viewport
 
-    /// Set the viewport (unlabeled overload). A width or height of 0 throws.
+    /// Set the viewport (unlabeled overload). A max before its min, or a width or height of 0, throws.
     public func setViewport(_ region: ScreenRegion) throws {
         try setViewport(region: region)
     }

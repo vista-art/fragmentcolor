@@ -639,7 +639,7 @@ impl PassObject {
         }
     }
 
-    /// Keeps the viewport, or refuses a region with no width or no height.
+    /// Keeps the viewport, or refuses a region whose max lies before its min or that has no width or height.
     pub fn set_viewport(&self, viewport: ScreenRegion) -> Result<(), PassError> {
         *self.viewport.write() = Some(viewport.check()?);
         Ok(())

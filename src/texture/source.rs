@@ -1,6 +1,9 @@
 //! What a texture uploads from, kept apart from any device.
 
-use super::{Mipmap, TextureData, TextureError, TextureInput, TextureOptions, ktx2_loader};
+use super::{
+    Mipmap, TextureData, TextureError, TextureInput, TextureOptions, ktx2_loader, reads_as,
+};
+use crate::TextureFormat;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -29,6 +32,29 @@ impl TextureSource {
     /// A source that reads `data`, which other sources may share, with `options`.
     pub(crate) fn new(data: Arc<SourceData>, options: TextureOptions) -> Self {
         Self { data, options }
+    }
+
+    /// Whether the data uploads in `format`. A Mipmap holds the bytes of the format
+    /// it was built in, so it takes that format or its sRGB form, and every other form takes any.
+    pub(crate) fn takes_format(&self, format: TextureFormat) -> bool {
+        match &*self.data {
+            SourceData::Prepared(chain) => reads_as(chain.format, format.into()),
+            _ => true,
+        }
+    }
+}
+
+impl TextureInput {
+    /// Refuses options beside a `Texture`, which keeps the options it was created with.
+    /// `call` names the call that took them, as the bindings name it.
+    pub(crate) fn check_options(&self, call: &str) -> Result<(), TextureError> {
+        let given = self.options != TextureOptions::default();
+        match given && matches!(self.data, TextureData::CloneOf(_)) {
+            true => Err(TextureError::InvalidInput(format!(
+                "{call}: a Texture keeps the options it was created with, so it takes none"
+            ))),
+            false => Ok(()),
+        }
     }
 }
 

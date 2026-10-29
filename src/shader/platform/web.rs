@@ -10,7 +10,7 @@ use std::convert::TryInto;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
-use crate::platforms::web::{read_bytes, read_numbers, read_rows};
+use crate::platforms::web::{read_bytes, read_numbers, read_rows, read_text};
 use crate::shader::UniformInput;
 use crate::{Shader, ShaderError, UniformData};
 
@@ -18,20 +18,23 @@ use crate::{Shader, ShaderError, UniformData};
 impl Shader {
     #[wasm_bindgen(constructor)]
     #[lsp_doc("docs/api/core/shader/new.md")]
-    pub fn new_js(input: &JsValue) -> Result<Shader, ShaderError> {
-        Shader::new(source_parts(input)?)
+    pub fn new_js(input: &JsValue) -> Result<Shader, WebError> {
+        Ok(Shader::new(source_parts(input)?)?)
     }
 
     #[wasm_bindgen(js_name = "setRegistry")]
     #[lsp_doc("docs/api/core/shader/set_registry.md")]
-    pub fn set_registry_js(base_url: &str) {
-        Shader::set_registry(base_url);
+    pub fn set_registry_js(
+        #[wasm_bindgen(unchecked_param_type = "string")] base_url: &JsValue,
+    ) -> Result<(), WebError> {
+        Shader::set_registry(&read_text(base_url, "Shader.setRegistry: base_url")?);
+        Ok(())
     }
 
     #[wasm_bindgen(js_name = "fetch")]
     #[lsp_doc("docs/api/core/shader/fetch.md")]
-    pub async fn fetch_js(input: &JsValue) -> Result<Shader, ShaderError> {
-        Shader::fetch(source_parts(input)?).await
+    pub async fn fetch_js(input: &JsValue) -> Result<Shader, WebError> {
+        Ok(Shader::fetch(source_parts(input)?).await?)
     }
 
     // Static helpers that mirror Rust API for the JS side
@@ -49,14 +52,23 @@ impl Shader {
 
     #[wasm_bindgen(js_name = "set")]
     #[lsp_doc("docs/api/core/shader/set.md")]
-    pub fn set_js(&self, key: &str, value: &JsValue) -> Result<(), ShaderError> {
-        self.object.set_input(key, uniform_input(key, value)?)
+    pub fn set_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "string")] key: &JsValue,
+        value: &JsValue,
+    ) -> Result<(), WebError> {
+        let key = read_text(key, "Shader.set: key")?;
+        Ok(self.object.set_input(&key, uniform_input(&key, value)?)?)
     }
 
     #[wasm_bindgen(js_name = "get")]
     #[lsp_doc("docs/api/core/shader/get.md")]
-    pub fn get_js(&self, key: &str) -> Result<JsValue, ShaderError> {
-        Ok(uniform_value(self.object.get_uniform_data(key)?))
+    pub fn get_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "string")] key: &JsValue,
+    ) -> Result<JsValue, WebError> {
+        let key = read_text(key, "Shader.get: key")?;
+        Ok(uniform_value(self.object.get_uniform_data(&key)?))
     }
 
     #[wasm_bindgen(js_name = "listUniforms")]
@@ -138,7 +150,9 @@ impl Shader {
 /// Sorts a JS value into a loose uniform input. The key's declared WGSL type does the rest.
 /// A `Uint8Array`, `ArrayBuffer` or `DataView` is raw bytes. Any other typed array or plain
 /// array is numbers, and an array of number arrays, such as matrix columns, is flattened.
-fn uniform_input(key: &str, value: &JsValue) -> Result<UniformInput, ShaderError> {
+/// Any other value is a `TypeError`, as Python raises. A value of the right JS type that the
+/// declared WGSL type can't hold fails later, in `set_input`.
+fn uniform_input(key: &str, value: &JsValue) -> Result<UniformInput, WebError> {
     if let Some(number) = value.as_f64() {
         return Ok(UniformInput::Number(number));
     }
@@ -158,8 +172,8 @@ fn uniform_input(key: &str, value: &JsValue) -> Result<UniformInput, ShaderError
         return Ok(UniformInput::Numbers(rows.concat()));
     }
     if Array::is_array(value) {
-        return Err(ShaderError::TypeMismatch(format!(
-            "{key}: expected an array of numbers, or an array of number arrays"
+        return Err(WebError::type_error(&format!(
+            "Shader.set: {key}: expected an array of numbers, or an array of number arrays"
         )));
     }
     // Exported classes carry `__wbg_ptr`. Texture is the only one a uniform
@@ -172,13 +186,13 @@ fn uniform_input(key: &str, value: &JsValue) -> Result<UniformInput, ShaderError
             .ok()
             .and_then(|kind| kind.as_string())
             .unwrap_or_else(|| "an unknown object".into());
-        return Err(ShaderError::TypeMismatch(format!(
-            "{key}: expected a Texture, got {kind}"
+        return Err(WebError::type_error(&format!(
+            "Shader.set: {key}: expected a Texture, got {kind}"
         )));
     }
     let kind = value.js_typeof().as_string().unwrap_or_default();
-    Err(ShaderError::TypeMismatch(format!(
-        "{key}: expected a number, an array, a typed array, bytes, or a Texture, got {kind}"
+    Err(WebError::type_error(&format!(
+        "Shader.set: {key}: expected a number, an array, a typed array, bytes, or a Texture, got {kind}"
     )))
 }
 
@@ -207,22 +221,21 @@ fn uniform_value(data: UniformData) -> JsValue {
 }
 
 /// Reads a shader source: one string, or an array of strings to compose.
-fn source_parts(input: &JsValue) -> Result<Vec<String>, ShaderError> {
+/// Any other value is a `TypeError`, as Python raises.
+fn source_parts(input: &JsValue) -> Result<Vec<String>, WebError> {
     if let Some(source) = input.as_string() {
         return Ok(vec![source]);
     }
     let Some(array) = input.dyn_ref::<Array>() else {
-        return Err(ShaderError::TypeMismatch(
-            "Shader input must be a string or an array of strings".into(),
-        ));
+        return Err(WebError::type_error(&format!(
+            "Shader input must be a string or an array of strings, got {input:?}"
+        )));
     };
     array
         .iter()
         .map(|item| item.as_string())
         .collect::<Option<Vec<String>>>()
-        .ok_or_else(|| {
-            ShaderError::TypeMismatch("Shader input array contains a non-string element".into())
-        })
+        .ok_or_else(|| WebError::type_error("Shader input array contains a non-string element"))
 }
 
 #[cfg(test)]
@@ -233,25 +246,36 @@ mod tests {
     // Story: JS values sort into loose inputs without guessing a WGSL type.
     #[wasm_bindgen_test]
     fn uniform_input_sorts_js_values() {
-        let input = |value: JsValue| uniform_input("key", &value).expect("supported value");
-        assert_eq!(input(JsValue::from_f64(42.0)), UniformInput::Number(42.0));
-        assert_eq!(input(JsValue::from_bool(true)), UniformInput::Bool(true));
+        let input = |value: JsValue| uniform_input("key", &value).ok();
+        assert_eq!(
+            input(JsValue::from_f64(42.0)),
+            Some(UniformInput::Number(42.0))
+        );
+        assert_eq!(
+            input(JsValue::from_bool(true)),
+            Some(UniformInput::Bool(true))
+        );
 
         let array = Array::of2(&JsValue::from_f64(1.0), &JsValue::from_f64(2.0));
-        assert_eq!(input(array.into()), UniformInput::Numbers(vec![1.0, 2.0]));
+        let numbers = UniformInput::Numbers(vec![1.0, 2.0]);
+        assert_eq!(input(array.into()), Some(numbers));
         let ints = Int32Array::from(&[3, -4][..]);
-        assert_eq!(input(ints.into()), UniformInput::Numbers(vec![3.0, -4.0]));
+        let numbers = UniformInput::Numbers(vec![3.0, -4.0]);
+        assert_eq!(input(ints.into()), Some(numbers));
         let bytes = Uint8Array::from(&[1u8, 2, 3][..]);
-        assert_eq!(input(bytes.into()), UniformInput::Bytes(vec![1, 2, 3]));
+        assert_eq!(
+            input(bytes.into()),
+            Some(UniformInput::Bytes(vec![1, 2, 3]))
+        );
 
         let columns = Array::of2(
             &Array::of2(&JsValue::from_f64(1.0), &JsValue::from_f64(0.0)),
             &Float32Array::from(&[0.0f32, 1.0][..]),
         );
         let identity = UniformInput::Numbers(vec![1.0, 0.0, 0.0, 1.0]);
-        assert_eq!(input(columns.into()), identity);
+        assert_eq!(input(columns.into()), Some(identity));
         let buffer = Uint8Array::from(&[4u8, 5][..]).buffer();
-        assert_eq!(input(buffer.into()), UniformInput::Bytes(vec![4, 5]));
+        assert_eq!(input(buffer.into()), Some(UniformInput::Bytes(vec![4, 5])));
 
         assert!(uniform_input("key", &JsValue::from_str("1.0")).is_err());
         let mixed = Array::of2(&JsValue::from_f64(1.0), &JsValue::from_str("x"));

@@ -5,7 +5,10 @@ use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
-use crate::platforms::web::{read_bytes, read_unsigned, read_vector, read_vector_items};
+use crate::platforms::web::{
+    read_bytes, read_count, read_flag, read_float, read_text, read_unsigned, read_vector,
+    read_vector_items,
+};
 use crate::scene::{Camera, Light, LightKind, Model, Scene, SceneSource};
 use crate::{Material, Mesh, Pass};
 
@@ -72,10 +75,10 @@ impl Model {
     pub fn rotate_js(
         &self,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] axis: &JsValue,
-        radians: f32,
+        #[wasm_bindgen(unchecked_param_type = "number")] radians: &JsValue,
     ) -> Result<(), WebError> {
         let arr = read_vector::<3>(axis, "Model.rotate: axis")?;
-        self.rotate(arr, radians);
+        self.rotate(arr, read_float(radians, "Model.rotate: radians")?);
         Ok(())
     }
 
@@ -98,8 +101,12 @@ impl Model {
 
     #[wasm_bindgen(js_name = "setVisible")]
     #[lsp_doc("docs/api/scene/model/set_visible.md")]
-    pub fn set_visible_js(&self, visible: bool) {
-        self.set_visible(visible);
+    pub fn set_visible_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "boolean")] visible: &JsValue,
+    ) -> Result<(), WebError> {
+        self.set_visible(read_flag(visible, "Model.setVisible: visible")?);
+        Ok(())
     }
 }
 
@@ -108,25 +115,37 @@ impl Camera {
     #[wasm_bindgen(js_name = "perspective")]
     #[lsp_doc("docs/api/scene/camera/perspective.md")]
     pub fn perspective_js(
-        fovy_radians: f32,
-        aspect: f32,
-        near: f32,
-        far: f32,
+        #[wasm_bindgen(unchecked_param_type = "number")] fovy_radians: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "number")] aspect: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "number")] near: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "number")] far: &JsValue,
     ) -> Result<Camera, WebError> {
-        Ok(Camera::perspective(fovy_radians, aspect, near, far)?)
+        Ok(Camera::perspective(
+            read_float(fovy_radians, "Camera.perspective: fovy_radians")?,
+            read_float(aspect, "Camera.perspective: aspect")?,
+            read_float(near, "Camera.perspective: near")?,
+            read_float(far, "Camera.perspective: far")?,
+        )?)
     }
 
     #[wasm_bindgen(js_name = "orthographic")]
     #[lsp_doc("docs/api/scene/camera/orthographic.md")]
     pub fn orthographic_js(
-        left: f32,
-        right: f32,
-        bottom: f32,
-        top: f32,
-        near: f32,
-        far: f32,
+        #[wasm_bindgen(unchecked_param_type = "number")] left: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "number")] right: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "number")] bottom: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "number")] top: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "number")] near: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "number")] far: &JsValue,
     ) -> Result<Camera, WebError> {
-        Ok(Camera::orthographic(left, right, bottom, top, near, far)?)
+        Ok(Camera::orthographic(
+            read_float(left, "Camera.orthographic: left")?,
+            read_float(right, "Camera.orthographic: right")?,
+            read_float(bottom, "Camera.orthographic: bottom")?,
+            read_float(top, "Camera.orthographic: top")?,
+            read_float(near, "Camera.orthographic: near")?,
+            read_float(far, "Camera.orthographic: far")?,
+        )?)
     }
 
     #[wasm_bindgen(js_name = "lookAt")]
@@ -145,8 +164,11 @@ impl Camera {
 
     #[wasm_bindgen(js_name = "setAspect")]
     #[lsp_doc("docs/api/scene/camera/set_aspect.md")]
-    pub fn set_aspect_js(&self, aspect: f32) -> Result<Camera, WebError> {
-        Ok(self.set_aspect(aspect)?)
+    pub fn set_aspect_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "number")] aspect: &JsValue,
+    ) -> Result<Camera, WebError> {
+        Ok(self.set_aspect(read_float(aspect, "Camera.setAspect: aspect")?)?)
     }
 
     #[wasm_bindgen(js_name = "viewProj")]
@@ -272,8 +294,11 @@ impl Light {
 
     #[wasm_bindgen(js_name = "setIntensity")]
     #[lsp_doc("docs/api/scene/light/set_intensity.md")]
-    pub fn set_intensity_js(&self, value: f32) -> Light {
-        self.set_intensity(value)
+    pub fn set_intensity_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue,
+    ) -> Result<Light, WebError> {
+        Ok(self.set_intensity(read_float(value, "Light.setIntensity: value")?))
     }
 
     #[wasm_bindgen(js_name = "setPosition")]
@@ -298,18 +323,23 @@ impl Light {
 
     #[wasm_bindgen(js_name = "setRange")]
     #[lsp_doc("docs/api/scene/light/set_range.md")]
-    pub fn set_range_js(&self, value: f32) -> Result<Light, WebError> {
-        Ok(self.set_range(value)?)
+    pub fn set_range_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue,
+    ) -> Result<Light, WebError> {
+        Ok(self.set_range(read_float(value, "Light.setRange: value")?)?)
     }
 
     #[wasm_bindgen(js_name = "setConeAngles")]
     #[lsp_doc("docs/api/scene/light/set_cone_angles.md")]
     pub fn set_cone_angles_js(
         &self,
-        inner_radians: f32,
-        outer_radians: f32,
+        #[wasm_bindgen(unchecked_param_type = "number")] inner_radians: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "number")] outer_radians: &JsValue,
     ) -> Result<Light, WebError> {
-        Ok(self.set_cone_angles(inner_radians, outer_radians)?)
+        let inner = read_float(inner_radians, "Light.setConeAngles: inner_radians")?;
+        let outer = read_float(outer_radians, "Light.setConeAngles: outer_radians")?;
+        Ok(self.set_cone_angles(inner, outer)?)
     }
 }
 
@@ -340,8 +370,8 @@ impl Scene {
                 "Scene.load: expected the bytes of a .glb file, as an ArrayBuffer or a typed array",
             ));
         };
-        let cameras = read_flag(options.as_ref(), "cameras")?;
-        let lights = read_flag(options.as_ref(), "lights")?;
+        let cameras = read_option(options.as_ref(), "cameras")?;
+        let lights = read_option(options.as_ref(), "lights")?;
         Ok(Scene::load(source.cameras(cameras).lights(lights))?)
     }
 
@@ -381,15 +411,21 @@ impl Scene {
 
     #[wasm_bindgen(js_name = "getPass")]
     #[lsp_doc("docs/api/scene/scene/get_pass.md")]
-    pub fn get_pass_js(&self, index: f64) -> Result<Option<Pass>, WebError> {
-        let index = read_unsigned(index, "Scene.getPass: index")?;
+    pub fn get_pass_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "number")] index: &JsValue,
+    ) -> Result<Option<Pass>, WebError> {
+        let index = read_count(index, "Scene.getPass: index")?;
         Ok(self.get_pass(index as usize))
     }
 
     #[wasm_bindgen(js_name = "findPass")]
     #[lsp_doc("docs/api/scene/scene/find_pass.md")]
-    pub fn find_pass_js(&self, name: &str) -> Option<Pass> {
-        self.find_pass(name)
+    pub fn find_pass_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "string")] name: &JsValue,
+    ) -> Result<Option<Pass>, WebError> {
+        Ok(self.find_pass(&read_text(name, "Scene.findPass: name")?))
     }
 
     #[wasm_bindgen(js_name = "listPasses")]
@@ -559,7 +595,7 @@ fn read_flat_matrix(value: &JsValue, label: &str) -> Result<[[f32; 4]; 4], WebEr
 }
 
 /// Reads one boolean flag of the `Scene.load` options. A missing flag is `true`.
-fn read_flag(options: Option<&JsValue>, name: &str) -> Result<bool, WebError> {
+fn read_option(options: Option<&JsValue>, name: &str) -> Result<bool, WebError> {
     let Some(options) = options.filter(|options| !options.is_undefined() && !options.is_null())
     else {
         return Ok(true);

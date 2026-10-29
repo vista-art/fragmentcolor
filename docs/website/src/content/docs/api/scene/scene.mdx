@@ -100,6 +100,11 @@ a copy of each map into that `Renderer`, so the Scene draws with every
 `Renderer` that loads it. On native targets the first render runs it for
 you; on the web, await it in each `Renderer` before its first render.
 
+The Materials keep each decoded image, `width × height × 4` bytes of RGBA8,
+for as long as a slot holds its map, so a 4096×4096 image keeps 64 MiB in
+RAM beside its copy on each GPU. The Material page's Memory section lists
+what each kind of source keeps.
+
 The loader reads static glTF: mesh primitives (`POSITION`, `NORMAL`,
 `TEXCOORD_0`, `TEXCOORD_1`, `COLOR_0`, `TANGENT` and indices), PBR-MR
 materials with all five texture slots, per-node transforms flattened into

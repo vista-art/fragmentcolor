@@ -1,7 +1,7 @@
 #![cfg(wasm)]
 
 use crate::error::WebError;
-use crate::platforms::web::{read_color, read_unsigned};
+use crate::platforms::web::{read_color, read_count, read_text};
 use crate::renderer::platform::web::RenderableList;
 use crate::{Pass, Shader, Texture, TextureTarget};
 use lsp_doc::lsp_doc;
@@ -12,20 +12,30 @@ use wasm_bindgen::prelude::*;
 impl Pass {
     #[wasm_bindgen(constructor)]
     #[lsp_doc("docs/api/core/pass/new.md")]
-    pub fn new_js(name: &str) -> Self {
-        Self::new(name)
+    pub fn new_js(
+        #[wasm_bindgen(unchecked_param_type = "string")] name: &JsValue,
+    ) -> Result<Pass, WebError> {
+        Ok(Self::new(&read_text(name, "Pass: name")?))
     }
 
     #[wasm_bindgen(js_name = "compute")]
     #[lsp_doc("docs/api/core/pass/compute.md")]
-    pub fn compute_js(name: &str) -> Self {
-        Self::compute(name)
+    pub fn compute_js(
+        #[wasm_bindgen(unchecked_param_type = "string")] name: &JsValue,
+    ) -> Result<Pass, WebError> {
+        Ok(Self::compute(&read_text(name, "Pass.compute: name")?))
     }
 
     #[wasm_bindgen(js_name = "fromShader")]
     #[lsp_doc("docs/api/core/pass/from_shader.md")]
-    pub fn from_shader_js(name: &str, shader: &Shader) -> Self {
-        Self::from_shader(name, shader)
+    pub fn from_shader_js(
+        #[wasm_bindgen(unchecked_param_type = "string")] name: &JsValue,
+        shader: &Shader,
+    ) -> Result<Pass, WebError> {
+        Ok(Self::from_shader(
+            &read_text(name, "Pass.fromShader: name")?,
+            shader,
+        ))
     }
 
     #[wasm_bindgen(js_name = "require")]
@@ -98,10 +108,15 @@ impl Pass {
 
     #[wasm_bindgen(js_name = "setComputeDispatch")]
     #[lsp_doc("docs/api/core/pass/set_compute_dispatch.md")]
-    pub fn set_compute_dispatch_js(&self, x: f64, y: f64, z: f64) -> Result<(), WebError> {
-        let x = read_unsigned(x, "Pass.setComputeDispatch: x")?;
-        let y = read_unsigned(y, "Pass.setComputeDispatch: y")?;
-        let z = read_unsigned(z, "Pass.setComputeDispatch: z")?;
+    pub fn set_compute_dispatch_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "number")] x: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "number")] y: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "number")] z: &JsValue,
+    ) -> Result<(), WebError> {
+        let x = read_count(x, "Pass.setComputeDispatch: x")?;
+        let y = read_count(y, "Pass.setComputeDispatch: y")?;
+        let z = read_count(z, "Pass.setComputeDispatch: z")?;
         self.object.set_compute_dispatch(x, y, z);
         Ok(())
     }

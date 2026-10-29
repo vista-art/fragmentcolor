@@ -419,6 +419,49 @@ fn zero_region_sides_are_refused() {
     });
 }
 
+// Story: a `ScreenRegion` whose max lies before its min fails the write with the
+// reversed bounds, as Swift's and Kotlin's `writeRegion` do, where it read as a
+// region of width 0 and the error named a size the caller never wrote.
+#[test]
+fn reversed_screen_regions_are_refused() {
+    use fragmentcolor::ScreenRegion;
+    use fragmentcolor::region::error::ScreenRegionError;
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let texture = renderer
+            .create_storage_texture(([16, 16], TextureFormat::Rgba))
+            .await
+            .expect("create_storage_texture");
+        let reversed = ScreenRegion {
+            min_x: 8,
+            min_y: 0,
+            max_x: 2,
+            max_y: 4,
+        };
+
+        let result = texture.write_region(&[0; 6 * 4 * 4], reversed);
+
+        let Err(error) = result else {
+            panic!("expected an error, got {result:?}");
+        };
+        assert!(
+            matches!(
+                error,
+                TextureError::Region(ScreenRegionError::Reversed { .. })
+            ),
+            "{error:?}"
+        );
+        assert_eq!(
+            error.to_string(),
+            "a region needs each max past its min, got x from 8 to 2 and y from 0 to 4"
+        );
+        let region = ScreenRegion::new((2, 0), (6, 4)).expect("a region");
+        texture
+            .write_region(&[0; 6 * 4 * 4], region)
+            .expect("a checked region");
+    });
+}
+
 // Story: a buffer copy can't fill a depth texture, so raw pixels, seed bytes
 // and a write into Depth32Float are refused before they reach wgpu.
 #[test]

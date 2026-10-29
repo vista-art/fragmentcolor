@@ -12,8 +12,9 @@ An upload that fails keeps no copy, and the others still upload: a good
 normal map draws even when the base color path is missing. `load` returns
 the first failure, as does every later `load` and every native `render`,
 until the source is fixed or replaced. The latest setter call for a map
-wins, even one made while `load` is uploading the older source, which is
-then dropped. A slot the shader doesn't declare never becomes a map, since
+wins, even one made while `load` is uploading the older source. That older
+upload stands in, so this `Renderer` always holds a copy, until the next
+`load` uploads the latest. A slot the shader doesn't declare never becomes a map, since
 the setter logs a warning and leaves the Material as it was.
 
 Each `Renderer` holds copies of its own. One Material draws with every

@@ -261,9 +261,9 @@ def check_error_types(renderer):
     # A WindowTarget made by its constructor has no surface until Renderer.create_target makes one.
     unready = RenderCanvasTarget(object(), None)
     raises("WindowTarget.resize with no surface", lambda: unready.resize([4, 4]))
-    # The frame a texture target hands rendercanvas reads the target's own format.
+    # A texture target hands rendercanvas a frame in its own format, Rgba8Unorm.
     frame_format = renderer.create_texture_target([4, 4]).get_current_frame().format()
-    assert frame_format.startswith("Rgba8") or frame_format.startswith("Bgra8"), frame_format
+    assert frame_format == "Rgba8Unorm", frame_format
 
     # A pipeline the GPU refuses raises DeviceError, with its kind and the step's label.
     # The fragment stage reads @location(0), which the vertex stage never writes.
@@ -515,6 +515,27 @@ def check_number_errors(renderer):
         raises(InvalidInputError, f"Renderer.unregister_texture({bad})", lambda: renderer.unregister_texture(bad))
     raises(TypeError, "Renderer.read_texture(1.5)", lambda: renderer.read_texture(1.5))
     raises(TypeError, "Renderer.read_texture(True)", lambda: renderer.read_texture(True))
+    # A byte list takes ints from 0 to 255. Another int is a value error that names the
+    # call and the item, never OverflowError, and a float or a bool is the wrong type.
+    pixels = renderer.create_texture([0] * 8, size=[1, 2])
+    byte_calls = {
+        "Renderer.create_texture": lambda data: renderer.create_texture(data, size=[1, 2]),
+        "Renderer.create_storage_texture": lambda data: renderer.create_storage_texture([1, 2], TextureFormat.Rgba, data),
+        "Texture.write": lambda data: pixels.write(data),
+        "Mipmap.build": lambda data: Mipmap.build(data, TextureFormat.Rgba, [1, 2]),
+        "Material.base_color_texture": lambda data: Material.pbr().base_color_texture(data, size=[1, 2]),
+    }
+    for name, call in byte_calls.items():
+        for bad in (300, -1, 2**64):
+            try:
+                call([0] * 7 + [bad])
+            except InvalidInputError as e:
+                assert str(e).startswith(name) and "item 7" in str(e), e
+            else:
+                raise AssertionError(f"{name} with a byte of {bad} should raise InvalidInputError")
+        raises(TypeError, f"{name} with a byte of 2.5", lambda: call([0] * 7 + [2.5]))
+        raises(TypeError, f"{name} with a bool", lambda: call([True] + [0] * 7))
+    pixels.write((255,) * 8)
     readable = renderer.create_texture(bytes(64), size=[4, 4], usage=TextureUsage.COPY_SRC)
     assert len(renderer.read_texture(readable.id().id)) == len(renderer.read_texture(readable.id())) == 64
     raises(InvalidInputError, "Pass.set_viewport([0, 0, 4])", lambda: rpass.set_viewport([0, 0, 4]))

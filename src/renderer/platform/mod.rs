@@ -15,6 +15,10 @@ pub use python::*;
 #[cfg(mobile)]
 pub mod mobile;
 
+/// The size of the `ANativeWindow` behind an Android window target.
+#[cfg(any(android, test))]
+pub(crate) mod native_window;
+
 /// Checks on the `CAMetalLayer` behind an iOS window target.
 #[cfg(any(ios, all(test, macos)))]
 pub(crate) mod metal_layer;

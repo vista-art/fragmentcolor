@@ -240,7 +240,7 @@ impl Renderer {
         py: Python<'_>,
         size: PySize<'_>,
         format: crate::TextureFormat,
-        data: Option<Vec<u8>>,
+        data: Option<crate::texture::PyTextureBytes<'_>>,
         usage: Option<crate::texture::PyTextureUsage<'_>>,
         usage_bits: Option<PyUnsigned<'_>>,
     ) -> Result<crate::texture::Texture, PyErr> {
@@ -250,7 +250,9 @@ impl Renderer {
         }
         let input = crate::TextureInput {
             data: match data {
-                Some(bytes) => crate::TextureData::Bytes(bytes),
+                Some(bytes) => {
+                    crate::TextureData::Bytes(bytes.read("Renderer.create_storage_texture: data")?)
+                }
                 None => crate::TextureData::Empty,
             },
             options: crate::TextureOptions {
@@ -307,7 +309,7 @@ pub(crate) fn py_to_texture_spec(
         PyTextureSource::Array(array) => {
             crate::texture::ndarray_input(&array, size, options.format)?
         }
-        source => crate::texture::TextureInput::try_from(source)?,
+        source => source.read(call)?,
     };
     spec.options.size = spec.options.size.or(size);
     if let Some(format) = options.format {

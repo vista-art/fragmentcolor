@@ -64,7 +64,10 @@ pub enum FragmentColorError {
     },
     #[error("the shader has no {stage} entry point, which its pass runs")]
     Entry { stage: String },
-    #[error("Surface error: failed to acquire frame: surface is occluded")]
+    #[error(
+        "{}",
+        crate::RendererError::SurfaceError(crate::target::SurfaceError::Occluded)
+    )]
     Occluded,
 }
 
@@ -114,6 +117,7 @@ impl From<crate::InitializationError> for FragmentColorError {
 impl From<crate::RendererError> for FragmentColorError {
     fn from(e: crate::RendererError) -> Self {
         match e {
+            e if e.is_occluded() => FragmentColorError::Occluded,
             crate::RendererError::InitializationError(e) => e.into(),
             crate::RendererError::DeviceError {
                 kind,
@@ -124,9 +128,6 @@ impl From<crate::RendererError> for FragmentColorError {
                 label,
                 detail,
             },
-            crate::RendererError::SurfaceError(crate::target::SurfaceError::Occluded) => {
-                FragmentColorError::Occluded
-            }
             e => FragmentColorError::from_refusal(e),
         }
     }

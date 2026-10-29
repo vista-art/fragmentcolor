@@ -61,6 +61,18 @@ if (count === 0) {
   console.log(`[patch_glue] Patched ${count} Uint8Array constructor shim(s) in ${path}`);
 }
 
+// An argument of the wrong class, such as `pass.addShader('nope')`, throws a `TypeError`,
+// as Python raises one for the same call. wasm-bindgen's `_assertClass` checks every class
+// argument, in release builds too, and throws a plain `Error`. A second run finds no `Error(`
+// left to replace, so the patch runs twice without a change.
+const assertClass = /(function _assertClass\(instance, klass\) \{\s*if \(!\(instance instanceof klass\)\) \{\s*throw new )Error\(/;
+if (assertClass.test(src)) {
+    src = src.replace(assertClass, '$1TypeError(');
+    console.log(`[patch_glue] _assertClass throws a TypeError in ${path}`);
+} else if (!/function _assertClass\(instance, klass\) \{\s*if \(!\(instance instanceof klass\)\) \{\s*throw new TypeError\(/.test(src)) {
+    console.warn(`[patch_glue] No _assertClass matched in ${path}; glue format may have changed.`);
+}
+
 // The window target's JS class is `WindowTarget`. Code written for older releases
 // imports it as `CanvasTarget`, so the glue and its typings export the same class
 // under both names. Running the patch twice adds the alias once.

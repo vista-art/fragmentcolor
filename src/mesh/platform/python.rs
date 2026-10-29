@@ -32,10 +32,10 @@ impl TryFrom<PyAttributeValue> for VertexData {
     }
 }
 
-/// A mesh error raises `FragmentColorError`.
+/// A mesh error raises the class its `classify` names.
 impl From<MeshError> for PyErr {
     fn from(error: MeshError) -> Self {
-        crate::error::PyFragmentColorError::new_err(error.to_string())
+        crate::error::raise_error(&error)
     }
 }
 

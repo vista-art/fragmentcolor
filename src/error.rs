@@ -150,14 +150,6 @@ impl From<WebError> for wasm_bindgen::JsValue {
     }
 }
 
-/// A plain `Error` from wasm-bindgen, which no FragmentColor error class names.
-#[cfg(wasm)]
-impl From<wasm_bindgen::JsError> for WebError {
-    fn from(error: wasm_bindgen::JsError) -> Self {
-        WebError(error.into())
-    }
-}
-
 /// Each error type that throws as an `Error` named after its class, with no fields.
 #[cfg(wasm)]
 macro_rules! throw_by_class {
