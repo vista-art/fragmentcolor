@@ -461,6 +461,22 @@ impl ShaderObject {
         Ok(())
     }
 
+    /// Records `binding` on `mesh` and holds the mesh, unless it holds it already.
+    /// Unlike `record`, it records the binding for a held mesh too, so the types
+    /// a check of the quick view finds again stay, as the first check's do.
+    fn hold(
+        &self,
+        mesh: Arc<crate::mesh::MeshObject>,
+        binding: crate::mesh::Binding,
+    ) -> Result<(), ShaderError> {
+        let mut meshes = self.meshes.write();
+        mesh.declare(self.id, binding)?;
+        if !meshes.iter().any(|held| Arc::ptr_eq(held, &mesh)) {
+            meshes.push(mesh);
+        }
+        Ok(())
+    }
+
     /// Whether this shader holds `mesh`.
     fn holds(&self, mesh: &Arc<crate::mesh::MeshObject>) -> bool {
         self.meshes
@@ -492,10 +508,10 @@ impl ShaderObject {
         }
     }
 
-    /// Checks the kept mesh unless it passed at its current generation. It holds
-    /// the mesh while it passes and lets it go while it fails. It records the types
-    /// it gives untyped attributes but none of its reads, so the mesh's other
-    /// shaders keep their own rules.
+    /// Checks the kept mesh unless it passed at its current generation.
+    /// It holds the mesh while it passes and lets it go while it fails.
+    /// It fixes the types it gives untyped attributes, as any attach does,
+    /// but records none of its reads, so it adds nothing the vertices must hold.
     fn review(&self, kept: &mut Preview) -> Result<(), ShaderError> {
         let generation = kept.mesh.generation();
         if kept.checked == Some(generation) {
@@ -503,7 +519,7 @@ impl ShaderObject {
         }
         let passed = self
             .bind_mesh(&kept.mesh)
-            .and_then(|binding| self.record(kept.mesh.clone(), binding.without_reads(), true));
+            .and_then(|binding| self.hold(kept.mesh.clone(), binding.without_reads()));
         match passed {
             Ok(()) => kept.checked = Some(generation),
             Err(_) => {

@@ -1509,6 +1509,44 @@ mod tests {
         });
     }
 
+    // Story: the quick view fixes the types it gives plain numbers each time it
+    // checks the mesh, so a color it later reads from an instance stays four floats.
+    #[test]
+    fn the_quick_view_keeps_the_types_a_new_check_finds() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let mesh = Mesh::new();
+            let corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+            mesh.add_vertices(
+                corners.map(|corner| Vertex::new(corner).set("color", [1.0, 0.0, 0.0, 1.0])),
+            );
+            renderer.render(&mesh, &target).expect("first render");
+            // An instance color is read before the vertex one.
+            mesh.add_instance(Instance::new().set("color", [0.0, 1.0, 0.0, 1.0]));
+            renderer
+                .render(&mesh, &target)
+                .expect("render with the instance");
+            let integers = crate::Shader::new(
+                "@vertex fn vs_main(@location(0) p: vec2<f32>, @location(1) color: vec4<u32>) -> @builtin(position) vec4<f32> { return vec4<f32>(p, f32(color.x), 1.0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+            )
+            .expect("shader");
+
+            let attached = integers.add_mesh(&mesh);
+            let again = renderer.render(&mesh, &target);
+
+            match attached {
+                Err(ShaderError::AttributeConflict { name, .. }) => assert_eq!(name, "color"),
+                other => panic!("expected the color conflict, got {other:?}"),
+            }
+            assert!(again.is_ok(), "{again:?}");
+        });
+    }
+
     // Story: every render of a mesh the quick view refuses says why,
     // concurrent ones included, rather than the error for a shader with no mesh.
     #[test]
