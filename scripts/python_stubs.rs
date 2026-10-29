@@ -291,6 +291,11 @@ mod python_stubs {
         out.push('\n');
         out.push_str(&body);
         let out = format!("{}\n", out.trim_end());
+        // A path parameter's hint names `os.PathLike`, so the stub imports `os` when one does.
+        let out = match out.contains("os.PathLike") {
+            true => out.replacen("from typing import", "import os\nfrom typing import", 1),
+            false => out,
+        };
 
         let path = root.join(STUB_PATH);
         if let Err(e) = super::meta::write_if_changed(&path, &out) {
@@ -898,6 +903,10 @@ mod python_stubs {
             "f32" | "f64" => name("float"),
             "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "i8" | "i16" | "i32" | "i64"
             | "i128" | "isize" => name("int"),
+            // pyo3 reads a path from a `str` or any `os.PathLike`.
+            "PathBuf" | "Path" if mode == Mode::Param => {
+                vec![Atom::Name("str".into()), Atom::Name("os.PathLike[str]".into())]
+            }
             "String" | "str" | "char" | "Cow" | "PathBuf" | "Path" | "OsStr" | "OsString" => {
                 name("str")
             }

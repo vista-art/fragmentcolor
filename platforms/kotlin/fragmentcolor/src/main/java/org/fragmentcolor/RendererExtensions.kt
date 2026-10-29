@@ -89,13 +89,25 @@ suspend fun Renderer.createStorageTexture(
 suspend fun Renderer.createTexture(bytes: ByteArray, usage: TextureUsage? = null): Texture =
     createTexture(TextureInputMobile.Bytes(bytes), textureOptions(usage = usage))
 
+/** Create a texture from encoded image bytes, one [Int] per byte. */
+suspend fun Renderer.createTexture(bytes: List<Int>, usage: TextureUsage? = null): Texture =
+    createTexture(byteArray(bytes, "createTexture"), usage)
+
 /** Create a texture from encoded image bytes, decoded into [format]. */
 suspend fun Renderer.createTexture(bytes: ByteArray, format: TextureFormat, usage: TextureUsage? = null): Texture =
     createTexture(TextureInputMobile.Bytes(bytes), textureOptions(format = format, usage = usage))
 
+/** Create a texture from encoded image bytes, one [Int] per byte, decoded into [format]. */
+suspend fun Renderer.createTexture(bytes: List<Int>, format: TextureFormat, usage: TextureUsage? = null): Texture =
+    createTexture(byteArray(bytes, "createTexture"), format, usage)
+
 /** Create a texture from raw RGBA pixels and their [Size], so the bytes are never decoded. */
 suspend fun Renderer.createTexture(bytes: ByteArray, size: Size, usage: TextureUsage? = null): Texture =
     createTexture(TextureInputMobile.Bytes(bytes), textureOptions(size = size, usage = usage))
+
+/** Create a texture from raw RGBA pixels, one [Int] per byte, and their [Size]. */
+suspend fun Renderer.createTexture(bytes: List<Int>, size: Size, usage: TextureUsage? = null): Texture =
+    createTexture(byteArray(bytes, "createTexture"), size, usage)
 
 /** Create a texture from raw RGBA pixels and their `[width, height]`. */
 suspend fun Renderer.createTexture(bytes: ByteArray, size: List<UInt>, usage: TextureUsage? = null): Texture =
@@ -109,8 +121,16 @@ suspend fun Renderer.createTexture(bytes: List<Int>, size: List<UInt>, usage: Te
 suspend fun Renderer.createTexture(bytes: ByteArray, options: TextureOptions): Texture =
     createTexture(TextureInputMobile.Bytes(bytes), options)
 
+/** Create a texture from bytes, one [Int] per byte, with every option spelled out. */
+suspend fun Renderer.createTexture(bytes: List<Int>, options: TextureOptions): Texture =
+    createTexture(byteArray(bytes, "createTexture"), options)
+
 /** Create a texture from an image file path or an `http(s)` URL. */
 suspend fun Renderer.createTexture(path: String): Texture = createTexture(pathInput(path), null)
+
+/** Create a texture from an image file path or an `http(s)` URL, decoded into [format]. */
+suspend fun Renderer.createTexture(path: String, format: TextureFormat): Texture =
+    createTexture(pathInput(path), textureOptions(format = format))
 
 /** Create a texture from an image file path or an `http(s)` URL, with every option spelled out. */
 suspend fun Renderer.createTexture(path: String, options: TextureOptions): Texture =
@@ -119,6 +139,10 @@ suspend fun Renderer.createTexture(path: String, options: TextureOptions): Textu
 /** Create a texture from a [Mipmap] chain, which uploads without decoding. */
 suspend fun Renderer.createTexture(chain: Mipmap): Texture =
     createTexture(TextureInputMobile.Prepared(chain), null)
+
+/** Create a texture from a [Mipmap] chain, with a sampler and usage from [options]. */
+suspend fun Renderer.createTexture(chain: Mipmap, options: TextureOptions): Texture =
+    createTexture(TextureInputMobile.Prepared(chain), options)
 
 /** Create a texture from any [TextureInputMobile] with the default options. */
 suspend fun Renderer.createTexture(input: TextureInputMobile): Texture = createTexture(input, null)
