@@ -1,7 +1,7 @@
 #[cfg(wasm)]
 use crate::error::WebError;
 #[cfg(wasm)]
-use crate::platforms::web::{read_given, read_number};
+use crate::platforms::web::{read_given, read_list, read_number};
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
@@ -130,7 +130,6 @@ impl TryFrom<&wasm_bindgen::JsValue> for Size {
     type Error = WebError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
-        use crate::platforms::web::{read_list, read_number};
         use js_sys::Reflect;
 
         if let Some(numbers) = read_list(value, "a size")? {
