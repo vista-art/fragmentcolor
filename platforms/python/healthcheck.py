@@ -351,12 +351,27 @@ def check_shader_refusals(renderer):
     else:
         raise AssertionError("a group past the device should raise LimitError")
 
+    storage = Shader("""
+@group(0) @binding(0) var img: texture_storage_2d<bgra8unorm, write>;
+@compute @workgroup_size(1) fn cs_main() { textureStore(img, vec2<i32>(0), vec4<f32>(1.0)); }
+""")
+    try:
+        renderer.render(storage, target)
+    except FeatureError as e:
+        assert isinstance(e, FragmentColorError)
+        assert e.item == "'img' at @group(0) @binding(0)", f"item {e.item}"
+        assert e.feature == "WriteOnly storage access to Bgra8Unorm", f"feature {e.feature}"
+        print(f"a storage format the device lacks raised FeatureError: {e}")
+    else:
+        raise AssertionError("a storage format the device lacks should raise FeatureError")
+
     unset = Shader(SAMPLE_SHADER)
     try:
         renderer.render(unset, target)
     except BindingError as e:
-        assert e.name == "source", f"name {e.name}"
+        assert e.uniform == "source", f"uniform {e.uniform}"
         assert e.expected == "a texture", f"expected {e.expected}"
+        assert e.found == "none, since it was never set", f"found {e.found}"
         print(f"an unset texture raised BindingError: {e}")
     else:
         raise AssertionError("an unset texture should raise BindingError")

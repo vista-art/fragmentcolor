@@ -68,6 +68,11 @@ impl LightRoots {
         std::iter::once(self.lights.handle).chain(grid).collect()
     }
 
+    /// Whether the module measures a root with `arrayLength`, which a uniform block can't take.
+    pub(crate) fn is_measured(&self) -> bool {
+        self.measured
+    }
+
     /// The most lights the root holds on its own, which only the older shape limits.
     pub(crate) fn capacity(&self) -> u32 {
         match self.shape {

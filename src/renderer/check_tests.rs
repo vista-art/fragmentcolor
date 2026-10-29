@@ -275,6 +275,26 @@ fn slots_past_the_limits_fail() {
     });
 }
 
+// Story: a storage format the device can't bind fails before any GPU work, such as
+// bgra8unorm, which needs BGRA8UNORM_STORAGE, a feature FragmentColor never requests.
+// The healthchecks of every binding use this shader for their FeatureError.
+#[test]
+fn storage_formats_the_device_lacks_fail() {
+    let shader = Shader::new(
+        "@group(0) @binding(0) var img: texture_storage_2d<bgra8unorm, write>;
+@compute @workgroup_size(1) fn cs_main() { textureStore(img, vec2<i32>(0), vec4<f32>(1.0)); }",
+    )
+    .expect("shader");
+    let error = refuse_alone(&shader).expect("refused");
+    let fields = error.fields();
+    assert_refused!(
+        error,
+        RendererError::FeatureError { .. },
+        "'img' at @group(0) @binding(0) needs WriteOnly storage access to Bgra8Unorm, which the device lacks"
+    );
+    assert_eq!(fields.len(), 2, "{fields:?}");
+}
+
 // Story: a storage texture binds in the format the shader declares,
 // including the formats outside the old table, such as r32float.
 #[test]
@@ -604,6 +624,7 @@ fn adopt(context: RenderContext) -> (Renderer, Arc<RenderContext>) {
 
 // Story: the GL backends write a buffer struct member by member into a std140 block,
 // so they refuse an explicit @size or @align layout instead of shifting its members.
+// The refusal names the shader's own struct, also where WebGL2 pads a copy of it.
 #[test]
 fn gl_refuses_explicit_layouts() {
     pollster::block_on(async move {
@@ -614,17 +635,69 @@ fn gl_refuses_explicit_layouts() {
 @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(params.offset, params.scale, 1.0); }",
         )
         .expect("shader");
+        let short = fullscreen(
+            "struct P { @size(8) a: f32, b: f32 };
+@group(0) @binding(0) var<uniform> p: P;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(p.a, p.b, 0.0, 1.0); }",
+        )
+        .expect("shader");
         let mut gl = copy_context(&context);
         gl.backend = wgpu::Backend::Gl;
+        let mut padded = copy_context(&context);
+        padded.backend = wgpu::Backend::Gl;
+        padded
+            .aligned_uniform_bindings
+            .store(true, Ordering::Relaxed);
 
         let error = gl.check_shader(&shader.object).unwrap_err();
+        let short_error = padded.check_shader(&short.object).unwrap_err();
 
         assert_refused!(
             error,
             RendererError::FeatureError { .. },
-            "struct `Params` needs the @size and @align layout of its members"
+            "struct `Params` (spell its padding out as members instead) needs @size and @align offsets in a std140 block, which the device lacks"
+        );
+        assert_refused!(
+            short_error,
+            RendererError::FeatureError { .. },
+            "struct `P` (spell its padding out"
         );
         assert!(copy_context(&context).check_shader(&shader.object).is_ok());
+    });
+}
+
+// Story: a device that takes lights through a uniform block refuses a shader that
+// measures a light root with `arrayLength`, and keeps that verdict like any other.
+#[test]
+fn uniform_lights_refuse_measured_roots() {
+    pollster::block_on(async move {
+        let (_renderer, context, _) = setup().await.expect("render context");
+        let shader = fullscreen(
+            "struct Light { kind: u32, intensity: f32, range: f32, inner_cone_cos: f32, position: vec3<f32>, outer_cone_cos: f32, direction: vec3<f32>, color: vec3<f32> }
+struct LightGrid { view_proj: mat4x4<f32>, depth_plane: vec4<f32>, size: vec3<u32>, slicing: u32, slice_scale: f32, slice_bias: f32, reach: f32 }
+struct Lights { count: u32, global_count: u32, promoted_count: u32, ambient: vec3<f32>, grid: LightGrid, lights: array<Light> }
+@group(0) @binding(0) var<storage, read> lights: Lights;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(f32(arrayLength(&lights.lights))); }",
+        )
+        .expect("shader");
+        let uniform = copy_context(&context);
+        *uniform.light_path.write() = LightPath::Uniform { count: 4 };
+
+        let first = uniform.check_shader(&shader.object).unwrap_err();
+        let second = uniform.check_shader(&shader.object).unwrap_err();
+
+        assert_eq!(first.to_string(), second.to_string());
+        assert_refused!(
+            first,
+            RendererError::FeatureError { .. },
+            "a shader that measures `lights` or `light_grid` with `arrayLength` (loop to `lights.count` instead) needs clustered lights in storage buffers"
+        );
+        let verdict = uniform.checked.get(&shader.object.hash).expect("a verdict");
+        assert!(
+            matches!(verdict.value(), Verdict::Refused(_)),
+            "got {:?}",
+            verdict.value()
+        );
     });
 }
 
@@ -695,7 +768,8 @@ fn lowered_immediates_fill_sixteen_bytes() {
 }
 
 // Story: more workgroup memory than the device holds fails before any GPU work,
-// where the browser refused the pipeline after render returned.
+// where the browser refused the pipeline after render returned. An array that an
+// override sizes counts at the override's default, also one computed from another.
 #[test]
 fn workgroup_memory_past_the_device_fails() {
     let max = pollster::block_on(async {
@@ -717,6 +791,25 @@ fn workgroup_memory_past_the_device_fails() {
         &format!(
             "`cs_main` needs max_compute_workgroup_storage_size of at least {}, and the device has {max}",
             count * 16
+        )
+    );
+    let half = max / 32 + 1;
+    let computed = Shader::new(
+        format!(
+            "override half: u32 = {half};
+override count: u32 = half * 2;
+var<workgroup> tile: array<vec4<f32>, count>;
+@compute @workgroup_size(1) fn cs_main() {{ tile[0] = vec4<f32>(1.0); }}"
+        )
+        .as_str(),
+    )
+    .expect("shader");
+    assert_refused!(
+        refuse_alone(&computed).expect("refused"),
+        RendererError::LimitError { .. },
+        &format!(
+            "`cs_main` needs max_compute_workgroup_storage_size of at least {}, and the device has {max}",
+            half * 32
         )
     );
 }

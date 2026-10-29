@@ -263,10 +263,14 @@ impl RenderContext {
     ) -> Result<Result<(naga::Module, ModuleInfo), Refusal>, RendererError> {
         let pad = self.aligned_uniform_bindings.load(Ordering::Relaxed);
         let uniform_lights = lights.and_then(|path| path.uniform_lights());
-        let module = build_module(shader, layout, pad, uniform_lights)?;
-        if let Err(refusal) = self.check_layouts(&module) {
+        // The shader's own module, before padding renames a padded struct's copy.
+        if let Err(refusal) = self.check_layouts(&shader.module) {
             return Ok(Err(refusal));
         }
+        if let Err(refusal) = check_measured(shader, uniform_lights) {
+            return Ok(Err(refusal));
+        }
+        let module = build_module(shader, layout, pad, uniform_lights)?;
         let mut validator = wgpu_naga_bridge::create_validator(
             self.features,
             self.downlevel,
@@ -276,8 +280,13 @@ impl RenderContext {
             Ok(info) => info,
             Err(error) => return Ok(Err(refuse_module(&error))),
         };
-        if self.writes_wgsl.load(Ordering::Relaxed) {
-            write_layouts(&module, &info)?;
+        if self.writes_wgsl.load(Ordering::Relaxed)
+            && let Err(error) = write_layouts(&module, &info)
+        {
+            return Ok(Err(Refusal::Feature {
+                item: "a struct that sets its layout with @size or @align".into(),
+                feature: format!("WGSL that keeps that layout on the browser's WebGPU ({error})"),
+            }));
         }
         let constants = naga::back::PipelineConstants::default();
         match naga::back::pipeline_constants::process_overrides(&module, &info, None, &constants) {
@@ -293,10 +302,13 @@ impl RenderContext {
         if self.backend != wgpu::Backend::Gl {
             return Ok(());
         }
-        match list_explicit(module).ok().and_then(|names| names.into_iter().next()) {
+        match list_explicit(module)
+            .ok()
+            .and_then(|names| names.into_iter().next())
+        {
             Some(name) => Err(Refusal::Feature {
-                item: format!("struct `{name}`"),
-                feature: "the @size and @align layout of its members, which the GL backend can't keep; spell its padding out as members".into(),
+                item: format!("struct `{name}` (spell its padding out as members instead)"),
+                feature: "@size and @align offsets in a std140 block".into(),
             }),
             None => Ok(()),
         }
@@ -350,6 +362,22 @@ impl RenderContext {
         let max = u64::from(limits.max_compute_workgroup_storage_size);
         check_limit(&item, "max_compute_workgroup_storage_size", memory, max)
     }
+}
+
+/// Refuses a shader that measures its light roots with `arrayLength` on a device that
+/// takes lights through a uniform block of `uniform_lights`, where nothing can measure them.
+fn check_measured(shader: &ShaderObject, uniform_lights: Option<u32>) -> Result<(), Refusal> {
+    let measured = shader
+        .light_roots
+        .as_ref()
+        .is_some_and(|roots| roots.is_measured());
+    if uniform_lights.is_none() || !measured {
+        return Ok(());
+    }
+    Err(Refusal::Feature {
+        item: "a shader that measures `lights` or `light_grid` with `arrayLength` (loop to `lights.count` instead)".into(),
+        feature: "clustered lights in storage buffers".into(),
+    })
 }
 
 /// The bytes of workgroup memory the entry point `uses` reaches, each variable
@@ -573,7 +601,7 @@ pub(super) fn check_texture(
     features: wgpu::Features,
 ) -> Result<(), RendererError> {
     let wrong = |expected: String, found: String| RendererError::BindingError {
-        name: name.to_string(),
+        uniform: name.to_string(),
         expected,
         found,
     };
@@ -662,7 +690,7 @@ fn check_view(
         _ => format!("a {slot:?} texture"),
     };
     Err(RendererError::BindingError {
-        name: name.to_string(),
+        uniform: name.to_string(),
         expected,
         found: format!("a {view:?} texture"),
     })
