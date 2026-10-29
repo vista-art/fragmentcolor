@@ -434,6 +434,8 @@ impl MeshObject {
         drop(hi);
         let mut verts = self.verts.write();
         verts.push(v);
+        #[cfg(test)]
+        crate::hooks::run("pushed");
         self.touch_vertices();
         drop(verts);
         #[cfg(test)]
@@ -454,6 +456,8 @@ impl MeshObject {
         // Adding a real instance invalidates any prior set_instance_count override
         // (otherwise the GPU would draw past the actual buffer end).
         *self.override_instances.write() = None;
+        #[cfg(test)]
+        crate::hooks::run("instance pushed");
         self.touch_instances();
     }
 
@@ -468,6 +472,8 @@ impl MeshObject {
         drop(schema);
         // No buffer and no count override. A shader that reads instances refuses the empty list.
         *self.override_instances.write() = None;
+        #[cfg(test)]
+        crate::hooks::run("instances cleared");
         self.touch_instances();
     }
 
@@ -1740,8 +1746,8 @@ mod tests {
         });
     }
 
-    // Story: the render checks the quick view's mesh again after the pack,
-    // so a vertex another thread adds while the pack runs fails the same render.
+    // Story: the render checks the quick view's mesh again when it changed during
+    // the upload, so a vertex another thread adds while the pack runs fails that render.
     #[test]
     fn a_vertex_added_during_the_quick_view_pack_is_checked() {
         pollster::block_on(async move {
@@ -1782,6 +1788,41 @@ mod tests {
             let error = rendered.expect_err("vertex 3 has no color").to_string();
             assert!(error.contains("vertex 3"), "{error}");
         });
+    }
+
+    /// Watches the hook point `name` and reports whether `locked` held there, with the
+    /// generation still where it was when the watch began, so the change had no reader.
+    fn watch_change(
+        object: &Arc<MeshObject>,
+        name: &'static str,
+        locked: fn(&MeshObject) -> bool,
+    ) -> std::rc::Rc<std::cell::Cell<Option<bool>>> {
+        let seen = std::rc::Rc::new(std::cell::Cell::new(None));
+        let (object, kept, before) = (object.clone(), seen.clone(), object.generation());
+        crate::hooks::once(name, move || {
+            kept.set(Some(locked(&object) && object.generation() == before));
+        });
+        seen
+    }
+
+    // Story: a change stays out of every reader's reach until the mesh counts it,
+    // so a pack that sees a vertex or an instance change finds the generation moved.
+    #[test]
+    fn a_change_is_counted_before_any_reader_sees_it() {
+        let mesh = Mesh::new();
+        let verts = |object: &MeshObject| object.verts.try_read().is_none();
+        let insts = |object: &MeshObject| object.insts.try_read().is_none();
+
+        let vertex = watch_change(&mesh.object, "pushed", verts);
+        mesh.add_vertex([0.0, 0.0]);
+        let instance = watch_change(&mesh.object, "instance pushed", insts);
+        mesh.add_instance(Instance::new());
+        let cleared = watch_change(&mesh.object, "instances cleared", insts);
+        mesh.clear_instances();
+
+        assert_eq!(vertex.get(), Some(true), "add_vertex");
+        assert_eq!(instance.get(), Some(true), "add_instance");
+        assert_eq!(cleared.get(), Some(true), "clear_instances");
     }
 
     // Story: the quick view reads the first vertex in a statement of its own,
