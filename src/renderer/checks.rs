@@ -97,11 +97,13 @@ impl std::fmt::Display for Channels {
 
 /// Refuses a render that uses what another Renderer created, before it loads anything.
 ///
-/// `context` is the rendering Renderer's, or `None` before it has one. A Renderer with no
-/// context created no target or texture, so it refuses every render: `ForeignTarget` when a
-/// render pass draws into a target that has an owner, else `NoContext`. With a context, a frame
-/// target from another Renderer is `ForeignTarget`, unless every pass is a compute pass, and a
-/// pass target or bound texture that this context doesn't hold is `TextureNotFoundError`.
+/// `context` is the rendering Renderer's, or `None` before it has one.
+/// A Renderer with no context created no target or texture, so it refuses any render:
+/// `ForeignTarget` when a render pass draws into a target that has an owner, else `NoContext`.
+///
+/// With a context, a frame target another Renderer made is `ForeignTarget`,
+/// unless every pass is a compute pass, and a pass target or a bound texture
+/// this context doesn't hold is `TextureNotFoundError`, as the plan returns it.
 /// The passes come from `peek_passes`, so a refusal leaves the renderable as it was.
 pub(super) fn check_target(
     context: Option<&Arc<RenderContext>>,
@@ -444,7 +446,10 @@ fn read_channels(format: wgpu::TextureFormat) -> Option<Channels> {
 mod tests {
     use super::*;
     use crate::renderer::platform::all::{create_instance, request_adapter};
-    use crate::{PassType, Shader};
+    use crate::texture::TextureId;
+    use crate::{
+        Material, Mesh, Model, Pass, PassType, Renderer, Scene, Shader, Size, SurfaceError, Vertex,
+    };
 
     /// A fullscreen triangle that samples `source`.
     const SAMPLE: &str = r#"
@@ -558,7 +563,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     #[test]
     fn the_device_takes_float32_blending_when_offered() {
         pollster::block_on(async move {
-            let renderer = crate::Renderer::new();
+            let renderer = Renderer::new();
             let context = renderer.context(None).await.expect("a context");
             let adapter = context.adapter.as_ref().expect("an adapter");
             let blending = wgpu::Features::FLOAT32_BLENDABLE;
@@ -596,7 +601,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     #[test]
     fn a_queued_binding_is_checked() {
         pollster::block_on(async move {
-            let renderer = crate::Renderer::new();
+            let renderer = Renderer::new();
             let frame = renderer
                 .create_texture_target([8, 8])
                 .await
@@ -625,28 +630,26 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     }
 
     /// A Model that covers the view, drawn with `material`.
-    fn build_model(material: crate::Material) -> crate::Model {
-        let mesh = crate::Mesh::new();
+    fn build_model(material: Material) -> Model {
+        let mesh = Mesh::new();
         let corners = [[-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0]];
         mesh.add_vertices(
-            corners.map(|corner| {
-                crate::Vertex::pbr(corner).set(crate::Vertex::NORMAL, [0.0, 0.0, 1.0])
-            }),
+            corners.map(|corner| Vertex::pbr(corner).set(Vertex::NORMAL, [0.0, 0.0, 1.0])),
         );
-        crate::Model::new(mesh, material)
+        Model::new(mesh, material)
     }
 
     /// A pass that draws `material`, whose base color map waits for an upload, and its shader.
-    fn build_pass(material: crate::Material) -> (crate::Pass, Shader) {
+    fn build_pass(material: Material) -> (Pass, Shader) {
         let material = material.base_color_texture((vec![255; 16], [2, 2]));
         let shader = material.shader.clone();
-        let pass = crate::Pass::new("queued map");
+        let pass = Pass::new("queued map");
         pass.add(&build_model(material)).expect("add");
         (pass, shader)
     }
 
     /// The texture id the shader binds to `key`.
-    fn read_bound(shader: &Shader, key: &str) -> crate::texture::TextureId {
+    fn read_bound(shader: &Shader, key: &str) -> TextureId {
         match shader.object.get_uniform(key).map(|uniform| uniform.data) {
             Ok(UniformData::Texture(meta)) => meta.id,
             other => panic!("{key} holds no texture: {other:?}"),
@@ -660,7 +663,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     }
 
     /// Checks that `renderer` drew `shader`'s base color map from its own context.
-    fn check_drawn(renderer: &crate::Renderer, shader: &Shader) {
+    fn check_drawn(renderer: &Renderer, shader: &Shader) {
         let context = renderer.context.read().clone().expect("a context");
         let id = read_bound(shader, "base_color_map");
         assert!(
@@ -673,8 +676,8 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     struct Ownerless;
 
     impl crate::target::FrameSource for Ownerless {
-        fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
-            Err(crate::SurfaceError::Lost)
+        fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
+            Err(SurfaceError::Lost)
         }
 
         fn owner(&self) -> Option<Arc<RenderContext>> {
@@ -683,14 +686,11 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     }
 
     impl Target for Ownerless {
-        fn size(&self) -> crate::Size {
-            crate::Size::from((1u32, 1u32))
+        fn size(&self) -> Size {
+            Size::from((1u32, 1u32))
         }
 
-        fn resize(
-            &mut self,
-            _size: impl Into<crate::Size>,
-        ) -> Result<(), crate::texture::TextureError> {
+        fn resize(&mut self, _size: impl Into<Size>) -> Result<(), crate::texture::TextureError> {
             Ok(())
         }
 
@@ -704,11 +704,11 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     #[test]
     fn a_refused_render_leaves_a_queued_map_to_the_owner() {
         pollster::block_on(async move {
-            let owner = crate::Renderer::new();
+            let owner = Renderer::new();
             let frame = owner.create_texture_target([8, 8]).await.expect("a target");
-            let other = crate::Renderer::new();
+            let other = Renderer::new();
             let _context = other.create_texture_target([8, 8]).await.expect("a target");
-            let (pass, shader) = build_pass(crate::Material::pbr());
+            let (pass, shader) = build_pass(Material::pbr());
 
             let refused = other.render(&pass, &frame);
             assert!(
@@ -728,12 +728,12 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     #[test]
     fn a_foreign_pass_target_leaves_a_queued_map() {
         pollster::block_on(async move {
-            let owner = crate::Renderer::new();
+            let owner = Renderer::new();
             let frame = owner.create_texture_target([8, 8]).await.expect("a target");
             let offscreen = owner.create_texture_target([8, 8]).await.expect("a target");
-            let other = crate::Renderer::new();
+            let other = Renderer::new();
             let other_frame = other.create_texture_target([8, 8]).await.expect("a target");
-            let (pass, shader) = build_pass(crate::Material::pbr());
+            let (pass, shader) = build_pass(Material::pbr());
             pass.set_target(&offscreen).expect("set_target");
 
             let refused = other.render(&pass, &other_frame);
@@ -755,15 +755,15 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     #[test]
     fn a_foreign_texture_leaves_a_queued_map() {
         pollster::block_on(async move {
-            let owner = crate::Renderer::new();
+            let owner = Renderer::new();
             let frame = owner.create_texture_target([8, 8]).await.expect("a target");
             let normal = owner
                 .create_texture((vec![128; 16], [2, 2]))
                 .await
                 .expect("a texture");
-            let other = crate::Renderer::new();
+            let other = Renderer::new();
             let other_frame = other.create_texture_target([8, 8]).await.expect("a target");
-            let (pass, shader) = build_pass(crate::Material::pbr().normal_texture(&normal));
+            let (pass, shader) = build_pass(Material::pbr().normal_texture(&normal));
 
             let refused = other.render(&pass, &other_frame);
             assert!(
@@ -778,19 +778,17 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
         });
     }
 
-    // Story: a Scene refused for a foreign target gets no default camera or light, so a
-    // light added afterwards is the only one the owner draws with.
+    // Story: a Scene that a Renderer refuses for a foreign target
+    // gets no default camera or light, so it stays as the app built it.
     #[test]
     fn a_refused_scene_render_adds_no_defaults() {
         pollster::block_on(async move {
-            let owner = crate::Renderer::new();
+            let owner = Renderer::new();
             let frame = owner.create_texture_target([8, 8]).await.expect("a target");
-            let other = crate::Renderer::new();
+            let other = Renderer::new();
             let _context = other.create_texture_target([8, 8]).await.expect("a target");
-            let scene = crate::Scene::new();
-            scene
-                .add(&build_model(crate::Material::pbr()))
-                .expect("add");
+            let scene = Scene::new();
+            scene.add(&build_model(Material::pbr())).expect("add");
 
             let refused = other.render(&scene, &frame);
             assert!(
@@ -807,10 +805,10 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     #[test]
     fn a_renderer_without_a_context_opens_no_device() {
         pollster::block_on(async move {
-            let owner = crate::Renderer::new();
+            let owner = Renderer::new();
             let frame = owner.create_texture_target([8, 8]).await.expect("a target");
-            let (pass, shader) = build_pass(crate::Material::pbr());
-            let other = crate::Renderer::new();
+            let (pass, shader) = build_pass(Material::pbr());
+            let other = Renderer::new();
 
             let refused = other.render(&pass, &frame);
             assert!(
@@ -825,12 +823,12 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
         });
     }
 
-    // Story: a Renderer with no context refuses a target with no owner, such as a
-    // window without a surface, with NoContext, before it opens a device.
+    // Story: a Renderer with no context refuses a target with no owner,
+    // such as a window without a surface, with NoContext, before it opens a device.
     #[test]
     fn a_renderer_without_a_context_refuses_an_ownerless_target() {
-        let (pass, shader) = build_pass(crate::Material::pbr());
-        let renderer = crate::Renderer::new();
+        let (pass, shader) = build_pass(Material::pbr());
+        let renderer = Renderer::new();
 
         let refused = renderer.render(&pass, &Ownerless);
         assert!(

@@ -8,9 +8,9 @@ pub trait Renderable {
     fn roots(&self) -> Arc<[Arc<PassObject>]> {
         self.passes()
     }
-    /// The passes `passes` returns, without the setup a renderable does before it draws,
-    /// such as a Scene's default camera and light. The renderer checks a render against
-    /// these before it decides to draw, so a render it refuses leaves the renderable as it was.
+    /// The passes `passes` returns, without the setup a renderable runs first,
+    /// such as a Scene's default camera and light. The renderer checks each render
+    /// against these before drawing, so a render it refuses leaves the renderable as it was.
     fn peek_passes(&self) -> Arc<[Arc<PassObject>]> {
         self.passes()
     }
