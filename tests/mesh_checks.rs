@@ -1,8 +1,8 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use fragmentcolor::{
-    Instance, Material, Mesh, MeshError, Model, Pass, Renderer, RendererError, Shader,
-    ShaderError, Target, Vertex,
+    Instance, Material, Mesh, MeshError, Model, Pass, Renderer, RendererError, Shader, ShaderError,
+    Target, Vertex,
 };
 
 const WHITE: &str = r#"
@@ -285,9 +285,7 @@ fn a_frame_checks_only_the_meshes_it_draws() {
         let skipped = renderer.render(&alone, &target);
 
         let elsewhere = Pass::new("elsewhere");
-        elsewhere
-            .add(&model_on(&material, &EDGE))
-            .expect("partial");
+        elsewhere.add(&model_on(&material, &EDGE)).expect("partial");
         let other = renderer.render(&shared, &target);
 
         growing.set_visible(true);

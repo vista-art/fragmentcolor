@@ -470,7 +470,9 @@ mod tests {
             });
 
             let pbr = crate::Pass::new("pbr");
-            let refused = pbr.add(&Model::new(bare.clone(), Material::pbr())).map(drop);
+            let refused = pbr
+                .add(&Model::new(bare.clone(), Material::pbr()))
+                .map(drop);
             let drawn = renderer.render(&other, &target);
 
             assert!(refused.is_err(), "the bare mesh has no normals");
@@ -489,7 +491,9 @@ mod tests {
         bare.add_vertices([[-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0]]);
 
         let pbr = crate::Pass::new("pbr");
-        let refused = pbr.add(&Model::new(bare.clone(), Material::pbr())).map(drop);
+        let refused = pbr
+            .add(&Model::new(bare.clone(), Material::pbr()))
+            .map(drop);
 
         assert!(refused.is_err(), "the bare mesh has no normals");
         assert!(bare.object.instance_schema.read().is_none());

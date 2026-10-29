@@ -196,7 +196,6 @@ fn check_room(lights: &mut ShaderLights, capacity: u32, incoming: &[u64]) -> Res
 }
 
 impl ShaderObject {
-
     /// The hash and count of the live lights, taken once per light epoch.
     pub(crate) fn light_summary(&self) -> LightSummary {
         // Read the epoch first, so a change that lands meanwhile moves it past the stored one.

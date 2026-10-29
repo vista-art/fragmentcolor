@@ -23,8 +23,8 @@ use pyo3::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use crate::Shader;
-use crate::shader::share_light;
 use crate::scene::SceneObject;
+use crate::shader::share_light;
 
 /// Discriminant for the three light kinds. Wire-compatible with the WGSL
 /// `Light.kind` field in `src/material/light.wgsl`: directional=0, point=1, spot=2.
@@ -198,7 +198,11 @@ impl LightObject {
     /// a shader is full. It holds the pass's shaders, then its lights, the order a joining
     /// shader takes them, so that shader either is among the ones lit here or finds the
     /// light on the pass.
-    fn attach_to_pass(self: &Arc<Self>, pass: &crate::Pass, light: &Light) -> Result<(), crate::PassError> {
+    fn attach_to_pass(
+        self: &Arc<Self>,
+        pass: &crate::Pass,
+        light: &Light,
+    ) -> Result<(), crate::PassError> {
         let shaders = pass.object.shaders.read();
         let mut lights = pass.object.lights.write();
         share_light(&shaders, self)?;
@@ -509,7 +513,11 @@ mod tests {
             thread.join().expect("the model thread");
         }
 
-        assert_eq!(shader.light_summary().count, 1, "the joined shader holds the light");
+        assert_eq!(
+            shader.light_summary().count,
+            1,
+            "the joined shader holds the light"
+        );
     }
 
     #[test]

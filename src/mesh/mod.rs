@@ -142,10 +142,12 @@ impl Renderable for Mesh {
         // The guard drops here, before the checks read the vertices again.
         let first = self.object.verts.read().first().cloned();
         if let Some(first) = first {
-            let shader = self.pass.ensure_shader(|| match Shader::from_vertex(&first) {
-                Ok(shader) => shader.object,
-                Err(_) => Shader::default().object,
-            });
+            let shader = self
+                .pass
+                .ensure_shader(|| match Shader::from_vertex(&first) {
+                    Ok(shader) => shader.object,
+                    Err(_) => Shader::default().object,
+                });
             shader.preview(&self.object);
         }
         vec![self.pass.clone()].into()
@@ -565,7 +567,10 @@ impl MeshObject {
                 .any(|attached| stream(&attached.reads).contains_key(name))
         };
         let fresh = Repacked {
-            vertices: read.vertex.keys().any(|name| unread(name, |reads| &reads.vertex)),
+            vertices: read
+                .vertex
+                .keys()
+                .any(|name| unread(name, |reads| &reads.vertex)),
             instances: read
                 .instance
                 .keys()
@@ -820,9 +825,7 @@ impl MeshObject {
         // another device can't draw here, so they give way to new ones.
         let mut need_new = match gpu.as_ref() {
             None => true,
-            Some(g) => {
-                g.owner != context.id || g.index_count != index_count || repacked.vertices
-            }
+            Some(g) => g.owner != context.id || g.index_count != index_count || repacked.vertices,
         };
 
         if let Some(g) = gpu.as_ref() {
@@ -1185,7 +1188,8 @@ mod tests {
     fn stale(mesh: &Mesh) -> Repacked {
         let packed = mesh.object.packed.read();
         Repacked {
-            vertices: packed.vertices_at != Some(mesh.object.vertex_changes.load(Ordering::Acquire)),
+            vertices: packed.vertices_at
+                != Some(mesh.object.vertex_changes.load(Ordering::Acquire)),
             instances: packed.instances_at
                 != Some(mesh.object.instance_changes.load(Ordering::Acquire)),
         }
@@ -1375,7 +1379,9 @@ mod tests {
             let previewed = renderer.render(&mesh, &target);
 
             assert!(drawn.is_ok(), "the own shader reads no color: {drawn:?}");
-            let error = previewed.expect_err("the quick view reads color").to_string();
+            let error = previewed
+                .expect_err("the quick view reads color")
+                .to_string();
             assert!(error.contains("color"), "{error}");
             assert!(error.contains("vertex 3"), "{error}");
         });
@@ -1404,7 +1410,10 @@ mod tests {
             for render in ["first", "second"] {
                 let error = renderer.render(&pass, &target).expect_err(render);
                 let text = error.to_string();
-                assert!(text.contains("property named 'position'"), "{render}: {text}");
+                assert!(
+                    text.contains("property named 'position'"),
+                    "{render}: {text}"
+                );
             }
         });
     }
@@ -1425,7 +1434,10 @@ mod tests {
 
         mesh.passes();
 
-        assert!(free.get(), "the vertices were locked while the mesh attached");
+        assert!(
+            free.get(),
+            "the vertices were locked while the mesh attached"
+        );
     }
 
     // Story: a vertex or an index that arrives while an upload runs is checked by
@@ -1446,7 +1458,10 @@ mod tests {
             derived.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
             let late = derived.clone();
             crate::hooks::once("pack", move || late.add_vertex([0.5, 0.5]));
-            let error = derived.object.vertex_buffers(&context).expect_err("4 vertices");
+            let error = derived
+                .object
+                .vertex_buffers(&context)
+                .expect_err("4 vertices");
             assert_eq!(
                 error.to_string(),
                 RendererError::from(MeshError::VertexCount(4)).to_string(),
@@ -1458,7 +1473,10 @@ mod tests {
             given.set_indices([0, 1, 2]);
             let late = given.clone();
             crate::hooks::once("pack", move || late.set_indices([0, 1, 2, 0]));
-            let error = given.object.vertex_buffers(&context).expect_err("4 indices");
+            let error = given
+                .object
+                .vertex_buffers(&context)
+                .expect_err("4 indices");
             assert_eq!(
                 error.to_string(),
                 RendererError::from(MeshError::IndexCount(4)).to_string(),
@@ -1494,7 +1512,11 @@ mod tests {
             let (_, after) = mesh.object.vertex_buffers(&context).expect("third upload");
 
             assert_eq!(during.instance_rows, Some(2), "the rows the pack made");
-            assert_eq!(after.instance_rows, Some(3), "the late instance packs next time");
+            assert_eq!(
+                after.instance_rows,
+                Some(3),
+                "the late instance packs next time"
+            );
             assert_eq!(mesh.object.packed.read().rows, 3);
         });
     }

@@ -465,7 +465,10 @@ impl ShaderObject {
 
     /// Whether this shader holds `mesh`.
     fn holds(&self, mesh: &Arc<crate::mesh::MeshObject>) -> bool {
-        self.meshes.read().iter().any(|held| Arc::ptr_eq(held, mesh))
+        self.meshes
+            .read()
+            .iter()
+            .any(|held| Arc::ptr_eq(held, mesh))
     }
 
     /// Draws `mesh` for the quick view. It checks the mesh whenever the mesh changed,
