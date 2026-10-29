@@ -335,6 +335,20 @@ func readPosition(_ values: [Double], _ label: String) throws -> [Float] {
     return floats
 }
 
+/// Exactly `count` numbers of a float vector as Floats, each checked as `readFloats` checks it.
+func readVector(_ values: [Double], _ count: Int, _ label: String) throws -> [Float] {
+    let floats = try readFloats(values, label)
+    guard floats.count == count else {
+        throw FragmentColorError.Render("\(label) takes \(count) numbers, got \(floats.count)")
+    }
+    return floats
+}
+
+/// Exactly `count` Floats of a float vector, checked as the Double one is.
+func readVector(_ values: [Float], _ count: Int, _ label: String) throws -> [Float] {
+    try readVector(values.map { Double($0) }, count, label)
+}
+
 /// A vertex position of 1 to 4 Floats, checked as the Double one is.
 func readPosition(_ values: [Float], _ label: String) throws -> [Float] {
     try readPosition(values.map { Double($0) }, label)

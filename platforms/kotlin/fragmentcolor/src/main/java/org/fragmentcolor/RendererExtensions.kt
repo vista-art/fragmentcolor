@@ -266,6 +266,20 @@ internal fun readPosition(values: List<Double>, label: String): List<Float> {
     return floats
 }
 
+/** Exactly [count] numbers of a float vector as [Float]s, each checked as [readFloats] checks it. */
+internal fun readVector(values: List<Double>, count: Int, label: String): List<Float> {
+    val floats = readFloats(values, label)
+    if (floats.size != count) {
+        throw FragmentColorException.Render("$label takes $count numbers, got ${floats.size}")
+    }
+    return floats
+}
+
+/** Exactly [count] [Float]s of a float vector, checked as the [Double] one is. */
+@JvmName("readFloatVector")
+internal fun readVector(values: List<Float>, count: Int, label: String): List<Float> =
+    readVector(values.map { it.toDouble() }, count, label)
+
 /** A vertex position of 1 to 4 [Float]s, checked as the [Double] one is. */
 @JvmName("readFloatPosition")
 internal fun readPosition(values: List<Float>, label: String): List<Float> =

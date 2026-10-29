@@ -68,31 +68,42 @@ fun Mesh.addVertex(position: DoubleArray) {
     addVertex(position.toList())
 }
 
-/** Append a vertex at [position] with a `"uv"` attribute, as Rust's `(position, uv)` tuple does. */
+/**
+ * Append a vertex at [position] with a `"uv"` attribute,
+ * as Rust's `(position, uv)` tuple does: 3 and 2 finite numbers.
+ */
 @JvmName("addVertexFloatsUv")
 fun Mesh.addVertex(position: List<Float>, uv: List<Float>) {
-    addVertex(Vertex(readPosition(position, "Mesh.addVertex: vertex: position")).set("uv", uv))
+    val point = readVector(position, 3, "Mesh.addVertex: vertex: position")
+    val coordinates = readVector(uv, 2, "Mesh.addVertex: vertex: uv")
+    addVertex(Vertex(point).set("uv", coordinates))
 }
 
 @JvmName("addVertexDoublesUv")
 fun Mesh.addVertex(position: List<Double>, uv: List<Double>) {
-    addVertex(Vertex(readPosition(position, "Mesh.addVertex: vertex: position")).set("uv", uv))
+    val point = readVector(position, 3, "Mesh.addVertex: vertex: position")
+    val coordinates = readVector(uv, 2, "Mesh.addVertex: vertex: uv")
+    addVertex(Vertex(point).set("uv", coordinates))
 }
 
 /**
  * Append a vertex at [position] with `"uv"` and `"color"` attributes,
- * as Rust's `(position, uv, color)` tuple does.
+ * as Rust's `(position, uv, color)` tuple does: 3, 2 and 4 finite numbers.
  */
 @JvmName("addVertexFloatsUvColor")
 fun Mesh.addVertex(position: List<Float>, uv: List<Float>, color: List<Float>) {
-    val vertex = Vertex(readPosition(position, "Mesh.addVertex: vertex: position"))
-    addVertex(vertex.set("uv", uv).set("color", color))
+    val point = readVector(position, 3, "Mesh.addVertex: vertex: position")
+    val coordinates = readVector(uv, 2, "Mesh.addVertex: vertex: uv")
+    val tint = readVector(color, 4, "Mesh.addVertex: vertex: color")
+    addVertex(Vertex(point).set("uv", coordinates).set("color", tint))
 }
 
 @JvmName("addVertexDoublesUvColor")
 fun Mesh.addVertex(position: List<Double>, uv: List<Double>, color: List<Double>) {
-    val vertex = Vertex(readPosition(position, "Mesh.addVertex: vertex: position"))
-    addVertex(vertex.set("uv", uv).set("color", color))
+    val point = readVector(position, 3, "Mesh.addVertex: vertex: position")
+    val coordinates = readVector(uv, 2, "Mesh.addVertex: vertex: uv")
+    val tint = readVector(color, 4, "Mesh.addVertex: vertex: color")
+    addVertex(Vertex(point).set("uv", coordinates).set("color", tint))
 }
 
 /** Append a vertex for each position. */
