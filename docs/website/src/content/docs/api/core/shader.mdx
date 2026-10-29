@@ -110,7 +110,7 @@ A root that isn't a struct takes its bytes whole through `set`, as a storage roo
 
 `Renderer::render` checks each shader against the device before it takes a frame, so every platform returns the same error from the call that caused it, the web included. Each refusal has a typed error with fields:
 
-- `RendererError::LimitError { item, limit, value, max }` for a group past `max_bind_groups`, a binding past `max_bindings_per_bind_group`, more bindings of a kind in one stage than the device takes, a uniform or storage buffer past its binding size limit, and a workgroup past the device's sizes, invocations or workgroup memory.
+- `RendererError::LimitError { item, limit, value, max }` for a group past `max_bind_groups`, a binding past `max_bindings_per_bind_group`, more bindings of a kind in one stage than the device takes, a uniform or storage buffer past its binding size limit, a workgroup past the device's sizes, invocations or workgroup memory, and a vertex input at a location past `max_vertex_attributes`. A mesh whose stride or buffers pass the device's limits gets it too.
 - `RendererError::FeatureError { item, feature }` for a compute shader on a device without compute, storage a stage of the device can't bind, a storage format or access the device lacks, an explicit layout on a GL backend, and anything else the device's shader validator refuses.
 - `RendererError::BindingError { name, expected, found }` for a texture uniform that was never set, or whose texture its slot can't take by format, usage, dimension, sample count or mip levels.
 - `RendererError::EntryError { stage }` for a render shader without its `@vertex` or `@fragment` entry point.
