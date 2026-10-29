@@ -181,8 +181,8 @@ impl RenderContext {
     }
 
     /// Refuses a texture uniform with no texture, or with a texture its slot can't take.
-    /// An unset PBR map in a render shader takes its 1x1 default, when its slot takes that,
-    /// and so does a Material map this context hasn't loaded, which elsewhere asks for `load`.
+    /// An unset PBR map in a render shader takes its 1x1 default, when its slot takes that.
+    /// So does a Material map this context holds no copy of, which anywhere else is refused.
     pub(super) fn check_textures(&self, shader: &ShaderObject) -> Result<(), RendererError> {
         let compute = shader.is_compute();
         let storage = shader.storage.read();
@@ -199,17 +199,15 @@ impl RenderContext {
                     let facts = TextureFacts::read(&texture);
                     check_texture(&uniform.name, &slot, &facts, self.features)?
                 }
-                // A map this context hasn't loaded draws a PBR default where there is one.
+                // A map with no copy here draws its PBR default where the default fits the slot.
                 None if shader.has_map(&uniform.name) => {
-                    if compute || !PbrDefaults::has_slot(&uniform.name) {
-                        return Err(RendererError::BindingError {
-                            uniform: uniform.name.clone(),
-                            expected: "a texture".into(),
-                            found: "a map this Renderer hasn't loaded yet; call load first".into(),
-                        });
-                    }
                     let facts = TextureFacts::PBR_DEFAULT;
-                    check_texture(&uniform.name, &slot, &facts, self.features)?
+                    let fits = !compute
+                        && PbrDefaults::has_slot(&uniform.name)
+                        && check_texture(&uniform.name, &slot, &facts, self.features).is_ok();
+                    if !fits {
+                        return Err(refuse_unloaded(&uniform.name));
+                    }
                 }
                 // An unset PBR map takes its default, which a compute pass never binds.
                 // One set to a texture this context doesn't hold, removed or from another
@@ -643,6 +641,21 @@ fn check_entries(shader: &ShaderObject) -> Result<(), Refusal> {
         }
     }
     Ok(())
+}
+
+/// Refuses the Material map in slot `name`, which this Renderer holds no copy of
+/// and whose PBR default can't stand in. The web's `render` uploads nothing, so `load`
+/// comes first there. Native `render` loads first, so it meets only a map set during it.
+fn refuse_unloaded(name: &str) -> RendererError {
+    let found = match cfg!(wasm) {
+        true => "a map this Renderer hasn't loaded yet; call load first",
+        false => "a map set while this render ran, which the next render uploads",
+    };
+    RendererError::BindingError {
+        uniform: name.to_string(),
+        expected: "a texture".into(),
+        found: found.into(),
+    }
 }
 
 /// Refuses a texture the slot `name` can't take, by the rules wgpu binds it with.

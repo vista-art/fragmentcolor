@@ -1105,6 +1105,60 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
         });
     }
 
+    /// A fullscreen shader that draws texel (0, 0) of an integer `base_color_map`.
+    const INTEGER_MAP: &str = r#"
+@group(0) @binding(0) var base_color_map: texture_2d<u32>;
+
+@vertex
+fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
+    let corner = vec2<f32>(f32((index << 1u) & 2u), f32(index & 2u));
+    return vec4<f32>(corner * 2.0 - 1.0, 0.0, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(textureLoad(base_color_map, vec2<i32>(0), 0)) / 255.0;
+}
+"#;
+
+    // Story: a map in a PBR-named slot that its 1x1 default can't fill, such as an integer
+    // texture, is refused while the Renderer holds no copy, and draws once the Renderer loads it.
+    #[test]
+    fn a_map_no_default_fits_is_refused_until_loaded() {
+        pollster::block_on(async move {
+            let (renderer, frame) = open_target().await;
+            let options = TextureOptions {
+                size: Some([1, 1].into()),
+                format: TextureFormat::Rgba32Uint,
+                mipmaps: false,
+                ..Default::default()
+            };
+            let texel: Vec<u8> = [255u32, 0, 0, 255]
+                .iter()
+                .flat_map(|v| v.to_ne_bytes())
+                .collect();
+            let input = TextureInput {
+                data: TextureData::Bytes(texel),
+                options,
+            };
+            let shader = Shader::new(INTEGER_MAP).expect("a shader");
+            let material = Material::custom(shader).base_color_texture(input);
+
+            let refused = frame.context.render(material.shader(), &frame);
+            assert!(
+                matches!(&refused, Err(RendererError::BindingError { uniform, found, .. })
+                    if uniform == "base_color_map" && found.contains("a map")),
+                "{refused:?}"
+            );
+
+            renderer
+                .render(material.shader(), &frame)
+                .expect("the loaded map draws");
+            let image = frame.get_image().await.expect("read back");
+            assert_eq!(image[..4], [255, 0, 0, 255]);
+        });
+    }
+
     // Story: a copy that `unregister_texture` removed uploads again at the next render.
     #[test]
     fn an_unregistered_copy_uploads_again() {
