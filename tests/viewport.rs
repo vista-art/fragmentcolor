@@ -156,8 +156,8 @@ fn refuses_a_viewport_past_the_device_limit() {
             .create_texture_target([16, 8])
             .await
             .expect("create_texture_target failed");
-        // A side of 2^24 passes every device's 2D limit, and one of 2048 fits every
-        // device, since it's the lowest limit wgpu allows, which WebGL2 and some GL devices have.
+        // A side of 2^24 passes every device's 2D limit. One of 2048 fits: GLES 3.0 and
+        // WebGL2 guarantee it, and wgpu's lowest tier, `downlevel_webgl2_defaults`, uses it.
         let pass = fill_pass([0, 0, 1 << 24, 8], [1.0, 0.0, 0.0, 1.0]);
 
         let result = renderer.render(&pass, &target);

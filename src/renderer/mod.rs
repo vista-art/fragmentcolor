@@ -1216,12 +1216,14 @@ impl RenderContext {
     /// The checks that need no frame run here. The target keeps its last frame
     /// when a lit shader holds more lights than the device takes, a shader reads
     /// vertex inputs with no mesh, a mesh is asked for more instances than it holds,
-    /// a shader asks for more than the device has (`check_shader`), a texture uniform
-    /// has no texture or one its slot can't take (`check_textures`), a viewport side
-    /// passes the device's 2D limit (`check_viewport`), or a target the pass set is
-    /// missing. A pass with a target of its own checks its attachments
-    /// here too, and a pass that draws into the frame checks them once it has one.
+    /// a mesh the device's limits or its own checks refuse (`plan_shader`), a shader
+    /// asks for more than the device has (`check_shader`), a texture uniform has no
+    /// texture or one its slot can't take (`check_textures`), a viewport side passes
+    /// the device's 2D limit (`check_viewport`), or a target the pass set is missing.
+    ///
+    /// A pass with a target of its own checks its attachments here too.
     /// The draw loop takes each shader's layouts and buffers from the plan.
+    /// A pass that draws into the frame checks its attachments once it has one.
     fn plan_pass(&self, pass: &PassObject) -> Result<PassDraws, RendererError> {
         self.check_light_cap(pass)?;
         self.check_viewport(pass)?;
