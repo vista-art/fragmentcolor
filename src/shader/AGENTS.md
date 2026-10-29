@@ -13,7 +13,8 @@ Constructors
 - `Shader::new(source: &str) -> Result<Self, ShaderError>` — WGSL or GLSL source; the core Rust entry point.
 - `Shader::from_mesh(mesh: &Mesh) -> Result<Self, ShaderError>` infers a minimal shader from a mesh's first vertex and attaches the mesh. An empty mesh returns `InvalidKey`, and a mesh the shader refuses returns the attach error.
 - `Shader::from_vertex(v: &Vertex) -> Result<Self, ShaderError>` builds the same shader from one vertex: the position at `@location(0)`, and a `color` of four numbers at `@location(1)`, read by name.
-- The mesh quick view (`Renderable for Mesh`) can't return an error, so its shader keeps the attach error (`keep_refusal`), and `plan_shader` returns it in place of the error for a shader with no mesh.
+- The mesh quick view (`Renderable for Mesh`) reads the first vertex in a statement of its own, so no vertex guard is held while the shader checks the vertices again. Its shader (`preview`) checks the mesh whenever the mesh changed, holds it while it passes and lets it go while it fails, and records types but no reads. `passes` can't return an error, so for a refused mesh `plan_shader` runs the checks again (`check_preview`) and returns their error on every render, in place of the error for a shader with no mesh.
+- An attach (`record`) holds the shader's mesh list from `declare` to the push. A `Model` attach goes through `add_model_mesh`, which attaches a mesh once and assumes the Model columns for a mesh with no instance layout.
 - Mobile uniffi: `Shader::new_mobile(source: String) -> Result<Arc<Self>, FragmentColorError>` in `platform/mobile.rs` (owned `String` + `Arc<Self>` as uniffi requires). Swift / Kotlin extensions re-expose it as `Shader(source)`.
 
 Creation checks (`Shader::wgsl`, which every constructor reaches)

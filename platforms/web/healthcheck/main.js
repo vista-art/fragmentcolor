@@ -352,9 +352,12 @@ struct VOut {
     const negative = new Mesh();
     negative.addVertex(new Vertex([0.0, 0.0]).set('id', 7).set('cell', [0, 0]));
     negative.addVertex(new Vertex([1.0, 0.0]).set('id', -1).set('cell', [0, 0]));
+    negative.addVertex(new Vertex([0.0, 1.0]).set('id', 7).set('cell', [0, 0]));
     rejects('-1 for a u32', negative, 'expected u32, got -1 at vertex 1');
     const fraction = new Mesh();
     fraction.addVertex(new Vertex([0.0, 0.0]).set('id', 7).set('cell', [2.5, 0]));
+    fraction.addVertex(new Vertex([1.0, 0.0]).set('id', 7).set('cell', [0, 0]));
+    fraction.addVertex(new Vertex([0.0, 1.0]).set('id', 7).set('cell', [0, 0]));
     rejects('2.5 for an i32', fraction, 'expected vec2<i32>, got 2.5');
     console.log('Vertex and Instance numbers take the shader types');
 });
@@ -484,7 +487,7 @@ await withModule('platforms.web.healthcheck.parity', async () => {
 
     // Builder methods return the receiver.
     const mesh = new Mesh();
-    mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]));
+    mesh.addVertices([Vertex.pbr([0.0, 0.5, 0.0]), Vertex.pbr([-0.5, -0.5, 0.0]), Vertex.pbr([0.5, -0.5, 0.0])]);
     const model = new Model(mesh, Material.pbr());
     const camera = Camera.perspective(1.047, 1.0, 0.1, 100.0);
     const built = new Scene().add(model).add(camera).ambient([0.1, 0.1, 0.1]).noDefaultLight();
@@ -921,7 +924,7 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) color: vec4<f32> }
     tinted.clearInstances();
     tinted.addInstance(new Instance().set('color', [0, 0, 1, 1]));
     const named = new Mesh();
-    named.addVertex(new Vertex([0, 0]).set('position', [5, 5]).set('color', [1, 1, 1, 1]));
+    named.addVertices([[-1, -1], [1, -1], [-1, 1]].map((corner) => new Vertex(corner).set('position', [5, 5]).set('color', [1, 1, 1, 1])));
     refuses('a position property', "property named 'position'", () => new Shader(source).addMesh(named));
     refuses('Shader.fromMesh of an empty mesh', 'Mesh has no vertices', () => Shader.fromMesh(new Mesh()));
     refuses('Shader.fromMesh of a mesh its shader refuses', "property named 'position'", () => Shader.fromMesh(named));

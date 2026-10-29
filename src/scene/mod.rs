@@ -98,30 +98,12 @@ impl SceneObject for Model {
 }
 
 impl Model {
-    /// Attaches the mesh to the material's shader, unless it already is, after declaring
-    /// the Model columns on a mesh with no instance layout. When the shader refuses the
-    /// mesh, the columns go again and the mesh is left as it was.
+    /// Attaches the mesh to the material's shader once. A mesh with no instance layout
+    /// takes the Model columns, `model_0` to `model_3`, which the per-Model transforms
+    /// fill at draw time, only when the shader accepts it, so a refusal changes nothing.
     fn attach_mesh(&self) -> Result<(), crate::PassError> {
-        // The columns come first, so the shader's mesh check (inside `add_mesh`) sees
-        // `model_0..3` at the instance slot and accepts the layout. The Mesh's `insts`
-        // stays empty; per-Model transforms ride the Pass's `model_entries` queue and
-        // the renderer builds the buffer at draw time.
-        let columns = self.mesh.object.declare_model_instance_schema();
-        let shader = &self.material.shader;
-        // Dedupe mesh-attach onto the shader. Without this the renderer
-        // would iterate the doubly-attached mesh and draw it twice.
-        let attached = !shader
-            .object
-            .meshes
-            .read()
-            .iter()
-            .any(|m| Arc::ptr_eq(m, &self.mesh.object));
-        if attached && let Err(error) = shader.add_mesh(&self.mesh) {
-            if columns {
-                self.mesh.object.forget_columns();
-            }
-            return Err(error.into());
-        }
+        let shader = &self.material.shader.object;
+        shader.add_model_mesh(self.mesh.object.clone())?;
         Ok(())
     }
 }
@@ -301,7 +283,7 @@ mod tests {
         // Model::clone is a shallow Arc-share; mutating one handle's transform
         // is visible on the clone (and on any Pass that already holds a live
         // entry — that's how batched instancing picks up updates between
-        // `Pass::add_model` and `Renderer::render`).
+        // `Pass::add` and `Renderer::render`).
         let m1 = Model::new(pbr_triangle_mesh(), pbr_material());
         let m2 = m1.clone();
         m1.translate([7.0, 0.0, 0.0]);
@@ -453,6 +435,68 @@ mod tests {
             assert!(drawn.is_ok(), "got {drawn:?}");
             assert!(again.is_ok(), "got {again:?}");
         });
+    }
+
+    // Story: a refused Model sets nothing on its mesh, so a Model that joins another
+    // pass while the refused one attaches keeps the columns it reads, and draws.
+    #[test]
+    fn a_refused_model_leaves_a_concurrent_model_its_columns() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8u32, 8u32])
+                .await
+                .expect("texture target");
+            let bare = Mesh::new();
+            bare.add_vertices([[-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0]]);
+            let columns = crate::Shader::new(
+                "@vertex fn vs_main(
+  @location(0) position: vec3<f32>,
+  @location(3) model_0: vec4<f32>,
+  @location(4) model_1: vec4<f32>,
+  @location(5) model_2: vec4<f32>,
+  @location(6) model_3: vec4<f32>,
+) -> @builtin(position) vec4<f32> {
+  return mat4x4<f32>(model_0, model_1, model_2, model_3) * vec4<f32>(position, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+            )
+            .expect("shader");
+            let other = crate::Pass::new("other");
+            let (pass, mesh) = (other.clone(), bare.clone());
+            crate::hooks::once("model attach", move || {
+                let model = Model::new(mesh, Material::custom(columns));
+                pass.add(&model).expect("the custom Model");
+            });
+
+            let pbr = crate::Pass::new("pbr");
+            let refused = pbr
+                .add(&Model::new(bare.clone(), Material::pbr()))
+                .map(drop);
+            let drawn = renderer.render(&other, &target);
+
+            assert!(refused.is_err(), "the bare mesh has no normals");
+            assert!(drawn.is_ok(), "the custom Model draws: {drawn:?}");
+            assert_eq!(
+                *bare.object.instance_schema.read(),
+                Some(crate::mesh::model_schema())
+            );
+        });
+    }
+
+    // Story: a Model the material refuses leaves its mesh with no instance layout.
+    #[test]
+    fn a_refused_model_sets_no_columns() {
+        let bare = Mesh::new();
+        bare.add_vertices([[-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0]]);
+
+        let pbr = crate::Pass::new("pbr");
+        let refused = pbr
+            .add(&Model::new(bare.clone(), Material::pbr()))
+            .map(drop);
+
+        assert!(refused.is_err(), "the bare mesh has no normals");
+        assert!(bare.object.instance_schema.read().is_none());
     }
 
     // Story: a shader joins a pass in one step with the mesh attach, so an attach

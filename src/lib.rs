@@ -102,6 +102,10 @@ mod macros;
 /// Top-level platform-specific initializers
 mod platforms;
 
+/// Points where a test holds an operation in the order a race takes
+#[cfg(test)]
+mod hooks;
+
 /// Stable kind branding across language bindings
 pub mod fc_kind;
 

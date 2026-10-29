@@ -967,9 +967,12 @@ def check_vertex_values(renderer):
     negative = Mesh()
     negative.add_vertex(Vertex([0.0, 0.0]).set("id", 7).set("cell", [0, 0]))
     negative.add_vertex(Vertex([1.0, 0.0]).set("id", -1).set("cell", [0, 0]))
+    negative.add_vertex(Vertex([0.0, 1.0]).set("id", 7).set("cell", [0, 0]))
     rejects("-1 for a u32", negative, "expected u32, got -1 at vertex 1")
     fraction = Mesh()
     fraction.add_vertex(Vertex([0.0, 0.0]).set("id", 7).set("cell", [2.5, 0]))
+    fraction.add_vertex(Vertex([1.0, 0.0]).set("id", 7).set("cell", [0, 0]))
+    fraction.add_vertex(Vertex([0.0, 1.0]).set("id", 7).set("cell", [0, 0]))
     rejects("2.5 for an i32", fraction, "expected vec2<i32>, got 2.5")
 
     for label, values in (("five numbers", [1, 2, 3, 4, 5]), ("no numbers", [])):
@@ -1020,7 +1023,7 @@ def check_mesh_inputs():
 
     # A dict instance sets its attributes in insertion order, so locations follow it.
     instanced = Mesh()
-    instanced.add_vertex([0.0, 0.0])
+    instanced.add_vertices(FULLSCREEN)
     instanced.add_instances([
         {"offset": [0.1, 0.2], "tint": [1.0, 0.0, 0.0, 1.0]},
         Instance().set("offset", [0.3, 0.4]).set("tint", [0.0, 1.0, 0.0, 1.0]),
@@ -1085,7 +1088,8 @@ def check_mesh_draws(renderer):
     tinted.clear_instances()
     tinted.add_instance({"color": [0.0, 0.0, 1.0, 1.0]})
     named = Mesh()
-    named.add_vertex(Vertex([0.0, 0.0]).set("position", [5.0, 5.0]).set("color", [1.0, 1.0, 1.0, 1.0]))
+    for corner in FULLSCREEN:
+        named.add_vertex(Vertex(corner).set("position", [5.0, 5.0]).set("color", [1.0, 1.0, 1.0, 1.0]))
     refuses("a position property", "property named 'position'", lambda: Shader(COLOR_SHADER).add_mesh(named))
     refuses("Shader.from_mesh of an empty mesh", "Mesh has no vertices", lambda: Shader.from_mesh(Mesh()))
     refuses("Shader.from_mesh of a mesh its shader refuses", "property named 'position'",

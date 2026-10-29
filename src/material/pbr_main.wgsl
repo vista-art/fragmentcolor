@@ -12,7 +12,7 @@
 //
 // Per-Model transform comes through the **per-instance** vertex attribute
 // stream — locations 3..6 carry the four columns of `mat4x4<f32>`, populated
-// by `Pass::add_model` into a Pass-owned instance buffer. Sharing a Shader
+// from the Models `Pass::add` queued into a Pass-owned instance buffer. Sharing a Shader
 // across many Models is therefore free (1 pipeline + 1 bind-group set);
 // each Model contributes its own row to the instance buffer.
 //

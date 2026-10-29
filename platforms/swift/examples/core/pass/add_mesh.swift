@@ -1,7 +1,11 @@
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertex([0.0, 0.0])
+try mesh.addVertices([
+    [-0.5, -0.5],
+    [0.5, -0.5],
+    [0.0, 0.5],
+])
 
 let shader = try Shader("""
   struct VOut { @builtin(position) pos: vec4<f32> };

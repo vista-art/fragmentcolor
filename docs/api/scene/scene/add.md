@@ -44,9 +44,11 @@ use fragmentcolor::{Camera, Light, Material, Mesh, Model, Renderer, Scene, Verte
 let renderer = Renderer::new();
 
 let mesh = Mesh::new();
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
-);
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
 let model = Model::new(mesh, Material::pbr());
 
 let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)?

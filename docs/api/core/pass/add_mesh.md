@@ -20,7 +20,11 @@ A Pass with no shaders has nothing to attach the mesh to and returns
 use fragmentcolor::{Pass, Shader, Mesh};
 
 let mesh = Mesh::new();
-mesh.add_vertex([0.0, 0.0]);
+mesh.add_vertices([
+    [-0.5, -0.5],
+    [0.5, -0.5],
+    [0.0, 0.5],
+]);
 
 let shader = Shader::new(r#"
   struct VOut { @builtin(position) pos: vec4<f32> };

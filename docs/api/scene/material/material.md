@@ -89,9 +89,11 @@ bundled implementation, use `Material::custom`.
 use fragmentcolor::{Material, Mesh, Model, Vertex};
 
 let mesh = Mesh::new();
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
-);
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
 
 let material = Material::pbr()
     .base_color([0.85, 0.2, 0.2, 1.0])

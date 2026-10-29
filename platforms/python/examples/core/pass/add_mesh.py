@@ -1,7 +1,11 @@
 from fragmentcolor import Pass, Shader, Mesh
 
 mesh = Mesh()
-mesh.add_vertex([0.0, 0.0])
+mesh.add_vertices([
+    [-0.5, -0.5],
+    [0.5, -0.5],
+    [0.0, 0.5],
+])
 
 shader = Shader("""
   struct VOut { @builtin(position) pos: vec4<f32> };

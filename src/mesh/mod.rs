@@ -31,7 +31,6 @@ pub(crate) mod builtins;
 mod platform;
 
 use crate::renderer::{RenderContext, RendererError, VertexLayouts, check_limit};
-use crate::shader::ShaderHash;
 use crate::{PassObject, Renderable, Shader, ShaderError};
 
 #[derive(Clone, Debug)]
@@ -134,33 +133,22 @@ impl Mesh {
 // -----------------------------
 // Renderable impl ( for Mesh quick-view)
 // -----------------------------
-/// The quick view draws the mesh with a shader built from its first vertex. `passes`
-/// can't return an error, so the shader keeps the error of a failed attach, and
-/// `render` returns it in place of the error for a shader with no mesh.
+/// The quick view draws the mesh with a shader built from its first vertex. That shader
+/// checks the mesh itself whenever it changed and records no reads on it, so the mesh's
+/// other shaders keep their own rules. `passes` can't return an error, so a mesh that
+/// fails the checks leaves the shader with no mesh, and `render` checks it again to say why.
 impl Renderable for Mesh {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        if self.pass.shaders.read().is_empty() {
-            if let Some(first) = self.object.verts.read().first().cloned() {
-                let (shader, attached) = match Shader::from_vertex(&first) {
-                    Ok(shader) => {
-                        let attached = shader.add_mesh(self);
-                        (shader, attached)
-                    }
-                    Err(error) => (Shader::default(), Err(error)),
-                };
-                shader.object.keep_refusal(attached);
-                self.pass.push_shader(shader.object.clone());
-            }
-        } else if let Some(shader) = self.pass.shaders.read().last().cloned() {
-            let is_attached = shader
-                .meshes
-                .read()
-                .iter()
-                .any(|mesh| Arc::ptr_eq(mesh, &self.object));
-
-            if !is_attached {
-                shader.keep_refusal(shader.add_mesh(self.object.clone()));
-            }
+        // The guard drops here, before the checks read the vertices again.
+        let first = self.object.verts.read().first().cloned();
+        if let Some(first) = first {
+            let shader = self
+                .pass
+                .ensure_shader(|| match Shader::from_vertex(&first) {
+                    Ok(shader) => shader.object,
+                    Err(_) => Shader::default().object,
+                });
+            shader.preview(&self.object);
         }
         vec![self.pass.clone()].into()
     }
@@ -221,11 +209,15 @@ pub(crate) struct MeshObject {
     pub(crate) verts: RwLock<Vec<Vertex>>, // original order
     pub(crate) insts: RwLock<Vec<Instance>>,
 
-    // Derived, packed bytes
-    pub(crate) packed_verts: RwLock<Vec<u8>>, // unique verts packed by schema
-    pub(crate) packed_insts: RwLock<Vec<u8>>, // instances packed by schema
+    /// What the last pack made. Only `ensure_packed` writes it.
+    packed: RwLock<Packed>,
+    /// Count the changes to each stream. A stream whose count moved past the one
+    /// its packed bytes hold packs again. A mutator bumps them after it changes the
+    /// data and before `generation`, so a pack that reads a count sees that change.
+    vertex_changes: AtomicU64,
+    instance_changes: AtomicU64,
 
-    pub(crate) indices: RwLock<Vec<u32>>, // indices referencing unique verts
+    pub(crate) indices: RwLock<Vec<u32>>, // the list set_indices gave
     pub(crate) indices_overridden: RwLock<bool>, // user supplied indices via set_indices
 
     // Schemas
@@ -235,14 +227,11 @@ pub(crate) struct MeshObject {
     /// The format the first shader to read each untyped attribute gave it.
     /// A leaf lock: never take another lock while holding this one.
     pub(crate) types: RwLock<AttributeTypes>,
-    /// The attributes each attached shader reads and their formats, by `ShaderObject::id`.
-    /// Every vertex and instance holds them all, and a shader's entry goes when it no longer
-    /// holds the mesh.
-    required: RwLock<HashMap<u64, AttributeTypes>>,
-
-    // Dirty flags
-    dirty_vertices: RwLock<bool>,
-    dirty_instances: RwLock<bool>,
+    /// What each attached shader reads and the layouts it drew the mesh with, by
+    /// `ShaderObject::id`. Every vertex and instance holds what any of them reads,
+    /// and a shader's entry goes when it no longer holds the mesh. Taken after the
+    /// shader's mesh list, which an attach holds from `declare` to the push.
+    required: RwLock<HashMap<u64, Attached>>,
 
     // Optional override for instance count (allows drawing without instance buffer)
     override_instances: RwLock<Option<u32>>,
@@ -263,8 +252,48 @@ pub(crate) struct MeshObject {
     cache: RwLock<Option<Cached>>,
     /// Counts the changes to the mesh. A cached result or layout from an older one is stale.
     generation: AtomicU64,
-    /// The vertex layouts each shader source reads from the mesh, with the generation they came from.
-    layouts: RwLock<HashMap<ShaderHash, (u64, VertexLayouts)>>,
+}
+
+/// The bytes and indices the last pack made, with the change counts they hold.
+#[derive(Debug, Default)]
+struct Packed {
+    /// The unique vertices in the mesh layout, or every vertex in order with `set_indices`.
+    verts: Vec<u8>,
+    insts: Vec<u8>,
+    /// The checked list the mesh draws: derived from the vertices, or the one `set_indices` gave.
+    indices: Vec<u32>,
+    /// The instances `insts` holds, those without properties included.
+    rows: usize,
+    /// The `vertex_changes` and `instance_changes` the bytes come from, `None` until packed.
+    vertices_at: Option<u64>,
+    instances_at: Option<u64>,
+}
+
+impl Packed {
+    /// Marks the streams `repacked` names unpacked, after an upload that failed to write them.
+    fn forget(&mut self, repacked: Repacked) {
+        if repacked.vertices {
+            self.vertices_at = None;
+        }
+        if repacked.instances {
+            self.instances_at = None;
+        }
+    }
+}
+
+/// The streams a pack packed again.
+#[derive(Clone, Copy, Debug, Default)]
+struct Repacked {
+    vertices: bool,
+    instances: bool,
+}
+
+/// What one attached shader reads from the mesh, and the
+/// vertex layouts it read, with the generation they came from.
+#[derive(Debug, Default)]
+struct Attached {
+    reads: AttributeTypes,
+    layouts: Option<(u64, VertexLayouts)>,
 }
 
 /// A `vertex_buffers` result and the context whose device holds its buffers, in one value,
@@ -322,10 +351,22 @@ impl AttributeTypes {
 
 /// What a shader's attach records on a mesh: the types it gives
 /// untyped attributes, and the attributes it reads, in the format it reads each.
+/// `columns` is set when the check assumed the Model columns as the instance layout.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Binding {
     pub(crate) types: AttributeTypes,
     pub(crate) read: AttributeTypes,
+    pub(crate) columns: bool,
+}
+
+impl Binding {
+    /// The same binding with no reads, for a shader that checks the mesh itself before it draws.
+    pub(crate) fn without_reads(self) -> Self {
+        Self {
+            read: AttributeTypes::default(),
+            ..self
+        }
+    }
 }
 
 /// A mesh's buffers on the device of one `Renderer`. Another `Renderer`
@@ -346,23 +387,21 @@ impl MeshObject {
         Self {
             verts: RwLock::new(Vec::new()),
             insts: RwLock::new(Vec::new()),
-            packed_verts: RwLock::new(Vec::new()),
-            packed_insts: RwLock::new(Vec::new()),
+            packed: RwLock::new(Packed::default()),
+            vertex_changes: AtomicU64::new(0),
+            instance_changes: AtomicU64::new(0),
             indices: RwLock::new(Vec::new()),
             indices_overridden: RwLock::new(false),
             vertex_schema: RwLock::new(None),
             instance_schema: RwLock::new(None),
             types: RwLock::new(AttributeTypes::default()),
             required: RwLock::new(HashMap::new()),
-            dirty_vertices: RwLock::new(false),
-            dirty_instances: RwLock::new(false),
             override_instances: RwLock::new(None),
             aabb_min: RwLock::new(glam::Vec3::splat(f32::INFINITY)),
             aabb_max: RwLock::new(glam::Vec3::splat(f32::NEG_INFINITY)),
             gpu: RwLock::new(None),
             cache: RwLock::new(None),
             generation: AtomicU64::new(0),
-            layouts: RwLock::new(HashMap::new()),
         }
     }
 
@@ -378,8 +417,7 @@ impl MeshObject {
         drop(lo);
         drop(hi);
         self.verts.write().push(v);
-        *self.dirty_vertices.write() = true;
-        self.invalidate_cache();
+        self.touch_vertices();
     }
 
     /// Local-space AABB of every Vertex added so far. Returns the sentinel
@@ -392,11 +430,10 @@ impl MeshObject {
 
     fn add_instance(&self, i: Instance) {
         self.insts.write().push(i);
-        *self.dirty_instances.write() = true;
         // Adding a real instance invalidates any prior set_instance_count override
         // (otherwise the GPU would draw past the actual buffer end).
         *self.override_instances.write() = None;
-        self.invalidate_cache();
+        self.touch_instances();
     }
 
     fn clear_instances(&self) {
@@ -410,24 +447,33 @@ impl MeshObject {
             *schema = None;
         }
         drop(schema);
-        *self.dirty_instances.write() = true;
-        // Reset to default state: no buffer, no count override, draws as a single instance.
+        // No buffer and no count override. A shader that reads instances refuses the empty list.
         *self.override_instances.write() = None;
-        self.invalidate_cache();
+        self.touch_instances();
     }
 
     fn set_indices(&self, indices: Vec<u32>) {
         *self.indices.write() = indices;
         *self.indices_overridden.write() = true;
         // Vertices need to be re-packed in insertion order (no dedup).
-        *self.dirty_vertices.write() = true;
-        self.invalidate_cache();
+        self.touch_vertices();
     }
 
     fn clear_indices(&self) {
         *self.indices_overridden.write() = false;
-        // Force ensure_packed to re-derive indices via the dedup path.
-        *self.dirty_vertices.write() = true;
+        // The next pack derives the indices again, deduplicating the vertices.
+        self.touch_vertices();
+    }
+
+    /// Marks the vertices changed, so the next upload packs and checks them again.
+    fn touch_vertices(&self) {
+        self.vertex_changes.fetch_add(1, Ordering::AcqRel);
+        self.invalidate_cache();
+    }
+
+    /// Marks the instances changed, so the next upload packs and checks them again.
+    fn touch_instances(&self) {
+        self.instance_changes.fetch_add(1, Ordering::AcqRel);
         self.invalidate_cache();
     }
 
@@ -437,54 +483,30 @@ impl MeshObject {
         self.generation.fetch_add(1, Ordering::AcqRel);
     }
 
-    /// The layouts `build` makes for the shader source `shader`, kept until the mesh changes.
+    /// The count of changes to the mesh, which moves on every one.
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation.load(Ordering::Acquire)
+    }
+
+    /// The layouts `build` makes for the attached shader `shader`, kept until the mesh
+    /// changes or the shader lets the mesh go. A shader that doesn't hold the mesh keeps none.
     pub(crate) fn fetch_layouts(
         &self,
-        shader: ShaderHash,
+        shader: u64,
         build: impl FnOnce() -> Result<VertexLayouts, RendererError>,
     ) -> Result<VertexLayouts, RendererError> {
-        let generation = self.generation.load(Ordering::Acquire);
-        if let Some((kept, layouts)) = self.layouts.read().get(&shader)
+        let generation = self.generation();
+        if let Some(attached) = self.required.read().get(&shader)
+            && let Some((kept, layouts)) = attached.layouts.as_ref()
             && *kept == generation
         {
             return Ok(layouts.clone());
         }
         let layouts = build()?;
-        self.layouts
-            .write()
-            .insert(shader, (generation, layouts.clone()));
+        if let Some(attached) = self.required.write().get_mut(&shader) {
+            attached.layouts = Some((generation, layouts.clone()));
+        }
         Ok(layouts)
-    }
-
-    /// Declare the per-Model instance vertex schema (four `vec4<f32>` columns
-    /// of a `mat4x4<f32>` at attribute names `model_0..model_3`) without
-    /// adding any instance data. `Pass::add_model` calls this on first use of
-    /// a Mesh so the pipeline created from this Mesh's Shader has a slot-1
-    /// instance VertexBufferLayout matching the PBR vertex shader's
-    /// `@location(3..6)` inputs. Idempotent: a no-op if the Mesh already has
-    /// an instance schema (set either by the user via `add_instance` or by a
-    /// prior `Pass::add_model` call). Returns whether it declared the columns.
-    pub(crate) fn declare_model_instance_schema(&self) -> bool {
-        let mut schema = self.instance_schema.write();
-        if schema.is_some() {
-            return false;
-        }
-        *schema = Some(model_schema());
-        drop(schema);
-        self.invalidate_cache();
-        true
-    }
-
-    /// Drops the Model columns a refused `Model` attach declared, so the mesh's
-    /// own instances set the instance layout again, packed or not.
-    pub(crate) fn forget_columns(&self) {
-        let mut schema = self.instance_schema.write();
-        if schema.as_ref() == Some(&model_schema()) {
-            *schema = None;
-            drop(schema);
-            *self.dirty_instances.write() = true;
-            self.invalidate_cache();
-        }
     }
 
     /// Whether only Models give this mesh instances:
@@ -498,9 +520,14 @@ impl MeshObject {
     /// which repack what they change, and the attributes it reads, which every
     /// vertex and instance added later must hold. The attach checked the ones the
     /// mesh holds now. Records nothing when another shader has typed one of them
-    /// another way meanwhile.
+    /// another way meanwhile. A binding that assumed the Model columns sets them
+    /// as the instance layout, unless an instance or a layout arrived since.
     pub(crate) fn declare(&self, shader: u64, binding: Binding) -> Result<(), ShaderError> {
-        let Binding { types: added, read } = binding;
+        let Binding {
+            types: added,
+            read,
+            columns,
+        } = binding;
         if !added.is_empty() {
             let mut types = self.types.write();
             check_conflicts(&types.vertex, &added.vertex)?;
@@ -508,142 +535,206 @@ impl MeshObject {
             types.vertex.extend(added.vertex.clone());
             types.instance.extend(added.instance.clone());
         }
-        {
-            let mut required = self.required.write();
-            let reads = required.entry(shader).or_default();
-            reads.vertex.extend(read.vertex);
-            reads.instance.extend(read.instance);
-        }
-        if added.is_empty() {
-            return Ok(());
-        }
+        let fresh = self.require(shader, read);
+        let vertices = fresh.vertices || !added.vertex.is_empty();
+        let mut instances = fresh.instances || !added.instance.is_empty();
         if !added.vertex.is_empty() {
             reset_schema(&self.vertex_schema, &added.vertex);
-            *self.dirty_vertices.write() = true;
         }
         if !added.instance.is_empty() {
             reset_schema(&self.instance_schema, &added.instance);
-            *self.dirty_instances.write() = true;
         }
-        self.invalidate_cache();
+        if columns {
+            instances |= self.assume_columns();
+        }
+        if vertices {
+            self.touch_vertices();
+        }
+        if instances {
+            self.touch_instances();
+        }
         Ok(())
     }
 
-    /// Drops what the shader `shader` reads, once that shader no longer holds the mesh.
-    /// A pack that failed for one of its attributes left the data dirty, so the next one runs again.
+    /// Adds `read` to what the shader `shader` reads. Returns, by stream,
+    /// whether it names an attribute no attached shader read before, which
+    /// the next pack checks every vertex or instance for.
+    fn require(&self, shader: u64, read: AttributeTypes) -> Repacked {
+        let mut required = self.required.write();
+        let unread = |name: &String, stream: fn(&AttributeTypes) -> &HashMap<String, _>| {
+            !required
+                .values()
+                .any(|attached| stream(&attached.reads).contains_key(name))
+        };
+        let fresh = Repacked {
+            vertices: read
+                .vertex
+                .keys()
+                .any(|name| unread(name, |reads| &reads.vertex)),
+            instances: read
+                .instance
+                .keys()
+                .any(|name| unread(name, |reads| &reads.instance)),
+        };
+        let attached = required.entry(shader).or_default();
+        attached.reads.vertex.extend(read.vertex);
+        attached.reads.instance.extend(read.instance);
+        fresh
+    }
+
+    /// Sets the Model columns as the instance layout of a mesh
+    /// with no instances and no layout, and returns whether it did.
+    fn assume_columns(&self) -> bool {
+        let insts = self.insts.read();
+        let mut schema = self.instance_schema.write();
+        if schema.is_some() || !insts.is_empty() {
+            return false;
+        }
+        *schema = Some(model_schema());
+        true
+    }
+
+    /// Drops what the shader `shader` reads and the layouts it kept,
+    /// once that shader no longer holds the mesh.
     pub(crate) fn detach(&self, shader: u64) {
         self.required.write().remove(&shader);
+    }
+
+    /// What the shader `shader` reads, while it holds the mesh.
+    #[cfg(test)]
+    pub(crate) fn reads_of(&self, shader: u64) -> Option<AttributeTypes> {
+        let required = self.required.read();
+        required.get(&shader).map(|attached| attached.reads.clone())
     }
 
     /// The attributes some attached shader reads, by stream, with their formats.
     fn read_required(&self) -> AttributeTypes {
         let required = self.required.read();
         let mut union = AttributeTypes::default();
-        for reads in required.values() {
-            union.vertex.extend(reads.vertex.clone());
-            union.instance.extend(reads.instance.clone());
+        for attached in required.values() {
+            union.vertex.extend(attached.reads.vertex.clone());
+            union.instance.extend(attached.reads.instance.clone());
         }
         union
     }
 
-    fn ensure_packed(&self) -> Result<(), MeshError> {
-        // The indices draw a triangle list, checked against the vertices on every repack:
-        // the ones `set_indices` gave, or one index per vertex. The vertices stay dirty
-        // until they fit, so each upload fails the same way.
-        if *self.dirty_vertices.read() {
-            match *self.indices_overridden.read() {
-                true => check_indices(&self.indices.read(), self.verts.read().len())?,
-                false => check_vertices(self.verts.read().len())?,
-            }
-        }
-        // Derive and store each missing schema under its own lock, so a `declare`
-        // either lands before the derive reads `types` or resets the stored schema.
-        {
-            let verts = self.verts.read();
-            let Some(first) = verts.first() else {
-                return Ok(()); // empty mesh; allowed
-            };
-            let mut schema = self.vertex_schema.write();
-            if schema.is_none() {
-                *schema = Some(derive_vertex_schema(first, &self.types.read().vertex));
-            }
-        }
-        {
-            let insts = self.insts.read();
-            let mut schema = self.instance_schema.write();
-            if schema.is_none()
-                && let Some(first) = insts.first()
-            {
-                *schema = Some(derive_instance_schema(first, &self.types.read().instance));
-            }
-        }
-
+    /// Packs each stream that changed since its last pack, and checks it as it packs:
+    /// the indices against the vertices, and each value against its field. A stream
+    /// that fails stays unpacked, so every upload fails the same way until it fits.
+    ///
+    /// It reads the change counts first, then what the shaders read, then the data.
+    /// A change that lands after a count was read moves that count again,
+    /// so the stream packs once more at the next upload.
+    fn ensure_packed(&self) -> Result<Repacked, MeshError> {
+        let mut packed = self.packed.write();
+        let vertices = self.vertex_changes.load(Ordering::Acquire);
+        let instances = self.instance_changes.load(Ordering::Acquire);
+        let repacked = Repacked {
+            vertices: packed.vertices_at != Some(vertices),
+            instances: packed.instances_at != Some(instances),
+        };
         let required = self.read_required();
-        // Pack vertices if dirty
-        if *self.dirty_vertices.read() {
-            let verts = self.verts.read();
-            let schema = self.vertex_schema.read();
-            let overridden = *self.indices_overridden.read();
-            let mut bytes = Vec::new();
-            if overridden {
-                // Pack every vertex in insertion order; preserve user-supplied indices.
-                for (index, v) in verts.iter().enumerate() {
-                    let Some(schema_ref) = schema.as_ref() else {
-                        return Err(MeshError::NoVertexSchema);
-                    };
-                    pack_vertex(&mut bytes, index, v, schema_ref, &required.vertex)?;
-                }
-            } else {
-                // Dedup by full equality and derive indices.
-                let mut map: HashMap<VertexKey, u32> = HashMap::new();
-                let mut unique: Vec<(usize, &Vertex)> = Vec::new();
-                let mut idx: Vec<u32> = Vec::new();
-                for (index, v) in verts.iter().enumerate() {
-                    let key = VertexKey::from(v);
-                    if let Some(&i) = map.get(&key) {
-                        idx.push(i);
-                    } else {
-                        let i = unique.len() as u32;
-                        map.insert(key, i);
-                        unique.push((index, v));
-                        idx.push(i);
-                    }
-                }
-                for (index, v) in unique {
-                    let Some(schema_ref) = schema.as_ref() else {
-                        return Err(MeshError::NoVertexSchema);
-                    };
-                    pack_vertex(&mut bytes, index, v, schema_ref, &required.vertex)?;
-                }
-                *self.indices.write() = idx;
-            }
-            *self.packed_verts.write() = bytes;
-            *self.dirty_vertices.write() = false;
+        if repacked.vertices {
+            self.pack_vertices(&mut packed, &required.vertex)?;
         }
-        // Pack instances if dirty
-        if *self.dirty_instances.read() {
-            let insts = self.insts.read();
-            let schema = self.instance_schema.read();
-            // An attribute a shader reads from the instances is in the instance layout,
-            // which comes from the first instance, or no instance can hold it.
-            let fields = schema.as_ref().map(|schema| schema.fields.as_slice());
-            check_layout(&required.instance, fields.unwrap_or_default(), insts.len())?;
-            if insts.is_empty() {
-                *self.packed_insts.write() = Vec::new();
-                *self.dirty_instances.write() = false;
-            } else {
-                let mut bytes = Vec::new();
-                for (index, ins) in insts.iter().enumerate() {
-                    let Some(schema_ref) = schema.as_ref() else {
-                        return Err(MeshError::NoInstanceSchema);
-                    };
-                    pack_instance(&mut bytes, index, ins, schema_ref, &required.instance)?;
-                }
-                *self.packed_insts.write() = bytes;
-                *self.dirty_instances.write() = false;
-            }
+        if repacked.instances {
+            self.pack_instances(&mut packed, &required.instance)?;
         }
+        // Only a pack that both streams passed counts, since only it reaches the GPU.
+        if repacked.vertices {
+            packed.vertices_at = Some(vertices);
+        }
+        if repacked.instances {
+            packed.instances_at = Some(instances);
+        }
+        Ok(repacked)
+    }
 
+    /// Packs the vertices and the list that draws them, under one hold of the vertices,
+    /// so the list it checks is the list it packs. A missing layout is derived under its
+    /// own lock, so a `declare` either lands before the derive reads `types` or resets it.
+    fn pack_vertices(
+        &self,
+        packed: &mut Packed,
+        required: &HashMap<String, wgpu::VertexFormat>,
+    ) -> Result<(), MeshError> {
+        #[cfg(test)]
+        crate::hooks::run("pack");
+        let verts = self.verts.read();
+        let given = match *self.indices_overridden.read() {
+            true => Some(self.indices.read().clone()),
+            false => None,
+        };
+        // The indices draw a triangle list: the ones `set_indices` gave, or one per vertex.
+        match &given {
+            Some(list) => check_indices(list, verts.len())?,
+            None => check_vertices(verts.len())?,
+        }
+        let mut schema = self.vertex_schema.write();
+        if schema.is_none()
+            && let Some(first) = verts.first()
+        {
+            *schema = Some(derive_vertex_schema(first, &self.types.read().vertex));
+        }
+        let mut bytes = Vec::new();
+        let indices = match given {
+            // Every vertex in insertion order, for the indices the user gave.
+            Some(list) => {
+                for (index, vertex) in verts.iter().enumerate() {
+                    let layout = schema.as_ref().ok_or(MeshError::NoVertexSchema)?;
+                    pack_vertex(&mut bytes, index, vertex, layout, required)?;
+                }
+                list
+            }
+            // Equal vertices pack once, and the derived indices point at them.
+            None => {
+                let mut seen: HashMap<VertexKey, u32> = HashMap::new();
+                let mut unique: Vec<(usize, &Vertex)> = Vec::new();
+                let mut list: Vec<u32> = Vec::with_capacity(verts.len());
+                for (index, vertex) in verts.iter().enumerate() {
+                    let next = count(unique.len())?;
+                    let slot = *seen.entry(VertexKey::from(vertex)).or_insert(next);
+                    if slot == next {
+                        unique.push((index, vertex));
+                    }
+                    list.push(slot);
+                }
+                for (index, vertex) in unique {
+                    let layout = schema.as_ref().ok_or(MeshError::NoVertexSchema)?;
+                    pack_vertex(&mut bytes, index, vertex, layout, required)?;
+                }
+                list
+            }
+        };
+        packed.verts = bytes;
+        packed.indices = indices;
+        Ok(())
+    }
+
+    /// Packs the instances and counts them, under one hold of the instance list.
+    /// An attribute a shader reads from the instances is in the instance layout,
+    /// which comes from the first instance or a Model's columns, or no instance holds it.
+    fn pack_instances(
+        &self,
+        packed: &mut Packed,
+        required: &HashMap<String, wgpu::VertexFormat>,
+    ) -> Result<(), MeshError> {
+        let insts = self.insts.read();
+        let mut schema = self.instance_schema.write();
+        if schema.is_none()
+            && let Some(first) = insts.first()
+        {
+            *schema = Some(derive_instance_schema(first, &self.types.read().instance));
+        }
+        let fields = schema.as_ref().map(|schema| schema.fields.as_slice());
+        check_layout(required, fields.unwrap_or_default(), insts.len())?;
+        let mut bytes = Vec::new();
+        for (index, instance) in insts.iter().enumerate() {
+            let layout = schema.as_ref().ok_or(MeshError::NoInstanceSchema)?;
+            pack_instance(&mut bytes, index, instance, layout, required)?;
+        }
+        packed.insts = bytes;
+        packed.rows = insts.len();
         Ok(())
     }
 
@@ -681,44 +772,38 @@ impl MeshObject {
         current.then(|| (cached.buffers.clone(), cached.counts))
     }
 
-    /// Packs and uploads the mesh into `gpu`. An upload that fails leaves each stream
-    /// it would have written dirty, so the next one packs and writes it again.
+    /// Packs and uploads the mesh into `gpu`. An upload that fails to write a stream
+    /// it packed leaves that stream unpacked, so the next one packs and writes it again.
     fn upload_vertex_buffers(
         &self,
         context: &RenderContext,
         gpu: &mut Option<GpuStreams>,
     ) -> Result<(VertexBuffers, DrawCounts), RendererError> {
-        let was_dirty_v = *self.dirty_vertices.read();
-        let was_dirty_i = *self.dirty_instances.read();
-        let uploaded = self.write_buffers(context, gpu, was_dirty_v, was_dirty_i);
+        let repacked = self.ensure_packed()?;
+        #[cfg(test)]
+        crate::hooks::run("packed");
+        let uploaded = self.write_buffers(context, gpu, repacked);
         if uploaded.is_err() {
-            if was_dirty_v {
-                *self.dirty_vertices.write() = true;
-            }
-            if was_dirty_i {
-                *self.dirty_instances.write() = true;
-            }
+            self.packed.write().forget(repacked);
         }
         uploaded
     }
 
+    /// Writes what the last pack made into `gpu`, the streams `repacked` names at least.
     fn write_buffers(
         &self,
         context: &RenderContext,
         gpu: &mut Option<GpuStreams>,
-        was_dirty_v: bool,
-        was_dirty_i: bool,
+        repacked: Repacked,
     ) -> Result<(VertexBuffers, DrawCounts), RendererError> {
         let (device, queue) = (&context.device, &context.queue);
 
-        self.ensure_packed()?;
-        let pv = self.packed_verts.read();
-        let pi = self.packed_insts.read();
-        let idx = self.indices.read();
+        let packed = self.packed.read();
+        let (pv, pi, idx) = (&packed.verts, &packed.insts, &packed.indices);
 
-        // Count rows from the list on every upload, so instances without properties
-        // count, and a list that shrinks into the old buffer draws its own length.
-        let instance_rows = match self.insts.read().len() {
+        // The rows come from the pack that made the bytes, so instances without
+        // properties count, and a list that shrinks into the old buffer draws its own length.
+        let instance_rows = match packed.rows {
             0 => None,
             rows => Some(count(rows)?),
         };
@@ -740,7 +825,7 @@ impl MeshObject {
         // another device can't draw here, so they give way to new ones.
         let mut need_new = match gpu.as_ref() {
             None => true,
-            Some(g) => g.owner != context.id || g.index_count != index_count || was_dirty_v,
+            Some(g) => g.owner != context.id || g.index_count != index_count || repacked.vertices,
         };
 
         if let Some(g) = gpu.as_ref() {
@@ -771,8 +856,8 @@ impl MeshObject {
                 usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
-            queue.write_buffer(&vertex_buffer, 0, &pv);
-            queue.write_buffer(&index_buffer, 0, bytemuck::cast_slice(&idx));
+            queue.write_buffer(&vertex_buffer, 0, pv);
+            queue.write_buffer(&index_buffer, 0, bytemuck::cast_slice(idx));
 
             let (instance_buffer, instance_bytes) = if !pi.is_empty() {
                 let needed = pi.len() as u64;
@@ -782,7 +867,7 @@ impl MeshObject {
                     usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                     mapped_at_creation: false,
                 });
-                queue.write_buffer(&buf, 0, &pi);
+                queue.write_buffer(&buf, 0, pi);
                 (Some(buf), needed)
             } else {
                 (None, 0)
@@ -796,21 +881,12 @@ impl MeshObject {
                 instance_buffer,
                 instance_buffer_capacity: instance_bytes,
             });
-        } else {
-            // Update contents if needed without recreating buffers
-            if let Some(g) = gpu.as_ref() {
-                if was_dirty_v {
-                    queue.write_buffer(&g.vertex_buffer, 0, &pv);
-                    *self.dirty_vertices.write() = false;
-                }
-                if was_dirty_i {
-                    if let Some(buf) = &g.instance_buffer {
-                        // Safe to write since capacity check passed above
-                        queue.write_buffer(buf, 0, &pi);
-                    }
-                    *self.dirty_instances.write() = false;
-                }
-            }
+        } else if repacked.instances
+            && let Some(buffer) = gpu.as_ref().and_then(|g| g.instance_buffer.as_ref())
+        {
+            // The vertices didn't change, or the buffers would be new. The instances
+            // fit the buffer they have, as the capacity check above found.
+            queue.write_buffer(buffer, 0, pi);
         }
 
         let Some(g) = gpu.as_ref() else {
@@ -897,7 +973,7 @@ impl MeshObject {
 }
 
 /// The instance layout of a `Model`: the four `vec4<f32>` columns of its transform.
-fn model_schema() -> VertexSchema {
+pub(crate) fn model_schema() -> VertexSchema {
     let fields = ["model_0", "model_1", "model_2", "model_3"]
         .into_iter()
         .map(|name| Field::new(name, wgpu::VertexFormat::Float32x4))
@@ -1108,6 +1184,17 @@ fn count(length: usize) -> Result<u32, MeshError> {
 mod tests {
     use super::*;
 
+    /// The streams the next upload packs again.
+    fn stale(mesh: &Mesh) -> Repacked {
+        let packed = mesh.object.packed.read();
+        Repacked {
+            vertices: packed.vertices_at
+                != Some(mesh.object.vertex_changes.load(Ordering::Acquire)),
+            instances: packed.instances_at
+                != Some(mesh.object.instance_changes.load(Ordering::Acquire)),
+        }
+    }
+
     #[test]
     fn derives_schema_and_stride_for_vertex() {
         let v = Vertex::new([0.1f32, 0.2f32])
@@ -1229,7 +1316,8 @@ mod tests {
         });
     }
 
-    // Story: the mesh builds a shader's layouts once and keeps them until it changes.
+    // Story: the mesh builds a shader's layouts once and keeps them until it
+    // changes, and a shader that lets the mesh go leaves no layouts behind.
     #[test]
     fn layouts_stay_until_the_mesh_changes() {
         pollster::block_on(async move {
@@ -1247,15 +1335,189 @@ mod tests {
             mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
             shader.add_mesh(&mesh).expect("attach");
             renderer.render(&shader, &target).expect("render");
-            let hash = shader.object.hash;
+            let id = shader.object.id;
             let refuse = || Err(RendererError::Error("rebuilt".into()));
 
-            let kept = mesh.object.fetch_layouts(hash, refuse);
+            let kept = mesh.object.fetch_layouts(id, refuse);
             mesh.add_vertices([[0.0, 0.0], [0.1, 0.0], [0.0, 0.1]]);
-            let changed = mesh.object.fetch_layouts(hash, refuse);
+            let changed = mesh.object.fetch_layouts(id, refuse);
+            renderer.render(&shader, &target).expect("render again");
+            shader.remove_mesh(&mesh);
+            let entries = mesh.object.required.read().len();
+            let released = mesh.object.fetch_layouts(id, refuse);
 
             assert!(kept.is_ok(), "a still mesh keeps its layouts: {kept:?}");
             assert!(changed.is_err(), "a changed mesh builds them again");
+            assert_eq!(entries, 0, "a shader that let go keeps no entry");
+            assert!(released.is_err(), "and no layouts");
+        });
+    }
+
+    // Story: the quick view checks the mesh before each draw instead of recording
+    // what it reads, so a shader of the user's own reads only what it declares.
+    #[test]
+    fn the_quick_view_leaves_other_shaders_their_rules() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let mesh = Mesh::new();
+            let corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+            mesh.add_vertices(corners.map(|corner| Vertex::new(corner).set("color", [1.0; 4])));
+            renderer.render(&mesh, &target).expect("quick view");
+            let own = crate::Shader::new(
+                "@vertex fn vs_main(@location(0) p: vec2<f32>) -> @builtin(position) vec4<f32> { return vec4<f32>(p, 0.0, 1.0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+            )
+            .expect("shader");
+            own.add_mesh(&mesh).expect("attach");
+
+            mesh.add_vertices(corners.map(Vertex::new));
+            let drawn = renderer.render(&own, &target);
+            let previewed = renderer.render(&mesh, &target);
+
+            assert!(drawn.is_ok(), "the own shader reads no color: {drawn:?}");
+            let error = previewed
+                .expect_err("the quick view reads color")
+                .to_string();
+            assert!(error.contains("color"), "{error}");
+            assert!(error.contains("vertex 3"), "{error}");
+        });
+    }
+
+    // Story: every render of a mesh the quick view refuses says why,
+    // concurrent ones included, rather than the error for a shader with no mesh.
+    #[test]
+    fn every_render_of_a_refused_quick_view_says_why() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let mesh = Mesh::new();
+            mesh.add_vertices(
+                [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]
+                    .map(|corner| Vertex::new(corner).set("position", [5.0, 5.0])),
+            );
+            mesh.passes();
+            let pass = crate::Pass {
+                object: mesh.pass.clone(),
+            };
+
+            for render in ["first", "second"] {
+                let error = renderer.render(&pass, &target).expect_err(render);
+                let text = error.to_string();
+                assert!(
+                    text.contains("property named 'position'"),
+                    "{render}: {text}"
+                );
+            }
+        });
+    }
+
+    // Story: the quick view reads the first vertex in a statement of its own,
+    // so it holds no vertex guard while the shader checks the vertices again.
+    // Under a fair lock, a writer waiting between the two reads would hang both.
+    #[test]
+    fn the_quick_view_holds_no_vertex_guard_while_it_attaches() {
+        let mesh = Mesh::new();
+        mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
+        let object = mesh.object.clone();
+        let free = std::rc::Rc::new(std::cell::Cell::new(false));
+        let seen = free.clone();
+        crate::hooks::once("preview", move || {
+            seen.set(object.verts.try_write().is_some());
+        });
+
+        mesh.passes();
+
+        assert!(
+            free.get(),
+            "the vertices were locked while the mesh attached"
+        );
+    }
+
+    // Story: a vertex or an index that arrives while an upload runs is checked by
+    // the upload that packs it, so a partial triangle never reaches the GPU.
+    #[test]
+    fn a_change_during_the_upload_is_checked() {
+        pollster::block_on(async move {
+            let instance = crate::renderer::platform::all::create_instance().await;
+            let adapter = crate::renderer::platform::all::request_adapter(&instance, None)
+                .await
+                .expect("adapter");
+            let (device, queue) = crate::renderer::platform::all::request_device(&adapter)
+                .await
+                .expect("device");
+            let context = RenderContext::new(device, queue);
+
+            let derived = Mesh::new();
+            derived.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
+            let late = derived.clone();
+            crate::hooks::once("pack", move || late.add_vertex([0.5, 0.5]));
+            let error = derived
+                .object
+                .vertex_buffers(&context)
+                .expect_err("4 vertices");
+            assert_eq!(
+                error.to_string(),
+                RendererError::from(MeshError::VertexCount(4)).to_string(),
+                "derived indices"
+            );
+
+            let given = Mesh::new();
+            given.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
+            given.set_indices([0, 1, 2]);
+            let late = given.clone();
+            crate::hooks::once("pack", move || late.set_indices([0, 1, 2, 0]));
+            let error = given
+                .object
+                .vertex_buffers(&context)
+                .expect_err("4 indices");
+            assert_eq!(
+                error.to_string(),
+                RendererError::from(MeshError::IndexCount(4)).to_string(),
+                "given indices"
+            );
+        });
+    }
+
+    // Story: an instance added after the pack and before the write stays unpacked,
+    // and the upload draws the rows its own pack made.
+    #[test]
+    fn an_instance_added_during_the_upload_packs_next_time() {
+        pollster::block_on(async move {
+            let instance = crate::renderer::platform::all::create_instance().await;
+            let adapter = crate::renderer::platform::all::request_adapter(&instance, None)
+                .await
+                .expect("adapter");
+            let (device, queue) = crate::renderer::platform::all::request_device(&adapter)
+                .await
+                .expect("device");
+            let context = RenderContext::new(device, queue);
+            let mesh = Mesh::new();
+            mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
+            let tint = || Instance::new().set("tint", [1.0; 4]);
+            mesh.add_instances([tint(), tint(), tint()]);
+            mesh.object.vertex_buffers(&context).expect("first upload");
+            mesh.clear_instances();
+            mesh.add_instances([tint(), tint()]);
+
+            let late = mesh.clone();
+            crate::hooks::once("packed", move || late.add_instance(tint()));
+            let (_, during) = mesh.object.vertex_buffers(&context).expect("second upload");
+            let (_, after) = mesh.object.vertex_buffers(&context).expect("third upload");
+
+            assert_eq!(during.instance_rows, Some(2), "the rows the pack made");
+            assert_eq!(
+                after.instance_rows,
+                Some(3),
+                "the late instance packs next time"
+            );
+            assert_eq!(mesh.object.packed.read().rows, 3);
         });
     }
 
@@ -1301,7 +1563,7 @@ mod tests {
         let field = |mesh: &Mesh| -> (wgpu::VertexFormat, Vec<u8>, Vec<u8>) {
             mesh.object.ensure_packed().expect("pack");
             let schema = mesh.object.vertex_schema.read().clone().expect("schema");
-            let bytes = mesh.object.packed_verts.read().clone();
+            let bytes = mesh.object.packed.read().verts.clone();
             let stride = schema.stride as usize;
             (
                 schema.fields[1].fmt,
@@ -1325,7 +1587,7 @@ mod tests {
         };
         mesh.object.declare(1, binding).expect("declare");
         assert!(mesh.object.vertex_schema.read().is_none());
-        assert!(*mesh.object.dirty_vertices.read());
+        assert!(stale(&mesh).vertices);
 
         let (format, first, second) = field(&mesh);
         assert_eq!(format, wgpu::VertexFormat::Uint32);
@@ -1392,7 +1654,7 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
             second.add_mesh(&mesh).expect("second attach");
             first.validate_mesh(&mesh).expect("validate again");
             assert!(cached(&mesh));
-            assert!(!*mesh.object.dirty_vertices.read());
+            assert!(!stale(&mesh).vertices);
         });
     }
 
@@ -1408,8 +1670,8 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
         // Force packing and inspect internals
         mesh.object.ensure_packed().expect("pack");
         let stride = mesh.object.vertex_schema.read().as_ref().unwrap().stride;
-        let pv = mesh.object.packed_verts.read().clone();
-        let idx = mesh.object.indices.read().clone();
+        let pv = mesh.object.packed.read().verts.clone();
+        let idx = mesh.object.packed.read().indices.clone();
         // Unique verts should be a, b, c => 3 * stride bytes
         assert_eq!(pv.len() as u64, 3 * stride);
         // Indices mirror [a,b,c,a,c,b] => [0,1,2,0,2,1]
@@ -1490,8 +1752,8 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
 
         mesh.object.ensure_packed().expect("pack");
         let stride = mesh.object.vertex_schema.read().as_ref().unwrap().stride;
-        let pv = mesh.object.packed_verts.read().clone();
-        let idx = mesh.object.indices.read().clone();
+        let pv = mesh.object.packed.read().verts.clone();
+        let idx = mesh.object.packed.read().indices.clone();
         // No dedup: 3 vertices worth of bytes, and indices preserved verbatim.
         assert_eq!(pv.len() as u64, 3 * stride);
         assert_eq!(idx, vec![0, 1, 2]);
@@ -1509,14 +1771,14 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
         mesh.set_indices([0u32, 1, 2]);
         mesh.object.ensure_packed().expect("pack override");
         let stride = mesh.object.vertex_schema.read().as_ref().unwrap().stride;
-        assert_eq!(mesh.object.packed_verts.read().len() as u64, 3 * stride);
-        assert_eq!(*mesh.object.indices.read(), vec![0, 1, 2]);
+        assert_eq!(mesh.object.packed.read().verts.len() as u64, 3 * stride);
+        assert_eq!(mesh.object.packed.read().indices, vec![0, 1, 2]);
 
         // Clear and re-pack: dedup should collapse `a` and produce derived indices.
         mesh.clear_indices();
         mesh.object.ensure_packed().expect("pack auto");
-        assert_eq!(mesh.object.packed_verts.read().len() as u64, 2 * stride);
-        assert_eq!(*mesh.object.indices.read(), vec![0, 1, 0]);
+        assert_eq!(mesh.object.packed.read().verts.len() as u64, 2 * stride);
+        assert_eq!(mesh.object.packed.read().indices, vec![0, 1, 0]);
     }
 
     // Story: a triangle drawn from explicit indices renders without error.

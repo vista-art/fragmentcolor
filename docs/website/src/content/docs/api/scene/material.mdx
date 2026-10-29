@@ -106,9 +106,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Vertex};
 
 let mesh = Mesh::new();
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
-);
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
 
 let material = Material::pbr()
     .base_color([0.85, 0.2, 0.2, 1.0])
@@ -121,7 +123,7 @@ let _model = model;
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 16-18}"
+lang="rust" meta="collapse={1-1, 18-20}"
 />
 
 </TabItem>
@@ -132,7 +134,7 @@ code={`
 import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
+mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]), Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]), ]);
 
 const material = Material.pbr().baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05]);
 
@@ -149,9 +151,11 @@ code={`
 from fragmentcolor import Material, Mesh, Model, Vertex
 
 mesh = Mesh()
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-)
+    Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+    Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+])
 
 material = Material.pbr().base_color([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
 
@@ -168,9 +172,11 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0])
-)
+try mesh.addVertices([
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+    try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+    try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+])
 
 let material = try Material.pbr().baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
 
@@ -187,7 +193,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
 val material = Material.pbr().baseColor(listOf(0.85f, 0.2f, 0.2f, 1.0f)).metallic(0.0f).roughness(0.4f).emissive(listOf(0.0f, 0.0f, 0.05f))
 
@@ -2535,11 +2541,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, TextureSlot, Vertex};
 
 let mesh = Mesh::new();
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex::pbr([0.0, 0.5, 0.0])
         .set(Vertex::UV0, [0.5, 1.0])
         .set(Vertex::UV1, [0.25, 0.75]),
-);
+    Vertex::pbr([-0.5, -0.5, 0.0])
+        .set(Vertex::UV0, [0.0, 0.0])
+        .set(Vertex::UV1, [0.0, 0.5]),
+    Vertex::pbr([0.5, -0.5, 0.0])
+        .set(Vertex::UV0, [1.0, 0.0])
+        .set(Vertex::UV1, [0.5, 0.5]),
+]);
 
 // The occlusion map follows the second UV layout.
 let material = Material::pbr().texture_uv(TextureSlot::Occlusion, 1)?;
@@ -2547,7 +2559,7 @@ let _ = (mesh, material);
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 13-15}"
+lang="rust" meta="collapse={1-1, 19-21}"
 />
 
 </TabItem>
@@ -2558,7 +2570,7 @@ code={`
 import { Material, Mesh, TextureSlot, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]) .set(Vertex.UV0, [0.5, 1.0]) .set(Vertex.UV1, [0.25, 0.75]), );
+mesh.addVertices([ Vertex.pbr([0.0, 0.5, 0.0]) .set(Vertex.UV0, [0.5, 1.0]) .set(Vertex.UV1, [0.25, 0.75]), Vertex.pbr([-0.5, -0.5, 0.0]) .set(Vertex.UV0, [0.0, 0.0]) .set(Vertex.UV1, [0.0, 0.5]), Vertex.pbr([0.5, -0.5, 0.0]) .set(Vertex.UV0, [1.0, 0.0]) .set(Vertex.UV1, [0.5, 0.5]), ]);
 
 // The occlusion map follows the second UV layout.
 const material = Material.pbr().textureUv(TextureSlot.Occlusion, 1);
@@ -2574,9 +2586,11 @@ code={`
 from fragmentcolor import Material, Mesh, TextureSlot, Vertex
 
 mesh = Mesh()
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]).set(Vertex.UV1, [0.25, 0.75]),
-)
+    Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]).set(Vertex.UV1, [0.0, 0.5]),
+    Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]).set(Vertex.UV1, [0.5, 0.5]),
+])
 
 # The occlusion map follows the second UV layout.
 material = Material.pbr().texture_uv(TextureSlot.Occlusion, 1)
@@ -2592,9 +2606,11 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]).set(Vertex.UV1, [0.25, 0.75])
-)
+try mesh.addVertices([
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]).set(Vertex.UV1, [0.25, 0.75]),
+    try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]).set(Vertex.UV1, [0.0, 0.5]),
+    try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]).set(Vertex.UV1, [0.5, 0.5]),
+])
 
 // The occlusion map follows the second UV layout.
 let material = try Material.pbr().textureUv(TextureSlot.occlusion, 1)
@@ -2610,7 +2626,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)).set(Vertex.UV1, listOf(0.25f, 0.75f)), )
+mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)).set(Vertex.UV1, listOf(0.25f, 0.75f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)).set(Vertex.UV1, listOf(0.0f, 0.5f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f)).set(Vertex.UV1, listOf(0.5f, 0.5f))))
 
 // The occlusion map follows the second UV layout.
 val material = Material.pbr().textureUv(TextureSlot.OCCLUSION, 1u)

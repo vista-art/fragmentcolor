@@ -124,19 +124,9 @@ impl ShaderObject {
         let Some(roots) = self.light_roots.as_ref() else {
             return attach();
         };
-        let cap = light_cap().min(roots.capacity());
         let mut lights = self.lights.write();
-        let fresh = incoming
-            .iter()
-            .filter(|light| !lights.ids.contains(&light.id))
-            .count();
-        let over = |lights: &ShaderLights| (lights.list.len() + fresh) as u64 > u64::from(cap);
-        if over(&lights) {
-            lights.prune();
-            if over(&lights) {
-                return Err(PassError::LightCapReached { cap });
-            }
-        }
+        let ids: Vec<u64> = incoming.iter().map(|light| light.id).collect();
+        check_room(&mut lights, roots.capacity(), &ids)?;
         attach()?;
         let mut added = false;
         for light in incoming {
@@ -148,30 +138,64 @@ impl ShaderObject {
         }
         Ok(())
     }
+}
 
-    /// Checks that the lights `incoming` names, each named once, fit next to
-    /// the ones this shader holds.
-    pub(crate) fn check_light_room(&self, incoming: &[u64]) -> Result<(), PassError> {
-        let Some(roots) = self.light_roots.as_ref() else {
-            return Ok(());
-        };
-        let cap = light_cap().min(roots.capacity());
-        let mut lights = self.lights.write();
-        let fresh = incoming
-            .iter()
-            .filter(|id| !lights.ids.contains(id))
-            .count();
-        let over = |lights: &ShaderLights| (lights.list.len() + fresh) as u64 > u64::from(cap);
-        // The list counts dropped lights until a prune, so count exactly only when it looks full.
-        if over(&lights) {
-            lights.prune();
-            if over(&lights) {
-                return Err(PassError::LightCapReached { cap });
-            }
-        }
-        Ok(())
+/// Hands `light` to every shader of `shaders` with light roots, or to none when one is full.
+/// It holds every one of their light lists from the check to the push, taken in id order,
+/// so no light lands between the two, and two passes that share shaders can't deadlock.
+pub(crate) fn share_light(
+    shaders: &[Arc<ShaderObject>],
+    light: &Arc<LightObject>,
+) -> Result<(), PassError> {
+    let mut lit: Vec<&Arc<ShaderObject>> = shaders
+        .iter()
+        .filter(|shader| shader.light_roots.is_some())
+        .collect();
+    lit.sort_by_key(|shader| shader.id);
+    lit.dedup_by_key(|shader| shader.id);
+    let mut held = Vec::with_capacity(lit.len());
+    for shader in lit {
+        let capacity = shader
+            .light_roots
+            .as_ref()
+            .map_or(u32::MAX, |roots| roots.capacity());
+        let mut lights = shader.lights.write();
+        check_room(&mut lights, capacity, &[light.id])?;
+        held.push(lights);
     }
+    #[cfg(test)]
+    crate::hooks::run("light checked");
+    let mut added = false;
+    for lights in held.iter_mut() {
+        added |= lights.push(light);
+    }
+    drop(held);
+    if added {
+        bump_epoch();
+    }
+    Ok(())
+}
 
+/// Checks that the lights `incoming` names, each named once, fit next to the ones in
+/// `lights`, a list of a shader whose light roots hold `capacity` lights.
+fn check_room(lights: &mut ShaderLights, capacity: u32, incoming: &[u64]) -> Result<(), PassError> {
+    let cap = light_cap().min(capacity);
+    let fresh = incoming
+        .iter()
+        .filter(|id| !lights.ids.contains(id))
+        .count();
+    let over = |lights: &ShaderLights| (lights.list.len() + fresh) as u64 > u64::from(cap);
+    // The list counts dropped lights until a prune, so count exactly only when it looks full.
+    if over(lights) {
+        lights.prune();
+        if over(lights) {
+            return Err(PassError::LightCapReached { cap });
+        }
+    }
+    Ok(())
+}
+
+impl ShaderObject {
     /// The hash and count of the live lights, taken once per light epoch.
     pub(crate) fn light_summary(&self) -> LightSummary {
         // Read the epoch first, so a change that lands meanwhile moves it past the stored one.

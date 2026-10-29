@@ -4,9 +4,11 @@ renderer = Renderer()
 target = renderer.create_texture_target([64, 64])
 
 mesh = Mesh()
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-)
+    Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+    Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+])
 
 scene = Scene()
 # A warm dusk ambient. It applies to every Material added below.

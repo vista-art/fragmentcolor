@@ -3,9 +3,11 @@ from fragmentcolor import Material, Mesh, Model, Pass, Renderer, Scene, Vertex
 renderer = Renderer()
 
 mesh = Mesh()
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-)
+    Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+    Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+])
 model = Model(mesh, Material.pbr())
 
 # A backdrop pass that clears to a soft blue before the scene's main draw.

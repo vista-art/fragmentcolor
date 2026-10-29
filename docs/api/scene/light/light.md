@@ -135,9 +135,11 @@ use fragmentcolor::{Light, Material, Mesh, Model, Pass, Renderer, Vertex};
 
 let renderer = Renderer::new();
 let mesh = Mesh::new();
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
-);
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
 let model = Model::new(mesh, Material::pbr());
 
 let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
