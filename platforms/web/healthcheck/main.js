@@ -600,12 +600,51 @@ await withModule('platforms.web.healthcheck.parity', async () => {
 
     // A region or viewport with a width or height of 0 throws an InvalidInputError, as Python
     // raises, and an argument of the wrong type throws a TypeError, as Python raises one.
+    // The release build the npm package ships checks no argument types in its glue, so each
+    // reader checks its own, and a promise rejects with the same names a call throws.
     throws('new ScreenRegion([0, 0], [0, 4])', () => new fc.ScreenRegion([0, 0], [0, 4]));
+    const writable = await renderer.createTexture(new Uint8Array(16), [2, 2]);
+    const sized = await renderer.createTextureTarget([4, 4]);
     for (const [label, run, name] of [
       ['new ScreenRegion([0, 0], [0, 4])', () => new fc.ScreenRegion([0, 0], [0, 4]), 'InvalidInputError'],
+      ['new ScreenRegion([0, 0], [1.5, 2])', () => new fc.ScreenRegion([0, 0], [1.5, 2]), 'InvalidInputError'],
+      ['Pass.setViewport([-1, 4])', () => first.setViewport([-1, 4]), 'InvalidInputError'],
+      ['Pass.setViewport([1, 2, 3, 4, 5])', () => first.setViewport([1, 2, 3, 4, 5]), 'InvalidInputError'],
+      ['Pass.setComputeDispatch(-1, 1, 1)', () => first.setComputeDispatch(-1, 1, 1), 'InvalidInputError'],
+      ['createTexture([1, 300], [1, 2])', () => renderer.createTexture([1, 300], [1, 2]), 'InvalidInputError'],
       ["Pass.add('nope')", () => first.add('nope'), 'TypeError'],
+      ["Pass.addShader('nope')", () => first.addShader('nope'), 'TypeError'],
+      ['Scene.addPass(1)', () => new fc.Scene().addPass(1), 'TypeError'],
+      ['Material.custom({})', () => Material.custom({}), 'TypeError'],
+      ['new Model(mesh, 42)', () => new Model(mesh, 42), 'TypeError'],
+      ['new Shader(42)', () => new Shader(42), 'TypeError'],
+      ['Shader.fetch(42)', () => Shader.fetch(42), 'TypeError'],
+      ["Shader.set('k', 'red')", () => Shader.default().set('k', 'red'), 'TypeError'],
+      ["Shader.set('k', null)", () => Shader.default().set('k', null), 'TypeError'],
+      ["Shader.set('k', mesh)", () => Shader.default().set('k', mesh), 'TypeError'],
+      ['Shader.set(42, 1)', () => Shader.default().set(42, 1), 'TypeError'],
+      ["Pass.setViewport('full')", () => first.setViewport('full'), 'TypeError'],
+      ["Pass.setViewport(['a', 0, 4, 4])", () => first.setViewport(['a', 0, 4, 4]), 'TypeError'],
+      ["Pass.setComputeDispatch('a', 1, 1)", () => first.setComputeDispatch('a', 1, 1), 'TypeError'],
+      ['new Pass(42)', () => new Pass(42), 'TypeError'],
+      ["new Size('a', 2)", () => new fc.Size('a', 2), 'TypeError'],
+      ["TextureTarget.resize('big')", () => sized.resize('big'), 'TypeError'],
+      ["createTextureTarget(['a', 4])", () => renderer.createTextureTarget(['a', 4]), 'TypeError'],
+      ['createTexture(42)', () => renderer.createTexture(42), 'TypeError'],
+      ["createTexture(['a'], [1, 1])", () => renderer.createTexture(['a'], [1, 1]), 'TypeError'],
+      ["Texture.write('abc')", () => writable.write('abc'), 'TypeError'],
+      ["Texture.writeRegion(bytes, 'nope')", () => writable.writeRegion(new Uint8Array(4), 'nope'), 'TypeError'],
+      ["Texture.writeRegion(bytes, ['a', 1])", () => writable.writeRegion(new Uint8Array(4), ['a', 1]), 'TypeError'],
+      ["Texture.resize({ width: 'a', height: 2 })", () => writable.resize({ width: 'a', height: 2 }), 'TypeError'],
+      ["readTexture('x')", () => renderer.readTexture('x'), 'TypeError'],
+      ["unregisterTexture('a')", () => renderer.unregisterTexture('a'), 'TypeError'],
+      ['Material.metallic(null)', () => Material.pbr().metallic(null), 'TypeError'],
+      ["Model.setVisible('yes')", () => model.setVisible('yes'), 'TypeError'],
+      ["Camera.setAspect('wide')", () => camera.setAspect('wide'), 'TypeError'],
+      ["Light.setIntensity('x')", () => Light.point([0, 1, 0], [1, 1, 1]).setIntensity('x'), 'TypeError'],
+      ['Mesh.addVertex with 4 parts', () => new Mesh().addVertex([[0, 0, 0], [0, 0], [1, 1, 1, 1], [0]]), 'TypeError'],
     ]) {
-      try { run(); } catch (e) {
+      try { await run(); } catch (e) {
         if (e.name !== name) fail(`${label} threw ${e.name}, not ${name}`);
         if (name === 'TypeError' && !(e instanceof TypeError)) fail(`${label} threw no TypeError`);
         continue;
@@ -1167,11 +1206,12 @@ await withModule('platforms.web.healthcheck.late_errors', async () => {
     const target = await renderer.createTextureTarget([8, 8]);
     const fail = (message) => { throw new Error(message); };
     const pause = () => new Promise((resolve) => setTimeout(resolve, 10));
-    // Checks that `run` throws the frame's error as an Error, with the text render throws
-    // and the error's kind and label as properties.
+    // Checks that `run` throws the frame's error as an Error named DeviceError, with the text
+    // render throws and the error's kind and label as properties.
     const throwsLate = async (label, run) => {
       try { await run(); } catch (e) {
         if (!(e instanceof Error)) fail(`${label} threw a ${typeof e}, not an Error`);
+        if (e.name !== 'DeviceError') fail(`${label} threw ${e.name}, not DeviceError`);
         if (!e.message.startsWith('Device error (validation)')) fail(`${label} threw: ${e.message}`);
         if (e.kind !== ErrorKind.Validation) fail(`${label} threw kind ${e.kind}`);
         if (typeof e.label !== 'string' || !e.message.includes(`'${e.label}'`)) {

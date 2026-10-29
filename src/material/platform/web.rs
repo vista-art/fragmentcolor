@@ -6,7 +6,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::Shader;
 use crate::material::{AlphaMode, Material, TextureSlot};
-use crate::platforms::web::read_vector;
+use crate::platforms::web::{read_count, read_flag, read_float, read_vector};
 use crate::texture::read_texture_input;
 
 #[wasm_bindgen]
@@ -41,26 +41,26 @@ impl Material {
 
     #[wasm_bindgen(js_name = "metallic")]
     #[lsp_doc("docs/api/scene/material/metallic.md")]
-    pub fn metallic_js(&self, value: f32) -> Self {
-        self.metallic(value)
+    pub fn metallic_js(&self, #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue) -> Result<Material, WebError> {
+        Ok(self.metallic(read_float(value, "Material.metallic: value")?))
     }
 
     #[wasm_bindgen(js_name = "roughness")]
     #[lsp_doc("docs/api/scene/material/roughness.md")]
-    pub fn roughness_js(&self, value: f32) -> Self {
-        self.roughness(value)
+    pub fn roughness_js(&self, #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue) -> Result<Material, WebError> {
+        Ok(self.roughness(read_float(value, "Material.roughness: value")?))
     }
 
     #[wasm_bindgen(js_name = "normalScale")]
     #[lsp_doc("docs/api/scene/material/normal_scale.md")]
-    pub fn normal_scale_js(&self, value: f32) -> Self {
-        self.normal_scale(value)
+    pub fn normal_scale_js(&self, #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue) -> Result<Material, WebError> {
+        Ok(self.normal_scale(read_float(value, "Material.normalScale: value")?))
     }
 
     #[wasm_bindgen(js_name = "occlusionStrength")]
     #[lsp_doc("docs/api/scene/material/occlusion_strength.md")]
-    pub fn occlusion_strength_js(&self, value: f32) -> Self {
-        self.occlusion_strength(value)
+    pub fn occlusion_strength_js(&self, #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue) -> Result<Material, WebError> {
+        Ok(self.occlusion_strength(read_float(value, "Material.occlusionStrength: value")?))
     }
 
     #[wasm_bindgen(js_name = "emissive")]
@@ -75,8 +75,8 @@ impl Material {
 
     #[wasm_bindgen(js_name = "alphaCutoff")]
     #[lsp_doc("docs/api/scene/material/alpha_cutoff.md")]
-    pub fn alpha_cutoff_js(&self, value: f32) -> Self {
-        self.alpha_cutoff(value)
+    pub fn alpha_cutoff_js(&self, #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue) -> Result<Material, WebError> {
+        Ok(self.alpha_cutoff(read_float(value, "Material.alphaCutoff: value")?))
     }
 
     #[wasm_bindgen(js_name = "uvTransform")]
@@ -85,10 +85,11 @@ impl Material {
         &self,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] offset: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] scale: &JsValue,
-        rotation: f32,
+        #[wasm_bindgen(unchecked_param_type = "number")] rotation: &JsValue,
     ) -> Result<Material, WebError> {
         let o = read_vector::<2>(offset, "Material.uvTransform: offset")?;
         let s = read_vector::<2>(scale, "Material.uvTransform: scale")?;
+        let rotation = read_float(rotation, "Material.uvTransform: rotation")?;
         Ok(self.uv_transform(o, s, rotation))
     }
 
@@ -97,9 +98,9 @@ impl Material {
     pub fn texture_uv_js(
         &self,
         #[wasm_bindgen(unchecked_param_type = "TextureSlot")] slot: &JsValue,
-        set: f64,
+        #[wasm_bindgen(unchecked_param_type = "number")] set: &JsValue,
     ) -> Result<Material, WebError> {
-        let set = crate::platforms::web::read_unsigned(set, "Material.textureUv: set")?;
+        let set = read_count(set, "Material.textureUv: set")?;
         Ok(self.texture_uv(read_texture_slot(slot)?, set)?)
     }
 
@@ -110,10 +111,11 @@ impl Material {
         #[wasm_bindgen(unchecked_param_type = "TextureSlot")] slot: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] offset: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] scale: &JsValue,
-        rotation: f32,
+        #[wasm_bindgen(unchecked_param_type = "number")] rotation: &JsValue,
     ) -> Result<Material, WebError> {
         let o = read_vector::<2>(offset, "Material.textureTransform: offset")?;
         let s = read_vector::<2>(scale, "Material.textureTransform: scale")?;
+        let rotation = read_float(rotation, "Material.textureTransform: rotation")?;
         Ok(self.texture_transform(read_texture_slot(slot)?, o, s, rotation))
     }
 
@@ -128,8 +130,11 @@ impl Material {
 
     #[wasm_bindgen(js_name = "doubleSided")]
     #[lsp_doc("docs/api/scene/material/double_sided.md")]
-    pub fn double_sided_js(&self, value: bool) -> Self {
-        self.double_sided(value)
+    pub fn double_sided_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "boolean")] value: &JsValue,
+    ) -> Result<Material, WebError> {
+        Ok(self.double_sided(read_flag(value, "Material.doubleSided: value")?))
     }
 
     #[wasm_bindgen(js_name = "baseColorTexture")]
@@ -139,7 +144,8 @@ impl Material {
         source: &JsValue,
         options: Option<JsValue>,
     ) -> Result<Self, WebError> {
-        Ok(self.base_color_texture(read_texture_input(source, options.as_ref())?))
+        let label = "Material.baseColorTexture: source";
+        Ok(self.base_color_texture(read_texture_input(source, options.as_ref(), label)?))
     }
 
     #[wasm_bindgen(js_name = "metallicRoughnessTexture")]
@@ -149,7 +155,8 @@ impl Material {
         source: &JsValue,
         options: Option<JsValue>,
     ) -> Result<Self, WebError> {
-        Ok(self.metallic_roughness_texture(read_texture_input(source, options.as_ref())?))
+        let label = "Material.metallicRoughnessTexture: source";
+        Ok(self.metallic_roughness_texture(read_texture_input(source, options.as_ref(), label)?))
     }
 
     #[wasm_bindgen(js_name = "normalTexture")]
@@ -159,7 +166,8 @@ impl Material {
         source: &JsValue,
         options: Option<JsValue>,
     ) -> Result<Self, WebError> {
-        Ok(self.normal_texture(read_texture_input(source, options.as_ref())?))
+        let label = "Material.normalTexture: source";
+        Ok(self.normal_texture(read_texture_input(source, options.as_ref(), label)?))
     }
 
     #[wasm_bindgen(js_name = "occlusionTexture")]
@@ -169,7 +177,8 @@ impl Material {
         source: &JsValue,
         options: Option<JsValue>,
     ) -> Result<Self, WebError> {
-        Ok(self.occlusion_texture(read_texture_input(source, options.as_ref())?))
+        let label = "Material.occlusionTexture: source";
+        Ok(self.occlusion_texture(read_texture_input(source, options.as_ref(), label)?))
     }
 
     #[wasm_bindgen(js_name = "emissiveTexture")]
@@ -179,7 +188,8 @@ impl Material {
         source: &JsValue,
         options: Option<JsValue>,
     ) -> Result<Self, WebError> {
-        Ok(self.emissive_texture(read_texture_input(source, options.as_ref())?))
+        let label = "Material.emissiveTexture: source";
+        Ok(self.emissive_texture(read_texture_input(source, options.as_ref(), label)?))
     }
 }
 

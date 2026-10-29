@@ -1,6 +1,8 @@
 #[cfg(wasm)]
 use crate::error::WebError;
 #[cfg(wasm)]
+use crate::platforms::web::{read_given, read_number};
+#[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
 #[cfg(python)]
@@ -121,25 +123,18 @@ crate::impl_from_into_with_refs!(
 );
 
 /// Reads `[w, h]` or `[w, h, d]` from a plain or typed array, or a `{ width, height, depth? }` object.
+/// A value of another type, or a number that isn't one, is a `TypeError`, as Python raises,
+/// and a fraction, a negative number, a wrong count or a missing side is an `InvalidInputError`.
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for Size {
-    type Error = SizeError;
+    type Error = WebError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
-        use js_sys::{Array, ArrayBuffer, Reflect};
+        use crate::platforms::web::{read_list, read_number};
+        use js_sys::Reflect;
 
-        let number = |item: JsValue| {
-            item.as_f64().ok_or_else(|| {
-                SizeError::TypeMismatch(format!("a size takes numbers, got {item:?}"))
-            })
-        };
-
-        if Array::is_array(value) || ArrayBuffer::is_view(value) {
-            let numbers = Array::from(value)
-                .iter()
-                .map(number)
-                .collect::<Result<Vec<f64>, SizeError>>()?;
-            return Size::from_numbers(&numbers);
+        if let Some(numbers) = read_list(value, "a size")? {
+            return Ok(Size::from_numbers(&numbers)?);
         }
 
         if value.is_object() {
@@ -147,24 +142,23 @@ impl TryFrom<&wasm_bindgen::JsValue> for Size {
                 Reflect::get(value, &JsValue::from_str(name))
                     .ok()
                     .filter(|item| !item.is_undefined() && !item.is_null())
-                    .map(number)
+                    .map(|item| read_number(&item, &format!("a size's {name}")))
                     .transpose()
             };
             let (Some(width), Some(height)) = (field("width")?, field("height")?) else {
-                return Err(SizeError::TypeMismatch(
-                    "a size object needs a width and a height".into(),
-                ));
+                let missing = SizeError::TypeMismatch("a size object needs a width and a height".into());
+                return Err(missing.into());
             };
             let numbers = match field("depth")? {
                 Some(depth) => vec![width, height, depth],
                 None => vec![width, height],
             };
-            return Size::from_numbers(&numbers);
+            return Ok(Size::from_numbers(&numbers)?);
         }
 
-        Err(SizeError::TypeMismatch(
-            "Cannot convert JavaScript value to Size (expected [w,h] or [w,h,d])".into(),
-        ))
+        Err(WebError::type_error(&format!(
+            "a size is [w, h], [w, h, d] or {{ width, height, depth? }}, got {value:?}"
+        )))
     }
 }
 
@@ -175,11 +169,18 @@ impl Size {
     // methods that take and return it, so its constructor has no doc page.
     #[doc(hidden)]
     #[wasm_bindgen(constructor)]
-    pub fn new_js(width: f64, height: f64, depth: Option<f64>) -> Result<Size, WebError> {
-        let numbers = match depth {
-            Some(depth) => vec![width, height, depth],
-            None => vec![width, height],
-        };
+    pub fn new_js(
+        #[wasm_bindgen(unchecked_param_type = "number")] width: &JsValue,
+        #[wasm_bindgen(unchecked_param_type = "number")] height: &JsValue,
+        #[wasm_bindgen(unchecked_optional_param_type = "number")] depth: Option<JsValue>,
+    ) -> Result<Size, WebError> {
+        let mut numbers = vec![
+            read_number(width, "Size: width")?,
+            read_number(height, "Size: height")?,
+        ];
+        if let Some(depth) = read_given(depth) {
+            numbers.push(read_number(&depth, "Size: depth")?);
+        }
         Ok(Size::from_numbers(&numbers)?)
     }
 
@@ -192,8 +193,8 @@ impl Size {
     /// Checks the number as the constructor does, and keeps the old width on an error.
     #[doc(hidden)]
     #[wasm_bindgen(setter = width)]
-    pub fn set_width_js(&mut self, value: f64) -> Result<(), WebError> {
-        self.width = check_dimension(value)?;
+    pub fn set_width_js(&mut self, value: JsValue) -> Result<(), WebError> {
+        self.width = check_dimension(read_number(&value, "Size.width")?)?;
         Ok(())
     }
 
@@ -205,8 +206,8 @@ impl Size {
 
     #[doc(hidden)]
     #[wasm_bindgen(setter = height)]
-    pub fn set_height_js(&mut self, value: f64) -> Result<(), WebError> {
-        self.height = check_dimension(value)?;
+    pub fn set_height_js(&mut self, value: JsValue) -> Result<(), WebError> {
+        self.height = check_dimension(read_number(&value, "Size.height")?)?;
         Ok(())
     }
 
@@ -219,14 +220,17 @@ impl Size {
     /// `undefined` or `null` clears the depth.
     #[doc(hidden)]
     #[wasm_bindgen(setter = depth)]
-    pub fn set_depth_js(&mut self, value: Option<f64>) -> Result<(), WebError> {
-        self.depth = value.map(check_dimension).transpose()?;
+    pub fn set_depth_js(&mut self, value: Option<JsValue>) -> Result<(), WebError> {
+        self.depth = match read_given(value) {
+            Some(depth) => Some(check_dimension(read_number(&depth, "Size.depth")?)?),
+            None => None,
+        };
         Ok(())
     }
 }
 
 #[cfg(wasm)]
-crate::impl_tryfrom_owned_via_ref!(Size, wasm_bindgen::JsValue, SizeError);
+crate::impl_tryfrom_owned_via_ref!(Size, wasm_bindgen::JsValue, WebError);
 
 #[cfg(python)]
 #[pymethods]

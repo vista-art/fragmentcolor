@@ -1,6 +1,8 @@
 #[cfg(wasm)]
 use crate::error::WebError;
 #[cfg(wasm)]
+use crate::platforms::web::{read_list, read_number};
+#[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
 pub mod error;
@@ -274,28 +276,25 @@ impl ScreenRegion {
 
 /// Reads `[w, h]` or `[x, y, w, h]` from a plain or typed array, an `{ x, y, width, height }`
 /// object such as a `DOMRect`, or the `{ minX, minY, maxX, maxY }` fields of a `ScreenRegion`.
+/// A value of another type, or an item that isn't a number, is a `TypeError`, as Python raises,
+/// and a fraction, a negative number or a wrong count is an `InvalidInputError`.
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for ScreenRegion {
-    type Error = ScreenRegionError;
+    type Error = WebError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
-        use js_sys::{Array, ArrayBuffer};
-
-        if Array::is_array(value) || ArrayBuffer::is_view(value) {
-            let numbers = Array::from(value)
-                .iter()
-                .map(|item| read_number(&item))
-                .collect::<Result<Vec<f64>, ScreenRegionError>>()?;
-            return ScreenRegion::from_numbers(&numbers);
+        if let Some(numbers) = read_list(value, "a region")? {
+            return Ok(ScreenRegion::from_numbers(&numbers)?);
         }
 
         if value.is_object() {
-            let field = |names: &[&str]| -> Result<Option<u32>, ScreenRegionError> {
+            let field = |names: &[&str]| -> Result<Option<u32>, WebError> {
                 for name in names {
                     let item = js_sys::Reflect::get(value, &JsValue::from_str(name))
                         .unwrap_or(JsValue::UNDEFINED);
                     if !item.is_undefined() && !item.is_null() {
-                        return js_to_dimension(&item).map(Some);
+                        let number = read_number(&item, &format!("a region's {name}"))?;
+                        return Ok(Some(check_dimension(number)?));
                     }
                 }
                 Ok(None)
@@ -308,13 +307,13 @@ impl TryFrom<&wasm_bindgen::JsValue> for ScreenRegion {
                 field(&["maxY", "max_y"])?,
             );
             if let (Some(min_x), Some(min_y), Some(max_x), Some(max_y)) = bounds {
-                return ScreenRegion {
+                let region = ScreenRegion {
                     min_x,
                     min_y,
                     max_x,
                     max_y,
-                }
-                .check();
+                };
+                return Ok(region.check()?);
             }
             let rect = (
                 field(&["x"])?,
@@ -323,13 +322,13 @@ impl TryFrom<&wasm_bindgen::JsValue> for ScreenRegion {
                 field(&["height"])?,
             );
             if let (Some(x), Some(y), Some(width), Some(height)) = rect {
-                return ScreenRegion::from_region(x, y, width, height);
+                return Ok(ScreenRegion::from_region(x, y, width, height)?);
             }
         }
 
-        Err(ScreenRegionError::TypeMismatch(
-            "Cannot convert JavaScript value to ScreenRegion (expected [x,y,w,h], [w,h], or {x,y,width,height})".into(),
-        ))
+        Err(WebError::type_error(&format!(
+            "a region is [w, h], [x, y, w, h], {{ x, y, width, height }} or a ScreenRegion, got {value:?}"
+        )))
     }
 }
 
@@ -343,32 +342,26 @@ fn check_dimension(number: f64) -> Result<u32, ScreenRegionError> {
     })
 }
 
-/// One region item from JavaScript, which must be a number.
+/// A pair of region numbers from JS, such as an origin or a size, named `label`.
+/// A value that isn't a list of numbers is a `TypeError`, and any count but two an `InvalidInputError`.
 #[cfg(wasm)]
-fn read_number(item: &JsValue) -> Result<f64, ScreenRegionError> {
-    item.as_f64().ok_or_else(|| {
-        ScreenRegionError::TypeMismatch(format!("a region takes numbers, got {item:?}"))
-    })
-}
-
-/// One region number from JS, checked by [`read_dimension`].
-#[cfg(wasm)]
-fn js_to_dimension(item: &JsValue) -> Result<u32, ScreenRegionError> {
-    check_dimension(read_number(item)?)
-}
-
-/// A pair of region numbers from JS, such as an origin or a size.
-#[cfg(wasm)]
-fn js_to_pair(value: &JsValue) -> Result<(u32, u32), ScreenRegionError> {
-    let numbers = js_sys::Array::from(value)
-        .iter()
-        .map(|item| js_to_dimension(&item))
+fn js_to_pair(value: &JsValue, label: &str) -> Result<(u32, u32), WebError> {
+    let Some(numbers) = read_list(value, label)? else {
+        return Err(WebError::type_error(&format!(
+            "{label} takes two numbers, got {value:?}"
+        )));
+    };
+    let numbers = numbers
+        .into_iter()
+        .map(check_dimension)
         .collect::<Result<Vec<u32>, ScreenRegionError>>()?;
     match numbers[..] {
         [first, second] => Ok((first, second)),
         _ => Err(ScreenRegionError::TypeMismatch(format!(
-            "expected two numbers, got {value:?}"
-        ))),
+            "{label} takes two numbers, got {}",
+            numbers.len()
+        ))
+        .into()),
     }
 }
 
@@ -380,7 +373,9 @@ impl ScreenRegion {
     #[doc(hidden)]
     #[wasm_bindgen(constructor)]
     pub fn new_js(origin: &JsValue, size: &JsValue) -> Result<ScreenRegion, WebError> {
-        Ok(ScreenRegion::new(js_to_pair(origin)?, js_to_pair(size)?)?)
+        let origin = js_to_pair(origin, "ScreenRegion: origin")?;
+        let size = js_to_pair(size, "ScreenRegion: size")?;
+        Ok(ScreenRegion::new(origin, size)?)
     }
 
     #[doc(hidden)]
@@ -421,7 +416,7 @@ impl ScreenRegion {
 }
 
 #[cfg(wasm)]
-crate::impl_tryfrom_owned_via_ref!(ScreenRegion, wasm_bindgen::JsValue, ScreenRegionError);
+crate::impl_tryfrom_owned_via_ref!(ScreenRegion, wasm_bindgen::JsValue, WebError);
 
 // The brand lets a reader tell a ScreenRegion from a plain object after a minifier renames the class.
 crate::impl_fc_kind!(ScreenRegion, "ScreenRegion");
