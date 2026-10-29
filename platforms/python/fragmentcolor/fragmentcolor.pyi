@@ -396,7 +396,7 @@ class Renderer:
 
         Each mesh a shader draws is checked against the device, and a mesh past one of its limits returns `RendererError::LimitError`, as a shader does: a vertex or instance stride past `max_vertex_buffer_array_stride`, and mesh data that needs a buffer past `max_buffer_size`. Its `item` names the stride or the buffer. WebGL2 takes strides up to 255 bytes. A mesh draws with every `Renderer` that renders it, each from buffers of its own. These checks, and the mesh's own, apply only to the meshes the frame draws: the mesh of a hidden `Model`, or of a `Model` in another pass, isn't checked.
 
-        `render(mesh)` draws the mesh with a shader of its own, built from its first vertex. That shader reads `position`, and `color` when the first vertex sets it as four numbers. It checks the mesh again on every render that draws it after the mesh changed, a render of a pass that requires the mesh included, and adds nothing that vertices must hold for the mesh's other shaders. The types it gives plain numbers stay for as long as the mesh lives, as any shader's do: once it reads `color` as four floats, a shader that reads `color` as `vec4<u32>` fails to attach with `ShaderError::AttributeConflict`. A mesh it refuses returns the error an attach would, such as `ShaderError::AttributeMismatch` for a vertex without `color`, where a shader the mesh is attached to returns `MeshError::InvalidVertex`.
+        `render(mesh)` draws the mesh with a shader of its own, built from its first vertex. That shader reads `position`, and `color` when the first vertex sets it as four numbers. It checks the mesh again on every render that draws it after the mesh changed, a render of a pass that requires the mesh included, and adds nothing that vertices must hold for the mesh's other shaders. The types it gives plain numbers stay for as long as the mesh lives, as any shader's do: once it reads `color` as four floats, a shader that reads `color` as `vec4<u32>` fails to attach with `ShaderError::AttributeConflict`. A mesh it refuses returns the error an attach would, such as `ShaderError::AttributeMismatch` for a vertex without `color`, where a shader the mesh is attached to returns `MeshError::InvalidVertex`. It draws only what its check saw, and a mesh that another thread keeps changing through each of its tries returns `MeshError::Busy`.
 
         Before it takes a frame, `render` checks each shader against the device and each texture uniform against its slot, so every language returns these errors from the call that caused them, the web included. A group, binding, binding count, buffer size or workgroup past the device's limits, or a vertex input at a location past `max_vertex_attributes`, returns `RendererError::LimitError`, a feature the device lacks `RendererError::FeatureError`, a texture uniform that was never set or whose texture its slot can't take `RendererError::BindingError`, and a render shader without its vertex or fragment entry point `RendererError::EntryError`, each with its fields. An unset PBR map slot binds its 1x1 default instead, when the slot takes a 2D float texture. A texture `unregister_texture` removed, or one from another `Renderer`, returns `RendererError::TextureNotFoundError`, in a PBR map slot too. The [Shader](https://fragmentcolor.org/api/core/shader) page lists the checks and each language's form of these errors.
 
@@ -3220,15 +3220,20 @@ class Model:
         the Model, not to the Material's Shader or the Mesh, so Models can share
         both. Models with the same Material and Mesh draw in one instanced call.
 
-        `Material::pbr` reads six attributes from every vertex, each matched by
-        name: a 3D position (`vec3`) and `normal` (`vec3`), `uv0` (`vec2`),
-        `color0` (`vec4`), `uv1` (`vec2`) and `tangent` (`vec4`). The order the
-        vertex sets them in doesn't matter. The shader has no default for any of
-        them, so `Scene.add` and `Pass.add` refuse a Model whose mesh lacks one,
-        with an error that names the input. `Vertex::pbr` sets all five after the
-        position to neutral values, and `.set(...)` replaces the ones your mesh
-        has data for. The `model_0` to `model_3` columns come from the Model, not
-        the mesh. Custom shaders via `Material::custom(...)` can use any layout.
+        `Material::pbr` reads six attributes from every vertex: a 3D position
+        (`vec3`), `normal` (`vec3`), `uv0` (`vec2`), `color0` (`vec4`), `uv1`
+        (`vec2`) and `tangent` (`vec4`). Each input finds its attribute by name,
+        then by the attribute's own location, as
+        [Mesh](https://fragmentcolor.org/api/geometry/mesh) describes, so a vertex
+        that sets them under these names can set them in any order. The shader has
+        no default for any of them, and `Scene.add` and `Pass.add` refuse a Model
+        whose mesh lacks one. The error names the input, or the attribute at the
+        input's location when that attribute has the wrong type: a vertex that sets
+        only `uv0` fails on `uv0`, which sits where `normal` is read. `Vertex::pbr`
+        sets all five after the position to neutral values, and `.set(...)`
+        replaces the ones your mesh has data for. The `model_0` to `model_3`
+        columns come from the Model, not the mesh. Custom shaders via
+        `Material::custom(...)` can use any layout.
 
         Example:
 
@@ -4412,8 +4417,10 @@ class Material:
           target's format, through the shader's `override ENCODE_SRGB: bool`. A custom
           shader that declares the same override gets the same value.
 
-        The vertex inputs the shader reads from the mesh, each matched by name, so
-        the order a vertex sets them in doesn't matter:
+        The vertex inputs the shader reads from the mesh. Each finds its attribute by
+        name, then by the attribute's own location, as
+        [Mesh](https://fragmentcolor.org/api/geometry/mesh) describes, so a vertex
+        that sets them under these names can set them in any order:
 
         - `@location(0) position : vec3<f32>`, a 3D position from `Vertex::new([...])` or `Vertex::pbr([...])`.
         - `@location(1) normal   : vec3<f32>`, set as `.set(Vertex::NORMAL, ...)`.
@@ -4425,7 +4432,8 @@ class Material:
         Locations 3 to 6 hold `model_0` to `model_3`, the columns of the Model's
         transform, which come from the Model rather than the mesh. The shader has
         no default for any mesh input, so a Model whose mesh lacks one fails to
-        attach with an error that names the input. `Vertex::pbr` sets every input
+        attach. The error names the input, or the attribute at the input's location
+        when that attribute has the wrong type. `Vertex::pbr` sets every input
         after the position to a neutral value. Use `Material::custom(...)` to bring
         your own vertex layout.
 
