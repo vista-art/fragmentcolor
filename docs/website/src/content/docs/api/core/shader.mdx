@@ -775,7 +775,7 @@ Sets the value of the uniform identified by the given key.
 
 If the key does not exist or the value format is incorrect, the `set` method throws an exception. The shader remains valid, and if the exception is caught, the shader can still be used with the renderer.
 
-`set` never waits for a draw. When another thread holds the shader's storage, the value is queued and applied before the next draw. A texture can wait a moment while another thread binds a texture to the same shader, so the latest one wins. A bad value that can't be checked right away is dropped later with a logged warning instead of throwing.
+`set` never waits for a draw. When another thread holds the shader's storage, the value is queued and applied before the next draw. A texture can wait a moment while another thread binds a texture to the same shader, or while the renderer applies the shader's queued values, so the latest one wins. A bad value that can't be checked right away is dropped later with a logged warning instead of throwing.
 
 The uniform's declared WGSL type decides how the value is read, so a call behaves the same in every language:
 
