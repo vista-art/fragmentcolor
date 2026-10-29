@@ -2397,7 +2397,7 @@ impl RenderContext {
 fn report_missing(name: &str, meta: &crate::texture::TextureMeta) -> RendererError {
     match meta.id.id {
         0 => RendererError::BindingError {
-            name: name.to_string(),
+            uniform: name.to_string(),
             expected: "a texture".into(),
             found: "none, since it was never set".into(),
         },

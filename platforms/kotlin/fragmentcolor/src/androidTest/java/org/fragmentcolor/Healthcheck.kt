@@ -176,6 +176,32 @@ class Healthcheck : ExampleCase() {
         assertEquals("max_bind_groups", limit.limit)
         assertEquals(101uL, limit.value)
         assertTrue(limit.max < 101uL && limit.item.startsWith("'tint'"), limit.toString())
+        val storage = Shader(
+            """
+            @group(0) @binding(0) var img: texture_storage_2d<bgra8unorm, write>;
+            @compute @workgroup_size(1) fn cs_main() { textureStore(img, vec2<i32>(0), vec4<f32>(1.0)); }
+            """.trimIndent()
+        )
+        val feature = assertFailsWith<FragmentColorException.Feature> { renderer.render(storage, target) }
+        assertEquals("'img' at @group(0) @binding(0)", feature.item)
+        assertEquals("WriteOnly storage access to Bgra8Unorm", feature.feature)
+        val unset = Shader(
+            """
+            @group(0) @binding(0) var source: texture_2d<f32>;
+            @group(0) @binding(1) var soft: sampler;
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+              let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+              return vec4f(p[i], 0., 1.);
+            }
+            @fragment fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+              return textureSample(source, soft, pos.xy / 8.0);
+            }
+            """.trimIndent()
+        )
+        val binding = assertFailsWith<FragmentColorException.Binding> { renderer.render(unset, target) }
+        assertEquals("source", binding.uniform)
+        assertEquals("a texture", binding.expected)
+        assertEquals("none, since it was never set", binding.found)
         val lone = Shader("@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }")
         val entry = assertFailsWith<FragmentColorException.Entry> { renderer.render(lone, target) }
         assertEquals("@vertex", entry.stage)
