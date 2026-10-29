@@ -118,8 +118,8 @@ pub(crate) enum Field {
 
 #[cfg(any(python, wasm, test))]
 impl RendererError {
-    /// The properties a typed refusal sets on its Python and JavaScript error,
-    /// by name. Other errors carry none.
+    /// The properties a typed refusal sets, by name,
+    /// on the error Python and JavaScript raise. Other errors carry none.
     pub(crate) fn fields(&self) -> Vec<(&'static str, Field)> {
         let text = |value: &String| Field::Text(value.clone());
         match self {

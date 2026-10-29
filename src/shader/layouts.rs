@@ -57,11 +57,12 @@ fn find_explicit(module: &Module) -> Result<Vec<Handle<Type>>, ShaderError> {
     Ok(found)
 }
 
-/// The name naga's WGSL writer gives each of the `pinned` structs. Its namer
-/// renames a name that ends in a digit or an underscore, holds `__`, isn't ASCII
-/// or repeats another, so the names come from a run of that namer, set up as the
-/// writer sets it up. `check_layouts` reads the text back under these names, so a
-/// namer that names otherwise refuses the module instead of pinning the wrong struct.
+/// The names naga's WGSL writer gives the `pinned` structs.
+///
+/// They come from a run of the namer that writer uses, set up as it sets it up,
+/// since it renames a name that repeats another, holds `__`, isn't ASCII, or ends
+/// in a digit or an underscore. `check_layouts` reads the text back under these names,
+/// so a namer that names otherwise refuses the module instead of pinning the wrong struct.
 fn name_pinned(module: &Module, pinned: &[Handle<Type>]) -> HashMap<Handle<Type>, String> {
     let mut names = naga::FastHashMap::default();
     Namer::default().reset(
