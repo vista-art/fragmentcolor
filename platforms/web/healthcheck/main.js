@@ -821,8 +821,6 @@ await withModule('platforms.web.healthcheck.pass_checks', async () => {
     await target.getImage();
 });
 
-// A shader the device can't run, or a texture its slot can't take, throws from render
-// itself, before any GPU work, so no late error or console.error follows.
 // One shader draws meshes with other vertex and instance layouts, each with a pipeline of
 // its own that shares the shader's bind groups, so the browser takes them with no late error,
 // and a second Renderer draws the same meshes. The mesh checks throw from the call that breaks them.
@@ -880,6 +878,8 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) color: vec4<f32> }
     const named = new Mesh();
     named.addVertex(new Vertex([0, 0]).set('position', [5, 5]).set('color', [1, 1, 1, 1]));
     refuses('a position property', "property named 'position'", () => new Shader(source).addMesh(named));
+    refuses('Shader.fromMesh of an empty mesh', 'Mesh has no vertices', () => Shader.fromMesh(new Mesh()));
+    refuses('Shader.fromMesh of a mesh its shader refuses', "property named 'position'", () => Shader.fromMesh(named));
 
     // No device takes 65 vertex attributes, so an input at @location(64) is past every limit.
     const far = new Shader(`
@@ -899,6 +899,8 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) color: vec4<f32> }
     await target.getImage();
 });
 
+// A shader the device can't run, or a texture its slot can't take, throws from render
+// itself, before any GPU work, so no late error or console.error follows.
 await withModule('platforms.web.healthcheck.device_checks', async () => {
     const renderer = new Renderer();
     const target = await renderer.createTextureTarget([8, 8]);

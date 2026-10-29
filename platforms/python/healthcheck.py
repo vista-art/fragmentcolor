@@ -1018,6 +1018,9 @@ def check_mesh_draws(renderer):
     named = Mesh()
     named.add_vertex(Vertex([0.0, 0.0]).set("position", [5.0, 5.0]).set("color", [1.0, 1.0, 1.0, 1.0]))
     refuses("a position property", "property named 'position'", lambda: Shader(COLOR_SHADER).add_mesh(named))
+    refuses("Shader.from_mesh of an empty mesh", "Mesh has no vertices", lambda: Shader.from_mesh(Mesh()))
+    refuses("Shader.from_mesh of a mesh its shader refuses", "property named 'position'",
+            lambda: Shader.from_mesh(named))
 
     # No device takes 65 vertex attributes, so an input at @location(64) is past every limit.
     far = Shader("""
