@@ -1287,10 +1287,11 @@ impl RenderContext {
         shader.flush_pending();
         self.check_shader(&shader)?;
         self.check_textures(&shader)?;
+        // The quick view checks its mesh on every render, however the render
+        // reached it, and a mesh it refuses says why on every render.
+        shader.check_preview()?;
         let meshes = shader.meshes.read().clone();
         if meshes.is_empty() {
-            // A mesh the quick view refuses says why on every render.
-            shader.check_preview()?;
             require_mesh(&shader)?;
             return Ok(ShaderDraw {
                 shader,
@@ -1340,6 +1341,9 @@ impl RenderContext {
                 });
             }
         }
+        // A pack sees no change its generation doesn't count, so a vertex that
+        // reached the quick view's pack after its check is checked here.
+        shader.check_preview()?;
         let draws = match (layouts.is_empty(), blend) {
             (true, _) => MeshDraws::Skipped,
             (false, true) => MeshDraws::Blend,

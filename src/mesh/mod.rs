@@ -133,10 +133,10 @@ impl Mesh {
 // -----------------------------
 // Renderable impl ( for Mesh quick-view)
 // -----------------------------
-/// The quick view draws the mesh with a shader built from its first vertex. That shader
-/// checks the mesh itself whenever it changed and records no reads on it, so the mesh's
-/// other shaders keep their own rules. `passes` can't return an error, so a mesh that
-/// fails the checks leaves the shader with no mesh, and `render` checks it again to say why.
+/// The quick view draws the mesh with a shader built from its first vertex.
+/// That shader records no reads, so the mesh's other shaders keep their own rules.
+/// It checks the mesh itself whenever it changed, on every render that draws it,
+/// a `Pass::require` of the mesh included, and a mesh it refuses makes `render` say why.
 impl Renderable for Mesh {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
         // The guard drops here, before the checks read the vertices again.
@@ -212,8 +212,9 @@ pub(crate) struct MeshObject {
     /// What the last pack made. Only `ensure_packed` writes it.
     packed: RwLock<Packed>,
     /// Count the changes to each stream. A stream whose count moved past the one
-    /// its packed bytes hold packs again. A mutator bumps them after it changes the
-    /// data and before `generation`, so a pack that reads a count sees that change.
+    /// its packed bytes hold packs again. A mutator bumps them after it changes the data
+    /// and before `generation`, both before it lets the data go, so a pack that reads
+    /// a count sees that change, and a pack that sees a change finds `generation` moved.
     vertex_changes: AtomicU64,
     instance_changes: AtomicU64,
 
@@ -416,8 +417,12 @@ impl MeshObject {
         *hi = hi.max(p);
         drop(lo);
         drop(hi);
-        self.verts.write().push(v);
+        let mut verts = self.verts.write();
+        verts.push(v);
         self.touch_vertices();
+        drop(verts);
+        #[cfg(test)]
+        crate::hooks::run("added");
     }
 
     /// Local-space AABB of every Vertex added so far. Returns the sentinel
@@ -429,7 +434,8 @@ impl MeshObject {
     }
 
     fn add_instance(&self, i: Instance) {
-        self.insts.write().push(i);
+        let mut insts = self.insts.write();
+        insts.push(i);
         // Adding a real instance invalidates any prior set_instance_count override
         // (otherwise the GPU would draw past the actual buffer end).
         *self.override_instances.write() = None;
@@ -437,7 +443,8 @@ impl MeshObject {
     }
 
     fn clear_instances(&self) {
-        self.insts.write().clear();
+        let mut insts = self.insts.write();
+        insts.clear();
         // The next instance sets the layout again, but the model columns stay.
         let mut schema = self.instance_schema.write();
         if schema
@@ -453,14 +460,17 @@ impl MeshObject {
     }
 
     fn set_indices(&self, indices: Vec<u32>) {
+        // Taken in the pack's order: whether the indices were given, then the list.
+        let mut overridden = self.indices_overridden.write();
         *self.indices.write() = indices;
-        *self.indices_overridden.write() = true;
+        *overridden = true;
         // Vertices need to be re-packed in insertion order (no dedup).
         self.touch_vertices();
     }
 
     fn clear_indices(&self) {
-        *self.indices_overridden.write() = false;
+        let mut overridden = self.indices_overridden.write();
+        *overridden = false;
         // The next pack derives the indices again, deduplicating the vertices.
         self.touch_vertices();
     }
@@ -1415,6 +1425,107 @@ mod tests {
                     "{render}: {text}"
                 );
             }
+        });
+    }
+
+    // Story: a pass that requires a mesh draws it through the quick view, which
+    // checks the mesh on each render of that pass, so a vertex added later without
+    // the color the quick view reads fails the render instead of drawing zeros.
+    #[test]
+    fn a_required_quick_view_checks_each_render() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let mesh = Mesh::new();
+            let corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+            mesh.add_vertices(corners.map(|corner| Vertex::new(corner).set("color", [1.0; 4])));
+            let pass = crate::Pass::new("main");
+            pass.require(&mesh).expect("require");
+            renderer.render(&pass, &target).expect("first render");
+
+            mesh.add_vertices(corners.map(Vertex::new));
+            let error = renderer
+                .render(&pass, &target)
+                .expect_err("vertex 3 has no color")
+                .to_string();
+
+            assert!(error.contains("color"), "{error}");
+            assert!(error.contains("vertex 3"), "{error}");
+        });
+    }
+
+    // Story: a mesh the quick view refused when a pass required it draws
+    // once it fits, instead of failing as a shader with no mesh.
+    #[test]
+    fn a_required_quick_view_draws_a_mesh_fixed_later() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let mesh = Mesh::new();
+            let corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+            mesh.add_vertices(corners.map(|corner| Vertex::new(corner).set("color", [1.0; 4])));
+            // An instance color is read first, and two floats don't fit the vec4.
+            mesh.add_instance(Instance::new().set("color", [1.0f32, 0.0]));
+            let pass = crate::Pass::new("main");
+            pass.require(&mesh).expect("require");
+
+            let refused = renderer.render(&pass, &target);
+            mesh.clear_instances();
+            let fixed = renderer.render(&pass, &target);
+
+            let error = refused.expect_err("the instance color").to_string();
+            assert!(error.contains("color"), "{error}");
+            assert!(fixed.is_ok(), "{fixed:?}");
+        });
+    }
+
+    // Story: a vertex counts as a change before any other thread can see it, so a
+    // vertex the quick view packs after its check is checked by the same render.
+    #[test]
+    fn a_vertex_added_during_the_quick_view_pack_is_checked() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let mesh = Mesh::new();
+            let corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+            mesh.add_vertices(corners.map(|corner| Vertex::new(corner).set("color", [1.0; 4])));
+            mesh.set_indices([0, 1, 2]);
+            let late = mesh.clone();
+            let (visible, seen) = std::sync::mpsc::channel();
+            let (finish, finished) = std::sync::mpsc::channel::<()>();
+            let adder = Arc::new(parking_lot::Mutex::new(None));
+            let slot = adder.clone();
+            // Another thread adds a vertex without color and holds still once other
+            // threads can see it, while this one packs.
+            crate::hooks::once("pack", move || {
+                let thread = std::thread::spawn(move || {
+                    crate::hooks::once("added", move || {
+                        let _ = visible.send(());
+                        let _ = finished.recv();
+                    });
+                    late.add_vertex([0.0, 0.0]);
+                });
+                let _ = seen.recv_timeout(std::time::Duration::from_secs(10));
+                *slot.lock() = Some(thread);
+            });
+
+            let rendered = renderer.render(&mesh, &target);
+            let _ = finish.send(());
+            if let Some(thread) = adder.lock().take() {
+                thread.join().expect("the adder thread");
+            }
+
+            let error = rendered.expect_err("vertex 3 has no color").to_string();
+            assert!(error.contains("vertex 3"), "{error}");
         });
     }
 
