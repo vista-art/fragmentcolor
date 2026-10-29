@@ -546,22 +546,18 @@ impl Renderer {
             for shader in shaders {
                 let mut failed = Vec::new();
                 for entry in shader.drain_pending_textures() {
-                    let created = self.create_texture(entry.input.clone()).await;
                     // A setter call for the key while this upload ran wins over it.
-                    if !shader.is_latest(&entry) {
-                        continue;
-                    }
-                    match created {
+                    match self.create_texture(entry.input.clone()).await {
                         Ok(texture) => {
-                            let meta = crate::texture::TextureMeta::with_id_only(*texture.id());
-                            if let Err(error) = shader.set(&entry.key, UniformData::Texture(meta)) {
+                            if let Err(error) = shader.set_latest(&entry, *texture.id()) {
                                 first.get_or_insert(error.into());
                             }
                         }
-                        Err(error) => {
+                        Err(error) if shader.is_latest(&entry) => {
                             first.get_or_insert(error);
                             failed.push(entry);
                         }
+                        Err(_) => {}
                     }
                 }
                 shader.requeue_textures(failed);
