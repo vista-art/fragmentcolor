@@ -257,6 +257,20 @@ internal fun showNumber(value: Double): String =
 
 internal fun readFloats(values: DoubleArray, label: String): List<Float> = readFloats(values.toList(), label)
 
+/** A vertex position of 1 to 4 numbers as [Float]s, each checked as [readFloats] checks it. */
+internal fun readPosition(values: List<Double>, label: String): List<Float> {
+    val floats = readFloats(values, label)
+    if (floats.size !in 1..4) {
+        throw FragmentColorException.Render("$label takes 1 to 4 numbers, got ${floats.size}")
+    }
+    return floats
+}
+
+/** A vertex position of 1 to 4 [Float]s, checked as the [Double] one is. */
+@JvmName("readFloatPosition")
+internal fun readPosition(values: List<Float>, label: String): List<Float> =
+    readPosition(values.map { it.toDouble() }, label)
+
 /** Bytes from one [Int] per byte. Throws [FragmentColorException] for a value outside 0..255. */
 internal fun byteArray(bytes: List<Int>, method: String): ByteArray =
     ByteArray(bytes.size) { index ->

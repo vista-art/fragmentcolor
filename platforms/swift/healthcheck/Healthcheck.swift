@@ -353,7 +353,11 @@ final class Healthcheck: ExampleCase {
             ("Vertex: position", { _ = try Vertex([1e39, 0, 0] as [Double]) }),
             ("Vertex: position", { _ = try Vertex([Float.nan, 0]) }),
             ("Vertex.pbr: position", { _ = try Vertex.pbr([0, Double.infinity, 0]) }),
-            ("Vertex: position", { try Mesh().addVertex([0, Double.nan, 0]) }),
+            ("Mesh.addVertex: vertex", { try Mesh().addVertex([0, Double.nan, 0]) }),
+            ("Mesh.addVertex: vertex", { try Mesh().addVertex([Float.infinity, 0]) }),
+            ("Mesh.addVertex: vertex: position", { try Mesh().addVertex([0, 0, Float.nan], [0, 0]) }),
+            ("Mesh.addVertices: vertex 1", { try Mesh().addVertices([[0, 0], [1e39, 0]] as [[Double]]) }),
+            ("Mesh.fromVertices: vertex 0", { _ = try Mesh.fromVertices([[Float.nan, 0]]) }),
             ("Quad: min", { _ = try Quad([1e39, 0] as [Double], [1, 1]) }),
             ("Quad: max", { _ = try Quad([0, 0], [Float.infinity, 1]) }),
         ]

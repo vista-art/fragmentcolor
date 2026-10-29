@@ -326,6 +326,20 @@ func readFloats(_ values: [Double], _ label: String) throws -> [Float] {
     }
 }
 
+/// A vertex position of 1 to 4 numbers as Floats, each checked as `readFloats` checks it.
+func readPosition(_ values: [Double], _ label: String) throws -> [Float] {
+    let floats = try readFloats(values, label)
+    guard (1...4).contains(floats.count) else {
+        throw FragmentColorError.Render("\(label) takes 1 to 4 numbers, got \(floats.count)")
+    }
+    return floats
+}
+
+/// A vertex position of 1 to 4 Floats, checked as the Double one is.
+func readPosition(_ values: [Float], _ label: String) throws -> [Float] {
+    try readPosition(values.map { Double($0) }, label)
+}
+
 /// The number as the shared Rust message prints it: `NaN`, `inf`, `-inf`, or `1e39`.
 /// Only those reach the message, since every other Double fits a Float.
 func showNumber(_ value: Double) -> String {
