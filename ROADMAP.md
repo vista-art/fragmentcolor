@@ -67,7 +67,7 @@ Items found while reviewing 0.12.6.
 - [x] JavaScript `renderer.render([...])` records the whole list as one frame, as Rust and Python do, and `renderer.load([...])` loads every item (0.12.6)
 - [ ] A changed storage root uploads only the bytes that changed, where today it uploads the whole root
 - [ ] Compute pipelines take immediates, as render pipelines do
-- [ ] A shader whose meshes have different vertex layouts gets one pipeline per layout, in 0.12.7. Today every mesh of a shader draws with the pipeline built from its first mesh's layout
+- [x] A shader whose meshes have different vertex layouts gets one pipeline per layout, and meshes with equal layouts share one (0.12.7)
 - [x] Swift and Kotlin `Scene.load` take glTF bytes as well as a path: Swift `Scene.load(_ bytes: Data)` and Kotlin `Scene.load(bytes: ByteArray)`, so the generated examples pass the bytes their comment describes (0.12.6)
 - [ ] The transient MSAA texture survives into a following pass that loads it
 - [ ] Extend the Apple split from `compute → compute` to `compute (storage write) → render (sampled read)` in one command buffer

@@ -1,9 +1,10 @@
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
@@ -29,7 +30,8 @@ pub(crate) mod builtins;
 
 mod platform;
 
-use crate::renderer::{RenderContext, RendererError, check_limit};
+use crate::renderer::{RenderContext, RendererError, VertexLayouts, check_limit};
+use crate::shader::ShaderHash;
 use crate::{PassObject, Renderable, Shader, ShaderError};
 
 #[derive(Clone, Debug)]
@@ -132,13 +134,22 @@ impl Mesh {
 // -----------------------------
 // Renderable impl ( for Mesh quick-view)
 // -----------------------------
+/// The quick view draws the mesh with a shader built from its first vertex. `passes`
+/// can't return an error, so the shader keeps the error of a failed attach, and
+/// `render` returns it in place of the error for a shader with no mesh.
 impl Renderable for Mesh {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
         if self.pass.shaders.read().is_empty() {
             if let Some(first) = self.object.verts.read().first().cloned() {
-                let shader = Shader::from_vertex(&first);
+                let (shader, attached) = match Shader::from_vertex(&first) {
+                    Ok(shader) => {
+                        let attached = shader.add_mesh(self);
+                        (shader, attached)
+                    }
+                    Err(error) => (Shader::default(), Err(error)),
+                };
+                shader.object.keep_refusal(attached);
                 self.pass.push_shader(shader.object.clone());
-                _ = shader.add_mesh(self);
             }
         } else if let Some(shader) = self.pass.shaders.read().last().cloned() {
             let is_attached = shader
@@ -148,7 +159,7 @@ impl Renderable for Mesh {
                 .any(|mesh| Arc::ptr_eq(mesh, &self.object));
 
             if !is_attached {
-                _ = shader.add_mesh(self.object.clone());
+                shader.keep_refusal(shader.add_mesh(self.object.clone()));
             }
         }
         vec![self.pass.clone()].into()
@@ -224,9 +235,10 @@ pub(crate) struct MeshObject {
     /// The format the first shader to read each untyped attribute gave it.
     /// A leaf lock: never take another lock while holding this one.
     pub(crate) types: RwLock<AttributeTypes>,
-    /// The attributes an attached shader reads, which every vertex and instance must hold.
-    /// Like `types`, they stay for the mesh's lifetime.
-    required: RwLock<AttributeNames>,
+    /// The attributes each attached shader reads and their formats, by `ShaderObject::id`.
+    /// Every vertex and instance holds them all, and a shader's entry goes when it no longer
+    /// holds the mesh.
+    required: RwLock<HashMap<u64, AttributeTypes>>,
 
     // Dirty flags
     dirty_vertices: RwLock<bool>,
@@ -244,11 +256,25 @@ pub(crate) struct MeshObject {
     aabb_max: RwLock<glam::Vec3>,
 
     /// GPU buffers on the device that drew the mesh last, created lazily.
+    /// An upload holds this lock from the pack to the cache it fills.
     gpu: RwLock<Option<GpuStreams>>,
 
-    /// The last `vertex_buffers` result, for the device `gpu` lives on.
-    gpu_cache: RwLock<Option<(VertexBuffers, DrawCounts)>>,
-    cache_valid: RwLock<bool>,
+    /// The last `vertex_buffers` result, with the context it belongs to.
+    cache: RwLock<Option<Cached>>,
+    /// Counts the changes to the mesh. A cached result or layout from an older one is stale.
+    generation: AtomicU64,
+    /// The vertex layouts each shader source reads from the mesh, with the generation they came from.
+    layouts: RwLock<HashMap<ShaderHash, (u64, VertexLayouts)>>,
+}
+
+/// A `vertex_buffers` result and the context whose device holds its buffers, in one value,
+/// so a result never reaches another context. `generation` is the mesh's when the upload began.
+#[derive(Debug)]
+struct Cached {
+    owner: u64,
+    generation: u64,
+    buffers: VertexBuffers,
+    counts: DrawCounts,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -294,19 +320,12 @@ impl AttributeTypes {
     }
 }
 
-/// Attribute names, by stream.
-#[derive(Clone, Debug, Default)]
-pub(crate) struct AttributeNames {
-    pub(crate) vertex: HashSet<String>,
-    pub(crate) instance: HashSet<String>,
-}
-
 /// What a shader's attach records on a mesh: the types it gives
-/// untyped attributes, and the attributes it reads.
+/// untyped attributes, and the attributes it reads, in the format it reads each.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Binding {
     pub(crate) types: AttributeTypes,
-    pub(crate) read: AttributeNames,
+    pub(crate) read: AttributeTypes,
 }
 
 /// A mesh's buffers on the device of one `Renderer`. Another `Renderer`
@@ -334,15 +353,16 @@ impl MeshObject {
             vertex_schema: RwLock::new(None),
             instance_schema: RwLock::new(None),
             types: RwLock::new(AttributeTypes::default()),
-            required: RwLock::new(AttributeNames::default()),
+            required: RwLock::new(HashMap::new()),
             dirty_vertices: RwLock::new(false),
             dirty_instances: RwLock::new(false),
             override_instances: RwLock::new(None),
             aabb_min: RwLock::new(glam::Vec3::splat(f32::INFINITY)),
             aabb_max: RwLock::new(glam::Vec3::splat(f32::NEG_INFINITY)),
             gpu: RwLock::new(None),
-            gpu_cache: RwLock::new(None),
-            cache_valid: RwLock::new(false),
+            cache: RwLock::new(None),
+            generation: AtomicU64::new(0),
+            layouts: RwLock::new(HashMap::new()),
         }
     }
 
@@ -411,9 +431,29 @@ impl MeshObject {
         self.invalidate_cache();
     }
 
+    /// Marks every cached result and layout stale. It takes no lock, so a
+    /// mutator may call it whatever it holds.
     pub(crate) fn invalidate_cache(&self) {
-        *self.cache_valid.write() = false;
-        *self.gpu_cache.write() = None;
+        self.generation.fetch_add(1, Ordering::AcqRel);
+    }
+
+    /// The layouts `build` makes for the shader source `shader`, kept until the mesh changes.
+    pub(crate) fn fetch_layouts(
+        &self,
+        shader: ShaderHash,
+        build: impl FnOnce() -> Result<VertexLayouts, RendererError>,
+    ) -> Result<VertexLayouts, RendererError> {
+        let generation = self.generation.load(Ordering::Acquire);
+        if let Some((kept, layouts)) = self.layouts.read().get(&shader)
+            && *kept == generation
+        {
+            return Ok(layouts.clone());
+        }
+        let layouts = build()?;
+        self.layouts
+            .write()
+            .insert(shader, (generation, layouts.clone()));
+        Ok(layouts)
     }
 
     /// Declare the per-Model instance vertex schema (four `vec4<f32>` columns
@@ -435,16 +475,14 @@ impl MeshObject {
         true
     }
 
-    /// Drops the Model columns a failed `Model` attach declared,
-    /// so the next instance sets the instance layout as before.
-    pub(crate) fn forget_model_instance_schema(&self) {
-        // The instances lock comes first, as in `ensure_packed`.
-        let insts = self.insts.read();
+    /// Drops the Model columns a refused `Model` attach declared, so the mesh's
+    /// own instances set the instance layout again, packed or not.
+    pub(crate) fn forget_columns(&self) {
         let mut schema = self.instance_schema.write();
-        if insts.is_empty() && schema.as_ref() == Some(&model_schema()) {
+        if schema.as_ref() == Some(&model_schema()) {
             *schema = None;
             drop(schema);
-            drop(insts);
+            *self.dirty_instances.write() = true;
             self.invalidate_cache();
         }
     }
@@ -461,7 +499,7 @@ impl MeshObject {
     /// vertex and instance added later must hold. The attach checked the ones the
     /// mesh holds now. Records nothing when another shader has typed one of them
     /// another way meanwhile.
-    pub(crate) fn declare(&self, binding: Binding) -> Result<(), ShaderError> {
+    pub(crate) fn declare(&self, shader: u64, binding: Binding) -> Result<(), ShaderError> {
         let Binding { types: added, read } = binding;
         if !added.is_empty() {
             let mut types = self.types.write();
@@ -472,8 +510,9 @@ impl MeshObject {
         }
         {
             let mut required = self.required.write();
-            required.vertex.extend(read.vertex);
-            required.instance.extend(read.instance);
+            let reads = required.entry(shader).or_default();
+            reads.vertex.extend(read.vertex);
+            reads.instance.extend(read.instance);
         }
         if added.is_empty() {
             return Ok(());
@@ -490,11 +529,32 @@ impl MeshObject {
         Ok(())
     }
 
+    /// Drops what the shader `shader` reads, once that shader no longer holds the mesh.
+    /// A pack that failed for one of its attributes left the data dirty, so the next one runs again.
+    pub(crate) fn detach(&self, shader: u64) {
+        self.required.write().remove(&shader);
+    }
+
+    /// The attributes some attached shader reads, by stream, with their formats.
+    fn read_required(&self) -> AttributeTypes {
+        let required = self.required.read();
+        let mut union = AttributeTypes::default();
+        for reads in required.values() {
+            union.vertex.extend(reads.vertex.clone());
+            union.instance.extend(reads.instance.clone());
+        }
+        union
+    }
+
     fn ensure_packed(&self) -> Result<(), MeshError> {
-        // Indices from `set_indices` are checked against the vertices on every repack,
-        // and the vertices stay dirty until they fit, so each upload fails the same way.
-        if *self.indices_overridden.read() && *self.dirty_vertices.read() {
-            check_indices(&self.indices.read(), self.verts.read().len())?;
+        // The indices draw a triangle list, checked against the vertices on every repack:
+        // the ones `set_indices` gave, or one index per vertex. The vertices stay dirty
+        // until they fit, so each upload fails the same way.
+        if *self.dirty_vertices.read() {
+            match *self.indices_overridden.read() {
+                true => check_indices(&self.indices.read(), self.verts.read().len())?,
+                false => check_vertices(self.verts.read().len())?,
+            }
         }
         // Derive and store each missing schema under its own lock, so a `declare`
         // either lands before the derive reads `types` or resets the stored schema.
@@ -518,7 +578,7 @@ impl MeshObject {
             }
         }
 
-        let required = self.required.read().clone();
+        let required = self.read_required();
         // Pack vertices if dirty
         if *self.dirty_vertices.read() {
             let verts = self.verts.read();
@@ -564,6 +624,10 @@ impl MeshObject {
         if *self.dirty_instances.read() {
             let insts = self.insts.read();
             let schema = self.instance_schema.read();
+            // An attribute a shader reads from the instances is in the instance layout,
+            // which comes from the first instance, or no instance can hold it.
+            let fields = schema.as_ref().map(|schema| schema.fields.as_slice());
+            check_layout(&required.instance, fields.unwrap_or_default(), insts.len())?;
             if insts.is_empty() {
                 *self.packed_insts.write() = Vec::new();
                 *self.dirty_instances.write() = false;
@@ -590,34 +654,62 @@ impl MeshObject {
         &self,
         context: &RenderContext,
     ) -> Result<(VertexBuffers, DrawCounts), RendererError> {
-        let owned = self
-            .gpu
-            .read()
-            .as_ref()
-            .is_some_and(|gpu| gpu.owner == context.id);
-        if owned
-            && *self.cache_valid.read()
-            && let Some(cached) = self.gpu_cache.read().as_ref()
-        {
-            return Ok(cached.clone());
+        let generation = self.generation.load(Ordering::Acquire);
+        if let Some(found) = self.find_cached(context.id, generation) {
+            return Ok(found);
         }
-
-        let result = self.upload_vertex_buffers(context)?;
-
-        *self.gpu_cache.write() = Some(result.clone());
-        *self.cache_valid.write() = true;
-
-        Ok(result)
+        // One upload at a time, and the result it caches names the context it uploaded for.
+        let mut gpu = self.gpu.write();
+        if let Some(found) = self.find_cached(context.id, generation) {
+            return Ok(found);
+        }
+        let (buffers, counts) = self.upload_vertex_buffers(context, &mut gpu)?;
+        *self.cache.write() = Some(Cached {
+            owner: context.id,
+            generation,
+            buffers: buffers.clone(),
+            counts,
+        });
+        Ok((buffers, counts))
     }
 
+    /// The cached result for the context `owner`, unless the mesh changed since `generation`.
+    fn find_cached(&self, owner: u64, generation: u64) -> Option<(VertexBuffers, DrawCounts)> {
+        let cache = self.cache.read();
+        let cached = cache.as_ref()?;
+        let current = cached.owner == owner && cached.generation == generation;
+        current.then(|| (cached.buffers.clone(), cached.counts))
+    }
+
+    /// Packs and uploads the mesh into `gpu`. An upload that fails leaves each stream
+    /// it would have written dirty, so the next one packs and writes it again.
     fn upload_vertex_buffers(
         &self,
         context: &RenderContext,
+        gpu: &mut Option<GpuStreams>,
     ) -> Result<(VertexBuffers, DrawCounts), RendererError> {
-        let (device, queue) = (&context.device, &context.queue);
-        // Capture dirty flags before packing; ensure_packed() clears them
         let was_dirty_v = *self.dirty_vertices.read();
         let was_dirty_i = *self.dirty_instances.read();
+        let uploaded = self.write_buffers(context, gpu, was_dirty_v, was_dirty_i);
+        if uploaded.is_err() {
+            if was_dirty_v {
+                *self.dirty_vertices.write() = true;
+            }
+            if was_dirty_i {
+                *self.dirty_instances.write() = true;
+            }
+        }
+        uploaded
+    }
+
+    fn write_buffers(
+        &self,
+        context: &RenderContext,
+        gpu: &mut Option<GpuStreams>,
+        was_dirty_v: bool,
+        was_dirty_i: bool,
+    ) -> Result<(VertexBuffers, DrawCounts), RendererError> {
+        let (device, queue) = (&context.device, &context.queue);
 
         self.ensure_packed()?;
         let pv = self.packed_verts.read();
@@ -632,9 +724,9 @@ impl MeshObject {
         };
         let index_count = count(idx.len())?;
 
-        // Checked on every upload: the packing above clears the dirty flags, so
-        // data that stays too large fails again instead of drawing old buffers.
-        let limit = device.limits().max_buffer_size;
+        // Checked on every upload: a failed one leaves the streams dirty,
+        // so data that stays too large fails again instead of drawing old buffers.
+        let limit = context.limits.max_buffer_size;
         let sizes = [
             ("the mesh's vertex buffer", pv.len() as u64),
             ("the mesh's index buffer", u64::from(index_count) * 4),
@@ -643,9 +735,6 @@ impl MeshObject {
         for (buffer, size) in sizes {
             check_limit(buffer, "max_buffer_size", size, limit)?;
         }
-
-        // Create or grow buffers
-        let mut gpu = self.gpu.write();
 
         // Decide whether we need to recreate GPU buffers. Buffers on
         // another device can't draw here, so they give way to new ones.
@@ -892,7 +981,7 @@ fn pack_vertex(
     index: usize,
     v: &Vertex,
     schema: &VertexSchema,
-    required: &HashSet<String>,
+    required: &HashMap<String, wgpu::VertexFormat>,
 ) -> Result<(), MeshError> {
     if v.properties.contains_key(POSITION) {
         return Err(MeshError::InvalidVertex(explain_position(index)));
@@ -919,7 +1008,7 @@ fn pack_vertex(
                 Some(value) => value.write(f.fmt, out).map_err(|misfit| {
                     MeshError::InvalidVertex(misfit.explain(name, &format!("vertex {index}")))
                 })?,
-                None if required.contains(name) => {
+                None if required.contains_key(name) => {
                     let place = format!("vertex {index}");
                     return Err(MeshError::InvalidVertex(explain_missing(f, &place)));
                 }
@@ -936,14 +1025,14 @@ fn pack_instance(
     index: usize,
     i: &Instance,
     schema: &VertexSchema,
-    required: &HashSet<String>,
+    required: &HashMap<String, wgpu::VertexFormat>,
 ) -> Result<(), MeshError> {
     for f in schema.fields.iter() {
         match i.properties.get(&f.name) {
             Some(value) => value.write(f.fmt, out).map_err(|misfit| {
                 MeshError::InvalidInstance(misfit.explain(&f.name, &format!("instance {index}")))
             })?,
-            None if required.contains(&f.name) => {
+            None if required.contains_key(&f.name) => {
                 let place = format!("instance {index}");
                 return Err(MeshError::InvalidInstance(explain_missing(f, &place)));
             }
@@ -960,6 +1049,39 @@ fn explain_missing(field: &Field, place: &str) -> String {
         field.name,
         describe(field.fmt)
     )
+}
+
+/// Refuses instances that can't hold an attribute a shader reads from them: one missing
+/// from the instance layout, which comes from the first instance or a Model's columns.
+fn check_layout(
+    required: &HashMap<String, wgpu::VertexFormat>,
+    fields: &[Field],
+    instances: usize,
+) -> Result<(), MeshError> {
+    let missing = required
+        .iter()
+        .filter(|(name, _)| !fields.iter().any(|field| &field.name == *name))
+        .min_by_key(|(name, _)| name.as_str());
+    let Some((name, format)) = missing else {
+        return Ok(());
+    };
+    let found = match instances {
+        0 => "no instances".to_string(),
+        _ => "no value at instance 0".to_string(),
+    };
+    Err(MeshError::InvalidInstance(format!(
+        "{name}: expected {}, got {found}",
+        describe(*format)
+    )))
+}
+
+/// Refuses a mesh without `set_indices` whose vertices, drawn in threes,
+/// end partway through a triangle.
+fn check_vertices(vertices: usize) -> Result<(), MeshError> {
+    match vertices.is_multiple_of(3) {
+        true => Ok(()),
+        false => Err(MeshError::VertexCount(vertices)),
+    }
 }
 
 /// Refuses an index list that ends partway through a triangle,
@@ -1011,6 +1133,7 @@ mod tests {
         mesh.add_vertices([
             Vertex::new([0.0f32, 0.0, 0.0]).set("uv", [0.0f32, 0.0, 0.0]),
             Vertex::new([1.0f32, 0.0, 0.0]).set("uv", [1.0f32, 0.0]),
+            Vertex::new([0.0f32, 1.0, 0.0]).set("uv", [0.0f32, 1.0, 0.0]),
         ]);
         match mesh.object.ensure_packed() {
             Err(MeshError::InvalidVertex(text)) => {
@@ -1020,14 +1143,18 @@ mod tests {
         }
 
         let mesh = Mesh::new();
-        mesh.add_vertices([Vertex::new([0.0f32, 0.0, 0.0]), Vertex::new([1.0f32, 0.0])]);
+        mesh.add_vertices([
+            Vertex::new([0.0f32, 0.0, 0.0]),
+            Vertex::new([1.0f32, 0.0]),
+            Vertex::new([0.0f32, 1.0, 0.0]),
+        ]);
         assert!(matches!(
             mesh.object.ensure_packed(),
             Err(MeshError::LayoutMismatch(_))
         ));
 
         let mesh = Mesh::new();
-        mesh.add_vertex([0.0f32, 0.0]);
+        mesh.add_vertices([[0.0f32, 0.0], [1.0, 0.0], [0.0, 1.0]]);
         mesh.add_instances([
             Instance::new().set("offset", [0.0f32, 0.0]),
             Instance::new().set("offset", 1.0f32),
@@ -1045,7 +1172,10 @@ mod tests {
     #[test]
     fn ensure_packed_refuses_a_position_property() {
         let mesh = Mesh::new();
-        mesh.add_vertex(Vertex::new([0.0, 0.0]).set("position", [5.0, 5.0]));
+        mesh.add_vertices(
+            [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]
+                .map(|corner| Vertex::new(corner).set("position", [5.0, 5.0])),
+        );
 
         match mesh.object.ensure_packed() {
             Err(MeshError::InvalidVertex(text)) => assert_eq!(
@@ -1099,6 +1229,65 @@ mod tests {
         });
     }
 
+    // Story: the mesh builds a shader's layouts once and keeps them until it changes.
+    #[test]
+    fn layouts_stay_until_the_mesh_changes() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let shader = crate::Shader::new(
+                "@vertex fn vs_main(@location(0) p: vec2<f32>) -> @builtin(position) vec4<f32> { return vec4<f32>(p, 0.0, 1.0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+            )
+            .expect("shader");
+            let mesh = Mesh::new();
+            mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
+            shader.add_mesh(&mesh).expect("attach");
+            renderer.render(&shader, &target).expect("render");
+            let hash = shader.object.hash;
+            let refuse = || Err(RendererError::Error("rebuilt".into()));
+
+            let kept = mesh.object.fetch_layouts(hash, refuse);
+            mesh.add_vertices([[0.0, 0.0], [0.1, 0.0], [0.0, 0.1]]);
+            let changed = mesh.object.fetch_layouts(hash, refuse);
+
+            assert!(kept.is_ok(), "a still mesh keeps its layouts: {kept:?}");
+            assert!(changed.is_err(), "a changed mesh builds them again");
+        });
+    }
+
+    // Story: the cached upload names the context it belongs to, so after two
+    // contexts take turns, the cache and the buffers belong to the last one.
+    #[test]
+    fn the_cache_belongs_to_the_context_that_filled_it() {
+        pollster::block_on(async move {
+            let mut contexts = Vec::new();
+            for _ in 0..2 {
+                let instance = crate::renderer::platform::all::create_instance().await;
+                let adapter = crate::renderer::platform::all::request_adapter(&instance, None)
+                    .await
+                    .expect("adapter");
+                let (device, queue) = crate::renderer::platform::all::request_device(&adapter)
+                    .await
+                    .expect("device");
+                contexts.push(RenderContext::new(device, queue));
+            }
+            let mesh = Mesh::new();
+            mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
+
+            for context in [&contexts[0], &contexts[1], &contexts[0], &contexts[1]] {
+                mesh.object.vertex_buffers(context).expect("buffers");
+                let cache = mesh.object.cache.read();
+                let gpu = mesh.object.gpu.read();
+                assert_eq!(cache.as_ref().map(|cached| cached.owner), Some(context.id));
+                assert_eq!(gpu.as_ref().map(|streams| streams.owner), Some(context.id));
+            }
+        });
+    }
+
     // Story: a plain number packs as a float until a shader types it, then
     // the mesh repacks it in that type and keeps it for the mesh's lifetime.
     #[test]
@@ -1107,6 +1296,7 @@ mod tests {
         mesh.add_vertices([
             Vertex::new([0.0f32, 0.0]).set("id", 3),
             Vertex::new([1.0f32, 0.0]).set("id", 4),
+            Vertex::new([0.0f32, 1.0]).set("id", 5),
         ]);
         let field = |mesh: &Mesh| -> (wgpu::VertexFormat, Vec<u8>, Vec<u8>) {
             mesh.object.ensure_packed().expect("pack");
@@ -1133,7 +1323,7 @@ mod tests {
             types: added,
             ..Default::default()
         };
-        mesh.object.declare(binding).expect("declare");
+        mesh.object.declare(1, binding).expect("declare");
         assert!(mesh.object.vertex_schema.read().is_none());
         assert!(*mesh.object.dirty_vertices.read());
 
@@ -1150,7 +1340,7 @@ mod tests {
             types: conflict,
             ..Default::default()
         };
-        let error = mesh.object.declare(binding).expect_err("conflict");
+        let error = mesh.object.declare(1, binding).expect_err("conflict");
         assert_eq!(
             error.to_string(),
             "Mesh attribute id is u32 on this mesh, but the shader declares f32"
@@ -1192,12 +1382,16 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
                 .expect("device");
             let context = RenderContext::new(device, queue);
             mesh.object.vertex_buffers(&context).expect("buffers");
-            assert!(*mesh.object.cache_valid.read());
+            let cached = |mesh: &Mesh| {
+                let generation = mesh.object.generation.load(Ordering::Acquire);
+                mesh.object.find_cached(context.id, generation).is_some()
+            };
+            assert!(cached(&mesh));
 
             let second = crate::Shader::new(wgsl).expect("shader");
             second.add_mesh(&mesh).expect("second attach");
             first.validate_mesh(&mesh).expect("validate again");
-            assert!(*mesh.object.cache_valid.read());
+            assert!(cached(&mesh));
             assert!(!*mesh.object.dirty_vertices.read());
         });
     }
@@ -1209,7 +1403,7 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
         let a = Vertex::new([0.0f32, 0.0]).set("uv", [0.0f32, 0.0]);
         let b = Vertex::new([1.0f32, 0.0]).set("uv", [1.0f32, 0.0]);
         let c = Vertex::new([0.0f32, 1.0]).set("uv", [0.0f32, 1.0]);
-        mesh.add_vertices([a.clone(), b.clone(), a.clone(), c.clone()]);
+        mesh.add_vertices([a.clone(), b.clone(), c.clone(), a.clone(), c.clone(), b]);
 
         // Force packing and inspect internals
         mesh.object.ensure_packed().expect("pack");
@@ -1218,8 +1412,8 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
         let idx = mesh.object.indices.read().clone();
         // Unique verts should be a, b, c => 3 * stride bytes
         assert_eq!(pv.len() as u64, 3 * stride);
-        // Indices mirror [a,b,a,c] => [0,1,0,2]
-        assert_eq!(idx, vec![0, 1, 0, 2]);
+        // Indices mirror [a,b,c,a,c,b] => [0,1,2,0,2,1]
+        assert_eq!(idx, vec![0, 1, 2, 0, 2, 1]);
     }
 
     #[test]

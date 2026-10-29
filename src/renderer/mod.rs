@@ -797,13 +797,20 @@ struct ShaderState<'plan> {
 }
 
 impl ShaderState<'_> {
-    /// Sets the pipeline of `layout`, the bind groups and the native immediates.
+    /// Sets the bind groups, the pipeline of `layout` and the native immediates.
     fn bind(&self, render_pass: &mut wgpu::RenderPass<'_>, layout: usize) {
-        if let Some(pipeline) = self.pipelines.get(layout) {
-            render_pass.set_pipeline(pipeline);
-        }
         for (group, bind_group) in self.bind_groups.iter() {
             render_pass.set_bind_group(*group, bind_group, &[]);
+        }
+        self.switch(render_pass, layout);
+    }
+
+    /// Sets the pipeline of `layout` and the native immediates. The bind groups stay
+    /// bound, since the shader's pipelines share their layouts, and a pipeline of
+    /// another layout clears the immediates.
+    fn switch(&self, render_pass: &mut wgpu::RenderPass<'_>, layout: usize) {
+        if let Some(pipeline) = self.pipelines.get(layout) {
+            render_pass.set_pipeline(pipeline);
         }
         if let Some(bytes) = self.immediates.as_deref() {
             render_pass.set_immediates(0, bytes);
@@ -887,7 +894,7 @@ pub(crate) struct RenderContext {
     /// The device's features, limits and downlevel flags, read once,
     /// since each read crosses into JavaScript on the browser's WebGPU.
     pub(crate) features: wgpu::Features,
-    limits: wgpu::Limits,
+    pub(crate) limits: wgpu::Limits,
     pub(crate) downlevel: wgpu::DownlevelFlags,
     /// The adapter's backend, which decides what the GL path can keep.
     backend: wgpu::Backend,
@@ -1257,6 +1264,10 @@ impl RenderContext {
         self.check_textures(&shader)?;
         let meshes = shader.meshes.read().clone();
         if meshes.is_empty() {
+            // The mesh quick view keeps the reason its attach failed.
+            if let Some(refusal) = shader.take_refusal() {
+                return Err(refusal.into());
+            }
             require_mesh(&shader)?;
             return Ok(ShaderDraw {
                 shader,
@@ -1268,14 +1279,15 @@ impl RenderContext {
         }
         let blend = *shader.alpha_mode.read() == crate::material::AlphaMode::Blend;
         let shader_ptr = Arc::as_ptr(&shader) as usize;
-        let limits = self.device.limits();
+        let limits = &self.limits;
         let mut layouts: Vec<VertexLayouts> = Vec::new();
         let mut readers = HashMap::with_capacity(meshes.len());
         let mut batched = Vec::with_capacity(meshes.len());
         for mesh in meshes.iter() {
             // Packing the buffers derives the schemas the layouts read.
             let (buffers, counts) = mesh.vertex_buffers(self)?;
-            let read = vertex_buffer_layouts(&shader, mesh, &limits)?;
+            let read = mesh.fetch_layouts(shader.hash, || vertex_buffer_layouts(&shader, mesh))?;
+            check_strides(&read, limits)?;
             let layout = match layouts.iter().position(|known| *known == read) {
                 Some(index) => index,
                 None => {
@@ -1640,7 +1652,7 @@ impl RenderContext {
             }
         }
 
-        let limit = self.device.limits().max_buffer_size;
+        let limit = self.limits.max_buffer_size;
         for (key, bytes) in opaque_groups.iter() {
             check_limit(
                 "the pass's Model instance buffer",
@@ -2104,7 +2116,7 @@ impl RenderContext {
                     let mut current = 0;
                     for mesh in meshes {
                         if mesh.layout != current {
-                            state.bind(&mut render_pass, mesh.layout);
+                            state.switch(&mut render_pass, mesh.layout);
                             current = mesh.layout;
                         }
                         if let Some(buffer) = mesh.instances.buffer.as_ref() {
@@ -2143,10 +2155,14 @@ impl RenderContext {
                 let Some(&layout) = state.readers.get(&(Arc::as_ptr(&draw.mesh) as usize)) else {
                     continue;
                 };
-                if current != Some((draw.shader_ptr, layout)) {
-                    state.bind(&mut render_pass, layout);
-                    current = Some((draw.shader_ptr, layout));
+                match current {
+                    Some((shader, bound)) if shader == draw.shader_ptr && bound == layout => {}
+                    Some((shader, _)) if shader == draw.shader_ptr => {
+                        state.switch(&mut render_pass, layout)
+                    }
+                    _ => state.bind(&mut render_pass, layout),
                 }
+                current = Some((draw.shader_ptr, layout));
                 let (refs, counts) = draw.mesh.vertex_buffers(self)?;
                 if counts.index_count == 0 {
                     continue;
@@ -2413,7 +2429,7 @@ fn report_missing(name: &str, meta: &crate::texture::TextureMeta) -> RendererErr
 
 /// One vertex buffer slot of a render pipeline.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct VertexStream {
+pub(crate) struct VertexStream {
     stride: u64,
     step_mode: wgpu::VertexStepMode,
     attributes: Vec<wgpu::VertexAttribute>,
@@ -2422,7 +2438,7 @@ struct VertexStream {
 /// Vertex buffer layouts a shader reads from its mesh:
 /// slot 0 steps per vertex, the optional slot 1 per instance.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct VertexLayouts {
+pub(crate) struct VertexLayouts {
     vertex: VertexStream,
     instance: Option<VertexStream>,
 }
@@ -2556,13 +2572,11 @@ fn require_mesh(shader: &ShaderObject) -> Result<(), ShaderError> {
     )))
 }
 
-/// The vertex layouts `shader` reads from `mesh`, checked against the device's
-/// vertex `limits`: each input's location, and the stride of each stream it reads.
-/// The checks run on the CPU, so a refusal builds no pipeline, on the web too.
+/// The vertex layouts `shader` reads from `mesh`. The mesh keeps them until it changes
+/// (`MeshObject::fetch_layouts`), and `check_strides` checks them against each device.
 fn vertex_buffer_layouts(
     shader: &crate::ShaderObject,
     mesh: &crate::mesh::MeshObject,
-    limits: &wgpu::Limits,
 ) -> Result<VertexLayouts, RendererError> {
     let vertex_inputs = shader.reflect_vertex_inputs()?;
 
@@ -2605,16 +2619,6 @@ fn vertex_buffer_layouts(
     // shader's input name doesn't appear in either map (raw / generated
     // shaders).
     for vertex_input in vertex_inputs.iter() {
-        // Locations are unique, so this also keeps the count within the limit.
-        check_limit(
-            &format!(
-                "shader input '{}' @location({})",
-                vertex_input.name, vertex_input.location
-            ),
-            "max_vertex_attributes",
-            u64::from(vertex_input.location) + 1,
-            u64::from(limits.max_vertex_attributes),
-        )?;
         let mut placed = false;
 
         let assert_format = |format_mesh: wgpu::VertexFormat,
@@ -2705,8 +2709,6 @@ fn vertex_buffer_layouts(
         }
     }
 
-    let limit = u64::from(limits.max_vertex_buffer_array_stride);
-    check_limit("the mesh's vertex stride", STRIDE, vertex_stride, limit)?;
     vertex_attributes.sort_by_key(|attr| attr.shader_location);
     let vertex = VertexStream {
         stride: vertex_stride,
@@ -2714,10 +2716,9 @@ fn vertex_buffer_layouts(
         attributes: vertex_attributes,
     };
 
-    // The instance stream counts against the limit only when the shader reads it.
+    // A pipeline steps the instance stream only when the shader reads it.
     let instance = match (instance_attributes.is_empty(), instance_stride) {
         (false, Some(stride)) => {
-            check_limit("the mesh's instance stride", STRIDE, stride, limit)?;
             instance_attributes.sort_by_key(|attr| attr.shader_location);
             Some(VertexStream {
                 stride,
@@ -2731,8 +2732,22 @@ fn vertex_buffer_layouts(
     Ok(VertexLayouts { vertex, instance })
 }
 
-/// The limit a vertex or instance stride counts against.
-const STRIDE: &str = "max_vertex_buffer_array_stride";
+/// Refuses a vertex stride, or an instance stride the shader reads, past the device's limit.
+/// It allocates nothing unless it refuses, so it runs on every frame.
+fn check_strides(layouts: &VertexLayouts, limits: &wgpu::Limits) -> Result<(), RendererError> {
+    let limit = "max_vertex_buffer_array_stride";
+    let max = u64::from(limits.max_vertex_buffer_array_stride);
+    check_limit(
+        "the mesh's vertex stride",
+        limit,
+        layouts.vertex.stride,
+        max,
+    )?;
+    match layouts.instance.as_ref() {
+        Some(instance) => check_limit("the mesh's instance stride", limit, instance.stride, max),
+        None => Ok(()),
+    }
+}
 
 /// The viewport for `region`, as given. `check_viewport` keeps each side within
 /// the device's 2D limit, and a region that starts past the attachment draws nothing,

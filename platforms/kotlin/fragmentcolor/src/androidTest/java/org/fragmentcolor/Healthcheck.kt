@@ -138,6 +138,8 @@ class Healthcheck : ExampleCase() {
         )
         val error = assertFailsWith<FragmentColorException> { Shader(source).addMesh(named) }
         assertTrue(error.message.orEmpty().contains("property named 'position'"), error.message)
+        assertFailsWith<FragmentColorException> { Shader.fromMesh(Mesh()) }
+        assertFailsWith<FragmentColorException> { Shader.fromMesh(named) }
 
         // No device takes 65 vertex attributes, so an input at @location(64) is past every limit.
         val far = Shader(

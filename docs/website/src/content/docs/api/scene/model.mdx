@@ -289,7 +289,8 @@ as the `model_0` to `model_3` instance attributes, the four columns of a
 
 If you want several Models that share a look, clone the Material before each
 `Model::new`. `Material::clone` shares the handle and copies nothing, so the
-Models share one pipeline and one bind-group setup. The transform belongs to
+Models share one bind-group setup, and Models whose meshes lay out their
+vertices alike share one pipeline. The transform belongs to
 the Model, not to the Material's Shader or the Mesh, so Models can share
 both. Models with the same Material and Mesh draw in one instanced call.
 

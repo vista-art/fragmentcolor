@@ -792,12 +792,23 @@ fn expand_fan(label: &str, order: &[u32]) -> Result<Vec<u32>, SceneLoadError> {
     Ok(list)
 }
 
-/// Refuse an index that points past the last vertex.
+/// Refuse a triangle list that ends partway through a triangle, as glTF requires
+/// of TRIANGLES, and an index that points past the last vertex. Strips and fans
+/// arrive here expanded into lists, so they always hold whole triangles.
 fn check_indices(
     label: &str,
     indices: Option<&[u32]>,
     vertex_count: usize,
 ) -> Result<(), SceneLoadError> {
+    let (count, what) = match indices {
+        Some(indices) => (indices.len(), "indices"),
+        None => (vertex_count, "vertices and no indices"),
+    };
+    if !count.is_multiple_of(3) {
+        return Err(SceneLoadError::Invalid(format!(
+            "{label} has {count} {what}, and a triangle list takes a multiple of 3"
+        )));
+    }
     let past_end = indices
         .unwrap_or_default()
         .iter()
@@ -1861,6 +1872,37 @@ mod tests {
             ),
         ]);
         assert_invalid(bytes, "(NORMAL) holds 2 elements for 3 positions");
+    }
+
+    // Story: glTF draws TRIANGLES in threes, so a list that ends partway through a
+    // triangle, indexed or not, is refused with the primitive named.
+    #[test]
+    fn load_refuses_a_partial_triangle_list() {
+        #[rustfmt::skip]
+        let positions: [f32; 12] = [
+            0.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            1.0, 1.0, 0.0,
+        ];
+        let bin: Vec<u8> = positions.iter().flat_map(|f| f.to_le_bytes()).collect();
+        let json = QUAD_JSON.replace(r#""mode":5"#, r#""mode":4"#);
+        assert_invalid(
+            build_glb(&json, &bin),
+            "glTF mesh 0 primitive 0 has 4 vertices and no indices, and a triangle list takes a multiple of 3",
+        );
+
+        let bytes = mutate_triangle(&[
+            (MODE, r#""indices":1,"mode":4}"#),
+            (
+                LAST_ACCESSOR,
+                r#""max":[0.5,0.5,0.0]},{"bufferView":2,"componentType":5125,"count":4,"type":"SCALAR"}]"#,
+            ),
+        ]);
+        assert_invalid(
+            bytes,
+            "glTF mesh 0 primitive 0 has 4 indices, and a triangle list takes a multiple of 3",
+        );
     }
 
     #[test]

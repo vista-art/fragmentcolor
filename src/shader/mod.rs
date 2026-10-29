@@ -134,21 +134,13 @@ impl Shader {
     }
 
     #[lsp_doc("docs/api/core/shader/from_vertex.md")]
-    pub fn from_vertex(v: &crate::mesh::Vertex) -> Self {
-        let src = build_wgsl_from_vertex(v);
-
-        if let Ok(shader) = Shader::new(&src) {
-            shader
-        } else {
-            log::error!("Failed to create shader from vertex, returning default shader");
-            Shader::default()
-        }
+    pub fn from_vertex(v: &crate::mesh::Vertex) -> Result<Self, ShaderError> {
+        Ok(Self::from(Arc::new(ShaderObject::from_vertex(v)?)))
     }
 
     #[lsp_doc("docs/api/core/shader/from_mesh.md")]
-    pub fn from_mesh(mesh: &crate::mesh::Mesh) -> Self {
-        let shader_object = ShaderObject::from_mesh(mesh);
-        Self::from(Arc::new(shader_object))
+    pub fn from_mesh(mesh: &crate::mesh::Mesh) -> Result<Self, ShaderError> {
+        Ok(Self::from(Arc::new(ShaderObject::from_mesh(mesh)?)))
     }
 
     #[lsp_doc("docs/api/core/shader/add_mesh.md")]
@@ -205,6 +197,9 @@ impl Shader {
 /// doesn't otherwise know which Material a shader belongs to.
 #[derive(Debug)]
 pub(crate) struct ShaderObject {
+    /// Tells this shader from every other one, so a mesh keeps
+    /// what each attached shader reads apart from the others.
+    pub(crate) id: u64,
     pub(crate) hash: ShaderHash,
     pub(crate) module: Module,
     /// WGSL text the module was parsed from. Feeds the uniform padding
@@ -241,6 +236,18 @@ pub(crate) struct ShaderObject {
     /// Held while a texture uniform is written or stamped. An upload checks its stamp
     /// and writes under it, so a setter call can't land between the check and the write.
     pub(crate) texture_writes: Mutex<()>,
+    /// The error of the attach the mesh quick view tried last, which `render`
+    /// returns for this shader in place of the error for a shader with no mesh.
+    refusal: Mutex<Option<ShaderError>>,
+}
+
+impl Drop for ShaderObject {
+    /// Each mesh this shader holds stops checking for what it reads.
+    fn drop(&mut self) {
+        for mesh in self.meshes.get_mut().iter() {
+            mesh.detach(self.id);
+        }
+    }
 }
 
 /// A `set` queued while the storage was busy, applied by `flush_pending`.
@@ -384,42 +391,43 @@ impl ShaderObject {
     }
 
     /// Create a basic Shader from a vertex.
-    pub fn from_vertex(v: &crate::mesh::Vertex) -> Self {
-        let src = build_wgsl_from_vertex(v);
-
-        if let Ok(shader) = Self::new(&src) {
-            shader
-        } else {
-            log::error!("Failed to create shader from vertex, returning default shader");
-            Self::default()
-        }
+    pub fn from_vertex(v: &crate::mesh::Vertex) -> Result<Self, ShaderError> {
+        Self::new(&build_wgsl_from_vertex(v))
     }
 
-    /// Create a shader from a mesh's first vertex.
-    pub fn from_mesh(mesh: &crate::mesh::Mesh) -> Self {
-        let first = { mesh.object.verts.read().first().cloned() };
-
-        let shader = if let Some(vertex) = first {
-            Self::from_vertex(&vertex)
-        } else {
-            log::warn!("Mesh has no vertices, returning default shader");
-            Self::default()
+    /// Create a shader from a mesh's first vertex, with the mesh attached.
+    /// An empty mesh, and a mesh the shader refuses, fail.
+    pub fn from_mesh(mesh: &crate::mesh::Mesh) -> Result<Self, ShaderError> {
+        let first = mesh.object.verts.read().first().cloned();
+        let Some(vertex) = first else {
+            return Err(ShaderError::InvalidKey(
+                "Mesh has no vertices, and Shader::from_mesh builds a shader from the first one"
+                    .into(),
+            ));
         };
-
-        if shader.add_mesh(mesh.object.clone()).is_err() {
-            log::error!("Failed to add mesh to shader created from mesh, returning empty shader");
-        }
-
-        shader
+        let shader = Self::from_vertex(&vertex)?;
+        shader.add_mesh(mesh.object.clone())?;
+        Ok(shader)
     }
 
     /// Add a mesh to this shader, giving its untyped attributes the types this shader declares.
     /// Every vertex and instance the mesh takes later must hold the attributes this shader reads.
     pub fn add_mesh(&self, mesh: Arc<crate::mesh::MeshObject>) -> Result<(), ShaderError> {
         let binding = self.bind_mesh(&mesh)?;
-        mesh.declare(binding)?;
+        mesh.declare(self.id, binding)?;
         self.meshes.write().push(mesh);
         Ok(())
+    }
+
+    /// Keeps the error of an attach that a caller can't return, for `render` to report.
+    /// A successful attach clears it.
+    pub(crate) fn keep_refusal(&self, attached: Result<(), ShaderError>) {
+        *self.refusal.lock() = attached.err();
+    }
+
+    /// Takes the error `keep_refusal` kept, if any.
+    pub(crate) fn take_refusal(&self) -> Option<ShaderError> {
+        self.refusal.lock().take()
     }
 
     /// Check that a mesh can attach to this shader, without attaching it or recording any type.
@@ -427,17 +435,23 @@ impl ShaderObject {
         self.bind_mesh(mesh).map(drop)
     }
 
-    /// Remove a mesh from this shader.
+    /// Remove a mesh from this shader. Once the shader holds the mesh no
+    /// more, the mesh stops checking for the attributes this shader reads.
     pub fn remove_mesh(&self, mesh: &Arc<crate::mesh::MeshObject>) {
         let mut v = self.meshes.write();
         if let Some(pos) = v.iter().position(|m| Arc::ptr_eq(m, mesh)) {
             v.remove(pos);
         }
+        if !v.iter().any(|m| Arc::ptr_eq(m, mesh)) {
+            mesh.detach(self.id);
+        }
     }
 
     /// Remove all meshes from this shader.
     pub fn clear_meshes(&self) {
-        self.meshes.write().clear();
+        for mesh in self.meshes.write().drain(..) {
+            mesh.detach(self.id);
+        }
     }
 
     /// Set the pipeline-state alpha mode for this shader. Called by
@@ -520,7 +534,9 @@ impl ShaderObject {
             total_bytes += aligned;
         }
 
+        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
         let object = Self {
+            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             hash,
             module,
             source: source.to_string(),
@@ -544,6 +560,7 @@ impl ShaderObject {
             bound_textures: DashMap::new(),
             texture_stamps: DashMap::new(),
             texture_writes: Mutex::new(()),
+            refusal: Mutex::new(None),
         };
         // Refuses vertex inputs no mesh can feed, such as two with one name.
         object.reflect_vertex_inputs()?;
@@ -1156,16 +1173,16 @@ fn build_wgsl_from_vertex(v: &crate::mesh::Vertex) -> String {
         "vec3<f32>"
     };
 
-    // Optional color: four floats or four plain numbers, at the vertex's own location
+    // Optional color: four floats or four plain numbers. It sits at @location(1)
+    // whatever its place among the vertex's properties, since the mesh feeds it by name.
     let mut color_decl: Option<(u32, &'static str)> = None;
     if let Some(val) = v.properties.get("color")
         && matches!(
             val,
             crate::mesh::VertexData::F32x4(_) | crate::mesh::VertexData::Number4(_)
         )
-        && let Some(loc) = v.prop_locations.get("color").cloned()
     {
-        color_decl = Some((loc, "vec4<f32>"));
+        color_decl = Some((1, "vec4<f32>"));
     }
 
     let mut vs_inputs: Vec<String> = Vec::new();
@@ -2186,11 +2203,27 @@ struct Extra { @builtin(vertex_index) index: u32, @location(1) offset: vec2<f32>
         assert_eq!(shader.object.meshes.read().len(), 1);
     }
 
+    // Story: the shader Shader::from_vertex builds reads color at @location(1), whatever
+    // the color's place among the vertex's properties, so it fits a 16-attribute device.
+    #[test]
+    fn from_vertex_reads_color_at_location_one() {
+        let vertex = (0..15).fold(crate::mesh::Vertex::new([0.0, 0.0]), |vertex, index| {
+            vertex.set(&format!("p{index}"), 0.0)
+        });
+        let vertex = vertex.set("color", [1.0, 0.0, 0.0, 1.0]);
+
+        let shader = Shader::from_vertex(&vertex).expect("shader");
+
+        let inputs = shader.object.reflect_vertex_inputs().expect("inputs");
+        let color = inputs.iter().find(|input| input.name == "color");
+        assert_eq!(color.map(|input| input.location), Some(1));
+    }
+
     // Story: the shader Shader::from_vertex builds reads a color of four plain numbers.
     #[test]
     fn from_vertex_reads_an_untyped_color() {
         let vertex = crate::mesh::Vertex::new([0.0, 0.0]).set("color", [1.0, 0.0, 0.0, 1.0]);
-        let shader = Shader::from_vertex(&vertex);
+        let shader = Shader::from_vertex(&vertex).expect("shader");
         let inputs = shader.object.reflect_vertex_inputs().expect("inputs");
         assert!(inputs.iter().any(|input| input.name == "color"
             && input.format == wgpu::VertexFormat::Float32x4));

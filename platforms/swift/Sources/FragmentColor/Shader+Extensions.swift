@@ -165,13 +165,13 @@ extension Shader {
     // MARK: - fromVertex / fromMesh (unlabeled overloads)
 
     /// Build a Shader from a Vertex (unlabeled overload).
-    public static func fromVertex(_ vertex: Vertex) -> Shader {
-        return Shader.fromVertex(vertex: vertex)
+    public static func fromVertex(_ vertex: Vertex) throws -> Shader {
+        return try Shader.fromVertex(vertex: vertex)
     }
 
     /// Build a Shader from a Mesh (unlabeled overload).
-    public static func fromMesh(_ mesh: Mesh) -> Shader {
-        return Shader.fromMesh(mesh: mesh)
+    public static func fromMesh(_ mesh: Mesh) throws -> Shader {
+        return try Shader.fromMesh(mesh: mesh)
     }
 
     // MARK: - Async fetch factory

@@ -1660,8 +1660,7 @@ let mut mesh = Mesh::new();
 mesh.add_vertex([0.0, 0.0, 0.0]);
 mesh.add_vertex([1.0, 0.0, 0.0]);
 mesh.add_vertex([0.0, 1.0, 0.0]);
-mesh.add_vertex([1.0, 1.0, 0.0]);
-let shader = Shader::from_mesh(&mesh);
+let shader = Shader::from_mesh(&mesh)?;
 let pass = Pass::from_shader("meshes", &shader);
 
 // Depth test on: closer fragments win, and the pass writes the depth
@@ -1673,7 +1672,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 23-25}"
+lang="rust" meta="collapse={1-1, 22-24}"
 />
 
 </TabItem>
@@ -1693,7 +1692,6 @@ const mesh = new Mesh();
 mesh.addVertex([0.0, 0.0, 0.0]);
 mesh.addVertex([1.0, 0.0, 0.0]);
 mesh.addVertex([0.0, 1.0, 0.0]);
-mesh.addVertex([1.0, 1.0, 0.0]);
 const shader = Shader.fromMesh(mesh);
 const pass = Pass.fromShader("meshes", shader);
 
@@ -1723,7 +1721,6 @@ mesh = Mesh()
 mesh.add_vertex([0.0, 0.0, 0.0])
 mesh.add_vertex([1.0, 0.0, 0.0])
 mesh.add_vertex([0.0, 1.0, 0.0])
-mesh.add_vertex([1.0, 1.0, 0.0])
 shader = Shader.from_mesh(mesh)
 rpass = Pass.from_shader("meshes", shader)
 
@@ -1753,8 +1750,7 @@ let mesh = Mesh()
 try mesh.addVertex([0.0, 0.0, 0.0])
 try mesh.addVertex([1.0, 0.0, 0.0])
 try mesh.addVertex([0.0, 1.0, 0.0])
-try mesh.addVertex([1.0, 1.0, 0.0])
-let shader = Shader.fromMesh(mesh)
+let shader = try Shader.fromMesh(mesh)
 let pass = Pass.fromShader("meshes", shader)
 
 // Depth test on: closer fragments win, and the pass writes the depth
@@ -1783,7 +1779,6 @@ val mesh = Mesh()
 mesh.addVertex(listOf(0.0f, 0.0f, 0.0f))
 mesh.addVertex(listOf(1.0f, 0.0f, 0.0f))
 mesh.addVertex(listOf(0.0f, 1.0f, 0.0f))
-mesh.addVertex(listOf(1.0f, 1.0f, 0.0f))
 val shader = Shader.fromMesh(mesh)
 val pass = Pass.fromShader("meshes", shader)
 

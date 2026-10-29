@@ -132,6 +132,10 @@ impl RenderContext {
         let compute = shader.is_compute();
         let lights = (!compute).then(|| self.light_path());
         let layout = plan_layout(shader, self, lights);
+        let inputs = match compute {
+            true => Vec::new(),
+            false => shader.reflect_vertex_inputs()?,
+        };
         let judged = || -> Result<(), Refusal> {
             for slot in &layout.slots {
                 let name = describe_slot(&layout, slot);
@@ -141,6 +145,21 @@ impl RenderContext {
             check_counts(&layout.slots, &self.limits)?;
             if !compute {
                 check_entries(shader)?;
+            }
+            // Inputs come sorted by location, each location once,
+            // so the last one also keeps the count within the limit.
+            if let Some(input) = inputs.last() {
+                let item = format!(
+                    "shader input '{}' @location({})",
+                    input.name, input.location
+                );
+                let max = u64::from(self.limits.max_vertex_attributes);
+                check_limit(
+                    &item,
+                    "max_vertex_attributes",
+                    u64::from(input.location) + 1,
+                    max,
+                )?;
             }
             Ok(())
         };

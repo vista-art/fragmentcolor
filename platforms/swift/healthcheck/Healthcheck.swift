@@ -261,6 +261,12 @@ final class Healthcheck: ExampleCase {
                 throw HealthcheckError.assertion("a position property: unexpected message \(message)")
             }
         }
+        for (label, mesh) in [("an empty mesh", Mesh()), ("a mesh its shader refuses", named)] {
+            do {
+                _ = try Shader.fromMesh(mesh)
+                throw HealthcheckError.assertion("Shader.fromMesh of \(label) should throw")
+            } catch is FragmentColorError {}
+        }
 
         // No device takes 65 vertex attributes, so an input at @location(64) is past every limit.
         let far = try Shader("""

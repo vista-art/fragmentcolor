@@ -1,9 +1,9 @@
 use super::{ShaderError, ShaderObject, VertexInputDesc};
 use crate::mesh::vertex::{POSITION, explain_position};
-use crate::mesh::{AttributeNames, AttributeTypes, Binding, Instance, MeshObject, Shape};
+use crate::mesh::{AttributeTypes, Binding, Instance, MeshObject, Shape};
 use crate::mesh::{Vertex, VertexData, describe};
+use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
 use wgpu::VertexFormat;
 
 /// The two streams a mesh feeds a vertex shader.
@@ -32,13 +32,6 @@ impl Stream {
         match self {
             Self::Vertex => &mut types.vertex,
             Self::Instance => &mut types.instance,
-        }
-    }
-
-    fn pick(self, names: &mut AttributeNames) -> &mut HashSet<String> {
-        match self {
-            Self::Vertex => &mut names.vertex,
-            Self::Instance => &mut names.instance,
         }
     }
 }
@@ -103,7 +96,8 @@ impl ShaderObject {
         };
 
         let mut added = AttributeTypes::default();
-        let mut read = HashSet::new();
+        // What the shader reads from each stream, in the format each input declares.
+        let mut read = HashMap::new();
         for input in &inputs {
             match find_source(input, position, vertex.as_ref(), instance.as_ref())? {
                 Source::Position(format) if format == input.format => {}
@@ -116,16 +110,18 @@ impl ShaderObject {
                 }
                 Source::Attribute(stream, name, attribute) => {
                     bind_attribute(stream, name, attribute.shape, input, &known, &mut added)?;
-                    read.insert((stream, name));
+                    read.insert((stream, name), input.format);
                 }
             }
         }
 
         check_vertices(&verts, &known, &added, &read)?;
         check_instances(&insts, &known, &added, &read)?;
-        let mut names = AttributeNames::default();
-        for (stream, name) in read {
-            stream.pick(&mut names).insert(name.to_string());
+        let mut names = AttributeTypes::default();
+        for ((stream, name), format) in read {
+            stream
+                .select_mut(&mut names)
+                .insert(name.to_string(), format);
         }
         Ok(Binding {
             types: added,
@@ -245,7 +241,7 @@ fn check_vertices(
     verts: &[Vertex],
     known: &AttributeTypes,
     added: &AttributeTypes,
-    read: &HashSet<(Stream, &str)>,
+    read: &HashMap<(Stream, &str), VertexFormat>,
 ) -> Result<(), ShaderError> {
     let Some(first) = verts.first() else {
         return Ok(());
@@ -269,7 +265,7 @@ fn check_instances(
     insts: &[Instance],
     known: &AttributeTypes,
     added: &AttributeTypes,
-    read: &HashSet<(Stream, &str)>,
+    read: &HashMap<(Stream, &str), VertexFormat>,
 ) -> Result<(), ShaderError> {
     let Some(first) = insts.first() else {
         return Ok(());
@@ -311,7 +307,7 @@ fn check_values(
     formats: &[(&str, VertexFormat)],
     stream: Stream,
     index: usize,
-    read: &HashSet<(Stream, &str)>,
+    read: &HashMap<(Stream, &str), VertexFormat>,
 ) -> Result<(), ShaderError> {
     for &(name, format) in formats {
         match properties.get(name) {
@@ -324,7 +320,7 @@ fn check_values(
                     });
                 }
             }
-            None if read.contains(&(stream, name)) => {
+            None if read.contains_key(&(stream, name)) => {
                 let found = format!("no value at {} {index}", stream.label());
                 return Err(mismatch(name, format, found));
             }

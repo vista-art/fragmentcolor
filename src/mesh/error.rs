@@ -19,6 +19,9 @@ pub enum MeshError {
     /// An index list from `set_indices` that ends partway through a triangle.
     #[error("A triangle list takes a multiple of 3 indices, got {0}")]
     IndexCount(usize),
+    /// A mesh without `set_indices` whose vertices, drawn in threes, end partway through a triangle.
+    #[error("A mesh without set_indices draws its vertices in threes, and it holds {0}")]
+    VertexCount(usize),
     /// An index from `set_indices` past the last vertex the mesh holds.
     #[error("Index {index} points past the last of {vertices} vertices")]
     IndexRange { index: u32, vertices: usize },

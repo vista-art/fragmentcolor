@@ -103,9 +103,11 @@ let renderer = Renderer::new();
 let target = renderer.create_texture_target([256, 256]).await?;
 
 let mesh = Mesh::new();
-mesh.add_vertex(
+mesh.add_vertices([
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
-);
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
 let model = Model::new(mesh, Material::pbr().base_color([0.8, 0.3, 0.2, 1.0]));
 
 let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)?

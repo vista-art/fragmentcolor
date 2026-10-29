@@ -1,11 +1,24 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use fragmentcolor::{Mesh, Pass, Renderer, RendererError, Shader, ShaderError, Target, Vertex};
+use fragmentcolor::{
+    Instance, Mesh, Pass, Renderer, RendererError, Shader, ShaderError, Target, Vertex,
+};
 
 const WHITE: &str = r#"
 @vertex
 fn vs_main(@location(0) position: vec2<f32>) -> @builtin(position) vec4<f32> {
     return vec4<f32>(position, 0.0, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+"#;
+
+/// Draws white, moved by each instance's `offset`.
+const OFFSET: &str = r#"
+@vertex
+fn vs_main(@location(0) position: vec2<f32>, @location(1) offset: vec2<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position + offset, 0.0, 1.0);
 }
 
 @fragment
@@ -53,6 +66,132 @@ fn indices_point_at_whole_triangles() {
             "A triangle list takes a multiple of 3 indices, got 4"
         );
         assert!(whole.is_ok(), "got {whole:?}");
+    });
+}
+
+// Story: a mesh without set_indices draws its vertices in threes, so a count
+// that ends partway through a triangle fails render, where the GPU dropped the rest.
+#[test]
+fn vertices_without_indices_come_in_threes() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let target = renderer
+            .create_texture_target([8, 8])
+            .await
+            .expect("create_texture_target failed");
+        let shader = Shader::new(WHITE).expect("shader failed");
+        let mesh = Mesh::new();
+        mesh.add_vertices(FULLSCREEN.map(Vertex::new));
+        mesh.add_vertex(Vertex::new([0.5, 0.5]));
+        shader.add_mesh(&mesh).expect("attach");
+
+        let partial = renderer.render(&shader, &target);
+        mesh.set_indices([0, 1, 2]);
+        let indexed = renderer.render(&shader, &target);
+
+        assert_eq!(
+            mesh_error(partial),
+            "A mesh without set_indices draws its vertices in threes, and it holds 4"
+        );
+        assert!(indexed.is_ok(), "got {indexed:?}");
+    });
+}
+
+// Story: Shader::from_mesh fails for an empty mesh and for a mesh its shader
+// refuses, where it returned a shader that drew nothing or the default image.
+#[test]
+fn from_mesh_fails_for_a_mesh_it_cannot_draw() {
+    let empty = Shader::from_mesh(&Mesh::new());
+    let mixed = Mesh::new();
+    mixed.add_vertices([
+        Vertex::new([0.0, 0.0]),
+        Vertex::new([1.0, 0.0, 0.0]),
+        Vertex::new([0.0, 1.0]),
+    ]);
+    let refused = Shader::from_mesh(&mixed);
+    let good = Mesh::new();
+    good.add_vertices(FULLSCREEN.map(Vertex::new));
+    let drawn = Shader::from_mesh(&good);
+
+    match empty {
+        Err(ShaderError::InvalidKey(message)) => assert_eq!(
+            message,
+            "Mesh has no vertices, and Shader::from_mesh builds a shader from the first one"
+        ),
+        other => panic!("expected an invalid key, got {:?}", other.err()),
+    }
+    match refused {
+        Err(ShaderError::AttributeMismatch { name, .. }) => assert_eq!(name, "position"),
+        other => panic!("expected an attribute mismatch, got {:?}", other.err()),
+    }
+    assert!(drawn.is_ok_and(|shader| shader.list_uniforms().is_empty()));
+}
+
+// Story: the mesh quick view returns the reason its attach failed, where render
+// said its shader had no mesh to read from.
+#[test]
+fn the_quick_view_reports_its_attach_error() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let target = renderer
+            .create_texture_target([8, 8])
+            .await
+            .expect("create_texture_target failed");
+        let mesh = Mesh::new();
+        mesh.add_vertices(
+            FULLSCREEN.map(|position| Vertex::new(position).set("position", [5.0, 5.0])),
+        );
+
+        let rendered = renderer.render(&mesh, &target);
+        let again = renderer.render(&mesh, &target);
+
+        for result in [rendered, again] {
+            match result {
+                Err(RendererError::ShaderError(ShaderError::InvalidKey(message))) => {
+                    assert!(message.contains("property named 'position'"), "{message}")
+                }
+                other => panic!("expected the attach error, got {other:?}"),
+            }
+        }
+    });
+}
+
+// Story: an upload that fails leaves the vertices it packed dirty, so the render
+// after the fix draws the new triangle, where it drew the old buffers.
+#[test]
+fn a_failed_upload_writes_its_vertices_next_time() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let target = renderer
+            .create_texture_target([8, 2])
+            .await
+            .expect("create_texture_target failed");
+        let shader = Shader::new(OFFSET).expect("shader failed");
+        let mesh = Mesh::new();
+        // The left half, then the right half, as two pairs of triangles drawn by index.
+        mesh.add_vertices([[-1.0, -1.0], [0.0, -1.0], [-1.0, 3.0]].map(Vertex::new));
+        mesh.set_indices([0, 1, 2]);
+        mesh.add_instance(Instance::new().set("offset", [0.0, 0.0]));
+        shader.add_mesh(&mesh).expect("attach");
+        renderer.render(&shader, &target).expect("first render");
+
+        mesh.add_vertices([[0.0, -1.0], [1.0, -1.0], [1.0, 3.0]].map(Vertex::new));
+        mesh.set_indices([3, 4, 5]);
+        mesh.add_instance(Instance::new());
+        let refused = renderer.render(&shader, &target);
+        mesh.clear_instances();
+        mesh.add_instance(Instance::new().set("offset", [0.0, 0.0]));
+        let fixed = renderer.render(&shader, &target);
+        let image = target.get_image().await.expect("read back");
+
+        assert!(refused.is_err(), "an instance without offset is refused");
+        assert!(fixed.is_ok(), "got {fixed:?}");
+        assert_eq!(image[4..8], [0, 0, 0, 0], "the old triangle is gone");
+        assert_eq!(
+            image[28..32],
+            [255, 255, 255, 255],
+            "the new triangle draws"
+        );
     });
 }
 

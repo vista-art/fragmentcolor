@@ -9,19 +9,24 @@ This function uses the **first Vertex** to infer position dimensionality and opt
 
 It generates a minimal vertex shader that consumes `@location(0)` position and a fragment shader that returns a flat color by default. If a `color: vec4<f32>` property exists, it is passed through to the fragment stage and used as output.
 
-## Empty Mesh Handling
+## Errors
 
-If the Mesh has no vertices, `from_mesh` returns the default shader and logs a warning.
-The default shader takes no vertex inputs, so it rejects the mesh and the empty mesh is not attached.
+`from_mesh` returns `Result<Shader, ShaderError>`. A mesh with no vertices returns
+`ShaderError::InvalidKey`, since there is no first vertex to build from. A mesh the new
+shader refuses returns the error `Shader::add_mesh` gives, such as a vertex whose position
+has another dimension than the first one's.
 
 ## Example
 
 ```rust
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Mesh, Shader};
 
 let mut mesh = Mesh::new();
 mesh.add_vertex([0.0, 0.0, 0.0]);
-let shader = Shader::from_mesh(&mesh);
+let shader = Shader::from_mesh(&mesh)?;
 
 # let _ = shader;
+# Ok(())
+# }
 ```

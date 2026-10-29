@@ -212,8 +212,7 @@ final class GeneratedExamples: ExampleCase {
             try mesh.addVertex([0.0, 0.0, 0.0])
             try mesh.addVertex([1.0, 0.0, 0.0])
             try mesh.addVertex([0.0, 1.0, 0.0])
-            try mesh.addVertex([1.0, 1.0, 0.0])
-            let shader = Shader.fromMesh(mesh)
+            let shader = try Shader.fromMesh(mesh)
             let pass = Pass.fromShader("meshes", shader)
 
             // Depth test on: closer fragments win, and the pass writes the depth
@@ -337,7 +336,11 @@ final class GeneratedExamples: ExampleCase {
             let target = try await renderer.createTextureTarget([64, 64])
 
             let mesh = Mesh()
-            try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]))
+            try mesh.addVertices([
+                try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+                try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+                try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+            ])
 
             // The material keeps the encoded image as a pending upload.
             let material = Material.pbr().baseColorTexture(image)
@@ -517,14 +520,14 @@ final class GeneratedExamples: ExampleCase {
         await example("docs/api/core/shader/from_mesh.md") {
             let mesh = Mesh()
             try mesh.addVertex([0.0, 0.0, 0.0])
-            let shader = Shader.fromMesh(mesh)
+            let shader = try Shader.fromMesh(mesh)
         }
     }
 
     func test_core_shader_from_vertex() async {
         await example("docs/api/core/shader/from_vertex.md") {
             let vertex = try Vertex([0.0, 0.0, 0.0])
-            let shader = Shader.fromVertex(vertex)
+            let shader = try Shader.fromVertex(vertex)
         }
     }
 

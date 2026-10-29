@@ -76,6 +76,18 @@ impl ShaderLights {
         self.ids = self.list.iter().map(|(id, _)| *id).collect();
         self.prune_at = (2 * self.list.len()).max(PRUNE_FLOOR);
     }
+
+    /// Adds `light` once, and returns whether it was new.
+    fn push(&mut self, light: &Arc<LightObject>) -> bool {
+        if !self.ids.insert(light.id) {
+            return false;
+        }
+        self.list.push((light.id, Arc::downgrade(light)));
+        if self.list.len() >= self.prune_at {
+            self.prune();
+        }
+        true
+    }
 }
 
 /// The lights a lit shader packs at one render.
@@ -93,15 +105,48 @@ impl ShaderObject {
             return;
         }
         let mut lights = self.lights.write();
-        if !lights.ids.insert(light.id) {
-            return;
+        let added = lights.push(light);
+        drop(lights);
+        if added {
+            bump_epoch();
         }
-        lights.list.push((light.id, Arc::downgrade(light)));
-        if lights.list.len() >= lights.prune_at {
+    }
+
+    /// Runs `attach`, then takes the lights `incoming` lists, under one hold of the shader's
+    /// lights. They must fit next to the lights the shader holds, which is checked first,
+    /// so a refusal from the check or from `attach` changes no light, and no light reaches
+    /// the shader from another pass in between.
+    pub(crate) fn join_lights(
+        &self,
+        incoming: &[&Arc<LightObject>],
+        attach: impl FnOnce() -> Result<(), PassError>,
+    ) -> Result<(), PassError> {
+        let Some(roots) = self.light_roots.as_ref() else {
+            return attach();
+        };
+        let cap = light_cap().min(roots.capacity());
+        let mut lights = self.lights.write();
+        let fresh = incoming
+            .iter()
+            .filter(|light| !lights.ids.contains(&light.id))
+            .count();
+        let over = |lights: &ShaderLights| (lights.list.len() + fresh) as u64 > u64::from(cap);
+        if over(&lights) {
             lights.prune();
+            if over(&lights) {
+                return Err(PassError::LightCapReached { cap });
+            }
+        }
+        attach()?;
+        let mut added = false;
+        for light in incoming {
+            added |= lights.push(light);
         }
         drop(lights);
-        bump_epoch();
+        if added {
+            bump_epoch();
+        }
+        Ok(())
     }
 
     /// Checks that the lights `incoming` names, each named once, fit next to
