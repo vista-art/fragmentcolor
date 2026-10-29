@@ -121,6 +121,42 @@ final class Healthcheck: ExampleCase {
                 throw HealthcheckError.assertion("Limit item \(item), max \(max)")
             }
         }
+        let storage = try Shader(source: """
+            @group(0) @binding(0) var img: texture_storage_2d<bgra8unorm, write>;
+            @compute @workgroup_size(1) fn cs_main() { textureStore(img, vec2<i32>(0), vec4<f32>(1.0)); }
+        """)
+        do {
+            try renderer.render(storage, target)
+            throw HealthcheckError.assertion("a storage format the device lacks should throw")
+        } catch let error as FragmentColorError {
+            guard case let .Feature(item, feature) = error else {
+                throw HealthcheckError.assertion("render threw \(error), not Feature")
+            }
+            try assertEqual(item, "'img' at @group(0) @binding(0)", "Feature item")
+            try assertEqual(feature, "WriteOnly storage access to Bgra8Unorm", "Feature feature")
+        }
+        let unset = try Shader(source: """
+            @group(0) @binding(0) var source: texture_2d<f32>;
+            @group(0) @binding(1) var soft: sampler;
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+              let p = array<vec2<f32>, 3>(vec2f(-1., -1.), vec2f(3., -1.), vec2f(-1., 3.));
+              return vec4f(p[i], 0., 1.);
+            }
+            @fragment fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+              return textureSample(source, soft, pos.xy / 8.0);
+            }
+        """)
+        do {
+            try renderer.render(unset, target)
+            throw HealthcheckError.assertion("an unset texture should throw")
+        } catch let error as FragmentColorError {
+            guard case let .Binding(uniform, expected, found) = error else {
+                throw HealthcheckError.assertion("render threw \(error), not Binding")
+            }
+            try assertEqual(uniform, "source", "Binding uniform")
+            try assertEqual(expected, "a texture", "Binding expected")
+            try assertEqual(found, "none, since it was never set", "Binding found")
+        }
         let lone = try Shader(source: "@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }")
         do {
             try renderer.render(lone, target)
@@ -323,7 +359,11 @@ final class Healthcheck: ExampleCase {
             ("Vertex: position", { _ = try Vertex([1e39, 0, 0] as [Double]) }),
             ("Vertex: position", { _ = try Vertex([Float.nan, 0]) }),
             ("Vertex.pbr: position", { _ = try Vertex.pbr([0, Double.infinity, 0]) }),
-            ("Vertex: position", { try Mesh().addVertex([0, Double.nan, 0]) }),
+            ("Mesh.addVertex: vertex", { try Mesh().addVertex([0, Double.nan, 0]) }),
+            ("Mesh.addVertex: vertex", { try Mesh().addVertex([Float.infinity, 0]) }),
+            ("Mesh.addVertex: vertex: position", { try Mesh().addVertex([0, 0, Float.nan], [0, 0]) }),
+            ("Mesh.addVertices: vertex 1", { try Mesh().addVertices([[0, 0], [1e39, 0]] as [[Double]]) }),
+            ("Mesh.fromVertices: vertex 0", { _ = try Mesh.fromVertices([[Float.nan, 0]]) }),
             ("Quad: min", { _ = try Quad([1e39, 0] as [Double], [1, 1]) }),
             ("Quad: max", { _ = try Quad([0, 0], [Float.infinity, 1]) }),
         ]

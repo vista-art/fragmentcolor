@@ -164,6 +164,11 @@ impl Renderable for Mesh {
         }
         vec![self.pass.clone()].into()
     }
+
+    /// The quick view's pass, without attaching the mesh to a shader of its own.
+    fn peek_passes(&self) -> Arc<[Arc<PassObject>]> {
+        vec![self.pass.clone()].into()
+    }
 }
 
 // -----------------------------

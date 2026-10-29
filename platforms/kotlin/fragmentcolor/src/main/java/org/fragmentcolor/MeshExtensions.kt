@@ -49,34 +49,34 @@ fun Vertex.Companion.pbr(position: DoubleArray): Vertex = pbr(readFloats(positio
 /** Append a vertex at [position], 1 to 4 numbers. */
 @JvmName("addVertexFloats")
 fun Mesh.addVertex(position: List<Float>) {
-    addVertex(Vertex(position))
+    addVertex(Vertex(readPosition(position, "Mesh.addVertex: vertex")))
 }
 
 /** Append a vertex at [position], 1 to 4 numbers. */
 @JvmName("addVertexDoubles")
 fun Mesh.addVertex(position: List<Double>) {
-    addVertex(Vertex(position))
+    addVertex(Vertex(readPosition(position, "Mesh.addVertex: vertex")))
 }
 
 /** Append a vertex at [position], 1 to 4 numbers. */
 fun Mesh.addVertex(position: FloatArray) {
-    addVertex(Vertex(position))
+    addVertex(position.toList())
 }
 
 /** Append a vertex at [position], 1 to 4 numbers. */
 fun Mesh.addVertex(position: DoubleArray) {
-    addVertex(Vertex(position))
+    addVertex(position.toList())
 }
 
 /** Append a vertex at [position] with a `"uv"` attribute, as Rust's `(position, uv)` tuple does. */
 @JvmName("addVertexFloatsUv")
 fun Mesh.addVertex(position: List<Float>, uv: List<Float>) {
-    addVertex(Vertex(position).set("uv", uv))
+    addVertex(Vertex(readPosition(position, "Mesh.addVertex: vertex: position")).set("uv", uv))
 }
 
 @JvmName("addVertexDoublesUv")
 fun Mesh.addVertex(position: List<Double>, uv: List<Double>) {
-    addVertex(Vertex(position).set("uv", uv))
+    addVertex(Vertex(readPosition(position, "Mesh.addVertex: vertex: position")).set("uv", uv))
 }
 
 /**
@@ -85,33 +85,37 @@ fun Mesh.addVertex(position: List<Double>, uv: List<Double>) {
  */
 @JvmName("addVertexFloatsUvColor")
 fun Mesh.addVertex(position: List<Float>, uv: List<Float>, color: List<Float>) {
-    addVertex(Vertex(position).set("uv", uv).set("color", color))
+    val vertex = Vertex(readPosition(position, "Mesh.addVertex: vertex: position"))
+    addVertex(vertex.set("uv", uv).set("color", color))
 }
 
 @JvmName("addVertexDoublesUvColor")
 fun Mesh.addVertex(position: List<Double>, uv: List<Double>, color: List<Double>) {
-    addVertex(Vertex(position).set("uv", uv).set("color", color))
+    val vertex = Vertex(readPosition(position, "Mesh.addVertex: vertex: position"))
+    addVertex(vertex.set("uv", uv).set("color", color))
 }
 
 /** Append a vertex for each position. */
 @JvmName("addVerticesFloats")
 fun Mesh.addVertices(positions: List<List<Float>>) {
-    addVertices(positions.map { Vertex(it) })
+    addVertices(positions.mapIndexed { index, position -> Vertex(readPosition(position, "Mesh.addVertices: vertex $index")) })
 }
 
 /** Append a vertex for each position. */
 @JvmName("addVerticesDoubles")
 fun Mesh.addVertices(positions: List<List<Double>>) {
-    addVertices(positions.map { Vertex(it) })
+    addVertices(positions.mapIndexed { index, position -> Vertex(readPosition(position, "Mesh.addVertices: vertex $index")) })
 }
 
 /** A mesh with a vertex at each position. */
 @JvmName("fromVerticesFloats")
-fun Mesh.Companion.fromVertices(positions: List<List<Float>>): Mesh = fromVertices(positions.map { Vertex(it) })
+fun Mesh.Companion.fromVertices(positions: List<List<Float>>): Mesh =
+    fromVertices(positions.mapIndexed { index, position -> Vertex(readPosition(position, "Mesh.fromVertices: vertex $index")) })
 
 /** A mesh with a vertex at each position. */
 @JvmName("fromVerticesDoubles")
-fun Mesh.Companion.fromVertices(positions: List<List<Double>>): Mesh = fromVertices(positions.map { Vertex(it) })
+fun Mesh.Companion.fromVertices(positions: List<List<Double>>): Mesh =
+    fromVertices(positions.mapIndexed { index, position -> Vertex(readPosition(position, "Mesh.fromVertices: vertex $index")) })
 
 // ── Mesh: instances ───────────────────────────────────────────────────────────
 

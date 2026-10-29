@@ -21,45 +21,49 @@ extension Mesh {
     /// Append a single vertex from a position float array.
     /// Accepts 1 to 4 components.
     public func addVertex(_ position: [Float]) throws {
-        try addVertex(v: Vertex(position: position))
+        try addVertex(v: Vertex(position: readPosition(position, "Mesh.addVertex: vertex")))
     }
 
     /// Append a single vertex from a Double array (converted to Float).
     @_disfavoredOverload
     public func addVertex(_ position: [Double]) throws {
-        try addVertex(v: Vertex(position: readFloats(position, "Vertex: position")))
+        try addVertex(v: Vertex(position: readPosition(position, "Mesh.addVertex: vertex")))
     }
 
     /// Append a vertex at `position` with a `"uv"` attribute, as Rust's `(position, uv)` tuple does.
     public func addVertex(_ position: [Float], _ uv: [Float]) throws {
-        addVertex(try Vertex(position).set("uv", uv))
+        let position = try readPosition(position, "Mesh.addVertex: vertex: position")
+        addVertex(try Vertex(position: position).set("uv", uv))
     }
 
     @_disfavoredOverload
     public func addVertex(_ position: [Double], _ uv: [Double]) throws {
-        addVertex(try Vertex(position).set("uv", uv))
+        let position = try readPosition(position, "Mesh.addVertex: vertex: position")
+        addVertex(try Vertex(position: position).set("uv", uv))
     }
 
     /// Append a vertex at `position` with `"uv"` and `"color"` attributes,
     /// as Rust's `(position, uv, color)` tuple does.
     public func addVertex(_ position: [Float], _ uv: [Float], _ color: [Float]) throws {
-        addVertex(try Vertex(position).set("uv", uv).set("color", color))
+        let position = try readPosition(position, "Mesh.addVertex: vertex: position")
+        addVertex(try Vertex(position: position).set("uv", uv).set("color", color))
     }
 
     @_disfavoredOverload
     public func addVertex(_ position: [Double], _ uv: [Double], _ color: [Double]) throws {
-        addVertex(try Vertex(position).set("uv", uv).set("color", color))
+        let position = try readPosition(position, "Mesh.addVertex: vertex: position")
+        addVertex(try Vertex(position: position).set("uv", uv).set("color", color))
     }
 
     /// Append multiple vertices from an array of float-array positions.
     public func addVertices(_ positions: [[Float]]) throws {
-        try addVertices(vertices: positions.map { try Vertex(position: $0) })
+        try addVertices(vertices: readVertices(positions, "Mesh.addVertices"))
     }
 
     /// Append multiple vertices from an array of double-array positions.
     @_disfavoredOverload
     public func addVertices(_ positions: [[Double]]) throws {
-        try addVertices(vertices: positions.map { try Vertex(position: readFloats($0, "Vertex: position")) })
+        try addVertices(vertices: readVertices(positions, "Mesh.addVertices"))
     }
 
     /// Append multiple already-constructed vertices (drops the `vertices:` label).
@@ -79,17 +83,27 @@ extension Mesh {
 
     /// Build a Mesh from an array of float-array positions.
     public static func fromVertices(_ positions: [[Float]]) throws -> Mesh {
-        let m = Mesh()
-        try m.addVertices(positions)
-        return m
+        return Mesh.fromVertices(vertices: try readVertices(positions, "Mesh.fromVertices"))
     }
 
     /// Build a Mesh from an array of double-array positions.
     @_disfavoredOverload
     public static func fromVertices(_ positions: [[Double]]) throws -> Mesh {
-        let m = Mesh()
-        try m.addVertices(positions)
-        return m
+        return Mesh.fromVertices(vertices: try readVertices(positions, "Mesh.fromVertices"))
+    }
+}
+
+/// A vertex for each position, naming a failing one as `{label}: vertex {index}`.
+private func readVertices(_ positions: [[Float]], _ label: String) throws -> [Vertex] {
+    try positions.enumerated().map { index, position in
+        try Vertex(position: readPosition(position, "\(label): vertex \(index)"))
+    }
+}
+
+/// A vertex for each position, naming a failing one as `{label}: vertex {index}`.
+private func readVertices(_ positions: [[Double]], _ label: String) throws -> [Vertex] {
+    try positions.enumerated().map { index, position in
+        try Vertex(position: readPosition(position, "\(label): vertex \(index)"))
     }
 }
 

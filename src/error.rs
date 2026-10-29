@@ -116,6 +116,24 @@ pub(crate) fn raise<T: pyo3::PyTypeInfo>(
     })
 }
 
+/// An exception of class `T` with the full `message` that carries each of `fields` as an attribute.
+#[cfg(python)]
+pub(crate) fn raise_fields<T: pyo3::PyTypeInfo>(
+    message: String,
+    fields: Vec<(&'static str, crate::renderer::error::Field)>,
+) -> PyErr {
+    use crate::renderer::error::Field;
+    raise::<T>(message, |error| {
+        for (name, field) in fields {
+            match field {
+                Field::Text(text) => error.setattr(name, text)?,
+                Field::Number(number) => error.setattr(name, number)?,
+            }
+        }
+        Ok(())
+    })
+}
+
 #[cfg(python)]
 impl DeviceError {
     /// A `DeviceError` with the full `message` that carries the GPU error's `kind`,
@@ -126,19 +144,10 @@ impl DeviceError {
         detail: String,
         message: String,
     ) -> PyErr {
-        Python::attach(|py| {
-            let error = DeviceError::new_err(message);
-            let set = {
-                let value = error.value(py);
-                value
-                    .setattr("kind", kind)
-                    .and_then(|()| value.setattr("label", label))
-                    .and_then(|()| value.setattr("detail", detail))
-            };
-            match set {
-                Ok(()) => error,
-                Err(failure) => failure,
-            }
+        raise::<DeviceError>(message, |error| {
+            error.setattr("kind", kind)?;
+            error.setattr("label", label)?;
+            error.setattr("detail", detail)
         })
     }
 }

@@ -55,9 +55,9 @@ pub enum FragmentColorError {
     },
     #[error("{item} needs {feature}, which the device lacks")]
     Feature { item: String, feature: String },
-    #[error("'{name}' takes {expected}, not {found}")]
+    #[error("'{uniform}' takes {expected}, not {found}")]
     Binding {
-        name: String,
+        uniform: String,
         expected: String,
         found: String,
     },
@@ -85,11 +85,11 @@ impl FragmentColorError {
                 FragmentColorError::Feature { item, feature }
             }
             Refusal::BindingError {
-                name,
+                uniform,
                 expected,
                 found,
             } => FragmentColorError::Binding {
-                name,
+                uniform,
                 expected,
                 found,
             },

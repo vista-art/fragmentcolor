@@ -351,12 +351,27 @@ def check_shader_refusals(renderer):
     else:
         raise AssertionError("a group past the device should raise LimitError")
 
+    storage = Shader("""
+@group(0) @binding(0) var img: texture_storage_2d<bgra8unorm, write>;
+@compute @workgroup_size(1) fn cs_main() { textureStore(img, vec2<i32>(0), vec4<f32>(1.0)); }
+""")
+    try:
+        renderer.render(storage, target)
+    except FeatureError as e:
+        assert isinstance(e, FragmentColorError)
+        assert e.item == "'img' at @group(0) @binding(0)", f"item {e.item}"
+        assert e.feature == "WriteOnly storage access to Bgra8Unorm", f"feature {e.feature}"
+        print(f"a storage format the device lacks raised FeatureError: {e}")
+    else:
+        raise AssertionError("a storage format the device lacks should raise FeatureError")
+
     unset = Shader(SAMPLE_SHADER)
     try:
         renderer.render(unset, target)
     except BindingError as e:
-        assert e.name == "source", f"name {e.name}"
+        assert e.uniform == "source", f"uniform {e.uniform}"
         assert e.expected == "a texture", f"expected {e.expected}"
+        assert e.found == "none, since it was never set", f"found {e.found}"
         print(f"an unset texture raised BindingError: {e}")
     else:
         raise AssertionError("an unset texture should raise BindingError")
@@ -400,6 +415,13 @@ def check_pass_targets(renderer):
             lambda: renderer.render(Shader(SOLID_SHADER), foreign))
     refuses("a Renderer with no context", "another Renderer",
             lambda: Renderer().render(Shader(SOLID_SHADER), target))
+
+    # A refused Scene render runs no setup, so it adds no default camera or light.
+    scene = Scene()
+    scene.add(Model(Mesh(), Material.pbr()))
+    refuses("a Scene render into another Renderer's target", "another Renderer",
+            lambda: Renderer().render(scene, target))
+    assert not scene.cameras() and not scene.lights(), "the refused render added defaults"
 
     # A pass error keeps its class whichever call raises it: render raises
     # InvalidInputError for a target format the shader can't fill, as set_target does.
@@ -685,6 +707,7 @@ def check_vectors():
         for bytes_form in (bytes(2), bytearray(2), memoryview(bytes(2)), np.zeros(2, dtype=np.uint8)):
             raises_type(f"{name}({type(bytes_form).__name__})", lambda: apply(bytes_form))
         raises_type(f"{name} with a bool", lambda: apply([True, 1]))
+        raises_type(f"{name} with a 0-d bool array", lambda: apply([np.array(True), 1.0]))
         raises_type(f"{name} with a string", lambda: apply(["0", 1]))
         for bad in (10**400, 1e39, float("nan"), float("inf"), float("-inf")):
             try:
@@ -697,6 +720,8 @@ def check_vectors():
     raises_invalid("Vertex with 5 numbers", lambda: Vertex([0.0] * 5))
     raises_invalid("Vertex(nan)", lambda: Vertex(float("nan")))
     raises_type("Vertex(True)", lambda: Vertex(True))
+    raises_type("Vertex(np.array(True))", lambda: Vertex(np.array(True)))
+    raises_type("Vertex(np.bool_(True))", lambda: Vertex(np.bool_(True)))
     Vertex(0.5)
     Mesh().add_vertex(([0.0, 0.0, 0.0], [0.0, 1.0]))
     raises_invalid("Mesh.add_vertex((position with NaN, uv))",

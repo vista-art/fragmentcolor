@@ -524,16 +524,20 @@ impl Renderer {
         renderable: &impl Renderable,
         target: &impl Target,
     ) -> Result<(), RendererError> {
-        // A foreign target is refused first, since load uploads into this Renderer's device.
-        check_target(self.context.read().as_ref(), renderable, target)?;
-        // Native render drains the lazy Material uploads. Wasm can't block,
-        // so they wait there until the caller awaits `load`.
+        let context = self.context.read().clone();
+        // On the web a GPU error an earlier frame left comes first.
+        #[cfg(wasm)]
+        if let Some(context) = context.as_ref() {
+            context.late.take()?;
+        }
+        // What another Renderer made is refused before load uploads into this one.
+        check_target(context.as_ref(), renderable, target)?;
+        // Native render drains the lazy Material uploads. Wasm can't block, so they wait for `load`.
         #[cfg(not(wasm))]
         futures::executor::block_on(self.load(renderable))?;
-        match self.context.read().as_ref() {
-            Some(context) => context.render(renderable, target),
-            None => Err(RendererError::NoContext),
-        }
+        context
+            .ok_or(RendererError::NoContext)?
+            .render(renderable, target)
     }
 
     /// Uploads every texture a lazy setter queued on the shaders of `renderable`.
@@ -889,9 +893,9 @@ pub(crate) struct RenderContext {
     checked: DashMap<ShaderHash, shader_checks::Verdict>,
     /// The device's features, limits and downlevel flags, read once,
     /// since each read crosses into JavaScript on the browser's WebGPU.
-    features: wgpu::Features,
+    pub(crate) features: wgpu::Features,
     pub(crate) limits: wgpu::Limits,
-    downlevel: wgpu::DownlevelFlags,
+    pub(crate) downlevel: wgpu::DownlevelFlags,
     /// The adapter's backend, which decides what the GL path can keep.
     backend: wgpu::Backend,
 
@@ -1219,12 +1223,14 @@ impl RenderContext {
     /// The checks that need no frame run here. The target keeps its last frame
     /// when a lit shader holds more lights than the device takes, a shader reads
     /// vertex inputs with no mesh, a mesh is asked for more instances than it holds,
-    /// a shader asks for more than the device has (`check_shader`), a texture uniform
-    /// has no texture or one its slot can't take (`check_textures`), a viewport side
-    /// passes the device's 2D limit (`check_viewport`), or a target the pass set is
-    /// missing. A pass with a target of its own checks its attachments
-    /// here too, and a pass that draws into the frame checks them once it has one.
+    /// a mesh the device's limits or its own checks refuse (`plan_shader`), a shader
+    /// asks for more than the device has (`check_shader`), a texture uniform has no
+    /// texture or one its slot can't take (`check_textures`), a viewport side passes
+    /// the device's 2D limit (`check_viewport`), or a target the pass set is missing.
+    ///
+    /// A pass with a target of its own checks its attachments here too.
     /// The draw loop takes each shader's layouts and buffers from the plan.
+    /// A pass that draws into the frame checks its attachments once it has one.
     fn plan_pass(&self, pass: &PassObject) -> Result<PassDraws, RendererError> {
         self.check_light_cap(pass)?;
         self.check_viewport(pass)?;
@@ -2413,7 +2419,7 @@ impl RenderContext {
 fn report_missing(name: &str, meta: &crate::texture::TextureMeta) -> RendererError {
     match meta.id.id {
         0 => RendererError::BindingError {
-            name: name.to_string(),
+            uniform: name.to_string(),
             expected: "a texture".into(),
             found: "none, since it was never set".into(),
         },

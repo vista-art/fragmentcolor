@@ -111,8 +111,8 @@ A root that isn't a struct takes its bytes whole through `set`, as a storage roo
 `Renderer::render` checks each shader against the device before it takes a frame, so every platform returns the same error from the call that caused it, the web included. Each refusal has a typed error with fields:
 
 - `RendererError::LimitError { item, limit, value, max }` for a group past `max_bind_groups`, a binding past `max_bindings_per_bind_group`, more bindings of a kind in one stage than the device takes, a uniform or storage buffer past its binding size limit, a workgroup past the device's sizes, invocations or workgroup memory, and a vertex input at a location past `max_vertex_attributes`. A mesh whose stride or buffers pass the device's limits gets it too.
-- `RendererError::FeatureError { item, feature }` for a compute shader on a device without compute, storage a stage of the device can't bind, a storage format or access the device lacks, an explicit layout on a GL backend, and anything else the device's shader validator refuses.
-- `RendererError::BindingError { name, expected, found }` for a texture uniform that was never set, or whose texture its slot can't take by format, usage, dimension, sample count or mip levels.
+- `RendererError::FeatureError { item, feature }` for a compute shader on a device without compute, storage a stage of the device can't bind, a storage format or access the device lacks, an explicit layout on a GL backend, a shader that measures its light roots with `arrayLength` on a device that takes lights through a uniform block, and anything else the device's shader validator refuses.
+- `RendererError::BindingError { uniform, expected, found }` for a texture uniform that was never set, or whose texture its slot can't take by format, usage, dimension, sample count or mip levels.
 - `RendererError::EntryError { stage }` for a render shader without its `@vertex` or `@fragment` entry point.
 
 JavaScript throws an `Error` with the same fields as properties. Python raises `LimitError`, `FeatureError`, `BindingError` and `EntryError`, each a `FragmentColorError` with the fields as attributes. Swift throws `FragmentColorError.Limit`, `.Feature`, `.Binding` and `.Entry`, and Kotlin the `FragmentColorException` subclasses of the same names.
@@ -775,7 +775,7 @@ Sets the value of the uniform identified by the given key.
 
 If the key does not exist or the value format is incorrect, the `set` method throws an exception. The shader remains valid, and if the exception is caught, the shader can still be used with the renderer.
 
-`set` never blocks. When another thread holds the shader's storage, the value is queued and applied before the next draw. A bad value that can't be checked right away is dropped later with a logged warning instead of throwing.
+`set` never waits for a draw. When another thread holds the shader's storage, the value is queued and applied before the next draw. A texture can wait a moment while another thread binds a texture to the same shader, so the latest one wins. A bad value that can't be checked right away is dropped later with a logged warning instead of throwing.
 
 The uniform's declared WGSL type decides how the value is read, so a call behaves the same in every language:
 

@@ -561,6 +561,12 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     named('Mesh.addVertex: vertex', () => new Mesh().addVertex([0, 1e39, 0]));
     named('Mesh.addVertex: vertex', () => new Mesh().addVertex([[0, NaN, 0], [0, 0]]));
     named('Mesh.addVertices: vertex 1', () => new Mesh().addVertices([[0, 0, 0], [-Infinity, 0, 0]]));
+    // A position given in parts is a float vector too, so it takes an array or a Float32Array.
+    named('Mesh.addVertex: vertex: position', () => new Mesh().addVertex([new Float64Array([0, 0, 0]), [0, 0]]));
+    named('Mesh.addVertices: vertex 0: position', () => new Mesh().addVertices([[new Int32Array([0, 0, 0]), [0, 0]]]));
+    named('Mesh.fromVertices: vertex 0: position',
+      () => Mesh.fromVertices([[new Uint8Array([0, 0, 0]), [0, 0], [1, 1, 1, 1]]]));
+    new Mesh().addVertex([new Float32Array([0, 0, 0]), [0, 1]]);
     if (!(new fc.Quad(new Float32Array([0, 0]), [1, 1]) instanceof fc.Quad)) fail('Quad took no Float32Array');
     if (!(new Vertex(0.5) instanceof Vertex)) fail('Vertex took no single number');
     if (!(Light.point([0, 1, 0], new Float32Array([1, 1, 1])) instanceof Light)) fail('Light.point took no Float32Array');
@@ -905,12 +911,13 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
     const renderer = new Renderer();
     const target = await renderer.createTextureTarget([8, 8]);
     const fail = (message) => { throw new Error(message); };
-    // Checks that `run` throws an Error whose message holds `text`.
+    // Checks that `run` throws an Error whose message holds `text`, and returns it.
     const refuses = (label, text, run) => {
       try { run(); } catch (e) {
         if (!(e instanceof Error)) fail(`${label} threw a ${typeof e}, not an Error`);
         if (!text.test(e.message)) fail(`${label} threw: ${e.message}`);
-        return console.log(`${label} threw:`, e.message);
+        console.log(`${label} threw:`, e.message);
+        return e;
       }
       fail(`${label} should throw`);
     };
@@ -924,7 +931,11 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
 @group(0) @binding(0) var image: texture_2d<f32>;
 @group(0) @binding(1) var linear: sampler;
 @fragment fn fs_main() -> @location(0) vec4<f32> { return textureSample(image, linear, vec2<f32>(0.5)); }`);
-    refuses('render with an unset texture', /'image' takes a texture, not none/, () => renderer.render(sampled, target));
+    const unset = refuses('render with an unset texture', /'image' takes a texture, not none/, () => renderer.render(sampled, target));
+    // A typed refusal carries its fields as properties, and the Error keeps its own name.
+    if (unset.uniform !== 'image' || unset.expected !== 'a texture' || unset.found !== 'none, since it was never set' || unset.name !== 'Error') {
+      fail(`an unset texture threw uniform ${unset.uniform}, expected ${unset.expected}, found ${unset.found}, name ${unset.name}`);
+    }
     const depth = await renderer.createDepthTexture([8, 8]);
     sampled.set('image', depth);
     refuses('render with a depth texture in a texture_2d<f32> slot', /'image' takes a texture that samples as Float \{ filterable: true \}, not Depth32Float/,
@@ -957,7 +968,17 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
       }
     }
     const lone = new Shader(`@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }`);
-    refuses('render without a vertex entry point', /no @vertex entry point/, () => renderer.render(lone, target));
+    const entry = refuses('render without a vertex entry point', /no @vertex entry point/, () => renderer.render(lone, target));
+    if (entry.stage !== '@vertex' || entry.name !== 'Error') fail(`a shader without a vertex stage threw stage ${entry.stage}, name ${entry.name}`);
+    const storage = new Shader(`@group(0) @binding(0) var img: texture_storage_2d<bgra8unorm, write>;
+@compute @workgroup_size(1) fn cs_main() { textureStore(img, vec2<i32>(0), vec4<f32>(1.0)); }`);
+    // WebGL2 runs no compute shaders, which the same error reports first.
+    const feature = refuses('render with a storage format the device lacks',
+      /'img' at @group\(0\) @binding\(0\) needs WriteOnly storage access to Bgra8Unorm|needs COMPUTE_SHADERS/,
+      () => renderer.render(storage, target));
+    if (feature.message !== `${feature.item} needs ${feature.feature}, which the device lacks` || feature.name !== 'Error') {
+      fail(`a storage format the device lacks threw item ${feature.item}, feature ${feature.feature}, name ${feature.name}`);
+    }
     const wide = new Shader(`@compute @workgroup_size(4096) fn cs_main() {}`);
     refuses('dispatch of a workgroup past the device', /max_compute_workgroup_size_x|needs COMPUTE_SHADERS/,
       () => renderer.render(wide, target));
@@ -976,7 +997,7 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
 // WGSL that keeps them: each member reads and writes the bytes its explicit layout gives it.
 await withModule('platforms.web.healthcheck.explicit_layouts', async () => {
     if (!navigator.gpu || !(await navigator.gpu.requestAdapter())) {
-      return console.log('explicit layouts: no WebGPU adapter, so WebGL2 keeps the module as it is');
+      return console.log('explicit layouts: no WebGPU adapter, and WebGL2 refuses them, as webgl2.js checks');
     }
     const renderer = new Renderer();
     const target = await renderer.createTextureTarget([8, 8]);

@@ -702,6 +702,12 @@ mod python_stubs {
     /// takes an ndarray, of integers when the list holds ints. A union that takes floats
     /// drops `int`, which `SupportsFloat` covers. An annotation that names its own ndarray,
     /// as the float vector readers do to leave out the uint8 bytes form, keeps it.
+    ///
+    /// Three hints stay looser than the readers, since Python's typing can't tell them apart:
+    /// - `SupportsIndex` and `float` take a `bool`, which every number reader refuses.
+    /// - `Sequence[SupportsFloat]` takes `bytes`, `bytearray` and `memoryview`, which are
+    ///   sequences of ints, though the float vector readers refuse them as bytes forms.
+    /// - An ndarray inside a list passes as `SupportsFloat`, though only a 1-element one reads.
     fn render(union: &[Atom], mode: Mode) -> String {
         let any = union.iter().any(|a| *a == Atom::Name("Any".into()));
         if union.is_empty() || any {

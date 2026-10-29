@@ -8,6 +8,12 @@ pub trait Renderable {
     fn roots(&self) -> Arc<[Arc<PassObject>]> {
         self.passes()
     }
+    /// The passes `passes` returns, without the setup a renderable runs first,
+    /// such as a Scene's default camera and light. The renderer checks each render
+    /// against these before drawing, so a render it refuses leaves the renderable as it was.
+    fn peek_passes(&self) -> Arc<[Arc<PassObject>]> {
+        self.passes()
+    }
 }
 
 impl Renderable for Vec<Box<dyn Renderable>> {
@@ -25,6 +31,14 @@ impl Renderable for Vec<Box<dyn Renderable>> {
             roots.extend_from_slice(&item.roots());
         }
         roots.into()
+    }
+
+    fn peek_passes(&self) -> Arc<[Arc<PassObject>]> {
+        let mut all_passes: Vec<Arc<PassObject>> = Vec::new();
+        for item in self {
+            all_passes.extend_from_slice(&item.peek_passes());
+        }
+        all_passes.into()
     }
 }
 
@@ -60,6 +74,22 @@ impl Renderable for RenderableHandle {
                 let mut all: Vec<Arc<PassObject>> = Vec::new();
                 for p in ps {
                     all.extend_from_slice(&p.passes());
+                }
+                all.into()
+            }
+        }
+    }
+
+    fn peek_passes(&self) -> Arc<[Arc<PassObject>]> {
+        match self {
+            Self::Shader(s) => s.peek_passes(),
+            Self::Pass(p) => p.peek_passes(),
+            Self::Mesh(m) => m.peek_passes(),
+            Self::Scene(s) => s.peek_passes(),
+            Self::Passes(ps) => {
+                let mut all: Vec<Arc<PassObject>> = Vec::new();
+                for p in ps {
+                    all.extend_from_slice(&p.peek_passes());
                 }
                 all.into()
             }

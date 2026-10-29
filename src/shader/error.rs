@@ -20,7 +20,7 @@ pub enum ShaderError {
     WgslParseError(#[from] naga::front::wgsl::ParseError),
     /// A type whose layout naga can't compute, such as one past its size limit.
     #[error("Layout error: {0}")]
-    LayoutError(#[from] naga::proc::LayoutError),
+    LayoutError(String),
     #[error("GLSL Validation error: {0}")]
     GlslValidationError(#[from] Box<naga::WithSpan<naga::valid::ValidationError>>),
     #[error("GLSL Parse errors: {0}")]
@@ -55,6 +55,12 @@ pub enum ShaderError {
     #[cfg(wasm)]
     #[error("WASM Shader Error: {0}")]
     Error(String),
+}
+
+impl From<naga::proc::LayoutError> for ShaderError {
+    fn from(error: naga::proc::LayoutError) -> Self {
+        ShaderError::LayoutError(describe(&error))
+    }
 }
 
 /// `error` and each error under it, joined into one line.

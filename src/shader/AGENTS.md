@@ -42,9 +42,9 @@ Light roots (`light_roots.rs`, `lights.rs`)
 - A storage `lights` or a `light_grid` with another layout fails with `ShaderError::TypeMismatch` that spells out the layout. A uniform `lights` that matches neither shape stays a plain uniform and logs one warning. Compute-only modules are never checked.
 - `set` and `get` on `lights.ambient` reach the shader's ambient term; every other `lights.*` key is `UniformNotFound`.
 - A lit shader keeps a weak, deduplicated list of the lights that reach it, in attach order. Passes and scenes hold the lights. Every list or ambient change, every light setter and every light drop bumps the light epoch, which tells the renderer to repack.
-- On the uniform light path, `module_for_device` lowers the storage roots, after padding: `lights` becomes a uniform block of the device's light count and `light_grid` a private word. A shader that calls `arrayLength` on a root fails there with `TypeMismatch`. The lowered modules are cached per light count and padding.
+- On the uniform light path, `module_for_device` lowers the storage roots, after padding: `lights` becomes a uniform block of the device's light count and `light_grid` a private word. `Renderer::render` refuses a shader that calls `arrayLength` on a root there with `FeatureError` and keeps that verdict, so `lower_roots` meets one only as a backstop, which returns `TypeMismatch`. The lowered modules are cached per light count and padding.
 
 Errors & API shape
 - Return `ShaderError` from shader APIs; avoid `unwrap` / `expect` / `panic`.
-- `set()` is non-blocking (queues last-wins updates); reads may transiently return `ShaderError::Busy` under contention — that is expected.
+- `set()` never waits for the storage, so it never waits for a draw: it queues a last-wins update when the storage is busy. A texture value waits on `texture_writes` while the shader binds another texture, which takes no longer than a write. Reads may return `ShaderError::Busy` under contention, which is expected.
 - Keep public methods thin; delegate to internal state.

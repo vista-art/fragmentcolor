@@ -300,6 +300,13 @@ impl Renderable for RenderableList {
             .flat_map(|item| item.roots().to_vec())
             .collect()
     }
+
+    fn peek_passes(&self) -> Arc<[Arc<PassObject>]> {
+        self.0
+            .iter()
+            .flat_map(|item| item.peek_passes().to_vec())
+            .collect()
+    }
 }
 
 fn read_renderable(value: &JsValue) -> Option<Box<dyn Renderable>> {

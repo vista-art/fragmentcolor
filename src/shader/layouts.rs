@@ -7,7 +7,8 @@
 //! member of such a struct, which pins every member and the struct's size.
 
 use super::ShaderError;
-use naga::proc::Layouter;
+use naga::keywords::wgsl::{BUILTIN_IDENTIFIER_SET, RESERVED_SET};
+use naga::proc::{CaseInsensitiveKeywordSet, Layouter, NameKey, Namer};
 use naga::valid::ModuleInfo;
 use naga::{AddressSpace, ArraySize, Handle, Module, Type, TypeInner};
 use std::collections::{HashMap, HashSet};
@@ -26,20 +27,9 @@ pub(crate) fn write_layouts(
     if pinned.is_empty() {
         return Ok(None);
     }
-    // naga's writer renames a type whose name ends in a digit or an underscore,
-    // repeats another, or isn't ASCII, so each pinned struct takes a name it keeps.
     let names = name_pinned(module, &pinned);
-    let mut renamed = module.clone();
-    for (handle, name) in &names {
-        let ty = &renamed.types[*handle];
-        let replaced = Type {
-            name: Some(name.clone()),
-            inner: ty.inner.clone(),
-        };
-        renamed.types.replace(*handle, replaced);
-    }
     let flags = naga::back::wgsl::WriterFlags::empty();
-    let written = naga::back::wgsl::write_string(&renamed, info, flags)?;
+    let written = naga::back::wgsl::write_string(module, info, flags)?;
     let text = pin_sizes(module, &names, &written)?;
     check_layouts(module, &names, &text)?;
     Ok(Some(text))
@@ -67,22 +57,27 @@ fn find_explicit(module: &Module) -> Result<Vec<Handle<Type>>, ShaderError> {
     Ok(found)
 }
 
-/// A name for each of the `pinned` structs that naga's writer keeps as it is:
-/// ASCII, ending in a letter, and unlike any other name in the module.
+/// The names naga's WGSL writer gives the `pinned` structs.
+///
+/// They come from a run of the namer that writer uses, set up as it sets it up,
+/// since it renames a name that repeats another, holds `__`, isn't ASCII, or ends
+/// in a digit or an underscore. `check_layouts` reads the text back under these names,
+/// so a namer that names otherwise refuses the module instead of pinning the wrong struct.
 fn name_pinned(module: &Module, pinned: &[Handle<Type>]) -> HashMap<Handle<Type>, String> {
-    let taken: HashSet<&str> = module
-        .types
-        .iter()
-        .filter_map(|(_, ty)| ty.name.as_deref())
-        .collect();
+    let mut names = naga::FastHashMap::default();
+    Namer::default().reset(
+        module,
+        &RESERVED_SET,
+        &BUILTIN_IDENTIFIER_SET,
+        CaseInsensitiveKeywordSet::empty(),
+        &["__", "_naga"],
+        &mut names,
+    );
     pinned
         .iter()
-        .map(|handle| {
-            let mut name = format!("fc_layout{}s", handle.index());
-            while taken.contains(name.as_str()) {
-                name.push('s');
-            }
-            (*handle, name)
+        .filter_map(|handle| {
+            let name = names.get(&NameKey::Type(*handle))?;
+            Some((*handle, name.clone()))
         })
         .collect()
 }
@@ -281,7 +276,7 @@ mod tests {
         naga::back::wgsl::write_string(module, info, flags).expect("writes WGSL")
     }
 
-    const SOURCES: [&str; 6] = [
+    const SOURCES: [&str; 7] = [
         "struct Tail { a: vec4<f32>, @size(32) b: f32 };
 @group(0) @binding(0) var<uniform> tail: Tail;
 @compute @workgroup_size(1) fn cs_main() { let x = tail.b; }",
@@ -304,6 +299,15 @@ struct Données { @align(16) e: f32 };
 @group(0) @binding(1) var<uniform> light: Light_;
 @group(0) @binding(2) var<uniform> données: Données;
 @compute @workgroup_size(1) fn cs_main() { let x = params.b.x + light.d + données.e; }",
+        // User names that look like generated ones: `fc_layout4s_` writes as `fc_layout4s`,
+        // `Params_` as `Params_1` after `Params`, and the entry point `fc_layout5s` keeps its name.
+        "struct fc_layout4s_ { a: vec4<f32> };
+struct Params { a: f32, @align(16) b: vec2<f32> };
+struct Params_ { @size(32) c: f32, d: f32 };
+@group(0) @binding(0) var<uniform> user: fc_layout4s_;
+@group(0) @binding(1) var<uniform> pinned: Params;
+@group(0) @binding(2) var<uniform> later: Params_;
+@compute @workgroup_size(1) fn fc_layout5s() { let x = user.a.x + pinned.b.x + later.d; }",
         // Two names that collapse to one: the writer names them `Foo` and `Foo_1`.
         "struct Foo_ { a: vec4<f32> };
 struct Foo { a: f32, @align(16) b: f32 };
@@ -341,6 +345,14 @@ struct Foo { a: f32, @align(16) b: f32 };
             );
             let checked = super::super::create_validator().validate(&web);
             assert!(checked.is_ok(), "{checked:?}\n{text}");
+            for entry in &module.entry_points {
+                let header = format!("fn {}(", entry.name);
+                assert!(
+                    text.contains(&header),
+                    "{} keeps its name\n{text}",
+                    entry.name
+                );
+            }
         }
     }
 
