@@ -4,7 +4,7 @@ Creates a [Target](https://fragmentcolor.org/api/targets/target) attached to a p
 
 In Rust, we officially support Winit. Check the examples folder for details.
 
-A window with no area yet gets one pixel on that side, and `resize` gives it the real size later. A side past the device limit is an error, the one `resize` returns: `TextureError::InvalidInput` inside `InitializationError::TextureError` in Rust, a thrown `Error` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
+A window with no area yet gets one pixel on that side, and `resize` gives it the real size later. A side past the device limit is an error, the one `resize` returns: `TextureError::InvalidInput` inside `InitializationError::TextureError` in Rust, a thrown `Error` named `InvalidInputError` in JavaScript, `InvalidInputError` (a `FragmentColorError`) in Python, `FragmentColorError` in Swift and `FragmentColorException` in Kotlin.
 
 ## Example
 

@@ -24,8 +24,8 @@ Internally a Camera carries:
 
 Parameters that leave no usable view return an error, and a Camera that
 already exists keeps its state. `perspective`, `orthographic`, `look_at`
-and `set_aspect` return a `CameraError` in Rust, throw an `Error` in
-JavaScript, raise `CameraError` (a `FragmentColorError` and a `ValueError`)
+and `set_aspect` return a `CameraError` in Rust, throw an `Error` named
+`CameraError` in JavaScript, raise `CameraError` (a `FragmentColorError` and a `ValueError`)
 in Python, throw `FragmentColorError` in Swift and throw
 `FragmentColorException` in Kotlin.
 
