@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Patch the wasm-bindgen glue: guard Uint8Array construction against a detached
-// ArrayBuffer, and export the WindowTarget class under its old CanvasTarget name.
+// ArrayBuffer, make a class argument of the wrong type throw a TypeError, and export
+// the WindowTarget class under its old CanvasTarget name. Exits with 1, leaving the
+// file as it was, when the TypeError patch finds no `_assertClass` to rewrite.
 // Usage: node platforms/web/patch_glue.mjs [path/to/fragmentcolor.js]
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -63,14 +65,24 @@ if (count === 0) {
 
 // An argument of the wrong class, such as `pass.addShader('nope')`, throws a `TypeError`,
 // as Python raises one for the same call. wasm-bindgen's `_assertClass` checks every class
-// argument, in release builds too, and throws a plain `Error`. A second run finds no `Error(`
-// left to replace, so the patch runs twice without a change.
-const assertClass = /(function _assertClass\(instance, klass\) \{\s*if \(!\(instance instanceof klass\)\) \{\s*throw new )Error\(/;
-if (assertClass.test(src)) {
+// argument, in release builds too, and throws a plain `Error`. A glue already patched passes
+// as it is, so the patch runs twice without a change. A glue whose `_assertClass` no longer
+// matches fails the build, since a wasm-bindgen upgrade would otherwise drop the TypeError.
+const assertClass = /(function _assertClass\(instance, klass\) \{\s*if \(!\(instance instanceof klass\)\) \{\s*throw new )(Error|TypeError)\(/;
+const thrown = assertClass.exec(src)?.[2];
+if (thrown === undefined) {
+    console.error(
+        `[patch_glue] No _assertClass in ${path} matched ${assertClass}. ` +
+        `wasm-bindgen changed its glue, so update the pattern in platforms/web/patch_glue.mjs ` +
+        `to keep a class argument of the wrong type throwing a TypeError.`
+    );
+    process.exit(1);
+}
+if (thrown === 'Error') {
     src = src.replace(assertClass, '$1TypeError(');
     console.log(`[patch_glue] _assertClass throws a TypeError in ${path}`);
-} else if (!/function _assertClass\(instance, klass\) \{\s*if \(!\(instance instanceof klass\)\) \{\s*throw new TypeError\(/.test(src)) {
-    console.warn(`[patch_glue] No _assertClass matched in ${path}; glue format may have changed.`);
+} else {
+    console.log(`[patch_glue] _assertClass already throws a TypeError in ${path}`);
 }
 
 // The window target's JS class is `WindowTarget`. Code written for older releases

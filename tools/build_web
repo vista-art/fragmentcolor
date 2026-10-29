@@ -23,12 +23,13 @@ cd "$SOURCE_DIR"
 # (no network needed by default).
 wasm-pack build --target web $WASM_PACK_CONFIGURATION --out-dir "$SOURCE_DIR/platforms/web/pkg" -- --no-default-features
 
-# Post-bindgen: patch generated glue with live-memory fallback for Uint8Array constructor
-if command -v node >/dev/null 2>&1; then
-  node "$SOURCE_DIR/platforms/web/patch_glue.mjs" "$SOURCE_DIR/platforms/web/pkg/fragmentcolor.js" || true
-else
-  echo "[build_web] node not found; skipping glue patch" >&2
+# Post-bindgen: patch the generated glue. A package without the patch would throw a plain
+# Error for a class argument of the wrong type, so a missing node or a failed patch fails the build.
+if ! command -v node >/dev/null 2>&1; then
+  echo "[build_web] node not found; it runs platforms/web/patch_glue.mjs, which every package needs" >&2
+  exit 1
 fi
+node "$SOURCE_DIR/platforms/web/patch_glue.mjs" "$SOURCE_DIR/platforms/web/pkg/fragmentcolor.js"
 
 # Ensure npm package has a language-specific README
 if [ -f "$SOURCE_DIR/platforms/web/README.md" ]; then
