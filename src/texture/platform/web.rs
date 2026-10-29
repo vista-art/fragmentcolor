@@ -254,13 +254,23 @@ pub(crate) fn js_to_sampler_options(value: &JsValue) -> Result<SamplerOptions, W
 
 /// Reads a texture source and its options, as `createTexture` and the Material setters take them.
 /// An `ImageData` or canvas brings its own size and RGBA pixels, so the options may repeat
-/// that size and pick an 8-bit RGBA or BGRA format, which stores blue first.
+/// that size and pick an 8-bit RGBA or BGRA format, which stores blue first. A `Texture` keeps
+/// the options it was created with, so options beside one throw an error that names `call`.
 pub(crate) fn read_texture_input(
     source: &JsValue,
     options: Option<&JsValue>,
+    call: &str,
 ) -> Result<TextureInput, WebError> {
     let mut input = TextureInput::try_from(source)?;
     if let Some(options) = options.filter(|options| !options.is_undefined() && !options.is_null()) {
+        if matches!(input.data, TextureData::CloneOf(_)) {
+            return Err(WebError::new(
+                ErrorClass::InvalidInput,
+                &format!(
+                    "{call}: a Texture keeps the options it was created with, so it takes none"
+                ),
+            ));
+        }
         let source_size = input.options.size;
         input.options = read_texture_options(options)?;
         if let (Some(own), TextureData::Bytes(pixels)) = (source_size, &mut input.data) {
