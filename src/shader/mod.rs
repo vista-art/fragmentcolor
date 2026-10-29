@@ -778,11 +778,16 @@ impl ShaderObject {
 
     /// Applies the queued updates when the storage is free, or leaves them queued.
     ///
-    /// Each update leaves the queue before it applies, so a set that lands during
-    /// the flush stays queued for the next one. The flush holds `texture_writes`, so a
-    /// texture setter waits for it, and an upload's stamp check and write never interleave
-    /// with it. A caller that needs every update applied calls it until `pending` is empty.
+    /// A caller that needs every update applied calls it until `pending` is empty.
+    /// Each update leaves the queue before it applies, so a set that lands after the flush
+    /// took its key stays queued for the next one. While it applies, it holds `texture_writes`,
+    /// so a texture setter waits, and an upload's stamp check and write never interleave with it.
     pub(crate) fn flush_pending(&self) {
+        self.apply_queue(|_| {});
+    }
+
+    /// The flush, calling `taken` with each key once its update has left the queue.
+    fn apply_queue(&self, mut taken: impl FnMut(&str)) {
         if self.pending.is_empty() {
             return;
         }
@@ -799,6 +804,7 @@ impl ShaderObject {
             let Some((key, update)) = self.pending.remove(&key) else {
                 continue;
             };
+            taken(&key);
             let value = match update {
                 PendingUpdate::Value(value) => Ok(value),
                 PendingUpdate::Input(input) => storage
@@ -2691,6 +2697,31 @@ struct VertexIn { @location(0) position: vec2<f32>, @location(1) uv: vec2<f32> }
             "the flush left the update queued"
         );
         assert_eq!(read_image(object), 5);
+    }
+
+    // Story: a set made after the flush took its key stays queued,
+    // and the next flush applies it, so the newer value wins over the one the flush took.
+    #[test]
+    fn a_set_during_the_flush_stays_queued() {
+        let shader = Shader::new(SHADER).expect("a shader");
+        let object = &shader.object;
+        {
+            let _busy = object.storage.read();
+            object.set("circle.radius", 1.0f32).expect("queues");
+        }
+        object.apply_queue(|key| {
+            if key == "circle.radius" {
+                object.set("circle.radius", 2.0f32).expect("queues again");
+            }
+        });
+        assert!(
+            !object.pending.is_empty(),
+            "the flush dropped the newer set"
+        );
+        object.flush_pending();
+        assert!(object.pending.is_empty(), "the second flush left it queued");
+        let radius: f32 = shader.get("circle.radius").expect("a radius");
+        assert_eq!(radius, 2.0);
     }
 
     // Story: two globals on one slot fail at Shader::new, used by different entry points or not used at all.
