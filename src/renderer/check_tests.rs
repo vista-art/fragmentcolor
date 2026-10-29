@@ -270,6 +270,26 @@ fn slots_past_the_limits_fail() {
     });
 }
 
+// Story: a storage format the device can't bind fails before any GPU work, such as
+// bgra8unorm, which needs BGRA8UNORM_STORAGE, a feature FragmentColor never requests.
+// The healthchecks of every binding use this shader for their FeatureError.
+#[test]
+fn storage_formats_the_device_lacks_fail() {
+    let shader = Shader::new(
+        "@group(0) @binding(0) var img: texture_storage_2d<bgra8unorm, write>;
+@compute @workgroup_size(1) fn cs_main() { textureStore(img, vec2<i32>(0), vec4<f32>(1.0)); }",
+    )
+    .expect("shader");
+    let error = refuse_alone(&shader).expect("refused");
+    let fields = error.fields();
+    assert_refused!(
+        error,
+        RendererError::FeatureError { .. },
+        "'img' at @group(0) @binding(0) needs WriteOnly storage access to Bgra8Unorm, which the device lacks"
+    );
+    assert_eq!(fields.len(), 2, "{fields:?}");
+}
+
 // Story: a storage texture binds in the format the shader declares,
 // including the formats outside the old table, such as r32float.
 #[test]
