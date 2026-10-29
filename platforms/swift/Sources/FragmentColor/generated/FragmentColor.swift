@@ -6389,12 +6389,13 @@ public func FfiConverterTypeErrorKind_lower(_ value: ErrorKind) -> RustBuffer {
 
 
 /**
- * Mobile-facing error type. Flattens every internal error to its `Display`
- * representation so Swift/Kotlin callers get a single typed error to match on.
- * A GPU error keeps its kind, its step's label and the device's own detail apart,
- * and a shader the device refuses keeps the fields of its refusal.
- * The exported `Display` gives Swift's `description` and `localizedDescription`,
- * and Kotlin's `toString()`, the full text of every case.
+ * Mobile-facing error type, one typed error for Swift and Kotlin to match on.
+ *
+ * Most internal errors flatten to their `Display` text. A GPU error keeps its kind,
+ * its step's label and the device's own detail apart, a shader the device refuses
+ * keeps the fields of its refusal, and a hidden window's frame is `Occluded`, so a
+ * render loop can skip it. The exported `Display` gives Swift's `description` and
+ * `localizedDescription`, and Kotlin's `toString()`, the full text of every case.
  */
 public 
 enum FragmentColorError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
@@ -6417,6 +6418,7 @@ enum FragmentColorError: Swift.Error, Equatable, Hashable, Foundation.LocalizedE
     )
     case Entry(stage: String
     )
+    case Occluded
 
     
 
@@ -6489,6 +6491,7 @@ public struct FfiConverterTypeFragmentColorError: FfiConverterRustBuffer {
         case 8: return .Entry(
             stage: try FfiConverterString.read(from: &buf)
             )
+        case 9: return .Occluded
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -6548,6 +6551,10 @@ public struct FfiConverterTypeFragmentColorError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(8))
             FfiConverterString.write(stage, into: &buf)
             
+        
+        case .Occluded:
+            writeInt(&buf, Int32(9))
+        
         }
     }
 }
