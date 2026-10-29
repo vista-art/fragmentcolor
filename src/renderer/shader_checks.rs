@@ -438,11 +438,16 @@ pub(super) fn refuse_layout(loss: LayoutLoss) -> Refusal {
     match loss {
         LayoutLoss::Moved { name, reason } => Refusal::Feature {
             item: format!("struct `{name}`"),
-            feature: format!("@size and @align offsets in the WGSL wgpu writes for the browser ({reason})"),
+            feature: format!(
+                "@size and @align offsets in the WGSL wgpu writes for the browser ({reason})"
+            ),
         },
         other => Refusal::Feature {
             item: "the shader".into(),
-            feature: format!("WGSL that naga can write for the browser: {}", describe(&other)),
+            feature: format!(
+                "WGSL that naga can write for the browser: {}",
+                describe(&other)
+            ),
         },
     }
 }
