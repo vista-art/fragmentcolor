@@ -567,6 +567,16 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     named('Mesh.fromVertices: vertex 0: position',
       () => Mesh.fromVertices([[new Uint8Array([0, 0, 0]), [0, 0], [1, 1, 1, 1]]]));
     new Mesh().addVertex([new Float32Array([0, 0, 0]), [0, 1]]);
+    // A matrix takes the float vector forms too, flat or as four columns.
+    const identity = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]];
+    named('Model.setTransform', () => model.setTransform(new Float64Array(16)));
+    named('Model.setTransform: column 2', () => model.setTransform([identity[0], identity[1], new Int32Array(4), identity[3]]));
+    named('Model.setTransform', () => model.setTransform(new Array(15).fill(0)));
+    named('Model.setTransform', () => model.setTransform(identity.slice(0, 3)));
+    named('Model.setTransform: column 1', () => model.setTransform([identity[0], [0, 1, 0], identity[2], identity[3]]));
+    model.setTransform(new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]));
+    model.setTransform(identity.map((column) => new Float32Array(column)));
+    model.setTransform(identity);
     if (!(new fc.Quad(new Float32Array([0, 0]), [1, 1]) instanceof fc.Quad)) fail('Quad took no Float32Array');
     if (!(new Vertex(0.5) instanceof Vertex)) fail('Vertex took no single number');
     if (!(Light.point([0, 1, 0], new Float32Array([1, 1, 1])) instanceof Light)) fail('Light.point took no Float32Array');
@@ -972,9 +982,9 @@ await withModule('platforms.web.healthcheck.device_checks', async () => {
     if (entry.stage !== '@vertex' || entry.name !== 'Error') fail(`a shader without a vertex stage threw stage ${entry.stage}, name ${entry.name}`);
     const storage = new Shader(`@group(0) @binding(0) var img: texture_storage_2d<bgra8unorm, write>;
 @compute @workgroup_size(1) fn cs_main() { textureStore(img, vec2<i32>(0), vec4<f32>(1.0)); }`);
-    // WebGL2 runs no compute shaders, which the same error reports first.
+    // Storage slots are checked before the compute stage, so WebGL2 refuses the format too.
     const feature = refuses('render with a storage format the device lacks',
-      /'img' at @group\(0\) @binding\(0\) needs WriteOnly storage access to Bgra8Unorm|needs COMPUTE_SHADERS/,
+      /'img' at @group\(0\) @binding\(0\) needs WriteOnly storage access to Bgra8Unorm/,
       () => renderer.render(storage, target));
     if (feature.message !== `${feature.item} needs ${feature.feature}, which the device lacks` || feature.name !== 'Error') {
       fail(`a storage format the device lacks threw item ${feature.item}, feature ${feature.feature}, name ${feature.name}`);

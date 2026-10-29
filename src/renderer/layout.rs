@@ -6,7 +6,9 @@
 use super::lights::{self, LightPath};
 use super::{PushMode, RenderContext};
 use crate::shader::{PushEntry, StorageEntry, Uniform, UniformData};
-use crate::shader::{create_validator, list_explicit, lower_immediates, write_layouts};
+use crate::shader::{
+    create_validator, list_explicit, lower_immediates, name_entries, write_layouts,
+};
 use crate::texture::{TextureClass, TextureDim, TextureMeta, TextureScalarKind};
 use crate::{ShaderError, ShaderObject};
 use std::borrow::Cow;
@@ -270,21 +272,56 @@ pub(super) fn build_module(
     })
 }
 
+/// The source a pipeline hands wgpu, with the name and stage of each entry point in it.
+pub(super) struct PipelineSource {
+    pub(super) source: wgpu::ShaderSource<'static>,
+    pub(super) entries: Vec<(naga::ShaderStage, String)>,
+}
+
 /// The source a pipeline hands wgpu for `module`. On the browser's WebGPU (`writes_wgsl`),
 /// wgpu writes a module back to WGSL without `@size` and `@align`, so a module whose
-/// buffer structs set their layout with them goes as WGSL that keeps the layout.
+/// buffer structs set their layout with them goes as WGSL that keeps the layout. There every
+/// entry point takes the name naga's writer gives it, from this exact module, in either source.
 pub(super) fn pick_source(
     module: naga::Module,
     writes_wgsl: bool,
-) -> Result<wgpu::ShaderSource<'static>, ShaderError> {
+) -> Result<PipelineSource, ShaderError> {
+    if !writes_wgsl {
+        let entries = module
+            .entry_points
+            .iter()
+            .map(|entry| (entry.stage, entry.name.clone()))
+            .collect();
+        let source = wgpu::ShaderSource::Naga(Cow::Owned(module));
+        return Ok(PipelineSource { source, entries });
+    }
+    let entries = name_entries(&module);
     // Validating costs a pass over the module, so only a module with explicit layouts pays it.
-    if writes_wgsl && !list_explicit(&module)?.is_empty() {
+    if !list_explicit(&module)?.is_empty() {
         let info = create_validator().validate(&module).map_err(Box::new)?;
         if let Some(text) = write_layouts(&module, &info)? {
-            return Ok(wgpu::ShaderSource::Wgsl(Cow::Owned(text)));
+            let source = wgpu::ShaderSource::Wgsl(Cow::Owned(text));
+            return Ok(PipelineSource { source, entries });
         }
     }
-    Ok(wgpu::ShaderSource::Naga(Cow::Owned(module)))
+    let source = wgpu::ShaderSource::Naga(Cow::Owned(module));
+    Ok(PipelineSource { source, entries })
+}
+
+/// The name the first entry point of `stage` takes in a pipeline's source.
+pub(super) fn find_entry(
+    entries: &[(naga::ShaderStage, String)],
+    stage: naga::ShaderStage,
+) -> Result<&str, ShaderError> {
+    entries
+        .iter()
+        .find(|(entry, _)| *entry == stage)
+        .map(|(_, name)| name.as_str())
+        .ok_or_else(|| {
+            ShaderError::ParseError(format!(
+                "the shader has no {stage:?} entry point, which this pipeline runs"
+            ))
+        })
 }
 
 /// Builds one layout for each group in `entries`, and an empty one for each lower group

@@ -47,7 +47,7 @@ mod shader_checks;
 use depth::DepthUse;
 mod layout;
 use layout::{Layout, build_module, create_bind_group_layouts, create_pipeline_layout};
-use layout::{pick_source, plan_layout, read_immediate_size};
+use layout::{PipelineSource, find_entry, pick_source, plan_layout, read_immediate_size};
 pub(crate) mod background;
 mod external_texture;
 pub(crate) mod lights;
@@ -2809,18 +2809,6 @@ fn set_encoding(module: &naga::Module, format: wgpu::TextureFormat) -> naga::Mod
     }
 }
 
-/// The name of the entry point a pipeline runs for `stage`.
-fn find_entry(shader: &ShaderObject, stage: naga::ShaderStage) -> Result<&str, ShaderError> {
-    shader
-        .find_entry_point(stage)
-        .map(|entry_point| entry_point.name.as_str())
-        .ok_or_else(|| {
-            ShaderError::ParseError(format!(
-                "the shader has no {stage:?} entry point, which this pipeline runs"
-            ))
-        })
-}
-
 #[allow(clippy::too_many_arguments)]
 fn create_render_pipeline(
     device: &wgpu::Device,
@@ -2837,10 +2825,11 @@ fn create_render_pipeline(
     writes_wgsl: bool,
 ) -> Result<RenderPipeline, RendererError> {
     // Every CPU check comes before the first wgpu call, so a refusal builds nothing.
-    let vs_entry = find_entry(shader, naga::ShaderStage::Vertex)?;
-    let fs_entry = find_entry(shader, naga::ShaderStage::Fragment)?;
     let module = build_module(shader, layout, pad_uniforms, light_path.uniform_lights())?;
-    let source = pick_source(set_encoding(&module, format), writes_wgsl)?;
+    let PipelineSource { source, entries } =
+        pick_source(set_encoding(&module, format), writes_wgsl)?;
+    let vs_entry = find_entry(&entries, naga::ShaderStage::Vertex)?;
+    let fs_entry = find_entry(&entries, naga::ShaderStage::Fragment)?;
 
     let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Shader"),
@@ -2931,9 +2920,9 @@ fn create_compute_pipeline(
     writes_wgsl: bool,
     pad_uniforms: bool,
 ) -> Result<ComputePipeline, RendererError> {
-    let cs_entry = find_entry(shader, naga::ShaderStage::Compute)?;
     let module = build_module(shader, layout, pad_uniforms, None)?;
-    let source = pick_source(module, writes_wgsl)?;
+    let PipelineSource { source, entries } = pick_source(module, writes_wgsl)?;
+    let cs_entry = find_entry(&entries, naga::ShaderStage::Compute)?;
     let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Compute Shader"),
         source,

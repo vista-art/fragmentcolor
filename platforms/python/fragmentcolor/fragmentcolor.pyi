@@ -4516,7 +4516,8 @@ class Material:
         `lights` turned into a uniform block that holds as many lights as the device
         allows, and with no grid, so `light_cell` returns `CELL_EVERY`. A shader that
         calls `arrayLength` on either root can't run there, and `Renderer::render`
-        refuses it with `RendererError::FeatureError` before any GPU work.
+        refuses it with `RendererError::FeatureError` before it takes a frame. Loop to
+        `lights.count` instead.
 
         ### The older interface
 

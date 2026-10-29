@@ -117,7 +117,7 @@ for (const c of EXPLICIT) {
       error = e;
     }
     if (!(error instanceof Error)) throw new Error(`render should throw an Error, got ${error}`);
-    const item = `struct \`${c.struct}\` (spell its padding out as members instead)`;
+    const item = `struct \`${c.struct}\``;
     const feature = "@size and @align offsets in a std140 block";
     if (error.item !== item || error.feature !== feature || error.name !== "Error") {
       throw new Error(`threw item ${error.item}, feature ${error.feature}, name ${error.name}`);

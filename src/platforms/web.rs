@@ -54,9 +54,9 @@ pub(crate) fn read_unsigned(value: f64, what: &str) -> Result<u32, wasm_bindgen:
     Ok(super::read_unsigned(value, what)?)
 }
 
-/// The numbers of a float vector from JavaScript: an array or a `Float32Array`, as AGENTS.md rule 6 lists.
-/// Any other value, or an item that isn't a number, fails with an error that names `label`.
-fn read_vector_items(
+/// The numbers of a float vector or matrix from JavaScript: an array or a `Float32Array`, as AGENTS.md
+/// rule 6 lists. Any other value, or an item that isn't a number, fails with an error that names `label`.
+pub(crate) fn read_vector_items(
     value: &wasm_bindgen::JsValue,
     label: &str,
 ) -> Result<Vec<f64>, wasm_bindgen::JsError> {
