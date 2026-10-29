@@ -6,6 +6,11 @@ emission is `material.emissive * textureSample(emissive_map, pbr_sampler, uv).rg
 where `uv` is `slot_uv(material.uv[4], in.uv0, in.uv1)`, the slot's own UV
 set through its own transform.
 
+Takes a [`Texture`](https://fragmentcolor.org/api/texture/texture), or bytes, a path, a URL
+or a `Mipmap`, which the Material keeps as a map that each `Renderer` uploads
+a copy of. [`base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture)
+tells how a map loads, what it holds in memory and how it fails.
+
 Unset, this slot resolves to a 1×1 white default so the multiplied
 emission falls back to the `material.emissive` factor as-is.
 

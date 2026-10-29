@@ -5,6 +5,11 @@ glTF 2.0, the green channel encodes per-fragment roughness, the blue channel
 encodes metallic. Both are multiplied by their respective factors at sample
 time inside the default PBR shader.
 
+Takes a [`Texture`](https://fragmentcolor.org/api/texture/texture), or bytes, a path, a URL
+or a `Mipmap`, which the Material keeps as a map that each `Renderer` uploads
+a copy of. [`base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture)
+tells how a map loads, what it holds in memory and how it fails.
+
 Unset, this slot resolves to a 1×1 default with `(R=0, G=1, B=1, A=1)` so
 the factor multiplication passes both `material.metallic` and
 `material.roughness` through unchanged.

@@ -567,8 +567,8 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct TextureId {
-    /// The underlying numeric identifier. Valid within the `Renderer` that
-    /// created it; stable for the lifetime of the texture registration.
+    /// Names a texture while it stays registered, in the `Renderer` that made it.
+    /// A Material map's id names the copy in each `Renderer` that loaded that map.
     pub id: u64,
 }
 

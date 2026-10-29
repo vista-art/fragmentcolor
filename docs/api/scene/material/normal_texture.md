@@ -7,6 +7,11 @@ default PBR shader samples the map in `fs_main`, decodes the stored
 space into world space using the per-vertex tangent (the glTF `tangent.w`
 handedness flag is preserved).
 
+Takes a [`Texture`](https://fragmentcolor.org/api/texture/texture), or bytes, a path, a URL
+or a `Mipmap`, which the Material keeps as a map that each `Renderer` uploads
+a copy of. [`base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture)
+tells how a map loads, what it holds in memory and how it fails.
+
 Unset, this slot resolves to a 1×1 flat tangent-space default
 `(128, 128, 255, 255)` so the decoded normal is `(0, 0, 1)` and the world
 normal passes through unchanged.
