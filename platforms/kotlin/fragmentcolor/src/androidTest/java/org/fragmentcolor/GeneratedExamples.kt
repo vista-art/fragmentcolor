@@ -1037,6 +1037,10 @@ class GeneratedExamples : ExampleCase() {
         // texture; passing the same handle into N Material instances costs one
         // upload and N shader-uniform references.
         val material = Material.pbr().baseColorTexture(albedo)
+
+        // Raw pixels with their size upload when the scene loads.
+        val tint = listOf(255, 128, 0, 255)
+        val tinted = Material.pbr().baseColorTexture(tint, listOf(1u, 1u))
     }
 
     @Test
@@ -1094,10 +1098,9 @@ class GeneratedExamples : ExampleCase() {
 
     @Test
     fun scene_material_emissive_texture() = example("docs/api/scene/material/emissive_texture.md") {
-        val renderer = Renderer()
+        // Raw pixels with their size upload when the scene loads.
         val glow_bytes = listOf(255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255)
-        val glow = renderer.createTexture(glow_bytes, listOf(2u, 2u))
-        val mat = Material.pbr().emissive(listOf(0.8f, 0.0f, 0.0f)).emissiveTexture(glow)
+        val mat = Material.pbr().emissive(listOf(0.8f, 0.0f, 0.0f)).emissiveTexture(glow_bytes, listOf(2u, 2u))
     }
 
     @Test
@@ -1107,10 +1110,9 @@ class GeneratedExamples : ExampleCase() {
 
     @Test
     fun scene_material_metallic_roughness_texture() = example("docs/api/scene/material/metallic_roughness_texture.md") {
-        val renderer = Renderer()
+        // Raw pixels with their size upload when the scene loads.
         val mr_map_bytes = listOf(0, 200, 50, 255, 0, 240, 80, 255, 0, 180, 30, 255, 0, 220, 60, 255)
-        val mr_map = renderer.createTexture(mr_map_bytes, listOf(2u, 2u))
-        val mat = Material.pbr().metallicRoughnessTexture(mr_map)
+        val mat = Material.pbr().metallicRoughnessTexture(mr_map_bytes, listOf(2u, 2u))
     }
 
     @Test
@@ -1120,10 +1122,9 @@ class GeneratedExamples : ExampleCase() {
 
     @Test
     fun scene_material_normal_texture() = example("docs/api/scene/material/normal_texture.md") {
-        val renderer = Renderer()
+        // Raw pixels with their size upload when the scene loads.
         val normal_map_bytes = listOf(128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255)
-        val normal_map = renderer.createTexture(normal_map_bytes, listOf(2u, 2u))
-        val mat = Material.pbr().normalTexture(normal_map).normalScale(1.2f)
+        val mat = Material.pbr().normalTexture(normal_map_bytes, listOf(2u, 2u)).normalScale(1.2f)
     }
 
     @Test
@@ -1133,10 +1134,9 @@ class GeneratedExamples : ExampleCase() {
 
     @Test
     fun scene_material_occlusion_texture() = example("docs/api/scene/material/occlusion_texture.md") {
-        val renderer = Renderer()
+        // Raw pixels with their size upload when the scene loads.
         val ao_bytes = listOf(220, 0, 0, 255, 180, 0, 0, 255, 200, 0, 0, 255, 160, 0, 0, 255)
-        val ao = renderer.createTexture(ao_bytes, listOf(2u, 2u))
-        val mat = Material.pbr().occlusionTexture(ao)
+        val mat = Material.pbr().occlusionTexture(ao_bytes, listOf(2u, 2u))
     }
 
     @Test

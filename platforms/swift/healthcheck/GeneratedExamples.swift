@@ -349,7 +349,7 @@ final class GeneratedExamples: ExampleCase {
             ])
 
             // The material keeps the encoded image as a pending upload.
-            let material = Material.pbr().baseColorTexture(image)
+            let material = try Material.pbr().baseColorTexture(image)
             let model = Model(mesh, material)
             let scene = Scene()
             try scene.add(model)
@@ -1219,7 +1219,11 @@ final class GeneratedExamples: ExampleCase {
             // Every Material that points at `albedo` reuses the same uploaded GPU
             // texture; passing the same handle into N Material instances costs one
             // upload and N shader-uniform references.
-            let material = Material.pbr().baseColorTexture(albedo)
+            let material = try Material.pbr().baseColorTexture(albedo)
+
+            // Raw pixels with their size upload when the scene loads.
+            let tint = [255, 128, 0, 255]
+            let tinted = try Material.pbr().baseColorTexture(tint, [1, 1])
         }
     }
 
@@ -1281,15 +1285,14 @@ final class GeneratedExamples: ExampleCase {
 
     func test_scene_material_emissive_texture() async {
         await example("docs/api/scene/material/emissive_texture.md") {
-            let renderer = Renderer()
+            // Raw pixels with their size upload when the scene loads.
             let glow_bytes = [
                 255, 0, 0, 255,
-                255,   0, 0, 255,
-                255,   0, 0, 255,
-                255,   0, 0, 255,
+                255, 0, 0, 255,
+                255, 0, 0, 255,
+                255, 0, 0, 255,
             ]
-            let glow = try await renderer.createTexture(glow_bytes, [2, 2])
-            let mat = try Material.pbr().emissive([0.8, 0.0, 0.0]).emissiveTexture(glow)
+            let mat = try Material.pbr().emissive([0.8, 0.0, 0.0]).emissiveTexture(glow_bytes, [2, 2])
         }
     }
 
@@ -1301,15 +1304,14 @@ final class GeneratedExamples: ExampleCase {
 
     func test_scene_material_metallic_roughness_texture() async {
         await example("docs/api/scene/material/metallic_roughness_texture.md") {
-            let renderer = Renderer()
+            // Raw pixels with their size upload when the scene loads.
             let mr_map_bytes = [
                 0, 200, 50, 255,
-                0,   240, 80, 255,
-                0,   180, 30, 255,
-                0,   220, 60, 255,
+                0, 240, 80, 255,
+                0, 180, 30, 255,
+                0, 220, 60, 255,
             ]
-            let mr_map = try await renderer.createTexture(mr_map_bytes, [2, 2])
-            let mat = Material.pbr().metallicRoughnessTexture(mr_map)
+            let mat = try Material.pbr().metallicRoughnessTexture(mr_map_bytes, [2, 2])
         }
     }
 
@@ -1321,15 +1323,14 @@ final class GeneratedExamples: ExampleCase {
 
     func test_scene_material_normal_texture() async {
         await example("docs/api/scene/material/normal_texture.md") {
-            let renderer = Renderer()
+            // Raw pixels with their size upload when the scene loads.
             let normal_map_bytes = [
                 128, 128, 255, 255,
-                128,   128, 255, 255,
-                128,   128, 255, 255,
-                128,   128, 255, 255,
+                128, 128, 255, 255,
+                128, 128, 255, 255,
+                128, 128, 255, 255,
             ]
-            let normal_map = try await renderer.createTexture(normal_map_bytes, [2, 2])
-            let mat = Material.pbr().normalTexture(normal_map).normalScale(1.2)
+            let mat = try Material.pbr().normalTexture(normal_map_bytes, [2, 2]).normalScale(1.2)
         }
     }
 
@@ -1341,15 +1342,14 @@ final class GeneratedExamples: ExampleCase {
 
     func test_scene_material_occlusion_texture() async {
         await example("docs/api/scene/material/occlusion_texture.md") {
-            let renderer = Renderer()
+            // Raw pixels with their size upload when the scene loads.
             let ao_bytes = [
                 220, 0, 0, 255,
-                180,   0, 0, 255,
-                200,   0, 0, 255,
-                160,   0, 0, 255,
+                180, 0, 0, 255,
+                200, 0, 0, 255,
+                160, 0, 0, 255,
             ]
-            let ao = try await renderer.createTexture(ao_bytes, [2, 2])
-            let mat = Material.pbr().occlusionTexture(ao)
+            let mat = try Material.pbr().occlusionTexture(ao_bytes, [2, 2])
         }
     }
 

@@ -13,7 +13,7 @@ try mesh.addVertices([
 ])
 
 // The material keeps the encoded image as a pending upload.
-let material = Material.pbr().baseColorTexture(image)
+let material = try Material.pbr().baseColorTexture(image)
 let model = Model(mesh, material)
 let scene = Scene()
 try scene.add(model)

@@ -718,9 +718,42 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     await rejects('createTexture options with width and format', () =>
       renderer.createTexture(new Uint8Array(4), { width: 1, height: 1, format: TextureFormat.Rgba8Unorm }));
 
-    // Material texture setters take any texture source.
-    Material.pbr().baseColorTexture(new Uint8Array([255, 0, 0, 255]), { size: [1, 1] });
+    // Material texture setters take what createTexture takes, and raw pixels reach the upload.
     Material.pbr().baseColorTexture(fromImage);
+    const glow = async (setTexture) => {
+      // A black surface lit only by its emissive map, over the whole target.
+      const surface = new Mesh();
+      surface.addVertices([[-1, -1, 0], [3, -1, 0], [-1, 3, 0]]
+        .map((corner) => Vertex.pbr(corner).set(Vertex.NORMAL, [0, 0, 1])));
+      const material = Material.pbr().baseColor([0, 0, 0, 1]).emissive([1, 1, 1]);
+      const glowing = new Pass('glow');
+      glowing.add(new Model(surface, setTexture(material)));
+      const frame = await renderer.createTextureTarget([4, 4]);
+      await renderer.load(glowing);
+      renderer.render(glowing, frame);
+      return Array.from((await frame.getImage()).slice(0, 4));
+    };
+    const redPixel = [255, 0, 0, 255];
+    const forms = {
+      'a bare size': (m) => m.emissiveTexture(new Uint8Array(redPixel), [1, 1]),
+      '{ size }': (m) => m.emissiveTexture(redPixel, { size: [1, 1] }),
+      '{ size, format: R8Unorm }': (m) =>
+        m.emissiveTexture(new Uint8Array([255]), { size: [1, 1], format: TextureFormat.R8Unorm }),
+      'an ImageData': (m) => m.emissiveTexture(new ImageData(new Uint8ClampedArray(redPixel), 1, 1)),
+      'every option': (m) => m.emissiveTexture(new Uint8Array(redPixel), {
+        size: [1, 1], format: TextureFormat.Rgba, mipmaps: false, sampler: { repeatX: true }, usage: TextureUsage.COPY_SRC,
+      }),
+    };
+    for (const [label, form] of Object.entries(forms)) {
+      const [r, g, b] = await glow(form);
+      if (r < 200 || g > 40 || b > 40) fail(`emissiveTexture with ${label} drew [${r}, ${g}, ${b}]`);
+    }
+    for (const name of ['baseColorTexture', 'metallicRoughnessTexture', 'normalTexture', 'occlusionTexture', 'emissiveTexture']) {
+      const material = Material.pbr();
+      material[name](new Uint8Array(redPixel), { size: [1, 1], format: TextureFormat.Rgba8Unorm, mipmaps: false });
+      throws(`Material.${name} with a fractional size`, () => material[name](new Uint8Array(redPixel), [1.5, 1]));
+      throws(`Material.${name} with mipmaps: "yes"`, () => material[name](new Uint8Array(redPixel), { size: [1, 1], mipmaps: 'yes' }));
+    }
 
     // Scene.load takes an ArrayBuffer or a view, and can skip the file's cameras and lights.
     const glb = await (await fetch('/healthcheck/public/model.glb')).arrayBuffer();

@@ -2,12 +2,18 @@
 
 Bind a texture to the `base_color_map` slot. The default PBR shader samples it in `fs_main` and multiplies by the factor. The albedo for each fragment is `material.base_color * textureSample(base_color_map, pbr_sampler, uv) * vertex_color`, where `uv` is `slot_uv(material.uv[0], in.uv0, in.uv1)`: the UV set [`texture_uv`](https://fragmentcolor.org/api/scene/material#texture_uv) picks for the slot, through the slot's [`texture_transform`](https://fragmentcolor.org/api/scene/material#texture_transform).
 
-Accepts any `Into<TextureInput>`:
+Accepts any `Into<TextureInput>`, the inputs [`Renderer::create_texture`](https://fragmentcolor.org/api/core/renderer#create_texture) takes:
 
 - A pre-built [`&Texture`](https://fragmentcolor.org/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations. The texture belongs to the `Renderer` that created it, and another `Renderer` refuses to draw it.
-- Bytes, a path, a URL or a `Mipmap`. The Material keeps this source as a map. Each `Renderer` that draws the Material uploads a copy of its own at [`Renderer::load`](https://fragmentcolor.org/api/core/renderer#load), or on native targets at its first [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render), and frees it when the `Renderer` or the Material drops. A map set again draws its old copy until the `Renderer` loads the new one.
+- Encoded bytes, raw pixels with their size as `(bytes, [w, h])`, bytes with a format as `(bytes, format)`, bytes with every option as `(bytes, options)`, a path, a URL, or a [`Mipmap`](https://fragmentcolor.org/api/texture/mipmap). The Material keeps this source as a map. Each `Renderer` that draws the Material uploads a copy of its own at [`Renderer::load`](https://fragmentcolor.org/api/core/renderer#load), or on native targets at its first [`Renderer::render`](https://fragmentcolor.org/api/core/renderer#render), and frees it when the `Renderer` or the Material drops. A map set again draws its old copy until the `Renderer` loads the new one.
 
 To share a map across Renderers, pass bytes, a path, a URL or a `Mipmap`.
+
+Each language spells these inputs the way its `create_texture` does, and the other four texture setters take the same ones:
+
+- **JavaScript:** `baseColorTexture(source, options?)`, where `options` is a size such as `[w, h]`, a `TextureFormat`, or `{ size?, format?, mipmaps?, sampler?, usage? }`.
+- **Python:** `base_color_texture(texture, size=None, format=None, mipmaps=None, sampler=None, usage=None)`. A NumPy array brings its own size, and a `size` that differs from it raises `InvalidInputError`.
+- **Swift and Kotlin:** `baseColorTexture(bytes)`, `baseColorTexture(bytes, format)`, `baseColorTexture(bytes, [w, h])`, `baseColorTexture(bytes, size)`, `baseColorTexture(bytes, options)`, `baseColorTexture(path)`, `baseColorTexture(path, options)` and `baseColorTexture(chain)`. Bytes are `Data` or `[UInt8]` in Swift and `ByteArray` in Kotlin, and raw pixels with a `[w, h]` also come one value per byte, as `[Int]` or `List<Int>`. The bytes forms without `options` take an optional `usage`, and a `[w, h]` that isn't 2 or 3 numbers throws.
 
 Unset, this slot resolves to a 1×1 white default the renderer hands out
 lazily, so calling `Material::pbr()` without binding a
@@ -63,7 +69,11 @@ let albedo = renderer.create_texture((albedo_bytes, [2, 2])).await?;
 // texture; passing the same handle into N Material instances costs one
 // upload and N shader-uniform references.
 let material = Material::pbr().base_color_texture(&albedo);
-# let _ = material;
+
+// Raw pixels with their size upload when the scene loads.
+let tint: Vec<u8> = vec![255, 128, 0, 255];
+let tinted = Material::pbr().base_color_texture((tint, [1, 1]));
+# let _ = (material, tinted);
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

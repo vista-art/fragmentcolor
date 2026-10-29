@@ -7,32 +7,26 @@ default PBR shader samples the map in `fs_main`, decodes the stored
 space into world space using the per-vertex tangent (the glTF `tangent.w`
 handedness flag is preserved).
 
-Takes a [`Texture`](https://fragmentcolor.org/api/texture/texture), or bytes, a path, a URL
-or a `Mipmap`, which the Material keeps as a map that each `Renderer` uploads
-a copy of. [`base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture)
-tells how a map loads, what it holds in memory and how it fails.
-
 Unset, this slot resolves to a 1×1 flat tangent-space default
 `(128, 128, 255, 255)` so the decoded normal is `(0, 0, 1)` and the world
 normal passes through unchanged.
 
+Takes the inputs [`Material::base_color_texture`](https://fragmentcolor.org/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`. The Material keeps a source as a map, and each `Renderer` uploads a copy of its own when it loads the scene. `base_color_texture` tells how a map loads, what it holds in memory and how it fails.
+
 ## Example
 
-```rust,no_run
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Renderer};
+```rust
+use fragmentcolor::Material;
 
-let renderer = Renderer::new();
+// Raw pixels with their size upload when the scene loads.
 let normal_map_bytes: Vec<u8> = vec![
     128, 128, 255, 255,
-    128,   128, 255, 255,
-    128,   128, 255, 255,
-    128,   128, 255, 255,
+    128, 128, 255, 255,
+    128, 128, 255, 255,
+    128, 128, 255, 255,
 ];
-let normal_map = renderer.create_texture((normal_map_bytes, [2, 2])).await?;
-let mat = Material::pbr().normal_texture(&normal_map).normal_scale(1.2);
+let mat = Material::pbr()
+    .normal_texture((normal_map_bytes, [2, 2]))
+    .normal_scale(1.2);
 # let _ = mat;
-# Ok(())
-# }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

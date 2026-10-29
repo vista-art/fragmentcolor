@@ -525,10 +525,16 @@ lang="kotlin"
 
 Bind a texture to the `base_color_map` slot. The default PBR shader samples it in `fs_main` and multiplies by the factor. The albedo for each fragment is `material.base_color * textureSample(base_color_map, pbr_sampler, uv) * vertex_color`, where `uv` is `slot_uv(material.uv[0], in.uv0, in.uv1)`: the UV set [`texture_uv`](/api/scene/material#texture_uv) picks for the slot, through the slot's [`texture_transform`](/api/scene/material#texture_transform).
 
-Accepts any `Into<TextureInput>`:
+Accepts any `Into<TextureInput>`, the inputs [`Renderer::create_texture`](/api/core/renderer#create_texture) takes:
 
 - A pre-built [`&Texture`](/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations.
-- Bytes / path / URL. The setter queues the input on the Material's Shader. [`Renderer::load`](/api/core/renderer) uploads it, and on native targets the first [`Renderer::render`](/api/core/renderer) runs `load` for you.
+- Encoded bytes, raw pixels with their size as `(bytes, [w, h])`, bytes with a format as `(bytes, format)`, bytes with every option as `(bytes, options)`, a path, a URL, or a [`Mipmap`](/api/texture/mipmap). The setter queues the input on the Material's Shader. [`Renderer::load`](/api/core/renderer) uploads it, and on native targets the first [`Renderer::render`](/api/core/renderer) runs `load` for you.
+
+Each language spells these inputs the way its `create_texture` does, and the other four texture setters take the same ones:
+
+- **JavaScript:** `baseColorTexture(source, options?)`, where `options` is a size such as `[w, h]`, a `TextureFormat`, or `{ size?, format?, mipmaps?, sampler?, usage? }`.
+- **Python:** `base_color_texture(texture, size=None, format=None, mipmaps=None, sampler=None, usage=None)`. A NumPy array brings its own size, and a `size` that differs from it raises `InvalidInputError`.
+- **Swift and Kotlin:** `baseColorTexture(bytes)`, `baseColorTexture(bytes, format)`, `baseColorTexture(bytes, [w, h])`, `baseColorTexture(bytes, size)`, `baseColorTexture(bytes, options)`, `baseColorTexture(path)`, `baseColorTexture(path, options)` and `baseColorTexture(chain)`. Bytes are `Data` or `[UInt8]` in Swift and `ByteArray` in Kotlin, and raw pixels with a `[w, h]` also come one value per byte, as `[Int]` or `List<Int>`. The bytes forms without `options` take an optional `usage`, and a `[w, h]` that isn't 2 or 3 numbers throws.
 
 Unset, this slot resolves to a 1×1 white default the renderer hands out
 lazily, so calling `Material::pbr()` without binding a
@@ -574,12 +580,16 @@ let albedo = renderer.create_texture((albedo_bytes, [2, 2])).await?;
 // texture; passing the same handle into N Material instances costs one
 // upload and N shader-uniform references.
 let material = Material::pbr().base_color_texture(&albedo);
-let _ = material;
+
+// Raw pixels with their size upload when the scene loads.
+let tint: Vec<u8> = vec![255, 128, 0, 255];
+let tinted = Material::pbr().base_color_texture((tint, [1, 1]));
+let _ = (material, tinted);
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 17-20}"
+lang="rust" meta="collapse={1-1, 21-24}"
 />
 
 </TabItem>
@@ -597,6 +607,10 @@ const albedo = await renderer.createTexture(albedo_bytes, [2, 2]);
 // texture; passing the same handle into N Material instances costs one
 // upload and N shader-uniform references.
 const material = Material.pbr().baseColorTexture(albedo);
+
+// Raw pixels with their size upload when the scene loads.
+const tint = [255, 128, 0, 255];
+const tinted = Material.pbr().baseColorTexture(tint, [1, 1]);
 `}
 lang="js"
 />
@@ -621,6 +635,10 @@ albedo = renderer.create_texture(albedo_bytes, size=[2, 2])
 # texture; passing the same handle into N Material instances costs one
 # upload and N shader-uniform references.
 material = Material.pbr().base_color_texture(albedo)
+
+# Raw pixels with their size upload when the scene loads.
+tint = [255, 128, 0, 255]
+tinted = Material.pbr().base_color_texture(tint, size=[1, 1])
 `}
 lang="python"
 />
@@ -644,7 +662,11 @@ let albedo = try await renderer.createTexture(albedo_bytes, [2, 2])
 // Every Material that points at \`albedo\` reuses the same uploaded GPU
 // texture; passing the same handle into N Material instances costs one
 // upload and N shader-uniform references.
-let material = Material.pbr().baseColorTexture(albedo)
+let material = try Material.pbr().baseColorTexture(albedo)
+
+// Raw pixels with their size upload when the scene loads.
+let tint = [255, 128, 0, 255]
+let tinted = try Material.pbr().baseColorTexture(tint, [1, 1])
 `}
 lang="swift"
 />
@@ -664,6 +686,10 @@ val albedo = renderer.createTexture(albedo_bytes, listOf(2u, 2u))
 // texture; passing the same handle into N Material instances costs one
 // upload and N shader-uniform references.
 val material = Material.pbr().baseColorTexture(albedo)
+
+// Raw pixels with their size upload when the scene loads.
+val tint = listOf(255, 128, 0, 255)
+val tinted = Material.pbr().baseColorTexture(tint, listOf(1u, 1u))
 `}
 lang="kotlin"
 />
@@ -1333,6 +1359,8 @@ set through its own transform.
 Unset, this slot resolves to a 1×1 white default so the multiplied
 emission falls back to the `material.emissive` factor as-is.
 
+Takes the inputs [`Material::base_color_texture`](/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`, which upload when the scene loads.
+
 #### Example
 
 <Tabs>
@@ -1340,26 +1368,21 @@ emission falls back to the `material.emissive` factor as-is.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Renderer};
+use fragmentcolor::Material;
 
-let renderer = Renderer::new();
+// Raw pixels with their size upload when the scene loads.
 let glow_bytes: Vec<u8> = vec![
     255, 0, 0, 255,
-    255,   0, 0, 255,
-    255,   0, 0, 255,
-    255,   0, 0, 255,
+    255, 0, 0, 255,
+    255, 0, 0, 255,
+    255, 0, 0, 255,
 ];
-let glow = renderer.create_texture((glow_bytes, [2, 2])).await?;
 let mat = Material::pbr()
     .emissive([0.8, 0.0, 0.0])
-    .emissive_texture(&glow);
+    .emissive_texture((glow_bytes, [2, 2]));
 let _ = mat;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 15-18}"
+lang="rust" meta="collapse={13-13}"
 />
 
 </TabItem>
@@ -1367,12 +1390,11 @@ lang="rust" meta="collapse={1-1, 15-18}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Renderer } from "fragmentcolor";
+import { Material } from "fragmentcolor";
 
-const renderer = new Renderer();
-const glow_bytes = [ 255, 0, 0, 255, 255,   0, 0, 255, 255,   0, 0, 255, 255,   0, 0, 255, ];
-const glow = await renderer.createTexture(glow_bytes, [2, 2]);
-const mat = Material.pbr().emissive([0.8, 0.0, 0.0]).emissiveTexture(glow);
+// Raw pixels with their size upload when the scene loads.
+const glow_bytes = [ 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, ];
+const mat = Material.pbr().emissive([0.8, 0.0, 0.0]).emissiveTexture(glow_bytes, [2, 2]);
 `}
 lang="js"
 />
@@ -1382,17 +1404,16 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Renderer
+from fragmentcolor import Material
 
-renderer = Renderer()
+# Raw pixels with their size upload when the scene loads.
 glow_bytes = [
     255, 0, 0, 255,
-    255,   0, 0, 255,
-    255,   0, 0, 255,
-    255,   0, 0, 255,
+    255, 0, 0, 255,
+    255, 0, 0, 255,
+    255, 0, 0, 255,
 ]
-glow = renderer.create_texture(glow_bytes, size=[2, 2])
-mat = Material.pbr().emissive([0.8, 0.0, 0.0]).emissive_texture(glow)
+mat = Material.pbr().emissive([0.8, 0.0, 0.0]).emissive_texture(glow_bytes, size=[2, 2])
 `}
 lang="python"
 />
@@ -1404,15 +1425,14 @@ lang="python"
 code={`
 import FragmentColor
 
-let renderer = Renderer()
+// Raw pixels with their size upload when the scene loads.
 let glow_bytes = [
     255, 0, 0, 255,
-    255,   0, 0, 255,
-    255,   0, 0, 255,
-    255,   0, 0, 255,
+    255, 0, 0, 255,
+    255, 0, 0, 255,
+    255, 0, 0, 255,
 ]
-let glow = try await renderer.createTexture(glow_bytes, [2, 2])
-let mat = try Material.pbr().emissive([0.8, 0.0, 0.0]).emissiveTexture(glow)
+let mat = try Material.pbr().emissive([0.8, 0.0, 0.0]).emissiveTexture(glow_bytes, [2, 2])
 `}
 lang="swift"
 />
@@ -1424,10 +1444,9 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val renderer = Renderer()
+// Raw pixels with their size upload when the scene loads.
 val glow_bytes = listOf(255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255)
-val glow = renderer.createTexture(glow_bytes, listOf(2u, 2u))
-val mat = Material.pbr().emissive(listOf(0.8f, 0.0f, 0.0f)).emissiveTexture(glow)
+val mat = Material.pbr().emissive(listOf(0.8f, 0.0f, 0.0f)).emissiveTexture(glow_bytes, listOf(2u, 2u))
 `}
 lang="kotlin"
 />
@@ -1534,6 +1553,8 @@ Unset, this slot resolves to a 1×1 default with `(R=0, G=1, B=1, A=1)` so
 the factor multiplication passes both `material.metallic` and
 `material.roughness` through unchanged.
 
+Takes the inputs [`Material::base_color_texture`](/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`, which upload when the scene loads.
+
 #### Example
 
 <Tabs>
@@ -1541,24 +1562,19 @@ the factor multiplication passes both `material.metallic` and
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Renderer};
+use fragmentcolor::Material;
 
-let renderer = Renderer::new();
+// Raw pixels with their size upload when the scene loads.
 let mr_map_bytes: Vec<u8> = vec![
     0, 200, 50, 255,
-    0,   240, 80, 255,
-    0,   180, 30, 255,
-    0,   220, 60, 255,
+    0, 240, 80, 255,
+    0, 180, 30, 255,
+    0, 220, 60, 255,
 ];
-let mr_map = renderer.create_texture((mr_map_bytes, [2, 2])).await?;
-let mat = Material::pbr().metallic_roughness_texture(&mr_map);
+let mat = Material::pbr().metallic_roughness_texture((mr_map_bytes, [2, 2]));
 let _ = mat;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 13-16}"
+lang="rust" meta="collapse={11-11}"
 />
 
 </TabItem>
@@ -1566,12 +1582,11 @@ lang="rust" meta="collapse={1-1, 13-16}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Renderer } from "fragmentcolor";
+import { Material } from "fragmentcolor";
 
-const renderer = new Renderer();
-const mr_map_bytes = [ 0, 200, 50, 255, 0,   240, 80, 255, 0,   180, 30, 255, 0,   220, 60, 255, ];
-const mr_map = await renderer.createTexture(mr_map_bytes, [2, 2]);
-const mat = Material.pbr().metallicRoughnessTexture(mr_map);
+// Raw pixels with their size upload when the scene loads.
+const mr_map_bytes = [ 0, 200, 50, 255, 0, 240, 80, 255, 0, 180, 30, 255, 0, 220, 60, 255, ];
+const mat = Material.pbr().metallicRoughnessTexture(mr_map_bytes, [2, 2]);
 `}
 lang="js"
 />
@@ -1581,17 +1596,16 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Renderer
+from fragmentcolor import Material
 
-renderer = Renderer()
+# Raw pixels with their size upload when the scene loads.
 mr_map_bytes = [
     0, 200, 50, 255,
-    0,   240, 80, 255,
-    0,   180, 30, 255,
-    0,   220, 60, 255,
+    0, 240, 80, 255,
+    0, 180, 30, 255,
+    0, 220, 60, 255,
 ]
-mr_map = renderer.create_texture(mr_map_bytes, size=[2, 2])
-mat = Material.pbr().metallic_roughness_texture(mr_map)
+mat = Material.pbr().metallic_roughness_texture(mr_map_bytes, size=[2, 2])
 `}
 lang="python"
 />
@@ -1603,15 +1617,14 @@ lang="python"
 code={`
 import FragmentColor
 
-let renderer = Renderer()
+// Raw pixels with their size upload when the scene loads.
 let mr_map_bytes = [
     0, 200, 50, 255,
-    0,   240, 80, 255,
-    0,   180, 30, 255,
-    0,   220, 60, 255,
+    0, 240, 80, 255,
+    0, 180, 30, 255,
+    0, 220, 60, 255,
 ]
-let mr_map = try await renderer.createTexture(mr_map_bytes, [2, 2])
-let mat = Material.pbr().metallicRoughnessTexture(mr_map)
+let mat = try Material.pbr().metallicRoughnessTexture(mr_map_bytes, [2, 2])
 `}
 lang="swift"
 />
@@ -1623,10 +1636,9 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val renderer = Renderer()
+// Raw pixels with their size upload when the scene loads.
 val mr_map_bytes = listOf(0, 200, 50, 255, 0, 240, 80, 255, 0, 180, 30, 255, 0, 220, 60, 255)
-val mr_map = renderer.createTexture(mr_map_bytes, listOf(2u, 2u))
-val mat = Material.pbr().metallicRoughnessTexture(mr_map)
+val mat = Material.pbr().metallicRoughnessTexture(mr_map_bytes, listOf(2u, 2u))
 `}
 lang="kotlin"
 />
@@ -1734,6 +1746,8 @@ Unset, this slot resolves to a 1×1 flat tangent-space default
 `(128, 128, 255, 255)` so the decoded normal is `(0, 0, 1)` and the world
 normal passes through unchanged.
 
+Takes the inputs [`Material::base_color_texture`](/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`, which upload when the scene loads.
+
 #### Example
 
 <Tabs>
@@ -1741,24 +1755,21 @@ normal passes through unchanged.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Renderer};
+use fragmentcolor::Material;
 
-let renderer = Renderer::new();
+// Raw pixels with their size upload when the scene loads.
 let normal_map_bytes: Vec<u8> = vec![
     128, 128, 255, 255,
-    128,   128, 255, 255,
-    128,   128, 255, 255,
-    128,   128, 255, 255,
+    128, 128, 255, 255,
+    128, 128, 255, 255,
+    128, 128, 255, 255,
 ];
-let normal_map = renderer.create_texture((normal_map_bytes, [2, 2])).await?;
-let mat = Material::pbr().normal_texture(&normal_map).normal_scale(1.2);
+let mat = Material::pbr()
+    .normal_texture((normal_map_bytes, [2, 2]))
+    .normal_scale(1.2);
 let _ = mat;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 13-16}"
+lang="rust" meta="collapse={13-13}"
 />
 
 </TabItem>
@@ -1766,12 +1777,11 @@ lang="rust" meta="collapse={1-1, 13-16}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Renderer } from "fragmentcolor";
+import { Material } from "fragmentcolor";
 
-const renderer = new Renderer();
-const normal_map_bytes = [ 128, 128, 255, 255, 128,   128, 255, 255, 128,   128, 255, 255, 128,   128, 255, 255, ];
-const normal_map = await renderer.createTexture(normal_map_bytes, [2, 2]);
-const mat = Material.pbr().normalTexture(normal_map).normalScale(1.2);
+// Raw pixels with their size upload when the scene loads.
+const normal_map_bytes = [ 128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255, ];
+const mat = Material.pbr().normalTexture(normal_map_bytes, [2, 2]).normalScale(1.2);
 `}
 lang="js"
 />
@@ -1781,17 +1791,16 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Renderer
+from fragmentcolor import Material
 
-renderer = Renderer()
+# Raw pixels with their size upload when the scene loads.
 normal_map_bytes = [
     128, 128, 255, 255,
-    128,   128, 255, 255,
-    128,   128, 255, 255,
-    128,   128, 255, 255,
+    128, 128, 255, 255,
+    128, 128, 255, 255,
+    128, 128, 255, 255,
 ]
-normal_map = renderer.create_texture(normal_map_bytes, size=[2, 2])
-mat = Material.pbr().normal_texture(normal_map).normal_scale(1.2)
+mat = Material.pbr().normal_texture(normal_map_bytes, size=[2, 2]).normal_scale(1.2)
 `}
 lang="python"
 />
@@ -1803,15 +1812,14 @@ lang="python"
 code={`
 import FragmentColor
 
-let renderer = Renderer()
+// Raw pixels with their size upload when the scene loads.
 let normal_map_bytes = [
     128, 128, 255, 255,
-    128,   128, 255, 255,
-    128,   128, 255, 255,
-    128,   128, 255, 255,
+    128, 128, 255, 255,
+    128, 128, 255, 255,
+    128, 128, 255, 255,
 ]
-let normal_map = try await renderer.createTexture(normal_map_bytes, [2, 2])
-let mat = Material.pbr().normalTexture(normal_map).normalScale(1.2)
+let mat = try Material.pbr().normalTexture(normal_map_bytes, [2, 2]).normalScale(1.2)
 `}
 lang="swift"
 />
@@ -1823,10 +1831,9 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val renderer = Renderer()
+// Raw pixels with their size upload when the scene loads.
 val normal_map_bytes = listOf(128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255)
-val normal_map = renderer.createTexture(normal_map_bytes, listOf(2u, 2u))
-val mat = Material.pbr().normalTexture(normal_map).normalScale(1.2f)
+val mat = Material.pbr().normalTexture(normal_map_bytes, listOf(2u, 2u)).normalScale(1.2f)
 `}
 lang="kotlin"
 />
@@ -1931,6 +1938,8 @@ default PBR shader, then multiplied into the diffuse term.
 Unset, this slot resolves to a 1×1 white default so the multiplied
 occlusion factor is `1.0` and no darkening is applied.
 
+Takes the inputs [`Material::base_color_texture`](/api/scene/material#base_color_texture) takes, spelled as each language's `create_texture` spells them: a `Texture`, or encoded bytes, raw pixels with their size, bytes with a format or with every option, a path, a URL or a `Mipmap`, which upload when the scene loads.
+
 #### Example
 
 <Tabs>
@@ -1938,24 +1947,19 @@ occlusion factor is `1.0` and no darkening is applied.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Renderer};
+use fragmentcolor::Material;
 
-let renderer = Renderer::new();
+// Raw pixels with their size upload when the scene loads.
 let ao_bytes: Vec<u8> = vec![
     220, 0, 0, 255,
-    180,   0, 0, 255,
-    200,   0, 0, 255,
-    160,   0, 0, 255,
+    180, 0, 0, 255,
+    200, 0, 0, 255,
+    160, 0, 0, 255,
 ];
-let ao = renderer.create_texture((ao_bytes, [2, 2])).await?;
-let mat = Material::pbr().occlusion_texture(&ao);
+let mat = Material::pbr().occlusion_texture((ao_bytes, [2, 2]));
 let _ = mat;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 13-16}"
+lang="rust" meta="collapse={11-11}"
 />
 
 </TabItem>
@@ -1963,12 +1967,11 @@ lang="rust" meta="collapse={1-1, 13-16}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Renderer } from "fragmentcolor";
+import { Material } from "fragmentcolor";
 
-const renderer = new Renderer();
-const ao_bytes = [ 220, 0, 0, 255, 180,   0, 0, 255, 200,   0, 0, 255, 160,   0, 0, 255, ];
-const ao = await renderer.createTexture(ao_bytes, [2, 2]);
-const mat = Material.pbr().occlusionTexture(ao);
+// Raw pixels with their size upload when the scene loads.
+const ao_bytes = [ 220, 0, 0, 255, 180, 0, 0, 255, 200, 0, 0, 255, 160, 0, 0, 255, ];
+const mat = Material.pbr().occlusionTexture(ao_bytes, [2, 2]);
 `}
 lang="js"
 />
@@ -1978,17 +1981,16 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Renderer
+from fragmentcolor import Material
 
-renderer = Renderer()
+# Raw pixels with their size upload when the scene loads.
 ao_bytes = [
     220, 0, 0, 255,
-    180,   0, 0, 255,
-    200,   0, 0, 255,
-    160,   0, 0, 255,
+    180, 0, 0, 255,
+    200, 0, 0, 255,
+    160, 0, 0, 255,
 ]
-ao = renderer.create_texture(ao_bytes, size=[2, 2])
-mat = Material.pbr().occlusion_texture(ao)
+mat = Material.pbr().occlusion_texture(ao_bytes, size=[2, 2])
 `}
 lang="python"
 />
@@ -2000,15 +2002,14 @@ lang="python"
 code={`
 import FragmentColor
 
-let renderer = Renderer()
+// Raw pixels with their size upload when the scene loads.
 let ao_bytes = [
     220, 0, 0, 255,
-    180,   0, 0, 255,
-    200,   0, 0, 255,
-    160,   0, 0, 255,
+    180, 0, 0, 255,
+    200, 0, 0, 255,
+    160, 0, 0, 255,
 ]
-let ao = try await renderer.createTexture(ao_bytes, [2, 2])
-let mat = Material.pbr().occlusionTexture(ao)
+let mat = try Material.pbr().occlusionTexture(ao_bytes, [2, 2])
 `}
 lang="swift"
 />
@@ -2020,10 +2021,9 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val renderer = Renderer()
+// Raw pixels with their size upload when the scene loads.
 val ao_bytes = listOf(220, 0, 0, 255, 180, 0, 0, 255, 200, 0, 0, 255, 160, 0, 0, 255)
-val ao = renderer.createTexture(ao_bytes, listOf(2u, 2u))
-val mat = Material.pbr().occlusionTexture(ao)
+val mat = Material.pbr().occlusionTexture(ao_bytes, listOf(2u, 2u))
 `}
 lang="kotlin"
 />
