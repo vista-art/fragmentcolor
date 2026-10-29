@@ -247,8 +247,14 @@ mod tests {
     #[wasm_bindgen_test]
     fn uniform_input_sorts_js_values() {
         let input = |value: JsValue| uniform_input("key", &value).ok();
-        assert_eq!(input(JsValue::from_f64(42.0)), Some(UniformInput::Number(42.0)));
-        assert_eq!(input(JsValue::from_bool(true)), Some(UniformInput::Bool(true)));
+        assert_eq!(
+            input(JsValue::from_f64(42.0)),
+            Some(UniformInput::Number(42.0))
+        );
+        assert_eq!(
+            input(JsValue::from_bool(true)),
+            Some(UniformInput::Bool(true))
+        );
 
         let array = Array::of2(&JsValue::from_f64(1.0), &JsValue::from_f64(2.0));
         let numbers = UniformInput::Numbers(vec![1.0, 2.0]);
@@ -257,7 +263,10 @@ mod tests {
         let numbers = UniformInput::Numbers(vec![3.0, -4.0]);
         assert_eq!(input(ints.into()), Some(numbers));
         let bytes = Uint8Array::from(&[1u8, 2, 3][..]);
-        assert_eq!(input(bytes.into()), Some(UniformInput::Bytes(vec![1, 2, 3])));
+        assert_eq!(
+            input(bytes.into()),
+            Some(UniformInput::Bytes(vec![1, 2, 3]))
+        );
 
         let columns = Array::of2(
             &Array::of2(&JsValue::from_f64(1.0), &JsValue::from_f64(0.0)),

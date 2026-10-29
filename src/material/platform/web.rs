@@ -41,25 +41,37 @@ impl Material {
 
     #[wasm_bindgen(js_name = "metallic")]
     #[lsp_doc("docs/api/scene/material/metallic.md")]
-    pub fn metallic_js(&self, #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue) -> Result<Material, WebError> {
+    pub fn metallic_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue,
+    ) -> Result<Material, WebError> {
         Ok(self.metallic(read_float(value, "Material.metallic: value")?))
     }
 
     #[wasm_bindgen(js_name = "roughness")]
     #[lsp_doc("docs/api/scene/material/roughness.md")]
-    pub fn roughness_js(&self, #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue) -> Result<Material, WebError> {
+    pub fn roughness_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue,
+    ) -> Result<Material, WebError> {
         Ok(self.roughness(read_float(value, "Material.roughness: value")?))
     }
 
     #[wasm_bindgen(js_name = "normalScale")]
     #[lsp_doc("docs/api/scene/material/normal_scale.md")]
-    pub fn normal_scale_js(&self, #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue) -> Result<Material, WebError> {
+    pub fn normal_scale_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue,
+    ) -> Result<Material, WebError> {
         Ok(self.normal_scale(read_float(value, "Material.normalScale: value")?))
     }
 
     #[wasm_bindgen(js_name = "occlusionStrength")]
     #[lsp_doc("docs/api/scene/material/occlusion_strength.md")]
-    pub fn occlusion_strength_js(&self, #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue) -> Result<Material, WebError> {
+    pub fn occlusion_strength_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue,
+    ) -> Result<Material, WebError> {
         Ok(self.occlusion_strength(read_float(value, "Material.occlusionStrength: value")?))
     }
 
@@ -75,7 +87,10 @@ impl Material {
 
     #[wasm_bindgen(js_name = "alphaCutoff")]
     #[lsp_doc("docs/api/scene/material/alpha_cutoff.md")]
-    pub fn alpha_cutoff_js(&self, #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue) -> Result<Material, WebError> {
+    pub fn alpha_cutoff_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue,
+    ) -> Result<Material, WebError> {
         Ok(self.alpha_cutoff(read_float(value, "Material.alphaCutoff: value")?))
     }
 

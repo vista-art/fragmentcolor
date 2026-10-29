@@ -342,7 +342,12 @@ mod tests {
         let naga = super::super::create_validator()
             .validate(&module)
             .err()
-            .map(|error| (trim_severity(error.emit_to_string(source)), error.spans().len()));
+            .map(|error| {
+                (
+                    trim_severity(error.emit_to_string(source)),
+                    error.spans().len(),
+                )
+            });
 
         let diagnostic = take_diagnostic(crate::Shader::new(source), |error| match error {
             ShaderError::ValidationError(diagnostic) => Some(diagnostic),
@@ -394,7 +399,11 @@ mod tests {
             "{}",
             diagnostic.message
         );
-        assert!(!diagnostic.message.contains("wgsl"), "{}", diagnostic.message);
+        assert!(
+            !diagnostic.message.contains("wgsl"),
+            "{}",
+            diagnostic.message
+        );
     }
 
     // Story: a column counts characters, as the `wgsl:L:C` of naga's message does,
@@ -420,8 +429,11 @@ mod tests {
     // Story: no report repeats the severity its variant's prefix already says.
     #[test]
     fn reports_say_error_once() {
-        let source = "@fragment fn fs_main() -> @location(0) vec4<f32> {\n  return vec4<f32>(1.0;\n}";
-        let text = crate::Shader::new(source).err().map(|error| error.to_string());
+        let source =
+            "@fragment fn fs_main() -> @location(0) vec4<f32> {\n  return vec4<f32>(1.0;\n}";
+        let text = crate::Shader::new(source)
+            .err()
+            .map(|error| error.to_string());
         let text = text.unwrap_or_default();
         assert!(text.starts_with("WGSL Parse error: expected"), "{text}");
         assert!(!text.contains("error: error:"), "{text}");

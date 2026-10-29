@@ -164,7 +164,10 @@ impl Camera {
 
     #[wasm_bindgen(js_name = "setAspect")]
     #[lsp_doc("docs/api/scene/camera/set_aspect.md")]
-    pub fn set_aspect_js(&self, #[wasm_bindgen(unchecked_param_type = "number")] aspect: &JsValue) -> Result<Camera, WebError> {
+    pub fn set_aspect_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "number")] aspect: &JsValue,
+    ) -> Result<Camera, WebError> {
         Ok(self.set_aspect(read_float(aspect, "Camera.setAspect: aspect")?)?)
     }
 
@@ -291,7 +294,10 @@ impl Light {
 
     #[wasm_bindgen(js_name = "setIntensity")]
     #[lsp_doc("docs/api/scene/light/set_intensity.md")]
-    pub fn set_intensity_js(&self, #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue) -> Result<Light, WebError> {
+    pub fn set_intensity_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue,
+    ) -> Result<Light, WebError> {
         Ok(self.set_intensity(read_float(value, "Light.setIntensity: value")?))
     }
 
@@ -317,7 +323,10 @@ impl Light {
 
     #[wasm_bindgen(js_name = "setRange")]
     #[lsp_doc("docs/api/scene/light/set_range.md")]
-    pub fn set_range_js(&self, #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue) -> Result<Light, WebError> {
+    pub fn set_range_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "number")] value: &JsValue,
+    ) -> Result<Light, WebError> {
         Ok(self.set_range(read_float(value, "Light.setRange: value")?)?)
     }
 
@@ -402,7 +411,10 @@ impl Scene {
 
     #[wasm_bindgen(js_name = "getPass")]
     #[lsp_doc("docs/api/scene/scene/get_pass.md")]
-    pub fn get_pass_js(&self, #[wasm_bindgen(unchecked_param_type = "number")] index: &JsValue) -> Result<Option<Pass>, WebError> {
+    pub fn get_pass_js(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "number")] index: &JsValue,
+    ) -> Result<Option<Pass>, WebError> {
         let index = read_count(index, "Scene.getPass: index")?;
         Ok(self.get_pass(index as usize))
     }

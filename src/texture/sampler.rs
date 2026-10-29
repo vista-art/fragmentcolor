@@ -32,9 +32,7 @@ impl SamplerOptions {
         #[wasm_bindgen(unchecked_optional_param_type = "boolean")] repeat_x: Option<JsValue>,
         #[wasm_bindgen(unchecked_optional_param_type = "boolean")] repeat_y: Option<JsValue>,
         #[wasm_bindgen(unchecked_optional_param_type = "boolean")] smooth: Option<JsValue>,
-        #[wasm_bindgen(unchecked_optional_param_type = "CompareFunction")] compare: Option<
-            JsValue,
-        >,
+        #[wasm_bindgen(unchecked_optional_param_type = "CompareFunction")] compare: Option<JsValue>,
     ) -> Result<SamplerOptions, crate::error::WebError> {
         use crate::platforms::web::{read_flag, read_given};
         let compare = match compare {

@@ -157,7 +157,11 @@ impl Material {
         usage: Option<PyTextureUsage<'py>>,
     ) -> PyResult<Self> {
         let keywords = (size, format, mipmaps, sampler, usage);
-        let input = read_source(texture, keywords, "Material.metallic_roughness_texture: texture")?;
+        let input = read_source(
+            texture,
+            keywords,
+            "Material.metallic_roughness_texture: texture",
+        )?;
         Ok(self.metallic_roughness_texture(input))
     }
 

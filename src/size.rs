@@ -146,7 +146,8 @@ impl TryFrom<&wasm_bindgen::JsValue> for Size {
                     .transpose()
             };
             let (Some(width), Some(height)) = (field("width")?, field("height")?) else {
-                let missing = SizeError::TypeMismatch("a size object needs a width and a height".into());
+                let missing =
+                    SizeError::TypeMismatch("a size object needs a width and a height".into());
                 return Err(missing.into());
             };
             let numbers = match field("depth")? {

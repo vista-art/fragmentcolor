@@ -8,8 +8,11 @@ impl ShaderObject {
     /// Create a Shader object from a GLSL source pair (vertex and fragment shaders).
     pub fn glsl(vertex_source: &str, fragment_source: &str) -> Result<Self, ShaderError> {
         let vertex = convert_stage(vertex_source, naga::ShaderStage::Vertex, "vertex.glsl")?;
-        let fragment =
-            convert_stage(fragment_source, naga::ShaderStage::Fragment, "fragment.glsl")?;
+        let fragment = convert_stage(
+            fragment_source,
+            naga::ShaderStage::Fragment,
+            "fragment.glsl",
+        )?;
         let vertex = vertex.replace("fn main", "fn vs_main");
         let fragment = fragment.replace("fn main", "fn fs_main");
         Self::wgsl(&format!("{vertex}\n{fragment}"))

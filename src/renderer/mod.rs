@@ -63,7 +63,6 @@ mod scope;
 use scope::Origin;
 use scope::{Caught, SCOPES};
 
-
 #[cfg(test)]
 mod check_tests;
 #[cfg(test)]

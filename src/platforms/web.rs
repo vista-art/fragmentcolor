@@ -62,9 +62,9 @@ pub(crate) fn read_unsigned(value: f64, what: &str) -> Result<u32, WebError> {
 
 /// A number argument. Any other value is a `TypeError` that names `label`, as Python raises one.
 pub(crate) fn read_number(value: &wasm_bindgen::JsValue, label: &str) -> Result<f64, WebError> {
-    value.as_f64().ok_or_else(|| {
-        WebError::type_error(&format!("{label} must be a number, got {value:?}"))
-    })
+    value
+        .as_f64()
+        .ok_or_else(|| WebError::type_error(&format!("{label} must be a number, got {value:?}")))
 }
 
 /// A number argument for a 32-bit float, such as a roughness or an angle, read as [`read_number`] reads it.
@@ -80,16 +80,16 @@ pub(crate) fn read_count(value: &wasm_bindgen::JsValue, label: &str) -> Result<u
 
 /// A string argument. Any other value is a `TypeError` that names `label`.
 pub(crate) fn read_text(value: &wasm_bindgen::JsValue, label: &str) -> Result<String, WebError> {
-    value.as_string().ok_or_else(|| {
-        WebError::type_error(&format!("{label} must be a string, got {value:?}"))
-    })
+    value
+        .as_string()
+        .ok_or_else(|| WebError::type_error(&format!("{label} must be a string, got {value:?}")))
 }
 
 /// A boolean argument. Any other value is a `TypeError` that names `label`, so `'yes'` is no `true`.
 pub(crate) fn read_flag(value: &wasm_bindgen::JsValue, label: &str) -> Result<bool, WebError> {
-    value.as_bool().ok_or_else(|| {
-        WebError::type_error(&format!("{label} must be a boolean, got {value:?}"))
-    })
+    value
+        .as_bool()
+        .ok_or_else(|| WebError::type_error(&format!("{label} must be a boolean, got {value:?}")))
 }
 
 /// An optional argument, `None` for `undefined` or `null`.

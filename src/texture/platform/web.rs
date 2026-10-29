@@ -127,8 +127,12 @@ impl Texture {
     #[lsp_doc("docs/api/texture/texture/write.md")]
     pub fn write_js(&self, data: &JsValue) -> Result<(), WebError> {
         let object = self.object();
-        let (bytes, _) =
-            crate::texture::js_to_texture_bytes(data, Some(object.size()), object.format, "Texture.write: data")?;
+        let (bytes, _) = crate::texture::js_to_texture_bytes(
+            data,
+            Some(object.size()),
+            object.format,
+            "Texture.write: data",
+        )?;
         self.write(&bytes)?;
         Ok(())
     }

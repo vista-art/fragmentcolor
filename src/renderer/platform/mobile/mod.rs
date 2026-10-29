@@ -64,7 +64,10 @@ pub enum FragmentColorError {
     },
     #[error("the shader has no {stage} entry point, which its pass runs")]
     Entry { stage: String },
-    #[error("{}", crate::RendererError::SurfaceError(crate::target::SurfaceError::Occluded))]
+    #[error(
+        "{}",
+        crate::RendererError::SurfaceError(crate::target::SurfaceError::Occluded)
+    )]
     Occluded,
 }
 
