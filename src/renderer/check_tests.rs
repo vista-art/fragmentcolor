@@ -591,6 +591,7 @@ fn copy_context(context: &RenderContext) -> RenderContext {
 
 // Story: the GL backends write a buffer struct member by member into a std140 block,
 // so they refuse an explicit @size or @align layout instead of shifting its members.
+// The refusal names the shader's own struct, also where WebGL2 pads a copy of it.
 #[test]
 fn gl_refuses_explicit_layouts() {
     pollster::block_on(async move {
@@ -601,15 +602,32 @@ fn gl_refuses_explicit_layouts() {
 @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(params.offset, params.scale, 1.0); }",
         )
         .expect("shader");
+        let short = fullscreen(
+            "struct P { @size(8) a: f32, b: f32 };
+@group(0) @binding(0) var<uniform> p: P;
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(p.a, p.b, 0.0, 1.0); }",
+        )
+        .expect("shader");
         let mut gl = copy_context(&context);
         gl.backend = wgpu::Backend::Gl;
+        let mut padded = copy_context(&context);
+        padded.backend = wgpu::Backend::Gl;
+        padded
+            .aligned_uniform_bindings
+            .store(true, Ordering::Relaxed);
 
         let error = gl.check_shader(&shader.object).unwrap_err();
+        let short_error = padded.check_shader(&short.object).unwrap_err();
 
         assert_refused!(
             error,
             RendererError::FeatureError { .. },
-            "struct `Params` needs the @size and @align layout of its members"
+            "struct `Params` (spell its padding out as members instead) needs @size and @align offsets in a std140 block, which the device lacks"
+        );
+        assert_refused!(
+            short_error,
+            RendererError::FeatureError { .. },
+            "struct `P` (spell its padding out"
         );
         assert!(copy_context(&context).check_shader(&shader.object).is_ok());
     });

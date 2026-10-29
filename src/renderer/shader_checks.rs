@@ -263,10 +263,11 @@ impl RenderContext {
     ) -> Result<Result<(naga::Module, ModuleInfo), Refusal>, RendererError> {
         let pad = self.aligned_uniform_bindings.load(Ordering::Relaxed);
         let uniform_lights = lights.and_then(|path| path.uniform_lights());
-        let module = build_module(shader, layout, pad, uniform_lights)?;
-        if let Err(refusal) = self.check_layouts(&module) {
+        // The shader's own module, before padding renames a padded struct's copy.
+        if let Err(refusal) = self.check_layouts(&shader.module) {
             return Ok(Err(refusal));
         }
+        let module = build_module(shader, layout, pad, uniform_lights)?;
         let mut validator = wgpu_naga_bridge::create_validator(
             self.features,
             self.downlevel,
@@ -295,8 +296,8 @@ impl RenderContext {
         }
         match list_explicit(module).ok().and_then(|names| names.into_iter().next()) {
             Some(name) => Err(Refusal::Feature {
-                item: format!("struct `{name}`"),
-                feature: "the @size and @align layout of its members, which the GL backend can't keep; spell its padding out as members".into(),
+                item: format!("struct `{name}` (spell its padding out as members instead)"),
+                feature: "@size and @align offsets in a std140 block".into(),
             }),
             None => Ok(()),
         }
