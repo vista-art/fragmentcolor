@@ -177,7 +177,7 @@ impl Renderer {
             sampler,
             usage,
         };
-        let spec = py_to_texture_spec(input, options)?;
+        let spec = py_to_texture_spec(input, options, "Renderer.create_texture: input")?;
         Ok(pollster::block_on(self.create_texture(spec))?)
     }
 
@@ -246,7 +246,7 @@ impl Renderer {
         py: Python<'_>,
         size: PySize<'_>,
         format: crate::TextureFormat,
-        data: Option<Vec<u8>>,
+        data: Option<crate::texture::PyTextureBytes<'_>>,
         usage: Option<crate::texture::PyTextureUsage<'_>>,
         usage_bits: Option<PyUnsigned<'_>>,
     ) -> Result<crate::texture::Texture, PyErr> {
@@ -256,7 +256,9 @@ impl Renderer {
         }
         let input = crate::TextureInput {
             data: match data {
-                Some(bytes) => crate::TextureData::Bytes(bytes),
+                Some(bytes) => {
+                    crate::TextureData::Bytes(bytes.read("Renderer.create_storage_texture: data")?)
+                }
                 None => crate::TextureData::Empty,
             },
             options: crate::TextureOptions {
@@ -294,18 +296,20 @@ impl Renderer {
     }
 }
 
-/// Builds the `TextureInput` for `create_texture` and the Material texture setters.
-/// An ndarray brings its own size, which a `size` keyword must match; the other kwargs apply to every source.
+/// Builds the `TextureInput` for `create_texture` and the Material texture setters,
+/// whose errors name the call, `label`. An ndarray brings its own size, which a `size`
+/// keyword must match; the other kwargs apply to every source.
 pub(crate) fn py_to_texture_spec(
     input: PyTextureSource<'_>,
     options: TextureKeywords<'_>,
+    label: &str,
 ) -> Result<crate::texture::TextureInput, PyErr> {
     let size = options.size.map(Size::try_from).transpose()?;
     let mut spec = match input {
         PyTextureSource::Array(array) => {
             crate::texture::ndarray_input(&array, size, options.format)?
         }
-        source => crate::texture::TextureInput::try_from(source)?,
+        source => source.read(label)?,
     };
     spec.options.size = spec.options.size.or(size);
     if let Some(format) = options.format {

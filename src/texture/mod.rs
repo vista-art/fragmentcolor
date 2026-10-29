@@ -24,7 +24,7 @@ pub(crate) mod ktx2_loader;
 mod platform;
 #[cfg(python)]
 pub(crate) use platform::{
-    PySamplerOptions, PyTextureId, PyTextureSource, PyTextureUsage, ndarray_input,
+    PySamplerOptions, PyTextureBytes, PyTextureId, PyTextureSource, PyTextureUsage, ndarray_input,
 };
 #[cfg(wasm)]
 pub(crate) use platform::{read_format, read_texture_input, read_usage};

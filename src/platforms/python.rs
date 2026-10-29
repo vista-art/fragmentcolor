@@ -139,6 +139,10 @@ pub(crate) trait Unsigned:
     const MAX: Self;
 }
 
+impl Unsigned for u8 {
+    const MAX: Self = u8::MAX;
+}
+
 impl Unsigned for u32 {
     const MAX: Self = u32::MAX;
 }
@@ -215,6 +219,32 @@ pub(crate) fn read_numbers(value: &Bound<'_, PyAny>, label: &str) -> PyResult<Ve
         .iter()
         .enumerate()
         .map(|(index, item)| read_number(item, label, index))
+        .collect()
+}
+
+/// The bytes of a `bytes`, `bytearray` or `memoryview`, or of a sequence of ints, each read by
+/// [`read_unsigned`] as a byte and named `{label}: item {index}`. A float or a `bool` raises
+/// `TypeError`, and an int outside 0 to 255 raises `InvalidInputError`, as rule 8 says.
+pub(crate) fn read_bytes(value: &Bound<'_, PyAny>, label: &str) -> PyResult<Vec<u8>> {
+    if let Ok(bytes) = value.cast::<PyBytes>() {
+        return Ok(bytes.as_bytes().to_vec());
+    }
+    if let Ok(bytes) = value.cast::<PyByteArray>() {
+        return Ok(bytes.to_vec());
+    }
+    if value.is_instance_of::<PyMemoryView>() {
+        return value.call_method0("tobytes")?.extract();
+    }
+    let Ok(items) = value.extract::<Vec<Bound<'_, PyAny>>>() else {
+        return Err(PyTypeError::new_err(format!(
+            "{label} takes bytes or a sequence of ints, got {}",
+            type_name(value)
+        )));
+    };
+    items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| read_unsigned::<u8>(item, &format!("{label}: item {index}")))
         .collect()
 }
 

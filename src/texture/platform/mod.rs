@@ -4,7 +4,7 @@ mod mobile;
 mod python;
 #[cfg(python)]
 pub(crate) use python::{
-    PySamplerOptions, PyTextureId, PyTextureSource, PyTextureUsage, ndarray_input,
+    PySamplerOptions, PyTextureBytes, PyTextureId, PyTextureSource, PyTextureUsage, ndarray_input,
 };
 #[cfg(wasm)]
 mod web;

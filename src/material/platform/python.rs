@@ -137,7 +137,8 @@ impl Material {
         sampler: Option<PySamplerOptions<'py>>,
         usage: Option<PyTextureUsage<'py>>,
     ) -> PyResult<Self> {
-        let input = read_source(texture, size, format, mipmaps, sampler, usage)?;
+        let keywords = (size, format, mipmaps, sampler, usage);
+        let input = read_source(texture, keywords, "Material.base_color_texture: texture")?;
         Ok(self.base_color_texture(input))
     }
 
@@ -155,7 +156,8 @@ impl Material {
         sampler: Option<PySamplerOptions<'py>>,
         usage: Option<PyTextureUsage<'py>>,
     ) -> PyResult<Self> {
-        let input = read_source(texture, size, format, mipmaps, sampler, usage)?;
+        let keywords = (size, format, mipmaps, sampler, usage);
+        let input = read_source(texture, keywords, "Material.metallic_roughness_texture: texture")?;
         Ok(self.metallic_roughness_texture(input))
     }
 
@@ -173,7 +175,8 @@ impl Material {
         sampler: Option<PySamplerOptions<'py>>,
         usage: Option<PyTextureUsage<'py>>,
     ) -> PyResult<Self> {
-        let input = read_source(texture, size, format, mipmaps, sampler, usage)?;
+        let keywords = (size, format, mipmaps, sampler, usage);
+        let input = read_source(texture, keywords, "Material.normal_texture: texture")?;
         Ok(self.normal_texture(input))
     }
 
@@ -191,7 +194,8 @@ impl Material {
         sampler: Option<PySamplerOptions<'py>>,
         usage: Option<PyTextureUsage<'py>>,
     ) -> PyResult<Self> {
-        let input = read_source(texture, size, format, mipmaps, sampler, usage)?;
+        let keywords = (size, format, mipmaps, sampler, usage);
+        let input = read_source(texture, keywords, "Material.occlusion_texture: texture")?;
         Ok(self.occlusion_texture(input))
     }
 
@@ -209,19 +213,27 @@ impl Material {
         sampler: Option<PySamplerOptions<'py>>,
         usage: Option<PyTextureUsage<'py>>,
     ) -> PyResult<Self> {
-        let input = read_source(texture, size, format, mipmaps, sampler, usage)?;
+        let keywords = (size, format, mipmaps, sampler, usage);
+        let input = read_source(texture, keywords, "Material.emissive_texture: texture")?;
         Ok(self.emissive_texture(input))
     }
 }
 
-/// A texture setter's source and keywords, read as `create_texture` reads them.
+/// A texture setter's keywords, in signature order.
+type Keywords<'py> = (
+    Option<PySize<'py>>,
+    Option<TextureFormat>,
+    Option<bool>,
+    Option<PySamplerOptions<'py>>,
+    Option<PyTextureUsage<'py>>,
+);
+
+/// A texture setter's source and keywords, read as `create_texture` reads them,
+/// with errors that name the setter, `label`.
 fn read_source<'py>(
     texture: PyTextureSource<'py>,
-    size: Option<PySize<'py>>,
-    format: Option<TextureFormat>,
-    mipmaps: Option<bool>,
-    sampler: Option<PySamplerOptions<'py>>,
-    usage: Option<PyTextureUsage<'py>>,
+    (size, format, mipmaps, sampler, usage): Keywords<'py>,
+    label: &str,
 ) -> PyResult<TextureInput> {
     let keywords = TextureKeywords {
         size,
@@ -230,7 +242,7 @@ fn read_source<'py>(
         sampler,
         usage,
     };
-    py_to_texture_spec(texture, keywords)
+    py_to_texture_spec(texture, keywords, label)
 }
 
 /// A value the material can't use raises `MaterialError`,

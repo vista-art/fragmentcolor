@@ -439,7 +439,7 @@ class Renderer:
         depth = r.create_depth_texture([800, 600])
         ```
         """
-    def create_storage_texture(self, size: _PySize, format: TextureFormat, data: bytes | Sequence[SupportsIndex] | npt.NDArray[numpy.integer[Any]] | None = ..., usage: SupportsIndex | TextureUsage | None = ..., usage_bits: SupportsIndex | None = ...) -> Texture:
+    def create_storage_texture(self, size: _PySize, format: TextureFormat, data: _PyTextureBytes | None = ..., usage: SupportsIndex | TextureUsage | None = ..., usage_bits: SupportsIndex | None = ...) -> Texture:
         """
         Create a storage-class texture for compute shaders, image store/load, or as a render target.
 
