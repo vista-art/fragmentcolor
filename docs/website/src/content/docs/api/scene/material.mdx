@@ -2092,8 +2092,10 @@ The shader uses:
   target's format, through the shader's `override ENCODE_SRGB: bool`. A custom
   shader that declares the same override gets the same value.
 
-The vertex inputs the shader reads from the mesh, each matched by name, so
-the order a vertex sets them in doesn't matter:
+The vertex inputs the shader reads from the mesh. Each finds its attribute by
+name, then by the attribute's own location, as
+[Mesh](/api/geometry/mesh) describes, so a vertex
+that sets them under these names can set them in any order:
 
 - `@location(0) position : vec3<f32>`, a 3D position from `Vertex::new([...])` or `Vertex::pbr([...])`.
 - `@location(1) normal   : vec3<f32>`, set as `.set(Vertex::NORMAL, ...)`.
@@ -2105,7 +2107,8 @@ the order a vertex sets them in doesn't matter:
 Locations 3 to 6 hold `model_0` to `model_3`, the columns of the Model's
 transform, which come from the Model rather than the mesh. The shader has
 no default for any mesh input, so a Model whose mesh lacks one fails to
-attach with an error that names the input. `Vertex::pbr` sets every input
+attach. The error names the input, or the attribute at the input's location
+when that attribute has the wrong type. `Vertex::pbr` sets every input
 after the position to a neutral value. Use `Material::custom(...)` to bring
 your own vertex layout.
 
