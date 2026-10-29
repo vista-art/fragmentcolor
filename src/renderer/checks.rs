@@ -13,6 +13,7 @@ use crate::{
     PassObject, Renderable, ShaderObject, Target, TargetFrame, TextureObject, UniformData,
 };
 use parking_lot::RwLock;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 /// Refuses `item`, which needs `value` of the device's `limit`, when the device has less.
@@ -104,6 +105,7 @@ impl std::fmt::Display for Channels {
 /// With a context, a frame target another Renderer made is `ForeignTarget`,
 /// unless every pass is a compute pass, and a pass target or a bound texture
 /// this context doesn't hold is `TextureNotFoundError`, as the plan returns it.
+/// A binding that a queued `Material` map replaces is left to `load` on native.
 /// The passes come from `peek_passes`, so a refusal leaves the renderable as it was.
 pub(super) fn check_target(
     context: Option<&Arc<RenderContext>>,
@@ -133,7 +135,9 @@ pub(super) fn check_target(
 }
 
 /// Refuses a texture `pass` draws into or binds that `context` doesn't hold.
-/// `find_targets` and `check_textures` refuse the same in the plan, after `load` has run.
+/// Where `render` runs `load` first, it skips a binding a queued upload replaces,
+/// and `load` returns the error of an upload that fails, so a skipped binding never draws.
+/// `find_targets` and `check_textures` refuse the same ones in the plan, after `load` has run.
 fn check_held(context: &RenderContext, pass: &PassObject) -> Result<(), RendererError> {
     let refuse = |registration: &Registration| match registration.belongs_to(context) {
         true => Ok(()),
@@ -147,11 +151,26 @@ fn check_held(context: &RenderContext, pass: &PassObject) -> Result<(), Renderer
         }
     }
     for shader in pass.shaders.read().iter() {
+        let replaced = find_replaced(shader);
         for binding in shader.bound_textures.iter() {
-            refuse(binding.value())?;
+            if !replaced.contains(binding.key()) {
+                refuse(binding.value())?;
+            }
         }
     }
     Ok(())
+}
+
+/// The texture uniforms of `shader` whose latest setter call queued an upload.
+/// Native `render` runs `load` first, which binds each upload in place of the binding
+/// a uniform holds. The web's `render` uploads nothing, so there the set is always empty.
+fn find_replaced(shader: &ShaderObject) -> HashSet<String> {
+    if cfg!(wasm) {
+        return HashSet::new();
+    }
+    let queued = shader.pending_textures.read();
+    let latest = queued.iter().filter(|entry| shader.is_latest(entry));
+    latest.map(|entry| entry.key.clone()).collect()
 }
 
 impl RenderContext {
@@ -775,6 +794,71 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
                 .render(&pass, &frame)
                 .expect("the owner draws the pass");
             check_drawn(&owner, &shader);
+        });
+    }
+
+    // Story: a Material map set again from bytes replaces another Renderer's texture,
+    // so the Renderer that draws the pass uploads the new map first and draws with it.
+    #[test]
+    fn a_queued_map_replaces_a_foreign_texture() {
+        pollster::block_on(async move {
+            let owner = Renderer::new();
+            let old = owner
+                .create_texture((vec![128; 16], [2, 2]))
+                .await
+                .expect("a texture");
+            let other = Renderer::new();
+            let frame = other.create_texture_target([8, 8]).await.expect("a target");
+            let (pass, shader) = build_pass(Material::pbr().base_color_texture(&old));
+
+            other.render(&pass, &frame).expect("the new map draws");
+            check_drawn(&other, &shader);
+        });
+    }
+
+    // Story: a queued map replaces a texture whose Renderer is gone,
+    // as when an app builds a new Renderer for a new surface and sets its maps again.
+    #[test]
+    fn a_queued_map_replaces_a_released_texture() {
+        pollster::block_on(async move {
+            let owner = Renderer::new();
+            let old = owner
+                .create_texture((vec![128; 16], [2, 2]))
+                .await
+                .expect("a texture");
+            let material = Material::pbr().base_color_texture(&old);
+            drop(old);
+            drop(owner);
+            let other = Renderer::new();
+            let frame = other.create_texture_target([8, 8]).await.expect("a target");
+            let (pass, shader) = build_pass(material);
+
+            other.render(&pass, &frame).expect("the new map draws");
+            check_drawn(&other, &shader);
+        });
+    }
+
+    // Story: a texture set after the map was queued is the latest call, so the queued
+    // map replaces nothing, and another Renderer's texture there is refused before load.
+    #[test]
+    fn a_texture_set_after_a_queued_map_is_checked() {
+        pollster::block_on(async move {
+            let owner = Renderer::new();
+            let old = owner
+                .create_texture((vec![128; 16], [2, 2]))
+                .await
+                .expect("a texture");
+            let other = Renderer::new();
+            let frame = other.create_texture_target([8, 8]).await.expect("a target");
+            let (pass, shader) = build_pass(Material::pbr());
+            shader.set("base_color_map", &old).expect("set");
+
+            let refused = other.render(&pass, &frame);
+            assert!(
+                matches!(refused, Err(RendererError::TextureNotFoundError(found)) if found == *old.id()),
+                "{refused:?}"
+            );
+            check_queued(&shader);
         });
     }
 
