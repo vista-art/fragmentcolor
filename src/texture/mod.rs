@@ -673,12 +673,12 @@ impl Texture {
     }
 
     #[lsp_doc("docs/api/texture/texture/write_region.md")]
-    pub fn write_region(
-        &self,
-        data: &[u8],
-        region: impl Into<TextureRegion>,
-    ) -> Result<(), TextureError> {
-        write::write(self, data, Some(region.into()))
+    pub fn write_region<R>(&self, data: &[u8], region: R) -> Result<(), TextureError>
+    where
+        R: TryInto<TextureRegion>,
+        TextureError: From<R::Error>,
+    {
+        write::write(self, data, Some(region.try_into()?))
     }
 
     #[lsp_doc("docs/api/texture/texture/get_image.md")]

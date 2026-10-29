@@ -12,7 +12,7 @@ Targets
 - There is no explicit `present(pass)` API — the last render pass in the executed DAG presents to the final frame by default.
 
 Viewport
-- `Pass::set_viewport` refuses a region with a width or height of 0 with `PassError::Viewport`, whatever form it comes in, a region built field by field included. A pass with no viewport draws on the whole target.
+- `Pass::set_viewport` refuses a region with a width or height of 0, or one whose max lies before its min (`ScreenRegionError::Reversed`, never swapped back), with `PassError::Viewport`, whatever form it comes in, a region built field by field included. A pair of pairs, `((x, y), (w, h))`, is an origin and a size in every language. A pass with no viewport draws on the whole target.
 - `render` refuses a viewport side past the device's `max_texture_dimension_2d` with `PassError::ViewportLimit`, since the pass has no device. A region within it keeps its size, past the target too.
 
 Clear color

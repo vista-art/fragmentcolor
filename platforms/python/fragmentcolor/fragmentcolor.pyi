@@ -1436,7 +1436,7 @@ class Pass:
 
         The pass's shaders draw only inside this rectangle of the [Target](https://fragmentcolor.org/api/targets/target), and each shader's output scales to fill it.
 
-        The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly. Pixels count from the top-left corner of the target.
+        The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, an origin and a size as `((x, y), (w, h))`, or a `ScreenRegion` constructed explicitly. Pixels count from the top-left corner of the target.
 
         A width or height of 0 is an error that leaves the pass's viewport as it was, and so is a far edge past `u32::MAX`, the largest pixel coordinate. A region whose max lies before its min, which a region built field by field or a JavaScript `{ minX, minY, maxX, maxY }` object can hold, returns `ScreenRegionError::Reversed` and is never swapped back. To draw on the whole target, leave the viewport unset.
 
@@ -5399,7 +5399,7 @@ class Texture:
         - `[w, h]` / `(w, h)`: a `w` by `h` rectangle at origin `(0, 0, 0)`
         - `[x, y, w, h]` / `(x, y, w, h)`: 2D rectangle
         - `[x, y, z, w, h, d]`: 3D box (for layered or 3D textures)
-        - A `ScreenRegion`: its pixel rectangle at `z = 0`, one layer deep
+        - A `ScreenRegion`: its pixel rectangle at `z = 0`, one layer deep. One whose max lies before its min, which a region built field by field can hold, returns `TextureError::Region` with `ScreenRegionError::Reversed`
         - A `TextureRegion` constructed explicitly with `.with_stride(...)` / `.with_rows(...)` for advanced data-layout control
 
         ## Notes

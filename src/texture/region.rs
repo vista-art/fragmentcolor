@@ -1,8 +1,8 @@
 //! TextureRegion — internal transport type for `Texture::write_region(...)`.
 //!
 //! Describes where in a texture data should be written and (optionally) how
-//! the source bytes are laid out. Public methods accept `impl Into<TextureRegion>`
-//! so JS / Python callers pass raw arrays or objects, never the type itself.
+//! the source bytes are laid out. `Texture::write_region` takes anything that converts
+//! into a `TextureRegion`, so JS / Python callers pass raw arrays or objects, never the type itself.
 
 /// Where in a texture to write, and how source bytes are laid out.
 ///
@@ -131,11 +131,17 @@ impl From<(u32, u32, u32, u32, u32, u32)> for TextureRegion {
     }
 }
 
-// Bridge from ScreenRegion (2D pixel rect → 2D texture region, z=0, depth=1).
-impl From<crate::ScreenRegion> for TextureRegion {
-    #[inline]
-    fn from(r: crate::ScreenRegion) -> Self {
-        Self::new([r.min_x, r.min_y, 0], [r.width(), r.height(), 1])
+/// The pixels a `ScreenRegion` covers, at `z = 0` and one layer deep.
+/// A region whose max lies before its min, or with a side of 0, is an error.
+impl TryFrom<crate::ScreenRegion> for TextureRegion {
+    type Error = crate::region::error::ScreenRegionError;
+
+    fn try_from(region: crate::ScreenRegion) -> Result<Self, Self::Error> {
+        let region = region.check()?;
+        Ok(Self::new(
+            [region.min_x, region.min_y, 0],
+            [region.width(), region.height(), 1],
+        ))
     }
 }
 

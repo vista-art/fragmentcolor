@@ -171,7 +171,7 @@ impl TryFrom<PyTextureRegion<'_>> for TextureRegion {
     fn try_from(region: PyTextureRegion<'_>) -> Result<Self, Self::Error> {
         let items = match region {
             PyTextureRegion::Numbers(items) => items,
-            PyTextureRegion::Screen(screen) => return Ok(screen.into()),
+            PyTextureRegion::Screen(screen) => return Ok(TextureRegion::try_from(screen)?),
             PyTextureRegion::Layout(layout) => return layout_region(&layout),
         };
         let numbers = read_list(&items, "Texture.write_region")?;

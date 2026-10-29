@@ -6,7 +6,7 @@ The `region` argument is required; use `Texture::write` to replace the whole tex
 - `[w, h]` / `(w, h)`: a `w` by `h` rectangle at origin `(0, 0, 0)`
 - `[x, y, w, h]` / `(x, y, w, h)`: 2D rectangle
 - `[x, y, z, w, h, d]`: 3D box (for layered or 3D textures)
-- A `ScreenRegion`: its pixel rectangle at `z = 0`, one layer deep
+- A `ScreenRegion`: its pixel rectangle at `z = 0`, one layer deep. One whose max lies before its min, which a region built field by field can hold, returns `TextureError::Region` with `ScreenRegionError::Reversed`
 - A `TextureRegion` constructed explicitly with `.with_stride(...)` / `.with_rows(...)` for advanced data-layout control
 
 ## Notes

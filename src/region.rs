@@ -59,8 +59,8 @@ impl ScreenRegion {
         let overflow = ScreenRegionError::Overflow {
             x,
             y,
-            width: width.into(),
-            height: height.into(),
+            width,
+            height,
         };
         let (Some(max_x), Some(max_y)) = (x.checked_add(width), y.checked_add(height)) else {
             return Err(overflow);
@@ -98,23 +98,6 @@ impl ScreenRegion {
             });
         }
         Ok(self)
-    }
-
-    /// The region between two corners, both inside it, so it spans one pixel more than their distance.
-    /// A corner at `u32::MAX` has no pixel past it, so it is an error.
-    pub fn from_tuples(a: (u32, u32), b: (u32, u32)) -> Result<Self, ScreenRegionError> {
-        let (min_x, min_y) = (a.0.min(b.0), a.1.min(b.1));
-        let width = u64::from(a.0.max(b.0) - min_x) + 1;
-        let height = u64::from(a.1.max(b.1) - min_y) + 1;
-        match (u32::try_from(width), u32::try_from(height)) {
-            (Ok(width), Ok(height)) => Self::from_region(min_x, min_y, width, height),
-            _ => Err(ScreenRegionError::Overflow {
-                x: min_x,
-                y: min_y,
-                width,
-                height,
-            }),
-        }
     }
 
     /// Reads JavaScript's `[w, h]` or `[x, y, w, h]`, each number checked by [`read_dimension`].
@@ -287,114 +270,6 @@ impl ScreenRegion {
             self.min_y + self.half_height(),
         )
     }
-
-    /// Clamps this ScreenRegion to a theoretical overlap of another ScreenRegion,
-    /// referring to "overlapping pixels" (such as a copy destination vs copy source),
-    /// in such a way that only pixels that are valid for both Regions are valid.
-    ///
-    /// The other ScreenRegion is also clamped to reflect the same overlap.
-    ///
-    /// The overlap of two regions starts at `self_point` on `self`, and `other_point` on `other`,
-    /// and is at most `size` big.
-    ///
-    /// The overlap does not actually need to happen on the same coordinate plane,
-    /// for example -1,-1 on this may be 100,100 on other, with an overlap region of 5x5.
-    /// As long as both textures can fit that, that's considered an overlap.
-    /// However, since -1,-1 is outside of the valid area on the first region,
-    /// the overlap actually happens at 0,0 and 101,101 for a size of 4x4.
-    pub fn clamp_with_intersection(
-        &mut self,
-        self_point: (i32, i32),
-        other_point: (i32, i32),
-        size: (i32, i32),
-        other: &mut ScreenRegion,
-    ) {
-        // Translate both regions to same coordinate system.
-
-        let r1 = (
-            self.min_x as i32,
-            self.min_y as i32,
-            self.max_x as i32,
-            self.max_y as i32,
-        );
-        let r2 = (
-            other.min_x as i32,
-            other.min_y as i32,
-            other.max_x as i32,
-            other.max_y as i32,
-        );
-
-        let r1_trans = translate_region(r1, (-self_point.0, -self_point.1));
-        let r2_trans = translate_region(r2, (-other_point.0, -other_point.1));
-
-        // Intersection.
-
-        let inters = intersection_same_coordinate_system(
-            intersection_same_coordinate_system(r1_trans, r2_trans),
-            (0, 0, size.0, size.1),
-        );
-
-        // Translate the intersection back.
-
-        let r1_result = translate_region(inters, self_point);
-        let r2_result = translate_region(inters, other_point);
-
-        // Ensure empty results yield (0, 0, 0, 0).
-
-        let is_empty = inters.0 == inters.2 || inters.1 == inters.3;
-
-        let r1_result = if is_empty { (0, 0, 0, 0) } else { r1_result };
-        let r2_result = if is_empty { (0, 0, 0, 0) } else { r2_result };
-
-        // Mutate.
-
-        self.min_x = r1_result.0 as u32;
-        self.min_y = r1_result.1 as u32;
-        self.max_x = r1_result.2 as u32;
-        self.max_y = r1_result.3 as u32;
-
-        other.min_x = r2_result.0 as u32;
-        other.min_y = r2_result.1 as u32;
-        other.max_x = r2_result.2 as u32;
-        other.max_y = r2_result.3 as u32;
-    }
-}
-
-#[inline]
-fn intersection_same_coordinate_system(
-    (r1_min_x, r1_min_y, r1_max_x, r1_max_y): (i32, i32, i32, i32),
-    (r2_min_x, r2_min_y, r2_max_x, r2_max_y): (i32, i32, i32, i32),
-) -> (i32, i32, i32, i32) {
-    // To guard against 'min' being larger than 'max'.
-    let r1_min_x = r1_min_x.min(r1_max_x);
-    let r1_min_y = r1_min_y.min(r1_max_y);
-    let r2_min_x = r2_min_x.min(r2_max_x);
-    let r2_min_y = r2_min_y.min(r2_max_y);
-
-    // First part of intersection.
-    let r3_min_x = r1_min_x.max(r2_min_x);
-    let r3_min_y = r1_min_y.max(r2_min_y);
-    let r3_max_x = r1_max_x.min(r2_max_x);
-    let r3_max_y = r1_max_y.min(r2_max_y);
-
-    // In case of no overlap.
-    let r3_min_x = r3_min_x.min(r3_max_x);
-    let r3_min_y = r3_min_y.min(r3_max_y);
-
-    (r3_min_x, r3_min_y, r3_max_x, r3_max_y)
-}
-
-#[inline]
-fn translate_region(
-    (r_min_x, r_min_y, r_max_x, r_max_y): (i32, i32, i32, i32),
-    (trans_x, trans_y): (i32, i32),
-) -> (i32, i32, i32, i32) {
-    (
-        r_min_x + trans_x,
-        r_min_y + trans_y,
-        r_max_x + trans_x,
-        r_max_y + trans_y,
-    )
 }
 
 /// Reads `[w, h]` or `[x, y, w, h]` from a plain or typed array, an `{ x, y, width, height }`
@@ -623,20 +498,21 @@ impl TryFrom<&[u32; 4]> for ScreenRegion {
     }
 }
 
+// An origin and a size, as `ScreenRegion::new` and Swift's `[(x, y), (width, height)]` read them.
 impl TryFrom<((u32, u32), (u32, u32))> for ScreenRegion {
     type Error = ScreenRegionError;
 
     #[inline]
-    fn try_from(p: ((u32, u32), (u32, u32))) -> Result<Self, Self::Error> {
-        ScreenRegion::from_tuples(p.0, p.1)
+    fn try_from((origin, size): ((u32, u32), (u32, u32))) -> Result<Self, Self::Error> {
+        ScreenRegion::new(origin, size)
     }
 }
 impl TryFrom<&((u32, u32), (u32, u32))> for ScreenRegion {
     type Error = ScreenRegionError;
 
     #[inline]
-    fn try_from(p: &((u32, u32), (u32, u32))) -> Result<Self, Self::Error> {
-        ScreenRegion::from_tuples(p.0, p.1)
+    fn try_from(&(origin, size): &((u32, u32), (u32, u32))) -> Result<Self, Self::Error> {
+        ScreenRegion::new(origin, size)
     }
 }
 
@@ -731,94 +607,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn clamp_with_intersection() {
-        fn test(
-            mut a: ScreenRegion,
-            mut b: ScreenRegion,
-            a_point: (i32, i32),
-            b_point: (i32, i32),
-            size: (i32, i32),
-            expected_a: ScreenRegion,
-            expected_b: ScreenRegion,
-        ) {
-            a.clamp_with_intersection(a_point, b_point, size, &mut b);
-
-            assert_eq!(expected_a, a, "a (self) region should match");
-            assert_eq!(expected_b, b, "b (other) region should match");
-        }
-
-        test(
-            build_region(0, 0, 10, 10),
-            build_region(0, 0, 10, 10),
-            (0, 0),
-            (0, 0),
-            (5, 5),
-            build_region(0, 0, 5, 5),
-            build_region(0, 0, 5, 5),
-        );
-
-        test(
-            build_region(0, 0, 10, 10),
-            build_region(0, 0, 150, 150),
-            (-1, -1),
-            (100, 100),
-            (5, 5),
-            build_region(0, 0, 4, 4),
-            build_region(101, 101, 4, 4),
-        );
-
-        test(
-            build_region(0, 0, 10, 10),
-            build_region(0, 0, 150, 150),
-            (-1, -1),
-            (100, 100),
-            (15, 15),
-            build_region(0, 0, 10, 10),
-            build_region(101, 101, 10, 10),
-        );
-
-        test(
-            build_region(10, 10, 20, 20),
-            build_region(0, 0, 150, 150),
-            (15, 5),
-            (0, 0),
-            (15, 15),
-            build_region(15, 10, 15, 10),
-            build_region(0, 5, 15, 10),
-        );
-
-        test(
-            build_region(0, 0, 800, 600),
-            build_region(0, 0, 200, 40),
-            (400, 440),
-            (40, 0),
-            (40, 40),
-            build_region(400, 440, 40, 40),
-            build_region(40, 0, 40, 40),
-        );
-
-        test(
-            build_region(0, 0, 240, 180),
-            build_region(0, 0, 238, 164),
-            (-1, 0),
-            (0, 0),
-            (240, 180),
-            build_region(0, 0, 237, 164),
-            build_region(1, 0, 237, 164),
-        );
-
-        test(
-            build_region(0, 0, 10, 10),
-            build_region(0, 0, 10, 10),
-            (15, 0),
-            (0, 15),
-            (100, 100),
-            build_region(0, 0, 0, 0),
-            build_region(0, 0, 0, 0),
-        );
-    }
-
     // Story: a binding's region is a size or an origin and a size, and any
     // other count of numbers fails.
     #[test]
@@ -861,12 +649,12 @@ mod tests {
         );
         assert!(overflow(ScreenRegion::new((u32::MAX, 0), (5, 5))));
         assert!(overflow(ScreenRegion::try_from((0, u32::MAX, 4, 4))));
-        let message = ScreenRegion::from_tuples((0, 0), (u32::MAX, 3))
+        let message = ScreenRegion::try_from(((1, 0), (u32::MAX, 3)))
             .err()
             .map(|error| error.to_string());
         assert_eq!(
             message.as_deref(),
-            Some("a region at 0, 0 sized 4294967296 by 4 reaches past 4294967295")
+            Some("a region at 1, 0 sized 4294967295 by 3 reaches past 4294967295")
         );
         assert!(overflow(ScreenRegion::from_pixel(u32::MAX, 0)));
         let mut region = build_region(0, 0, 2, 2);
@@ -892,6 +680,7 @@ mod tests {
         assert!(empty(ScreenRegion::try_from([8, 0])));
         assert!(empty(ScreenRegion::try_from((1, 2, 0, 4))));
         assert!(empty(ScreenRegion::try_from([1, 2, 4, 0])));
+        assert!(empty(ScreenRegion::try_from(((4, 4), (0, 8)))));
         assert!(empty(build_region(3, 3, 0, 2).check()));
         assert_eq!(
             build_region(3, 3, 1, 1).check().ok(),
@@ -899,8 +688,8 @@ mod tests {
         );
     }
 
-    // Story: a size alone covers exactly that many pixels, while two corners
-    // both sit inside the region.
+    // Story: a size alone covers exactly that many pixels, and a pair of pairs
+    // is an origin and a size, as `ScreenRegion::new` reads them.
     #[test]
     fn size_forms_cover_exact_pixels() {
         assert_eq!(
@@ -919,8 +708,22 @@ mod tests {
             ScreenRegion::try_from([2, 4, 8, 6]).ok(),
             Some(build_region(2, 4, 8, 6))
         );
-        let corners = ScreenRegion::from_tuples((0, 0), (31, 31));
-        assert_eq!(corners.map(|region| region.width()).ok(), Some(32));
+        assert_eq!(
+            ScreenRegion::try_from(((0, 0), (32, 32))).ok(),
+            Some(build_region(0, 0, 32, 32))
+        );
+    }
+
+    // Story: a viewport from a pair of pairs draws at that origin with that size,
+    // where the pairs read as two corners in any order and `((8, 0), (2, 4))` swapped them.
+    #[test]
+    fn viewport_pairs_read_origin_and_size() {
+        let pass = crate::Pass::new("p");
+
+        let set = pass.set_viewport(((8, 0), (2, 4)));
+
+        assert!(set.is_ok(), "{set:?}");
+        assert_eq!(*pass.object.viewport.read(), Some(build_region(8, 0, 2, 4)));
     }
 
     // Story: Construct regions using helpers and verify geometry utilities.
