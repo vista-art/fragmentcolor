@@ -70,8 +70,8 @@ pub enum RendererError {
         .depth[0], .depth[1], .pass[0], .pass[1]
     )]
     DepthSizeMismatch { depth: [u32; 2], pass: [u32; 2] },
-    /// Something in a shader past one of the device's limits, such as a bind group
-    /// index past `max_bind_groups` or a uniform past `max_uniform_buffer_binding_size`.
+    /// Something in a shader or mesh past one of the device's limits, such as a bind
+    /// group index past `max_bind_groups` or a vertex stride past `max_vertex_buffer_array_stride`.
     #[error("{item} needs {limit} of at least {value}, and the device has {max}")]
     LimitError {
         item: String,

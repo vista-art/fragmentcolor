@@ -1,6 +1,7 @@
 # Shader::clear_meshes
 
-Remove all meshes attached to this Shader.
+Remove all meshes attached to this Shader. A vertex or instance added to one
+of them afterwards may leave out what this shader reads.
 
 ## Example
 

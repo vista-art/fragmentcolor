@@ -77,7 +77,7 @@ create_exception!(
     fragment_color,
     LimitError,
     PyFragmentColorError,
-    "Something in a shader past one of the device's limits, with the item, the limit's name, the value it needs and the device's maximum."
+    "Something in a shader or mesh past one of the device's limits, with the item, the limit's name, the value it needs and the device's maximum."
 );
 #[cfg(python)]
 create_exception!(

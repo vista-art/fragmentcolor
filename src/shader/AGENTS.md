@@ -6,13 +6,14 @@ Ownership & validation
 - If the shader has no `@location` vertex inputs (fullscreen / builtin-only), attaching a mesh must be rejected.
 - `reflect_vertex_inputs` is the one list of vertex inputs. It holds each `@location` argument of the vertex entry point and each `@location` member of a struct argument, under the member's name, so `bind_mesh`, the renderer's vertex layouts and its no-mesh check read struct members as they read arguments. A struct of built-ins only adds nothing and stays a fullscreen input.
 - Attach checks every vertex and instance value, not only the first, and each one must hold every attribute the shader reads. A failed attach records nothing on the mesh, so `Pass::add_mesh` can try the next shader.
-- `bind_mesh` returns a `Binding`: the types it gives untyped attributes and the attributes it reads. `MeshObject::declare` keeps both, so a vertex or instance added later must hold what the shader reads.
+- `bind_mesh` returns a `Binding`: the types it gives untyped attributes and the attributes it reads, with their formats. `MeshObject::declare` keeps the types for the mesh's lifetime and the reads under the shader's `id`, so a vertex or instance added later holds what each attached shader reads. `remove_mesh`, `clear_meshes` and dropping the shader (`Drop`) take its reads off the mesh.
 - A vertex that sets a property named `position` fails the attach with `ShaderError::InvalidKey` (`check_position`), since its position comes from `Vertex::new`.
 
 Constructors
 - `Shader::new(source: &str) -> Result<Self, ShaderError>` — WGSL or GLSL source; the core Rust entry point.
-- `Shader::from_mesh(mesh: &Mesh) -> Self` — infers a minimal shader from a mesh (returns a default shader on failure and logs the error; never panics).
-- `Shader::from_vertex(v: &Vertex) -> Self` — same idea from a single vertex (pos dim + common properties).
+- `Shader::from_mesh(mesh: &Mesh) -> Result<Self, ShaderError>` infers a minimal shader from a mesh's first vertex and attaches the mesh. An empty mesh returns `InvalidKey`, and a mesh the shader refuses returns the attach error.
+- `Shader::from_vertex(v: &Vertex) -> Result<Self, ShaderError>` builds the same shader from one vertex: the position at `@location(0)`, and a `color` of four numbers at `@location(1)`, read by name.
+- The mesh quick view (`Renderable for Mesh`) can't return an error, so its shader keeps the attach error (`keep_refusal`), and `plan_shader` returns it in place of the error for a shader with no mesh.
 - Mobile uniffi: `Shader::new_mobile(source: String) -> Result<Arc<Self>, FragmentColorError>` in `platform/mobile.rs` (owned `String` + `Arc<Self>` as uniffi requires). Swift / Kotlin extensions re-expose it as `Shader(source)`.
 
 Creation checks (`Shader::wgsl`, which every constructor reaches)

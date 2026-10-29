@@ -192,9 +192,8 @@ impl Shader {
     // Mesh-aware instance methods
     // ------------------------------------------------------------------
 
-    /// Attach a `Mesh` to this shader. The Renderer will draw all attached
-    /// meshes in the same pipeline. Validates layout compatibility first;
-    /// returns an error and does not attach on mismatch.
+    /// Attach a `Mesh` to this shader, or return an error and leave it detached.
+    /// Meshes with the same layout share a pipeline, and each other layout gets its own.
     #[uniffi::method(name = "addMesh")]
     #[lsp_doc("docs/api/core/shader/add_mesh.md")]
     pub fn add_mesh_mobile(self: Arc<Self>, mesh: Arc<Mesh>) -> Result<(), FragmentColorError> {

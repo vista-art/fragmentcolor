@@ -1,7 +1,9 @@
 # Shader::remove_mesh
 
 Remove a single Mesh previously attached to this Shader.
-If the Mesh is attached multiple times, removes the first match.
+If the Mesh is attached multiple times, removes the first match. Once the
+shader holds the mesh no more, a vertex or instance added to the mesh may
+leave out what this shader reads.
 
 ## Example
 

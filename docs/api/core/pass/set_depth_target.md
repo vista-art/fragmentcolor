@@ -28,8 +28,7 @@ let mut mesh = Mesh::new();
 mesh.add_vertex([0.0, 0.0, 0.0]);
 mesh.add_vertex([1.0, 0.0, 0.0]);
 mesh.add_vertex([0.0, 1.0, 0.0]);
-mesh.add_vertex([1.0, 1.0, 0.0]);
-let shader = Shader::from_mesh(&mesh);
+let shader = Shader::from_mesh(&mesh)?;
 let pass = Pass::from_shader("meshes", &shader);
 
 // Depth test on: closer fragments win, and the pass writes the depth
