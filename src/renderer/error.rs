@@ -1,6 +1,8 @@
 use lsp_doc::lsp_doc;
 use thiserror::Error;
 
+use crate::shader::error::describe;
+
 #[cfg(any(python, wasm, test))]
 use crate::error::{Classify, ErrorClass};
 #[cfg(python)]
@@ -202,6 +204,27 @@ pub enum InitializationError {
     TextureError(#[from] crate::texture::TextureError),
     #[error("Initialization error: {0}")]
     Error(String),
+}
+
+/// A failure of wgpu while it opens the GPU, which `InitializationError` carries as text.
+#[derive(Debug, Error)]
+pub(crate) enum WgpuFailure {
+    #[error(transparent)]
+    Adapter(#[from] wgpu::RequestAdapterError),
+    #[error(transparent)]
+    Device(#[from] wgpu::RequestDeviceError),
+    #[error(transparent)]
+    Surface(#[from] wgpu::CreateSurfaceError),
+}
+
+impl From<WgpuFailure> for InitializationError {
+    fn from(failure: WgpuFailure) -> Self {
+        match failure {
+            WgpuFailure::Adapter(error) => Self::AdapterError(describe(&error)),
+            WgpuFailure::Device(error) => Self::DeviceError(describe(&error)),
+            WgpuFailure::Surface(error) => Self::SurfaceError(describe(&error)),
+        }
+    }
 }
 
 #[cfg(any(python, wasm, test))]

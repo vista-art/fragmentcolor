@@ -1313,9 +1313,10 @@ impl From<std::io::Error> for ImageFailure {
     }
 }
 
+/// The image library's own text, which already holds the decoder's reason.
 impl From<ImageFailure> for TextureError {
     fn from(failure: ImageFailure) -> Self {
-        TextureError::MalformedImageError(crate::shader::error::describe(&failure.0))
+        TextureError::MalformedImageError(failure.0.to_string())
     }
 }
 
@@ -2108,6 +2109,29 @@ mod tests {
             )
             .expect("encode png");
         bytes
+    }
+
+    // Story: a PNG whose pixel data is corrupt names the decoder's reason once,
+    // where the reason was printed again after the text that already held it.
+    #[test]
+    fn malformed_images_name_their_reason_once() {
+        let mut bytes = encode_png(&DynamicImage::new_rgba8(1, 1));
+        let data = bytes
+            .windows(4)
+            .position(|window| window == b"IDAT")
+            .map(|start| start + 4)
+            .expect("an IDAT chunk");
+        bytes[data] ^= 0xFF;
+        let reason = decode_pixels(&bytes)
+            .err()
+            .and_then(|failure| std::error::Error::source(&failure.0).map(ToString::to_string))
+            .expect("a decoder reason");
+
+        let error = decode(&bytes, 64).err().map(|error| error.to_string());
+
+        let text = error.expect("a decode error");
+        assert!(text.starts_with("Image decode failed: "), "{text}");
+        assert_eq!(text.matches(reason.as_str()).count(), 1, "{text}");
     }
 
     // Story: TextureInput conversions from common Rust types produce expected variants.

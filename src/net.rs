@@ -13,9 +13,7 @@
 #[cfg(wasm)]
 use wasm_bindgen::JsValue;
 
-/// Single error type for HTTP fetches across every target. `Display` carries
-/// a human-readable message; `From<ureq::Error>` is provided when the
-/// `network` feature is enabled so call sites can use `?` directly.
+/// Single error type for HTTP fetches on every target. `Display` carries a readable message.
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
 pub struct NetworkError(pub String);
@@ -31,13 +29,6 @@ impl NetworkError {
 
     pub fn feature_disabled() -> Self {
         NetworkError(Self::FEATURE_DISABLED.to_string())
-    }
-}
-
-#[cfg(all(not(wasm), feature = "network"))]
-impl From<ureq::Error> for NetworkError {
-    fn from(e: ureq::Error) -> Self {
-        NetworkError(e.to_string())
     }
 }
 
@@ -71,18 +62,64 @@ fn agent() -> &'static ureq::Agent {
     })
 }
 
+/// A failure of the HTTP client, which `NetworkError` carries as text.
+#[cfg(all(
+    not(wasm),
+    feature = "network",
+    any(target_os = "linux", target_os = "macos", target_os = "windows")
+))]
+#[derive(Debug, thiserror::Error)]
+#[error(transparent)]
+pub(crate) struct FetchFailure(#[from] ureq::Error);
+
+#[cfg(all(
+    not(wasm),
+    feature = "network",
+    any(target_os = "linux", target_os = "macos", target_os = "windows")
+))]
+impl From<FetchFailure> for NetworkError {
+    fn from(failure: FetchFailure) -> Self {
+        NetworkError(failure.0.to_string())
+    }
+}
+
+/// The body at `url`, read as text through the shared agent.
+#[cfg(all(
+    not(wasm),
+    feature = "network",
+    any(target_os = "linux", target_os = "macos", target_os = "windows")
+))]
+fn get_text(url: &str) -> Result<String, FetchFailure> {
+    Ok(agent().get(url).call()?.into_body().read_to_string()?)
+}
+
+/// The body at `url`, read as bytes through the shared agent.
+#[cfg(all(
+    not(wasm),
+    feature = "network",
+    any(target_os = "linux", target_os = "macos", target_os = "windows")
+))]
+fn get_bytes(url: &str) -> Result<Vec<u8>, FetchFailure> {
+    Ok(agent().get(url).call()?.into_body().read_to_vec()?)
+}
+
+/// The text at `url`, read on the calling thread, for the blocking shader constructor.
+#[cfg(all(
+    not(wasm),
+    feature = "network",
+    any(target_os = "linux", target_os = "macos", target_os = "windows")
+))]
+pub(crate) fn read_text(url: &str) -> Result<String, NetworkError> {
+    Ok(get_text(url)?)
+}
+
 #[cfg(all(
     not(wasm),
     feature = "network",
     any(target_os = "linux", target_os = "macos", target_os = "windows")
 ))]
 pub async fn fetch_text(url: &str) -> Result<String, NetworkError> {
-    let resp = agent().get(url).call()?;
-    let out = resp
-        .into_body()
-        .read_to_string()
-        .map_err(|e| NetworkError(e.to_string()))?;
-    Ok(out)
+    Ok(get_text(url)?)
 }
 
 #[cfg(all(
@@ -91,12 +128,7 @@ pub async fn fetch_text(url: &str) -> Result<String, NetworkError> {
     any(target_os = "linux", target_os = "macos", target_os = "windows")
 ))]
 pub async fn fetch_bytes(url: &str) -> Result<Vec<u8>, NetworkError> {
-    let resp = agent().get(url).call()?;
-    let out = resp
-        .into_body()
-        .read_to_vec()
-        .map_err(|e| NetworkError(e.to_string()))?;
-    Ok(out)
+    Ok(get_bytes(url)?)
 }
 
 // ---------------------------------------------------------------------------

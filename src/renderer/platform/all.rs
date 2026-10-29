@@ -1,5 +1,4 @@
-use crate::renderer::error::InitializationError;
-use crate::shader::error::describe;
+use crate::renderer::error::{InitializationError, WgpuFailure};
 use std::sync::Arc;
 #[cfg(not(wasm))]
 use std::{fs::OpenOptions, io::Write, path::Path};
@@ -25,17 +24,14 @@ pub(crate) async fn create_instance() -> wgpu::Instance {
 pub(crate) async fn request_adapter(
     instance: &wgpu::Instance,
     surface: Option<&wgpu::Surface<'_>>,
-) -> Result<wgpu::Adapter, InitializationError> {
+) -> Result<wgpu::Adapter, WgpuFailure> {
     let options = wgpu::RequestAdapterOptions {
         power_preference: wgpu::PowerPreference::HighPerformance,
         compatible_surface: surface,
         force_fallback_adapter: false,
         apply_limit_buckets: false,
     };
-    match instance.request_adapter(&options).await {
-        Ok(adapter) => Ok(adapter),
-        Err(error) => Err(InitializationError::AdapterError(describe(&error))),
-    }
+    Ok(instance.request_adapter(&options).await?)
 }
 
 /// The features a device may open with, when the adapter offers them.
@@ -54,7 +50,7 @@ pub(crate) const CANDIDATES: wgpu::Features = wgpu::Features::IMMEDIATES
 /// Opens the device with the stable features the adapter offers.
 pub(crate) async fn request_device(
     adapter: &wgpu::Adapter,
-) -> Result<(wgpu::Device, wgpu::Queue), InitializationError> {
+) -> Result<(wgpu::Device, wgpu::Queue), WgpuFailure> {
     // Features: probe a curated set of stable, end-user-relevant features
     // and request only the ones the adapter advertises. Two constraints
     // shape the list:
@@ -85,10 +81,7 @@ pub(crate) async fn request_device(
         trace: wgpu::Trace::Off,
         experimental_features: wgpu::ExperimentalFeatures::disabled(),
     };
-    let (device, queue) = match adapter.request_device(&descriptor).await {
-        Ok(opened) => opened,
-        Err(error) => return Err(InitializationError::DeviceError(describe(&error))),
-    };
+    let (device, queue) = adapter.request_device(&descriptor).await?;
 
     device.on_uncaptured_error(Arc::new(report_error));
 

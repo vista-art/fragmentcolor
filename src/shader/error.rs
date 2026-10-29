@@ -186,12 +186,16 @@ fn locate(labels: impl Iterator<Item = (naga::Span, String)>, source: &str) -> V
 }
 
 /// `error` and each error under it, joined into one line.
+/// A cause whose text the line already ends with, as an error that prints its source does, is left out.
 pub(crate) fn describe(error: &dyn std::error::Error) -> String {
     let mut text = error.to_string();
     let mut cause = error.source();
     while let Some(inner) = cause {
-        text.push_str(": ");
-        text.push_str(&inner.to_string());
+        let part = inner.to_string();
+        if !text.ends_with(&part) {
+            text.push_str(": ");
+            text.push_str(&part);
+        }
         cause = inner.source();
     }
     text

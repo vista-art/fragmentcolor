@@ -162,13 +162,7 @@ pub(crate) mod blocking {
         any(target_os = "linux", target_os = "macos", target_os = "windows")
     ))]
     fn fetch_url(url: &str) -> Result<Resolved, ShaderError> {
-        let resp = ureq::get(url)
-            .call()
-            .map_err(crate::net::NetworkError::from)?;
-        let body = resp
-            .into_body()
-            .read_to_string()
-            .map_err(|e| crate::net::NetworkError(e.to_string()))?;
+        let body = crate::net::read_text(url)?;
         Ok(Resolved {
             body,
             glsl: glsl_kind_from_url(url),

@@ -1,6 +1,5 @@
 use crate::mesh::vertex::POSITION;
 use crate::pass::PassInput;
-use crate::shader::error::describe;
 use crate::{PassObject, ShaderError, ShaderHash, ShaderObject, Target, TargetFrame};
 use crate::{ScreenRegion, Size, WindowTarget};
 use crate::{TextureData, TextureTarget, UniformData};
@@ -63,6 +62,7 @@ mod scope;
 #[cfg(not(wasm))]
 use scope::Origin;
 use scope::{Caught, SCOPES};
+
 
 #[cfg(test)]
 mod check_tests;
@@ -588,10 +588,7 @@ impl Renderer {
         InitializationError,
     > {
         let instance = self.instance().await;
-        let surface = match instance.create_surface(handle) {
-            Ok(surface) => surface,
-            Err(error) => return Err(InitializationError::SurfaceError(describe(&error))),
-        };
+        let surface = open_surface(&instance, handle)?;
         self.configure_surface(surface, size).await
     }
 
@@ -614,10 +611,7 @@ impl Renderer {
         let instance = self.instance().await;
         // SAFETY: the caller promises the underlying handle (CAMetalLayer / ANativeWindow / ...)
         // remains valid for the lifetime of the returned Surface.
-        let surface = match unsafe { instance.create_surface_unsafe(target) } {
-            Ok(surface) => surface,
-            Err(error) => return Err(InitializationError::SurfaceError(describe(&error))),
-        };
+        let surface = unsafe { open_unsafe_surface(&instance, target) }?;
         self.configure_surface(surface, size).await
     }
 
@@ -2988,6 +2982,27 @@ fn create_compute_pipeline(
         bind_group_layouts: layouts,
         push_mode: layout.push.clone(),
     })
+}
+
+/// A surface for `handle` on `instance`.
+fn open_surface<'window>(
+    instance: &wgpu::Instance,
+    handle: impl Into<wgpu::SurfaceTarget<'window>>,
+) -> Result<wgpu::Surface<'window>, WgpuFailure> {
+    Ok(instance.create_surface(handle)?)
+}
+
+/// A surface for a raw `target` on `instance`.
+///
+/// # Safety
+/// The window or layer behind `target` must outlive the surface.
+#[cfg(ios)]
+unsafe fn open_unsafe_surface(
+    instance: &wgpu::Instance,
+    target: wgpu::SurfaceTargetUnsafe,
+) -> Result<wgpu::Surface<'static>, WgpuFailure> {
+    // SAFETY: the caller keeps the window or layer behind `target` alive as long as the surface.
+    Ok(unsafe { instance.create_surface_unsafe(target) }?)
 }
 
 fn schema_offsets(
