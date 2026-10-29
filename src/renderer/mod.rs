@@ -247,9 +247,7 @@ impl Renderer {
     ) -> Result<crate::texture::Texture, RendererError> {
         let input = spec.into();
 
-        // CloneOf and Empty don't produce a new TextureObject — handle them
-        // here so the dispatcher in `TextureObject::from_input` only sees
-        // variants it can actually upload.
+        // CloneOf returns the texture it holds, and Empty has nothing to upload.
         if let TextureData::CloneOf(tex) = input.data {
             return Ok(tex);
         }
@@ -259,8 +257,9 @@ impl Renderer {
             ));
         }
 
+        let source = crate::texture::TextureSource::try_from(input)?;
         let context = self.context(None).await?;
-        let object = crate::TextureObject::from_input(context.clone(), input).await?;
+        let object = crate::TextureObject::from_source(context.clone(), source).await?;
         let object = std::sync::Arc::new(object);
         let registration = crate::texture::Registration::create(&context, object);
         Ok(crate::texture::Texture::new(context, registration))
@@ -440,10 +439,8 @@ impl Renderer {
         external_texture::ExternalTextureHandle::from_video(self, video)
     }
 
-    /// Realize every pending GPU upload referenced by `renderable` — the
-    /// texture inputs queued by Material's lazy `*_texture` setters, the
-    /// loader-built Scenes, and so on. After `load` returns, `render` against
-    /// the same renderable is GPU-only.
+    /// Uploads into this Renderer every Material map of `renderable` that it lacks
+    /// or holds from an older set, so `render` against the same renderable is GPU-only.
     ///
     /// On native targets `render` runs `load` first, so calling it is optional
     /// there. On wasm `render` can't block, so await `load` before the first frame.
@@ -468,7 +465,7 @@ impl Renderer {
         }
         #[cfg(not(wasm))]
         let _ = start;
-        self.upload_pending(renderable).await
+        self.upload_maps(renderable).await
     }
 
     /// Read the GPU-side bytes of a storage binding back to the CPU.
@@ -533,7 +530,7 @@ impl Renderer {
         }
         // What another Renderer made is refused before load uploads into this one.
         check_target(context.as_ref(), renderable, target)?;
-        // Native render drains the lazy Material uploads. Wasm can't block, so they wait for `load`.
+        // Native render uploads the Material maps this Renderer lacks. Wasm can't block, so they wait for `load`.
         #[cfg(not(wasm))]
         futures::executor::block_on(self.load(renderable))?;
         context
@@ -541,33 +538,38 @@ impl Renderer {
             .render(renderable, target)
     }
 
-    /// Uploads every texture a lazy setter queued on the shaders of `renderable`.
-    ///
-    /// Each upload that works binds its texture, whatever happens to the others.
-    /// One that fails stays queued, and the first failure returns, so every `load`
-    /// and native `render` returns it again until the input is fixed or replaced.
-    async fn upload_pending(&self, renderable: &impl Renderable) -> Result<(), RendererError> {
+    /// Uploads into this Renderer each Material map of `renderable` it lacks or holds
+    /// from an older set. Each upload that works is kept, whatever happens to the others.
+    /// A failure keeps no copy, and the first one returns, so every `load` and native `render`
+    /// tries the map again until its source is fixed or replaced. A set during an upload wins.
+    async fn upload_maps(&self, renderable: &impl Renderable) -> Result<(), RendererError> {
+        let passes = renderable.passes();
+        let mapped =
+            |pass: &Arc<PassObject>| pass.shaders.read().iter().any(|shader| shader.has_maps());
+        if !passes.iter().any(mapped) {
+            return Ok(());
+        }
+        let context = self.context(None).await?;
+        let mut jobs = Vec::new();
+        for pass in passes.iter() {
+            for shader in pass.shaders.read().iter() {
+                shader.find_jobs(&context, &mut jobs);
+            }
+        }
         let mut first = None;
-        for pass in renderable.passes().iter() {
-            let shaders: Vec<Arc<ShaderObject>> = pass.shaders.read().iter().cloned().collect();
-            for shader in shaders {
-                let mut failed = Vec::new();
-                for entry in shader.drain_pending_textures() {
-                    // A setter call for the key while this upload ran wins over it.
-                    match self.create_texture(entry.input.clone()).await {
-                        Ok(texture) => {
-                            if let Err(error) = shader.set_latest(&entry, *texture.id()) {
-                                first.get_or_insert(error.into());
-                            }
-                        }
-                        Err(error) if shader.is_latest(&entry) => {
-                            first.get_or_insert(error);
-                            failed.push(entry);
-                        }
-                        Err(_) => {}
-                    }
+        for job in jobs {
+            let upload = crate::TextureObject::from_source(context.clone(), job.source.clone());
+            let upload = upload.await;
+            #[cfg(test)]
+            crate::hooks::run("map uploaded");
+            match upload {
+                Ok(object) => {
+                    job.shader.keep_upload(&job, &context, object);
                 }
-                shader.requeue_textures(failed);
+                Err(error) if job.shader.is_current(&job) => {
+                    first.get_or_insert(RendererError::from(error));
+                }
+                Err(_) => {}
             }
         }
         first.map_or(Ok(()), Err)
@@ -1420,17 +1422,31 @@ impl RenderContext {
     }
 
     /// Adds `texture` under a new id. Ids are unique across renderers, so a
-    /// shader binding finds the one texture its id names. A `Registration`
+    /// shader binding finds the one texture its id names, except a Material map's,
+    /// which names one copy in each Renderer that loaded it. A `Registration`
     /// calls this and removes the entry when the last handle drops.
     pub(crate) fn register_texture(
         &self,
         texture: Arc<crate::TextureObject>,
     ) -> crate::texture::TextureId {
-        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
-        let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-        let texture_id = crate::texture::TextureId { id };
-        self.textures.insert(texture_id, texture);
-        texture_id
+        let id = crate::texture::TextureId::create();
+        self.textures.insert(id, texture);
+        id
+    }
+
+    /// Puts `texture` under `id`, as this context's copy of a Material map,
+    /// and returns the copy it replaces, which the caller drops after its locks.
+    pub(crate) fn insert_texture(
+        &self,
+        id: crate::texture::TextureId,
+        texture: Arc<crate::TextureObject>,
+    ) -> Option<Arc<crate::TextureObject>> {
+        self.textures.insert(id, texture)
+    }
+
+    /// Whether the registry holds a texture under `id`.
+    pub(crate) fn has_texture(&self, id: &crate::texture::TextureId) -> bool {
+        self.textures.contains_key(id)
     }
 
     pub(crate) fn release_texture(&self, id: &crate::texture::TextureId) {

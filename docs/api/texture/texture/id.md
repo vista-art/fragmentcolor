@@ -6,6 +6,9 @@ the texture. It names the texture while something holds it: a `Texture`
 handle, the `TextureTarget` that owns it, or a shader uniform or pass target
 that binds it. An id on its own doesn't keep the texture in the registry.
 
+A `Material` map set from bytes, a path, a URL or a `Mipmap` keeps one id
+in every `Renderer`, where it names the copy that `Renderer` loaded.
+
 ## Example
 
 ```rust

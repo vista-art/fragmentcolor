@@ -13,7 +13,6 @@ use crate::{
     PassObject, Renderable, ShaderObject, Target, TargetFrame, TextureObject, UniformData,
 };
 use parking_lot::RwLock;
-use std::collections::HashSet;
 use std::sync::Arc;
 
 /// Refuses `item`, which needs `value` of the device's `limit`, when the device has less.
@@ -103,9 +102,9 @@ impl std::fmt::Display for Channels {
 /// `ForeignTarget` when a render pass draws into a target that has an owner, else `NoContext`.
 ///
 /// With a context, a frame target another Renderer made is `ForeignTarget`,
-/// unless every pass is a compute pass, and a pass target or a bound texture
+/// unless every pass is a compute pass, and a pass target or an explicit texture
 /// this context doesn't hold is `TextureNotFoundError`, as the plan returns it.
-/// A binding that a queued `Material` map replaces is left to `load` on native.
+/// A Material map belongs to no Renderer, since each one draws a copy of its own.
 /// The passes come from `peek_passes`, so a refusal leaves the renderable as it was.
 pub(super) fn check_target(
     context: Option<&Arc<RenderContext>>,
@@ -134,9 +133,7 @@ pub(super) fn check_target(
     Ok(())
 }
 
-/// Refuses a texture `pass` draws into or binds that `context` doesn't hold.
-/// Where `render` runs `load` first, it skips a binding a queued upload replaces,
-/// and `load` returns the error of an upload that fails, so a skipped binding never draws.
+/// Refuses a texture `pass` draws into or binds explicitly that `context` doesn't hold.
 /// `find_targets` and `check_textures` refuse the same ones in the plan, after `load` has run.
 fn check_held(context: &RenderContext, pass: &PassObject) -> Result<(), RendererError> {
     let refuse = |registration: &Registration| match registration.belongs_to(context) {
@@ -151,26 +148,11 @@ fn check_held(context: &RenderContext, pass: &PassObject) -> Result<(), Renderer
         }
     }
     for shader in pass.shaders.read().iter() {
-        let replaced = find_replaced(shader);
         for binding in shader.bound_textures.iter() {
-            if !replaced.contains(binding.key()) {
-                refuse(binding.value())?;
-            }
+            refuse(binding.value())?;
         }
     }
     Ok(())
-}
-
-/// The texture uniforms of `shader` whose latest setter call queued an upload.
-/// Native `render` runs `load` first, which binds each upload in place of the binding
-/// a uniform holds. The web's `render` uploads nothing, so there the set is always empty.
-fn find_replaced(shader: &ShaderObject) -> HashSet<String> {
-    if cfg!(wasm) {
-        return HashSet::new();
-    }
-    let queued = shader.pending_textures.read();
-    let latest = queued.iter().filter(|entry| shader.is_latest(entry));
-    latest.map(|entry| entry.key.clone()).collect()
 }
 
 impl RenderContext {
@@ -730,11 +712,11 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
         Model::new(mesh, material)
     }
 
-    /// A pass that draws `material`, whose base color map waits for an upload, and its shader.
+    /// A pass that draws `material`, whose base color map is a map of raw bytes, and its shader.
     fn build_pass(material: Material) -> (Pass, Shader) {
         let material = material.base_color_texture((vec![255; 16], [2, 2]));
         let shader = material.shader.clone();
-        let pass = Pass::new("queued map");
+        let pass = Pass::new("mapped");
         pass.add(&build_model(material)).expect("add");
         (pass, shader)
     }
@@ -747,10 +729,16 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
         }
     }
 
-    /// Checks that `shader`'s base color map waits in its queue, uploaded nowhere.
-    fn check_queued(shader: &Shader) {
-        let queued = shader.object.pending_textures.read().len();
-        assert_eq!(queued, 1, "the map left the queue");
+    /// Checks that `shader` keeps its base color map, and that `renderer` holds no copy.
+    fn check_kept(shader: &Shader, renderer: &Renderer) {
+        assert!(
+            shader.object.has_map("base_color_map"),
+            "the map left the shader"
+        );
+        let id = read_bound(shader, "base_color_map");
+        let context = renderer.context.read().clone();
+        let held = context.is_some_and(|context| context.has_texture(&id));
+        assert!(!held, "the refused Renderer holds a copy");
     }
 
     /// Checks that `renderer` drew `shader`'s base color map from its own context.
@@ -790,10 +778,10 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
         }
     }
 
-    // Story: a render refused for a foreign target uploads nothing, so the map a
-    // Material queued stays queued, and the owner's render uploads it into its own context.
+    // Story: a render refused for a foreign target uploads no copy of a Material's map,
+    // and the owner's render uploads one into its own context.
     #[test]
-    fn a_refused_render_leaves_a_queued_map_to_the_owner() {
+    fn a_refused_render_uploads_no_map() {
         pollster::block_on(async move {
             let owner = Renderer::new();
             let frame = owner.create_texture_target([8, 8]).await.expect("a target");
@@ -806,7 +794,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
                 matches!(refused, Err(RendererError::ForeignTarget)),
                 "{refused:?}"
             );
-            check_queued(&shader);
+            check_kept(&shader, &other);
             owner
                 .render(&pass, &frame)
                 .expect("the owner draws the pass");
@@ -815,9 +803,9 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     }
 
     // Story: a pass whose own target another Renderer created is refused before load,
-    // so the Material's queued map stays queued for the Renderer that draws the pass.
+    // so the refused Renderer uploads no copy of the Material's map.
     #[test]
-    fn a_foreign_pass_target_leaves_a_queued_map() {
+    fn a_foreign_pass_target_uploads_no_map() {
         pollster::block_on(async move {
             let owner = Renderer::new();
             let frame = owner.create_texture_target([8, 8]).await.expect("a target");
@@ -833,7 +821,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
                 matches!(refused, Err(RendererError::TextureNotFoundError(found)) if found == id),
                 "{refused:?}"
             );
-            check_queued(&shader);
+            check_kept(&shader, &other);
             owner
                 .render(&pass, &frame)
                 .expect("the owner draws the pass");
@@ -842,9 +830,9 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     }
 
     // Story: a texture uniform bound to another Renderer's texture is refused before
-    // load, so the Material's queued map stays queued for the Renderer that draws it.
+    // load, so the refused Renderer uploads no copy of the Material's map.
     #[test]
-    fn a_foreign_texture_leaves_a_queued_map() {
+    fn a_foreign_texture_uploads_no_map() {
         pollster::block_on(async move {
             let owner = Renderer::new();
             let frame = owner.create_texture_target([8, 8]).await.expect("a target");
@@ -861,7 +849,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
                 matches!(refused, Err(RendererError::TextureNotFoundError(found)) if found == *normal.id()),
                 "{refused:?}"
             );
-            check_queued(&shader);
+            check_kept(&shader, &other);
             owner
                 .render(&pass, &frame)
                 .expect("the owner draws the pass");
@@ -870,9 +858,9 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     }
 
     // Story: a depth target from another Renderer is refused before load,
-    // so the Material's queued map stays queued for the Renderer that draws the pass.
+    // so the refused Renderer uploads no copy of the Material's map.
     #[test]
-    fn a_foreign_depth_target_leaves_a_queued_map() {
+    fn a_foreign_depth_target_uploads_no_map() {
         pollster::block_on(async move {
             let owner = Renderer::new();
             let frame = owner.create_texture_target([8, 8]).await.expect("a target");
@@ -890,7 +878,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
                 matches!(refused, Err(RendererError::TextureNotFoundError(found)) if found == *depth.id()),
                 "{refused:?}"
             );
-            check_queued(&shader);
+            check_kept(&shader, &other);
             owner
                 .render(&pass, &frame)
                 .expect("the owner draws the pass");
@@ -899,9 +887,9 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     }
 
     // Story: a compute pass that binds another Renderer's texture is refused
-    // before load, so the render pass before it in the list keeps its queued map.
+    // before load, so the render pass before it in the list uploads no copy of its map.
     #[test]
-    fn a_foreign_compute_texture_leaves_a_queued_map() {
+    fn a_foreign_compute_texture_uploads_no_map() {
         pollster::block_on(async move {
             let owner = Renderer::new();
             let image = owner
@@ -922,14 +910,14 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
                 matches!(refused, Err(RendererError::TextureNotFoundError(found)) if found == *image.id()),
                 "{refused:?}"
             );
-            check_queued(&shader);
+            check_kept(&shader, &other);
         });
     }
 
-    // Story: a Material map set again from bytes replaces another Renderer's texture,
-    // so the Renderer that draws the pass uploads the new map first and draws with it.
+    // Story: a Material map set from bytes replaces another Renderer's texture,
+    // so the Renderer that draws the pass uploads a copy of the map and draws with it.
     #[test]
-    fn a_queued_map_replaces_a_foreign_texture() {
+    fn a_map_replaces_a_foreign_texture() {
         pollster::block_on(async move {
             let owner = Renderer::new();
             let old = owner
@@ -945,10 +933,10 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
         });
     }
 
-    // Story: a queued map replaces a texture whose Renderer is gone,
+    // Story: a map replaces a texture whose Renderer is gone,
     // as when an app builds a new Renderer for a new surface and sets its maps again.
     #[test]
-    fn a_queued_map_replaces_a_released_texture() {
+    fn a_map_replaces_a_released_texture() {
         pollster::block_on(async move {
             let owner = Renderer::new();
             let old = owner
@@ -967,10 +955,10 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
         });
     }
 
-    // Story: a texture set after the map was queued is the latest call, so the queued
-    // map replaces nothing, and another Renderer's texture there is refused before load.
+    // Story: a texture set after the map ends the map, so the slot holds no map,
+    // and another Renderer's texture there is refused before load.
     #[test]
-    fn a_texture_set_after_a_queued_map_is_checked() {
+    fn a_texture_set_after_a_map_is_checked() {
         pollster::block_on(async move {
             let owner = Renderer::new();
             let old = owner
@@ -987,7 +975,10 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
                 matches!(refused, Err(RendererError::TextureNotFoundError(found)) if found == *old.id()),
                 "{refused:?}"
             );
-            check_queued(&shader);
+            assert!(
+                !shader.object.has_map("base_color_map"),
+                "the explicit texture left the map"
+            );
         });
     }
 
@@ -1014,7 +1005,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     }
 
     // Story: a Renderer with no context refuses another Renderer's target before it
-    // opens a device, so the Material's queued map isn't uploaded anywhere.
+    // opens a device, so no Renderer holds a copy of the Material's map.
     #[test]
     fn a_renderer_without_a_context_opens_no_device() {
         pollster::block_on(async move {
@@ -1032,7 +1023,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
                 other.context.read().is_none(),
                 "the refusal opened a device"
             );
-            check_queued(&shader);
+            check_kept(&shader, &other);
         });
     }
 
@@ -1052,6 +1043,87 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
             renderer.context.read().is_none(),
             "the refusal opened a device"
         );
-        check_queued(&shader);
+        check_kept(&shader, &renderer);
+    }
+
+    /// A Renderer and an 8x8 target that holds its context.
+    async fn open_target() -> (Renderer, crate::TextureTarget) {
+        let renderer = Renderer::new();
+        let frame = renderer
+            .create_texture_target([8, 8])
+            .await
+            .expect("a target");
+        (renderer, frame)
+    }
+
+    /// The copy of `shader`'s base color map that `frame`'s Renderer holds.
+    fn find_copy(frame: &crate::TextureTarget, shader: &Shader) -> Arc<TextureObject> {
+        let id = read_bound(shader, "base_color_map");
+        frame.context.get_texture(&id).expect("a copy")
+    }
+
+    // Story: a Renderer's copy of a map goes with the Renderer, its target and its context,
+    // and the map stays on the shader for the next Renderer.
+    #[test]
+    fn dropping_a_renderer_frees_its_map_copy() {
+        pollster::block_on(async move {
+            let (renderer, frame) = open_target().await;
+            let (pass, shader) = build_pass(Material::pbr());
+            renderer.render(&pass, &frame).expect("the pass draws");
+            let copy = Arc::downgrade(&find_copy(&frame, &shader));
+
+            drop((renderer, frame));
+
+            assert!(copy.upgrade().is_none(), "the copy outlived its Renderer");
+            assert!(shader.object.has_map("base_color_map"), "the map left");
+        });
+    }
+
+    // Story: a dropped Material frees its map's copy in every Renderer that loaded it.
+    #[test]
+    fn dropping_a_material_frees_its_copies_in_every_renderer() {
+        pollster::block_on(async move {
+            let (first, first_frame) = open_target().await;
+            let (second, second_frame) = open_target().await;
+            let (pass, shader) = build_pass(Material::pbr());
+            first.render(&pass, &first_frame).expect("the first draws");
+            second
+                .render(&pass, &second_frame)
+                .expect("the second draws");
+            let id = read_bound(&shader, "base_color_map");
+            let copies = [&first_frame, &second_frame]
+                .map(|frame| Arc::downgrade(&find_copy(frame, &shader)));
+
+            drop((pass, shader));
+
+            for frame in [&first_frame, &second_frame] {
+                assert!(!frame.context.has_texture(&id), "a registry kept the copy");
+            }
+            for copy in copies {
+                assert!(copy.upgrade().is_none(), "a copy outlived its Material");
+            }
+        });
+    }
+
+    // Story: a copy that `unregister_texture` removed uploads again at the next render.
+    #[test]
+    fn an_unregistered_copy_uploads_again() {
+        pollster::block_on(async move {
+            let (renderer, frame) = open_target().await;
+            let (pass, shader) = build_pass(Material::pbr());
+            renderer.render(&pass, &frame).expect("the pass draws");
+            let id = read_bound(&shader, "base_color_map");
+
+            renderer.unregister_texture(id).expect("unregisters");
+            assert!(!frame.context.has_texture(&id), "the copy stayed");
+            renderer
+                .render(&pass, &frame)
+                .expect("the pass draws again");
+
+            assert!(
+                frame.context.has_texture(&id),
+                "the copy didn't upload again"
+            );
+        });
     }
 }

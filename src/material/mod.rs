@@ -26,7 +26,8 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-use crate::{Shader, UniformData};
+use crate::texture::{TextureData, TextureMeta, TextureSource};
+use crate::{Shader, TextureInput, UniformData};
 
 mod alpha_mode;
 pub use alpha_mode::AlphaMode;
@@ -272,73 +273,37 @@ impl Material {
 
     // --- texture setters ---
     //
-    // Each setter accepts either an already-uploaded `Texture` (the eager
-    // path — the underlying `From<&Texture> for TextureInput` produces a
-    // `TextureData::CloneOf` that's set on the shader immediately) or any
-    // `Into<TextureInput>` value (path, bytes, URL, …) for the lazy path.
-    // Lazy inputs are queued on the Shader's pending-texture list and the
-    // renderer drains them on first render or via the explicit
-    // [`Renderer::load`](crate::Renderer::load) surface.
+    // Each setter takes a `Texture`, which binds as it is and stays with its Renderer,
+    // or a source (bytes, a path, a URL, a `Mipmap`), which becomes a map: the shader keeps
+    // the source, and each Renderer that draws it uploads a copy of its own at `load`.
     //
-    // Color-space hints: `base_color` and `emissive` are sRGB per glTF 2.0;
-    // the three data-encoding maps (`metallic_roughness`, `normal`,
-    // `occlusion`) are linear. The setters inject the right
-    // `TextureFormat` only when the caller hasn't already picked one — pass
-    // `(source, TextureFormat::...)` to override.
+    // Color-space hints: `base_color` and `emissive` are sRGB per glTF 2.0, and the three
+    // maps that hold data (`metallic_roughness`, `normal`, `occlusion`) are linear. A setter
+    // picks the slot's format only when the caller left the default; pass a format to override.
 
     #[lsp_doc("docs/api/scene/material/base_color_texture.md")]
     pub fn base_color_texture(&self, source: impl Into<crate::TextureInput>) -> Self {
-        queue_texture_or_warn(
-            &self.shader,
-            "base_color_map",
-            source.into(),
-            Some(crate::TextureFormat::Rgba8UnormSrgb),
-        );
-        self.clone()
+        self.set_texture(TextureSlot::BaseColor, source.into())
     }
 
     #[lsp_doc("docs/api/scene/material/metallic_roughness_texture.md")]
     pub fn metallic_roughness_texture(&self, source: impl Into<crate::TextureInput>) -> Self {
-        queue_texture_or_warn(
-            &self.shader,
-            "metallic_roughness_map",
-            source.into(),
-            Some(crate::TextureFormat::Rgba8Unorm),
-        );
-        self.clone()
+        self.set_texture(TextureSlot::MetallicRoughness, source.into())
     }
 
     #[lsp_doc("docs/api/scene/material/normal_texture.md")]
     pub fn normal_texture(&self, source: impl Into<crate::TextureInput>) -> Self {
-        queue_texture_or_warn(
-            &self.shader,
-            "normal_map",
-            source.into(),
-            Some(crate::TextureFormat::Rgba8Unorm),
-        );
-        self.clone()
+        self.set_texture(TextureSlot::Normal, source.into())
     }
 
     #[lsp_doc("docs/api/scene/material/occlusion_texture.md")]
     pub fn occlusion_texture(&self, source: impl Into<crate::TextureInput>) -> Self {
-        queue_texture_or_warn(
-            &self.shader,
-            "occlusion_map",
-            source.into(),
-            Some(crate::TextureFormat::Rgba8Unorm),
-        );
-        self.clone()
+        self.set_texture(TextureSlot::Occlusion, source.into())
     }
 
     #[lsp_doc("docs/api/scene/material/emissive_texture.md")]
     pub fn emissive_texture(&self, source: impl Into<crate::TextureInput>) -> Self {
-        queue_texture_or_warn(
-            &self.shader,
-            "emissive_map",
-            source.into(),
-            Some(crate::TextureFormat::Rgba8UnormSrgb),
-        );
-        self.clone()
+        self.set_texture(TextureSlot::Emissive, source.into())
     }
 }
 
@@ -348,31 +313,47 @@ pub(crate) fn set_or_warn<V: Into<UniformData>>(shader: &Shader, key: &str, valu
     }
 }
 
-/// Either set a texture uniform immediately (when the input wraps an
-/// already-uploaded `Texture`) or queue the upload on the Shader for the
-/// renderer to drain at load/render time. `srgb_hint` lets the calling
-/// setter inject the glTF-correct color space when the caller didn't pick a
-/// non-default format — pass `None` for shaders that don't care.
-pub(crate) fn queue_texture_or_warn(
-    shader: &Shader,
-    key: &str,
-    mut input: crate::TextureInput,
-    srgb_hint: Option<crate::TextureFormat>,
-) {
-    if let Some(hint) = srgb_hint
-        && input.options.format == crate::TextureFormat::default()
-    {
-        input.options.format = hint;
+impl Material {
+    /// Sets `slot` from `input`. A `Texture` binds as it is, and any other source becomes
+    /// a map. An input the slot can't take warns and leaves the slot as it was.
+    fn set_texture(&self, slot: TextureSlot, input: TextureInput) -> Self {
+        let key = slot.pick_key();
+        if let TextureData::CloneOf(texture) = &input.data {
+            let meta = TextureMeta::with_id_only(*texture.id());
+            if let Err(error) = self.shader.object.set(key, UniformData::Texture(meta)) {
+                warn_texture(key, error);
+            }
+            return self.clone();
+        }
+        match TextureSource::try_from(input) {
+            Ok(source) => self.set_map(slot, source),
+            Err(error) => warn_texture(key, error),
+        }
+        self.clone()
     }
-    if let Err(e) = shader.object.queue_or_set_texture(key, input) {
-        log::warn!("Material texture '{key}' did not apply: {e}");
+
+    /// Sets `slot` to a map of `source`, in the slot's format when the source left the default.
+    pub(crate) fn set_map(&self, slot: TextureSlot, mut source: TextureSource) {
+        if source.options.format == crate::TextureFormat::default() {
+            source.options.format = slot.pick_format();
+        }
+        let key = slot.pick_key();
+        if let Err(error) = self.shader.object.set_map(key, source) {
+            warn_texture(key, error);
+        }
     }
+}
+
+/// Logs a texture setter's input that the Material's `key` couldn't take.
+fn warn_texture(key: &str, error: impl std::fmt::Display) {
+    log::warn!("Material texture '{key}' did not apply: {error}");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::mesh::{Mesh, Vertex};
+    use crate::texture::SourceData;
     use crate::{Pass, Renderer, Target};
 
     #[test]
@@ -551,12 +532,50 @@ mod tests {
         });
     }
 
+    /// The id `material`'s map for `key` holds, the one each Renderer's copy goes under.
+    fn read_map(material: &Material, key: &str) -> crate::texture::TextureId {
+        let maps = material.shader.object.maps.read();
+        let map = maps.iter().find(|map| map.key == key);
+        map.map(|map| map.id).expect("a map")
+    }
+
+    /// Whether the Renderer that made `target` holds a copy of `material`'s map for `key`.
+    fn holds_copy(target: &crate::TextureTarget, material: &Material, key: &str) -> bool {
+        let id = read_map(material, key);
+        target.texture().context.has_texture(&id)
+    }
+
+    /// A Material whose fullscreen shader draws texel (0, 0) of `base_color_map`.
+    fn build_mapped() -> Material {
+        let shader = crate::Shader::new(
+            r#"
+@group(0) @binding(0) var base_color_map: texture_2d<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  var p = array<vec2<f32>, 3>(vec2<f32>(-1.0, -1.0), vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0));
+  return vec4<f32>(p[i], 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(base_color_map, vec2<i32>(0), 0); }
+"#,
+        )
+        .expect("shader");
+        Material::custom(shader)
+    }
+
+    /// A 2x2 image of `color`, as raw pixels.
+    fn paint(color: [u8; 4]) -> (Vec<u8>, [u32; 2]) {
+        (color.repeat(4), [2, 2])
+    }
+
+    /// The first pixel of `target`.
+    async fn read_pixel(target: &crate::TextureTarget) -> [u8; 4] {
+        let image = target.get_image().await.expect("read back");
+        [image[0], image[1], image[2], image[3]]
+    }
+
+    // Story: raw bytes make a map, which the slot names before any Renderer holds
+    // a copy, and the first render uploads a copy into its Renderer under that id.
     #[test]
-    fn base_color_texture_with_raw_bytes_is_pending_until_render() {
-        // The lazy path: `(bytes, [w, h])` produces a TextureInput whose data
-        // is `Bytes`, which queues on the Shader's pending list instead of
-        // setting the uniform immediately. Renderer::render drains it on the
-        // first call.
+    fn base_color_texture_with_raw_bytes_uploads_at_render() {
         pollster::block_on(async move {
             let renderer = Renderer::new();
             let target = renderer
@@ -571,14 +590,10 @@ mod tests {
             ];
             let mat = Material::pbr().base_color_texture((pixels, [2u32, 2u32]));
 
-            // Before any render: one entry queued on the Shader, no Texture
-            // uniform yet (the default 1×1 white texture meta from
-            // pbr_defaults is what the bind group will see on the first
-            // pass if nobody drains).
-            assert_eq!(
-                mat.shader.object.pending_textures.read().len(),
-                1,
-                "expected 1 pending texture before render"
+            let id = read_map(&mat, "base_color_map");
+            assert!(
+                !holds_copy(&target, &mat, "base_color_map"),
+                "a copy before render"
             );
 
             let model = crate::scene::Model::new(pbr_triangle_mesh(), mat.clone());
@@ -588,21 +603,24 @@ mod tests {
                 .render(&pass, &target)
                 .expect("render drains pending");
 
-            // After render: pending list is empty (drained); the Material's
-            // shader now carries a real TextureMeta for the base_color slot.
             assert!(
-                mat.shader.object.pending_textures.read().is_empty(),
-                "expected pending list to be drained by render"
+                holds_copy(&target, &mat, "base_color_map"),
+                "no copy after render"
+            );
+            let slot = mat.shader.object.get_uniform_data("base_color_map");
+            assert!(
+                matches!(&slot, Ok(UniformData::Texture(meta)) if meta.id == id),
+                "{slot:?}"
             );
             let img = target.get_image().await.expect("read back");
             assert_eq!(img.len(), 8 * 8 * 4);
         });
     }
 
-    // Story: a map that fails to upload stays queued and fails every render,
-    // while the other maps upload and bind on the first try.
+    // Story: a map that fails to upload keeps no copy and fails every render the same way,
+    // while the other maps upload on the first try.
     #[test]
-    fn failed_maps_stay_queued_and_the_rest_bind() {
+    fn failed_maps_keep_no_copy_and_the_rest_upload() {
         pollster::block_on(async move {
             let renderer = Renderer::new();
             let target = renderer
@@ -620,69 +638,48 @@ mod tests {
             let first = renderer.render(&pass, &target);
             let second = renderer.render(&pass, &target);
 
-            assert!(first.is_err(), "the missing map fails the first render");
-            assert!(second.is_err(), "and every render after it");
-            let normal_map = mat.shader.object.get_uniform("normal_map").expect("slot");
-            let UniformData::Texture(meta) = normal_map.data else {
-                panic!("normal_map is a texture slot, got {:?}", normal_map.data);
-            };
-            assert_ne!(meta.id.id, 0, "the good map bound on the first render");
-            let queue = mat.shader.object.pending_textures.read();
-            let keys: Vec<&str> = queue.iter().map(|entry| entry.key.as_str()).collect();
-            assert_eq!(
-                keys,
-                ["base_color_map"],
-                "only the failing map stays queued"
+            let first = first.expect_err("the missing map fails the first render");
+            let second = second.expect_err("and every render after it");
+            assert_eq!(first.to_string(), second.to_string());
+            assert!(
+                holds_copy(&target, &mat, "normal_map"),
+                "the good map uploads on the first render"
+            );
+            assert!(
+                !holds_copy(&target, &mat, "base_color_map"),
+                "the failing map keeps no copy"
             );
         });
     }
 
-    // Story: a map the shader doesn't declare fails the render that uploads it,
-    // and the maps it does declare still bind on that first try.
+    // Story: a map the shader doesn't declare warns at the setter and makes no map,
+    // so the render draws the maps the shader declares.
     #[test]
-    fn an_undeclared_map_leaves_the_others_bound() {
+    fn an_undeclared_map_warns_at_the_setter() {
         pollster::block_on(async move {
             let renderer = Renderer::new();
             let target = renderer
                 .create_texture_target([8u32, 8u32])
                 .await
                 .expect("texture target");
-            let shader = crate::Shader::new(
-                r#"
-@group(0) @binding(0) var base_color_map: texture_2d<f32>;
-@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-  var p = array<vec2<f32>, 3>(vec2<f32>(-1.0, -1.0), vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0));
-  return vec4<f32>(p[i], 0.0, 1.0);
-}
-@fragment fn fs_main() -> @location(0) vec4<f32> { return textureLoad(base_color_map, vec2<i32>(0), 0); }
-"#,
-            )
-            .expect("shader");
             let pixel: Vec<u8> = [255u8, 0, 0, 255].repeat(4);
-            let mat = Material::custom(shader)
+            let mat = build_mapped()
                 .normal_texture((pixel.clone(), [2u32, 2u32]))
                 .base_color_texture((pixel, [2u32, 2u32]));
 
-            let first = renderer.render(mat.shader(), &target);
-
-            assert!(first.is_err(), "the undeclared normal map fails the render");
-            let slot = mat
-                .shader
-                .object
-                .get_uniform("base_color_map")
-                .expect("slot");
-            let UniformData::Texture(meta) = slot.data else {
-                panic!("base_color_map is a texture slot, got {:?}", slot.data);
-            };
-            assert_ne!(meta.id.id, 0, "the declared map bound on the same render");
-            assert!(mat.shader.object.pending_textures.read().is_empty());
+            assert!(
+                !mat.shader.object.has_map("normal_map"),
+                "an undeclared map"
+            );
             renderer
                 .render(mat.shader(), &target)
-                .expect("the next render draws");
+                .expect("the render draws");
+            assert!(holds_copy(&target, &mat, "base_color_map"));
         });
     }
 
-    // Story: the latest setter call for a map wins, so a fixed input replaces a failing one.
+    // Story: the latest setter call for a map wins, so a fixed input replaces a failing one
+    // under the same id, and the key keeps one map.
     #[test]
     fn latest_map_setter_wins() {
         pollster::block_on(async move {
@@ -692,10 +689,16 @@ mod tests {
                 .await
                 .expect("texture target");
             let pixels: Vec<u8> = [255u8, 0, 0, 255].repeat(4);
-            let mat = Material::pbr()
-                .base_color_texture("tests/assets/missing.png")
-                .base_color_texture((pixels, [2u32, 2u32]));
-            assert_eq!(mat.shader.object.pending_textures.read().len(), 1);
+            let mat = Material::pbr().base_color_texture("tests/assets/missing.png");
+            let id = read_map(&mat, "base_color_map");
+            let mat = mat.base_color_texture((pixels, [2u32, 2u32]));
+            {
+                let maps = mat.shader.object.maps.read();
+                assert_eq!(maps.len(), 1, "one map for the key");
+                assert_eq!(maps[0].id, id, "the map kept its id");
+                let latest = matches!(&*maps[0].source.data, SourceData::Bytes(_));
+                assert!(latest, "{:?}", maps[0].source);
+            }
             let model = crate::scene::Model::new(pbr_triangle_mesh(), mat.clone());
             let pass = Pass::new("replaced-upload");
             pass.add(&model).expect("add_model");
@@ -704,15 +707,44 @@ mod tests {
                 .render(&pass, &target)
                 .expect("the replaced map uploads");
 
-            assert!(mat.shader.object.pending_textures.read().is_empty());
+            assert!(holds_copy(&target, &mat, "base_color_map"));
         });
     }
 
+    // Story: a set that lands while a load uploads the older source wins. The load keeps
+    // no copy of the older one, and each Renderer then draws the latest.
     #[test]
-    fn texture_setter_with_existing_texture_skips_pending_queue() {
-        // The eager path: passing `&Texture` flows through
-        // `From<&Texture> for TextureInput` → `TextureData::CloneOf` →
-        // immediate uniform write, no pending entry.
+    fn a_set_during_an_upload_ends_on_the_last_value() {
+        pollster::block_on(async move {
+            let first = Renderer::new();
+            let first_target = first.create_texture_target([8, 8]).await.expect("a target");
+            let second = Renderer::new();
+            let second_target = second
+                .create_texture_target([8, 8])
+                .await
+                .expect("a target");
+            let mat = build_mapped().base_color_texture(paint([255, 0, 0, 255]));
+            let late = mat.clone();
+            crate::hooks::once("map uploaded", move || {
+                late.base_color_texture(paint([0, 0, 255, 255]));
+            });
+
+            first.load(mat.shader()).await.expect("the load");
+            assert!(
+                !holds_copy(&first_target, &mat, "base_color_map"),
+                "the load kept the older upload"
+            );
+
+            first.render(mat.shader(), &first_target).expect("draws");
+            second.render(mat.shader(), &second_target).expect("draws");
+            assert_eq!(read_pixel(&first_target).await, [0, 0, 255, 255]);
+            assert_eq!(read_pixel(&second_target).await, [0, 0, 255, 255]);
+        });
+    }
+
+    // Story: a `Texture` binds as it is, so the slot holds its id and no map.
+    #[test]
+    fn texture_setter_with_existing_texture_makes_no_map() {
         pollster::block_on(async move {
             let renderer = Renderer::new();
             #[rustfmt::skip]
@@ -727,8 +759,13 @@ mod tests {
 
             let mat = Material::pbr().base_color_texture(&tex);
             assert!(
-                mat.shader.object.pending_textures.read().is_empty(),
-                "eager texture path must not queue"
+                mat.shader.object.maps.read().is_empty(),
+                "a Texture made a map"
+            );
+            let slot = mat.shader.object.get_uniform_data("base_color_map");
+            assert!(
+                matches!(&slot, Ok(UniformData::Texture(meta)) if meta.id == *tex.id()),
+                "{slot:?}"
             );
         });
     }

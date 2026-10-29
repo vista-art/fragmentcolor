@@ -1,5 +1,6 @@
 use crate::shader::uniform::UniformData;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
@@ -41,6 +42,7 @@ pub(crate) mod read;
 pub mod region;
 mod registration;
 mod resize;
+mod source;
 mod write;
 
 #[cfg(python)]
@@ -51,6 +53,7 @@ pub use region::TextureRegion;
 pub use region::TextureRegionMobile;
 pub(crate) use registration::Registration;
 pub(crate) use resize::{check_extent, check_plane, check_size, resize};
+pub(crate) use source::{SourceData, TextureSource};
 pub(crate) use usage::check_usage;
 
 pub mod meta;
@@ -92,6 +95,23 @@ pub enum TextureData {
     /// [`Mipmap`] straight to `Renderer::create_texture` and the unified
     /// entry point dispatches via `From<Mipmap> for TextureInput`.
     Prepared(Mipmap),
+}
+
+impl TextureData {
+    /// Whether the data brings its own size, as every form but raw pixel bytes does.
+    /// `Empty` and `CloneOf` hold no data to size.
+    fn is_sized(&self) -> bool {
+        match self {
+            TextureData::Bytes(bytes) => ktx2_loader::is_ktx2(bytes),
+            TextureData::Path(_)
+            | TextureData::Url(_)
+            | TextureData::Ktx2Bytes(_)
+            | TextureData::Ktx2Path(_)
+            | TextureData::Ktx2Url(_)
+            | TextureData::Prepared(_) => true,
+            TextureData::Empty | TextureData::CloneOf(_) => false,
+        }
+    }
 }
 
 /// A pre-computed CPU mipmap chain. Build with [`Mipmap::build`], then pass
@@ -155,7 +175,7 @@ impl Mipmap {
     #[lsp_doc("docs/api/texture/mipmap/build.md")]
     pub fn build(input: impl Into<crate::TextureInput>) -> Result<Mipmap, TextureError> {
         let crate::TextureInput { data, options } = input.into();
-        check_source(&data, options.size)?;
+        check_source(data.is_sized(), options.size)?;
         let public_format = options.format;
         let wfmt: wgpu::TextureFormat = public_format.into();
         if !supports_cpu_mipmaps(wfmt) {
@@ -547,9 +567,20 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct TextureId {
-    /// The underlying numeric identifier. Valid within the `Renderer` that
-    /// created it; stable for the lifetime of the texture registration.
+    /// Names a texture while it stays registered, in the `Renderer` that made it.
+    /// A Material map's id names the copy in each `Renderer` that loaded that map.
     pub id: u64,
+}
+
+impl TextureId {
+    /// Takes a new id from the counter that registrations and Material maps share,
+    /// so no two textures in the process ever get the same one.
+    pub(crate) fn create() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        Self {
+            id: NEXT.fetch_add(1, Ordering::Relaxed),
+        }
+    }
 }
 
 impl From<u64> for TextureId {
@@ -769,91 +800,75 @@ impl TextureObject {
         })
     }
 
-    /// Single dispatch point used by [`crate::Renderer::create_texture`] for
-    /// every [`TextureInput`] source variant except `Empty` and `CloneOf`
-    /// (handled at the renderer boundary). URL parts are fetched on the
-    /// calling thread (async); decode + GPU upload run on the background
-    /// worker (native) or inline (wasm).
-    pub(crate) async fn from_input(
+    /// Builds a texture on `context` from `source`, which the call shares and never copies.
+    ///
+    /// A URL is fetched on the calling thread, and its bytes go to the worker without
+    /// being kept. The decode and the GPU upload run on the background worker on native
+    /// and inline on the web. `Renderer::create_texture` and each Material map upload call it.
+    pub(crate) async fn from_source(
         context: Arc<RenderContext>,
-        input: TextureInput,
+        source: TextureSource,
     ) -> Result<Self, TextureError> {
-        let TextureInput { data, options } = input;
-        check_source(&data, options.size)?;
-        let format_override = if matches!(options.format, crate::TextureFormat::Rgba) {
-            None
-        } else {
-            Some(wgpu::TextureFormat::from(options.format))
-        };
-        let mipmaps = options.mipmaps;
-        let opt_size = options.size;
-        let opt_format = options.format;
-        let sampler = options.sampler;
+        let options = source.options.clone();
+        check_source(source.data.is_sized(), options.size)?;
         let usage = source_usage(options.usage)?;
-
-        // URL variants need an async fetch on the calling thread; everything
-        // else runs on the background worker. Pre-fetch and forward the
-        // resulting bytes as the matching non-URL variant.
-        async fn fetch(url: &str) -> Result<Vec<u8>, TextureError> {
-            crate::net::fetch_bytes(url)
-                .await
-                .map_err(|e| TextureError::CreateTextureError(format!("URL fetch failed: {e:?}")))
-        }
-        let data = match data {
-            TextureData::Url(url) => TextureData::Bytes(fetch(&url).await?),
-            TextureData::Ktx2Url(url) => TextureData::Ktx2Bytes(fetch(&url).await?),
-            other => other,
+        let fetched = match &*source.data {
+            SourceData::Url(url) | SourceData::Ktx2Url(url) => {
+                crate::net::fetch_bytes(url).await.map_err(|e| {
+                    TextureError::CreateTextureError(format!("URL fetch failed: {e:?}"))
+                })?
+            }
+            _ => Vec::new(),
         };
 
         crate::renderer::background::run(move || -> Result<Self, TextureError> {
-            let object = match data {
-                TextureData::Bytes(bytes) if ktx2_loader::is_ktx2(&bytes) => {
-                    ktx2_loader::from_ktx2_bytes(context.as_ref(), &bytes, usage)
+            let context = context.as_ref();
+            let object = match &*source.data {
+                SourceData::Bytes(bytes) => Self::from_bytes(context, bytes, &options, usage),
+                SourceData::Url(_) => Self::from_bytes(context, &fetched, &options, usage),
+                SourceData::Ktx2Bytes(bytes) => ktx2_loader::from_ktx2_bytes(context, bytes, usage),
+                SourceData::Ktx2Url(_) => ktx2_loader::from_ktx2_bytes(context, &fetched, usage),
+                SourceData::Path(path) if ktx2_loader::is_ktx2_file(path) => {
+                    read_ktx2_file(context, path, usage)
                 }
-                TextureData::Path(path) if ktx2_loader::is_ktx2_file(&path) => {
-                    read_ktx2_file(context.as_ref(), &path, usage)
-                }
-                TextureData::Bytes(bytes) => {
-                    if let Some(sz) = opt_size {
-                        let wfmt = format_override
-                            .unwrap_or_else(|| wgpu::TextureFormat::from(opt_format));
-                        Self::from_raw_bytes(
-                            context.as_ref(),
-                            sz.into(),
-                            wfmt,
-                            &bytes,
-                            mipmaps,
-                            usage,
-                        )
-                    } else {
-                        let limit = context.device.limits().max_texture_dimension_2d;
-                        let image = decode(&bytes, limit)?;
-                        Self::from_image(context.as_ref(), &image, format_override, mipmaps, usage)
-                    }
-                }
-                TextureData::Path(path) => {
+                SourceData::Path(path) => {
                     let limit = context.device.limits().max_texture_dimension_2d;
-                    let image = decode(&read_file(&path)?, limit)?;
-                    Self::from_image(context.as_ref(), &image, format_override, mipmaps, usage)
+                    let image = decode(&read_file(path)?, limit)?;
+                    let format = pick_override(&options);
+                    Self::from_image(context, &image, format, options.mipmaps, usage)
                 }
-                TextureData::Prepared(chain) => Self::from_chain(context.as_ref(), chain, usage),
-                TextureData::Ktx2Bytes(bytes) => {
-                    ktx2_loader::from_ktx2_bytes(context.as_ref(), &bytes, usage)
-                }
-                TextureData::Ktx2Path(path) => read_ktx2_file(context.as_ref(), &path, usage),
-                TextureData::Url(_) | TextureData::Ktx2Url(_) => Err(
-                    TextureError::InvalidInput(
-                        "from_input: URL variant should have been pre-fetched on the calling thread".into(),
-                    ),
-                ),
-                TextureData::CloneOf(_) | TextureData::Empty => Err(TextureError::InvalidInput(
-                    "from_input: CloneOf and Empty are handled by Renderer::create_texture; do not pass them to the dispatcher".into(),
-                )),
+                SourceData::Ktx2Path(path) => read_ktx2_file(context, path, usage),
+                SourceData::Prepared(chain) => Self::from_chain(context, chain.clone(), usage),
             }?;
-            object.set_sampler_options(&context.device, sampler);
+            object.set_sampler_options(&context.device, options.sampler);
             Ok(object)
         })
         .await
+    }
+
+    /// Builds a texture from `bytes`: a KTX2 container by its magic, raw pixels
+    /// when `options` gives a size, or else an encoded image the worker decodes.
+    fn from_bytes(
+        context: &RenderContext,
+        bytes: &[u8],
+        options: &TextureOptions,
+        usage: wgpu::TextureUsages,
+    ) -> Result<Self, TextureError> {
+        if ktx2_loader::is_ktx2(bytes) {
+            return ktx2_loader::from_ktx2_bytes(context, bytes, usage);
+        }
+        let format = pick_override(options);
+        match options.size {
+            Some(size) => {
+                let format = format.unwrap_or_else(|| wgpu::TextureFormat::from(options.format));
+                Self::from_raw_bytes(context, size.into(), format, bytes, options.mipmaps, usage)
+            }
+            None => {
+                let limit = context.device.limits().max_texture_dimension_2d;
+                let image = decode(bytes, limit)?;
+                Self::from_image(context, &image, format, options.mipmaps, usage)
+            }
+        }
     }
 
     /// Creates a texture from raw pixel bytes with explicit size/format.
@@ -1245,19 +1260,17 @@ fn read_ktx2_file(
     ktx2_loader::from_ktx2_bytes(context, &bytes, usage)
 }
 
-/// Checks that a `size` comes only with raw pixel bytes,
-/// since a path, a URL, a KTX2 file and a mip chain each carry their own.
-fn check_source(data: &TextureData, size: Option<Size>) -> Result<(), TextureError> {
-    let sized = match data {
-        TextureData::Bytes(bytes) => ktx2_loader::is_ktx2(bytes),
-        TextureData::Path(_)
-        | TextureData::Url(_)
-        | TextureData::Ktx2Bytes(_)
-        | TextureData::Ktx2Path(_)
-        | TextureData::Ktx2Url(_)
-        | TextureData::Prepared(_) => true,
-        TextureData::Empty | TextureData::CloneOf(_) => false,
-    };
+/// The format `options` names, or `None` for the default, which lets the image pick.
+fn pick_override(options: &TextureOptions) -> Option<wgpu::TextureFormat> {
+    match options.format {
+        crate::TextureFormat::Rgba => None,
+        format => Some(wgpu::TextureFormat::from(format)),
+    }
+}
+
+/// Checks that a `size` comes only with raw pixel bytes, given whether the data is
+/// `sized`, since a path, a URL, a KTX2 file and a mip chain each carry their own.
+fn check_source(sized: bool, size: Option<Size>) -> Result<(), TextureError> {
     match sized && size.is_some() {
         true => Err(TextureError::InvalidInput(
             "a size describes raw pixel bytes; a path, URL, KTX2 file or Mipmap takes its size from the file".into(),
