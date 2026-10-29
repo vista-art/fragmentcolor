@@ -7,9 +7,9 @@
 //! format without changing the public method.
 //!
 //! The shape mirrors `Material::pbr()` and `Camera::perspective(...)`: sync
-//! return, no `Renderer` argument. Any texture inputs the parser produces
-//! flow into the Material as pending [`crate::TextureInput`] entries and
-//! the renderer drains them on first render (see [`crate::Renderer::load`]).
+//! return, no `Renderer` argument. Each image the parser decodes becomes
+//! a Material map, which every Renderer that draws the Scene uploads
+//! as a copy of its own (see [`crate::Renderer::load`]).
 //!
 //! The loader covers static glTF: mesh primitives (positions, normals,
 //! two UV sets, colors, tangents, indices), PBR-MR materials with all five
@@ -1079,8 +1079,8 @@ fn name_slot(slot: TextureSlot) -> &'static str {
     }
 }
 
-/// Convert a glTF image reference into the TextureInput the lazy Material
-/// setter queues. Every pixel format the importer decodes converts to RGBA8,
+/// Convert a glTF image reference into the TextureInput a Material setter
+/// makes a map of. Every pixel format the importer decodes converts to RGBA8,
 /// and an image with fewer bytes than its size needs is an error.
 fn convert_image(
     texture: &gltf::Texture<'_>,
@@ -1265,6 +1265,7 @@ mod tests {
     use super::*;
     use crate::Renderable;
     use crate::mesh::VertexData;
+    use crate::texture::SourceData;
 
     /// The minimal triangle: positions only, read through accessor 0 from
     /// bufferView 0. Views 1 (12 bytes) and 2 (24 bytes) sit unused, so a
@@ -1961,7 +1962,7 @@ mod tests {
     const TEXTURED_JSON: &str = r#"{"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"material":0,"mode":4}]}],"materials":[{"pbrMetallicRoughness":{"baseColorTexture":{"index":0}}}],"textures":[{"source":0}],"images":[{"bufferView":1,"mimeType":"image/png"}],"buffers":[{"byteLength":BUFFER_LENGTH}],"bufferViews":[{"buffer":0,"byteLength":36,"byteOffset":0},{"buffer":0,"byteLength":PNG_LENGTH,"byteOffset":36}],"accessors":[{"bufferView":0,"byteOffset":0,"componentType":5126,"count":3,"type":"VEC3","min":[-0.5,-0.5,0.0],"max":[0.5,0.5,0.0]}],"asset":{"version":"2.0"}}"#;
 
     /// Load the textured triangle with `image` as its base color, and return
-    /// the first pixel of the texture its Material queued.
+    /// the first pixel of the source its Material keeps.
     fn load_texture_pixel(image: image::DynamicImage) -> [u8; 4] {
         let mut png = std::io::Cursor::new(Vec::new());
         image
@@ -1984,10 +1985,10 @@ mod tests {
         }
         let scene = Scene::load(build_glb(&json, &bin)).expect("load textured triangle");
         let models = scene.models();
-        let pending = models[0].material().shader().object.pending_textures.read();
-        assert_eq!(pending.len(), 1, "the base color texture should be queued");
-        match &pending[0].input.data {
-            TextureData::Bytes(bytes) => [bytes[0], bytes[1], bytes[2], bytes[3]],
+        let maps = models[0].material().shader().object.maps.read();
+        assert_eq!(maps.len(), 1, "the base color texture should be a map");
+        match &*maps[0].source.data {
+            SourceData::Bytes(bytes) => [bytes[0], bytes[1], bytes[2], bytes[3]],
             other => panic!("expected decoded bytes, got {other:?}"),
         }
     }
