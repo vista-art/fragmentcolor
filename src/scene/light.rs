@@ -23,8 +23,8 @@ use pyo3::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use crate::Shader;
+use crate::shader::share_light;
 use crate::scene::SceneObject;
-use crate::shader::ShaderObject;
 
 /// Discriminant for the three light kinds. Wire-compatible with the WGSL
 /// `Light.kind` field in `src/material/light.wgsl`: directional=0, point=1, spot=2.
@@ -194,15 +194,16 @@ impl LightObject {
         bump_epoch();
     }
 
-    /// Hands this light to every lit shader on `pass`, or to none when one is full.
-    fn attach_to_pass(self: &Arc<Self>, pass: &crate::Pass) -> Result<(), crate::PassError> {
-        let shaders: Vec<Arc<ShaderObject>> = pass.object.shaders.read().iter().cloned().collect();
-        for shader in &shaders {
-            shader.check_light_room(&[self.id])?;
-        }
-        for shader in &shaders {
-            shader.add_light(self);
-        }
+    /// Hands this light to every lit shader on `pass` and to the pass, or to none when
+    /// a shader is full. It holds the pass's shaders, then its lights, the order a joining
+    /// shader takes them, so that shader either is among the ones lit here or finds the
+    /// light on the pass.
+    fn attach_to_pass(self: &Arc<Self>, pass: &crate::Pass, light: &Light) -> Result<(), crate::PassError> {
+        let shaders = pass.object.shaders.read();
+        let mut lights = pass.object.lights.write();
+        share_light(&shaders, self)?;
+        // The pass holds the light, so it lights after the caller drops its handle.
+        lights.push(light);
         Ok(())
     }
 }
@@ -461,10 +462,7 @@ impl PassLights {
 
 impl SceneObject for Light {
     fn attach(&self, pass: &crate::Pass) -> Result<(), crate::PassError> {
-        self.object.attach_to_pass(pass)?;
-        // The pass holds the light, so it lights after the caller drops its handle.
-        pass.object.lights.write().push(self);
-        Ok(())
+        self.object.attach_to_pass(pass, self)
     }
 
     fn apply_to_shader(&self, shader: &Shader) {
@@ -479,10 +477,39 @@ mod tests {
 
     fn pbr_triangle_mesh() -> crate::Mesh {
         let mesh = crate::Mesh::new();
-        mesh.add_vertex(
-            crate::mesh::Vertex::pbr([0.0, 0.5, 0.0]).set(crate::mesh::Vertex::UV0, [0.5, 1.0]),
+        mesh.add_vertices(
+            [[0.0, 0.5, 0.0], [-0.5, -0.5, 0.0], [0.5, -0.5, 0.0]].map(crate::mesh::Vertex::pbr),
         );
         mesh
+    }
+
+    // Story: a light added while a Model's shader joins the same pass reaches that
+    // shader, whichever comes first. The join waits for the light, then finds it on the pass.
+    #[test]
+    fn a_light_reaches_a_shader_that_joins_meanwhile() {
+        let pass = crate::Pass::new("racing");
+        let model = crate::Model::new(pbr_triangle_mesh(), Material::pbr());
+        let shader = model.material.shader.object.clone();
+        let joiner = std::rc::Rc::new(std::cell::RefCell::new(None));
+        let handle = joiner.clone();
+        let (racing, added) = (pass.clone(), model.clone());
+        crate::hooks::once("light checked", move || {
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let thread = std::thread::spawn(move || {
+                racing.add(&added).expect("add the model");
+                let _ = sender.send(());
+            });
+            let _ = receiver.recv_timeout(std::time::Duration::from_millis(200));
+            *handle.borrow_mut() = Some(thread);
+        });
+
+        let lamp = Light::point([0.0, 1.0, 0.0], [1.0; 3]);
+        pass.add(&lamp).expect("add the light");
+        if let Some(thread) = joiner.borrow_mut().take() {
+            thread.join().expect("the model thread");
+        }
+
+        assert_eq!(shader.light_summary().count, 1, "the joined shader holds the light");
     }
 
     #[test]
