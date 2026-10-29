@@ -8,7 +8,7 @@ use super::access::{Access, Accesses, Writer};
 use super::{PassDraws, RenderContext, RendererError};
 use crate::material::AlphaMode;
 use crate::pass::PassError;
-use crate::texture::{Registration, read_format_features};
+use crate::texture::{Registration, format_features};
 use crate::{
     PassObject, Renderable, ShaderObject, Target, TargetFrame, TextureObject, UniformData,
 };
@@ -269,8 +269,7 @@ impl RenderContext {
         format: wgpu::TextureFormat,
     ) -> Result<(), RendererError> {
         let blendable = wgpu::TextureFormatFeatureFlags::BLENDABLE;
-        let adapter = self.adapter.as_ref();
-        let flags = read_format_features(adapter, self.features, format).flags;
+        let flags = format_features(self, format).flags;
         if !flags.contains(blendable) {
             return Err(refuse_blend(pass, format));
         }
@@ -484,6 +483,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
         };
         let (device, queue) = adapter.request_device(&descriptor).await.ok()?;
         let mut context = RenderContext::new(device, queue);
+        context.downlevel = adapter.get_downlevel_capabilities().flags;
         context.adapter = Some(adapter);
         Some(context)
     }

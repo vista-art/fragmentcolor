@@ -886,9 +886,9 @@ pub(crate) struct RenderContext {
     checked: DashMap<ShaderHash, shader_checks::Verdict>,
     /// The device's features, limits and downlevel flags, read once,
     /// since each read crosses into JavaScript on the browser's WebGPU.
-    features: wgpu::Features,
+    pub(crate) features: wgpu::Features,
     limits: wgpu::Limits,
-    downlevel: wgpu::DownlevelFlags,
+    pub(crate) downlevel: wgpu::DownlevelFlags,
     /// The adapter's backend, which decides what the GL path can keep.
     backend: wgpu::Backend,
 
