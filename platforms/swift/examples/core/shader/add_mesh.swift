@@ -9,7 +9,11 @@ let shader = try Shader("""
 """)
 
 let mesh = Mesh()
-try mesh.addVertex([0.0, 0.0, 0.0])
+try mesh.addVertices([
+    [-0.5, -0.5, 0.0],
+    [0.5, -0.5, 0.0],
+    [0.0, 0.5, 0.0],
+])
 
 // Attach mesh to this shader (errors if incompatible)
 try shader.addMesh(mesh)

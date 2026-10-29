@@ -56,7 +56,7 @@ class GeneratedExamples : ExampleCase() {
         val renderer = Renderer()
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
         val model = Model(mesh, Material.pbr())
 
         val camera = Camera.perspective(1.047f, 1.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 0.0f, 2.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
@@ -75,7 +75,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun core_pass_add_mesh() = example("docs/api/core/pass/add_mesh.md") {
         val mesh = Mesh()
-        mesh.addVertex(listOf(0.0f, 0.0f))
+        mesh.addVertices(listOf(listOf(-0.5f, -0.5f), listOf(0.5f, -0.5f), listOf(0.0f, 0.5f)))
 
         val shader = Shader("""
           struct VOut { @builtin(position) pos: vec4<f32> };
@@ -432,7 +432,7 @@ class GeneratedExamples : ExampleCase() {
         """)
 
         val mesh = Mesh()
-        mesh.addVertex(listOf(0.0f, 0.0f, 0.0f))
+        mesh.addVertices(listOf(listOf(-0.5f, -0.5f, 0.0f), listOf(0.5f, -0.5f, 0.0f), listOf(0.0f, 0.5f, 0.0f)))
 
         // Attach mesh to this shader (errors if incompatible)
         shader.addMesh(mesh)
@@ -458,7 +458,7 @@ class GeneratedExamples : ExampleCase() {
         """)
 
         val mesh = Mesh()
-        mesh.addVertex(listOf(0.0f, 0.0f))
+        mesh.addVertices(listOf(listOf(-0.5f, -0.5f), listOf(0.5f, -0.5f), listOf(0.0f, 0.5f)))
         shader.addMesh(mesh)
 
         // Clear all
@@ -486,7 +486,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun core_shader_from_mesh() = example("docs/api/core/shader/from_mesh.md") {
         val mesh = Mesh()
-        mesh.addVertex(listOf(0.0f, 0.0f, 0.0f))
+        mesh.addVertices(listOf(listOf(-0.5f, -0.5f, 0.0f), listOf(0.5f, -0.5f, 0.0f), listOf(0.0f, 0.5f, 0.0f)))
         val shader = Shader.fromMesh(mesh)
     }
 
@@ -584,7 +584,7 @@ class GeneratedExamples : ExampleCase() {
         """)
 
         val mesh = Mesh()
-        mesh.addVertex(listOf(0.0f, 0.0f))
+        mesh.addVertices(listOf(listOf(-0.5f, -0.5f), listOf(0.5f, -0.5f), listOf(0.0f, 0.5f)))
         shader.addMesh(mesh)
 
         // Detach the mesh
@@ -607,9 +607,9 @@ class GeneratedExamples : ExampleCase() {
         """)
 
         val m1 = Mesh()
-        m1.addVertex(listOf(0.0f, 0.0f))
+        m1.addVertices(listOf(listOf(-0.5f, -0.5f), listOf(0.0f, -0.5f), listOf(-0.5f, 0.0f)))
         val m2 = Mesh()
-        m2.addVertex(listOf(0.5f, 0.0f))
+        m2.addVertices(listOf(listOf(0.0f, 0.0f), listOf(0.5f, 0.0f), listOf(0.0f, 0.5f)))
 
         shader.addMesh(m1)
         shader.addMesh(m2)
@@ -671,7 +671,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun geometry_instance_Instance() = example("docs/api/geometry/instance/instance.md") {
         val mesh = Mesh()
-        mesh.addVertex(listOf(0.0f, 0.0f))
+        mesh.addVertices(listOf(listOf(-0.5f, -0.5f), listOf(0.5f, -0.5f), listOf(0.0f, 0.5f)))
 
         val instance = Instance().set("offset", listOf(0.5f, 0.0f))
         mesh.addInstance(instance)
@@ -694,7 +694,7 @@ class GeneratedExamples : ExampleCase() {
         """)
 
         val mesh = Mesh()
-        mesh.addVertex(listOf(0.0f, 0.0f))
+        mesh.addVertices(listOf(listOf(-0.5f, -0.5f), listOf(0.5f, -0.5f), listOf(0.0f, 0.5f)))
 
         val instance = Instance().set("offset", listOf(0.5f, 0.0f)).set("layer", 2)
         mesh.addInstance(instance)
@@ -726,13 +726,15 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun geometry_mesh_add_vertex() = example("docs/api/geometry/mesh/add_vertex.md") {
         val m = Mesh()
-        m.addVertex(listOf(0.0f, 0.0f))
+        m.addVertex(listOf(0.0f, 0.5f))
+        m.addVertex(listOf(-0.5f, -0.5f))
+        m.addVertex(listOf(0.5f, -0.5f))
     }
 
     @Test
     fun geometry_mesh_add_vertices() = example("docs/api/geometry/mesh/add_vertices.md") {
         val m = Mesh()
-        m.addVertices(listOf(listOf(0.0f, 0.0f), listOf(1.0f, 0.0f)))
+        m.addVertices(listOf(listOf(0.0f, 0.0f), listOf(1.0f, 0.0f), listOf(0.0f, 1.0f)))
     }
 
     @Test
@@ -831,12 +833,12 @@ class GeneratedExamples : ExampleCase() {
 
         """)
 
-        val vertex = Vertex(listOf(0.0f, 0.0f)).set("id", 7).set("weight", 0.5f)
+        val vertex = Vertex(listOf(0.0f, 0.5f)).set("id", 7).set("weight", 0.5f)
 
         val mesh = Mesh()
-        mesh.addVertex(vertex)
+        mesh.addVertices(listOf(vertex, Vertex(listOf(-0.5f, -0.5f)).set("id", 8).set("weight", 1.0f), Vertex(listOf(0.5f, -0.5f)).set("id", 9).set("weight", 1.0f)))
 
-        // id uploads as the u32 7 and weight as the f32 0.5.
+        // The first id uploads as the u32 7 and its weight as the f32 0.5.
         shader.addMesh(mesh)
     }
 
@@ -998,7 +1000,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun scene_material_Material() = example("docs/api/scene/material/material.md") {
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
         val material = Material.pbr().baseColor(listOf(0.85f, 0.2f, 0.2f, 1.0f)).metallic(0.0f).roughness(0.4f).emissive(listOf(0.0f, 0.0f, 0.05f))
 
@@ -1165,7 +1167,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun scene_material_texture_uv() = example("docs/api/scene/material/texture_uv.md") {
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)).set(Vertex.UV1, listOf(0.25f, 0.75f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)).set(Vertex.UV1, listOf(0.25f, 0.75f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)).set(Vertex.UV1, listOf(0.0f, 0.5f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f)).set(Vertex.UV1, listOf(0.5f, 0.5f))))
 
         // The occlusion map follows the second UV layout.
         val material = Material.pbr().textureUv(TextureSlot.OCCLUSION, 1u)
@@ -1180,7 +1182,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun scene_model_material() = example("docs/api/scene/model/material.md") {
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
         val model = Model(mesh, Material.pbr())
         model.material().shader().set("camera.position", listOf(0.0f, 0.0f, 5.0f))
@@ -1189,16 +1191,17 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun scene_model_mesh() = example("docs/api/scene/model/mesh.md") {
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
         val model = Model(mesh, Material.pbr())
-        model.mesh().addVertex( Vertex(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+        // A second triangle joins the first through the Model.
+        model.mesh().addVertices(listOf(Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f)), Vertex.pbr(listOf(0.5f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 1.0f)), Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f))))
     }
 
     @Test
     fun scene_model_new() = example("docs/api/scene/model/new.md") {
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
         val model = Model(mesh, Material.pbr())
     }
@@ -1207,7 +1210,7 @@ class GeneratedExamples : ExampleCase() {
     fun scene_model_rotate() = example("docs/api/scene/model/rotate.md") {
         val renderer = Renderer()
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
         val model = Model(mesh, Material.pbr())
         model.rotate(listOf(0.0f, 1.0f, 0.0f), 1.571f) // 90° around Y
@@ -1217,7 +1220,7 @@ class GeneratedExamples : ExampleCase() {
     fun scene_model_scale() = example("docs/api/scene/model/scale.md") {
         val renderer = Renderer()
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
         val model = Model(mesh, Material.pbr())
         model.scale(listOf(2.0f, 2.0f, 2.0f))
@@ -1227,7 +1230,7 @@ class GeneratedExamples : ExampleCase() {
     fun scene_model_set_transform() = example("docs/api/scene/model/set_transform.md") {
         val renderer = Renderer()
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
         val model = Model(mesh, Material.pbr())
         model.setTransform(listOf(2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 3.0f, 0.0f, 0.0f, 1.0f))
@@ -1236,7 +1239,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun scene_model_set_visible() = example("docs/api/scene/model/set_visible.md") {
         val mesh = Mesh()
-        mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)))
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f))))
         val detail = Model(mesh, Material.pbr())
 
         // Far from the camera, hide the detail Model.
@@ -1249,7 +1252,7 @@ class GeneratedExamples : ExampleCase() {
     fun scene_model_transform() = example("docs/api/scene/model/transform.md") {
         val renderer = Renderer()
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
         val model = Model(mesh, Material.pbr())
         val identity = model.transform()
@@ -1259,7 +1262,7 @@ class GeneratedExamples : ExampleCase() {
     fun scene_model_translate() = example("docs/api/scene/model/translate.md") {
         val renderer = Renderer()
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
         val model = Model(mesh, Material.pbr())
         model.translate(listOf(5.0f, 0.0f, -2.0f))
@@ -1268,7 +1271,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun scene_model_visible() = example("docs/api/scene/model/visible.md") {
         val mesh = Mesh()
-        mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)))
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f))))
         val model = Model(mesh, Material.pbr())
 
         // Models start visible; toggle with `set_visible`.
@@ -1280,7 +1283,7 @@ class GeneratedExamples : ExampleCase() {
         val renderer = Renderer()
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
         val model = Model(mesh, Material.pbr())
 
         val camera = Camera.perspective(1.047f, 1.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 0.0f, 3.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
@@ -1301,7 +1304,7 @@ class GeneratedExamples : ExampleCase() {
         val renderer = Renderer()
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
         val model = Model(mesh, Material.pbr())
 
         // A backdrop pass that clears to a soft blue before the scene's main draw.
@@ -1316,7 +1319,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun scene_scene_add_to() = example("docs/api/scene/scene/add_to.md") {
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
         val model = Model(mesh, Material.pbr())
 
         val scene = Scene()
@@ -1332,7 +1335,7 @@ class GeneratedExamples : ExampleCase() {
         val target = renderer.createTextureTarget(listOf(64u, 64u))
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
 
         val scene = Scene()
         // A warm dusk ambient. It applies to every Material added below.
@@ -1392,7 +1395,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun scene_scene_list_passes() = example("docs/api/scene/scene/list_passes.md") {
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
         val scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -1416,7 +1419,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun scene_scene_models() = example("docs/api/scene/scene/models.md") {
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
         val model = Model(mesh, Material.pbr())
 
         val scene = Scene()
@@ -1438,7 +1441,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun scene_scene_no_default_camera() = example("docs/api/scene/scene/no_default_camera.md") {
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
         val scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -1448,7 +1451,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun scene_scene_no_default_light() = example("docs/api/scene/scene/no_default_light.md") {
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
         val scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -1458,7 +1461,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun scene_scene_no_defaults() = example("docs/api/scene/scene/no_defaults.md") {
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
         val scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -1484,7 +1487,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun scene_scene_set_default_camera() = example("docs/api/scene/scene/set_default_camera.md") {
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
         val scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -1495,7 +1498,7 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun scene_scene_set_default_light() = example("docs/api/scene/scene/set_default_light.md") {
         val mesh = Mesh()
-        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+        mesh.addVertices(listOf(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f))))
         val scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 

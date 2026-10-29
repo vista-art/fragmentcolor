@@ -302,7 +302,9 @@ that lacks an attribute, naming the attribute and the vertex.
 code={`
 use fragmentcolor::mesh::{Mesh};
 let mut m = Mesh::new();
-m.add_vertex([0.0, 0.0]);
+m.add_vertex([0.0, 0.5]);
+m.add_vertex([-0.5, -0.5]);
+m.add_vertex([0.5, -0.5]);
 `}
 lang="rust"
 />
@@ -314,7 +316,9 @@ lang="rust"
 code={`
 import { Mesh } from "fragmentcolor";
 const m = new Mesh();
-m.addVertex([0.0, 0.0]);
+m.addVertex([0.0, 0.5]);
+m.addVertex([-0.5, -0.5]);
+m.addVertex([0.5, -0.5]);
 `}
 lang="js"
 />
@@ -326,7 +330,9 @@ lang="js"
 code={`
 from fragmentcolor import Mesh
 m = Mesh()
-m.add_vertex([0.0, 0.0])
+m.add_vertex([0.0, 0.5])
+m.add_vertex([-0.5, -0.5])
+m.add_vertex([0.5, -0.5])
 `}
 lang="python"
 />
@@ -338,7 +344,9 @@ lang="python"
 code={`
 import FragmentColor
 let m = Mesh()
-try m.addVertex([0.0, 0.0])
+try m.addVertex([0.0, 0.5])
+try m.addVertex([-0.5, -0.5])
+try m.addVertex([0.5, -0.5])
 `}
 lang="swift"
 />
@@ -350,7 +358,9 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val m = Mesh()
-m.addVertex(listOf(0.0f, 0.0f))
+m.addVertex(listOf(0.0f, 0.5f))
+m.addVertex(listOf(-0.5f, -0.5f))
+m.addVertex(listOf(0.5f, -0.5f))
 `}
 lang="kotlin"
 />
@@ -382,6 +392,7 @@ let mut m = Mesh::new();
 m.add_vertices([
   [0.0, 0.0],
   [1.0, 0.0],
+  [0.0, 1.0],
 ]);
 `}
 lang="rust"
@@ -394,7 +405,7 @@ lang="rust"
 code={`
 import { Mesh } from "fragmentcolor";
 const m = new Mesh();
-m.addVertices([ [0.0, 0.0], [1.0, 0.0], ]);
+m.addVertices([ [0.0, 0.0], [1.0, 0.0], [0.0, 1.0], ]);
 `}
 lang="js"
 />
@@ -409,6 +420,7 @@ m = Mesh()
 m.add_vertices([
   [0.0, 0.0],
   [1.0, 0.0],
+  [0.0, 1.0],
 ])
 `}
 lang="python"
@@ -424,6 +436,7 @@ let m = Mesh()
 try m.addVertices([
   [0.0, 0.0],
   [1.0, 0.0],
+  [0.0, 1.0],
 ])
 `}
 lang="swift"
@@ -436,7 +449,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val m = Mesh()
-m.addVertices(listOf(listOf(0.0f, 0.0f), listOf(1.0f, 0.0f)))
+m.addVertices(listOf(listOf(0.0f, 0.0f), listOf(1.0f, 0.0f), listOf(0.0f, 1.0f)))
 `}
 lang="kotlin"
 />

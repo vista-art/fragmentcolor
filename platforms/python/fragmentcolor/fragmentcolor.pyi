@@ -829,7 +829,11 @@ class Shader:
         \"\"\")
 
         mesh = Mesh()
-        mesh.add_vertex([0.0, 0.0, 0.0])
+        mesh.add_vertices([
+            [-0.5, -0.5, 0.0],
+            [0.5, -0.5, 0.0],
+            [0.0, 0.5, 0.0],
+        ])
 
         # Attach mesh to this shader (errors if incompatible)
         shader.add_mesh(mesh)
@@ -865,7 +869,11 @@ class Shader:
         \"\"\")
 
         mesh = Mesh()
-        mesh.add_vertex([0.0, 0.0])
+        mesh.add_vertices([
+            [-0.5, -0.5],
+            [0.5, -0.5],
+            [0.0, 0.5],
+        ])
         shader.add_mesh(mesh)
 
         # Detach the mesh
@@ -895,9 +903,17 @@ class Shader:
         \"\"\")
 
         m1 = Mesh()
-        m1.add_vertex([0.0, 0.0])
+        m1.add_vertices([
+            [-0.5, -0.5],
+            [0.0, -0.5],
+            [-0.5, 0.0],
+        ])
         m2 = Mesh()
-        m2.add_vertex([0.5, 0.0])
+        m2.add_vertices([
+            [0.0, 0.0],
+            [0.5, 0.0],
+            [0.0, 0.5],
+        ])
 
         shader.add_mesh(m1)
         shader.add_mesh(m2)
@@ -929,7 +945,11 @@ class Shader:
         \"\"\")
 
         mesh = Mesh()
-        mesh.add_vertex([0.0, 0.0])
+        mesh.add_vertices([
+            [-0.5, -0.5],
+            [0.5, -0.5],
+            [0.0, 0.5],
+        ])
         shader.add_mesh(mesh)
 
         # Clear all
@@ -1090,7 +1110,11 @@ class Shader:
         from fragmentcolor import Mesh, Shader
 
         mesh = Mesh()
-        mesh.add_vertex([0.0, 0.0, 0.0])
+        mesh.add_vertices([
+            [-0.5, -0.5, 0.0],
+            [0.5, -0.5, 0.0],
+            [0.0, 0.5, 0.0],
+        ])
         shader = Shader.from_mesh(mesh)
         ```
         """
@@ -1295,7 +1319,11 @@ class Pass:
         from fragmentcolor import Pass, Shader, Mesh
 
         mesh = Mesh()
-        mesh.add_vertex([0.0, 0.0])
+        mesh.add_vertices([
+            [-0.5, -0.5],
+            [0.5, -0.5],
+            [0.0, 0.5],
+        ])
 
         shader = Shader(\"\"\"
           struct VOut { @builtin(position) pos: vec4<f32> };
@@ -1355,9 +1383,11 @@ class Pass:
         renderer = Renderer()
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         model = Model(mesh, Material.pbr())
 
         camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).look_at([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
@@ -1729,7 +1759,9 @@ class Mesh:
         ```python
         from fragmentcolor import Mesh
         m = Mesh()
-        m.add_vertex([0.0, 0.0])
+        m.add_vertex([0.0, 0.5])
+        m.add_vertex([-0.5, -0.5])
+        m.add_vertex([0.5, -0.5])
         ```
         """
     def add_vertices(self, vertices: Sequence[float | numpy.floating[Any] | numpy.integer[Any] | Vertex | npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat] | tuple[npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], Sequence[SupportsFloat] | npt.NDArray[Any], Sequence[SupportsFloat] | npt.NDArray[Any]] | tuple[npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], Sequence[SupportsFloat] | npt.NDArray[Any]]]) -> None:
@@ -1748,6 +1780,7 @@ class Mesh:
         m.add_vertices([
           [0.0, 0.0],
           [1.0, 0.0],
+          [0.0, 1.0],
         ])
         ```
         """
@@ -2057,12 +2090,16 @@ class Vertex:
 
         \"\"\")
 
-        vertex = Vertex([0.0, 0.0]).set("id", 7).set("weight", 0.5)
+        vertex = Vertex([0.0, 0.5]).set("id", 7).set("weight", 0.5)
 
         mesh = Mesh()
-        mesh.add_vertex(vertex)
+        mesh.add_vertices([
+            vertex,
+            Vertex([-0.5, -0.5]).set("id", 8).set("weight", 1.0),
+            Vertex([0.5, -0.5]).set("id", 9).set("weight", 1.0),
+        ])
 
-        # id uploads as the u32 7 and weight as the f32 0.5.
+        # The first id uploads as the u32 7 and its weight as the f32 0.5.
         shader.add_mesh(mesh)
         ```
         """
@@ -2107,7 +2144,11 @@ class Instance:
     from fragmentcolor import Instance, Mesh
 
     mesh = Mesh()
-    mesh.add_vertex([0.0, 0.0])
+    mesh.add_vertices([
+        [-0.5, -0.5],
+        [0.5, -0.5],
+        [0.0, 0.5],
+    ])
 
     instance = Instance().set("offset", [0.5, 0.0])
     mesh.add_instance(instance)
@@ -2157,7 +2198,11 @@ class Instance:
         \"\"\")
 
         mesh = Mesh()
-        mesh.add_vertex([0.0, 0.0])
+        mesh.add_vertices([
+            [-0.5, -0.5],
+            [0.5, -0.5],
+            [0.0, 0.5],
+        ])
 
         instance = Instance().set("offset", [0.5, 0.0]).set("layer", 2)
         mesh.add_instance(instance)
@@ -2517,9 +2562,11 @@ class Scene:
         renderer = Renderer()
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         model = Model(mesh, Material.pbr())
 
         camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
@@ -2581,9 +2628,11 @@ class Scene:
         renderer = Renderer()
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         model = Model(mesh, Material.pbr())
 
         # A backdrop pass that clears to a soft blue before the scene's main draw.
@@ -2694,9 +2743,11 @@ class Scene:
         from fragmentcolor import Material, Mesh, Model, Scene, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -2728,9 +2779,11 @@ class Scene:
         from fragmentcolor import Material, Mesh, Model, Pass, Scene, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         model = Model(mesh, Material.pbr())
 
         scene = Scene()
@@ -2791,9 +2844,11 @@ class Scene:
         from fragmentcolor import Material, Mesh, Model, Scene, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -2821,9 +2876,11 @@ class Scene:
         from fragmentcolor import Material, Mesh, Model, Scene, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -2848,9 +2905,11 @@ class Scene:
         from fragmentcolor import Material, Mesh, Model, Scene, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -2876,9 +2935,11 @@ class Scene:
         from fragmentcolor import Camera, Material, Mesh, Model, Scene, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -2905,9 +2966,11 @@ class Scene:
         from fragmentcolor import Light, Material, Mesh, Model, Scene, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -2940,9 +3003,11 @@ class Scene:
         target = renderer.create_texture_target([64, 64])
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
 
         scene = Scene()
         # A warm dusk ambient. It applies to every Material added below.
@@ -2975,9 +3040,11 @@ class Scene:
         from fragmentcolor import Material, Mesh, Model, Scene, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         model = Model(mesh, Material.pbr())
 
         scene = Scene()
@@ -3132,9 +3199,11 @@ class Model:
         from fragmentcolor import Material, Mesh, Model, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
-            Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
-        )
+        mesh.add_vertices([
+            Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
 
         model = Model(mesh, Material.pbr())
         ```
@@ -3151,14 +3220,19 @@ class Model:
         from fragmentcolor import Material, Mesh, Model, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
 
         model = Model(mesh, Material.pbr())
-        model.mesh().add_vertex(
-            Vertex([-0.5, -0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.0, 0.0]),
-        )
+        # A second triangle joins the first through the Model.
+        model.mesh().add_vertices([
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+            Vertex.pbr([0.5, 0.5, 0.0]).set(Vertex.UV0, [1.0, 1.0]),
+            Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+        ])
         ```
         """
     def material(self) -> Material:
@@ -3181,9 +3255,11 @@ class Model:
         from fragmentcolor import Material, Mesh, Model, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
-            Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
-        )
+        mesh.add_vertices([
+            Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
 
         model = Model(mesh, Material.pbr())
         model.material().shader().set("camera.position", [0.0, 0.0, 5.0])
@@ -3207,9 +3283,11 @@ class Model:
 
         renderer = Renderer()
         mesh = Mesh()
-        mesh.add_vertex(
-            Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
-        )
+        mesh.add_vertices([
+            Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
 
         model = Model(mesh, Material.pbr())
         identity = model.transform()
@@ -3234,9 +3312,11 @@ class Model:
 
         renderer = Renderer()
         mesh = Mesh()
-        mesh.add_vertex(
-            Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
-        )
+        mesh.add_vertices([
+            Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
 
         model = Model(mesh, Material.pbr())
         model.set_transform([
@@ -3261,9 +3341,11 @@ class Model:
 
         renderer = Renderer()
         mesh = Mesh()
-        mesh.add_vertex(
-            Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
-        )
+        mesh.add_vertices([
+            Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
 
         model = Model(mesh, Material.pbr())
         model.translate([5.0, 0.0, -2.0])
@@ -3287,9 +3369,11 @@ class Model:
 
         renderer = Renderer()
         mesh = Mesh()
-        mesh.add_vertex(
-            Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
-        )
+        mesh.add_vertices([
+            Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
 
         model = Model(mesh, Material.pbr())
         model.rotate([0.0, 1.0, 0.0], 1.571) # 90° around Y
@@ -3313,9 +3397,11 @@ class Model:
 
         renderer = Renderer()
         mesh = Mesh()
-        mesh.add_vertex(
-            Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
-        )
+        mesh.add_vertices([
+            Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
 
         model = Model(mesh, Material.pbr())
         model.scale([2.0, 2.0, 2.0])
@@ -3336,7 +3422,11 @@ class Model:
         from fragmentcolor import Material, Mesh, Model, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(Vertex.pbr([0.0, 0.5, 0.0]))
+        mesh.add_vertices([
+            Vertex.pbr([0.0, 0.5, 0.0]),
+            Vertex.pbr([-0.5, -0.5, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]),
+        ])
         model = Model(mesh, Material.pbr())
 
         # Models start visible; toggle with `set_visible`.
@@ -3375,7 +3465,11 @@ class Model:
         from fragmentcolor import Material, Mesh, Model, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(Vertex.pbr([0.0, 0.5, 0.0]))
+        mesh.add_vertices([
+            Vertex.pbr([0.0, 0.5, 0.0]),
+            Vertex.pbr([-0.5, -0.5, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]),
+        ])
         detail = Model(mesh, Material.pbr())
 
         # Far from the camera, hide the detail Model.
@@ -4228,9 +4322,11 @@ class Material:
     from fragmentcolor import Material, Mesh, Model, Vertex
 
     mesh = Mesh()
-    mesh.add_vertex(
+    mesh.add_vertices([
         Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-    )
+        Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+        Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+    ])
 
     material = Material.pbr().base_color([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
 
@@ -4801,9 +4897,11 @@ class Material:
         from fragmentcolor import Material, Mesh, TextureSlot, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]).set(Vertex.UV1, [0.25, 0.75]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]).set(Vertex.UV1, [0.0, 0.5]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]).set(Vertex.UV1, [0.5, 0.5]),
+        ])
 
         # The occlusion map follows the second UV layout.
         material = Material.pbr().texture_uv(TextureSlot.Occlusion, 1)

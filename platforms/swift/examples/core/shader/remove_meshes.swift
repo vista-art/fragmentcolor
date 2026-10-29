@@ -14,9 +14,17 @@ let shader = try Shader("""
 """)
 
 let m1 = Mesh()
-try m1.addVertex([0.0, 0.0])
+try m1.addVertices([
+    [-0.5, -0.5],
+    [0.0, -0.5],
+    [-0.5, 0.0],
+])
 let m2 = Mesh()
-try m2.addVertex([0.5, 0.0])
+try m2.addVertices([
+    [0.0, 0.0],
+    [0.5, 0.0],
+    [0.0, 0.5],
+])
 
 try shader.addMesh(m1)
 try shader.addMesh(m2)
