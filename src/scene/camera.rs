@@ -569,6 +569,13 @@ impl SceneObject for Camera {
     }
 }
 
+#[cfg(any(python, wasm, test))]
+impl crate::error::Classify for CameraError {
+    fn classify(&self) -> crate::error::ErrorClass {
+        crate::error::ErrorClass::Camera
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -782,8 +789,8 @@ mod tests {
 
     fn pbr_triangle_mesh() -> crate::Mesh {
         let mesh = crate::Mesh::new();
-        mesh.add_vertex(
-            crate::mesh::Vertex::pbr([0.0, 0.5, 0.0]).set(crate::mesh::Vertex::UV0, [0.5, 1.0]),
+        mesh.add_vertices(
+            [[0.0, 0.5, 0.0], [-0.5, -0.5, 0.0], [0.5, -0.5, 0.0]].map(crate::mesh::Vertex::pbr),
         );
         mesh
     }

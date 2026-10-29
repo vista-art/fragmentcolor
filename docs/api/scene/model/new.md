@@ -25,11 +25,11 @@ via `Material::custom(...)` can use any layout.
 use fragmentcolor::{Material, Mesh, Model, Vertex};
 
 let mesh = Mesh::new();
-mesh.add_vertex(
-    Vertex::new([0.0, 0.0, 0.0])
-        .set(Vertex::NORMAL, [0.0, 1.0, 0.0])
-        .set(Vertex::UV0, [0.0, 0.0]),
-);
+mesh.add_vertices([
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+    Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]),
+]);
 
 let model = Model::new(mesh, Material::pbr());
 

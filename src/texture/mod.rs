@@ -1283,15 +1283,44 @@ fn check_source(sized: bool, size: Option<Size>) -> Result<(), TextureError> {
 /// its header declares fits `limit`, so an image too large to upload is refused
 /// before its pixels take any memory. `create_texture` and `Mipmap::build` share it.
 fn decode(bytes: &[u8], limit: u32) -> Result<DynamicImage, TextureError> {
-    let format = image::guess_format(bytes)?;
-    let reader = || image::ImageReader::with_format(std::io::Cursor::new(bytes), format);
-    let (width, height) = reader().into_dimensions()?;
+    let (width, height) = read_dimensions(bytes)?;
     check_size(width, height, limit)?;
-    Ok(reader().decode()?)
+    Ok(decode_pixels(bytes)?)
+}
+
+/// The width and height an encoded image's header declares.
+fn read_dimensions(bytes: &[u8]) -> Result<(u32, u32), ImageFailure> {
+    let format = image::guess_format(bytes)?;
+    let reader = image::ImageReader::with_format(std::io::Cursor::new(bytes), format);
+    Ok(reader.into_dimensions()?)
+}
+
+/// The pixels of an encoded image, its format guessed from the bytes.
+fn decode_pixels(bytes: &[u8]) -> Result<DynamicImage, ImageFailure> {
+    let format = image::guess_format(bytes)?;
+    let reader = image::ImageReader::with_format(std::io::Cursor::new(bytes), format);
+    Ok(reader.decode()?)
+}
+
+/// A failure of the image library, which `TextureError::MalformedImageError` carries as text.
+#[derive(Debug, thiserror::Error)]
+#[error(transparent)]
+pub(crate) struct ImageFailure(#[from] image::ImageError);
+
+impl From<std::io::Error> for ImageFailure {
+    fn from(error: std::io::Error) -> Self {
+        ImageFailure(image::ImageError::IoError(error))
+    }
+}
+
+impl From<ImageFailure> for TextureError {
+    fn from(failure: ImageFailure) -> Self {
+        TextureError::MalformedImageError(crate::shader::error::describe(&failure.0))
+    }
 }
 
 /// The bytes of the file at `path`. A failed read is an image error, as `image::open` reports it.
-fn read_file(path: &std::path::Path) -> image::ImageResult<Vec<u8>> {
+fn read_file(path: &std::path::Path) -> Result<Vec<u8>, ImageFailure> {
     Ok(std::fs::read(path)?)
 }
 
@@ -1384,9 +1413,10 @@ pub(crate) fn check_feature(
     if missing.is_empty() {
         return Ok(());
     }
+    let names: Vec<&str> = missing.iter_names().map(|(name, _)| name).collect();
     Err(TextureError::UnsupportedFormatForUsage {
-        format,
-        missing_feature: missing,
+        format: format!("{format:?}"),
+        missing_feature: names.join(" | "),
     })
 }
 
@@ -2766,8 +2796,8 @@ mod tests {
                     format: refused,
                     missing_feature,
                 }) => {
-                    assert_eq!(refused, format);
-                    assert_eq!(missing_feature, norm);
+                    assert_eq!(refused, format!("{format:?}"));
+                    assert_eq!(missing_feature, "TEXTURE_FORMAT_16BIT_NORM");
                 }
                 other => panic!("expected UnsupportedFormatForUsage, got {other:?}"),
             }

@@ -9,8 +9,8 @@ mod binding_checks {
     //!   entry with a reason in `docs/api/PARITY`, and every entry there must
     //!   still name a class some binding declares.
     //! - **JS errors.** A `#[wasm_bindgen]` function that returns `Result<_, E>`
-    //!   throws a JS `Error`: `E` is `JsError`, or its `From<E> for JsValue`
-    //!   builds a `js_sys::Error`, so JS never catches a bare string.
+    //!   throws a JS `Error`: `E` is `JsError` or `WebError`, or its `From<E> for JsValue`
+    //!   builds a `js_sys::Error` or a `WebError`, so JS never catches a bare string.
 
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
@@ -598,7 +598,7 @@ mod binding_checks {
         for f in &fallible {
             let error = read_ident(&f.error).unwrap_or_default();
             let stringly = match error.as_str() {
-                "JsError" => false,
+                "JsError" | "WebError" => false,
                 "JsValue" => throws_string(&f.body),
                 _ => match conversions.get(&error) {
                     Some(body) => !builds_error(body),
@@ -735,10 +735,11 @@ mod binding_checks {
         }
     }
 
-    /// Whether a conversion into `JsValue` builds an `Error` object.
+    /// Whether a conversion into `JsValue` builds an `Error` object,
+    /// itself or through `WebError`, which always builds one.
     fn builds_error(body: &TokenStream) -> bool {
         let text = body.to_string().replace(' ', "");
-        text.contains("js_sys::Error") || text.contains("JsError")
+        text.contains("js_sys::Error") || text.contains("JsError") || text.contains("WebError")
     }
 
     /// Whether a function body hands a string `JsValue` to `Err`, `map_err`,

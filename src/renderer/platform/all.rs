@@ -1,4 +1,5 @@
 use crate::renderer::error::InitializationError;
+use crate::shader::error::describe;
 use std::sync::Arc;
 #[cfg(not(wasm))]
 use std::{fs::OpenOptions, io::Write, path::Path};
@@ -25,16 +26,16 @@ pub(crate) async fn request_adapter(
     instance: &wgpu::Instance,
     surface: Option<&wgpu::Surface<'_>>,
 ) -> Result<wgpu::Adapter, InitializationError> {
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: surface,
-            force_fallback_adapter: false,
-            apply_limit_buckets: false,
-        })
-        .await?;
-
-    Ok(adapter)
+    let options = wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::HighPerformance,
+        compatible_surface: surface,
+        force_fallback_adapter: false,
+        apply_limit_buckets: false,
+    };
+    match instance.request_adapter(&options).await {
+        Ok(adapter) => Ok(adapter),
+        Err(error) => Err(InitializationError::AdapterError(describe(&error))),
+    }
 }
 
 /// The features a device may open with, when the adapter offers them.
@@ -76,16 +77,18 @@ pub(crate) async fn request_device(
     let requested_features = adapter.features() & CANDIDATES;
     let requested_limits = cap_limits(adapter);
 
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            label: Some("WGPU Device"),
-            memory_hints: memory_hints(),
-            required_features: requested_features,
-            required_limits: requested_limits,
-            trace: wgpu::Trace::Off,
-            experimental_features: wgpu::ExperimentalFeatures::disabled(),
-        })
-        .await?;
+    let descriptor = wgpu::DeviceDescriptor {
+        label: Some("WGPU Device"),
+        memory_hints: memory_hints(),
+        required_features: requested_features,
+        required_limits: requested_limits,
+        trace: wgpu::Trace::Off,
+        experimental_features: wgpu::ExperimentalFeatures::disabled(),
+    };
+    let (device, queue) = match adapter.request_device(&descriptor).await {
+        Ok(opened) => opened,
+        Err(error) => return Err(InitializationError::DeviceError(describe(&error))),
+    };
 
     device.on_uncaptured_error(Arc::new(report_error));
 

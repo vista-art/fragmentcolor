@@ -133,9 +133,9 @@ class Healthcheck : ExampleCase() {
         renderer.render(shader, target)
 
         val named = Mesh()
-        named.addVertex(
-            Vertex(listOf(0f, 0f)).set("position", listOf(5.0, 5.0)).set("color", listOf(1.0, 1.0, 1.0, 1.0))
-        )
+        for (corner in corners) {
+            named.addVertex(Vertex(corner).set("position", listOf(5.0, 5.0)).set("color", listOf(1.0, 1.0, 1.0, 1.0)))
+        }
         val error = assertFailsWith<FragmentColorException> { Shader(source).addMesh(named) }
         assertTrue(error.message.orEmpty().contains("property named 'position'"), error.message)
         assertFailsWith<FragmentColorException> { Shader.fromMesh(Mesh()) }
@@ -218,6 +218,10 @@ class Healthcheck : ExampleCase() {
         assertFailsWith<FragmentColorException> { ScreenRegion(listOf(UInt.MAX_VALUE, 0u), listOf(5u, 5u)) }
         assertFailsWith<FragmentColorException> { pass.setViewport(listOf(4u, 0u)) }
         assertFailsWith<FragmentColorException> { pass.setViewport(listOf(1u, 2u, 3u)) }
+        // A region whose max lies before its min throws, never swapped back.
+        val reversed = ScreenRegion(minX = 8u, minY = 0u, maxX = 2u, maxY = 4u)
+        assertFailsWith<FragmentColorException> { pass.setViewport(reversed) }
+        assertFailsWith<FragmentColorException> { TextureRegion.from(reversed) }
         pass.setViewport(listOf(0u, 0u, 4u, 4u))
         pass.setClearColor(floatArrayOf(0.1f, 0.2f, 0.3f))
         pass.setClearColor(doubleArrayOf(0.1, 0.2, 0.3, 1.0))
@@ -363,18 +367,24 @@ class Healthcheck : ExampleCase() {
             @fragment fn main() -> @location(0) vec4<f32> { return vec4f(1., 0., 0., 1.); }
             """.trimIndent()
 
+        val corners = listOf(floatArrayOf(0f, 0f), floatArrayOf(1f, 0f), floatArrayOf(0f, 1f))
         val vertices = Mesh()
-        vertices.addVertex(Vertex(floatArrayOf(0f, 0f)).set("id", 7).set("cell", intArrayOf(-1, 2)))
+        for (corner in corners) {
+            vertices.addVertex(Vertex(corner).set("id", 7).set("cell", intArrayOf(-1, 2)))
+        }
         Shader(source).addMesh(vertices)
 
         val instanced = Mesh()
-        instanced.addVertex(Vertex(floatArrayOf(0f, 0f)).set("cell", intArrayOf(-1, 2)))
+        for (corner in corners) {
+            instanced.addVertex(Vertex(corner).set("cell", intArrayOf(-1, 2)))
+        }
         instanced.addInstance(mapOf("id" to listOf(7)))
         Shader(source).addMesh(instanced)
 
         val negative = Mesh()
         negative.addVertex(Vertex(floatArrayOf(0f, 0f)).set("id", 7).set("cell", intArrayOf(0, 0)))
         negative.addVertex(Vertex(floatArrayOf(1f, 0f)).set("id", -1).set("cell", intArrayOf(0, 0)))
+        negative.addVertex(Vertex(floatArrayOf(0f, 1f)).set("id", 7).set("cell", intArrayOf(0, 0)))
         val error = assertFailsWith<FragmentColorException> { Shader(source).addMesh(negative) }
         assertTrue(error.message.orEmpty().contains("expected u32, got -1 at vertex 1"), error.message)
 

@@ -1,5 +1,6 @@
 #![cfg(wasm)]
 
+use crate::error::{ErrorClass, WebError};
 use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -50,7 +51,7 @@ impl Model {
             unchecked_param_type = "number[] | Float32Array | (number[] | Float32Array)[]"
         )]
         matrix: &JsValue,
-    ) -> Result<(), JsError> {
+    ) -> Result<(), WebError> {
         self.set_transform(read_matrix(matrix)?);
         Ok(())
     }
@@ -60,7 +61,7 @@ impl Model {
     pub fn translate_js(
         &self,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] offset: &JsValue,
-    ) -> Result<(), JsError> {
+    ) -> Result<(), WebError> {
         let arr = read_vector::<3>(offset, "Model.translate")?;
         self.translate(arr);
         Ok(())
@@ -72,7 +73,7 @@ impl Model {
         &self,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] axis: &JsValue,
         radians: f32,
-    ) -> Result<(), JsError> {
+    ) -> Result<(), WebError> {
         let arr = read_vector::<3>(axis, "Model.rotate: axis")?;
         self.rotate(arr, radians);
         Ok(())
@@ -83,7 +84,7 @@ impl Model {
     pub fn scale_js(
         &self,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] factor: &JsValue,
-    ) -> Result<(), JsError> {
+    ) -> Result<(), WebError> {
         let arr = read_vector::<3>(factor, "Model.scale")?;
         self.scale(arr);
         Ok(())
@@ -111,7 +112,7 @@ impl Camera {
         aspect: f32,
         near: f32,
         far: f32,
-    ) -> Result<Camera, JsError> {
+    ) -> Result<Camera, WebError> {
         Ok(Camera::perspective(fovy_radians, aspect, near, far)?)
     }
 
@@ -124,7 +125,7 @@ impl Camera {
         top: f32,
         near: f32,
         far: f32,
-    ) -> Result<Camera, JsError> {
+    ) -> Result<Camera, WebError> {
         Ok(Camera::orthographic(left, right, bottom, top, near, far)?)
     }
 
@@ -135,7 +136,7 @@ impl Camera {
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] position: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] target: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] up: &JsValue,
-    ) -> Result<Camera, JsError> {
+    ) -> Result<Camera, WebError> {
         let pos = read_vector::<3>(position, "Camera.lookAt: position")?;
         let target = read_vector::<3>(target, "Camera.lookAt: target")?;
         let up = read_vector::<3>(up, "Camera.lookAt: up")?;
@@ -144,7 +145,7 @@ impl Camera {
 
     #[wasm_bindgen(js_name = "setAspect")]
     #[lsp_doc("docs/api/scene/camera/set_aspect.md")]
-    pub fn set_aspect_js(&self, aspect: f32) -> Result<Camera, JsError> {
+    pub fn set_aspect_js(&self, aspect: f32) -> Result<Camera, WebError> {
         Ok(self.set_aspect(aspect)?)
     }
 
@@ -177,7 +178,7 @@ impl Light {
     pub fn directional_js(
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] direction: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] color: &JsValue,
-    ) -> Result<Light, JsError> {
+    ) -> Result<Light, WebError> {
         let direction = read_vector::<3>(direction, "Light.directional: direction")?;
         let color = read_vector::<3>(color, "Light.directional: color")?;
         Ok(Light::directional(direction, color))
@@ -188,7 +189,7 @@ impl Light {
     pub fn point_js(
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] position: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] color: &JsValue,
-    ) -> Result<Light, JsError> {
+    ) -> Result<Light, WebError> {
         let position = read_vector::<3>(position, "Light.point: position")?;
         let color = read_vector::<3>(color, "Light.point: color")?;
         Ok(Light::point(position, color))
@@ -200,7 +201,7 @@ impl Light {
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] position: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] direction: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] color: &JsValue,
-    ) -> Result<Light, JsError> {
+    ) -> Result<Light, WebError> {
         let position = read_vector::<3>(position, "Light.spot: position")?;
         let direction = read_vector::<3>(direction, "Light.spot: direction")?;
         let color = read_vector::<3>(color, "Light.spot: color")?;
@@ -264,7 +265,7 @@ impl Light {
     pub fn set_color_js(
         &self,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] color: &JsValue,
-    ) -> Result<Light, JsError> {
+    ) -> Result<Light, WebError> {
         let color = read_vector::<3>(color, "Light.setColor")?;
         Ok(self.set_color(color))
     }
@@ -280,10 +281,9 @@ impl Light {
     pub fn set_position_js(
         &self,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] position: &JsValue,
-    ) -> Result<Light, JsError> {
+    ) -> Result<Light, WebError> {
         let position = read_vector::<3>(position, "Light.setPosition")?;
-        self.set_position(position)
-            .map_err(|e| JsError::new(&e.to_string()))
+        Ok(self.set_position(position)?)
     }
 
     #[wasm_bindgen(js_name = "setDirection")]
@@ -291,17 +291,15 @@ impl Light {
     pub fn set_direction_js(
         &self,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] direction: &JsValue,
-    ) -> Result<Light, JsError> {
+    ) -> Result<Light, WebError> {
         let direction = read_vector::<3>(direction, "Light.setDirection")?;
-        self.set_direction(direction)
-            .map_err(|e| JsError::new(&e.to_string()))
+        Ok(self.set_direction(direction)?)
     }
 
     #[wasm_bindgen(js_name = "setRange")]
     #[lsp_doc("docs/api/scene/light/set_range.md")]
-    pub fn set_range_js(&self, value: f32) -> Result<Light, JsError> {
-        self.set_range(value)
-            .map_err(|e| JsError::new(&e.to_string()))
+    pub fn set_range_js(&self, value: f32) -> Result<Light, WebError> {
+        Ok(self.set_range(value)?)
     }
 
     #[wasm_bindgen(js_name = "setConeAngles")]
@@ -310,9 +308,8 @@ impl Light {
         &self,
         inner_radians: f32,
         outer_radians: f32,
-    ) -> Result<Light, JsError> {
-        self.set_cone_angles(inner_radians, outer_radians)
-            .map_err(|e| JsError::new(&e.to_string()))
+    ) -> Result<Light, WebError> {
+        Ok(self.set_cone_angles(inner_radians, outer_radians)?)
     }
 }
 
@@ -333,13 +330,13 @@ impl Scene {
         #[wasm_bindgen(unchecked_param_type = "ArrayBuffer | ArrayBufferView")] source: &JsValue,
         #[wasm_bindgen(unchecked_optional_param_type = "{ cameras?: boolean; lights?: boolean }")]
         options: Option<JsValue>,
-    ) -> Result<Scene, JsError> {
+    ) -> Result<Scene, WebError> {
         let source = if let Some(bytes) = read_bytes(source) {
             SceneSource::gltf(bytes)
         } else if let Some(path) = source.as_string() {
             SceneSource::gltf(path)
         } else {
-            return Err(JsError::new(
+            return Err(WebError::type_error(
                 "Scene.load: expected the bytes of a .glb file, as an ArrayBuffer or a typed array",
             ));
         };
@@ -355,7 +352,7 @@ impl Scene {
     pub fn add_js(
         &self,
         #[wasm_bindgen(unchecked_param_type = "Model | Camera | Light")] object: &JsValue,
-    ) -> Result<Scene, JsError> {
+    ) -> Result<Scene, WebError> {
         if let Ok(model) = Model::try_from(object) {
             self.add(&model)?;
         } else if let Ok(camera) = Camera::try_from(object) {
@@ -363,7 +360,7 @@ impl Scene {
         } else if let Ok(light) = Light::try_from(object) {
             self.add(&light)?;
         } else {
-            return Err(JsError::new(
+            return Err(WebError::type_error(
                 "Scene.add: expected a Model, Camera, or Light",
             ));
         }
@@ -384,7 +381,7 @@ impl Scene {
 
     #[wasm_bindgen(js_name = "getPass")]
     #[lsp_doc("docs/api/scene/scene/get_pass.md")]
-    pub fn get_pass_js(&self, index: f64) -> Result<Option<Pass>, JsError> {
+    pub fn get_pass_js(&self, index: f64) -> Result<Option<Pass>, WebError> {
         let index = read_unsigned(index, "Scene.getPass: index")?;
         Ok(self.get_pass(index as usize))
     }
@@ -409,13 +406,13 @@ impl Scene {
         &self,
         #[wasm_bindgen(unchecked_param_type = "number | string")] target: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "Model | Camera | Light")] object: &JsValue,
-    ) -> Result<Scene, JsError> {
+    ) -> Result<Scene, WebError> {
         let target = if let Some(index) = target.as_f64() {
             crate::scene::PassRef::Index(read_unsigned(index, "Scene.addTo: index")? as usize)
         } else if let Some(name) = target.as_string() {
             crate::scene::PassRef::Name(name)
         } else {
-            return Err(JsError::new(
+            return Err(WebError::type_error(
                 "Scene.addTo: target must be an index or a name",
             ));
         };
@@ -426,7 +423,7 @@ impl Scene {
         } else if let Ok(light) = Light::try_from(object) {
             self.add_to(target, &light)?;
         } else {
-            return Err(JsError::new(
+            return Err(WebError::type_error(
                 "Scene.addTo: expected a Model, Camera, or Light",
             ));
         }
@@ -438,7 +435,7 @@ impl Scene {
     pub fn set_passes_js(
         &self,
         #[wasm_bindgen(unchecked_param_type = "Pass[]")] passes: &JsValue,
-    ) -> Result<(), JsError> {
+    ) -> Result<(), WebError> {
         self.set_passes(read_passes(passes)?);
         Ok(())
     }
@@ -478,7 +475,7 @@ impl Scene {
     pub fn ambient_js(
         &self,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] color: &JsValue,
-    ) -> Result<Scene, JsError> {
+    ) -> Result<Scene, WebError> {
         let color = read_vector::<3>(color, "Scene.ambient")?;
         Ok(self.ambient(color).clone())
     }
@@ -510,7 +507,7 @@ crate::impl_js_bridge!(Camera, crate::PassError);
 
 /// Reads a column-major 4x4 matrix: 16 numbers, or four columns of four, each list an array
 /// or a `Float32Array` as a float vector is. Any other list, or another count, throws naming the call.
-fn read_matrix(value: &JsValue) -> Result<[[f32; 4]; 4], JsError> {
+fn read_matrix(value: &JsValue) -> Result<[[f32; 4]; 4], WebError> {
     const LABEL: &str = "Model.setTransform";
     let columns = match value.dyn_ref::<js_sys::Array>() {
         Some(array) if array.length() > 0 && array.iter().all(|column| column.is_object()) => {
@@ -519,10 +516,13 @@ fn read_matrix(value: &JsValue) -> Result<[[f32; 4]; 4], JsError> {
         _ => return read_flat_matrix(value, LABEL),
     };
     if columns.len() != 4 {
-        return Err(JsError::new(&format!(
-            "{LABEL} takes 4 columns of 4 numbers, got {} columns",
-            columns.len()
-        )));
+        return Err(WebError::new(
+            ErrorClass::InvalidInput,
+            &format!(
+                "{LABEL} takes 4 columns of 4 numbers, got {} columns",
+                columns.len()
+            ),
+        ));
     }
     let mut matrix = [[0.0; 4]; 4];
     for (index, (column, slot)) in columns.iter().zip(matrix.iter_mut()).enumerate() {
@@ -531,10 +531,10 @@ fn read_matrix(value: &JsValue) -> Result<[[f32; 4]; 4], JsError> {
         *slot = match <[f64; 4]>::try_from(numbers.as_slice()) {
             Ok(column) => column.map(|number| number as f32),
             Err(_) => {
-                return Err(JsError::new(&format!(
-                    "{label} takes 4 numbers, got {}",
-                    numbers.len()
-                )));
+                return Err(WebError::new(
+                    ErrorClass::InvalidInput,
+                    &format!("{label} takes 4 numbers, got {}", numbers.len()),
+                ));
             }
         };
     }
@@ -542,46 +542,54 @@ fn read_matrix(value: &JsValue) -> Result<[[f32; 4]; 4], JsError> {
 }
 
 /// A matrix of 16 numbers, column after column.
-fn read_flat_matrix(value: &JsValue, label: &str) -> Result<[[f32; 4]; 4], JsError> {
+fn read_flat_matrix(value: &JsValue, label: &str) -> Result<[[f32; 4]; 4], WebError> {
     let numbers = read_vector_items(value, label)?;
     match <[f64; 16]>::try_from(numbers.as_slice()) {
         Ok(flat) => Ok(std::array::from_fn(|column| {
             std::array::from_fn(|row| flat[column * 4 + row] as f32)
         })),
-        Err(_) => Err(JsError::new(&format!(
-            "{label} takes 16 numbers or 4 columns of 4 numbers, got {} numbers",
-            numbers.len()
-        ))),
+        Err(_) => Err(WebError::new(
+            ErrorClass::InvalidInput,
+            &format!(
+                "{label} takes 16 numbers or 4 columns of 4 numbers, got {} numbers",
+                numbers.len()
+            ),
+        )),
     }
 }
 
 /// Reads one boolean flag of the `Scene.load` options. A missing flag is `true`.
-fn read_flag(options: Option<&JsValue>, name: &str) -> Result<bool, JsError> {
+fn read_flag(options: Option<&JsValue>, name: &str) -> Result<bool, WebError> {
     let Some(options) = options.filter(|options| !options.is_undefined() && !options.is_null())
     else {
         return Ok(true);
     };
     if !options.is_object() {
-        return Err(JsError::new("Scene.load: options must be an object"));
+        return Err(WebError::type_error(
+            "Scene.load: options must be an object",
+        ));
     }
     match js_sys::Reflect::get(options, &name.into()) {
         Ok(value) if value.is_undefined() => Ok(true),
-        Ok(value) => value
-            .as_bool()
-            .ok_or_else(|| JsError::new(&format!("Scene.load: options.{name} must be a boolean"))),
+        Ok(value) => value.as_bool().ok_or_else(|| {
+            WebError::type_error(&format!("Scene.load: options.{name} must be a boolean"))
+        }),
         Err(_) => Ok(true),
     }
 }
 
 /// Reads an array of passes. Each item is cloned through its handle,
 /// so the caller's `Pass` objects stay usable afterwards.
-fn read_passes(value: &JsValue) -> Result<Vec<Pass>, JsError> {
+fn read_passes(value: &JsValue) -> Result<Vec<Pass>, WebError> {
     let Some(array) = value.dyn_ref::<js_sys::Array>() else {
-        return Err(JsError::new("Scene.setPasses: expected an array of Pass"));
+        return Err(WebError::type_error(
+            "Scene.setPasses: expected an array of Pass",
+        ));
     };
     let read = |(index, item): (usize, JsValue)| {
-        Pass::try_from(&item)
-            .map_err(|_| JsError::new(&format!("Scene.setPasses: item {index} is not a Pass")))
+        Pass::try_from(&item).map_err(|_| {
+            WebError::type_error(&format!("Scene.setPasses: item {index} is not a Pass"))
+        })
     };
     array.iter().enumerate().map(read).collect()
 }

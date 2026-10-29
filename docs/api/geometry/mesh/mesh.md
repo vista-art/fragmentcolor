@@ -20,8 +20,10 @@ or instance added after the attach holds every attribute the shader reads, or
 `MeshError::InvalidInstance` naming the attribute and the item. An attribute
 no attached shader reads can be left out, and it uploads as zeros: a shader
 that lets go of the mesh, through `Shader.remove_mesh`, `Shader.clear_meshes`
-or by dropping, takes what it reads along. The types a shader gave the
-attributes stay for as long as the mesh lives.
+or by dropping, takes what it reads along. `Renderer.render(mesh)` draws with
+a shader of its own that checks the mesh again whenever it changes, so it adds
+nothing to that list. The types a shader gave the attributes stay for as long as the
+mesh lives.
 
 A mesh draws with every `Renderer` that renders it. Each one uploads buffers
 of its own from the mesh's vertices, indices and instances.

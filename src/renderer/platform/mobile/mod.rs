@@ -25,12 +25,13 @@ use lsp_doc::lsp_doc;
 use crate::MobileTextureTarget;
 use crate::{Renderer, Size};
 
-/// Mobile-facing error type. Flattens every internal error to its `Display`
-/// representation so Swift/Kotlin callers get a single typed error to match on.
-/// A GPU error keeps its kind, its step's label and the device's own detail apart,
-/// and a shader the device refuses keeps the fields of its refusal.
-/// The exported `Display` gives Swift's `description` and `localizedDescription`,
-/// and Kotlin's `toString()`, the full text of every case.
+/// Mobile-facing error type, one typed error for Swift and Kotlin to match on.
+///
+/// Most internal errors flatten to their `Display` text. A GPU error keeps its kind,
+/// its step's label and the device's own detail apart, a shader the device refuses
+/// keeps the fields of its refusal, and a hidden window's frame is `Occluded`, so a
+/// render loop can skip it. The exported `Display` gives Swift's `description` and
+/// `localizedDescription`, and Kotlin's `toString()`, the full text of every case.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 #[uniffi::export(Display)]
 pub enum FragmentColorError {
@@ -63,6 +64,8 @@ pub enum FragmentColorError {
     },
     #[error("the shader has no {stage} entry point, which its pass runs")]
     Entry { stage: String },
+    #[error("Surface error: failed to acquire frame: surface is occluded")]
+    Occluded,
 }
 
 impl FragmentColorError {
@@ -121,6 +124,9 @@ impl From<crate::RendererError> for FragmentColorError {
                 label,
                 detail,
             },
+            crate::RendererError::SurfaceError(crate::target::SurfaceError::Occluded) => {
+                FragmentColorError::Occluded
+            }
             e => FragmentColorError::from_refusal(e),
         }
     }

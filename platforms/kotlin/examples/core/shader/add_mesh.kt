@@ -9,7 +9,7 @@ val shader = Shader("""
 """)
 
 val mesh = Mesh()
-mesh.addVertex(listOf(0.0f, 0.0f, 0.0f))
+mesh.addVertices(listOf(listOf(-0.5f, -0.5f, 0.0f), listOf(0.5f, -0.5f, 0.0f), listOf(0.0f, 0.5f, 0.0f)))
 
 // Attach mesh to this shader (errors if incompatible)
 shader.addMesh(mesh)

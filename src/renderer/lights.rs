@@ -641,7 +641,7 @@ pub(crate) struct BinningPipeline {
 /// The binning module: the light types and constants, then the binning pass.
 fn binning_module() -> Result<naga::Module, crate::ShaderError> {
     let source = format!("{}\n{}", crate::material::LIGHT, BINNING);
-    Ok(naga::front::wgsl::parse_str(&source)?)
+    crate::shader::parse_wgsl(&source)
 }
 
 impl BinningPipeline {

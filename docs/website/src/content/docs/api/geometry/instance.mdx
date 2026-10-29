@@ -39,7 +39,11 @@ code={`
 use fragmentcolor::mesh::{Instance, Mesh};
 
 let mesh = Mesh::new();
-mesh.add_vertex([0.0, 0.0]);
+mesh.add_vertices([
+    [-0.5, -0.5],
+    [0.5, -0.5],
+    [0.0, 0.5],
+]);
 
 let instance = Instance::new().set("offset", [0.5, 0.0]);
 mesh.add_instance(instance);
@@ -55,7 +59,7 @@ code={`
 import { Instance, Mesh } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex([0.0, 0.0]);
+mesh.addVertices([ [-0.5, -0.5], [0.5, -0.5], [0.0, 0.5], ]);
 
 const instance = new Instance().set("offset", [0.5, 0.0]);
 mesh.addInstance(instance);
@@ -71,7 +75,11 @@ code={`
 from fragmentcolor import Instance, Mesh
 
 mesh = Mesh()
-mesh.add_vertex([0.0, 0.0])
+mesh.add_vertices([
+    [-0.5, -0.5],
+    [0.5, -0.5],
+    [0.0, 0.5],
+])
 
 instance = Instance().set("offset", [0.5, 0.0])
 mesh.add_instance(instance)
@@ -87,7 +95,11 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertex([0.0, 0.0])
+try mesh.addVertices([
+    [-0.5, -0.5],
+    [0.5, -0.5],
+    [0.0, 0.5],
+])
 
 let instance = try Instance().set("offset", [0.5, 0.0])
 try mesh.addInstance(instance)
@@ -103,7 +115,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex(listOf(0.0f, 0.0f))
+mesh.addVertices(listOf(listOf(-0.5f, -0.5f), listOf(0.5f, -0.5f), listOf(0.0f, 0.5f)))
 
 val instance = Instance().set("offset", listOf(0.5f, 0.0f))
 mesh.addInstance(instance)
@@ -231,7 +243,11 @@ let shader = Shader::new(r#"
 "#)?;
 
 let mesh = Mesh::new();
-mesh.add_vertex([0.0, 0.0]);
+mesh.add_vertices([
+    [-0.5, -0.5],
+    [0.5, -0.5],
+    [0.0, 0.5],
+]);
 
 let instance = Instance::new()
     .set("offset", [0.5, 0.0])
@@ -243,7 +259,7 @@ shader.add_mesh(&mesh)?;
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 22-23}"
+lang="rust" meta="collapse={1-1, 26-27}"
 />
 
 </TabItem>
@@ -264,7 +280,7 @@ const shader = new Shader(\`
 \`);
 
 const mesh = new Mesh();
-mesh.addVertex([0.0, 0.0]);
+mesh.addVertices([ [-0.5, -0.5], [0.5, -0.5], [0.0, 0.5], ]);
 
 const instance = new Instance().set("offset", [0.5, 0.0]).set("layer", 2);
 mesh.addInstance(instance);
@@ -292,7 +308,11 @@ shader = Shader("""
 """)
 
 mesh = Mesh()
-mesh.add_vertex([0.0, 0.0])
+mesh.add_vertices([
+    [-0.5, -0.5],
+    [0.5, -0.5],
+    [0.0, 0.5],
+])
 
 instance = Instance().set("offset", [0.5, 0.0]).set("layer", 2)
 mesh.add_instance(instance)
@@ -320,7 +340,11 @@ let shader = try Shader("""
 """)
 
 let mesh = Mesh()
-try mesh.addVertex([0.0, 0.0])
+try mesh.addVertices([
+    [-0.5, -0.5],
+    [0.5, -0.5],
+    [0.0, 0.5],
+])
 
 let instance = try Instance().set("offset", [0.5, 0.0]).set("layer", 2)
 try mesh.addInstance(instance)
@@ -348,7 +372,7 @@ val shader = Shader("""
 """)
 
 val mesh = Mesh()
-mesh.addVertex(listOf(0.0f, 0.0f))
+mesh.addVertices(listOf(listOf(-0.5f, -0.5f), listOf(0.5f, -0.5f), listOf(0.0f, 0.5f)))
 
 val instance = Instance().set("offset", listOf(0.5f, 0.0f)).set("layer", 2)
 mesh.addInstance(instance)

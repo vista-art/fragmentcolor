@@ -12,7 +12,7 @@ pub enum TextureError {
     /// `image::load_from_memory` / `image::open` for callers that want to
     /// log "this tile is corrupt" specifically.
     #[error("Image decode failed: {0}")]
-    MalformedImageError(#[from] image::ImageError),
+    MalformedImageError(String),
     /// The requested target format isn't supported by the CPU mipmap
     /// dispatcher. Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`,
     /// `Bgra8Unorm`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`,
@@ -37,22 +37,21 @@ pub enum TextureError {
     FixedSize,
     /// The active device doesn't have the wgpu feature required to use the
     /// requested format. Common case: `R16Unorm` (and its Rg/Rgba/Snorm
-    /// cousins) need [`wgpu::Features::TEXTURE_FORMAT_16BIT_NORM`].
+    /// cousins) need `TEXTURE_FORMAT_16BIT_NORM`.
     /// FragmentColor requests a fixed set of features at device creation,
     /// each one the adapter advertises (see `request_device` in
     /// `renderer/platform/all.rs`). The texture format features in that set,
     /// such as `TEXTURE_FORMAT_16BIT_NORM` and the compressed formats, reach
     /// this error only on a device that doesn't advertise them. Surfaces capability constraints at the API boundary
     /// instead of letting them detonate as runtime validation cascades on
-    /// first use. The `format` field carries the underlying
-    /// `wgpu::TextureFormat` so the message stays accurate for variants
-    /// (e.g. `R16Snorm`) that don't have a corresponding `crate::TextureFormat`.
+    /// first use. `format` names the format, such as `R16Snorm`, which has no
+    /// `TextureFormat`, and `missing_feature` names the features it needs.
     #[error(
-        "Texture format {format:?} is not supported by the active device for the requested usage (missing wgpu feature {missing_feature:?}). The adapter does not advertise this feature; pick a different format or run on a device that supports it."
+        "Texture format {format} is not supported by the active device for the requested usage (missing wgpu feature {missing_feature}). The adapter does not advertise this feature; pick a different format or run on a device that supports it."
     )]
     UnsupportedFormatForUsage {
-        format: wgpu::TextureFormat,
-        missing_feature: wgpu::Features,
+        format: String,
+        missing_feature: String,
     },
     #[error("Failed to create texture: {0}")]
     CreateTextureError(String),
@@ -80,26 +79,32 @@ impl From<pyo3::PyErr> for TextureError {
     }
 }
 
-/// Four texture errors raise their own subclass of `FragmentColorError`, so Python can tell them apart.
+/// Four texture errors take their own class of `FragmentColorError`, so a caller can tell them apart.
+#[cfg(any(python, wasm, test))]
+impl crate::error::Classify for TextureError {
+    fn classify(&self) -> crate::error::ErrorClass {
+        use crate::error::ErrorClass;
+        match self {
+            TextureError::InvalidInput(_) => ErrorClass::InvalidInput,
+            TextureError::UnsupportedMipmapFormat { .. } => ErrorClass::UnsupportedMipmapFormat,
+            TextureError::MalformedImageError(_) => ErrorClass::MalformedImage,
+            TextureError::DeviceError { .. } => ErrorClass::Device,
+            _ => ErrorClass::Base,
+        }
+    }
+}
+
 #[cfg(python)]
 impl From<TextureError> for pyo3::PyErr {
     fn from(e: TextureError) -> Self {
-        use crate::error::{
-            DeviceError, InvalidInputError, MalformedImageError, UnsupportedMipmapFormatError,
-        };
         let message = e.to_string();
         match e {
-            TextureError::InvalidInput(_) => InvalidInputError::new_err(message),
-            TextureError::UnsupportedMipmapFormat { .. } => {
-                UnsupportedMipmapFormatError::new_err(message)
-            }
-            TextureError::MalformedImageError(_) => MalformedImageError::new_err(message),
             TextureError::DeviceError {
                 kind,
                 label,
                 detail,
-            } => DeviceError::raise(kind, label, detail, message),
-            _ => crate::PyFragmentColorError::new_err(message),
+            } => crate::error::DeviceError::raise(kind, label, detail, message),
+            other => crate::error::raise_error(&other),
         }
     }
 }
@@ -118,18 +123,19 @@ impl From<wasm_bindgen::JsValue> for TextureError {
     }
 }
 
+/// The JS `Error` a texture error throws, named after its class.
+/// A device error also carries its `kind`, `label` and `detail`.
 #[cfg(wasm)]
-impl TextureError {
-    /// The JS `Error` this error throws. A device error also carries its `kind`, `label` and `detail`.
-    pub(crate) fn into_js(self) -> wasm_bindgen::JsError {
-        let message = self.to_string();
-        match self {
+impl From<TextureError> for crate::error::WebError {
+    fn from(error: TextureError) -> Self {
+        let message = error.to_string();
+        match error {
             TextureError::DeviceError {
                 kind,
                 label,
                 detail,
             } => crate::renderer::error::throw_device(kind, &label, &detail, &message),
-            _ => wasm_bindgen::JsError::new(&message),
+            other => crate::error::WebError::from_error(&other),
         }
     }
 }
@@ -137,8 +143,7 @@ impl TextureError {
 #[cfg(wasm)]
 impl From<TextureError> for wasm_bindgen::JsValue {
     fn from(error: TextureError) -> Self {
-        let error: wasm_bindgen::JsError = error.into_js();
-        error.into()
+        crate::error::WebError::from(error).into()
     }
 }
 

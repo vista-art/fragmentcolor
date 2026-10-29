@@ -1,5 +1,6 @@
 #![cfg(wasm)]
 
+use crate::error::WebError;
 use js_sys::{
     Array, ArrayBuffer, DataView, Float32Array, Int32Array, Object, Reflect, Uint8Array,
     Uint32Array,
@@ -84,15 +85,15 @@ impl Shader {
 
     #[wasm_bindgen(js_name = "removeMeshes")]
     #[lsp_doc("docs/api/core/shader/remove_meshes.md")]
-    pub fn remove_meshes_js(&self, list: &JsValue) -> Result<(), JsError> {
+    pub fn remove_meshes_js(&self, list: &JsValue) -> Result<(), WebError> {
         let arr = js_sys::Array::is_array(list)
             .then(|| js_sys::Array::from(list))
-            .ok_or_else(|| JsError::new("removeMeshes: expected an array of Mesh"))?;
+            .ok_or_else(|| WebError::type_error("removeMeshes: expected an array of Mesh"))?;
         let mut meshes: Vec<crate::mesh::Mesh> = Vec::with_capacity(arr.length() as usize);
         for v in arr.iter() {
             let m: crate::mesh::Mesh = (&v)
                 .try_into()
-                .map_err(|_| JsError::new("removeMeshes: item is not a Mesh"))?;
+                .map_err(|_| WebError::type_error("removeMeshes: item is not a Mesh"))?;
             meshes.push(m);
         }
         for m in meshes.iter() {

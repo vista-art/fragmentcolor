@@ -27,14 +27,24 @@ fun TextureRegion.Companion.from(rect: List<UInt>): TextureRegion {
     )
 }
 
-/** The pixels a [ScreenRegion] covers, at depth 0. */
-fun TextureRegion.Companion.from(region: ScreenRegion): TextureRegion = TextureRegion(
-    originX = region.minX, originY = region.minY, originZ = 0u,
-    sizeWidth = maxOf(region.minX, region.maxX) - minOf(region.minX, region.maxX),
-    sizeHeight = maxOf(region.minY, region.maxY) - minOf(region.minY, region.maxY),
-    sizeDepth = 1u,
-    bytesPerRow = null, rowsPerImage = null,
-)
+/**
+ * The pixels a [ScreenRegion] covers, at depth 0.
+ * Throws [FragmentColorException] for a region whose max isn't past its min, as Swift does.
+ */
+fun TextureRegion.Companion.from(region: ScreenRegion): TextureRegion {
+    if (region.maxX <= region.minX || region.maxY <= region.minY) {
+        throw FragmentColorException.Render(
+            "TextureRegion.from: a region needs each max past its min, got x from ${region.minX} to ${region.maxX} and y from ${region.minY} to ${region.maxY}",
+        )
+    }
+    return TextureRegion(
+        originX = region.minX, originY = region.minY, originZ = 0u,
+        sizeWidth = region.maxX - region.minX,
+        sizeHeight = region.maxY - region.minY,
+        sizeDepth = 1u,
+        bytesPerRow = null, rowsPerImage = null,
+    )
+}
 
 /**
  * Set `bytesPerRow` for source data with row padding.

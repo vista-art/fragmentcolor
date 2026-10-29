@@ -7,7 +7,7 @@ use super::lights::{self, LightPath};
 use super::{PushMode, RenderContext};
 use crate::shader::{PushEntry, StorageEntry, Uniform, UniformData};
 use crate::shader::{
-    create_validator, list_explicit, lower_immediates, name_entries, write_layouts,
+    list_explicit, lower_immediates, name_entries, validate_module, write_layouts,
 };
 use crate::texture::{TextureClass, TextureDim, TextureMeta, TextureScalarKind};
 use crate::{ShaderError, ShaderObject};
@@ -298,7 +298,7 @@ pub(super) fn pick_source(
     let entries = name_entries(&module);
     // Validating costs a pass over the module, so only a module with explicit layouts pays it.
     if !list_explicit(&module)?.is_empty() {
-        let info = create_validator().validate(&module).map_err(Box::new)?;
+        let info = validate_module(&module, None)?;
         if let Some(text) = write_layouts(&module, &info)? {
             let source = wgpu::ShaderSource::Wgsl(Cow::Owned(text));
             return Ok(PipelineSource { source, entries });

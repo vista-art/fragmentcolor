@@ -31,7 +31,11 @@ let shader = Shader::new(r#"
 "#)?;
 
 let mesh = Mesh::new();
-mesh.add_vertex([0.0, 0.0, 0.0]);
+mesh.add_vertices([
+    [-0.5, -0.5, 0.0],
+    [0.5, -0.5, 0.0],
+    [0.0, 0.5, 0.0],
+]);
 
 // Attach mesh to this shader (errors if incompatible)
 shader.add_mesh(&mesh)?;

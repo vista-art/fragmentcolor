@@ -31,8 +31,10 @@ or instance added after the attach holds every attribute the shader reads, or
 `MeshError::InvalidInstance` naming the attribute and the item. An attribute
 no attached shader reads can be left out, and it uploads as zeros: a shader
 that lets go of the mesh, through `Shader.remove_mesh`, `Shader.clear_meshes`
-or by dropping, takes what it reads along. The types a shader gave the
-attributes stay for as long as the mesh lives.
+or by dropping, takes what it reads along. `Renderer.render(mesh)` draws with
+a shader of its own that checks the mesh again whenever it changes, so it adds
+nothing to that list. The types a shader gave the attributes stay for as long as the
+mesh lives.
 
 A mesh draws with every `Renderer` that renders it. Each one uploads buffers
 of its own from the mesh's vertices, indices and instances.
@@ -302,7 +304,9 @@ that lacks an attribute, naming the attribute and the vertex.
 code={`
 use fragmentcolor::mesh::{Mesh};
 let mut m = Mesh::new();
-m.add_vertex([0.0, 0.0]);
+m.add_vertex([0.0, 0.5]);
+m.add_vertex([-0.5, -0.5]);
+m.add_vertex([0.5, -0.5]);
 `}
 lang="rust"
 />
@@ -314,7 +318,9 @@ lang="rust"
 code={`
 import { Mesh } from "fragmentcolor";
 const m = new Mesh();
-m.addVertex([0.0, 0.0]);
+m.addVertex([0.0, 0.5]);
+m.addVertex([-0.5, -0.5]);
+m.addVertex([0.5, -0.5]);
 `}
 lang="js"
 />
@@ -326,7 +332,9 @@ lang="js"
 code={`
 from fragmentcolor import Mesh
 m = Mesh()
-m.add_vertex([0.0, 0.0])
+m.add_vertex([0.0, 0.5])
+m.add_vertex([-0.5, -0.5])
+m.add_vertex([0.5, -0.5])
 `}
 lang="python"
 />
@@ -338,7 +346,9 @@ lang="python"
 code={`
 import FragmentColor
 let m = Mesh()
-try m.addVertex([0.0, 0.0])
+try m.addVertex([0.0, 0.5])
+try m.addVertex([-0.5, -0.5])
+try m.addVertex([0.5, -0.5])
 `}
 lang="swift"
 />
@@ -350,7 +360,9 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val m = Mesh()
-m.addVertex(listOf(0.0f, 0.0f))
+m.addVertex(listOf(0.0f, 0.5f))
+m.addVertex(listOf(-0.5f, -0.5f))
+m.addVertex(listOf(0.5f, -0.5f))
 `}
 lang="kotlin"
 />
@@ -382,6 +394,7 @@ let mut m = Mesh::new();
 m.add_vertices([
   [0.0, 0.0],
   [1.0, 0.0],
+  [0.0, 1.0],
 ]);
 `}
 lang="rust"
@@ -394,7 +407,7 @@ lang="rust"
 code={`
 import { Mesh } from "fragmentcolor";
 const m = new Mesh();
-m.addVertices([ [0.0, 0.0], [1.0, 0.0], ]);
+m.addVertices([ [0.0, 0.0], [1.0, 0.0], [0.0, 1.0], ]);
 `}
 lang="js"
 />
@@ -409,6 +422,7 @@ m = Mesh()
 m.add_vertices([
   [0.0, 0.0],
   [1.0, 0.0],
+  [0.0, 1.0],
 ])
 `}
 lang="python"
@@ -424,6 +438,7 @@ let m = Mesh()
 try m.addVertices([
   [0.0, 0.0],
   [1.0, 0.0],
+  [0.0, 1.0],
 ])
 `}
 lang="swift"
@@ -436,7 +451,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val m = Mesh()
-m.addVertices(listOf(listOf(0.0f, 0.0f), listOf(1.0f, 0.0f)))
+m.addVertices(listOf(listOf(0.0f, 0.0f), listOf(1.0f, 0.0f), listOf(0.0f, 1.0f)))
 `}
 lang="kotlin"
 />
@@ -642,14 +657,19 @@ lang="kotlin"
 
 ### Mesh::clear_instances \{#clear_instances\}
 
-Reset the mesh's instance state to the default (1 draw, no per-instance data).
+Remove the mesh's instances and its instance count override.
 
 Specifically, this:
 - Drops any per-instance attributes added via `add_instance` / `add_instances`.
 - Clears any count override previously set with `set_instance_count`.
 
-After calling, the mesh renders as a single instance unless you populate it
-again or call `set_instance_count`.
+After calling, a shader that reads no instance attributes draws the mesh once,
+unless you add instances again or call `set_instance_count`. A shader that
+reads instance attributes needs instances that hold them, so while it holds
+the mesh, `Renderer.render` returns `MeshError::InvalidInstance` naming the
+attribute until you add them again, or until the shader lets the mesh go
+through `Shader.remove_mesh`, `Shader.clear_meshes` or by dropping.
+`set_instance_count` doesn't stand in for them.
 
 #### Example
 
@@ -662,7 +682,7 @@ use fragmentcolor::mesh::{Mesh, Instance};
 
 let m = Mesh::new();
 m.add_instance(Instance::new().set("tint", [1.0, 0.0, 0.0, 1.0]));
-m.clear_instances(); // back to a single uninstanced draw
+m.clear_instances(); // no instances left
 `}
 lang="rust"
 />
@@ -676,7 +696,7 @@ import { Mesh, Instance } from "fragmentcolor";
 
 const m = new Mesh();
 m.addInstance(new Instance().set("tint", [1.0, 0.0, 0.0, 1.0]));
-m.clearInstances(); // back to a single uninstanced draw
+m.clearInstances(); // no instances left
 `}
 lang="js"
 />
@@ -690,7 +710,7 @@ from fragmentcolor import Mesh, Instance
 
 m = Mesh()
 m.add_instance(Instance().set("tint", [1.0, 0.0, 0.0, 1.0]))
-m.clear_instances() # back to a single uninstanced draw
+m.clear_instances() # no instances left
 `}
 lang="python"
 />
@@ -704,7 +724,7 @@ import FragmentColor
 
 let m = Mesh()
 try m.addInstance(Instance().set("tint", [1.0, 0.0, 0.0, 1.0]))
-m.clearInstances() // back to a single uninstanced draw
+m.clearInstances() // no instances left
 `}
 lang="swift"
 />
@@ -718,7 +738,7 @@ import org.fragmentcolor.*
 
 val m = Mesh()
 m.addInstance(Instance().set("tint", listOf(1.0f, 0.0f, 0.0f, 1.0f)))
-m.clearInstances() // back to a single uninstanced draw
+m.clearInstances() // no instances left
 `}
 lang="kotlin"
 />

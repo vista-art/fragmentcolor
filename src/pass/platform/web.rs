@@ -1,5 +1,6 @@
 #![cfg(wasm)]
 
+use crate::error::WebError;
 use crate::platforms::web::{read_color, read_unsigned};
 use crate::renderer::platform::web::RenderableList;
 use crate::{Pass, Shader, Texture, TextureTarget};
@@ -35,7 +36,7 @@ impl Pass {
             unchecked_param_type = "Shader | Pass | Mesh | Scene | Array<Shader | Pass | Mesh | Scene>"
         )]
         dependencies: &JsValue,
-    ) -> Result<(), JsError> {
+    ) -> Result<(), WebError> {
         let dependencies = RenderableList::read(dependencies, "Pass.require")?;
         Ok(self.require(&dependencies)?)
     }
@@ -54,13 +55,13 @@ impl Pass {
 
     #[wasm_bindgen(js_name = "addShader")]
     #[lsp_doc("docs/api/core/pass/add_shader.md")]
-    pub fn add_shader_js(&self, shader: &Shader) -> Result<(), JsError> {
+    pub fn add_shader_js(&self, shader: &Shader) -> Result<(), WebError> {
         Ok(self.add_shader(shader)?)
     }
 
     #[wasm_bindgen(js_name = "addMesh")]
     #[lsp_doc("docs/api/core/pass/add_mesh.md")]
-    pub fn add_mesh_js(&self, mesh: &crate::mesh::Mesh) -> Result<(), JsError> {
+    pub fn add_mesh_js(&self, mesh: &crate::mesh::Mesh) -> Result<(), WebError> {
         Ok(self.add_mesh(mesh)?)
     }
 
@@ -71,7 +72,7 @@ impl Pass {
     pub fn add_js(
         &self,
         #[wasm_bindgen(unchecked_param_type = "Model | Camera | Light")] object: &JsValue,
-    ) -> Result<Pass, JsError> {
+    ) -> Result<Pass, WebError> {
         if let Ok(model) = crate::Model::try_from(object) {
             self.add(&model)?;
         } else if let Ok(camera) = crate::scene::Camera::try_from(object) {
@@ -79,7 +80,9 @@ impl Pass {
         } else if let Ok(light) = crate::scene::Light::try_from(object) {
             self.add(&light)?;
         } else {
-            return Err(JsError::new("Pass.add: expected a Model, Camera, or Light"));
+            return Err(WebError::type_error(
+                "Pass.add: expected a Model, Camera, or Light",
+            ));
         }
         Ok(self.clone())
     }
@@ -89,13 +92,13 @@ impl Pass {
     pub fn set_clear_color_js(
         &self,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] color: &JsValue,
-    ) -> Result<(), JsError> {
+    ) -> Result<(), WebError> {
         Ok(self.set_clear_color(read_color(color, "Pass.setClearColor")?)?)
     }
 
     #[wasm_bindgen(js_name = "setComputeDispatch")]
     #[lsp_doc("docs/api/core/pass/set_compute_dispatch.md")]
-    pub fn set_compute_dispatch_js(&self, x: f64, y: f64, z: f64) -> Result<(), JsError> {
+    pub fn set_compute_dispatch_js(&self, x: f64, y: f64, z: f64) -> Result<(), WebError> {
         let x = read_unsigned(x, "Pass.setComputeDispatch: x")?;
         let y = read_unsigned(y, "Pass.setComputeDispatch: y")?;
         let z = read_unsigned(z, "Pass.setComputeDispatch: z")?;
@@ -105,38 +108,36 @@ impl Pass {
 
     #[wasm_bindgen(js_name = "setViewport")]
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
-    pub fn set_viewport_js(&self, region: &JsValue) -> Result<(), JsError> {
+    pub fn set_viewport_js(&self, region: &JsValue) -> Result<(), WebError> {
         let region: crate::ScreenRegion = region.try_into()?;
         Ok(self.set_viewport(region)?)
     }
 
     #[wasm_bindgen(js_name = "setTarget")]
     #[lsp_doc("docs/api/core/pass/set_target.md")]
-    pub fn set_target_js(&self, target: &JsValue) -> Result<(), JsError> {
+    pub fn set_target_js(&self, target: &JsValue) -> Result<(), WebError> {
         if let Ok(tt) = TextureTarget::try_from(target) {
             return Ok(self.set_target(&tt)?);
         }
 
         if let Ok(tex) = Texture::try_from(target) {
-            return self
-                .set_target(&tex)
-                .map_err(|e| JsError::new(&format!("{}", e)));
+            return Ok(self.set_target(&tex)?);
         }
-        Err(JsError::new("setTarget: expected TextureTarget or Texture"))
+        Err(WebError::type_error(
+            "setTarget: expected TextureTarget or Texture",
+        ))
     }
 
     #[wasm_bindgen(js_name = "setDepthTarget")]
     #[lsp_doc("docs/api/core/pass/set_depth_target.md")]
-    pub fn set_depth_target_js(&self, target: &JsValue) -> Result<(), JsError> {
+    pub fn set_depth_target_js(&self, target: &JsValue) -> Result<(), WebError> {
         if let Ok(tt) = TextureTarget::try_from(target) {
             return Ok(self.set_depth_target(&tt)?);
         }
         if let Ok(tex) = Texture::try_from(target) {
-            return self
-                .set_depth_target(&tex)
-                .map_err(|e| JsError::new(&format!("{}", e)));
+            return Ok(self.set_depth_target(&tex)?);
         }
-        Err(JsError::new(
+        Err(WebError::type_error(
             "setDepthTarget: expected TextureTarget or Texture",
         ))
     }

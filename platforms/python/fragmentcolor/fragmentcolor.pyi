@@ -373,13 +373,15 @@ class Renderer:
 
         `renderable` can be a `Shader`, a `Pass`, a `Mesh`, a `Scene`, or any iterable of `Pass` (`Vec<Pass>`, `&[Pass]`, `&[&Pass]`). Passes in an iterable are rendered in order.
 
-        A window that is hidden or minimized has no frame to draw on. `render` then returns `RendererError::SurfaceError(SurfaceError::Occluded)`, which Python raises as `OccludedSurfaceError`, a `FragmentColorError`. Skip that frame and draw the next one.
+        A window that is hidden or minimized has no frame to draw on. `render` then returns `RendererError::SurfaceError(SurfaceError::Occluded)`, which Python raises as `OccludedSurfaceError`, a `FragmentColorError`, Swift throws as `FragmentColorError.Occluded` and Kotlin as `FragmentColorException.Occluded`. Skip that frame and draw the next one.
 
-        A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input. The inputs are the `@location` arguments of the vertex entry point and the `@location` members of its struct arguments, and each one reads the mesh attribute of its own name.
+        A shader that reads `@location` vertex inputs needs a mesh. Without one, `render` returns `ShaderError::InvalidKey` naming the input. The inputs are the `@location` arguments of the vertex entry point and the `@location` members of its struct arguments, and each one reads the mesh attribute of its own name. The checks on the shader and its textures come first, so an input past `max_vertex_attributes` returns `RendererError::LimitError` instead.
 
-        Each mesh a shader draws is checked against the device, and a mesh past one of its limits returns `RendererError::LimitError`, as a shader does: an input at a location past `max_vertex_attributes`, a vertex or instance stride past `max_vertex_buffer_array_stride`, and mesh data that needs a buffer past `max_buffer_size`. Its `item` names the input, the stride or the buffer. WebGL2 takes strides up to 255 bytes. A mesh draws with every `Renderer` that renders it, each from buffers of its own.
+        Each mesh a shader draws is checked against the device, and a mesh past one of its limits returns `RendererError::LimitError`, as a shader does: a vertex or instance stride past `max_vertex_buffer_array_stride`, and mesh data that needs a buffer past `max_buffer_size`. Its `item` names the stride or the buffer. WebGL2 takes strides up to 255 bytes. A mesh draws with every `Renderer` that renders it, each from buffers of its own. These checks, and the mesh's own, apply only to the meshes the frame draws: the mesh of a hidden `Model`, or of a `Model` in another pass, isn't checked.
 
-        Before it takes a frame, `render` checks each shader against the device and each texture uniform against its slot, so every language returns these errors from the call that caused them, the web included. A group, binding, binding count, buffer size or workgroup past the device's limits returns `RendererError::LimitError`, a feature the device lacks `RendererError::FeatureError`, a texture uniform that was never set or whose texture its slot can't take `RendererError::BindingError`, and a render shader without its vertex or fragment entry point `RendererError::EntryError`, each with its fields. An unset PBR map slot binds its 1x1 default instead, when the slot takes a 2D float texture. A texture `unregister_texture` removed, or one from another `Renderer`, returns `RendererError::TextureNotFoundError`, in a PBR map slot too. The [Shader](https://fragmentcolor.org/api/core/shader) page lists the checks and each language's form of these errors.
+        `render(mesh)` draws the mesh with a shader of its own, built from its first vertex. That shader reads `position`, and `color` when the first vertex sets it as four numbers, and it checks the mesh again whenever the mesh changed, so it asks nothing of the mesh's other shaders.
+
+        Before it takes a frame, `render` checks each shader against the device and each texture uniform against its slot, so every language returns these errors from the call that caused them, the web included. A group, binding, binding count, buffer size or workgroup past the device's limits, or a vertex input at a location past `max_vertex_attributes`, returns `RendererError::LimitError`, a feature the device lacks `RendererError::FeatureError`, a texture uniform that was never set or whose texture its slot can't take `RendererError::BindingError`, and a render shader without its vertex or fragment entry point `RendererError::EntryError`, each with its fields. An unset PBR map slot binds its 1x1 default instead, when the slot takes a 2D float texture. A texture `unregister_texture` removed, or one from another `Renderer`, returns `RendererError::TextureNotFoundError`, in a PBR map slot too. The [Shader](https://fragmentcolor.org/api/core/shader) page lists the checks and each language's form of these errors.
 
         A `Renderer` draws only into the targets it created. A target from another `Renderer` returns `RendererError::ForeignTarget`, unless every pass is a compute pass, which draws into no target, and a pass target or texture uniform from another `Renderer` returns `RendererError::TextureNotFoundError`. A texture uniform whose `Material` map was set again from a path or bytes is the exception on native, where `render` uploads the new map first and draws it. These come before `render` uploads a queued `Material` map or opens a device, so a refused render changes nothing. A `Renderer` that has opened no device yet returns `RendererError::NoContext` for a target without an owner. Each pass is checked against what it draws into before it records: a [depth target](https://fragmentcolor.org/api/core/pass#set_depth_target) of the color attachment's size and sample count, shader outputs and blending the [target](https://fragmentcolor.org/api/core/pass#set_target)'s format takes, a [viewport](https://fragmentcolor.org/api/core/pass#set_viewport) and a [compute dispatch](https://fragmentcolor.org/api/core/pass#set_compute_dispatch) the device takes, and textures that one pass doesn't both write and read. A render pass can't bind a texture it draws into, and no pass can read a texture one of its bindings writes, so a compute dispatch that samples a texture and stores into it returns `PassError::TextureConflict` too.
 
@@ -829,7 +831,11 @@ class Shader:
         \"\"\")
 
         mesh = Mesh()
-        mesh.add_vertex([0.0, 0.0, 0.0])
+        mesh.add_vertices([
+            [-0.5, -0.5, 0.0],
+            [0.5, -0.5, 0.0],
+            [0.0, 0.5, 0.0],
+        ])
 
         # Attach mesh to this shader (errors if incompatible)
         shader.add_mesh(mesh)
@@ -865,7 +871,11 @@ class Shader:
         \"\"\")
 
         mesh = Mesh()
-        mesh.add_vertex([0.0, 0.0])
+        mesh.add_vertices([
+            [-0.5, -0.5],
+            [0.5, -0.5],
+            [0.0, 0.5],
+        ])
         shader.add_mesh(mesh)
 
         # Detach the mesh
@@ -895,9 +905,17 @@ class Shader:
         \"\"\")
 
         m1 = Mesh()
-        m1.add_vertex([0.0, 0.0])
+        m1.add_vertices([
+            [-0.5, -0.5],
+            [0.0, -0.5],
+            [-0.5, 0.0],
+        ])
         m2 = Mesh()
-        m2.add_vertex([0.5, 0.0])
+        m2.add_vertices([
+            [0.0, 0.0],
+            [0.5, 0.0],
+            [0.0, 0.5],
+        ])
 
         shader.add_mesh(m1)
         shader.add_mesh(m2)
@@ -929,7 +947,11 @@ class Shader:
         \"\"\")
 
         mesh = Mesh()
-        mesh.add_vertex([0.0, 0.0])
+        mesh.add_vertices([
+            [-0.5, -0.5],
+            [0.5, -0.5],
+            [0.0, 0.5],
+        ])
         shader.add_mesh(mesh)
 
         # Clear all
@@ -1090,7 +1112,11 @@ class Shader:
         from fragmentcolor import Mesh, Shader
 
         mesh = Mesh()
-        mesh.add_vertex([0.0, 0.0, 0.0])
+        mesh.add_vertices([
+            [-0.5, -0.5, 0.0],
+            [0.5, -0.5, 0.0],
+            [0.0, 0.5, 0.0],
+        ])
         shader = Shader.from_mesh(mesh)
         ```
         """
@@ -1209,10 +1235,8 @@ class Pass:
         (RenderDoc, Xcode GPU capture) show for the pass.
 
         Names aren't required to be unique. If two passes share a name, name lookup
-        returns the first one. `require` tells dependencies apart by name, though: a
-        pass can't require two passes with the same name
-        (`PassError::DuplicateDependency`), or a pass with its own name
-        (`PassError::SelfDependency`).
+        returns the first one. `require` tells passes apart by identity, so a pass can
+        require two passes of one name, or another pass of its own name.
 
         Example:
 
@@ -1295,7 +1319,11 @@ class Pass:
         from fragmentcolor import Pass, Shader, Mesh
 
         mesh = Mesh()
-        mesh.add_vertex([0.0, 0.0])
+        mesh.add_vertices([
+            [-0.5, -0.5],
+            [0.5, -0.5],
+            [0.0, 0.5],
+        ])
 
         shader = Shader(\"\"\"
           struct VOut { @builtin(position) pos: vec4<f32> };
@@ -1355,9 +1383,11 @@ class Pass:
         renderer = Renderer()
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         model = Model(mesh, Material.pbr())
 
         camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).look_at([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
@@ -1408,7 +1438,7 @@ class Pass:
 
         The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly. Pixels count from the top-left corner of the target.
 
-        A width or height of 0 is an error that leaves the pass's viewport as it was, and so is a far edge past `u32::MAX`, the largest pixel coordinate. To draw on the whole target, leave the viewport unset.
+        A width or height of 0 is an error that leaves the pass's viewport as it was, and so is a far edge past `u32::MAX`, the largest pixel coordinate. A region whose max lies before its min, which a region built field by field or a JavaScript `{ minX, minY, maxX, maxY }` object can hold, returns `ScreenRegionError::Reversed` and is never swapped back. To draw on the whole target, leave the viewport unset.
 
         A region that reaches past the target keeps its size and loses the part outside, and a region wholly outside the target draws nothing. When the pass has its own target from `set_target`, the region is measured against that target. A side past the device's largest 2D texture, `max_texture_dimension_2d`, makes `render` return `PassError::ViewportLimit`, which names the size and the limit, before it takes a frame.
 
@@ -1552,7 +1582,7 @@ class Pass:
 
         - Ok(()) on success
         - Err(PassError::SelfDependency) if a pass requires itself
-        - Err(PassError::DuplicateDependency(name)) if the dependency is already present
+        - Err(PassError::DuplicateDependency(name)) if the same pass is already a dependency
         - Err(PassError::DependencyCycle { via }) if adding the dependency would create a cycle
 
         ## Description
@@ -1562,6 +1592,7 @@ class Pass:
         This allows you to build DAG render graphs directly from passes.
         The graph is validated at build time and does not perform cycle checks at render time.
 
+        - A pass is the same pass by identity, never by name, so two passes that share a name are two dependencies.
         - Dependencies are stored in insertion order.
         - Traversal is dependencies-first, then the current pass, with deduplication.
         - Creation order of passes does not matter.
@@ -1666,8 +1697,10 @@ class Mesh:
     `MeshError::InvalidInstance` naming the attribute and the item. An attribute
     no attached shader reads can be left out, and it uploads as zeros: a shader
     that lets go of the mesh, through `Shader.remove_mesh`, `Shader.clear_meshes`
-    or by dropping, takes what it reads along. The types a shader gave the
-    attributes stay for as long as the mesh lives.
+    or by dropping, takes what it reads along. `Renderer.render(mesh)` draws with
+    a shader of its own that checks the mesh again whenever it changes, so it adds
+    nothing to that list. The types a shader gave the attributes stay for as long as the
+    mesh lives.
 
     A mesh draws with every `Renderer` that renders it. Each one uploads buffers
     of its own from the mesh's vertices, indices and instances.
@@ -1729,7 +1762,9 @@ class Mesh:
         ```python
         from fragmentcolor import Mesh
         m = Mesh()
-        m.add_vertex([0.0, 0.0])
+        m.add_vertex([0.0, 0.5])
+        m.add_vertex([-0.5, -0.5])
+        m.add_vertex([0.5, -0.5])
         ```
         """
     def add_vertices(self, vertices: Sequence[float | numpy.floating[Any] | numpy.integer[Any] | Vertex | npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat] | tuple[npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]] | tuple[npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat], npt.NDArray[numpy.floating[Any] | numpy.signedinteger[Any] | numpy.uint16 | numpy.uint32 | numpy.uint64] | Sequence[SupportsFloat]]]) -> None:
@@ -1748,6 +1783,7 @@ class Mesh:
         m.add_vertices([
           [0.0, 0.0],
           [1.0, 0.0],
+          [0.0, 1.0],
         ])
         ```
         """
@@ -1807,14 +1843,19 @@ class Mesh:
         """
     def clear_instances(self) -> None:
         """
-        Reset the mesh's instance state to the default (1 draw, no per-instance data).
+        Remove the mesh's instances and its instance count override.
 
         Specifically, this:
         - Drops any per-instance attributes added via `add_instance` / `add_instances`.
         - Clears any count override previously set with `set_instance_count`.
 
-        After calling, the mesh renders as a single instance unless you populate it
-        again or call `set_instance_count`.
+        After calling, a shader that reads no instance attributes draws the mesh once,
+        unless you add instances again or call `set_instance_count`. A shader that
+        reads instance attributes needs instances that hold them, so while it holds
+        the mesh, `Renderer.render` returns `MeshError::InvalidInstance` naming the
+        attribute until you add them again, or until the shader lets the mesh go
+        through `Shader.remove_mesh`, `Shader.clear_meshes` or by dropping.
+        `set_instance_count` doesn't stand in for them.
 
         Example:
 
@@ -1823,7 +1864,7 @@ class Mesh:
 
         m = Mesh()
         m.add_instance(Instance().set("tint", [1.0, 0.0, 0.0, 1.0]))
-        m.clear_instances() # back to a single uninstanced draw
+        m.clear_instances() # no instances left
         ```
         """
     def set_instance_count(self, n: SupportsIndex) -> None:
@@ -2057,12 +2098,16 @@ class Vertex:
 
         \"\"\")
 
-        vertex = Vertex([0.0, 0.0]).set("id", 7).set("weight", 0.5)
+        vertex = Vertex([0.0, 0.5]).set("id", 7).set("weight", 0.5)
 
         mesh = Mesh()
-        mesh.add_vertex(vertex)
+        mesh.add_vertices([
+            vertex,
+            Vertex([-0.5, -0.5]).set("id", 8).set("weight", 1.0),
+            Vertex([0.5, -0.5]).set("id", 9).set("weight", 1.0),
+        ])
 
-        # id uploads as the u32 7 and weight as the f32 0.5.
+        # The first id uploads as the u32 7 and its weight as the f32 0.5.
         shader.add_mesh(mesh)
         ```
         """
@@ -2107,7 +2152,11 @@ class Instance:
     from fragmentcolor import Instance, Mesh
 
     mesh = Mesh()
-    mesh.add_vertex([0.0, 0.0])
+    mesh.add_vertices([
+        [-0.5, -0.5],
+        [0.5, -0.5],
+        [0.0, 0.5],
+    ])
 
     instance = Instance().set("offset", [0.5, 0.0])
     mesh.add_instance(instance)
@@ -2157,7 +2206,11 @@ class Instance:
         \"\"\")
 
         mesh = Mesh()
-        mesh.add_vertex([0.0, 0.0])
+        mesh.add_vertices([
+            [-0.5, -0.5],
+            [0.5, -0.5],
+            [0.0, 0.5],
+        ])
 
         instance = Instance().set("offset", [0.5, 0.0]).set("layer", 2)
         mesh.add_instance(instance)
@@ -2517,9 +2570,11 @@ class Scene:
         renderer = Renderer()
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         model = Model(mesh, Material.pbr())
 
         camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
@@ -2581,9 +2636,11 @@ class Scene:
         renderer = Renderer()
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         model = Model(mesh, Material.pbr())
 
         # A backdrop pass that clears to a soft blue before the scene's main draw.
@@ -2694,9 +2751,11 @@ class Scene:
         from fragmentcolor import Material, Mesh, Model, Scene, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -2728,9 +2787,11 @@ class Scene:
         from fragmentcolor import Material, Mesh, Model, Pass, Scene, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         model = Model(mesh, Material.pbr())
 
         scene = Scene()
@@ -2791,9 +2852,11 @@ class Scene:
         from fragmentcolor import Material, Mesh, Model, Scene, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -2821,9 +2884,11 @@ class Scene:
         from fragmentcolor import Material, Mesh, Model, Scene, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -2848,9 +2913,11 @@ class Scene:
         from fragmentcolor import Material, Mesh, Model, Scene, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -2876,9 +2943,11 @@ class Scene:
         from fragmentcolor import Camera, Material, Mesh, Model, Scene, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -2905,9 +2974,11 @@ class Scene:
         from fragmentcolor import Light, Material, Mesh, Model, Scene, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         scene = Scene()
         scene.add(Model(mesh, Material.pbr()))
 
@@ -2940,9 +3011,11 @@ class Scene:
         target = renderer.create_texture_target([64, 64])
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
 
         scene = Scene()
         # A warm dusk ambient. It applies to every Material added below.
@@ -2975,9 +3048,11 @@ class Scene:
         from fragmentcolor import Material, Mesh, Model, Scene, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
         model = Model(mesh, Material.pbr())
 
         scene = Scene()
@@ -3132,9 +3207,11 @@ class Model:
         from fragmentcolor import Material, Mesh, Model, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
-            Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
-        )
+        mesh.add_vertices([
+            Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
 
         model = Model(mesh, Material.pbr())
         ```
@@ -3151,14 +3228,19 @@ class Model:
         from fragmentcolor import Material, Mesh, Model, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
 
         model = Model(mesh, Material.pbr())
-        model.mesh().add_vertex(
-            Vertex([-0.5, -0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.0, 0.0]),
-        )
+        # A second triangle joins the first through the Model.
+        model.mesh().add_vertices([
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+            Vertex.pbr([0.5, 0.5, 0.0]).set(Vertex.UV0, [1.0, 1.0]),
+            Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+        ])
         ```
         """
     def material(self) -> Material:
@@ -3181,9 +3263,11 @@ class Model:
         from fragmentcolor import Material, Mesh, Model, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
-            Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
-        )
+        mesh.add_vertices([
+            Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
 
         model = Model(mesh, Material.pbr())
         model.material().shader().set("camera.position", [0.0, 0.0, 5.0])
@@ -3207,9 +3291,11 @@ class Model:
 
         renderer = Renderer()
         mesh = Mesh()
-        mesh.add_vertex(
-            Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
-        )
+        mesh.add_vertices([
+            Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
 
         model = Model(mesh, Material.pbr())
         identity = model.transform()
@@ -3234,9 +3320,11 @@ class Model:
 
         renderer = Renderer()
         mesh = Mesh()
-        mesh.add_vertex(
-            Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
-        )
+        mesh.add_vertices([
+            Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
 
         model = Model(mesh, Material.pbr())
         model.set_transform([
@@ -3261,9 +3349,11 @@ class Model:
 
         renderer = Renderer()
         mesh = Mesh()
-        mesh.add_vertex(
-            Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
-        )
+        mesh.add_vertices([
+            Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
 
         model = Model(mesh, Material.pbr())
         model.translate([5.0, 0.0, -2.0])
@@ -3287,9 +3377,11 @@ class Model:
 
         renderer = Renderer()
         mesh = Mesh()
-        mesh.add_vertex(
-            Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
-        )
+        mesh.add_vertices([
+            Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
 
         model = Model(mesh, Material.pbr())
         model.rotate([0.0, 1.0, 0.0], 1.571) # 90° around Y
@@ -3313,9 +3405,11 @@ class Model:
 
         renderer = Renderer()
         mesh = Mesh()
-        mesh.add_vertex(
-            Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
-        )
+        mesh.add_vertices([
+            Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+        ])
 
         model = Model(mesh, Material.pbr())
         model.scale([2.0, 2.0, 2.0])
@@ -3336,7 +3430,11 @@ class Model:
         from fragmentcolor import Material, Mesh, Model, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(Vertex.pbr([0.0, 0.5, 0.0]))
+        mesh.add_vertices([
+            Vertex.pbr([0.0, 0.5, 0.0]),
+            Vertex.pbr([-0.5, -0.5, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]),
+        ])
         model = Model(mesh, Material.pbr())
 
         # Models start visible; toggle with `set_visible`.
@@ -3375,7 +3473,11 @@ class Model:
         from fragmentcolor import Material, Mesh, Model, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(Vertex.pbr([0.0, 0.5, 0.0]))
+        mesh.add_vertices([
+            Vertex.pbr([0.0, 0.5, 0.0]),
+            Vertex.pbr([-0.5, -0.5, 0.0]),
+            Vertex.pbr([0.5, -0.5, 0.0]),
+        ])
         detail = Model(mesh, Material.pbr())
 
         # Far from the camera, hide the detail Model.
@@ -4228,9 +4330,11 @@ class Material:
     from fragmentcolor import Material, Mesh, Model, Vertex
 
     mesh = Mesh()
-    mesh.add_vertex(
+    mesh.add_vertices([
         Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
-    )
+        Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+        Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
+    ])
 
     material = Material.pbr().base_color([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
 
@@ -4394,7 +4498,8 @@ class Material:
         A render shader takes the [Lights](https://fragmentcolor.org/api/scene/light)
         that reach it by declaring a root named `lights`, and optionally one named
         `light_grid`, at any group and binding. The member names, types and offsets
-        must match the ones below, and the struct names are free. The renderer fills
+        must match the ones below, and so must the struct's size, so no `@align` may
+        raise its alignment. The struct names are free. The renderer fills
         both roots in render passes, so they don't appear in `list_uniforms` or
         `list_keys`, and `set` and `get` reach only `lights.ambient`.
 
@@ -4801,9 +4906,11 @@ class Material:
         from fragmentcolor import Material, Mesh, TextureSlot, Vertex
 
         mesh = Mesh()
-        mesh.add_vertex(
+        mesh.add_vertices([
             Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]).set(Vertex.UV1, [0.25, 0.75]),
-        )
+            Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]).set(Vertex.UV1, [0.0, 0.5]),
+            Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]).set(Vertex.UV1, [0.5, 0.5]),
+        ])
 
         # The occlusion map follows the second UV layout.
         material = Material.pbr().texture_uv(TextureSlot.Occlusion, 1)

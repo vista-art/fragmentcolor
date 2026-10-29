@@ -1,6 +1,5 @@
-use crate::texture::{
-    TextureError, js_to_texture_bytes, read_format, read_texture_input, read_usage,
-};
+use crate::error::WebError;
+use crate::texture::{js_to_texture_bytes, read_format, read_texture_input, read_usage};
 use crate::{
     Mesh, Pass, PassObject, Renderable, Renderer, RendererError, Scene, Shader, Size, Texture,
     TextureData, TextureTarget, target::CanvasTarget,
@@ -63,13 +62,13 @@ impl Renderer {
 
     #[wasm_bindgen(js_name = "createTarget")]
     #[lsp_doc("docs/api/core/renderer/create_target.md")]
-    pub async fn create_target_js(&self, canvas: JsValue) -> Result<CanvasTarget, JsError> {
+    pub async fn create_target_js(&self, canvas: JsValue) -> Result<CanvasTarget, WebError> {
         let canvas = if let Some(canvas) = canvas.dyn_ref::<web_sys::HtmlCanvasElement>() {
             Canvas::Html(canvas.clone())
         } else if let Ok(canvas) = canvas.dyn_into::<web_sys::OffscreenCanvas>() {
             Canvas::Offscreen(canvas)
         } else {
-            return Err(JsError::new("Failed to convert input to Canvas"));
+            return Err(WebError::type_error("Failed to convert input to Canvas"));
         };
 
         let size = canvas.size();
@@ -98,7 +97,7 @@ impl Renderer {
         &self,
         input: &JsValue,
         options: Option<JsValue>,
-    ) -> Result<Texture, JsError> {
+    ) -> Result<Texture, WebError> {
         let input = read_texture_input(input, options.as_ref())?;
         Ok(self.create_texture(input).await?)
     }
@@ -108,7 +107,7 @@ impl Renderer {
     pub async fn create_texture_target_js(
         &self,
         size: &JsValue,
-    ) -> Result<crate::TextureTarget, JsError> {
+    ) -> Result<crate::TextureTarget, WebError> {
         let size: Size = size.try_into()?;
         let target = self.create_texture_target(size).await?;
         Ok(target)
@@ -127,7 +126,7 @@ impl Renderer {
         #[wasm_bindgen(unchecked_optional_param_type = "TextureUsage | number")] usage: Option<
             JsValue,
         >,
-    ) -> Result<crate::texture::Texture, JsError> {
+    ) -> Result<crate::texture::Texture, WebError> {
         let given = |value: &JsValue| !value.is_undefined() && !value.is_null();
         let size: Size = size.try_into()?;
         let format = read_format(format)?;
@@ -151,7 +150,7 @@ impl Renderer {
 
     #[wasm_bindgen(js_name = "createDepthTexture")]
     #[lsp_doc("docs/api/core/renderer/create_depth_texture.md")]
-    pub async fn create_depth_texture_js(&self, size: &JsValue) -> Result<Texture, JsError> {
+    pub async fn create_depth_texture_js(&self, size: &JsValue) -> Result<Texture, WebError> {
         let size: Size = size.try_into()?;
         Ok(self.create_depth_texture(size).await?)
     }
@@ -172,11 +171,8 @@ impl Renderer {
         let renderer = self.share();
         let id = crate::texture::js_to_texture_id(texture_id);
         future_to_promise(async move {
-            let id = id.map_err(TextureError::into_js)?;
-            let bytes = renderer
-                .read_texture_from(id, start)
-                .await
-                .map_err(RendererError::into_js)?;
+            let id = id?;
+            let bytes = renderer.read_texture_from(id, start).await?;
             Ok(js_sys::Uint8Array::from(bytes.as_slice()).into())
         })
     }
@@ -204,10 +200,7 @@ impl Renderer {
         let renderables = RenderableList::read(renderable, "Renderer.load");
         future_to_promise(async move {
             let renderables = renderables?;
-            renderer
-                .load_from(&renderables, start)
-                .await
-                .map_err(RendererError::into_js)?;
+            renderer.load_from(&renderables, start).await?;
             Ok(JsValue::UNDEFINED)
         })
     }
@@ -219,10 +212,7 @@ impl Renderer {
         let renderer = self.share();
         let shader = shader.clone();
         future_to_promise(async move {
-            let bytes = renderer
-                .read_storage_from(&shader, &binding, start)
-                .await
-                .map_err(RendererError::into_js)?;
+            let bytes = renderer.read_storage_from(&shader, &binding, start).await?;
             Ok(js_sys::Uint8Array::from(bytes.as_slice()).into())
         })
     }
@@ -236,19 +226,15 @@ impl Renderer {
         )]
         renderable: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "WindowTarget | TextureTarget")] target: &JsValue,
-    ) -> Result<(), JsError> {
+    ) -> Result<(), WebError> {
         let renderables = RenderableList::read(renderable, "Renderer.render")?;
         if let Ok(window) = CanvasTarget::try_from(target) {
-            return self
-                .render(&renderables, &window)
-                .map_err(RendererError::into_js);
+            return Ok(self.render(&renderables, &window)?);
         }
         if let Ok(texture) = TextureTarget::try_from(target) {
-            return self
-                .render(&renderables, &texture)
-                .map_err(RendererError::into_js);
+            return Ok(self.render(&renderables, &texture)?);
         }
-        Err(JsError::new(
+        Err(WebError::type_error(
             "Renderer.render: expected a WindowTarget or a TextureTarget",
         ))
     }
@@ -261,18 +247,18 @@ pub(crate) struct RenderableList(Vec<Box<dyn Renderable>>);
 
 impl RenderableList {
     /// Reads a renderable or an array of them. Errors start with `method`.
-    pub(crate) fn read(value: &JsValue, method: &str) -> Result<Self, JsError> {
+    pub(crate) fn read(value: &JsValue, method: &str) -> Result<Self, WebError> {
         if let Some(item) = read_renderable(value) {
             return Ok(Self(vec![item]));
         }
         let Some(array) = value.dyn_ref::<Array>() else {
-            return Err(JsError::new(&format!(
+            return Err(WebError::type_error(&format!(
                 "{method}: expected a Shader, Pass, Mesh, Scene, or an array of them"
             )));
         };
         let read = |(index, item): (usize, JsValue)| {
             read_renderable(&item).ok_or_else(|| {
-                JsError::new(&format!(
+                WebError::type_error(&format!(
                     "{method}: item {index} is not a Shader, Pass, Mesh, or Scene"
                 ))
             })

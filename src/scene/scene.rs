@@ -30,7 +30,7 @@
 //! values with `set_default_camera` / `set_default_light`.
 
 use lsp_doc::lsp_doc;
-use parking_lot::RwLock;
+use parking_lot::{ReentrantMutex, RwLock};
 use std::sync::Arc;
 
 #[cfg(python)]
@@ -66,6 +66,11 @@ pub(crate) struct SceneState {
     /// until then, and cleared again if the caller removes it from the graph
     /// via `remove_pass` / `set_passes`.
     pub(crate) default_pass: RwLock<Option<Pass>>,
+    /// Held by every add to the default pass and by the render-time defaults, so a
+    /// new default pass joins the graph only once its first add succeeded, and no
+    /// other add or injection lands on it before. Reentrant, for a `SceneObject`
+    /// whose attach adds to the same Scene. Taken before `passes` and `default_pass`.
+    pub(crate) defaults: ReentrantMutex<()>,
     /// Sticky once-set flags so the default-Camera / default-Light injection
     /// at `passes()` time only fires once and only when the user hasn't
     /// supplied their own.
@@ -146,6 +151,7 @@ impl Scene {
             inner: Arc::new(SceneState {
                 passes: RwLock::new(Vec::new()),
                 default_pass: RwLock::new(None),
+                defaults: ReentrantMutex::new(()),
                 has_camera: RwLock::new(false),
                 has_light: RwLock::new(false),
                 inject_camera: RwLock::new(true),
@@ -166,15 +172,18 @@ impl Scene {
         Ok(self)
     }
 
-    /// Adds `object` to the default pass. A pass this call created goes again
-    /// when the attach fails, unless something landed on it meanwhile.
+    /// Adds `object` to the default pass. A scene without one builds it, and the
+    /// pass joins the graph only once the add succeeded, so a refusal leaves the
+    /// Scene as it was.
     fn add_default<O: SceneObject + 'static>(&self, object: &O) -> Result<(), PassError> {
-        let (pass, created) = self.ensure_default_pass();
-        let added = self.record_add(&pass, object);
-        if added.is_err() && created && pass.object.holds_nothing() {
-            self.remove_pass(&pass);
+        let _defaults = self.inner.defaults.lock();
+        if let Some(pass) = self.find_default_pass() {
+            return self.record_add(&pass, object);
         }
-        added
+        let pass = Pass::new("Scene Default Pass");
+        self.record_add(&pass, object)?;
+        self.publish_default_pass(pass);
+        Ok(())
     }
 
     #[lsp_doc("docs/api/scene/scene/add_to.md")]
@@ -296,7 +305,7 @@ impl Scene {
     #[lsp_doc("docs/api/scene/scene/remove_pass.md")]
     pub fn remove_pass(&self, pass: &Pass) -> bool {
         // Lock order: `passes` first, `default_pass` second (see
-        // `ensure_default_pass`).
+        // `find_default_pass`).
         let mut passes = self.inner.passes.write();
         let Some(idx) = passes
             .iter()
@@ -341,7 +350,7 @@ impl Scene {
     #[lsp_doc("docs/api/scene/scene/set_passes.md")]
     pub fn set_passes(&self, passes: Vec<Pass>) {
         // Lock order: `passes` first, `default_pass` second (see
-        // `ensure_default_pass`).
+        // `find_default_pass`).
         let mut current = self.inner.passes.write();
         *current = passes;
         // Drop the default-pass handle if the replacement no longer contains it.
@@ -391,29 +400,28 @@ impl Scene {
         self
     }
 
-    /// Lazily build the default Pass on first `add` and append it to the
-    /// pass graph. The Pass is named so it shows up identifiably in graphics
-    /// debuggers (RenderDoc, Xcode GPU frame capture). If the caller dropped
-    /// a previously-built default Pass from the graph (via `remove_pass` /
-    /// `set_passes`), a fresh one is appended at the current end.
+    /// The default pass, while the graph still holds it. A default pass the caller
+    /// dropped from the graph (via `remove_pass` / `set_passes`) gives way to a new
+    /// one, appended at the current end.
     ///
-    /// Lock order: `passes` is taken first, `default_pass` second — the same
-    /// order [`Scene::remove_pass`] and [`Scene::set_passes`] use, so the
-    /// three can't deadlock against each other under concurrent mutation.
-    /// The default pass, and whether this call created it.
-    fn ensure_default_pass(&self) -> (Pass, bool) {
+    /// Lock order: `passes` is taken first, `default_pass` second, the same
+    /// order [`Scene::remove_pass`] and [`Scene::set_passes`] use.
+    fn find_default_pass(&self) -> Option<Pass> {
+        let passes = self.inner.passes.read();
+        let existing = self.inner.default_pass.read().clone()?;
+        let held = passes
+            .iter()
+            .any(|pass| Arc::ptr_eq(&pass.object, &existing.object));
+        held.then_some(existing)
+    }
+
+    /// Appends `pass` to the graph as the default pass. The Pass is named
+    /// "Scene Default Pass", so it shows up in graphics debuggers (RenderDoc,
+    /// Xcode GPU frame capture).
+    fn publish_default_pass(&self, pass: Pass) {
         let mut passes = self.inner.passes.write();
-        // Reuse the existing default Pass only if it's still in the graph.
-        let existing = self.inner.default_pass.read().clone();
-        if let Some(p) = existing
-            && passes.iter().any(|x| Arc::ptr_eq(&x.object, &p.object))
-        {
-            return (p, false);
-        }
-        let pass = Pass::new("Scene Default Pass");
         passes.push(pass.clone());
-        *self.inner.default_pass.write() = Some(pass.clone());
-        (pass, true)
+        *self.inner.default_pass.write() = Some(pass);
     }
 
     /// Inject default Camera / Light into the default Pass when injection is
@@ -431,6 +439,10 @@ impl Scene {
         if !needs_camera && !needs_light {
             return;
         }
+        // Checked again under the lock, since an add may have supplied one meanwhile.
+        let _defaults = self.inner.defaults.lock();
+        let needs_camera = *self.inner.inject_camera.read() && !*self.inner.has_camera.read();
+        let needs_light = *self.inner.inject_light.read() && !*self.inner.has_light.read();
         let Some(pass) = self.inner.default_pass.read().clone() else {
             return;
         };
@@ -843,6 +855,55 @@ mod tests {
         assert_eq!(passes, 1, "only the backdrop stays");
         assert!(!default_pass, "no default pass is left");
         assert_eq!(scene.list_passes().len(), 2, "a later add makes one");
+    }
+
+    /// A scene object whose attach lets another thread add `light` to `scene`,
+    /// waits a while for that add, then refuses.
+    #[derive(Debug)]
+    struct Racing {
+        scene: Scene,
+        light: Light,
+        adder: parking_lot::Mutex<Option<std::thread::JoinHandle<()>>>,
+    }
+
+    impl SceneObject for Racing {
+        fn attach(&self, _pass: &Pass) -> Result<(), PassError> {
+            let (scene, light) = (self.scene.clone(), self.light.clone());
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let adder = std::thread::spawn(move || {
+                scene.add(&light).expect("add the light");
+                let _ = sender.send(());
+            });
+            let _ = receiver.recv_timeout(std::time::Duration::from_millis(200));
+            *self.adder.lock() = Some(adder);
+            Err(PassError::NoShader)
+        }
+    }
+
+    // Story: an add from another thread that comes during a refused first add
+    // lands on a default pass the graph holds, so the light lights the scene.
+    #[test]
+    fn an_add_during_a_refused_first_add_stays_in_the_graph() {
+        let scene = Scene::new();
+        let light = Light::directional([0.0, -1.0, 0.0], [1.0; 3]);
+        let racing = Racing {
+            scene: scene.clone(),
+            light: light.clone(),
+            adder: parking_lot::Mutex::new(None),
+        };
+
+        let refused = scene.add(&racing);
+        if let Some(adder) = racing.adder.lock().take() {
+            adder.join().expect("the adder thread");
+        }
+
+        let held = scene.list_passes().iter().any(|pass| {
+            let lights = pass.object.lights.read();
+            lights.iter().any(|kept| kept.object.id == light.object.id)
+        });
+        assert!(refused.is_err());
+        assert_eq!(scene.lights().len(), 1);
+        assert!(held, "a pass in the graph holds the light");
     }
 
     #[test]

@@ -14,7 +14,11 @@ let shader = try Shader("""
 """)
 
 let mesh = Mesh()
-try mesh.addVertex([0.0, 0.0])
+try mesh.addVertices([
+    [-0.5, -0.5],
+    [0.5, -0.5],
+    [0.0, 0.5],
+])
 try shader.addMesh(mesh)
 
 // Detach the mesh

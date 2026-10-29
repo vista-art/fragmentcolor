@@ -31,7 +31,11 @@ Typical uses:
 use fragmentcolor::{Material, Mesh, Model, Vertex};
 
 let mesh = Mesh::new();
-mesh.add_vertex(Vertex::pbr([0.0, 0.5, 0.0]));
+mesh.add_vertices([
+    Vertex::pbr([0.0, 0.5, 0.0]),
+    Vertex::pbr([-0.5, -0.5, 0.0]),
+    Vertex::pbr([0.5, -0.5, 0.0]),
+]);
 let detail = Model::new(mesh, Material::pbr());
 
 // Far from the camera, hide the detail Model.

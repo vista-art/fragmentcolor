@@ -26,6 +26,168 @@ pub enum FragmentColorError {
     Error(String),
 }
 
+/// The class of error each binding raises, named after the Python exception class.
+/// Python raises that class, and JavaScript throws an `Error` with that `name`.
+#[cfg(any(python, wasm, test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ErrorClass {
+    /// `FragmentColorError`, the class every other one extends.
+    Base,
+    InvalidInput,
+    UnsupportedMipmapFormat,
+    MalformedImage,
+    OccludedSurface,
+    Device,
+    Limit,
+    Feature,
+    Binding,
+    Entry,
+    SceneLoad,
+    Light,
+    Camera,
+    Material,
+}
+
+#[cfg(any(python, wasm, test))]
+impl ErrorClass {
+    /// The class name, the same in Python and JavaScript.
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            ErrorClass::Base => "FragmentColorError",
+            ErrorClass::InvalidInput => "InvalidInputError",
+            ErrorClass::UnsupportedMipmapFormat => "UnsupportedMipmapFormatError",
+            ErrorClass::MalformedImage => "MalformedImageError",
+            ErrorClass::OccludedSurface => "OccludedSurfaceError",
+            ErrorClass::Device => "DeviceError",
+            ErrorClass::Limit => "LimitError",
+            ErrorClass::Feature => "FeatureError",
+            ErrorClass::Binding => "BindingError",
+            ErrorClass::Entry => "EntryError",
+            ErrorClass::SceneLoad => "SceneLoadError",
+            ErrorClass::Light => "LightError",
+            ErrorClass::Camera => "CameraError",
+            ErrorClass::Material => "MaterialError",
+        }
+    }
+}
+
+/// An error that knows the class every binding raises it as.
+#[cfg(any(python, wasm, test))]
+pub(crate) trait Classify {
+    /// The class Python raises this error as, and the `name` of the JavaScript `Error`.
+    fn classify(&self) -> ErrorClass;
+}
+
+#[cfg(any(python, wasm, test))]
+impl Classify for FragmentColorError {
+    fn classify(&self) -> ErrorClass {
+        match self {
+            FragmentColorError::Shader(error) => error.classify(),
+            FragmentColorError::Color(error) => error.classify(),
+            FragmentColorError::Size(error) => error.classify(),
+            FragmentColorError::Pass(error) => error.classify(),
+            FragmentColorError::Renderer(error) => error.classify(),
+            FragmentColorError::Init(error) => error.classify(),
+            FragmentColorError::Display(error) => error.classify(),
+            #[cfg(not(wasm))]
+            FragmentColorError::NetworkRequest(_) => ErrorClass::Base,
+            #[cfg(wasm)]
+            FragmentColorError::Error(_) => ErrorClass::Base,
+        }
+    }
+}
+
+/// The error a web binding throws: a JavaScript `Error` whose `name` is the class Python
+/// raises for the same error, or a `TypeError` for an argument of the wrong type, as Python's.
+#[cfg(wasm)]
+#[doc(hidden)]
+pub struct WebError(wasm_bindgen::JsValue);
+
+#[cfg(wasm)]
+impl WebError {
+    /// An error of `class` with the full `message`.
+    pub(crate) fn new(class: ErrorClass, message: &str) -> Self {
+        Self::with_fields(class, message, &[])
+    }
+
+    /// An error of `class` with the full `message`, carrying each of `fields` as a property.
+    pub(crate) fn with_fields(
+        class: ErrorClass,
+        message: &str,
+        fields: &[(&str, crate::renderer::error::Field)],
+    ) -> Self {
+        use crate::renderer::error::Field;
+        use wasm_bindgen::JsValue;
+        let error = js_sys::Error::new(message);
+        error.set_name(class.name());
+        let error: JsValue = error.into();
+        for (name, field) in fields {
+            let field = match field {
+                Field::Text(text) => JsValue::from_str(text),
+                Field::Number(number) => JsValue::from_f64(*number as f64),
+            };
+            // Setting a property on a new Error object never throws.
+            let _ = js_sys::Reflect::set(&error, &JsValue::from_str(name), &field);
+        }
+        Self(error)
+    }
+
+    /// The error for `error`, named after its class.
+    pub(crate) fn from_error<E: Classify + std::fmt::Display>(error: &E) -> Self {
+        Self::new(error.classify(), &error.to_string())
+    }
+
+    /// A `TypeError` for an argument of the wrong type, as Python raises one.
+    pub(crate) fn type_error(message: &str) -> Self {
+        WebError(js_sys::TypeError::new(message).into())
+    }
+}
+
+#[cfg(wasm)]
+impl From<WebError> for wasm_bindgen::JsValue {
+    fn from(error: WebError) -> Self {
+        error.0
+    }
+}
+
+/// A plain `Error` from wasm-bindgen, which no FragmentColor error class names.
+#[cfg(wasm)]
+impl From<wasm_bindgen::JsError> for WebError {
+    fn from(error: wasm_bindgen::JsError) -> Self {
+        WebError(error.into())
+    }
+}
+
+/// Each error type that throws as an `Error` named after its class, with no fields.
+#[cfg(wasm)]
+macro_rules! throw_by_class {
+    ($($error:ty),* $(,)?) => {$(
+        impl From<$error> for WebError {
+            fn from(error: $error) -> Self {
+                WebError::from_error(&error)
+            }
+        }
+    )*};
+}
+
+#[cfg(wasm)]
+throw_by_class!(
+    FragmentColorError,
+    crate::shader::error::ShaderError,
+    crate::color::error::ColorError,
+    crate::size::error::SizeError,
+    crate::pass::error::PassError,
+    crate::renderer::error::InitializationError,
+    crate::target::error::DisplayError,
+    crate::mesh::MeshError,
+    crate::region::error::ScreenRegionError,
+    crate::platforms::vector::VectorError,
+    crate::material::MaterialError,
+    crate::scene::LightError,
+    crate::scene::CameraError,
+    crate::scene::SceneLoadError,
+);
+
 // Python-specific conversions
 
 #[cfg(python)]
@@ -118,20 +280,53 @@ pub(crate) fn raise<T: pyo3::PyTypeInfo>(
     })
 }
 
-/// An exception of class `T` with the full `message` that carries each of `fields` as an attribute.
+/// An exception of `class` with the full `message`.
 #[cfg(python)]
-pub(crate) fn raise_fields<T: pyo3::PyTypeInfo>(
+pub(crate) fn raise_class(class: ErrorClass, message: String) -> PyErr {
+    match class {
+        ErrorClass::Base => PyFragmentColorError::new_err(message),
+        ErrorClass::InvalidInput => InvalidInputError::new_err(message),
+        ErrorClass::UnsupportedMipmapFormat => UnsupportedMipmapFormatError::new_err(message),
+        ErrorClass::MalformedImage => MalformedImageError::new_err(message),
+        ErrorClass::OccludedSurface => OccludedSurfaceError::new_err(message),
+        ErrorClass::Device => DeviceError::new_err(message),
+        ErrorClass::Limit => LimitError::new_err(message),
+        ErrorClass::Feature => FeatureError::new_err(message),
+        ErrorClass::Binding => BindingError::new_err(message),
+        ErrorClass::Entry => EntryError::new_err(message),
+        ErrorClass::SceneLoad => PythonError::SceneLoad.new_err(message),
+        ErrorClass::Light => PythonError::Light.new_err(message),
+        ErrorClass::Camera => PythonError::Camera.new_err(message),
+        ErrorClass::Material => PythonError::Material.new_err(message),
+    }
+}
+
+/// The exception for `error`, of the class it names.
+#[cfg(python)]
+pub(crate) fn raise_error<E: Classify + std::fmt::Display>(error: &E) -> PyErr {
+    raise_class(error.classify(), error.to_string())
+}
+
+/// An exception of `class` with the full `message` that carries each of `fields` as an attribute.
+#[cfg(python)]
+pub(crate) fn raise_fields(
+    class: ErrorClass,
     message: String,
     fields: Vec<(&'static str, Field)>,
 ) -> PyErr {
-    raise::<T>(message, |error| {
+    let error = raise_class(class, message);
+    Python::attach(|py| {
+        let value = error.value(py);
         for (name, field) in fields {
-            match field {
-                Field::Text(text) => error.setattr(name, text)?,
-                Field::Number(number) => error.setattr(name, number)?,
+            let set = match field {
+                Field::Text(text) => value.setattr(name, text),
+                Field::Number(number) => value.setattr(name, number),
+            };
+            if let Err(failure) = set {
+                return failure;
             }
         }
-        Ok(())
+        error
     })
 }
 
@@ -173,12 +368,13 @@ pub(crate) enum PythonError {
 impl PythonError {
     /// The class name, the same one `src/platforms/python.rs` registers it under.
     fn name(self) -> &'static str {
-        match self {
-            PythonError::SceneLoad => "SceneLoadError",
-            PythonError::Light => "LightError",
-            PythonError::Camera => "CameraError",
-            PythonError::Material => "MaterialError",
-        }
+        let class = match self {
+            PythonError::SceneLoad => ErrorClass::SceneLoad,
+            PythonError::Light => ErrorClass::Light,
+            PythonError::Camera => ErrorClass::Camera,
+            PythonError::Material => ErrorClass::Material,
+        };
+        class.name()
     }
 
     /// The class, built on first use.
@@ -228,7 +424,7 @@ impl From<PyErr> for crate::target::error::DisplayError {
 #[cfg(python)]
 impl From<crate::target::error::DisplayError> for PyErr {
     fn from(e: crate::target::error::DisplayError) -> Self {
-        PyFragmentColorError::new_err(e.to_string())
+        raise_error(&e)
     }
 }
 
@@ -249,7 +445,7 @@ impl From<wasm_bindgen::JsValue> for FragmentColorError {
 #[cfg(wasm)]
 impl From<FragmentColorError> for wasm_bindgen::JsValue {
     fn from(error: FragmentColorError) -> Self {
-        js_sys::Error::new(&error.to_string()).into()
+        WebError::from(error).into()
     }
 }
 
@@ -288,5 +484,111 @@ mod tests {
         assert!(e8.to_string().contains("Display Error"));
         #[cfg(not(wasm))]
         assert!(e9.to_string().contains("Network"));
+    }
+
+    // Story: each error takes the class Python raises it as, which is also the `name` of the
+    // Error JavaScript throws, and an error that wraps another takes the class of what it wraps.
+    #[test]
+    fn errors_take_the_python_class() {
+        use crate::color::error::ColorError;
+        use crate::pass::error::PassError;
+        use crate::region::error::ScreenRegionError;
+        use crate::renderer::error::{InitializationError, RendererError};
+        use crate::scene::{LightError, SceneLoadError};
+        use crate::shader::error::ShaderError;
+        use crate::target::SurfaceError;
+        use crate::texture::TextureError;
+        let text = |value: &str| value.to_string();
+        let limit = RendererError::LimitError {
+            item: text("group 9"),
+            limit: text("max_bind_groups"),
+            value: 10,
+            max: 4,
+        };
+        let cases: Vec<(Box<dyn Classify>, &str)> = vec![
+            (
+                Box::new(ShaderError::ParseError(text("x"))),
+                "FragmentColorError",
+            ),
+            (Box::new(RendererError::NoContext), "FragmentColorError"),
+            (
+                Box::new(RendererError::SurfaceError(SurfaceError::Lost)),
+                "FragmentColorError",
+            ),
+            (
+                Box::new(RendererError::SurfaceError(SurfaceError::Occluded)),
+                "OccludedSurfaceError",
+            ),
+            (
+                Box::new(RendererError::DeviceError {
+                    kind: crate::ErrorKind::Validation,
+                    label: text("frame"),
+                    detail: text("x"),
+                }),
+                "DeviceError",
+            ),
+            (
+                Box::new(RendererError::FeatureError {
+                    item: text("the shader"),
+                    feature: text("x"),
+                }),
+                "FeatureError",
+            ),
+            (
+                Box::new(RendererError::BindingError {
+                    uniform: text("image"),
+                    expected: text("a texture"),
+                    found: text("none"),
+                }),
+                "BindingError",
+            ),
+            (
+                Box::new(RendererError::EntryError {
+                    stage: text("@vertex"),
+                }),
+                "EntryError",
+            ),
+            (
+                Box::new(RendererError::TextureError(TextureError::InvalidInput(
+                    text("x"),
+                ))),
+                "InvalidInputError",
+            ),
+            (
+                Box::new(RendererError::PassError(PassError::Viewport(
+                    ScreenRegionError::Empty {
+                        width: 0,
+                        height: 4,
+                    },
+                ))),
+                "InvalidInputError",
+            ),
+            (
+                Box::new(RendererError::InitializationError(
+                    InitializationError::TextureError(TextureError::MalformedImageError(text("x"))),
+                )),
+                "MalformedImageError",
+            ),
+            (
+                Box::new(TextureError::UnsupportedMipmapFormat {
+                    format: crate::TextureFormat::R8Unorm,
+                }),
+                "UnsupportedMipmapFormatError",
+            ),
+            (
+                Box::new(ColorError::TypeMismatch(text("x"))),
+                "InvalidInputError",
+            ),
+            (
+                Box::new(SceneLoadError::Invalid(text("x"))),
+                "SceneLoadError",
+            ),
+            (Box::new(LightError::NegativeRange(-1.0)), "LightError"),
+            (Box::new(FragmentColorError::Renderer(limit)), "LimitError"),
+        ];
+
+        for (error, name) in cases {
+            assert_eq!(error.classify().name(), name);
+        }
     }
 }

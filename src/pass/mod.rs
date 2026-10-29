@@ -395,7 +395,7 @@ pub struct PassObject {
     pub(crate) name: Arc<str>,
     pub(crate) input: RwLock<PassInput>,
     pub(crate) shaders: RwLock<Vec<Arc<ShaderObject>>>,
-    // Per-Pass live references to Models queued via `Pass::add_model`. Each entry
+    // Per-Pass live references to Models queued via `Pass::add`. Each entry
     // carries an Arc-shared transform so the renderer reads the current value at
     // draw time. Grouped by (shader, mesh) the entries become the rows of a
     // Pass-owned instance buffer — that's the batched-instancing path: many
@@ -441,7 +441,8 @@ pub struct PassObject {
     pub(crate) depth_target: RwLock<Option<Arc<Registration>>>,
     // DAG metadata and cached traversal
     pub(crate) dependencies: RwLock<Vec<Arc<PassObject>>>,
-    pub(crate) dependency_names: RwLock<std::collections::HashSet<Arc<str>>>,
+    /// The ids of the passes in `dependencies`, which tell two passes of one name apart.
+    pub(crate) dependency_ids: RwLock<std::collections::HashSet<u64>>,
     // Every pass this one requires, deps first. Never this pass:
     // an Arc to itself would keep the pass and its shaders alive forever.
     pub(crate) flat: RwLock<Arc<[Arc<PassObject>]>>,
@@ -467,7 +468,7 @@ impl PassObject {
             color_target: RwLock::new(None),
             depth_target: RwLock::new(None),
             dependencies: RwLock::new(Vec::new()),
-            dependency_names: RwLock::new(std::collections::HashSet::new()),
+            dependency_ids: RwLock::new(std::collections::HashSet::new()),
             flat: RwLock::new(Arc::from(Vec::<Arc<PassObject>>::new().into_boxed_slice())),
             built_version: AtomicU64::new(0),
         }
@@ -543,11 +544,27 @@ impl PassObject {
         Ok(())
     }
 
-    /// Whether nothing has landed on the pass: no shader, scene object or Model.
-    pub(crate) fn holds_nothing(&self) -> bool {
-        self.shaders.read().is_empty()
-            && self.scene_objects.read().is_empty()
-            && self.model_entries.read().is_empty()
+    /// The pass's last shader, or, for a pass with none, the one `build` makes,
+    /// added with no checks in the same step, so two callers never add two.
+    pub(crate) fn ensure_shader(
+        &self,
+        build: impl FnOnce() -> Arc<ShaderObject>,
+    ) -> Arc<ShaderObject> {
+        if let Some(last) = self.shaders.read().last() {
+            return last.clone();
+        }
+        let mut shaders = self.shaders.write();
+        if let Some(last) = shaders.last() {
+            return last.clone();
+        }
+        let shader = build();
+        Self::push_into(
+            &self.pass_type,
+            &self.required_buffer_size,
+            &mut shaders,
+            shader.clone(),
+        );
+        shader
     }
 
     /// Adds a shader with no checks, for a pass that has no shader and no light.
@@ -633,33 +650,33 @@ impl PassObject {
         Ok(())
     }
 
+    /// Links `dep` into the pass. A pass is the same pass by its id, never by its
+    /// name, so two passes that share a name can require each other's neighbors.
     fn link_one(self_arc: &Arc<PassObject>, dep: Arc<PassObject>) -> Result<(), PassError> {
         let this = &**self_arc;
-        // Self-dependency by name
-        if dep.name.as_ref() == this.name.as_ref() {
+        if dep.id == this.id {
             return Err(PassError::SelfDependency);
         }
-        // Duplicate by name
         {
-            let mut names = this.dependency_names.write();
-            if names.contains(&dep.name) {
+            let mut ids = this.dependency_ids.write();
+            if ids.contains(&dep.id) {
                 return Err(PassError::DuplicateDependency(dep.name.to_string()));
             }
-            // Cycle: if dep reaches self, linking would close a cycle
-            if dep.reaches(this.name.as_ref()) {
+            // Linking a pass that reaches this one would close a cycle.
+            if dep.reaches(this) {
                 return Err(PassError::DependencyCycle {
                     via: dep.name.to_string(),
                 });
             }
-            names.insert(dep.name.clone());
+            ids.insert(dep.id);
         }
         // Link
         this.dependencies.write().push(dep.clone());
         Ok(())
     }
 
-    // Does this node reach target_name through dependencies edges? (BFS)
-    fn reaches(&self, target_name: &str) -> bool {
+    /// Whether this pass is `target` or reaches it through its dependencies.
+    fn reaches(&self, target: &PassObject) -> bool {
         use std::collections::{HashSet, VecDeque};
         let mut seen: HashSet<*const PassObject> = HashSet::new();
         let mut q: VecDeque<*const PassObject> = VecDeque::new();
@@ -670,7 +687,7 @@ impl PassObject {
             }
             // Safety: all pointers originate from &self or Arcs we hold; read-only
             let node = unsafe { &*ptr };
-            if node.name.as_ref() == target_name {
+            if node.id == target.id {
                 return true;
             }
             // Clone arcs locally to avoid holding the lock across iteration
@@ -731,10 +748,10 @@ impl PassObject {
                 }
                 let a = &deps[i];
                 let b = &deps[j];
-                if a.reaches(b.name.as_ref()) {
+                if a.reaches(b) {
                     adj[i].push(j);
                     indeg[j] += 1;
-                } else if b.reaches(a.name.as_ref()) {
+                } else if b.reaches(a) {
                     adj[j].push(i);
                     indeg[i] += 1;
                 }
@@ -1062,6 +1079,44 @@ mod tests {
         let e3 = n.require(&m).unwrap_err();
         let s3 = format!("{}", e3);
         assert!(s3.contains("cycle"), "expected cycle error: {s3}");
+    }
+
+    // Story: require tells passes apart by identity, so two passes that share a name are
+    // two dependencies, a pass can require another of its own name, and a cycle between
+    // them still fails.
+    #[test]
+    fn passes_that_share_a_name_stay_apart() {
+        let first = Pass::new("blur");
+        let second = Pass::new("blur");
+        let compose = Pass::new("compose");
+
+        first
+            .require(&second)
+            .expect("a pass requires another of its name");
+        compose
+            .require(&first)
+            .expect("compose requires the first blur");
+        compose
+            .require(&second)
+            .expect("compose requires the second blur");
+
+        let order: Vec<u64> = compose.passes().iter().map(|pass| pass.id).collect();
+        assert_eq!(
+            order,
+            [second.object.id, first.object.id, compose.object.id]
+        );
+        assert!(matches!(
+            first.require(&first),
+            Err(PassError::SelfDependency)
+        ));
+        assert!(matches!(
+            compose.require(&second),
+            Err(PassError::DuplicateDependency(_))
+        ));
+        assert!(matches!(
+            second.require(&first),
+            Err(PassError::DependencyCycle { .. })
+        ));
     }
 
     // Story: a pass runs after every pass it requires, and each pass runs once.

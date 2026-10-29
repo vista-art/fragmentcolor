@@ -1,5 +1,7 @@
 #![cfg(wasm)]
 
+use crate::error::WebError;
+
 /// Install a panic hook and console logger when running in WASM so browser console shows
 /// readable errors instead of a generic "unreachable" trap.
 #[wasm_bindgen::prelude::wasm_bindgen(start)]
@@ -50,7 +52,7 @@ pub(crate) async fn yield_to_event_loop() {
 
 /// Reads a JS number as an unsigned 32-bit integer, such as an index or a count.
 /// Negative, fractional, NaN and out-of-range values fail with an error that names `what`.
-pub(crate) fn read_unsigned(value: f64, what: &str) -> Result<u32, wasm_bindgen::JsError> {
+pub(crate) fn read_unsigned(value: f64, what: &str) -> Result<u32, WebError> {
     Ok(super::read_unsigned(value, what)?)
 }
 
@@ -59,11 +61,11 @@ pub(crate) fn read_unsigned(value: f64, what: &str) -> Result<u32, wasm_bindgen:
 pub(crate) fn read_vector_items(
     value: &wasm_bindgen::JsValue,
     label: &str,
-) -> Result<Vec<f64>, wasm_bindgen::JsError> {
+) -> Result<Vec<f64>, WebError> {
     use js_sys::{Array, Float32Array};
-    use wasm_bindgen::{JsCast, JsError};
+    use wasm_bindgen::JsCast;
     if !(Array::is_array(value) || value.is_instance_of::<Float32Array>()) {
-        return Err(JsError::new(&format!(
+        return Err(WebError::type_error(&format!(
             "{label} takes an array or a Float32Array of numbers, got {value:?}"
         )));
     }
@@ -72,7 +74,7 @@ pub(crate) fn read_vector_items(
         .enumerate()
         .map(|(index, item)| {
             item.as_f64().ok_or_else(|| {
-                JsError::new(&format!(
+                WebError::type_error(&format!(
                     "{label}: item {index} must be a number, got {item:?}"
                 ))
             })
@@ -84,7 +86,7 @@ pub(crate) fn read_vector_items(
 pub(crate) fn read_floats(
     value: &wasm_bindgen::JsValue,
     label: &str,
-) -> Result<Vec<f32>, wasm_bindgen::JsError> {
+) -> Result<Vec<f32>, WebError> {
     let items = read_vector_items(value, label)?;
     Ok(super::vector::read_floats(items, label)?)
 }
@@ -93,7 +95,7 @@ pub(crate) fn read_floats(
 pub(crate) fn read_vector<const N: usize>(
     value: &wasm_bindgen::JsValue,
     label: &str,
-) -> Result<[f32; N], wasm_bindgen::JsError> {
+) -> Result<[f32; N], WebError> {
     let items = read_vector_items(value, label)?;
     Ok(super::vector::read_vector::<N>(items, label)?)
 }
@@ -102,7 +104,7 @@ pub(crate) fn read_vector<const N: usize>(
 pub(crate) fn read_color(
     value: &wasm_bindgen::JsValue,
     label: &str,
-) -> Result<crate::Color, wasm_bindgen::JsError> {
+) -> Result<crate::Color, WebError> {
     let items = read_vector_items(value, label)?;
     Ok(super::vector::read_color(items, label)?)
 }

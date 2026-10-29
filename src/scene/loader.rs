@@ -196,12 +196,12 @@ impl From<&[u8]> for SceneSource {
     }
 }
 
-/// Errors from `Scene::load`. Wraps the upstream parser's typed error
-/// surface where we can.
+/// Errors from `Scene::load`.
 #[derive(Debug, thiserror::Error)]
 pub enum SceneLoadError {
+    /// A file the glTF parser refuses, with its reason.
     #[error("glTF parse error: {0}")]
-    Gltf(#[from] gltf::Error),
+    Gltf(String),
     #[error("PBR material construction failed: {0}")]
     Material(#[from] crate::ShaderError),
     #[error("invalid glTF data: {0}")]
@@ -211,6 +211,35 @@ pub enum SceneLoadError {
         index: usize,
         source: crate::scene::CameraError,
     },
+}
+
+/// A failure of the glTF parser, which `SceneLoadError::Gltf` carries as text.
+#[derive(Debug, thiserror::Error)]
+#[error(transparent)]
+pub(crate) struct GltfFailure(#[from] gltf::Error);
+
+impl From<GltfFailure> for SceneLoadError {
+    fn from(failure: GltfFailure) -> Self {
+        SceneLoadError::Gltf(crate::shader::error::describe(&failure.0))
+    }
+}
+
+/// What the glTF parser reads from a file: its document, buffers and images.
+type GltfParts = (
+    gltf::Document,
+    Vec<gltf::buffer::Data>,
+    Vec<gltf::image::Data>,
+);
+
+/// The parts of a glTF file the parser reads from `path`, with the files beside it.
+#[cfg(not(wasm))]
+fn import_path(path: &std::path::Path) -> Result<GltfParts, GltfFailure> {
+    Ok(gltf::import(path)?)
+}
+
+/// The parts of a `.glb` or embedded glTF file the parser reads from `bytes`.
+fn import_bytes(bytes: &[u8]) -> Result<GltfParts, GltfFailure> {
+    Ok(gltf::import_slice(bytes)?)
 }
 
 /// Entry point invoked by `Scene::load`. Dispatches on the format tag.
@@ -230,7 +259,7 @@ fn load_gltf(source: GltfSource) -> Result<Scene, SceneLoadError> {
     // themselves (typically via `fetch` + `Uint8Array`).
     let (document, buffers, images) = match payload {
         #[cfg(not(wasm))]
-        GltfPayload::Path(p) => gltf::import(p)?,
+        GltfPayload::Path(p) => import_path(&p)?,
         #[cfg(wasm)]
         GltfPayload::Path(path) => {
             return Err(SceneLoadError::Invalid(format!(
@@ -238,7 +267,7 @@ fn load_gltf(source: GltfSource) -> Result<Scene, SceneLoadError> {
                 path.display()
             )));
         }
-        GltfPayload::Bytes(b) => gltf::import_slice(&b)?,
+        GltfPayload::Bytes(b) => import_bytes(&b)?,
     };
 
     let scene = Scene::new();
@@ -1222,6 +1251,13 @@ fn add_light(
     };
     scene.add(&light).map_err(attach_err)?;
     Ok(())
+}
+
+#[cfg(any(python, wasm, test))]
+impl crate::error::Classify for SceneLoadError {
+    fn classify(&self) -> crate::error::ErrorClass {
+        crate::error::ErrorClass::SceneLoad
+    }
 }
 
 #[cfg(test)]
