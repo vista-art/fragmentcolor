@@ -112,6 +112,7 @@ pub enum RendererError {
     Error(String),
 }
 
+#[cfg(any(python, wasm, mobile, test))]
 impl RendererError {
     /// Whether the frame failed because the window is hidden or minimized, which every
     /// binding raises as its own class or case, so a render loop can skip the frame.
@@ -176,6 +177,8 @@ impl Classify for RendererError {
             RendererError::TextureError(error) => error.classify(),
             RendererError::InitializationError(error) => error.classify(),
             RendererError::PassError(error) => error.classify(),
+            RendererError::MeshError(error) => error.classify(),
+            RendererError::ShaderError(error) => error.classify(),
             RendererError::DeviceError { .. } => ErrorClass::Device,
             RendererError::LimitError { .. } => ErrorClass::Limit,
             RendererError::FeatureError { .. } => ErrorClass::Feature,
