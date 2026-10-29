@@ -474,6 +474,22 @@ impl ShaderObject {
         Ok(())
     }
 
+    /// Records `binding` on `mesh` and holds the mesh, unless it holds it already.
+    /// Unlike `record`, it records the binding for a held mesh too, so the types
+    /// a check of the quick view finds again stay, as the first check's do.
+    fn hold(
+        &self,
+        mesh: Arc<crate::mesh::MeshObject>,
+        binding: crate::mesh::Binding,
+    ) -> Result<(), ShaderError> {
+        let mut meshes = self.meshes.write();
+        mesh.declare(self.id, binding)?;
+        if !meshes.iter().any(|held| Arc::ptr_eq(held, &mesh)) {
+            meshes.push(mesh);
+        }
+        Ok(())
+    }
+
     /// Whether this shader holds `mesh`.
     fn holds(&self, mesh: &Arc<crate::mesh::MeshObject>) -> bool {
         self.meshes
@@ -495,28 +511,44 @@ impl ShaderObject {
         let _ = self.review(kept);
     }
 
-    /// Checks the quick view's mesh again when it changed since it last passed,
-    /// and returns why it fails. The renderer calls it on every render of this
-    /// shader, however the render reached it.
-    pub(crate) fn check_preview(&self) -> Result<(), ShaderError> {
+    /// Checks the quick view's mesh again when it changed since it last passed.
+    /// Returns why it fails, or the mesh generation it passed at for a quick view.
+    pub(crate) fn check_preview(&self) -> Result<Option<u64>, ShaderError> {
         match self.preview.lock().as_mut() {
-            Some(kept) => self.review(kept),
-            None => Ok(()),
+            Some(kept) => self.review(kept).map(Some),
+            None => Ok(None),
         }
     }
 
-    /// Checks the kept mesh unless it passed at its current generation. It holds
-    /// the mesh while it passes and lets it go while it fails. It records the types
-    /// it gives untyped attributes but none of its reads, so the mesh's other
-    /// shaders keep their own rules.
-    fn review(&self, kept: &mut Preview) -> Result<(), ShaderError> {
+    /// The meshes this shader draws, read in one step with `check_preview`, so no
+    /// check on another thread lets the quick view's mesh go between the two. The
+    /// renderer reads them on every render of this shader, however it reached it.
+    pub(crate) fn read_meshes(
+        &self,
+    ) -> Result<(Vec<Arc<crate::mesh::MeshObject>>, Option<u64>), ShaderError> {
+        let mut preview = self.preview.lock();
+        let passed = match preview.as_mut() {
+            Some(kept) => Some(self.review(kept)?),
+            None => None,
+        };
+        #[cfg(test)]
+        crate::hooks::run("preview checked");
+        Ok((self.meshes.read().clone(), passed))
+    }
+
+    /// Checks the kept mesh unless it passed at its current generation.
+    /// It holds the mesh while it passes and lets it go while it fails.
+    /// It fixes the types it gives untyped attributes, as any attach does,
+    /// but records none of its reads, so it adds nothing the vertices must hold.
+    /// It returns the generation the mesh passed at, which it read before the check.
+    fn review(&self, kept: &mut Preview) -> Result<u64, ShaderError> {
         let generation = kept.mesh.generation();
         if kept.checked == Some(generation) {
-            return Ok(());
+            return Ok(generation);
         }
         let passed = self
             .bind_mesh(&kept.mesh)
-            .and_then(|binding| self.record(kept.mesh.clone(), binding.without_reads(), true));
+            .and_then(|binding| self.hold(kept.mesh.clone(), binding.without_reads()));
         match passed {
             Ok(()) => kept.checked = Some(generation),
             Err(_) => {
@@ -524,7 +556,7 @@ impl ShaderObject {
                 kept.checked = None;
             }
         }
-        passed
+        passed.map(|()| generation)
     }
 
     /// Check that a mesh can attach to this shader, without attaching it or recording any type.

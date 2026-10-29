@@ -1257,6 +1257,8 @@ impl RenderContext {
     /// The draw loop takes each shader's layouts and buffers from the plan.
     /// A pass that draws into the frame checks its attachments once it has one.
     fn plan_pass(&self, pass: &PassObject) -> Result<PassDraws, RendererError> {
+        // A mesh's own pass builds its quick view here too, whatever reached the pass.
+        pass.ensure_preview();
         self.check_light_cap(pass)?;
         self.check_viewport(pass)?;
         let targets = self.find_targets(pass)?;
@@ -1293,8 +1295,7 @@ impl RenderContext {
         self.check_textures(&shader)?;
         // The quick view checks its mesh on every render, however the render
         // reached it, and a mesh it refuses says why on every render.
-        shader.check_preview()?;
-        let meshes = shader.meshes.read().clone();
+        let (meshes, passed) = shader.read_meshes()?;
         if meshes.is_empty() {
             require_mesh(&shader)?;
             return Ok(ShaderDraw {
@@ -1320,11 +1321,14 @@ impl RenderContext {
                 buffers,
                 counts,
                 schemas,
-                generation,
-            } = mesh.upload(self)?;
+                ..
+            } = match passed {
+                Some(passed) => self.upload_checked(&shader, mesh, passed)?,
+                None => mesh.upload(self)?,
+            };
             #[cfg(test)]
             crate::hooks::run("uploaded");
-            let read = mesh.fetch_layouts(shader.id, generation, || {
+            let read = mesh.fetch_layouts(shader.id, &schemas, || {
                 vertex_buffer_layouts(&shader, mesh, &schemas)
             })?;
             check_strides(&read, limits)?;
@@ -1361,9 +1365,6 @@ impl RenderContext {
                 });
             }
         }
-        // A pack sees no change its generation doesn't count, so a vertex that
-        // reached the quick view's pack after its check is checked here.
-        shader.check_preview()?;
         let draws = match (layouts.is_empty(), blend) {
             (true, _) => MeshDraws::Skipped,
             (false, true) => MeshDraws::Blend(blended),
@@ -1375,6 +1376,33 @@ impl RenderContext {
             model,
             draws,
         })
+    }
+
+    /// Uploads the mesh of a quick view whose check passed at `passed`.
+    ///
+    /// The upload counts only when the mesh's generation stayed at `passed` to its end.
+    /// Every mutator moves the generation before it lets the data go, so the pack then
+    /// saw the state the check saw. A mesh that changed meanwhile is checked and uploaded
+    /// again, and one that keeps changing returns `MeshError::Busy`, so no frame draws
+    /// a pack the check didn't see, such as an instance that `clear_instances` removed.
+    fn upload_checked(
+        &self,
+        shader: &ShaderObject,
+        mesh: &crate::mesh::MeshObject,
+        passed: u64,
+    ) -> Result<crate::mesh::Upload, RendererError> {
+        let mut passed = passed;
+        for _ in 0..PREVIEW_TRIES {
+            let upload = mesh.upload(self)?;
+            if mesh.generation() == passed {
+                return Ok(upload);
+            }
+            match shader.check_preview()? {
+                Some(again) => passed = again,
+                None => return Ok(upload),
+            }
+        }
+        Err(crate::mesh::MeshError::Busy(PREVIEW_TRIES).into())
     }
 
     /// Try to get a frame once, and on Lost/Outdated, retry exactly once.
@@ -2831,6 +2859,9 @@ fn viewport_rect(region: &ScreenRegion) -> (f32, f32, f32, f32) {
 /// The override a shader declares to learn whether its target stores colors
 /// encoded for display. `Material::pbr` encodes its linear light when it does.
 const ENCODE_SRGB: &str = "ENCODE_SRGB";
+
+/// How many times a render checks and uploads a quick view's mesh that keeps changing.
+const PREVIEW_TRIES: usize = 4;
 
 /// Whether `format` stores colors encoded for display without encoding them
 /// on write, which a shader that works in linear light has to do itself.
@@ -4800,6 +4831,55 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat)
 
             assert!(is_blue(pixel(&images[0], LEFT)), "opaque");
             assert!(is_blue(pixel(&images[1], LEFT)), "blended");
+        });
+    }
+
+    // Story: a shader keeps layouts for the pack they came from, so a second Renderer
+    // whose upload packed newer instances under the same generation builds its own.
+    #[test]
+    fn kept_layouts_belong_to_their_pack() {
+        pollster::block_on(async move {
+            let mut contexts = Vec::new();
+            for _ in 0..2 {
+                let (_, device, queue) = create_device_and_queue().await;
+                contexts.push(RenderContext::new(device, queue));
+            }
+            let shader = crate::Shader::new(
+                "@vertex fn vs_main(@location(0) p: vec2<f32>, @location(1) offset: vec2<f32>) -> @builtin(position) vec4<f32> { return vec4<f32>(p + offset, 0.0, 1.0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+            )
+            .expect("shader");
+            let mesh = crate::Mesh::new();
+            mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
+            let wide = || {
+                crate::Instance::new()
+                    .set("color", [1.0; 4])
+                    .set("offset", [0.0, 0.0])
+            };
+            mesh.add_instances([wide(), wide()]);
+            shader.add_mesh(&mesh).expect("attach");
+            let stride = |context: &RenderContext| {
+                let upload = mesh.object.upload(context).expect("upload");
+                let build = || vertex_buffer_layouts(&shader.object, &mesh.object, &upload.schemas);
+                let layouts = mesh
+                    .object
+                    .fetch_layouts(shader.object.id, &upload.schemas, build)
+                    .expect("layouts");
+                layouts.instance.map(|instance| instance.stride)
+            };
+            let first = stride(&contexts[0]);
+            // The instances change after the second upload read the generation.
+            let late = mesh.clone();
+            crate::hooks::once("upload", move || {
+                late.clear_instances();
+                late.add_instances(
+                    [(); 2].map(|_| crate::Instance::new().set("offset", [0.0, 0.0])),
+                );
+            });
+            let second = stride(&contexts[1]);
+
+            assert_eq!(first, Some(24), "color and offset");
+            assert_eq!(second, Some(8), "offset alone");
         });
     }
 

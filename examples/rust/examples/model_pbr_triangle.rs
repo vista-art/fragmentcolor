@@ -17,8 +17,9 @@ fn main() {
             .await
             .expect("texture target");
 
-        // A triangle in the world-space XY plane, facing +Z. The PBR shader
-        // expects position (vec3), normal (vec3), uv0 (vec2) in this order.
+        // A triangle in the world-space XY plane, facing +Z.
+        // The PBR shader reads position, normal, uv0, color0, uv1 and tangent.
+        // `Vertex::pbr` seeds all but the position, and `set` overrides uv0.
         let mesh = Mesh::new();
         for (pos, uv) in [
             ([0.0_f32, 0.5, 0.0], [0.5, 1.0]),

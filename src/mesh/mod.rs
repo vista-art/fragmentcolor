@@ -54,12 +54,11 @@ impl Default for Mesh {
 impl Mesh {
     #[lsp_doc("docs/api/geometry/mesh/new.md")]
     pub fn new() -> Self {
+        let object = Arc::new(MeshObject::new());
+        let pass = crate::pass::PassObject::for_mesh("Mesh Internal Pass", object.clone());
         Self {
-            object: Arc::new(MeshObject::new()),
-            pass: Arc::new(crate::pass::PassObject::new(
-                "Mesh Internal Pass",
-                crate::pass::PassType::Render,
-            )),
+            object,
+            pass: Arc::new(pass),
         }
     }
 
@@ -134,23 +133,12 @@ impl Mesh {
 // Renderable impl ( for Mesh quick-view)
 // -----------------------------
 /// The quick view draws the mesh with a shader built from its first vertex.
-/// That shader records no reads, so the mesh's other shaders keep their own rules.
-/// It checks the mesh itself whenever it changed, on every render that draws it,
+/// That shader fixes the types it gives plain numbers, and it records no reads.
+/// The renderer builds it and checks the mesh on every render that reaches its pass,
 /// a `Pass::require` of the mesh included, and a mesh it refuses makes `render` say why.
 impl Renderable for Mesh {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        if self.object.verts.read().is_empty() {
-            return vec![self.pass.clone()].into();
-        }
-        let shader = self.pass.ensure_shader(|| {
-            // Copied once, so no vertex guard is held while the shader compiles or checks.
-            let first = self.object.verts.read().first().cloned();
-            match first.as_ref().map(Shader::from_vertex) {
-                Some(Ok(shader)) => shader.object,
-                _ => Shader::default().object,
-            }
-        });
-        shader.preview(&self.object);
+        self.pass.ensure_preview();
         vec![self.pass.clone()].into()
     }
 
@@ -266,7 +254,8 @@ struct Packed {
     indices: Vec<u32>,
     /// The instances `insts` holds, those without properties included.
     rows: usize,
-    /// The layouts `verts` and `insts` follow.
+    /// The layouts `verts` and `insts` follow. A repack while an upload or a kept layout
+    /// holds them makes new ones, so `Arc::ptr_eq` tells two packs apart.
     schemas: Arc<Schemas>,
     /// The `vertex_changes` and `instance_changes` the bytes come from, `None` until packed.
     vertices_at: Option<u64>,
@@ -300,11 +289,11 @@ struct Repacked {
 }
 
 /// What one attached shader reads from the mesh, and the
-/// vertex layouts it read, with the generation they came from.
+/// vertex layouts it read, with the schemas of the pack they came from.
 #[derive(Debug, Default)]
 struct Attached {
     reads: AttributeTypes,
-    layouts: Option<(u64, VertexLayouts)>,
+    layouts: Option<(Arc<Schemas>, VertexLayouts)>,
 }
 
 /// An upload and the context whose device holds its buffers,
@@ -446,6 +435,8 @@ impl MeshObject {
         drop(hi);
         let mut verts = self.verts.write();
         verts.push(v);
+        #[cfg(test)]
+        crate::hooks::run("pushed");
         self.touch_vertices();
         drop(verts);
         #[cfg(test)]
@@ -466,6 +457,8 @@ impl MeshObject {
         // Adding a real instance invalidates any prior set_instance_count override
         // (otherwise the GPU would draw past the actual buffer end).
         *self.override_instances.write() = None;
+        #[cfg(test)]
+        crate::hooks::run("instance pushed");
         self.touch_instances();
     }
 
@@ -480,6 +473,8 @@ impl MeshObject {
         drop(schema);
         // No buffer and no count override. A shader that reads instances refuses the empty list.
         *self.override_instances.write() = None;
+        #[cfg(test)]
+        crate::hooks::run("instances cleared");
         self.touch_instances();
     }
 
@@ -522,24 +517,42 @@ impl MeshObject {
         self.generation.load(Ordering::Acquire)
     }
 
-    /// The layouts `build` makes for the attached shader `shader` from the upload at
-    /// `generation`, kept until the mesh changes or the shader lets the mesh go.
+    /// Builds the quick view's shader on `pass` from the first vertex, once there is one,
+    /// and checks the mesh against it. An empty mesh builds nothing and draws nothing.
+    pub(crate) fn preview_in(self: &Arc<Self>, pass: &PassObject) {
+        if self.verts.read().is_empty() {
+            return;
+        }
+        let shader = pass.ensure_shader(|| {
+            // Copied once, so no vertex guard is held while the shader compiles or checks.
+            let first = self.verts.read().first().cloned();
+            match first.as_ref().map(Shader::from_vertex) {
+                Some(Ok(shader)) => shader.object,
+                _ => Shader::default().object,
+            }
+        });
+        shader.preview(self);
+    }
+
+    /// The layouts `build` makes for the attached shader `shader` from the pack whose
+    /// `schemas` an upload carries. They stay until another pack's schemas arrive or the
+    /// shader lets the mesh go, so two Renderers that packed different data never share them.
     /// A shader that doesn't hold the mesh keeps none.
     pub(crate) fn fetch_layouts(
         &self,
         shader: u64,
-        generation: u64,
+        schemas: &Arc<Schemas>,
         build: impl FnOnce() -> Result<VertexLayouts, RendererError>,
     ) -> Result<VertexLayouts, RendererError> {
         if let Some(attached) = self.required.read().get(&shader)
             && let Some((kept, layouts)) = attached.layouts.as_ref()
-            && *kept == generation
+            && Arc::ptr_eq(kept, schemas)
         {
             return Ok(layouts.clone());
         }
         let layouts = build()?;
         if let Some(attached) = self.required.write().get_mut(&shader) {
-            attached.layouts = Some((generation, layouts.clone()));
+            attached.layouts = Some((schemas.clone(), layouts.clone()));
         }
         Ok(layouts)
     }
@@ -555,13 +568,13 @@ impl MeshObject {
                 .is_some_and(VertexSchema::is_model)
     }
 
-    /// Records what a shader's attach found: the types it gave untyped attributes,
-    /// which repack what they change, and the attributes it reads, which every
-    /// vertex and instance added later must hold. The attach checked the ones the
-    /// mesh holds now. Records nothing when another shader has typed one of them
-    /// another way meanwhile. A binding that assumed the Model columns sets them
-    /// as the instance layout, unless an instance or a layout arrived since. The
-    /// layout lands before the reads that need it, so a pack between the two passes.
+    /// Records what a shader's attach found.
+    ///
+    /// Untyped attributes take its types, which repack what they change.
+    /// Vertices and instances added later must hold the attributes it reads.
+    /// A binding that assumed the Model columns sets them as the instance layout
+    /// before it records the reads, unless an instance or a layout arrived since.
+    /// A type another shader gave one of them meanwhile fails, and it records nothing.
     pub(crate) fn declare(&self, shader: u64, binding: Binding) -> Result<(), ShaderError> {
         let Binding {
             types: added,
@@ -785,6 +798,8 @@ impl MeshObject {
     /// Buffers on another context's device give way to new ones.
     pub(crate) fn upload(&self, context: &RenderContext) -> Result<Upload, RendererError> {
         let generation = self.generation();
+        #[cfg(test)]
+        crate::hooks::run("upload");
         if let Some(found) = self.find_cached(context.id, generation) {
             return Ok(found);
         }
@@ -1386,10 +1401,10 @@ mod tests {
         });
     }
 
-    // Story: the mesh builds a shader's layouts once and keeps them until it
-    // changes, and a shader that lets the mesh go leaves no layouts behind.
+    // Story: the mesh builds a shader's layouts once for each pack and keeps them
+    // until it packs again, and a shader that lets the mesh go leaves none behind.
     #[test]
-    fn layouts_stay_until_the_mesh_changes() {
+    fn layouts_stay_until_the_mesh_packs_again() {
         pollster::block_on(async move {
             let renderer = crate::Renderer::new();
             let target = renderer
@@ -1407,21 +1422,28 @@ mod tests {
             renderer.render(&shader, &target).expect("render");
             let id = shader.object.id;
             let refuse = || Err(RendererError::Error("rebuilt".into()));
-            let fetch = |mesh: &Mesh| {
-                mesh.object
-                    .fetch_layouts(id, mesh.object.generation(), refuse)
+            let latest = |mesh: &Mesh| {
+                let cache = mesh.object.cache.read();
+                cache.as_ref().map(|cached| cached.upload.schemas.clone())
+            };
+            let fetch = |schemas: Option<Arc<Schemas>>| {
+                let schemas = schemas.expect("an upload");
+                mesh.object.fetch_layouts(id, &schemas, refuse)
             };
 
-            let kept = fetch(&mesh);
+            let first = latest(&mesh);
+            let kept = fetch(first.clone());
             mesh.add_vertices([[0.0, 0.0], [0.1, 0.0], [0.0, 0.1]]);
-            let changed = fetch(&mesh);
             renderer.render(&shader, &target).expect("render again");
+            let older = fetch(first);
+            let newer = fetch(latest(&mesh));
             shader.remove_mesh(&mesh);
             let entries = mesh.object.required.read().len();
-            let released = fetch(&mesh);
+            let released = fetch(latest(&mesh));
 
             assert!(kept.is_ok(), "a still mesh keeps its layouts: {kept:?}");
-            assert!(changed.is_err(), "a changed mesh builds them again");
+            assert!(older.is_err(), "an older pack builds them again");
+            assert!(newer.is_ok(), "the render kept the new pack's: {newer:?}");
             assert_eq!(entries, 0, "a shader that let go keeps no entry");
             assert!(released.is_err(), "and no layouts");
         });
@@ -1504,6 +1526,44 @@ mod tests {
         });
     }
 
+    // Story: the quick view fixes the types it gives plain numbers each time it
+    // checks the mesh, so a color it later reads from an instance stays four floats.
+    #[test]
+    fn the_quick_view_keeps_the_types_a_new_check_finds() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let mesh = Mesh::new();
+            let corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+            mesh.add_vertices(
+                corners.map(|corner| Vertex::new(corner).set("color", [1.0, 0.0, 0.0, 1.0])),
+            );
+            renderer.render(&mesh, &target).expect("first render");
+            // An instance color is read before the vertex one.
+            mesh.add_instance(Instance::new().set("color", [0.0, 1.0, 0.0, 1.0]));
+            renderer
+                .render(&mesh, &target)
+                .expect("render with the instance");
+            let integers = crate::Shader::new(
+                "@vertex fn vs_main(@location(0) p: vec2<f32>, @location(1) color: vec4<u32>) -> @builtin(position) vec4<f32> { return vec4<f32>(p, f32(color.x), 1.0); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+            )
+            .expect("shader");
+
+            let attached = integers.add_mesh(&mesh);
+            let again = renderer.render(&mesh, &target);
+
+            match attached {
+                Err(ShaderError::AttributeConflict { name, .. }) => assert_eq!(name, "color"),
+                other => panic!("expected the color conflict, got {other:?}"),
+            }
+            assert!(again.is_ok(), "{again:?}");
+        });
+    }
+
     // Story: every render of a mesh the quick view refuses says why,
     // concurrent ones included, rather than the error for a shader with no mesh.
     #[test]
@@ -1564,6 +1624,44 @@ mod tests {
         });
     }
 
+    // Story: a pass that requires a mesh while it is empty draws the mesh
+    // once it has vertices, and reports a vertex the quick view refuses.
+    #[test]
+    fn a_mesh_required_while_empty_draws_once_it_has_vertices() {
+        pollster::block_on(async move {
+            use crate::Target;
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+            let mesh = Mesh::new();
+            let pass = crate::Pass::new("main");
+            pass.load_previous();
+            pass.require(&mesh).expect("require");
+            mesh.add_vertices(corners.map(|corner| Vertex::new(corner).set("color", [1.0; 4])));
+
+            renderer.render(&pass, &target).expect("render");
+            let image = target.get_image().await.expect("read back");
+
+            let refused = Mesh::new();
+            let other = crate::Pass::new("other");
+            other.require(&refused).expect("require");
+            refused.add_vertices(
+                corners.map(|corner| Vertex::new(corner).set("position", [5.0, 5.0])),
+            );
+            let error = renderer
+                .render(&other, &target)
+                .expect_err("a position property")
+                .to_string();
+
+            assert_eq!(mesh.pass.shaders.read().len(), 1, "the quick view's shader");
+            assert_eq!(image[..4], [255, 255, 255, 255], "the white mesh");
+            assert!(error.contains("property named 'position'"), "{error}");
+        });
+    }
+
     // Story: a mesh the quick view refused when a pass required it draws
     // once it fits, instead of failing as a shader with no mesh.
     #[test]
@@ -1592,8 +1690,75 @@ mod tests {
         });
     }
 
-    // Story: a vertex counts as a change before any other thread can see it, so a
-    // vertex the quick view packs after its check is checked by the same render.
+    // Story: a check of the quick view on another thread can't let the mesh go between
+    // this render's check and its read of the mesh list, so a vertex without color
+    // added meanwhile fails the render with its own error, not a shader with no mesh.
+    #[test]
+    fn a_concurrent_check_leaves_the_render_its_error() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let mesh = Mesh::new();
+            let corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+            mesh.add_vertices(corners.map(|corner| Vertex::new(corner).set("color", [1.0; 4])));
+            renderer.render(&mesh, &target).expect("first render");
+            let shader = mesh.pass.shaders.read()[0].clone();
+            let late = mesh.clone();
+            let checker = Arc::new(parking_lot::Mutex::new(None));
+            let slot = checker.clone();
+            // Vertices without color arrive, and another thread checks the quick view
+            // and gets a while to let the mesh go, before this render reads its meshes.
+            crate::hooks::once("preview checked", move || {
+                late.add_vertices(corners.map(Vertex::new));
+                let (sender, receiver) = std::sync::mpsc::channel();
+                let thread = std::thread::spawn(move || {
+                    let _ = shader.check_preview();
+                    let _ = sender.send(());
+                });
+                let _ = receiver.recv_timeout(std::time::Duration::from_millis(200));
+                *slot.lock() = Some(thread);
+            });
+
+            let rendered = renderer.render(&mesh, &target);
+            if let Some(thread) = checker.lock().take() {
+                thread.join().expect("the checker thread");
+            }
+
+            let error = rendered.expect_err("vertex 3 has no color").to_string();
+            assert!(error.contains("vertex 3"), "{error}");
+        });
+    }
+
+    // Story: the quick view draws only a pack of the state its check passed, so an
+    // instance added during the pack and cleared after it never reaches the frame.
+    #[test]
+    fn the_quick_view_draws_only_a_checked_pack() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let mesh = Mesh::new();
+            let corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+            mesh.add_vertices(corners.map(|corner| Vertex::new(corner).set("color", [1.0; 4])));
+            // The quick view reads the instance color before the vertex one.
+            mesh.add_instance(Instance::new().set("color", [1.0; 4]));
+            let (added, cleared) = (mesh.clone(), mesh.clone());
+            crate::hooks::once("pack", move || added.add_instance(Instance::new()));
+            crate::hooks::once("packed", move || cleared.clear_instances());
+
+            renderer.render(&mesh, &target).expect("render");
+
+            assert_eq!(mesh.object.packed.read().rows, 0, "the drawn pack");
+        });
+    }
+
+    // Story: the render checks the quick view's mesh again when it changed during
+    // the upload, so a vertex another thread adds while the pack runs fails that render.
     #[test]
     fn a_vertex_added_during_the_quick_view_pack_is_checked() {
         pollster::block_on(async move {
@@ -1634,6 +1799,41 @@ mod tests {
             let error = rendered.expect_err("vertex 3 has no color").to_string();
             assert!(error.contains("vertex 3"), "{error}");
         });
+    }
+
+    /// Watches the hook point `name` and reports whether `locked` held there, with the
+    /// generation still where it was when the watch began, so the change had no reader.
+    fn watch_change(
+        object: &Arc<MeshObject>,
+        name: &'static str,
+        locked: fn(&MeshObject) -> bool,
+    ) -> std::rc::Rc<std::cell::Cell<Option<bool>>> {
+        let seen = std::rc::Rc::new(std::cell::Cell::new(None));
+        let (object, kept, before) = (object.clone(), seen.clone(), object.generation());
+        crate::hooks::once(name, move || {
+            kept.set(Some(locked(&object) && object.generation() == before));
+        });
+        seen
+    }
+
+    // Story: a change stays out of every reader's reach until the mesh counts it,
+    // so a pack that sees a vertex or an instance change finds the generation moved.
+    #[test]
+    fn a_change_is_counted_before_any_reader_sees_it() {
+        let mesh = Mesh::new();
+        let verts = |object: &MeshObject| object.verts.try_read().is_none();
+        let insts = |object: &MeshObject| object.insts.try_read().is_none();
+
+        let vertex = watch_change(&mesh.object, "pushed", verts);
+        mesh.add_vertex([0.0, 0.0]);
+        let instance = watch_change(&mesh.object, "instance pushed", insts);
+        mesh.add_instance(Instance::new());
+        let cleared = watch_change(&mesh.object, "instances cleared", insts);
+        mesh.clear_instances();
+
+        assert_eq!(vertex.get(), Some(true), "add_vertex");
+        assert_eq!(instance.get(), Some(true), "add_instance");
+        assert_eq!(cleared.get(), Some(true), "clear_instances");
     }
 
     // Story: the quick view reads the first vertex in a statement of its own,
