@@ -175,8 +175,8 @@ impl Shader {
     /// (shared reference) across the FFI boundary — it requires `Arc<T>`.
     #[uniffi::constructor(name = "fromMesh")]
     #[lsp_doc("docs/api/core/shader/hidden/from_mesh_mobile.md")]
-    pub fn from_mesh_mobile(mesh: Arc<Mesh>) -> Arc<Self> {
-        Arc::new(Shader::from_mesh(&mesh))
+    pub fn from_mesh_mobile(mesh: Arc<Mesh>) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(Shader::from_mesh(&mesh)?))
     }
 
     /// Build a basic WGSL shader from a single `Vertex` layout.
@@ -184,8 +184,8 @@ impl Shader {
     /// boundary — it requires `Arc<T>`.
     #[uniffi::constructor(name = "fromVertex")]
     #[lsp_doc("docs/api/core/shader/hidden/from_vertex_mobile.md")]
-    pub fn from_vertex_mobile(vertex: Arc<Vertex>) -> Arc<Self> {
-        Arc::new(Shader::from_vertex(&vertex))
+    pub fn from_vertex_mobile(vertex: Arc<Vertex>) -> Result<Arc<Self>, FragmentColorError> {
+        Ok(Arc::new(Shader::from_vertex(&vertex)?))
     }
 
     // ------------------------------------------------------------------

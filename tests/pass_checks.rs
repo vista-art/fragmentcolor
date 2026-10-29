@@ -428,7 +428,7 @@ fn a_refused_render_leaves_the_mesh_to_its_owner() {
         let _context = target(&other, 8).await;
         let mesh = Mesh::new();
         mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
-        let shader = Shader::from_mesh(&mesh);
+        let shader = Shader::from_mesh(&mesh).expect("shader from mesh");
 
         let result = other.render(&shader, &frame);
         assert!(

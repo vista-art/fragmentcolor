@@ -1,6 +1,6 @@
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
@@ -134,13 +134,22 @@ impl Mesh {
 // -----------------------------
 // Renderable impl ( for Mesh quick-view)
 // -----------------------------
+/// The quick view draws the mesh with a shader built from its first vertex. `passes`
+/// can't return an error, so the shader keeps the error of a failed attach, and
+/// `render` returns it in place of the error for a shader with no mesh.
 impl Renderable for Mesh {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
         if self.pass.shaders.read().is_empty() {
             if let Some(first) = self.object.verts.read().first().cloned() {
-                let shader = Shader::from_vertex(&first);
+                let (shader, attached) = match Shader::from_vertex(&first) {
+                    Ok(shader) => {
+                        let attached = shader.add_mesh(self);
+                        (shader, attached)
+                    }
+                    Err(error) => (Shader::default(), Err(error)),
+                };
+                shader.object.keep_refusal(attached);
                 self.pass.push_shader(shader.object.clone());
-                _ = shader.add_mesh(self);
             }
         } else if let Some(shader) = self.pass.shaders.read().last().cloned() {
             let is_attached = shader
@@ -150,7 +159,7 @@ impl Renderable for Mesh {
                 .any(|mesh| Arc::ptr_eq(mesh, &self.object));
 
             if !is_attached {
-                _ = shader.add_mesh(self.object.clone());
+                shader.keep_refusal(shader.add_mesh(self.object.clone()));
             }
         }
         vec![self.pass.clone()].into()
@@ -221,9 +230,10 @@ pub(crate) struct MeshObject {
     /// The format the first shader to read each untyped attribute gave it.
     /// A leaf lock: never take another lock while holding this one.
     pub(crate) types: RwLock<AttributeTypes>,
-    /// The attributes an attached shader reads, which every vertex and instance must hold.
-    /// Like `types`, they stay for the mesh's lifetime.
-    required: RwLock<AttributeNames>,
+    /// The attributes each attached shader reads and their formats, by `ShaderObject::id`.
+    /// Every vertex and instance holds them all, and a shader's entry goes when it no longer
+    /// holds the mesh.
+    required: RwLock<HashMap<u64, AttributeTypes>>,
 
     // Dirty flags
     dirty_vertices: RwLock<bool>,
@@ -305,19 +315,12 @@ impl AttributeTypes {
     }
 }
 
-/// Attribute names, by stream.
-#[derive(Clone, Debug, Default)]
-pub(crate) struct AttributeNames {
-    pub(crate) vertex: HashSet<String>,
-    pub(crate) instance: HashSet<String>,
-}
-
 /// What a shader's attach records on a mesh: the types it gives
-/// untyped attributes, and the attributes it reads.
+/// untyped attributes, and the attributes it reads, in the format it reads each.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Binding {
     pub(crate) types: AttributeTypes,
-    pub(crate) read: AttributeNames,
+    pub(crate) read: AttributeTypes,
 }
 
 /// A mesh's buffers on the device of one `Renderer`. Another `Renderer`
@@ -345,7 +348,7 @@ impl MeshObject {
             vertex_schema: RwLock::new(None),
             instance_schema: RwLock::new(None),
             types: RwLock::new(AttributeTypes::default()),
-            required: RwLock::new(AttributeNames::default()),
+            required: RwLock::new(HashMap::new()),
             dirty_vertices: RwLock::new(false),
             dirty_instances: RwLock::new(false),
             override_instances: RwLock::new(None),
@@ -493,7 +496,7 @@ impl MeshObject {
     /// vertex and instance added later must hold. The attach checked the ones the
     /// mesh holds now. Records nothing when another shader has typed one of them
     /// another way meanwhile.
-    pub(crate) fn declare(&self, binding: Binding) -> Result<(), ShaderError> {
+    pub(crate) fn declare(&self, shader: u64, binding: Binding) -> Result<(), ShaderError> {
         let Binding { types: added, read } = binding;
         if !added.is_empty() {
             let mut types = self.types.write();
@@ -504,8 +507,9 @@ impl MeshObject {
         }
         {
             let mut required = self.required.write();
-            required.vertex.extend(read.vertex);
-            required.instance.extend(read.instance);
+            let reads = required.entry(shader).or_default();
+            reads.vertex.extend(read.vertex);
+            reads.instance.extend(read.instance);
         }
         if added.is_empty() {
             return Ok(());
@@ -522,11 +526,32 @@ impl MeshObject {
         Ok(())
     }
 
+    /// Drops what the shader `shader` reads, once that shader no longer holds the mesh.
+    /// A pack that failed for one of its attributes left the data dirty, so the next one runs again.
+    pub(crate) fn detach(&self, shader: u64) {
+        self.required.write().remove(&shader);
+    }
+
+    /// The attributes some attached shader reads, by stream, with their formats.
+    fn read_required(&self) -> AttributeTypes {
+        let required = self.required.read();
+        let mut union = AttributeTypes::default();
+        for reads in required.values() {
+            union.vertex.extend(reads.vertex.clone());
+            union.instance.extend(reads.instance.clone());
+        }
+        union
+    }
+
     fn ensure_packed(&self) -> Result<(), MeshError> {
-        // Indices from `set_indices` are checked against the vertices on every repack,
-        // and the vertices stay dirty until they fit, so each upload fails the same way.
-        if *self.indices_overridden.read() && *self.dirty_vertices.read() {
-            check_indices(&self.indices.read(), self.verts.read().len())?;
+        // The indices draw a triangle list, checked against the vertices on every repack:
+        // the ones `set_indices` gave, or one index per vertex. The vertices stay dirty
+        // until they fit, so each upload fails the same way.
+        if *self.dirty_vertices.read() {
+            match *self.indices_overridden.read() {
+                true => check_indices(&self.indices.read(), self.verts.read().len())?,
+                false => check_vertices(self.verts.read().len())?,
+            }
         }
         // Derive and store each missing schema under its own lock, so a `declare`
         // either lands before the derive reads `types` or resets the stored schema.
@@ -550,7 +575,7 @@ impl MeshObject {
             }
         }
 
-        let required = self.required.read().clone();
+        let required = self.read_required();
         // Pack vertices if dirty
         if *self.dirty_vertices.read() {
             let verts = self.verts.read();
@@ -596,6 +621,10 @@ impl MeshObject {
         if *self.dirty_instances.read() {
             let insts = self.insts.read();
             let schema = self.instance_schema.read();
+            // An attribute a shader reads from the instances is in the instance layout,
+            // which comes from the first instance, or no instance can hold it.
+            let fields = schema.as_ref().map(|schema| schema.fields.as_slice());
+            check_layout(&required.instance, fields.unwrap_or_default(), insts.len())?;
             if insts.is_empty() {
                 *self.packed_insts.write() = Vec::new();
                 *self.dirty_instances.write() = false;
@@ -949,7 +978,7 @@ fn pack_vertex(
     index: usize,
     v: &Vertex,
     schema: &VertexSchema,
-    required: &HashSet<String>,
+    required: &HashMap<String, wgpu::VertexFormat>,
 ) -> Result<(), MeshError> {
     if v.properties.contains_key(POSITION) {
         return Err(MeshError::InvalidVertex(explain_position(index)));
@@ -976,7 +1005,7 @@ fn pack_vertex(
                 Some(value) => value.write(f.fmt, out).map_err(|misfit| {
                     MeshError::InvalidVertex(misfit.explain(name, &format!("vertex {index}")))
                 })?,
-                None if required.contains(name) => {
+                None if required.contains_key(name) => {
                     let place = format!("vertex {index}");
                     return Err(MeshError::InvalidVertex(explain_missing(f, &place)));
                 }
@@ -993,14 +1022,14 @@ fn pack_instance(
     index: usize,
     i: &Instance,
     schema: &VertexSchema,
-    required: &HashSet<String>,
+    required: &HashMap<String, wgpu::VertexFormat>,
 ) -> Result<(), MeshError> {
     for f in schema.fields.iter() {
         match i.properties.get(&f.name) {
             Some(value) => value.write(f.fmt, out).map_err(|misfit| {
                 MeshError::InvalidInstance(misfit.explain(&f.name, &format!("instance {index}")))
             })?,
-            None if required.contains(&f.name) => {
+            None if required.contains_key(&f.name) => {
                 let place = format!("instance {index}");
                 return Err(MeshError::InvalidInstance(explain_missing(f, &place)));
             }
@@ -1017,6 +1046,39 @@ fn explain_missing(field: &Field, place: &str) -> String {
         field.name,
         describe(field.fmt)
     )
+}
+
+/// Refuses instances that can't hold an attribute a shader reads from them: one missing
+/// from the instance layout, which comes from the first instance or a Model's columns.
+fn check_layout(
+    required: &HashMap<String, wgpu::VertexFormat>,
+    fields: &[Field],
+    instances: usize,
+) -> Result<(), MeshError> {
+    let missing = required
+        .iter()
+        .filter(|(name, _)| !fields.iter().any(|field| &field.name == *name))
+        .min_by_key(|(name, _)| name.as_str());
+    let Some((name, format)) = missing else {
+        return Ok(());
+    };
+    let found = match instances {
+        0 => "no instances".to_string(),
+        _ => "no value at instance 0".to_string(),
+    };
+    Err(MeshError::InvalidInstance(format!(
+        "{name}: expected {}, got {found}",
+        describe(*format)
+    )))
+}
+
+/// Refuses a mesh without `set_indices` whose vertices, drawn in threes,
+/// end partway through a triangle.
+fn check_vertices(vertices: usize) -> Result<(), MeshError> {
+    match vertices.is_multiple_of(3) {
+        true => Ok(()),
+        false => Err(MeshError::VertexCount(vertices)),
+    }
 }
 
 /// Refuses an index list that ends partway through a triangle,
@@ -1068,6 +1130,7 @@ mod tests {
         mesh.add_vertices([
             Vertex::new([0.0f32, 0.0, 0.0]).set("uv", [0.0f32, 0.0, 0.0]),
             Vertex::new([1.0f32, 0.0, 0.0]).set("uv", [1.0f32, 0.0]),
+            Vertex::new([0.0f32, 1.0, 0.0]).set("uv", [0.0f32, 1.0, 0.0]),
         ]);
         match mesh.object.ensure_packed() {
             Err(MeshError::InvalidVertex(text)) => {
@@ -1077,14 +1140,18 @@ mod tests {
         }
 
         let mesh = Mesh::new();
-        mesh.add_vertices([Vertex::new([0.0f32, 0.0, 0.0]), Vertex::new([1.0f32, 0.0])]);
+        mesh.add_vertices([
+            Vertex::new([0.0f32, 0.0, 0.0]),
+            Vertex::new([1.0f32, 0.0]),
+            Vertex::new([0.0f32, 1.0, 0.0]),
+        ]);
         assert!(matches!(
             mesh.object.ensure_packed(),
             Err(MeshError::LayoutMismatch(_))
         ));
 
         let mesh = Mesh::new();
-        mesh.add_vertex([0.0f32, 0.0]);
+        mesh.add_vertices([[0.0f32, 0.0], [1.0, 0.0], [0.0, 1.0]]);
         mesh.add_instances([
             Instance::new().set("offset", [0.0f32, 0.0]),
             Instance::new().set("offset", 1.0f32),
@@ -1102,7 +1169,10 @@ mod tests {
     #[test]
     fn ensure_packed_refuses_a_position_property() {
         let mesh = Mesh::new();
-        mesh.add_vertex(Vertex::new([0.0, 0.0]).set("position", [5.0, 5.0]));
+        mesh.add_vertices(
+            [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]
+                .map(|corner| Vertex::new(corner).set("position", [5.0, 5.0])),
+        );
 
         match mesh.object.ensure_packed() {
             Err(MeshError::InvalidVertex(text)) => assert_eq!(
@@ -1223,6 +1293,7 @@ mod tests {
         mesh.add_vertices([
             Vertex::new([0.0f32, 0.0]).set("id", 3),
             Vertex::new([1.0f32, 0.0]).set("id", 4),
+            Vertex::new([0.0f32, 1.0]).set("id", 5),
         ]);
         let field = |mesh: &Mesh| -> (wgpu::VertexFormat, Vec<u8>, Vec<u8>) {
             mesh.object.ensure_packed().expect("pack");
@@ -1249,7 +1320,7 @@ mod tests {
             types: added,
             ..Default::default()
         };
-        mesh.object.declare(binding).expect("declare");
+        mesh.object.declare(1, binding).expect("declare");
         assert!(mesh.object.vertex_schema.read().is_none());
         assert!(*mesh.object.dirty_vertices.read());
 
@@ -1266,7 +1337,7 @@ mod tests {
             types: conflict,
             ..Default::default()
         };
-        let error = mesh.object.declare(binding).expect_err("conflict");
+        let error = mesh.object.declare(1, binding).expect_err("conflict");
         assert_eq!(
             error.to_string(),
             "Mesh attribute id is u32 on this mesh, but the shader declares f32"
@@ -1329,7 +1400,7 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
         let a = Vertex::new([0.0f32, 0.0]).set("uv", [0.0f32, 0.0]);
         let b = Vertex::new([1.0f32, 0.0]).set("uv", [1.0f32, 0.0]);
         let c = Vertex::new([0.0f32, 1.0]).set("uv", [0.0f32, 1.0]);
-        mesh.add_vertices([a.clone(), b.clone(), a.clone(), c.clone()]);
+        mesh.add_vertices([a.clone(), b.clone(), c.clone(), a.clone(), c.clone(), b]);
 
         // Force packing and inspect internals
         mesh.object.ensure_packed().expect("pack");
@@ -1338,8 +1409,8 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
         let idx = mesh.object.indices.read().clone();
         // Unique verts should be a, b, c => 3 * stride bytes
         assert_eq!(pv.len() as u64, 3 * stride);
-        // Indices mirror [a,b,a,c] => [0,1,0,2]
-        assert_eq!(idx, vec![0, 1, 0, 2]);
+        // Indices mirror [a,b,c,a,c,b] => [0,1,2,0,2,1]
+        assert_eq!(idx, vec![0, 1, 2, 0, 2, 1]);
     }
 
     #[test]

@@ -1258,6 +1258,10 @@ impl RenderContext {
         self.check_textures(&shader)?;
         let meshes = shader.meshes.read().clone();
         if meshes.is_empty() {
+            // The mesh quick view keeps the reason its attach failed.
+            if let Some(refusal) = shader.take_refusal() {
+                return Err(refusal.into());
+            }
             require_mesh(&shader)?;
             return Ok(ShaderDraw {
                 shader,

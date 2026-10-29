@@ -180,7 +180,10 @@ fn values_added_after_the_attach_hold_what_the_shader_reads() {
                 .set("cell", [-1, 2])
         }));
         shader.add_mesh(&vertices).expect("attach");
-        vertices.add_vertex(Vertex::new([0.5, 0.5]).set("id", 16_777_217));
+        vertices.add_vertices(
+            [[0.5, 0.5], [0.6, 0.5], [0.5, 0.6]]
+                .map(|position| Vertex::new(position).set("id", 16_777_217)),
+        );
         let instances = Mesh::new();
         instances
             .add_vertices(FULLSCREEN.map(|position| Vertex::new(position).set("cell", [-1, 2])));
@@ -203,6 +206,105 @@ fn values_added_after_the_attach_hold_what_the_shader_reads() {
         assert_eq!(
             message(instance),
             "Invalid instance: id: expected u32, got no value at instance 1"
+        );
+    });
+}
+
+/// Reads `uv` from each vertex beside the position.
+const UV: &str = r#"
+@vertex
+fn vs_main(@location(0) position: vec2<f32>, @location(1) uv: vec2<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position + uv * 0.0, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(0.0, 1.0, 0.0, 1.0); }
+"#;
+
+/// Reads the position alone.
+const PLAIN: &str = r#"
+@vertex
+fn vs_main(@location(0) position: vec2<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(0.0, 1.0, 0.0, 1.0); }
+"#;
+
+// Story: a mesh holds what the shaders attached to it read, and a shader that lets
+// the mesh go takes its attributes along, so a vertex added later may leave them out.
+#[test]
+fn a_removed_shader_takes_its_attributes_along() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let target = renderer
+            .create_texture_target([8, 8])
+            .await
+            .expect("create_texture_target failed");
+        let reader = Shader::new(UV).expect("shader failed");
+        let plain = Shader::new(PLAIN).expect("shader failed");
+        let mesh = Mesh::new();
+        mesh.add_vertices(FULLSCREEN.map(|position| Vertex::new(position).set("uv", [0.0, 0.0])));
+        reader.add_mesh(&mesh).expect("attach the uv reader");
+        plain.add_mesh(&mesh).expect("attach the plain shader");
+        mesh.add_vertices([[0.5, 0.5], [0.6, 0.5], [0.5, 0.6]].map(Vertex::new));
+
+        let held = renderer.render(&plain, &target);
+        reader.remove_mesh(&mesh);
+        let released = renderer.render(&plain, &target);
+
+        match held {
+            Err(fragmentcolor::RendererError::MeshError(error)) => assert_eq!(
+                error.to_string(),
+                "Invalid vertex: uv: expected vec2<f32>, got no value at vertex 3"
+            ),
+            other => {
+                panic!("expected a mesh error while the uv reader holds the mesh, got {other:?}")
+            }
+        }
+        assert!(released.is_ok(), "got {released:?}");
+    });
+}
+
+/// Moves the triangle by an instance's `offset`, read beside a vertex `uv` at the same location.
+const OFFSET_UV: &str = r#"
+@vertex
+fn vs_main(@location(0) position: vec2<f32>, @location(1) offset: vec2<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(position + offset, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+"#;
+
+// Story: instances added after clear_instances hold what the shader reads from them,
+// or render names the attribute, where a vertex attribute at its location stood in.
+#[test]
+fn cleared_instances_hold_what_the_shader_reads() {
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let target = renderer
+            .create_texture_target([8, 8])
+            .await
+            .expect("create_texture_target failed");
+        let shader = Shader::new(OFFSET_UV).expect("shader failed");
+        let mesh = Mesh::new();
+        mesh.add_vertices(FULLSCREEN.map(|position| Vertex::new(position).set("uv", [0.0, 0.0])));
+        mesh.add_instance(Instance::new().set("offset", [0.0, 0.0]));
+        shader.add_mesh(&mesh).expect("attach");
+
+        mesh.clear_instances();
+        mesh.add_instance(Instance::new());
+        let empty = renderer.render(&shader, &target);
+        mesh.clear_instances();
+        let none = renderer.render(&shader, &target);
+
+        let message = |result: Result<(), fragmentcolor::RendererError>| match result {
+            Err(fragmentcolor::RendererError::MeshError(error)) => error.to_string(),
+            other => panic!("expected a mesh error, got {other:?}"),
+        };
+        assert_eq!(
+            message(empty),
+            "Invalid instance: offset: expected vec2<f32>, got no value at instance 0"
+        );
+        assert_eq!(
+            message(none),
+            "Invalid instance: offset: expected vec2<f32>, got no instances"
         );
     });
 }

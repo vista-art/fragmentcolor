@@ -116,15 +116,15 @@ impl Shader {
     #[staticmethod]
     #[pyo3(name = "from_vertex")]
     #[lsp_doc("docs/api/core/shader/from_vertex.md")]
-    pub fn from_vertex_py(v: &crate::mesh::Vertex) -> Self {
-        Shader::from_vertex(v)
+    pub fn from_vertex_py(v: &crate::mesh::Vertex) -> PyResult<Self> {
+        Ok(Shader::from_vertex(v)?)
     }
 
     #[staticmethod]
     #[pyo3(name = "from_mesh")]
     #[lsp_doc("docs/api/core/shader/from_mesh.md")]
-    pub fn from_mesh_py(mesh: &crate::mesh::Mesh) -> Self {
-        Shader::from_mesh(mesh)
+    pub fn from_mesh_py(mesh: &crate::mesh::Mesh) -> PyResult<Self> {
+        Ok(Shader::from_mesh(mesh)?)
     }
 }
 
