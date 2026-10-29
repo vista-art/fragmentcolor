@@ -286,13 +286,16 @@ fn storage_formats_the_device_lacks_fail() {
     )
     .expect("shader");
     let error = refuse_alone(&shader).expect("refused");
-    let fields = error.fields();
+    let expected = vec![
+        ("item", Field::Text("'img' at @group(0) @binding(0)".into())),
+        ("feature", Field::Text("WriteOnly storage access to Bgra8Unorm".into())),
+    ];
+    assert_eq!(error.list_fields(), expected);
     assert_refused!(
         error,
         RendererError::FeatureError { .. },
         "'img' at @group(0) @binding(0) needs WriteOnly storage access to Bgra8Unorm, which the device lacks"
     );
-    assert_eq!(fields.len(), 2, "{fields:?}");
 }
 
 // Story: a storage texture binds in the format the shader declares,

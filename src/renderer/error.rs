@@ -118,9 +118,10 @@ pub(crate) enum Field {
 
 #[cfg(any(python, wasm, test))]
 impl RendererError {
-    /// The properties a typed refusal sets, by name,
-    /// on the error Python and JavaScript raise. Other errors carry none.
-    pub(crate) fn fields(&self) -> Vec<(&'static str, Field)> {
+    /// The properties a typed refusal sets, by name, on the error Python
+    /// and JavaScript raise. Any other error lists none here, and `DeviceError`
+    /// sets its `kind`, `label` and `detail` in `DeviceError::raise` and `throw_device`.
+    pub(crate) fn list_fields(&self) -> Vec<(&'static str, Field)> {
         let text = |value: &String| Field::Text(value.clone());
         match self {
             RendererError::LimitError {
@@ -195,16 +196,16 @@ impl From<RendererError> for pyo3::PyErr {
                 detail,
             } => crate::error::DeviceError::raise(kind, label, detail, message),
             refusal @ RendererError::LimitError { .. } => {
-                raise_fields::<crate::error::LimitError>(message, refusal.fields())
+                raise_fields::<crate::error::LimitError>(message, refusal.list_fields())
             }
             refusal @ RendererError::FeatureError { .. } => {
-                raise_fields::<crate::error::FeatureError>(message, refusal.fields())
+                raise_fields::<crate::error::FeatureError>(message, refusal.list_fields())
             }
             refusal @ RendererError::BindingError { .. } => {
-                raise_fields::<crate::error::BindingError>(message, refusal.fields())
+                raise_fields::<crate::error::BindingError>(message, refusal.list_fields())
             }
             refusal @ RendererError::EntryError { .. } => {
-                raise_fields::<crate::error::EntryError>(message, refusal.fields())
+                raise_fields::<crate::error::EntryError>(message, refusal.list_fields())
             }
             _ => crate::PyFragmentColorError::new_err(message),
         }
@@ -253,7 +254,7 @@ impl RendererError {
                 label,
                 detail,
             } => throw_device(kind, &label, &detail, &message),
-            other => throw_fields(&message, &other.fields()),
+            other => throw_fields(&message, &other.list_fields()),
         }
     }
 }
@@ -387,7 +388,7 @@ mod tests {
         };
 
         // Act
-        let fields = [&limit, &feature, &binding, &entry].map(|error| error.fields());
+        let fields = [&limit, &feature, &binding, &entry].map(|error| error.list_fields());
 
         // Assert
         let [limit, feature, binding, entry] = fields;
@@ -410,10 +411,7 @@ mod tests {
         ];
         assert_eq!(binding, expected);
         assert_eq!(entry, vec![("stage", text("fragment"))]);
-        for (name, _) in [limit, feature, binding, entry].iter().flatten() {
-            assert!(!["name", "message"].contains(name), "{name}");
-        }
-        assert!(RendererError::NoContext.fields().is_empty());
+        assert!(RendererError::NoContext.list_fields().is_empty());
     }
 
     // Story: SurfaceError variants are wrapped with a helpful message in Display.
