@@ -568,13 +568,13 @@ impl MeshObject {
                 .is_some_and(VertexSchema::is_model)
     }
 
-    /// Records what a shader's attach found: the types it gave untyped attributes,
-    /// which repack what they change, and the attributes it reads, which every
-    /// vertex and instance added later must hold. The attach checked the ones the
-    /// mesh holds now. Records nothing when another shader has typed one of them
-    /// another way meanwhile. A binding that assumed the Model columns sets them
-    /// as the instance layout, unless an instance or a layout arrived since. The
-    /// layout lands before the reads that need it, so a pack between the two passes.
+    /// Records what a shader's attach found.
+    ///
+    /// Untyped attributes take its types, which repack what they change.
+    /// Vertices and instances added later must hold the attributes it reads.
+    /// A binding that assumed the Model columns sets them as the instance layout
+    /// before it records the reads, unless an instance or a layout arrived since.
+    /// A type another shader gave one of them meanwhile fails, and it records nothing.
     pub(crate) fn declare(&self, shader: u64, binding: Binding) -> Result<(), ShaderError> {
         let Binding {
             types: added,

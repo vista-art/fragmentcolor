@@ -484,6 +484,32 @@ mod tests {
         });
     }
 
+    // Story: a PBR input finds its attribute by name, then by the attribute's own
+    // location, so a mesh without one fails naming the input, or naming the
+    // attribute at that location when its type doesn't fit, as the Model docs say.
+    #[test]
+    fn a_partial_pbr_mesh_names_what_it_lacks() {
+        let corners = [[0.0, 0.5, 0.0], [-0.5, -0.5, 0.0], [0.5, -0.5, 0.0]];
+        let refuse = |vertex: fn([f32; 3]) -> Vertex| {
+            let mesh = Mesh::new();
+            mesh.add_vertices(corners.map(vertex));
+            let error = crate::Pass::new("pbr")
+                .add(&Model::new(mesh, pbr_material()))
+                .expect_err("a partial mesh");
+            error.to_string()
+        };
+
+        let unnamed = refuse(|corner| {
+            Vertex::new(corner)
+                .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
+                .set(Vertex::UV0, [0.0, 0.0])
+        });
+        let misplaced = refuse(|corner| Vertex::new(corner).set(Vertex::UV0, [0.0, 0.0]));
+
+        assert!(unnamed.contains("'color0' @location(7)"), "{unnamed}");
+        assert!(misplaced.contains("uv0: expected vec3<f32>"), "{misplaced}");
+    }
+
     // Story: a Model the material refuses leaves its mesh with no instance layout.
     #[test]
     fn a_refused_model_sets_no_columns() {
