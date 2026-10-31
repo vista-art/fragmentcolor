@@ -62,7 +62,7 @@ impl Pass {
 
     #[pyo3(name = "add_mesh")]
     #[lsp_doc("docs/api/core/pass/add_mesh.md")]
-    pub fn add_mesh_py(&self, mesh: &crate::mesh::Mesh) -> Result<(), PyErr> {
+    pub fn add_mesh_py(&self, mesh: &crate::Mesh) -> Result<(), PyErr> {
         Ok(self.add_mesh(mesh)?)
     }
 

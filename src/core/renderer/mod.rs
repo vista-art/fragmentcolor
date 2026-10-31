@@ -2,7 +2,7 @@
 //! into targets, handing each call to its render context.
 
 use crate::core::PassInput;
-use crate::mesh::vertex::POSITION;
+use crate::geometry::POSITION;
 use crate::{PassObject, ShaderError, ShaderHash, ShaderObject, Target, TargetFrame};
 use crate::{ScreenRegion, Size, WindowTarget};
 use crate::{TextureData, TextureTarget, UniformData};
@@ -719,7 +719,7 @@ struct BlendDraw {
     /// when the draw runs. Also keeps the matching `MeshObject` alive
     /// across the render pass, so the renderer's pipeline + vertex-buffer
     /// lookups (keyed by the underlying pointer) stay valid.
-    mesh: Arc<crate::mesh::MeshObject>,
+    mesh: Arc<crate::geometry::MeshObject>,
     /// World matrix snapshot taken at queue-build time. Same value used to
     /// compute `eye_z` — keeping them in sync per draw is what makes the
     /// "live transform" semantics work correctly across the blend phase.
@@ -797,7 +797,7 @@ enum MeshDraws {
 /// One mesh draw: the mesh's buffers, its index count, the instances it draws,
 /// and the entry of its shader's `layouts` it reads.
 struct MeshDraw {
-    buffers: crate::mesh::VertexBuffers,
+    buffers: crate::geometry::VertexBuffers,
     index_count: u32,
     instances: Instances,
     layout: usize,
@@ -807,7 +807,7 @@ struct MeshDraw {
 /// count and the entry of its shader's `layouts` it reads. Each of its Models draws
 /// these in the blend phase, so a change after the plan waits for the next render.
 struct BlendMesh {
-    buffers: crate::mesh::VertexBuffers,
+    buffers: crate::geometry::VertexBuffers,
     index_count: u32,
     layout: usize,
 }
@@ -1319,7 +1319,7 @@ impl RenderContext {
                 continue;
             }
             // The layouts follow the schemas of the pack the buffers came from.
-            let crate::mesh::Upload {
+            let crate::geometry::Upload {
                 buffers,
                 counts,
                 schemas,
@@ -1392,9 +1392,9 @@ impl RenderContext {
     fn upload_checked(
         &self,
         shader: &ShaderObject,
-        mesh: &crate::mesh::MeshObject,
+        mesh: &crate::geometry::MeshObject,
         passed: u64,
-    ) -> Result<crate::mesh::Upload, RendererError> {
+    ) -> Result<crate::geometry::Upload, RendererError> {
         let mut passed = passed;
         for _ in 0..PREVIEW_TRIES {
             let upload = mesh.upload(self)?;
@@ -1406,7 +1406,7 @@ impl RenderContext {
                 None => return Ok(upload),
             }
         }
-        Err(crate::mesh::MeshError::Busy(PREVIEW_TRIES).into())
+        Err(crate::MeshError::Busy(PREVIEW_TRIES).into())
     }
 
     /// Try to get a frame once, and on Lost/Outdated, retry exactly once.
@@ -2574,9 +2574,9 @@ fn pick_instances(
     shader: &ShaderObject,
     models: Option<&(wgpu::Buffer, u32)>,
     own: Option<&wgpu::Buffer>,
-    mesh: &crate::mesh::MeshObject,
+    mesh: &crate::geometry::MeshObject,
     layouts: Option<&VertexLayouts>,
-    counts: crate::mesh::DrawCounts,
+    counts: crate::geometry::DrawCounts,
 ) -> Result<Option<Instances>, RendererError> {
     // An empty index list draws nothing, like an instance count of 0.
     if counts.index_count == 0 {
@@ -2603,8 +2603,8 @@ fn pick_instances(
 fn check_instance_count(
     shader: &ShaderObject,
     layouts: Option<&VertexLayouts>,
-    counts: crate::mesh::DrawCounts,
-    mesh: &crate::mesh::MeshObject,
+    counts: crate::geometry::DrawCounts,
+    mesh: &crate::geometry::MeshObject,
 ) -> Result<(), RendererError> {
     let rows = counts.instance_rows.unwrap_or(0);
     let Some(instance) = layouts.and_then(|layouts| layouts.instance.as_ref()) else {
@@ -2624,7 +2624,7 @@ fn check_instance_count(
             counts.instance_count
         )
     };
-    Err(crate::mesh::MeshError::InvalidInstance(message).into())
+    Err(crate::MeshError::InvalidInstance(message).into())
 }
 
 /// Names the inputs `shader` reads from the instance stream, in location order:
@@ -2675,8 +2675,8 @@ fn require_mesh(shader: &ShaderObject) -> Result<(), ShaderError> {
 /// (`MeshObject::fetch_layouts`). `check_strides` checks them against each device.
 fn vertex_buffer_layouts(
     shader: &crate::ShaderObject,
-    mesh: &crate::mesh::MeshObject,
-    schemas: &crate::mesh::Schemas,
+    mesh: &crate::geometry::MeshObject,
+    schemas: &crate::geometry::Schemas,
 ) -> Result<VertexLayouts, RendererError> {
     let vertex_inputs = shader.reflect_vertex_inputs()?;
 
@@ -3070,7 +3070,7 @@ unsafe fn open_unsafe_surface(
 }
 
 fn schema_offsets(
-    schema: &crate::mesh::VertexSchema,
+    schema: &crate::geometry::VertexSchema,
 ) -> (
     std::collections::HashMap<String, (u64, wgpu::VertexFormat)>,
     u64,

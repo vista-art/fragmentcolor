@@ -417,9 +417,9 @@ fn instance_count_past_the_rows_acquires_no_frame() {
         assert!(
             matches!(
                 result,
-                Err(RendererError::MeshError(
-                    crate::mesh::MeshError::InvalidInstance(_)
-                ))
+                Err(RendererError::MeshError(crate::MeshError::InvalidInstance(
+                    _
+                )))
             ),
             "got {result:?}"
         );

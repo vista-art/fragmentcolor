@@ -25,4 +25,4 @@ Validation contract
 - Reject invalid attachments with `ShaderError` (`AttributeMismatch`, `AttributeConflict`, `InvalidKey`). Never silently accept a mismatched mesh.
 
 Builders & primitives
-- Provide idiomatic builders for common shapes (currently `Quad`). Keep them under `mesh/primitives/` and expose via the mesh module re-exports.
+- Provide idiomatic builders for common shapes (currently `Quad`). Keep them in `geometry/quad.rs` and expose via the geometry re-exports.

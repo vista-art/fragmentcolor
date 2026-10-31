@@ -13,7 +13,7 @@ Why this matters
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, Shader, Pass, Target};
-use fragmentcolor::mesh::{Mesh, Vertex};
+use fragmentcolor::{Mesh, Vertex};
 
 let n: u32 = 1_000_000;
 # let n: u32 = std::env::var("FC_PARTICLES").ok()

@@ -1,3 +1,5 @@
+//! `VertexPosition`: a position from one to four numbers, with `w` at 1 when left out.
+
 use glam::Vec4;
 
 /// Vertex position stored as a Vec4, mirroring GPU conventions (xyzw),

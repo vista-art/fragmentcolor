@@ -19,11 +19,6 @@ pub mod target;
 /// Texture represents an image stored on the GPU that can be sampled in shaders.
 mod texture;
 
-/// # Mesh Module
-///
-/// Mesh represents geometry (vertices, indices, instances) and can be attached to a Pass.
-pub mod mesh;
-
 /// # Material Module
 ///
 /// Material bundles PBR factors / textures with the Shader that knows how to
@@ -53,6 +48,7 @@ pub mod guides;
 mod bindings;
 mod conversion_macros;
 mod core;
+mod geometry;
 mod network;
 mod values;
 
@@ -66,8 +62,8 @@ pub use winit_app::*;
 
 pub use self::core::*;
 pub use error::*;
+pub use geometry::*;
 pub use material::*;
-pub use mesh::*;
 pub use network::NetworkError;
 pub use scene::*;
 pub use target::*;

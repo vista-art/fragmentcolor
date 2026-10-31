@@ -9,8 +9,8 @@ use crate::bindings::numbers;
 use crate::bindings::web::{
     describe, read_count, read_floats, read_list, read_text, read_unsigned, read_vector,
 };
-use crate::mesh::{Instance, Mesh, Quad, Vertex, VertexData};
 use crate::values::read_dimension;
+use crate::{Instance, Mesh, Quad, Vertex, VertexData};
 
 // -----------------------------
 // JS helpers
@@ -102,10 +102,10 @@ fn js_to_instance_into(value: &JsValue) -> Result<Instance, WebError> {
 // JS conversions for Vertex/Instance owned via __wbg_ptr anchors
 // -----------------------------
 
-crate::impl_js_bridge!(Mesh, crate::mesh::error::MeshError);
-crate::impl_js_bridge!(Quad, crate::mesh::error::MeshError);
-crate::impl_js_bridge!(Vertex, crate::mesh::error::MeshError);
-crate::impl_js_bridge!(Instance, crate::mesh::error::MeshError);
+crate::impl_js_bridge!(Mesh, crate::MeshError);
+crate::impl_js_bridge!(Quad, crate::MeshError);
+crate::impl_js_bridge!(Vertex, crate::MeshError);
+crate::impl_js_bridge!(Instance, crate::MeshError);
 
 // -----------------------------
 // Vertex (WASM bindings)

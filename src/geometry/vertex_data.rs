@@ -1,3 +1,6 @@
+//! `VertexData`: a value `Vertex::set` and
+//! `Instance::set` take, and its conversion to a field's format.
+
 use super::error::MeshError;
 use crate::core::is_whole_in;
 use wgpu::VertexFormat;

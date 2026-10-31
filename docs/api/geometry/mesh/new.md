@@ -7,7 +7,7 @@ draw it.
 ## Example
 
 ```rust
-use fragmentcolor::mesh::Mesh;
+use fragmentcolor::Mesh;
 let m = Mesh::new();
 # _ = m;
 ```

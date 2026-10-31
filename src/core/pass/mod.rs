@@ -448,7 +448,7 @@ pub struct PassObject {
     pub(crate) flat: RwLock<Arc<[Arc<PassObject>]>>,
     pub(crate) built_version: AtomicU64,
     /// The mesh whose quick view this pass draws, on a mesh's own pass.
-    preview: Option<Arc<crate::mesh::MeshObject>>,
+    preview: Option<Arc<crate::geometry::MeshObject>>,
 }
 
 impl PassObject {
@@ -478,7 +478,7 @@ impl PassObject {
     }
 
     /// The pass that draws `mesh` for its quick view.
-    pub(crate) fn for_mesh(name: &str, mesh: Arc<crate::mesh::MeshObject>) -> Self {
+    pub(crate) fn for_mesh(name: &str, mesh: Arc<crate::geometry::MeshObject>) -> Self {
         Self {
             preview: Some(mesh),
             ..Self::new(name, PassType::Render)

@@ -19,7 +19,7 @@ Build an `Instance` when the per-instance data doesn't come from a vertex.
 ## Example
 
 ```rust
-use fragmentcolor::mesh::{Instance, Mesh};
+use fragmentcolor::{Instance, Mesh};
 
 let mesh = Mesh::new();
 mesh.add_vertices([

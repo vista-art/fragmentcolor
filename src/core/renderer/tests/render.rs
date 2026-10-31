@@ -473,8 +473,8 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
         let pass = crate::Pass::from_shader("mesh", &shader);
 
         // Build a triangle mesh
-        let mesh = crate::mesh::Mesh::new();
-        use crate::mesh::Vertex;
+        let mesh = crate::Mesh::new();
+        use crate::Vertex;
         mesh.add_vertices([
             Vertex::new([-0.5, -0.5, 0.0]),
             Vertex::new([0.5, -0.5, 0.0]),
@@ -512,15 +512,15 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
         let shader = crate::Shader::new(wgsl).expect("shader");
         let pass = crate::Pass::from_shader("mesh", &shader);
 
-        let mesh = crate::mesh::Mesh::new();
-        use crate::mesh::Vertex;
+        let mesh = crate::Mesh::new();
+        use crate::Vertex;
         mesh.add_vertices([
             Vertex::new([-0.5, -0.5, 0.0]),
             Vertex::new([0.5, -0.5, 0.0]),
             Vertex::new([0.0, 0.5, 0.0]),
         ]);
         // Two instances with different offsets: provide an "offset" property to match the shader
-        use crate::mesh::VertexData;
+        use crate::VertexData;
         mesh.add_instance(Vertex::new([0.0, 0.0]).set("offset", VertexData::F32x2([0.0, 0.0])));
         mesh.add_instance(Vertex::new([0.25, 0.0]).set("offset", VertexData::F32x2([0.25, 0.0])));
 
@@ -555,8 +555,8 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(v.uv, 0.0, 1.0); }
         let shader = crate::Shader::new(wgsl).expect("shader");
         let pass = crate::Pass::from_shader("p", &shader);
 
-        let mesh = crate::mesh::Mesh::new();
-        use crate::mesh::Vertex;
+        let mesh = crate::Mesh::new();
+        use crate::Vertex;
         mesh.add_vertices([
             Vertex::new([-0.5, -0.5]).set("uv", [0.0, 0.0]),
             Vertex::new([0.5, -0.5]).set("uv", [1.0, 0.0]),
@@ -594,8 +594,8 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return v.color; }
         let shader = crate::Shader::new(wgsl).expect("shader");
         let pass = crate::Pass::from_shader("p", &shader);
 
-        let mesh = crate::mesh::Mesh::new();
-        use crate::mesh::Vertex;
+        let mesh = crate::Mesh::new();
+        use crate::Vertex;
         mesh.add_vertices([
             Vertex::new([-0.5, -0.5, 0.0]).set("color", [1.0, 0.0, 0.0, 1.0]),
             Vertex::new([0.5, -0.5, 0.0]).set("color", [0.0, 1.0, 0.0, 1.0]),
@@ -645,8 +645,8 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return v.tint; }
         let shader = crate::Shader::new(wgsl).expect("shader");
         let pass = crate::Pass::from_shader("p", &shader);
 
-        let mesh = crate::mesh::Mesh::new();
-        use crate::mesh::{Vertex, VertexData};
+        let mesh = crate::Mesh::new();
+        use crate::{Vertex, VertexData};
         // Triangle geometry in clip-space
         mesh.add_vertices([
             Vertex::new([-0.5, -0.5, 0.0]).set("tint", VertexData::F32x4([0.0, 1.0, 0.0, 1.0])), // vertex-level green (should be ignored)
@@ -728,8 +728,8 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.2,0.3,0.4,1.0);
         let shader = crate::Shader::new(wgsl).expect("shader");
         let pass = crate::Pass::from_shader("p", &shader);
 
-        let mesh = crate::mesh::Mesh::new();
-        use crate::mesh::Vertex;
+        let mesh = crate::Mesh::new();
+        use crate::Vertex;
         mesh.add_vertices([
             Vertex::new([-0.5, -0.5, 0.0]).set("uv", [0.0, 0.0]),
             Vertex::new([0.5, -0.5, 0.0]).set("uv", [1.0, 0.0]),
@@ -766,8 +766,8 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.1,0.9,0.1,1.0);
         let shader = crate::Shader::new(wgsl).expect("shader");
         let pass = crate::Pass::from_shader("p", &shader);
 
-        let mesh = crate::mesh::Mesh::new();
-        use crate::mesh::Vertex;
+        let mesh = crate::Mesh::new();
+        use crate::Vertex;
         mesh.add_vertices([
             Vertex::new([-0.5, -0.5]),
             Vertex::new([0.5, -0.5]),
@@ -1194,8 +1194,8 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,0.,1.,1.); }
         let shader = crate::Shader::new(wgsl).expect("shader");
         let pass = crate::Pass::from_shader("mesh", &shader);
 
-        let mesh = crate::mesh::Mesh::new();
-        use crate::mesh::Vertex;
+        let mesh = crate::Mesh::new();
+        use crate::Vertex;
         mesh.add_vertices([
             Vertex::new([-0.5, -0.5, 0.0]),
             Vertex::new([0.5, -0.5, 0.0]),
@@ -1243,8 +1243,8 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
         let shader = crate::Shader::new(wgsl).expect("shader");
         let pass = crate::Pass::from_shader("mesh", &shader);
 
-        let mesh = crate::mesh::Mesh::new();
-        use crate::mesh::{Vertex, VertexData};
+        let mesh = crate::Mesh::new();
+        use crate::{Vertex, VertexData};
         mesh.add_vertices([
             Vertex::new([-0.5, -0.5, 0.0]),
             Vertex::new([0.5, -0.5, 0.0]),
@@ -1563,7 +1563,7 @@ fn model_columns_without_a_model_error() {
 
         let columns = "'model_0', 'model_1', 'model_2' and 'model_3'";
         assert!(
-            matches!(&res, Err(RendererError::MeshError(crate::mesh::MeshError::InvalidInstance(message)))
+            matches!(&res, Err(RendererError::MeshError(crate::MeshError::InvalidInstance(message)))
                 if message.contains(columns) && message.contains("no Model in this pass draws this mesh")),
             "got {res:?}"
         );
@@ -1616,7 +1616,7 @@ fn instance_count_past_the_rows_errors() {
         let indexed = renderer.render(&indexed, &target);
 
         assert!(
-            matches!(&past, Err(RendererError::MeshError(crate::mesh::MeshError::InvalidInstance(message))) if message.contains("instance count 10 exceeds the 2")),
+            matches!(&past, Err(RendererError::MeshError(crate::MeshError::InvalidInstance(message))) if message.contains("instance count 10 exceeds the 2")),
             "got {past:?}"
         );
         assert!(indexed.is_ok(), "got {indexed:?}");
@@ -1772,7 +1772,7 @@ fn a_mesh_that_keeps_changing_fails_its_quick_view() {
         // The churn left over drops here, not with the thread's storage.
         crate::testing::race_hooks::once("upload", || {});
 
-        let busy = crate::mesh::MeshError::Busy(PREVIEW_TRIES);
+        let busy = crate::MeshError::Busy(PREVIEW_TRIES);
         let expected = matches!(&error, RendererError::MeshError(found) if found.to_string() == busy.to_string());
         assert!(expected, "{error:?}");
         assert_eq!(
@@ -1895,7 +1895,7 @@ fn the_blend_phase_draws_the_planned_buffers() {
         assert!(drawn.is_ok(), "{drawn:?}");
         assert!(is_red(pixel(&image, LEFT)), "the planned strip");
         let error = next.expect_err("the next plan packs seven vertices");
-        let expected = RendererError::from(crate::mesh::MeshError::VertexCount(7));
+        let expected = RendererError::from(crate::MeshError::VertexCount(7));
         assert_eq!(error.to_string(), expected.to_string());
     });
 }

@@ -19,7 +19,7 @@ use pyo3::prelude::*;
 use wasm_bindgen::prelude::*;
 
 use crate::core::ShaderObject;
-use crate::mesh::MeshObject;
+use crate::geometry::MeshObject;
 use crate::{Material, Mesh};
 
 mod camera;
@@ -211,7 +211,7 @@ pub(crate) struct ModelEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mesh::Vertex;
+    use crate::Vertex;
 
     fn pbr_triangle_mesh() -> Mesh {
         let mesh = Mesh::new();
@@ -414,7 +414,7 @@ mod tests {
                 .expect("texture target");
             let bare = Mesh::new();
             bare.add_vertices([[0.0, 0.5, 0.0], [-0.5, -0.5, 0.0], [0.5, -0.5, 0.0]]);
-            bare.add_instance(crate::mesh::Instance::new().set("offset", [0.0, 0.0]));
+            bare.add_instance(crate::Instance::new().set("offset", [0.0, 0.0]));
             let scene = crate::Scene::new();
 
             let refused = scene.add(&Model::new(bare.clone(), Material::pbr()));
@@ -428,7 +428,7 @@ mod tests {
             shader.add_mesh(&bare).expect("attach");
             let drawn = renderer.render(&shader, &target);
             bare.clear_instances();
-            bare.add_instance(crate::mesh::Instance::new().set("offset", [0.1, 0.0]));
+            bare.add_instance(crate::Instance::new().set("offset", [0.1, 0.0]));
             let again = renderer.render(&shader, &target);
 
             assert!(refused.is_err(), "the bare mesh has no normals");
@@ -479,7 +479,7 @@ mod tests {
             assert!(drawn.is_ok(), "the custom Model draws: {drawn:?}");
             assert_eq!(
                 *bare.object.instance_schema.read(),
-                Some(crate::mesh::model_schema())
+                Some(crate::geometry::model_schema())
             );
         });
     }
@@ -582,7 +582,7 @@ mod tests {
 
             let rendered = renderer.render(&scene, &target);
             let image = target.get_image().await.expect("read back");
-            bare.add_instance(crate::mesh::Instance::new().set("offset", [0.0, 0.0]));
+            bare.add_instance(crate::Instance::new().set("offset", [0.0, 0.0]));
             let shader = crate::Shader::new(
                 "@vertex fn vs_main(@location(0) position: vec3<f32>, @location(1) offset: vec2<f32>) -> @builtin(position) vec4<f32> {
   return vec4<f32>(position.xy + offset, 0.0, 1.0);

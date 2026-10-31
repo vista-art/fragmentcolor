@@ -1,3 +1,5 @@
+//! `Mesh`, and `MeshObject`, the vertices, instances and indices its clones share.
+
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -12,23 +14,8 @@ use wasm_bindgen::prelude::*;
 #[cfg(python)]
 use pyo3::prelude::*;
 
-pub mod error;
-pub use error::*;
-
-pub mod vertex;
-pub use vertex::*;
-use vertex::{POSITION, explain_position};
-
-mod data;
-pub use data::VertexData;
-pub(crate) use data::{Shape, describe};
-
-pub mod primitives;
-pub use primitives::*;
-
-pub(crate) mod builtins;
-
-mod platform;
+use super::vertex::{POSITION, explain_position};
+use super::{Instance, MeshError, Vertex, VertexData, describe};
 
 use crate::RendererError;
 use crate::core::{RenderContext, VertexLayouts, check_limit};
@@ -2159,7 +2146,7 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
     #[test]
     fn ensure_packed_deduplicates_and_indices_track() {
         let mesh = Mesh::new();
-        use crate::mesh::Vertex;
+        use crate::Vertex;
         let a = Vertex::new([0.0f32, 0.0]).set("uv", [0.0f32, 0.0]);
         let b = Vertex::new([1.0f32, 0.0]).set("uv", [1.0f32, 0.0]);
         let c = Vertex::new([0.0f32, 1.0]).set("uv", [0.0f32, 1.0]);
@@ -2180,7 +2167,7 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
     fn instance_packing_override_and_vertex_buffers() {
         pollster::block_on(async move {
             let mesh = Mesh::new();
-            use crate::mesh::{Instance, Vertex};
+            use crate::{Instance, Vertex};
             mesh.add_vertices([
                 Vertex::new([-0.5f32, -0.5f32]),
                 Vertex::new([0.5f32, -0.5f32]),
@@ -2226,7 +2213,7 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
     #[test]
     fn renderable_passes_creates_shader_from_first_vertex() {
         let mesh = Mesh::new();
-        use crate::mesh::Vertex;
+        use crate::Vertex;
         mesh.add_vertices([
             Vertex::new([-0.5f32, -0.5f32]),
             Vertex::new([0.5f32, -0.5f32]),
@@ -2239,7 +2226,7 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
     #[test]
     fn set_indices_preserves_non_deduped_vertices() {
         let mesh = Mesh::new();
-        use crate::mesh::Vertex;
+        use crate::Vertex;
         // Three vertices with fully identical attributes — the auto path
         // would collapse these into a single unique vertex.
         let v = Vertex::new([0.0f32, 0.0]).set("uv", [0.5f32, 0.5]);
@@ -2260,7 +2247,7 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
     #[test]
     fn clear_indices_restores_auto_derivation() {
         let mesh = Mesh::new();
-        use crate::mesh::Vertex;
+        use crate::Vertex;
         let a = Vertex::new([0.0f32, 0.0]).set("uv", [0.0f32, 0.0]);
         let b = Vertex::new([1.0f32, 0.0]).set("uv", [1.0f32, 0.0]);
         mesh.add_vertices([a.clone(), b.clone(), a.clone()]);
@@ -2305,7 +2292,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
             let pass = crate::Pass::from_shader("mesh-explicit-indices", &shader);
 
             let mesh = Mesh::new();
-            use crate::mesh::Vertex;
+            use crate::Vertex;
             // Four corners of a quad, sharing two positions across the
             // diagonal — dedup would collapse them; explicit indices keep
             // every corner so we can draw two triangles cleanly.

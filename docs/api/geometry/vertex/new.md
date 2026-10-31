@@ -13,6 +13,6 @@ that is NaN, infinite or past the 32-bit float range, is an error that names the
 ## Example
 
 ```rust
-use fragmentcolor::mesh::Vertex;
+use fragmentcolor::Vertex;
 let v = Vertex::new([0.0, 0.0]);
 ```

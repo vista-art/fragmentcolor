@@ -12,7 +12,7 @@ that lacks an attribute, naming the attribute and the vertex.
 ## Example
 
 ```rust
-use fragmentcolor::mesh::{Mesh};
+use fragmentcolor::Mesh;
 let mut m = Mesh::new();
 m.add_vertex([0.0, 0.5]);
 m.add_vertex([-0.5, -0.5]);

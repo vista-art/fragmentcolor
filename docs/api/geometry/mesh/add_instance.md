@@ -17,7 +17,7 @@ attribute and the instance.
 ## Example
 
 ```rust
-use fragmentcolor::mesh::{Mesh, Instance};
+use fragmentcolor::{Mesh, Instance};
 
 let m = Mesh::new();
 m.add_instance(Instance::new().set("offset", [0.25, 0.10]).set("tint", [1.0, 0.0, 0.0, 1.0]));

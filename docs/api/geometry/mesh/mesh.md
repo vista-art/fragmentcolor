@@ -31,7 +31,7 @@ of its own from the mesh's vertices, indices and instances.
 ## Example
 
 ```rust
-use fragmentcolor::mesh::{Mesh, Vertex};
+use fragmentcolor::{Mesh, Vertex};
 
 let mut mesh = Mesh::new();
 mesh.add_vertex([0.0, 0.5, 0.0]);

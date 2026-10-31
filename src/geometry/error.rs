@@ -1,3 +1,5 @@
+//! `MeshError`, which every geometry type returns.
+
 #[derive(thiserror::Error, Debug)]
 pub enum MeshError {
     #[error("Invalid vertex: {0}")]

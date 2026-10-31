@@ -71,7 +71,7 @@ impl Pass {
 
     #[wasm_bindgen(js_name = "addMesh")]
     #[lsp_doc("docs/api/core/pass/add_mesh.md")]
-    pub fn add_mesh_js(&self, mesh: &crate::mesh::Mesh) -> Result<(), WebError> {
+    pub fn add_mesh_js(&self, mesh: &crate::Mesh) -> Result<(), WebError> {
         Ok(self.add_mesh(mesh)?)
     }
 

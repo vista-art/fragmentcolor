@@ -790,7 +790,7 @@ mod tests {
     fn pbr_triangle_mesh() -> crate::Mesh {
         let mesh = crate::Mesh::new();
         mesh.add_vertices(
-            [[0.0, 0.5, 0.0], [-0.5, -0.5, 0.0], [0.5, -0.5, 0.0]].map(crate::mesh::Vertex::pbr),
+            [[0.0, 0.5, 0.0], [-0.5, -0.5, 0.0], [0.5, -0.5, 0.0]].map(crate::Vertex::pbr),
         );
         mesh
     }

@@ -179,7 +179,7 @@ throw_by_class!(
     crate::PassError,
     crate::InitializationError,
     crate::target::error::DisplayError,
-    crate::mesh::MeshError,
+    crate::MeshError,
     crate::ScreenRegionError,
     crate::bindings::numbers::VectorError,
     crate::material::MaterialError,
@@ -510,7 +510,7 @@ mod tests {
             ),
             (Box::new(RendererError::NoContext), "FragmentColorError"),
             (
-                Box::new(RendererError::MeshError(crate::mesh::MeshError::Busy(4))),
+                Box::new(RendererError::MeshError(crate::MeshError::Busy(4))),
                 "FragmentColorError",
             ),
             (

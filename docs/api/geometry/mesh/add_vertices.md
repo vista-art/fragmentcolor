@@ -12,7 +12,7 @@ them or none, and a batch of whole triangles never draws part of one.
 ## Example
 
 ```rust
-use fragmentcolor::mesh::Mesh;
+use fragmentcolor::Mesh;
 let mut m = Mesh::new();
 m.add_vertices([
   [0.0, 0.0],

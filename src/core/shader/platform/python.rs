@@ -57,19 +57,19 @@ impl Shader {
 
     #[pyo3(name = "add_mesh")]
     #[lsp_doc("docs/api/core/shader/add_mesh.md")]
-    pub fn add_mesh_py(&self, mesh: &crate::mesh::Mesh) -> Result<(), PyErr> {
+    pub fn add_mesh_py(&self, mesh: &crate::Mesh) -> Result<(), PyErr> {
         Ok(self.add_mesh(mesh)?)
     }
 
     #[pyo3(name = "remove_mesh")]
     #[lsp_doc("docs/api/core/shader/remove_mesh.md")]
-    pub fn remove_mesh_py(&self, mesh: &crate::mesh::Mesh) {
+    pub fn remove_mesh_py(&self, mesh: &crate::Mesh) {
         self.remove_mesh(mesh)
     }
 
     #[pyo3(name = "remove_meshes")]
     #[lsp_doc("docs/api/core/shader/remove_meshes.md")]
-    pub fn remove_meshes_py(&self, list: Vec<crate::mesh::Mesh>) {
+    pub fn remove_meshes_py(&self, list: Vec<crate::Mesh>) {
         for m in list.iter() {
             self.remove_mesh(m);
         }
@@ -83,7 +83,7 @@ impl Shader {
 
     #[pyo3(name = "validate_mesh")]
     #[lsp_doc("docs/api/core/shader/validate_mesh.md")]
-    pub fn validate_mesh_py(&self, mesh: &crate::mesh::Mesh) -> Result<(), PyErr> {
+    pub fn validate_mesh_py(&self, mesh: &crate::Mesh) -> Result<(), PyErr> {
         Ok(self.validate_mesh(mesh)?)
     }
 
@@ -116,14 +116,14 @@ impl Shader {
     #[staticmethod]
     #[pyo3(name = "from_vertex")]
     #[lsp_doc("docs/api/core/shader/from_vertex.md")]
-    pub fn from_vertex_py(v: &crate::mesh::Vertex) -> PyResult<Self> {
+    pub fn from_vertex_py(v: &crate::Vertex) -> PyResult<Self> {
         Ok(Shader::from_vertex(v)?)
     }
 
     #[staticmethod]
     #[pyo3(name = "from_mesh")]
     #[lsp_doc("docs/api/core/shader/from_mesh.md")]
-    pub fn from_mesh_py(mesh: &crate::mesh::Mesh) -> PyResult<Self> {
+    pub fn from_mesh_py(mesh: &crate::Mesh) -> PyResult<Self> {
         Ok(Shader::from_mesh(mesh)?)
     }
 }

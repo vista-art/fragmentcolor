@@ -175,9 +175,9 @@ impl crate::error::Classify for MaterialError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mesh::{Mesh, Vertex};
     use crate::scene::Model;
     use crate::texture::SamplerOptions;
+    use crate::{Mesh, Vertex};
     use crate::{Pass, Renderer, Size, Target, Texture};
 
     const SIZE: u32 = 16;

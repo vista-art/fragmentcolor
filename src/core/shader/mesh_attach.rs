@@ -2,9 +2,9 @@
 //! against the inputs a shader reads, when the mesh attaches.
 
 use super::{ShaderError, ShaderObject, VertexInputDesc};
-use crate::mesh::vertex::{POSITION, explain_position};
-use crate::mesh::{AttributeTypes, Binding, Instance, MeshObject, Shape, VertexSchema};
-use crate::mesh::{Vertex, VertexData, describe};
+use crate::geometry::{AttributeTypes, Binding, MeshObject, Shape, VertexSchema};
+use crate::geometry::{POSITION, describe, explain_position};
+use crate::{Instance, Vertex, VertexData};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use wgpu::VertexFormat;

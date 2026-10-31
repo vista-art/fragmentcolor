@@ -672,7 +672,7 @@ impl Renderable for Scene {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mesh::Vertex;
+    use crate::Vertex;
     use crate::{Material, Mesh, Model, Renderer, Target};
 
     fn pbr_triangle_mesh() -> Mesh {

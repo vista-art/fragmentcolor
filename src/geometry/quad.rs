@@ -1,3 +1,5 @@
+//! `Quad`: a rectangle mesh from two corners.
+
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
 

@@ -20,7 +20,7 @@ the mesh attaches to a shader holds every instance attribute that shader reads.
 ## Example
 
 ```rust
-use fragmentcolor::mesh::{Mesh, Instance};
+use fragmentcolor::{Mesh, Instance};
 
 let m = Mesh::new();
 m.add_instances([

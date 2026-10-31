@@ -31,12 +31,12 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<ScreenRegion>()?;
 
     // Mesh/Vertex bindings
-    m.add_class::<crate::mesh::Mesh>()?;
-    m.add_class::<crate::mesh::Vertex>()?;
-    m.add_class::<crate::mesh::Instance>()?;
+    m.add_class::<crate::Mesh>()?;
+    m.add_class::<crate::Vertex>()?;
+    m.add_class::<crate::Instance>()?;
 
     // Mesh primitives
-    m.add_class::<crate::mesh::Quad>()?;
+    m.add_class::<crate::Quad>()?;
 
     // Scene graph: Scene + Model + Camera + Light + Material + AlphaMode are
     // the v0.12.0 surface for 3D content. Their pyclass impls live next to

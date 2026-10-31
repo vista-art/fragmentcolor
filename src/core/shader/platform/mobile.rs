@@ -20,8 +20,8 @@ use crate::Shader;
 use crate::UniformData;
 use crate::core::renderer::platform::mobile::FragmentColorError;
 use crate::core::shader::UniformInput;
-use crate::mesh::{Mesh, Vertex};
 use crate::texture::TextureId;
+use crate::{Mesh, Vertex};
 
 /// A `Shader.set` value as Swift and Kotlin hand it over.
 /// The uniform's declared WGSL type decides how Rust reads it.

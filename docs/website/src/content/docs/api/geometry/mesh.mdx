@@ -48,7 +48,7 @@ of its own from the mesh's vertices, indices and instances.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::{Mesh, Vertex};
+use fragmentcolor::{Mesh, Vertex};
 
 let mut mesh = Mesh::new();
 mesh.add_vertex([0.0, 0.5, 0.0]);
@@ -141,7 +141,7 @@ draw it.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::Mesh;
+use fragmentcolor::Mesh;
 let m = Mesh::new();
 `}
 lang="rust"
@@ -301,7 +301,7 @@ that lacks an attribute, naming the attribute and the vertex.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::{Mesh};
+use fragmentcolor::Mesh;
 let mut m = Mesh::new();
 m.add_vertex([0.0, 0.5]);
 m.add_vertex([-0.5, -0.5]);
@@ -391,7 +391,7 @@ them or none, and a batch of whole triangles never draws part of one.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::Mesh;
+use fragmentcolor::Mesh;
 let mut m = Mesh::new();
 m.add_vertices([
   [0.0, 0.0],
@@ -488,7 +488,7 @@ attribute and the instance.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::{Mesh, Instance};
+use fragmentcolor::{Mesh, Instance};
 
 let m = Mesh::new();
 m.add_instance(Instance::new().set("offset", [0.25, 0.10]).set("tint", [1.0, 0.0, 0.0, 1.0]));
@@ -581,7 +581,7 @@ the mesh attaches to a shader holds every instance attribute that shader reads.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::{Mesh, Instance};
+use fragmentcolor::{Mesh, Instance};
 
 let m = Mesh::new();
 m.add_instances([
@@ -687,7 +687,7 @@ through `Shader.remove_mesh`, `Shader.clear_meshes` or by dropping.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::{Mesh, Instance};
+use fragmentcolor::{Mesh, Instance};
 
 let m = Mesh::new();
 m.add_instance(Instance::new().set("tint", [1.0, 0.0, 0.0, 1.0]));
@@ -780,7 +780,7 @@ When the shader reads instance attributes, `Renderer.render` returns
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::Mesh;
+use fragmentcolor::Mesh;
 let mut m = Mesh::new();
 m.add_vertices([
     [-0.01, -0.01],

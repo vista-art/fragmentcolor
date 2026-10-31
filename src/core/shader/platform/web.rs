@@ -40,13 +40,13 @@ impl Shader {
     // Static helpers that mirror Rust API for the JS side
     #[wasm_bindgen(js_name = "fromVertex")]
     #[lsp_doc("docs/api/core/shader/from_vertex.md")]
-    pub fn from_vertex_js(v: &crate::mesh::Vertex) -> Result<Shader, ShaderError> {
+    pub fn from_vertex_js(v: &crate::Vertex) -> Result<Shader, ShaderError> {
         Self::from_vertex(v)
     }
 
     #[wasm_bindgen(js_name = "fromMesh")]
     #[lsp_doc("docs/api/core/shader/from_mesh.md")]
-    pub fn from_mesh_js(m: &crate::mesh::Mesh) -> Result<Shader, ShaderError> {
+    pub fn from_mesh_js(m: &crate::Mesh) -> Result<Shader, ShaderError> {
         Self::from_mesh(m)
     }
 
@@ -85,13 +85,13 @@ impl Shader {
 
     #[wasm_bindgen(js_name = "addMesh")]
     #[lsp_doc("docs/api/core/shader/add_mesh.md")]
-    pub fn add_mesh_js(&self, mesh: &crate::mesh::Mesh) -> Result<(), ShaderError> {
+    pub fn add_mesh_js(&self, mesh: &crate::Mesh) -> Result<(), ShaderError> {
         self.add_mesh(mesh)
     }
 
     #[wasm_bindgen(js_name = "removeMesh")]
     #[lsp_doc("docs/api/core/shader/remove_mesh.md")]
-    pub fn remove_mesh_js(&self, mesh: &crate::mesh::Mesh) {
+    pub fn remove_mesh_js(&self, mesh: &crate::Mesh) {
         self.remove_mesh(mesh)
     }
 
@@ -101,9 +101,9 @@ impl Shader {
         let arr = js_sys::Array::is_array(list)
             .then(|| js_sys::Array::from(list))
             .ok_or_else(|| WebError::type_error("removeMeshes: expected an array of Mesh"))?;
-        let mut meshes: Vec<crate::mesh::Mesh> = Vec::with_capacity(arr.length() as usize);
+        let mut meshes: Vec<crate::Mesh> = Vec::with_capacity(arr.length() as usize);
         for v in arr.iter() {
-            let m: crate::mesh::Mesh = (&v)
+            let m: crate::Mesh = (&v)
                 .try_into()
                 .map_err(|_| WebError::type_error("removeMeshes: item is not a Mesh"))?;
             meshes.push(m);
@@ -123,7 +123,7 @@ impl Shader {
     // Instance helpers mirrored to JS
     #[wasm_bindgen(js_name = "validateMesh")]
     #[lsp_doc("docs/api/core/shader/validate_mesh.md")]
-    pub fn validate_mesh_js(&self, mesh: &crate::mesh::Mesh) -> Result<(), ShaderError> {
+    pub fn validate_mesh_js(&self, mesh: &crate::Mesh) -> Result<(), ShaderError> {
         self.validate_mesh(mesh)
     }
 

@@ -754,12 +754,12 @@ fn build_mesh(
             .and_then(|ts| ts.get(i).copied())
             .unwrap_or(fallback_tangent);
         mesh.add_vertex(
-            crate::mesh::Vertex::new(*pos)
-                .set(crate::mesh::Vertex::NORMAL, n)
-                .set(crate::mesh::Vertex::UV0, uv)
-                .set(crate::mesh::Vertex::COLOR0, color)
-                .set(crate::mesh::Vertex::UV1, uv1)
-                .set(crate::mesh::Vertex::TANGENT, tangent),
+            crate::Vertex::new(*pos)
+                .set(crate::Vertex::NORMAL, n)
+                .set(crate::Vertex::UV0, uv)
+                .set(crate::Vertex::COLOR0, color)
+                .set(crate::Vertex::UV1, uv1)
+                .set(crate::Vertex::TANGENT, tangent),
         );
     }
 
@@ -1351,7 +1351,7 @@ impl crate::error::Classify for SceneLoadError {
 mod tests {
     use super::*;
     use crate::Renderable;
-    use crate::mesh::VertexData;
+    use crate::VertexData;
 
     /// The minimal triangle: positions only, read through accessor 0 from
     /// bufferView 0. Views 1 (12 bytes) and 2 (24 bytes) sit unused, so a

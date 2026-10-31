@@ -128,29 +128,29 @@ impl Shader {
     }
 
     #[lsp_doc("docs/api/core/shader/from_vertex.md")]
-    pub fn from_vertex(v: &crate::mesh::Vertex) -> Result<Self, ShaderError> {
+    pub fn from_vertex(v: &crate::Vertex) -> Result<Self, ShaderError> {
         Ok(Self::from(Arc::new(ShaderObject::from_vertex(v)?)))
     }
 
     #[lsp_doc("docs/api/core/shader/from_mesh.md")]
-    pub fn from_mesh(mesh: &crate::mesh::Mesh) -> Result<Self, ShaderError> {
+    pub fn from_mesh(mesh: &crate::Mesh) -> Result<Self, ShaderError> {
         Ok(Self::from(Arc::new(ShaderObject::from_mesh(mesh)?)))
     }
 
     #[lsp_doc("docs/api/core/shader/add_mesh.md")]
-    pub fn add_mesh(&self, mesh: &crate::mesh::Mesh) -> Result<(), ShaderError> {
+    pub fn add_mesh(&self, mesh: &crate::Mesh) -> Result<(), ShaderError> {
         self.object.add_mesh(mesh.object.clone())
     }
 
     #[lsp_doc("docs/api/core/shader/remove_mesh.md")]
-    pub fn remove_mesh(&self, mesh: &crate::mesh::Mesh) {
+    pub fn remove_mesh(&self, mesh: &crate::Mesh) {
         self.object.remove_mesh(&mesh.object);
     }
 
     #[lsp_doc("docs/api/core/shader/remove_meshes.md")]
     pub fn remove_meshes<'list, I>(&self, list: I)
     where
-        I: IntoIterator<Item = &'list crate::mesh::Mesh>,
+        I: IntoIterator<Item = &'list crate::Mesh>,
     {
         for mesh in list {
             self.object.remove_mesh(&mesh.object);
@@ -163,7 +163,7 @@ impl Shader {
     }
 
     #[lsp_doc("docs/api/core/shader/validate_mesh.md")]
-    pub fn validate_mesh(&self, mesh: &crate::mesh::Mesh) -> Result<(), ShaderError> {
+    pub fn validate_mesh(&self, mesh: &crate::Mesh) -> Result<(), ShaderError> {
         self.object.validate_mesh(&mesh.object)
     }
 
@@ -206,7 +206,7 @@ pub(crate) struct ShaderObject {
     pub(crate) storage: RwLock<UniformStorage>,
     pub(crate) total_bytes: u64,
     pub(crate) pending: DashMap<String, PendingUpdate>,
-    pub(crate) meshes: RwLock<Vec<Arc<crate::mesh::MeshObject>>>,
+    pub(crate) meshes: RwLock<Vec<Arc<crate::geometry::MeshObject>>>,
     pub(crate) alpha_mode: RwLock<crate::material::AlphaMode>,
     pub(crate) double_sided: RwLock<bool>,
     /// The `lights` and `light_grid` roots the renderer fills, when the shader declares them.
@@ -235,14 +235,14 @@ pub(crate) struct ShaderObject {
 /// The shader then holds no mesh, and `render` checks it again to report why.
 #[derive(Debug)]
 struct Preview {
-    mesh: Arc<crate::mesh::MeshObject>,
+    mesh: Arc<crate::geometry::MeshObject>,
     checked: Option<u64>,
 }
 
 /// The quick view's mesh and the generation it passed its check at, which only
 /// that mesh's upload is held to. Other meshes on the shader upload as any do.
 pub(crate) struct Passed {
-    pub(crate) mesh: Arc<crate::mesh::MeshObject>,
+    pub(crate) mesh: Arc<crate::geometry::MeshObject>,
     pub(crate) generation: u64,
 }
 
@@ -413,13 +413,13 @@ impl ShaderObject {
     }
 
     /// Create a basic Shader from a vertex.
-    pub fn from_vertex(v: &crate::mesh::Vertex) -> Result<Self, ShaderError> {
+    pub fn from_vertex(v: &crate::Vertex) -> Result<Self, ShaderError> {
         Self::new(&build_wgsl_from_vertex(v))
     }
 
     /// Create a shader from a mesh's first vertex, with the mesh attached.
     /// An empty mesh, and a mesh the shader refuses, fail.
-    pub fn from_mesh(mesh: &crate::mesh::Mesh) -> Result<Self, ShaderError> {
+    pub fn from_mesh(mesh: &crate::Mesh) -> Result<Self, ShaderError> {
         let first = mesh.object.verts.read().first().cloned();
         let Some(vertex) = first else {
             return Err(ShaderError::InvalidKey(
@@ -434,7 +434,7 @@ impl ShaderObject {
 
     /// Add a mesh to this shader, giving its untyped attributes the types this shader declares.
     /// Every vertex and instance the mesh takes later must hold the attributes this shader reads.
-    pub fn add_mesh(&self, mesh: Arc<crate::mesh::MeshObject>) -> Result<(), ShaderError> {
+    pub fn add_mesh(&self, mesh: Arc<crate::geometry::MeshObject>) -> Result<(), ShaderError> {
         let binding = self.bind_mesh(&mesh)?;
         self.record(mesh, binding, false)
     }
@@ -444,14 +444,14 @@ impl ShaderObject {
     /// the mesh takes them as its layout only once the attach succeeds.
     pub(crate) fn add_model_mesh(
         &self,
-        mesh: Arc<crate::mesh::MeshObject>,
+        mesh: Arc<crate::geometry::MeshObject>,
     ) -> Result<(), ShaderError> {
         if self.holds(&mesh) {
             return Ok(());
         }
         #[cfg(test)]
         crate::testing::race_hooks::run("model attach");
-        let columns = crate::mesh::model_schema();
+        let columns = crate::geometry::model_schema();
         let binding = self.bind_mesh_with(&mesh, Some(&columns))?;
         self.record(mesh, binding, true)
     }
@@ -461,8 +461,8 @@ impl ShaderObject {
     /// a mesh the shader holds already stays as it is.
     fn record(
         &self,
-        mesh: Arc<crate::mesh::MeshObject>,
-        binding: crate::mesh::Binding,
+        mesh: Arc<crate::geometry::MeshObject>,
+        binding: crate::geometry::Binding,
         once: bool,
     ) -> Result<(), ShaderError> {
         let mut meshes = self.meshes.write();
@@ -481,8 +481,8 @@ impl ShaderObject {
     /// a check of the quick view finds again stay, as the first check's do.
     fn hold(
         &self,
-        mesh: Arc<crate::mesh::MeshObject>,
-        binding: crate::mesh::Binding,
+        mesh: Arc<crate::geometry::MeshObject>,
+        binding: crate::geometry::Binding,
     ) -> Result<(), ShaderError> {
         let mut meshes = self.meshes.write();
         mesh.declare(self.id, binding)?;
@@ -493,7 +493,7 @@ impl ShaderObject {
     }
 
     /// Whether this shader holds `mesh`.
-    fn holds(&self, mesh: &Arc<crate::mesh::MeshObject>) -> bool {
+    fn holds(&self, mesh: &Arc<crate::geometry::MeshObject>) -> bool {
         self.meshes
             .read()
             .iter()
@@ -501,7 +501,7 @@ impl ShaderObject {
     }
 
     /// Draws `mesh` for the quick view and checks it, as `check_preview` does.
-    pub(crate) fn preview(&self, mesh: &Arc<crate::mesh::MeshObject>) {
+    pub(crate) fn preview(&self, mesh: &Arc<crate::geometry::MeshObject>) {
         #[cfg(test)]
         crate::testing::race_hooks::run("preview");
         let mut preview = self.preview.lock();
@@ -527,7 +527,7 @@ impl ShaderObject {
     /// renderer reads them on every render of this shader, however it reached it.
     pub(crate) fn read_meshes(
         &self,
-    ) -> Result<(Vec<Arc<crate::mesh::MeshObject>>, Option<Passed>), ShaderError> {
+    ) -> Result<(Vec<Arc<crate::geometry::MeshObject>>, Option<Passed>), ShaderError> {
         let mut preview = self.preview.lock();
         let passed = match preview.as_mut() {
             Some(kept) => Some(Passed {
@@ -566,13 +566,16 @@ impl ShaderObject {
     }
 
     /// Check that a mesh can attach to this shader, without attaching it or recording any type.
-    pub(crate) fn validate_mesh(&self, mesh: &crate::mesh::MeshObject) -> Result<(), ShaderError> {
+    pub(crate) fn validate_mesh(
+        &self,
+        mesh: &crate::geometry::MeshObject,
+    ) -> Result<(), ShaderError> {
         self.bind_mesh(mesh).map(drop)
     }
 
     /// Remove a mesh from this shader. Once the shader holds the mesh no
     /// more, the mesh stops checking for the attributes this shader reads.
-    pub fn remove_mesh(&self, mesh: &Arc<crate::mesh::MeshObject>) {
+    pub fn remove_mesh(&self, mesh: &Arc<crate::geometry::MeshObject>) {
         let mut v = self.meshes.write();
         if let Some(pos) = v.iter().position(|m| Arc::ptr_eq(m, mesh)) {
             v.remove(pos);
@@ -1252,7 +1255,7 @@ fn naga_ty_to_vertex_format(ty: &naga::Type) -> Result<wgpu::VertexFormat, Shade
     }
 }
 
-fn build_wgsl_from_vertex(v: &crate::mesh::Vertex) -> String {
+fn build_wgsl_from_vertex(v: &crate::Vertex) -> String {
     // Position: location 0, vec2<f32> or vec3<f32>
     let pos_ty = if v.dimensions <= 2 {
         "vec2<f32>"
@@ -1266,7 +1269,7 @@ fn build_wgsl_from_vertex(v: &crate::mesh::Vertex) -> String {
     if let Some(val) = v.properties.get("color")
         && matches!(
             val,
-            crate::mesh::VertexData::F32x4(_) | crate::mesh::VertexData::Number4(_)
+            crate::VertexData::F32x4(_) | crate::VertexData::Number4(_)
         )
     {
         color_decl = Some((1, "vec4<f32>"));
@@ -1417,8 +1420,8 @@ fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut 
         let shader = Shader::new(wgsl).expect("shader");
 
         // Compatible mesh: pos=vec3, instance offset=vec2
-        let m_ok = crate::mesh::Mesh::new();
-        use crate::mesh::Vertex;
+        let m_ok = crate::Mesh::new();
+        use crate::Vertex;
         m_ok.add_vertices([
             Vertex::new([-0.5, -0.5, 0.0]),
             Vertex::new([0.5, -0.5, 0.0]),
@@ -1428,7 +1431,7 @@ fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut 
         shader.validate_mesh(&m_ok).expect("compatible");
 
         // Missing attribute: no instance offset provided
-        let m_missing = crate::mesh::Mesh::new();
+        let m_missing = crate::Mesh::new();
         m_missing.add_vertices([
             Vertex::new([-0.5, -0.5, 0.0]),
             Vertex::new([0.5, -0.5, 0.0]),
@@ -1443,7 +1446,7 @@ fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut 
         }
 
         // Type mismatch: instance offset present but wrong type (vec3 instead of vec2)
-        let m_mismatch = crate::mesh::Mesh::new();
+        let m_mismatch = crate::Mesh::new();
         m_mismatch.add_vertices([
             Vertex::new([-0.5, -0.5, 0.0]),
             Vertex::new([0.5, -0.5, 0.0]),
@@ -2069,8 +2072,8 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,0.,1.,1.); }
 
         let shader = crate::Shader::new(wgsl).expect("shader");
 
-        let mesh = crate::mesh::Mesh::new();
-        use crate::mesh::Vertex;
+        let mesh = crate::Mesh::new();
+        use crate::Vertex;
         mesh.add_vertices([
             Vertex::new([-0.5, -0.5, 0.0]),
             Vertex::new([0.5, -0.5, 0.0]),
@@ -2101,8 +2104,8 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
 
         let shader = crate::Shader::new(wgsl).expect("shader");
 
-        let mesh = crate::mesh::Mesh::new();
-        use crate::mesh::{Vertex, VertexData};
+        let mesh = crate::Mesh::new();
+        use crate::{Vertex, VertexData};
         mesh.add_vertices([
             Vertex::new([-0.5, -0.5, 0.0]),
             Vertex::new([0.5, -0.5, 0.0]),
@@ -2122,7 +2125,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
         );
 
         // Three plain numbers can't fill a vec2 either.
-        let mesh = crate::mesh::Mesh::new();
+        let mesh = crate::Mesh::new();
         mesh.add_vertices([
             Vertex::new([-0.5, -0.5, 0.0]),
             Vertex::new([0.5, -0.5, 0.0]),
@@ -2158,11 +2161,11 @@ fn vs_main(@location(0) pos: vec2<f32>, @location(1) id: f32) -> @builtin(positi
 fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
 "#;
 
-    fn mesh_with_ids(ids: &[f64]) -> crate::mesh::Mesh {
-        let mesh = crate::mesh::Mesh::new();
+    fn mesh_with_ids(ids: &[f64]) -> crate::Mesh {
+        let mesh = crate::Mesh::new();
         for (index, id) in ids.iter().enumerate() {
             let x = index as f32;
-            mesh.add_vertex(crate::mesh::Vertex::new([x, 0.0]).set("id", *id));
+            mesh.add_vertex(crate::Vertex::new([x, 0.0]).set("id", *id));
         }
         mesh
     }
@@ -2224,7 +2227,7 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
     fn a_later_vertex_without_an_attribute_fails() {
         let shader = Shader::new(FLOAT_ID).expect("shader");
         let mesh = mesh_with_ids(&[1.0, 2.0]);
-        mesh.add_vertex(crate::mesh::Vertex::new([2.0, 0.0]));
+        mesh.add_vertex(crate::Vertex::new([2.0, 0.0]));
         let error = shader.add_mesh(&mesh).expect_err("vertex 2 has no id");
         assert_eq!(
             error.to_string(),
@@ -2235,7 +2238,7 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
         // An attribute the shader doesn't read may come and go.
         let mesh = mesh_with_ids(&[1.0, 2.0]);
         mesh.add_vertex(
-            crate::mesh::Vertex::new([2.0, 0.0])
+            crate::Vertex::new([2.0, 0.0])
                 .set("id", 3.0)
                 .set("extra", 1.0),
         );
@@ -2253,9 +2256,9 @@ fn vs_main(@location(0) pos: vec2<f32>, @location(1) offset: vec2<f32>) -> @buil
 @fragment
 fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
 "#;
-        use crate::mesh::{Instance, Vertex};
+        use crate::{Instance, Vertex};
         let shader = Shader::new(wgsl).expect("shader");
-        let mesh = crate::mesh::Mesh::new();
+        let mesh = crate::Mesh::new();
         mesh.add_vertices([
             Vertex::new([0.0, 0.0]),
             Vertex::new([1.0, 0.0]),
@@ -2305,10 +2308,10 @@ struct Extra { @builtin(vertex_index) index: u32, @location(1) offset: vec2<f32>
 "#,
         )
         .expect("shader");
-        let mesh = crate::mesh::Mesh::new();
+        let mesh = crate::Mesh::new();
         mesh.add_vertices(
             [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]
-                .map(|corner| crate::mesh::Vertex::new(corner).set("offset", [0.0, 0.0])),
+                .map(|corner| crate::Vertex::new(corner).set("offset", [0.0, 0.0])),
         );
 
         // Act
@@ -2329,7 +2332,7 @@ struct Extra { @builtin(vertex_index) index: u32, @location(1) offset: vec2<f32>
     // the color's place among the vertex's properties, so it fits a 16-attribute device.
     #[test]
     fn from_vertex_reads_color_at_location_one() {
-        let vertex = (0..15).fold(crate::mesh::Vertex::new([0.0, 0.0]), |vertex, index| {
+        let vertex = (0..15).fold(crate::Vertex::new([0.0, 0.0]), |vertex, index| {
             vertex.set(&format!("p{index}"), 0.0)
         });
         let vertex = vertex.set("color", [1.0, 0.0, 0.0, 1.0]);
@@ -2344,16 +2347,16 @@ struct Extra { @builtin(vertex_index) index: u32, @location(1) offset: vec2<f32>
     // Story: the shader Shader::from_vertex builds reads a color of four plain numbers.
     #[test]
     fn from_vertex_reads_an_untyped_color() {
-        let vertex = crate::mesh::Vertex::new([0.0, 0.0]).set("color", [1.0, 0.0, 0.0, 1.0]);
+        let vertex = crate::Vertex::new([0.0, 0.0]).set("color", [1.0, 0.0, 0.0, 1.0]);
         let shader = Shader::from_vertex(&vertex).expect("shader");
         let inputs = shader.object.reflect_vertex_inputs().expect("inputs");
         assert!(inputs.iter().any(|input| input.name == "color"
             && input.format == wgpu::VertexFormat::Float32x4));
 
-        let mesh = crate::mesh::Mesh::new();
+        let mesh = crate::Mesh::new();
         mesh.add_vertices(
             [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]
-                .map(|corner| crate::mesh::Vertex::new(corner).set("color", [1.0, 0.0, 0.0, 1.0])),
+                .map(|corner| crate::Vertex::new(corner).set("color", [1.0, 0.0, 0.0, 1.0])),
         );
         shader.add_mesh(&mesh).expect("color attaches");
     }

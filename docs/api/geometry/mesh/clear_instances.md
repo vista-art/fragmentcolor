@@ -17,7 +17,7 @@ through `Shader.remove_mesh`, `Shader.clear_meshes` or by dropping.
 ## Example
 
 ```rust
-use fragmentcolor::mesh::{Mesh, Instance};
+use fragmentcolor::{Mesh, Instance};
 
 let m = Mesh::new();
 m.add_instance(Instance::new().set("tint", [1.0, 0.0, 0.0, 1.0]));

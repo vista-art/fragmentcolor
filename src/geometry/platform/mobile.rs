@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use crate::bindings::numbers::{VectorError, read_floats, read_position, read_vector};
 use crate::core::renderer::platform::mobile::FragmentColorError;
-use crate::mesh::{Instance, Mesh, Quad, Vertex, VertexData};
+use crate::{Instance, Mesh, Quad, Vertex, VertexData};
 
 // -----------------------------------------------------------------
 // Vertex (uniffi bindings)

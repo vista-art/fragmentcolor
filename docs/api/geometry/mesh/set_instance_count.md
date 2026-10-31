@@ -15,7 +15,7 @@ When the shader reads instance attributes, `Renderer.render` returns
 ## Example
 
 ```rust
-use fragmentcolor::mesh::Mesh;
+use fragmentcolor::Mesh;
 let mut m = Mesh::new();
 m.add_vertices([
     [-0.01, -0.01],

@@ -6,7 +6,7 @@ use pyo3::types::{PyDict, PyString};
 
 use crate::bindings::numbers;
 use crate::bindings::python::{PyChannels, PyUnsigned, read_list, read_number, read_numbers};
-use crate::mesh::{Instance, Mesh, MeshError, Vertex, VertexData};
+use crate::{Instance, Mesh, MeshError, Vertex, VertexData};
 use lsp_doc::lsp_doc;
 
 /// A vertex or instance attribute from Python:
@@ -165,7 +165,7 @@ impl TryFrom<PyIntoInstance<'_>> for Instance {
 #[pymethods]
 impl Vertex {
     // Attribute-name constants mirror the Rust-side `pub const` declarations
-    // on `Vertex` (see `src/mesh/vertex.rs`), exposed to Python as class
+    // on `Vertex` (see `src/geometry/vertex.rs`), exposed to Python as class
     // attributes so example code can write `Vertex.set(Vertex.UV0, ...)`
     // instead of the bare string `"uv0"`. The classattr functions delegate
     // to the same Rust const so the two stay in lock-step.

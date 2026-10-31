@@ -1,5 +1,7 @@
-use super::builtins::VertexPosition;
-use super::data::VertexData;
+//! `Vertex` and `Instance`: the values a shader reads per vertex and per instance.
+
+use super::position::VertexPosition;
+use super::vertex_data::VertexData;
 use lsp_doc::lsp_doc;
 use std::collections::HashMap;
 

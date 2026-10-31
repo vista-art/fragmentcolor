@@ -37,7 +37,7 @@ The constants are plain `&'static str` literals: `vertex.set(Vertex::UV0, [...])
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::Vertex;
+use fragmentcolor::Vertex;
 let v = Vertex::new([0.0, 0.0, 0.0])
     .set(Vertex::UV0, [0.5, 0.5])
     .set(Vertex::NORMAL, [0.0, 1.0, 0.0]);
@@ -118,7 +118,7 @@ that is NaN, infinite or past the 32-bit float range, is an error that names the
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::Vertex;
+use fragmentcolor::Vertex;
 let v = Vertex::new([0.0, 0.0]);
 `}
 lang="rust"
@@ -500,7 +500,7 @@ the fields that differ.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::Vertex;
+use fragmentcolor::Vertex;
 let v = Vertex::new([0.0, 0.0]);
 let inst = v.create_instance();
 `}

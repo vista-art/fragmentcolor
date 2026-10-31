@@ -355,8 +355,8 @@ fn warn_texture(key: &str, error: impl std::fmt::Display) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mesh::{Mesh, Vertex};
     use crate::texture::SourceData;
+    use crate::{Mesh, Vertex};
     use crate::{Pass, Renderer, Target};
 
     #[test]

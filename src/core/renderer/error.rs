@@ -50,7 +50,7 @@ pub enum RendererError {
     #[error("Shader error: {0}")]
     ShaderError(#[from] crate::ShaderError),
     #[error("Mesh error: {0}")]
-    MeshError(#[from] crate::mesh::MeshError),
+    MeshError(#[from] crate::MeshError),
     #[error("Pass error: {0}")]
     PassError(#[from] crate::PassError),
     #[error("Bind Group Layout error: {0}")]
