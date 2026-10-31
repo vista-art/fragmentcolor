@@ -49,7 +49,6 @@ mod layout;
 use layout::{Layout, build_module, create_bind_group_layouts, create_pipeline_layout};
 use layout::{PipelineSource, find_entry, pick_source, plan_layout, read_immediate_size};
 pub(crate) mod background;
-mod external_texture;
 pub(crate) mod lights;
 use lights::LightPath;
 mod sampler_pairs;
@@ -429,15 +428,6 @@ impl Renderer {
             .get_texture(&texture_id)
             .ok_or(RendererError::TextureNotFoundError(texture_id))?;
         Ok(crate::texture::copy_pixels(&context, &texture).await?)
-    }
-
-    #[cfg(wasm)]
-    #[lsp_doc("docs/api/web/hidden/external_texture.md")]
-    pub fn create_external_texture(
-        &self,
-        video: &web_sys::HtmlVideoElement,
-    ) -> Result<external_texture::ExternalTextureHandle, RendererError> {
-        external_texture::ExternalTextureHandle::from_video(self, video)
     }
 
     /// Uploads into this Renderer every Material map of `renderable` that it lacks

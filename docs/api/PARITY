@@ -109,21 +109,6 @@ docs/api/targets/target/size.md::Trait method; parity enforced via concrete Wind
 docs/api/targets/target/resize.md::Trait method; parity enforced via concrete WindowTarget/TextureTarget docs.
 docs/api/targets/target/get_image.md::Trait method; parity enforced via concrete WindowTarget/TextureTarget docs.
 
-# ---- Hidden / not-yet-exposed conceptual docs ----
-#
-# `docs/api/web/external_texture.md` was moved to `docs/api/web/hidden/`
-# because every implementation is still a stub returning
-# RendererError::Error("not implemented yet"). See ROADMAP.md 0.11.1 entry —
-# at least one concrete working example (likely web's HTMLVideoElement path)
-# is required before the public-facing doc returns. Tracked across all
-# platforms in the 0.13.x "Live media" milestone.
-
-# Python has no portable native video-frame source equivalent to
-# HTMLVideoElement / CVPixelBuffer / SurfaceTexture. Callers decode video
-# frames host-side and upload via Texture.write() / Texture.write_region()
-# instead. See docs/api/core/renderer/hidden/create_external_texture_py.md.
-docs/api/core/renderer/create_external_texture.md:web,swift,kotlin:Python lacks a portable native video-frame source; use Texture.write/write_region to upload decoded frames instead.
-
 # ---- Type names (binding-only classes) ----
 #
 # scripts/binding_checks.rs fails the build when a binding declares a class that
@@ -147,7 +132,6 @@ type StorageAccess:swift,kotlin:part of UniformData, which mobile Shader.get ret
 type StorageEntry:swift,kotlin:part of UniformData, which mobile Shader.get returns and Rust keeps crate-private.
 type StructField:swift,kotlin:part of UniformData, which mobile Shader.get returns and Rust keeps crate-private.
 type StructShape:swift,kotlin:part of UniformData, which mobile Shader.get returns and Rust keeps crate-private.
-type ExternalTextureHandle:web,swift,kotlin:Renderer.createExternalTexture returns this stub on the platforms with a native video frame source; Rust has no external texture API yet.
 type RenderCanvasFrame:python:the frame object of the rendercanvas present protocol, which only Python uses.
 type InvalidInputError:python:Python raises a FragmentColorError subclass for a value the call can't take, such as an int past u32, a bad size, or texture bytes that don't match their size; Rust reports a TextureError, SizeError, ScreenRegionError, ColorError or PassError, and JavaScript an Error named InvalidInputError.
 type UnsupportedMipmapFormatError:python:Python raises a FragmentColorError subclass for a format the CPU mipmap builder can't fill; Rust reports a TextureError, and JavaScript an Error of that name.

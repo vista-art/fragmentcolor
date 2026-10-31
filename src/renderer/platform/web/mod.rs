@@ -179,15 +179,6 @@ impl Renderer {
         })
     }
 
-    #[wasm_bindgen(js_name = "createExternalTexture")]
-    #[lsp_doc("docs/api/core/renderer/hidden/create_external_texture_js.md")]
-    pub fn create_external_texture_js(
-        &self,
-        video: &web_sys::HtmlVideoElement,
-    ) -> Result<crate::renderer::external_texture::ExternalTextureHandle, RendererError> {
-        self.create_external_texture(video)
-    }
-
     #[wasm_bindgen(js_name = "load", unchecked_return_type = "Promise<void>")]
     #[lsp_doc("docs/api/core/renderer/load.md")]
     pub fn load_js(
