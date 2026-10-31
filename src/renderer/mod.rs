@@ -9,6 +9,7 @@ use dashmap::mapref::one::RefMut;
 use futures::lock::Mutex as AsyncMutex;
 use lsp_doc::lsp_doc;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::sync::Arc;
@@ -68,8 +69,9 @@ mod check_tests;
 #[cfg(test)]
 mod scope_tests;
 
-/// The Renderer accepts a generic window handle as input
-/// that must report its display size.
+/// A window that reports its display size.
+/// `Renderer::create_target` takes one that also has the `raw-window-handle`
+/// traits `HasWindowHandle` and `HasDisplayHandle`, as a `winit` window does.
 pub trait HasDisplaySize {
     fn size(&self) -> Size;
 }
@@ -182,7 +184,7 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/create_target.md")]
     pub async fn create_target(
         &self,
-        window: impl Into<wgpu::SurfaceTarget<'static>> + HasDisplaySize,
+        window: impl HasWindowHandle + HasDisplayHandle + HasDisplaySize + Send + Sync + 'static,
     ) -> Result<crate::RenderTarget, InitializationError> {
         let sz = window.size();
         let size = wgpu::Extent3d {
@@ -291,8 +293,8 @@ impl Renderer {
                 "create_storage_texture requires options.size — pass `(size, format)` or set the field explicitly".into(),
             )
         })?;
-        let wgpu_size: wgpu::Extent3d = size.into();
-        let wgpu_format: wgpu::TextureFormat = options.format.into();
+        let wgpu_size: wgpu::Extent3d = size.to_extent();
+        let wgpu_format: wgpu::TextureFormat = options.format.to_wgpu();
         // The size comes first, so a bad one reports the same error whatever the seed.
         let limits = context.device.limits();
         crate::texture::check_extent(&limits, wgpu_size, crate::texture::dimension(wgpu_size))?;
@@ -385,8 +387,11 @@ impl Renderer {
         let limit = context.device.limits().max_texture_dimension_2d;
         crate::texture::check_plane(size, limit)?;
         let sample_count = context.sample_count();
-        let obj =
-            crate::TextureObject::create_depth_texture(context.as_ref(), size.into(), sample_count);
+        let obj = crate::TextureObject::create_depth_texture(
+            context.as_ref(),
+            size.to_extent(),
+            sample_count,
+        );
         let obj = std::sync::Arc::new(obj);
         let registration = crate::texture::Registration::create(&context, obj);
         Ok(crate::texture::Texture::new(context, registration))

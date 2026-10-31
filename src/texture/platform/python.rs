@@ -121,7 +121,7 @@ pub(crate) fn ndarray_input(
 
     let format = format.unwrap_or_default();
     let read = || ndarray_bytes(array);
-    let (pixels, own) = crate::texture::array_pixels(array.shape(), read, format.into())?;
+    let (pixels, own) = crate::texture::array_pixels(array.shape(), read, format.to_wgpu())?;
     let fits = |size: &crate::Size| {
         (size.width, size.height, size.depth.unwrap_or(1)) == (own.width, own.height, 1)
     };
@@ -303,7 +303,7 @@ impl Mipmap {
     #[pyo3(name = "format")]
     #[lsp_doc("docs/api/texture/mipmap/format.md")]
     pub fn format_py(&self) -> TextureFormat {
-        self.format.into()
+        TextureFormat::from_wgpu(self.format)
     }
 
     #[pyo3(name = "size")]

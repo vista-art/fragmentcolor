@@ -83,16 +83,25 @@ fn check_dimension(number: f64) -> Result<u32, SizeError> {
     })
 }
 
-crate::impl_from_into_with_refs!(
-    Size,
-    wgpu::Extent3d,
-    |s: Size| wgpu::Extent3d {
-        width: s.width,
-        height: s.height,
-        depth_or_array_layers: s.depth.unwrap_or(1),
-    },
-    |e: wgpu::Extent3d| Size::new(e.width, e.height, Some(e.depth_or_array_layers))
-);
+impl Size {
+    /// The wgpu extent of this size, one layer deep without a depth.
+    pub(crate) fn to_extent(self) -> wgpu::Extent3d {
+        wgpu::Extent3d {
+            width: self.width,
+            height: self.height,
+            depth_or_array_layers: self.depth.unwrap_or(1),
+        }
+    }
+
+    /// The size of a wgpu extent, its layers as the depth.
+    pub(crate) fn from_extent(extent: wgpu::Extent3d) -> Self {
+        Size::new(
+            extent.width,
+            extent.height,
+            Some(extent.depth_or_array_layers),
+        )
+    }
+}
 
 crate::impl_from_into_with_refs!(Size, (u32, u32), |s: Size| (s.width, s.height), |t: (
     u32,
@@ -351,12 +360,12 @@ mod tests {
             height: 480,
             depth_or_array_layers: 1,
         };
-        let s: Size = (&e).into();
+        let s: Size = Size::from_extent(e);
         assert_eq!(s.width, 640);
         assert_eq!(s.height, 480);
         assert_eq!(s.depth, Some(1));
 
-        let e2: wgpu::Extent3d = (&s).into();
+        let e2: wgpu::Extent3d = s.to_extent();
         assert_eq!(e2, e);
     }
 
@@ -404,7 +413,7 @@ mod tests {
         assert_eq!(d.depth, None);
 
         let s = Size::new(4, 5, None);
-        let e: wgpu::Extent3d = s.into();
+        let e: wgpu::Extent3d = s.to_extent();
         assert_eq!(e.width, 4);
         assert_eq!(e.height, 5);
         // Depth should fallback to 1 when None
@@ -458,14 +467,14 @@ mod tests {
         #[test]
         fn prop_extent3d_roundtrip((w, h, d_opt) in any::<(u32, u32, Option<u32>)>()) {
             let s = Size::new(w, h, d_opt);
-            let e: wgpu::Extent3d = s.into();
+            let e: wgpu::Extent3d = s.to_extent();
             prop_assert_eq!(e.width, w);
             prop_assert_eq!(e.height, h);
             // Compare effective depth
             let eff = d_opt.unwrap_or(1);
             prop_assert_eq!(e.depth_or_array_layers, eff);
 
-            let s2: Size = (&e).into();
+            let s2: Size = Size::from_extent(e);
             prop_assert_eq!(s2.width, w);
             prop_assert_eq!(s2.height, h);
             prop_assert_eq!(s2.depth.unwrap_or(1), eff);

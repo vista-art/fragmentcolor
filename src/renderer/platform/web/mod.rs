@@ -12,13 +12,14 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::future_to_promise;
 
-pub enum Canvas {
+/// A canvas a window target draws into.
+pub(crate) enum Canvas {
     Html(web_sys::HtmlCanvasElement),
     Offscreen(web_sys::OffscreenCanvas),
 }
 
 impl Canvas {
-    pub fn size(&self) -> wgpu::Extent3d {
+    pub(crate) fn size(&self) -> wgpu::Extent3d {
         wgpu::Extent3d {
             width: self.width(),
             height: self.height(),
@@ -135,7 +136,7 @@ impl Renderer {
         let data = match data.filter(given) {
             Some(bytes) => {
                 let label = "Renderer.createStorageTexture: data";
-                let (bytes, _) = js_to_texture_bytes(&bytes, Some(size), format.into(), label)?;
+                let (bytes, _) = js_to_texture_bytes(&bytes, Some(size), format.to_wgpu(), label)?;
                 TextureData::Bytes(bytes)
             }
             None => TextureData::Empty,

@@ -26,45 +26,50 @@ pub enum TextureFormat {
     L8,
 }
 
-crate::impl_from_into_with_refs!(
-    TextureFormat,
-    wgpu::TextureFormat,
-    |f: TextureFormat| match f {
-        TextureFormat::R8Unorm => wgpu::TextureFormat::R8Unorm,
-        TextureFormat::Rg8Unorm => wgpu::TextureFormat::Rg8Unorm,
-        TextureFormat::R16Unorm => wgpu::TextureFormat::R16Unorm,
-        TextureFormat::Rg16Unorm => wgpu::TextureFormat::Rg16Unorm,
-        TextureFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
-        TextureFormat::Rgba8UnormSrgb => wgpu::TextureFormat::Rgba8UnormSrgb,
-        TextureFormat::Bgra8Unorm => wgpu::TextureFormat::Bgra8Unorm,
-        TextureFormat::Rgba16Unorm => wgpu::TextureFormat::Rgba16Unorm,
-        TextureFormat::Rgba16Float => wgpu::TextureFormat::Rgba16Float,
-        TextureFormat::Rgba32Float => wgpu::TextureFormat::Rgba32Float,
-        TextureFormat::Rgba32Uint => wgpu::TextureFormat::Rgba32Uint,
-        TextureFormat::Rgba32Sint => wgpu::TextureFormat::Rgba32Sint,
-        TextureFormat::Depth32Float => wgpu::TextureFormat::Depth32Float,
-        TextureFormat::Rgba => wgpu::TextureFormat::Rgba8Unorm,
-        TextureFormat::Bgra => wgpu::TextureFormat::Bgra8Unorm,
-        TextureFormat::Lab => wgpu::TextureFormat::Rg8Unorm,
-        TextureFormat::L8 => wgpu::TextureFormat::R8Unorm,
-    },
-    |wf: wgpu::TextureFormat| match wf {
-        wgpu::TextureFormat::R8Unorm => TextureFormat::R8Unorm,
-        wgpu::TextureFormat::Rg8Unorm => TextureFormat::Rg8Unorm,
-        wgpu::TextureFormat::R16Unorm => TextureFormat::R16Unorm,
-        wgpu::TextureFormat::Rg16Unorm => TextureFormat::Rg16Unorm,
-        wgpu::TextureFormat::Rgba8Unorm => TextureFormat::Rgba8Unorm,
-        wgpu::TextureFormat::Rgba8UnormSrgb => TextureFormat::Rgba8UnormSrgb,
-        wgpu::TextureFormat::Bgra8Unorm => TextureFormat::Bgra8Unorm,
-        wgpu::TextureFormat::Rgba16Unorm => TextureFormat::Rgba16Unorm,
-        wgpu::TextureFormat::Rgba16Float => TextureFormat::Rgba16Float,
-        wgpu::TextureFormat::Rgba32Float => TextureFormat::Rgba32Float,
-        wgpu::TextureFormat::Rgba32Uint => TextureFormat::Rgba32Uint,
-        wgpu::TextureFormat::Rgba32Sint => TextureFormat::Rgba32Sint,
-        wgpu::TextureFormat::Depth32Float => TextureFormat::Depth32Float,
-        _ => TextureFormat::Rgba8Unorm,
+impl TextureFormat {
+    /// The wgpu format this format stands for. The logical names map to a concrete format.
+    pub(crate) fn to_wgpu(self) -> wgpu::TextureFormat {
+        match self {
+            TextureFormat::R8Unorm => wgpu::TextureFormat::R8Unorm,
+            TextureFormat::Rg8Unorm => wgpu::TextureFormat::Rg8Unorm,
+            TextureFormat::R16Unorm => wgpu::TextureFormat::R16Unorm,
+            TextureFormat::Rg16Unorm => wgpu::TextureFormat::Rg16Unorm,
+            TextureFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
+            TextureFormat::Rgba8UnormSrgb => wgpu::TextureFormat::Rgba8UnormSrgb,
+            TextureFormat::Bgra8Unorm => wgpu::TextureFormat::Bgra8Unorm,
+            TextureFormat::Rgba16Unorm => wgpu::TextureFormat::Rgba16Unorm,
+            TextureFormat::Rgba16Float => wgpu::TextureFormat::Rgba16Float,
+            TextureFormat::Rgba32Float => wgpu::TextureFormat::Rgba32Float,
+            TextureFormat::Rgba32Uint => wgpu::TextureFormat::Rgba32Uint,
+            TextureFormat::Rgba32Sint => wgpu::TextureFormat::Rgba32Sint,
+            TextureFormat::Depth32Float => wgpu::TextureFormat::Depth32Float,
+            TextureFormat::Rgba => wgpu::TextureFormat::Rgba8Unorm,
+            TextureFormat::Bgra => wgpu::TextureFormat::Bgra8Unorm,
+            TextureFormat::Lab => wgpu::TextureFormat::Rg8Unorm,
+            TextureFormat::L8 => wgpu::TextureFormat::R8Unorm,
+        }
     }
-);
+
+    /// The format for a wgpu format, `Rgba8Unorm` for one FragmentColor has no name for.
+    pub(crate) fn from_wgpu(format: wgpu::TextureFormat) -> Self {
+        match format {
+            wgpu::TextureFormat::R8Unorm => TextureFormat::R8Unorm,
+            wgpu::TextureFormat::Rg8Unorm => TextureFormat::Rg8Unorm,
+            wgpu::TextureFormat::R16Unorm => TextureFormat::R16Unorm,
+            wgpu::TextureFormat::Rg16Unorm => TextureFormat::Rg16Unorm,
+            wgpu::TextureFormat::Rgba8Unorm => TextureFormat::Rgba8Unorm,
+            wgpu::TextureFormat::Rgba8UnormSrgb => TextureFormat::Rgba8UnormSrgb,
+            wgpu::TextureFormat::Bgra8Unorm => TextureFormat::Bgra8Unorm,
+            wgpu::TextureFormat::Rgba16Unorm => TextureFormat::Rgba16Unorm,
+            wgpu::TextureFormat::Rgba16Float => TextureFormat::Rgba16Float,
+            wgpu::TextureFormat::Rgba32Float => TextureFormat::Rgba32Float,
+            wgpu::TextureFormat::Rgba32Uint => TextureFormat::Rgba32Uint,
+            wgpu::TextureFormat::Rgba32Sint => TextureFormat::Rgba32Sint,
+            wgpu::TextureFormat::Depth32Float => TextureFormat::Depth32Float,
+            _ => TextureFormat::Rgba8Unorm,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -85,8 +90,8 @@ mod tests {
 
         // Act / Assert: round-trip
         for f in cases.iter().copied() {
-            let wf: wgpu::TextureFormat = f.into();
-            let back: TextureFormat = wf.into();
+            let wf: wgpu::TextureFormat = f.to_wgpu();
+            let back: TextureFormat = TextureFormat::from_wgpu(wf);
             // Note: sRGB/linear distinction preserved where possible
             match (f, back) {
                 (TextureFormat::Rgba8Unorm, TextureFormat::Rgba8Unorm)
@@ -104,8 +109,8 @@ mod tests {
     #[test]
     fn maps_logical_defaults_to_wgpu() {
         // Arrange / Act
-        let rgba: wgpu::TextureFormat = TextureFormat::Rgba.into();
-        let bgra: wgpu::TextureFormat = TextureFormat::Bgra.into();
+        let rgba: wgpu::TextureFormat = TextureFormat::Rgba.to_wgpu();
+        let bgra: wgpu::TextureFormat = TextureFormat::Bgra.to_wgpu();
 
         // Assert
         assert_eq!(rgba, wgpu::TextureFormat::Rgba8Unorm);

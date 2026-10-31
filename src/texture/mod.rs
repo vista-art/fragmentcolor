@@ -177,7 +177,7 @@ impl Mipmap {
         let crate::TextureInput { data, options } = input.into();
         check_source(data.is_sized(), options.size)?;
         let public_format = options.format;
-        let wfmt: wgpu::TextureFormat = public_format.into();
+        let wfmt: wgpu::TextureFormat = public_format.to_wgpu();
         if !supports_cpu_mipmaps(wfmt) {
             return Err(TextureError::UnsupportedMipmapFormat {
                 format: public_format,
@@ -190,7 +190,7 @@ impl Mipmap {
             TextureData::Bytes(bytes) => match options.size {
                 None => (decode(&bytes, ANY_SIDE)?, None),
                 Some(size) => {
-                    let extent: wgpu::Extent3d = size.into();
+                    let extent: wgpu::Extent3d = size.to_extent();
                     if extent.width == 0 || extent.height == 0 {
                         return Err(TextureError::InvalidInput(
                             "build: size must be non-zero in both dimensions".into(),
@@ -289,7 +289,7 @@ impl Mipmap {
 impl Mipmap {
     #[lsp_doc("docs/api/texture/mipmap/format.md")]
     pub fn format(&self) -> crate::TextureFormat {
-        self.format.into()
+        TextureFormat::from_wgpu(self.format)
     }
 
     #[lsp_doc("docs/api/texture/mipmap/size.md")]
@@ -890,8 +890,15 @@ impl TextureObject {
         let format = pick_override(options);
         match options.size {
             Some(size) => {
-                let format = format.unwrap_or_else(|| wgpu::TextureFormat::from(options.format));
-                Self::from_raw_bytes(context, size.into(), format, bytes, options.mipmaps, usage)
+                let format = format.unwrap_or_else(|| options.format.to_wgpu());
+                Self::from_raw_bytes(
+                    context,
+                    size.to_extent(),
+                    format,
+                    bytes,
+                    options.mipmaps,
+                    usage,
+                )
             }
             None => {
                 let limit = context.device.limits().max_texture_dimension_2d;
@@ -1189,7 +1196,7 @@ impl TextureObject {
     }
 
     pub fn size(&self) -> Size {
-        self.size.into()
+        Size::from_extent(self.size)
     }
 
     pub fn aspect(&self) -> f32 {
@@ -1345,7 +1352,7 @@ fn reads_as(built: wgpu::TextureFormat, format: wgpu::TextureFormat) -> bool {
 fn pick_override(options: &TextureOptions) -> Option<wgpu::TextureFormat> {
     match options.format {
         crate::TextureFormat::Rgba => None,
-        format => Some(wgpu::TextureFormat::from(format)),
+        format => Some(format.to_wgpu()),
     }
 }
 
@@ -2513,7 +2520,7 @@ mod tests {
 
     /// The first texel of `bytes`, read as the float `format`.
     fn read_texel(bytes: &[u8], format: crate::TextureFormat) -> Vec<f32> {
-        read_floats(bytes, format.into())[..4].to_vec()
+        read_floats(bytes, format.to_wgpu())[..4].to_vec()
     }
 
     // Story: a float mip level keeps values past 0 to 1, from raw bytes, a whole

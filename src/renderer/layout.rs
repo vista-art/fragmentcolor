@@ -179,7 +179,7 @@ pub(super) fn texture_binding(meta: &TextureMeta) -> wgpu::BindingType {
                 (false, false, true) => wgpu::StorageTextureAccess::WriteOnly,
                 (false, _, false) => wgpu::StorageTextureAccess::ReadOnly,
             },
-            format: format.into(),
+            format: format.to_wgpu(),
             view_dimension,
         },
         TextureClass::External() => wgpu::BindingType::ExternalTexture,

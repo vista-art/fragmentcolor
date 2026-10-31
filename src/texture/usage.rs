@@ -170,14 +170,18 @@ pub(crate) fn check_usage(bits: u32) -> Result<wgpu::TextureUsages, TextureError
     Ok(wgpu::TextureUsages::from_bits_retain(bits))
 }
 
-impl From<TextureUsage> for wgpu::TextureUsages {
-    fn from(usage: TextureUsage) -> wgpu::TextureUsages {
-        wgpu::TextureUsages::from_bits_retain(usage.bits)
+#[cfg(test)]
+impl TextureUsage {
+    /// The wgpu `TextureUsages` this `TextureUsage` stands for.
+    pub(crate) fn to_wgpu(self) -> wgpu::TextureUsages {
+        wgpu::TextureUsages::from_bits_retain(self.bits)
     }
 }
 
-impl From<wgpu::TextureUsages> for TextureUsage {
-    fn from(usage: wgpu::TextureUsages) -> TextureUsage {
+#[cfg(test)]
+impl TextureUsage {
+    /// The `TextureUsage` for wgpu's `TextureUsages`.
+    pub(crate) fn from_wgpu(usage: wgpu::TextureUsages) -> Self {
         TextureUsage { bits: usage.bits() }
     }
 }
@@ -207,8 +211,8 @@ mod tests {
             TextureUsage::STORAGE_BINDING | TextureUsage::COPY_SRC,
         ];
         for u in cases.iter().copied() {
-            let w: wgpu::TextureUsages = u.into();
-            let back: TextureUsage = w.into();
+            let w: wgpu::TextureUsages = u.to_wgpu();
+            let back: TextureUsage = TextureUsage::from_wgpu(w);
             assert_eq!(u, back);
         }
     }

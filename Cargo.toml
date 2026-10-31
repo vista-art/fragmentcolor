@@ -153,6 +153,8 @@ naga = { version = "30", features = ["wgsl-in", "glsl-in", "glsl-out"] }
 # Maps device features to the naga capabilities a shader may use. It ships with
 # wgpu and naga, so it moves with them: wgpu, naga and it share one major version.
 wgpu-naga-bridge = "30"
+# The window traits `Renderer::create_target` takes, which wgpu and winit share.
+raw-window-handle = "0.6"
 parking_lot = "0.12"
 derive-new = "0.7"
 thiserror = "2.0"
@@ -225,7 +227,6 @@ pollster = "0.4"
 jni = "0.22"
 jni_fn = "0.1"
 ndk-sys = "0.6"
-raw-window-handle = "0.6"
 
 # WASM-Specific
 [target.'cfg(target_family = "wasm")'.dependencies]

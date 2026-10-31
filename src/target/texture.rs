@@ -25,7 +25,7 @@ impl TextureTarget {
     ) -> Self {
         let texture = Arc::new(TextureObject::create_destination_texture(
             context.as_ref(),
-            size.into(),
+            size.to_extent(),
             format,
         ));
         let registration = Registration::create(&context, texture);

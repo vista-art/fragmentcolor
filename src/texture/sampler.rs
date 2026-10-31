@@ -128,11 +128,11 @@ impl Default for SamplerOptions {
     }
 }
 
-pub fn create_default_sampler(device: &wgpu::Device) -> wgpu::Sampler {
+pub(crate) fn create_default_sampler(device: &wgpu::Device) -> wgpu::Sampler {
     create_sampler(device, SamplerOptions::default())
 }
 
-pub fn create_sampler(device: &wgpu::Device, options: SamplerOptions) -> wgpu::Sampler {
+pub(crate) fn create_sampler(device: &wgpu::Device, options: SamplerOptions) -> wgpu::Sampler {
     let label = format!("{:?}", options);
     let address_mode_u = match options.repeat_x {
         true => wgpu::AddressMode::Repeat,
@@ -161,7 +161,7 @@ pub fn create_sampler(device: &wgpu::Device, options: SamplerOptions) -> wgpu::S
         mipmap_filter,
         lod_min_clamp: 0.0,
         lod_max_clamp: 100.0,
-        compare: options.compare.map(Into::into),
+        compare: options.compare.map(CompareFunction::to_wgpu),
         anisotropy_clamp: 1,
         border_color: None,
     })
@@ -194,24 +194,10 @@ pub enum CompareFunction {
     Always = 8,
 }
 
-impl From<wgpu::CompareFunction> for CompareFunction {
-    fn from(v: wgpu::CompareFunction) -> Self {
-        match v {
-            wgpu::CompareFunction::Never => CompareFunction::Never,
-            wgpu::CompareFunction::Less => CompareFunction::Less,
-            wgpu::CompareFunction::Equal => CompareFunction::Equal,
-            wgpu::CompareFunction::LessEqual => CompareFunction::LessEqual,
-            wgpu::CompareFunction::Greater => CompareFunction::Greater,
-            wgpu::CompareFunction::NotEqual => CompareFunction::NotEqual,
-            wgpu::CompareFunction::GreaterEqual => CompareFunction::GreaterEqual,
-            wgpu::CompareFunction::Always => CompareFunction::Always,
-        }
-    }
-}
-
-impl From<CompareFunction> for wgpu::CompareFunction {
-    fn from(v: CompareFunction) -> Self {
-        match v {
+impl CompareFunction {
+    /// The wgpu `CompareFunction` this `CompareFunction` stands for.
+    pub(crate) fn to_wgpu(self) -> wgpu::CompareFunction {
+        match self {
             CompareFunction::Never => wgpu::CompareFunction::Never,
             CompareFunction::Less => wgpu::CompareFunction::Less,
             CompareFunction::Equal => wgpu::CompareFunction::Equal,

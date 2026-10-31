@@ -19,8 +19,9 @@ pub enum TextureDim {
     Cube,
 }
 
-impl From<naga::ImageDimension> for TextureDim {
-    fn from(value: naga::ImageDimension) -> Self {
+impl TextureDim {
+    /// The `TextureDim` for naga's `ImageDimension`.
+    pub(crate) fn from_naga(value: naga::ImageDimension) -> Self {
         match value {
             naga::ImageDimension::D1 => TextureDim::D1,
             naga::ImageDimension::D2 => TextureDim::D2,
@@ -30,9 +31,11 @@ impl From<naga::ImageDimension> for TextureDim {
     }
 }
 
-impl From<TextureDim> for naga::ImageDimension {
-    fn from(value: TextureDim) -> Self {
-        match value {
+#[cfg(test)]
+impl TextureDim {
+    /// The naga `ImageDimension` this `TextureDim` stands for.
+    pub(crate) fn to_naga(self) -> naga::ImageDimension {
+        match self {
             TextureDim::D1 => naga::ImageDimension::D1,
             TextureDim::D2 => naga::ImageDimension::D2,
             TextureDim::D3 => naga::ImageDimension::D3,
@@ -54,8 +57,9 @@ pub enum TextureScalarKind {
     Bool,
 }
 
-impl From<naga::ScalarKind> for TextureScalarKind {
-    fn from(value: naga::ScalarKind) -> Self {
+impl TextureScalarKind {
+    /// The `TextureScalarKind` for naga's `ScalarKind`.
+    pub(crate) fn from_naga(value: naga::ScalarKind) -> Self {
         match value {
             naga::ScalarKind::Sint => TextureScalarKind::Sint,
             naga::ScalarKind::Uint => TextureScalarKind::Uint,
@@ -68,9 +72,11 @@ impl From<naga::ScalarKind> for TextureScalarKind {
     }
 }
 
-impl From<TextureScalarKind> for naga::ScalarKind {
-    fn from(value: TextureScalarKind) -> Self {
-        match value {
+#[cfg(test)]
+impl TextureScalarKind {
+    /// The naga `ScalarKind` this `TextureScalarKind` stands for.
+    pub(crate) fn to_naga(self) -> naga::ScalarKind {
+        match self {
             TextureScalarKind::Sint => naga::ScalarKind::Sint,
             TextureScalarKind::Uint => naga::ScalarKind::Uint,
             TextureScalarKind::Float => naga::ScalarKind::Float,
@@ -135,8 +141,9 @@ pub enum TextureStorageFormat {
     Rgba16Snorm,
 }
 
-impl From<naga::StorageFormat> for TextureStorageFormat {
-    fn from(value: naga::StorageFormat) -> Self {
+impl TextureStorageFormat {
+    /// The `TextureStorageFormat` for naga's `StorageFormat`.
+    pub(crate) fn from_naga(value: naga::StorageFormat) -> Self {
         use naga::StorageFormat as F;
         match value {
             F::R8Unorm => TextureStorageFormat::R8Unorm,
@@ -184,10 +191,12 @@ impl From<naga::StorageFormat> for TextureStorageFormat {
     }
 }
 
-impl From<TextureStorageFormat> for naga::StorageFormat {
-    fn from(value: TextureStorageFormat) -> Self {
+#[cfg(test)]
+impl TextureStorageFormat {
+    /// The naga `StorageFormat` this `TextureStorageFormat` stands for.
+    pub(crate) fn to_naga(self) -> naga::StorageFormat {
         use naga::StorageFormat as F;
-        match value {
+        match self {
             TextureStorageFormat::R8Unorm => F::R8Unorm,
             TextureStorageFormat::R8Snorm => F::R8Snorm,
             TextureStorageFormat::R8Uint => F::R8Uint,
@@ -233,10 +242,11 @@ impl From<TextureStorageFormat> for naga::StorageFormat {
     }
 }
 
-impl From<TextureStorageFormat> for wgpu::TextureFormat {
-    fn from(value: TextureStorageFormat) -> Self {
+impl TextureStorageFormat {
+    /// The wgpu `TextureFormat` this `TextureStorageFormat` stands for.
+    pub(crate) fn to_wgpu(self) -> wgpu::TextureFormat {
         use wgpu::TextureFormat as F;
-        match value {
+        match self {
             TextureStorageFormat::R8Unorm => F::R8Unorm,
             TextureStorageFormat::R8Snorm => F::R8Snorm,
             TextureStorageFormat::R8Uint => F::R8Uint,
@@ -292,8 +302,9 @@ pub struct TextureStorageAccess {
     pub atomic: bool,
 }
 
-impl From<naga::StorageAccess> for TextureStorageAccess {
-    fn from(value: naga::StorageAccess) -> Self {
+impl TextureStorageAccess {
+    /// The `TextureStorageAccess` for naga's `StorageAccess`.
+    pub(crate) fn from_naga(value: naga::StorageAccess) -> Self {
         use naga::StorageAccess as SA;
         TextureStorageAccess {
             load: value.contains(SA::LOAD),
@@ -303,17 +314,19 @@ impl From<naga::StorageAccess> for TextureStorageAccess {
     }
 }
 
-impl From<TextureStorageAccess> for naga::StorageAccess {
-    fn from(value: TextureStorageAccess) -> Self {
+#[cfg(test)]
+impl TextureStorageAccess {
+    /// The naga `StorageAccess` this `TextureStorageAccess` stands for.
+    pub(crate) fn to_naga(self) -> naga::StorageAccess {
         use naga::StorageAccess as SA;
         let mut out = SA::empty();
-        if value.load {
+        if self.load {
             out |= SA::LOAD;
         }
-        if value.store {
+        if self.store {
             out |= SA::STORE;
         }
-        if value.atomic {
+        if self.atomic {
             out |= SA::ATOMIC;
         }
         out
@@ -339,16 +352,17 @@ pub enum TextureClass {
     External(),
 }
 
-impl From<naga::ImageClass> for TextureClass {
-    fn from(value: naga::ImageClass) -> Self {
+impl TextureClass {
+    /// The `TextureClass` for naga's `ImageClass`.
+    pub(crate) fn from_naga(value: naga::ImageClass) -> Self {
         match value {
             naga::ImageClass::Sampled { kind, multi } => TextureClass::Sampled {
-                kind: kind.into(),
+                kind: TextureScalarKind::from_naga(kind),
                 multi,
             },
             naga::ImageClass::Storage { format, access } => TextureClass::Storage {
-                format: format.into(),
-                access: access.into(),
+                format: TextureStorageFormat::from_naga(format),
+                access: TextureStorageAccess::from_naga(access),
             },
             naga::ImageClass::Depth { multi } => TextureClass::Depth { multi },
             naga::ImageClass::External => TextureClass::External(),
@@ -356,16 +370,18 @@ impl From<naga::ImageClass> for TextureClass {
     }
 }
 
-impl From<TextureClass> for naga::ImageClass {
-    fn from(value: TextureClass) -> Self {
-        match value {
+#[cfg(test)]
+impl TextureClass {
+    /// The naga `ImageClass` this `TextureClass` stands for.
+    pub(crate) fn to_naga(self) -> naga::ImageClass {
+        match self {
             TextureClass::Sampled { kind, multi } => naga::ImageClass::Sampled {
-                kind: kind.into(),
+                kind: kind.to_naga(),
                 multi,
             },
             TextureClass::Storage { format, access } => naga::ImageClass::Storage {
-                format: format.into(),
-                access: access.into(),
+                format: format.to_naga(),
+                access: access.to_naga(),
             },
             TextureClass::Depth { multi } => naga::ImageClass::Depth { multi },
             TextureClass::External() => naga::ImageClass::External,
@@ -385,8 +401,8 @@ mod tests {
             naga::ImageDimension::D3,
             naga::ImageDimension::Cube,
         ] {
-            let ours: TextureDim = d.into();
-            let back: naga::ImageDimension = ours.into();
+            let ours: TextureDim = TextureDim::from_naga(d);
+            let back: naga::ImageDimension = ours.to_naga();
             assert_eq!(d, back);
         }
     }
@@ -399,17 +415,17 @@ mod tests {
             naga::ScalarKind::Float,
             naga::ScalarKind::Bool,
         ] {
-            let ours: TextureScalarKind = k.into();
-            let back: naga::ScalarKind = ours.into();
+            let ours: TextureScalarKind = TextureScalarKind::from_naga(k);
+            let back: naga::ScalarKind = ours.to_naga();
             assert_eq!(k, back);
         }
     }
 
     #[test]
     fn texture_scalar_kind_abstract_variants_fold_to_float() {
-        let ours: TextureScalarKind = naga::ScalarKind::AbstractInt.into();
+        let ours: TextureScalarKind = TextureScalarKind::from_naga(naga::ScalarKind::AbstractInt);
         assert_eq!(ours, TextureScalarKind::Float);
-        let ours: TextureScalarKind = naga::ScalarKind::AbstractFloat.into();
+        let ours: TextureScalarKind = TextureScalarKind::from_naga(naga::ScalarKind::AbstractFloat);
         assert_eq!(ours, TextureScalarKind::Float);
     }
 
@@ -426,8 +442,8 @@ mod tests {
             SA::STORE | SA::ATOMIC,
             SA::LOAD | SA::STORE | SA::ATOMIC,
         ] {
-            let ours: TextureStorageAccess = value.into();
-            let back: SA = ours.into();
+            let ours: TextureStorageAccess = TextureStorageAccess::from_naga(value);
+            let back: SA = ours.to_naga();
             assert_eq!(value, back);
         }
     }
@@ -451,8 +467,8 @@ mod tests {
             naga::ImageClass::External,
         ];
         for c in cases {
-            let ours: TextureClass = c.into();
-            let back: naga::ImageClass = ours.into();
+            let ours: TextureClass = TextureClass::from_naga(c);
+            let back: naga::ImageClass = ours.to_naga();
             assert_eq!(c, back);
         }
     }

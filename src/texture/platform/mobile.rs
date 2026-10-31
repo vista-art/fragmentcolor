@@ -130,7 +130,7 @@ impl Mipmap {
     #[uniffi::method(name = "format")]
     #[lsp_doc("docs/api/texture/mipmap/format.md")]
     pub fn format_mobile(&self) -> TextureFormat {
-        self.format.into()
+        TextureFormat::from_wgpu(self.format)
     }
 
     #[uniffi::method(name = "size")]
