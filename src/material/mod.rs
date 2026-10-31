@@ -336,13 +336,10 @@ impl Material {
         self.clone()
     }
 
-    /// Sets `slot` to a map of `source`, in the slot's format when the source left the default
-    /// and can take it. A Mipmap keeps a format its bytes can't be read in, such as a float chain.
+    /// Sets `slot` to a map of `source`, which takes the slot's format as a hint when it picked none.
+    /// A Mipmap or KTX2 container whose bytes don't read in it, such as a float one, keeps its own.
     pub(crate) fn set_map(&self, slot: TextureSlot, mut source: TextureSource) {
-        let hint = slot.pick_format();
-        if source.options.format == crate::TextureFormat::default() && source.takes_format(hint) {
-            source.options.format = hint;
-        }
+        source.take_hint(slot.pick_format());
         let key = slot.pick_key();
         if let Err(error) = self.shader.object.set_map(key, source) {
             warn_texture(key, error);
@@ -810,37 +807,60 @@ mod tests {
         });
     }
 
-    // Story: a map takes its slot's format when its source can be read in it. A Mipmap built
-    // in a float format keeps that format, so it uploads where the sRGB hint would be refused.
+    /// A 4x4 KTX2 container of zeros in `format`, at `bytes` per texel.
+    fn build_container(format: ktx2::Format, bytes: usize) -> TextureInput {
+        use crate::texture::ktx2_loader::test_helpers::Ktx2Test;
+        let levels = vec![vec![0u8; 4 * 4 * bytes]];
+        let container = Ktx2Test {
+            format,
+            width: 4,
+            height: 4,
+            levels,
+        };
+        TextureInput::from(TextureData::Ktx2Bytes(container.build()))
+    }
+
+    // Story: a map takes its slot's format as a hint. A Mipmap or KTX2 container whose bytes
+    // read in it uploads in its sRGB twin, and a float one, whose bytes don't, keeps its own.
     #[test]
-    fn a_mipmap_map_takes_the_slot_format_only_where_it_reads() {
+    fn a_container_map_takes_the_slot_format_only_where_it_reads() {
         pollster::block_on(async move {
             let renderer = Renderer::new();
             let target = renderer
                 .create_texture_target([8, 8])
                 .await
                 .expect("a target");
-            let input = |format| (vec![0u8; 4 * 4 * 8], format, [4u32, 4u32]);
-            let float = crate::Mipmap::build(input(crate::TextureFormat::Rgba16Float));
-            let float = float.expect("a float chain");
+            let half = (
+                vec![0u8; 4 * 4 * 8],
+                crate::TextureFormat::Rgba16Float,
+                [4u32, 4u32],
+            );
+            let half = crate::Mipmap::build(half).expect("a float chain");
             let plain = crate::Mipmap::build((vec![255u8; 4 * 4 * 4], [4u32, 4u32]));
             let plain = plain.expect("a chain");
-            let format = |mat: &Material| mat.shader.object.maps.read()[0].source.options.format;
+            let cases: [(TextureInput, wgpu::TextureFormat); 4] = [
+                (half.into(), wgpu::TextureFormat::Rgba16Float),
+                (plain.into(), wgpu::TextureFormat::Rgba8UnormSrgb),
+                (
+                    build_container(ktx2::Format::R16G16B16A16_SFLOAT, 8),
+                    wgpu::TextureFormat::Rgba16Float,
+                ),
+                (
+                    build_container(ktx2::Format::R8G8B8A8_UNORM, 4),
+                    wgpu::TextureFormat::Rgba8UnormSrgb,
+                ),
+            ];
 
-            let hdr = build_mapped().base_color_texture(float);
-            assert_eq!(format(&hdr), crate::TextureFormat::default());
-            renderer
-                .load(hdr.shader())
-                .await
-                .expect("the float chain uploads");
-            renderer.render(hdr.shader(), &target).expect("draws");
-
-            let srgb = build_mapped().base_color_texture(plain);
-            assert_eq!(format(&srgb), crate::TextureFormat::Rgba8UnormSrgb);
-            renderer
-                .load(srgb.shader())
-                .await
-                .expect("the chain uploads as sRGB");
+            for (input, expected) in cases {
+                let mat = build_mapped().base_color_texture(input);
+                renderer
+                    .load(mat.shader())
+                    .await
+                    .expect("the source uploads");
+                let id = read_map(&mat, "base_color_map");
+                let copy = target.texture().context.get_texture(&id).expect("a copy");
+                assert_eq!(copy.format, expected);
+            }
         });
     }
 
