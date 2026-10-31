@@ -93,7 +93,6 @@ const FOV = 1.1;
 const TAU = Math.PI * 2;
 
 export async function setup(renderer, target) {
-  const size = measure(target);
   const sky = await Shader.fetch([...LIBRARY, SKY_SOURCE]);
   sky.set("sky.zenith", [0.06, 0.2, 0.6]);
   sky.set("sky.horizon", [0.5, 0.65, 0.85]);
@@ -170,13 +169,14 @@ export async function setup(renderer, target) {
 
   const sun = Light.directional([0, -1, 0], [1, 1, 1]);
   const moon = Light.directional([0.3, -1, 0.5], [0.45, 0.55, 0.85]);
-  const camera = Camera.perspective(FOV, size[0] / size[1], 0.05, 200);
+  // The first frame sets the aspect from the canvas, which may have no size yet.
+  const camera = Camera.perspective(FOV, 1, 0.05, 200);
   add(sun);
   add(moon);
   add(camera);
 
   return {
-    scene, sky, sun, moon, lamps, bulb, camera, obstacles, size,
+    scene, sky, sun, moon, lamps, bulb, camera, obstacles, size: [0, 0],
     walker: { x: 0, z: 3, y: height(0, 3) + EYE, rise: 0, yaw: -0.7, pitch: -0.05, walked: 0 },
     clock: 0.28 * DAY,
     time: 0,
@@ -409,11 +409,6 @@ function spot(index, radius) {
   const distance = Math.sqrt(random(index, 8)) * radius;
   const angle = random(index, 9) * TAU;
   return [Math.cos(angle) * distance, Math.sin(angle) * distance];
-}
-
-function measure(target) {
-  const { width, height } = target.size();
-  return [width, height];
 }
 
 const minus = (first, second) => [first[0] - second[0], first[1] - second[1], first[2] - second[2]];
