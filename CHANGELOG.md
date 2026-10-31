@@ -306,6 +306,8 @@ A patch release that checks shaders, meshes, textures and passes against the dev
 - `SceneSource::gltf` is gone, since it only converted its input. `GltfSource::from("model.glb").cameras(false)` builds the same filtered source, and a path or bytes still pass straight to `Scene::load`.
 - `TextureMeta::with_id_only(id)` is `TextureMeta::from(id)`, a `From<TextureId>` that declares the same 2D float texture a shader samples.
 - `TextureUsage::raw_bits()` is `u32::from(usage)`. The `bits` field reads the same number.
+- Every public Rust type lives at the crate root, and the modules that held them are private. A path through a module, such as `fragmentcolor::shader::ShaderError`, `fragmentcolor::mesh::Vertex` or `fragmentcolor::target::WindowTarget`, no longer resolves: write `fragmentcolor::ShaderError`. `SizeError`, `ColorError`, `ScreenRegionError`, `DisplayError` and `NetworkError`, which only a module path reached, are at the root now. `fragmentcolor::guides` is the one public module left.
+- `fetch_text` and `fetch_bytes` leave the API with the `net` module, since the public API has no free functions. So do the `FcKind` trait, `impl_fc_kind!` and the conversion macros `impl_from_ref!`, `impl_tryfrom_owned_via_ref!`, `impl_from_into_with_refs!`, `impl_tryfrom_tryinto_with_refs!`, `impl_tryfrom_js_ref_anchor!` and `impl_js_bridge!`, which only the crate's own bindings used.
 
 ## 0.12.6: Binding and renderer fixes
 
