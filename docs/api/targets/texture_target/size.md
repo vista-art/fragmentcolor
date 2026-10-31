@@ -18,7 +18,7 @@ let depth = size.depth;
 
 # assert_eq!(width, 64);
 # assert_eq!(height, 64);
-# assert_eq!(depth, Some(1));
+# assert_eq!(depth, None);
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
