@@ -1160,6 +1160,8 @@ mod reflect {
         pub functions: Vec<String>,
         /// Names given to `m.add("...", ...)`.
         pub exceptions: Vec<String>,
+        /// The builtin each `PythonError` class also extends, such as `ValueError`, by class name.
+        pub builtins: BTreeMap<String, String>,
     }
 
     impl PythonModule {
@@ -1178,6 +1180,7 @@ mod reflect {
                 classes: Vec::new(),
                 functions: Vec::new(),
                 exceptions: Vec::new(),
+                builtins: BTreeMap::new(),
             };
             let mut rest = code.as_str();
             while let Some(at) = rest.find("add_class::<") {
@@ -1200,11 +1203,35 @@ mod reflect {
                 if let Some(stripped) = rest.trim_start().strip_prefix('"')
                     && let Some(end) = stripped.find('"')
                 {
-                    module.exceptions.push(stripped[..end].to_string());
+                    let name = stripped[..end].to_string();
+                    let value = &stripped[end..stripped.find(";").unwrap_or(stripped.len())];
+                    if let Some(builtin) = read_builtin(root, value) {
+                        module.builtins.insert(name.clone(), builtin);
+                    }
+                    module.exceptions.push(name);
                 }
             }
             module
         }
+    }
+
+    /// The builtin a class registered as `PythonError::<Variant>.class(py)` also extends,
+    /// read from the arm of `PythonError::class` in `src/error.rs` that pairs the variant
+    /// with `py.get_type::<PyValueError>()` or another builtin: `ValueError` for that one.
+    fn read_builtin(root: &Path, value: &str) -> Option<String> {
+        let at = value.find("PythonError::")? + "PythonError::".len();
+        let variant: String = value[at..]
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        let path = root.join("src/error.rs");
+        let text = fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("reflect: cannot read {}: {e}", path.display()));
+        let arm = format!("PythonError::{variant} => (");
+        let start = text.find(&arm)? + arm.len();
+        let line = &text[start..start + text[start..].find('\n').unwrap_or(text.len() - start)];
+        let builtin = line.split("get_type::<Py").nth(1)?;
+        Some(builtin.chars().take_while(|c| c.is_alphanumeric()).collect())
     }
 
     impl Reflection {

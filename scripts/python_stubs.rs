@@ -257,11 +257,13 @@ mod python_stubs {
         }
         out.push_str("]\n\n");
         let mut body = String::new();
-        // FragmentColorError is the root, and every other exception the module adds subclasses it.
+        // FragmentColorError is the root, and every other exception the module adds subclasses it,
+        // with the builtin a `PythonError` class also extends at run time.
         for exception in &module.exceptions {
-            let base = match exception.as_str() {
-                "FragmentColorError" => "Exception",
-                _ => "FragmentColorError",
+            let base = match (exception.as_str(), module.builtins.get(exception)) {
+                ("FragmentColorError", _) => "Exception".to_string(),
+                (_, Some(builtin)) => format!("FragmentColorError, {builtin}"),
+                (_, None) => "FragmentColorError".to_string(),
             };
             let attributes = exception_attributes(exception, &ctx);
             if attributes.is_empty() {
