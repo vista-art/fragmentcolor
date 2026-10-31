@@ -22,7 +22,7 @@ pub mod target;
 /// # Texture module
 ///
 /// Texture represents an image stored on the GPU that can be sampled in shaders.
-pub mod texture;
+mod texture;
 
 /// # Shader Module
 ///

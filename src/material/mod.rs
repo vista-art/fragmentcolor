@@ -809,7 +809,7 @@ mod tests {
 
     /// A 4x4 KTX2 container of zeros in `format`, at `bytes` per texel.
     fn build_container(format: ktx2::Format, bytes: usize) -> TextureInput {
-        use crate::texture::ktx2_loader::test_helpers::Ktx2Test;
+        use crate::texture::loading::ktx2_loader::test_helpers::Ktx2Test;
         let levels = vec![vec![0u8; 4 * 4 * bytes]];
         let container = Ktx2Test {
             format,

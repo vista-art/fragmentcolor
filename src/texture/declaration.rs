@@ -1,9 +1,4 @@
-//! Public, uniffi-bindable mirrors of the `naga` image/sampler metadata that
-//! are needed by the runtime to construct wgpu bind-group layouts for textures.
-//!
-//! These types live alongside `TextureMeta` so that downstream `UniformData`
-//! variants (and eventually `UniformData` itself) can be exposed across the
-//! uniffi (mobile) FFI without taking a dependency on `naga` types.
+//! How a shader declares a texture: its dimension, class, sample kind, storage format and access.
 
 #[cfg(python)]
 use pyo3::prelude::*;

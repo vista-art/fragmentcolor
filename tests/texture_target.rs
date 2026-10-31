@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use fragmentcolor::texture::TextureError;
+use fragmentcolor::TextureError;
 use fragmentcolor::{InitializationError, Pass, Renderer, Shader, Target};
 
 const FILL: &str = r#"

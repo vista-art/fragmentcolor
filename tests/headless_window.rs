@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use fragmentcolor::texture::TextureError;
+use fragmentcolor::TextureError;
 use fragmentcolor::{InitializationError, Renderer, Target};
 
 // Story: Creating a target from a headless window should fall back to a texture-backed target

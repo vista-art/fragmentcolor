@@ -52,7 +52,6 @@ use depth::DepthUse;
 mod layout;
 use layout::{Layout, build_module, create_bind_group_layouts, create_pipeline_layout};
 use layout::{PipelineSource, find_entry, pick_source, plan_layout, read_immediate_size};
-pub(crate) mod background;
 pub(crate) mod lights;
 use lights::LightPath;
 mod sampler_pairs;

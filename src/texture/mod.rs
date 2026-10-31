@@ -13,13 +13,11 @@ use wasm_bindgen::prelude::*;
 mod sampler;
 pub use sampler::*;
 
-pub mod format;
+mod format;
 pub use format::*;
 
-pub mod usage;
+mod usage;
 pub use usage::TextureUsage;
-
-pub(crate) mod ktx2_loader;
 
 mod platform;
 #[cfg(python)]
@@ -35,16 +33,18 @@ use image::{DynamicImage, GenericImageView};
 mod error;
 pub use error::*;
 
-mod options;
-pub use options::*;
+mod input;
+pub use input::*;
 
+pub(crate) mod loading;
 pub(crate) mod read;
-pub mod region;
+mod region;
 mod registration;
 mod resize;
-mod source;
 mod write;
 
+use loading::ktx2_loader;
+pub(crate) use loading::{SourceData, TextureSource};
 #[cfg(python)]
 pub(crate) use read::read_pixels;
 pub(crate) use read::{copy_pixels, read_pixels_from};
@@ -53,11 +53,10 @@ pub use region::TextureRegion;
 pub use region::TextureRegionMobile;
 pub(crate) use registration::Registration;
 pub(crate) use resize::{check_extent, check_plane, check_size, resize};
-pub(crate) use source::{SourceData, TextureSource};
 pub(crate) use usage::check_usage;
 
-pub mod meta;
-pub use meta::{
+mod declaration;
+pub use declaration::{
     TextureClass, TextureDim, TextureScalarKind, TextureStorageAccess, TextureStorageFormat,
 };
 
@@ -862,7 +861,7 @@ impl TextureObject {
             _ => Vec::new(),
         };
 
-        crate::renderer::background::run(move || -> Result<Self, TextureError> {
+        loading::worker::run(move || -> Result<Self, TextureError> {
             let context = context.as_ref();
             let object = match &*source.data {
                 SourceData::Bytes(bytes) => Self::from_bytes(context, bytes, &options, pick, usage),

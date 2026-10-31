@@ -1,3 +1,5 @@
+//! `TextureInput` and `TextureOptions`: what `create_texture` takes.
+
 use crate::{SamplerOptions, Size, TextureFormat};
 
 #[cfg(wasm)]

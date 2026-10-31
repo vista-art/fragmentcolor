@@ -130,7 +130,7 @@ fn texture_write_tightly_packed_too_small() {
         let data = vec![0u8; 3 * 2 * 4 - 1];
         let err = tex.write(&data).expect_err("one byte short must err");
         assert!(
-            matches!(err, fragmentcolor::texture::TextureError::InvalidInput(_)),
+            matches!(err, fragmentcolor::TextureError::InvalidInput(_)),
             "a short buffer is invalid input, got {err}"
         );
     });

@@ -1,25 +1,5 @@
-//! Internal background executor for CPU-only prep work.
-//!
-//! Texture creation, image decoding, and mipmap generation are pure CPU work
-//! that doesn't touch the `Surface`. We offload them to a worker thread so the
-//! caller (typically the GPU/event-loop thread) stays responsive. Public API
-//! does not change — callers still `await` the result.
-//!
-//! - **Native:** a single process-wide worker thread receives `FnOnce` jobs
-//!   over an mpsc channel and replies via a `futures::channel::oneshot`. The
-//!   `Arc<RenderContext>` captured by the closure is `Send + Sync`, and
-//!   `wgpu::Queue::write_texture` only needs `&self`, so the worker can do the
-//!   GPU writes without bouncing back to the main thread.
-//! - **Wasm:** `wgpu` types are `!Send` (they hold JS objects bound to the
-//!   page's main thread). Real off-thread work would need a Web Worker with
-//!   its own GPU adapter, which is out of scope here. The wasm path runs the
-//!   job inline and returns immediately. Behavior matches the pre-refactor
-//!   code on the web — no regression — and the public API stays identical.
-//!
-//! Single-worker on native is intentional for v0.11.0: it frees the main
-//! thread (the primary ask) without adding a thread pool we don't yet have
-//! evidence we need. If batch throughput becomes a bottleneck, scale to N
-//! workers without changing the public API.
+//! The worker thread that decodes and uploads textures,
+//! so the caller's thread stays free. The web runs each job inline.
 
 #[cfg(not(wasm))]
 mod imp {

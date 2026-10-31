@@ -1,7 +1,8 @@
 //! What a texture uploads from, kept apart from any device.
 
-use super::{Mipmap, TextureData, TextureError, TextureInput, TextureOptions, ktx2_loader};
+use super::ktx2_loader;
 use crate::TextureFormat;
+use crate::texture::{Mipmap, TextureData, TextureError, TextureInput, TextureOptions};
 use std::path::PathBuf;
 use std::sync::Arc;
 

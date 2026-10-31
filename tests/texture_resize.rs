@@ -1,6 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use fragmentcolor::texture::TextureError;
+use fragmentcolor::TextureError;
 use fragmentcolor::{
     Material, Mesh, Model, Pass, Renderer, Target, Texture, TextureData, TextureFormat,
     TextureInput, TextureOptions, TextureUsage, Vertex,
