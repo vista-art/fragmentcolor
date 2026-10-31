@@ -38,17 +38,13 @@ each texture's `texCoord` and `KHR_texture_transform`.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, TextureSlot};
 
 let material = Material::pbr()
     .texture_uv(TextureSlot::Occlusion, 1)?
     .texture_transform(TextureSlot::Normal, [0.0, 0.0], [4.0, 4.0], 0.0);
-let _ = material;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 7-9}"
+lang="rust"
 />
 
 </TabItem>

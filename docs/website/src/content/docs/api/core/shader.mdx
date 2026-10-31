@@ -127,8 +127,6 @@ An unset PBR map slot, such as `base_color_map`, binds a 1x1 default in a render
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Shader, Renderer};
 
 let shader = Shader::new(r#"
@@ -158,14 +156,8 @@ let res: [f32; 2] = shader.get("resolution")?;
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
 renderer.render(&shader, &target)?;
-
-assert_eq!(res, [800.0, 600.0]);
-assert!(shader.list_uniforms().len() >= 1);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 33-37}"
+lang="rust"
 />
 
 </TabItem>
@@ -387,8 +379,6 @@ resolves against the new registry. A registry URL is fetched as written, so
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::Shader;
 
 let shader = Shader::new(r#"
@@ -411,9 +401,6 @@ let shader = Shader::new(r#"
     }
 "#)?;
 
-assert!(shader.list_keys().len() >= 1);
-Ok(())
-}
 use fragmentcolor::Shader;
 
 let main = r#"
@@ -434,9 +421,8 @@ let shader = Shader::new([
     "noise/simplex2",    // pure function: fn simplex2(v: vec2<f32>) -> f32
     main,
 ])?;
-Ok::<(), Box<dyn std::error::Error>>(())
 `}
-lang="rust" meta="collapse={1-1, 25-27, 48-48}"
+lang="rust"
 />
 
 </TabItem>
@@ -614,7 +600,11 @@ val main = """
 
 """
 
-val shader2 = Shader(listOf("sdf2d/circle", "noise/simplex2", main,))
+val shader2 = Shader(listOf(
+    "sdf2d/circle",      // pure function: fn circle(p: vec2<f32>, r: f32) -> f32
+    "noise/simplex2",    // pure function: fn simplex2(v: vec2<f32>) -> f32
+    main,
+))
 `}
 lang="kotlin"
 />
@@ -676,8 +666,6 @@ resolves against the new registry. A registry URL is fetched as written, so
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::Shader;
 
 // Full registry URL.
@@ -685,13 +673,8 @@ let shader = Shader::fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl"
 
 // Equivalent shorthand using the registry slug.
 let shader2 = Shader::fetch("sdf2d/circle").await?;
-
-let _ = (shader, shader2);
-Ok(())
-}
-fn main() { let _ = pollster::block_on(run()); }
 `}
-lang="rust" meta="collapse={1-1, 11-14}"
+lang="rust"
 />
 
 </TabItem>
@@ -791,7 +774,6 @@ The uniform's declared WGSL type decides how the value is read, so a call behave
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, Shader};
 let r = Renderer::new();
 let shader = Shader::new(r#"
@@ -809,10 +791,8 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 
 // Set scalars/vectors on declared uniforms
 shader.set("resolution", [800.0, 600.0])?;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 19-20}"
+lang="rust"
 />
 
 </TabItem>
@@ -950,18 +930,13 @@ holds the map's id from the setter call on, before any `Renderer` loads it.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Shader;
 
 let shader = Shader::default();
 shader.set("resolution", [800.0, 600.0])?;
 let res: [f32; 2] = shader.get("resolution")?;
-
-assert_eq!(res, [800.0, 600.0]);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 8-10}"
+lang="rust"
 />
 
 </TabItem>
@@ -1040,17 +1015,12 @@ Returns a list of all uniform names in the [Shader](/api/core/shader) (excluding
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Shader;
 
 let shader = Shader::default();
 let list = shader.list_uniforms();
-
-assert!(list.contains(&"resolution".to_string()));
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 7-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -1127,18 +1097,12 @@ Returns a list of all keys in the [Shader](/api/core/shader), including uniform 
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::Shader;
 
 let shader = Shader::default();
 let keys = shader.list_keys();
-
-assert!(keys.contains(&"resolution".to_string()));
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 8-10}"
+lang="rust"
 />
 
 </TabItem>
@@ -1225,17 +1189,12 @@ It returns `Result<Shader, ShaderError>`, like `Shader::new`.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Shader, Vertex};
 
 let vertex = Vertex::new([0.0, 0.0, 0.0]);
 let shader = Shader::from_vertex(&vertex)?;
-
-let _ = shader;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 7-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -1324,7 +1283,6 @@ has another dimension than the first one's.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Mesh, Shader};
 
 let mut mesh = Mesh::new();
@@ -1334,12 +1292,8 @@ mesh.add_vertices([
     [0.0, 0.5, 0.0],
 ]);
 let shader = Shader::from_mesh(&mesh)?;
-
-let _ = shader;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 12-14}"
+lang="rust"
 />
 
 </TabItem>
@@ -1441,7 +1395,6 @@ Use Shader::validate_mesh for performing a compatibility check without attaching
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Shader, Mesh};
 
 let shader = Shader::new(r#"
@@ -1464,11 +1417,8 @@ shader.add_mesh(&mesh)?;
 // Renderer will draw the mesh when rendering this pass.
 // Meshes that lay out their vertices alike draw with one
 // RenderPipeline, and each other layout gets one of its own.
-
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 25-26}"
+lang="rust"
 />
 
 </TabItem>
@@ -1615,7 +1565,6 @@ leave out what this shader reads.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Shader, Mesh};
 
 let shader = Shader::new(r#"
@@ -1640,10 +1589,8 @@ shader.add_mesh(&mesh)?;
 
 // Detach the mesh
 shader.remove_mesh(&mesh);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 26-27}"
+lang="rust"
 />
 
 </TabItem>
@@ -1793,7 +1740,6 @@ Remove multiple meshes from this Shader.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Shader, Mesh};
 
 let shader = Shader::new(r#"
@@ -1825,10 +1771,8 @@ shader.add_mesh(&m1)?;
 shader.add_mesh(&m2)?;
 
 shader.remove_meshes([&m1, &m2]);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 33-34}"
+lang="rust"
 />
 
 </TabItem>
@@ -1999,7 +1943,6 @@ of them afterwards may leave out what this shader reads.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Shader, Mesh};
 
 let shader = Shader::new(r#"
@@ -2024,10 +1967,8 @@ shader.add_mesh(&mesh)?;
 
 // Clear all
 shader.clear_meshes();
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 26-27}"
+lang="rust"
 />
 
 </TabItem>
@@ -2192,7 +2133,6 @@ Validate that a Mesh is compatible with this Shader's vertex inputs.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Shader, Pass, Mesh};
 
 let shader = Shader::new(r#"
@@ -2215,11 +2155,8 @@ mesh.add_vertices([
 
 shader.validate_mesh(&mesh)?; // Ok
 pass.add_mesh(&mesh)?;
-
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 25-26}"
+lang="rust"
 />
 
 </TabItem>
@@ -2363,7 +2300,6 @@ Returns true if this Shader is a compute shader (has a compute entry point).
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Shader;
 
 let shader = Shader::new(r#"
@@ -2373,13 +2309,8 @@ fn cs_main() { }
 
 // Call the method
 let is_compute = shader.is_compute();
-
-let _ = is_compute;
-assert!(shader.is_compute());
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 12-15}"
+lang="rust"
 />
 
 </TabItem>
@@ -2493,8 +2424,6 @@ A full URL into the default registry keeps pointing there. After `set_registry`,
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::Shader;
 
 // Point at your own mirror of the registry
@@ -2502,11 +2431,8 @@ Shader::set_registry("https://cdn.example.com/shaders/");
 
 // Now the slug "sdf2d/circle" resolves to https://cdn.example.com/shaders/sdf2d/circle.wgsl
 // (Skipping the actual fetch in this doctest)
-let _ = Shader::default();
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 10-12}"
+lang="rust"
 />
 
 </TabItem>
@@ -2619,8 +2545,6 @@ fn fs_main(pixel: VertexOutput) -> @location(0) vec4<f32> {
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Shader};
 
 let shader = Shader::default();
@@ -2628,13 +2552,8 @@ let shader = Shader::default();
 // The default shader includes a "resolution" uniform
 shader.set("resolution", [800.0, 600.0])?;
 let res: [f32; 2] = shader.get("resolution")?;
-
-assert!(shader.list_keys().len() >= 1);
-assert_eq!(res, [800.0, 600.0]);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 11-14}"
+lang="rust"
 />
 
 </TabItem>

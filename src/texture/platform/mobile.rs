@@ -41,12 +41,8 @@ impl Texture {
         self.aspect()
     }
 
-    /// Update the texture sampler options (filtering, wrapping, optional
-    /// depth-compare). Mirrors the Web `setSamplerOptions` and Python
-    /// `set_sampler_options` entry points; foreign bindings see this
-    /// method as `setSamplerOptions(opts:)` (Swift) /
-    /// `setSamplerOptions(opts)` (Kotlin) once the extension shims map
-    /// the camelCase form back onto a single overload.
+    /// Sets the sampler options: filtering, wrapping and an optional depth compare.
+    /// Swift calls it as `setSamplerOptions(opts)` through its extension, and Kotlin as is.
     #[uniffi::method(name = "setSamplerOptions")]
     #[lsp_doc("docs/api/texture/texture/set_sampler_options.md")]
     pub fn set_sampler_options_mobile(&self, opts: SamplerOptions) {

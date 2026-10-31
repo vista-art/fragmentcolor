@@ -4122,12 +4122,8 @@ public protocol TextureProtocol: AnyObject, Sendable {
     func resize(size: Size) throws 
     
     /**
-     * Update the texture sampler options (filtering, wrapping, optional
-     * depth-compare). Mirrors the Web `setSamplerOptions` and Python
-     * `set_sampler_options` entry points; foreign bindings see this
-     * method as `setSamplerOptions(opts:)` (Swift) /
-     * `setSamplerOptions(opts)` (Kotlin) once the extension shims map
-     * the camelCase form back onto a single overload.
+     * Sets the sampler options: filtering, wrapping and an optional depth compare.
+     * Swift calls it as `setSamplerOptions(opts)` through its extension, and Kotlin as is.
      */
     func setSamplerOptions(opts: SamplerOptions) 
     
@@ -4266,12 +4262,8 @@ open func resize(size: Size)throws   {try rustCallWithError(FfiConverterTypeFrag
 }
     
     /**
-     * Update the texture sampler options (filtering, wrapping, optional
-     * depth-compare). Mirrors the Web `setSamplerOptions` and Python
-     * `set_sampler_options` entry points; foreign bindings see this
-     * method as `setSamplerOptions(opts:)` (Swift) /
-     * `setSamplerOptions(opts)` (Kotlin) once the extension shims map
-     * the camelCase form back onto a single overload.
+     * Sets the sampler options: filtering, wrapping and an optional depth compare.
+     * Swift calls it as `setSamplerOptions(opts)` through its extension, and Kotlin as is.
      */
 open func setSamplerOptions(opts: SamplerOptions)  {try! rustCall() {
         uniffiCallStatus in
@@ -9518,7 +9510,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_texture_resize() != 42509) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texture_setsampleroptions() != 62541) {
+    if (uniffi_fragmentcolor_checksum_method_texture_setsampleroptions() != 5358) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_texture_size() != 35978) {

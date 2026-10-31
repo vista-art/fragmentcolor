@@ -102,7 +102,7 @@ try mesh.addVertices([
 ])
 
 let instance = try Instance().set("offset", [0.5, 0.0])
-try mesh.addInstance(instance)
+mesh.addInstance(instance)
 `}
 lang="swift"
 />
@@ -148,9 +148,8 @@ code={`
 use fragmentcolor::mesh::Instance;
 
 let instance = Instance::new();
-_ = instance;
 `}
-lang="rust" meta="collapse={4-4}"
+lang="rust"
 />
 
 </TabItem>
@@ -231,7 +230,6 @@ attribute, the declared type, the value and the instance.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Instance, Mesh, Shader};
 
 let shader = Shader::new(r#"
@@ -256,10 +254,8 @@ mesh.add_instance(instance);
 
 // offset uploads as a vec2<f32> and layer as the u32 2.
 shader.add_mesh(&mesh)?;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 26-27}"
+lang="rust"
 />
 
 </TabItem>
@@ -347,7 +343,7 @@ try mesh.addVertices([
 ])
 
 let instance = try Instance().set("offset", [0.5, 0.0]).set("layer", 2)
-try mesh.addInstance(instance)
+mesh.addInstance(instance)
 
 // offset uploads as a vec2<f32> and layer as the u32 2.
 try shader.addMesh(mesh)

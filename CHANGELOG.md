@@ -157,12 +157,21 @@
 - A hidden window's frame throws `FragmentColorException.Occluded`, as Python raises `OccludedSurfaceError`, so a render loop can skip the frame without reading the message. It threw `FragmentColorException.Render` with the text.
 - `Renderer.createTarget(surface)` throws `FragmentColorException.Init`, naming the size, when the window reports a width or height below 0, as `ANativeWindow_getWidth` and `getHeight` do on failure. Its text starts with `Initialization error:`, as the iOS refusal of a bad drawable size does. The negative side wrapped to a huge size and failed later with a size error that named the wrong number.
 
+### Docs and generated examples
+
+- The website's Rust tabs show what rustdoc shows: a doctest's `#` lines, such as the `async fn run` around it and the asserts after it, stay out, where they showed as collapsed lines.
+- The Swift examples write `try` and `await` only where the overload a call reaches throws or suspends, so they compile with no warning about either. `mesh.addVertices([...])`, `mesh.addInstance(instance)`, a `Texture` or `Data` passed to `baseColorTexture` and `renderer.createTarget(canvas)` got one they don't need.
+- A Kotlin example keeps a list written one item per line in that layout, with each item's comment, where the tab flattened a list of shader slugs into `SHADER,))`.
+- `tools/build_ios` and `tools/build_android` pass uniffi no `--config`, and uniffi reads the crate's `uniffi.toml` from the crate root, so it no longer warns that the file looks like an old-style config. The bindings are the same.
+
 ### Packaging
 
 - `wasm-bindgen` is no longer pinned to 0.2.118. The bridge that reads a FragmentColor class from a JavaScript value goes through wasm-bindgen's public `TryFromJsValue`, where it named the internal ABI that 0.2.126 changed, and the `wasm-bindgen`, `js-sys`, `web-sys`, `wasm-bindgen-futures` and `wasm-bindgen-test` family moves in step from 0.2.126. Each class gains a hidden `__fc_share` method that the bridge reads.
 
 ### Breaking and behavior changes
 
+- A plain 2D texture reports its size with no depth, in every language and on every path that makes one: `Texture.size()` and `TextureTarget.size()` give `depth` as `None`, `undefined`, `nil` or `null`, as `WindowTarget.size()` and a `Size` built from `[w, h]` do. An array keeps its layer count and a 3D texture its depth. A texture reported a depth of 1, so its size compared unequal to `Size(w, h)` in Python, Swift and Kotlin.
+- `fragmentcolor::headless_window(size)` is `HeadlessWindow::new(size)`, a constructor, so the public API has no free function. The window-target doctests and tests are its only users.
 - `Renderer.render` refuses, before it takes a frame, a shader or texture uniform the device can't take, with the errors the Shaders notes list. A shader that rendered nothing with a GPU error now returns an error.
 - `RendererError` gains `DeviceError`, `PassError`, `LimitError`, `FeatureError`, `BindingError`, `EntryError`, `DepthSizeMismatch` and `ForeignTarget`, and `PassError` gains `ShaderKind`, `Color`, `Viewport`, `DispatchLimit`, `TextureConflict` and `ViewportLimit`. Neither enum is `#[non_exhaustive]`, so a Rust `match` that lists every variant needs new arms. Python gains the exception classes `DeviceError`, `LimitError`, `FeatureError`, `BindingError` and `EntryError`. A Swift `switch` over `FragmentColorError` and a Kotlin `when` over `FragmentColorException` need the new `Limit`, `Feature`, `Binding`, `Entry`, `Device` and `Occluded` cases. A hidden window's frame is `Occluded` there, where it was `Render`.
 - A JavaScript error's `name` is the class Python raises for it, such as `InvalidInputError`, where it was `Error`.

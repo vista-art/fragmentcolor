@@ -24,9 +24,6 @@ It contains a GPU surface texture attached to a platform-specific window or an o
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let canvas = fragmentcolor::headless_window([800, 600]);
-
 use fragmentcolor::{Renderer, Shader};
 
 let renderer = Renderer::new();
@@ -37,12 +34,8 @@ let target = renderer.create_target(canvas).await?;
 // To animate, render again in your event loop...
 renderer.render(&Shader::default(), &target)?;
 renderer.render(&Shader::default(), &target)?;
-
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 15-17}"
+lang="rust"
 />
 
 </TabItem>
@@ -107,7 +100,7 @@ let canvas = CAMetalLayer()
 let renderer = Renderer()
 
 // The canvas comes from your platform's windowing system.
-let target = try await renderer.createTarget(canvas)
+let target = try renderer.createTarget(canvas)
 
 // To animate, render again in your event loop...
 try renderer.render(Shader.default(), target)
@@ -162,8 +155,6 @@ A [TextureTarget](/api/targets/texturetarget) returns its pixels, or an error wh
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Shader, Renderer, Target};
 
 let renderer = Renderer::new();
@@ -171,13 +162,8 @@ let target = renderer.create_texture_target([16, 16]).await?;
 renderer.render(&Shader::default(), &target)?;
 
 let image = target.get_image().await?;
-
-assert_eq!(image.len(), 16 * 16 * 4); // RGBA8
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 11-14}"
+lang="rust"
 />
 
 </TabItem>
@@ -273,22 +259,14 @@ one, such as the 0×0 a minimized window reports, keeps its last size, and draws
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 let mut target = renderer.create_texture_target([64, 32]).await?;
 
 target.resize([128, 64])?;
-
-let size: [u32; 2] = target.size().into();
-assert_eq!(size, [128, 64]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 10-14}"
+lang="rust"
 />
 
 </TabItem>
@@ -368,9 +346,8 @@ lang="kotlin"
 
 Returns the size of the [Target](/api/targets/target) in pixels.
 
-`depth` is the same in every language: 1 for a `TextureTarget`, as for a
-`Texture`, and absent for a `WindowTarget` (`None` in Rust and Python,
-`undefined` in JS, `nil` in Swift and `null` in Kotlin).
+`depth` is absent for every target, as for a 2D `Texture`, in every language:
+`None` in Rust and Python, `undefined` in JS, `nil` in Swift and `null` in Kotlin.
 
 #### Example
 
@@ -379,8 +356,6 @@ Returns the size of the [Target](/api/targets/target) in pixels.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
@@ -389,19 +364,8 @@ let size = target.size();
 let width = size.width;
 let height = size.height;
 let depth = size.depth;
-
-assert_eq!(size.width, 64);
-assert_eq!(size.height, 32);
-assert_eq!(size.depth, Some(1));
-let size: [u32; 2] = target.size().into();
-assert_eq!(size, [64, 32]);
-let size: [u32; 3] = target.size().into();
-assert_eq!(size, [64, 32, 1]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 12-21}"
+lang="rust"
 />
 
 </TabItem>

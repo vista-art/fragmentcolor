@@ -31,8 +31,6 @@ Create a [Texture](/api/texture/texture) and set it on a [Shader](/api/core/shad
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Renderer, Shader, Size};
 let renderer = Renderer::new();
 let shader = Shader::new(r#"
@@ -52,13 +50,8 @@ let texture = renderer.create_texture((pixels, [1, 1])).await?;
 
 // Bind the texture to the uniform name declared in WGSL.
 shader.set("my_texture", &texture)?;
-
-_ = shader;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 23-26}"
+lang="rust"
 />
 
 </TabItem>
@@ -207,16 +200,12 @@ pass the same source to each Material.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
 let id = *texture.id();
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 6-8}"
+lang="rust"
 />
 
 </TabItem>
@@ -283,8 +272,8 @@ lang="kotlin"
 ### Texture::size \{#size\}
 
 Return the texture's dimensions as a `Size` (`width`, `height`, and
-`depth`, which is 1 for a 2D texture and the layer count for 3D or array
-textures). The size reflects the
+`depth`, which is absent for a 2D texture and holds the depth of a 3D texture
+or the layer count of an array). The size reflects the
 allocated GPU resource. It changes when `resize` gives the texture a new
 size, and every clone of the handle reads the new size.
 
@@ -295,7 +284,6 @@ size, and every clone of the handle reads the new size.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, Size};
 let renderer = Renderer::new();
 let pixels: &[u8] = &[255,255,255,255];
@@ -303,12 +291,8 @@ let tex = renderer.create_texture((pixels, [1, 1])).await?;
 let sz = tex.size();
 let width = sz.width;
 let height = sz.height;
-assert_eq!([width, height], [1, 1]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 9-12}"
+lang="rust"
 />
 
 </TabItem>
@@ -395,8 +379,6 @@ on every frame.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Renderer, Size};
 
 let renderer = Renderer::new();
@@ -404,13 +386,8 @@ let renderer = Renderer::new();
 let pixels: &[u8] = &[255,255,255,255];
 let tex = renderer.create_texture((pixels, [1, 1])).await?;
 let a = tex.aspect();
-
-assert!(a > 0.0);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 11-14}"
+lang="rust"
 />
 
 </TabItem>
@@ -503,7 +480,6 @@ A plain `sampler` ignores `compare`. A `sampler_comparison` uses `compare`, or `
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, Size, SamplerOptions};
 let renderer = Renderer::new();
 // 1x1 RGBA (white) raw pixel bytes
@@ -512,13 +488,8 @@ let pixels: &[u8] = &[255,255,255,255];
 let texture = renderer.create_texture((pixels, [1, 1])).await?;
 let opts = SamplerOptions { repeat_x: true, repeat_y: true, smooth: true, compare: None };
 texture.set_sampler_options(opts);
-
-
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 12-14}"
+lang="rust"
 />
 
 </TabItem>
@@ -620,18 +591,14 @@ A texture from `create_texture` has a mip chain by default, and every whole writ
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
 let frame_bytes = vec![0; 64 * 64 * 4];
 
 texture.write(&frame_bytes)?;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 8-10}"
+lang="rust"
 />
 
 </TabItem>
@@ -727,7 +694,6 @@ The `region` argument is required; use `Texture::write` to replace the whole tex
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat, TextureRegion};
 let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([64, 32], TextureFormat::Rgba)).await?;
@@ -741,11 +707,8 @@ let region = TextureRegion::from([0, 0, 64, 32])
     .with_stride(256)
     .with_rows(32);
 texture.write_region(&bytes, region)?;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 15-17}"
+lang="rust"
 />
 
 </TabItem>
@@ -854,19 +817,14 @@ Read back the mip-0 contents of this texture as tightly-packed bytes in the text
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
 texture.write(&vec![0; 64 * 64 * 4])?;
 
 let bytes = texture.get_image().await?;
-assert_eq!(bytes.len(), 64 * 64 * 4);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 8-11}"
+lang="rust"
 />
 
 </TabItem>
@@ -958,7 +916,6 @@ zero, or one past the device limit, returns `TextureError::InvalidInput`. Both k
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Pass, Renderer};
 
 let renderer = Renderer::new();
@@ -968,14 +925,8 @@ pass.set_depth_target(&depth)?;
 
 // The window grew. The pass keeps the same depth texture at the new size.
 depth.resize([1024, 768])?;
-
-let size: [u32; 2] = depth.size().into();
-assert_eq!(size, [1024, 768]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 12-16}"
+lang="rust"
 />
 
 </TabItem>

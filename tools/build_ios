@@ -54,13 +54,13 @@ build_target() {
     cargo build "${CARGO_FLAGS[@]}" --target "$target"
 }
 
+# uniffi reads the crate's own `uniffi.toml` from the crate root, so no `--config`.
 generate_swift_bindings() {
   local target="$1"
   local lib_path="$BUILD_DIR/$target/release/lib$RUST_NAME.a"
   cargo run "${CARGO_FLAGS[@]}" \
     --bin uniffi-bindgen generate \
     --library "$lib_path" \
-    --config "$ROOT_DIR/uniffi.toml" \
     --language swift \
     --out-dir "$BUILD_DIR/$target/release/"
 }

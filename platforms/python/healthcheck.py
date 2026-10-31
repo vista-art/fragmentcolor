@@ -135,7 +135,7 @@ def check_size(renderer, texture):
     target = renderer.create_texture_target([16, 8])
     size = target.size()
     assert isinstance(size, Size)
-    assert (size.width, size.height, size.depth) == (16, 8, 1)
+    assert (size.width, size.height, size.depth) == (16, 8, None)
     size.width = 32
     target.resize(size)
     assert (target.size().width, target.size().height) == (32, 8)

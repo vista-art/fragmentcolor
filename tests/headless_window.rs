@@ -10,7 +10,7 @@ fn creates_texture_backed_target_from_headless_window() {
     pollster::block_on(async move {
         // Arrange
         let renderer = Renderer::new();
-        let window = fragmentcolor::headless_window([32, 24]);
+        let window = fragmentcolor::HeadlessWindow::new([32, 24]);
 
         // Act
         let target = renderer
@@ -39,7 +39,7 @@ fn create_target_checks_the_size() {
     pollster::block_on(async move {
         let renderer = Renderer::new();
         let refused = renderer
-            .create_target(fragmentcolor::headless_window([u32::MAX, 8]))
+            .create_target(fragmentcolor::HeadlessWindow::new([u32::MAX, 8]))
             .await;
         assert!(matches!(
             refused,
@@ -49,7 +49,7 @@ fn create_target_checks_the_size() {
         ));
 
         let target = renderer
-            .create_target(fragmentcolor::headless_window([0, 8]))
+            .create_target(fragmentcolor::HeadlessWindow::new([0, 8]))
             .await
             .expect("a window with no area still gets a target");
         let size = target.size();

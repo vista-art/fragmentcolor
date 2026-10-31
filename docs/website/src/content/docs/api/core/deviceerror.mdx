@@ -40,7 +40,6 @@ On the web the GPU reports an error after `render` has returned, so the next cal
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, Shader};
 
 let renderer = Renderer::new();
@@ -49,11 +48,8 @@ let shader = Shader::default();
 
 // A GPU error in this frame returns as a DeviceError.
 renderer.render(&shader, &target)?;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 10-12}"
+lang="rust"
 />
 
 </TabItem>

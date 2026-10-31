@@ -185,9 +185,12 @@ mod convert {
     /// then `swift::finalize` finishes the syntactic swaps that don't
     /// fit a per-line model — backtick template literals → `"""`,
     /// `null` → `nil`, `try` insertion for throwing inits, etc.
-    pub fn to_swift(items: &[(String, bool)]) -> String {
+    ///
+    /// `setup` holds the Swift lines the example runs first, such as a hidden
+    /// block's `let image = try Data(...)`, whose locals the `try` insertion reads.
+    pub fn to_swift(items: &[(String, bool)], setup: &[String]) -> String {
         let ir = convert(items, Lang::Swift, /*aggressive_js_flatten=*/ false);
-        super::swift::finalize(&ir)
+        super::swift::finalize(&ir, setup)
     }
 
     /// Transpile a Rust example into idiomatic Kotlin.

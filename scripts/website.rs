@@ -1276,7 +1276,7 @@ if __name__ == '__main__':
         let body = match lang {
             Lang::Js => crate::convert::to_js(items),
             Lang::Python => crate::convert::to_py(items),
-            Lang::Swift => crate::convert::to_swift(items),
+            Lang::Swift => crate::convert::to_swift(items, example.harness(lang).read_setup()),
             Lang::Kotlin => crate::convert::to_kotlin(items),
         };
         example.harness(lang).wrap(&body)
@@ -1353,28 +1353,10 @@ if __name__ == '__main__':
         ex_swift: &mut std::collections::HashSet<String>,
         ex_kotlin: &mut std::collections::HashSet<String>,
     ) -> String {
-        // Collapse ranges (1-based inclusive) over the hidden runs
-        let items = &example.rust;
-        let mut ranges: Vec<(usize, usize)> = Vec::new();
-        let mut i_ln = 0usize;
-        while i_ln < items.len() {
-            if items[i_ln].1 {
-                let start = i_ln + 1;
-                while i_ln < items.len() && items[i_ln].1 {
-                    i_ln += 1;
-                }
-                let end = i_ln; // inclusive
-                ranges.push((start, end));
-            } else {
-                i_ln += 1;
-            }
-        }
-        let rust_lines: Vec<String> = items.iter().map(|(t, _)| t.clone()).collect();
-        let rust_processed = rust_lines.join("\n");
-
+        // The Rust tab leaves the doctest's hidden lines out, as rustdoc does.
         let mut tabs = String::new();
         tabs.push_str("<Tabs>\n\n");
-        push_tab(&mut tabs, "Rust", "rust", &rust_processed, &ranges);
+        push_tab(&mut tabs, "Rust", "rust", &visible_rust(&example.rust), &[]);
 
         // Each language's example is both a tab and a healthcheck file.
         let outputs = [
@@ -1401,6 +1383,15 @@ if __name__ == '__main__':
 
         tabs.push_str("</Tabs>\n\n");
         tabs
+    }
+
+    /// The lines of a Rust example a reader sees: all but the hidden ones,
+    /// without the blank lines the hidden ones leave at either end.
+    fn visible_rust(items: &[(String, bool)]) -> String {
+        let lines: Vec<&str> = items.iter().filter(|(_, hidden)| !hidden).map(|(text, _)| text.as_str()).collect();
+        let first = lines.iter().position(|line| !line.trim().is_empty()).unwrap_or(lines.len());
+        let last = lines.iter().rposition(|line| !line.trim().is_empty()).map_or(first, |at| at + 1);
+        lines[first..last.max(first)].join("\n")
     }
 
     /// One `<TabItem>` holding `code`, with its hidden lines collapsed.
@@ -1664,80 +1655,17 @@ if __name__ == '__main__':
         out.trim_end().to_string()
     }
 
-    /// Post-process MDX content to transform Rust code fences:
-    /// - Strip leading `#` from hidden lines (doc-test convention)
-    /// - Move top-level `use ...` lines inside the first hidden wrapper block
-    /// - Compute collapse ranges for all contiguous hidden runs and annotate the fence
+    /// Post-process MDX content so each ```rust fence shows what a reader sees:
+    /// the doctest's hidden `#` lines and other languages' hidden blocks are left out.
     ///
     /// Only affects ```rust* code fences. All other languages are left unchanged.
     fn transform_rust_code_fences(mdx: &str) -> String {
-        #[derive(Clone)]
-        struct LineItem {
-            text: String,
-            hidden: bool,
-        }
-
         fn process_rust_block(header: &str, body: &[String]) -> (String, Vec<String>) {
-            // Hidden lines lose their '#', and other languages' hidden lines leave the Rust code
             let code: String = body.iter().map(|line| format!("{line}\n")).collect();
             let example =
                 Example::parse(&code).unwrap_or_else(|e| panic!("in a Rust code fence: {e}\n{code}"));
-            let items: Vec<LineItem> = example
-                .rust
-                .into_iter()
-                .map(|(text, hidden)| LineItem { text, hidden })
-                .collect();
-
-            // Compute collapse ranges over final items
-            let mut ranges: Vec<(usize, usize)> = Vec::new();
-            let mut i = 0usize;
-            let mut line_no = 1usize;
-            while i < items.len() {
-                if items[i].hidden {
-                    let start = line_no;
-                    while i < items.len() && items[i].hidden {
-                        i += 1;
-                        line_no += 1;
-                    }
-                    let end = line_no.saturating_sub(1);
-                    if end >= start {
-                        ranges.push((start, end));
-                    }
-                    continue;
-                }
-                i += 1;
-                line_no += 1;
-            }
-
-            // Prepare new header with collapse={...}
-            let mut new_header = header.to_string();
-            if !ranges.is_empty() {
-                let mut collapse = String::new();
-                collapse.push_str("collapse={");
-                for (idx, (s, e)) in ranges.iter().enumerate() {
-                    if idx > 0 {
-                        collapse.push_str(", ");
-                    }
-                    // Ranges are already computed as 0-based above.
-                    collapse.push_str(&format!("{}-{}", s, e));
-                }
-                collapse.push('}');
-
-                // Remove any existing collapse={...} chunk in header (best-effort without regex)
-                if let Some(pos) = new_header.find("collapse={")
-                    && let Some(end_rel) = new_header[pos..].find('}')
-                {
-                    let end = pos + end_rel + 1;
-                    new_header.replace_range(pos..end, "");
-                }
-                if !new_header.ends_with(' ') {
-                    new_header.push(' ');
-                }
-                new_header.push_str(&collapse);
-            }
-
-            let new_body: Vec<String> = items.into_iter().map(|it| it.text).collect();
-            (new_header, new_body)
+            let shown = visible_rust(&example.rust);
+            (header.to_string(), shown.lines().map(str::to_string).collect())
         }
 
         let mut out = String::new();

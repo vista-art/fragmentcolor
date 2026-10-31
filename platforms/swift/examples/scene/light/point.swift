@@ -4,7 +4,7 @@ let renderer = Renderer()
 let target = try await renderer.createTextureTarget([64, 64])
 
 let wall = Mesh()
-try wall.addVertices([
+wall.addVertices([
     try Vertex.pbr([-2.0, -2.0, 0.0]),
     try Vertex.pbr([2.0, -2.0, 0.0]),
     try Vertex.pbr([2.0, 2.0, 0.0]),

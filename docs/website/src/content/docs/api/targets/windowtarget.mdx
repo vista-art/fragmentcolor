@@ -26,9 +26,6 @@ In Rust, we officially support Winit. Check the examples folder for details.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let canvas = fragmentcolor::headless_window([800, 600]);
-
 use fragmentcolor::{Renderer, Shader, Target};
 
 let renderer = Renderer::new();
@@ -37,14 +34,8 @@ let renderer = Renderer::new();
 let target = renderer.create_target(canvas).await?;
 
 renderer.render(&Shader::default(), &target)?;
-
-let s = target.size();
-assert_eq!([s.width, s.height], [800, 600]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 13-17}"
+lang="rust"
 />
 
 </TabItem>
@@ -105,7 +96,7 @@ let canvas = CAMetalLayer()
 let renderer = Renderer()
 
 // The canvas comes from your platform's windowing system.
-let target = try await renderer.createTarget(canvas)
+let target = try renderer.createTarget(canvas)
 
 try renderer.render(Shader.default(), target)
 `}
@@ -156,20 +147,13 @@ Python, `undefined` in JS, `nil` in Swift and `null` in Kotlin.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let canvas = fragmentcolor::headless_window([800, 600]);
 use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 let target = renderer.create_target(canvas).await?;
 let size = target.size();
-
-assert_eq!([size.width, size.height], [800, 600]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 9-12}"
+lang="rust"
 />
 
 </TabItem>
@@ -219,7 +203,7 @@ import QuartzCore
 let canvas = CAMetalLayer()
 
 let renderer = Renderer()
-let target = try await renderer.createTarget(canvas)
+let target = try renderer.createTarget(canvas)
 let size = target.size()
 `}
 lang="swift" meta="collapse={2-3}"
@@ -265,22 +249,14 @@ returns an error.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let canvas = fragmentcolor::headless_window([800, 600]);
 use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 let mut target = renderer.create_target(canvas).await?;
 
 target.resize([1024, 768])?;
-
-let size = target.size();
-assert_eq!([size.width, size.height], [1024, 768]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 10-14}"
+lang="rust"
 />
 
 </TabItem>
@@ -332,7 +308,7 @@ import QuartzCore
 let canvas = CAMetalLayer()
 
 let renderer = Renderer()
-let target = try await renderer.createTarget(canvas)
+let target = try renderer.createTarget(canvas)
 
 try target.resize([1024, 768])
 `}
@@ -377,8 +353,6 @@ To read the pixels of a frame, draw it into a [TextureTarget](/api/targets/textu
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let canvas = fragmentcolor::headless_window([800, 600]);
 use fragmentcolor::{Renderer, Shader, Target};
 
 let renderer = Renderer::new();
@@ -390,12 +364,8 @@ renderer.render(&shader, &target)?;
 let offscreen = renderer.create_texture_target([800, 600]).await?;
 renderer.render(&shader, &offscreen)?;
 let image = offscreen.get_image().await?;
-assert_eq!(image.len(), 800 * 600 * 4);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 14-17}"
+lang="rust"
 />
 
 </TabItem>
@@ -455,7 +425,7 @@ import QuartzCore
 let canvas = CAMetalLayer()
 
 let renderer = Renderer()
-let target = try await renderer.createTarget(canvas)
+let target = try renderer.createTarget(canvas)
 let shader = Shader.default()
 try renderer.render(shader, target)
 

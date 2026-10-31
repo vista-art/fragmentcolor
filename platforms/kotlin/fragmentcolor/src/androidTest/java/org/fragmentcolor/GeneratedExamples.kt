@@ -562,7 +562,11 @@ class GeneratedExamples : ExampleCase() {
 
         """
 
-        val shader2 = Shader(listOf("sdf2d/circle", "noise/simplex2", main,))
+        val shader2 = Shader(listOf(
+            "sdf2d/circle",      // pure function: fn circle(p: vec2<f32>, r: f32) -> f32
+            "noise/simplex2",    // pure function: fn simplex2(v: vec2<f32>) -> f32
+            main,
+        ))
     }
 
     @Test
@@ -717,7 +721,11 @@ class GeneratedExamples : ExampleCase() {
     @Test
     fun geometry_mesh_add_instances() = example("docs/api/geometry/mesh/add_instances.md") {
         val m = Mesh()
-        m.addInstances(listOf(Instance().set("tint", listOf(1.0f, 0.0f, 0.0f, 1.0f)), Instance().set("tint", listOf(0.0f, 1.0f, 0.0f, 1.0f)), Instance().set("tint", listOf(0.0f, 0.0f, 1.0f, 1.0f)),))
+        m.addInstances(listOf(
+            Instance().set("tint", listOf(1.0f, 0.0f, 0.0f, 1.0f)),
+            Instance().set("tint", listOf(0.0f, 1.0f, 0.0f, 1.0f)),
+            Instance().set("tint", listOf(0.0f, 0.0f, 1.0f, 1.0f)),
+        ))
     }
 
     @Test
@@ -1509,7 +1517,11 @@ class GeneratedExamples : ExampleCase() {
         scene.addPass(Pass("scratch"))
 
         // Swap in a deliberate order: shadow map, then geometry, then overlay.
-        scene.setPasses(arrayOf(Pass("shadow"), Pass("geometry"), Pass("overlay"),))
+        scene.setPasses(arrayOf(
+            Pass("shadow"),
+            Pass("geometry"),
+            Pass("overlay"),
+        ))
     }
 
     @Test

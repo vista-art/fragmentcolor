@@ -41,6 +41,14 @@ impl Size {
         }
     }
 
+    /// The size a texture of `extent` and `dimension` reports. One layer of a 2D texture has
+    /// no depth, and an array or a 3D texture keeps its layer count or depth, so every 2D path agrees.
+    pub(crate) fn from_extent(extent: wgpu::Extent3d, dimension: wgpu::TextureDimension) -> Self {
+        let layers = extent.depth_or_array_layers;
+        let flat = layers == 1 && dimension != wgpu::TextureDimension::D3;
+        Size::new(extent.width, extent.height, (!flat).then_some(layers))
+    }
+
     /// A size from the 2 or 3 numbers JavaScript passed, each checked by [`read_dimension`].
     #[cfg(wasm)]
     pub(crate) fn from_numbers(numbers: &[f64]) -> Result<Size, SizeError> {
@@ -91,15 +99,6 @@ impl Size {
             height: self.height,
             depth_or_array_layers: self.depth.unwrap_or(1),
         }
-    }
-
-    /// The size of a wgpu extent, its layers as the depth.
-    pub(crate) fn from_extent(extent: wgpu::Extent3d) -> Self {
-        Size::new(
-            extent.width,
-            extent.height,
-            Some(extent.depth_or_array_layers),
-        )
     }
 }
 
@@ -375,10 +374,10 @@ mod tests {
             height: 480,
             depth_or_array_layers: 1,
         };
-        let s: Size = Size::from_extent(e);
+        let s: Size = Size::from_extent(e, wgpu::TextureDimension::D2);
         assert_eq!(s.width, 640);
         assert_eq!(s.height, 480);
-        assert_eq!(s.depth, Some(1));
+        assert_eq!(s.depth, None);
 
         let e2: wgpu::Extent3d = s.to_extent();
         assert_eq!(e2, e);
@@ -489,7 +488,7 @@ mod tests {
             let eff = d_opt.unwrap_or(1);
             prop_assert_eq!(e.depth_or_array_layers, eff);
 
-            let s2: Size = Size::from_extent(e);
+            let s2: Size = Size::from_extent(e, wgpu::TextureDimension::D2);
             prop_assert_eq!(s2.width, w);
             prop_assert_eq!(s2.height, h);
             prop_assert_eq!(s2.depth.unwrap_or(1), eff);

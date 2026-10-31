@@ -33,9 +33,6 @@ The first [Shader](/api/core/shader) added sets the pass's kind, and the pass th
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let canvas = fragmentcolor::headless_window([100, 100]);
-
 use fragmentcolor::{ Shader, Pass, Renderer };
 
 let renderer = Renderer::new();
@@ -53,12 +50,8 @@ renderer.render(&pass, &target)?;
 
 // vector of passes rendered in order (any iterable of Pass is renderable)
 renderer.render(&vec![pass, pass2], &target)?;
-
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 22-24}"
+lang="rust"
 />
 
 </TabItem>
@@ -135,7 +128,7 @@ import QuartzCore
 let canvas = CAMetalLayer()
 
 let renderer = Renderer()
-let target = try await renderer.createTarget(canvas)
+let target = try renderer.createTarget(canvas)
 let shader = Shader.default()
 
 let pass = Pass("First Pass")
@@ -213,10 +206,8 @@ code={`
 use fragmentcolor::Pass;
 
 let pass = Pass::new("first pass");
-
-_ = pass;
 `}
-lang="rust" meta="collapse={5-5}"
+lang="rust"
 />
 
 </TabItem>
@@ -297,17 +288,13 @@ texture through one binding and writes it through another makes `render` return
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Pass, Shader};
 
 let cs = Shader::new("@compute @workgroup_size(8,8,1) fn cs_main() {}")?;
 let pass = Pass::compute("compute");
 pass.add_shader(&cs)?;
-assert!(pass.is_compute());
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 7-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -474,16 +461,12 @@ require two passes of one name, or another pass of its own name.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Pass;
 
 let shadow = Pass::new("shadow");
 let label = shadow.name();
-assert_eq!(label, "shadow");
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 6-8}"
+lang="rust"
 />
 
 </TabItem>
@@ -558,8 +541,6 @@ This is useful when layering multiple passes where the next pass should blend wi
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Renderer, Pass, Shader};
 
 let renderer = Renderer::new();
@@ -571,12 +552,8 @@ pass.add_shader(&shader)?;
 pass.load_previous();
 
 renderer.render(&pass, &target)?;
-
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 15-17}"
+lang="rust"
 />
 
 </TabItem>
@@ -698,16 +675,13 @@ Either error leaves the pass and the shader as they were.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Pass, Shader};
 
 let shader = Shader::default();
 let pass = Pass::new("p");
 pass.add_shader(&shader)?;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 7-8}"
+lang="rust"
 />
 
 </TabItem>
@@ -795,7 +769,6 @@ A Pass with no shaders has nothing to attach the mesh to and returns
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Pass, Shader, Mesh};
 
 let mesh = Mesh::new();
@@ -820,11 +793,8 @@ let shader = Shader::new(r#"
 let pass = Pass::from_shader("pass", &shader);
 
 pass.add_mesh(&mesh)?;
-
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 27-28}"
+lang="rust"
 />
 
 </TabItem>
@@ -1004,7 +974,6 @@ for the cap on each kind of device. Chain with `?` between calls.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Camera, Light, Material, Mesh, Model, Pass, Renderer, Vertex};
 
 let renderer = Renderer::new();
@@ -1029,12 +998,8 @@ pass.add(&sun)?;
 // Updating the camera later is enough. Every Model already on the pass
 // picks up the new view_proj at the next render.
 camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
-let _ = renderer;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 26-29}"
+lang="rust"
 />
 
 </TabItem>
@@ -1107,7 +1072,7 @@ import FragmentColor
 let renderer = Renderer()
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1185,8 +1150,6 @@ The clear color still fills the whole target. To split one target between passes
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Renderer, Pass, Shader, ScreenRegion};
 
 let renderer = Renderer::new();
@@ -1199,12 +1162,8 @@ pass.add_shader(&shader)?;
 pass.set_viewport(ScreenRegion::new((0, 0), (32, 32))?)?;
 
 renderer.render(&pass, &target)?;
-
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 16-18}"
+lang="rust"
 />
 
 </TabItem>
@@ -1321,8 +1280,6 @@ A channel that is NaN or infinite is an error that leaves the pass unchanged.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Renderer, Pass, Shader};
 
 let renderer = Renderer::new();
@@ -1335,12 +1292,8 @@ pass.add_shader(&shader)?;
 pass.set_clear_color([0.1, 0.2, 0.3, 1.0])?;
 
 renderer.render(&pass, &target)?;
-
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 16-18}"
+lang="rust"
 />
 
 </TabItem>
@@ -1555,7 +1508,6 @@ A shader that writes nothing at `@location(0)`, such as one that only tests dept
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, Pass, TextureFormat};
 
 let r = Renderer::new();
@@ -1563,12 +1515,8 @@ let tex_target = r.create_texture_target([512, 512]).await?;
 
 let p = Pass::new("shadow");
 p.set_target(&tex_target)?;
-
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 10-12}"
+lang="rust"
 />
 
 </TabItem>
@@ -1663,7 +1611,6 @@ A pass that draws a `Model` and has no depth target gets a depth buffer from the
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, Pass, Shader, Mesh};
 
 let renderer = Renderer::new();
@@ -1684,11 +1631,8 @@ let pass = Pass::from_shader("meshes", &shader);
 pass.set_depth_target(&depth)?;
 
 renderer.render(&pass, &target)?;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 22-24}"
+lang="rust"
 />
 
 </TabItem>
@@ -1825,7 +1769,6 @@ Returns true if this Pass is a compute pass (has only compute shaders).
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Shader, Pass};
 
 let shader = Shader::new(r#"
@@ -1836,13 +1779,8 @@ let pass = Pass::from_shader("p", &shader);
 
 // Call the method
 let is_compute = pass.is_compute();
-
-_ = is_compute;
-assert!(pass.is_compute());
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 13-16}"
+lang="rust"
 />
 
 </TabItem>
@@ -1966,7 +1904,6 @@ The graph is validated at build time and does not perform cycle checks at render
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Pass, Renderer};
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([100,100]).await?;
@@ -1979,11 +1916,8 @@ let compose = Pass::new("compose");
 compose.require(&color)?;
 compose.require(&blury)?; // fan-in; color and blur_y before compose
 renderer.render(&compose, &target)?; // compose renders last
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 14-16}"
+lang="rust"
 />
 
 </TabItem>

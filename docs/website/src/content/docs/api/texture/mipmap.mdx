@@ -46,8 +46,6 @@ Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `R8Unorm`, `Rg8
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let png = std::fs::read("examples/assets/logo.png")?;
 use fragmentcolor::{Mipmap, Renderer, TextureFormat};
 
 // Imagine \`png\` came off your asset loader on a worker thread.
@@ -58,12 +56,8 @@ let chain = Mipmap::build((png.as_slice(), TextureFormat::Rgba8UnormSrgb))?;
 // Back on the renderer thread, the upload is just a GPU write.
 let renderer = Renderer::new();
 let texture = renderer.create_texture(chain).await?;
-_ = texture.size();
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 13-16}"
+lang="rust"
 />
 
 </TabItem>
@@ -185,9 +179,6 @@ Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `R8Unorm`, `Rg8
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let encoded_png_bytes = std::fs::read("examples/assets/logo.png")?;
-let raw_rgba = vec![200; 8 * 8 * 4];
 use fragmentcolor::{Mipmap, Renderer, TextureFormat};
 
 // Encoded path: bytes plus the format you want the chain to live in.
@@ -200,13 +191,8 @@ let chain_raw = Mipmap::build((raw_rgba.as_slice(), TextureFormat::Rgba8UnormSrg
 // Either chain uploads the same way.
 let renderer = Renderer::new();
 let texture = renderer.create_texture(chain).await?;
-_ = texture.size();
-_ = chain_raw.count();
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-3, 16-20}"
+lang="rust"
 />
 
 </TabItem>
@@ -320,15 +306,12 @@ Return the texture format the chain was built for: the `format` you passed to `b
 <TabItem label="Rust">
 <Code
 code={`
-let pixels: Vec<u8> = vec![200; 4 * 4 * 4];
 use fragmentcolor::{Mipmap, TextureFormat};
 
 let chain = Mipmap::build((pixels.as_slice(), TextureFormat::Rgba8UnormSrgb, [4, 4]))?;
 let format = chain.format();
-let _format = format;
-Ok::<(), Box<dyn std::error::Error>>(())
 `}
-lang="rust" meta="collapse={1-1, 6-7}"
+lang="rust"
 />
 
 </TabItem>
@@ -415,12 +398,8 @@ let chain = Mipmap::build((
     [16, 16],
 ))?;
 let (width, height) = chain.size();
-assert_eq!(width, 16);
-assert_eq!(height, 16);
-let _size = (width, height);
-Ok::<(), Box<dyn std::error::Error>>(())
 `}
-lang="rust" meta="collapse={10-13}"
+lang="rust"
 />
 
 </TabItem>
@@ -508,16 +487,12 @@ Return the tightly-packed bytes for each mip level, level 0 first. Each level ho
 <TabItem label="Rust">
 <Code
 code={`
-let pixels: Vec<u8> = vec![0; 8 * 8 * 4];
 use fragmentcolor::{Mipmap, TextureFormat};
 
 let chain = Mipmap::build((pixels.as_slice(), TextureFormat::Rgba8UnormSrgb, [8, 8]))?;
 let level_zero_bytes = &chain.levels()[0];
-assert_eq!(level_zero_bytes.len(), 8 * 8 * 4);
-let _level_zero_bytes = level_zero_bytes;
-Ok::<(), Box<dyn std::error::Error>>(())
 `}
-lang="rust" meta="collapse={1-1, 6-8}"
+lang="rust"
 />
 
 </TabItem>
@@ -595,16 +570,12 @@ Return the bytes of one mip level, with level 0 the full-size image. An index pa
 <TabItem label="Rust">
 <Code
 code={`
-let pixels: Vec<u8> = vec![0; 8 * 8 * 4];
 use fragmentcolor::{Mipmap, TextureFormat};
 
 let chain = Mipmap::build((pixels.as_slice(), TextureFormat::Rgba8UnormSrgb, [8, 8]))?;
 let level_zero_bytes = chain.level(0)?;
-assert_eq!(level_zero_bytes.len(), 8 * 8 * 4);
-assert!(chain.level(9).is_err());
-Ok::<(), Box<dyn std::error::Error>>(())
 `}
-lang="rust" meta="collapse={1-1, 6-8}"
+lang="rust"
 />
 
 </TabItem>
@@ -682,16 +653,12 @@ Return how many mip levels the chain holds (always at least 1). For a base size 
 <TabItem label="Rust">
 <Code
 code={`
-let pixels: Vec<u8> = vec![0; 8 * 8 * 4];
 use fragmentcolor::{Mipmap, TextureFormat};
 
 let chain = Mipmap::build((pixels.as_slice(), TextureFormat::Rgba8UnormSrgb, [8, 8]))?;
 let count = chain.count();
-assert_eq!(count, 4); // 8, 4, 2, 1
-let _count = count;
-Ok::<(), Box<dyn std::error::Error>>(())
 `}
-lang="rust" meta="collapse={1-1, 6-8}"
+lang="rust"
 />
 
 </TabItem>
