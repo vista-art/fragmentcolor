@@ -60,9 +60,7 @@ impl Shader {
     #[uniffi::constructor(name = "new")]
     #[lsp_doc("docs/api/core/shader/hidden/new_mobile.md")]
     pub fn new_mobile(source: String) -> Result<Arc<Self>, FragmentColorError> {
-        Shader::new(source)
-            .map(Arc::new)
-            .map_err(FragmentColorError::from)
+        Ok(Arc::new(Shader::new(source)?))
     }
 
     /// Compose a shader from an array of parts (raw sources, slugs, URLs, paths).
@@ -71,9 +69,7 @@ impl Shader {
     #[uniffi::constructor(name = "compose")]
     #[lsp_doc("docs/api/core/shader/hidden/compose_mobile.md")]
     pub fn compose_mobile(parts: Vec<String>) -> Result<Arc<Self>, FragmentColorError> {
-        Shader::new(parts)
-            .map(Arc::new)
-            .map_err(FragmentColorError::from)
+        Ok(Arc::new(Shader::new(parts)?))
     }
 
     #[uniffi::constructor(name = "default")]
@@ -110,10 +106,7 @@ impl Shader {
         self: Arc<Self>,
         input: String,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        Shader::fetch(input)
-            .await
-            .map(Arc::new)
-            .map_err(FragmentColorError::from)
+        Ok(Arc::new(Shader::fetch(input).await?))
     }
 
     /// Async fetch constructor (multi-part): resolve each element of `parts`
@@ -125,26 +118,19 @@ impl Shader {
         self: Arc<Self>,
         parts: Vec<String>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        Shader::fetch(parts)
-            .await
-            .map(Arc::new)
-            .map_err(FragmentColorError::from)
+        Ok(Arc::new(Shader::fetch(parts).await?))
     }
 
     #[uniffi::method(name = "set")]
     #[lsp_doc("docs/api/core/shader/set.md")]
     pub fn set_mobile(&self, key: String, value: UniformValue) -> Result<(), FragmentColorError> {
-        self.object
-            .set_input(&key, value.into())
-            .map_err(FragmentColorError::from)
+        Ok(self.object.set_input(&key, value.into())?)
     }
 
     #[uniffi::method(name = "get")]
     #[lsp_doc("docs/api/core/shader/get.md")]
     pub fn get_mobile(&self, key: String) -> Result<UniformData, FragmentColorError> {
-        self.object
-            .get_uniform_data(&key)
-            .map_err(FragmentColorError::from)
+        Ok(self.object.get_uniform_data(&key)?)
     }
 
     #[uniffi::method(name = "listUniforms")]
@@ -197,7 +183,7 @@ impl Shader {
     #[uniffi::method(name = "addMesh")]
     #[lsp_doc("docs/api/core/shader/add_mesh.md")]
     pub fn add_mesh_mobile(self: Arc<Self>, mesh: Arc<Mesh>) -> Result<(), FragmentColorError> {
-        self.add_mesh(&mesh).map_err(FragmentColorError::from)
+        Ok(self.add_mesh(&mesh)?)
     }
 
     /// Detach a specific `Mesh` from this shader.
@@ -231,6 +217,6 @@ impl Shader {
         self: Arc<Self>,
         mesh: Arc<Mesh>,
     ) -> Result<(), FragmentColorError> {
-        self.validate_mesh(&mesh).map_err(FragmentColorError::from)
+        Ok(self.validate_mesh(&mesh)?)
     }
 }

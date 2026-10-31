@@ -93,9 +93,7 @@ async fn fetch_url(url: &str) -> Result<Resolved, ShaderError> {
 
 #[cfg(wasm)]
 async fn fetch_url(url: &str) -> Result<Resolved, ShaderError> {
-    let body = crate::net::fetch_text(url)
-        .await
-        .map_err(ShaderError::from)?;
+    let body = crate::net::fetch_text(url).await?;
     Ok(Resolved {
         body,
         glsl: glsl_kind_from_url(url),

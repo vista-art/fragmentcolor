@@ -145,8 +145,7 @@ impl Renderer {
             depth_or_array_layers: 1,
         };
         // The instance has no display handle, so wgpu takes it from the window.
-        let (context, surface, config) = pollster::block_on(self.create_surface(window, size))
-            .map_err(FragmentColorError::from)?;
+        let (context, surface, config) = pollster::block_on(self.create_surface(window, size))?;
         Ok(MobileWindowTarget::new(WindowTarget::new(
             context, surface, config,
         )))

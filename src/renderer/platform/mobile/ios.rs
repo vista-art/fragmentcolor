@@ -74,8 +74,7 @@ impl Renderer {
 
         let target = wgpu::SurfaceTargetUnsafe::CoreAnimationLayer(layer.cast());
         let (context, surface, config) =
-            pollster::block_on(self.configure_unsafe_surface(target, extent))
-                .map_err(FragmentColorError::from)?;
+            pollster::block_on(self.configure_unsafe_surface(target, extent))?;
 
         Ok(MobileWindowTarget::new(WindowTarget::new(
             context, surface, config,

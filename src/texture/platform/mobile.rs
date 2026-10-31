@@ -55,7 +55,7 @@ impl Texture {
     #[uniffi::method(name = "write")]
     #[lsp_doc("docs/api/texture/texture/write.md")]
     pub fn write_mobile(&self, bytes: Vec<u8>) -> Result<(), FragmentColorError> {
-        self.write(&bytes).map_err(FragmentColorError::from)
+        Ok(self.write(&bytes)?)
     }
 
     /// Upload raw pixel data into a sub-region of the texture, each side at least 1.
@@ -67,15 +67,14 @@ impl Texture {
         bytes: Vec<u8>,
         region: TextureRegionMobile,
     ) -> Result<(), FragmentColorError> {
-        self.write_region(&bytes, region)
-            .map_err(FragmentColorError::from)
+        Ok(self.write_region(&bytes, region)?)
     }
 
     /// Recreates the texture at `size`. Its pixels start blank.
     #[uniffi::method(name = "resize")]
     #[lsp_doc("docs/api/texture/texture/resize.md")]
     pub fn resize_mobile(&self, size: Size) -> Result<(), FragmentColorError> {
-        self.resize(size).map_err(FragmentColorError::from)
+        Ok(self.resize(size)?)
     }
 
     /// Read back the mip-0 contents of this texture as tightly-packed bytes
@@ -86,7 +85,7 @@ impl Texture {
     #[uniffi::method(name = "getImage")]
     #[lsp_doc("docs/api/texture/texture/get_image.md")]
     pub async fn get_image_mobile(self: Arc<Self>) -> Result<Vec<u8>, FragmentColorError> {
-        self.get_image().await.map_err(FragmentColorError::from)
+        Ok(self.get_image().await?)
     }
 }
 
@@ -118,9 +117,7 @@ impl Mipmap {
                 ..Default::default()
             },
         };
-        Self::build(input)
-            .map(Arc::new)
-            .map_err(FragmentColorError::from)
+        Ok(Arc::new(Self::build(input)?))
     }
 
     #[uniffi::method(name = "format")]

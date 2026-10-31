@@ -63,7 +63,7 @@ impl Pass {
     #[pyo3(name = "add_mesh")]
     #[lsp_doc("docs/api/core/pass/add_mesh.md")]
     pub fn add_mesh_py(&self, mesh: &crate::mesh::Mesh) -> Result<(), PyErr> {
-        self.add_mesh(mesh).map_err(|e| e.into())
+        Ok(self.add_mesh(mesh)?)
     }
 
     /// Unified `Pass.add` — branches on the runtime Python type. Adding a
@@ -127,12 +127,12 @@ impl Pass {
             // Try TextureTarget wrapper first
             if let Ok(bound) = target.bind(py).cast::<crate::target::PyTextureTarget>() {
                 let tt = bound.borrow();
-                return self.set_target(&tt.inner).map_err(|e| e.into());
+                return Ok(self.set_target(&tt.inner)?);
             }
             // Try Texture handle
             if let Ok(tex) = target.bind(py).cast::<crate::texture::Texture>() {
                 let t = tex.borrow();
-                return self.set_target(&*t).map_err(|e| e.into());
+                return Ok(self.set_target(&*t)?);
             }
             Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
                 "Unsupported target type. Expected TextureTarget or Texture",
@@ -147,12 +147,12 @@ impl Pass {
             // Depth textures are Texture handles
             if let Ok(tex) = target.bind(py).cast::<crate::texture::Texture>() {
                 let t = tex.borrow();
-                return self.set_depth_target(&*t).map_err(|e| e.into());
+                return Ok(self.set_depth_target(&*t)?);
             }
             // Or a TextureTarget (if provided)
             if let Ok(bound) = target.bind(py).cast::<crate::target::PyTextureTarget>() {
                 let tt = bound.borrow();
-                return self.set_depth_target(&tt.inner).map_err(|e| e.into());
+                return Ok(self.set_depth_target(&tt.inner)?);
             }
             Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
                 "Unsupported depth target type. Expected Texture or TextureTarget",
@@ -172,7 +172,7 @@ impl Pass {
         Python::attach(|py| -> Result<(), PyErr> {
             let any = deps.bind(py);
             let r = crate::renderer::PyRenderable::from_any(any)?;
-            self.require(&r).map_err(|e| e.into())
+            Ok(self.require(&r)?)
         })
     }
 

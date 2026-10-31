@@ -220,10 +220,7 @@ impl Renderer {
             data: input.into(),
             options: options.unwrap_or_default(),
         };
-        let tex = self
-            .create_texture(spec)
-            .await
-            .map_err(FragmentColorError::from)?;
+        let tex = self.create_texture(spec).await?;
         Ok(Arc::new(tex))
     }
 
@@ -254,10 +251,7 @@ impl Renderer {
                 ..Default::default()
             },
         };
-        let tex = self
-            .create_storage_texture(input)
-            .await
-            .map_err(FragmentColorError::from)?;
+        let tex = self.create_storage_texture(input).await?;
         Ok(Arc::new(tex))
     }
 
@@ -276,9 +270,7 @@ impl Renderer {
         self: Arc<Self>,
         renderable: crate::renderer::renderable::RenderableHandle,
     ) -> Result<(), FragmentColorError> {
-        self.load(&renderable)
-            .await
-            .map_err(FragmentColorError::from)
+        Ok(self.load(&renderable).await?)
     }
 
     #[uniffi::method(name = "readStorage")]
@@ -288,9 +280,7 @@ impl Renderer {
         shader: Arc<crate::Shader>,
         binding: String,
     ) -> Result<Vec<u8>, FragmentColorError> {
-        self.read_storage(&shader, &binding)
-            .await
-            .map_err(FragmentColorError::from)
+        Ok(self.read_storage(&shader, &binding).await?)
     }
 
     #[uniffi::method(name = "render")]
@@ -301,12 +291,12 @@ impl Renderer {
         target: crate::renderer::renderable::TargetHandle,
     ) -> Result<(), FragmentColorError> {
         match target {
-            crate::renderer::renderable::TargetHandle::Window(window_target) => self
-                .render(&renderable, window_target.as_ref())
-                .map_err(FragmentColorError::from),
-            crate::renderer::renderable::TargetHandle::Texture(texture_target) => self
-                .render(&renderable, texture_target.as_ref())
-                .map_err(FragmentColorError::from),
+            crate::renderer::renderable::TargetHandle::Window(window_target) => {
+                Ok(self.render(&renderable, window_target.as_ref())?)
+            }
+            crate::renderer::renderable::TargetHandle::Texture(texture_target) => {
+                Ok(self.render(&renderable, texture_target.as_ref())?)
+            }
         }
     }
 
@@ -334,9 +324,9 @@ impl Renderer {
         self: Arc<Self>,
         texture_id: u64,
     ) -> Result<Vec<u8>, FragmentColorError> {
-        self.read_texture(crate::texture::TextureId { id: texture_id })
-            .await
-            .map_err(FragmentColorError::from)
+        Ok(self
+            .read_texture(crate::texture::TextureId { id: texture_id })
+            .await?)
     }
 
     /// Remove a texture from the renderer's registry by its raw numeric ID.
@@ -348,8 +338,7 @@ impl Renderer {
         self: Arc<Self>,
         texture_id: u64,
     ) -> Result<(), FragmentColorError> {
-        self.unregister_texture(crate::texture::TextureId { id: texture_id })
-            .map_err(FragmentColorError::from)
+        Ok(self.unregister_texture(crate::texture::TextureId { id: texture_id })?)
     }
 }
 
