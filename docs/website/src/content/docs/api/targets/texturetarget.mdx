@@ -22,8 +22,6 @@ Use it for headless rendering, tests, server-side image generation, or CI.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Renderer, Shader, Target};
 
 let renderer = Renderer::new();
@@ -33,16 +31,8 @@ let shader = Shader::default();
 renderer.render(&shader, &target)?;
 
 let image = target.get_image().await?;
-
-assert_eq!(image.len(), 64 * 64 * 4); // RGBA8
-target.resize([128, 128])?;
-assert_eq!(target.size().width, 128);
-assert_eq!(target.size().height, 128);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 13-19}"
+lang="rust"
 />
 
 </TabItem>
@@ -151,7 +141,6 @@ handle resizes the target. It is `Clone`; pass it around freely.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, Shader};
 
 let renderer = Renderer::new();
@@ -172,11 +161,8 @@ let post = Shader::new(r#"
     }
 "#)?;
 post.set("input_image", &target.texture())?;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 22-24}"
+lang="rust"
 />
 
 </TabItem>
@@ -318,8 +304,6 @@ Returns the size of the [TextureTarget](/api/targets/texturetarget) in pixels.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
@@ -328,15 +312,8 @@ let size = target.size();
 let width = size.width;
 let height = size.height;
 let depth = size.depth;
-
-assert_eq!(width, 64);
-assert_eq!(height, 64);
-assert_eq!(depth, None);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 12-17}"
+lang="rust"
 />
 
 </TabItem>
@@ -435,22 +412,14 @@ Its pixels start blank, and the current size keeps them. A width or height of ze
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 let mut target = renderer.create_texture_target([64, 64]).await?;
 
 target.resize([128, 32])?;
-
-let size: [u32; 2] = target.size().into();
-assert_eq!(size, [128, 32]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 10-14}"
+lang="rust"
 />
 
 </TabItem>
@@ -547,19 +516,14 @@ In JavaScript, `getImage` also throws the GPU error of a frame rendered before i
 code={`
 use fragmentcolor::{Renderer, Target, Shader};
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
 renderer.render(&Shader::default(), &target)?;
 
 let image = target.get_image().await?;
-
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={3-3, 11-13}"
+lang="rust"
 />
 
 </TabItem>

@@ -34,9 +34,6 @@ description below for details.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let canvas = fragmentcolor::headless_window([800, 600]);
-
 use fragmentcolor::{Shader, Renderer, Target};
 
 let renderer = Renderer::new();
@@ -49,16 +46,8 @@ let texture_target = renderer.create_texture_target([16, 16]).await?;
 renderer.render(&Shader::default(), &texture_target)?;
 
 // That's it. Welcome to FragmentColor!
-
-let s = target.size();
-assert_eq!([s.width, s.height], [800, 600]);
-let s2 = texture_target.size();
-assert_eq!([s2.width, s2.height], [16, 16]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 17-23}"
+lang="rust"
 />
 
 </TabItem>
@@ -123,7 +112,7 @@ let canvas = CAMetalLayer()
 let renderer = Renderer()
 
 // The canvas comes from your platform's windowing system
-let target = try await renderer.createTarget(canvas)
+let target = try renderer.createTarget(canvas)
 let texture_target = try await renderer.createTextureTarget([16, 16])
 
 // RENDERING
@@ -194,16 +183,11 @@ a frame. A window that resizes needs a depth texture of the new size, or a `resi
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Renderer;
 let r = Renderer::new();
 let depth = r.create_depth_texture([800, 600]).await?;
-_ = depth;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 5-8}"
+lang="rust"
 />
 
 </TabItem>
@@ -284,26 +268,20 @@ A depth of 1, or none, makes a 2D texture, and a larger depth makes a 3D texture
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 
 let r = Renderer::new();
 
 // Empty storage texture.
 let tex = r.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
-_ = tex;
 
 // Pre-seeded with bytes.
 let pixels = vec![0; 64 * 64 * 4];
 let tex2 = r
     .create_storage_texture(([64, 64], TextureFormat::Rgba, pixels))
     .await?;
-_ = tex2;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 8-8, 15-18}"
+lang="rust"
 />
 
 </TabItem>
@@ -403,23 +381,14 @@ A window with no area yet gets one pixel on that side, and `resize` gives it the
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let canvas = fragmentcolor::headless_window([800, 600]);
-
 use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 
 // The canvas comes from your platform's windowing system.
 let target = renderer.create_target(canvas).await?;
-
-let s = target.size();
-assert_eq!([s.width, s.height], [800, 600]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 11-15}"
+lang="rust"
 />
 
 </TabItem>
@@ -472,7 +441,7 @@ let canvas = CAMetalLayer()
 let renderer = Renderer()
 
 // The canvas comes from your platform's windowing system.
-let target = try await renderer.createTarget(canvas)
+let target = try renderer.createTarget(canvas)
 `}
 lang="swift" meta="collapse={2-3}"
 />
@@ -547,17 +516,11 @@ A decoded image, an `ImageData` or a canvas holds RGBA by definition, so it uplo
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let image = std::fs::read("examples/assets/logo.png")?;
 use fragmentcolor::Renderer;
 let renderer = Renderer::new();
 let tex = renderer.create_texture(&image).await?;
-_ = tex.size();
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 6-9}"
+lang="rust"
 />
 
 </TabItem>
@@ -635,8 +598,6 @@ A width or height of zero, a side past the device limit, or a depth other than 1
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Renderer, Shader, Target};
 let renderer = Renderer::new();
 
@@ -647,14 +608,8 @@ renderer.render(&Shader::default(), &target)?;
 
 // get the rendered image
 let image = target.get_image().await?;
-
-// RGBA8
-assert_eq!(image.len(), 64 * 64 * 4);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 14-18}"
+lang="rust"
 />
 
 </TabItem>
@@ -798,8 +753,6 @@ report their GPU errors, and throws the first one, as
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let image = std::fs::read("examples/assets/logo.png")?;
 use fragmentcolor::{Material, Mesh, Model, Renderer, Scene, Vertex};
 
 let renderer = Renderer::new();
@@ -827,11 +780,8 @@ let other = Renderer::new();
 let frame = other.create_texture_target([64, 64]).await?;
 other.load(&scene).await?;
 other.render(&scene, &frame)?;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 30-32}"
+lang="rust"
 />
 
 </TabItem>
@@ -917,14 +867,14 @@ let renderer = Renderer()
 let target = try await renderer.createTextureTarget([64, 64])
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
 ])
 
 // The material keeps the encoded image as a map.
-let material = try Material.pbr().baseColorTexture(image)
+let material = Material.pbr().baseColorTexture(image)
 let model = Model(mesh, material)
 let scene = Scene()
 try scene.add(model)
@@ -1003,20 +953,12 @@ build one is through this renderer:
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 let texture_target = renderer.create_texture_target([16, 16]).await?;
-
-let s = texture_target.size();
-assert_eq!([s.width, s.height], [16, 16]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 8-12}"
+lang="rust"
 />
 
 </TabItem>
@@ -1121,8 +1063,6 @@ frame left behind.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use bytemuck;
 use fragmentcolor::{Pass, Renderer, Shader};
 
 let renderer = Renderer::new();
@@ -1147,13 +1087,8 @@ pass.add_shader(&compute)?;
 renderer.render(&pass, &target)?;
 
 let bytes = renderer.read_storage(&compute, "out").await?;
-let values: &[f32] = bytemuck::cast_slice(&bytes);
-assert_eq!(values, &[1.0, 2.0, 3.0, 4.0]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 27-31}"
+lang="rust"
 />
 
 </TabItem>
@@ -1310,19 +1245,14 @@ Read back the mip-0 contents of a registered texture as tightly-packed bytes in 
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
 texture.write(&vec![0; 64 * 64 * 4])?;
 
 let bytes = renderer.read_texture(texture.id()).await?;
-assert_eq!(bytes.len(), 64 * 64 * 4);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 8-11}"
+lang="rust"
 />
 
 </TabItem>
@@ -1423,8 +1353,6 @@ JavaScript gets the GPU's errors late, because WebGPU reports them after `render
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Renderer, Shader};
 
 let renderer = Renderer::new();
@@ -1432,12 +1360,8 @@ let target = renderer.create_texture_target([10, 10]).await?;
 let shader = Shader::default();
 
 renderer.render(&shader, &target)?;
-
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 11-13}"
+lang="rust"
 />
 
 </TabItem>
@@ -1537,18 +1461,14 @@ for example when a video stream stops.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([16, 16], TextureFormat::Rgba)).await?;
 let id = texture.id();
 
 renderer.unregister_texture(id)?;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 8-10}"
+lang="rust"
 />
 
 </TabItem>
