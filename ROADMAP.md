@@ -33,7 +33,7 @@ Items found while reviewing 0.12.6.
 - [ ] The public `From` conversions between `wgpu::Extent3d` and `Size` go, as rule 14 asks. `ScreenRegion`'s went in 0.12.7
 - [ ] The website's Rust tabs hide a doctest's `#` lines
 - [ ] `UniformData` can be named outside the crate, so a helper can forward one value to `Shader::set` on several shaders
-- [ ] uniffi warns that `uniffi.toml` looks like an old-style config file; move it to the current layout
+- [x] uniffi no longer warns that `uniffi.toml` looks like an old-style config file. The build tools pass no `--config`, and uniffi reads the crate's own `uniffi.toml` from the crate root (0.12.7)
 - [ ] The Kotlin transpiler flattens a multi-line list of shader slugs into `SHADER,))`. It compiles, but the generated tab reads wrong; `scripts/convert.rs` keeps each item on its own line
 - [x] A pass that draws models and sets no depth target draws with a pooled depth buffer that matches its color attachment, and a depth target the app sets wins
 - [x] Swift extensions throw where they stopped the app with `preconditionFailure` on input they can't read, as rule 5 asks: `Vertex.set` and `Instance.set` since 0.12.6, and `setViewport`, the `ScreenRegion` inits and `TextureRegion.from` since 0.12.7
