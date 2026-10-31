@@ -429,7 +429,7 @@ class Healthcheck : ExampleCase() {
         assertEquals(LightKind.DIRECTIONAL, Light.directional(listOf(0f, -1f, 0f), listOf(1f, 1f, 1f)).kind())
         assertEquals(LightKind.POINT, Light.point(listOf(0f, 1f, 0f), listOf(1f, 1f, 1f)).kind())
         assertEquals(LightKind.SPOT, Light.spot(listOf(0f, 1f, 0f), listOf(0f, -1f, 0f), listOf(1f, 1f, 1f)).kind())
-        val chain = Mipmap.build(ByteArray(4 * 4 * 4), TextureFormat.RGBA8_UNORM, listOf(4u, 2u))
+        val chain = Mipmap.build(ByteArray(4 * 2 * 4), TextureFormat.RGBA8_UNORM, listOf(4u, 2u))
         assertEquals(Size(width = 4u, height = 2u, depth = null), chain.size())
     }
 
