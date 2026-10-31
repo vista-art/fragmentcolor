@@ -125,13 +125,6 @@ type SceneObjectHandle:swift,kotlin:uniffi can't marshal &impl SceneObject, so m
 type PassTarget:swift,kotlin:uniffi can't marshal impl Into<PassRef>, so the mobile Scene methods that pick a pass take this index-or-name enum.
 type TextureInputMobile:swift,kotlin:uniffi can't marshal impl Into<TextureInput>, so the mobile texture inputs take this enum, which mirrors TextureData without Empty.
 type UniformValue:swift,kotlin:uniffi can't marshal impl Into<UniformData>, so mobile Shader.set takes this enum; the Swift and Kotlin extensions overload set on top.
-type UniformData:swift,kotlin:mobile Shader.get returns the uniform value itself; Rust keeps UniformData crate-private and reads values through Shader::get<T>.
-type ArrayElement:swift,kotlin:part of UniformData, which mobile Shader.get returns and Rust keeps crate-private.
-type PushEntry:swift,kotlin:part of UniformData, which mobile Shader.get returns and Rust keeps crate-private.
-type StorageAccess:swift,kotlin:part of UniformData, which mobile Shader.get returns and Rust keeps crate-private.
-type StorageEntry:swift,kotlin:part of UniformData, which mobile Shader.get returns and Rust keeps crate-private.
-type StructField:swift,kotlin:part of UniformData, which mobile Shader.get returns and Rust keeps crate-private.
-type StructShape:swift,kotlin:part of UniformData, which mobile Shader.get returns and Rust keeps crate-private.
 type RenderCanvasFrame:python:the frame object of the rendercanvas present protocol, which only Python uses.
 type InvalidInputError:python:Python raises a FragmentColorError subclass for a value the call can't take, such as an int past u32, a bad size, or texture bytes that don't match their size; Rust reports a TextureError, SizeError, ScreenRegionError, ColorError or PassError, and JavaScript an Error named InvalidInputError.
 type UnsupportedMipmapFormatError:python:Python raises a FragmentColorError subclass for a format the CPU mipmap builder can't fill; Rust reports a TextureError, and JavaScript an Error of that name.

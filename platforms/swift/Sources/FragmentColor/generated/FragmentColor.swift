@@ -7936,7 +7936,9 @@ public func FfiConverterTypeTextureStorageFormat_lower(_ value: TextureStorageFo
 
 
 /**
- * Converts from User Input
+ * A uniform value, as `Shader::get` reads it back.
+ * A helper names it to forward one value to `Shader::set` on several shaders.
+ * It is the plumbing behind `impl Into<UniformData>`, like `ShaderInput`, with no page of its own.
  */
 
 public indirect enum UniformData: Equatable, Hashable {

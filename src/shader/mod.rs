@@ -28,6 +28,9 @@ mod constants;
 use constants::*;
 pub(crate) mod uniform;
 pub(crate) use uniform::*;
+pub use uniform::{
+    ArrayElement, PushEntry, StorageAccess, StorageEntry, StructField, StructShape, UniformData,
+};
 
 pub mod composer;
 pub use composer::{ShaderInput, ShaderPart};
