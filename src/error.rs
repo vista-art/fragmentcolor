@@ -11,7 +11,7 @@ pub enum FragmentColorError {
     #[error(transparent)]
     Size(#[from] crate::SizeError),
     #[error(transparent)]
-    Pass(#[from] crate::pass::error::PassError),
+    Pass(#[from] crate::PassError),
     #[error(transparent)]
     Renderer(#[from] crate::RendererError),
     #[error(transparent)]
@@ -176,7 +176,7 @@ throw_by_class!(
     crate::ShaderError,
     crate::ColorError,
     crate::SizeError,
-    crate::pass::error::PassError,
+    crate::PassError,
     crate::InitializationError,
     crate::target::error::DisplayError,
     crate::mesh::MeshError,
@@ -489,9 +489,9 @@ mod tests {
     #[test]
     fn errors_take_the_python_class() {
         use crate::ColorError;
+        use crate::PassError;
         use crate::ScreenRegionError;
         use crate::ShaderError;
-        use crate::pass::error::PassError;
         use crate::scene::{LightError, SceneLoadError};
         use crate::target::SurfaceError;
         use crate::texture::TextureError;

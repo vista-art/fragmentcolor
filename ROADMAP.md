@@ -151,11 +151,11 @@ The breaks, detailed below: `add_mesh` on `Pass` takes a shader and an instance 
 
 Core holds `Renderer`, the targets, `Shader` with `Pipeline`, `Pass`, `Mesh`, `Texture`, `Buffer`, `layout()` and `pack()`, and it names no 3D or scene type. The 3D layer (`Model`, `Material`, `Camera`, `Light`) calls only the core public API, and the scene layer (`Scene`, `SceneNode`, the loaders) calls only the layers below it. An app adopts the layers it needs and never has to import `Scene`. Every package ships all three. The 2D layer, a 0.13.x track, sits beside the 3D layer under the same rule.
 
-- [ ] A `build.rs` check, next to the no-panic scan, fails the build when a core module names a 3D or scene item, or when a higher layer reaches past the public API of the layers below. It exempts the `SceneObject` seal, which the 3D and scene layers both implement, and binding glue: the code that `build.rs` and `#[api]` generate, or each module's `platform/` files on a no-go. Today core still names higher types in `src/pass`, `src/core/shader` and `src/core/renderer`
-- [ ] Integration points are small core traits that the higher layers implement. `Pass::add` and `Pass::remove` take `SceneObject`, which moves from `src/scene` into `src/pass` as a sealed trait, and `render(&scene)` goes through `Renderable`
+- [ ] A `build.rs` check, next to the no-panic scan, fails the build when a core module names a 3D or scene item, or when a higher layer reaches past the public API of the layers below. It exempts the `SceneObject` seal, which the 3D and scene layers both implement, and binding glue: the code that `build.rs` and `#[api]` generate, or each module's `platform/` files on a no-go. Today core still names higher types in `src/core/pass`, `src/core/shader` and `src/core/renderer`
+- [ ] Integration points are small core traits that the higher layers implement. `Pass::add` and `Pass::remove` take `SceneObject`, which moves from `src/scene` into `src/core/pass` as a sealed trait, and `render(&scene)` goes through `Renderable`
 - [ ] The mobile `RenderableHandle` and `SceneObjectHandle` enums, which list concrete types because uniffi cannot take a generic `&impl` argument, move into the binding glue
 - [ ] `Model`, `Camera` and `Light` move from `src/scene` into 3D modules beside `src/material`, so the check reads each layer as a set of modules
-- [ ] `AGENTS.md` and `src/pass/AGENTS.md` state the layers and the check that enforces them
+- [ ] `AGENTS.md` and `src/core/pass/AGENTS.md` state the layers and the check that enforces them
 
 ### Build surface
 
@@ -338,7 +338,7 @@ Today the app fills these names and core fills nothing.
 
 - [ ] Static `Shader.add_plugin(prefix, plugin)` and `Shader.remove_plugin(prefix)`, with `name:` and `@scope/` prefixes, and `http`, `https` and `fc` reserved. A part such as `"llm:a glowing ring"` in the list `Shader.fetch` takes goes to the plugin registered for `llm:`, which returns WGSL
 - [ ] Plugins run only inside `Shader.fetch`. Their output is cached in memory once the whole shader compiles, and concurrent requests for one part share a single call
-- [ ] `src/pass/AGENTS.md` lists registered plugins beside a target's canvas as the host objects FC holds. `render` and `submit` still never call host code
+- [ ] `src/core/pass/AGENTS.md` lists registered plugins beside a target's canvas as the host objects FC holds. `render` and `submit` still never call host code
 - [ ] `ShaderError::PluginError { input, cause }` names the failed part and the cause. It also covers a prefix with no plugin, and a plugin part that reaches `Shader::new` uncached
 - [ ] Callbacks in every binding: async functions in Rust and JavaScript, plain callables in Python, closures in Swift and Kotlin. A Python plugin's exception becomes `PluginError`
 - [ ] The built-in URL, path and slug handling become entries in the same table

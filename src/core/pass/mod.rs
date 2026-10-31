@@ -13,7 +13,7 @@ use wasm_bindgen::prelude::*;
 
 mod platform;
 
-pub mod error;
+mod error;
 pub use error::*;
 
 /// What a render pass does with its target before drawing.

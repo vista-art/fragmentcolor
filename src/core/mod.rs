@@ -5,3 +5,6 @@ pub use renderer::*;
 
 pub(crate) mod shader;
 pub use shader::*;
+
+mod pass;
+pub use pass::*;

@@ -15,10 +15,10 @@ use std::sync::Arc;
 
 use lsp_doc::lsp_doc;
 
+use crate::Pass;
+use crate::PassError;
 use crate::bindings::numbers::read_color;
 use crate::core::renderer::platform::mobile::FragmentColorError;
-use crate::pass::Pass;
-use crate::pass::error::PassError;
 use crate::{Mesh, ScreenRegion, Shader, Texture};
 use crate::{RenderableHandle, SceneObjectHandle, TargetHandle};
 

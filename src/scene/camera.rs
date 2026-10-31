@@ -21,7 +21,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::Shader;
 use crate::core::ShaderObject;
-use crate::pass::{CameraSnapshot, PassObject};
+use crate::core::{CameraSnapshot, PassObject};
 use crate::scene::SceneObject;
 
 /// Errors from camera parameters that leave no usable view.

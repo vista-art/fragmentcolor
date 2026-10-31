@@ -11,12 +11,12 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use super::{RenderContext, RendererError};
+use crate::PassError;
 use crate::PassObject;
 use crate::core::ShaderObject;
 use crate::core::shader::lights::roots::{
     ARRAY_HEADER, LIGHT_SIZE, LIGHTS_HEADER, LightRoots, LightShape,
 };
-use crate::pass::PassError;
 use crate::scene::{GpuLight, current_epoch};
 
 mod grid;

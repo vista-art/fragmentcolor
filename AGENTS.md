@@ -94,7 +94,7 @@ Module‑level invariants (authoritative AGENTS.md files)
   - src/core/renderer/AGENTS.md (pipelines, targets/present, MSAA/resolve, bind‑group hygiene, thin public API)
   - src/core/shader/AGENTS.md (mesh ownership, strict attach‑time validation, reflection/mapping order, precise errors)
   - src/mesh/AGENTS.md (schema derivation, CPU/GPU buffer packing/caching, instance handling, validation contract)
-  - src/pass/AGENTS.md (role, targets, compute vs render, delegation to Shader)
+  - src/core/pass/AGENTS.md (role, targets, compute vs render, delegation to Shader)
   - src/texture/AGENTS.md (creation via Renderer, binding/sampling, MSAA/resolve lifecycle)
 
 Conventions you’ll see enforced in code

@@ -1,6 +1,6 @@
 //! Refuses a pass that writes a texture it also reads, in one usage scope.
 
-use crate::pass::PassError;
+use crate::PassError;
 use crate::texture::{TextureClass, TextureStorageAccess};
 use std::collections::HashMap;
 

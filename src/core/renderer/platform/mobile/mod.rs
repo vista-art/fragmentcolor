@@ -168,8 +168,8 @@ impl From<crate::ColorError> for FragmentColorError {
     }
 }
 
-impl From<crate::pass::PassError> for FragmentColorError {
-    fn from(e: crate::pass::PassError) -> Self {
+impl From<crate::PassError> for FragmentColorError {
+    fn from(e: crate::PassError) -> Self {
         FragmentColorError::Render(e.to_string())
     }
 }

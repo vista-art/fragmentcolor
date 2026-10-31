@@ -41,7 +41,7 @@ use crate::{PassObject, Renderable, Shader, ShaderError};
 #[lsp_doc("docs/api/geometry/mesh/mesh.md")]
 pub struct Mesh {
     pub(crate) object: Arc<MeshObject>,
-    pub(crate) pass: Arc<crate::pass::PassObject>,
+    pub(crate) pass: Arc<crate::core::PassObject>,
 }
 
 crate::impl_fc_kind!(Mesh, "Mesh");
@@ -56,7 +56,7 @@ impl Mesh {
     #[lsp_doc("docs/api/geometry/mesh/new.md")]
     pub fn new() -> Self {
         let object = Arc::new(MeshObject::new());
-        let pass = crate::pass::PassObject::for_mesh("Mesh Internal Pass", object.clone());
+        let pass = crate::core::PassObject::for_mesh("Mesh Internal Pass", object.clone());
         Self {
             object,
             pass: Arc::new(pass),

@@ -1,8 +1,8 @@
 //! `Renderer`: the entry point that draws passes
 //! into targets, handing each call to its render context.
 
+use crate::core::PassInput;
 use crate::mesh::vertex::POSITION;
-use crate::pass::PassInput;
 use crate::{PassObject, ShaderError, ShaderHash, ShaderObject, Target, TargetFrame};
 use crate::{ScreenRegion, Size, WindowTarget};
 use crate::{TextureData, TextureTarget, UniformData};

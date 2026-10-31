@@ -52,7 +52,7 @@ pub enum RendererError {
     #[error("Mesh error: {0}")]
     MeshError(#[from] crate::mesh::MeshError),
     #[error("Pass error: {0}")]
-    PassError(#[from] crate::pass::PassError),
+    PassError(#[from] crate::PassError),
     #[error("Bind Group Layout error: {0}")]
     BindGroupLayoutError(String),
     /// A GPU error an error scope caught, labeled with the step that raised it.
