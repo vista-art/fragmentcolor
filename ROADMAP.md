@@ -32,7 +32,7 @@ Items found while reviewing 0.12.6.
 - [ ] The Swift transpiler picks `try` from the overload a call resolves to, where it merges `throws` across every overload of a name. Today `mesh.addInstance(instance)` gets a `try` that Swift warns about, because the attribute-pair `addInstance` overloads throw
 - [ ] The public `From` conversions between `wgpu::Extent3d` and `Size` go, as rule 14 asks. `ScreenRegion`'s went in 0.12.7
 - [ ] The website's Rust tabs hide a doctest's `#` lines
-- [ ] `UniformData` can be named outside the crate, so a helper can forward one value to `Shader::set` on several shaders
+- [x] `UniformData` can be named outside the crate, so a helper can forward one value to `Shader::set` on several shaders
 - [ ] uniffi warns that `uniffi.toml` looks like an old-style config file; move it to the current layout
 - [ ] The Kotlin transpiler flattens a multi-line list of shader slugs into `SHADER,))`. It compiles, but the generated tab reads wrong; `scripts/convert.rs` keeps each item on its own line
 - [x] A pass that draws models and sets no depth target draws with a pooled depth buffer that matches its color attachment, and a depth target the app sets wins

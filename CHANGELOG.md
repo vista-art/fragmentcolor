@@ -62,6 +62,7 @@
 - A `Shader.set` made on another thread while the renderer applies the queued values stays queued for the next draw. The renderer could drop it and keep drawing the older value.
 - On WebGL2 and native GL, an immediate root binds as a uniform padded to a multiple of 16 bytes, where a root such as a `vec3<f32>` failed its pipeline on every frame.
 - A uniform upload past 64 KiB reuses its buffer on each render, where every frame created a new buffer that was never freed.
+- Rust code can name `UniformData`, and the `ArrayElement`, `StructShape`, `StructField`, `StorageEntry`, `StorageAccess` and `PushEntry` shapes it holds, from the crate root, so a helper can take `impl Into<UniformData>` and forward one value to `Shader::set` on several shaders. They were public types in a private module, which `Shader::set` and `Shader::get` used and no caller could name. They stay plumbing, with no page of their own, as `ShaderInput` is.
 
 ### Textures
 
