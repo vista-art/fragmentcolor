@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 
 use crate::Shader;
 use crate::material::{AlphaMode, Material, MaterialError, TextureSlot};
-use crate::platforms::python::{PyChannels, PyUnsigned};
+use crate::platforms::python::{PyChannels, PyFloat, PyUnsigned};
 use crate::renderer::platform::python::{TextureKeywords, py_to_texture_spec};
 use crate::texture::{PySamplerOptions, PyTextureSource, PyTextureUsage};
 use crate::{PySize, TextureFormat};
@@ -44,26 +44,26 @@ impl Material {
 
     #[pyo3(name = "metallic")]
     #[lsp_doc("docs/api/scene/material/metallic.md")]
-    pub fn metallic_py(&self, value: f32) -> Self {
-        self.metallic(value)
+    pub fn metallic_py(&self, value: PyFloat<'_>) -> PyResult<Self> {
+        Ok(self.metallic(value.read("Material.metallic: value")?))
     }
 
     #[pyo3(name = "roughness")]
     #[lsp_doc("docs/api/scene/material/roughness.md")]
-    pub fn roughness_py(&self, value: f32) -> Self {
-        self.roughness(value)
+    pub fn roughness_py(&self, value: PyFloat<'_>) -> PyResult<Self> {
+        Ok(self.roughness(value.read("Material.roughness: value")?))
     }
 
     #[pyo3(name = "normal_scale")]
     #[lsp_doc("docs/api/scene/material/normal_scale.md")]
-    pub fn normal_scale_py(&self, value: f32) -> Self {
-        self.normal_scale(value)
+    pub fn normal_scale_py(&self, value: PyFloat<'_>) -> PyResult<Self> {
+        Ok(self.normal_scale(value.read("Material.normal_scale: value")?))
     }
 
     #[pyo3(name = "occlusion_strength")]
     #[lsp_doc("docs/api/scene/material/occlusion_strength.md")]
-    pub fn occlusion_strength_py(&self, value: f32) -> Self {
-        self.occlusion_strength(value)
+    pub fn occlusion_strength_py(&self, value: PyFloat<'_>) -> PyResult<Self> {
+        Ok(self.occlusion_strength(value.read("Material.occlusion_strength: value")?))
     }
 
     #[pyo3(name = "emissive")]
@@ -74,8 +74,8 @@ impl Material {
 
     #[pyo3(name = "alpha_cutoff")]
     #[lsp_doc("docs/api/scene/material/alpha_cutoff.md")]
-    pub fn alpha_cutoff_py(&self, value: f32) -> Self {
-        self.alpha_cutoff(value)
+    pub fn alpha_cutoff_py(&self, value: PyFloat<'_>) -> PyResult<Self> {
+        Ok(self.alpha_cutoff(value.read("Material.alpha_cutoff: value")?))
     }
 
     #[pyo3(name = "uv_transform")]
@@ -84,10 +84,11 @@ impl Material {
         &self,
         offset: PyChannels<'_>,
         scale: PyChannels<'_>,
-        rotation: f32,
+        rotation: PyFloat<'_>,
     ) -> PyResult<Self> {
         let offset = offset.read_array("Material.uv_transform: offset")?;
         let scale = scale.read_array("Material.uv_transform: scale")?;
+        let rotation = rotation.read("Material.uv_transform: rotation")?;
         Ok(self.uv_transform(offset, scale, rotation))
     }
 
@@ -104,10 +105,11 @@ impl Material {
         slot: TextureSlot,
         offset: PyChannels<'_>,
         scale: PyChannels<'_>,
-        rotation: f32,
+        rotation: PyFloat<'_>,
     ) -> PyResult<Self> {
         let offset = offset.read_array("Material.texture_transform: offset")?;
         let scale = scale.read_array("Material.texture_transform: scale")?;
+        let rotation = rotation.read("Material.texture_transform: rotation")?;
         Ok(self.texture_transform(slot, offset, scale, rotation))
     }
 

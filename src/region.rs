@@ -547,7 +547,7 @@ impl From<&ScreenRegion> for [f32; 4] {
 #[cfg(python)]
 mod python_bindings {
     use super::*;
-    use crate::platforms::python::PyUnsigned;
+    use crate::platforms::python::{PyUnsigned, read_pair};
     use pyo3::prelude::*;
 
     #[pymethods]
@@ -557,18 +557,9 @@ mod python_bindings {
         // audit tracks the parent methods, not the value type itself.
         #[doc(hidden)]
         #[new]
-        pub fn new_py(
-            origin: (PyUnsigned<'_>, PyUnsigned<'_>),
-            size: (PyUnsigned<'_>, PyUnsigned<'_>),
-        ) -> PyResult<Self> {
-            let origin = (
-                origin.0.read("ScreenRegion: x")?,
-                origin.1.read("ScreenRegion: y")?,
-            );
-            let size = (
-                size.0.read("ScreenRegion: width")?,
-                size.1.read("ScreenRegion: height")?,
-            );
+        pub fn new_py(origin: Vec<PyUnsigned<'_>>, size: Vec<PyUnsigned<'_>>) -> PyResult<Self> {
+            let origin = read_pair(&origin, "ScreenRegion: origin")?;
+            let size = read_pair(&size, "ScreenRegion: size")?;
             Ok(ScreenRegion::new(origin, size)?)
         }
 
@@ -592,11 +583,9 @@ mod python_bindings {
         #[doc(hidden)]
         #[staticmethod]
         #[pyo3(name = "from_tuple")]
-        pub fn from_tuple_py(size: (PyUnsigned<'_>, PyUnsigned<'_>)) -> PyResult<Self> {
-            Ok(ScreenRegion::from_tuple((
-                size.0.read("ScreenRegion.from_tuple: width")?,
-                size.1.read("ScreenRegion.from_tuple: height")?,
-            ))?)
+        pub fn from_tuple_py(size: Vec<PyUnsigned<'_>>) -> PyResult<Self> {
+            let size = read_pair(&size, "ScreenRegion.from_tuple: size")?;
+            Ok(ScreenRegion::from_tuple(size)?)
         }
 
         #[doc(hidden)]

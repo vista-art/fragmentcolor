@@ -3,7 +3,7 @@ use std::fmt::Display;
 use numpy::{PyArrayDescrMethods, PyArrayDyn, dtype};
 use pyo3::exceptions::{PyOverflowError, PyTypeError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyByteArray, PyBytes, PyMemoryView};
+use pyo3::types::{PyBool, PyByteArray, PyBytes, PyMemoryView, PySequence, PyString};
 use pyo3::wrap_pyfunction;
 
 use crate::error::{InvalidInputError, PythonError};
@@ -117,18 +117,52 @@ impl PyUnsigned<'_> {
     }
 }
 
+/// A Python float that a binding reads with [`PyFloat::read`], which names the parameter in its errors.
+/// Extraction keeps the object as it came, so a `bool`, which pyo3 would read as 1.0, can be refused.
+#[derive(FromPyObject)]
+pub enum PyFloat<'py> {
+    #[pyo3(annotation = "float")]
+    Number(Bound<'py, PyAny>),
+}
+
+impl PyFloat<'_> {
+    /// The number as an `f32`, as JavaScript's `read_float` reads one, or a `TypeError` that
+    /// names `label` for a `bool`, a NumPy `bool_` or a value that isn't a number.
+    pub(crate) fn read(&self, label: &str) -> PyResult<f32> {
+        let PyFloat::Number(value) = self;
+        Ok(read_scalar(value, label)? as f32)
+    }
+}
+
 /// Reads each int of a list, naming a failing item as `{label}: item {index}`.
 pub(crate) fn read_list(items: &[PyUnsigned<'_>], label: &str) -> PyResult<Vec<u32>> {
     items
         .iter()
         .enumerate()
-        .map(
-            |(index, PyUnsigned::Int(item))| match item.extract::<u32>() {
-                Ok(number) if !item.is_instance_of::<PyBool>() => Ok(number),
-                _ => read_unsigned(item, &format!("{label}: item {index}")),
-            },
-        )
+        .map(|(index, PyUnsigned::Int(item))| read_item(item, label, index))
         .collect()
+}
+
+/// A pair of ints from any sequence of two, such as an origin or a size, named `label`.
+/// Each item reads as [`read_list`] reads it, and any count but two raises `InvalidInputError`,
+/// as JavaScript throws for one.
+pub(crate) fn read_pair(items: &[PyUnsigned<'_>], label: &str) -> PyResult<(u32, u32)> {
+    match read_list(items, label)?[..] {
+        [first, second] => Ok((first, second)),
+        ref numbers => Err(InvalidInputError::new_err(format!(
+            "{label} takes two numbers, got {}",
+            numbers.len()
+        ))),
+    }
+}
+
+/// One int of a list as `T`, naming a failing item as `{label}: item {index}`.
+/// The label is written only for an item that fails, so a long list costs no strings.
+fn read_item<T: Unsigned>(item: &Bound<'_, PyAny>, label: &str, index: usize) -> PyResult<T> {
+    match item.extract::<T>() {
+        Ok(number) if !item.is_instance_of::<PyBool>() => Ok(number),
+        _ => read_unsigned(item, &format!("{label}: item {index}")),
+    }
 }
 
 /// An unsigned integer type that [`read_unsigned`] fills from a Python int.
@@ -235,17 +269,20 @@ pub(crate) fn read_bytes(value: &Bound<'_, PyAny>, label: &str) -> PyResult<Vec<
     if value.is_instance_of::<PyMemoryView>() {
         return value.call_method0("tobytes")?.extract();
     }
-    let Ok(items) = value.extract::<Vec<Bound<'_, PyAny>>>() else {
-        return Err(PyTypeError::new_err(format!(
-            "{label} takes bytes or a sequence of ints, got {}",
-            type_name(value)
-        )));
+    let sequence = match value.cast::<PySequence>() {
+        Ok(sequence) if !value.is_instance_of::<PyString>() => sequence,
+        _ => {
+            return Err(PyTypeError::new_err(format!(
+                "{label} takes bytes or a sequence of ints, got {}",
+                type_name(value)
+            )));
+        }
     };
-    items
-        .iter()
-        .enumerate()
-        .map(|(index, item)| read_unsigned::<u8>(item, &format!("{label}: item {index}")))
-        .collect()
+    let mut bytes = Vec::with_capacity(sequence.len()?);
+    for (index, item) in sequence.try_iter()?.enumerate() {
+        bytes.push(read_item::<u8>(&item?, label, index)?);
+    }
+    Ok(bytes)
 }
 
 /// Whether the value is one of the bytes forms: `bytes`, `bytearray`, `memoryview` or a uint8 ndarray.
@@ -268,26 +305,29 @@ fn is_bool(value: &Bound<'_, PyAny>) -> bool {
 
 /// One item as an `f64`, before the float vector rule checks its value.
 pub(crate) fn read_number(value: &Bound<'_, PyAny>, label: &str, index: usize) -> PyResult<f64> {
+    read_scalar(value, format_args!("{label}: item {index}"))
+}
+
+/// One number as an `f64`. A `bool` or a value that isn't a number raises `TypeError`, and an int
+/// too large for a float raises `InvalidInputError`, each naming `label`, which is written only then.
+fn read_scalar(value: &Bound<'_, PyAny>, label: impl Display) -> PyResult<f64> {
     let py = value.py();
     if is_bool(value) {
         return Err(PyTypeError::new_err(format!(
-            "{label}: item {index} must be a number, got bool"
+            "{label} must be a number, got bool"
         )));
     }
     match value.extract::<f64>() {
         Ok(number) => Ok(number),
         Err(error) if error.is_instance_of::<PyOverflowError>(py) => {
             Err(InvalidInputError::new_err(format!(
-                "{label}: item {index} must be a finite number that fits a 32-bit float, got {}",
+                "{label} must be a finite number that fits a 32-bit float, got {}",
                 show(value)
             )))
         }
-        Err(error) if error.is_instance_of::<PyTypeError>(py) => {
-            Err(PyTypeError::new_err(format!(
-                "{label}: item {index} must be a number, got {}",
-                type_name(value)
-            )))
-        }
+        Err(error) if error.is_instance_of::<PyTypeError>(py) => Err(PyTypeError::new_err(
+            format!("{label} must be a number, got {}", type_name(value)),
+        )),
         Err(error) => Err(error),
     }
 }

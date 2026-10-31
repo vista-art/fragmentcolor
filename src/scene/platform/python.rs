@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyString;
 
 use crate::error::InvalidInputError;
-use crate::platforms::python::{PyChannels, PyUnsigned, read_numbers, read_unsigned};
+use crate::platforms::python::{PyChannels, PyFloat, PyUnsigned, read_numbers, read_unsigned};
 use crate::scene::{
     Camera, CameraError, Light, LightError, LightKind, Model, Scene, SceneLoadError,
 };
@@ -55,7 +55,8 @@ impl Model {
 
     #[pyo3(name = "rotate")]
     #[lsp_doc("docs/api/scene/model/rotate.md")]
-    pub fn rotate_py(&self, axis: PyChannels<'_>, radians: f32) -> PyResult<()> {
+    pub fn rotate_py(&self, axis: PyChannels<'_>, radians: PyFloat<'_>) -> PyResult<()> {
+        let radians = radians.read("Model.rotate: radians")?;
         self.rotate(axis.read_array("Model.rotate: axis")?, radians);
         Ok(())
     }
@@ -85,22 +86,39 @@ impl Camera {
     #[staticmethod]
     #[pyo3(name = "perspective")]
     #[lsp_doc("docs/api/scene/camera/perspective.md")]
-    pub fn perspective_py(fovy_radians: f32, aspect: f32, near: f32, far: f32) -> PyResult<Self> {
-        Ok(Camera::perspective(fovy_radians, aspect, near, far)?)
+    pub fn perspective_py(
+        fovy_radians: PyFloat<'_>,
+        aspect: PyFloat<'_>,
+        near: PyFloat<'_>,
+        far: PyFloat<'_>,
+    ) -> PyResult<Self> {
+        Ok(Camera::perspective(
+            fovy_radians.read("Camera.perspective: fovy_radians")?,
+            aspect.read("Camera.perspective: aspect")?,
+            near.read("Camera.perspective: near")?,
+            far.read("Camera.perspective: far")?,
+        )?)
     }
 
     #[staticmethod]
     #[pyo3(name = "orthographic")]
     #[lsp_doc("docs/api/scene/camera/orthographic.md")]
     pub fn orthographic_py(
-        left: f32,
-        right: f32,
-        bottom: f32,
-        top: f32,
-        near: f32,
-        far: f32,
+        left: PyFloat<'_>,
+        right: PyFloat<'_>,
+        bottom: PyFloat<'_>,
+        top: PyFloat<'_>,
+        near: PyFloat<'_>,
+        far: PyFloat<'_>,
     ) -> PyResult<Self> {
-        Ok(Camera::orthographic(left, right, bottom, top, near, far)?)
+        Ok(Camera::orthographic(
+            left.read("Camera.orthographic: left")?,
+            right.read("Camera.orthographic: right")?,
+            bottom.read("Camera.orthographic: bottom")?,
+            top.read("Camera.orthographic: top")?,
+            near.read("Camera.orthographic: near")?,
+            far.read("Camera.orthographic: far")?,
+        )?)
     }
 
     #[pyo3(name = "look_at")]
@@ -120,8 +138,8 @@ impl Camera {
 
     #[pyo3(name = "set_aspect")]
     #[lsp_doc("docs/api/scene/camera/set_aspect.md")]
-    pub fn set_aspect_py(&self, aspect: f32) -> PyResult<Self> {
-        Ok(self.set_aspect(aspect)?)
+    pub fn set_aspect_py(&self, aspect: PyFloat<'_>) -> PyResult<Self> {
+        Ok(self.set_aspect(aspect.read("Camera.set_aspect: aspect")?)?)
     }
 
     #[pyo3(name = "view_proj")]
@@ -337,8 +355,8 @@ impl Light {
 
     #[pyo3(name = "set_intensity")]
     #[lsp_doc("docs/api/scene/light/set_intensity.md")]
-    pub fn set_intensity_py(&self, value: f32) -> Self {
-        self.set_intensity(value)
+    pub fn set_intensity_py(&self, value: PyFloat<'_>) -> PyResult<Self> {
+        Ok(self.set_intensity(value.read("Light.set_intensity: value")?))
     }
 
     #[pyo3(name = "set_position")]
@@ -355,18 +373,20 @@ impl Light {
 
     #[pyo3(name = "set_range")]
     #[lsp_doc("docs/api/scene/light/set_range.md")]
-    pub fn set_range_py(&self, value: f32) -> Result<Self, PyErr> {
-        Ok(self.set_range(value)?)
+    pub fn set_range_py(&self, value: PyFloat<'_>) -> Result<Self, PyErr> {
+        Ok(self.set_range(value.read("Light.set_range: value")?)?)
     }
 
     #[pyo3(name = "set_cone_angles")]
     #[lsp_doc("docs/api/scene/light/set_cone_angles.md")]
     pub fn set_cone_angles_py(
         &self,
-        inner_radians: f32,
-        outer_radians: f32,
+        inner_radians: PyFloat<'_>,
+        outer_radians: PyFloat<'_>,
     ) -> Result<Self, PyErr> {
-        Ok(self.set_cone_angles(inner_radians, outer_radians)?)
+        let inner = inner_radians.read("Light.set_cone_angles: inner_radians")?;
+        let outer = outer_radians.read("Light.set_cone_angles: outer_radians")?;
+        Ok(self.set_cone_angles(inner, outer)?)
     }
 }
 

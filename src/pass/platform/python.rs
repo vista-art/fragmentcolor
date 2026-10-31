@@ -1,6 +1,6 @@
 #![cfg(python)]
 
-use crate::platforms::python::{PyChannels, PyUnsigned, read_list};
+use crate::platforms::python::{PyChannels, PyUnsigned, read_list, read_pair};
 use crate::{Pass, PassObject, PassType, ScreenRegion, Shader};
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
@@ -183,11 +183,13 @@ impl Pass {
     }
 }
 
-/// A viewport from Python: a `ScreenRegion`, `[x, y, w, h]`, or a size `(w, h)` at the origin.
+/// A viewport from Python: a `ScreenRegion`, `[x, y, w, h]`, a size `(w, h)` at the origin,
+/// or an origin and a size as two pairs, `((x, y), (w, h))`, as Rust reads them.
 #[derive(FromPyObject)]
 pub enum PyViewport<'py> {
     #[pyo3(annotation = "ScreenRegion")]
     Region(ScreenRegion),
+    Pairs([Vec<PyUnsigned<'py>>; 2]),
     Numbers(Vec<PyUnsigned<'py>>),
 }
 
@@ -198,6 +200,11 @@ impl TryFrom<PyViewport<'_>> for ScreenRegion {
     fn try_from(viewport: PyViewport<'_>) -> Result<Self, Self::Error> {
         match viewport {
             PyViewport::Region(region) => Ok(region),
+            PyViewport::Pairs([origin, size]) => {
+                let origin = read_pair(&origin, "Pass.set_viewport: origin")?;
+                let size = read_pair(&size, "Pass.set_viewport: size")?;
+                Ok(ScreenRegion::new(origin, size)?)
+            }
             PyViewport::Numbers(items) => {
                 let dimensions = read_list(&items, "Pass.set_viewport")?;
                 Ok(ScreenRegion::from_dimensions(&dimensions)?)

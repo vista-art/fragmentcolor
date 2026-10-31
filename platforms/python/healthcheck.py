@@ -607,6 +607,55 @@ def check_empty_regions():
     print("Regions refuse a side of 0 and a far edge past 2**32 - 1")
 
 
+def check_scalars_and_pairs():
+    """A bool is no float, and an origin or a size is any sequence of two ints, as in JavaScript."""
+    light = Light.point([0, 1, 0], [1, 1, 1])
+    model = Model(Mesh(), Material.pbr())
+    camera = Camera.perspective(1.0, 1.0, 0.1, 10.0)
+    scalars = {
+        "Material.metallic": lambda v: Material.pbr().metallic(v),
+        "Material.roughness": lambda v: Material.pbr().roughness(v),
+        "Material.normal_scale": lambda v: Material.pbr().normal_scale(v),
+        "Material.occlusion_strength": lambda v: Material.pbr().occlusion_strength(v),
+        "Material.alpha_cutoff": lambda v: Material.pbr().alpha_cutoff(v),
+        "Material.uv_transform": lambda v: Material.pbr().uv_transform([0, 0], [1, 1], v),
+        "Material.texture_transform": lambda v: Material.pbr().texture_transform(TextureSlot.Normal, [0, 0], [1, 1], v),
+        "Model.rotate": lambda v: model.rotate([0, 1, 0], v),
+        "Camera.perspective": lambda v: Camera.perspective(v, 1.0, 0.1, 10.0),
+        "Camera.orthographic": lambda v: Camera.orthographic(v, 1.0, -1.0, 1.0, 0.1, 10.0),
+        "Camera.set_aspect": lambda v: camera.set_aspect(v),
+        "Light.set_intensity": lambda v: light.set_intensity(v),
+        "Light.set_range": lambda v: light.set_range(v),
+        "Light.set_cone_angles": lambda v: Light.spot([0, 1, 0], [0, -1, 0], [1, 1, 1]).set_cone_angles(v, 1.0),
+    }
+    for name, call in scalars.items():
+        for flag in (True, np.bool_(True)):
+            raises_type(f"{name}({flag!r})", lambda: call(flag))
+        raises_type(f"{name}('1')", lambda: call("1"))
+        call(np.float32(0.5))
+    try:
+        Material.pbr().metallic(True)
+    except TypeError as e:
+        assert str(e) == "Material.metallic: value must be a number, got bool", e
+
+    assert ScreenRegion([1, 2], [32, 16]) == ScreenRegion.from_region(1, 2, 32, 16)
+    assert ScreenRegion(np.array([1, 2]), (32, 16)) == ScreenRegion.from_region(1, 2, 32, 16)
+    assert ScreenRegion.from_tuple([64, 32]).width() == 64
+    for label, call in (
+        ("ScreenRegion((0, 0, 0), (4, 4))", lambda: ScreenRegion((0, 0, 0), (4, 4))),
+        ("ScreenRegion((0, 0), [4])", lambda: ScreenRegion((0, 0), [4])),
+        ("ScreenRegion.from_tuple((1, 2, 3))", lambda: ScreenRegion.from_tuple((1, 2, 3))),
+        ("Pass.set_viewport(((0, 0, 0), (4, 4)))", lambda: Pass("p").set_viewport(((0, 0, 0), (4, 4)))),
+    ):
+        raises_invalid(label, call)
+    raises_type("ScreenRegion('ab', (4, 4))", lambda: ScreenRegion("ab", (4, 4)))
+    # A viewport takes an origin and a size as two pairs, as Rust's ((x, y), (w, h)) does.
+    Pass("pairs").set_viewport(((8, 0), (2, 4)))
+    Pass("pairs").set_viewport([[8, 0], [2, 4]])
+    raises_invalid("Pass.set_viewport(((0, 0), (0, 4)))", lambda: Pass("p").set_viewport(((0, 0), (0, 4))))
+    print("Floats refuse a bool, and origins and sizes take any sequence of two ints")
+
+
 def check_labels(renderer):
     """Number errors name the parameter, and the item for a list, as JavaScript's do."""
     def message(call):
@@ -1418,6 +1467,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_value_types()
     check_number_errors(renderer)
     check_empty_regions()
+    check_scalars_and_pairs()
     check_labels(renderer)
     check_colors(renderer)
     check_vectors()
