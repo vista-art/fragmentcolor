@@ -4,6 +4,7 @@
 #[cfg(any(wasm, test))]
 pub(super) mod late;
 pub(super) mod scopes;
+pub(super) mod uncaptured;
 
 use crate::core::renderer::{RenderContext, RendererError};
 #[cfg(not(wasm))]

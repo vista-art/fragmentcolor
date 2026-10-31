@@ -119,7 +119,7 @@ impl Renderer {
 
         let adapter = self.adapter.read();
         let adapter_ref = adapter.as_ref().ok_or(InitializationError::AdapterNotSet)?;
-        let config = device::configure_surface(&context.device, adapter_ref, &surface, &size)?;
+        let config = configure_surface(&context.device, adapter_ref, &surface, &size)?;
 
         // Negotiate and store effective sample count (currently default wanted=1; configurable later)
         if let Some(adapter_ref) = adapter.as_ref() {
@@ -150,4 +150,121 @@ unsafe fn open_unsafe_surface(
 ) -> Result<wgpu::Surface<'static>, WgpuFailure> {
     // SAFETY: the caller keeps the window or layer behind `target` alive as long as the surface.
     Ok(unsafe { instance.create_surface_unsafe(target) }?)
+}
+
+/// Configures `surface` at `size` with a format the adapter supports.
+fn configure_surface(
+    device: &wgpu::Device,
+    adapter: &wgpu::Adapter,
+    surface: &wgpu::Surface,
+    size: &wgpu::Extent3d,
+) -> Result<wgpu::SurfaceConfiguration, InitializationError> {
+    let capabilities = surface.get_capabilities(adapter);
+    let format = choose_surface_format(&capabilities)?;
+    let alpha_mode = capabilities
+        .alpha_modes
+        .first()
+        .copied()
+        .unwrap_or(wgpu::CompositeAlphaMode::Auto);
+    // A window with no area yet gets one pixel, and one past the device limit is an error.
+    let (width, height) = (size.width.max(1), size.height.max(1));
+    crate::texture::check_size(width, height, device.limits().max_texture_dimension_2d)?;
+    let config = wgpu::SurfaceConfiguration {
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        format,
+        color_space: wgpu::SurfaceColorSpace::Auto,
+        width,
+        height,
+        present_mode: wgpu::PresentMode::AutoVsync,
+        alpha_mode,
+        desired_maximum_frame_latency: 2,
+        view_formats: vec![format],
+    };
+    surface.configure(device, &config);
+
+    Ok(config)
+}
+
+// Extracted so it can be tested without constructing a full SurfaceCapabilities
+fn choose_surface_format_from(formats: &[wgpu::TextureFormat]) -> Option<wgpu::TextureFormat> {
+    // Try preferred linear formats first.
+    if let Some(&fmt) = formats.iter().find(|&&f| {
+        matches!(
+            f,
+            wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Bgra8Unorm
+        )
+    }) {
+        return Some(fmt);
+    }
+
+    // If no linear 8-bit format is available, accept sRGB variants if present.
+    if let Some(&fmt) = formats.iter().find(|&&f| {
+        matches!(
+            f,
+            wgpu::TextureFormat::Rgba8UnormSrgb | wgpu::TextureFormat::Bgra8UnormSrgb
+        )
+    }) {
+        return Some(fmt);
+    }
+
+    // Otherwise, fall back to the first advertised format.
+    formats.first().copied()
+}
+
+/// Why a surface that lists no format, such as a second WebGL2 canvas, cannot present.
+const NO_SURFACE_FORMATS: &str =
+    "the surface lists no formats for this adapter. On WebGL2, each canvas needs its own Renderer";
+
+/// Prefer a linear (non-sRGB) 8-bit RGBA/BGRA format if available; otherwise, fall back to the
+/// first supported format. We must choose a format that is actually advertised by the surface.
+/// A surface that lists no format cannot present for this adapter, such as a second WebGL2 canvas.
+fn choose_surface_format(
+    capabilities: &wgpu::SurfaceCapabilities,
+) -> Result<wgpu::TextureFormat, InitializationError> {
+    choose_surface_format_from(&capabilities.formats)
+        .ok_or_else(|| InitializationError::Error(NO_SURFACE_FORMATS.into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{InitializationError, choose_surface_format, choose_surface_format_from};
+
+    #[test]
+    fn chooses_surface_format_with_linear_preference() {
+        // Arrange: linear exists alongside sRGB
+        let formats = vec![
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            wgpu::TextureFormat::Bgra8Unorm,
+        ];
+        // Act / Assert: prefer linear BGRA over sRGB RGBA
+        let f = choose_surface_format_from(&formats);
+        assert_eq!(f, Some(wgpu::TextureFormat::Bgra8Unorm));
+
+        // Arrange: no linear, only sRGB
+        let formats2 = vec![wgpu::TextureFormat::Rgba8UnormSrgb];
+        let f2 = choose_surface_format_from(&formats2);
+        assert_eq!(f2, Some(wgpu::TextureFormat::Rgba8UnormSrgb));
+
+        // Arrange: an empty list has no format to choose
+        let empty: Vec<wgpu::TextureFormat> = vec![];
+        let f3 = choose_surface_format_from(&empty);
+        assert_eq!(f3, None);
+    }
+
+    // Story: wgpu reports default capabilities for a surface the adapter cannot present to,
+    // such as a second WebGL2 canvas. Configuring it anyway only logs UnsupportedQueueFamily.
+    #[test]
+    fn rejects_a_surface_without_formats() {
+        // Arrange
+        let capabilities = wgpu::SurfaceCapabilities::default();
+
+        // Act
+        let result = choose_surface_format(&capabilities);
+
+        // Assert
+        assert!(
+            matches!(&result, Err(InitializationError::Error(message)) if message.contains("lists no formats")),
+            "got {result:?}"
+        );
+    }
 }
