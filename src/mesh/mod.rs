@@ -442,11 +442,11 @@ impl MeshObject {
         let mut verts = self.verts.write();
         verts.extend(vertices);
         #[cfg(test)]
-        crate::hooks::run("pushed");
+        crate::testing::race_hooks::run("pushed");
         self.touch_vertices();
         drop(verts);
         #[cfg(test)]
-        crate::hooks::run("added");
+        crate::testing::race_hooks::run("added");
     }
 
     /// Local-space AABB of every Vertex added so far. Returns the sentinel
@@ -469,7 +469,7 @@ impl MeshObject {
         // (otherwise the GPU would draw past the actual buffer end).
         *self.override_instances.write() = None;
         #[cfg(test)]
-        crate::hooks::run("instance pushed");
+        crate::testing::race_hooks::run("instance pushed");
         self.touch_instances();
     }
 
@@ -485,7 +485,7 @@ impl MeshObject {
         // No buffer and no count override. A shader that reads instances refuses the empty list.
         *self.override_instances.write() = None;
         #[cfg(test)]
-        crate::hooks::run("instances cleared");
+        crate::testing::race_hooks::run("instances cleared");
         self.touch_instances();
     }
 
@@ -601,7 +601,7 @@ impl MeshObject {
         }
         let assumed = columns && self.assume_columns();
         #[cfg(test)]
-        crate::hooks::run("columns");
+        crate::testing::race_hooks::run("columns");
         let fresh = self.require(shader, read);
         let vertices = fresh.vertices || !added.vertex.is_empty();
         let instances = fresh.instances || !added.instance.is_empty() || assumed;
@@ -723,7 +723,7 @@ impl MeshObject {
         required: &HashMap<String, wgpu::VertexFormat>,
     ) -> Result<(), MeshError> {
         #[cfg(test)]
-        crate::hooks::run("pack");
+        crate::testing::race_hooks::run("pack");
         let verts = self.verts.read();
         let given = match *self.indices_overridden.read() {
             true => Some(self.indices.read().clone()),
@@ -810,7 +810,7 @@ impl MeshObject {
     pub(crate) fn upload(&self, context: &RenderContext) -> Result<Upload, RendererError> {
         let generation = self.generation();
         #[cfg(test)]
-        crate::hooks::run("upload");
+        crate::testing::race_hooks::run("upload");
         if let Some(found) = self.find_cached(context.id, generation) {
             return Ok(found);
         }
@@ -845,7 +845,7 @@ impl MeshObject {
     ) -> Result<Upload, RendererError> {
         let repacked = self.ensure_packed()?;
         #[cfg(test)]
-        crate::hooks::run("packed");
+        crate::testing::race_hooks::run("packed");
         let uploaded = self.write_buffers(context, gpu, repacked, generation);
         if uploaded.is_err() {
             self.packed.write().forget(repacked);
@@ -1491,7 +1491,7 @@ mod tests {
             let seen = attached.clone();
             // The weight shader types the plain numbers as u32, which resets the
             // mesh layout after the color shader's upload and before its layouts.
-            crate::hooks::once("uploaded", move || {
+            crate::testing::race_hooks::once("uploaded", move || {
                 *seen.borrow_mut() = Some(reads_weight.add_mesh(&late).map(drop));
             });
 
@@ -1750,7 +1750,7 @@ mod tests {
             let slot = checker.clone();
             // Vertices without color arrive, and another thread checks the quick view
             // and gets a while to let the mesh go, before this render reads its meshes.
-            crate::hooks::once("preview checked", move || {
+            crate::testing::race_hooks::once("preview checked", move || {
                 late.add_vertices(corners.map(Vertex::new));
                 let (sender, receiver) = std::sync::mpsc::channel();
                 let thread = std::thread::spawn(move || {
@@ -1792,9 +1792,9 @@ mod tests {
             let slot = adder.clone();
             // Another thread adds a vertex without color and holds still once other
             // threads can see it, while this one packs.
-            crate::hooks::once("pack", move || {
+            crate::testing::race_hooks::once("pack", move || {
                 let thread = std::thread::spawn(move || {
-                    crate::hooks::once("added", move || {
+                    crate::testing::race_hooks::once("added", move || {
                         let _ = visible.send(());
                         let _ = finished.recv();
                     });
@@ -1824,7 +1824,7 @@ mod tests {
     ) -> std::rc::Rc<std::cell::Cell<Option<bool>>> {
         let seen = std::rc::Rc::new(std::cell::Cell::new(None));
         let (object, kept, before) = (object.clone(), seen.clone(), object.generation());
-        crate::hooks::once(name, move || {
+        crate::testing::race_hooks::once(name, move || {
             kept.set(Some(locked(&object) && object.generation() == before));
         });
         seen
@@ -1860,7 +1860,7 @@ mod tests {
             std::rc::Rc::new(std::cell::Cell::new(0)),
         );
         let kept = seen.clone();
-        crate::hooks::once("added", move || kept.set(object.verts.read().len()));
+        crate::testing::race_hooks::once("added", move || kept.set(object.verts.read().len()));
         let hidden = watch_change(&mesh.object, "pushed", |object| {
             object.verts.try_read().is_none()
         });
@@ -1892,7 +1892,7 @@ mod tests {
         let object = mesh.object.clone();
         let free = std::rc::Rc::new(std::cell::Cell::new(false));
         let seen = free.clone();
-        crate::hooks::once("preview", move || {
+        crate::testing::race_hooks::once("preview", move || {
             seen.set(object.verts.try_write().is_some());
         });
 
@@ -1921,7 +1921,7 @@ mod tests {
             let derived = Mesh::new();
             derived.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
             let late = derived.clone();
-            crate::hooks::once("pack", move || late.add_vertex([0.5, 0.5]));
+            crate::testing::race_hooks::once("pack", move || late.add_vertex([0.5, 0.5]));
             let error = derived.object.upload(&context).expect_err("4 vertices");
             assert_eq!(
                 error.to_string(),
@@ -1933,7 +1933,7 @@ mod tests {
             given.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
             given.set_indices([0, 1, 2]);
             let late = given.clone();
-            crate::hooks::once("pack", move || late.set_indices([0, 1, 2, 0]));
+            crate::testing::race_hooks::once("pack", move || late.set_indices([0, 1, 2, 0]));
             let error = given.object.upload(&context).expect_err("4 indices");
             assert_eq!(
                 error.to_string(),
@@ -1965,7 +1965,7 @@ mod tests {
             mesh.add_instances([tint(), tint()]);
 
             let late = mesh.clone();
-            crate::hooks::once("packed", move || late.add_instance(tint()));
+            crate::testing::race_hooks::once("packed", move || late.add_instance(tint()));
             let during = mesh.object.upload(&context).expect("second upload").counts;
             let after = mesh.object.upload(&context).expect("third upload").counts;
 
@@ -2007,7 +2007,7 @@ mod tests {
             let object = mesh.object.clone();
             let packed = std::rc::Rc::new(std::cell::RefCell::new(None));
             let seen = packed.clone();
-            crate::hooks::once("columns", move || {
+            crate::testing::race_hooks::once("columns", move || {
                 let upload = object.upload(&context).map(drop);
                 *seen.borrow_mut() = Some(upload);
             });

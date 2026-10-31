@@ -15,9 +15,9 @@ use std::sync::Arc;
 
 use lsp_doc::lsp_doc;
 
+use crate::bindings::numbers::read_color;
 use crate::pass::Pass;
 use crate::pass::error::PassError;
-use crate::platforms::vector::read_color;
 use crate::renderer::platform::mobile::FragmentColorError;
 use crate::renderer::renderable::{RenderableHandle, SceneObjectHandle, TargetHandle};
 use crate::{Mesh, ScreenRegion, Shader, Texture};

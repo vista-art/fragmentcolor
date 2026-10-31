@@ -1,5 +1,5 @@
+use crate::bindings::web::{describe, read_text, read_unsigned};
 use crate::error::{ErrorClass, WebError, defer};
-use crate::platforms::web::{describe, read_text, read_unsigned};
 use crate::texture::{js_to_texture_bytes, read_format, read_texture_input, read_usage};
 use crate::{
     LogLevel, Mesh, Pass, PassObject, Renderable, Renderer, Scene, Shader, Size, Texture,

@@ -15,7 +15,7 @@ mod platform;
 pub use platform::*;
 
 use crate::RenderContext;
-use crate::size::Size;
+use crate::Size;
 use crate::texture::TextureError;
 use lsp_doc::lsp_doc;
 use std::sync::Arc;

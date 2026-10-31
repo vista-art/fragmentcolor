@@ -1155,7 +1155,7 @@ mod reflect {
         Some(renamed.unwrap_or_else(|| ident.to_string()))
     }
 
-    /// What the `#[pymodule]` in `src/platforms/python.rs` registers, in registration order.
+    /// What the `#[pymodule]` in `src/bindings/python.rs` registers, in registration order.
     pub struct PythonModule {
         /// Rust idents passed to `add_class`.
         pub classes: Vec<String>,
@@ -1168,7 +1168,7 @@ mod reflect {
     }
 
     impl PythonModule {
-        pub const FILE: &'static str = "src/platforms/python.rs";
+        pub const FILE: &'static str = "src/bindings/python.rs";
 
         pub fn read(root: &Path) -> PythonModule {
             let path = root.join(Self::FILE);

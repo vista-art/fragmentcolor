@@ -1,3 +1,5 @@
+//! The wasm entry point, and the readers that turn JavaScript values into Rust ones.
+
 #![cfg(wasm)]
 
 use crate::error::WebError;
@@ -178,31 +180,31 @@ pub(crate) fn read_vector_items(
         .collect()
 }
 
-/// The numbers of a float vector of any length, each checked by [`super::vector::read_floats`].
+/// The numbers of a float vector of any length, each checked by [`super::numbers::read_floats`].
 pub(crate) fn read_floats(
     value: &wasm_bindgen::JsValue,
     label: &str,
 ) -> Result<Vec<f32>, WebError> {
     let items = read_vector_items(value, label)?;
-    Ok(super::vector::read_floats(items, label)?)
+    Ok(super::numbers::read_floats(items, label)?)
 }
 
-/// Exactly `N` numbers of a float vector, such as a position, each checked by [`super::vector::read_floats`].
+/// Exactly `N` numbers of a float vector, such as a position, each checked by [`super::numbers::read_floats`].
 pub(crate) fn read_vector<const N: usize>(
     value: &wasm_bindgen::JsValue,
     label: &str,
 ) -> Result<[f32; N], WebError> {
     let items = read_vector_items(value, label)?;
-    Ok(super::vector::read_vector::<N>(items, label)?)
+    Ok(super::numbers::read_vector::<N>(items, label)?)
 }
 
-/// A color from `[r, g, b]` or `[r, g, b, a]`, each channel checked by [`super::vector::read_floats`].
+/// A color from `[r, g, b]` or `[r, g, b, a]`, each channel checked by [`super::numbers::read_floats`].
 pub(crate) fn read_color(
     value: &wasm_bindgen::JsValue,
     label: &str,
 ) -> Result<crate::Color, WebError> {
     let items = read_vector_items(value, label)?;
-    Ok(super::vector::read_color(items, label)?)
+    Ok(super::numbers::read_color(items, label)?)
 }
 
 /// Reads a plain array of numbers or a numeric typed array.

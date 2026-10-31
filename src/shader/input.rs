@@ -84,7 +84,7 @@ impl RegistrySource {
 
 #[cfg(not(wasm))]
 async fn fetch_url(url: &str) -> Result<Resolved, ShaderError> {
-    let body = crate::net::fetch_text(url).await?;
+    let body = crate::network::fetch_text(url).await?;
     Ok(Resolved {
         body,
         glsl: glsl_kind_from_url(url),
@@ -93,7 +93,7 @@ async fn fetch_url(url: &str) -> Result<Resolved, ShaderError> {
 
 #[cfg(wasm)]
 async fn fetch_url(url: &str) -> Result<Resolved, ShaderError> {
-    let body = crate::net::fetch_text(url).await?;
+    let body = crate::network::fetch_text(url).await?;
     Ok(Resolved {
         body,
         glsl: glsl_kind_from_url(url),
@@ -160,7 +160,7 @@ pub(crate) mod blocking {
         any(target_os = "linux", target_os = "macos", target_os = "windows")
     ))]
     fn fetch_url(url: &str) -> Result<Resolved, ShaderError> {
-        let body = crate::net::read_text(url)?;
+        let body = crate::network::read_text(url)?;
         Ok(Resolved {
             body,
             glsl: glsl_kind_from_url(url),
@@ -175,7 +175,7 @@ pub(crate) mod blocking {
         ))
     ))]
     fn fetch_url(_url: &str) -> Result<Resolved, ShaderError> {
-        Err(crate::net::NetworkError::feature_disabled().into())
+        Err(crate::NetworkError::feature_disabled().into())
     }
 
     #[cfg(wasm)]

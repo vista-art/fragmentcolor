@@ -1,5 +1,4 @@
-//! Helper macros to implement reference-based conversions without duplicating logic.
-//! These macros forward From<&T> and TryFrom<T> to existing implementations.
+//! Macros that derive the borrowed and owned forms of a `From` or `TryFrom` from one conversion.
 
 #[macro_export]
 /// Implement From<&Src> for Dst by delegating to the existing From<Src>.
@@ -16,7 +15,7 @@ macro_rules! impl_from_ref {
 
 // Implement TryFrom<OwnedSrc> for Dst by delegating to an existing TryFrom<&OwnedSrc>.
 // We require the caller to specify the Error type to avoid lifetime issues with borrowed sources.
-#[macro_export]
+#[cfg(wasm)]
 macro_rules! impl_tryfrom_owned_via_ref {
     ($dst:ty, $owned_src:ty, $err:ty) => {
         impl TryFrom<$owned_src> for $dst {
@@ -27,6 +26,8 @@ macro_rules! impl_tryfrom_owned_via_ref {
         }
     };
 }
+#[cfg(wasm)]
+pub(crate) use impl_tryfrom_owned_via_ref;
 
 // -------------------------------------------------------------------------------------------------
 // Extended (bidirectional) variants
@@ -54,7 +55,6 @@ macro_rules! impl_tryfrom_owned_via_ref {
 // If you already have some of these impls, do NOT invoke these macros (Rust forbids duplicate impls).
 // You can keep using the original lightweight macros above when you only need one delegation.
 
-#[macro_export]
 macro_rules! impl_from_into_with_refs {
     ($(#[$meta:meta])* $a:ty, $b:ty, $a_to_b:expr, $b_to_a:expr) => {
         $(#[$meta])*
@@ -83,6 +83,7 @@ macro_rules! impl_from_into_with_refs {
         }
     };
 }
+pub(crate) use impl_from_into_with_refs;
 
 #[macro_export]
 macro_rules! impl_tryfrom_tryinto_with_refs {
@@ -118,7 +119,6 @@ macro_rules! impl_tryfrom_tryinto_with_refs {
 // wasm-bindgen's public `TryFromJsValue`. That trait takes the JS object it reads, so the
 // class hands out a fresh handle to a clone, `__fc_share`, and the bridge takes that one.
 // The caller's object stays usable, and no wasm-bindgen ABI detail is named here.
-#[macro_export]
 macro_rules! impl_tryfrom_js_ref_anchor {
     ($t:ty, $err:ty, $class:ident) => {
         #[cfg(wasm)]
@@ -161,9 +161,9 @@ macro_rules! impl_tryfrom_js_ref_anchor {
         }
     };
 }
+pub(crate) use impl_tryfrom_js_ref_anchor;
 
 // Bridge macro: implement both TryFrom<&JsValue> (anchor) and owned-via-ref in one line.
-#[macro_export]
 macro_rules! impl_js_bridge {
     ($t:ident, $err:ty) => {
         $crate::impl_js_bridge!($t, $err, $t);
@@ -171,7 +171,7 @@ macro_rules! impl_js_bridge {
     ($t:ty, $err:ty, $class:ident) => {
         // A bridged type must carry the brand its check reads, in every build.
         const _: () = assert!(
-            $crate::fc_kind::same_kind(<$t as $crate::FcKind>::KIND, stringify!($class)),
+            $crate::bindings::brand::same_kind(<$t as $crate::FcKind>::KIND, stringify!($class)),
             "a type that goes through impl_js_bridge! needs impl_fc_kind! with the same name",
         );
         $crate::impl_tryfrom_js_ref_anchor!($t, $err, $class);
@@ -179,3 +179,4 @@ macro_rules! impl_js_bridge {
         $crate::impl_tryfrom_owned_via_ref!($t, wasm_bindgen::JsValue, $err);
     };
 }
+pub(crate) use impl_js_bridge;

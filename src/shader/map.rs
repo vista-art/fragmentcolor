@@ -44,7 +44,7 @@ impl Drop for TextureMap {
     /// Each context still alive drops its copy.
     fn drop(&mut self) {
         #[cfg(test)]
-        crate::hooks::run("map dropped");
+        crate::testing::race_hooks::run("map dropped");
         LIVE.lock().remove(&self.id.id);
         for upload in &self.uploads {
             if let Some(context) = upload.context.upgrade() {
@@ -399,7 +399,7 @@ mod tests {
             .set_map("image", build_source([255, 0, 0, 255]))
             .expect("a map");
         let object = shader.object.clone();
-        crate::hooks::once("map dropped", move || {
+        crate::testing::race_hooks::once("map dropped", move || {
             let free = object.texture_writes.try_lock().is_some();
             assert!(free, "the map dropped under texture_writes");
         });

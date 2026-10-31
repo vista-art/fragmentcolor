@@ -5,7 +5,7 @@ use js_sys::Reflect;
 use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
-use crate::platforms::web::{read_count, read_unsigned};
+use crate::bindings::web::{read_count, read_unsigned};
 use crate::{
     CompareFunction, Mipmap, SamplerOptions, Size, Texture, TextureData, TextureFormat, TextureId,
     TextureInput, TextureOptions,
@@ -362,7 +362,7 @@ pub(crate) fn read_format(value: &JsValue) -> Result<TextureFormat, WebError> {
     let code = value.as_f64().ok_or_else(|| {
         WebError::type_error(&format!(
             "format must be a TextureFormat, got {}",
-            crate::platforms::web::describe(value)
+            crate::bindings::web::describe(value)
         ))
     })?;
     let format = match read_unsigned(code, "format")? {

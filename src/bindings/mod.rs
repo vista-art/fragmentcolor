@@ -1,3 +1,6 @@
+//! What every language binding shares: the Python module,
+//! the wasm entry point, the number rules and the JavaScript brand.
+
 #[cfg(python)]
 pub mod python;
 
@@ -5,10 +8,12 @@ pub mod python;
 pub mod web;
 
 #[cfg(any(wasm, mobile, python, test))]
-pub(crate) mod vector;
+pub(crate) mod numbers;
+
+pub(crate) mod brand;
 
 #[cfg(any(wasm, test))]
-use crate::size::read_dimension;
+use crate::values::read_dimension;
 
 /// A number from JavaScript that doesn't fit an unsigned 32-bit integer.
 #[cfg(any(wasm, test))]

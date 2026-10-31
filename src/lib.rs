@@ -58,58 +58,45 @@ pub mod scene;
 /// # Error module
 ///
 /// Common errors used across the library.
-pub mod error;
-
-/// # Size module
-///
-/// Simple helper to convert between different size representations.
-pub mod size;
-
-/// # Color module
-///
-/// Simple helper to represent color and convert user input (i.e. CSS strings)
-pub mod color;
-
-/// # Networking module
-///
-/// Cross-target networking helpers (text/bytes over HTTP)
-pub mod net;
-
-/// # ScreenRegion module
-///
-/// ScreenRegion type conversions and collision detection
-pub mod region;
+#[expect(
+    hidden_glob_reexports,
+    reason = "mesh, pass, renderer, shader and target glob-export a public `error` module this one hides"
+)]
+mod error;
 
 /// Guides (developer docs)
 ///
 /// Included as module so Rust examples run as doctests.
 pub mod guides;
 
-/// Winit App Module (desktop only)
-///
-/// Requires the `winit` feature to be enabled.
-///
-/// Simple convenience wrapper around winit to simplify our Rust examples.
-/// Implements winit's ApplicationHandler and contains all FragmentColor objects.
-#[cfg(all(not(wasm), feature = "winit"))]
-pub mod app;
-#[cfg(all(not(wasm), feature = "winit"))]
-pub use app::*;
+mod bindings;
+mod conversion_macros;
+mod network;
+mod values;
 
-/// Macros for blanket type conversions
-mod macros;
-
-/// Top-level platform-specific initializers
-mod platforms;
-
-/// Points where a test holds an operation in the order a race takes
 #[cfg(test)]
-mod hooks;
+mod testing;
 
-/// Stable kind branding across language bindings
-pub mod fc_kind;
+#[cfg(all(not(wasm), feature = "winit"))]
+mod winit_app;
+#[cfg(all(not(wasm), feature = "winit"))]
+pub use winit_app::*;
 
-pub use {
-    color::*, error::*, fc_kind::*, material::*, mesh::*, pass::*, region::*, renderer::*,
-    scene::*, shader::*, size::*, target::*, texture::*,
+pub use error::*;
+pub use material::*;
+pub use mesh::*;
+pub use network::NetworkError;
+pub use pass::*;
+pub use renderer::*;
+pub use scene::*;
+pub use shader::*;
+pub use target::*;
+pub use texture::*;
+pub use values::*;
+
+pub(crate) use bindings::brand::{FcKind, impl_fc_kind};
+#[cfg(wasm)]
+pub(crate) use conversion_macros::impl_tryfrom_owned_via_ref;
+pub(crate) use conversion_macros::{
+    impl_from_into_with_refs, impl_js_bridge, impl_tryfrom_js_ref_anchor,
 };

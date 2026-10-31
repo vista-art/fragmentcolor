@@ -11,7 +11,7 @@ mod python_stubs {
     //!   `#[doc(hidden)]` methods, which are binding plumbing. A value type
     //!   with no doc page, such as `Size` or `ScreenRegion`, keeps them,
     //!   since its constructors are how users build arguments.
-    //!   The classes and functions registered in `src/platforms/python.rs` are
+    //!   The classes and functions registered in `src/bindings/python.rs` are
     //!   the module surface. A class that a method only returns is not
     //!   importable, so it appears under a private `_Name`.
     //! - **Docstrings** come from the `#[lsp_doc(...)]` page of each item. A

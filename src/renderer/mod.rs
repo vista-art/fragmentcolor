@@ -566,7 +566,7 @@ impl Renderer {
                 crate::TextureObject::from_source(context.clone(), job.source.clone(), "load");
             let upload = upload.await;
             #[cfg(test)]
-            crate::hooks::run("map uploaded");
+            crate::testing::race_hooks::run("map uploaded");
             match upload {
                 Ok(object) => {
                     job.shader.keep_upload(&job, &context, object);
@@ -1334,7 +1334,7 @@ impl RenderContext {
                 _ => mesh.upload(self)?,
             };
             #[cfg(test)]
-            crate::hooks::run("uploaded");
+            crate::testing::race_hooks::run("uploaded");
             let read = mesh.fetch_layouts(shader.id, &schemas, || {
                 vertex_buffer_layouts(&shader, mesh, &schemas)
             })?;
@@ -2247,7 +2247,7 @@ impl RenderContext {
         // interleave correctly — A-far, B-mid, A-near sequences emit in
         // global Z order rather than per-shader buckets.
         #[cfg(test)]
-        crate::hooks::run("blend phase");
+        crate::testing::race_hooks::run("blend phase");
         if !blend_draws.is_empty() {
             let mut current: Option<(usize, usize)> = None;
             for draw in blend_draws.iter() {
@@ -4846,7 +4846,7 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat)
         if left == 0 {
             return;
         }
-        crate::hooks::once("upload", move || {
+        crate::testing::race_hooks::once("upload", move || {
             uploads.fetch_add(1, Ordering::SeqCst);
             mesh.set_indices([0, 1, 2]);
             churn(mesh, uploads, left - 1);
@@ -4874,7 +4874,7 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat)
                 .render(&mesh, &target)
                 .expect_err("the mesh never holds still");
             // The churn left over drops here, not with the thread's storage.
-            crate::hooks::once("upload", || {});
+            crate::testing::race_hooks::once("upload", || {});
 
             let busy = crate::mesh::MeshError::Busy(PREVIEW_TRIES);
             let expected = matches!(&error, RendererError::MeshError(found) if found.to_string() == busy.to_string());
@@ -4903,8 +4903,10 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat)
             // The quick view reads the instance color before the vertex one.
             mesh.add_instance(crate::Instance::new().set("color", [1.0; 4]));
             let (added, cleared) = (mesh.clone(), mesh.clone());
-            crate::hooks::once("pack", move || added.add_instance(crate::Instance::new()));
-            crate::hooks::once("packed", move || cleared.clear_instances());
+            crate::testing::race_hooks::once("pack", move || {
+                added.add_instance(crate::Instance::new())
+            });
+            crate::testing::race_hooks::once("packed", move || cleared.clear_instances());
 
             let draws = ctx.plan_pass(&mesh.pass).expect("the pass plans");
 
@@ -4955,7 +4957,7 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat)
             let first = stride(&contexts[0]);
             // The instances change after the second upload read the generation.
             let late = mesh.clone();
-            crate::hooks::once("upload", move || {
+            crate::testing::race_hooks::once("upload", move || {
                 late.clear_instances();
                 late.add_instances(
                     [(); 2].map(|_| crate::Instance::new().set("offset", [0.0, 0.0])),
@@ -4990,7 +4992,7 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat)
             pass.add(&camera()).expect("add camera");
             // A seventh vertex leaves a partial triangle, which a pack refuses.
             let late = model.mesh().clone();
-            crate::hooks::once("blend phase", move || {
+            crate::testing::race_hooks::once("blend phase", move || {
                 late.add_vertex(crate::Vertex::pbr([0.0, 0.0, 0.0]));
             });
 

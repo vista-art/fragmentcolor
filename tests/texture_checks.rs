@@ -425,7 +425,7 @@ fn zero_region_sides_are_refused() {
 #[test]
 fn reversed_screen_regions_are_refused() {
     use fragmentcolor::ScreenRegion;
-    use fragmentcolor::region::error::ScreenRegionError;
+    use fragmentcolor::ScreenRegionError;
     pollster::block_on(async move {
         let renderer = Renderer::new();
         let texture = renderer

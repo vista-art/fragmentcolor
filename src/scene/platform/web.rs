@@ -5,7 +5,7 @@ use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
-use crate::platforms::web::{
+use crate::bindings::web::{
     read_bytes, read_count, read_flag, read_float, read_text, read_unsigned, read_vector,
     read_vector_items,
 };

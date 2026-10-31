@@ -1,6 +1,6 @@
 #![cfg(python)]
 
-use crate::platforms::python::{PyUnsigned, read_bytes, read_list, read_unsigned};
+use crate::bindings::python::{PyUnsigned, read_bytes, read_list, read_unsigned};
 use crate::texture::{Mipmap, Texture, TextureError, TextureId, TextureRegion};
 use crate::{CompareFunction, SamplerOptions, TextureFormat};
 use lsp_doc::lsp_doc;
@@ -287,7 +287,7 @@ impl Mipmap {
     pub fn build_py(
         bytes: PyTextureBytes<'_>,
         format: TextureFormat,
-        size: Option<crate::size::PySize<'_>>,
+        size: Option<crate::values::PySize<'_>>,
     ) -> pyo3::PyResult<Mipmap> {
         let input = crate::TextureInput {
             data: crate::TextureData::Bytes(bytes.read("Mipmap.build: bytes")?),

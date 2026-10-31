@@ -162,8 +162,8 @@ impl From<crate::mesh::MeshError> for FragmentColorError {
     }
 }
 
-impl From<crate::color::error::ColorError> for FragmentColorError {
-    fn from(e: crate::color::error::ColorError) -> Self {
+impl From<crate::ColorError> for FragmentColorError {
+    fn from(e: crate::ColorError) -> Self {
         FragmentColorError::Render(e.to_string())
     }
 }

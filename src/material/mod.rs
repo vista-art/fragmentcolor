@@ -730,7 +730,7 @@ mod tests {
                 .expect("a texture");
             let mat = build_mapped().base_color_texture("tests/assets/missing.png");
             let late = mat.clone();
-            crate::hooks::once("map uploaded", move || {
+            crate::testing::race_hooks::once("map uploaded", move || {
                 late.base_color_texture(&texture);
             });
 
@@ -763,7 +763,7 @@ mod tests {
                 .expect("a target");
             let mat = build_mapped().base_color_texture(paint([255, 0, 0, 255]));
             let late = mat.clone();
-            crate::hooks::once("map uploaded", move || {
+            crate::testing::race_hooks::once("map uploaded", move || {
                 late.base_color_texture(paint([0, 0, 255, 255]));
             });
 

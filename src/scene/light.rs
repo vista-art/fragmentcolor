@@ -505,7 +505,7 @@ mod tests {
         let joiner = std::rc::Rc::new(std::cell::RefCell::new(None));
         let handle = joiner.clone();
         let (racing, added) = (pass.clone(), model.clone());
-        crate::hooks::once("light checked", move || {
+        crate::testing::race_hooks::once("light checked", move || {
             let (sender, receiver) = std::sync::mpsc::channel();
             let thread = std::thread::spawn(move || {
                 racing.add(&added).expect("add the model");

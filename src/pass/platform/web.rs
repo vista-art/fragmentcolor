@@ -1,7 +1,7 @@
 #![cfg(wasm)]
 
+use crate::bindings::web::{read_color, read_count, read_text};
 use crate::error::WebError;
-use crate::platforms::web::{read_color, read_count, read_text};
 use crate::renderer::platform::web::RenderableList;
 use crate::{Pass, Shader, Texture, TextureTarget};
 use lsp_doc::lsp_doc;

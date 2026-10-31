@@ -217,7 +217,7 @@ pub(crate) async fn await_map_on_web(context: &RenderContext, mut rx: crate::Map
         match rx.try_recv() {
             Ok(Some(Ok(()))) => return true,
             Ok(Some(Err(_))) | Err(_) => return false,
-            Ok(None) => crate::platforms::web::yield_to_event_loop().await,
+            Ok(None) => crate::bindings::web::yield_to_event_loop().await,
         }
     }
     false

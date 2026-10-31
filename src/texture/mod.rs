@@ -525,7 +525,7 @@ pub(crate) fn read_source(
 
     Err(WebError::type_error(&format!(
         "{label} takes bytes (a Uint8Array, an ArrayBuffer or an array of numbers), an ImageData, a canvas, an image, a URL, a Texture or a Mipmap, got {}",
-        crate::platforms::web::describe(value)
+        crate::bindings::web::describe(value)
     )))
 }
 
@@ -565,7 +565,7 @@ fn js_to_byte(
     index: usize,
 ) -> Result<u8, crate::error::WebError> {
     let item = format_args!("{label}: item {index}");
-    let number = crate::platforms::web::read_number(value, item)?;
+    let number = crate::bindings::web::read_number(value, item)?;
     if number.fract() == 0.0 && (0.0..=255.0).contains(&number) {
         return Ok(number as u8);
     }
@@ -625,7 +625,7 @@ crate::impl_js_bridge!(TextureId, crate::texture::TextureError);
 pub(crate) fn js_to_texture_id(
     value: &wasm_bindgen::JsValue,
 ) -> Result<TextureId, crate::error::WebError> {
-    use crate::platforms::web::describe;
+    use crate::bindings::web::describe;
     let invalid = |shown: String| {
         TextureError::InvalidInput(format!(
             "a texture id is a whole number from 0 to {}, got {shown}",
@@ -670,7 +670,7 @@ pub(crate) fn js_to_texture_bytes(
     let TextureData::Bytes(mut bytes) = data else {
         return Err(crate::error::WebError::type_error(&format!(
             "{label} takes bytes (a Uint8Array, an ArrayBuffer or an array of numbers), an ImageData or a canvas, got {}",
-            crate::platforms::web::describe(value)
+            crate::bindings::web::describe(value)
         )));
     };
     if let Some(own) = options.size {
@@ -855,7 +855,7 @@ impl TextureObject {
         let usage = source_usage(options.usage)?;
         let fetched = match &*source.data {
             SourceData::Url(url) | SourceData::Ktx2Url(url) => {
-                crate::net::fetch_bytes(url).await.map_err(|e| {
+                crate::network::fetch_bytes(url).await.map_err(|e| {
                     TextureError::CreateTextureError(format!("URL fetch failed: {e:?}"))
                 })?
             }

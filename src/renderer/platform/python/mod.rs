@@ -1,4 +1,4 @@
-use crate::platforms::python::PyUnsigned;
+use crate::bindings::python::PyUnsigned;
 use crate::{
     PySize, Renderer, Size,
     target::{PyTextureTarget, RenderCanvasTarget},

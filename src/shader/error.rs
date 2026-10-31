@@ -32,7 +32,7 @@ pub enum ShaderError {
     GlslParseErrors(Diagnostic),
     #[cfg(not(wasm))]
     #[error("URL Request Error: {0}")]
-    RequestError(#[from] crate::net::NetworkError),
+    RequestError(#[from] crate::NetworkError),
     #[error("File not found: {0}")]
     FileNotFound(#[from] std::io::Error),
     #[error("Index out of bounds for {key}: index {index} >= len {len}")]

@@ -46,9 +46,9 @@ pub enum PassError {
     #[error("Texture conflict in pass '{pass}': {detail}")]
     TextureConflict { pass: String, detail: String },
     #[error("Invalid clear color: {0}")]
-    Color(#[from] crate::color::error::ColorError),
+    Color(#[from] crate::ColorError),
     #[error("Invalid viewport: {0}")]
-    Viewport(#[from] crate::region::error::ScreenRegionError),
+    Viewport(#[from] crate::ScreenRegionError),
     #[error("Self dependency is not allowed")]
     SelfDependency,
     #[error("Duplicate dependency: {0}")]

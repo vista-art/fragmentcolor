@@ -1,8 +1,9 @@
+//! `Color`: four float channels, read from a list or a CSS string.
+
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-pub mod error;
-use error::{ColorError, CssFailure};
+use super::error::{ColorError, CssFailure};
 use std::str::FromStr;
 
 /// A linear RGBA color with one float per channel.

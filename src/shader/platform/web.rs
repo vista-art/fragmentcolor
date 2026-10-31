@@ -10,7 +10,7 @@ use std::convert::TryInto;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
-use crate::platforms::web::{describe, read_bytes, read_class, read_numbers, read_rows, read_text};
+use crate::bindings::web::{describe, read_bytes, read_class, read_numbers, read_rows, read_text};
 use crate::shader::UniformInput;
 use crate::{Shader, ShaderError, UniformData};
 

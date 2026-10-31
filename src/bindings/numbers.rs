@@ -1,4 +1,5 @@
-//! The float vector rule every binding shares: colors, positions, directions, axes and UV transforms.
+//! How every binding reads numbers:
+//! finite 32-bit floats for colors, positions, directions, axes and UV transforms.
 
 use crate::{Color, Vertex};
 

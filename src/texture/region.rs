@@ -134,7 +134,7 @@ impl From<(u32, u32, u32, u32, u32, u32)> for TextureRegion {
 /// The pixels a `ScreenRegion` covers, at `z = 0` and one layer deep.
 /// A region whose max lies before its min, or with a side of 0, is an error.
 impl TryFrom<crate::ScreenRegion> for TextureRegion {
-    type Error = crate::region::error::ScreenRegionError;
+    type Error = crate::ScreenRegionError;
 
     fn try_from(region: crate::ScreenRegion) -> Result<Self, Self::Error> {
         let region = region.check()?;
@@ -251,9 +251,9 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
     type Error = crate::error::WebError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+        use crate::bindings::web::{describe, read_class, read_list, read_number};
         use crate::error::WebError;
-        use crate::platforms::web::{describe, read_class, read_list, read_number};
-        use crate::size::read_dimension;
+        use crate::values::read_dimension;
         use js_sys::Reflect;
 
         let dimension = |number: f64| {

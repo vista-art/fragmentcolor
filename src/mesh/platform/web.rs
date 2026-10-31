@@ -5,12 +5,12 @@ use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
-use crate::mesh::{Instance, Mesh, Quad, Vertex, VertexData};
-use crate::platforms::vector;
-use crate::platforms::web::{
+use crate::bindings::numbers;
+use crate::bindings::web::{
     describe, read_count, read_floats, read_list, read_text, read_unsigned, read_vector,
 };
-use crate::size::read_dimension;
+use crate::mesh::{Instance, Mesh, Quad, Vertex, VertexData};
+use crate::values::read_dimension;
 
 // -----------------------------
 // JS helpers
@@ -39,8 +39,8 @@ fn read_position(value: &JsValue, label: &str) -> Result<Vertex, WebError> {
         return Ok(vertex);
     }
     let vertex = match value.as_f64() {
-        Some(number) => vector::read_position([number], label)?,
-        None => vector::read_position(read_floats(value, label)?, label)?,
+        Some(number) => numbers::read_position([number], label)?,
+        None => numbers::read_position(read_floats(value, label)?, label)?,
     };
     Ok(vertex)
 }

@@ -458,7 +458,7 @@ impl ShaderObject {
             return Ok(());
         }
         #[cfg(test)]
-        crate::hooks::run("model attach");
+        crate::testing::race_hooks::run("model attach");
         let columns = crate::mesh::model_schema();
         let binding = self.bind_mesh_with(&mesh, Some(&columns))?;
         self.record(mesh, binding, true)
@@ -479,7 +479,7 @@ impl ShaderObject {
         }
         mesh.declare(self.id, binding)?;
         #[cfg(test)]
-        crate::hooks::run("declared");
+        crate::testing::race_hooks::run("declared");
         meshes.push(mesh);
         Ok(())
     }
@@ -511,7 +511,7 @@ impl ShaderObject {
     /// Draws `mesh` for the quick view and checks it, as `check_preview` does.
     pub(crate) fn preview(&self, mesh: &Arc<crate::mesh::MeshObject>) {
         #[cfg(test)]
-        crate::hooks::run("preview");
+        crate::testing::race_hooks::run("preview");
         let mut preview = self.preview.lock();
         let kept = preview.get_or_insert_with(|| Preview {
             mesh: mesh.clone(),
@@ -545,7 +545,7 @@ impl ShaderObject {
             None => None,
         };
         #[cfg(test)]
-        crate::hooks::run("preview checked");
+        crate::testing::race_hooks::run("preview checked");
         Ok((self.meshes.read().clone(), passed))
     }
 
@@ -2186,7 +2186,7 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
         let remover = std::rc::Rc::new(std::cell::RefCell::new(None));
         let handle = remover.clone();
         let (removing, removed) = (shader.clone(), mesh.clone());
-        crate::hooks::once("declared", move || {
+        crate::testing::race_hooks::once("declared", move || {
             let (sender, receiver) = std::sync::mpsc::channel();
             let thread = std::thread::spawn(move || {
                 removing.remove_mesh(&removed);

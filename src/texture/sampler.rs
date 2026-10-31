@@ -36,7 +36,7 @@ impl SamplerOptions {
             JsValue,
         >,
     ) -> Result<SamplerOptions, crate::error::WebError> {
-        use crate::platforms::web::{read_flag, read_given};
+        use crate::bindings::web::{read_flag, read_given};
         let compare = match compare {
             Some(compare) => super::parse_compare(&compare)?,
             None => None,
@@ -67,7 +67,7 @@ impl SamplerOptions {
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "boolean")] value: JsValue,
     ) -> Result<(), crate::error::WebError> {
-        self.repeat_x = crate::platforms::web::read_flag(&value, "SamplerOptions.repeat_x")?;
+        self.repeat_x = crate::bindings::web::read_flag(&value, "SamplerOptions.repeat_x")?;
         Ok(())
     }
 
@@ -84,7 +84,7 @@ impl SamplerOptions {
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "boolean")] value: JsValue,
     ) -> Result<(), crate::error::WebError> {
-        self.repeat_y = crate::platforms::web::read_flag(&value, "SamplerOptions.repeat_y")?;
+        self.repeat_y = crate::bindings::web::read_flag(&value, "SamplerOptions.repeat_y")?;
         Ok(())
     }
 
@@ -101,7 +101,7 @@ impl SamplerOptions {
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "boolean")] value: JsValue,
     ) -> Result<(), crate::error::WebError> {
-        self.smooth = crate::platforms::web::read_flag(&value, "SamplerOptions.smooth")?;
+        self.smooth = crate::bindings::web::read_flag(&value, "SamplerOptions.smooth")?;
         Ok(())
     }
 

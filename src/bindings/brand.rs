@@ -1,17 +1,13 @@
-//! Cross-language stable kind branding.
-//!
-//! Provides a trait and a helper macro to expose a stable "__fc_kind"
-//! property in JavaScript (via wasm-bindgen), so type identity checks
-//! remain stable under bundler/minifier mangling.
+//! The `__fc_kind` brand a JavaScript class carries,
+//! so a check knows a FragmentColor object after a minifier renames its class.
 
 /// Marker trait that supplies a stable, compile-time kind string.
-pub trait FcKind {
+pub(crate) trait FcKind {
     const KIND: &'static str;
 }
 
 /// Whether two kind strings match, in a const context.
-#[doc(hidden)]
-pub const fn same_kind(left: &str, right: &str) -> bool {
+pub(crate) const fn same_kind(left: &str, right: &str) -> bool {
     let (left, right) = (left.as_bytes(), right.as_bytes());
     if left.len() != right.len() {
         return false;
@@ -31,7 +27,6 @@ pub const fn same_kind(left: &str, right: &str) -> bool {
 /// Usage:
 ///   impl_fc_kind!(Renderer, "Renderer");
 ///   impl_fc_kind!(CanvasTarget, "CanvasTarget");
-#[macro_export]
 macro_rules! impl_fc_kind {
     ($ty:ty, $name:literal) => {
         impl $crate::FcKind for $ty {
@@ -49,3 +44,4 @@ macro_rules! impl_fc_kind {
         }
     };
 }
+pub(crate) use impl_fc_kind;

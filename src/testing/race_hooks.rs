@@ -1,5 +1,5 @@
-//! Test-only points where a test runs its own code in the middle of an operation,
-//! to hold that operation in the order a race between two threads would take.
+//! Points where a test runs its own code
+//! in the middle of an operation, to replay a race between two threads.
 
 use std::cell::RefCell;
 use std::collections::HashMap;

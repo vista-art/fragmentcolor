@@ -1,3 +1,5 @@
+//! The `fragmentcolor` Python module, and the readers that turn Python values into Rust ones.
+
 use std::fmt::Display;
 
 use numpy::{PyArrayDescrMethods, PyArrayDyn, dtype};
@@ -6,8 +8,8 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyByteArray, PyBytes, PyMemoryView, PySequence, PyString};
 use pyo3::wrap_pyfunction;
 
+use crate::bindings::numbers;
 use crate::error::{InvalidInputError, PythonError};
-use crate::platforms::vector;
 
 use crate::{
     Color, Pass, Renderer, ScreenRegion, Shader, Size,
@@ -224,10 +226,10 @@ pub enum PyChannels<'py> {
 }
 
 impl PyChannels<'_> {
-    /// Exactly `N` items, each read by [`read_numbers`] and checked by [`vector::read_floats`].
+    /// Exactly `N` items, each read by [`read_numbers`] and checked by [`numbers::read_floats`].
     pub(crate) fn read_array<const N: usize>(&self, label: &str) -> PyResult<[f32; N]> {
         let PyChannels::Numbers(value) = self;
-        Ok(vector::read_vector::<N>(
+        Ok(numbers::read_vector::<N>(
             read_numbers(value, label)?,
             label,
         )?)
@@ -236,7 +238,7 @@ impl PyChannels<'_> {
     /// A color from `[r, g, b]` with an opaque alpha or `[r, g, b, a]`, read as [`PyChannels::read_array`] reads it.
     pub(crate) fn read_color(&self, label: &str) -> PyResult<Color> {
         let PyChannels::Numbers(value) = self;
-        Ok(vector::read_color(read_numbers(value, label)?, label)?)
+        Ok(numbers::read_color(read_numbers(value, label)?, label)?)
     }
 }
 

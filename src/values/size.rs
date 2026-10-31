@@ -1,12 +1,14 @@
+//! `Size`: a width, a height and an optional depth.
+
+#[cfg(wasm)]
+use crate::bindings::web::{describe, read_class, read_given, read_list, read_number};
 #[cfg(wasm)]
 use crate::error::WebError;
-#[cfg(wasm)]
-use crate::platforms::web::{describe, read_class, read_given, read_list, read_number};
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
 #[cfg(python)]
-use crate::platforms::python::{PyUnsigned, read_list};
+use crate::bindings::python::{PyUnsigned, read_list};
 #[cfg(python)]
 use pyo3::FromPyObject;
 #[cfg(python)]
@@ -14,8 +16,7 @@ use pyo3::prelude::*;
 #[cfg(python)]
 use pyo3::types::PyMapping;
 
-pub mod error;
-use error::SizeError;
+use super::error::SizeError;
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(from_py_object, eq, module = "fragmentcolor"))]

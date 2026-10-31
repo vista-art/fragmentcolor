@@ -5,8 +5,8 @@ use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
 use crate::Shader;
+use crate::bindings::web::{describe, read_count, read_flag, read_float, read_vector};
 use crate::material::{AlphaMode, Material, TextureSlot};
-use crate::platforms::web::{describe, read_count, read_flag, read_float, read_vector};
 use crate::texture::read_texture_input;
 
 #[wasm_bindgen]
@@ -218,7 +218,7 @@ fn read_alpha_mode(value: &JsValue) -> Result<AlphaMode, WebError> {
             describe(value)
         ))
     })?;
-    match crate::platforms::web::read_unsigned(code, "mode")? {
+    match crate::bindings::web::read_unsigned(code, "mode")? {
         0 => Ok(AlphaMode::Opaque),
         1 => Ok(AlphaMode::Mask),
         2 => Ok(AlphaMode::Blend),
@@ -238,7 +238,7 @@ fn read_texture_slot(value: &JsValue) -> Result<TextureSlot, WebError> {
             describe(value)
         ))
     })?;
-    let index = crate::platforms::web::read_unsigned(code, "slot")?;
+    let index = crate::bindings::web::read_unsigned(code, "slot")?;
     TextureSlot::ALL
         .get(index as usize)
         .copied()

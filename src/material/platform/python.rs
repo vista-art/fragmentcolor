@@ -4,8 +4,8 @@ use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 
 use crate::Shader;
+use crate::bindings::python::{PyChannels, PyFloat, PyUnsigned};
 use crate::material::{AlphaMode, Material, MaterialError, TextureSlot};
-use crate::platforms::python::{PyChannels, PyFloat, PyUnsigned};
 use crate::renderer::platform::python::{TextureKeywords, py_to_texture_spec};
 use crate::texture::{PySamplerOptions, PyTextureSource, PyTextureUsage};
 use crate::{PySize, TextureFormat};

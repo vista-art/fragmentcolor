@@ -815,7 +815,7 @@ KTX2 stores the smallest mip last, which suits sequential loads: parse the heade
 - [ ] Each new level uploads with `queue.write_texture` at its mip level and lowers `lod_min_clamp`, with no re-creation and no new bind groups
 - [ ] `StreamingTexture::on_progress(...)` for progress bars; dropping the texture cancels its fetches
 - [ ] Web: `fetch` with a `Range` header and bounded concurrency
-- [ ] Native and mobile: a `Range` variant of `crate::net::fetch_bytes`, one worker per active stream, and backpressure when the budget runs out
+- [ ] Native and mobile: a `Range` variant of `crate::network::fetch_bytes`, one worker per active stream, and backpressure when the budget runs out
 - [ ] `Renderer::set_streaming_budget(parallel, bytes_per_sec)` with sensible defaults
 - [ ] Tests against a synthetic five-level KTX2 served from a local test server: smallest mips first, cancellation on drop, `lod_min_clamp` only ever decreasing
 - [ ] `docs/guides/streaming-textures.md` and a Hello Streaming Textures example with a 4K KTX2

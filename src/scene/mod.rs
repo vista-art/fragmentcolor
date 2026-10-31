@@ -464,7 +464,7 @@ mod tests {
             .expect("shader");
             let other = crate::Pass::new("other");
             let (pass, mesh) = (other.clone(), bare.clone());
-            crate::hooks::once("model attach", move || {
+            crate::testing::race_hooks::once("model attach", move || {
                 let model = Model::new(mesh, Material::custom(columns));
                 pass.add(&model).expect("the custom Model");
             });

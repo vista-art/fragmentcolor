@@ -301,7 +301,7 @@ impl Scene {
     ) -> Result<(), PassError> {
         pass.add(object)?;
         #[cfg(test)]
-        crate::hooks::run("scene add");
+        crate::testing::race_hooks::run("scene add");
         // TypeId equality is exact — wrapping a Camera in a user newtype
         // counts as "user-supplied" and skips the typed lane (it still rides
         // the pass as a `SceneObject`); custom types just wouldn't show up in
@@ -1388,7 +1388,7 @@ mod tests {
         let scene = Scene::new();
         scene.add_pass(&Pass::new("bg")).add_pass(&Pass::new("fx"));
         let other = scene.clone();
-        crate::hooks::once("scene add", move || {
+        crate::testing::race_hooks::once("scene add", move || {
             let names = ["sky", "hud", "post"];
             let replace = std::thread::spawn(move || {
                 other.set_passes(names.map(Pass::new).to_vec());
@@ -1449,7 +1449,7 @@ mod tests {
         let slot = renderer.clone();
         // A render on another thread starts after the camera attached and before
         // the scene records it, and gets a while to inject its own.
-        crate::hooks::once("scene add", move || {
+        crate::testing::race_hooks::once("scene add", move || {
             let (sender, receiver) = std::sync::mpsc::channel();
             let thread = std::thread::spawn(move || {
                 let _ = racing.passes();

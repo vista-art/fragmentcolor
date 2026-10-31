@@ -1,4 +1,5 @@
-//! Cross-target URL fetching helpers.
+//! Fetches text and bytes from a URL: through the browser on the web,
+//! and through ureq on desktop with the `network` feature.
 //!
 //! - **Web**: always uses `web_sys::fetch` (the browser's built-in). The
 //!   `network` Cargo feature does not affect wasm builds.

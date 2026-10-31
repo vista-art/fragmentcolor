@@ -2,7 +2,7 @@ use std::convert::Infallible;
 
 use thiserror::Error;
 
-use crate::region::error::ScreenRegionError;
+use crate::ScreenRegionError;
 
 #[derive(Error, Debug)]
 pub enum TextureError {

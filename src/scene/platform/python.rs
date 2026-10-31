@@ -4,8 +4,8 @@ use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 use pyo3::types::PyString;
 
+use crate::bindings::python::{PyChannels, PyFloat, PyUnsigned, read_numbers, read_unsigned};
 use crate::error::InvalidInputError;
-use crate::platforms::python::{PyChannels, PyFloat, PyUnsigned, read_numbers, read_unsigned};
 use crate::scene::{
     Camera, CameraError, Light, LightError, LightKind, Model, Scene, SceneLoadError,
 };

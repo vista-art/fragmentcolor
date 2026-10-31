@@ -1,18 +1,20 @@
+//! `ScreenRegion`: a rectangle of pixels on a target,
+//! such as a pass viewport, and whether two regions meet.
+
 #[cfg(wasm)]
 use crate::FcKind;
 #[cfg(wasm)]
-use crate::error::WebError;
+use crate::bindings::web::{describe, read_class, read_list, read_number};
 #[cfg(wasm)]
-use crate::platforms::web::{describe, read_class, read_list, read_number};
+use crate::error::WebError;
 #[cfg(wasm)]
 use wasm_bindgen::JsCast;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-pub mod error;
+use super::error::ScreenRegionError;
 #[cfg(wasm)]
-use crate::size::read_dimension;
-use error::ScreenRegionError;
+use crate::values::read_dimension;
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(
@@ -525,7 +527,7 @@ impl From<&ScreenRegion> for [f32; 4] {
 #[cfg(python)]
 mod python_bindings {
     use super::*;
-    use crate::platforms::python::{PyUnsigned, read_pair};
+    use crate::bindings::python::{PyUnsigned, read_pair};
     use pyo3::prelude::*;
 
     #[pymethods]
@@ -598,7 +600,7 @@ mod tests {
     // the size asked for, from every constructor that adds to a coordinate.
     #[test]
     fn refuses_a_far_edge_past_u32() {
-        use super::error::ScreenRegionError;
+        use crate::ScreenRegionError;
         let overflow = |result: Result<ScreenRegion, ScreenRegionError>| {
             matches!(result, Err(ScreenRegionError::Overflow { .. }))
         };
@@ -630,7 +632,7 @@ mod tests {
     // constructor and conversion.
     #[test]
     fn refuses_a_side_of_zero() {
-        use super::error::ScreenRegionError;
+        use crate::ScreenRegionError;
         let empty = |result: Result<ScreenRegion, ScreenRegionError>| {
             matches!(result, Err(ScreenRegionError::Empty { .. }))
         };
@@ -763,7 +765,7 @@ mod tests {
     // whether it comes field by field or as a viewport.
     #[test]
     fn refuses_reversed_bounds() {
-        use super::error::ScreenRegionError;
+        use crate::ScreenRegionError;
         let reversed = ScreenRegion {
             min_x: 8,
             min_y: 0,

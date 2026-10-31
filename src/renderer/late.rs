@@ -4,7 +4,7 @@
 use super::scope::{Caught, Fault};
 use super::{ErrorKind, RendererError};
 #[cfg(wasm)]
-use crate::platforms::web::yield_to_event_loop;
+use crate::bindings::web::yield_to_event_loop;
 use crate::texture::TextureError;
 use parking_lot::Mutex;
 use std::collections::BTreeSet;

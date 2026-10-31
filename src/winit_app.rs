@@ -1,3 +1,5 @@
+//! `App`, the winit window and event loop the Rust examples run on.
+
 #![cfg(not(wasm))]
 
 use crate::texture::TextureError;

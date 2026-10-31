@@ -164,7 +164,7 @@ pub(crate) fn share_light(
         held.push(lights);
     }
     #[cfg(test)]
-    crate::hooks::run("light checked");
+    crate::testing::race_hooks::run("light checked");
     let mut added = false;
     for lights in held.iter_mut() {
         added |= lights.push(light);

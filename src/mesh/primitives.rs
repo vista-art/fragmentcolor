@@ -4,7 +4,7 @@ use std::sync::Arc;
 use super::{Mesh, MeshObject, Vertex};
 
 #[cfg(python)]
-use crate::platforms::python::PyChannels;
+use crate::bindings::python::PyChannels;
 #[cfg(python)]
 use pyo3::prelude::*;
 

@@ -7,9 +7,9 @@ pub enum FragmentColorError {
     #[error(transparent)]
     Shader(#[from] crate::shader::error::ShaderError),
     #[error(transparent)]
-    Color(#[from] crate::color::error::ColorError),
+    Color(#[from] crate::ColorError),
     #[error(transparent)]
-    Size(#[from] crate::size::error::SizeError),
+    Size(#[from] crate::SizeError),
     #[error(transparent)]
     Pass(#[from] crate::pass::error::PassError),
     #[error(transparent)]
@@ -20,7 +20,7 @@ pub enum FragmentColorError {
     Display(#[from] crate::target::error::DisplayError),
     #[cfg(not(wasm))]
     #[error("Network Request Error: {0}")]
-    NetworkRequest(#[from] crate::net::NetworkError),
+    NetworkRequest(#[from] crate::NetworkError),
     #[cfg(wasm)]
     #[error("FragmentColor WASM Error: {0}")]
     Error(String),
@@ -174,14 +174,14 @@ macro_rules! throw_by_class {
 throw_by_class!(
     FragmentColorError,
     crate::shader::error::ShaderError,
-    crate::color::error::ColorError,
-    crate::size::error::SizeError,
+    crate::ColorError,
+    crate::SizeError,
     crate::pass::error::PassError,
     crate::renderer::error::InitializationError,
     crate::target::error::DisplayError,
     crate::mesh::MeshError,
-    crate::region::error::ScreenRegionError,
-    crate::platforms::vector::VectorError,
+    crate::ScreenRegionError,
+    crate::bindings::numbers::VectorError,
     crate::material::MaterialError,
     crate::scene::LightError,
     crate::scene::CameraError,
@@ -366,7 +366,7 @@ pub(crate) enum PythonError {
 
 #[cfg(python)]
 impl PythonError {
-    /// The class name, the same one `src/platforms/python.rs` registers it under.
+    /// The class name, the same one `src/bindings/python.rs` registers it under.
     fn name(self) -> &'static str {
         let class = match self {
             PythonError::SceneLoad => ErrorClass::SceneLoad,
@@ -460,9 +460,9 @@ mod tests {
         let e1: FragmentColorError =
             crate::shader::error::ShaderError::UniformNotFound("u".into()).into();
         let e2: FragmentColorError =
-            crate::color::error::ColorError::Invalid("a color takes 3 or 4 channels".into()).into();
+            crate::ColorError::Invalid("a color takes 3 or 4 channels".into()).into();
         let e3: FragmentColorError =
-            crate::size::error::SizeError::Invalid("a size takes 2 or 3 numbers".into()).into();
+            crate::SizeError::Invalid("a size takes 2 or 3 numbers".into()).into();
         let e6: FragmentColorError = crate::renderer::error::RendererError::NoContext.into();
         let e7: FragmentColorError =
             crate::renderer::error::InitializationError::Error("init".into()).into();
@@ -471,7 +471,7 @@ mod tests {
 
         #[cfg(not(wasm))]
         let e9: FragmentColorError = {
-            let err = crate::net::NetworkError("connection refused".into());
+            let err = crate::NetworkError("connection refused".into());
             err.into()
         };
 
@@ -490,9 +490,9 @@ mod tests {
     // Error JavaScript throws, and an error that wraps another takes the class of what it wraps.
     #[test]
     fn errors_take_the_python_class() {
-        use crate::color::error::ColorError;
+        use crate::ColorError;
+        use crate::ScreenRegionError;
         use crate::pass::error::PassError;
-        use crate::region::error::ScreenRegionError;
         use crate::renderer::error::{InitializationError, RendererError};
         use crate::scene::{LightError, SceneLoadError};
         use crate::shader::error::ShaderError;

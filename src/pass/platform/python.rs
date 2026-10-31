@@ -1,6 +1,6 @@
 #![cfg(python)]
 
-use crate::platforms::python::{PyChannels, PyUnsigned, read_list, read_pair};
+use crate::bindings::python::{PyChannels, PyUnsigned, read_list, read_pair};
 use crate::{Pass, PassObject, PassType, ScreenRegion, Shader};
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;

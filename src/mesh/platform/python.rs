@@ -4,9 +4,9 @@ use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyString};
 
+use crate::bindings::numbers;
+use crate::bindings::python::{PyChannels, PyUnsigned, read_list, read_number, read_numbers};
 use crate::mesh::{Instance, Mesh, MeshError, Vertex, VertexData};
-use crate::platforms::python::{PyChannels, PyUnsigned, read_list, read_number, read_numbers};
-use crate::platforms::vector;
 use lsp_doc::lsp_doc;
 
 /// A vertex or instance attribute from Python:
@@ -64,7 +64,7 @@ impl PyVertexPosition<'_> {
         } else {
             vec![read_number(value, label, 0)?]
         };
-        Ok(vector::read_position(numbers, label)?)
+        Ok(numbers::read_position(numbers, label)?)
     }
 }
 
