@@ -541,8 +541,6 @@ mod python_bindings {
             Ok(ScreenRegion::new(origin, size)?)
         }
 
-
-
         #[doc(hidden)]
         #[pyo3(name = "width")]
         pub fn width_py(&self) -> u32 {

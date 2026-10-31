@@ -283,9 +283,14 @@ struct ObjectProperty {
         }
     }
 
-    /// Parses a module from the filesystem
+    /// Parses a module from the filesystem.
+    /// The children of `lib.rs` and `mod.rs` sit beside them, those of `name.rs` in `name/`.
     fn parse_external_module(current_path: &Path, module_name: String) -> (PathBuf, Vec<Item>) {
-        let current_dir = current_path.parent().unwrap();
+        let parent = current_path.parent().unwrap();
+        let current_dir = match current_path.file_stem().and_then(|stem| stem.to_str()) {
+            Some(stem) if !matches!(stem, "lib" | "mod" | "main") => parent.join(stem),
+            _ => parent.to_path_buf(),
+        };
 
         let module_path = if current_dir.join(format!("{}.rs", module_name)).exists() {
             current_dir.join(format!("{}.rs", module_name))

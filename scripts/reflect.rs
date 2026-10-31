@@ -493,9 +493,12 @@ mod reflect {
         }
 
         /// Whether the impl's self type is a path into another crate.
+        /// `core`, `std` and `alloc` always count, even beside a module of that name.
         fn is_foreign(&self, imp: &ImplDef) -> bool {
             imp.self_root.as_deref().is_some_and(|root| {
-                !matches!(root, "crate" | "self" | "super" | "Self") && !self.modules.contains(root)
+                matches!(root, "core" | "std" | "alloc")
+                    || (!matches!(root, "crate" | "self" | "super" | "Self")
+                        && !self.modules.contains(root))
             })
         }
 
