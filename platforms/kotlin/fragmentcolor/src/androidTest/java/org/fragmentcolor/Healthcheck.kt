@@ -398,6 +398,41 @@ class Healthcheck : ExampleCase() {
 
     // Shader.set shapes each Kotlin value to the uniform's declared WGSL type.
     // Setting and reading uniforms touches no GPU, so this runs on any emulator.
+    // A transform reads back as four columns of four, and a nested matrix
+    // of any other shape throws and names the column.
+    @Test
+    fun matricesAreColumns() {
+        val model = Model(Mesh(), Material.pbr())
+        model.setTransform(listOf(listOf(2f, 0f, 0f, 0f), listOf(0f, 2f, 0f, 0f), listOf(0f, 0f, 2f, 0f), listOf(3f, 0f, 0f, 1f)))
+        val columns = model.transform()
+        assertEquals(4, columns.size)
+        assertEquals(listOf(3f, 0f, 0f, 1f), columns[3])
+        val camera = Camera.perspective(1f, 1f, 0.1f, 100f).lookAt(listOf(0f, 0f, 5f), listOf(0f, 0f, 0f), listOf(0f, 1f, 0f))
+        assertEquals(listOf(4, 4, 4, 4), camera.viewProj().map { it.size })
+        val shapes = listOf(
+            listOf(listOf(1f, 0f, 0f, 0f), listOf(0f, 1f, 0f, 0f), listOf(0f, 0f, 1f, 0f)),
+            listOf(listOf(1f, 0f, 0f, 0f), listOf(0f, 1f, 0f), listOf(0f, 0f, 1f, 0f), listOf(0f, 0f, 0f, 1f)),
+        )
+        for (shape in shapes) {
+            val error = assertFailsWith<FragmentColorException> { model.setTransform(shape) }
+            assertTrue(error.toString().contains("Model.setTransform"), error.toString())
+        }
+        assertFailsWith<FragmentColorException> {
+            model.setTransform(listOf(listOf(1.0, 0.0, 0.0, 0.0), listOf(0.0, 1.0, 0.0, 0.0), listOf(0.0, 0.0, Double.NaN, 0.0), listOf(0.0, 0.0, 0.0, 1.0)))
+        }
+        assertEquals(listOf(3f, 0f, 0f, 1f), model.transform()[3])
+    }
+
+    // Light.kind returns a LightKind, and Mipmap.size a Size, as in Rust.
+    @Test
+    fun kindsAndSizesAreTyped() {
+        assertEquals(LightKind.DIRECTIONAL, Light.directional(listOf(0f, -1f, 0f), listOf(1f, 1f, 1f)).kind())
+        assertEquals(LightKind.POINT, Light.point(listOf(0f, 1f, 0f), listOf(1f, 1f, 1f)).kind())
+        assertEquals(LightKind.SPOT, Light.spot(listOf(0f, 1f, 0f), listOf(0f, -1f, 0f), listOf(1f, 1f, 1f)).kind())
+        val chain = Mipmap.build(ByteArray(4 * 4 * 4), TextureFormat.RGBA8_UNORM, listOf(4u, 2u))
+        assertEquals(Size(width = 4u, height = 2u, depth = null), chain.size())
+    }
+
     @Test
     fun shaderSetShapesValues() {
         val shader = Shader(

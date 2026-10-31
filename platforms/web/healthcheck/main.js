@@ -1,6 +1,6 @@
 import init, {
   Renderer, Shader, Pass, Mesh, Vertex, Instance, Scene, Model, Material, Camera, Light, Mipmap,
-  TextureFormat, TextureUsage, ErrorKind, set_log_level,
+  TextureFormat, TextureUsage, ErrorKind, LightKind, LogLevel,
 } from "fragmentcolor";
 import * as fc from "fragmentcolor";
 
@@ -16,7 +16,7 @@ try {
   const params = new URLSearchParams(globalThis.location?.search || "");
   const verbose = params.get('verbose') || params.get('v') || '';
   if (verbose === '1' || verbose.toLowerCase() === 'true') {
-    set_log_level('debug');
+    Renderer.setLogLevel(LogLevel.Debug);
     console.log('[hc] verbose=1: log level set to debug');
   }
 } catch {}
@@ -873,7 +873,21 @@ await withModule('platforms.web.healthcheck.parity', async () => {
     // Matrices as columns, and bytes from an ArrayBuffer.
     const columns = [[2, 0, 0, 0], [0, 2, 0, 0], [0, 0, 2, 0], [3, 0, 0, 1]];
     model.setTransform(columns);
-    same('Model.transform after columns', model.transform(), columns.flat());
+    const transform = model.transform();
+    if (transform.length !== 4 || transform.some((column) => column.length !== 4)) fail('Model.transform is not 4 columns of 4');
+    same('Model.transform after columns', transform.flatMap((column) => Array.from(column)), columns.flat());
+    const viewProj = Camera.perspective(1, 1, 0.1, 100).lookAt([0, 0, 5], [0, 0, 0], [0, 1, 0]).viewProj();
+    if (viewProj.length !== 4 || viewProj.some((column) => column.length !== 4)) fail('Camera.viewProj is not 4 columns of 4');
+
+    // Light.kind returns a LightKind, and the log level takes a LogLevel.
+    if (Light.directional([0, -1, 0], [1, 1, 1]).kind() !== LightKind.Directional) fail('Light.kind of a directional light');
+    if (Light.point([0, 1, 0], [1, 1, 1]).kind() !== LightKind.Point) fail('Light.kind of a point light');
+    if (Light.spot([0, 1, 0], [0, -1, 0], [1, 1, 1]).kind() !== LightKind.Spot) fail('Light.kind of a spot light');
+    Renderer.setLogLevel(LogLevel.Warn);
+    Renderer.setLogLevel(LogLevel.Info);
+    throws("Renderer.setLogLevel('debug')", () => Renderer.setLogLevel('debug'));
+    throws('Renderer.setLogLevel(9)', () => Renderer.setLogLevel(9));
+    if (typeof fc.set_log_level !== 'undefined') fail('set_log_level is still a free function');
     const shader = new Shader(`
 struct Data { items: array<vec4<f32>, 2> };
 @group(0) @binding(0) var<storage, read> data: Data;
@@ -901,6 +915,8 @@ struct Data { items: array<vec4<f32>, 2> };
     const chain = Mipmap.build(new Uint8Array(4 * 4 * 4), TextureFormat.Rgba8Unorm, [4, 4]);
     const levels = chain.levels();
     if (levels.length !== chain.count() || !(levels[0] instanceof Uint8Array)) fail('Mipmap.levels is wrong');
+    const chainSize = chain.size();
+    if (chainSize.width !== 4 || chainSize.height !== 4 || chainSize.depth !== undefined) fail('Mipmap.size is not a 2D Size');
 
     // Enum and index arguments are checked, where undefined, NaN, strings and fractions read as a code.
     throws('Mipmap.level(1.5)', () => chain.level(1.5));

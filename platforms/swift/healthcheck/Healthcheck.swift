@@ -527,6 +527,46 @@ final class Healthcheck: ExampleCase {
             .metallicRoughnessTexture("examples/assets/logo.png", .rgba8Unorm)
     }
 
+    // A transform reads back as four columns of four, and a nested matrix
+    // of any other shape throws and names the column.
+    func testMatricesAreColumns() throws {
+        let model = Model(Mesh(), Material.pbr())
+        try model.setTransform([[2, 0, 0, 0], [0, 2, 0, 0], [0, 0, 2, 0], [3, 0, 0, 1]] as [[Float]])
+        let columns = model.transform()
+        try assertEqual(columns.count, 4, "Model.transform columns")
+        try assertEqual(columns[3], [3, 0, 0, 1], "Model.transform translation")
+        let camera = try Camera.perspective(1, 1, 0.1, 100).lookAt([0, 0, 5], [0, 0, 0], [0, 1, 0])
+        try assertEqual(camera.viewProj().map { $0.count }, [4, 4, 4, 4], "Camera.viewProj shape")
+        let shapes: [[[Float]]] = [
+            [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]],
+            [[1, 0, 0, 0], [0, 1, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
+        ]
+        for shape in shapes {
+            do {
+                try model.setTransform(shape)
+                throw HealthcheckError.assertion("Model.setTransform(\(shape)) should throw")
+            } catch let FragmentColorError.Render(message) {
+                guard message.hasPrefix("Model.setTransform") else {
+                    throw HealthcheckError.assertion("unexpected message: \(message)")
+                }
+            }
+        }
+        do {
+            try model.setTransform([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, .nan, 0], [0, 0, 0, 1]] as [[Double]])
+            throw HealthcheckError.assertion("Model.setTransform with NaN should throw")
+        } catch is FragmentColorError {}
+        try assertEqual(model.transform()[3], [3, 0, 0, 1], "a refused matrix leaves the transform")
+    }
+
+    // Light.kind returns a LightKind, and Mipmap.size a Size, as in Rust.
+    func testKindsAndSizesAreTyped() throws {
+        try assertEqual(Light.directional([0, -1, 0], [1, 1, 1]).kind(), .directional, "directional kind")
+        try assertEqual(Light.point([0, 1, 0], [1, 1, 1]).kind(), .point, "point kind")
+        try assertEqual(Light.spot([0, 1, 0], [0, -1, 0], [1, 1, 1]).kind(), .spot, "spot kind")
+        let chain = try Mipmap.build(Data(repeating: 0, count: 4 * 4 * 4), .rgba8Unorm, [4, 2])
+        try assertEqual(chain.size(), Size(width: 4, height: 2, depth: nil), "Mipmap.size")
+    }
+
     // A region of 3 numbers throws, as in Kotlin, where it stopped the app.
     func testTextureRegionRefusesBadLengths() throws {
         do {

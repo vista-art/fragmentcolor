@@ -6,6 +6,7 @@ import numpy as np
 from fragmentcolor import (
     BindingError,
     Camera,
+    CameraError,
     CompareFunction,
     DeviceError,
     EntryError,
@@ -15,7 +16,10 @@ from fragmentcolor import (
     Instance,
     InvalidInputError,
     Light,
+    LightError,
+    LightKind,
     LimitError,
+    LogLevel,
     MalformedImageError,
     Material,
     MaterialError,
@@ -1087,11 +1091,42 @@ def check_scene_errors():
 
 
 def check_stub():
-    """The stub leaves out the binding plumbing that dispatch no longer calls."""
+    """The stub leaves out the binding plumbing that dispatch no longer calls,
+    and gives each exception the builtin base it has at run time."""
     stub = (Path(__file__).parent / "fragmentcolor" / "fragmentcolor.pyi").read_text()
     for plumbing in ("def passes(", "def renderable_type("):
         assert plumbing not in stub, f"the stub still lists {plumbing}"
-    print("The stub has no passes or renderable_type")
+    for error, builtin in (
+        (CameraError, ValueError),
+        (LightError, ValueError),
+        (MaterialError, ValueError),
+        (SceneLoadError, RuntimeError),
+    ):
+        assert issubclass(error, builtin), f"{error.__name__} is no {builtin.__name__}"
+        line = f"class {error.__name__}(FragmentColorError, {builtin.__name__}):"
+        assert line in stub, f"the stub lacks {line!r}"
+    print("The stub has no passes or renderable_type, and names each builtin base")
+
+
+def check_typed_returns():
+    """Light.kind returns a LightKind, Mipmap.size a Size, and matrices four columns of four."""
+    assert Light.directional([0, -1, 0], [1, 1, 1]).kind() == LightKind.Directional
+    assert Light.point([0, 1, 0], [1, 1, 1]).kind() == LightKind.Point
+    assert Light.spot([0, 1, 0], [0, -1, 0], [1, 1, 1]).kind() == LightKind.Spot
+    chain = Mipmap.build(bytes(4 * 2 * 4), TextureFormat.Rgba8Unorm, [4, 2])
+    assert isinstance(chain.size(), Size), type(chain.size())
+    assert (chain.size().width, chain.size().height, chain.size().depth) == (4, 2, None)
+    camera = Camera.perspective(1.0, 1.0, 0.1, 100.0).look_at([0, 0, 5], [0, 0, 0], [0, 1, 0])
+    assert [len(column) for column in camera.view_proj()] == [4, 4, 4, 4]
+    Renderer.set_log_level(LogLevel.Debug)
+    Renderer.set_log_level(LogLevel.Info)
+    try:
+        Renderer.set_log_level("debug")
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("Renderer.set_log_level('debug') should raise TypeError")
+    print("Light.kind, Mipmap.size and Renderer.set_log_level take and return typed values")
 
 
 # Green when `id` arrives as the u32 16777217 and `cell` as the vec2<i32> (-1, 2), red otherwise.
@@ -1479,6 +1514,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_invalid_textures(renderer)
     check_scene_errors()
     check_stub()
+    check_typed_returns()
 
     # Push constants smoke: solid color via var<immediate>
     pc_shader = Shader("""
