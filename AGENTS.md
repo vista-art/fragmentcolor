@@ -88,6 +88,24 @@ Big‑picture architecture (how things fit together)
     - `publish_android.yml` → GitHub Release asset `fragmentcolor-<version>.aar` (Maven Central publishing is follow-up work).
     - `post_publish_update.yml` waits for npm and PyPI, deletes `release/vX.Y.Z`, and opens a PR that bumps consumer dependency ranges and copies the tag's `Package.swift` pin to `main`.
 
+Source layout (src/)
+- src/ mirrors the docs/api categories, in the docs' order:
+  - `core/`: `Renderer`, `Shader` and `Pass`, each in a folder of its own.
+  - `geometry/`: `Mesh`, `Vertex`, `Instance` and `Quad`, and how a mesh packs its vertices and uploads them.
+  - `scene/`: `Scene`, `Model`, `Camera`, `Light` and `Material`, the `SceneObject` trait, and the glTF loader that fills a `Scene`.
+  - `targets/`: `WindowTarget`, `TextureTarget`, `RenderTarget` and `HeadlessWindow`, and the `Target` trait every render destination implements.
+  - `texture/`: `Texture`, `Mipmap`, `TextureFormat`, `SamplerOptions` and `TextureRegion`, and how a texture loads, registers, reads, writes and resizes.
+- The folders with no docs category:
+  - `values/`: the value types `Size`, `Color` and `ScreenRegion`, and their errors.
+  - `bindings/`: what every language binding shares: the Python module, the wasm entry point, the number rules in `numbers.rs` and the JavaScript class brand.
+  - `error/`: `FragmentColorError` and `Classify`, the class each binding raises an error as, with each binding's error type in `error/platform/`.
+  - `testing/`: test support several modules share, such as the race hooks and the small test device, compiled only for tests.
+  - The rest sits at the root: `lib.rs`, `guides.rs` (the docs/guides pages, run as doctests), `network.rs`, `conversion_macros.rs`, `winit_app.rs` and `bin/uniffi-bindgen.rs`.
+- A file or folder is named for what it holds, in one or two plain words, qualifier first. A category folder declares one file or folder per docs object, and an object folder keeps its object in `mod.rs`. Every module with children is `name/mod.rs`.
+- Binding shims live in the `platform/` folder of the module they serve, with a `web`, `python` or `mobile` file or folder for each binding it serves. The value types keep theirs in their own files, under `#[cfg(wasm)]` and `#[cfg(python)]`.
+- Long tests go in the module's `tests/` folder, with the fixtures they share in `tests/mod.rs`. `scripts/no_panics.rs` exempts whole files only under a `tests` folder. Short tests stay inline in a trailing `#[cfg(test)] mod tests`.
+- Every module `lib.rs` declares is private except `fragmentcolor::guides`. `lib.rs` re-exports the public types through one path-shaped `pub use` per module, such as `pub use scene::*;`, never a grouped `pub use {...}`, since that path is how `scripts/codegen.rs` reaches a private module. It writes `pub use self::core::*;` because a bare `core` there is ambiguous with the `core` crate. No other module takes a dependency crate's name: the KTX2 reader is `ktx2_loader.rs` and the winit shim is `winit_window.rs`.
+
 Module‑level invariants (authoritative AGENTS.md files)
 - These short rule files are the source of truth for non‑negotiable behavior. Do not introduce code that violates them.
   - docs/api/AGENTS.md (canonical doc source: no numeric type suffixes in literals, hidden lines and per-language hidden blocks, patterns the transpiler can / can't translate, no drift tolerance)
