@@ -484,20 +484,19 @@ mod tests {
         });
     }
 
-    // Story: a PBR input finds its attribute by name, then by the attribute's own
-    // location, so a mesh without one fails naming the input, or naming the
-    // attribute at that location when its type doesn't fit, as the Model docs say.
+    // Story: a PBR input finds its attribute by name, then by the location the attribute
+    // took, so an attribute under another name that fits stands in for a missing one,
+    // and a mesh with neither fails naming the input, or the attribute that doesn't fit.
     #[test]
     fn a_partial_pbr_mesh_names_what_it_lacks() {
         let corners = [[0.0, 0.5, 0.0], [-0.5, -0.5, 0.0], [0.5, -0.5, 0.0]];
-        let refuse = |vertex: fn([f32; 3]) -> Vertex| {
+        let attach = |vertex: fn([f32; 3]) -> Vertex| {
             let mesh = Mesh::new();
             mesh.add_vertices(corners.map(vertex));
-            let error = crate::Pass::new("pbr")
-                .add(&Model::new(mesh, pbr_material()))
-                .expect_err("a partial mesh");
-            error.to_string()
+            let pass = crate::Pass::new("pbr");
+            pass.add(&Model::new(mesh, pbr_material())).map(drop)
         };
+        let refuse = |vertex| attach(vertex).expect_err("a partial mesh").to_string();
 
         let unnamed = refuse(|corner| {
             Vertex::new(corner)
@@ -505,9 +504,19 @@ mod tests {
                 .set(Vertex::UV0, [0.0, 0.0])
         });
         let misplaced = refuse(|corner| Vertex::new(corner).set(Vertex::UV0, [0.0, 0.0]));
+        // `normals` takes location 1, where the shader reads `normal`.
+        let standing = attach(|corner| {
+            Vertex::new(corner)
+                .set("normals", [0.0, 0.0, 1.0])
+                .set(Vertex::UV0, [0.0, 0.0])
+                .set(Vertex::COLOR0, [1.0, 1.0, 1.0, 1.0])
+                .set(Vertex::UV1, [0.0, 0.0])
+                .set(Vertex::TANGENT, [1.0, 0.0, 0.0, 1.0])
+        });
 
         assert!(unnamed.contains("'color0' @location(7)"), "{unnamed}");
         assert!(misplaced.contains("uv0: expected vec3<f32>"), "{misplaced}");
+        assert!(standing.is_ok(), "{standing:?}");
     }
 
     // Story: a Model the material refuses leaves its mesh with no instance layout.
