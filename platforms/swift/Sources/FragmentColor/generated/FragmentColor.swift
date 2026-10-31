@@ -9396,7 +9396,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_renderer_createstoragetexture() != 24062) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_renderer_createtexture() != 25288) {
+    if (uniffi_fragmentcolor_checksum_method_renderer_createtexture() != 45153) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_renderer_createtexturetarget() != 63315) {
@@ -9456,10 +9456,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_shader_validatemesh() != 39812) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mesh_addinstance() != 53644) {
+    if (uniffi_fragmentcolor_checksum_method_instance_set() != 44981) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mesh_addinstances() != 59080) {
+    if (uniffi_fragmentcolor_checksum_method_mesh_addinstance() != 44675) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_mesh_addinstances() != 8110) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_mesh_addvertex() != 58142) {
@@ -9483,10 +9486,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_quad_getmesh() != 32581) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_instance_set() != 38756) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_vertex_createinstance() != 28229) {
+    if (uniffi_fragmentcolor_checksum_method_vertex_createinstance() != 61338) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_vertex_set() != 8037) {
@@ -9555,7 +9555,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_material_basecolor() != 12809) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_basecolorsource() != 44087) {
+    if (uniffi_fragmentcolor_checksum_method_material_basecolorsource() != 55328) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_material_basecolortexture() != 49707) {
@@ -9567,7 +9567,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_material_emissive() != 2618) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_emissivesource() != 51079) {
+    if (uniffi_fragmentcolor_checksum_method_material_emissivesource() != 48173) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_material_emissivetexture() != 48836) {
@@ -9576,7 +9576,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_material_metallic() != 49634) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_metallicroughnesssource() != 51374) {
+    if (uniffi_fragmentcolor_checksum_method_material_metallicroughnesssource() != 19854) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_material_metallicroughnesstexture() != 61346) {
@@ -9585,13 +9585,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_material_normalscale() != 63544) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_normalsource() != 50376) {
+    if (uniffi_fragmentcolor_checksum_method_material_normalsource() != 48890) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_material_normaltexture() != 64640) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_material_occlusionsource() != 54376) {
+    if (uniffi_fragmentcolor_checksum_method_material_occlusionsource() != 34202) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_material_occlusionstrength() != 62867) {
@@ -9714,21 +9714,6 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_windowtarget_size() != 30921) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mipmap_count() != 17756) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_mipmap_format() != 21775) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_mipmap_level() != 31084) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_mipmap_levels() != 15349) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_method_mipmap_size() != 31406) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_fragmentcolor_checksum_method_texture_aspect() != 39032) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -9750,7 +9735,22 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_texture_write() != 36263) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texture_writeregion() != 35617) {
+    if (uniffi_fragmentcolor_checksum_method_texture_writeregion() != 25011) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_mipmap_count() != 17756) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_mipmap_format() != 21775) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_mipmap_level() != 31084) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_mipmap_levels() != 15349) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_mipmap_size() != 31406) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_pass_compute() != 40769) {
@@ -9786,6 +9786,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_constructor_shader_useregistry() != 31433) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_fragmentcolor_checksum_constructor_instance_new() != 3338) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_fragmentcolor_checksum_constructor_mesh_fromvertices() != 43124) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -9793,9 +9796,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_quad_new() != 28561) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_fragmentcolor_checksum_constructor_instance_new() != 18404) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_vertex_new() != 2336) {
@@ -9837,7 +9837,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_constructor_scene_new() != 58352) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_constructor_mipmap_build() != 49197) {
+    if (uniffi_fragmentcolor_checksum_constructor_mipmap_build() != 33453) {
         return InitializationResult.apiChecksumMismatch
     }
 
