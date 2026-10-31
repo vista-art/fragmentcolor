@@ -231,6 +231,10 @@ class Healthcheck : ExampleCase() {
         assertFailsWith<FragmentColorException> { pass.setViewport(reversed) }
         assertFailsWith<FragmentColorException> { TextureRegion.from(reversed) }
         pass.setViewport(listOf(0u, 0u, 4u, 4u))
+        // An origin and a size as two pairs, as Rust's ((x, y), (w, h)) reads them.
+        pass.setViewport(listOf(listOf(8u, 0u), listOf(2u, 4u)))
+        assertFailsWith<FragmentColorException> { pass.setViewport(listOf(listOf(0u, 0u), listOf(0u, 4u))) }
+        assertFailsWith<FragmentColorException> { pass.setViewport(listOf(listOf(0u, 0u))) }
         pass.setClearColor(floatArrayOf(0.1f, 0.2f, 0.3f))
         pass.setClearColor(doubleArrayOf(0.1, 0.2, 0.3, 1.0))
         pass.setClearColor(listOf(0.1, 0.2, 0.3))

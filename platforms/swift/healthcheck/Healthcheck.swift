@@ -347,6 +347,8 @@ final class Healthcheck: ExampleCase {
             throw HealthcheckError.assertion("TextureRegion.from of a reversed region should throw")
         } catch is FragmentColorError {}
         try pass.setViewport([0, 0, 4, 4] as [UInt32])
+        // An origin and a size as two pairs, as Rust's ((x, y), (w, h)) reads them.
+        try pass.setViewport([(8, 0), (2, 4)])
         try pass.setClearColor([0.1, 0.2, 0.3] as [Double])
         try pass.setClearColor([0.1, 0.2, 0.3, 1.0] as [Float])
     }

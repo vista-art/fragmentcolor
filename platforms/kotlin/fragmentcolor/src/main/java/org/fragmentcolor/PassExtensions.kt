@@ -108,6 +108,21 @@ fun Pass.setViewport(rect: List<UInt>) {
 }
 
 /**
+ * Set the viewport from an origin and a size, `listOf(listOf(x, y), listOf(width, height))`,
+ * as Rust's `((x, y), (w, h))` and `ScreenRegion(origin, size)` read them.
+ * Throws [FragmentColorException] unless it holds two pairs, and for a side of 0.
+ */
+@JvmName("setViewportPairs")
+fun Pass.setViewport(originAndSize: List<List<UInt>>) {
+    if (originAndSize.size != 2) {
+        throw FragmentColorException.Render(
+            "setViewport: expected [[x, y], [width, height]], got ${originAndSize.size} pairs",
+        )
+    }
+    setViewport(ScreenRegion(originAndSize[0], originAndSize[1]))
+}
+
+/**
  * A region at [origin] `[x, y]` that is [size] `[width, height]` large,
  * as Rust's `ScreenRegion::new(origin, size)` reads them.
  * Throws [FragmentColorException] unless each holds two numbers, for a side of 0,
