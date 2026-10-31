@@ -12,7 +12,7 @@ let shader = try Shader("""
 let vertex = try Vertex([0.0, 0.5]).set("id", 7).set("weight", 0.5)
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     vertex,
     try Vertex([-0.5, -0.5]).set("id", 8).set("weight", 1.0),
     try Vertex([0.5, -0.5]).set("id", 9).set("weight", 1.0),

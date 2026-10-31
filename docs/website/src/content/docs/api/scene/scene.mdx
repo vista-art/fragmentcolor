@@ -184,8 +184,7 @@ animated key/fill setup) the embedded ones would only fight for the same
 shader uniforms. Load through `gltf(...)` to get a builder with `cameras(false)`
 and `lights(false)` toggles:
 
-```rust,no_run collapse={1-1, 15-16}
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+```rust,no_run
 use fragmentcolor::{Camera, Scene, SceneSource};
 
 // Load geometry + materials only; drop the file's camera and lights.
@@ -199,8 +198,6 @@ let scene = Scene::load(
 let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)?
     .look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
 scene.add(&camera)?;
-Ok(())
-}
 ```
 
 The other bindings take the same two switches with `Scene.load`. Both
@@ -231,8 +228,6 @@ for the duration. Two implications:
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-let glb_bytes: Vec<u8> = std::fs::read("path/to/model.glb")?;
 use fragmentcolor::Scene;
 
 // A path to a \`.gltf\` file with its buffers and images, or to a \`.glb\` file.
@@ -240,11 +235,8 @@ let scene = Scene::load("path/to/model.gltf")?;
 
 // The bytes of a \`.glb\` file, read from disk or the network.
 let scene2 = Scene::load(glb_bytes)?;
-let _ = (scene, scene2);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-2, 10-12}"
+lang="rust"
 />
 
 </TabItem>
@@ -349,9 +341,8 @@ use fragmentcolor::Scene;
 
 let scene = Scene::new();
 // scene is empty; add Models / Cameras / Lights with \`scene.add(...)\`.
-let _ = scene;
 `}
-lang="rust" meta="collapse={5-5}"
+lang="rust"
 />
 
 </TabItem>
@@ -457,7 +448,6 @@ the first frame renders something recognizable. Add your own to take over.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Camera, Light, Material, Mesh, Model, Renderer, Scene, Vertex};
 
 let renderer = Renderer::new();
@@ -482,12 +472,8 @@ scene.add(&sun)?;
 // Updating the camera later is enough. Every shader on the scene picks
 // up the new view_proj at the next render.
 camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
-let _ = renderer;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 26-29}"
+lang="rust"
 />
 
 </TabItem>
@@ -560,7 +546,7 @@ import FragmentColor
 let renderer = Renderer()
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -641,7 +627,6 @@ leaves the pass and its mesh as they were, as with `add`.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Pass, Scene, Vertex};
 
 let mesh = Mesh::new();
@@ -657,11 +642,8 @@ scene.add_pass(&Pass::new("geometry"));
 
 // Target the pass by name (or pass its index: scene.add_to(0, &model)).
 scene.add_to("geometry", &model)?;
-assert_eq!(scene.models().len(), 1);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 17-19}"
+lang="rust"
 />
 
 </TabItem>
@@ -716,7 +698,7 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -782,7 +764,6 @@ order; user-added Models appear after.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Scene, Vertex};
 
 let mesh = Mesh::new();
@@ -801,10 +782,8 @@ scene.add(&model)?;
 for m in scene.models() {
     m.set_visible(false);
 }
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 20-21}"
+lang="rust"
 />
 
 </TabItem>
@@ -862,7 +841,7 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -936,7 +915,6 @@ frame can grab `scene.cameras().first()` and call `look_at` on it.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Scene;
 
 let scene = Scene::load("path/to/model.glb")?;
@@ -948,10 +926,8 @@ for camera in scene.cameras() {
     camera.look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
     camera.set_aspect(16.0 / 9.0)?;
 }
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 13-14}"
+lang="rust"
 />
 
 </TabItem>
@@ -1065,7 +1041,6 @@ the default and tweak it instead of supplanting it.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Scene;
 
 let scene = Scene::load("path/to/model.glb")?;
@@ -1075,10 +1050,8 @@ for light in scene.lights() {
     let current = light.intensity();
     light.set_intensity(current * 0.5);
 }
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 11-12}"
+lang="rust"
 />
 
 </TabItem>
@@ -1184,7 +1157,6 @@ Returns a handle to the same Scene (Arc-shared) for chaining.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Light, Material, Mesh, Model, Renderer, Scene, Vertex};
 
 let renderer = Renderer::new();
@@ -1204,11 +1176,8 @@ scene.add(&Model::new(mesh, Material::pbr()))?;
 scene.add(&Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]))?;
 
 renderer.render(&scene, &target)?;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 21-23}"
+lang="rust"
 />
 
 </TabItem>
@@ -1274,7 +1243,7 @@ let renderer = Renderer()
 let target = try await renderer.createTextureTarget([64, 64])
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1367,7 +1336,6 @@ them through the same `set_target(...)` and use `load_previous` to compose.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Pass, Renderer, Scene, Vertex};
 
 let renderer = Renderer::new();
@@ -1387,13 +1355,8 @@ backdrop.set_clear_color([0.05, 0.08, 0.12, 1.0])?;
 let scene = Scene::new();
 scene.add_pass(&backdrop);
 scene.add(&model)?;
-
-let _ = renderer;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 22-25}"
+lang="rust"
 />
 
 </TabItem>
@@ -1460,7 +1423,7 @@ import FragmentColor
 let renderer = Renderer()
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -1528,7 +1491,6 @@ default pass at the end of the graph.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Pass, Scene};
 
 let scene = Scene::new();
@@ -1539,12 +1501,8 @@ scene.add_pass(&overlay);
 
 // Drop the backdrop; the overlay stays.
 let removed = scene.remove_pass(&backdrop);
-assert!(removed);
-assert_eq!(scene.list_passes().len(), 1);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 12-15}"
+lang="rust"
 />
 
 </TabItem>
@@ -1647,7 +1605,6 @@ live pass, no re-insert needed. To borrow the whole graph at once, use
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Pass, Scene};
 
 let scene = Scene::new();
@@ -1657,15 +1614,8 @@ scene.add_pass(&Pass::new("geometry"));
 // Fetch the second pass (index 1) to reconfigure it. An out-of-range
 // index returns None instead.
 let geometry = scene.get_pass(1);
-assert!(geometry.is_some());
-assert!(scene.get_pass(2).is_none());
-if let Some(pass) = geometry {
-    pass.load_previous();
-}
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 11-17}"
+lang="rust"
 />
 
 </TabItem>
@@ -1768,7 +1718,6 @@ configuring it drives the pass the Scene renders.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Pass, Scene};
 
 let scene = Scene::new();
@@ -1778,12 +1727,8 @@ scene.add_pass(&Pass::new("geometry"));
 // Look the geometry pass up by name to reconfigure it. A name with no
 // match returns None instead.
 let geometry = scene.find_pass("geometry");
-assert!(geometry.is_some());
-assert!(scene.find_pass("missing").is_none());
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 11-14}"
+lang="rust"
 />
 
 </TabItem>
@@ -1886,7 +1831,6 @@ the renderer alongside whatever else the frame needs.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Scene, Vertex};
 
 let mesh = Mesh::new();
@@ -1902,10 +1846,8 @@ scene.add(&Model::new(mesh, Material::pbr()))?;
 for p in scene.list_passes() {
     p.load_previous();
 }
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 17-18}"
+lang="rust"
 />
 
 </TabItem>
@@ -1957,7 +1899,7 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -2020,7 +1962,6 @@ drop it, the Scene forgets it and the next `add` builds a fresh one at the end.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Pass, Scene};
 
 let scene = Scene::new();
@@ -2032,11 +1973,8 @@ scene.set_passes(vec![
     Pass::new("geometry"),
     Pass::new("overlay"),
 ]);
-assert_eq!(scene.list_passes().len(), 3);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 13-15}"
+lang="rust"
 />
 
 </TabItem>
@@ -2106,7 +2044,11 @@ val scene = Scene()
 scene.addPass(Pass("scratch"))
 
 // Swap in a deliberate order: shadow map, then geometry, then overlay.
-scene.setPasses(arrayOf(Pass("shadow"), Pass("geometry"), Pass("overlay"),))
+scene.setPasses(arrayOf(
+    Pass("shadow"),
+    Pass("geometry"),
+    Pass("overlay"),
+))
 `}
 lang="kotlin"
 />
@@ -2141,7 +2083,6 @@ and [`set_default_light`](/api/scene/scene#set_default_light).
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Scene, Vertex};
 
 let mesh = Mesh::new();
@@ -2158,10 +2099,8 @@ scene.no_defaults();
 for p in scene.list_passes() {
     p.load_previous();
 }
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 18-19}"
+lang="rust"
 />
 
 </TabItem>
@@ -2215,7 +2154,7 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -2279,7 +2218,6 @@ keep injection on but supply your own camera, use
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Scene, Vertex};
 
 let mesh = Mesh::new();
@@ -2292,10 +2230,8 @@ let scene = Scene::new();
 scene.add(&Model::new(mesh, Material::pbr()))?;
 
 scene.no_default_camera();
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 14-15}"
+lang="rust"
 />
 
 </TabItem>
@@ -2344,7 +2280,7 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -2400,7 +2336,6 @@ keep injection on but supply your own light, use
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Scene, Vertex};
 
 let mesh = Mesh::new();
@@ -2413,10 +2348,8 @@ let scene = Scene::new();
 scene.add(&Model::new(mesh, Material::pbr()))?;
 
 scene.no_default_light();
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 14-15}"
+lang="rust"
 />
 
 </TabItem>
@@ -2465,7 +2398,7 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -2522,7 +2455,6 @@ the camera you pass.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Camera, Material, Mesh, Model, Scene, Vertex};
 
 let mesh = Mesh::new();
@@ -2537,10 +2469,8 @@ scene.add(&Model::new(mesh, Material::pbr()))?;
 let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)?
     .look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])?;
 scene.set_default_camera(&camera);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 16-17}"
+lang="rust"
 />
 
 </TabItem>
@@ -2591,7 +2521,7 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),
@@ -2650,7 +2580,6 @@ the light you pass.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Light, Material, Mesh, Model, Scene, Vertex};
 
 let mesh = Mesh::new();
@@ -2664,10 +2593,8 @@ scene.add(&Model::new(mesh, Material::pbr()))?;
 
 let key = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 scene.set_default_light(&key);
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 15-16}"
+lang="rust"
 />
 
 </TabItem>
@@ -2718,7 +2645,7 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-try mesh.addVertices([
+mesh.addVertices([
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
     try Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
     try Vertex.pbr([0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]),

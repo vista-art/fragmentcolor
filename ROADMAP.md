@@ -26,15 +26,15 @@ Open decisions, further down, lists the choices still open, each with a recommen
 Items found while reviewing 0.12.6.
 
 - [ ] Lift the `wasm-bindgen` pin (`=0.2.118`): `impl_js_bridge!` hands `RefFromWasmAbi` a raw `u32`, and 0.2.126 changed that ABI to `WasmPtr`. Update the macro, or move it to wasm-bindgen's public `TryFromJsValue`
-- [ ] `headless_window` is a free function that only the window-target doctests use. Make it a method on an object, or let those doctests compile without running
+- [x] `headless_window` is the constructor `HeadlessWindow::new`, so the public API has no free function. Only the window-target doctests and tests use it (0.12.7)
 - [x] Remove `Renderer::create_external_texture` until it works. Every binding returns "not implemented yet", and an API that does nothing doesn't belong in the public surface
-- [ ] Doc comments that describe planned behavior state what the code does: `SceneSource` in `src/scene/loader.rs` and `set_sampler_options` in `src/texture/platform/mobile.rs`
-- [ ] The Swift transpiler picks `try` from the overload a call resolves to, where it merges `throws` across every overload of a name. Today `mesh.addInstance(instance)` gets a `try` that Swift warns about, because the attribute-pair `addInstance` overloads throw
+- [x] Doc comments that described planned behavior state what the code does: `SceneSource` in `src/scene/loader.rs` and `set_sampler_options` in `src/texture/platform/mobile.rs` (0.12.7)
+- [x] The Swift transpiler picks `try` and `await` from the overloads a call's arguments fit, by count and by the shape of each argument, where it merged `throws` across every overload of a name. The generated examples compile with no `try` or `await` that Swift warns about (0.12.7)
 - [ ] The public `From` conversions between `wgpu::Extent3d` and `Size` go, as rule 14 asks. `ScreenRegion`'s went in 0.12.7
-- [ ] The website's Rust tabs hide a doctest's `#` lines
+- [x] The website's Rust tabs leave a doctest's `#` lines out, as rustdoc does (0.12.7)
 - [x] `UniformData` can be named outside the crate, so a helper can forward one value to `Shader::set` on several shaders
-- [ ] uniffi warns that `uniffi.toml` looks like an old-style config file; move it to the current layout
-- [ ] The Kotlin transpiler flattens a multi-line list of shader slugs into `SHADER,))`. It compiles, but the generated tab reads wrong; `scripts/convert.rs` keeps each item on its own line
+- [x] uniffi no longer warns that `uniffi.toml` looks like an old-style config file. The build tools pass no `--config`, and uniffi reads the crate's own `uniffi.toml` from the crate root (0.12.7)
+- [x] The Kotlin transpiler keeps a list written one item per line in that layout, comments included, where it flattened a list of shader slugs into `SHADER,))` (0.12.7)
 - [x] A pass that draws models and sets no depth target draws with a pooled depth buffer that matches its color attachment, and a depth target the app sets wins
 - [x] Swift extensions throw where they stopped the app with `preconditionFailure` on input they can't read, as rule 5 asks: `Vertex.set` and `Instance.set` since 0.12.6, and `setViewport`, the `ScreenRegion` inits and `TextureRegion.from` since 0.12.7
 - [x] `Texture::resize` for textures a pass draws into, in every binding. Clones, pass targets, shader uniforms and `TextureTarget::texture()` handles follow it and `TextureTarget::resize`

@@ -3,7 +3,7 @@ import QuartzCore
 let canvas = CAMetalLayer()
 
 let renderer = Renderer()
-let target = try await renderer.createTarget(canvas)
+let target = try renderer.createTarget(canvas)
 let shader = Shader.default()
 try renderer.render(shader, target)
 

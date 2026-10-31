@@ -8,4 +8,4 @@ try mesh.addVertices([
 ])
 
 let instance = try Instance().set("offset", [0.5, 0.0])
-try mesh.addInstance(instance)
+mesh.addInstance(instance)

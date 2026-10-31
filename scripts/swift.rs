@@ -25,20 +25,22 @@ mod swift {
     //!     when an unlabeled init takes those arguments.
     //! 13. `f((a, b))` → `f(a, b)`, a Rust tuple argument spread
     //!     where an unlabeled overload takes its items.
-    //! 14. `try` / `await` before a statement whose calls throw or suspend.
+    //! 14. `try` / `await` before a statement whose calls throw or suspend. A call
+    //!     takes the effects of the overloads its arguments fit, by count and by the
+    //!     shape of each argument, so a non-throwing overload gets no `try`.
     //!
     //! Rule 8 reads the `From` impls of the types uniffi exports for iOS.
     //! It renames nothing today, since every stand-in exports under its crate type's name.
     //! Rules 12 to 14 read the uniffi exports for iOS
     //! and the declarations in the hand-written `*+Extensions.swift` files.
 
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
 
     use crate::reflect::{Build, CallKind, Reflection, StandIn};
     use crate::source_text::{
         Nesting, arg_spans, closing, code_only, drop_semicolon_before_comment, extension_files,
-        is_ident_char, read_ident, skip_space, split_args, string_end, top_level_words,
+        is_ident_char, opening, read_ident, skip_space, split_args, string_end, top_level_words,
     };
 
     /// The extension files that add Swift overloads on top of uniffi's.
@@ -53,12 +55,15 @@ mod swift {
     struct Effects {
         is_async: bool,
         throws: bool,
+        /// Whether some call these effects merge has no declaration the facts know.
+        unknown: bool,
     }
 
     impl Effects {
         fn merge(&mut self, other: Effects) {
             self.is_async |= other.is_async;
             self.throws |= other.throws;
+            self.unknown |= other.unknown;
         }
 
         fn keyword(self) -> Option<&'static str> {
@@ -81,7 +86,45 @@ mod swift {
         unlabeled: Option<Vec<String>>,
         /// How many of those parameters a call must pass, and how many it may.
         arity: Option<(usize, usize)>,
+        /// Every parameter, or `None` when the declaration can't be read.
+        params: Option<Vec<Param>>,
+        /// The type a call returns, when it is one named type.
+        returns: Option<String>,
     }
+
+    /// One parameter of a declaration.
+    #[derive(Clone)]
+    struct Param {
+        /// Whether a call names it with a label.
+        labeled: bool,
+        /// Its type as the declaration writes it.
+        ty: String,
+        /// Whether a call may leave it out.
+        default: bool,
+    }
+
+    /// One declaration a call by name may resolve to.
+    struct Overload {
+        owner: String,
+        params: Option<Vec<Param>>,
+        effects: Effects,
+        returns: Option<String>,
+    }
+
+    /// What a value is, as far as the Swift text shows it.
+    #[derive(Clone, PartialEq)]
+    enum Shape {
+        Named(String),
+        Int,
+        Float,
+        Text,
+        List(Box<Shape>),
+        Map,
+        Unknown,
+    }
+
+    /// The shapes of the locals a statement can read, by name.
+    type Locals = BTreeMap<String, Shape>;
 
     /// API facts the Swift rewrites read, derived from the source model.
     struct Facts {
@@ -99,7 +142,20 @@ mod swift {
         /// The argument counts unlabeled overloads take, by method name
         /// and by `Type.name` for a static function.
         arities: BTreeMap<String, Vec<(usize, usize)>>,
+        /// Every overload of a method by name, of a static function by type and name,
+        /// and of an initializer by type, so a call resolves by its arguments.
+        method_overloads: BTreeMap<String, Vec<Overload>>,
+        static_overloads: BTreeMap<(String, String), Vec<Overload>>,
+        init_overloads: BTreeMap<String, Vec<Overload>>,
+        /// Types that take no value of another type: the exported ones and Swift's own.
+        concrete: BTreeSet<String>,
     }
+
+    /// Swift's own types a parameter may name.
+    const SWIFT_TYPES: &[&str] = &[
+        "Int", "Int8", "Int16", "Int32", "Int64", "UInt", "UInt8", "UInt16", "UInt32", "UInt64",
+        "Float", "Double", "Bool", "String", "Data", "URL",
+    ];
 
     static FACTS: std::sync::OnceLock<Facts> = std::sync::OnceLock::new();
 
@@ -112,20 +168,59 @@ mod swift {
             inits: BTreeMap::new(),
             unlabeled_inits: BTreeMap::new(),
             arities: BTreeMap::new(),
+            method_overloads: BTreeMap::new(),
+            static_overloads: BTreeMap::new(),
+            init_overloads: BTreeMap::new(),
+            concrete: SWIFT_TYPES.iter().map(|ty| ty.to_string()).collect(),
         };
-        let exported = model.uniffi_fns(Build::Ios).into_iter().map(|f| Decl {
-            effects: Effects {
-                is_async: f.is_async,
-                throws: f.throws,
-            },
+        facts.concrete.extend(model.uniffi_records(Build::Ios).into_iter().map(|r| r.ident));
+        facts.concrete.extend(model.flat_enums(Build::Ios).into_iter().map(|e| e.ident));
+        let exported = model.uniffi_fns(Build::Ios).into_iter().map(|f| {
             // uniffi labels every parameter it generates.
-            unlabeled: f.params.is_empty().then(Vec::new),
-            arity: None,
-            owner: f.owner,
-            name: f.name,
-            kind: f.kind,
+            let count = f.params.len();
+            let params = (0..count)
+                .map(|at| Param {
+                    labeled: true,
+                    ty: String::new(),
+                    default: at + f.defaults >= count,
+                })
+                .collect();
+            let returns = match f.kind {
+                CallKind::Init | CallKind::Static => Some(f.owner.clone()),
+                CallKind::Method => f.returns,
+            };
+            Decl {
+                effects: Effects {
+                    is_async: f.is_async,
+                    throws: f.throws,
+                    unknown: false,
+                },
+                unlabeled: f.params.is_empty().then(Vec::new),
+                arity: None,
+                params: Some(params),
+                returns,
+                owner: f.owner,
+                name: f.name,
+                kind: f.kind,
+            }
         });
         for decl in exported.chain(extension_decls()) {
+            facts.concrete.insert(decl.owner.clone());
+            let overload = Overload {
+                owner: decl.owner.clone(),
+                params: decl.params.clone(),
+                effects: decl.effects,
+                returns: decl.returns.clone(),
+            };
+            match decl.kind {
+                CallKind::Method => facts.method_overloads.entry(decl.name.clone()).or_default().push(overload),
+                CallKind::Static => facts
+                    .static_overloads
+                    .entry((decl.owner.clone(), decl.name.clone()))
+                    .or_default()
+                    .push(overload),
+                CallKind::Init => facts.init_overloads.entry(decl.owner.clone()).or_default().push(overload),
+            }
             if let Some(arity) = decl.arity {
                 let key = match decl.kind {
                     CallKind::Static => format!("{}.{}", decl.owner, decl.name),
@@ -194,6 +289,10 @@ mod swift {
                 _ if has_word(modifiers, "static") => CallKind::Static,
                 _ => CallKind::Method,
             };
+            let returns = match kind {
+                CallKind::Init => Some(owner.to_string()),
+                _ => read_return(&tail[..tail.find('{').unwrap_or(tail.len())], owner),
+            };
             decls.push(Decl {
                 owner: owner.to_string(),
                 name: name.to_string(),
@@ -201,11 +300,40 @@ mod swift {
                 effects: Effects {
                     is_async: has_word(signature_tail, "async"),
                     throws: has_word(signature_tail, "throws"),
+                    unknown: false,
                 },
                 unlabeled: unlabeled_params(&body[open + 1..close]),
                 arity: unlabeled_arity(&body[open + 1..close]),
+                params: read_params(&body[open + 1..close]),
+                returns,
             });
         }
+    }
+
+    /// Every parameter of a declaration, or `None` when one doesn't read as `label name: Type`.
+    fn read_params(params: &str) -> Option<Vec<Param>> {
+        arg_spans(params, Nesting::Types)
+            .into_iter()
+            .map(|span| {
+                let (names, ty) = params[span].split_once(':')?;
+                let (ty, default) = match ty.split_once('=') {
+                    Some((ty, _)) => (ty, true),
+                    None => (ty, false),
+                };
+                Some(Param {
+                    labeled: names.split_whitespace().next()? != "_",
+                    ty: ty.trim().to_string(),
+                    default,
+                })
+            })
+            .collect()
+    }
+
+    /// The type after `->` in a signature's tail, with `Self` read as `owner`.
+    fn read_return(tail: &str, owner: &str) -> Option<String> {
+        let ty = tail.split_once("->")?.1.trim();
+        let named = !ty.is_empty() && ty.chars().all(is_ident_char);
+        named.then(|| if ty == "Self" { owner.to_string() } else { ty.to_string() })
     }
 
     /// The types of `_ name: Type` parameters, or `None` when one is labeled.
@@ -256,7 +384,7 @@ mod swift {
     /// Takes the JS-shaped intermediate produced by the per-line emitter
     /// and applies the bulk-text swaps documented at the top of this
     /// module to land on idiomatic Swift.
-    pub fn finalize(ir: &str) -> String {
+    pub fn finalize(ir: &str, setup: &[String]) -> String {
         let js = swap_backticks_for_triple_quotes(ir);
 
         let mut out: Vec<String> = Vec::with_capacity(js.lines().count());
@@ -287,6 +415,7 @@ mod swift {
 
             out.push(rewrite_line(&line, starts_in_string));
         }
+        let out = insert_all_effects(&out, setup);
 
         // Multi-line trailing comma strip. The convert layer emits
         // calls like
@@ -503,11 +632,6 @@ mod swift {
         // 14. `f((a, b))` → `f(a, b)` where an unlabeled overload takes the items.
         if !in_string {
             out = spread_tuple_args(&out);
-        }
-
-        // 15. `try` / `await` for calls the JS output makes synchronously.
-        if !in_string {
-            out = insert_effects(&out);
         }
 
         // Strip Rust slice notation `identifier[...]` → `identifier` when `...`
@@ -759,24 +883,111 @@ mod swift {
         line.replace("[..]", "")
     }
 
+    /// Every line with the `try` and `await` its calls need, read with the lines that
+    /// finish its calls and with the locals that `setup` and the lines before it declare.
+    fn insert_all_effects(lines: &[String], setup: &[String]) -> Vec<String> {
+        let mut locals = Locals::new();
+        for line in setup {
+            declare(line, line, &mut locals);
+        }
+        let mut in_string = false;
+        let mut out = Vec::with_capacity(lines.len());
+        for (index, line) in lines.iter().enumerate() {
+            let starts_in_string = in_string;
+            if line.matches("\"\"\"").count() % 2 == 1 {
+                in_string = !in_string;
+            }
+            if starts_in_string {
+                out.push(line.clone());
+                continue;
+            }
+            let statement = read_statement(&lines[index..]);
+            let line = insert_effects(line, &statement, &locals);
+            declare(&line, &statement, &mut locals);
+            out.push(line);
+        }
+        out
+    }
+
+    /// The statement that starts with `lines[0]`, with the lines that close the brackets it opens.
+    /// One that runs into a `"""` string is its first line alone.
+    fn read_statement(lines: &[String]) -> String {
+        let mut text = lines[0].clone();
+        let mut depth = bracket_depth(&lines[0]);
+        for line in &lines[1..] {
+            if depth <= 0 || text.contains("\"\"\"") || line.contains("\"\"\"") {
+                break;
+            }
+            text.push('\n');
+            text.push_str(line);
+            depth += bracket_depth(line);
+        }
+        text
+    }
+
+    /// How many more brackets `line` opens than it closes, outside strings and comments.
+    fn bracket_depth(line: &str) -> i32 {
+        code_only(line)
+            .chars()
+            .map(|c| match c {
+                '(' | '[' => 1,
+                ')' | ']' => -1,
+                _ => 0,
+            })
+            .sum()
+    }
+
+    /// Records the shape of the local that `line` declares, read from `statement`.
+    fn declare(line: &str, statement: &str, locals: &mut Locals) {
+        let trimmed = line.trim_start();
+        let Some(rest) = trimmed.strip_prefix("let ").or_else(|| trimmed.strip_prefix("var ")) else {
+            return;
+        };
+        let (name, end) = read_ident(rest, 0);
+        let after = rest[end..].trim_start();
+        let shape = if let Some(ty) = after.strip_prefix(':') {
+            let ty = ty.split('=').next().unwrap_or(ty).trim();
+            if ty.chars().all(is_ident_char) { Shape::Named(ty.to_string()) } else { Shape::Unknown }
+        } else if after.starts_with('=') {
+            let value_at = line.len() - after.len() + 1;
+            shape_of(statement.get(value_at..).unwrap_or(""), locals)
+        } else {
+            return;
+        };
+        if !name.is_empty() {
+            locals.insert(name.to_string(), shape);
+        }
+    }
+
     /// Prefix a statement with the `try` and `await` its calls need.
     /// A `let`, `var` or `return` gets them in front of its value instead.
-    /// Lines that already carry either, and lines led by another keyword, stay as written.
-    fn insert_effects(line: &str) -> String {
+    /// Lines that already carry either, and lines led by another keyword, stay as written,
+    /// but for the `try await` a Rust `.await` leads with: it keeps only what the overload needs
+    /// when every call it covers has a known declaration.
+    /// `statement` is `line` with the lines that finish its calls.
+    fn insert_effects(line: &str, statement: &str, locals: &Locals) -> String {
         let trimmed = line.trim_start();
-        let skip = ["try ", "try!", "//", "/*", "*", "\""];
-        if skip.iter().any(|s| trimmed.starts_with(s)) || trimmed.contains("await ") {
+        let skip = ["try!", "//", "/*", "*", "\""];
+        if skip.iter().any(|s| trimmed.starts_with(s)) {
             return line.to_string();
         }
         let indent = &line[..line.len() - trimmed.len()];
         let Some((lead, expr)) = effect_site(trimmed) else {
             return line.to_string();
         };
-        if expr.starts_with("try ") || expr.starts_with("try!") {
+        let call = expr.strip_prefix("try await ").unwrap_or(expr);
+        if call.contains("await ") || call.starts_with("try ") || call.starts_with("try!") {
             return line.to_string();
         }
-        match call_effects(expr).keyword() {
-            Some(effect) => format!("{indent}{lead}{effect} {expr}"),
+        let start = line.len() - call.len();
+        let effects = call_effects(&statement[start..], call.len(), locals);
+        let awaited = call.len() < expr.len();
+        if awaited && (effects.unknown || effects.is_async) {
+            return line.to_string();
+        }
+        match effects.keyword() {
+            Some(effect) => format!("{indent}{lead}{effect} {call}"),
+            None if awaited => format!("{indent}{lead}{call}"),
             None => line.to_string(),
         }
     }
@@ -800,14 +1011,19 @@ mod swift {
         (leads && !STATEMENT_KEYWORDS.contains(&word)).then(|| (String::new(), statement))
     }
 
-    /// The merged effects of every call in `code`.
-    /// `T.name(` with a type name `T` is a static call and `T(` an initializer,
-    /// while any other `.name(` is an instance method known only by its name.
-    fn call_effects(code: &str) -> Effects {
+    /// The merged effects of every call that starts in the first `first` bytes of `code`.
+    /// `T.name(` with a type name `T` is a static call and `T(` an initializer, while any
+    /// other `.name(` is an instance method of its receiver's type, or of any type that has
+    /// one by that name when the receiver's type can't be read. Each call takes the effects
+    /// of the overloads its arguments fit.
+    fn call_effects(code: &str, first: usize, locals: &Locals) -> Effects {
         let facts = facts();
+        let masked = code_only(code);
         let mut effects = Effects::default();
         let mut at = 0;
-        while let Some(c) = code[at..].chars().next() {
+        while at < first
+            && let Some(c) = code[at..].chars().next()
+        {
             if c == '"' {
                 at += string_end(&code[at..]);
                 continue;
@@ -819,26 +1035,262 @@ mod swift {
             }
             let (name, end) = read_ident(code, at);
             if code[end..].starts_with('(') {
-                let found = match head.strip_suffix('.') {
+                let found: Vec<&Overload> = match head.strip_suffix('.') {
                     Some(before) => {
                         let receiver = &before[before.trim_end_matches(is_ident_char).len()..];
                         let bare = !before[..before.len() - receiver.len()].ends_with('.');
                         if bare && is_type_name(receiver) {
-                            facts.statics.get(&(receiver.to_string(), name.to_string()))
+                            let key = (receiver.to_string(), name.to_string());
+                            facts.static_overloads.get(&key).map(|o| o.iter().collect()).unwrap_or_default()
                         } else {
-                            facts.methods.get(name)
+                            let owner = shape_of(chain_before(before), locals);
+                            methods_of(name, &owner)
                         }
                     }
-                    None if is_type_name(name) => facts.inits.get(name),
-                    None => None,
+                    None if is_type_name(name) => {
+                        facts.init_overloads.get(name).map(|o| o.iter().collect()).unwrap_or_default()
+                    }
+                    None => Vec::new(),
                 };
-                if let Some(found) = found {
-                    effects.merge(*found);
-                }
+                let args = closing(&masked, end).map(|close| split_args(&code[end + 1..close]));
+                effects.merge(resolve(&found, args.as_deref(), locals));
             }
             at = end;
         }
         effects
+    }
+
+    /// The overloads of the method `name` on `owner`, or on every type when `owner` has none.
+    fn methods_of(name: &str, owner: &Shape) -> Vec<&'static Overload> {
+        let all: Vec<&Overload> =
+            facts().method_overloads.get(name).map(|o| o.iter().collect()).unwrap_or_default();
+        let Shape::Named(owner) = owner else {
+            return all;
+        };
+        let own: Vec<&Overload> = all.iter().copied().filter(|o| &o.owner == owner).collect();
+        if own.is_empty() { all } else { own }
+    }
+
+    /// The postfix chain that ends `head`, such as `Material.pbr()` or `mesh`.
+    fn chain_before(head: &str) -> &str {
+        let code = code_only(head);
+        let mut start = head.len();
+        loop {
+            if code[..start].ends_with([')', ']']) {
+                match opening(&code, start - 1) {
+                    Some(open) => start = open,
+                    None => break,
+                }
+                continue;
+            }
+            let ident = code[..start].trim_end_matches(is_ident_char).len();
+            if ident == start {
+                break;
+            }
+            start = ident;
+            if !code[..start].ends_with('.') {
+                break;
+            }
+            start -= 1;
+        }
+        &head[start..]
+    }
+
+    /// The effects of the overloads in `found` that a call with `args` reaches.
+    /// When the arguments can't be read, or a label names one, every overload counts,
+    /// and so do the ones that take as many arguments when none fits their shapes.
+    fn resolve(found: &[&Overload], args: Option<&[String]>, locals: &Locals) -> Effects {
+        let merge = |overloads: &[&Overload]| {
+            let mut effects = Effects {
+                unknown: overloads.is_empty(),
+                ..Effects::default()
+            };
+            for overload in overloads {
+                effects.merge(overload.effects);
+            }
+            effects
+        };
+        let Some(args) = args.filter(|args| !args.iter().any(|arg| is_labeled(arg))) else {
+            return merge(found);
+        };
+        let counted: Vec<&Overload> = found
+            .iter()
+            .copied()
+            .filter(|o| o.params.as_deref().is_some_and(|params| binds(params, args.len())))
+            .collect();
+        if counted.is_empty() {
+            return merge(found);
+        }
+        let shapes: Vec<Shape> = args.iter().map(|arg| shape_of(arg, locals)).collect();
+        let fitting: Vec<&Overload> = counted
+            .iter()
+            .copied()
+            .filter(|o| {
+                let params = o.params.as_deref().unwrap_or_default();
+                shapes.iter().zip(params).all(|(shape, param)| fits(shape, &param.ty))
+            })
+            .collect();
+        merge(if fitting.is_empty() { &counted } else { &fitting })
+    }
+
+    /// Whether `n` unlabeled arguments fill `params`: the first `n` take no label
+    /// and every one after them has a default.
+    fn binds(params: &[Param], n: usize) -> bool {
+        n <= params.len()
+            && params[..n].iter().all(|param| !param.labeled)
+            && params[n..].iter().all(|param| param.default)
+    }
+
+    /// Whether an argument reads `label: value`.
+    fn is_labeled(arg: &str) -> bool {
+        let (label, end) = read_ident(arg, 0);
+        let rest = arg[end..].trim_start();
+        !label.is_empty() && rest.starts_with(':') && !rest.starts_with("::")
+    }
+
+    /// The shape of the Swift expression `expr`: a literal, or a chain of calls
+    /// whose declarations name the type each one returns.
+    fn shape_of(expr: &str, locals: &Locals) -> Shape {
+        let mut expr = expr.trim();
+        while let Some(rest) = ["try! ", "try? ", "try ", "await "].iter().find_map(|p| expr.strip_prefix(p)) {
+            expr = rest.trim_start();
+        }
+        if expr.is_empty() {
+            return Shape::Unknown;
+        }
+        if expr.starts_with('"') {
+            return if string_end(expr) == expr.len() { Shape::Text } else { Shape::Unknown };
+        }
+        if expr.starts_with('[') {
+            if closing(&code_only(expr), 0) != Some(expr.len() - 1) {
+                return Shape::Unknown;
+            }
+            let inner = &expr[1..expr.len() - 1];
+            if inner.trim() == ":" || split_args(inner).iter().any(|item| has_top_colon(item)) {
+                return Shape::Map;
+            }
+            let items: Vec<Shape> = split_args(inner).iter().map(|item| shape_of(item, locals)).collect();
+            return Shape::List(Box::new(join_shapes(&items)));
+        }
+        if let Some(number) = number_shape(expr) {
+            return number;
+        }
+        chain_shape(expr, locals)
+    }
+
+    /// `Int` or `Float` for a number literal.
+    fn number_shape(expr: &str) -> Option<Shape> {
+        let digits = expr.strip_prefix('-').unwrap_or(expr);
+        if !digits.starts_with(|c: char| c.is_ascii_digit()) {
+            return None;
+        }
+        if digits.starts_with("0x") || digits.starts_with("0b") || digits.starts_with("0o") {
+            return digits[2..].chars().all(|c| c.is_ascii_hexdigit() || c == '_').then_some(Shape::Int);
+        }
+        let number = digits.chars().all(|c| c.is_ascii_digit() || "._eE+-".contains(c));
+        let float = digits.contains(['.', 'e', 'E']);
+        number.then_some(if float { Shape::Float } else { Shape::Int })
+    }
+
+    /// The one shape every item has, `Float` for a mix of numbers, or `Unknown`.
+    fn join_shapes(items: &[Shape]) -> Shape {
+        match items {
+            [] => Shape::Unknown,
+            [first, rest @ ..] if rest.iter().all(|item| item == first) => first.clone(),
+            _ if items.iter().all(|item| matches!(item, Shape::Int | Shape::Float)) => Shape::Float,
+            _ => Shape::Unknown,
+        }
+    }
+
+    /// Whether `text` holds a `:` outside brackets and strings, as a dictionary does.
+    fn has_top_colon(text: &str) -> bool {
+        let code = code_only(text);
+        let mut depth = 0i32;
+        code.chars().any(|c| {
+            match c {
+                '(' | '[' => depth += 1,
+                ')' | ']' => depth -= 1,
+                _ => {}
+            }
+            c == ':' && depth == 0 && !code.contains("::")
+        })
+    }
+
+    /// The type a chain evaluates to: `T(...)`, `T.name(...)` or a local,
+    /// followed by `.name(...)` calls whose declarations all return one type.
+    fn chain_shape(expr: &str, locals: &Locals) -> Shape {
+        let facts = facts();
+        let code = code_only(expr);
+        let (root, mut at) = read_ident(expr, 0);
+        if root.is_empty() {
+            return Shape::Unknown;
+        }
+        let mut current = if is_type_name(root) && code[at..].starts_with('(') {
+            match closing(&code, at) {
+                Some(close) => at = close + 1,
+                None => return Shape::Unknown,
+            }
+            Some(root.to_string())
+        } else if is_type_name(root) && code[at..].starts_with('.') {
+            let (name, end) = read_ident(expr, at + 1);
+            let Some(close) = code[end..].starts_with('(').then(|| closing(&code, end)).flatten() else {
+                return Shape::Unknown;
+            };
+            at = close + 1;
+            let key = (root.to_string(), name.to_string());
+            facts.static_overloads.get(&key).and_then(|o| one_return(o.iter()))
+        } else if !code[at..].starts_with('(') {
+            match locals.get(root) {
+                Some(Shape::Named(ty)) => Some(ty.clone()),
+                Some(shape) if at == expr.len() => return shape.clone(),
+                _ => None,
+            }
+        } else {
+            return Shape::Unknown;
+        };
+        while at < expr.len() {
+            if !code[at..].starts_with('.') {
+                return Shape::Unknown;
+            }
+            let (name, end) = read_ident(expr, at + 1);
+            let Some(close) = code[end..].starts_with('(').then(|| closing(&code, end)).flatten() else {
+                return Shape::Unknown;
+            };
+            at = close + 1;
+            current = current.and_then(|owner| {
+                let own = facts.method_overloads.get(name)?.iter().filter(|o| o.owner == owner);
+                one_return(own)
+            });
+        }
+        current.map_or(Shape::Unknown, Shape::Named)
+    }
+
+    /// The type every overload returns, when they all return the same one.
+    fn one_return<'a>(mut overloads: impl Iterator<Item = &'a Overload>) -> Option<String> {
+        let first = overloads.next()?.returns.clone()?;
+        overloads.all(|o| o.returns.as_deref() == Some(first.as_str())).then_some(first)
+    }
+
+    /// Whether a value of `shape` may pass as a parameter of type `ty`.
+    /// Only a shape that can't be that type fails, so a type the facts don't know fits.
+    fn fits(shape: &Shape, ty: &str) -> bool {
+        let ty = ty.trim().trim_end_matches(['?', '!']).trim();
+        let concrete = &facts().concrete;
+        let bracketed = ty.starts_with('[') && ty.ends_with(']');
+        let list = bracketed && !has_top_colon(&ty[1..ty.len() - 1]);
+        let map = (bracketed && !list) || ty.starts_with("KeyValuePairs<") || ty.starts_with("Dictionary<");
+        let known = concrete.contains(ty);
+        let other = list || map || known;
+        match shape {
+            Shape::Unknown => true,
+            Shape::Named(name) => name == ty || !(list || map || (known && concrete.contains(name))),
+            Shape::Int => SWIFT_TYPES[..12].contains(&ty) || !other,
+            Shape::Float => ["Float", "Double"].contains(&ty) || !other,
+            Shape::Text => ty == "String" || !other,
+            Shape::List(item) if list => fits(item, &ty[1..ty.len() - 1]),
+            Shape::List(item) => (ty == "Data" && matches!(**item, Shape::Int | Shape::Unknown)) || !other,
+            Shape::Map => map || !(list || known),
+        }
     }
 
     fn is_type_name(ident: &str) -> bool {
