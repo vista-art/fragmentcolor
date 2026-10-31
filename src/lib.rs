@@ -58,9 +58,9 @@ pub use targets::*;
 pub use texture::*;
 pub use values::*;
 
-pub(crate) use bindings::brand::{FcKind, impl_fc_kind};
+pub(crate) use bindings::brand::{
+    FcKind, impl_fc_kind, impl_js_bridge, impl_tryfrom_js_ref_anchor,
+};
+pub(crate) use conversion_macros::impl_from_into_with_refs;
 #[cfg(wasm)]
 pub(crate) use conversion_macros::impl_tryfrom_owned_via_ref;
-pub(crate) use conversion_macros::{
-    impl_from_into_with_refs, impl_js_bridge, impl_tryfrom_js_ref_anchor,
-};
