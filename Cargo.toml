@@ -149,7 +149,7 @@ shaders-all = [
 
 [dependencies]
 wgpu = { version = "30", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
-naga = { version = "30", features = ["wgsl-in", "glsl-in", "glsl-out"] }
+naga = { version = "30", features = ["wgsl-in", "wgsl-out", "glsl-in", "glsl-out"] }
 # Maps device features to the naga capabilities a shader may use. It ships with
 # wgpu and naga, so it moves with them: wgpu, naga and it share one major version.
 wgpu-naga-bridge = "30"

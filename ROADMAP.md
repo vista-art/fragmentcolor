@@ -53,7 +53,7 @@ Items found while reviewing 0.12.6.
 
 - [x] Build from read-only sources, so docs.rs documents the crate again (0.12.6)
 - [ ] Confirm a green docs.rs build once 0.12.6 publishes
-- [ ] Declare naga's `wgsl-out` feature, which the GLSL path uses. `glsl-out`, which `process_overrides` needs, is declared since 0.12.7
+- [x] Declare naga's `wgsl-out` feature, which the GLSL path and the WGSL the browser gets use, and `glsl-out`, which `process_overrides` needs (0.12.7)
 - [x] Validation fails on a method without `#[lsp_doc]`, and on a method page whose object has no such method (0.12.6)
 - [x] Fix the dead `Shader::get_bytes` link on the `Renderer::read_storage` page (0.12.6)
 - [x] Fix the `Model` and `Material` pages, which described a `Model::sync_transform` that does not exist and said models that share a mesh collide, where the renderer instances them (0.12.6)
