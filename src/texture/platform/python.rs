@@ -308,7 +308,7 @@ impl Mipmap {
 
     #[pyo3(name = "size")]
     #[lsp_doc("docs/api/texture/mipmap/size.md")]
-    pub fn size_py(&self) -> (u32, u32) {
+    pub fn size_py(&self) -> crate::Size {
         self.size()
     }
 

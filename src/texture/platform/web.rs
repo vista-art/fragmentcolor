@@ -64,8 +64,7 @@ impl Mipmap {
     #[wasm_bindgen(js_name = "size")]
     #[lsp_doc("docs/api/texture/mipmap/size.md")]
     pub fn size_js(&self) -> Size {
-        let (w, h) = self.size();
-        Size::from([w, h])
+        self.size()
     }
 
     #[wasm_bindgen(js_name = "count")]

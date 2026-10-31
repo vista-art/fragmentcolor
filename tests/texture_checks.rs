@@ -3,7 +3,7 @@
 use fragmentcolor::renderer::error::RendererError;
 use fragmentcolor::texture::TextureError;
 use fragmentcolor::{
-    Mipmap, Renderer, Texture, TextureFormat, TextureInput, TextureOptions, TextureUsage,
+    Mipmap, Renderer, Size, Texture, TextureFormat, TextureInput, TextureOptions, TextureUsage,
 };
 
 fn refused(result: &Result<Texture, RendererError>) -> bool {
@@ -378,7 +378,7 @@ fn mip_chains_read_files_like_create_texture() {
 
         let chain = Mipmap::build((path.as_path(), TextureFormat::Rgba8Unorm))
             .expect("Mipmap::build reads a PNG without an extension");
-        assert_eq!(chain.size(), (2, 2));
+        assert_eq!(chain.size(), Size::from([2, 2]));
         Renderer::new()
             .create_texture(path.as_path())
             .await

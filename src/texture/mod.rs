@@ -293,8 +293,8 @@ impl Mipmap {
     }
 
     #[lsp_doc("docs/api/texture/mipmap/size.md")]
-    pub fn size(&self) -> (u32, u32) {
-        self.base_size
+    pub fn size(&self) -> Size {
+        Size::from(self.base_size)
     }
 
     #[lsp_doc("docs/api/texture/mipmap/levels.md")]
@@ -2730,7 +2730,7 @@ mod tests {
         let chain = Mipmap::build((buf.as_slice(), crate::TextureFormat::Rgba8UnormSrgb))
             .expect("prepare ok");
         assert_eq!(chain.count(), 4);
-        assert_eq!(chain.size(), (8, 8));
+        assert_eq!(chain.size(), Size::from([8, 8]));
         assert_eq!(chain.format(), crate::TextureFormat::Rgba8UnormSrgb);
         let expected = [4 * 8 * 8, 4 * 4 * 4, 4 * 2 * 2, 4];
         for (i, level) in chain.levels().iter().enumerate() {
@@ -2752,7 +2752,7 @@ mod tests {
         ))
         .expect("prepare with tuple size");
         assert_eq!(chain.count(), 4);
-        assert_eq!(chain.size(), (8, 8));
+        assert_eq!(chain.size(), Size::from([8, 8]));
 
         // From<(&[u8], TextureFormat, [u32; 2])>
         let chain2 = Mipmap::build((
@@ -2761,7 +2761,7 @@ mod tests {
             [8u32, 8u32],
         ))
         .expect("prepare with array size");
-        assert_eq!(chain2.size(), (8, 8));
+        assert_eq!(chain2.size(), Size::from([8, 8]));
 
         // Explicit `TextureInput` struct literal — same transport as
         // `Renderer::create_texture` and `create_storage_texture`.
@@ -2774,7 +2774,7 @@ mod tests {
             },
         })
         .expect("prepare with explicit TextureInput");
-        assert_eq!(chain3.size(), (8, 8));
+        assert_eq!(chain3.size(), Size::from([8, 8]));
     }
 
     // Story: prepare's three failure modes (decode, format, shape) surface as

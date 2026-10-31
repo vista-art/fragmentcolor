@@ -1,6 +1,6 @@
 # Mipmap::size
 
-Return the base level (level 0) dimensions as `(width, height)`. Useful when you want to know what you're about to upload without keeping a separate copy of the source dimensions around. The chain has `1 + floor(log2(max(width, height)))` levels, each one half the previous size down to 1x1.
+Return the base level (level 0) dimensions as a [Size](https://fragmentcolor.org/api/texture/texture#size) with no depth, in every language. Useful when you want to know what you're about to upload without keeping a separate copy of the source dimensions around. The chain has `1 + floor(log2(max(width, height)))` levels, each one half the previous size down to 1x1.
 
 ## Example
 
@@ -13,9 +13,10 @@ let chain = Mipmap::build((
     TextureFormat::Rgba8UnormSrgb,
     [16, 16],
 ))?;
-let (width, height) = chain.size();
-# assert_eq!(width, 16);
-# assert_eq!(height, 16);
-# let _size = (width, height);
+let size = chain.size();
+let width = size.width;
+let height = size.height;
+# assert_eq!([width, height], [16, 16]);
+# assert_eq!(size.depth, None);
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
