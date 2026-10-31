@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::SceneObjectHandle;
 use crate::bindings::numbers::read_vector;
-use crate::core::renderer::platform::mobile::FragmentColorError;
+use crate::error::platform::mobile::FragmentColorError;
 use crate::scene::{Camera, CameraError, Light, LightKind, Model, Scene, SceneSource};
 use crate::{Material, Mesh, Pass};
 

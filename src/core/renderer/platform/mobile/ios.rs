@@ -15,7 +15,7 @@ use crate::MobileWindowTarget;
 use crate::core::renderer::platform::metal_layer::{check_layer, read_side};
 use crate::{Renderer, WindowTarget};
 
-use super::FragmentColorError;
+use crate::error::platform::mobile::FragmentColorError;
 
 /// Mirror of Core Graphics `CGSize`. Defined locally to avoid depending on
 /// the `core-graphics` crate.

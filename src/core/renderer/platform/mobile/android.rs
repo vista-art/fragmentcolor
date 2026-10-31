@@ -31,10 +31,10 @@ use raw_window_handle::{
     HasWindowHandle, RawDisplayHandle, RawWindowHandle, WindowHandle,
 };
 
-use super::FragmentColorError;
 use crate::InitializationError;
 use crate::MobileWindowTarget;
 use crate::core::renderer::platform::android_window;
+use crate::error::platform::mobile::FragmentColorError;
 use crate::{Renderer, WindowTarget};
 
 /// HasWindowHandle + HasDisplayHandle wrapper over an `ANativeWindow`.

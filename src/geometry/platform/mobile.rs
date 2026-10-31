@@ -16,7 +16,7 @@ use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
 use crate::bindings::numbers::{VectorError, read_floats, read_position, read_vector};
-use crate::core::renderer::platform::mobile::FragmentColorError;
+use crate::error::platform::mobile::FragmentColorError;
 use crate::{Instance, Mesh, Quad, Vertex, VertexData};
 
 // -----------------------------------------------------------------

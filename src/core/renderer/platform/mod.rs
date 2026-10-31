@@ -9,7 +9,7 @@ mod python;
 pub use python::*;
 
 #[cfg(mobile)]
-pub mod mobile;
+mod mobile;
 
 #[cfg(any(android, test))]
 pub(crate) mod android_window;

@@ -124,7 +124,7 @@ impl crate::error::Classify for VectorError {
 
 /// A float vector Swift and Kotlin can't use throws a render error, as a bad region does.
 #[cfg(mobile)]
-impl From<VectorError> for crate::core::renderer::platform::mobile::FragmentColorError {
+impl From<VectorError> for crate::error::platform::mobile::FragmentColorError {
     fn from(error: VectorError) -> Self {
         Self::Render(error.to_string())
     }

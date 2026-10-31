@@ -13,7 +13,7 @@ mod binding_checks {
     //!   `WebError`, or an `E` whose `From<E> for JsValue` is exactly
     //!   `WebError::from(error).into()`, and so is every such `From` in the crate. A function
     //!   that returns a `Promise` builds it with `error::defer`, whose future fails with a
-    //!   `WebError`, and nothing outside `src/error/mod.rs` calls `future_to_promise`.
+    //!   `WebError`, and nothing outside `src/error/platform/web.rs` calls `future_to_promise`.
 
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
@@ -611,7 +611,7 @@ mod binding_checks {
             };
             let relative = file.strip_prefix(root).unwrap_or(&file);
             scan_items(&parsed.items, relative, &mut exports);
-            let home = relative == Path::new("src/error/mod.rs");
+            let home = relative == Path::new("src/error/platform/web.rs");
             if !home && names(&parsed.to_token_stream(), "future_to_promise") {
                 exports.builders.push(relative.to_path_buf());
             }
@@ -784,8 +784,9 @@ mod binding_checks {
     }
 
     /// Whether a `From<E> for JsValue` impl's `from` is exactly `WebError::from(error).into()`,
-    /// with `error` its own parameter. A `From<E> for WebError` outside `src/error/mod.rs` can only
-    /// build its value through a constructor that names a class, so this form always names one.
+    /// with `error` its own parameter. A `From<E> for WebError` outside
+    /// `src/error/platform/web.rs` can only build its value through a constructor
+    /// that names a class, so this form always names one.
     fn converts_through(imp: &syn::ItemImpl) -> bool {
         let Some(from) = imp.items.iter().find_map(|item| match item {
             ImplItem::Fn(f) if f.sig.ident == "from" => Some(f),

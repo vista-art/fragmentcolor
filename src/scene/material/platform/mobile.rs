@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::Shader;
 use crate::bindings::numbers::read_vector;
-use crate::core::renderer::platform::mobile::FragmentColorError;
+use crate::error::platform::mobile::FragmentColorError;
 use crate::texture::{Texture, TextureInput, TextureInputMobile, TextureOptions};
 use crate::{AlphaMode, Material, MaterialError, TextureSlot};
 
