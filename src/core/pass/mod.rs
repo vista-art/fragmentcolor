@@ -1,3 +1,6 @@
+//! `Pass`, which groups the shaders that draw together with
+//! their targets, viewport, clear color and compute dispatch.
+
 use crate::geometry::MeshObject;
 use crate::scene::{LightObject, ModelEntry, PassLights, SceneObject};
 use crate::texture::{Registration, Texture, TextureObject};

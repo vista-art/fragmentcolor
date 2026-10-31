@@ -1,3 +1,6 @@
+//! `Texture`, an image on the GPU that shaders sample, with its id, mipmaps and
+//! the modules that declare, load, register, read, write and resize textures.
+
 use crate::UniformData;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};

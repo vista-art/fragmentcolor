@@ -1,12 +1,5 @@
-//! Scene module — higher-level abstractions on top of Mesh + Material.
-//!
-//! Houses [`Scene`] (the top-level container), [`Model`] (Mesh + Material +
-//! transform), [`Camera`], the unified [`Light`] type with three
-//! constructors (`Light::directional` / `Light::point` / `Light::spot`),
-//! and the [`SceneObject`] trait that ties them together. The split
-//! mirrors glTF / USD: a Scene is a flat list of nodes (geometry,
-//! viewpoints, lights), and the renderer walks the scene to produce a
-//! frame.
+//! `Scene`, the flat list of models, cameras and lights a frame shows, as in glTF and USD,
+//! with `Model`, `Camera`, `Light`, `Material`, the glTF loader and the `SceneObject` trait.
 
 mod camera;
 mod light;
