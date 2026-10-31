@@ -1,10 +1,8 @@
-//! Scene loader — `Scene::load` and the `SceneSource` transport.
+//! Scene loader: `Scene::load` and the `SceneSource` transport.
 //!
-//! `Scene::load` accepts a path or in-memory bytes directly; the input is
-//! converted into a format-tagged [`SceneSource`] internally so the loader
-//! knows which parser to dispatch. glTF 2.0 (with its `.glb` binary
-//! container) is the first format; the enum gains a variant per future
-//! format without changing the public method.
+//! `Scene::load` accepts a path or in-memory bytes directly. The input
+//! becomes a [`SceneSource`] tagged with its format, so the loader knows
+//! which parser reads it. glTF 2.0, with its `.glb` binary container, is the one format.
 //!
 //! The shape mirrors `Material::pbr()` and `Camera::perspective(...)`: sync
 //! return, no `Renderer` argument. Each image decodes once, and every slot
@@ -32,9 +30,8 @@ use crate::scene::{Camera, Light, Scene};
 use crate::texture::{SourceData, TextureSource};
 use crate::{Material, Mesh, Model, TextureOptions};
 
-/// Top-level loader input. Every variant names the format explicitly so
-/// `Scene::load` doesn't have to guess. Today: glTF 2.0; future additions
-/// (USD, FBX, …) slot in as new variants.
+/// The loader's input, tagged with its format.
+/// glTF 2.0 is its one variant, so `Scene::load` never guesses the format.
 #[derive(Debug, Clone)]
 pub enum SceneSource {
     Gltf(GltfSource),
