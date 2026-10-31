@@ -26,6 +26,7 @@ __all__ = [
     "Shader",
     "Pass",
     "ErrorKind",
+    "LogLevel",
     "Size",
     "ScreenRegion",
     "Mesh",
@@ -93,13 +94,13 @@ class BindingError(FragmentColorError):
 class EntryError(FragmentColorError):
     stage: str
 
-class SceneLoadError(FragmentColorError): ...
+class SceneLoadError(FragmentColorError, RuntimeError): ...
 
-class LightError(FragmentColorError): ...
+class LightError(FragmentColorError, ValueError): ...
 
-class CameraError(FragmentColorError): ...
+class CameraError(FragmentColorError, ValueError): ...
 
-class MaterialError(FragmentColorError): ...
+class MaterialError(FragmentColorError, ValueError): ...
 
 @final
 class Renderer:
@@ -158,6 +159,21 @@ class Renderer:
 
         renderer = Renderer()
         texture_target = renderer.create_texture_target([16, 16])
+        ```
+        """
+    @staticmethod
+    def set_log_level(level: LogLevel) -> None:
+        """
+        Sets how much FragmentColor logs, for the whole process. The `LogLevel` values run from quiet to verbose: `Off`, `Error`, `Warn`, `Info`, `Debug` and `Trace`.
+
+        The web build prints to the browser console and starts at `Info`. Raise it to `Debug` to see naga's notes on each shader. On other platforms FragmentColor logs through Rust's `log` crate, and the level limits what an installed logger prints.
+
+        Example:
+
+        ```python
+        from fragmentcolor import LogLevel, Renderer
+
+        Renderer.set_log_level(LogLevel.Debug)
         ```
         """
     def create_target(self, rendercanvas: Any) -> WindowTarget:
@@ -1662,6 +1678,15 @@ class ErrorKind:
     Validation: ClassVar[ErrorKind]
     Internal: ClassVar[ErrorKind]
     Memory: ClassVar[ErrorKind]
+
+@final
+class LogLevel:
+    Off: ClassVar[LogLevel]
+    Error: ClassVar[LogLevel]
+    Warn: ClassVar[LogLevel]
+    Info: ClassVar[LogLevel]
+    Debug: ClassVar[LogLevel]
+    Trace: ClassVar[LogLevel]
 
 @final
 class Size:
@@ -3329,10 +3354,12 @@ class Model:
         """
     def transform(self) -> list[list[float]]:
         """
-        Read the Model's current 4×4 transform in column-major order, matching
-        WGSL's `mat4x4<f32>` layout and glam's `to_cols_array_2d`. The transform
-        starts at the identity matrix and is modified by `set_transform`,
-        `translate`, `rotate`, and `scale`.
+        Read the Model's current 4×4 transform as its four columns of four numbers,
+        the `[[f32; 4]; 4]` Rust returns, and four lists of four in every other language
+        (four `Float32Array`s in JavaScript).
+        Column-major order matches WGSL's `mat4x4<f32>` layout, so `transform()[3]` holds
+        the translation. The transform starts at the identity matrix and is modified by
+        `set_transform`, `translate`, `rotate`, and `scale`.
 
         For the setter, see [Model::set_transform](https://fragmentcolor.org/api/scene/model#set_transform).
         Rust doesn't allow getter/setter overloads on the same name, so the read
@@ -3728,10 +3755,12 @@ class Camera:
         """
     def view_proj(self) -> list[list[float]]:
         """
-        Read the combined `proj * view` matrix as a column-major 4x4. Column-major
-        matches WGSL's `mat4x4<f32>` storage and glam's `to_cols_array_2d()`, so
-        the result is ready to feed directly into a Shader's `camera.view_proj`
-        uniform via `Shader::set(...)` if you need direct control. For the common
+        Read the combined `proj * view` matrix as its four columns of four numbers,
+        the `[[f32; 4]; 4]` Rust returns, and four lists of four in every other language
+        (four `Float32Array`s in JavaScript).
+        Column-major order matches WGSL's `mat4x4<f32>` storage, so the result is ready
+        to feed directly into a Shader's `camera.view_proj` uniform via `Shader::set(...)`
+        if you need direct control. For the common
         case, pass the Camera to
         [`Pass::add`](https://fragmentcolor.org/api/core/pass#add). The Pass seeds
         `camera.view_proj` + `camera.position` on every Material attached to it
@@ -4015,12 +4044,10 @@ class Light:
         torch = Light.spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7]).set_intensity(5.0).set_cone_angles(0.15, 0.4)
         ```
         """
-    def kind(self) -> str:
+    def kind(self) -> LightKind:
         """
-        Read which kind this Light was constructed as. Returns a `LightKind` value
-        (`Directional`, `Point`, or `Spot`). Bindings expose this as a string
-        literal (`"directional"`, `"point"`, `"spot"`) so the kind tag round-trips
-        the same way it does in glTF's `KHR_lights_punctual`.
+        Read which kind this Light was constructed as: a `LightKind` value,
+        `Directional`, `Point`, or `Spot`, in every language.
 
         Use this when inspecting a Light built elsewhere (e.g. loaded from a
         glTF scene) to decide which kind-specific setters or getters to call.
@@ -5709,9 +5736,9 @@ class Mipmap:
         format = chain.format()
         ```
         """
-    def size(self) -> tuple[int, int]:
+    def size(self) -> Size:
         """
-        Return the base level (level 0) dimensions as `(width, height)`. Useful when you want to know what you're about to upload without keeping a separate copy of the source dimensions around. The chain has `1 + floor(log2(max(width, height)))` levels, each one half the previous size down to 1x1.
+        Return the base level (level 0) dimensions as a [Size](https://fragmentcolor.org/api/texture/texture#size) with no depth, in every language. Useful when you want to know what you're about to upload without keeping a separate copy of the source dimensions around. The chain has `1 + floor(log2(max(width, height)))` levels, each one half the previous size down to 1x1.
 
         Example:
 

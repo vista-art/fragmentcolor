@@ -30,6 +30,7 @@ const EXAMPLES = [
   ['../examples/core/renderer/read_storage.js', 'docs/api/core/renderer/read_storage.md'],
   ['../examples/core/renderer/read_texture.js', 'docs/api/core/renderer/read_texture.md'],
   ['../examples/core/renderer/render.js', 'docs/api/core/renderer/render.md'],
+  ['../examples/core/renderer/set_log_level.js', 'docs/api/core/renderer/set_log_level.md'],
   ['../examples/core/renderer/unregister_texture.js', 'docs/api/core/renderer/unregister_texture.md'],
   ['../examples/core/shader/Shader.js', 'docs/api/core/shader/shader.md'],
   ['../examples/core/shader/add_mesh.js', 'docs/api/core/shader/add_mesh.md'],

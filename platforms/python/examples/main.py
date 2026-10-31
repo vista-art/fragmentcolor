@@ -54,6 +54,7 @@ def run_all():
         ('core/renderer/read_storage.py', 'docs/api/core/renderer/read_storage.md'),
         ('core/renderer/read_texture.py', 'docs/api/core/renderer/read_texture.md'),
         ('core/renderer/render.py', 'docs/api/core/renderer/render.md'),
+        ('core/renderer/set_log_level.py', 'docs/api/core/renderer/set_log_level.md'),
         ('core/renderer/unregister_texture.py', 'docs/api/core/renderer/unregister_texture.md'),
         ('core/shader/Shader.py', 'docs/api/core/shader/shader.md'),
         ('core/shader/add_mesh.py', 'docs/api/core/shader/add_mesh.md'),

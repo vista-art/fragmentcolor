@@ -380,7 +380,7 @@ lang="kotlin" meta="collapse={2-2}"
 
 ### Mipmap::size \{#size\}
 
-Return the base level (level 0) dimensions as `(width, height)`. Useful when you want to know what you're about to upload without keeping a separate copy of the source dimensions around. The chain has `1 + floor(log2(max(width, height)))` levels, each one half the previous size down to 1x1.
+Return the base level (level 0) dimensions as a [Size](/api/texture/texture#size) with no depth, in every language. Useful when you want to know what you're about to upload without keeping a separate copy of the source dimensions around. The chain has `1 + floor(log2(max(width, height)))` levels, each one half the previous size down to 1x1.
 
 #### Example
 
@@ -397,7 +397,9 @@ let chain = Mipmap::build((
     TextureFormat::Rgba8UnormSrgb,
     [16, 16],
 ))?;
-let (width, height) = chain.size();
+let size = chain.size();
+let width = size.width;
+let height = size.height;
 `}
 lang="rust"
 />
@@ -464,7 +466,9 @@ import org.fragmentcolor.*
 
 val pixels = ByteArray(16 * 16 * 4)
 val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, listOf(16u, 16u))
-val (width, height) = chain.size()
+val size = chain.size()
+val width = size.width
+val height = size.height
 `}
 lang="kotlin"
 />

@@ -409,6 +409,12 @@ final class GeneratedExamples: ExampleCase {
         }
     }
 
+    func test_core_renderer_set_log_level() async {
+        await example("docs/api/core/renderer/set_log_level.md") {
+            Renderer.setLogLevel(LogLevel.debug)
+        }
+    }
+
     func test_core_renderer_unregister_texture() async {
         await example("docs/api/core/renderer/unregister_texture.md") {
             let renderer = Renderer()

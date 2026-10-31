@@ -641,7 +641,7 @@ public protocol CameraProtocol: AnyObject, Sendable {
     
     func setAspect(aspect: Float) throws  -> Camera
     
-    func viewProj()  -> [Float]
+    func viewProj()  -> [[Float]]
     
 }
 open class Camera: CameraProtocol, @unchecked Sendable {
@@ -754,8 +754,8 @@ open func setAspect(aspect: Float)throws  -> Camera  {
 })
 }
     
-open func viewProj() -> [Float]  {
-    return try!  FfiConverterSequenceFloat.lift(try! rustCall() {
+open func viewProj() -> [[Float]]  {
+    return try!  FfiConverterSequenceSequenceFloat.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_camera_viewproj(
             self.uniffiCloneHandle(),uniffiCallStatus
@@ -962,7 +962,7 @@ public protocol LightProtocol: AnyObject, Sendable {
     
     func intensity()  -> Float
     
-    func kind()  -> String
+    func kind()  -> LightKind
     
     func outerConeAngle()  -> Float?
     
@@ -1103,8 +1103,8 @@ open func intensity() -> Float  {
 })
 }
     
-open func kind() -> String  {
-    return try!  FfiConverterString.lift(try! rustCall() {
+open func kind() -> LightKind  {
+    return try!  FfiConverterTypeLightKind_lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_light_kind(
             self.uniffiCloneHandle(),uniffiCallStatus
@@ -2192,7 +2192,7 @@ public protocol ModelProtocol: AnyObject, Sendable {
     
     func setVisible(visible: Bool) 
     
-    func transform()  -> [Float]
+    func transform()  -> [[Float]]
     
     func translate(offset: [Float]) throws 
     
@@ -2317,8 +2317,8 @@ open func setVisible(visible: Bool)  {try! rustCall() {
 }
 }
     
-open func transform() -> [Float]  {
-    return try!  FfiConverterSequenceFloat.lift(try! rustCall() {
+open func transform() -> [[Float]]  {
+    return try!  FfiConverterSequenceSequenceFloat.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_model_transform(
             self.uniffiCloneHandle(),uniffiCallStatus
@@ -3085,6 +3085,20 @@ public convenience init() {
         try! rustCall { uniffi_fragmentcolor_fn_free_renderer(handle, $0) }
     }
 
+    
+    /**
+     * Set the process log level. uniffi has no static methods, so this constructor
+     * sets it and returns a new `Renderer`, and the Swift and Kotlin extensions
+     * spell it `Renderer.setLogLevel(level)` with no return value.
+     */
+public static func useLogLevel(level: LogLevel) -> Renderer  {
+    return try!  FfiConverterTypeRenderer_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fragmentcolor_fn_constructor_renderer_useloglevel(
+        FfiConverterTypeLogLevel_lower(level),uniffiCallStatus
+    )
+})
+}
     
 
     
@@ -6432,6 +6446,198 @@ public func FfiConverterTypeFragmentColorError_lower(_ value: FragmentColorError
 
 
 /**
+ * Discriminant for the three light kinds. Wire-compatible with the WGSL
+ * `Light.kind` field in `src/material/light.wgsl`: directional=0, point=1, spot=2.
+ */
+
+public enum LightKind: UInt32, Equatable, Hashable {
+    
+    case directional = 0
+    case point = 1
+    case spot = 2
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension LightKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLightKind: FfiConverterRustBuffer {
+    typealias SwiftType = LightKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LightKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .directional
+        
+        case 2: return .point
+        
+        case 3: return .spot
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: LightKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .directional:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .point:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .spot:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLightKind_lift(_ buf: RustBuffer) throws -> LightKind {
+    return try FfiConverterTypeLightKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLightKind_lower(_ value: LightKind) -> RustBuffer {
+    return FfiConverterTypeLightKind.lower(value)
+}
+
+
+
+/**
+ * How much FragmentColor logs, from nothing to every step.
+ */
+
+public enum LogLevel: Equatable, Hashable {
+    
+    /**
+     * No messages.
+     */
+    case off
+    /**
+     * Errors only.
+     */
+    case error
+    /**
+     * Errors and warnings.
+     */
+    case warn
+    /**
+     * Errors, warnings and notes on progress. The web build starts here.
+     */
+    case info
+    /**
+     * Everything above, and the detail of each step, such as naga's.
+     */
+    case debug
+    /**
+     * Every message.
+     */
+    case trace
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension LogLevel: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLogLevel: FfiConverterRustBuffer {
+    typealias SwiftType = LogLevel
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LogLevel {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .off
+        
+        case 2: return .error
+        
+        case 3: return .warn
+        
+        case 4: return .info
+        
+        case 5: return .debug
+        
+        case 6: return .trace
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: LogLevel, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .off:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .error:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .warn:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .info:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .debug:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .trace:
+            writeInt(&buf, Int32(6))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLogLevel_lift(_ buf: RustBuffer) throws -> LogLevel {
+    return try FfiConverterTypeLogLevel.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLogLevel_lower(_ value: LogLevel) -> RustBuffer {
+    return FfiConverterTypeLogLevel.lower(value)
+}
+
+
+
+/**
  * Mobile-marshallable target for [`Scene::add_to`]: a pass index or a pass
  * name. Uniffi can't marshal `impl Into<PassRef>`, so Swift / Kotlin pick a
  * variant; the `Scene+Extensions` / `SceneExtensions` files wrap it behind
@@ -9053,6 +9259,31 @@ fileprivate struct FfiConverterSequenceTypeUniformData: FfiConverterRustBuffer {
         return seq
     }
 }
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceSequenceFloat: FfiConverterRustBuffer {
+    typealias SwiftType = [[Float]]
+
+    public static func write(_ value: [[Float]], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterSequenceFloat.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [[Float]] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [[Float]]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterSequenceFloat.read(from: &buf))
+        }
+        return seq
+    }
+}
 private let UNIFFI_RUST_FUTURE_POLL_READY: Int8 = 0
 private let UNIFFI_RUST_FUTURE_POLL_WAKE: Int8 = 1
 
@@ -9312,7 +9543,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_model_setvisible() != 57873) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_model_transform() != 63198) {
+    if (uniffi_fragmentcolor_checksum_method_model_transform() != 51764) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_model_translate() != 28577) {
@@ -9330,7 +9561,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_camera_setaspect() != 61981) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_camera_viewproj() != 472) {
+    if (uniffi_fragmentcolor_checksum_method_camera_viewproj() != 60984) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_light_color() != 14620) {
@@ -9345,7 +9576,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_light_intensity() != 59247) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_light_kind() != 46581) {
+    if (uniffi_fragmentcolor_checksum_method_light_kind() != 23864) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_light_outerconeangle() != 43372) {
@@ -9556,6 +9787,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_renderer_new() != 32881) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_constructor_renderer_useloglevel() != 63316) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_constructor_model_new() != 51565) {

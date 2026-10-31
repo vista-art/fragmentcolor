@@ -1441,6 +1441,81 @@ lang="kotlin"
 
 ---
 
+### Renderer::set_log_level(level: LogLevel) \{#set_log_level\}
+
+Sets how much FragmentColor logs, for the whole process. The `LogLevel` values run from quiet to verbose: `Off`, `Error`, `Warn`, `Info`, `Debug` and `Trace`.
+
+The web build prints to the browser console and starts at `Info`. Raise it to `Debug` to see naga's notes on each shader. On other platforms FragmentColor logs through Rust's `log` crate, and the level limits what an installed logger prints.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{LogLevel, Renderer};
+
+Renderer::set_log_level(LogLevel::Debug);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { LogLevel, Renderer } from "fragmentcolor";
+
+Renderer.setLogLevel(LogLevel.Debug);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import LogLevel, Renderer
+
+Renderer.set_log_level(LogLevel.Debug)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+Renderer.setLogLevel(LogLevel.debug)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+Renderer.setLogLevel(LogLevel.DEBUG)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
 ### Renderer::unregister_texture(id) \{#unregister_texture\}
 
 Remove a texture from the renderer’s registry now.
