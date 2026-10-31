@@ -547,6 +547,7 @@ impl ShaderObject {
     }
 
     /// Checks the kept mesh unless it passed at its current generation.
+    ///
     /// It holds the mesh while it passes and lets it go while it fails.
     /// It fixes the types it gives untyped attributes, as any attach does,
     /// but records none of its reads, so it adds nothing the vertices must hold.

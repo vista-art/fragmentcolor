@@ -2674,7 +2674,7 @@ fn require_mesh(shader: &ShaderObject) -> Result<(), ShaderError> {
 }
 
 /// The vertex layouts `shader` reads from `mesh`.
-/// Its buffers follow `schemas`, and it keeps the layouts until it changes
+/// Its buffers follow `schemas`, and the mesh keeps the layouts until it packs again
 /// (`MeshObject::fetch_layouts`). `check_strides` checks them against each device.
 fn vertex_buffer_layouts(
     shader: &crate::ShaderObject,

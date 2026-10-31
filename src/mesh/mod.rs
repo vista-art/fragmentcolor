@@ -238,7 +238,7 @@ pub(crate) struct MeshObject {
 
     /// The last upload, with the context it belongs to.
     cache: RwLock<Option<Cached>>,
-    /// Counts the changes to the mesh. A cached result or layout from an older one is stale.
+    /// Counts the changes to the mesh. A cached upload from an older one is stale.
     generation: AtomicU64,
 }
 
@@ -517,8 +517,8 @@ impl MeshObject {
         self.invalidate_cache();
     }
 
-    /// Marks every cached result and layout stale. It takes no lock, so a
-    /// mutator may call it whatever it holds.
+    /// Marks every cached upload stale. It takes no lock,
+    /// so a mutator may call it whatever it holds. Kept layouts follow the pack's schemas.
     pub(crate) fn invalidate_cache(&self) {
         self.generation.fetch_add(1, Ordering::AcqRel);
     }
