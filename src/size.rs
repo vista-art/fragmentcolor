@@ -1,7 +1,7 @@
 #[cfg(wasm)]
 use crate::error::WebError;
 #[cfg(wasm)]
-use crate::platforms::web::{read_given, read_list, read_number};
+use crate::platforms::web::{describe, read_class, read_given, read_list, read_number};
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
@@ -57,7 +57,7 @@ impl Size {
         match *dimensions {
             [width, height] => Ok(Size::new(width, height, None)),
             [width, height, depth] => Ok(Size::new(width, height, Some(depth))),
-            _ => Err(SizeError::TypeMismatch(format!(
+            _ => Err(SizeError::Invalid(format!(
                 "a size takes 2 or 3 numbers, got {}",
                 dimensions.len()
             ))),
@@ -77,7 +77,7 @@ pub(crate) fn read_dimension(number: f64) -> Option<u32> {
 #[cfg(wasm)]
 fn check_dimension(number: f64) -> Result<u32, SizeError> {
     read_dimension(number).ok_or_else(|| {
-        SizeError::TypeMismatch(format!(
+        SizeError::Invalid(format!(
             "a size takes whole numbers from 0 up, got {number}"
         ))
     })
@@ -131,31 +131,33 @@ crate::impl_from_into_with_refs!(
     |a: [u32; 3]| Size::new(a[0], a[1], Some(a[2]))
 );
 
-/// Reads `[w, h]` or `[w, h, d]` from a plain or typed array, or a `{ width, height, depth? }` object.
-/// A value of another type, or a number that isn't one, is a `TypeError`, as Python raises,
-/// and a fraction, a negative number, a wrong count or a missing side is an `InvalidInputError`.
+/// Reads `[w, h]` or `[w, h, d]` from a plain or typed array, a `Size`, or a `{ width, height, depth? }`
+/// object. A value of another type, another FragmentColor class among them, or a number that isn't
+/// one, is a `TypeError`, as Python raises, and a fraction, a negative number, a wrong count or a
+/// missing side is an `InvalidInputError`.
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for Size {
     type Error = WebError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+        use crate::FcKind;
         use js_sys::Reflect;
 
         if let Some(numbers) = read_list(value, "a size")? {
             return Ok(Size::from_numbers(&numbers)?);
         }
 
-        if value.is_object() {
+        let class = read_class(value);
+        if value.is_object() && class.as_deref().is_none_or(|class| class == Self::KIND) {
             let field = |name: &str| {
                 Reflect::get(value, &JsValue::from_str(name))
                     .ok()
                     .filter(|item| !item.is_undefined() && !item.is_null())
-                    .map(|item| read_number(&item, &format!("a size's {name}")))
+                    .map(|item| read_number(&item, format_args!("a size's {name}")))
                     .transpose()
             };
             let (Some(width), Some(height)) = (field("width")?, field("height")?) else {
-                let missing =
-                    SizeError::TypeMismatch("a size object needs a width and a height".into());
+                let missing = SizeError::Invalid("a size object needs a width and a height".into());
                 return Err(missing.into());
             };
             let numbers = match field("depth")? {
@@ -165,8 +167,9 @@ impl TryFrom<&wasm_bindgen::JsValue> for Size {
             return Ok(Size::from_numbers(&numbers)?);
         }
 
+        let kind = class.unwrap_or_else(|| describe(value));
         Err(WebError::type_error(&format!(
-            "a size is [w, h], [w, h, d] or {{ width, height, depth? }}, got {value:?}"
+            "a size is [w, h], [w, h, d], a Size or {{ width, height, depth? }}, got {kind}"
         )))
     }
 }
@@ -181,7 +184,7 @@ impl Size {
     pub fn new_js(
         #[wasm_bindgen(unchecked_param_type = "number")] width: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "number")] height: &JsValue,
-        #[wasm_bindgen(unchecked_optional_param_type = "number")] depth: Option<JsValue>,
+        #[wasm_bindgen(unchecked_optional_param_type = "number | null")] depth: Option<JsValue>,
     ) -> Result<Size, WebError> {
         let mut numbers = vec![
             read_number(width, "Size: width")?,
@@ -202,7 +205,10 @@ impl Size {
     /// Checks the number as the constructor does, and keeps the old width on an error.
     #[doc(hidden)]
     #[wasm_bindgen(setter = width)]
-    pub fn set_width_js(&mut self, value: JsValue) -> Result<(), WebError> {
+    pub fn set_width_js(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "number")] value: JsValue,
+    ) -> Result<(), WebError> {
         self.width = check_dimension(read_number(&value, "Size.width")?)?;
         Ok(())
     }
@@ -215,7 +221,10 @@ impl Size {
 
     #[doc(hidden)]
     #[wasm_bindgen(setter = height)]
-    pub fn set_height_js(&mut self, value: JsValue) -> Result<(), WebError> {
+    pub fn set_height_js(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "number")] value: JsValue,
+    ) -> Result<(), WebError> {
         self.height = check_dimension(read_number(&value, "Size.height")?)?;
         Ok(())
     }
@@ -229,7 +238,10 @@ impl Size {
     /// `undefined` or `null` clears the depth.
     #[doc(hidden)]
     #[wasm_bindgen(setter = depth)]
-    pub fn set_depth_js(&mut self, value: Option<JsValue>) -> Result<(), WebError> {
+    pub fn set_depth_js(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "number | null | undefined")] value: Option<JsValue>,
+    ) -> Result<(), WebError> {
         self.depth = match read_given(value) {
             Some(depth) => Some(check_dimension(read_number(&depth, "Size.depth")?)?),
             None => None,
@@ -240,6 +252,9 @@ impl Size {
 
 #[cfg(wasm)]
 crate::impl_tryfrom_owned_via_ref!(Size, wasm_bindgen::JsValue, WebError);
+
+// The brand lets a reader tell a Size from another class after a minifier renames the class.
+crate::impl_fc_kind!(Size, "Size");
 
 #[cfg(python)]
 #[pymethods]
@@ -333,7 +348,7 @@ impl TryFrom<PySize<'_>> for Size {
                     value.read(&format!("size: {name}")).map(Some)
                 };
                 let (Some(width), Some(height)) = (field("width")?, field("height")?) else {
-                    return Err(SizeError::TypeMismatch(
+                    return Err(SizeError::Invalid(
                         "a size dict needs a width and a height".into(),
                     )
                     .into());

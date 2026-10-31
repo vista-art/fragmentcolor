@@ -452,9 +452,9 @@ mod tests {
         let e1: FragmentColorError =
             crate::shader::error::ShaderError::UniformNotFound("u".into()).into();
         let e2: FragmentColorError =
-            crate::color::error::ColorError::TypeMismatch("bad".into()).into();
+            crate::color::error::ColorError::Invalid("a color takes 3 or 4 channels".into()).into();
         let e3: FragmentColorError =
-            crate::size::error::SizeError::TypeMismatch("size".into()).into();
+            crate::size::error::SizeError::Invalid("a size takes 2 or 3 numbers".into()).into();
         let e6: FragmentColorError = crate::renderer::error::RendererError::NoContext.into();
         let e7: FragmentColorError =
             crate::renderer::error::InitializationError::Error("init".into()).into();
@@ -469,8 +469,8 @@ mod tests {
 
         // Assert
         assert!(e1.to_string().contains("Uniform not found"));
-        assert!(e2.to_string().contains("Type mismatch"));
-        assert!(e3.to_string().contains("Type mismatch"));
+        assert_eq!(e2.to_string(), "a color takes 3 or 4 channels");
+        assert_eq!(e3.to_string(), "a size takes 2 or 3 numbers");
         assert!(e6.to_string().contains("Context not initialized"));
         assert!(e7.to_string().contains("Initialization error"));
         assert!(e8.to_string().contains("Display Error"));
@@ -568,7 +568,7 @@ mod tests {
                 "UnsupportedMipmapFormatError",
             ),
             (
-                Box::new(ColorError::TypeMismatch(text("x"))),
+                Box::new(ColorError::Invalid(text("x"))),
                 "InvalidInputError",
             ),
             (

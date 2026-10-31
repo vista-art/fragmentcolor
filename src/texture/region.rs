@@ -1,4 +1,4 @@
-//! TextureRegion — internal transport type for `Texture::write_region(...)`.
+//! TextureRegion, the internal transport type for `Texture::write_region(...)`.
 //!
 //! Describes where in a texture data should be written and (optionally) how
 //! the source bytes are laid out. `Texture::write_region` takes anything that converts
@@ -6,7 +6,7 @@
 
 /// Where in a texture to write, and how source bytes are laid out.
 ///
-/// `origin` and `size` are 3D — `[x, y, z]` and `[width, height, depth]` —
+/// `origin` and `size` are 3D, `[x, y, z]` and `[width, height, depth]`,
 /// so the same struct covers 2D textures (`z = 0`, `depth = 1`), texture arrays,
 /// and 3D textures.
 ///
@@ -89,7 +89,7 @@ impl TextureRegion {
 // Trait-based conversions (preferred surface)
 // -------------------------------------------
 
-// Size only: [w, h] — origin (0,0,0), depth 1.
+// Size only: [w, h], at origin (0, 0, 0) and depth 1.
 impl From<[u32; 2]> for TextureRegion {
     #[inline]
     fn from(s: [u32; 2]) -> Self {
@@ -103,7 +103,7 @@ impl From<(u32, u32)> for TextureRegion {
     }
 }
 
-// 2D rectangle: [x, y, w, h] — z=0, depth=1.
+// 2D rectangle: [x, y, w, h], at z = 0 and depth 1.
 impl From<[u32; 4]> for TextureRegion {
     #[inline]
     fn from(a: [u32; 4]) -> Self {
@@ -252,7 +252,7 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
         use crate::error::WebError;
-        use crate::platforms::web::{read_list, read_number};
+        use crate::platforms::web::{describe, read_class, read_list, read_number};
         use crate::size::read_dimension;
         use js_sys::Reflect;
 
@@ -285,20 +285,19 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
         // Object: { x?, y?, z?, width, height, depth?, bytesPerRow?, rowsPerImage? }
         // or       { minX?, minY?, maxX, maxY, minZ?, maxZ?, bytesPerRow?, rowsPerImage? }
         // A `ScreenRegion`, known by its brand, reads by its `minX` to `maxY` getters,
-        // and its `width()` and `height()` methods are no keys. A function anywhere else throws.
-        if value.is_object() {
-            let brand = Reflect::get(value, &wasm_bindgen::JsValue::from_str("__fc_kind"))
-                .ok()
-                .and_then(|brand| brand.as_string());
-            let screen = brand.as_deref() == Some(<crate::ScreenRegion as crate::FcKind>::KIND);
+        // and its `width()` and `height()` methods are no keys. A function anywhere else throws,
+        // and so does any other FragmentColor class.
+        let class = read_class(value);
+        let screen = class.as_deref() == Some(<crate::ScreenRegion as crate::FcKind>::KIND);
+        if value.is_object() && (class.is_none() || screen) {
             let read = |(camel, snake): Key| -> Result<Option<u32>, WebError> {
                 for name in [camel, snake] {
                     let field = Reflect::get(value, &wasm_bindgen::JsValue::from_str(name))
                         .unwrap_or(wasm_bindgen::JsValue::UNDEFINED);
                     let method = screen && field.is_function();
                     if !field.is_undefined() && !field.is_null() && !method {
-                        let label = format!("Texture.writeRegion: {camel}");
-                        return Ok(Some(dimension(read_number(&field, &label)?)?));
+                        let label = format_args!("Texture.writeRegion: {camel}");
+                        return Ok(Some(dimension(read_number(&field, label)?)?));
                     }
                 }
                 Ok(None)
@@ -306,8 +305,9 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
             return read_region(read);
         }
 
+        let kind = class.unwrap_or_else(|| describe(value));
         Err(WebError::type_error(&format!(
-            "Texture.writeRegion: a region is [w, h], [x, y, w, h], [x, y, z, w, h, d] or an object such as {{ x, y, width, height }}, got {value:?}"
+            "Texture.writeRegion: a region is [w, h], [x, y, w, h], [x, y, z, w, h, d], a ScreenRegion or an object such as {{ x, y, width, height }}, got {kind}"
         )))
     }
 }

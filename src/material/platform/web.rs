@@ -6,7 +6,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::Shader;
 use crate::material::{AlphaMode, Material, TextureSlot};
-use crate::platforms::web::{read_count, read_flag, read_float, read_vector};
+use crate::platforms::web::{describe, read_count, read_flag, read_float, read_vector};
 use crate::texture::read_texture_input;
 
 #[wasm_bindgen]
@@ -213,7 +213,10 @@ impl Material {
 /// Anything else is an error, which wasm-bindgen would read as `Opaque`.
 fn read_alpha_mode(value: &JsValue) -> Result<AlphaMode, WebError> {
     let code = value.as_f64().ok_or_else(|| {
-        WebError::type_error(&format!("mode must be an AlphaMode, got {value:?}"))
+        WebError::type_error(&format!(
+            "mode must be an AlphaMode, got {}",
+            describe(value)
+        ))
     })?;
     match crate::platforms::web::read_unsigned(code, "mode")? {
         0 => Ok(AlphaMode::Opaque),
@@ -230,7 +233,10 @@ fn read_alpha_mode(value: &JsValue) -> Result<AlphaMode, WebError> {
 /// Anything else is an error, which wasm-bindgen would read as `BaseColor`.
 fn read_texture_slot(value: &JsValue) -> Result<TextureSlot, WebError> {
     let code = value.as_f64().ok_or_else(|| {
-        WebError::type_error(&format!("slot must be a TextureSlot, got {value:?}"))
+        WebError::type_error(&format!(
+            "slot must be a TextureSlot, got {}",
+            describe(value)
+        ))
     })?;
     let index = crate::platforms::web::read_unsigned(code, "slot")?;
     TextureSlot::ALL

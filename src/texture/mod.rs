@@ -494,7 +494,7 @@ pub(crate) fn read_source(
         let bytes = Array::from(value)
             .iter()
             .enumerate()
-            .map(|(index, item)| js_to_byte(&item, &format!("{label}: item {index}")))
+            .map(|(index, item)| js_to_byte(&item, label, index))
             .collect::<Result<Vec<u8>, WebError>>()?;
         return Ok(TextureData::Bytes(bytes).into());
     }
@@ -524,7 +524,8 @@ pub(crate) fn read_source(
     }
 
     Err(WebError::type_error(&format!(
-        "{label} takes bytes (a Uint8Array, an ArrayBuffer or an array of numbers), an ImageData, a canvas, an image, a URL, a Texture or a Mipmap, got {value:?}"
+        "{label} takes bytes (a Uint8Array, an ArrayBuffer or an array of numbers), an ImageData, a canvas, an image, a URL, a Texture or a Mipmap, got {}",
+        crate::platforms::web::describe(value)
     )))
 }
 
@@ -558,13 +559,18 @@ fn read_canvas(value: &wasm_bindgen::JsValue) -> Result<Option<TextureInput>, Te
 /// One item of a JS byte list, named `label`: a `TypeError` for a value that isn't a number,
 /// as Python raises, and an `InvalidInputError` for one that isn't a whole number from 0 to 255.
 #[cfg(wasm)]
-fn js_to_byte(value: &wasm_bindgen::JsValue, label: &str) -> Result<u8, crate::error::WebError> {
-    let number = crate::platforms::web::read_number(value, label)?;
+fn js_to_byte(
+    value: &wasm_bindgen::JsValue,
+    label: &str,
+    index: usize,
+) -> Result<u8, crate::error::WebError> {
+    let item = format_args!("{label}: item {index}");
+    let number = crate::platforms::web::read_number(value, item)?;
     if number.fract() == 0.0 && (0.0..=255.0).contains(&number) {
         return Ok(number as u8);
     }
     Err(TextureError::InvalidInput(format!(
-        "{label} must be a whole number from 0 to 255, got {number}"
+        "{label}: item {index} must be a whole number from 0 to 255, got {number}"
     ))
     .into())
 }
@@ -576,6 +582,7 @@ fn js_to_byte(value: &wasm_bindgen::JsValue, label: &str) -> Result<u8, crate::e
 pub struct TextureId {
     /// Names a texture while it stays registered, in the `Renderer` that made it.
     /// A Material map's id names the copy in each `Renderer` that loaded that map.
+    #[cfg_attr(wasm, wasm_bindgen(readonly))]
     pub id: u64,
 }
 
@@ -618,16 +625,24 @@ crate::impl_js_bridge!(TextureId, crate::texture::TextureError);
 pub(crate) fn js_to_texture_id(
     value: &wasm_bindgen::JsValue,
 ) -> Result<TextureId, crate::error::WebError> {
-    let invalid = || TextureError::InvalidInput(format!("not a texture id: {value:?}"));
+    use crate::platforms::web::describe;
+    let invalid = |shown: String| {
+        TextureError::InvalidInput(format!(
+            "a texture id is a whole number from 0 to {}, got {shown}",
+            u64::MAX
+        ))
+    };
     if let Some(number) = value.as_f64() {
-        if number.fract() != 0.0 || !(0.0..=u64::MAX as f64).contains(&number) {
-            return Err(invalid().into());
+        // `u64::MAX as f64` rounds up to 2^64, so the range leaves it out.
+        if number.fract() != 0.0 || !(0.0..u64::MAX as f64).contains(&number) {
+            return Err(invalid(number.to_string()).into());
         }
         return Ok(TextureId { id: number as u64 });
     }
     if value.is_bigint() {
         let Ok(id) = u64::try_from(value.clone()) else {
-            return Err(invalid().into());
+            let shown = js_sys::BigInt::from(value.clone()).to_string(10);
+            return Err(invalid(shown.map(String::from).unwrap_or_default()).into());
         };
         return Ok(TextureId::from(id));
     }
@@ -635,7 +650,8 @@ pub(crate) fn js_to_texture_id(
         return Ok(id);
     }
     Err(crate::error::WebError::type_error(&format!(
-        "a texture id is a TextureId or a whole number, got {value:?}"
+        "a texture id is a TextureId or a whole number, got {}",
+        describe(value)
     )))
 }
 
@@ -653,7 +669,8 @@ pub(crate) fn js_to_texture_bytes(
     let TextureInput { data, options } = read_source(value, label)?;
     let TextureData::Bytes(mut bytes) = data else {
         return Err(crate::error::WebError::type_error(&format!(
-            "{label} takes bytes (a Uint8Array, an ArrayBuffer or an array of numbers), an ImageData or a canvas, got {value:?}"
+            "{label} takes bytes (a Uint8Array, an ArrayBuffer or an array of numbers), an ImageData or a canvas, got {}",
+            crate::platforms::web::describe(value)
         )));
     };
     if let Some(own) = options.size {

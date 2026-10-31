@@ -5,7 +5,7 @@ use js_sys::Reflect;
 use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
-use crate::platforms::web::read_unsigned;
+use crate::platforms::web::{read_count, read_unsigned};
 use crate::{
     CompareFunction, Mipmap, SamplerOptions, Size, Texture, TextureData, TextureFormat, TextureId,
     TextureInput, TextureOptions,
@@ -31,9 +31,8 @@ impl Mipmap {
     pub fn build_js(
         bytes: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "TextureFormat")] format: &JsValue,
-        #[wasm_bindgen(unchecked_optional_param_type = "ArrayLike<number> | Size")] size: Option<
-            JsValue,
-        >,
+        #[wasm_bindgen(unchecked_optional_param_type = "ArrayLike<number> | Size | null")]
+        size: Option<JsValue>,
     ) -> Result<Mipmap, WebError> {
         let format = read_format(format)?;
         let size = size.filter(|size| !size.is_undefined() && !size.is_null());
@@ -91,10 +90,7 @@ impl Mipmap {
         &self,
         #[wasm_bindgen(unchecked_param_type = "number")] index: &JsValue,
     ) -> Result<js_sys::Uint8Array, WebError> {
-        let number = index
-            .as_f64()
-            .ok_or_else(|| WebError::type_error("level index must be a number"))?;
-        let index = read_unsigned(number, "level index")?;
+        let index = read_count(index, "Mipmap.level: index")?;
         Ok(js_sys::Uint8Array::from(self.level(index as usize)?))
     }
 }
@@ -365,7 +361,10 @@ fn read_field(object: &JsValue, name: &str) -> Option<JsValue> {
 /// where wasm-bindgen would read `undefined`, `NaN` or a fraction as a code.
 pub(crate) fn read_format(value: &JsValue) -> Result<TextureFormat, WebError> {
     let code = value.as_f64().ok_or_else(|| {
-        WebError::type_error(&format!("format must be a TextureFormat, got {value:?}"))
+        WebError::type_error(&format!(
+            "format must be a TextureFormat, got {}",
+            crate::platforms::web::describe(value)
+        ))
     })?;
     let format = match read_unsigned(code, "format")? {
         0 => TextureFormat::R8Unorm,

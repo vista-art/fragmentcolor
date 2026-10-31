@@ -8,22 +8,27 @@ use wasm_bindgen::prelude::*;
 use crate::mesh::{Instance, Mesh, Quad, Vertex, VertexData};
 use crate::platforms::vector;
 use crate::platforms::web::{
-    read_count, read_floats, read_numbers, read_text, read_unsigned, read_vector,
+    describe, read_count, read_floats, read_list, read_text, read_unsigned, read_vector,
 };
+use crate::size::read_dimension;
 
 // -----------------------------
 // JS helpers
 // -----------------------------
 /// Reads a vertex attribute value: a number,
 /// or an array or typed array of 1 to 4 numbers.
-/// They take the type the shader declares when the mesh attaches to it.
-fn read_attribute(value: &JsValue) -> Result<VertexData, WebError> {
+/// They take the type the shader declares when the mesh attaches to it,
+/// and an error names `label` and, for a list, the item.
+fn read_attribute(value: &JsValue, label: &str) -> Result<VertexData, WebError> {
     if let Some(number) = value.as_f64() {
         return Ok(number.into());
     }
-    let numbers = read_numbers(value).ok_or_else(|| {
-        WebError::type_error("a vertex attribute is a number or a list of 1 to 4 numbers")
-    })?;
+    let Some(numbers) = read_list(value, label)? else {
+        return Err(WebError::type_error(&format!(
+            "{label} is a number or a list of 1 to 4 numbers, got {}",
+            describe(value)
+        )));
+    };
     Ok(VertexData::try_from(numbers.as_slice())?)
 }
 
@@ -83,7 +88,8 @@ fn js_to_instance_into(value: &JsValue) -> Result<Instance, WebError> {
                 .get(0)
                 .as_string()
                 .ok_or_else(|| WebError::type_error("Instance attribute keys must be strings"))?;
-            instance = instance.set(&key, read_attribute(&pair.get(1))?);
+            let label = format!("Mesh.addInstance: {key}");
+            instance = instance.set(&key, read_attribute(&pair.get(1), &label)?);
         }
         return Ok(instance);
     }
@@ -177,7 +183,9 @@ impl Vertex {
         #[wasm_bindgen(unchecked_param_type = "number | ArrayLike<number>")] value: &JsValue,
     ) -> Result<Vertex, WebError> {
         let key = read_text(key, "Vertex.set: key")?;
-        Ok(self.clone().set(&key, read_attribute(value)?))
+        Ok(self
+            .clone()
+            .set(&key, read_attribute(value, "Vertex.set: value")?))
     }
 
     #[wasm_bindgen(js_name = "createInstance")]
@@ -213,7 +221,9 @@ impl Instance {
         #[wasm_bindgen(unchecked_param_type = "number | ArrayLike<number>")] value: &JsValue,
     ) -> Result<Instance, WebError> {
         let key = read_text(key, "Instance.set: key")?;
-        Ok(self.clone().set(&key, read_attribute(value)?))
+        Ok(self
+            .clone()
+            .set(&key, read_attribute(value, "Instance.set: value")?))
     }
 }
 
@@ -314,11 +324,15 @@ impl Mesh {
             self.set_indices(array.to_vec());
             return Ok(());
         }
-        let numbers = read_numbers(indices).ok_or_else(|| {
-            WebError::type_error("Mesh.setIndices: expected an array or typed array of numbers")
-        })?;
-        let read = |(index, number): (usize, f64)| {
-            read_unsigned(number, &format!("Mesh.setIndices: item {index}"))
+        let Some(numbers) = read_list(indices, "Mesh.setIndices")? else {
+            return Err(WebError::type_error(&format!(
+                "Mesh.setIndices takes an array or typed array of numbers, got {}",
+                describe(indices)
+            )));
+        };
+        let read = |(index, number): (usize, f64)| match read_dimension(number) {
+            Some(whole) => Ok(whole),
+            None => read_unsigned(number, &format!("Mesh.setIndices: item {index}")),
         };
         let indices = numbers.into_iter().enumerate().map(read);
         self.set_indices(indices.collect::<Result<Vec<u32>, WebError>>()?);

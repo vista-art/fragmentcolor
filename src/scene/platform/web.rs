@@ -358,7 +358,9 @@ impl Scene {
     #[lsp_doc("docs/api/scene/scene/load.md")]
     pub fn load_js(
         #[wasm_bindgen(unchecked_param_type = "ArrayBuffer | ArrayBufferView")] source: &JsValue,
-        #[wasm_bindgen(unchecked_optional_param_type = "{ cameras?: boolean; lights?: boolean }")]
+        #[wasm_bindgen(
+            unchecked_optional_param_type = "{ cameras?: boolean; lights?: boolean } | null"
+        )]
         options: Option<JsValue>,
     ) -> Result<Scene, WebError> {
         let source = if let Some(bytes) = read_bytes(source) {

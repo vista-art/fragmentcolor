@@ -2,11 +2,9 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum SizeError {
-    #[error("Type mismatch: {0}")]
-    TypeMismatch(String),
-    #[cfg(wasm)]
-    #[error("WASM Size Error: {0}")]
-    Error(String),
+    /// A size a binding can't use, such as a wrong count of numbers or a negative one, which the message names.
+    #[error("{0}")]
+    Invalid(String),
 }
 
 #[cfg(any(python, wasm, test))]

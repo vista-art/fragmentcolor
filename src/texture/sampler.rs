@@ -29,10 +29,12 @@ impl SamplerOptions {
     #[doc(hidden)]
     #[wasm_bindgen(constructor)]
     pub fn new_js(
-        #[wasm_bindgen(unchecked_optional_param_type = "boolean")] repeat_x: Option<JsValue>,
-        #[wasm_bindgen(unchecked_optional_param_type = "boolean")] repeat_y: Option<JsValue>,
-        #[wasm_bindgen(unchecked_optional_param_type = "boolean")] smooth: Option<JsValue>,
-        #[wasm_bindgen(unchecked_optional_param_type = "CompareFunction")] compare: Option<JsValue>,
+        #[wasm_bindgen(unchecked_optional_param_type = "boolean | null")] repeat_x: Option<JsValue>,
+        #[wasm_bindgen(unchecked_optional_param_type = "boolean | null")] repeat_y: Option<JsValue>,
+        #[wasm_bindgen(unchecked_optional_param_type = "boolean | null")] smooth: Option<JsValue>,
+        #[wasm_bindgen(unchecked_optional_param_type = "CompareFunction | null")] compare: Option<
+            JsValue,
+        >,
     ) -> Result<SamplerOptions, crate::error::WebError> {
         use crate::platforms::web::{read_flag, read_given};
         let compare = match compare {
@@ -61,7 +63,10 @@ impl SamplerOptions {
     /// A value that isn't a boolean throws a `TypeError` and keeps the old one.
     #[doc(hidden)]
     #[wasm_bindgen(setter = repeat_x)]
-    pub fn set_repeat_x_js(&mut self, value: JsValue) -> Result<(), crate::error::WebError> {
+    pub fn set_repeat_x_js(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "boolean")] value: JsValue,
+    ) -> Result<(), crate::error::WebError> {
         self.repeat_x = crate::platforms::web::read_flag(&value, "SamplerOptions.repeat_x")?;
         Ok(())
     }
@@ -75,7 +80,10 @@ impl SamplerOptions {
     /// A value that isn't a boolean throws a `TypeError` and keeps the old one.
     #[doc(hidden)]
     #[wasm_bindgen(setter = repeat_y)]
-    pub fn set_repeat_y_js(&mut self, value: JsValue) -> Result<(), crate::error::WebError> {
+    pub fn set_repeat_y_js(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "boolean")] value: JsValue,
+    ) -> Result<(), crate::error::WebError> {
         self.repeat_y = crate::platforms::web::read_flag(&value, "SamplerOptions.repeat_y")?;
         Ok(())
     }
@@ -89,7 +97,10 @@ impl SamplerOptions {
     /// A value that isn't a boolean throws a `TypeError` and keeps the old one.
     #[doc(hidden)]
     #[wasm_bindgen(setter = smooth)]
-    pub fn set_smooth_js(&mut self, value: JsValue) -> Result<(), crate::error::WebError> {
+    pub fn set_smooth_js(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "boolean")] value: JsValue,
+    ) -> Result<(), crate::error::WebError> {
         self.smooth = crate::platforms::web::read_flag(&value, "SamplerOptions.smooth")?;
         Ok(())
     }
@@ -104,7 +115,10 @@ impl SamplerOptions {
     /// that isn't one throws and keeps the old one.
     #[doc(hidden)]
     #[wasm_bindgen(setter = compare)]
-    pub fn set_compare_js(&mut self, value: JsValue) -> Result<(), crate::error::WebError> {
+    pub fn set_compare_js(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "CompareFunction | null | undefined")] value: JsValue,
+    ) -> Result<(), crate::error::WebError> {
         self.compare = super::parse_compare(&value)?;
         Ok(())
     }

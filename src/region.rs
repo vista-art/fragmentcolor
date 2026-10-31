@@ -1,7 +1,11 @@
 #[cfg(wasm)]
+use crate::FcKind;
+#[cfg(wasm)]
 use crate::error::WebError;
 #[cfg(wasm)]
-use crate::platforms::web::{read_list, read_number};
+use crate::platforms::web::{describe, read_class, read_list, read_number};
+#[cfg(wasm)]
+use wasm_bindgen::JsCast;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
@@ -118,7 +122,7 @@ impl ScreenRegion {
         match *dimensions {
             [width, height] => Self::from_size(width, height),
             [x, y, width, height] => Self::from_region(x, y, width, height),
-            _ => Err(ScreenRegionError::TypeMismatch(format!(
+            _ => Err(ScreenRegionError::Invalid(format!(
                 "a region takes [w, h] or [x, y, w, h], got {} numbers",
                 dimensions.len()
             ))),
@@ -276,24 +280,33 @@ impl ScreenRegion {
 
 /// Reads `[w, h]` or `[x, y, w, h]` from a plain or typed array, an `{ x, y, width, height }`
 /// object such as a `DOMRect`, or the `{ minX, minY, maxX, maxY }` fields of a `ScreenRegion`.
-/// A value of another type, or an item that isn't a number, is a `TypeError`, as Python raises,
-/// and a fraction, a negative number or a wrong count is an `InvalidInputError`.
+/// An origin and a size as `[[x, y], [w, h]]` read as `ScreenRegion::new` reads them, as a Rust
+/// `((x, y), (w, h))` does. A value of another type, another FragmentColor class among them, or an
+/// item that isn't a number, is a `TypeError`, as Python raises, and a fraction, a negative number
+/// or a wrong count is an `InvalidInputError`.
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for ScreenRegion {
     type Error = WebError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+        if let Some((origin, size)) = read_pairs(value) {
+            let origin = js_to_pair(&origin, "a region: origin")?;
+            let size = js_to_pair(&size, "a region: size")?;
+            return Ok(ScreenRegion::new(origin, size)?);
+        }
+
         if let Some(numbers) = read_list(value, "a region")? {
             return Ok(ScreenRegion::from_numbers(&numbers)?);
         }
 
-        if value.is_object() {
+        let class = read_class(value);
+        if value.is_object() && class.as_deref().is_none_or(|class| class == Self::KIND) {
             let field = |names: &[&str]| -> Result<Option<u32>, WebError> {
                 for name in names {
                     let item = js_sys::Reflect::get(value, &JsValue::from_str(name))
                         .unwrap_or(JsValue::UNDEFINED);
                     if !item.is_undefined() && !item.is_null() {
-                        let number = read_number(&item, &format!("a region's {name}"))?;
+                        let number = read_number(&item, format_args!("a region's {name}"))?;
                         return Ok(Some(check_dimension(number)?));
                     }
                 }
@@ -326,17 +339,28 @@ impl TryFrom<&wasm_bindgen::JsValue> for ScreenRegion {
             }
         }
 
+        let kind = class.unwrap_or_else(|| describe(value));
         Err(WebError::type_error(&format!(
-            "a region is [w, h], [x, y, w, h], {{ x, y, width, height }} or a ScreenRegion, got {value:?}"
+            "a region is [w, h], [x, y, w, h], [[x, y], [w, h]], {{ x, y, width, height }} or a ScreenRegion, got {kind}"
         )))
     }
+}
+
+/// The two items of `[[x, y], [w, h]]`, an array of two arrays, or `None` for any other value.
+#[cfg(wasm)]
+fn read_pairs(value: &JsValue) -> Option<(JsValue, JsValue)> {
+    use js_sys::Array;
+    let array = value.dyn_ref::<Array>()?;
+    let (origin, size) = (array.get(0), array.get(1));
+    let pairs = array.length() == 2 && Array::is_array(&origin) && Array::is_array(&size);
+    pairs.then_some((origin, size))
 }
 
 /// One region number from JavaScript, checked by [`read_dimension`].
 #[cfg(wasm)]
 fn check_dimension(number: f64) -> Result<u32, ScreenRegionError> {
     read_dimension(number).ok_or_else(|| {
-        ScreenRegionError::TypeMismatch(format!(
+        ScreenRegionError::Invalid(format!(
             "a region takes whole numbers from 0 up, got {number}"
         ))
     })
@@ -347,8 +371,9 @@ fn check_dimension(number: f64) -> Result<u32, ScreenRegionError> {
 #[cfg(wasm)]
 fn js_to_pair(value: &JsValue, label: &str) -> Result<(u32, u32), WebError> {
     let Some(numbers) = read_list(value, label)? else {
+        let kind = describe(value);
         return Err(WebError::type_error(&format!(
-            "{label} takes two numbers, got {value:?}"
+            "{label} takes two numbers, got {kind}"
         )));
     };
     let numbers = numbers
@@ -357,7 +382,7 @@ fn js_to_pair(value: &JsValue, label: &str) -> Result<(u32, u32), WebError> {
         .collect::<Result<Vec<u32>, ScreenRegionError>>()?;
     match numbers[..] {
         [first, second] => Ok((first, second)),
-        _ => Err(ScreenRegionError::TypeMismatch(format!(
+        _ => Err(ScreenRegionError::Invalid(format!(
             "{label} takes two numbers, got {}",
             numbers.len()
         ))

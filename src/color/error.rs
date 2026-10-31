@@ -2,14 +2,12 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ColorError {
-    #[error("Type mismatch: {0}")]
-    TypeMismatch(String),
+    /// A color a binding can't use, such as a wrong count of channels, which the message names.
+    #[error("{0}")]
+    Invalid(String),
     /// A channel that is NaN or infinite, which no target can clear to.
     #[error("the {channel} channel must be a finite number, got {value}")]
     NotFinite { channel: &'static str, value: f32 },
-    #[cfg(wasm)]
-    #[error("WASM Color Error: {0}")]
-    Error(String),
 }
 
 #[cfg(any(python, wasm, test))]

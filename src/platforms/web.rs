@@ -60,11 +60,47 @@ pub(crate) fn read_unsigned(value: f64, what: &str) -> Result<u32, WebError> {
     Ok(super::read_unsigned(value, what)?)
 }
 
+/// What a JS value is, in JavaScript's own words, for an error message: `undefined`, `null`,
+/// `array`, the brand of a FragmentColor class such as `Texture`, the constructor of a typed array
+/// such as `Uint8Array`, or its `typeof`. The value's contents never reach the message.
+pub(crate) fn describe(value: &wasm_bindgen::JsValue) -> String {
+    use js_sys::{Array, ArrayBuffer, Reflect};
+    if value.is_undefined() {
+        return "undefined".into();
+    }
+    if value.is_null() {
+        return "null".into();
+    }
+    if Array::is_array(value) {
+        return "array".into();
+    }
+    let field = |name: &str| Reflect::get(value, &name.into()).ok();
+    if value.is_object() {
+        if let Some(brand) = field("__fc_kind").and_then(|brand| brand.as_string()) {
+            return brand;
+        }
+        let constructor = field("constructor").and_then(|constructor| {
+            Reflect::get(&constructor, &"name".into())
+                .ok()
+                .and_then(|name| name.as_string())
+        });
+        if let Some(name) = constructor.filter(|_| ArrayBuffer::is_view(value)) {
+            return name;
+        }
+    }
+    value.js_typeof().as_string().unwrap_or_default()
+}
+
 /// A number argument. Any other value is a `TypeError` that names `label`, as Python raises one.
-pub(crate) fn read_number(value: &wasm_bindgen::JsValue, label: &str) -> Result<f64, WebError> {
-    value
-        .as_f64()
-        .ok_or_else(|| WebError::type_error(&format!("{label} must be a number, got {value:?}")))
+/// The label is written only when the read fails, so an item's label costs nothing on success.
+pub(crate) fn read_number(
+    value: &wasm_bindgen::JsValue,
+    label: impl std::fmt::Display,
+) -> Result<f64, WebError> {
+    value.as_f64().ok_or_else(|| {
+        let kind = describe(value);
+        WebError::type_error(&format!("{label} must be a number, got {kind}"))
+    })
 }
 
 /// A number argument for a 32-bit float, such as a roughness or an angle, read as [`read_number`] reads it.
@@ -72,24 +108,27 @@ pub(crate) fn read_float(value: &wasm_bindgen::JsValue, label: &str) -> Result<f
     Ok(read_number(value, label)? as f32)
 }
 
-/// A count or index: a `TypeError` for a value that isn't a number, as [`read_number`] gives,
-/// and an `InvalidInputError` for a negative, fractional or out-of-range one, as Python raises.
+/// A count or index, read first as [`read_number`] reads a number.
+/// A negative or out-of-range one is an `InvalidInputError`, as Python raises.
+/// A fraction is one too, though Python refuses every float, 2.0 included, with a `TypeError`.
 pub(crate) fn read_count(value: &wasm_bindgen::JsValue, label: &str) -> Result<u32, WebError> {
     read_unsigned(read_number(value, label)?, label)
 }
 
 /// A string argument. Any other value is a `TypeError` that names `label`.
 pub(crate) fn read_text(value: &wasm_bindgen::JsValue, label: &str) -> Result<String, WebError> {
-    value
-        .as_string()
-        .ok_or_else(|| WebError::type_error(&format!("{label} must be a string, got {value:?}")))
+    value.as_string().ok_or_else(|| {
+        let kind = describe(value);
+        WebError::type_error(&format!("{label} must be a string, got {kind}"))
+    })
 }
 
 /// A boolean argument. Any other value is a `TypeError` that names `label`, so `'yes'` is no `true`.
 pub(crate) fn read_flag(value: &wasm_bindgen::JsValue, label: &str) -> Result<bool, WebError> {
-    value
-        .as_bool()
-        .ok_or_else(|| WebError::type_error(&format!("{label} must be a boolean, got {value:?}")))
+    value.as_bool().ok_or_else(|| {
+        let kind = describe(value);
+        WebError::type_error(&format!("{label} must be a boolean, got {kind}"))
+    })
 }
 
 /// An optional argument, `None` for `undefined` or `null`.
@@ -98,21 +137,43 @@ pub(crate) fn read_given(value: Option<wasm_bindgen::JsValue>) -> Option<wasm_bi
 }
 
 /// The numbers of a plain or typed array, or `None` for a value that isn't one.
-/// An item that isn't a number is a `TypeError` that names `label` and the item.
+/// An item that isn't a number is a `TypeError` that names `label` and the item,
+/// and so is a `DataView`, which holds bytes with no numbers to read.
 pub(crate) fn read_list(
     value: &wasm_bindgen::JsValue,
     label: &str,
 ) -> Result<Option<Vec<f64>>, WebError> {
-    use js_sys::{Array, ArrayBuffer};
+    use js_sys::{Array, ArrayBuffer, DataView};
+    use wasm_bindgen::JsCast;
+    if value.is_instance_of::<DataView>() {
+        return Err(WebError::type_error(&format!(
+            "{label} takes a plain or typed array of numbers, got a DataView"
+        )));
+    }
     if !(Array::is_array(value) || ArrayBuffer::is_view(value)) {
         return Ok(None);
     }
     let items = Array::from(value)
         .iter()
         .enumerate()
-        .map(|(index, item)| read_number(&item, &format!("{label}: item {index}")))
+        .map(|(index, item)| read_number(&item, format_args!("{label}: item {index}")))
         .collect::<Result<Vec<f64>, WebError>>()?;
     Ok(Some(items))
+}
+
+/// The brand of a FragmentColor class instance, or `None` for any other value.
+/// Every exported class carries `__wbg_ptr`; most also carry the `__fc_kind` brand.
+pub(crate) fn read_class(value: &wasm_bindgen::JsValue) -> Option<String> {
+    use js_sys::Reflect;
+    if !value.is_object() || !Reflect::has(value, &"__wbg_ptr".into()).unwrap_or(false) {
+        return None;
+    }
+    let brand = Reflect::get(value, &"__fc_kind".into()).ok();
+    Some(
+        brand
+            .and_then(|brand| brand.as_string())
+            .unwrap_or_else(|| "a class instance".into()),
+    )
 }
 
 /// The numbers of a float vector or matrix from JavaScript: an array or a `Float32Array`, as AGENTS.md
@@ -124,20 +185,15 @@ pub(crate) fn read_vector_items(
     use js_sys::{Array, Float32Array};
     use wasm_bindgen::JsCast;
     if !(Array::is_array(value) || value.is_instance_of::<Float32Array>()) {
+        let kind = describe(value);
         return Err(WebError::type_error(&format!(
-            "{label} takes an array or a Float32Array of numbers, got {value:?}"
+            "{label} takes an array or a Float32Array of numbers, got {kind}"
         )));
     }
     Array::from(value)
         .iter()
         .enumerate()
-        .map(|(index, item)| {
-            item.as_f64().ok_or_else(|| {
-                WebError::type_error(&format!(
-                    "{label}: item {index} must be a number, got {item:?}"
-                ))
-            })
-        })
+        .map(|(index, item)| read_number(&item, format_args!("{label}: item {index}")))
         .collect()
 }
 

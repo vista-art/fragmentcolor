@@ -143,7 +143,7 @@ impl TryFrom<&[f32]> for Color {
         match *channels {
             [red, green, blue] => Ok(Self::new(red, green, blue, 1.0)),
             [red, green, blue, alpha] => Ok(Self::new(red, green, blue, alpha)),
-            _ => Err(ColorError::TypeMismatch(format!(
+            _ => Err(ColorError::Invalid(format!(
                 "a color takes 3 or 4 channels, got {}",
                 channels.len()
             ))),

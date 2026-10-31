@@ -645,14 +645,46 @@ await withModule('platforms.web.healthcheck.parity', async () => {
       ["SamplerOptions.repeat_x = 'yes'", () => { new fc.SamplerOptions().repeat_x = 'yes'; }, 'TypeError'],
       ["new SamplerOptions('yes')", () => new fc.SamplerOptions('yes'), 'TypeError'],
       ['Mesh.addVertex with 4 parts', () => new Mesh().addVertex([[0, 0, 0], [0, 0], [1, 1, 1, 1], [0]]), 'TypeError'],
+      // Another class where a size or region goes is the wrong type, and an object without
+      // the fields is a value error, as Python raises for a dict.
+      ['createTextureTarget(mesh)', () => renderer.createTextureTarget(new Mesh()), 'TypeError'],
+      ["TextureTarget.resize(new Pass('p'))", () => sized.resize(new Pass('p')), 'TypeError'],
+      ['Texture.writeRegion(bytes, mesh)', () => writable.writeRegion(new Uint8Array(4), new Mesh()), 'TypeError'],
+      ['Pass.setViewport(mesh)', () => first.setViewport(new Mesh()), 'TypeError'],
+      ['createTextureTarget({})', () => renderer.createTextureTarget({}), 'InvalidInputError'],
+      // A DataView holds bytes, not numbers.
+      ['createTextureTarget(DataView)', () => renderer.createTextureTarget(new DataView(new ArrayBuffer(8))), 'TypeError'],
+      ['Pass.setViewport(DataView)', () => first.setViewport(new DataView(new ArrayBuffer(8))), 'TypeError'],
+      ['Mesh.setIndices(DataView)', () => new Mesh().setIndices(new DataView(new ArrayBuffer(8))), 'TypeError'],
+      // A texture id past 2**64 - 1 is a value error, never the largest id.
+      ['readTexture(2 ** 64)', () => renderer.readTexture(2 ** 64), 'InvalidInputError'],
+      ['unregisterTexture(2 ** 64)', () => renderer.unregisterTexture(2 ** 64), 'InvalidInputError'],
+      ["TextureId.id = 7n", () => { 'use strict'; writable.id().id = 7n; }, 'TypeError'],
     ]) {
       try { await run(); } catch (e) {
         if (e.name !== name) fail(`${label} threw ${e.name}, not ${name}`);
         if (name === 'TypeError' && !(e instanceof TypeError)) fail(`${label} threw no TypeError`);
+        if (e.message.includes('JsValue(')) fail(`${label} printed a Rust value: ${e.message}`);
         continue;
       }
       fail(`${label} should throw`);
     }
+    // Each error names the call, and the item for a list, in JavaScript's own words.
+    for (const [label, run, words] of [
+      ["Mipmap.level('a')", () => Mipmap.build(new Uint8Array(16), TextureFormat.Rgba8Unorm, [2, 2]).level('a'), 'Mipmap.level: index must be a number, got string'],
+      ["Mesh.setIndices([0, 1, 'x'])", () => new Mesh().setIndices([0, 1, 'x']), 'Mesh.setIndices: item 2 must be a number, got string'],
+      ['new Pass(42)', () => new Pass(42), 'Pass: name must be a string, got number'],
+      ["Shader.set('k', mesh)", () => Shader.default().set('k', new Mesh()), 'expected a Texture, got Mesh'],
+    ]) {
+      try { await run(); } catch (e) {
+        if (!e.message.includes(words)) fail(`${label} threw "${e.message}", not "${words}"`);
+        continue;
+      }
+      fail(`${label} should throw`);
+    }
+    // A viewport takes an origin and a size as two pairs, as Rust's ((x, y), (w, h)) does.
+    first.setViewport([[8, 0], [2, 4]]);
+    throws('Pass.setViewport([[0, 0], [0, 4]])', () => first.setViewport([[0, 0], [0, 4]]));
     throws('Pass.setViewport([0, 0, 0, 4])', () => first.setViewport([0, 0, 0, 4]));
     throws('Pass.setViewport([4, 0])', () => first.setViewport([4, 0]));
     throws('Pass.setViewport({ minX: 2, minY: 2, maxX: 2, maxY: 6 })',

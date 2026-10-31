@@ -10,7 +10,7 @@ use std::convert::TryInto;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
-use crate::platforms::web::{read_bytes, read_numbers, read_rows, read_text};
+use crate::platforms::web::{describe, read_bytes, read_class, read_numbers, read_rows, read_text};
 use crate::shader::UniformInput;
 use crate::{Shader, ShaderError, UniformData};
 
@@ -178,19 +178,15 @@ fn uniform_input(key: &str, value: &JsValue) -> Result<UniformInput, WebError> {
     }
     // Exported classes carry `__wbg_ptr`. Texture is the only one a uniform
     // accepts, and its bridge checks the brand before it reads the pointer.
-    if value.is_object() && Reflect::has(value, &"__wbg_ptr".into()).unwrap_or(false) {
+    if let Some(kind) = read_class(value) {
         if let Ok(texture) = crate::texture::Texture::try_from(value) {
             return Ok(UniformInput::Texture(*texture.id()));
         }
-        let kind = Reflect::get(value, &"__fc_kind".into())
-            .ok()
-            .and_then(|kind| kind.as_string())
-            .unwrap_or_else(|| "an unknown object".into());
         return Err(WebError::type_error(&format!(
             "Shader.set: {key}: expected a Texture, got {kind}"
         )));
     }
-    let kind = value.js_typeof().as_string().unwrap_or_default();
+    let kind = describe(value);
     Err(WebError::type_error(&format!(
         "Shader.set: {key}: expected a number, an array, a typed array, bytes, or a Texture, got {kind}"
     )))
@@ -228,7 +224,8 @@ fn source_parts(input: &JsValue) -> Result<Vec<String>, WebError> {
     }
     let Some(array) = input.dyn_ref::<Array>() else {
         return Err(WebError::type_error(&format!(
-            "Shader input must be a string or an array of strings, got {input:?}"
+            "Shader input must be a string or an array of strings, got {}",
+            describe(input)
         )));
     };
     array
