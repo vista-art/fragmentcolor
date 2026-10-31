@@ -43,7 +43,7 @@ mod pools;
 pub(crate) use pools::*;
 
 mod checks;
-pub(crate) use checks::pass::check_limit;
+pub(crate) use checks::check_limit;
 use checks::pass::{Attachment, PassTargets, check_target};
 pub(crate) mod device;
 mod pipelines;
