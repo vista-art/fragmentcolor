@@ -8,6 +8,25 @@ pub enum ColorError {
     /// A channel that is NaN or infinite, which no target can clear to.
     #[error("the {channel} channel must be a finite number, got {value}")]
     NotFinite { channel: &'static str, value: f32 },
+    /// Text that isn't a CSS color, with the parser's reason.
+    #[error("{text:?} is not a CSS color: {reason}")]
+    Css { text: String, reason: String },
+}
+
+/// CSS color text the parser refuses, with the parser's error.
+pub(crate) struct CssFailure<'text> {
+    pub(crate) text: &'text str,
+    pub(crate) error: csscolorparser::ParseColorError,
+}
+
+/// The parser's reason as text, so `ColorError` holds no parser type.
+impl From<CssFailure<'_>> for ColorError {
+    fn from(failure: CssFailure<'_>) -> Self {
+        ColorError::Css {
+            text: failure.text.to_string(),
+            reason: failure.error.to_string(),
+        }
+    }
 }
 
 #[cfg(any(python, wasm, test))]

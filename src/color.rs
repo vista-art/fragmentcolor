@@ -2,7 +2,7 @@
 use wasm_bindgen::prelude::*;
 
 pub mod error;
-use error::ColorError;
+use error::{ColorError, CssFailure};
 
 /// A linear RGBA color with one float per channel.
 ///
@@ -57,14 +57,16 @@ impl Color {
         Self::new(rgb[0], rgb[1], rgb[2], alpha)
     }
 
-    /// Create a new color from a hex string
-    pub fn from_hex(hex: &str) -> Result<Self, csscolorparser::ParseColorError> {
+    /// A color from hex text such as `#ff8000`,
+    /// or `ColorError::Css` with the parser's reason.
+    pub fn from_hex(hex: &str) -> Result<Self, ColorError> {
         Self::from_css(hex)
     }
 
-    /// Create a new color from a CSS string
-    pub fn from_css(color: &str) -> Result<Self, csscolorparser::ParseColorError> {
-        let color = csscolorparser::parse(color)?;
+    /// A color from CSS text such as `#ff8000` or `rgb(255 128 0)`,
+    /// or `ColorError::Css` with the text and the parser's reason.
+    pub fn from_css(text: &str) -> Result<Self, ColorError> {
+        let color = parse_css(text)?;
         Ok(Self::new(color.r, color.g, color.b, color.a))
     }
 
@@ -135,6 +137,14 @@ crate::impl_from_into_with_refs!(
     |rgb: [f32; 3]| Color::from_rgb_alpha(rgb, 1.0)
 );
 
+/// The parsed CSS color, or the failure that keeps the text.
+fn parse_css(text: &str) -> Result<csscolorparser::Color, CssFailure<'_>> {
+    match csscolorparser::parse(text) {
+        Ok(color) => Ok(color),
+        Err(error) => Err(CssFailure { text, error }),
+    }
+}
+
 /// Reads `[r, g, b]` with an opaque alpha, or `[r, g, b, a]`, as a binding passes them.
 impl TryFrom<&[f32]> for Color {
     type Error = ColorError;
@@ -188,6 +198,27 @@ mod tests {
         assert_eq!(rgba, Some(Color::new(0.5, 2.0, 0.0, 0.5)));
         assert!(Color::try_from([0.5, 2.0].as_slice()).is_err());
         assert!(Color::try_from([0.0; 5].as_slice()).is_err());
+    }
+
+    // Story: CSS text reads as a color, and text that isn't one
+    // fails with a `ColorError` that quotes it.
+    #[test]
+    fn reads_css_colors() {
+        let orange = Color::from_css("#ff8000").map(Color::to_f32_array).ok();
+        let [red, green, blue, alpha] = orange.unwrap_or_default();
+        assert_eq!([red, blue, alpha], [1.0, 0.0, 1.0]);
+        assert!((green - 128.0 / 255.0).abs() < 1e-6, "{green}");
+        assert_eq!(Color::from_hex("#000").ok(), Some(Color::black()));
+        let error = Color::from_css("not a color").err();
+        assert!(
+            matches!(&error, Some(ColorError::Css { text, .. }) if text == "not a color"),
+            "{error:?}"
+        );
+        let message = error.map(|error| error.to_string()).unwrap_or_default();
+        assert!(
+            message.starts_with("\"not a color\" is not a CSS color: "),
+            "{message}"
+        );
     }
 
     // Story: NaN or infinity in any channel fails and names the channel.
