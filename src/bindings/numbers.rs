@@ -1,7 +1,48 @@
-//! How every binding reads numbers:
-//! finite 32-bit floats for colors, positions, directions, axes and UV transforms.
+//! How every binding reads numbers: whole numbers for counts and sizes,
+//! and finite 32-bit floats for colors, positions, directions, axes and UV transforms.
 
 use crate::{Color, Vertex};
+
+/// One size, region or count number from JavaScript: a whole number from 0 to `u32::MAX`.
+/// A fraction, NaN, infinity or a number out of range gives `None`.
+#[cfg(any(wasm, test))]
+pub(crate) fn read_dimension(number: f64) -> Option<u32> {
+    let whole = number.is_finite() && number.fract() == 0.0;
+    (whole && (0.0..=u32::MAX as f64).contains(&number)).then_some(number as u32)
+}
+
+/// A number from JavaScript that doesn't fit an unsigned 32-bit integer.
+#[cfg(any(wasm, test))]
+#[derive(Debug, thiserror::Error)]
+#[error("{what} must be a whole number from 0 to {}, got {value}", u32::MAX)]
+pub(crate) struct NumberError {
+    what: String,
+    value: f64,
+}
+
+#[cfg(any(wasm, test))]
+impl crate::error::Classify for NumberError {
+    fn classify(&self) -> crate::error::ErrorClass {
+        crate::error::ErrorClass::InvalidInput
+    }
+}
+
+#[cfg(wasm)]
+impl From<NumberError> for crate::error::WebError {
+    fn from(error: NumberError) -> Self {
+        crate::error::WebError::from_error(&error)
+    }
+}
+
+/// Reads a JavaScript number as an unsigned 32-bit integer, such as an index or a count.
+/// Negative, fractional, NaN and out-of-range values fail with an error that names `what`.
+#[cfg(any(wasm, test))]
+pub(crate) fn read_unsigned(value: f64, what: &str) -> Result<u32, NumberError> {
+    read_dimension(value).ok_or_else(|| NumberError {
+        what: what.to_string(),
+        value,
+    })
+}
 
 /// A float vector that can't be used, such as a color or a position.
 #[derive(Debug, thiserror::Error)]
@@ -214,5 +255,36 @@ mod tests {
             Some("Vertex: position takes 1 to 4 numbers, got 5")
         );
         assert!(read_position(Vec::<f64>::new(), "Vertex: position").is_err());
+    }
+
+    // Story: a JavaScript size, region or count takes a whole number from 0
+    // up, and a fraction fails.
+    #[test]
+    fn refuses_fractions() {
+        assert_eq!(read_dimension(4.0), Some(4));
+        assert_eq!(read_dimension(4294967295.0), Some(u32::MAX));
+        for number in [1.5, 0.5, -1.0, f64::NAN, f64::INFINITY, 4294967296.0] {
+            assert_eq!(read_dimension(number), None, "{number}");
+        }
+    }
+
+    // Story: a count or an index takes a whole number from 0 to u32::MAX,
+    // and anything else fails with a message that names the parameter.
+    #[test]
+    fn reads_whole_numbers_only() {
+        assert_eq!(read_unsigned(0.0, "x").ok(), Some(0));
+        assert_eq!(read_unsigned(4294967295.0, "x").ok(), Some(u32::MAX));
+        for value in [-1.0, 0.5, 4294967296.0, f64::NAN, f64::INFINITY] {
+            assert!(read_unsigned(value, "x").is_err(), "{value} should fail");
+        }
+        let message = read_unsigned(-1.0, "Pass.set_compute_dispatch: x")
+            .err()
+            .map(|error| error.to_string());
+        assert_eq!(
+            message.as_deref(),
+            Some(
+                "Pass.set_compute_dispatch: x must be a whole number from 0 to 4294967295, got -1"
+            )
+        );
     }
 }

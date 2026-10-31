@@ -251,9 +251,9 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
     type Error = crate::error::WebError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+        use crate::bindings::numbers::read_dimension;
         use crate::bindings::web::{describe, read_class, read_list, read_number};
         use crate::error::WebError;
-        use crate::values::read_dimension;
         use js_sys::Reflect;
 
         let dimension = |number: f64| {

@@ -6,10 +6,10 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::bindings::numbers;
+use crate::bindings::numbers::read_dimension;
 use crate::bindings::web::{
     describe, read_count, read_floats, read_list, read_text, read_unsigned, read_vector,
 };
-use crate::values::read_dimension;
 use crate::{Instance, Mesh, Quad, Vertex, VertexData};
 
 // -----------------------------

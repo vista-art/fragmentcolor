@@ -40,7 +40,7 @@ pub(crate) async fn yield_to_event_loop() {
 /// Reads a JS number as an unsigned 32-bit integer, such as an index or a count.
 /// Negative, fractional, NaN and out-of-range values fail with an error that names `what`.
 pub(crate) fn read_unsigned(value: f64, what: &str) -> Result<u32, WebError> {
-    Ok(super::read_unsigned(value, what)?)
+    Ok(super::numbers::read_unsigned(value, what)?)
 }
 
 /// What a JS value is, in JavaScript's own words, for an error message: `undefined`, `null`,

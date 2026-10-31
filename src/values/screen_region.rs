@@ -14,7 +14,7 @@ use wasm_bindgen::prelude::*;
 
 use super::error::ScreenRegionError;
 #[cfg(wasm)]
-use crate::values::read_dimension;
+use crate::bindings::numbers::read_dimension;
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(

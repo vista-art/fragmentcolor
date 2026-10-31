@@ -1,6 +1,8 @@
 //! `Size`: a width, a height and an optional depth.
 
 #[cfg(wasm)]
+use crate::bindings::numbers::read_dimension;
+#[cfg(wasm)]
 use crate::bindings::web::{describe, read_class, read_given, read_list, read_number};
 #[cfg(wasm)]
 use crate::error::WebError;
@@ -80,14 +82,6 @@ impl TryFrom<&[u32]> for Size {
     fn try_from(dimensions: &[u32]) -> Result<Self, Self::Error> {
         Size::from_dimensions(dimensions)
     }
-}
-
-/// One size, region or count number from JavaScript: a whole number from 0 to `u32::MAX`.
-/// A fraction, NaN, infinity or a number out of range gives `None`.
-#[cfg(any(wasm, test))]
-pub(crate) fn read_dimension(number: f64) -> Option<u32> {
-    let whole = number.is_finite() && number.fract() == 0.0;
-    (whole && (0.0..=u32::MAX as f64).contains(&number)).then_some(number as u32)
 }
 
 /// One size dimension from JavaScript, or the error that names the number.
@@ -501,17 +495,6 @@ mod tests {
             prop_assert_eq!(s2.width, w);
             prop_assert_eq!(s2.height, h);
             prop_assert_eq!(s2.depth.unwrap_or(1), eff);
-        }
-    }
-
-    // Story: a JavaScript size, region or count takes a whole number from 0
-    // up, and a fraction fails.
-    #[test]
-    fn refuses_fractions() {
-        assert_eq!(read_dimension(4.0), Some(4));
-        assert_eq!(read_dimension(4294967295.0), Some(u32::MAX));
-        for number in [1.5, 0.5, -1.0, f64::NAN, f64::INFINITY, 4294967296.0] {
-            assert_eq!(read_dimension(number), None, "{number}");
         }
     }
 
