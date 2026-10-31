@@ -1,9 +1,124 @@
-//! `TextureInput` and `TextureOptions`: what `create_texture` takes.
+//! `TextureData`, `TextureInput` and `TextureOptions`: what `create_texture` takes.
 
-use crate::{SamplerOptions, Size, TextureFormat};
+use super::loading::ktx2_loader;
+use crate::{Mipmap, SamplerOptions, Size, Texture, TextureFormat};
 
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
+
+// Unified input type for creating textures (initial Rust subset)
+#[derive(Debug, Clone, Default)]
+pub enum TextureData {
+    /// No initial pixel data — allocate the texture and leave the contents
+    /// undefined. Required for `create_storage_texture` when seed data isn't
+    /// provided. Pair with `options.size` (mandatory for this variant) and
+    /// `options.format`.
+    #[default]
+    Empty,
+    Bytes(Vec<u8>),
+    Path(std::path::PathBuf),
+    CloneOf(Texture),
+    Url(String),
+    /// In-memory KTX2 container bytes (decoded by the `ktx2` crate). The KTX2
+    /// path trusts the file's own declared format and skips the JPEG/PNG
+    /// sRGB-inference + CPU mipmap chain. Use this for pre-baked compressed
+    /// textures (BC7, ASTC, ETC2) from your asset pipeline. `Bytes`, `Path`
+    /// and `Url` take the same path when the data starts with the KTX2 identifier.
+    Ktx2Bytes(Vec<u8>),
+    /// Path to a `.ktx2` file on disk.
+    Ktx2Path(std::path::PathBuf),
+    /// HTTP(S) URL pointing at a `.ktx2` file. Fetched the same way as `Url`.
+    Ktx2Url(String),
+    /// A pre-computed CPU mipmap chain produced by [`Mipmap::build`]. Lets a
+    /// worker thread (or any non-render thread) do the decode + mip
+    /// generation, then hand the prepared chain to `Renderer::create_texture`
+    /// for a GPU-only upload. The library already runs that prep on a
+    /// background thread for `Bytes`/`Path`/`Url` inputs; reach
+    /// for this only when sharing a chain across textures or when you want
+    /// explicit control over which thread does the work. Cross-language
+    /// callers typically don't construct this variant directly — they hand a
+    /// [`Mipmap`] straight to `Renderer::create_texture` and the unified
+    /// entry point dispatches via `From<Mipmap> for TextureInput`.
+    Prepared(Mipmap),
+}
+
+impl TextureData {
+    /// Whether the data brings its own size, as every form but raw pixel bytes does.
+    /// `Empty` and `CloneOf` hold no data to size.
+    pub(super) fn is_sized(&self) -> bool {
+        match self {
+            TextureData::Bytes(bytes) => ktx2_loader::is_ktx2(bytes),
+            TextureData::Path(_)
+            | TextureData::Url(_)
+            | TextureData::Ktx2Bytes(_)
+            | TextureData::Ktx2Path(_)
+            | TextureData::Ktx2Url(_)
+            | TextureData::Prepared(_) => true,
+            TextureData::Empty | TextureData::CloneOf(_) => false,
+        }
+    }
+}
+
+impl From<&[u8]> for TextureData {
+    fn from(v: &[u8]) -> Self {
+        TextureData::Bytes(v.to_vec())
+    }
+}
+impl From<Vec<u8>> for TextureData {
+    fn from(v: Vec<u8>) -> Self {
+        TextureData::Bytes(v)
+    }
+}
+impl From<&Vec<u8>> for TextureData {
+    fn from(v: &Vec<u8>) -> Self {
+        TextureData::Bytes(v.clone())
+    }
+}
+impl From<&std::path::Path> for TextureData {
+    fn from(p: &std::path::Path) -> Self {
+        TextureData::Path(p.to_path_buf())
+    }
+}
+impl From<std::path::PathBuf> for TextureData {
+    fn from(p: std::path::PathBuf) -> Self {
+        TextureData::Path(p)
+    }
+}
+impl From<&std::path::PathBuf> for TextureData {
+    fn from(p: &std::path::PathBuf) -> Self {
+        TextureData::Path(p.clone())
+    }
+}
+/// A string is a URL when it starts with `http://` or `https://`, and a file path otherwise.
+impl From<&str> for TextureData {
+    fn from(source: &str) -> Self {
+        if source.starts_with("http://") || source.starts_with("https://") {
+            TextureData::Url(source.to_string())
+        } else {
+            TextureData::Path(std::path::PathBuf::from(source))
+        }
+    }
+}
+impl From<String> for TextureData {
+    fn from(source: String) -> Self {
+        TextureData::from(source.as_str())
+    }
+}
+impl From<&String> for TextureData {
+    fn from(source: &String) -> Self {
+        TextureData::from(source.as_str())
+    }
+}
+impl From<&Texture> for TextureData {
+    fn from(t: &Texture) -> Self {
+        TextureData::CloneOf(t.clone())
+    }
+}
+impl From<Mipmap> for TextureData {
+    fn from(chain: Mipmap) -> Self {
+        TextureData::Prepared(chain)
+    }
+}
 
 /// Bundles the input source and the options that shape texture creation into
 /// one transport. Construct via the `From<T>` impls (which cover the common

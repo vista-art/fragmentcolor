@@ -1,5 +1,7 @@
 #[cfg(mobile)]
 mod mobile;
+#[cfg(mobile)]
+pub use mobile::TextureInputMobile;
 #[cfg(python)]
 mod python;
 #[cfg(python)]

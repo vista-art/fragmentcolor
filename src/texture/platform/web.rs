@@ -7,7 +7,8 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::bindings::web::{describe, read_count, read_number, read_unsigned};
-use crate::texture::{TextureError, check_pixels, swap_bgra};
+use crate::texture::loading::decode::check_pixels;
+use crate::texture::{TextureError, swap_bgra};
 use crate::{
     CompareFunction, Mipmap, SamplerOptions, Size, Texture, TextureData, TextureFormat, TextureId,
     TextureInput, TextureOptions,
@@ -285,7 +286,7 @@ pub(crate) fn read_texture_input(
         input.options = read_texture_options(options)?;
         if let (Some(own), TextureData::Bytes(pixels)) = (source_size, &mut input.data) {
             let format = input.options.format.to_wgpu();
-            crate::texture::check_pixels(own, input.options.size, format)?;
+            check_pixels(own, input.options.size, format)?;
             crate::texture::swap_bgra(pixels, format);
         }
         input.options.size = input.options.size.or(source_size);

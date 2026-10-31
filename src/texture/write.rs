@@ -1,6 +1,13 @@
+//! Writes bytes into a texture, a region of it or each of its mip levels.
+
 use std::borrow::Cow;
 
-use crate::texture::{Texture, TextureError, TextureRegion};
+use image::DynamicImage;
+
+use crate::RenderContext;
+use crate::texture::loading::decode::decode_rgba8;
+use crate::texture::mipmap::{downsample, downsample_floats, pack_floats, read_floats};
+use crate::texture::{Texture, TextureError, TextureRegion, check_decode, measure_texel};
 
 /// Writes `data` into `region` of the texture, or into all of it without a region.
 pub(super) fn write(
@@ -94,7 +101,7 @@ pub(super) fn write(
             )));
         }
         let rows = trim_rows(data, bytes_per_row, row_stride, region.size[1]);
-        return super::write_levels(&tex.context, &rows, &object.inner, size, format, levels);
+        return write_levels(&tex.context, &rows, &object.inner, size, format, levels);
     }
 
     // Write
@@ -179,6 +186,278 @@ fn default_stride(
         full(row_stride),
         full(padded)
     )))
+}
+
+/// Uploads `image` with its mips, decoded into the pixels `format` holds.
+///
+/// A format [`check_decode`] refuses is an error, as it is in `from_image`.
+/// Each branch decodes it into the channels and bytes per pixel of `format`,
+/// so a 16-bit grayscale PNG keeps its precision as `R16Unorm`, never `to_rgba8`.
+/// A unorm format takes its mips from `image::imageops::resize` with the Triangle filter.
+/// The float formats take [`downsample_floats`] instead, since that resize clamps them to 0..1.
+pub(crate) fn write_image_levels(
+    context: &RenderContext,
+    image: &DynamicImage,
+    texture: &wgpu::Texture,
+    format: wgpu::TextureFormat,
+    mip_level_count: u32,
+) -> Result<(), TextureError> {
+    match format {
+        wgpu::TextureFormat::Rgba8Unorm
+        | wgpu::TextureFormat::Rgba8UnormSrgb
+        | wgpu::TextureFormat::Bgra8Unorm
+        | wgpu::TextureFormat::Bgra8UnormSrgb => {
+            write_pixel_levels(
+                context,
+                decode_rgba8(image, format),
+                texture,
+                mip_level_count,
+                4,
+            );
+        }
+        wgpu::TextureFormat::R8Unorm => {
+            write_pixel_levels(context, image.to_luma8(), texture, mip_level_count, 1);
+        }
+        wgpu::TextureFormat::Rg8Unorm => {
+            write_pixel_levels(context, image.to_luma_alpha8(), texture, mip_level_count, 2);
+        }
+        wgpu::TextureFormat::R16Unorm => {
+            write_pixel_levels(context, image.to_luma16(), texture, mip_level_count, 2);
+        }
+        wgpu::TextureFormat::Rg16Unorm => {
+            write_pixel_levels(
+                context,
+                image.to_luma_alpha16(),
+                texture,
+                mip_level_count,
+                4,
+            );
+        }
+        wgpu::TextureFormat::Rgba16Unorm => {
+            write_pixel_levels(context, image.to_rgba16(), texture, mip_level_count, 8);
+        }
+        wgpu::TextureFormat::Rgba16Float | wgpu::TextureFormat::Rgba32Float => {
+            write_floats(
+                context,
+                image.to_rgba32f(),
+                texture,
+                mip_level_count,
+                format,
+                None,
+            )?;
+        }
+        _ => check_decode(format)?,
+    }
+    Ok(())
+}
+
+/// Uploads `base` and the float levels below it, `count` in all, packed for `format`.
+/// `raw`, the caller's own bytes for `base`, uploads as level 0 byte for byte.
+fn write_floats(
+    context: &RenderContext,
+    base: image::Rgba32FImage,
+    texture: &wgpu::Texture,
+    count: u32,
+    format: wgpu::TextureFormat,
+    raw: Option<&[u8]>,
+) -> Result<(), TextureError> {
+    let size = measure_texel(format)?;
+    for (level, image) in downsample_floats(base, count as usize).enumerate() {
+        let bytes = match (level, raw) {
+            (0, Some(raw)) => std::borrow::Cow::Borrowed(raw),
+            _ => std::borrow::Cow::Owned(pack_floats(image.as_raw(), format)),
+        };
+        let level = level as u32;
+        write_level(context, texture, level, &bytes, image.dimensions(), size);
+    }
+    Ok(())
+}
+
+/// Wrap pre-decoded raw bytes in the right `ImageBuffer` for `format`, then upload
+/// (and downsample for higher mip levels). Mirrors [`write_image_levels`] but starts
+/// from a `&[u8]` buffer the caller has already laid out tightly. For 16-bit formats,
+/// the byte slice is converted to `Vec<u16>` via `from_le_bytes` (alignment-safe and
+/// matches WebGPU's little-endian element ordering).
+pub(crate) fn write_levels(
+    context: &RenderContext,
+    bytes: &[u8],
+    texture: &wgpu::Texture,
+    full_size: wgpu::Extent3d,
+    format: wgpu::TextureFormat,
+    mip_level_count: u32,
+) -> Result<(), TextureError> {
+    if mip_level_count == 1 {
+        let bpp = measure_texel(format)?;
+        context.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                aspect: wgpu::TextureAspect::All,
+                texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+            },
+            bytes,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(bpp * full_size.width),
+                rows_per_image: Some(full_size.height),
+            },
+            full_size,
+        );
+        return Ok(());
+    }
+
+    // Multi-level: wrap into the right ImageBuffer so write_pixel_levels can resample.
+    let w = full_size.width;
+    let h = full_size.height;
+    let pixel_count = (w as usize) * (h as usize);
+
+    let wrap_err = |kind: &str| {
+        TextureError::CreateTextureError(format!(
+            "Failed to wrap raw bytes as {} for mipmap generation",
+            kind
+        ))
+    };
+
+    match format {
+        wgpu::TextureFormat::Rgba8Unorm
+        | wgpu::TextureFormat::Rgba8UnormSrgb
+        | wgpu::TextureFormat::Bgra8Unorm
+        | wgpu::TextureFormat::Bgra8UnormSrgb => {
+            let base = image::RgbaImage::from_raw(w, h, bytes[..pixel_count * 4].to_vec())
+                .ok_or_else(|| wrap_err("RgbaImage"))?;
+            write_pixel_levels(context, base, texture, mip_level_count, 4);
+        }
+        wgpu::TextureFormat::R8Unorm => {
+            let base: image::GrayImage =
+                image::ImageBuffer::from_raw(w, h, bytes[..pixel_count].to_vec())
+                    .ok_or_else(|| wrap_err("GrayImage"))?;
+            write_pixel_levels(context, base, texture, mip_level_count, 1);
+        }
+        wgpu::TextureFormat::Rg8Unorm => {
+            let base: image::GrayAlphaImage =
+                image::ImageBuffer::from_raw(w, h, bytes[..pixel_count * 2].to_vec())
+                    .ok_or_else(|| wrap_err("GrayAlphaImage"))?;
+            write_pixel_levels(context, base, texture, mip_level_count, 2);
+        }
+        wgpu::TextureFormat::R16Unorm => {
+            let words = bytes_to_u16_vec(&bytes[..pixel_count * 2]);
+            let base: image::ImageBuffer<image::Luma<u16>, Vec<u16>> =
+                image::ImageBuffer::from_raw(w, h, words).ok_or_else(|| wrap_err("Luma16"))?;
+            write_pixel_levels(context, base, texture, mip_level_count, 2);
+        }
+        wgpu::TextureFormat::Rg16Unorm => {
+            let words = bytes_to_u16_vec(&bytes[..pixel_count * 4]);
+            let base: image::ImageBuffer<image::LumaA<u16>, Vec<u16>> =
+                image::ImageBuffer::from_raw(w, h, words).ok_or_else(|| wrap_err("LumaA16"))?;
+            write_pixel_levels(context, base, texture, mip_level_count, 4);
+        }
+        wgpu::TextureFormat::Rgba16Unorm => {
+            let words = bytes_to_u16_vec(&bytes[..pixel_count * 8]);
+            let base: image::ImageBuffer<image::Rgba<u16>, Vec<u16>> =
+                image::ImageBuffer::from_raw(w, h, words).ok_or_else(|| wrap_err("Rgba16"))?;
+            write_pixel_levels(context, base, texture, mip_level_count, 8);
+        }
+        wgpu::TextureFormat::Rgba16Float | wgpu::TextureFormat::Rgba32Float => {
+            let length = pixel_count * measure_texel(format)? as usize;
+            let raw = &bytes[..length];
+            let base = image::Rgba32FImage::from_raw(w, h, read_floats(raw, format))
+                .ok_or_else(|| wrap_err("Rgba32F"))?;
+            write_floats(context, base, texture, mip_level_count, format, Some(raw))?;
+        }
+        _ => {
+            // Caller should have caught this via supports_cpu_mipmaps;
+            // be defensive and write a single level.
+            let bpp = measure_texel(format)?;
+            context.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    aspect: wgpu::TextureAspect::All,
+                    texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                },
+                bytes,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(bpp * full_size.width),
+                    rows_per_image: Some(full_size.height),
+                },
+                full_size,
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Convert a tightly-packed byte slice into `Vec<u16>` by reading each pair of
+/// bytes as a little-endian u16. Alignment-safe (the source `&[u8]` need not be
+/// u16-aligned) and matches WebGPU's element ordering for 16-bit formats.
+pub(super) fn bytes_to_u16_vec(bytes: &[u8]) -> Vec<u16> {
+    bytes
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes(*c))
+        .collect()
+}
+
+/// Generic worker: upload `base` as mip 0, then iteratively downsample with the
+/// Triangle filter until the chain is full. Works for any pixel type the `image`
+/// crate's `imageops::resize` supports (Rgba8, Luma8, LumaA8, Luma16, LumaA16,
+/// Rgba16). Pixel data is reinterpreted to bytes via `bytemuck::cast_slice`,
+/// which is a no-op for `u8` subpixels and a little-endian byte view for wider ones.
+/// All FragmentColor target platforms are little-endian, which matches WebGPU's
+/// expected byte order.
+pub(crate) fn write_pixel_levels<P>(
+    context: &RenderContext,
+    base: image::ImageBuffer<P, Vec<P::Subpixel>>,
+    texture: &wgpu::Texture,
+    mip_level_count: u32,
+    texel: u32,
+) where
+    P: image::Pixel + 'static,
+    P::Subpixel: bytemuck::NoUninit + 'static,
+{
+    for (level, image) in downsample(base, mip_level_count as usize).enumerate() {
+        let bytes: &[u8] = bytemuck::cast_slice(image.as_raw());
+        write_level(
+            context,
+            texture,
+            level as u32,
+            bytes,
+            image.dimensions(),
+            texel,
+        );
+    }
+}
+
+/// Uploads the tightly packed `bytes` of one mip `level`, `size` texels across and down.
+fn write_level(
+    context: &RenderContext,
+    texture: &wgpu::Texture,
+    level: u32,
+    bytes: &[u8],
+    (width, height): (u32, u32),
+    texel: u32,
+) {
+    context.queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            aspect: wgpu::TextureAspect::All,
+            texture,
+            mip_level: level,
+            origin: wgpu::Origin3d::ZERO,
+        },
+        bytes,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(texel * width),
+            rows_per_image: Some(height),
+        },
+        wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+    );
 }
 
 #[cfg(test)]

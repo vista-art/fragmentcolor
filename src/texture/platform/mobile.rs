@@ -1,4 +1,5 @@
-//! Mobile (Swift / Kotlin) uniffi bindings for `Texture`.
+//! Mobile (Swift / Kotlin) uniffi bindings for `Texture` and `Mipmap`,
+//! and `TextureInputMobile`, the texture data they take.
 //!
 //! Mirrors the `wasm_bindgen` shim in `web.rs` and the `pyo3` shim in
 //! `python.rs`: each foreign binding gets a thin wrapper around the
@@ -13,7 +14,41 @@ use std::sync::Arc;
 
 use crate::error::platform::mobile::FragmentColorError;
 use crate::texture::TextureRegionMobile;
-use crate::{Mipmap, SamplerOptions, Size, Texture, TextureFormat, TextureId};
+use crate::{Mipmap, SamplerOptions, Size, Texture, TextureData, TextureFormat, TextureId};
+
+/// Uniffi mirror of [`TextureData`], which it converts into.
+///
+/// It leaves out `Empty`. Paths travel as `String`, handles as `Arc`.
+///
+/// The Rust core stays on `TextureData`. This enum exists only so the mobile
+/// bindings can carry a concrete variant. Web and Python use their own dispatch
+/// (`TryFrom<JsValue>` and Python kwargs) and never see this type.
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum TextureInputMobile {
+    Bytes(Vec<u8>),
+    Path(String),
+    Url(String),
+    CloneOf(std::sync::Arc<Texture>),
+    Prepared(std::sync::Arc<Mipmap>),
+    Ktx2Bytes(Vec<u8>),
+    Ktx2Path(String),
+    Ktx2Url(String),
+}
+
+impl From<TextureInputMobile> for TextureData {
+    fn from(input: TextureInputMobile) -> Self {
+        match input {
+            TextureInputMobile::Bytes(b) => TextureData::Bytes(b),
+            TextureInputMobile::Path(s) => TextureData::Path(std::path::PathBuf::from(s)),
+            TextureInputMobile::Url(s) => TextureData::Url(s),
+            TextureInputMobile::CloneOf(t) => TextureData::CloneOf((*t).clone()),
+            TextureInputMobile::Prepared(c) => TextureData::Prepared((*c).clone()),
+            TextureInputMobile::Ktx2Bytes(b) => TextureData::Ktx2Bytes(b),
+            TextureInputMobile::Ktx2Path(s) => TextureData::Ktx2Path(std::path::PathBuf::from(s)),
+            TextureInputMobile::Ktx2Url(s) => TextureData::Ktx2Url(s),
+        }
+    }
+}
 
 #[uniffi::export]
 impl Texture {

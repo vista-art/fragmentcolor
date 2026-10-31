@@ -1,5 +1,11 @@
+//! `TextureFormat`, and what each format lets a device do:
+//! the features, usages, uploads and copies it takes.
+
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
+
+use super::{TextureError, supports_cpu_mipmaps};
+use crate::RenderContext;
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyo3::pyclass(from_py_object, eq, hash, frozen))]
@@ -68,6 +74,112 @@ impl TextureFormat {
             wgpu::TextureFormat::Depth32Float => TextureFormat::Depth32Float,
             _ => TextureFormat::Rgba8Unorm,
         }
+    }
+}
+
+/// What the device lets a texture of `format` do, as wgpu checks it.
+/// A backend below WebGPU, such as GLES or WebGL2, reports its own table,
+/// and every other backend takes the WebGPU baseline for the device's features.
+/// It reads the context's cached features and downlevel flags, so a check can run it each frame.
+pub(crate) fn format_features(
+    context: &RenderContext,
+    format: wgpu::TextureFormat,
+) -> wgpu::TextureFormatFeatures {
+    let features = context.features;
+    let below = !context
+        .downlevel
+        .contains(wgpu::DownlevelFlags::WEBGPU_TEXTURE_FORMAT_SUPPORT);
+    let reports =
+        features.contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES) || below;
+    match context.adapter.as_ref().filter(|_| reports) {
+        Some(adapter) => adapter.get_texture_format_features(format),
+        None => format.guaranteed_format_features(features),
+    }
+}
+
+/// Checks the device makes `format` with `usage` and `dimension`,
+/// so a texture wgpu would refuse never reaches `device.create_texture`.
+pub(crate) fn check_format(
+    context: &RenderContext,
+    format: wgpu::TextureFormat,
+    usage: wgpu::TextureUsages,
+    dimension: wgpu::TextureDimension,
+) -> Result<(), TextureError> {
+    check_feature(context.device.features(), format)?;
+    let allowed = format_features(context, format).allowed_usages;
+    check_support(allowed, format, usage, dimension)
+}
+
+/// Checks that the device's `features` hold every feature `format` needs.
+pub(crate) fn check_feature(
+    features: wgpu::Features,
+    format: wgpu::TextureFormat,
+) -> Result<(), TextureError> {
+    let missing = format.required_features() - features;
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let names: Vec<&str> = missing.iter_names().map(|(name, _)| name).collect();
+    Err(TextureError::UnsupportedFormatForUsage {
+        format: format!("{format:?}"),
+        missing_feature: names.join(" | "),
+    })
+}
+
+/// Checks that a copy can fill a texture of `format` with pixels.
+/// wgpu takes no buffer copy into a depth format, so such a texture is drawn into instead.
+pub(crate) fn check_upload(format: wgpu::TextureFormat) -> Result<(), TextureError> {
+    match format.is_depth_stencil_format() {
+        true => Err(TextureError::InvalidInput(format!(
+            "{format:?} takes no uploaded pixels, render into it instead"
+        ))),
+        false => Ok(()),
+    }
+}
+
+/// Checks that a decoded image converts into `format`,
+/// one the CPU mipmap path fills. Integer formats take raw bytes.
+pub(crate) fn check_decode(format: wgpu::TextureFormat) -> Result<(), TextureError> {
+    match supports_cpu_mipmaps(format) {
+        true => Ok(()),
+        false => Err(TextureError::InvalidInput(format!(
+            "can't decode an image into {format:?}, pass raw bytes with a size"
+        ))),
+    }
+}
+
+/// Checks `usage` against the usages `allowed` for `format`,
+/// and that a depth format makes a 2D texture, the only kind it has.
+pub(crate) fn check_support(
+    allowed: wgpu::TextureUsages,
+    format: wgpu::TextureFormat,
+    usage: wgpu::TextureUsages,
+    dimension: wgpu::TextureDimension,
+) -> Result<(), TextureError> {
+    let missing = usage - allowed;
+    if !missing.is_empty() {
+        let names: Vec<&str> = missing.iter_names().map(|(name, _)| name).collect();
+        return Err(TextureError::InvalidInput(format!(
+            "a {format:?} texture can't take the usage {}",
+            names.join(" | ")
+        )));
+    }
+    if format.is_depth_stencil_format() && dimension != wgpu::TextureDimension::D2 {
+        return Err(TextureError::InvalidInput(format!(
+            "a {format:?} texture has one layer, so its depth must be 1"
+        )));
+    }
+    Ok(())
+}
+
+/// The bytes a texel of `format` takes in a copy, one texel at a time.
+/// A block-compressed format, and a depth format with no copy size, are refused.
+pub(crate) fn measure_texel(format: wgpu::TextureFormat) -> Result<u32, TextureError> {
+    match (format.block_dimensions(), format.block_copy_size(None)) {
+        ((1, 1), Some(size)) => Ok(size),
+        _ => Err(TextureError::InvalidInput(format!(
+            "can't copy pixels of {format:?}, write and read take formats with a fixed size per pixel"
+        ))),
     }
 }
 

@@ -1,6 +1,7 @@
 #![cfg(python)]
 
 use crate::bindings::python::{PyUnsigned, read_bytes, read_list, read_unsigned};
+use crate::texture::loading::decode::array_pixels;
 use crate::texture::{Mipmap, Texture, TextureError, TextureId, TextureRegion};
 use crate::texture::{measure_texel, read_pixels};
 use crate::{CompareFunction, SamplerOptions, TextureFormat};
@@ -122,7 +123,7 @@ pub(crate) fn read_ndarray(
 
     let format = format.unwrap_or_default();
     let read = || ndarray_bytes(array);
-    let (pixels, own) = crate::texture::array_pixels(array.shape(), read, format.to_wgpu())?;
+    let (pixels, own) = array_pixels(array.shape(), read, format.to_wgpu())?;
     let fits = |size: &crate::Size| {
         (size.width, size.height, size.depth.unwrap_or(1)) == (own.width, own.height, 1)
     };

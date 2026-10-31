@@ -1,7 +1,10 @@
-//! How a shader declares a texture: its dimension, class, sample kind, storage format and access.
+//! How a shader declares a texture: `TextureMeta`, and the dimension,
+//! class, sample kind, storage format and access it reflects.
 
 #[cfg(python)]
 use pyo3::prelude::*;
+
+use crate::texture::TextureId;
 
 /// Image-view dimension. Mirrors `naga::ImageDimension`.
 #[cfg_attr(python, pyclass(from_py_object))]
@@ -265,6 +268,38 @@ impl TextureClass {
             },
             naga::ImageClass::Depth { multi } => TextureClass::Depth { multi },
             naga::ImageClass::External => TextureClass::External(),
+        }
+    }
+}
+
+// Metadata for textures parsed from shader source; users do not construct directly.
+#[cfg_attr(python, pyo3::pyclass(from_py_object))]
+#[cfg_attr(mobile, derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextureMeta {
+    pub id: TextureId,
+    pub dim: TextureDim,
+    pub arrayed: bool,
+    pub class: TextureClass,
+    /// Whether the shader ever samples this texture (`textureSample*`). When false
+    /// (only `textureLoad` / image-ops are used), the bind-group layout can request
+    /// a non-filterable sample type, which unlocks formats like Rgba32Float as a
+    /// sampled source without requiring the `FLOAT32_FILTERABLE` feature.
+    pub sampled: bool,
+}
+
+/// A 2D float texture that a shader samples, named by `id`.
+impl From<TextureId> for TextureMeta {
+    fn from(id: TextureId) -> Self {
+        TextureMeta {
+            id,
+            dim: TextureDim::D2,
+            arrayed: false,
+            class: TextureClass::Sampled {
+                kind: TextureScalarKind::Float,
+                multi: false,
+            },
+            sampled: true,
         }
     }
 }

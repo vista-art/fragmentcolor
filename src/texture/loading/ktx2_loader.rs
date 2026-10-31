@@ -13,11 +13,10 @@
 
 use ktx2::Format as VkFormat;
 
+use super::decode::Pick;
 use crate::RenderContext;
 use crate::texture::error::TextureError;
-use crate::texture::{
-    Pick, SamplerOptions, TextureObject, create_default_sampler, mip_level_count_for,
-};
+use crate::texture::{SamplerOptions, TextureObject, create_default_sampler, mip_level_count_for};
 use parking_lot::RwLock;
 
 /// The identifier every KTX2 file starts with: `«KTX 20»\r\n\x1A\n`.
@@ -278,6 +277,22 @@ pub(crate) fn from_ktx2_bytes(
         format: wgpu_format,
         usage,
     })
+}
+
+pub(in crate::texture) fn read_ktx2_file(
+    context: &RenderContext,
+    path: &std::path::Path,
+    pick: Pick,
+    usage: wgpu::TextureUsages,
+) -> Result<TextureObject, TextureError> {
+    let bytes = std::fs::read(path).map_err(|e| {
+        TextureError::CreateTextureError(format!(
+            "Failed to read KTX2 file {}: {}",
+            path.display(),
+            e
+        ))
+    })?;
+    from_ktx2_bytes(context, &bytes, pick, usage)
 }
 
 #[cfg(test)]
