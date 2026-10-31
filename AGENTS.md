@@ -91,7 +91,7 @@ Big‑picture architecture (how things fit together)
 Module‑level invariants (authoritative AGENTS.md files)
 - These short rule files are the source of truth for non‑negotiable behavior. Do not introduce code that violates them.
   - docs/api/AGENTS.md (canonical doc source: no numeric type suffixes in literals, hidden lines and per-language hidden blocks, patterns the transpiler can / can't translate, no drift tolerance)
-  - src/renderer/AGENTS.md (pipelines, targets/present, MSAA/resolve, bind‑group hygiene, thin public API)
+  - src/core/renderer/AGENTS.md (pipelines, targets/present, MSAA/resolve, bind‑group hygiene, thin public API)
   - src/shader/AGENTS.md (mesh ownership, strict attach‑time validation, reflection/mapping order, precise errors)
   - src/mesh/AGENTS.md (schema derivation, CPU/GPU buffer packing/caching, instance handling, validation contract)
   - src/pass/AGENTS.md (role, targets, compute vs render, delegation to Shader)
@@ -104,7 +104,7 @@ Conventions you’ll see enforced in code
 - **Struct names match across every binding.** `Renderer`, `Shader`, `Pass`, `WindowTarget`, `TextureTarget`, `Size`, `ScreenRegion`, `Texture`, etc. are identical in Rust, JS, Python, Swift, and Kotlin. Achieved via `#[pyclass(name = "...")]` on Python, `wasm_bindgen(js_name = ...)` on Web, `#[cfg_attr(mobile, derive(uniffi::Object))]` on mobile, where uniffi uses the Rust type name. A mobile wrapper type takes the Rust name with `#[uniffi(name = "...")]` on the struct and `#[uniffi::export(name = "...")]` on its impl block.
 - Method naming follows each language's idiom (snake_case in Rust / Python, camelCase in JS / Swift / Kotlin). The transpilers in `scripts/convert.rs` translate names automatically.
 - **Qualifiers go first in names**, platform words included: `MobileTextureRegion`, never `TextureRegionMobile`. The one exception is the `_js`, `_py`, `_mobile`, `_ios` and `_android` suffix on a binding wrapper method.
-- Platform-only methods (e.g. `Renderer::create_target_ios`, which Swift sees as `createTarget(metalLayerPtr:)`) live behind `#[cfg(ios)]` / `#[cfg(android)]` in a module's `platform/mobile/` folder, such as `src/renderer/platform/mobile/ios.rs`. Their `#[lsp_doc(...)]` points at a page in the object's `hidden/` folder, such as `docs/api/core/renderer/hidden/create_target_ios.md`. A Swift or Kotlin extension wraps it in the call every platform shares, such as `renderer.createTarget(layer)`.
+- Platform-only methods (e.g. `Renderer::create_target_ios`, which Swift sees as `createTarget(metalLayerPtr:)`) live behind `#[cfg(ios)]` / `#[cfg(android)]` in a module's `platform/mobile/` folder, such as `src/core/renderer/platform/mobile/ios.rs`. Their `#[lsp_doc(...)]` points at a page in the object's `hidden/` folder, such as `docs/api/core/renderer/hidden/create_target_ios.md`. A Swift or Kotlin extension wraps it in the call every platform shares, such as `renderer.createTarget(layer)`.
 
 Notes and tiny suggestions
 - The per‑module AGENTS.md files are concise and clear. Keep them authoritative and link to them from PRs when changes touch those areas. Refresh the relevant module file in the same commit whenever the invariants change.

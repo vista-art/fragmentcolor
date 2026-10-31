@@ -30,7 +30,8 @@ pub(crate) mod builtins;
 
 mod platform;
 
-use crate::renderer::{RenderContext, RendererError, VertexLayouts, check_limit};
+use crate::RendererError;
+use crate::core::{RenderContext, VertexLayouts, check_limit};
 use crate::{PassObject, Renderable, Shader, ShaderError};
 
 #[derive(Clone, Debug)]
@@ -1375,7 +1376,7 @@ mod tests {
     #[test]
     fn uploads_stay_within_the_buffer_limit() {
         pollster::block_on(async move {
-            let (device, queue) = crate::renderer::platform::all::request_small_device(65536).await;
+            let (device, queue) = crate::core::renderer::device::request_small_device(65536).await;
             let context = RenderContext::new(device, queue);
             let corners = (0..8193).map(|index| [index as f32, 0.0]);
             let vertices = Mesh::new();
@@ -1909,11 +1910,11 @@ mod tests {
     #[test]
     fn a_change_during_the_upload_is_checked() {
         pollster::block_on(async move {
-            let instance = crate::renderer::platform::all::create_instance().await;
-            let adapter = crate::renderer::platform::all::request_adapter(&instance, None)
+            let instance = crate::core::renderer::device::create_instance().await;
+            let adapter = crate::core::renderer::device::request_adapter(&instance, None)
                 .await
                 .expect("adapter");
-            let (device, queue) = crate::renderer::platform::all::request_device(&adapter)
+            let (device, queue) = crate::core::renderer::device::request_device(&adapter)
                 .await
                 .expect("device");
             let context = RenderContext::new(device, queue);
@@ -1948,11 +1949,11 @@ mod tests {
     #[test]
     fn an_instance_added_during_the_upload_packs_next_time() {
         pollster::block_on(async move {
-            let instance = crate::renderer::platform::all::create_instance().await;
-            let adapter = crate::renderer::platform::all::request_adapter(&instance, None)
+            let instance = crate::core::renderer::device::create_instance().await;
+            let adapter = crate::core::renderer::device::request_adapter(&instance, None)
                 .await
                 .expect("adapter");
-            let (device, queue) = crate::renderer::platform::all::request_device(&adapter)
+            let (device, queue) = crate::core::renderer::device::request_device(&adapter)
                 .await
                 .expect("device");
             let context = RenderContext::new(device, queue);
@@ -1984,11 +1985,11 @@ mod tests {
     #[test]
     fn a_pack_during_a_model_attach_finds_the_columns() {
         pollster::block_on(async move {
-            let instance = crate::renderer::platform::all::create_instance().await;
-            let adapter = crate::renderer::platform::all::request_adapter(&instance, None)
+            let instance = crate::core::renderer::device::create_instance().await;
+            let adapter = crate::core::renderer::device::request_adapter(&instance, None)
                 .await
                 .expect("adapter");
-            let (device, queue) = crate::renderer::platform::all::request_device(&adapter)
+            let (device, queue) = crate::core::renderer::device::request_device(&adapter)
                 .await
                 .expect("device");
             let context = RenderContext::new(device, queue);
@@ -2025,11 +2026,11 @@ mod tests {
         pollster::block_on(async move {
             let mut contexts = Vec::new();
             for _ in 0..2 {
-                let instance = crate::renderer::platform::all::create_instance().await;
-                let adapter = crate::renderer::platform::all::request_adapter(&instance, None)
+                let instance = crate::core::renderer::device::create_instance().await;
+                let adapter = crate::core::renderer::device::request_adapter(&instance, None)
                     .await
                     .expect("adapter");
-                let (device, queue) = crate::renderer::platform::all::request_device(&adapter)
+                let (device, queue) = crate::core::renderer::device::request_device(&adapter)
                     .await
                     .expect("device");
                 contexts.push(RenderContext::new(device, queue));
@@ -2132,11 +2133,11 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
             let first = crate::Shader::new(wgsl).expect("shader");
             first.add_mesh(&mesh).expect("first attach");
 
-            let instance = crate::renderer::platform::all::create_instance().await;
-            let adapter = crate::renderer::platform::all::request_adapter(&instance, None)
+            let instance = crate::core::renderer::device::create_instance().await;
+            let adapter = crate::core::renderer::device::request_adapter(&instance, None)
                 .await
                 .expect("adapter");
-            let (device, queue) = crate::renderer::platform::all::request_device(&adapter)
+            let (device, queue) = crate::core::renderer::device::request_device(&adapter)
                 .await
                 .expect("device");
             let context = RenderContext::new(device, queue);
@@ -2189,11 +2190,11 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
             mesh.add_instances([inst.clone(), inst]);
 
             // Build GPU buffers
-            let instance = crate::renderer::platform::all::create_instance().await;
-            let adapter = crate::renderer::platform::all::request_adapter(&instance, None)
+            let instance = crate::core::renderer::device::create_instance().await;
+            let adapter = crate::core::renderer::device::request_adapter(&instance, None)
                 .await
                 .expect("adapter");
-            let (device, queue) = crate::renderer::platform::all::request_device(&adapter)
+            let (device, queue) = crate::core::renderer::device::request_device(&adapter)
                 .await
                 .expect("device");
             let context = RenderContext::new(device, queue);
@@ -2282,7 +2283,7 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
     #[test]
     fn render_with_mesh_explicit_indices() {
         pollster::block_on(async move {
-            let renderer = crate::renderer::Renderer::new();
+            let renderer = crate::Renderer::new();
             let target = renderer
                 .create_texture_target([16u32, 16u32])
                 .await

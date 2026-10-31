@@ -3,9 +3,9 @@
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
+use crate::SceneObjectHandle;
 use crate::bindings::numbers::read_vector;
-use crate::renderer::platform::mobile::FragmentColorError;
-use crate::renderer::renderable::SceneObjectHandle;
+use crate::core::renderer::platform::mobile::FragmentColorError;
 use crate::scene::{Camera, CameraError, Light, LightKind, Model, Scene, SceneSource};
 use crate::{Material, Mesh, Pass};
 

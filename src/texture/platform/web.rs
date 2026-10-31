@@ -167,7 +167,7 @@ impl Texture {
     #[wasm_bindgen(js_name = "getImage", unchecked_return_type = "Promise<Uint8Array>")]
     #[lsp_doc("docs/api/texture/texture/get_image.md")]
     pub fn get_image_js(&self) -> js_sys::Promise {
-        let start = crate::renderer::Start::now(Some(&self.context));
+        let start = crate::core::Start::now(Some(&self.context));
         let texture = self.clone();
         crate::error::defer(async move {
             let object = texture.object();

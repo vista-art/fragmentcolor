@@ -1,7 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
+use fragmentcolor::RendererError;
 use fragmentcolor::TextureId;
-use fragmentcolor::renderer::error::RendererError;
 use fragmentcolor::{Pass, Renderer, Shader, Texture, TextureFormat};
 
 const SAMPLED: &str = r#"

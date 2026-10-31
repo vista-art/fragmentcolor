@@ -9,11 +9,6 @@
 #[cfg(not(wasm))]
 uniffi::setup_scaffolding!();
 
-/// # Renderer module.
-///
-/// The Renderer is the main entry point for rendering operations.
-pub mod renderer;
-
 /// # Target module
 ///
 /// Target represents a rendering destination, such as a window or an offscreen texture.
@@ -60,7 +55,7 @@ pub mod scene;
 /// Common errors used across the library.
 #[expect(
     hidden_glob_reexports,
-    reason = "mesh, pass, renderer, shader and target glob-export a public `error` module this one hides"
+    reason = "mesh, pass, shader and target glob-export a public `error` module this one hides"
 )]
 mod error;
 
@@ -71,6 +66,7 @@ pub mod guides;
 
 mod bindings;
 mod conversion_macros;
+mod core;
 mod network;
 mod values;
 
@@ -82,12 +78,12 @@ mod winit_app;
 #[cfg(all(not(wasm), feature = "winit"))]
 pub use winit_app::*;
 
+pub use self::core::*;
 pub use error::*;
 pub use material::*;
 pub use mesh::*;
 pub use network::NetworkError;
 pub use pass::*;
-pub use renderer::*;
 pub use scene::*;
 pub use shader::*;
 pub use target::*;

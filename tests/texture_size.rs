@@ -1,7 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
+use fragmentcolor::RendererError;
 use fragmentcolor::TextureError;
-use fragmentcolor::renderer::error::RendererError;
 use fragmentcolor::{Mipmap, Renderer, Size, Target, Texture, TextureData, TextureFormat};
 
 // Wider than any device's 2D limit, in one row of RGBA pixels.

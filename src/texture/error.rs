@@ -47,7 +47,7 @@ pub enum TextureError {
     /// cousins) need `TEXTURE_FORMAT_16BIT_NORM`.
     /// FragmentColor requests a fixed set of features at device creation,
     /// each one the adapter advertises (see `request_device` in
-    /// `renderer/platform/all.rs`). The texture format features in that set,
+    /// `core/renderer/device.rs`). The texture format features in that set,
     /// such as `TEXTURE_FORMAT_16BIT_NORM` and the compressed formats, reach
     /// this error only on a device that doesn't advertise them. Surfaces capability constraints at the API boundary
     /// instead of letting them detonate as runtime validation cascades on
@@ -69,7 +69,7 @@ pub enum TextureError {
     /// A GPU error an earlier frame left, which a readback reports before it reads.
     #[error("Device error ({kind}) in '{label}': {detail}")]
     DeviceError {
-        kind: crate::renderer::ErrorKind,
+        kind: crate::ErrorKind,
         label: String,
         detail: String,
     },
@@ -160,7 +160,7 @@ impl From<TextureError> for crate::error::WebError {
                 kind,
                 label,
                 detail,
-            } => crate::renderer::error::throw_device(kind, &label, &detail, &message),
+            } => crate::core::throw_device(kind, &label, &detail, &message),
             other => crate::error::WebError::from_error(&other),
         }
     }

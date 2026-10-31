@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::renderer::Start;
+use crate::core::Start;
 use crate::texture::{Texture, TextureError, TextureObject};
 use crate::{PendingReadback, RenderContext};
 

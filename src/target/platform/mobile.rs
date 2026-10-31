@@ -21,7 +21,7 @@ use std::sync::Arc;
 use lsp_doc::lsp_doc;
 use parking_lot::{Mutex, RwLock};
 
-use crate::renderer::platform::mobile::FragmentColorError;
+use crate::core::renderer::platform::mobile::FragmentColorError;
 use crate::texture::TextureError;
 use crate::{RenderContext, Size, SurfaceError, Target, TargetFrame, TextureTarget, WindowTarget};
 

@@ -612,7 +612,7 @@ mod tests {
     // from KTX2 bytes and from plain bytes that hold a container alike.
     #[test]
     fn a_container_takes_only_a_format_its_bytes_read_as() {
-        use crate::renderer::error::RendererError;
+        use crate::RendererError;
         use crate::{TextureData, TextureFormat, TextureInput, TextureOptions};
         pollster::block_on(async move {
             let renderer = crate::Renderer::new();

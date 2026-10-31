@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use crate::Shader;
 use crate::bindings::numbers::read_vector;
+use crate::core::renderer::platform::mobile::FragmentColorError;
 use crate::material::{AlphaMode, Material, MaterialError, TextureSlot};
-use crate::renderer::platform::mobile::FragmentColorError;
 use crate::texture::{Texture, TextureInput, TextureInputMobile, TextureOptions};
 
 #[uniffi::export]

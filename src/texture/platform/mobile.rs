@@ -11,7 +11,7 @@
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
-use crate::renderer::platform::mobile::FragmentColorError;
+use crate::core::renderer::platform::mobile::FragmentColorError;
 use crate::texture::TextureRegionMobile;
 use crate::{Mipmap, SamplerOptions, Size, Texture, TextureFormat, TextureId};
 

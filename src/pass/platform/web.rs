@@ -1,8 +1,8 @@
 #![cfg(wasm)]
 
 use crate::bindings::web::{read_color, read_count, read_text};
+use crate::core::renderer::platform::web::RenderableList;
 use crate::error::WebError;
-use crate::renderer::platform::web::RenderableList;
 use crate::{Pass, Shader, Texture, TextureTarget};
 use lsp_doc::lsp_doc;
 use wasm_bindgen::JsValue;

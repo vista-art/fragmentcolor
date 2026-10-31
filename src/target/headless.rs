@@ -1,4 +1,4 @@
-use crate::{Size, renderer::HasDisplaySize};
+use crate::{HasDisplaySize, Size};
 use wgpu::rwh::{DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle};
 
 #[doc(hidden)]

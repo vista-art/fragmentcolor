@@ -16,8 +16,8 @@ use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
 use crate::bindings::numbers::{VectorError, read_floats, read_position, read_vector};
+use crate::core::renderer::platform::mobile::FragmentColorError;
 use crate::mesh::{Instance, Mesh, Quad, Vertex, VertexData};
-use crate::renderer::platform::mobile::FragmentColorError;
 
 // -----------------------------------------------------------------
 // Vertex (uniffi bindings)

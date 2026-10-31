@@ -17,8 +17,8 @@ use std::sync::Arc;
 use lsp_doc::lsp_doc;
 
 use crate::Shader;
+use crate::core::renderer::platform::mobile::FragmentColorError;
 use crate::mesh::{Mesh, Vertex};
-use crate::renderer::platform::mobile::FragmentColorError;
 use crate::shader::UniformInput;
 use crate::shader::uniform::UniformData;
 use crate::texture::TextureId;

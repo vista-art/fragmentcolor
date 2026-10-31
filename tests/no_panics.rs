@@ -44,8 +44,8 @@ fn only_a_tests_folder_below_the_root_stays_out() {
 #[test]
 fn a_windows_path_reads_its_components() {
     let root = Path::new(r"C:\ci\fragmentcolor\src");
-    let module = Path::new(r"C:\ci\fragmentcolor\src\renderer\lights\tests\mod.rs");
-    let library = Path::new(r"C:\ci\fragmentcolor\src\renderer\lights.rs");
+    let module = Path::new(r"C:\ci\fragmentcolor\src\core\renderer\lights\tests\mod.rs");
+    let library = Path::new(r"C:\ci\fragmentcolor\src\core\renderer\lights\mod.rs");
 
     assert!(is_test_source(root, module));
     assert!(!is_test_source(root, library));

@@ -191,7 +191,7 @@ impl App {
     // Global registry: add an API object by key.
     pub fn add<T>(&self, key: &str, value: T)
     where
-        T: crate::renderer::Renderable + Send + Sync + 'static,
+        T: crate::Renderable + Send + Sync + 'static,
     {
         self.objects
             .write()
@@ -201,7 +201,7 @@ impl App {
     // Global registry: get an API object by key with type downcast.
     pub fn get<T>(&self, key: &str) -> Option<Arc<T>>
     where
-        T: crate::renderer::Renderable + Send + Sync + 'static,
+        T: crate::Renderable + Send + Sync + 'static,
     {
         self.objects
             .read()

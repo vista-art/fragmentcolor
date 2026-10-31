@@ -13,9 +13,9 @@ pub enum FragmentColorError {
     #[error(transparent)]
     Pass(#[from] crate::pass::error::PassError),
     #[error(transparent)]
-    Renderer(#[from] crate::renderer::error::RendererError),
+    Renderer(#[from] crate::RendererError),
     #[error(transparent)]
-    Init(#[from] crate::renderer::error::InitializationError),
+    Init(#[from] crate::InitializationError),
     #[error(transparent)]
     Display(#[from] crate::target::error::DisplayError),
     #[cfg(not(wasm))]
@@ -113,9 +113,9 @@ impl WebError {
     pub(crate) fn with_fields(
         class: ErrorClass,
         message: &str,
-        fields: &[(&str, crate::renderer::error::Field)],
+        fields: &[(&str, crate::core::Field)],
     ) -> Self {
-        use crate::renderer::error::Field;
+        use crate::core::Field;
         use wasm_bindgen::JsValue;
         let error = js_sys::Error::new(message);
         error.set_name(class.name());
@@ -177,7 +177,7 @@ throw_by_class!(
     crate::ColorError,
     crate::SizeError,
     crate::pass::error::PassError,
-    crate::renderer::error::InitializationError,
+    crate::InitializationError,
     crate::target::error::DisplayError,
     crate::mesh::MeshError,
     crate::ScreenRegionError,
@@ -191,7 +191,7 @@ throw_by_class!(
 // Python-specific conversions
 
 #[cfg(python)]
-use crate::renderer::error::Field;
+use crate::core::Field;
 #[cfg(python)]
 use pyo3::{
     create_exception,
@@ -463,9 +463,8 @@ mod tests {
             crate::ColorError::Invalid("a color takes 3 or 4 channels".into()).into();
         let e3: FragmentColorError =
             crate::SizeError::Invalid("a size takes 2 or 3 numbers".into()).into();
-        let e6: FragmentColorError = crate::renderer::error::RendererError::NoContext.into();
-        let e7: FragmentColorError =
-            crate::renderer::error::InitializationError::Error("init".into()).into();
+        let e6: FragmentColorError = crate::RendererError::NoContext.into();
+        let e7: FragmentColorError = crate::InitializationError::Error("init".into()).into();
         let e8: FragmentColorError =
             crate::target::error::DisplayError::Error("disp".into()).into();
 
@@ -493,11 +492,11 @@ mod tests {
         use crate::ColorError;
         use crate::ScreenRegionError;
         use crate::pass::error::PassError;
-        use crate::renderer::error::{InitializationError, RendererError};
         use crate::scene::{LightError, SceneLoadError};
         use crate::shader::error::ShaderError;
         use crate::target::SurfaceError;
         use crate::texture::TextureError;
+        use crate::{InitializationError, RendererError};
         let text = |value: &str| value.to_string();
         let limit = RendererError::LimitError {
             item: text("group 9"),

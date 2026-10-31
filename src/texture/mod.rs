@@ -2984,11 +2984,8 @@ mod tests {
     }
 
     /// Whether `result` failed with `InvalidInput` whose message holds `text`.
-    fn refused<T: std::fmt::Debug>(
-        result: &Result<T, crate::renderer::error::RendererError>,
-        text: &str,
-    ) -> bool {
-        use crate::renderer::error::RendererError;
+    fn refused<T: std::fmt::Debug>(result: &Result<T, crate::RendererError>, text: &str) -> bool {
+        use crate::RendererError;
         matches!(result, Err(RendererError::TextureError(TextureError::InvalidInput(message))) if message.contains(text))
     }
 

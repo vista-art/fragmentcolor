@@ -1,5 +1,5 @@
 pub mod error;
-use crate::renderer::platform::all::CANDIDATES;
+use crate::core::renderer::device::CANDIDATES;
 use crate::texture::{Registration, TextureId};
 use crate::{PassObject, Renderable};
 use dashmap::DashMap;
