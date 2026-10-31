@@ -583,10 +583,8 @@ impl ShaderObject {
 
     /// Get a uniform value as Uniform struct.
     ///
-    /// Blocking read for the same reason as `get_uniform_data`. Used
-    /// from the render path (`Renderer::process_*_pass`) and shader
-    /// internals where the previous `try_read` would intermittently
-    /// fail under stress.
+    /// Blocking read for the same reason as `get_uniform_data`,
+    /// so the render path and the shader's own code never fail under contention.
     pub(crate) fn get_uniform(&self, key: &str) -> Result<Uniform, ShaderError> {
         let storage = self.storage.read();
         let uniform = storage

@@ -48,6 +48,6 @@ Light roots (`lights/roots.rs`, `lights/mod.rs`)
 
 Errors & API shape
 - Return `ShaderError` from shader APIs; avoid `unwrap` / `expect` / `panic`.
-- `set()` never waits for the storage, so it never waits for a draw: it queues a last-wins update when the storage is busy. A texture value or a new map waits on `texture_writes` while the shader binds another texture, makes another map, or `flush_pending` applies its queue. Neither waits on the GPU. Reads may return `ShaderError::Busy` under contention, which is expected.
+- `set()` never waits for the storage, so it never waits for a draw: it queues a last-wins update when the storage is busy. A texture value or a new map waits on `texture_writes` while the shader binds another texture, makes another map, or `flush_pending` applies its queue. Neither waits on the GPU. Reads block on the storage's read lock, which a `set` holds only for its write, so a read never fails under contention.
 - Keep public methods thin; delegate to internal state.
 - `UniformData` and the shapes it holds (`ArrayElement`, `StructShape`, `StructField`, `StorageEntry`, `StorageAccess`, `PushEntry`) are crate root exports with no docs/api page. They are the plumbing behind `Shader::set`'s `impl Into<UniformData>` and `Shader::get`, as `ShaderInput` is for `Shader::new`, so a Rust helper can forward one value to several shaders. Being root exports, they need no `type` line in docs/api/PARITY for the mobile classes of the same names.

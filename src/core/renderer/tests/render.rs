@@ -212,32 +212,18 @@ async fn create_device_and_queue() -> (wgpu::Adapter, wgpu::Device, wgpu::Queue)
     (adapter, device, queue)
 }
 
-// E2E: stress set() under contention while rendering to a texture target.
+// E2E: stress set() under contention while rendering to a texture target,
+// as a client does when it drives animation uniforms while the renderer draws.
+// It guards two races:
 //
-// Previously flaky (~1-in-3 locally; same race in CI) — two
-// independent failure modes shared distinct root causes:
+//   * A stale queued value. `set` writes `storage` directly when its lock is
+//     free and queues the value in `pending` otherwise. A direct write clears
+//     the pending entry for its key (see `ShaderObject::set`), so
+//     `flush_pending` never brings an older queued value back over a newer one.
 //
-//   * `unexpected last time: 0.25` — `set`'s dual write path
-//     (try_write fast path + queue fallback) wasn't ordered against
-//     `flush_pending`. A queued value from an earlier failed
-//     `try_write` could survive in `pending` while later `set` calls
-//     direct-wrote `storage`; the next flush then re-applied the
-//     stale queued value, clobbering the newer direct write.
-//     Fixed by clearing the pending entry for the same key when the
-//     direct-write path succeeds (see `ShaderObject::set`).
-//
-//   * `render: ShaderError(Busy("storage read"))` — the renderer's
-//     bind path used `try_read` to acquire the storage lock for
-//     uniform/storage-buffer reads, surfacing as `Busy` whenever a
-//     concurrent `set` happened to be mid-`try_write`. Reads don't
-//     conflict with each other, and `set` releases the write lock
-//     in microseconds, so the bounded wait of a blocking `read()`
-//     was always the right call. The renderer (and
-//     `Shader::get_uniform[_data]`) now use `read()`.
-//
-// Verified: 50/50 consecutive `cargo test` runs locally. The
-// contention pattern is identical to a real client driving
-// animation uniforms while the renderer renders.
+//   * A refused read. The renderer and `Shader::get_uniform` take a blocking
+//     `read()` of the storage, which a `set` holds only for its write,
+//     so a render never fails while a `set` is writing.
 #[test]
 fn e2e_set_stress_during_render_last_wins() {
     pollster::block_on(async move {
