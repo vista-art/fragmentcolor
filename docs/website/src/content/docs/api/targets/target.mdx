@@ -368,9 +368,8 @@ lang="kotlin"
 
 Returns the size of the [Target](/api/targets/target) in pixels.
 
-`depth` is the same in every language: 1 for a `TextureTarget`, as for a
-`Texture`, and absent for a `WindowTarget` (`None` in Rust and Python,
-`undefined` in JS, `nil` in Swift and `null` in Kotlin).
+`depth` is absent for every target, as for a 2D `Texture`, in every language:
+`None` in Rust and Python, `undefined` in JS, `nil` in Swift and `null` in Kotlin.
 
 #### Example
 
@@ -392,7 +391,7 @@ let depth = size.depth;
 
 assert_eq!(size.width, 64);
 assert_eq!(size.height, 32);
-assert_eq!(size.depth, Some(1));
+assert_eq!(size.depth, None);
 let size: [u32; 2] = target.size().into();
 assert_eq!(size, [64, 32]);
 let size: [u32; 3] = target.size().into();
