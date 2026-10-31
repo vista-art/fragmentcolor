@@ -17,7 +17,7 @@ The first [Shader](https://fragmentcolor.org/api/core/shader) added sets the pas
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-# let canvas = fragmentcolor::headless_window([100, 100]);
+# let canvas = fragmentcolor::HeadlessWindow::new([100, 100]);
 # /*[js]
 # const canvas = document.createElement("canvas");
 # */

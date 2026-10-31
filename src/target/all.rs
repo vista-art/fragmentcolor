@@ -99,7 +99,7 @@ mod tests {
     fn delegates_for_window_variant_headless_fallback() {
         pollster::block_on(async move {
             let r = crate::Renderer::new();
-            let headless = crate::headless_window([10, 12]);
+            let headless = crate::HeadlessWindow::new([10, 12]);
             let target = r.create_target(headless).await.expect("target");
 
             let size = target.size();
