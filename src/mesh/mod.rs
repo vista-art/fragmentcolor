@@ -1662,6 +1662,34 @@ mod tests {
         });
     }
 
+    // Story: a mesh added to another mesh's quick view draws beside it, since
+    // only the quick view's own mesh waits for its generation to hold still.
+    #[test]
+    fn a_second_mesh_on_a_quick_view_draws() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+            let colored = corners.map(|corner| Vertex::new(corner).set("color", [1.0; 4]));
+            let first = Mesh::new();
+            first.add_vertices(colored.clone());
+            renderer.render(&first, &target).expect("first render");
+            let second = Mesh::new();
+            second.add_vertices(colored.clone());
+            second.add_vertices(colored);
+            first.passes()[0].add_mesh(&second).expect("attach");
+            let apart = first.object.generation() != second.object.generation();
+
+            let rendered = renderer.render(&first, &target);
+
+            assert!(apart, "the two meshes count their changes apart");
+            assert!(rendered.is_ok(), "{rendered:?}");
+        });
+    }
+
     // Story: a mesh the quick view refused when a pass required it draws
     // once it fits, instead of failing as a shader with no mesh.
     #[test]

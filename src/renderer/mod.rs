@@ -1322,9 +1322,11 @@ impl RenderContext {
                 counts,
                 schemas,
                 ..
-            } = match passed {
-                Some(passed) => self.upload_checked(&shader, mesh, passed)?,
-                None => mesh.upload(self)?,
+            } = match &passed {
+                Some(kept) if Arc::ptr_eq(&kept.mesh, mesh) => {
+                    self.upload_checked(&shader, mesh, kept.generation)?
+                }
+                _ => mesh.upload(self)?,
             };
             #[cfg(test)]
             crate::hooks::run("uploaded");
