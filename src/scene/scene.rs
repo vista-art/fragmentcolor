@@ -57,15 +57,13 @@ pub(crate) struct SceneState {
     /// `Renderable for Scene` iterates it in order. Empty until the first
     /// `add` / `add_pass`, so a fresh Scene allocates no GPU bookkeeping.
     pub(crate) passes: RwLock<Vec<Pass>>,
-    /// Handle to the default Pass inside `passes` — the one `Scene::add`
-    /// routes objects into (Models / Cameras / Lights). It's an ordinary
-    /// member of `passes`, not privileged in render order; this handle just
-    /// records which member is the current `add` target. Created lazily on
-    /// the first `add`, and it joins `passes` at the position the graph had
-    /// when that add began, so it keeps its insertion-order position relative
-    /// to any `add_pass` calls, those from the add's own attach included. `None`
-    /// until then, and cleared again if the caller removes it from the graph
-    /// via `remove_pass` / `set_passes`.
+    /// The default Pass that `Scene::add` routes objects into.
+    ///
+    /// An ordinary member of `passes`, with no special place in render order.
+    /// It's created on the first `add` and joins `passes` where the graph ended when
+    /// that add began, so it keeps its place among `add_pass` calls, the attach's included.
+    /// A `set_passes` or `remove_pass` from that attach moves it or takes it out, as later.
+    /// `None` until then, and `None` again once `remove_pass` or `set_passes` takes it out.
     pub(crate) default_pass: RwLock<Option<Pass>>,
     /// Lets one add or default injection run at a time.
     ///
@@ -76,7 +74,9 @@ pub(crate) struct SceneState {
     /// Reentrant, for a `SceneObject` whose attach adds to the same Scene, which then sees
     /// the `pending` pass where it will join. Taken before `passes` and `default_pass`.
     pub(crate) defaults: ReentrantMutex<()>,
-    /// The default pass while its first add runs. Only the thread holding `defaults` touches it.
+    /// The default pass while its first add runs, and the place it will join.
+    /// Only the thread holding `defaults` sees it, and every edit of the graph keeps
+    /// its place in step. Taken after `passes` and released before `default_pass`.
     pub(crate) pending: Mutex<Option<PendingPass>>,
     /// Sticky once-set flags so the default-Camera / default-Light injection
     /// at `passes()` time only fires once and only when the user hasn't
@@ -113,7 +113,8 @@ crate::impl_fc_kind!(Scene, "Scene");
 #[derive(Debug)]
 pub(crate) struct PendingPass {
     pass: Pass,
-    /// Where the pass joins `passes`: the length the graph had when the first add began.
+    /// Where the pass joins `passes`. It starts at the graph's length when the first add
+    /// began, and `add_pass`, `remove_pass` and `set_passes` keep it beside its neighbors.
     index: usize,
     /// Whether an add from inside the first one landed on the pass.
     landed: bool,
@@ -128,12 +129,7 @@ struct FirstAdd<'scene> {
 
 impl Drop for FirstAdd<'_> {
     fn drop(&mut self) {
-        let pending = self.scene.inner.pending.lock().take();
-        if let Some(state) = pending
-            && (self.added || state.landed)
-        {
-            self.scene.publish_default_pass(state.pass, state.index);
-        }
+        self.scene.finish_first(self.added);
     }
 }
 
@@ -246,12 +242,13 @@ impl Scene {
     /// added nothing else leaves the Scene as it was, and so does a panic in its attach.
     fn add_first<O: SceneObject + 'static>(&self, object: &O) -> Result<(), PassError> {
         let pass = Pass::new("Scene Default Pass");
-        let index = self.inner.passes.read().len();
+        let passes = self.inner.passes.read();
         *self.inner.pending.lock() = Some(PendingPass {
             pass: pass.clone(),
-            index,
+            index: passes.len(),
             landed: false,
         });
+        drop(passes);
         let mut first = FirstAdd {
             scene: self,
             added: false,
@@ -395,30 +392,54 @@ impl Scene {
 
     #[lsp_doc("docs/api/scene/scene/add_pass.md")]
     pub fn add_pass(&self, pass: &Pass) -> &Self {
-        self.inner.passes.write().push(pass.clone());
+        self.append_pass(pass);
         self
+    }
+
+    /// Appends `pass` to the graph. The default pass a first add is building
+    /// moves to the end instead, so it never joins twice.
+    fn append_pass(&self, pass: &Pass) {
+        let mut passes = self.inner.passes.write();
+        let mut pending = self.inner.pending.lock();
+        match pending.as_mut() {
+            Some(state) if Arc::ptr_eq(&state.pass.object, &pass.object) => {
+                state.index = passes.len();
+            }
+            _ => passes.push(pass.clone()),
+        }
     }
 
     #[lsp_doc("docs/api/scene/scene/remove_pass.md")]
     pub fn remove_pass(&self, pass: &Pass) -> bool {
-        // Lock order: `passes` first, `default_pass` second (see
-        // `find_default_pass`).
+        self.delete_pass(pass)
+    }
+
+    /// Takes `pass` out of the graph and says whether it was there. The default pass a
+    /// first add is building leaves too, and the add forgets it, as it forgets a default
+    /// pass the graph lost. Lock order: `passes`, then `pending`, then `default_pass`.
+    fn delete_pass(&self, pass: &Pass) -> bool {
+        let same = |held: &Pass| Arc::ptr_eq(&held.object, &pass.object);
         let mut passes = self.inner.passes.write();
-        let Some(idx) = passes
-            .iter()
-            .position(|p| Arc::ptr_eq(&p.object, &pass.object))
-        else {
+        let mut pending = self.inner.pending.lock();
+        if pending.as_ref().is_some_and(|state| same(&state.pass)) {
+            *pending = None;
+            return true;
+        }
+        let Some(index) = passes.iter().position(same) else {
             return false;
         };
-        passes.remove(idx);
+        passes.remove(index);
+        if let Some(state) = pending.as_mut()
+            && index < state.index
+        {
+            state.index -= 1;
+        }
+        drop(pending);
         // Forget the default-pass handle if it pointed at the pass we just removed,
         // so the next `add` rebuilds one instead of attaching to a Pass the
         // graph no longer renders.
         let mut slot = self.inner.default_pass.write();
-        let was_default_pass = slot
-            .as_ref()
-            .is_some_and(|default_pass| Arc::ptr_eq(&default_pass.object, &pass.object));
-        if was_default_pass {
+        if slot.as_ref().is_some_and(same) {
             *slot = None;
         }
         true
@@ -443,9 +464,30 @@ impl Scene {
 
     #[lsp_doc("docs/api/scene/scene/set_passes.md")]
     pub fn set_passes(&self, passes: Vec<Pass>) {
-        // Lock order: `passes` first, `default_pass` second (see
-        // `find_default_pass`).
+        self.replace_passes(passes);
+    }
+
+    /// Replaces the graph with `passes`. The default pass a first add is building
+    /// takes the place the list gives it, and the thread running that add forgets it
+    /// when the list leaves it out. Another thread can't see it, so its list puts the
+    /// pass at the end, as if the add came after. Lock order: `passes`, `pending`, `default_pass`.
+    fn replace_passes(&self, mut passes: Vec<Pass>) {
         let mut current = self.inner.passes.write();
+        let mut pending = self.inner.pending.lock();
+        if let Some(state) = pending.as_mut() {
+            let found = passes
+                .iter()
+                .position(|pass| Arc::ptr_eq(&pass.object, &state.pass.object));
+            match found {
+                Some(index) => {
+                    passes.remove(index);
+                    state.index = index;
+                }
+                None if self.inner.defaults.is_owned_by_current_thread() => *pending = None,
+                None => state.index = passes.len(),
+            }
+        }
+        drop(pending);
         *current = passes;
         // Drop the default-pass handle if the replacement no longer contains it.
         let mut slot = self.inner.default_pass.write();
@@ -509,26 +551,34 @@ impl Scene {
         held.then_some(existing)
     }
 
-    /// Puts `pass` in the graph as the default pass, at `index` or at the end when the
-    /// graph shrank. The Pass is named "Scene Default Pass", so it shows up in graphics
-    /// debuggers (RenderDoc, Xcode GPU frame capture).
-    fn publish_default_pass(&self, pass: Pass, index: usize) {
+    /// Ends a first add. Its pass joins the graph as the default pass at the place kept
+    /// for it, once an add on it succeeded, unless the attach took it out of the graph.
+    /// The Pass is named "Scene Default Pass", so it shows up in graphics debuggers.
+    fn finish_first(&self, added: bool) {
         let mut passes = self.inner.passes.write();
-        let index = index.min(passes.len());
-        passes.insert(index, pass.clone());
-        *self.inner.default_pass.write() = Some(pass);
+        let pending = self.inner.pending.lock().take();
+        let Some(state) = pending else {
+            return;
+        };
+        if !added && !state.landed {
+            return;
+        }
+        let index = state.index.min(passes.len());
+        passes.insert(index, state.pass.clone());
+        *self.inner.default_pass.write() = Some(state.pass);
     }
 
     /// The graph as the caller sees it. The thread running a first add also sees
     /// the default pass it is building, at the place the pass will join.
     fn view_passes(&self) -> Vec<Pass> {
-        let mut passes = self.inner.passes.read().clone();
+        let passes = self.inner.passes.read();
+        let mut view = passes.clone();
         if self.inner.defaults.is_owned_by_current_thread()
             && let Some(state) = self.inner.pending.lock().as_ref()
         {
-            passes.insert(state.index.min(passes.len()), state.pass.clone());
+            view.insert(state.index.min(view.len()), state.pass.clone());
         }
-        passes
+        view
     }
 
     /// Inject default Camera / Light into the default Pass when injection is
@@ -1202,6 +1252,183 @@ mod tests {
         assert!(refused.is_err());
         assert_eq!(names, ["Scene Default Pass", "overlay"]);
         assert_eq!(scene.models().len(), 1, "the child");
+    }
+
+    /// What a `Scripted` object's attach does with its scene.
+    type Script = Box<dyn Fn(&Scene) -> Result<(), PassError> + Send + Sync>;
+
+    /// A scene object whose attach runs a script on the scene it holds.
+    struct Scripted {
+        scene: Scene,
+        script: Script,
+    }
+
+    impl std::fmt::Debug for Scripted {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("Scripted")
+        }
+    }
+
+    impl SceneObject for Scripted {
+        fn attach(&self, _pass: &Pass) -> Result<(), PassError> {
+            (self.script)(&self.scene)
+        }
+    }
+
+    fn scripted(
+        scene: &Scene,
+        script: impl Fn(&Scene) -> Result<(), PassError> + Send + Sync + 'static,
+    ) -> Scripted {
+        Scripted {
+            scene: scene.clone(),
+            script: Box::new(script),
+        }
+    }
+
+    /// The names of the scene's passes, in order.
+    fn names(scene: &Scene) -> Vec<String> {
+        let passes = scene.list_passes();
+        passes
+            .iter()
+            .map(|pass| pass.object.name.to_string())
+            .collect()
+    }
+
+    // Story: an attach that adds a pass and removes one before the default pass
+    // keeps the default pass ahead of the pass it added, as a later add would.
+    #[test]
+    fn the_pending_pass_keeps_its_place_when_an_earlier_pass_leaves() {
+        let scene = Scene::new();
+        let backdrop = Pass::new("backdrop");
+        scene.add_pass(&backdrop);
+        let hud = Pass::new("hud");
+        let object = scripted(&scene, move |scene| {
+            scene.add_pass(&hud);
+            scene.remove_pass(&backdrop);
+            Ok(())
+        });
+
+        scene.add(&object).expect("add");
+
+        assert_eq!(names(&scene), ["Scene Default Pass", "hud"]);
+    }
+
+    // Story: a list_passes and set_passes round trip from the attach
+    // keeps the default pass once, where the list put it.
+    #[test]
+    fn a_reordered_graph_holds_the_pending_pass_once() {
+        let scene = Scene::new();
+        let (sky, hud) = (Pass::new("sky"), Pass::new("hud"));
+        let object = scripted(&scene, move |scene| {
+            scene.add_pass(&hud);
+            let mut passes = scene.list_passes();
+            passes.insert(0, sky.clone());
+            scene.set_passes(passes);
+            Ok(())
+        });
+
+        scene.add(&object).expect("add");
+
+        let passes = scene.list_passes();
+        let default_pass = scene.inner.default_pass.read().clone();
+        assert_eq!(names(&scene), ["sky", "Scene Default Pass", "hud"]);
+        assert!(default_pass.is_some_and(|pass| Arc::ptr_eq(&pass.object, &passes[1].object)));
+    }
+
+    // Story: an attach that removes the default pass its first add builds gets true,
+    // and the pass stays out of the graph, so the next add builds another.
+    #[test]
+    fn an_attach_can_remove_the_pending_pass() {
+        let scene = Scene::new();
+        let removed = Arc::new(parking_lot::Mutex::new(None));
+        let seen = removed.clone();
+        let object = scripted(&scene, move |scene| {
+            let found = scene.find_pass("Scene Default Pass");
+            *seen.lock() = found.map(|pass| scene.remove_pass(&pass));
+            Ok(())
+        });
+
+        scene.add(&object).expect("add");
+        let left = names(&scene);
+        let forgotten = scene.inner.default_pass.read().is_none();
+        scene
+            .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
+            .expect("add a model");
+
+        assert_eq!(*removed.lock(), Some(true), "remove_pass found it");
+        assert!(left.is_empty(), "no pass left in {left:?}");
+        assert!(forgotten, "no default pass");
+        assert_eq!(
+            names(&scene),
+            ["Scene Default Pass"],
+            "the next add builds one"
+        );
+    }
+
+    // Story: a set_passes from the attach that leaves the default pass out keeps it out.
+    #[test]
+    fn a_graph_set_without_the_pending_pass_leaves_it_out() {
+        let scene = Scene::new();
+        let hud = Pass::new("hud");
+        let object = scripted(&scene, move |scene| {
+            scene.set_passes(vec![hud.clone()]);
+            Ok(())
+        });
+
+        scene.add(&object).expect("add");
+
+        assert_eq!(names(&scene), ["hud"]);
+        assert!(scene.inner.default_pass.read().is_none());
+    }
+
+    // Story: a set_passes on another thread during a first add puts the
+    // default pass at the end of the new graph, as if the add came after it.
+    #[test]
+    fn a_graph_set_on_another_thread_puts_the_pending_pass_last() {
+        let scene = Scene::new();
+        scene.add_pass(&Pass::new("bg")).add_pass(&Pass::new("fx"));
+        let other = scene.clone();
+        crate::hooks::once("scene add", move || {
+            let names = ["sky", "hud", "post"];
+            let replace = std::thread::spawn(move || {
+                other.set_passes(names.map(Pass::new).to_vec());
+            });
+            replace.join().expect("the other thread");
+        });
+
+        scene
+            .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
+            .expect("add");
+
+        assert_eq!(names(&scene), ["sky", "hud", "post", "Scene Default Pass"]);
+    }
+
+    // Story: a first add whose attach panics after an add from it landed keeps the
+    // pass that holds the child, so the scene draws the model it lists.
+    #[test]
+    fn a_panicking_first_add_keeps_what_its_attach_added() {
+        let scene = Scene::new();
+        let material = Material::pbr();
+        let child = Model::new(pbr_triangle_mesh(), material.clone());
+        let object = scripted(&scene, move |scene| {
+            scene.add(&child)?;
+            panic!("the attach panics after its add");
+        });
+
+        let added = std::panic::AssertUnwindSafe(|| scene.add(&object).map(drop));
+        let panicked = std::panic::catch_unwind(added);
+
+        let passes = scene.list_passes();
+        let holds = passes.iter().any(|pass| {
+            let shaders = pass.object.shaders.read();
+            shaders
+                .iter()
+                .any(|shader| Arc::ptr_eq(shader, &material.shader().object))
+        });
+        assert!(panicked.is_err());
+        assert_eq!(passes.len(), 1, "the pass the child landed on");
+        assert!(holds, "it holds the child");
+        assert_eq!(scene.models().len(), 1);
     }
 
     // Story: an add_to of a camera and a first render on another thread take
