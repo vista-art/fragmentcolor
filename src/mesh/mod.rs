@@ -1760,31 +1760,6 @@ mod tests {
         });
     }
 
-    // Story: the quick view draws only a pack of the state its check passed, so an
-    // instance added during the pack and cleared after it never reaches the frame.
-    #[test]
-    fn the_quick_view_draws_only_a_checked_pack() {
-        pollster::block_on(async move {
-            let renderer = crate::Renderer::new();
-            let target = renderer
-                .create_texture_target([8, 8])
-                .await
-                .expect("texture target");
-            let mesh = Mesh::new();
-            let corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
-            mesh.add_vertices(corners.map(|corner| Vertex::new(corner).set("color", [1.0; 4])));
-            // The quick view reads the instance color before the vertex one.
-            mesh.add_instance(Instance::new().set("color", [1.0; 4]));
-            let (added, cleared) = (mesh.clone(), mesh.clone());
-            crate::hooks::once("pack", move || added.add_instance(Instance::new()));
-            crate::hooks::once("packed", move || cleared.clear_instances());
-
-            renderer.render(&mesh, &target).expect("render");
-
-            assert_eq!(mesh.object.packed.read().rows, 0, "the drawn pack");
-        });
-    }
-
     // Story: the render checks the quick view's mesh again when it changed during
     // the upload, so a vertex another thread adds while the pack runs fails that render.
     #[test]

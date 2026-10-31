@@ -4836,6 +4836,84 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) @interpolate(flat)
         });
     }
 
+    /// Changes `mesh` at the start of each upload, `left` more times at most.
+    fn churn(mesh: crate::Mesh, uploads: Arc<std::sync::atomic::AtomicUsize>, left: usize) {
+        if left == 0 {
+            return;
+        }
+        crate::hooks::once("upload", move || {
+            uploads.fetch_add(1, Ordering::SeqCst);
+            mesh.set_indices([0, 1, 2]);
+            churn(mesh, uploads, left - 1);
+        });
+    }
+
+    // Story: a quick view whose mesh changes during every upload fails the render
+    // with MeshError::Busy after PREVIEW_TRIES uploads and draws none of them.
+    #[test]
+    fn a_mesh_that_keeps_changing_fails_its_quick_view() {
+        pollster::block_on(async move {
+            use crate::error::Classify;
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("texture target");
+            let mesh = crate::Mesh::new();
+            mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
+            let uploads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            // Twice the limit, so a loop without one fails here instead of hanging.
+            churn(mesh.clone(), uploads.clone(), 2 * PREVIEW_TRIES);
+
+            let error = renderer
+                .render(&mesh, &target)
+                .expect_err("the mesh never holds still");
+            // The churn left over drops here, not with the thread's storage.
+            crate::hooks::once("upload", || {});
+
+            let busy = crate::mesh::MeshError::Busy(PREVIEW_TRIES);
+            let expected = matches!(&error, RendererError::MeshError(found) if found.to_string() == busy.to_string());
+            assert!(expected, "{error:?}");
+            assert_eq!(
+                uploads.load(Ordering::SeqCst),
+                PREVIEW_TRIES,
+                "one upload per try"
+            );
+            assert_eq!(error.classify().name(), "FragmentColorError");
+        });
+    }
+
+    // Story: the quick view draws only a pack of the state its check passed, so an
+    // instance added during the pack and cleared after it never reaches the frame.
+    #[test]
+    fn the_quick_view_draws_only_a_checked_pack() {
+        pollster::block_on(async move {
+            let (_, device, queue) = create_device_and_queue().await;
+            let ctx = RenderContext::new(device, queue);
+            let mesh = crate::Mesh::new();
+            let corners = [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]];
+            mesh.add_vertices(
+                corners.map(|corner| crate::Vertex::new(corner).set("color", [1.0; 4])),
+            );
+            // The quick view reads the instance color before the vertex one.
+            mesh.add_instance(crate::Instance::new().set("color", [1.0; 4]));
+            let (added, cleared) = (mesh.clone(), mesh.clone());
+            crate::hooks::once("pack", move || added.add_instance(crate::Instance::new()));
+            crate::hooks::once("packed", move || cleared.clear_instances());
+
+            let draws = ctx.plan_pass(&mesh.pass).expect("the pass plans");
+
+            let MeshDraws::Batched(list) = &draws.shaders[0].draws else {
+                panic!("a batched draw");
+            };
+            assert_eq!(list[0].instances.count, 1, "the drawn instances");
+            assert!(
+                list[0].instances.buffer.is_none(),
+                "no instance buffer after the clear"
+            );
+        });
+    }
+
     // Story: a shader keeps layouts for the pack they came from, so a second Renderer
     // whose upload packed newer instances under the same generation builds its own.
     #[test]
