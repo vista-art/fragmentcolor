@@ -552,8 +552,9 @@ texture renders correctly under the factor alone.
 #### Memory
 
 A map holds its source for as long as the slot keeps it. That is the file's
-bytes for an encoded PNG or JPEG, the pixels for raw bytes, a NumPy array or
-a glTF image, the container for KTX2, and the chain for a `Mipmap`. A path or
+bytes for an encoded PNG or JPEG, a glTF image inside its file included, the
+pixels for raw bytes or a NumPy array, the container for KTX2, and the chain
+for a `Mipmap`. A path or
 a URL holds only its string, and each `Renderer` reads or fetches it again.
 `renderer.create_texture` keeps nothing on the CPU, and the texture it returns
 draws in that one `Renderer`.
@@ -2109,10 +2110,7 @@ The shader uses:
   target's format, through the shader's `override ENCODE_SRGB: bool`. A custom
   shader that declares the same override gets the same value.
 
-The vertex inputs the shader reads from the mesh. Each finds its attribute by
-name, then by the attribute's own location, as
-[Mesh](/api/geometry/mesh) describes, so a vertex
-that sets them under these names can set them in any order:
+The shader reads these vertex inputs from the mesh:
 
 - `@location(0) position : vec3<f32>`, a 3D position from `Vertex::new([...])` or `Vertex::pbr([...])`.
 - `@location(1) normal   : vec3<f32>`, set as `.set(Vertex::NORMAL, ...)`.
@@ -2121,13 +2119,19 @@ that sets them under these names can set them in any order:
 - `@location(8) uv1      : vec2<f32>`, set as `.set(Vertex::UV1, ...)`, which the texture slots on UV set 1 sample.
 - `@location(9) tangent  : vec4<f32>`, set as `.set(Vertex::TANGENT, ...)`, with the bitangent sign in `w`.
 
-Locations 3 to 6 hold `model_0` to `model_3`, the columns of the Model's
-transform, which come from the Model rather than the mesh. The shader has
-no default for any mesh input, so a Model whose mesh lacks one fails to
-attach. The error names the input, or the attribute at the input's location
-when that attribute has the wrong type. `Vertex::pbr` sets every input
-after the position to a neutral value. Use `Material::custom(...)` to bring
-your own vertex layout.
+Each input finds its attribute by name, then by the location
+[`Vertex::set`](/api/geometry/vertex#set) gave the
+attribute. A vertex that sets them under these names can set them in any
+order. Locations 3 to 6 hold `model_0` to `model_3`, the columns of the
+Model's transform, which come from the Model rather than the mesh.
+
+The shader has no default for any mesh input. An attribute under another name
+stands in for one when it sits at the input's location and fits its type, and
+a Model fails to attach when an input finds no attribute by either rule. The
+error names the input, or the attribute at the input's location when that
+attribute has the wrong type. `Vertex::pbr` sets every input after the
+position to a neutral value. Use `Material::custom(...)` to bring your own
+vertex layout.
 
 #### Defaults (post-construction)
 

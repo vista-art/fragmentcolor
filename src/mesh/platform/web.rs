@@ -244,12 +244,14 @@ impl Mesh {
         let arr = js_sys::Array::is_array(list)
             .then(|| js_sys::Array::from(list))
             .ok_or_else(|| WebError::type_error("Expected an array"))?;
-        let m = Mesh::new();
+        let mut vertices = Vec::with_capacity(arr.length() as usize);
         for (index, v) in arr.iter().enumerate() {
-            let vertex = read_vertex(&v, &format!("Mesh.fromVertices: vertex {index}"))?;
-            m.add_vertex(vertex);
+            vertices.push(read_vertex(
+                &v,
+                &format!("Mesh.fromVertices: vertex {index}"),
+            )?);
         }
-        Ok(m)
+        Ok(Mesh::from_vertices(vertices))
     }
 
     #[wasm_bindgen(js_name = "addVertex")]

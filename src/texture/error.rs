@@ -77,6 +77,18 @@ pub enum TextureError {
     Error(String),
 }
 
+impl TextureError {
+    /// This error with `name` before its text, so a failed upload says which source it read.
+    pub(crate) fn name(self, name: &str) -> Self {
+        match self {
+            Self::MalformedImageError(text) => Self::MalformedImageError(format!("{name}: {text}")),
+            Self::InvalidInput(text) => Self::InvalidInput(format!("{name}: {text}")),
+            Self::CreateTextureError(text) => Self::CreateTextureError(format!("{name}: {text}")),
+            other => other,
+        }
+    }
+}
+
 /// A region form that always converts, such as `[x, y, w, h]`, lifts with `?`.
 impl From<Infallible> for TextureError {
     fn from(never: Infallible) -> Self {

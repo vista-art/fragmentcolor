@@ -7,9 +7,9 @@
 //! format without changing the public method.
 //!
 //! The shape mirrors `Material::pbr()` and `Camera::perspective(...)`: sync
-//! return, no `Renderer` argument. Each image decodes once, and every slot
-//! that reads it becomes a Material map of those shared pixels, which each
-//! Renderer that draws the Scene uploads as a copy of its own (see [`crate::Renderer::load`]).
+//! return, no `Renderer` argument. Each image stays encoded, as its file's bytes or
+//! its path, and every slot that reads it becomes a Material map of that one source.
+//! Each Renderer that draws the Scene decodes it into a copy of its own (see [`crate::Renderer::load`]).
 //!
 //! The loader covers static glTF: mesh primitives (positions, normals,
 //! two UV sets, colors, tangents, indices), PBR-MR materials with all five
@@ -18,9 +18,8 @@
 //! and `KHR_lights_punctual` lights. Animation, skinning, morph targets,
 //! and material extensions beyond PBR-MR are out of scope here.
 
-use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use glam::{Mat4, Quat, Vec3};
@@ -227,22 +226,39 @@ impl From<GltfFailure> for SceneLoadError {
     }
 }
 
-/// What the glTF parser reads from a file: its document, buffers and images.
-type GltfParts = (
-    gltf::Document,
-    Vec<gltf::buffer::Data>,
-    Vec<gltf::image::Data>,
-);
+/// What the glTF parser reads from a file: its document, its buffers, and the folder
+/// its external files sit in when it came from a path. Images stay unread here.
+struct GltfParts {
+    document: gltf::Document,
+    buffers: Vec<gltf::buffer::Data>,
+    base: Option<PathBuf>,
+}
 
-/// The parts of a glTF file the parser reads from `path`, with the files beside it.
+/// The parts of a glTF file the parser reads from `path`, with the buffers beside it.
 #[cfg(not(wasm))]
-fn import_path(path: &std::path::Path) -> Result<GltfParts, GltfFailure> {
-    Ok(gltf::import(path)?)
+fn import_path(path: &Path) -> Result<GltfParts, GltfFailure> {
+    let base = path
+        .parent()
+        .unwrap_or_else(|| Path::new("./"))
+        .to_path_buf();
+    let gltf::Gltf { document, blob } = gltf::Gltf::open(path)?;
+    let buffers = gltf::import_buffers(&document, Some(&base), blob)?;
+    Ok(GltfParts {
+        document,
+        buffers,
+        base: Some(base),
+    })
 }
 
 /// The parts of a `.glb` or embedded glTF file the parser reads from `bytes`.
 fn import_bytes(bytes: &[u8]) -> Result<GltfParts, GltfFailure> {
-    Ok(gltf::import_slice(bytes)?)
+    let gltf::Gltf { document, blob } = gltf::Gltf::from_slice(bytes)?;
+    let buffers = gltf::import_buffers(&document, None, blob)?;
+    Ok(GltfParts {
+        document,
+        buffers,
+        base: None,
+    })
 }
 
 /// Entry point invoked by `Scene::load`. Dispatches on the format tag.
@@ -254,13 +270,10 @@ pub(crate) fn load(source: SceneSource) -> Result<Scene, SceneLoadError> {
 
 fn load_gltf(source: GltfSource) -> Result<Scene, SceneLoadError> {
     let (payload, options) = source.into_parts();
-    // The gltf crate's `import` resolves external buffers + images from
-    // the file's directory; `import_slice` walks bytes alone and only
-    // supports `.glb` containers (no external URI resolution). The Path
-    // variant goes through `std::fs`, which doesn't exist on the
-    // wasm32-unknown-unknown target — wasm callers must hand the bytes
-    // themselves (typically via `fetch` + `Uint8Array`).
-    let (document, buffers, images) = match payload {
+    // A path resolves external buffers and images from the file's folder, and bytes
+    // reach only what the file holds. A path goes through `std::fs`, which wasm32
+    // lacks, so wasm callers fetch the bytes themselves and pass them.
+    let parts = match payload {
         #[cfg(not(wasm))]
         GltfPayload::Path(p) => import_path(&p)?,
         #[cfg(wasm)]
@@ -272,6 +285,12 @@ fn load_gltf(source: GltfSource) -> Result<Scene, SceneLoadError> {
         }
         GltfPayload::Bytes(b) => import_bytes(&b)?,
     };
+    let GltfParts {
+        document,
+        buffers,
+        base,
+    } = parts;
+    let images = read_images(&document, &buffers, base.as_deref())?;
 
     let scene = Scene::new();
     let default_gltf_scene = document
@@ -322,9 +341,6 @@ struct Cache {
     /// One Material per glTF material index (`None` is the spec's default material),
     /// since files routinely share one Material across many primitives.
     materials: HashMap<Option<usize>, Material>,
-    /// The decoded pixels of each image by index. Every slot that reads one image,
-    /// in any material, shares its one buffer.
-    pixels: HashMap<usize, Arc<SourceData>>,
 }
 
 /// Load one glTF node and return its world matrix for its children.
@@ -337,7 +353,7 @@ fn visit_node(
     node: &gltf::Node<'_>,
     parent_world: Mat4,
     buffers: &[gltf::buffer::Data],
-    images: &[gltf::image::Data],
+    images: &[TextureSource],
     scene: &Scene,
     cache: &mut Cache,
     options: &GltfOptions,
@@ -352,7 +368,7 @@ fn visit_node(
             let fc_material = match cache.materials.get(&mat_key) {
                 Some(m) => m.clone(),
                 None => {
-                    let m = build_material(&primitive.material(), images, &mut cache.pixels)?;
+                    let m = build_material(&primitive.material(), images)?;
                     cache.materials.insert(mat_key, m.clone());
                     m
                 }
@@ -945,11 +961,10 @@ fn map_sampler_options(sampler: &gltf::texture::Sampler<'_>) -> crate::SamplerOp
 }
 
 /// Build the PBR Material of a glTF material. Each texture slot becomes a map
-/// of its image's decoded pixels, which `pixels` keeps for every slot that reads them.
+/// of its image's source in `images`, which every slot that reads the image shares.
 fn build_material(
     gltf_material: &gltf::Material<'_>,
-    images: &[gltf::image::Data],
-    pixels: &mut HashMap<usize, Arc<SourceData>>,
+    images: &[TextureSource],
 ) -> Result<Material, SceneLoadError> {
     let pbr = gltf_material.pbr_metallic_roughness();
     let mut material = Material::pbr()
@@ -975,7 +990,7 @@ fn build_material(
         material = material.occlusion_strength(strength);
     }
 
-    let mut read = |texture: gltf::Texture<'_>| convert_image(&texture, images, pixels);
+    let read = |texture: gltf::Texture<'_>| convert_image(&texture, images);
     if let Some(info) = pbr.base_color_texture() {
         material.set_map(TextureSlot::BaseColor, read(info.texture())?);
         apply_uv(&material, TextureSlot::BaseColor, read_info_uv(&info))?;
@@ -1093,79 +1108,134 @@ fn name_slot(slot: TextureSlot) -> &'static str {
 }
 
 /// Convert a glTF texture reference into the source a Material map keeps, with the
-/// texture's own sampler. Each image decodes once into RGBA8, which `pixels` shares
-/// with every later reference to it. An image with fewer bytes than its size needs is an error.
+/// texture's own sampler. Every reference to one image shares that image's source.
 fn convert_image(
     texture: &gltf::Texture<'_>,
-    images: &[gltf::image::Data],
-    pixels: &mut HashMap<usize, Arc<SourceData>>,
+    images: &[TextureSource],
 ) -> Result<TextureSource, SceneLoadError> {
-    let index = texture.source().index();
     let image = images
-        .get(index)
+        .get(texture.source().index())
         .ok_or_else(|| SceneLoadError::Invalid("glTF texture references missing image".into()))?;
-    let data = match pixels.entry(index) {
-        Entry::Occupied(entry) => entry.get().clone(),
-        Entry::Vacant(entry) => {
-            let rgba = decode_image(image)?;
-            entry
-                .insert(Arc::new(SourceData::Bytes(rgba.into_raw())))
-                .clone()
-        }
-    };
-    let options = TextureOptions {
-        size: Some(crate::Size::from([image.width, image.height])),
-        sampler: map_sampler_options(&texture.sampler()),
-        ..Default::default()
-    };
-    Ok(TextureSource::new(data, options))
+    let mut source = image.clone();
+    source.options.sampler = map_sampler_options(&texture.sampler());
+    Ok(source)
 }
 
-/// Decode imported glTF pixels into RGBA8.
-/// The importer stores 16-bit and float pixels in native byte order,
-/// so those formats read their channels back with `from_ne_bytes`.
-fn decode_image(image: &gltf::image::Data) -> Result<image::RgbaImage, SceneLoadError> {
-    use gltf::image::Format;
-    use image::{DynamicImage, ImageBuffer, Luma, LumaA, Rgb, Rgba};
-    let (width, height) = (image.width, image.height);
-    let bytes = || image.pixels.clone();
-    let wide = || -> Vec<u16> {
-        let (pairs, _) = image.pixels.as_chunks::<2>();
-        pairs.iter().map(|pair| u16::from_ne_bytes(*pair)).collect()
+/// The source of each image in the file, kept encoded.
+///
+/// A GLB buffer view's bytes and a data URI's bytes are copied out once, so the scene
+/// keeps no vertex data with them, and an external file keeps only its path. Each header
+/// is read here, so an image whose format or size can't be read fails `Scene::load`, and
+/// only a corrupt body waits for the first upload, whose error names the image.
+fn read_images(
+    document: &gltf::Document,
+    buffers: &[gltf::buffer::Data],
+    base: Option<&Path>,
+) -> Result<Vec<TextureSource>, SceneLoadError> {
+    let read = |image: gltf::Image<'_>| read_image(&image, buffers, base);
+    document.images().map(read).collect()
+}
+
+/// The source of one image, named after its index and the name the file gives it.
+fn read_image(
+    image: &gltf::Image<'_>,
+    buffers: &[gltf::buffer::Data],
+    base: Option<&Path>,
+) -> Result<TextureSource, SceneLoadError> {
+    let label = match image.name() {
+        Some(name) => format!("glTF image {} ({name})", image.index()),
+        None => format!("glTF image {}", image.index()),
     };
-    let float = || -> Vec<f32> {
-        let (quads, _) = image.pixels.as_chunks::<4>();
-        quads.iter().map(|quad| f32::from_ne_bytes(*quad)).collect()
-    };
-    let decoded = match image.format {
-        Format::R8 => ImageBuffer::<Luma<u8>, _>::from_raw(width, height, bytes())
-            .map(DynamicImage::ImageLuma8),
-        Format::R8G8 => ImageBuffer::<LumaA<u8>, _>::from_raw(width, height, bytes())
-            .map(DynamicImage::ImageLumaA8),
-        Format::R8G8B8 => {
-            ImageBuffer::<Rgb<u8>, _>::from_raw(width, height, bytes()).map(DynamicImage::ImageRgb8)
+    let refuse = |reason: String| SceneLoadError::Invalid(format!("{label}: {reason}"));
+    let data = match image.source() {
+        gltf::image::Source::View { view, .. } => {
+            let buffer = buffers.get(view.buffer().index());
+            let range = view.offset()..view.offset() + view.length();
+            let bytes = buffer.and_then(|buffer| buffer.get(range));
+            let bytes =
+                bytes.ok_or_else(|| refuse("its buffer view lies past its buffer".into()))?;
+            SourceData::Bytes(bytes.to_vec())
         }
-        Format::R8G8B8A8 => ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, bytes())
-            .map(DynamicImage::ImageRgba8),
-        Format::R16 => ImageBuffer::<Luma<u16>, _>::from_raw(width, height, wide())
-            .map(DynamicImage::ImageLuma16),
-        Format::R16G16 => ImageBuffer::<LumaA<u16>, _>::from_raw(width, height, wide())
-            .map(DynamicImage::ImageLumaA16),
-        Format::R16G16B16 => ImageBuffer::<Rgb<u16>, _>::from_raw(width, height, wide())
-            .map(DynamicImage::ImageRgb16),
-        Format::R16G16B16A16 => ImageBuffer::<Rgba<u16>, _>::from_raw(width, height, wide())
-            .map(DynamicImage::ImageRgba16),
-        Format::R32G32B32FLOAT => ImageBuffer::<Rgb<f32>, _>::from_raw(width, height, float())
-            .map(DynamicImage::ImageRgb32F),
-        Format::R32G32B32A32FLOAT => ImageBuffer::<Rgba<f32>, _>::from_raw(width, height, float())
-            .map(DynamicImage::ImageRgba32F),
+        gltf::image::Source::Uri { uri, .. } => read_uri(uri, base).map_err(refuse)?,
     };
-    decoded.map(|image| image.to_rgba8()).ok_or_else(|| {
-        SceneLoadError::Invalid(format!(
-            "glTF {:?} image has fewer bytes than {width} × {height} pixels need",
-            image.format
-        ))
-    })
+    check_header(&data).map_err(refuse)?;
+    let source = TextureSource::new(Arc::new(data), TextureOptions::default());
+    Ok(source.named(label))
+}
+
+/// The data a glTF image URI names: a data URI's bytes, or the path of a file the glTF refers to.
+fn read_uri(uri: &str, base: Option<&Path>) -> Result<SourceData, String> {
+    if let Some(data) = uri.strip_prefix("data:") {
+        let payload = data
+            .split_once(";base64,")
+            .map_or(data, |(_, payload)| payload);
+        let source = gltf::buffer::Source::Uri(uri);
+        let read = gltf::buffer::Data::from_source(source, None);
+        let mut bytes = read
+            .map_err(|error| crate::shader::error::describe(&error))?
+            .0;
+        // The buffer reader pads to four bytes, and the image keeps exactly what the URI holds.
+        bytes.truncate(payload.trim_end_matches('=').len() * 3 / 4);
+        return Ok(SourceData::Bytes(bytes));
+    }
+    let Some(base) = base else {
+        return Err(format!(
+            "it names the file {uri}, which a glTF loaded from bytes can't reach; load the file from its path"
+        ));
+    };
+    let path = match uri
+        .strip_prefix("file://")
+        .or_else(|| uri.strip_prefix("file:"))
+    {
+        Some(path) => PathBuf::from(path),
+        None => base.join(decode_uri(uri)),
+    };
+    Ok(SourceData::Path(path))
+}
+
+/// `uri` with each `%XX` escape decoded, as glTF writes a relative file name.
+fn decode_uri(uri: &str) -> String {
+    let bytes = uri.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while let Some(&byte) = bytes.get(index) {
+        let digits = bytes.get(index + 1..index + 3).filter(|_| byte == b'%');
+        let value = digits
+            .and_then(|digits| std::str::from_utf8(digits).ok())
+            .and_then(|digits| u8::from_str_radix(digits, 16).ok());
+        match value {
+            Some(value) => {
+                decoded.push(value);
+                index += 3;
+            }
+            None => {
+                decoded.push(byte);
+                index += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&decoded).into_owned()
+}
+
+/// Reads an encoded image's header, its format and its size, without decoding its pixels.
+fn check_header(data: &SourceData) -> Result<(), String> {
+    let size = match data {
+        SourceData::Bytes(bytes) => image::ImageReader::new(std::io::Cursor::new(bytes))
+            .with_guessed_format()
+            .map_err(|error| error.to_string())?
+            .into_dimensions(),
+        #[cfg(not(wasm))]
+        SourceData::Path(path) => image::ImageReader::open(path)
+            .map_err(|error| format!("can't read {}: {error}", path.display()))?
+            .with_guessed_format()
+            .map_err(|error| error.to_string())?
+            .into_dimensions(),
+        _ => return Ok(()),
+    };
+    match size.map_err(|error| error.to_string())? {
+        (0, _) | (_, 0) => Err("its header gives it no pixels".into()),
+        _ => Ok(()),
+    }
 }
 
 /// Lift a glTF camera node into a FragmentColor [`Camera`].
@@ -1980,14 +2050,17 @@ mod tests {
     /// The minimal triangle with a base color texture read from an embedded PNG.
     const TEXTURED_JSON: &str = r#"{"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"material":0,"mode":4}]}],"materials":[{"pbrMetallicRoughness":{"baseColorTexture":{"index":0}}}],"textures":[{"source":0}],"images":[{"bufferView":1,"mimeType":"image/png"}],"buffers":[{"byteLength":BUFFER_LENGTH}],"bufferViews":[{"buffer":0,"byteLength":36,"byteOffset":0},{"buffer":0,"byteLength":PNG_LENGTH,"byteOffset":36}],"accessors":[{"bufferView":0,"byteOffset":0,"componentType":5126,"count":3,"type":"VEC3","min":[-0.5,-0.5,0.0],"max":[0.5,0.5,0.0]}],"asset":{"version":"2.0"}}"#;
 
-    /// Load the textured triangle with `image` as its base color, and return
-    /// the first pixel of the source its Material keeps.
-    fn load_texture_pixel(image: image::DynamicImage) -> [u8; 4] {
+    /// `image` encoded as a PNG file's bytes.
+    fn encode_png(image: image::DynamicImage) -> Vec<u8> {
         let mut png = std::io::Cursor::new(Vec::new());
         image
             .write_to(&mut png, image::ImageFormat::Png)
             .expect("encode PNG");
-        let png = png.into_inner();
+        png.into_inner()
+    }
+
+    /// Load the textured triangle with the encoded `png` as its base color image.
+    fn load_png(png: &[u8]) -> Result<Scene, SceneLoadError> {
         #[rustfmt::skip]
         let positions: [f32; 9] = [
              0.0,  0.5, 0.0,
@@ -1995,21 +2068,22 @@ mod tests {
              0.5, -0.5, 0.0,
         ];
         let mut bin: Vec<u8> = positions.iter().flat_map(|f| f.to_le_bytes()).collect();
-        bin.extend_from_slice(&png);
+        bin.extend_from_slice(png);
         let json = TEXTURED_JSON
             .replace("BUFFER_LENGTH", &bin.len().to_string())
             .replace("PNG_LENGTH", &png.len().to_string());
         while !bin.len().is_multiple_of(4) {
             bin.push(0);
         }
-        let scene = Scene::load(build_glb(&json, &bin)).expect("load textured triangle");
+        Scene::load(build_glb(&json, &bin))
+    }
+
+    /// The source the base color map of `scene`'s first model keeps.
+    fn read_source(scene: &Scene) -> Arc<SourceData> {
         let models = scene.models();
         let maps = models[0].material().shader().object.maps.read();
         assert_eq!(maps.len(), 1, "the base color texture should be a map");
-        match &*maps[0].source.data {
-            SourceData::Bytes(bytes) => [bytes[0], bytes[1], bytes[2], bytes[3]],
-            other => panic!("expected decoded bytes, got {other:?}"),
-        }
+        maps[0].source.data.clone()
     }
 
     /// The base color material of the textured triangle, which the UV tests replace.
@@ -2062,9 +2136,9 @@ mod tests {
     }
 
     // Story: an ORM image that the metallic-roughness and occlusion slots both read
-    // decodes once, and the two maps share its pixels.
+    // is read once, and the two maps share its one source.
     #[test]
-    fn two_slots_that_read_one_image_share_its_pixels() {
+    fn two_slots_that_read_one_image_share_one_source() {
         let materials = quote(&[
             "'materials':[{'pbrMetallicRoughness':{'metallicRoughnessTexture':{'index':0}},",
             "'occlusionTexture':{'index':0}}]",
@@ -2082,7 +2156,7 @@ mod tests {
 
         assert!(
             Arc::ptr_eq(&roughness, &occlusion),
-            "each slot decoded a copy of its own"
+            "each slot read a copy of its own"
         );
     }
 
@@ -2209,30 +2283,107 @@ mod tests {
         }
     }
 
+    // Story: a map keeps its glTF image as the file holds it, so the scene keeps the
+    // encoded size in RAM, and each Renderer decodes the image when it loads the map.
     #[test]
-    fn load_decodes_a_16_bit_gray_png() {
-        let white = image::ImageBuffer::from_pixel(2, 2, image::Luma([u16::MAX]));
-        let pixel = load_texture_pixel(image::DynamicImage::ImageLuma16(white));
-        assert_eq!(pixel, [255, 255, 255, 255]);
+    fn a_map_keeps_the_encoded_image() {
+        let gray = image::ImageBuffer::from_pixel(8, 8, image::Luma([u16::MAX]));
+        let png = encode_png(image::DynamicImage::ImageLuma16(gray));
+        let scene = load_png(&png).expect("load");
+
+        let source = read_source(&scene);
+        match &*source {
+            SourceData::Bytes(bytes) => {
+                assert_eq!(bytes.len(), png.len(), "the scene keeps more than the file");
+                assert_eq!(bytes, &png, "the scene keeps other bytes than the file's");
+            }
+            other => panic!("expected the encoded image, got {other:?}"),
+        }
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            renderer
+                .load(&scene)
+                .await
+                .expect("the 16-bit image decodes at load");
+        });
     }
 
+    // Story: an image whose header reads but whose body is corrupt loads with the scene,
+    // and fails at the first load into a Renderer with an error that names the image.
     #[test]
-    fn load_decodes_a_gray_alpha_png() {
-        let gray = image::ImageBuffer::from_pixel(2, 2, image::LumaA([128u8, 64]));
-        let pixel = load_texture_pixel(image::DynamicImage::ImageLumaA8(gray));
-        assert_eq!(pixel, [128, 128, 128, 64]);
+    fn a_corrupt_image_body_fails_at_the_first_load() {
+        let noise = image::ImageBuffer::from_fn(32, 32, |x, y| {
+            image::Rgba([(x * 7) as u8, (y * 13) as u8, (x * y) as u8, 255])
+        });
+        let png = encode_png(image::DynamicImage::ImageRgba8(noise));
+        let cut = &png[..png.len() / 2];
+        let scene = load_png(cut).expect("the header reads, so the scene loads");
+
+        let result = pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            renderer.load(&scene).await
+        });
+
+        let error = result.expect_err("the corrupt body uploaded");
+        assert!(error.to_string().contains("glTF image 0"), "{error}");
     }
 
+    // Story: an image whose header can't be read fails `Scene::load` and names the image,
+    // as a file of another format or of no pixels does, before any Renderer sees it.
     #[test]
-    fn decode_image_refuses_short_pixels() {
-        let image = gltf::image::Data {
-            pixels: vec![0; 6],
-            format: gltf::image::Format::R16,
-            width: 2,
-            height: 2,
-        };
-        let error = decode_image(&image).expect_err("6 bytes can't hold 4 pixels of R16");
-        assert!(error.to_string().contains("R16 image has fewer bytes"));
+    fn an_unreadable_image_header_fails_scene_load() {
+        let error = load_png(b"not an image at all").expect_err("the scene loaded");
+        assert!(
+            matches!(&error, SceneLoadError::Invalid(message) if message.starts_with("glTF image 0")),
+            "{error:?}"
+        );
+    }
+
+    // Story: an image in a file beside a `.gltf` keeps only its path, which each Renderer
+    // reads when it loads the map, and the name in the URI is percent-decoded.
+    #[test]
+    fn an_external_image_keeps_its_path() {
+        let folder = std::env::temp_dir().join(format!("fc-gltf-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("a folder");
+        let white = image::ImageBuffer::from_pixel(2, 2, image::Rgba([255u8; 4]));
+        let png = encode_png(image::DynamicImage::ImageRgba8(white));
+        std::fs::write(folder.join("base color.png"), &png).expect("the image");
+        #[rustfmt::skip]
+        let positions: [f32; 9] = [
+             0.0,  0.5, 0.0,
+            -0.5, -0.5, 0.0,
+             0.5, -0.5, 0.0,
+        ];
+        let bin: Vec<u8> = positions.iter().flat_map(|f| f.to_le_bytes()).collect();
+        std::fs::write(folder.join("triangle.bin"), &bin).expect("the buffer");
+        let json = quote(&[
+            "{'scene':0,'scenes':[{'nodes':[0]}],'nodes':[{'mesh':0}],",
+            "'meshes':[{'primitives':[{'attributes':{'POSITION':0},'material':0,'mode':4}]}],",
+            "'materials':[{'pbrMetallicRoughness':{'baseColorTexture':{'index':0}}}],",
+            "'textures':[{'source':0}],'images':[{'uri':'base%20color.png'}],",
+            "'buffers':[{'byteLength':36,'uri':'triangle.bin'}],",
+            "'bufferViews':[{'buffer':0,'byteLength':36,'byteOffset':0}],",
+            "'accessors':[{'bufferView':0,'byteOffset':0,'componentType':5126,'count':3,",
+            "'type':'VEC3','min':[-0.5,-0.5,0.0],'max':[0.5,0.5,0.0]}],'asset':{'version':'2.0'}}",
+        ]);
+        let path = folder.join("triangle.gltf");
+        std::fs::write(&path, json).expect("the glTF");
+
+        let scene = Scene::load(path.as_path()).expect("load");
+
+        let source = read_source(&scene);
+        assert!(
+            matches!(&*source, SourceData::Path(found) if *found == folder.join("base color.png")),
+            "{source:?}"
+        );
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            renderer
+                .load(&scene)
+                .await
+                .expect("the image reads at load");
+        });
+        std::fs::remove_dir_all(&folder).expect("cleans up");
     }
 
     #[test]

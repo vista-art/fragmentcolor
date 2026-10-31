@@ -351,24 +351,6 @@ impl Renderer {
         self.unregister_texture(crate::texture::TextureId { id: texture_id })
             .map_err(FragmentColorError::from)
     }
-
-    /// Wrap a native platform video-frame source as an external texture.
-    /// The Web binding accepts an `HTMLVideoElement`; the mobile bindings
-    /// take a raw pointer (`u64`) to a `CVPixelBuffer` (iOS) or
-    /// `SurfaceTexture` (Android) because uniffi cannot marshal those
-    /// types directly. Returns `FragmentColorError::Render` until the
-    /// per-platform plumbing converts the native source into a
-    /// `wgpu::ExternalTexture`.
-    #[uniffi::method(name = "createExternalTexture")]
-    #[lsp_doc("docs/api/core/renderer/hidden/create_external_texture_mobile.md")]
-    pub fn create_external_texture_mobile(
-        self: Arc<Self>,
-        source_ptr: u64,
-    ) -> Result<Arc<crate::renderer::external_texture::ExternalTextureHandle>, FragmentColorError>
-    {
-        crate::renderer::external_texture::ExternalTextureHandle::from_native(&self, source_ptr)
-            .map_err(FragmentColorError::from)
-    }
 }
 
 #[cfg(ios)]

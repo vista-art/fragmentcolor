@@ -278,16 +278,6 @@ final class GeneratedExamples: ExampleCase {
         }
     }
 
-    func test_core_renderer_create_external_texture() async {
-        await example("docs/api/core/renderer/create_external_texture.md") {
-            // Once supported:
-            //   let renderer = Renderer()
-            //   let pixelBuffer: CVPixelBuffer = /* from AVPlayerItemVideoOutput */
-            //   let ptr = UInt64(UInt(bitPattern: Unmanaged.passUnretained(pixelBuffer).toOpaque()))
-            //   let handle = try renderer.createExternalTexture(sourcePtr: ptr)
-        }
-    }
-
     func test_core_renderer_create_storage_texture() async {
         await example("docs/api/core/renderer/create_storage_texture.md") {
             let r = Renderer()

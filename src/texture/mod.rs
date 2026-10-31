@@ -850,6 +850,7 @@ impl TextureObject {
     ) -> Result<Self, TextureError> {
         let options = source.options.clone();
         let pick = Pick::read(&source, call);
+        let label = source.label.clone();
         check_source(source.data.is_sized(), options.size)?;
         let usage = source_usage(options.usage)?;
         let fetched = match &*source.data {
@@ -890,6 +891,10 @@ impl TextureObject {
             Ok(object)
         })
         .await
+        .map_err(|error| match &label {
+            Some(label) => error.name(label),
+            None => error,
+        })
     }
 
     /// Builds a texture from `bytes`: a KTX2 container by its magic, which takes `pick`,

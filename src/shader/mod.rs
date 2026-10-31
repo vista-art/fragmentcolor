@@ -28,6 +28,9 @@ mod constants;
 use constants::*;
 pub(crate) mod uniform;
 pub(crate) use uniform::*;
+pub use uniform::{
+    ArrayElement, PushEntry, StorageAccess, StorageEntry, StructField, StructShape, UniformData,
+};
 
 pub mod composer;
 pub use composer::{ShaderInput, ShaderPart};
@@ -245,6 +248,13 @@ pub(crate) struct ShaderObject {
 struct Preview {
     mesh: Arc<crate::mesh::MeshObject>,
     checked: Option<u64>,
+}
+
+/// The quick view's mesh and the generation it passed its check at, which only
+/// that mesh's upload is held to. Other meshes on the shader upload as any do.
+pub(crate) struct Passed {
+    pub(crate) mesh: Arc<crate::mesh::MeshObject>,
+    pub(crate) generation: u64,
 }
 
 impl Drop for ShaderObject {
@@ -525,10 +535,13 @@ impl ShaderObject {
     /// renderer reads them on every render of this shader, however it reached it.
     pub(crate) fn read_meshes(
         &self,
-    ) -> Result<(Vec<Arc<crate::mesh::MeshObject>>, Option<u64>), ShaderError> {
+    ) -> Result<(Vec<Arc<crate::mesh::MeshObject>>, Option<Passed>), ShaderError> {
         let mut preview = self.preview.lock();
         let passed = match preview.as_mut() {
-            Some(kept) => Some(self.review(kept)?),
+            Some(kept) => Some(Passed {
+                generation: self.review(kept)?,
+                mesh: kept.mesh.clone(),
+            }),
             None => None,
         };
         #[cfg(test)]
@@ -537,6 +550,7 @@ impl ShaderObject {
     }
 
     /// Checks the kept mesh unless it passed at its current generation.
+    ///
     /// It holds the mesh while it passes and lets it go while it fails.
     /// It fixes the types it gives untyped attributes, as any attach does,
     /// but records none of its reads, so it adds nothing the vertices must hold.
