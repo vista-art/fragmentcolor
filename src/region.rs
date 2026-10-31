@@ -58,16 +58,11 @@ impl ScreenRegion {
     ) -> Result<Self, ScreenRegionError> {
         let (x, y) = origin.into();
         let (width, height) = size.into();
-        Self::from_region(x, y, width, height)
+        Self::build(x, y, width, height)
     }
 
     /// A region at `x`, `y` that is `width` by `height` large.
     /// A side of 0, or a far edge past `u32::MAX`, is an error.
-    pub fn from_region(x: u32, y: u32, width: u32, height: u32) -> Result<Self, ScreenRegionError> {
-        Self::build(x, y, width, height)
-    }
-
-    /// The region [`ScreenRegion::from_region`] describes, checked.
     fn build(x: u32, y: u32, width: u32, height: u32) -> Result<Self, ScreenRegionError> {
         let overflow = ScreenRegionError::Overflow {
             x,
@@ -85,11 +80,6 @@ impl ScreenRegion {
             max_y,
         }
         .check()
-    }
-
-    /// A region of exactly `size` pixels at the origin, the same as [`ScreenRegion::from_size`].
-    pub fn from_tuple(size: (u32, u32)) -> Result<Self, ScreenRegionError> {
-        Self::from_size(size.0, size.1)
     }
 
     /// The region, or [`ScreenRegionError::Reversed`] when a max lies before its min,
@@ -120,15 +110,14 @@ impl ScreenRegion {
             .iter()
             .map(|&number| check_dimension(number))
             .collect::<Result<Vec<u32>, ScreenRegionError>>()?;
-        Self::from_dimensions(&dimensions)
+        Self::try_from(dimensions.as_slice())
     }
 
-    /// A region from the `[w, h]` or `[x, y, w, h]` a binding read.
-    #[cfg(any(wasm, python, test))]
-    pub(crate) fn from_dimensions(dimensions: &[u32]) -> Result<Self, ScreenRegionError> {
+    /// A region from `[w, h]` or `[x, y, w, h]`.
+    fn from_dimensions(dimensions: &[u32]) -> Result<Self, ScreenRegionError> {
         match *dimensions {
-            [width, height] => Self::from_size(width, height),
-            [x, y, width, height] => Self::from_region(x, y, width, height),
+            [width, height] => Self::build(0, 0, width, height),
+            [x, y, width, height] => Self::build(x, y, width, height),
             _ => Err(ScreenRegionError::Invalid(format!(
                 "a region takes [w, h] or [x, y, w, h], got {} numbers",
                 dimensions.len()
@@ -145,20 +134,9 @@ impl ScreenRegion {
         ]
     }
 
-    /// A region at the origin that is `width` by `height` large. A side of 0 is an error.
-    pub fn from_size(width: u32, height: u32) -> Result<Self, ScreenRegionError> {
-        Self {
-            min_x: 0,
-            min_y: 0,
-            max_x: width,
-            max_y: height,
-        }
-        .check()
-    }
-
     /// The one pixel at `x`, `y`. A pixel at `u32::MAX` has no far edge, so it is an error.
     pub fn from_pixel(x: u32, y: u32) -> Result<Self, ScreenRegionError> {
-        Self::from_region(x, y, 1, 1)
+        Self::build(x, y, 1, 1)
     }
 
     pub fn clamp(&mut self, width: u32, height: u32) {
@@ -342,7 +320,7 @@ impl TryFrom<&wasm_bindgen::JsValue> for ScreenRegion {
                 field(&["height"])?,
             );
             if let (Some(x), Some(y), Some(width), Some(height)) = rect {
-                return Ok(ScreenRegion::from_region(x, y, width, height)?);
+                return Ok(ScreenRegion::build(x, y, width, height)?);
             }
         }
 
@@ -453,16 +431,20 @@ crate::impl_tryfrom_owned_via_ref!(ScreenRegion, wasm_bindgen::JsValue, WebError
 // The brand lets a reader tell a ScreenRegion from a plain object after a minifier renames the class.
 crate::impl_fc_kind!(ScreenRegion, "ScreenRegion");
 
-// -------------------------------------------
-// Trait-based conversions (preferred surface)
-// -------------------------------------------
+impl TryFrom<&[u32]> for ScreenRegion {
+    type Error = ScreenRegionError;
+
+    fn try_from(dimensions: &[u32]) -> Result<Self, Self::Error> {
+        ScreenRegion::from_dimensions(dimensions)
+    }
+}
 
 impl TryFrom<(u32, u32)> for ScreenRegion {
     type Error = ScreenRegionError;
 
     #[inline]
     fn try_from(size: (u32, u32)) -> Result<Self, Self::Error> {
-        ScreenRegion::from_size(size.0, size.1)
+        ScreenRegion::build(0, 0, size.0, size.1)
     }
 }
 impl TryFrom<&(u32, u32)> for ScreenRegion {
@@ -470,7 +452,7 @@ impl TryFrom<&(u32, u32)> for ScreenRegion {
 
     #[inline]
     fn try_from(size: &(u32, u32)) -> Result<Self, Self::Error> {
-        ScreenRegion::from_size(size.0, size.1)
+        ScreenRegion::build(0, 0, size.0, size.1)
     }
 }
 
@@ -479,7 +461,7 @@ impl TryFrom<[u32; 2]> for ScreenRegion {
 
     #[inline]
     fn try_from([width, height]: [u32; 2]) -> Result<Self, Self::Error> {
-        ScreenRegion::from_size(width, height)
+        ScreenRegion::build(0, 0, width, height)
     }
 }
 impl TryFrom<&[u32; 2]> for ScreenRegion {
@@ -487,7 +469,7 @@ impl TryFrom<&[u32; 2]> for ScreenRegion {
 
     #[inline]
     fn try_from(&[width, height]: &[u32; 2]) -> Result<Self, Self::Error> {
-        ScreenRegion::from_size(width, height)
+        ScreenRegion::build(0, 0, width, height)
     }
 }
 
@@ -496,7 +478,7 @@ impl TryFrom<(u32, u32, u32, u32)> for ScreenRegion {
 
     #[inline]
     fn try_from((x, y, width, height): (u32, u32, u32, u32)) -> Result<Self, Self::Error> {
-        ScreenRegion::from_region(x, y, width, height)
+        ScreenRegion::build(x, y, width, height)
     }
 }
 impl TryFrom<&(u32, u32, u32, u32)> for ScreenRegion {
@@ -504,7 +486,7 @@ impl TryFrom<&(u32, u32, u32, u32)> for ScreenRegion {
 
     #[inline]
     fn try_from(&(x, y, width, height): &(u32, u32, u32, u32)) -> Result<Self, Self::Error> {
-        ScreenRegion::from_region(x, y, width, height)
+        ScreenRegion::build(x, y, width, height)
     }
 }
 
@@ -513,7 +495,7 @@ impl TryFrom<[u32; 4]> for ScreenRegion {
 
     #[inline]
     fn try_from([x, y, width, height]: [u32; 4]) -> Result<Self, Self::Error> {
-        ScreenRegion::from_region(x, y, width, height)
+        ScreenRegion::build(x, y, width, height)
     }
 }
 impl TryFrom<&[u32; 4]> for ScreenRegion {
@@ -521,7 +503,7 @@ impl TryFrom<&[u32; 4]> for ScreenRegion {
 
     #[inline]
     fn try_from(&[x, y, width, height]: &[u32; 4]) -> Result<Self, Self::Error> {
-        ScreenRegion::from_region(x, y, width, height)
+        ScreenRegion::build(x, y, width, height)
     }
 }
 
@@ -570,30 +552,7 @@ mod python_bindings {
             Ok(ScreenRegion::new(origin, size)?)
         }
 
-        #[doc(hidden)]
-        #[staticmethod]
-        #[pyo3(name = "from_region")]
-        pub fn from_region_py(
-            x: PyUnsigned<'_>,
-            y: PyUnsigned<'_>,
-            width: PyUnsigned<'_>,
-            height: PyUnsigned<'_>,
-        ) -> PyResult<Self> {
-            Ok(ScreenRegion::from_region(
-                x.read("ScreenRegion.from_region: x")?,
-                y.read("ScreenRegion.from_region: y")?,
-                width.read("ScreenRegion.from_region: width")?,
-                height.read("ScreenRegion.from_region: height")?,
-            )?)
-        }
 
-        #[doc(hidden)]
-        #[staticmethod]
-        #[pyo3(name = "from_tuple")]
-        pub fn from_tuple_py(size: Vec<PyUnsigned<'_>>) -> PyResult<Self> {
-            let size = read_pair(&size, "ScreenRegion.from_tuple: size")?;
-            Ok(ScreenRegion::from_tuple(size)?)
-        }
 
         #[doc(hidden)]
         #[pyo3(name = "width")]
@@ -628,15 +587,15 @@ mod tests {
     #[test]
     fn reads_two_or_four_dimensions() {
         assert_eq!(
-            ScreenRegion::from_dimensions(&[8, 4]).ok(),
+            ScreenRegion::try_from(&[8, 4][..]).ok(),
             Some(build_region(0, 0, 8, 4))
         );
         assert_eq!(
-            ScreenRegion::from_dimensions(&[1, 2, 8, 4]).ok(),
+            ScreenRegion::try_from(&[1, 2, 8, 4][..]).ok(),
             Some(build_region(1, 2, 8, 4))
         );
-        assert!(ScreenRegion::from_dimensions(&[1, 2, 3]).is_err());
-        assert!(ScreenRegion::from_dimensions(&[1, 2, 0, 4]).is_err());
+        assert!(ScreenRegion::try_from(&[1, 2, 3][..]).is_err());
+        assert!(ScreenRegion::try_from(&[1, 2, 0, 4][..]).is_err());
     }
 
     // Story: a region tuple reads as unsigned, so a negative number fails to
@@ -656,7 +615,7 @@ mod tests {
         let overflow = |result: Result<ScreenRegion, ScreenRegionError>| {
             matches!(result, Err(ScreenRegionError::Overflow { .. }))
         };
-        let message = ScreenRegion::from_region(u32::MAX - 2, 0, 5, 5)
+        let message = ScreenRegion::try_from((u32::MAX - 2, 0, 5, 5))
             .err()
             .map(|error| error.to_string());
         assert_eq!(
@@ -676,7 +635,7 @@ mod tests {
         let mut region = build_region(0, 0, 2, 2);
         assert!(region.encompass(u32::MAX, 0).is_err());
         assert_eq!(region, build_region(0, 0, 2, 2));
-        let edge = ScreenRegion::from_region(u32::MAX - 5, 0, 5, 5).ok();
+        let edge = ScreenRegion::try_from((u32::MAX - 5, 0, 5, 5)).ok();
         assert_eq!(edge.map(|region| region.max_x), Some(u32::MAX));
     }
 
@@ -689,9 +648,9 @@ mod tests {
             matches!(result, Err(ScreenRegionError::Empty { .. }))
         };
         assert!(empty(ScreenRegion::new((4, 4), (0, 8))));
-        assert!(empty(ScreenRegion::from_region(4, 4, 8, 0)));
-        assert!(empty(ScreenRegion::from_size(0, 0)));
-        assert!(empty(ScreenRegion::from_tuple((8, 0))));
+        assert!(empty(ScreenRegion::try_from((4, 4, 8, 0))));
+        assert!(empty(ScreenRegion::try_from((0, 0))));
+        assert!(empty(ScreenRegion::try_from((8, 0))));
         assert!(empty(ScreenRegion::try_from((0, 8))));
         assert!(empty(ScreenRegion::try_from([8, 0])));
         assert!(empty(ScreenRegion::try_from((1, 2, 0, 4))));
@@ -717,7 +676,7 @@ mod tests {
             Some(build_region(0, 0, 64, 32))
         );
         assert_eq!(
-            ScreenRegion::from_tuple((64, 32)).ok(),
+            ScreenRegion::try_from((64, 32)).ok(),
             Some(build_region(0, 0, 64, 32))
         );
         assert_eq!(

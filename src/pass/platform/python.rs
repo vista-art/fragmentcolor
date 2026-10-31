@@ -207,7 +207,7 @@ impl TryFrom<PyViewport<'_>> for ScreenRegion {
             }
             PyViewport::Numbers(items) => {
                 let dimensions = read_list(&items, "Pass.set_viewport")?;
-                Ok(ScreenRegion::from_dimensions(&dimensions)?)
+                Ok(ScreenRegion::try_from(dimensions.as_slice())?)
             }
         }
     }

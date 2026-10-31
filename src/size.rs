@@ -58,12 +58,11 @@ impl Size {
             .iter()
             .map(|&number| check_dimension(number))
             .collect::<Result<Vec<u32>, SizeError>>()?;
-        Size::from_dimensions(&dimensions)
+        Size::try_from(dimensions.as_slice())
     }
 
-    /// A size from the 2 or 3 dimensions a binding read, depth last.
-    #[cfg(any(wasm, python, test))]
-    pub(crate) fn from_dimensions(dimensions: &[u32]) -> Result<Size, SizeError> {
+    /// A size from `[w, h]` or `[w, h, d]`.
+    fn from_dimensions(dimensions: &[u32]) -> Result<Size, SizeError> {
         match *dimensions {
             [width, height] => Ok(Size::new(width, height, None)),
             [width, height, depth] => Ok(Size::new(width, height, Some(depth))),
@@ -72,6 +71,14 @@ impl Size {
                 dimensions.len()
             ))),
         }
+    }
+}
+
+impl TryFrom<&[u32]> for Size {
+    type Error = SizeError;
+
+    fn try_from(dimensions: &[u32]) -> Result<Self, Self::Error> {
+        Size::from_dimensions(dimensions)
     }
 }
 
@@ -104,32 +111,32 @@ impl Size {
     }
 }
 
-crate::impl_from_into_with_refs!(Size, (u32, u32), |s: Size| (s.width, s.height), |t: (
-    u32,
-    u32
-)| {
-    Size::new(t.0, t.1, None)
-});
+crate::impl_from_into_with_refs!(
+    Size,
+    (u32, u32),
+    |size: Size| (size.width, size.height),
+    |(width, height): (u32, u32)| Size::new(width, height, None)
+);
 
 crate::impl_from_into_with_refs!(
     Size,
     (u32, u32, u32),
-    |s: Size| (s.width, s.height, s.depth.unwrap_or(1)),
-    |t: (u32, u32, u32)| Size::new(t.0, t.1, Some(t.2))
+    |size: Size| (size.width, size.height, size.depth.unwrap_or(1)),
+    |(width, height, depth): (u32, u32, u32)| Size::new(width, height, Some(depth))
 );
 
 crate::impl_from_into_with_refs!(
     Size,
     [u32; 2],
-    |s: Size| [s.width, s.height],
-    |a: [u32; 2]| Size::new(a[0], a[1], None)
+    |size: Size| [size.width, size.height],
+    |[width, height]: [u32; 2]| Size::new(width, height, None)
 );
 
 crate::impl_from_into_with_refs!(
     Size,
     [u32; 3],
-    |s: Size| [s.width, s.height, s.depth.unwrap_or(1)],
-    |a: [u32; 3]| Size::new(a[0], a[1], Some(a[2]))
+    |size: Size| [size.width, size.height, size.depth.unwrap_or(1)],
+    |[width, height, depth]: [u32; 3]| Size::new(width, height, Some(depth))
 );
 
 /// Reads `[w, h]` or `[w, h, d]` from a plain or typed array, a `Size`, or a `{ width, height, depth? }`
@@ -360,7 +367,7 @@ impl TryFrom<PySize<'_>> for Size {
                 }
             }
         };
-        Ok(Size::from_dimensions(&dimensions)?)
+        Ok(Size::try_from(dimensions.as_slice())?)
     }
 }
 
@@ -513,14 +520,14 @@ mod tests {
     #[test]
     fn reads_two_or_three_dimensions() {
         assert_eq!(
-            Size::from_dimensions(&[4, 2]).ok(),
+            Size::try_from(&[4, 2][..]).ok(),
             Some(Size::new(4, 2, None))
         );
         assert_eq!(
-            Size::from_dimensions(&[4, 2, 3]).ok(),
+            Size::try_from(&[4, 2, 3][..]).ok(),
             Some(Size::new(4, 2, Some(3)))
         );
-        assert!(Size::from_dimensions(&[4]).is_err());
-        assert!(Size::from_dimensions(&[1, 2, 3, 4]).is_err());
+        assert!(Size::try_from(&[4][..]).is_err());
+        assert!(Size::try_from(&[1, 2, 3, 4][..]).is_err());
     }
 }

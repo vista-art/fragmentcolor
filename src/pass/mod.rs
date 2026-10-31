@@ -954,7 +954,7 @@ mod tests {
     fn sets_viewport_rect() {
         // Arrange
         let pass = Pass::new("p");
-        let vp = ScreenRegion::from_region(2, 4, 8, 6).expect("a region with an area");
+        let vp = ScreenRegion::try_from((2, 4, 8, 6)).expect("a region with an area");
 
         // Act
         assert!(pass.set_viewport(vp).is_ok());
@@ -981,7 +981,7 @@ mod tests {
         };
         assert!(pass.set_viewport(flat).is_err());
 
-        let kept = ScreenRegion::from_region(2, 4, 8, 6).ok();
+        let kept = ScreenRegion::try_from((2, 4, 8, 6)).ok();
         assert_eq!(*pass.object.viewport.read(), kept);
     }
 
