@@ -32,8 +32,11 @@ use crate::{Shader, TextureInput, UniformData};
 mod alpha_mode;
 pub use alpha_mode::AlphaMode;
 
+mod error;
+pub use error::*;
+
 mod texture_slot;
-pub use texture_slot::{MaterialError, TextureSlot};
+pub use texture_slot::TextureSlot;
 pub(crate) use texture_slot::{UvSet, UvTransform};
 
 mod platform;

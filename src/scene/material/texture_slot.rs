@@ -11,7 +11,7 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-use super::{Material, set_or_warn};
+use super::{Material, MaterialError, set_or_warn};
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(eq, eq_int, from_py_object))]
@@ -77,13 +77,6 @@ impl TextureSlot {
     fn format_key(self, field: &str) -> String {
         format!("material.uv[{}].{field}", self as usize)
     }
-}
-
-/// Errors from Material setters that take a value the material can't use.
-#[derive(Debug, Clone, PartialEq, thiserror::Error)]
-pub enum MaterialError {
-    #[error("Material::texture_uv takes UV set 0 or 1, got {0}")]
-    UvSet(u32),
 }
 
 /// The vertex UV set a texture slot samples: `Vertex::UV0` or `Vertex::UV1`.
@@ -163,13 +156,6 @@ impl Material {
         for slot in TextureSlot::ALL {
             self.set_slot_transform(slot, transform);
         }
-    }
-}
-
-#[cfg(any(python, wasm, test))]
-impl crate::error::Classify for MaterialError {
-    fn classify(&self) -> crate::error::ErrorClass {
-        crate::error::ErrorClass::Material
     }
 }
 
