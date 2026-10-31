@@ -5,14 +5,23 @@ Return the base level (level 0) dimensions as a [Size](https://fragmentcolor.org
 ## Example
 
 ```rust
+# let pixels = vec![0; 16 * 16 * 4];
+# /*[js]
+# const pixels = new Uint8Array(16 * 16 * 4);
+# */
+# /*[python]
+# pixels = bytes(16 * 16 * 4)
+# */
+# /*[swift]
+# import Foundation
+# let pixels = Data(repeating: 0, count: 16 * 16 * 4)
+# */
+# /*[kotlin]
+# val pixels = ByteArray(16 * 16 * 4)
+# */
 use fragmentcolor::{Mipmap, TextureFormat};
 
-let pixels: Vec<u8> = vec![0; 16 * 16 * 4];
-let chain = Mipmap::build((
-    pixels.as_slice(),
-    TextureFormat::Rgba8UnormSrgb,
-    [16, 16],
-))?;
+let chain = Mipmap::build((pixels.as_slice(), TextureFormat::Rgba8UnormSrgb, [16, 16]))?;
 let size = chain.size();
 let width = size.width;
 let height = size.height;
