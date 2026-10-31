@@ -6,10 +6,10 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::bindings::web::{
-    read_bytes, read_count, read_flag, read_float, read_text, read_unsigned, read_vector,
-    read_vector_items,
+    read_bytes, read_count, read_flag, read_float, read_items, read_text, read_unsigned,
+    read_vector,
 };
-use crate::scene::{Camera, Light, LightKind, Model, Scene, SceneSource};
+use crate::scene::{Camera, GltfSource, Light, LightKind, Model, PassRef, Scene};
 use crate::{Material, Mesh, Pass};
 
 #[wasm_bindgen]
@@ -60,8 +60,8 @@ impl Model {
         &self,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] offset: &JsValue,
     ) -> Result<(), WebError> {
-        let arr = read_vector::<3>(offset, "Model.translate")?;
-        self.translate(arr);
+        let offset = read_vector::<3>(offset, "Model.translate")?;
+        self.translate(offset);
         Ok(())
     }
 
@@ -72,8 +72,8 @@ impl Model {
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] axis: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "number")] radians: &JsValue,
     ) -> Result<(), WebError> {
-        let arr = read_vector::<3>(axis, "Model.rotate: axis")?;
-        self.rotate(arr, read_float(radians, "Model.rotate: radians")?);
+        let axis = read_vector::<3>(axis, "Model.rotate: axis")?;
+        self.rotate(axis, read_float(radians, "Model.rotate: radians")?);
         Ok(())
     }
 
@@ -83,8 +83,8 @@ impl Model {
         &self,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] factor: &JsValue,
     ) -> Result<(), WebError> {
-        let arr = read_vector::<3>(factor, "Model.scale")?;
-        self.scale(arr);
+        let factor = read_vector::<3>(factor, "Model.scale")?;
+        self.scale(factor);
         Ok(())
     }
 
@@ -151,10 +151,10 @@ impl Camera {
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] target: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] up: &JsValue,
     ) -> Result<Camera, WebError> {
-        let pos = read_vector::<3>(position, "Camera.lookAt: position")?;
+        let position = read_vector::<3>(position, "Camera.lookAt: position")?;
         let target = read_vector::<3>(target, "Camera.lookAt: target")?;
         let up = read_vector::<3>(up, "Camera.lookAt: up")?;
-        Ok(self.look_at(pos, target, up)?)
+        Ok(self.look_at(position, target, up)?)
     }
 
     #[wasm_bindgen(js_name = "setAspect")]
@@ -350,9 +350,9 @@ impl Scene {
         options: Option<JsValue>,
     ) -> Result<Scene, WebError> {
         let source = if let Some(bytes) = read_bytes(source) {
-            SceneSource::gltf(bytes)
+            GltfSource::from(bytes)
         } else if let Some(path) = source.as_string() {
-            SceneSource::gltf(path)
+            GltfSource::from(path)
         } else {
             return Err(WebError::type_error(
                 "Scene.load: expected the bytes of a .glb file, as an ArrayBuffer or a typed array",
@@ -431,26 +431,7 @@ impl Scene {
         #[wasm_bindgen(unchecked_param_type = "number | string")] target: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "Model | Camera | Light")] object: &JsValue,
     ) -> Result<Scene, WebError> {
-        let target = if let Some(index) = target.as_f64() {
-            crate::scene::PassRef::Index(read_unsigned(index, "Scene.addTo: index")? as usize)
-        } else if let Some(name) = target.as_string() {
-            crate::scene::PassRef::Name(name)
-        } else {
-            return Err(WebError::type_error(
-                "Scene.addTo: target must be an index or a name",
-            ));
-        };
-        if let Ok(model) = Model::try_from(object) {
-            self.add_to(target, &model)?;
-        } else if let Ok(camera) = Camera::try_from(object) {
-            self.add_to(target, &camera)?;
-        } else if let Ok(light) = Light::try_from(object) {
-            self.add_to(target, &light)?;
-        } else {
-            return Err(WebError::type_error(
-                "Scene.addTo: expected a Model, Camera, or Light",
-            ));
-        }
+        add_object(self, read_pass_ref(target)?, object)?;
         Ok(self.clone())
     }
 
@@ -531,6 +512,37 @@ crate::impl_js_bridge!(Camera, crate::PassError);
 
 /// Reads a column-major 4x4 matrix: 16 numbers, or four columns of four, each list an array
 /// or a `Float32Array` as a float vector is. Any other list, or another count, throws naming the call.
+/// The pass `Scene.addTo` names: its index, or its name.
+fn read_pass_ref(target: &JsValue) -> Result<PassRef, WebError> {
+    if let Some(index) = target.as_f64() {
+        Ok(PassRef::Index(
+            read_unsigned(index, "Scene.addTo: index")? as usize
+        ))
+    } else if let Some(name) = target.as_string() {
+        Ok(PassRef::Name(name))
+    } else {
+        Err(WebError::type_error(
+            "Scene.addTo: target must be an index or a name",
+        ))
+    }
+}
+
+/// Adds the Model, Camera or Light that `object` holds to the pass `target` names.
+fn add_object(scene: &Scene, target: PassRef, object: &JsValue) -> Result<(), WebError> {
+    if let Ok(model) = Model::try_from(object) {
+        scene.add_to(target, &model)?;
+    } else if let Ok(camera) = Camera::try_from(object) {
+        scene.add_to(target, &camera)?;
+    } else if let Ok(light) = Light::try_from(object) {
+        scene.add_to(target, &light)?;
+    } else {
+        return Err(WebError::type_error(
+            "Scene.addTo: expected a Model, Camera, or Light",
+        ));
+    }
+    Ok(())
+}
+
 fn read_matrix(value: &JsValue) -> Result<[[f32; 4]; 4], WebError> {
     const LABEL: &str = "Model.setTransform";
     let columns = match value.dyn_ref::<js_sys::Array>() {
@@ -551,7 +563,7 @@ fn read_matrix(value: &JsValue) -> Result<[[f32; 4]; 4], WebError> {
     let mut matrix = [[0.0; 4]; 4];
     for (index, (column, slot)) in columns.iter().zip(matrix.iter_mut()).enumerate() {
         let label = format!("{LABEL}: column {index}");
-        let numbers = read_vector_items(column, &label)?;
+        let numbers = read_items(column, &label)?;
         *slot = match <[f64; 4]>::try_from(numbers.as_slice()) {
             Ok(column) => column.map(|number| number as f32),
             Err(_) => {
@@ -575,7 +587,7 @@ fn list_columns(matrix: [[f32; 4]; 4]) -> Vec<js_sys::Float32Array> {
 
 /// A matrix of 16 numbers, column after column.
 fn read_flat_matrix(value: &JsValue, label: &str) -> Result<[[f32; 4]; 4], WebError> {
-    let numbers = read_vector_items(value, label)?;
+    let numbers = read_items(value, label)?;
     match <[f64; 16]>::try_from(numbers.as_slice()) {
         Ok(flat) => Ok(std::array::from_fn(|column| {
             std::array::from_fn(|row| flat[column * 4 + row] as f32)

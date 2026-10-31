@@ -91,27 +91,6 @@ pub(crate) async fn request_device(
     Ok((device, queue))
 }
 
-/// A device that takes buffers of at most `limit` bytes, for tests of the buffer limit.
-#[cfg(test)]
-pub(crate) async fn request_small_device(limit: u64) -> (wgpu::Device, wgpu::Queue) {
-    let instance = create_instance().await;
-    let adapter = request_adapter(&instance, None).await.expect("adapter");
-    let adapter_limits = adapter.limits();
-    let limits = wgpu::Limits {
-        max_buffer_size: limit,
-        max_uniform_buffer_binding_size: adapter_limits.max_uniform_buffer_binding_size.min(limit),
-        max_storage_buffer_binding_size: adapter_limits.max_storage_buffer_binding_size.min(limit),
-        ..adapter_limits
-    };
-    adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            required_limits: limits,
-            ..Default::default()
-        })
-        .await
-        .expect("device")
-}
-
 /// The adapter's limits, with the vertex stride WebGL2 takes. wgpu reports no stride
 /// limit there, and WebGL's `vertexAttribPointer` refuses a stride past 255 bytes.
 fn cap_limits(adapter: &wgpu::Adapter) -> wgpu::Limits {

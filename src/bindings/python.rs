@@ -170,7 +170,7 @@ fn read_item<T: Unsigned>(item: &Bound<'_, PyAny>, label: &str, index: usize) ->
 
 /// An unsigned integer type that [`read_unsigned`] fills from a Python int.
 pub(crate) trait Unsigned:
-    for<'a, 'py> FromPyObject<'a, 'py, Error = PyErr> + Display
+    for<'object, 'py> FromPyObject<'object, 'py, Error = PyErr> + Display
 {
     const MAX: Self;
 }
@@ -207,7 +207,7 @@ pub(crate) fn read_unsigned<T: Unsigned>(value: &Bound<'_, PyAny>, label: &str) 
             )))
         }
         Err(error) if error.is_instance_of::<PyTypeError>(py) => Err(PyTypeError::new_err(
-            format!("{label} must be an int, got {}", type_name(value)),
+            format!("{label} must be an int, got {}", name_type(value)),
         )),
         Err(error) => Err(error),
     }
@@ -247,7 +247,7 @@ pub(crate) fn read_numbers(value: &Bound<'_, PyAny>, label: &str) -> PyResult<Ve
     if is_bytes(value) {
         return Err(PyTypeError::new_err(format!(
             "{label} takes numbers, got {}",
-            type_name(value)
+            name_type(value)
         )));
     }
     value
@@ -276,7 +276,7 @@ pub(crate) fn read_bytes(value: &Bound<'_, PyAny>, label: &str) -> PyResult<Vec<
         _ => {
             return Err(PyTypeError::new_err(format!(
                 "{label} takes bytes or a sequence of ints, got {}",
-                type_name(value)
+                name_type(value)
             )));
         }
     };
@@ -328,7 +328,7 @@ fn read_scalar(value: &Bound<'_, PyAny>, label: impl Display) -> PyResult<f64> {
             )))
         }
         Err(error) if error.is_instance_of::<PyTypeError>(py) => Err(PyTypeError::new_err(
-            format!("{label} must be a number, got {}", type_name(value)),
+            format!("{label} must be a number, got {}", name_type(value)),
         )),
         Err(error) => Err(error),
     }
@@ -343,7 +343,7 @@ fn show(value: &Bound<'_, PyAny>) -> String {
 }
 
 /// The name of the value's type, such as `float`.
-fn type_name(value: &Bound<'_, PyAny>) -> String {
+fn name_type(value: &Bound<'_, PyAny>) -> String {
     match value.get_type().name() {
         Ok(name) => name.to_string(),
         Err(_) => "an unknown type".to_string(),

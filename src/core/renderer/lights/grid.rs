@@ -35,7 +35,7 @@ pub(crate) enum Slicing {
 
 impl Slicing {
     /// The value `LightGrid.slicing` holds.
-    pub(crate) fn code(self) -> u32 {
+    pub(crate) fn encode(self) -> u32 {
         match self {
             Slicing::Log => 1,
             Slicing::Linear => 2,
@@ -113,7 +113,7 @@ const PLANE_RESOLUTION: f64 = 1.0e-6;
 /// first, worked in f64. A plane past what the f32 entries resolve, as a far
 /// of a million times the near gives, comes back infinite. `None` when a plane
 /// lies behind the eye or neither plane resolves.
-fn depth_range(matrix: &Mat4) -> Option<(f32, f32)> {
+fn find_planes(matrix: &Mat4) -> Option<(f32, f32)> {
     let plane = matrix.row(3).as_dvec4();
     let normal = plane.xyz().length();
     let (plane, depth) = (plane / normal, matrix.row(2).as_dvec4() / normal);
@@ -144,7 +144,7 @@ impl Frustum {
         let (view_proj, depth_plane, slicing, near, far) = if normal > 1.0e-6 * row.w.abs().max(1.0)
         {
             let view_proj = matrix * (1.0 / normal);
-            let (near, far) = depth_range(&matrix)?;
+            let (near, far) = find_planes(&matrix)?;
             (view_proj, view_proj.row(3), Slicing::Log, near, far)
         } else {
             if row.w.is_nan() || row.w <= 0.0 {
@@ -183,7 +183,7 @@ impl Frustum {
     }
 
     /// The depth of `point` along the depth plane.
-    pub(crate) fn depth(&self, point: Vec3) -> f32 {
+    pub(crate) fn measure_depth(&self, point: Vec3) -> f32 {
         self.depth_plane.dot(point.extend(1.0))
     }
 
@@ -192,14 +192,15 @@ impl Frustum {
         spheres
             .iter()
             .map(|sphere| {
-                let depth = self.depth(sphere.center) + sphere.radius * (1.0 + SPHERE_SLACK);
+                let depth =
+                    self.measure_depth(sphere.center) + sphere.radius * (1.0 + SPHERE_SLACK);
                 depth + depth.abs() * SPHERE_SLACK
             })
             .fold(f32::NEG_INFINITY, f32::max)
     }
 
     /// The grid whose slices end at `reach`, or at the far plane before it.
-    pub(crate) fn grid(&self, reach: f32) -> Grid {
+    pub(crate) fn build_grid(&self, reach: f32) -> Grid {
         let slices = GRID_SLICES as f32;
         let (scale, bias) = match self.slicing {
             Slicing::Log => {
@@ -234,7 +235,7 @@ pub(crate) struct Cells {
 
 impl Cells {
     /// The number of clusters in the box.
-    pub(crate) fn volume(&self) -> u32 {
+    pub(crate) fn count_cells(&self) -> u32 {
         let span = |[low, high]: [u32; 2]| high - low + 1;
         span(self.x) * span(self.y) * span(self.z)
     }
@@ -250,25 +251,6 @@ impl Cells {
             packed | (bound << (BOX_BITS * index as u32))
         })
     }
-
-    /// Whether the box holds the cluster at `cell`.
-    #[cfg(test)]
-    pub(crate) fn holds(&self, cell: [u32; 3]) -> bool {
-        let inside = |[low, high]: [u32; 2], value: u32| low <= value && value <= high;
-        inside(self.x, cell[0]) && inside(self.y, cell[1]) && inside(self.z, cell[2])
-    }
-}
-
-/// Where a point reads its lights from, as `light_cell` decides.
-#[cfg(test)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Cell {
-    /// Every light: the point is behind the grid's eye or outside the grid.
-    Every,
-    /// Only the lights without a range: no other light reaches this deep.
-    Global,
-    /// The cluster at these coordinates.
-    Cluster([u32; 3]),
 }
 
 /// A frustum cut into clusters, with slices that end where the lights do.
@@ -282,7 +264,7 @@ pub(crate) struct Grid {
 
 impl Grid {
     /// The continuous slice coordinate of `depth`.
-    pub(crate) fn slice(&self, depth: f32) -> f32 {
+    pub(crate) fn find_slice(&self, depth: f32) -> f32 {
         match self.frustum.slicing {
             Slicing::Log if depth <= 0.0 => f32::NEG_INFINITY,
             Slicing::Log => depth.log2() * self.scale + self.bias,
@@ -290,19 +272,9 @@ impl Grid {
         }
     }
 
-    /// The depth where slice coordinate `slice` lies, as the binning shader's `depth_at`.
-    #[cfg(test)]
-    pub(crate) fn depth_at(&self, slice: f32) -> f32 {
-        let value = (slice - self.bias) / self.scale;
-        match self.frustum.slicing {
-            Slicing::Log => value.exp2(),
-            Slicing::Linear => value,
-        }
-    }
-
     /// The clusters `sphere` may reach, widened by the margin, or `None` when
     /// it reaches none of them.
-    pub(crate) fn cells(&self, sphere: &Sphere) -> Option<Cells> {
+    pub(crate) fn find_cells(&self, sphere: &Sphere) -> Option<Cells> {
         let [width, height, slices] = self.frustum.size;
         let matrix = &self.frustum.view_proj;
         let point = sphere.center.extend(1.0);
@@ -315,52 +287,19 @@ impl Grid {
                 let center = row.dot(point) / w;
                 let half = radius * (row.xyz().length() + center.abs() * slope) / room;
                 let to_grid = |ndc: f32| (ndc * 0.5 + 0.5) * size as f32;
-                span(to_grid(center - half), to_grid(center + half), size)
+                find_span(to_grid(center - half), to_grid(center + half), size)
             };
             (axis(matrix.row(0), width)?, axis(matrix.row(1), height)?)
         } else {
             ([0, width - 1], [0, height - 1])
         };
-        let depth = self.frustum.depth(sphere.center);
-        let z = span(
-            self.slice(depth - radius),
-            self.slice(depth + radius),
+        let depth = self.frustum.measure_depth(sphere.center);
+        let z = find_span(
+            self.find_slice(depth - radius),
+            self.find_slice(depth + radius),
             slices,
         )?;
         Some(Cells { x, y, z })
-    }
-
-    /// Where a fragment at `world` reads its lights from, as the WGSL `light_cell` decides.
-    #[cfg(test)]
-    pub(crate) fn light_cell(&self, world: Vec3) -> Cell {
-        let point = world.extend(1.0);
-        let depth = self.frustum.depth_plane.dot(point);
-        if depth > self.reach {
-            return Cell::Global;
-        }
-        let clip = self.frustum.view_proj * point;
-        if clip.w <= 0.0 {
-            return Cell::Every;
-        }
-        let size = self.frustum.size.map(|side| side as f32);
-        let slice = match self.frustum.slicing {
-            Slicing::Log => depth.max(1.0e-30).log2() * self.scale + self.bias,
-            Slicing::Linear => depth * self.scale + self.bias,
-        };
-        let cell = [
-            (clip.x / clip.w * 0.5 + 0.5) * size[0],
-            (clip.y / clip.w * 0.5 + 0.5) * size[1],
-            slice,
-        ];
-        let outside = cell
-            .iter()
-            .zip(size)
-            .any(|(value, side)| *value < -GRID_MARGIN || *value > side + GRID_MARGIN);
-        if outside {
-            return Cell::Every;
-        }
-        let index = |axis: usize| (cell[axis].max(0.0) as u32).min(self.frustum.size[axis] - 1);
-        Cell::Cluster([index(0), index(1), index(2)])
     }
 
     /// The `LightGrid` fields from `depth_plane` on: size, slicing, scale, bias and reach.
@@ -371,7 +310,7 @@ impl Grid {
         for side in self.frustum.size {
             out.extend_from_slice(&side.to_le_bytes());
         }
-        out.extend_from_slice(&self.frustum.slicing.code().to_le_bytes());
+        out.extend_from_slice(&self.frustum.slicing.encode().to_le_bytes());
         for value in [self.scale, self.bias] {
             out.extend_from_slice(&value.to_le_bytes());
         }
@@ -381,7 +320,7 @@ impl Grid {
 /// The cluster range from continuous coordinates `low` to `high` on an axis
 /// of `size` clusters, widened by the box margin, or `None` when it misses the axis.
 /// A coordinate that isn't a number takes the whole axis.
-fn span(low: f32, high: f32, size: u32) -> Option<[u32; 2]> {
+fn find_span(low: f32, high: f32, size: u32) -> Option<[u32; 2]> {
     let last = (size - 1) as f32;
     let low = (low - BOX_MARGIN).floor();
     let high = (high + BOX_MARGIN).floor();
@@ -398,6 +337,68 @@ fn span(low: f32, high: f32, size: u32) -> Option<[u32; 2]> {
 mod tests {
     use super::*;
     use glam::camera::rh::{proj::directx, view};
+
+    impl Cells {
+        /// Whether the box holds the cluster at `cell`.
+        fn holds(&self, cell: [u32; 3]) -> bool {
+            let inside = |[low, high]: [u32; 2], value: u32| low <= value && value <= high;
+            inside(self.x, cell[0]) && inside(self.y, cell[1]) && inside(self.z, cell[2])
+        }
+    }
+
+    /// Where a point reads its lights from, as `light_cell` decides.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Cell {
+        /// Every light: the point is behind the grid's eye or outside the grid.
+        Every,
+        /// Only the lights without a range: no other light reaches this deep.
+        Global,
+        /// The cluster at these coordinates.
+        Cluster([u32; 3]),
+    }
+
+    impl Grid {
+        /// The depth where slice coordinate `slice` lies, as the binning shader's `depth_at`.
+        pub(crate) fn depth_at(&self, slice: f32) -> f32 {
+            let value = (slice - self.bias) / self.scale;
+            match self.frustum.slicing {
+                Slicing::Log => value.exp2(),
+                Slicing::Linear => value,
+            }
+        }
+
+        /// Where a fragment at `world` reads its lights from, as the WGSL `light_cell` decides.
+        fn light_cell(&self, world: Vec3) -> Cell {
+            let point = world.extend(1.0);
+            let depth = self.frustum.depth_plane.dot(point);
+            if depth > self.reach {
+                return Cell::Global;
+            }
+            let clip = self.frustum.view_proj * point;
+            if clip.w <= 0.0 {
+                return Cell::Every;
+            }
+            let size = self.frustum.size.map(|side| side as f32);
+            let slice = match self.frustum.slicing {
+                Slicing::Log => depth.max(1.0e-30).log2() * self.scale + self.bias,
+                Slicing::Linear => depth * self.scale + self.bias,
+            };
+            let cell = [
+                (clip.x / clip.w * 0.5 + 0.5) * size[0],
+                (clip.y / clip.w * 0.5 + 0.5) * size[1],
+                slice,
+            ];
+            let outside = cell
+                .iter()
+                .zip(size)
+                .any(|(value, side)| *value < -GRID_MARGIN || *value > side + GRID_MARGIN);
+            if outside {
+                return Cell::Every;
+            }
+            let index = |axis: usize| (cell[axis].max(0.0) as u32).min(self.frustum.size[axis] - 1);
+            Cell::Cluster([index(0), index(1), index(2)])
+        }
+    }
 
     fn camera(projection: Mat4) -> Mat4 {
         projection * view::look_at_mat4(Vec3::new(0.0, 1.0, 6.0), Vec3::ZERO, Vec3::Y)
@@ -470,7 +471,7 @@ mod tests {
                 frustum.near
             );
             assert!(frustum.far > 1.0e5, "far {}", frustum.far);
-            let grid = frustum.grid(40.0);
+            let grid = frustum.build_grid(40.0);
             assert!(grid.scale.is_finite() && grid.bias.is_finite());
         }
     }
@@ -481,10 +482,12 @@ mod tests {
             perspective(0.1, 100.0),
             camera(directx::orthographic(-2.0, 2.0, -2.0, 2.0, -5.0, 20.0)),
         ] {
-            let grid = Frustum::from_matrix(matrix).expect("frustum").grid(30.0);
+            let grid = Frustum::from_matrix(matrix)
+                .expect("frustum")
+                .build_grid(30.0);
             for slice in [0.0, 1.0, 7.5, 23.0, 24.0] {
                 let depth = grid.depth_at(slice);
-                assert!((grid.slice(depth) - slice).abs() < 1.0e-3, "{slice}");
+                assert!((grid.find_slice(depth) - slice).abs() < 1.0e-3, "{slice}");
             }
         }
     }
@@ -500,9 +503,9 @@ mod tests {
                 radius: 0.5 + 2.0 * seeds.next(),
             })
             .collect();
-        let grid = frustum.grid(frustum.reach(&spheres));
+        let grid = frustum.build_grid(frustum.reach(&spheres));
         for sphere in &spheres {
-            let cells = grid.cells(sphere);
+            let cells = grid.find_cells(sphere);
             for _ in 0..400 {
                 let offset = Vec3::new(seeds.signed(), seeds.signed(), seeds.signed());
                 let point =
@@ -646,6 +649,6 @@ mod tests {
         let packed = cells.pack();
         let field = |index: u32| (packed >> (BOX_BITS * index)) & 31;
         assert_eq!((0..6).map(field).collect::<Vec<_>>(), [1, 15, 0, 8, 3, 23]);
-        assert_eq!(cells.volume(), 15 * 9 * 21);
+        assert_eq!(cells.count_cells(), 15 * 9 * 21);
     }
 }

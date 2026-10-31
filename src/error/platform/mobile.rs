@@ -1,5 +1,10 @@
 //! The uniffi `FragmentColorError` that Swift and Kotlin throw.
 
+use crate::scene::SceneLoadError;
+use crate::texture::TextureError;
+use crate::{ColorError, ErrorKind, InitializationError, MeshError, PassError};
+use crate::{RendererError, ShaderError, SurfaceError};
+
 /// Mobile-facing error type, one typed error for Swift and Kotlin to match on.
 ///
 /// Most internal errors flatten to their `Display` text. A GPU error keeps its kind,
@@ -18,7 +23,7 @@ pub enum FragmentColorError {
     Shader(String),
     #[error("Device error ({kind}) in '{label}': {detail}")]
     Device {
-        kind: crate::ErrorKind,
+        kind: ErrorKind,
         label: String,
         detail: String,
     },
@@ -39,17 +44,14 @@ pub enum FragmentColorError {
     },
     #[error("the shader has no {stage} entry point, which its pass runs")]
     Entry { stage: String },
-    #[error(
-        "{}",
-        crate::RendererError::SurfaceError(crate::SurfaceError::Occluded)
-    )]
+    #[error("{}", RendererError::SurfaceError(SurfaceError::Occluded))]
     Occluded,
 }
 
 impl FragmentColorError {
     /// The case a renderer error that isn't a GPU error takes.
-    fn from_refusal(error: crate::RendererError) -> Self {
-        use crate::RendererError as Refusal;
+    fn from_refusal(error: RendererError) -> Self {
+        use RendererError as Refusal;
         match error {
             Refusal::LimitError {
                 item,
@@ -80,21 +82,21 @@ impl FragmentColorError {
     }
 }
 
-impl From<crate::InitializationError> for FragmentColorError {
-    fn from(e: crate::InitializationError) -> Self {
-        match e {
-            crate::InitializationError::TextureError(texture) => texture.into(),
+impl From<InitializationError> for FragmentColorError {
+    fn from(error: InitializationError) -> Self {
+        match error {
+            InitializationError::TextureError(texture) => texture.into(),
             other => FragmentColorError::Init(other.to_string()),
         }
     }
 }
 
-impl From<crate::RendererError> for FragmentColorError {
-    fn from(e: crate::RendererError) -> Self {
-        match e {
-            e if e.is_occluded() => FragmentColorError::Occluded,
-            crate::RendererError::InitializationError(e) => e.into(),
-            crate::RendererError::DeviceError {
+impl From<RendererError> for FragmentColorError {
+    fn from(error: RendererError) -> Self {
+        match error {
+            error if error.is_occluded() => FragmentColorError::Occluded,
+            RendererError::InitializationError(error) => error.into(),
+            RendererError::DeviceError {
                 kind,
                 label,
                 detail,
@@ -103,21 +105,21 @@ impl From<crate::RendererError> for FragmentColorError {
                 label,
                 detail,
             },
-            e => FragmentColorError::from_refusal(e),
+            error => FragmentColorError::from_refusal(error),
         }
     }
 }
 
-impl From<crate::ShaderError> for FragmentColorError {
-    fn from(e: crate::ShaderError) -> Self {
-        FragmentColorError::Shader(e.to_string())
+impl From<ShaderError> for FragmentColorError {
+    fn from(error: ShaderError) -> Self {
+        FragmentColorError::Shader(error.to_string())
     }
 }
 
-impl From<crate::texture::TextureError> for FragmentColorError {
-    fn from(e: crate::texture::TextureError) -> Self {
-        match e {
-            crate::texture::TextureError::DeviceError {
+impl From<TextureError> for FragmentColorError {
+    fn from(error: TextureError) -> Self {
+        match error {
+            TextureError::DeviceError {
                 kind,
                 label,
                 detail,
@@ -126,31 +128,31 @@ impl From<crate::texture::TextureError> for FragmentColorError {
                 label,
                 detail,
             },
-            e => FragmentColorError::Render(e.to_string()),
+            error => FragmentColorError::Render(error.to_string()),
         }
     }
 }
 
-impl From<crate::MeshError> for FragmentColorError {
-    fn from(e: crate::MeshError) -> Self {
-        FragmentColorError::Render(e.to_string())
+impl From<MeshError> for FragmentColorError {
+    fn from(error: MeshError) -> Self {
+        FragmentColorError::Render(error.to_string())
     }
 }
 
-impl From<crate::ColorError> for FragmentColorError {
-    fn from(e: crate::ColorError) -> Self {
-        FragmentColorError::Render(e.to_string())
+impl From<ColorError> for FragmentColorError {
+    fn from(error: ColorError) -> Self {
+        FragmentColorError::Render(error.to_string())
     }
 }
 
-impl From<crate::PassError> for FragmentColorError {
-    fn from(e: crate::PassError) -> Self {
-        FragmentColorError::Render(e.to_string())
+impl From<PassError> for FragmentColorError {
+    fn from(error: PassError) -> Self {
+        FragmentColorError::Render(error.to_string())
     }
 }
 
-impl From<crate::scene::SceneLoadError> for FragmentColorError {
-    fn from(e: crate::scene::SceneLoadError) -> Self {
-        FragmentColorError::Render(e.to_string())
+impl From<SceneLoadError> for FragmentColorError {
+    fn from(error: SceneLoadError) -> Self {
+        FragmentColorError::Render(error.to_string())
     }
 }

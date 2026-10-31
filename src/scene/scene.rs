@@ -778,7 +778,7 @@ mod tests {
             .get("camera.position")
             .expect("camera.position");
         assert_eq!(pos, [0.0, 0.0, 5.0]);
-        let lights = material.shader().object.gpu_lights();
+        let lights = material.shader().object.collect_lights();
         assert_eq!(lights[0].color, [1.0, 1.0, 1.0]);
         assert_eq!(lights[0].direction, [0.0, -0.3, -1.0], "the stock light");
         // Sticky flags now true — second pass through is a no-op.
@@ -815,7 +815,7 @@ mod tests {
         scene.add(&light).expect("light");
 
         let _ = scene.passes();
-        let lights = material.shader().object.gpu_lights();
+        let lights = material.shader().object.collect_lights();
         assert_eq!(lights.len(), 1);
         assert_eq!(lights[0].color, [0.5, 0.0, 0.0]);
     }
@@ -1637,7 +1637,7 @@ mod tests {
         scene.set_default_light(&custom);
 
         let _ = scene.passes();
-        let color = material.shader().object.gpu_lights()[0].color;
+        let color = material.shader().object.collect_lights()[0].color;
         assert_eq!(color, [0.2, 0.4, 0.6], "the override light was injected");
     }
 

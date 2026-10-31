@@ -1,5 +1,7 @@
 //! Reads a shader's storage buffer back to the CPU through a pooled readback buffer.
 
+#[cfg(not(wasm))]
+use crate::core::renderer::{MAP_LIMIT, poll_map};
 use crate::core::renderer::{PendingReadback, RenderContext, RendererError};
 
 /// Copy `[0, span)` of `buffer` into a pooled readback buffer, map it,
@@ -33,20 +35,19 @@ pub(crate) async fn read_buffer_bytes(
     let readback = PendingReadback::new(&context.readback_pool, staging.clone());
 
     let slice = staging.slice(0..span);
-    let (tx, rx) = futures::channel::oneshot::channel();
-    slice.map_async(wgpu::MapMode::Read, move |r| {
-        let _ = tx.send(r);
+    let (sender, receiver) = futures::channel::oneshot::channel();
+    slice.map_async(wgpu::MapMode::Read, move |result| {
+        let _ = sender.send(result);
     });
 
     #[cfg(not(wasm))]
     {
-        let mut rx = rx;
-        crate::wait_for_map(&context.device, &mut rx, crate::MAP_LIMIT)
-            .map_err(|error| RendererError::Error(format!("storage readback: {error}")))?;
+        let mut receiver = receiver;
+        poll_map(&context.device, &mut receiver, MAP_LIMIT)?;
     }
 
     #[cfg(wasm)]
-    if !crate::texture::read::await_map_on_web(context, rx).await {
+    if !crate::texture::read::await_map_on_web(context, receiver).await {
         return Err(RendererError::Error(
             "storage readback mapping did not complete".into(),
         ));

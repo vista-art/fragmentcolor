@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
 use crate::core::Start;
+#[cfg(not(wasm))]
+use crate::core::renderer::{MAP_LIMIT, poll_map};
 use crate::texture::{Texture, TextureError, TextureObject};
 use crate::{PendingReadback, RenderContext};
 
@@ -33,7 +35,7 @@ fn prepare_readback(
             adapter.get_downlevel_capabilities().flags
         });
     check_copy(format, flags)?;
-    let bpp = super::texel_size(format)?;
+    let bpp = super::measure_texel(format)?;
 
     let size = texture.size;
     let width = size.width;
@@ -166,7 +168,7 @@ pub(crate) async fn read_pixels_from(
 
 /// Copies the mip-0 contents of `texture` to the CPU, for a caller that settled the late errors.
 ///
-/// The map callback fires only from a device poll. On native `wait_for_map` polls the device
+/// The map callback fires only from a device poll. On native `poll_map` polls the device
 /// until it fires and returns `TextureError::Readback` after `MAP_LIMIT`, so the readback ends
 /// whether or not other code polls the device. On web, WebGPU schedules the callback itself,
 /// while the WebGL2 backend only fires it from a poll, so `await_map_on_web` polls between turns.
@@ -178,20 +180,19 @@ pub(crate) async fn copy_pixels(
     let readback = PendingReadback::new(&context.readback_pool, plan.buffer.clone());
 
     let slice = plan.buffer.slice(..);
-    let (tx, rx) = futures::channel::oneshot::channel();
-    slice.map_async(wgpu::MapMode::Read, move |r| {
-        let _ = tx.send(r);
+    let (sender, receiver) = futures::channel::oneshot::channel();
+    slice.map_async(wgpu::MapMode::Read, move |result| {
+        let _ = sender.send(result);
     });
 
     #[cfg(not(wasm))]
     {
-        let mut rx = rx;
-        crate::wait_for_map(&context.device, &mut rx, crate::MAP_LIMIT)
-            .map_err(|error| TextureError::Readback(error.to_string()))?;
+        let mut receiver = receiver;
+        poll_map(&context.device, &mut receiver, MAP_LIMIT)?;
     }
 
     #[cfg(wasm)]
-    if !await_map_on_web(context, rx).await {
+    if !await_map_on_web(context, receiver).await {
         return Err(TextureError::Readback(
             "mapping did not complete before the timeout".into(),
         ));
@@ -210,11 +211,14 @@ pub(super) async fn get_image(texture: &Texture) -> Result<Vec<u8>, TextureError
 /// on its own, but the WebGL2 backend only signals it from a poll after its
 /// fence completes, so the loop yields to the event loop between polls.
 #[cfg(wasm)]
-pub(crate) async fn await_map_on_web(context: &RenderContext, mut rx: crate::MapReceiver) -> bool {
+pub(crate) async fn await_map_on_web(
+    context: &RenderContext,
+    mut receiver: crate::MapReceiver,
+) -> bool {
     // ~10 s of zero-delay timers before giving up
     for _ in 0..2000 {
         let _ = context.device.poll(wgpu::PollType::Poll);
-        match rx.try_recv() {
+        match receiver.try_recv() {
             Ok(Some(Ok(()))) => return true,
             Ok(Some(Err(_))) | Err(_) => return false,
             Ok(None) => crate::bindings::web::yield_to_event_loop().await,

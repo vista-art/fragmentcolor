@@ -345,7 +345,7 @@ impl Camera {
     }
 
     /// A perspective Camera with no far plane, for a glTF camera without `zfar`.
-    pub(crate) fn create_infinite_perspective(
+    pub(crate) fn create_infinite(
         fovy_radians: f32,
         aspect: f32,
         near: f32,
@@ -637,7 +637,7 @@ mod tests {
     #[test]
     fn an_infinite_perspective_keeps_no_far_plane_through_set_aspect() {
         // The infinite projection's depth row is (-1, -near): no far plane.
-        let camera = Camera::create_infinite_perspective(1.0, 1.0, 0.25).expect("camera");
+        let camera = Camera::create_infinite(1.0, 1.0, 0.25).expect("camera");
         camera.set_aspect(2.0).expect("aspect");
         let m = camera.view_proj();
         assert_eq!((m[2][2], m[3][2]), (-1.0, -0.25), "got {m:?}");

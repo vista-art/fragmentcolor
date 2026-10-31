@@ -35,7 +35,7 @@ pub(in crate::core::renderer) struct Layout {
 
 impl Layout {
     /// The slots by group, each group sorted by binding.
-    pub(in crate::core::renderer) fn entries(&self) -> BindGroupEntries {
+    pub(in crate::core::renderer) fn list_entries(&self) -> BindGroupEntries {
         let mut entries = BindGroupEntries::new();
         for slot in &self.slots {
             entries.entry(slot.group).or_default().push(slot.entry);
@@ -57,7 +57,7 @@ pub(in crate::core::renderer) fn plan_layout(
     let mut slots = reflect_slots(shader);
     if let (Some(path), Some(roots)) = (lights, shader.light_roots.as_ref()) {
         let names = std::iter::once("lights").chain(roots.grid.map(|_| "light_grid"));
-        for (name, (group, entry)) in names.zip(lights::layout_entries(roots, path)) {
+        for (name, (group, entry)) in names.zip(lights::list_entries(roots, path)) {
             slots.push(Slot {
                 name: name.to_string(),
                 group,
@@ -77,7 +77,7 @@ fn reflect_slots(shader: &ShaderObject) -> Vec<Slot> {
         if uniform.name.contains('.') {
             continue;
         }
-        let Some(ty) = binding_type(&uniform.data, *size) else {
+        let Some(ty) = pick_binding(&uniform.data, *size) else {
             continue;
         };
         slots.push(Slot {
@@ -105,10 +105,10 @@ fn pick_visibility(uniform: &Uniform) -> wgpu::ShaderStages {
 }
 
 /// The binding type a reflected root of `size` bytes takes, or `None` for an immediate root.
-fn binding_type(data: &UniformData, size: u32) -> Option<wgpu::BindingType> {
+fn pick_binding(data: &UniformData, size: u32) -> Option<wgpu::BindingType> {
     let ty = match data {
         UniformData::PushConstant(_) => return None,
-        UniformData::Texture(meta) => texture_binding(meta),
+        UniformData::Texture(meta) => describe_texture(meta),
         UniformData::Sampler(info) => wgpu::BindingType::Sampler(match info.comparison {
             true => wgpu::SamplerBindingType::Comparison,
             false => wgpu::SamplerBindingType::Filtering,
@@ -125,15 +125,15 @@ fn binding_type(data: &UniformData, size: u32) -> Option<wgpu::BindingType> {
                     span => u64::from(span),
                 }),
             },
-            None => uniform_buffer(size),
+            None => describe_uniform(size),
         },
-        _ => uniform_buffer(size),
+        _ => describe_uniform(size),
     };
     Some(ty)
 }
 
 /// A uniform buffer of `size` bytes, padded to the 16 bytes WebGPU binds at least.
-fn uniform_buffer(size: u32) -> wgpu::BindingType {
+fn describe_uniform(size: u32) -> wgpu::BindingType {
     wgpu::BindingType::Buffer {
         ty: wgpu::BufferBindingType::Uniform,
         has_dynamic_offset: false,
@@ -142,7 +142,7 @@ fn uniform_buffer(size: u32) -> wgpu::BindingType {
 }
 
 /// The binding type a texture slot declares in WGSL.
-pub(in crate::core::renderer) fn texture_binding(meta: &TextureMeta) -> wgpu::BindingType {
+pub(in crate::core::renderer) fn describe_texture(meta: &TextureMeta) -> wgpu::BindingType {
     let view_dimension = match (meta.dim, meta.arrayed) {
         (TextureDim::D1, _) => wgpu::TextureViewDimension::D1,
         (TextureDim::D2, false) => wgpu::TextureViewDimension::D2,
@@ -233,7 +233,7 @@ fn plan_push(
             entry: wgpu::BindGroupLayoutEntry {
                 binding,
                 visibility: stages,
-                ty: uniform_buffer(span),
+                ty: describe_uniform(span),
                 count: None,
             },
         });
@@ -264,7 +264,7 @@ pub(in crate::core::renderer) fn build_module(
     pad_uniforms: bool,
     uniform_lights: Option<u32>,
 ) -> Result<naga::Module, ShaderError> {
-    let module = shader.module_for_device(pad_uniforms, uniform_lights)?;
+    let module = shader.lower_module(pad_uniforms, uniform_lights)?;
     Ok(match &layout.push {
         Some(PushMode::Fallback { group, bindings }) => lower_immediates(&module, *group, bindings),
         _ => module.into_owned(),
@@ -367,7 +367,7 @@ pub(in crate::core::renderer) fn create_pipeline_layout(
 }
 
 /// The bytes of native immediates a pipeline layout declares for `push`.
-pub(in crate::core::renderer) fn read_immediate_size(push: Option<&PushMode>) -> u32 {
+pub(in crate::core::renderer) fn measure_immediates(push: Option<&PushMode>) -> u32 {
     match push {
         Some(PushMode::Native { size, .. }) => *size,
         _ => 0,

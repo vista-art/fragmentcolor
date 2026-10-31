@@ -244,8 +244,8 @@ fn bind_attribute(
 
 /// Refuses a vertex that sets a property named `position`. Its position comes from
 /// `Vertex::new`, so the value set would never reach the shader.
-fn check_position(verts: &[Vertex]) -> Result<(), ShaderError> {
-    match verts
+fn check_position(vertices: &[Vertex]) -> Result<(), ShaderError> {
+    match vertices
         .iter()
         .position(|vertex| vertex.properties.contains_key(POSITION))
     {

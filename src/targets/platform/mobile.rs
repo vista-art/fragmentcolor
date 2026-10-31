@@ -70,7 +70,7 @@ impl MobileWindowTarget {
     #[uniffi::method(name = "getImage")]
     #[lsp_doc("docs/api/targets/window_target/get_image.md")]
     pub async fn get_image_mobile(&self) -> Result<Vec<u8>, FragmentColorError> {
-        Err(crate::targets::window_target::unreadable().into())
+        Err(crate::targets::window_target::refuse_read().into())
     }
 }
 
@@ -95,7 +95,7 @@ impl Target for MobileWindowTarget {
     }
 
     async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
-        Err(crate::targets::window_target::unreadable())
+        Err(crate::targets::window_target::refuse_read())
     }
 }
 

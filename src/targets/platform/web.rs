@@ -48,8 +48,8 @@ impl CanvasTarget {
     #[wasm_bindgen(js_name = "resize")]
     #[lsp_doc("docs/api/targets/window_target/resize.md")]
     pub fn resize_js(&mut self, size: &JsValue) -> Result<(), WebError> {
-        let sz = Size::try_from(size)?;
-        Target::resize(self, sz)?;
+        let size = Size::try_from(size)?;
+        Target::resize(self, size)?;
         Ok(())
     }
 
@@ -87,7 +87,7 @@ impl Target for CanvasTarget {
     }
 
     async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
-        Err(crate::targets::window_target::unreadable())
+        Err(crate::targets::window_target::refuse_read())
     }
 }
 

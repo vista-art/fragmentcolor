@@ -27,7 +27,7 @@ impl UniformInput {
         let numbers = match self {
             Self::Texture(id) => {
                 return match slot {
-                    U::Texture(_) => Ok(U::Texture(TextureMeta::with_id_only(id))),
+                    U::Texture(_) => Ok(U::Texture(TextureMeta::from(id))),
                     _ => Err(mismatch(key, slot, "a texture")),
                 };
             }
@@ -92,13 +92,13 @@ fn fill_root(key: &str, slot: &UniformData, bytes: Vec<u8>) -> Result<UniformDat
     };
     match span {
         Some(span) if bytes.len() == span as usize => Ok(UniformData::Bytes(bytes)),
-        Some(span) => Err(byte_count(key, span as usize, bytes.len())),
+        Some(span) => Err(refuse_count(key, span as usize, bytes.len())),
         None => Err(mismatch(key, slot, "raw bytes")),
     }
 }
 
 /// Builds an error like `particles: expected 8192 bytes, got 3`.
-pub(crate) fn byte_count(key: &str, span: usize, count: usize) -> ShaderError {
+pub(crate) fn refuse_count(key: &str, span: usize, count: usize) -> ShaderError {
     ShaderError::TypeMismatch(format!("{key}: expected {span} bytes, got {count}"))
 }
 
@@ -195,7 +195,7 @@ mod tests {
     }
 
     fn texture_slot() -> UniformData {
-        UniformData::Texture(TextureMeta::with_id_only(TextureId { id: 0 }))
+        UniformData::Texture(TextureMeta::from(TextureId { id: 0 }))
     }
 
     // Story: one number fits an f32, i32 or u32 slot, and the declared type decides.
@@ -303,7 +303,7 @@ mod tests {
     fn textures_bind_only_to_texture_slots() {
         let texture = UniformInput::Texture(TextureId { id: 7 });
         let bound = resolve(texture.clone(), texture_slot());
-        let expected = UniformData::Texture(TextureMeta::with_id_only(TextureId { id: 7 }));
+        let expected = UniformData::Texture(TextureMeta::from(TextureId { id: 7 }));
         assert_eq!(bound, Ok(expected));
 
         let err = resolve(texture, UniformData::Vec2(vec![0.0; 2])).unwrap_err();

@@ -80,7 +80,7 @@ impl RenderCanvasTarget {
 
     #[lsp_doc("docs/api/targets/window_target/get_image.md")]
     pub fn get_image(&self) -> Result<Py<numpy::PyArray3<u8>>, PyErr> {
-        Err(crate::targets::window_target::unreadable().into())
+        Err(crate::targets::window_target::refuse_read().into())
     }
 
     // The canvas this target draws on.
@@ -142,7 +142,7 @@ impl Target for RenderCanvasTarget {
     }
 
     async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
-        Err(crate::targets::window_target::unreadable())
+        Err(crate::targets::window_target::refuse_read())
     }
 }
 

@@ -25,14 +25,14 @@ pub enum RenderableHandle {
 impl Renderable for RenderableHandle {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
         match self {
-            Self::Shader(s) => s.passes(),
-            Self::Pass(p) => p.passes(),
-            Self::Mesh(m) => m.passes(),
-            Self::Scene(s) => s.passes(),
-            Self::Passes(ps) => {
+            Self::Shader(shader) => shader.passes(),
+            Self::Pass(pass) => pass.passes(),
+            Self::Mesh(mesh) => mesh.passes(),
+            Self::Scene(scene) => scene.passes(),
+            Self::Passes(passes) => {
                 let mut all: Vec<Arc<PassObject>> = Vec::new();
-                for p in ps {
-                    all.extend_from_slice(&p.passes());
+                for pass in passes {
+                    all.extend_from_slice(&pass.passes());
                 }
                 all.into()
             }
@@ -41,14 +41,14 @@ impl Renderable for RenderableHandle {
 
     fn peek_passes(&self) -> Arc<[Arc<PassObject>]> {
         match self {
-            Self::Shader(s) => s.peek_passes(),
-            Self::Pass(p) => p.peek_passes(),
-            Self::Mesh(m) => m.peek_passes(),
-            Self::Scene(s) => s.peek_passes(),
-            Self::Passes(ps) => {
+            Self::Shader(shader) => shader.peek_passes(),
+            Self::Pass(pass) => pass.peek_passes(),
+            Self::Mesh(mesh) => mesh.peek_passes(),
+            Self::Scene(scene) => scene.peek_passes(),
+            Self::Passes(passes) => {
                 let mut all: Vec<Arc<PassObject>> = Vec::new();
-                for p in ps {
-                    all.extend_from_slice(&p.peek_passes());
+                for pass in passes {
+                    all.extend_from_slice(&pass.peek_passes());
                 }
                 all.into()
             }
@@ -59,14 +59,14 @@ impl Renderable for RenderableHandle {
     /// so `require` links each dependency once.
     fn roots(&self) -> Arc<[Arc<PassObject>]> {
         match self {
-            Self::Shader(s) => s.roots(),
-            Self::Pass(p) => p.roots(),
-            Self::Mesh(m) => m.roots(),
-            Self::Scene(s) => s.roots(),
-            Self::Passes(ps) => {
+            Self::Shader(shader) => shader.roots(),
+            Self::Pass(pass) => pass.roots(),
+            Self::Mesh(mesh) => mesh.roots(),
+            Self::Scene(scene) => scene.roots(),
+            Self::Passes(passes) => {
                 let mut roots: Vec<Arc<PassObject>> = Vec::new();
-                for p in ps {
-                    roots.extend_from_slice(&p.roots());
+                for pass in passes {
+                    roots.extend_from_slice(&pass.roots());
                 }
                 roots.into()
             }

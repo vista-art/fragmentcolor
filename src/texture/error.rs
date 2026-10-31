@@ -3,6 +3,8 @@ use std::convert::Infallible;
 use thiserror::Error;
 
 use crate::ScreenRegionError;
+#[cfg(not(wasm))]
+use crate::core::MapError;
 
 #[derive(Error, Debug)]
 pub enum TextureError {
@@ -84,6 +86,14 @@ impl TextureError {
             Self::CreateTextureError(text) => Self::CreateTextureError(format!("{name}: {text}")),
             other => other,
         }
+    }
+}
+
+/// A buffer that didn't map in time, which a native readback reports as text.
+#[cfg(not(wasm))]
+impl From<MapError> for TextureError {
+    fn from(error: MapError) -> Self {
+        TextureError::Readback(error.to_string())
     }
 }
 

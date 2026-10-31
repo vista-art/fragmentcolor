@@ -96,7 +96,7 @@ impl Material {
     /// fetch over `fetch`.
     #[lsp_doc("docs/api/scene/material/pbr.md")]
     pub fn pbr() -> Self {
-        // SAFETY-justified expect: the three parts are WGSL source compiled into the binary at build
+        // SAFETY-justified expect: the six parts are WGSL source compiled into the binary at build
         // time. The only way this fails is a malformed shader file in the repo, which is a build-time
         // programmer error caught by the doctests and healthchecks, not a runtime fault.
         let shader = Shader::new([
@@ -326,7 +326,7 @@ impl Material {
             return self.clone();
         }
         if let TextureData::CloneOf(texture) = &input.data {
-            let meta = TextureMeta::with_id_only(*texture.id());
+            let meta = TextureMeta::from(*texture.id());
             if let Err(error) = self.shader.object.set(key, UniformData::Texture(meta)) {
                 warn_texture(key, error);
             }
@@ -975,7 +975,7 @@ mod tests {
         let material = Material::pbr();
         let object = &material.shader().object;
         let uniform = object
-            .module_for_device(false, Some(4))
+            .lower_module(false, Some(4))
             .expect("the uniform light path lowers");
         let modules = [&object.module, uniform.as_ref()];
 

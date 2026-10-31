@@ -6,14 +6,14 @@
 //! "Building an App in Rust" guide.
 //!
 //! The asset here is a tiny in-memory `.glb` (one triangle) so the example
-//! runs with no external files. To view a real model, swap the `SceneSource`
-//! for a path: `Scene::load(SceneSource::gltf("path/to/model.glb"))`.
+//! runs with no external files. To view a real model, pass its path instead:
+//! `Scene::load("path/to/model.glb")`.
 
 // `App::add_state` proves `Viewer: Send + Sync` through the Scene's wgpu
 // resources, a chain deeper than the default limit of 128.
 #![recursion_limit = "256"]
 
-use fragmentcolor::{App, Camera, Renderer, Scene, SceneSource, SetupResult, call};
+use fragmentcolor::{App, Camera, Renderer, Scene, SetupResult, call};
 use std::sync::Arc;
 use std::time::Instant;
 use winit::dpi::PhysicalSize;
@@ -92,7 +92,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Build the scene up front: `Scene::load` is synchronous and renderer-free,
     // so it doesn't need to wait for the window. The Scene injects a default
     // light at render time, so the model reads as lit without us adding one.
-    let scene = Scene::load(SceneSource::gltf(build_minimal_triangle_glb())).expect("Scene::load");
+    let scene = Scene::load(build_minimal_triangle_glb()).expect("Scene::load");
     let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
         .expect("camera")
         .look_at([0.0, 1.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])

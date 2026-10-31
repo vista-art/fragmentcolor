@@ -7,7 +7,7 @@ pub(crate) mod readback;
 #[cfg(wasm)]
 pub(crate) use readback::MapReceiver;
 #[cfg(not(wasm))]
-pub(crate) use readback::{MAP_LIMIT, wait_for_map};
+pub(crate) use readback::{MAP_LIMIT, MapError, poll_map};
 pub(crate) use readback::{PendingReadback, ReadbackBufferPool};
 
 pub(crate) mod storage;

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::SceneObjectHandle;
 use crate::bindings::numbers::read_vector;
 use crate::error::platform::mobile::FragmentColorError;
-use crate::scene::{Camera, CameraError, Light, LightKind, Model, Scene, SceneSource};
+use crate::scene::{Camera, CameraError, GltfSource, Light, LightKind, Model, Scene};
 use crate::{Material, Mesh, Pass};
 
 /// Mobile-marshallable target for [`Scene::add_to`]: a pass index or a pass
@@ -81,8 +81,8 @@ impl Model {
     #[uniffi::method(name = "translate")]
     #[lsp_doc("docs/api/scene/model/translate.md")]
     pub fn translate_mobile(self: Arc<Self>, offset: Vec<f32>) -> Result<(), FragmentColorError> {
-        let arr = read_vector::<3>(offset, "Model.translate")?;
-        self.translate(arr);
+        let offset = read_vector::<3>(offset, "Model.translate")?;
+        self.translate(offset);
         Ok(())
     }
 
@@ -93,16 +93,16 @@ impl Model {
         axis: Vec<f32>,
         radians: f32,
     ) -> Result<(), FragmentColorError> {
-        let arr = read_vector::<3>(axis, "Model.rotate: axis")?;
-        self.rotate(arr, radians);
+        let axis = read_vector::<3>(axis, "Model.rotate: axis")?;
+        self.rotate(axis, radians);
         Ok(())
     }
 
     #[uniffi::method(name = "scale")]
     #[lsp_doc("docs/api/scene/model/scale.md")]
     pub fn scale_mobile(self: Arc<Self>, factor: Vec<f32>) -> Result<(), FragmentColorError> {
-        let arr = read_vector::<3>(factor, "Model.scale")?;
-        self.scale(arr);
+        let factor = read_vector::<3>(factor, "Model.scale")?;
+        self.scale(factor);
         Ok(())
     }
 
@@ -160,10 +160,10 @@ impl Camera {
         target: Vec<f32>,
         up: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let pos = read_vector::<3>(position, "Camera.lookAt: position")?;
+        let position = read_vector::<3>(position, "Camera.lookAt: position")?;
         let target = read_vector::<3>(target, "Camera.lookAt: target")?;
         let up = read_vector::<3>(up, "Camera.lookAt: up")?;
-        Ok(Arc::new(self.look_at(pos, target, up)?))
+        Ok(Arc::new(self.look_at(position, target, up)?))
     }
 
     #[uniffi::method(name = "setAspect")]
@@ -351,7 +351,7 @@ impl Scene {
         cameras: bool,
         lights: bool,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let source = SceneSource::gltf(path).cameras(cameras).lights(lights);
+        let source = GltfSource::from(path).cameras(cameras).lights(lights);
         Ok(Arc::new(Scene::load(source)?))
     }
 
@@ -364,7 +364,7 @@ impl Scene {
         cameras: bool,
         lights: bool,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let source = SceneSource::gltf(bytes).cameras(cameras).lights(lights);
+        let source = GltfSource::from(bytes).cameras(cameras).lights(lights);
         Ok(Arc::new(Scene::load(source)?))
     }
 
@@ -486,8 +486,8 @@ impl Scene {
         self: Arc<Self>,
         color: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let c = read_vector::<3>(color, "Scene.ambient")?;
-        self.ambient(c);
+        let color = read_vector::<3>(color, "Scene.ambient")?;
+        self.ambient(color);
         Ok(self)
     }
 

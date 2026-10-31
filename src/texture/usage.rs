@@ -58,9 +58,11 @@ impl TextureUsage {
     pub const fn contains(self, other: TextureUsage) -> bool {
         (self.bits & other.bits) == other.bits
     }
+}
 
-    pub const fn raw_bits(self) -> u32 {
-        self.bits
+impl From<TextureUsage> for u32 {
+    fn from(usage: TextureUsage) -> Self {
+        usage.bits
     }
 }
 
@@ -173,24 +175,20 @@ pub(crate) fn check_usage(bits: u32) -> Result<wgpu::TextureUsages, TextureError
 }
 
 #[cfg(test)]
-impl TextureUsage {
-    /// The wgpu `TextureUsages` this `TextureUsage` stands for.
-    pub(crate) fn to_wgpu(self) -> wgpu::TextureUsages {
-        wgpu::TextureUsages::from_bits_retain(self.bits)
-    }
-}
-
-#[cfg(test)]
-impl TextureUsage {
-    /// The `TextureUsage` for wgpu's `TextureUsages`.
-    pub(crate) fn from_wgpu(usage: wgpu::TextureUsages) -> Self {
-        TextureUsage { bits: usage.bits() }
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
+
+    impl TextureUsage {
+        /// The wgpu `TextureUsages` this `TextureUsage` stands for.
+        fn to_wgpu(self) -> wgpu::TextureUsages {
+            wgpu::TextureUsages::from_bits_retain(self.bits)
+        }
+
+        /// The `TextureUsage` for wgpu's `TextureUsages`.
+        fn from_wgpu(usage: wgpu::TextureUsages) -> Self {
+            TextureUsage { bits: usage.bits() }
+        }
+    }
 
     #[test]
     fn composes_with_bit_or_and_contains() {

@@ -62,7 +62,7 @@ pub(crate) fn bump_epoch() {
 }
 
 /// The current light epoch.
-pub(crate) fn current_epoch() -> u64 {
+pub(crate) fn read_epoch() -> u64 {
     LIGHT_EPOCH.load(Ordering::Relaxed)
 }
 
@@ -175,7 +175,7 @@ impl LightObject {
     }
 
     /// The light as the shaders read it.
-    pub(crate) fn gpu(&self) -> GpuLight {
+    pub(crate) fn to_gpu(&self) -> GpuLight {
         let state = *self.state.read();
         GpuLight {
             kind: state.kind as u32,
@@ -193,6 +193,50 @@ impl LightObject {
     fn update(&self, change: impl FnOnce(&mut LightState)) {
         change(&mut self.state.write());
         bump_epoch();
+    }
+
+    /// Applies `change` when the light is one of `kinds`, and otherwise refuses the setter `field`.
+    fn update_kinds(
+        &self,
+        kinds: &[LightKind],
+        field: &'static str,
+        change: impl FnOnce(&mut LightState),
+    ) -> Result<(), LightError> {
+        let kind = self.state.read().kind;
+        if !kinds.contains(&kind) {
+            return Err(LightError::FieldNotApplicable { kind, field });
+        }
+        self.update(change);
+        Ok(())
+    }
+
+    /// Moves a point or spot light to `position`.
+    fn set_position(&self, position: Vec3) -> Result<(), LightError> {
+        let kinds = [LightKind::Point, LightKind::Spot];
+        self.update_kinds(&kinds, "set_position", |state| state.position = position)
+    }
+
+    /// Points a directional or spot light along `direction`.
+    fn set_direction(&self, direction: Vec3) -> Result<(), LightError> {
+        let kinds = [LightKind::Directional, LightKind::Spot];
+        self.update_kinds(&kinds, "set_direction", |state| state.direction = direction)
+    }
+
+    /// Caps how far a point or spot light reaches, refusing a negative or NaN `range` first.
+    fn set_range(&self, range: f32) -> Result<(), LightError> {
+        if range.is_nan() || range < 0.0 {
+            return Err(LightError::NegativeRange(range));
+        }
+        let kinds = [LightKind::Point, LightKind::Spot];
+        self.update_kinds(&kinds, "set_range", |state| state.range = range)
+    }
+
+    /// Sets a spot light's cone half-angles.
+    fn set_cone_angles(&self, inner: f32, outer: f32) -> Result<(), LightError> {
+        self.update_kinds(&[LightKind::Spot], "set_cone_angles", |state| {
+            state.inner_cone_angle = inner;
+            state.outer_cone_angle = outer;
+        })
     }
 
     /// Hands this light to every lit shader on `pass` and to the pass, or to none when
@@ -373,74 +417,30 @@ impl Light {
     /// Update the world-space position. Errors on a directional light.
     #[lsp_doc("docs/api/scene/light/set_position.md")]
     pub fn set_position(&self, position: [f32; 3]) -> Result<Self, LightError> {
-        let kind = self.object.state.read().kind;
-        match kind {
-            LightKind::Point | LightKind::Spot => {
-                self.object
-                    .update(|state| state.position = Vec3::from(position));
-                Ok(self.clone())
-            }
-            LightKind::Directional => Err(LightError::FieldNotApplicable {
-                kind,
-                field: "set_position",
-            }),
-        }
+        self.object.set_position(Vec3::from(position))?;
+        Ok(self.clone())
     }
 
     /// Update the world-space direction. Errors on a point light.
     #[lsp_doc("docs/api/scene/light/set_direction.md")]
     pub fn set_direction(&self, direction: [f32; 3]) -> Result<Self, LightError> {
-        let kind = self.object.state.read().kind;
-        match kind {
-            LightKind::Directional | LightKind::Spot => {
-                self.object
-                    .update(|state| state.direction = Vec3::from(direction));
-                Ok(self.clone())
-            }
-            LightKind::Point => Err(LightError::FieldNotApplicable {
-                kind,
-                field: "set_direction",
-            }),
-        }
+        self.object.set_direction(Vec3::from(direction))?;
+        Ok(self.clone())
     }
 
     /// Update the influence-radius cap. Errors on a directional light and
     /// on a negative or NaN value regardless of kind.
     #[lsp_doc("docs/api/scene/light/set_range.md")]
     pub fn set_range(&self, range: f32) -> Result<Self, LightError> {
-        if range.is_nan() || range < 0.0 {
-            return Err(LightError::NegativeRange(range));
-        }
-        let kind = self.object.state.read().kind;
-        match kind {
-            LightKind::Point | LightKind::Spot => {
-                self.object.update(|state| state.range = range);
-                Ok(self.clone())
-            }
-            LightKind::Directional => Err(LightError::FieldNotApplicable {
-                kind,
-                field: "set_range",
-            }),
-        }
+        self.object.set_range(range)?;
+        Ok(self.clone())
     }
 
     /// Update the cone half-angles (radians). Errors on a non-spot light.
     #[lsp_doc("docs/api/scene/light/set_cone_angles.md")]
     pub fn set_cone_angles(&self, inner: f32, outer: f32) -> Result<Self, LightError> {
-        let kind = self.object.state.read().kind;
-        match kind {
-            LightKind::Spot => {
-                self.object.update(|state| {
-                    state.inner_cone_angle = inner;
-                    state.outer_cone_angle = outer;
-                });
-                Ok(self.clone())
-            }
-            _ => Err(LightError::FieldNotApplicable {
-                kind,
-                field: "set_cone_angles",
-            }),
-        }
+        self.object.set_cone_angles(inner, outer)?;
+        Ok(self.clone())
     }
 }
 
@@ -522,7 +522,7 @@ mod tests {
         }
 
         assert_eq!(
-            shader.light_summary().count,
+            shader.summarize_lights().count,
             1,
             "the joined shader holds the light"
         );
@@ -664,7 +664,7 @@ mod tests {
         let kinds: Vec<u32> = material
             .shader()
             .object
-            .gpu_lights()
+            .collect_lights()
             .iter()
             .map(|light| light.kind)
             .collect();
@@ -672,7 +672,7 @@ mod tests {
 
         // A setter reaches the shader with no further `add`.
         sun.set_color([0.5, 0.25, 0.125]);
-        let color = material.shader().object.gpu_lights()[0].color;
+        let color = material.shader().object.collect_lights()[0].color;
         assert_eq!(color, [0.5, 0.25, 0.125]);
     }
 
@@ -689,7 +689,7 @@ mod tests {
         let other = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
         pass.add(&other).expect("other");
 
-        assert_eq!(material.shader().object.gpu_lights().len(), 1);
+        assert_eq!(material.shader().object.collect_lights().len(), 1);
     }
 
     #[test]
@@ -713,7 +713,7 @@ mod tests {
         let kinds: Vec<u32> = material
             .shader()
             .object
-            .gpu_lights()
+            .collect_lights()
             .iter()
             .map(|light| light.kind)
             .collect();
@@ -731,7 +731,7 @@ mod tests {
         .expect("model");
         pass.add(&Light::point([0.0, 1.0, 0.0], [1.0; 3]))
             .expect("light");
-        assert_eq!(material.shader().object.gpu_lights()[0].kind, 1);
+        assert_eq!(material.shader().object.collect_lights()[0].kind, 1);
 
         let scene_material = Material::pbr();
         let scene = crate::Scene::new();
@@ -744,12 +744,12 @@ mod tests {
         scene
             .add(&Light::point([0.0, 1.0, 0.0], [1.0; 3]))
             .expect("light");
-        assert_eq!(scene_material.shader().object.gpu_lights()[0].kind, 1);
+        assert_eq!(scene_material.shader().object.collect_lights()[0].kind, 1);
 
         // Once nothing holds the light, the shader falls back to its placeholder.
         drop(pass);
         assert_eq!(
-            material.shader().object.gpu_lights(),
+            material.shader().object.collect_lights(),
             [GpuLight::placeholder()]
         );
     }
@@ -757,7 +757,7 @@ mod tests {
     #[test]
     fn dropped_lights_leave_room_under_the_cap() {
         // The list keeps dropped lights until it prunes, and the cap counts live ones.
-        crate::core::lower_test_cap(4);
+        crate::testing::light_cap::lower(4);
         let material = Material::pbr();
         let first = crate::Pass::new("first");
         first
@@ -789,7 +789,7 @@ mod tests {
             fifth,
             Err(crate::PassError::LightCapReached { cap: 4 })
         ));
-        assert_eq!(material.shader().object.gpu_lights().len(), 4);
+        assert_eq!(material.shader().object.collect_lights().len(), 4);
     }
 
     #[test]

@@ -1,4 +1,8 @@
 #[cfg(wasm)]
+use crate::bindings::web::{read_flag, read_given};
+#[cfg(wasm)]
+use crate::error::WebError;
+#[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
 #[cfg_attr(wasm, wasm_bindgen)]
@@ -37,8 +41,7 @@ impl SamplerOptions {
         #[wasm_bindgen(unchecked_optional_param_type = "CompareFunction | null")] compare: Option<
             JsValue,
         >,
-    ) -> Result<SamplerOptions, crate::error::WebError> {
-        use crate::bindings::web::{read_flag, read_given};
+    ) -> Result<SamplerOptions, WebError> {
         let compare = match compare {
             Some(compare) => super::parse_compare(&compare)?,
             None => None,
@@ -68,8 +71,8 @@ impl SamplerOptions {
     pub fn set_repeat_x_js(
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "boolean")] value: JsValue,
-    ) -> Result<(), crate::error::WebError> {
-        self.repeat_x = crate::bindings::web::read_flag(&value, "SamplerOptions.repeat_x")?;
+    ) -> Result<(), WebError> {
+        self.repeat_x = read_flag(&value, "SamplerOptions.repeat_x")?;
         Ok(())
     }
 
@@ -85,8 +88,8 @@ impl SamplerOptions {
     pub fn set_repeat_y_js(
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "boolean")] value: JsValue,
-    ) -> Result<(), crate::error::WebError> {
-        self.repeat_y = crate::bindings::web::read_flag(&value, "SamplerOptions.repeat_y")?;
+    ) -> Result<(), WebError> {
+        self.repeat_y = read_flag(&value, "SamplerOptions.repeat_y")?;
         Ok(())
     }
 
@@ -102,8 +105,8 @@ impl SamplerOptions {
     pub fn set_smooth_js(
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "boolean")] value: JsValue,
-    ) -> Result<(), crate::error::WebError> {
-        self.smooth = crate::bindings::web::read_flag(&value, "SamplerOptions.smooth")?;
+    ) -> Result<(), WebError> {
+        self.smooth = read_flag(&value, "SamplerOptions.smooth")?;
         Ok(())
     }
 
@@ -120,7 +123,7 @@ impl SamplerOptions {
     pub fn set_compare_js(
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "CompareFunction | null | undefined")] value: JsValue,
-    ) -> Result<(), crate::error::WebError> {
+    ) -> Result<(), WebError> {
         self.compare = super::parse_compare(&value)?;
         Ok(())
     }

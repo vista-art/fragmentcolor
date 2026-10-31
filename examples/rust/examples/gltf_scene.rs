@@ -8,11 +8,11 @@
 //! string for a `.gltf` / `.glb` file on disk, or `.glb` bytes fetched
 //! from the network or unwrapped from another container.
 
-use fragmentcolor::{Renderer, Scene, SceneSource, Target};
+use fragmentcolor::{Renderer, Scene, Target};
 
 fn main() {
     let bytes = build_minimal_triangle_glb();
-    let scene = Scene::load(SceneSource::gltf(bytes)).expect("Scene::load");
+    let scene = Scene::load(bytes).expect("Scene::load");
 
     pollster::block_on(async move {
         let renderer = Renderer::new();

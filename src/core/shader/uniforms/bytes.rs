@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::ShaderError;
 
-use super::input::byte_count;
+use super::input::refuse_count;
 
 use super::{ArrayElement, PushEntry, StorageEntry, StructField, StructShape};
 use super::{Uniform, UniformData};
@@ -117,7 +117,7 @@ impl UniformStorage {
             && let Some(StorageEntry { inner, span, .. }) = data.iter().next()
         {
             self.storage_blobs
-                .insert(uniform.name.clone(), zeros(&uniform.name, *span)?);
+                .insert(uniform.name.clone(), allocate_zeros(&uniform.name, *span)?);
 
             // Index fields with their declared offsets relative to the storage blob
             if let Some(inner_shape) = inner.first()
@@ -171,7 +171,7 @@ impl UniformStorage {
             && let Some(PushEntry { inner, span }) = data.iter().next()
         {
             self.push_blobs
-                .insert(uniform.name.clone(), zeros(&uniform.name, *span)?);
+                .insert(uniform.name.clone(), allocate_zeros(&uniform.name, *span)?);
 
             // Index fields for direct access if it's a struct
             if let Some(inner_shape) = inner.first()
@@ -516,7 +516,7 @@ fn reserve(bytes: &mut Vec<u8>, name: &str, size: usize) -> Result<(), ShaderErr
 
 /// `span` zero bytes for the root `name`. A reservation probes for the memory first,
 /// and `vec!` then asks the allocator for zeroed pages, which stay untouched until written.
-fn zeros(name: &str, span: u32) -> Result<Vec<u8>, ShaderError> {
+fn allocate_zeros(name: &str, span: u32) -> Result<Vec<u8>, ShaderError> {
     reserve(&mut Vec::new(), name, span as usize)?;
     Ok(vec![0u8; span as usize])
 }
@@ -524,7 +524,7 @@ fn zeros(name: &str, span: u32) -> Result<Vec<u8>, ShaderError> {
 /// Copies `bytes` over `blob`, refusing any other length.
 fn replace_blob(root: &str, blob: &mut [u8], bytes: &[u8]) -> Result<(), ShaderError> {
     if bytes.len() != blob.len() {
-        return Err(byte_count(root, blob.len(), bytes.len()));
+        return Err(refuse_count(root, blob.len(), bytes.len()));
     }
     blob.copy_from_slice(bytes);
     Ok(())

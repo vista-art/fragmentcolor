@@ -2,6 +2,7 @@
 
 use crate::bindings::python::{PyUnsigned, read_bytes, read_list, read_unsigned};
 use crate::texture::{Mipmap, Texture, TextureError, TextureId, TextureRegion};
+use crate::texture::{measure_texel, read_pixels};
 use crate::{CompareFunction, SamplerOptions, TextureFormat};
 use lsp_doc::lsp_doc;
 use pyo3::exceptions::PyTypeError;
@@ -103,7 +104,7 @@ impl PyTextureSource<'_> {
             PyTextureSource::Tuple(tuple) => TextureData::Bytes(read_bytes(tuple.as_any(), label)?),
             PyTextureSource::Source(source) => TextureData::from(source.as_str()),
             PyTextureSource::Path(path) => TextureData::Path(path),
-            PyTextureSource::Array(array) => return Ok(ndarray_input(&array, None, None)?),
+            PyTextureSource::Array(array) => return Ok(read_ndarray(&array, None, None)?),
             PyTextureSource::Mipmap(chain) => TextureData::Prepared(chain),
         };
         Ok(data.into())
@@ -112,7 +113,7 @@ impl PyTextureSource<'_> {
 
 /// The texture input for a `uint8` array, which brings its own size.
 /// A `size` keyword must match it, and its channels must fit the `format`, `Rgba` when unset.
-pub(crate) fn ndarray_input(
+pub(crate) fn read_ndarray(
     array: &numpy::PyReadonlyArrayDyn<'_, u8>,
     size: Option<crate::Size>,
     format: Option<TextureFormat>,
@@ -402,29 +403,35 @@ impl Texture {
     #[pyo3(name = "get_image")]
     #[lsp_doc("docs/api/texture/texture/get_image.md")]
     pub fn get_image_py(&self) -> pyo3::PyResult<Py<numpy::PyArrayDyn<u8>>> {
-        use numpy::PyArrayMethods;
-        // One snapshot reads the pixels and their shape, even across a resize.
-        let object = self.object();
-        let data = pollster::block_on(crate::texture::read_pixels(&self.context, &object))?;
-        let extent = object.size;
-        let bpp = crate::texture::texel_size(object.format)? as usize;
-        let (width, height) = (extent.width as usize, extent.height as usize);
-        let layers = extent.depth_or_array_layers.max(1) as usize;
-        let shape = match layers {
-            1 => vec![height, width, bpp],
-            _ => vec![layers, height, width, bpp],
-        };
-        let expected: usize = shape.iter().product();
-        if data.len() != expected {
-            return Err(crate::error::PyFragmentColorError::new_err(format!(
-                "Unexpected image data length: expected {expected}, got {}",
-                data.len()
-            )));
-        }
-        Python::attach(|py| {
-            // The readback is row-major, so it takes the image shape without a copy.
-            let image = numpy::PyArray1::from_vec(py, data).reshape(shape)?;
-            Ok(image.unbind())
-        })
+        read_array(self)
     }
+}
+
+/// The mip-0 pixels of `texture` as a uint8 ndarray shaped (height, width, bytes per pixel),
+/// with a leading layer axis for array textures.
+fn read_array(texture: &Texture) -> PyResult<Py<numpy::PyArrayDyn<u8>>> {
+    use numpy::PyArrayMethods;
+    // One snapshot reads the pixels and their shape, even across a resize.
+    let object = texture.object();
+    let data = pollster::block_on(read_pixels(&texture.context, &object))?;
+    let extent = object.size;
+    let texel = measure_texel(object.format)? as usize;
+    let (width, height) = (extent.width as usize, extent.height as usize);
+    let layers = extent.depth_or_array_layers.max(1) as usize;
+    let shape = match layers {
+        1 => vec![height, width, texel],
+        _ => vec![layers, height, width, texel],
+    };
+    let expected: usize = shape.iter().product();
+    if data.len() != expected {
+        return Err(crate::error::PyFragmentColorError::new_err(format!(
+            "Unexpected image data length: expected {expected}, got {}",
+            data.len()
+        )));
+    }
+    Python::attach(|py| {
+        // The readback is row-major, so it takes the image shape without a copy.
+        let image = numpy::PyArray1::from_vec(py, data).reshape(shape)?;
+        Ok(image.unbind())
+    })
 }

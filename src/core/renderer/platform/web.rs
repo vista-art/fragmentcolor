@@ -2,10 +2,12 @@
 
 use crate::bindings::web::{describe, read_text, read_unsigned};
 use crate::error::{ErrorClass, WebError, defer};
-use crate::texture::{js_to_texture_bytes, read_format, read_texture_input, read_usage};
+use crate::texture::{
+    js_to_texture_bytes, js_to_texture_id, read_format, read_texture_input, read_usage,
+};
 use crate::{
-    LogLevel, Mesh, Pass, PassObject, Renderable, Renderer, Scene, Shader, Size, Texture,
-    TextureData, TextureTarget, targets::CanvasTarget,
+    InitializationError, LogLevel, Mesh, Pass, PassObject, Renderable, Renderer, Scene, Shader,
+    Size, Texture, TextureData, TextureInput, TextureOptions, TextureTarget, targets::CanvasTarget,
 };
 use js_sys::Array;
 use lsp_doc::lsp_doc;
@@ -55,6 +57,69 @@ impl From<web_sys::OffscreenCanvas> for Canvas {
     }
 }
 
+/// An `HTMLCanvasElement` or an `OffscreenCanvas`, and a `TypeError` for any other value.
+impl TryFrom<JsValue> for Canvas {
+    type Error = WebError;
+
+    fn try_from(canvas: JsValue) -> Result<Self, Self::Error> {
+        if let Some(canvas) = canvas.dyn_ref::<web_sys::HtmlCanvasElement>() {
+            Ok(Canvas::Html(canvas.clone()))
+        } else if let Ok(canvas) = canvas.dyn_into::<web_sys::OffscreenCanvas>() {
+            Ok(Canvas::Offscreen(canvas))
+        } else {
+            Err(WebError::type_error("Failed to convert input to Canvas"))
+        }
+    }
+}
+
+impl Renderer {
+    /// A window target that draws into `canvas`, at the canvas's size.
+    async fn open_canvas(&self, canvas: Canvas) -> Result<CanvasTarget, InitializationError> {
+        let size = canvas.size();
+        let (context, surface, config) = match canvas {
+            Canvas::Html(canvas) => {
+                let target = wgpu::SurfaceTarget::Canvas(canvas);
+                self.create_surface(target, size).await?
+            }
+            Canvas::Offscreen(canvas) => {
+                let target = wgpu::SurfaceTarget::OffscreenCanvas(canvas);
+                self.create_surface(target, size).await?
+            }
+        };
+
+        Ok(CanvasTarget::new(context, surface, config))
+    }
+}
+
+/// The input `createStorageTexture` passes on: its size, format, usage and seed bytes.
+/// An `ImageData` or canvas as `data` gets the checks and the BGRA swap `createTexture` gives it.
+fn read_storage_input(
+    size: &JsValue,
+    format: &JsValue,
+    data: Option<JsValue>,
+    usage: Option<JsValue>,
+) -> Result<TextureInput, WebError> {
+    let given = |value: &JsValue| !value.is_undefined() && !value.is_null();
+    let size: Size = size.try_into()?;
+    let format = read_format(format)?;
+    let usage = usage.filter(given).as_ref().map(read_usage).transpose()?;
+    let data = match data.filter(given) {
+        Some(bytes) => {
+            let label = "Renderer.createStorageTexture: data";
+            let (bytes, _) = js_to_texture_bytes(&bytes, Some(size), format.to_wgpu(), label)?;
+            TextureData::Bytes(bytes)
+        }
+        None => TextureData::Empty,
+    };
+    let options = TextureOptions {
+        size: Some(size),
+        format,
+        usage,
+        ..Default::default()
+    };
+    Ok(TextureInput { data, options })
+}
+
 #[wasm_bindgen]
 impl Renderer {
     #[wasm_bindgen(constructor)]
@@ -75,27 +140,7 @@ impl Renderer {
     #[wasm_bindgen(js_name = "createTarget")]
     #[lsp_doc("docs/api/core/renderer/create_target.md")]
     pub async fn create_target_js(&self, canvas: JsValue) -> Result<CanvasTarget, WebError> {
-        let canvas = if let Some(canvas) = canvas.dyn_ref::<web_sys::HtmlCanvasElement>() {
-            Canvas::Html(canvas.clone())
-        } else if let Ok(canvas) = canvas.dyn_into::<web_sys::OffscreenCanvas>() {
-            Canvas::Offscreen(canvas)
-        } else {
-            return Err(WebError::type_error("Failed to convert input to Canvas"));
-        };
-
-        let size = canvas.size();
-        let (context, surface, config) = match canvas {
-            Canvas::Html(canvas) => {
-                let target = wgpu::SurfaceTarget::Canvas(canvas);
-                self.create_surface(target, size).await?
-            }
-            Canvas::Offscreen(canvas) => {
-                let target = wgpu::SurfaceTarget::OffscreenCanvas(canvas);
-                self.create_surface(target, size).await?
-            }
-        };
-
-        Ok(CanvasTarget::new(context, surface, config))
+        Ok(self.open_canvas(Canvas::try_from(canvas)?).await?)
     }
 
     /// Create a Texture from bytes, a URL, a CSS selector, an image, an
@@ -119,7 +164,7 @@ impl Renderer {
     pub async fn create_texture_target_js(
         &self,
         size: &JsValue,
-    ) -> Result<crate::TextureTarget, WebError> {
+    ) -> Result<TextureTarget, WebError> {
         let size: Size = size.try_into()?;
         let target = self.create_texture_target(size).await?;
         Ok(target)
@@ -138,26 +183,8 @@ impl Renderer {
         #[wasm_bindgen(unchecked_optional_param_type = "TextureUsage | number")] usage: Option<
             JsValue,
         >,
-    ) -> Result<crate::texture::Texture, WebError> {
-        let given = |value: &JsValue| !value.is_undefined() && !value.is_null();
-        let size: Size = size.try_into()?;
-        let format = read_format(format)?;
-        let usage = usage.filter(given).as_ref().map(read_usage).transpose()?;
-        let data = match data.filter(given) {
-            Some(bytes) => {
-                let label = "Renderer.createStorageTexture: data";
-                let (bytes, _) = js_to_texture_bytes(&bytes, Some(size), format.to_wgpu(), label)?;
-                TextureData::Bytes(bytes)
-            }
-            None => TextureData::Empty,
-        };
-        let options = crate::TextureOptions {
-            size: Some(size),
-            format,
-            usage,
-            ..Default::default()
-        };
-        let input = crate::TextureInput { data, options };
+    ) -> Result<Texture, WebError> {
+        let input = read_storage_input(size, format, data, usage)?;
         Ok(self.create_storage_texture(input).await?)
     }
 
@@ -171,7 +198,7 @@ impl Renderer {
     #[wasm_bindgen(js_name = "unregisterTexture")]
     #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
     pub fn unregister_texture_js(&self, texture_id: &JsValue) -> Result<(), WebError> {
-        let id = crate::texture::js_to_texture_id(texture_id)?;
+        let id = js_to_texture_id(texture_id)?;
         Ok(self.unregister_texture(id)?)
     }
 
@@ -182,7 +209,7 @@ impl Renderer {
     pub fn read_texture_js(&self, texture_id: &JsValue) -> js_sys::Promise {
         let start = self.start();
         let renderer = self.share();
-        let id = crate::texture::js_to_texture_id(texture_id);
+        let id = js_to_texture_id(texture_id);
         defer(async move {
             let id = id?;
             let bytes = renderer.read_texture_from(id, start).await?;

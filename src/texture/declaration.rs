@@ -26,19 +26,6 @@ impl TextureDim {
     }
 }
 
-#[cfg(test)]
-impl TextureDim {
-    /// The naga `ImageDimension` this `TextureDim` stands for.
-    pub(crate) fn to_naga(self) -> naga::ImageDimension {
-        match self {
-            TextureDim::D1 => naga::ImageDimension::D1,
-            TextureDim::D2 => naga::ImageDimension::D2,
-            TextureDim::D3 => naga::ImageDimension::D3,
-            TextureDim::Cube => naga::ImageDimension::Cube,
-        }
-    }
-}
-
 /// Texel scalar kind for sampled textures. Mirrors the relevant `naga::ScalarKind`
 /// variants. Naga's abstract numeric variants are folded into `Float` since they
 /// cannot reach the runtime backends.
@@ -63,19 +50,6 @@ impl TextureScalarKind {
             naga::ScalarKind::AbstractInt | naga::ScalarKind::AbstractFloat => {
                 TextureScalarKind::Float
             }
-        }
-    }
-}
-
-#[cfg(test)]
-impl TextureScalarKind {
-    /// The naga `ScalarKind` this `TextureScalarKind` stands for.
-    pub(crate) fn to_naga(self) -> naga::ScalarKind {
-        match self {
-            TextureScalarKind::Sint => naga::ScalarKind::Sint,
-            TextureScalarKind::Uint => naga::ScalarKind::Uint,
-            TextureScalarKind::Float => naga::ScalarKind::Float,
-            TextureScalarKind::Bool => naga::ScalarKind::Bool,
         }
     }
 }
@@ -186,57 +160,6 @@ impl TextureStorageFormat {
     }
 }
 
-#[cfg(test)]
-impl TextureStorageFormat {
-    /// The naga `StorageFormat` this `TextureStorageFormat` stands for.
-    pub(crate) fn to_naga(self) -> naga::StorageFormat {
-        use naga::StorageFormat as F;
-        match self {
-            TextureStorageFormat::R8Unorm => F::R8Unorm,
-            TextureStorageFormat::R8Snorm => F::R8Snorm,
-            TextureStorageFormat::R8Uint => F::R8Uint,
-            TextureStorageFormat::R8Sint => F::R8Sint,
-            TextureStorageFormat::R16Uint => F::R16Uint,
-            TextureStorageFormat::R16Sint => F::R16Sint,
-            TextureStorageFormat::R16Float => F::R16Float,
-            TextureStorageFormat::Rg8Unorm => F::Rg8Unorm,
-            TextureStorageFormat::Rg8Snorm => F::Rg8Snorm,
-            TextureStorageFormat::Rg8Uint => F::Rg8Uint,
-            TextureStorageFormat::Rg8Sint => F::Rg8Sint,
-            TextureStorageFormat::R32Uint => F::R32Uint,
-            TextureStorageFormat::R32Sint => F::R32Sint,
-            TextureStorageFormat::R32Float => F::R32Float,
-            TextureStorageFormat::Rg16Uint => F::Rg16Uint,
-            TextureStorageFormat::Rg16Sint => F::Rg16Sint,
-            TextureStorageFormat::Rg16Float => F::Rg16Float,
-            TextureStorageFormat::Rgba8Unorm => F::Rgba8Unorm,
-            TextureStorageFormat::Rgba8Snorm => F::Rgba8Snorm,
-            TextureStorageFormat::Rgba8Uint => F::Rgba8Uint,
-            TextureStorageFormat::Rgba8Sint => F::Rgba8Sint,
-            TextureStorageFormat::Bgra8Unorm => F::Bgra8Unorm,
-            TextureStorageFormat::Rgb10a2Uint => F::Rgb10a2Uint,
-            TextureStorageFormat::Rgb10a2Unorm => F::Rgb10a2Unorm,
-            TextureStorageFormat::Rg11b10Ufloat => F::Rg11b10Ufloat,
-            TextureStorageFormat::R64Uint => F::R64Uint,
-            TextureStorageFormat::Rg32Uint => F::Rg32Uint,
-            TextureStorageFormat::Rg32Sint => F::Rg32Sint,
-            TextureStorageFormat::Rg32Float => F::Rg32Float,
-            TextureStorageFormat::Rgba16Uint => F::Rgba16Uint,
-            TextureStorageFormat::Rgba16Sint => F::Rgba16Sint,
-            TextureStorageFormat::Rgba16Float => F::Rgba16Float,
-            TextureStorageFormat::Rgba32Uint => F::Rgba32Uint,
-            TextureStorageFormat::Rgba32Sint => F::Rgba32Sint,
-            TextureStorageFormat::Rgba32Float => F::Rgba32Float,
-            TextureStorageFormat::R16Unorm => F::R16Unorm,
-            TextureStorageFormat::R16Snorm => F::R16Snorm,
-            TextureStorageFormat::Rg16Unorm => F::Rg16Unorm,
-            TextureStorageFormat::Rg16Snorm => F::Rg16Snorm,
-            TextureStorageFormat::Rgba16Unorm => F::Rgba16Unorm,
-            TextureStorageFormat::Rgba16Snorm => F::Rgba16Snorm,
-        }
-    }
-}
-
 impl TextureStorageFormat {
     /// The wgpu `TextureFormat` this `TextureStorageFormat` stands for.
     pub(crate) fn to_wgpu(self) -> wgpu::TextureFormat {
@@ -309,25 +232,6 @@ impl TextureStorageAccess {
     }
 }
 
-#[cfg(test)]
-impl TextureStorageAccess {
-    /// The naga `StorageAccess` this `TextureStorageAccess` stands for.
-    pub(crate) fn to_naga(self) -> naga::StorageAccess {
-        use naga::StorageAccess as SA;
-        let mut out = SA::empty();
-        if self.load {
-            out |= SA::LOAD;
-        }
-        if self.store {
-            out |= SA::STORE;
-        }
-        if self.atomic {
-            out |= SA::ATOMIC;
-        }
-        out
-    }
-}
-
 /// Image sub-class. Mirrors `naga::ImageClass`.
 #[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Enum))]
@@ -366,27 +270,118 @@ impl TextureClass {
 }
 
 #[cfg(test)]
-impl TextureClass {
-    /// The naga `ImageClass` this `TextureClass` stands for.
-    pub(crate) fn to_naga(self) -> naga::ImageClass {
-        match self {
-            TextureClass::Sampled { kind, multi } => naga::ImageClass::Sampled {
-                kind: kind.to_naga(),
-                multi,
-            },
-            TextureClass::Storage { format, access } => naga::ImageClass::Storage {
-                format: format.to_naga(),
-                access: access.to_naga(),
-            },
-            TextureClass::Depth { multi } => naga::ImageClass::Depth { multi },
-            TextureClass::External() => naga::ImageClass::External,
-        }
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
+
+    impl TextureDim {
+        /// The naga `ImageDimension` this `TextureDim` stands for.
+        fn to_naga(self) -> naga::ImageDimension {
+            match self {
+                TextureDim::D1 => naga::ImageDimension::D1,
+                TextureDim::D2 => naga::ImageDimension::D2,
+                TextureDim::D3 => naga::ImageDimension::D3,
+                TextureDim::Cube => naga::ImageDimension::Cube,
+            }
+        }
+    }
+
+    impl TextureScalarKind {
+        /// The naga `ScalarKind` this `TextureScalarKind` stands for.
+        fn to_naga(self) -> naga::ScalarKind {
+            match self {
+                TextureScalarKind::Sint => naga::ScalarKind::Sint,
+                TextureScalarKind::Uint => naga::ScalarKind::Uint,
+                TextureScalarKind::Float => naga::ScalarKind::Float,
+                TextureScalarKind::Bool => naga::ScalarKind::Bool,
+            }
+        }
+    }
+
+    impl TextureStorageFormat {
+        /// The naga `StorageFormat` this `TextureStorageFormat` stands for.
+        fn to_naga(self) -> naga::StorageFormat {
+            use naga::StorageFormat as F;
+            match self {
+                TextureStorageFormat::R8Unorm => F::R8Unorm,
+                TextureStorageFormat::R8Snorm => F::R8Snorm,
+                TextureStorageFormat::R8Uint => F::R8Uint,
+                TextureStorageFormat::R8Sint => F::R8Sint,
+                TextureStorageFormat::R16Uint => F::R16Uint,
+                TextureStorageFormat::R16Sint => F::R16Sint,
+                TextureStorageFormat::R16Float => F::R16Float,
+                TextureStorageFormat::Rg8Unorm => F::Rg8Unorm,
+                TextureStorageFormat::Rg8Snorm => F::Rg8Snorm,
+                TextureStorageFormat::Rg8Uint => F::Rg8Uint,
+                TextureStorageFormat::Rg8Sint => F::Rg8Sint,
+                TextureStorageFormat::R32Uint => F::R32Uint,
+                TextureStorageFormat::R32Sint => F::R32Sint,
+                TextureStorageFormat::R32Float => F::R32Float,
+                TextureStorageFormat::Rg16Uint => F::Rg16Uint,
+                TextureStorageFormat::Rg16Sint => F::Rg16Sint,
+                TextureStorageFormat::Rg16Float => F::Rg16Float,
+                TextureStorageFormat::Rgba8Unorm => F::Rgba8Unorm,
+                TextureStorageFormat::Rgba8Snorm => F::Rgba8Snorm,
+                TextureStorageFormat::Rgba8Uint => F::Rgba8Uint,
+                TextureStorageFormat::Rgba8Sint => F::Rgba8Sint,
+                TextureStorageFormat::Bgra8Unorm => F::Bgra8Unorm,
+                TextureStorageFormat::Rgb10a2Uint => F::Rgb10a2Uint,
+                TextureStorageFormat::Rgb10a2Unorm => F::Rgb10a2Unorm,
+                TextureStorageFormat::Rg11b10Ufloat => F::Rg11b10Ufloat,
+                TextureStorageFormat::R64Uint => F::R64Uint,
+                TextureStorageFormat::Rg32Uint => F::Rg32Uint,
+                TextureStorageFormat::Rg32Sint => F::Rg32Sint,
+                TextureStorageFormat::Rg32Float => F::Rg32Float,
+                TextureStorageFormat::Rgba16Uint => F::Rgba16Uint,
+                TextureStorageFormat::Rgba16Sint => F::Rgba16Sint,
+                TextureStorageFormat::Rgba16Float => F::Rgba16Float,
+                TextureStorageFormat::Rgba32Uint => F::Rgba32Uint,
+                TextureStorageFormat::Rgba32Sint => F::Rgba32Sint,
+                TextureStorageFormat::Rgba32Float => F::Rgba32Float,
+                TextureStorageFormat::R16Unorm => F::R16Unorm,
+                TextureStorageFormat::R16Snorm => F::R16Snorm,
+                TextureStorageFormat::Rg16Unorm => F::Rg16Unorm,
+                TextureStorageFormat::Rg16Snorm => F::Rg16Snorm,
+                TextureStorageFormat::Rgba16Unorm => F::Rgba16Unorm,
+                TextureStorageFormat::Rgba16Snorm => F::Rgba16Snorm,
+            }
+        }
+    }
+
+    impl TextureStorageAccess {
+        /// The naga `StorageAccess` this `TextureStorageAccess` stands for.
+        fn to_naga(self) -> naga::StorageAccess {
+            use naga::StorageAccess as SA;
+            let mut out = SA::empty();
+            if self.load {
+                out |= SA::LOAD;
+            }
+            if self.store {
+                out |= SA::STORE;
+            }
+            if self.atomic {
+                out |= SA::ATOMIC;
+            }
+            out
+        }
+    }
+
+    impl TextureClass {
+        /// The naga `ImageClass` this `TextureClass` stands for.
+        fn to_naga(self) -> naga::ImageClass {
+            match self {
+                TextureClass::Sampled { kind, multi } => naga::ImageClass::Sampled {
+                    kind: kind.to_naga(),
+                    multi,
+                },
+                TextureClass::Storage { format, access } => naga::ImageClass::Storage {
+                    format: format.to_naga(),
+                    access: access.to_naga(),
+                },
+                TextureClass::Depth { multi } => naga::ImageClass::Depth { multi },
+                TextureClass::External() => naga::ImageClass::External,
+            }
+        }
+    }
 
     #[test]
     fn texture_dim_round_trip() {

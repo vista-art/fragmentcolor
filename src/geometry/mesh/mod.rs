@@ -234,13 +234,13 @@ pub(crate) struct MeshObject {
 #[derive(Debug, Default)]
 struct Packed {
     /// The unique vertices in the mesh layout, or every vertex in order with `set_indices`.
-    verts: Vec<u8>,
-    insts: Vec<u8>,
+    vertices: Vec<u8>,
+    instances: Vec<u8>,
     /// The checked list the mesh draws: derived from the vertices, or the one `set_indices` gave.
     indices: Vec<u32>,
-    /// The instances `insts` holds, those without properties included.
+    /// The instances `instances` holds, those without properties included.
     rows: usize,
-    /// The layouts `verts` and `insts` follow. A repack while an upload or a kept layout
+    /// The layouts `vertices` and `instances` follow. A repack while an upload or a kept layout
     /// holds them makes new ones, so `Arc::ptr_eq` tells two packs apart.
     schemas: Arc<Schemas>,
     /// The `vertex_changes` and `instance_changes` the bytes come from, `None` until packed.
@@ -417,16 +417,16 @@ impl MeshObject {
         // Grow the local-space AABB before stashing the vertices. 2D positions
         // contribute z = 0, which is the same value the vertex shader sees
         // (the `position` slot zero-pads the missing components).
-        let mut lo = self.aabb_min.write();
-        let mut hi = self.aabb_max.write();
+        let mut minimum = self.aabb_min.write();
+        let mut maximum = self.aabb_max.write();
         for vertex in vertices.iter() {
             let [x, y, z, _] = vertex.position.0.to_array();
             let point = glam::Vec3::new(x, y, z);
-            *lo = lo.min(point);
-            *hi = hi.max(point);
+            *minimum = minimum.min(point);
+            *maximum = maximum.max(point);
         }
-        drop(lo);
-        drop(hi);
+        drop(minimum);
+        drop(maximum);
         let mut verts = self.verts.write();
         verts.extend(vertices);
         #[cfg(test)]
@@ -642,7 +642,7 @@ impl MeshObject {
         if schema.is_some() || !insts.is_empty() {
             return false;
         }
-        *schema = Some(model_schema());
+        *schema = Some(build_columns());
         true
     }
 
@@ -650,13 +650,6 @@ impl MeshObject {
     /// once that shader no longer holds the mesh.
     pub(crate) fn detach(&self, shader: u64) {
         self.required.write().remove(&shader);
-    }
-
-    /// What the shader `shader` reads, while it holds the mesh.
-    #[cfg(test)]
-    pub(crate) fn reads_of(&self, shader: u64) -> Option<AttributeTypes> {
-        let required = self.required.read();
-        required.get(&shader).map(|attached| attached.reads.clone())
     }
 
     /// The attributes some attached shader reads, by stream, with their formats.
@@ -758,7 +751,7 @@ impl MeshObject {
                 list
             }
         };
-        packed.verts = bytes;
+        packed.vertices = bytes;
         packed.indices = indices;
         Arc::make_mut(&mut packed.schemas).vertex = schema.clone();
         Ok(())
@@ -786,7 +779,7 @@ impl MeshObject {
             let layout = schema.as_ref().ok_or(MeshError::NoInstanceSchema)?;
             pack_instance(&mut bytes, index, instance, layout, required)?;
         }
-        packed.insts = bytes;
+        packed.instances = bytes;
         packed.rows = insts.len();
         Arc::make_mut(&mut packed.schemas).instance = schema.clone();
         Ok(())
@@ -852,7 +845,7 @@ impl MeshObject {
         let (device, queue) = (&context.device, &context.queue);
 
         let packed = self.packed.read();
-        let (pv, pi, idx) = (&packed.verts, &packed.insts, &packed.indices);
+        let (vertices, instances, indices) = (&packed.vertices, &packed.instances, &packed.indices);
 
         // The rows come from the pack that made the bytes, so instances without
         // properties count, and a list that shrinks into the old buffer draws its own length.
@@ -860,15 +853,15 @@ impl MeshObject {
             0 => None,
             rows => Some(count(rows)?),
         };
-        let index_count = count(idx.len())?;
+        let index_count = count(indices.len())?;
 
         // Checked on every upload: a failed one leaves the streams dirty,
         // so data that stays too large fails again instead of drawing old buffers.
         let limit = context.limits.max_buffer_size;
         let sizes = [
-            ("the mesh's vertex buffer", pv.len() as u64),
+            ("the mesh's vertex buffer", vertices.len() as u64),
             ("the mesh's index buffer", u64::from(index_count) * 4),
-            ("the mesh's instance buffer", pi.len() as u64),
+            ("the mesh's instance buffer", instances.len() as u64),
         ];
         for (buffer, size) in sizes {
             check_limit(buffer, "max_buffer_size", size, limit)?;
@@ -878,19 +871,23 @@ impl MeshObject {
         // another device can't draw here, so they give way to new ones.
         let mut need_new = match gpu.as_ref() {
             None => true,
-            Some(g) => g.owner != context.id || g.index_count != index_count || repacked.vertices,
+            Some(streams) => {
+                streams.owner != context.id
+                    || streams.index_count != index_count
+                    || repacked.vertices
+            }
         };
 
-        if let Some(g) = gpu.as_ref() {
+        if let Some(streams) = gpu.as_ref() {
             // Instance buffer presence/size changes force (re)creation
-            let had_inst = g.instance_buffer.is_some();
-            let want_inst = !pi.is_empty();
-            if had_inst != want_inst {
+            let had_instances = streams.instance_buffer.is_some();
+            let wants_instances = !instances.is_empty();
+            if had_instances != wants_instances {
                 need_new = true;
-            } else if want_inst {
-                let current_cap = g.instance_buffer_capacity;
-                let needed = pi.len() as u64;
-                if needed > current_cap {
+            } else if wants_instances {
+                let capacity = streams.instance_buffer_capacity;
+                let needed = instances.len() as u64;
+                if needed > capacity {
                     need_new = true;
                 }
             }
@@ -899,29 +896,29 @@ impl MeshObject {
         if need_new {
             let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Mesh Vertex Buffer"),
-                size: pv.len() as u64,
+                size: vertices.len() as u64,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
             let index_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Mesh Index Buffer"),
-                size: (idx.len() as u64) * 4,
+                size: (indices.len() as u64) * 4,
                 usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
-            queue.write_buffer(&vertex_buffer, 0, pv);
-            queue.write_buffer(&index_buffer, 0, bytemuck::cast_slice(idx));
+            queue.write_buffer(&vertex_buffer, 0, vertices);
+            queue.write_buffer(&index_buffer, 0, bytemuck::cast_slice(indices));
 
-            let (instance_buffer, instance_bytes) = if !pi.is_empty() {
-                let needed = pi.len() as u64;
-                let buf = device.create_buffer(&wgpu::BufferDescriptor {
+            let (instance_buffer, instance_bytes) = if !instances.is_empty() {
+                let needed = instances.len() as u64;
+                let buffer = device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("Mesh Instance Buffer"),
                     size: needed,
                     usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                     mapped_at_creation: false,
                 });
-                queue.write_buffer(&buf, 0, pi);
-                (Some(buf), needed)
+                queue.write_buffer(&buffer, 0, instances);
+                (Some(buffer), needed)
             } else {
                 (None, 0)
             };
@@ -935,25 +932,27 @@ impl MeshObject {
                 instance_buffer_capacity: instance_bytes,
             });
         } else if repacked.instances
-            && let Some(buffer) = gpu.as_ref().and_then(|g| g.instance_buffer.as_ref())
+            && let Some(buffer) = gpu
+                .as_ref()
+                .and_then(|streams| streams.instance_buffer.as_ref())
         {
             // The vertices didn't change, or the buffers would be new. The instances
             // fit the buffer they have, as the capacity check above found.
-            queue.write_buffer(buffer, 0, pi);
+            queue.write_buffer(buffer, 0, instances);
         }
 
-        let Some(g) = gpu.as_ref() else {
+        let Some(streams) = gpu.as_ref() else {
             return Err(MeshError::NoGpuStreams.into());
         };
         let vertex_buffers = VertexBuffers {
-            vertex_buffer: g.vertex_buffer.clone(),
-            index_buffer: g.index_buffer.clone(),
-            instance_buffer: g.instance_buffer.clone(),
+            vertex_buffer: streams.vertex_buffer.clone(),
+            index_buffer: streams.index_buffer.clone(),
+            instance_buffer: streams.instance_buffer.clone(),
         };
 
         let override_count = *self.override_instances.read();
         let draw_counts = DrawCounts {
-            index_count: g.index_count,
+            index_count: streams.index_count,
             instance_count: override_count.or(instance_rows).unwrap_or(1),
             instance_rows,
         };
@@ -1034,7 +1033,7 @@ impl MeshObject {
 const MODEL_COLUMNS: [&str; 4] = ["model_0", "model_1", "model_2", "model_3"];
 
 /// The instance layout of a `Model`: the four `vec4<f32>` columns of its transform.
-pub(crate) fn model_schema() -> VertexSchema {
+pub(crate) fn build_columns() -> VertexSchema {
     let fields = MODEL_COLUMNS
         .into_iter()
         .map(|name| Field::new(name, wgpu::VertexFormat::Float32x4))
@@ -1244,6 +1243,15 @@ fn count(length: usize) -> Result<u32, MeshError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::device::request_small_device;
+
+    impl MeshObject {
+        /// What the shader `shader` reads, while it holds the mesh.
+        pub(crate) fn reads_of(&self, shader: u64) -> Option<AttributeTypes> {
+            let required = self.required.read();
+            required.get(&shader).map(|attached| attached.reads.clone())
+        }
+    }
 
     /// The streams the next upload packs again.
     fn stale(mesh: &Mesh) -> Repacked {
@@ -1272,7 +1280,7 @@ mod tests {
                 .to_vec(),
         );
 
-        assert!(model_schema().is_model());
+        assert!(build_columns().is_model());
         assert!(floats(&MODEL_COLUMNS).is_model());
         assert!(!floats(&MODEL_COLUMNS[..3]).is_model(), "three columns");
         assert!(!floats(&["model_0", "model_1", "model_2", "tint"]).is_model());
@@ -1363,7 +1371,7 @@ mod tests {
     #[test]
     fn uploads_stay_within_the_buffer_limit() {
         pollster::block_on(async move {
-            let (device, queue) = crate::core::renderer::device::request_small_device(65536).await;
+            let (device, queue) = request_small_device(65536).await.expect("device");
             let context = RenderContext::new(device, queue);
             let corners = (0..8193).map(|index| [index as f32, 0.0]);
             let vertices = Mesh::new();
@@ -1983,7 +1991,7 @@ mod tests {
             let mesh = Mesh::new();
             mesh.add_vertices([[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]);
             let mut read = AttributeTypes::default();
-            for field in model_schema().fields {
+            for field in build_columns().fields {
                 read.instance.insert(field.name, field.fmt);
             }
             let binding = Binding {
@@ -2048,7 +2056,7 @@ mod tests {
         let field = |mesh: &Mesh| -> (wgpu::VertexFormat, Vec<u8>, Vec<u8>) {
             mesh.object.ensure_packed().expect("pack");
             let schema = mesh.object.vertex_schema.read().clone().expect("schema");
-            let bytes = mesh.object.packed.read().verts.clone();
+            let bytes = mesh.object.packed.read().vertices.clone();
             let stride = schema.stride as usize;
             (
                 schema.fields[1].fmt,
@@ -2155,7 +2163,7 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
         // Force packing and inspect internals
         mesh.object.ensure_packed().expect("pack");
         let stride = mesh.object.vertex_schema.read().as_ref().unwrap().stride;
-        let pv = mesh.object.packed.read().verts.clone();
+        let pv = mesh.object.packed.read().vertices.clone();
         let idx = mesh.object.packed.read().indices.clone();
         // Unique verts should be a, b, c => 3 * stride bytes
         assert_eq!(pv.len() as u64, 3 * stride);
@@ -2237,7 +2245,7 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
 
         mesh.object.ensure_packed().expect("pack");
         let stride = mesh.object.vertex_schema.read().as_ref().unwrap().stride;
-        let pv = mesh.object.packed.read().verts.clone();
+        let pv = mesh.object.packed.read().vertices.clone();
         let idx = mesh.object.packed.read().indices.clone();
         // No dedup: 3 vertices worth of bytes, and indices preserved verbatim.
         assert_eq!(pv.len() as u64, 3 * stride);
@@ -2256,13 +2264,13 @@ fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
         mesh.set_indices([0u32, 1, 2]);
         mesh.object.ensure_packed().expect("pack override");
         let stride = mesh.object.vertex_schema.read().as_ref().unwrap().stride;
-        assert_eq!(mesh.object.packed.read().verts.len() as u64, 3 * stride);
+        assert_eq!(mesh.object.packed.read().vertices.len() as u64, 3 * stride);
         assert_eq!(mesh.object.packed.read().indices, vec![0, 1, 2]);
 
         // Clear and re-pack: dedup should collapse `a` and produce derived indices.
         mesh.clear_indices();
         mesh.object.ensure_packed().expect("pack auto");
-        assert_eq!(mesh.object.packed.read().verts.len() as u64, 2 * stride);
+        assert_eq!(mesh.object.packed.read().vertices.len() as u64, 2 * stride);
         assert_eq!(mesh.object.packed.read().indices, vec![0, 1, 0]);
     }
 

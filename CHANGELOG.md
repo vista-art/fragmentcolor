@@ -303,6 +303,9 @@ A patch release that checks shaders, meshes, textures and passes against the dev
 - `Color` parses CSS text through `FromStr`, as in `"#ff8000".parse::<Color>()`, and `Color::from_css` and `Color::from_hex` are gone. A parse error is `ColorError::Css { text, reason }`, where `from_css` returned csscolorparser's `ParseColorError`, so the public API names no csscolorparser type. `ColorError` also gains `NotFinite { channel, value }`, the error inside `PassError::Color` for a clear color channel that is NaN or infinite.
 - `Color::from_rgba`, `from_rgb_alpha`, `to_f32_array` and the one-letter `r`, `g`, `b` and `a` are gone. A `Color` converts to and from `[f32; 4]` and `[f32; 3]` with `From`, and `red`, `green`, `blue` and `alpha` read its channels. `ScreenRegion::to_array` is gone as well, since `<[f32; 4]>::from(&region)` gives the same bounds.
 - `TextureError` gains `FixedSize`, which `Texture.resize` returns for a texture without `RENDER_ATTACHMENT` usage, one no pass can draw into.
+- `SceneSource::gltf` is gone, since it only converted its input. `GltfSource::from("model.glb").cameras(false)` builds the same filtered source, and a path or bytes still pass straight to `Scene::load`.
+- `TextureMeta::with_id_only(id)` is `TextureMeta::from(id)`, a `From<TextureId>` that declares the same 2D float texture a shader samples.
+- `TextureUsage::raw_bits()` is `u32::from(usage)`. The `bits` field reads the same number.
 
 ## 0.12.6: Binding and renderer fixes
 

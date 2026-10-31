@@ -55,29 +55,35 @@ impl Renderer {
         self: Arc<Self>,
         metal_layer_ptr: u64,
     ) -> Result<Arc<MobileWindowTarget>, FragmentColorError> {
-        let layer = metal_layer_ptr as *mut AnyObject;
-        // SAFETY: Swift passes the address of a live Objective-C object, and `as_ref`
-        // turns a null pointer into `None`. No other address can be checked here.
-        let Some(object) = (unsafe { layer.as_ref() }) else {
-            return Err(FragmentColorError::Init(
-                "createTarget: the CAMetalLayer pointer is null".into(),
-            ));
-        };
-        // Only a CAMetalLayer answers drawableSize, so check the class before asking.
-        check_layer(object)?;
-        let size: CGSize = unsafe { msg_send![layer, drawableSize] };
-        let extent = wgpu::Extent3d {
-            width: read_side(size.width)?,
-            height: read_side(size.height)?,
-            depth_or_array_layers: 1,
-        };
-
-        let target = wgpu::SurfaceTargetUnsafe::CoreAnimationLayer(layer.cast());
+        let (target, extent) = read_layer(metal_layer_ptr)?;
         let (context, surface, config) =
             pollster::block_on(self.configure_unsafe_surface(target, extent))?;
-
         Ok(MobileWindowTarget::new(WindowTarget::new(
             context, surface, config,
         )))
     }
+}
+
+/// The surface target and drawable size of the `CAMetalLayer` at `pointer`.
+fn read_layer(
+    pointer: u64,
+) -> Result<(wgpu::SurfaceTargetUnsafe, wgpu::Extent3d), FragmentColorError> {
+    let layer = pointer as *mut AnyObject;
+    // SAFETY: Swift passes the address of a live Objective-C object, and `as_ref`
+    // turns a null pointer into `None`. No other address can be checked here.
+    let Some(object) = (unsafe { layer.as_ref() }) else {
+        return Err(FragmentColorError::Init(
+            "createTarget: the CAMetalLayer pointer is null".into(),
+        ));
+    };
+    // Only a CAMetalLayer answers drawableSize, so check the class before asking.
+    check_layer(object)?;
+    let size: CGSize = unsafe { msg_send![layer, drawableSize] };
+    let extent = wgpu::Extent3d {
+        width: read_side(size.width)?,
+        height: read_side(size.height)?,
+        depth_or_array_layers: 1,
+    };
+    let target = wgpu::SurfaceTargetUnsafe::CoreAnimationLayer(layer.cast());
+    Ok((target, extent))
 }

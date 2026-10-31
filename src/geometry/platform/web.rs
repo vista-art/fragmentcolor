@@ -241,13 +241,13 @@ impl Mesh {
     #[wasm_bindgen(js_name = "fromVertices")]
     #[lsp_doc("docs/api/geometry/mesh/from_vertices.md")]
     pub fn from_vertices_js(list: &JsValue) -> Result<Mesh, WebError> {
-        let arr = js_sys::Array::is_array(list)
+        let array = js_sys::Array::is_array(list)
             .then(|| js_sys::Array::from(list))
             .ok_or_else(|| WebError::type_error("Expected an array"))?;
-        let mut vertices = Vec::with_capacity(arr.length() as usize);
-        for (index, v) in arr.iter().enumerate() {
+        let mut vertices = Vec::with_capacity(array.length() as usize);
+        for (index, item) in array.iter().enumerate() {
             vertices.push(read_vertex(
-                &v,
+                &item,
                 &format!("Mesh.fromVertices: vertex {index}"),
             )?);
         }
@@ -256,8 +256,8 @@ impl Mesh {
 
     #[wasm_bindgen(js_name = "addVertex")]
     #[lsp_doc("docs/api/geometry/mesh/add_vertex.md")]
-    pub fn add_vertex_js(&mut self, v: &JsValue) -> Result<(), WebError> {
-        let vertex = read_vertex(v, "Mesh.addVertex: vertex")?;
+    pub fn add_vertex_js(&mut self, vertex: &JsValue) -> Result<(), WebError> {
+        let vertex = read_vertex(vertex, "Mesh.addVertex: vertex")?;
         self.add_vertex(vertex);
         Ok(())
     }
@@ -265,34 +265,34 @@ impl Mesh {
     #[wasm_bindgen(js_name = "addVertices")]
     #[lsp_doc("docs/api/geometry/mesh/add_vertices.md")]
     pub fn add_vertices_js(&mut self, list: &JsValue) -> Result<(), WebError> {
-        let arr = js_sys::Array::is_array(list)
+        let array = js_sys::Array::is_array(list)
             .then(|| js_sys::Array::from(list))
             .ok_or_else(|| WebError::type_error("Expected an array"))?;
-        let mut verts: Vec<Vertex> = Vec::with_capacity(arr.length() as usize);
-        for (index, v) in arr.iter().enumerate() {
-            let vertex = read_vertex(&v, &format!("Mesh.addVertices: vertex {index}"))?;
-            verts.push(vertex);
+        let mut vertices: Vec<Vertex> = Vec::with_capacity(array.length() as usize);
+        for (index, item) in array.iter().enumerate() {
+            let vertex = read_vertex(&item, &format!("Mesh.addVertices: vertex {index}"))?;
+            vertices.push(vertex);
         }
-        self.add_vertices(verts);
+        self.add_vertices(vertices);
         Ok(())
     }
 
     #[wasm_bindgen(js_name = "addInstance")]
     #[lsp_doc("docs/api/geometry/mesh/add_instance.md")]
     pub fn add_instance_js(&mut self, item: &JsValue) -> Result<(), WebError> {
-        let inst = js_to_instance_into(item)?;
-        self.add_instance(inst);
+        let instance = js_to_instance_into(item)?;
+        self.add_instance(instance);
         Ok(())
     }
 
     #[wasm_bindgen(js_name = "addInstances")]
     #[lsp_doc("docs/api/geometry/mesh/add_instances.md")]
     pub fn add_instances_js(&mut self, list: &JsValue) -> Result<(), WebError> {
-        let arr = js_sys::Array::is_array(list)
+        let array = js_sys::Array::is_array(list)
             .then(|| js_sys::Array::from(list))
             .ok_or_else(|| WebError::type_error("Expected an array"))?;
-        let mut instances: Vec<Instance> = Vec::with_capacity(arr.length() as usize);
-        for instance in arr.iter() {
+        let mut instances: Vec<Instance> = Vec::with_capacity(array.length() as usize);
+        for instance in array.iter() {
             let instance = js_to_instance_into(&instance)?;
             instances.push(instance);
         }
@@ -322,22 +322,7 @@ impl Mesh {
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "ArrayLike<number>")] indices: &JsValue,
     ) -> Result<(), WebError> {
-        if let Some(array) = indices.dyn_ref::<js_sys::Uint32Array>() {
-            self.set_indices(array.to_vec());
-            return Ok(());
-        }
-        let Some(numbers) = read_list(indices, "Mesh.setIndices")? else {
-            return Err(WebError::type_error(&format!(
-                "Mesh.setIndices takes an array or typed array of numbers, got {}",
-                describe(indices)
-            )));
-        };
-        let read = |(index, number): (usize, f64)| match read_dimension(number) {
-            Some(whole) => Ok(whole),
-            None => read_unsigned(number, &format!("Mesh.setIndices: item {index}")),
-        };
-        let indices = numbers.into_iter().enumerate().map(read);
-        self.set_indices(indices.collect::<Result<Vec<u32>, WebError>>()?);
+        self.set_indices(read_indices(indices)?);
         Ok(())
     }
 
@@ -346,6 +331,24 @@ impl Mesh {
     pub fn clear_indices_js(&mut self) {
         self.clear_indices();
     }
+}
+
+/// The indices `Mesh.setIndices` takes: a `Uint32Array` as is, or any list of whole numbers.
+fn read_indices(indices: &JsValue) -> Result<Vec<u32>, WebError> {
+    if let Some(array) = indices.dyn_ref::<js_sys::Uint32Array>() {
+        return Ok(array.to_vec());
+    }
+    let Some(numbers) = read_list(indices, "Mesh.setIndices")? else {
+        return Err(WebError::type_error(&format!(
+            "Mesh.setIndices takes an array or typed array of numbers, got {}",
+            describe(indices)
+        )));
+    };
+    let read = |(index, number): (usize, f64)| match read_dimension(number) {
+        Some(whole) => Ok(whole),
+        None => read_unsigned(number, &format!("Mesh.setIndices: item {index}")),
+    };
+    numbers.into_iter().enumerate().map(read).collect()
 }
 
 // -----------------------------

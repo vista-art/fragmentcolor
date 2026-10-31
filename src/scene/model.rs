@@ -81,7 +81,7 @@ impl Model {
     /// fill at draw time, only when the shader accepts it, so a refusal changes nothing.
     fn attach_mesh(&self) -> Result<(), crate::PassError> {
         let shader = &self.material.shader.object;
-        shader.add_model_mesh(self.mesh.object.clone())?;
+        shader.attach_model(self.mesh.object.clone())?;
         Ok(())
     }
 }
@@ -457,7 +457,7 @@ mod tests {
             assert!(drawn.is_ok(), "the custom Model draws: {drawn:?}");
             assert_eq!(
                 *bare.object.instance_schema.read(),
-                Some(crate::geometry::model_schema())
+                Some(crate::geometry::build_columns())
             );
         });
     }
@@ -529,7 +529,7 @@ mod tests {
         assert!(joined.is_err());
         assert!(pass.object.shaders.read().is_empty(), "no shader joined");
         assert_eq!(
-            shader.light_summary().count,
+            shader.summarize_lights().count,
             0,
             "no light reached the shader"
         );

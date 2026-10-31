@@ -3,6 +3,8 @@
 use lsp_doc::lsp_doc;
 use thiserror::Error;
 
+#[cfg(not(wasm))]
+use crate::core::renderer::MapError;
 use crate::core::shader::error::describe;
 
 #[cfg(any(python, wasm, test))]
@@ -246,6 +248,14 @@ impl From<WgpuFailure> for InitializationError {
             WgpuFailure::Device(error) => Self::DeviceError(describe(&error)),
             WgpuFailure::Surface(error) => Self::SurfaceError(describe(&error)),
         }
+    }
+}
+
+/// A storage buffer that didn't map in time, which `RendererError::Error` carries as text.
+#[cfg(not(wasm))]
+impl From<MapError> for RendererError {
+    fn from(error: MapError) -> Self {
+        RendererError::Error(format!("storage readback: {error}"))
     }
 }
 

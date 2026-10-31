@@ -1,10 +1,18 @@
 //! `Renderer`: the entry point that draws passes
 //! into targets, handing each call to its render context.
 
-use crate::core::PassInput;
-use crate::geometry::POSITION;
-use crate::{PassObject, ShaderError, ShaderHash, ShaderObject, Target, TargetFrame};
-use crate::{ScreenRegion, Size, WindowTarget};
+use crate::core::{PassInput, lower_cap};
+use crate::geometry::{
+    DrawCounts, MeshError, MeshObject, POSITION, Schemas, Upload, VertexBuffers, VertexSchema,
+};
+use crate::texture::{
+    Registration, Texture, TextureError, TextureId, TextureInput, TextureMeta, TextureObject,
+    TextureSource, check_extent, check_plane, check_upload, check_usage, copy_pixels,
+    measure_texel, pick_dimension,
+};
+use crate::{AlphaMode, StorageEntry, SurfaceError};
+use crate::{PassObject, Shader, ShaderError, ShaderHash, ShaderObject, Target, TargetFrame};
+use crate::{RenderTarget, ScreenRegion, Size, WindowTarget};
 use crate::{TextureData, TextureTarget, UniformData};
 use dashmap::DashMap;
 use dashmap::mapref::entry::Entry;
@@ -15,6 +23,7 @@ use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
+use std::mem::discriminant;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
@@ -49,9 +58,7 @@ pub(crate) mod device;
 mod pipelines;
 use pipelines::depth::DepthUse;
 use pipelines::layout::{Layout, build_module, create_bind_group_layouts, create_pipeline_layout};
-use pipelines::layout::{
-    PipelineSource, find_entry, pick_source, plan_layout, read_immediate_size,
-};
+use pipelines::layout::{PipelineSource, find_entry, measure_immediates, pick_source, plan_layout};
 pub(crate) mod lights;
 use lights::LightPath;
 mod frame;
@@ -84,7 +91,7 @@ enum PushMode {
     // Map variable name -> binding number within the fallback group
     Fallback {
         group: u32,
-        bindings: std::collections::HashMap<String, u32>,
+        bindings: HashMap<String, u32>,
     },
 }
 
@@ -92,14 +99,14 @@ enum PushMode {
 struct RenderPipeline {
     pipeline: wgpu::RenderPipeline,
     // Map of bind group index -> layout (keeps group indices stable)
-    bind_group_layouts: std::collections::HashMap<u32, wgpu::BindGroupLayout>,
+    bind_group_layouts: HashMap<u32, wgpu::BindGroupLayout>,
     push_mode: Option<PushMode>,
 }
 
 #[derive(Debug)]
 struct ComputePipeline {
     pipeline: wgpu::ComputePipeline,
-    bind_group_layouts: std::collections::HashMap<u32, wgpu::BindGroupLayout>,
+    bind_group_layouts: HashMap<u32, wgpu::BindGroupLayout>,
     push_mode: Option<PushMode>,
 }
 
@@ -190,34 +197,8 @@ impl Renderer {
     pub async fn create_target(
         &self,
         window: impl HasWindowHandle + HasDisplayHandle + HasDisplaySize + Send + Sync + 'static,
-    ) -> Result<crate::RenderTarget, InitializationError> {
-        let sz = window.size();
-        let size = wgpu::Extent3d {
-            width: sz.width,
-            height: sz.height,
-            depth_or_array_layers: 1,
-        };
-
-        match self.create_surface(window, size).await {
-            Ok((context, surface, config)) => Ok(crate::RenderTarget::from(WindowTarget::new(
-                context, surface, config,
-            ))),
-            Err(InitializationError::SurfaceError(e)) => {
-                // Could not create a surface from the provided window handle.
-                // Fall back to a texture-backed target so CI/tests and headless
-                // environments can still render.
-                log::warn!(
-                    "create_target: surface creation failed ({}). Falling back to TextureTarget.",
-                    e
-                );
-                // A window with no area yet gets one pixel, as a surface does.
-                let tex = self
-                    .create_texture_target([size.width.max(1), size.height.max(1)])
-                    .await?;
-                Ok(crate::RenderTarget::from(tex))
-            }
-            Err(e) => Err(e),
-        }
+    ) -> Result<RenderTarget, InitializationError> {
+        self.open_target(window).await
     }
 
     #[lsp_doc("docs/api/core/renderer/create_texture_target.md")]
@@ -225,16 +206,7 @@ impl Renderer {
         &self,
         size: impl Into<Size>,
     ) -> Result<TextureTarget, InitializationError> {
-        let context = self.context(None).await?;
-        let size = size.into();
-        let limit = context.device.limits().max_texture_dimension_2d;
-        crate::texture::check_plane(size, limit)?;
-        // For offscreen texture targets on Web, force sample_count = 1 to avoid MSAA resolve issues.
-        // Canvas targets may still use MSAA via the surface path.
-        context.set_sample_count(1);
-        let texture = TextureTarget::new(context, size, wgpu::TextureFormat::Rgba8Unorm);
-
-        Ok(texture)
+        self.allocate_target(size.into()).await
     }
 
     /// Create a [Texture](crate::Texture) from a unified spec. The single
@@ -249,28 +221,9 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/create_texture.md")]
     pub async fn create_texture(
         &self,
-        spec: impl Into<crate::texture::TextureInput>,
-    ) -> Result<crate::texture::Texture, RendererError> {
-        let input = spec.into();
-        input.check_options("create_texture")?;
-
-        // CloneOf returns the texture it holds, and Empty has nothing to upload.
-        if let TextureData::CloneOf(tex) = input.data {
-            return Ok(tex);
-        }
-        if matches!(input.data, TextureData::Empty) {
-            return Err(RendererError::CreateTextureError(
-                "create_texture requires source data; for an empty allocation use create_storage_texture(input)".into(),
-            ));
-        }
-
-        let source = crate::texture::TextureSource::try_from(input)?;
-        let context = self.context(None).await?;
-        let object =
-            crate::TextureObject::from_source(context.clone(), source, "create_texture").await?;
-        let object = std::sync::Arc::new(object);
-        let registration = crate::texture::Registration::create(&context, object);
-        Ok(crate::texture::Texture::new(context, registration))
+        spec: impl Into<TextureInput>,
+    ) -> Result<Texture, RendererError> {
+        self.upload_texture(spec.into()).await
     }
 
     /// Create a storage-class texture from a [`crate::TextureInput`], the
@@ -289,123 +242,24 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/create_storage_texture.md")]
     pub async fn create_storage_texture(
         &self,
-        input: impl Into<crate::TextureInput>,
-    ) -> Result<crate::texture::Texture, RendererError> {
-        let crate::TextureInput { data, options } = input.into();
-        let context = self.context(None).await?;
-        let size = options.size.ok_or_else(|| {
-            RendererError::CreateTextureError(
-                "create_storage_texture requires options.size — pass `(size, format)` or set the field explicitly".into(),
-            )
-        })?;
-        let wgpu_size: wgpu::Extent3d = size.to_extent();
-        let wgpu_format: wgpu::TextureFormat = options.format.to_wgpu();
-        // The size comes first, so a bad one reports the same error whatever the seed.
-        let limits = context.device.limits();
-        crate::texture::check_extent(&limits, wgpu_size, crate::texture::dimension(wgpu_size))?;
-        let usage = options.usage.map(crate::texture::check_usage).transpose()?;
-        let usage = usage.unwrap_or(
-            wgpu::TextureUsages::STORAGE_BINDING
-                | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_DST
-                | wgpu::TextureUsages::COPY_SRC,
-        );
-        if usage.is_empty() {
-            return Err(crate::texture::TextureError::InvalidInput(
-                "create_storage_texture needs at least one usage flag".into(),
-            )
-            .into());
-        }
-
-        let bytes_opt: Option<Vec<u8>> = match data {
-            crate::TextureData::Empty => None,
-            crate::TextureData::Bytes(bytes) => Some(bytes),
-            other => {
-                return Err(RendererError::CreateTextureError(format!(
-                    "create_storage_texture only accepts TextureData::Empty or Bytes for now (got {:?}); decode external sources first then pass the raw bytes",
-                    std::mem::discriminant(&other)
-                )));
-            }
-        };
-
-        if let Some(ref bytes) = bytes_opt {
-            crate::texture::check_upload(wgpu_format)?;
-            if !usage.contains(wgpu::TextureUsages::COPY_DST) {
-                return Err(RendererError::CreateTextureError(
-                    "create_storage_texture with seed data requires COPY_DST in the usage mask"
-                        .into(),
-                ));
-            }
-            let bpp = crate::texture::texel_size(wgpu_format)?;
-            let expected = (wgpu_size.width as usize)
-                .saturating_mul(wgpu_size.height as usize)
-                .saturating_mul(wgpu_size.depth_or_array_layers.max(1) as usize)
-                .saturating_mul(bpp as usize);
-            if bytes.len() != expected {
-                return Err(crate::texture::TextureError::InvalidInput(format!(
-                    "seed data is {} bytes, and the texture takes {expected}",
-                    bytes.len()
-                ))
-                .into());
-            }
-        }
-
-        let obj = crate::TextureObject::new(
-            context.as_ref(),
-            wgpu_size,
-            wgpu_format,
-            usage,
-            options.sampler,
-        )?;
-
-        if let Some(bytes) = bytes_opt {
-            let bpp = crate::texture::texel_size(wgpu_format)?;
-            context.queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    aspect: wgpu::TextureAspect::All,
-                    texture: &obj.inner,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                },
-                &bytes,
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(bpp * wgpu_size.width),
-                    rows_per_image: Some(wgpu_size.height),
-                },
-                wgpu_size,
-            );
-        }
-        let obj = std::sync::Arc::new(obj);
-        let registration = crate::texture::Registration::create(&context, obj);
-        Ok(crate::texture::Texture::new(context, registration))
+        input: impl Into<TextureInput>,
+    ) -> Result<Texture, RendererError> {
+        self.allocate_storage(input.into()).await
     }
 
     /// Create a depth texture (Depth32Float).
     #[lsp_doc("docs/api/core/renderer/create_depth_texture.md")]
     pub async fn create_depth_texture(
         &self,
-        size: impl Into<crate::Size>,
-    ) -> Result<crate::texture::Texture, InitializationError> {
-        let context = self.context(None).await?;
-        let size = size.into();
-        let limit = context.device.limits().max_texture_dimension_2d;
-        crate::texture::check_plane(size, limit)?;
-        let sample_count = context.sample_count();
-        let obj = crate::TextureObject::create_depth_texture(
-            context.as_ref(),
-            size.to_extent(),
-            sample_count,
-        );
-        let obj = std::sync::Arc::new(obj);
-        let registration = crate::texture::Registration::create(&context, obj);
-        Ok(crate::texture::Texture::new(context, registration))
+        size: impl Into<Size>,
+    ) -> Result<Texture, InitializationError> {
+        self.allocate_depth(size.into()).await
     }
 
     #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
     pub fn unregister_texture(
         &self,
-        texture_id: impl Into<crate::texture::TextureId>,
+        texture_id: impl Into<TextureId>,
     ) -> Result<(), RendererError> {
         texture_registry::unregister_texture(self, texture_id.into())
     }
@@ -413,7 +267,7 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/read_texture.md")]
     pub async fn read_texture(
         &self,
-        texture_id: impl Into<crate::texture::TextureId>,
+        texture_id: impl Into<TextureId>,
     ) -> Result<Vec<u8>, RendererError> {
         self.read_texture_from(texture_id.into(), self.start())
             .await
@@ -422,7 +276,7 @@ impl Renderer {
     /// Reads a registered texture once the frames rendered before `start` have reported their GPU errors.
     pub(crate) async fn read_texture_from(
         &self,
-        texture_id: crate::texture::TextureId,
+        texture_id: TextureId,
         start: Start,
     ) -> Result<Vec<u8>, RendererError> {
         let context = self
@@ -438,7 +292,7 @@ impl Renderer {
         let texture = context
             .get_texture(&texture_id)
             .ok_or(RendererError::TextureNotFoundError(texture_id))?;
-        Ok(crate::texture::copy_pixels(&context, &texture).await?)
+        Ok(copy_pixels(&context, &texture).await?)
     }
 
     /// Uploads into this Renderer every Material map of `renderable` that it lacks
@@ -488,7 +342,7 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/read_storage.md")]
     pub async fn read_storage(
         &self,
-        shader: &crate::Shader,
+        shader: &Shader,
         binding: &str,
     ) -> Result<Vec<u8>, RendererError> {
         self.read_storage_from(shader, binding, self.start()).await
@@ -498,7 +352,7 @@ impl Renderer {
     /// have reported their GPU errors.
     pub(crate) async fn read_storage_from(
         &self,
-        shader: &crate::Shader,
+        shader: &Shader,
         binding: &str,
         start: Start,
     ) -> Result<Vec<u8>, RendererError> {
@@ -520,6 +374,181 @@ impl Renderer {
 
     #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render(
+        &self,
+        renderable: &impl Renderable,
+        target: &impl Target,
+    ) -> Result<(), RendererError> {
+        self.draw(renderable, target)
+    }
+
+    /// A window target for `window`, or a texture target of its size when no surface
+    /// opens from its handle, so CI, tests and headless runs still render.
+    async fn open_target(
+        &self,
+        window: impl HasWindowHandle + HasDisplayHandle + HasDisplaySize + Send + Sync + 'static,
+    ) -> Result<RenderTarget, InitializationError> {
+        let window_size = window.size();
+        let size = wgpu::Extent3d {
+            width: window_size.width,
+            height: window_size.height,
+            depth_or_array_layers: 1,
+        };
+
+        match self.create_surface(window, size).await {
+            Ok((context, surface, config)) => Ok(RenderTarget::from(WindowTarget::new(
+                context, surface, config,
+            ))),
+            Err(InitializationError::SurfaceError(error)) => {
+                log::warn!(
+                    "create_target: surface creation failed ({}). Falling back to TextureTarget.",
+                    error
+                );
+                // A window with no area yet gets one pixel, as a surface does.
+                let target = self
+                    .create_texture_target([size.width.max(1), size.height.max(1)])
+                    .await?;
+                Ok(RenderTarget::from(target))
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    /// An offscreen target of `size`, checked against the device's largest plane.
+    async fn allocate_target(&self, size: Size) -> Result<TextureTarget, InitializationError> {
+        let context = self.context(None).await?;
+        let limit = context.device.limits().max_texture_dimension_2d;
+        check_plane(size, limit)?;
+        // For offscreen texture targets on Web, force sample_count = 1 to avoid MSAA resolve issues.
+        // Canvas targets may still use MSAA via the surface path.
+        context.set_sample_count(1);
+        let target = TextureTarget::new(context, size, wgpu::TextureFormat::Rgba8Unorm);
+
+        Ok(target)
+    }
+
+    /// A texture from `input`, checked before the context opens, with its CPU work on a worker.
+    async fn upload_texture(&self, input: TextureInput) -> Result<Texture, RendererError> {
+        input.check_options("create_texture")?;
+
+        // CloneOf returns the texture it holds, and Empty has nothing to upload.
+        if let TextureData::CloneOf(texture) = input.data {
+            return Ok(texture);
+        }
+        if matches!(input.data, TextureData::Empty) {
+            return Err(RendererError::CreateTextureError(
+                "create_texture requires source data; for an empty allocation use create_storage_texture(input)".into(),
+            ));
+        }
+
+        let source = TextureSource::try_from(input)?;
+        let context = self.context(None).await?;
+        let object = TextureObject::from_source(context.clone(), source, "create_texture").await?;
+        let object = Arc::new(object);
+        let registration = Registration::create(&context, object);
+        Ok(Texture::new(context, registration))
+    }
+
+    /// A storage texture of `input`'s size, format and usage, seeded with its bytes if it has any.
+    async fn allocate_storage(&self, input: TextureInput) -> Result<Texture, RendererError> {
+        let TextureInput { data, options } = input;
+        let context = self.context(None).await?;
+        let size = options.size.ok_or_else(|| {
+            RendererError::CreateTextureError(
+                "create_storage_texture requires options.size — pass `(size, format)` or set the field explicitly".into(),
+            )
+        })?;
+        let extent: wgpu::Extent3d = size.to_extent();
+        let format: wgpu::TextureFormat = options.format.to_wgpu();
+        // The size comes first, so a bad one reports the same error whatever the seed.
+        let limits = context.device.limits();
+        check_extent(&limits, extent, pick_dimension(extent))?;
+        let usage = options.usage.map(check_usage).transpose()?;
+        let usage = usage.unwrap_or(
+            wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::COPY_SRC,
+        );
+        if usage.is_empty() {
+            return Err(TextureError::InvalidInput(
+                "create_storage_texture needs at least one usage flag".into(),
+            )
+            .into());
+        }
+
+        let seed: Option<Vec<u8>> = match data {
+            TextureData::Empty => None,
+            TextureData::Bytes(bytes) => Some(bytes),
+            other => {
+                return Err(RendererError::CreateTextureError(format!(
+                    "create_storage_texture only accepts TextureData::Empty or Bytes for now (got {:?}); decode external sources first then pass the raw bytes",
+                    discriminant(&other)
+                )));
+            }
+        };
+
+        if let Some(ref bytes) = seed {
+            check_upload(format)?;
+            if !usage.contains(wgpu::TextureUsages::COPY_DST) {
+                return Err(RendererError::CreateTextureError(
+                    "create_storage_texture with seed data requires COPY_DST in the usage mask"
+                        .into(),
+                ));
+            }
+            let texel = measure_texel(format)?;
+            let expected = (extent.width as usize)
+                .saturating_mul(extent.height as usize)
+                .saturating_mul(extent.depth_or_array_layers.max(1) as usize)
+                .saturating_mul(texel as usize);
+            if bytes.len() != expected {
+                return Err(TextureError::InvalidInput(format!(
+                    "seed data is {} bytes, and the texture takes {expected}",
+                    bytes.len()
+                ))
+                .into());
+            }
+        }
+
+        let object = TextureObject::new(context.as_ref(), extent, format, usage, options.sampler)?;
+
+        if let Some(bytes) = seed {
+            let texel = measure_texel(format)?;
+            context.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    aspect: wgpu::TextureAspect::All,
+                    texture: &object.inner,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                },
+                &bytes,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(texel * extent.width),
+                    rows_per_image: Some(extent.height),
+                },
+                extent,
+            );
+        }
+        let object = Arc::new(object);
+        let registration = Registration::create(&context, object);
+        Ok(Texture::new(context, registration))
+    }
+
+    /// A `Depth32Float` texture of `size` at the context's sample count.
+    async fn allocate_depth(&self, size: Size) -> Result<Texture, InitializationError> {
+        let context = self.context(None).await?;
+        let limit = context.device.limits().max_texture_dimension_2d;
+        check_plane(size, limit)?;
+        let sample_count = context.sample_count();
+        let object =
+            TextureObject::create_depth_texture(context.as_ref(), size.to_extent(), sample_count);
+        let object = Arc::new(object);
+        let registration = Registration::create(&context, object);
+        Ok(Texture::new(context, registration))
+    }
+
+    /// Draws `renderable` into `target` once the checks that need no frame pass.
+    fn draw(
         &self,
         renderable: &impl Renderable,
         target: &impl Target,
@@ -560,8 +589,7 @@ impl Renderer {
         }
         let mut first = None;
         for job in jobs {
-            let upload =
-                crate::TextureObject::from_source(context.clone(), job.source.clone(), "load");
+            let upload = TextureObject::from_source(context.clone(), job.source.clone(), "load");
             let upload = upload.await;
             #[cfg(test)]
             crate::testing::race_hooks::run("map uploaded");
@@ -689,7 +717,7 @@ impl Renderer {
             context.writes_wgsl.store(browser, Ordering::Relaxed);
             let path = LightPath::pick(&adapter, &context.device);
             *context.light_path.write() = path;
-            crate::core::lower_light_cap(path.cap());
+            lower_cap(path.cap());
 
             self.adapter.write().replace(adapter);
             self.context.write().replace(context.clone());
@@ -719,7 +747,7 @@ struct BlendDraw {
     /// when the draw runs. Also keeps the matching `MeshObject` alive
     /// across the render pass, so the renderer's pipeline + vertex-buffer
     /// lookups (keyed by the underlying pointer) stay valid.
-    mesh: Arc<crate::geometry::MeshObject>,
+    mesh: Arc<MeshObject>,
     /// World matrix snapshot taken at queue-build time. Same value used to
     /// compute `eye_z` — keeping them in sync per draw is what makes the
     /// "live transform" semantics work correctly across the blend phase.
@@ -760,7 +788,7 @@ struct PassDraws {
 
 impl PassDraws {
     /// The `(shader, mesh)` pairs a visible Model of the pass draws, opaque or translucent.
-    fn drawn_models(&self) -> HashSet<(usize, usize)> {
+    fn collect_drawn(&self) -> HashSet<(usize, usize)> {
         let opaque = self.opaque_overrides.keys().copied();
         let blend = self
             .blend_draws
@@ -797,7 +825,7 @@ enum MeshDraws {
 /// One mesh draw: the mesh's buffers, its index count, the instances it draws,
 /// and the entry of its shader's `layouts` it reads.
 struct MeshDraw {
-    buffers: crate::geometry::VertexBuffers,
+    buffers: VertexBuffers,
     index_count: u32,
     instances: Instances,
     layout: usize,
@@ -807,7 +835,7 @@ struct MeshDraw {
 /// count and the entry of its shader's `layouts` it reads. Each of its Models draws
 /// these in the blend phase, so a change after the plan waits for the next render.
 struct BlendMesh {
-    buffers: crate::geometry::VertexBuffers,
+    buffers: VertexBuffers,
     index_count: u32,
     layout: usize,
 }
@@ -903,7 +931,7 @@ pub(crate) struct RenderContext {
 
     // Texture registry: id -> TextureObject. An entry stays while its
     // `Registration` lives, so it goes with the last handle to the texture.
-    textures: DashMap<crate::texture::TextureId, Arc<crate::TextureObject>>,
+    textures: DashMap<TextureId, Arc<TextureObject>>,
     /// True on backends that reject uniform bindings not aligned to 16
     /// bytes (OpenGL, WebGL2); shaders then compile a padded module.
     aligned_uniform_bindings: AtomicBool,
@@ -950,7 +978,7 @@ pub(crate) struct RenderContext {
     /// The light binning pipeline, built on first use.
     binning: Arc<RwLock<Option<Arc<lights::BinningPipeline>>>>,
     #[cfg(test)]
-    light_probe: lights::LightProbe,
+    light_probe: lights::tests::LightProbe,
 
     /// The first GPU error a wasm error scope caught after its call returned.
     /// The next render, load or readback returns it.
@@ -1053,7 +1081,7 @@ impl RenderContext {
             lights_failed: Arc::default(),
             binning: Arc::default(),
             #[cfg(test)]
-            light_probe: lights::LightProbe::default(),
+            light_probe: lights::tests::LightProbe::default(),
             #[cfg(wasm)]
             late: Arc::default(),
         }
@@ -1196,7 +1224,7 @@ impl RenderContext {
         // so compute steps between frames don't free a frame's textures.
         if frame.is_some() {
             self.texture_pool.write().start_render();
-            self.start_light_render();
+            self.start_lights();
         }
 
         // Apple's Metal driver does not reliably flush tile-based storage-texture writes between
@@ -1260,13 +1288,13 @@ impl RenderContext {
     fn plan_pass(&self, pass: &PassObject) -> Result<PassDraws, RendererError> {
         // A mesh's own pass builds its quick view here too, whatever reached the pass.
         pass.ensure_preview();
-        self.check_light_cap(pass)?;
+        self.check_lights(pass)?;
         self.check_viewport(pass)?;
         let targets = self.find_targets(pass)?;
         let mut draws = self.build_pass_draws(pass)?;
         let model_shaders = find_model_shaders(pass);
         draws.has_models = !model_shaders.is_empty();
-        let drawn = draws.drawn_models();
+        let drawn = draws.collect_drawn();
         let shaders = pass.shaders.read().clone();
         for shader in shaders {
             let model = model_shaders.contains(&(Arc::as_ptr(&shader) as usize));
@@ -1306,7 +1334,7 @@ impl RenderContext {
                 draws: MeshDraws::Fullscreen,
             });
         }
-        let blend = *shader.alpha_mode.read() == crate::AlphaMode::Blend;
+        let blend = *shader.alpha_mode.read() == AlphaMode::Blend;
         let shader_ptr = Arc::as_ptr(&shader) as usize;
         let limits = &self.limits;
         let mut layouts: Vec<VertexLayouts> = Vec::new();
@@ -1318,7 +1346,7 @@ impl RenderContext {
                 continue;
             }
             // The layouts follow the schemas of the pack the buffers came from.
-            let crate::geometry::Upload {
+            let Upload {
                 buffers,
                 counts,
                 schemas,
@@ -1391,9 +1419,9 @@ impl RenderContext {
     fn upload_checked(
         &self,
         shader: &ShaderObject,
-        mesh: &crate::geometry::MeshObject,
+        mesh: &MeshObject,
         passed: u64,
-    ) -> Result<crate::geometry::Upload, RendererError> {
+    ) -> Result<Upload, RendererError> {
         let mut passed = passed;
         for _ in 0..PREVIEW_TRIES {
             let upload = mesh.upload(self)?;
@@ -1405,7 +1433,7 @@ impl RenderContext {
                 None => return Ok(upload),
             }
         }
-        Err(crate::MeshError::Busy(PREVIEW_TRIES).into())
+        Err(MeshError::Busy(PREVIEW_TRIES).into())
     }
 
     /// Try to get a frame once, and on Lost/Outdated, retry exactly once.
@@ -1413,19 +1441,16 @@ impl RenderContext {
     /// perform their own recovery internally (e.g., WindowTarget).
     /// A surface that fails validation sends the details to the device, so on
     /// native the error is marked as the GPU's, and the frame scope reports those details.
-    fn acquire_frame(
-        &self,
-        target: &impl Target,
-    ) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
+    fn acquire_frame(&self, target: &impl Target) -> Result<Box<dyn TargetFrame>, SurfaceError> {
         let frame = match target.get_current_frame() {
-            Err(crate::SurfaceError::Lost) | Err(crate::SurfaceError::Outdated) => {
+            Err(SurfaceError::Lost) | Err(SurfaceError::Outdated) => {
                 // Retry exactly once.
                 target.get_current_frame()
             }
             frame => frame,
         };
         #[cfg(not(wasm))]
-        if matches!(frame, Err(crate::SurfaceError::Validation)) {
+        if matches!(frame, Err(SurfaceError::Validation)) {
             Origin::Gpu.record();
         }
         frame
@@ -1436,7 +1461,7 @@ impl RenderContext {
     /// The persistent buffer behind the storage root `name`.
     /// It is created, or recreated at a new `span`, with the shader's bytes,
     /// and takes a fresh upload only when `set` has changed them since the last frame.
-    fn storage_buffer(&self, shader: &crate::ShaderObject, name: &str, span: u64) -> wgpu::Buffer {
+    fn storage_buffer(&self, shader: &ShaderObject, name: &str, span: u64) -> wgpu::Buffer {
         let existing = self
             .storage_registry
             .get(name)
@@ -1477,11 +1502,8 @@ impl RenderContext {
     /// shader binding finds the one texture its id names, except a Material map's,
     /// which names one copy in each Renderer that loaded it. A `Registration`
     /// calls this and removes the entry when the last handle drops.
-    pub(crate) fn register_texture(
-        &self,
-        texture: Arc<crate::TextureObject>,
-    ) -> crate::texture::TextureId {
-        let id = crate::texture::TextureId::create();
+    pub(crate) fn register_texture(&self, texture: Arc<TextureObject>) -> TextureId {
+        let id = TextureId::create();
         self.textures.insert(id, texture);
         id
     }
@@ -1490,36 +1512,29 @@ impl RenderContext {
     /// and returns the copy it replaces, which the caller drops after its locks.
     pub(crate) fn insert_texture(
         &self,
-        id: crate::texture::TextureId,
-        texture: Arc<crate::TextureObject>,
-    ) -> Option<Arc<crate::TextureObject>> {
+        id: TextureId,
+        texture: Arc<TextureObject>,
+    ) -> Option<Arc<TextureObject>> {
         self.textures.insert(id, texture)
     }
 
     /// Whether the registry holds a texture under `id`.
-    pub(crate) fn has_texture(&self, id: &crate::texture::TextureId) -> bool {
+    pub(crate) fn has_texture(&self, id: &TextureId) -> bool {
         self.textures.contains_key(id)
     }
 
-    pub(crate) fn release_texture(&self, id: &crate::texture::TextureId) {
+    pub(crate) fn release_texture(&self, id: &TextureId) {
         self.textures.remove(id);
     }
 
-    pub(crate) fn get_texture(
-        &self,
-        id: &crate::texture::TextureId,
-    ) -> Option<Arc<crate::TextureObject>> {
+    pub(crate) fn get_texture(&self, id: &TextureId) -> Option<Arc<TextureObject>> {
         self.textures.get(id).map(|texture| texture.clone())
     }
 
     /// Points a resized texture's id at its new object, so every pass target
     /// and shader binding that resolves the id at render time draws the new one.
     /// An id that `unregister_texture` removed stays removed.
-    pub(crate) fn update_texture(
-        &self,
-        id: crate::texture::TextureId,
-        texture: Arc<crate::TextureObject>,
-    ) {
+    pub(crate) fn update_texture(&self, id: TextureId, texture: Arc<TextureObject>) {
         if let Some(mut entry) = self.textures.get_mut(&id) {
             *entry = texture;
         }
@@ -1707,7 +1722,7 @@ impl RenderContext {
             );
             let transform = model_state.transform;
             match alpha_mode {
-                crate::AlphaMode::Opaque | crate::AlphaMode::Mask => {
+                AlphaMode::Opaque | AlphaMode::Mask => {
                     let m = transform.to_cols_array_2d();
                     let idx = match opaque_groups.iter().position(|(k, _)| *k == key) {
                         Some(i) => i,
@@ -1719,7 +1734,7 @@ impl RenderContext {
                     let slot = &mut opaque_groups[idx].1;
                     slot.extend_from_slice(bytemuck::cast_slice(&m));
                 }
-                crate::AlphaMode::Blend => {
+                AlphaMode::Blend => {
                     // Eye-space Z of the mesh's local-space AABB centroid in
                     // world coordinates: `view * transform * vec4(centroid, 1)`.
                     // An elongated translucent mesh centered away from its
@@ -1878,7 +1893,7 @@ impl RenderContext {
         let descriptor = wgpu::RenderPassDescriptor {
             label: Some(&format!("Render Pass: {}", pass.name.clone())),
             color_attachments,
-            depth_stencil_attachment: depth.attachment(),
+            depth_stencil_attachment: depth.describe_attachment(),
             timestamp_writes: None,
             occlusion_query_set: None,
             multiview_mask: None,
@@ -1997,8 +2012,8 @@ impl RenderContext {
             if let Some(roots) = shader.light_roots.as_ref() {
                 let buffers = light_buffers
                     .get(&(Arc::as_ptr(shader) as usize))
-                    .ok_or_else(|| crate::ShaderError::UniformNotFound("lights".into()))?;
-                for (group, binding, buffer) in buffers.bindings(roots) {
+                    .ok_or_else(|| ShaderError::UniformNotFound("lights".into()))?;
+                for (group, binding, buffer) in buffers.list_bindings(roots) {
                     groups
                         .entry(group)
                         .or_default()
@@ -2050,7 +2065,7 @@ impl RenderContext {
                             .add_sampler(uniform.binding, info.comparison);
                     }
                     UniformData::Storage(data) => {
-                        if let Some(crate::StorageEntry { span, .. }) = data.first() {
+                        if let Some(StorageEntry { span, .. }) = data.first() {
                             let span_u64 = *span as u64;
                             let buf = self.storage_buffer(shader, name, span_u64);
 
@@ -2060,7 +2075,7 @@ impl RenderContext {
                                 .persistent_storage_buffers
                                 .push((uniform.binding, buf, span_u64));
                         } else {
-                            return Err(crate::ShaderError::UniformNotFound(name.clone()).into());
+                            return Err(ShaderError::UniformNotFound(name.clone()).into());
                         }
                     }
                     UniformData::PushConstant(_) => {
@@ -2078,7 +2093,7 @@ impl RenderContext {
                         let storage = shader.storage.read();
                         let bytes = storage
                             .get_bytes(name)
-                            .ok_or(crate::ShaderError::UniformNotFound(name.clone()))?;
+                            .ok_or(ShaderError::UniformNotFound(name.clone()))?;
 
                         let buffer_location = {
                             let mut buffer_pool = self.buffer_pool.write();
@@ -2343,7 +2358,7 @@ impl RenderContext {
             let layout = plan_layout(shader, self, None);
             let key = ComputePipelineKey {
                 shader_hash: shader.hash,
-                bind_group_entries: layout.entries(),
+                bind_group_entries: layout.list_entries(),
             };
             let cached =
                 self.fetch_pipeline(&self.compute_pipelines, key, "compute pipeline", || {
@@ -2398,7 +2413,7 @@ impl RenderContext {
                         }
                     }
                     UniformData::Storage(data) => {
-                        if let Some(crate::StorageEntry { span: span_u32, .. }) = data.first() {
+                        if let Some(StorageEntry { span: span_u32, .. }) = data.first() {
                             let span = *span_u32 as u64;
                             let buf = self.storage_buffer(shader, name, span);
                             groups
@@ -2414,7 +2429,7 @@ impl RenderContext {
                         let storage = shader.storage.read();
                         let bytes = storage
                             .get_bytes(name)
-                            .ok_or(crate::ShaderError::UniformNotFound(name.clone()))?;
+                            .ok_or(ShaderError::UniformNotFound(name.clone()))?;
                         let loc = {
                             let mut pool = self.buffer_pool.write();
                             pool.upload(bytes, &self.queue, &self.device)
@@ -2517,7 +2532,7 @@ impl RenderContext {
 
 /// The error for a texture uniform whose texture the registry doesn't hold:
 /// one never set, or one `unregister_texture` removed.
-fn report_missing(name: &str, meta: &crate::texture::TextureMeta) -> RendererError {
+fn report_missing(name: &str, meta: &TextureMeta) -> RendererError {
     match meta.id.id {
         0 => RendererError::BindingError {
             uniform: name.to_string(),
@@ -2573,9 +2588,9 @@ fn pick_instances(
     shader: &ShaderObject,
     models: Option<&(wgpu::Buffer, u32)>,
     own: Option<&wgpu::Buffer>,
-    mesh: &crate::geometry::MeshObject,
+    mesh: &MeshObject,
     layouts: Option<&VertexLayouts>,
-    counts: crate::geometry::DrawCounts,
+    counts: DrawCounts,
 ) -> Result<Option<Instances>, RendererError> {
     // An empty index list draws nothing, like an instance count of 0.
     if counts.index_count == 0 {
@@ -2602,8 +2617,8 @@ fn pick_instances(
 fn check_instance_count(
     shader: &ShaderObject,
     layouts: Option<&VertexLayouts>,
-    counts: crate::geometry::DrawCounts,
-    mesh: &crate::geometry::MeshObject,
+    counts: DrawCounts,
+    mesh: &MeshObject,
 ) -> Result<(), RendererError> {
     let rows = counts.instance_rows.unwrap_or(0);
     let Some(instance) = layouts.and_then(|layouts| layouts.instance.as_ref()) else {
@@ -2623,7 +2638,7 @@ fn check_instance_count(
             counts.instance_count
         )
     };
-    Err(crate::MeshError::InvalidInstance(message).into())
+    Err(MeshError::InvalidInstance(message).into())
 }
 
 /// Names the inputs `shader` reads from the instance stream, in location order:
@@ -2673,9 +2688,9 @@ fn require_mesh(shader: &ShaderObject) -> Result<(), ShaderError> {
 /// Its buffers follow `schemas`, and the mesh keeps the layouts until it packs again
 /// (`MeshObject::fetch_layouts`). `check_strides` checks them against each device.
 fn vertex_buffer_layouts(
-    shader: &crate::ShaderObject,
-    mesh: &crate::geometry::MeshObject,
-    schemas: &crate::geometry::Schemas,
+    shader: &ShaderObject,
+    mesh: &MeshObject,
+    schemas: &Schemas,
 ) -> Result<VertexLayouts, RendererError> {
     let vertex_inputs = shader.reflect_vertex_inputs()?;
 
@@ -2863,7 +2878,7 @@ const PREVIEW_TRIES: usize = 4;
 
 /// Whether `format` stores colors encoded for display without encoding them
 /// on write, which a shader that works in linear light has to do itself.
-fn stores_display_values(format: wgpu::TextureFormat) -> bool {
+fn is_display(format: wgpu::TextureFormat) -> bool {
     matches!(
         format,
         wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Bgra8Unorm
@@ -2893,11 +2908,7 @@ fn set_encoding(module: &naga::Module, format: wgpu::TextureFormat) -> naga::Mod
         }
     };
     let mut constants = naga::back::PipelineConstants::default();
-    let encode = if stores_display_values(format) {
-        1.0
-    } else {
-        0.0
-    };
+    let encode = if is_display(format) { 1.0 } else { 0.0 };
     constants.insert(ENCODE_SRGB.to_string(), encode);
     match naga::back::pipeline_constants::process_overrides(module, &info, None, &constants) {
         Ok((resolved, _)) => resolved.into_owned(),
@@ -2911,7 +2922,7 @@ fn set_encoding(module: &naga::Module, format: wgpu::TextureFormat) -> naga::Mod
 #[allow(clippy::too_many_arguments)]
 fn create_render_pipeline(
     device: &wgpu::Device,
-    shader: &crate::ShaderObject,
+    shader: &ShaderObject,
     layout: &Layout,
     format: wgpu::TextureFormat,
     sample_count: u32,
@@ -2934,8 +2945,8 @@ fn create_render_pipeline(
         label: Some("Shader"),
         source,
     });
-    let layouts = create_bind_group_layouts(device, &layout.entries());
-    let immediate_size = read_immediate_size(layout.push.as_ref());
+    let layouts = create_bind_group_layouts(device, &layout.list_entries());
+    let immediate_size = measure_immediates(layout.push.as_ref());
     let pipeline_layout =
         create_pipeline_layout(device, "Default Pipeline Layout", &layouts, immediate_size);
 
@@ -2968,14 +2979,14 @@ fn create_render_pipeline(
                 //   Blend         -> standard SrcAlpha/OneMinusSrcAlpha
                 //                    over-blend.
                 blend: match alpha_mode {
-                    crate::AlphaMode::Opaque | crate::AlphaMode::Mask => None,
-                    crate::AlphaMode::Blend => Some(wgpu::BlendState::ALPHA_BLENDING),
+                    AlphaMode::Opaque | AlphaMode::Mask => None,
+                    AlphaMode::Blend => Some(wgpu::BlendState::ALPHA_BLENDING),
                 },
                 // Custom (non-glTF-MR) blend equations are tracked under
                 // the roadmap's "Custom blending" item — Material's
                 // AlphaMode covers the three glTF 2.0 modes; anything more
                 // exotic will ride on a separate per-Material slot.
-                write_mask: checks::pass::pick_color_writes(shader),
+                write_mask: checks::pass::pick_writes(shader),
             })],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
@@ -2992,7 +3003,7 @@ fn create_render_pipeline(
             },
             ..wgpu::PrimitiveState::default()
         },
-        depth_stencil: depth.state(alpha_mode),
+        depth_stencil: depth.describe_state(alpha_mode),
         multisample: wgpu::MultisampleState {
             count: sample_count,
             mask: !0,
@@ -3014,7 +3025,7 @@ fn create_render_pipeline(
 /// and `pad_uniforms` on a backend that pads its uniform bindings to 16 bytes.
 fn create_compute_pipeline(
     device: &wgpu::Device,
-    shader: &crate::ShaderObject,
+    shader: &ShaderObject,
     layout: &Layout,
     writes_wgsl: bool,
     pad_uniforms: bool,
@@ -3026,8 +3037,8 @@ fn create_compute_pipeline(
         label: Some("Compute Shader"),
         source,
     });
-    let layouts = create_bind_group_layouts(device, &layout.entries());
-    let immediate_size = read_immediate_size(layout.push.as_ref());
+    let layouts = create_bind_group_layouts(device, &layout.list_entries());
+    let immediate_size = measure_immediates(layout.push.as_ref());
     let pipeline_layout =
         create_pipeline_layout(device, "Compute Pipeline Layout", &layouts, immediate_size);
 
@@ -3068,13 +3079,8 @@ unsafe fn open_unsafe_surface(
     Ok(unsafe { instance.create_surface_unsafe(target) }?)
 }
 
-fn schema_offsets(
-    schema: &crate::geometry::VertexSchema,
-) -> (
-    std::collections::HashMap<String, (u64, wgpu::VertexFormat)>,
-    u64,
-) {
-    let mut map = std::collections::HashMap::new();
+fn schema_offsets(schema: &VertexSchema) -> (HashMap<String, (u64, wgpu::VertexFormat)>, u64) {
+    let mut map = HashMap::new();
     let mut ofs = 0u64;
     for f in schema.fields.iter() {
         map.insert(f.name.clone(), (ofs, f.fmt));

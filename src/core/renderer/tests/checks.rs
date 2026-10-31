@@ -5,7 +5,7 @@ use crate::core::LayoutLoss;
 use crate::core::renderer::checks::shader::{TextureFacts, Verdict, check_texture, refuse_layout};
 use crate::core::renderer::pipelines::layout::build_module;
 use crate::core::renderer::pipelines::layout::{
-    find_entry, pick_source, plan_layout, texture_binding,
+    describe_texture, find_entry, pick_source, plan_layout,
 };
 use crate::core::renderer::*;
 use crate::texture::{Registration, Texture, TextureObject};
@@ -634,13 +634,13 @@ fn texture_checks_follow_wgpu_rules() {
             create_texture(&context, wgpu::TextureFormat::Rgba8Unorm, usage).expect("texture");
         let meta = |sampled: bool| crate::texture::TextureMeta {
             sampled,
-            ..crate::texture::TextureMeta::with_id_only(*color.id())
+            ..crate::texture::TextureMeta::from(*color.id())
         };
         let features = context.device.features();
         let facts = TextureFacts::read(&color.object());
-        let loaded = texture_binding(&meta(false));
+        let loaded = describe_texture(&meta(false));
         assert!(check_texture("t", &loaded, &facts, features).is_ok());
-        let filtered = texture_binding(&meta(true));
+        let filtered = describe_texture(&meta(true));
         assert!(check_texture("t", &filtered, &facts, features).is_ok());
         let multi = wgpu::BindingType::Texture {
             sample_type: wgpu::TextureSampleType::Float { filterable: false },

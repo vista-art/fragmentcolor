@@ -201,7 +201,7 @@ impl TextureOptions {
     /// FFI-friendly `u32` field type. The wgpu bit layout is identical, so
     /// the conversion is a no-op at runtime.
     pub fn with_usage(mut self, usage: crate::TextureUsage) -> Self {
-        self.usage = Some(usage.raw_bits());
+        self.usage = Some(u32::from(usage));
         self
     }
 }

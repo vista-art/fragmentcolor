@@ -35,8 +35,8 @@ impl Material {
         self: Arc<Self>,
         color: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let arr = read_vector::<4>(color, "Material.baseColor")?;
-        Ok(Arc::new(self.base_color(arr)))
+        let color = read_vector::<4>(color, "Material.baseColor")?;
+        Ok(Arc::new(self.base_color(color)))
     }
 
     #[uniffi::method(name = "metallic")]
@@ -69,8 +69,8 @@ impl Material {
         self: Arc<Self>,
         factor: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let arr = read_vector::<3>(factor, "Material.emissive")?;
-        Ok(Arc::new(self.emissive(arr)))
+        let factor = read_vector::<3>(factor, "Material.emissive")?;
+        Ok(Arc::new(self.emissive(factor)))
     }
 
     #[uniffi::method(name = "alphaCutoff")]
@@ -87,9 +87,9 @@ impl Material {
         scale: Vec<f32>,
         rotation: f32,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let o = read_vector::<2>(offset, "Material.uvTransform: offset")?;
-        let s = read_vector::<2>(scale, "Material.uvTransform: scale")?;
-        Ok(Arc::new(self.uv_transform(o, s, rotation)))
+        let offset = read_vector::<2>(offset, "Material.uvTransform: offset")?;
+        let scale = read_vector::<2>(scale, "Material.uvTransform: scale")?;
+        Ok(Arc::new(self.uv_transform(offset, scale, rotation)))
     }
 
     #[uniffi::method(name = "textureUv")]
@@ -111,9 +111,11 @@ impl Material {
         scale: Vec<f32>,
         rotation: f32,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let o = read_vector::<2>(offset, "Material.textureTransform: offset")?;
-        let s = read_vector::<2>(scale, "Material.textureTransform: scale")?;
-        Ok(Arc::new(self.texture_transform(slot, o, s, rotation)))
+        let offset = read_vector::<2>(offset, "Material.textureTransform: offset")?;
+        let scale = read_vector::<2>(scale, "Material.textureTransform: scale")?;
+        Ok(Arc::new(
+            self.texture_transform(slot, offset, scale, rotation),
+        ))
     }
 
     #[uniffi::method(name = "alphaMode")]

@@ -104,7 +104,7 @@ impl ShaderObject {
         self.check_key(key)?;
         let writing = self.texture_writes.lock();
         let (id, replaced) = self.keep_source(key, source);
-        let written = self.write_slot(key, UniformData::Texture(TextureMeta::with_id_only(id)));
+        let written = self.write_slot(key, UniformData::Texture(TextureMeta::from(id)));
         let released = self.bound_textures.remove(key);
         drop(writing);
         drop((replaced, released));
@@ -428,7 +428,7 @@ mod tests {
             let texture = renderer.create_texture(pixels).await.expect("a texture");
             let shader = build_shader();
             let object = &shader.object;
-            let unset = || UniformData::Texture(TextureMeta::with_id_only(TextureId { id: 0 }));
+            let unset = || UniformData::Texture(TextureMeta::from(TextureId { id: 0 }));
 
             object
                 .set_map("image", build_source([255, 0, 0, 255]))
@@ -493,7 +493,7 @@ mod tests {
             "the refused id was written"
         );
 
-        let meta = UniformData::Texture(TextureMeta::with_id_only(id));
+        let meta = UniformData::Texture(TextureMeta::from(id));
         let refused = object.set("other", meta).expect_err("another slot");
         assert!(foreign(&refused), "{refused:?}");
         assert!(object.has_map("image"), "the refusal ended the map");

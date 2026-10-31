@@ -7,7 +7,7 @@ use pyo3::types::PyString;
 use crate::bindings::python::{PyChannels, PyFloat, PyUnsigned, read_numbers, read_unsigned};
 use crate::error::InvalidInputError;
 use crate::scene::{
-    Camera, CameraError, Light, LightError, LightKind, Model, Scene, SceneLoadError,
+    Camera, CameraError, Light, LightError, LightKind, Model, PassRef, Scene, SceneLoadError,
 };
 use crate::{Material, Mesh, Pass};
 
@@ -200,6 +200,33 @@ impl PyMatrix<'_> {
 }
 
 /// A matrix of 16 numbers, column after column.
+/// The pass `Scene.add_to` names: its name, or its index.
+fn read_pass_ref(target: &Bound<'_, PyAny>) -> PyResult<PassRef> {
+    match target.extract::<String>() {
+        Ok(name) => Ok(PassRef::Name(name)),
+        Err(_) => {
+            let index: u32 = read_unsigned(target, "Scene.add_to: target")?;
+            Ok(PassRef::Index(index as usize))
+        }
+    }
+}
+
+/// Adds the Model, Camera or Light that `object` holds to the pass `target` names.
+fn add_object(scene: &Scene, target: PassRef, object: &Bound<'_, PyAny>) -> PyResult<()> {
+    if let Ok(model) = object.cast::<Model>() {
+        scene.add_to(target, &*model.borrow())?;
+    } else if let Ok(camera) = object.cast::<Camera>() {
+        scene.add_to(target, &*camera.borrow())?;
+    } else if let Ok(light) = object.cast::<Light>() {
+        scene.add_to(target, &*light.borrow())?;
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "Scene.add_to: expected a Model, Camera, or Light",
+        ));
+    }
+    Ok(())
+}
+
 fn read_flat(value: &Bound<'_, PyAny>, label: &str) -> PyResult<[[f32; 4]; 4]> {
     let numbers = read_numbers(value, label)?;
     match <[f64; 16]>::try_from(numbers.as_slice()) {
@@ -401,7 +428,7 @@ impl Scene {
     #[pyo3(name = "load", signature = (source, cameras=true, lights=true))]
     #[lsp_doc("docs/api/scene/scene/load.md")]
     pub fn load_py(source: PySceneSource<'_>, cameras: bool, lights: bool) -> PyResult<Self> {
-        let source = crate::scene::SceneSource::gltf(source)
+        let source = crate::scene::GltfSource::from(source)
             .cameras(cameras)
             .lights(lights);
         Ok(Scene::load(source)?)
@@ -472,24 +499,7 @@ impl Scene {
         target: &Bound<'py, PyAny>,
         object: &Bound<'py, PyAny>,
     ) -> PyResult<PyRef<'py, Self>> {
-        let target = match target.extract::<String>() {
-            Ok(name) => crate::scene::PassRef::Name(name),
-            Err(_) => {
-                let index: u32 = read_unsigned(target, "Scene.add_to: target")?;
-                crate::scene::PassRef::Index(index as usize)
-            }
-        };
-        if let Ok(model) = object.cast::<Model>() {
-            slf.add_to(target, &*model.borrow())?;
-        } else if let Ok(camera) = object.cast::<Camera>() {
-            slf.add_to(target, &*camera.borrow())?;
-        } else if let Ok(light) = object.cast::<Light>() {
-            slf.add_to(target, &*light.borrow())?;
-        } else {
-            return Err(pyo3::exceptions::PyTypeError::new_err(
-                "Scene.add_to: expected a Model, Camera, or Light",
-            ));
-        }
+        add_object(&slf, read_pass_ref(target)?, object)?;
         Ok(slf)
     }
 

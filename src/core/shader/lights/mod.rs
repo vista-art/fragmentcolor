@@ -8,37 +8,24 @@ use std::sync::{Arc, Weak};
 
 use super::ShaderObject;
 use crate::PassError;
-use crate::scene::{GpuLight, LightObject, bump_epoch, current_epoch};
+use crate::scene::{GpuLight, LightObject, bump_epoch, read_epoch};
 
 pub(crate) mod roots;
 
 /// The most lights one shader takes on every device this process opened.
 static LIGHT_CAP: AtomicU32 = AtomicU32::new(u32::MAX);
 
-#[cfg(test)]
-thread_local! {
-    /// A cap for the current test thread alone, so a test that forces a small
-    /// device cap leaves the tests running beside it alone.
-    static TEST_CAP: std::cell::Cell<u32> = const { std::cell::Cell::new(u32::MAX) };
-}
-
 /// Lowers the process-wide light cap to what a new device takes.
-pub(crate) fn lower_light_cap(cap: u32) {
+pub(crate) fn lower_cap(cap: u32) {
     LIGHT_CAP.fetch_min(cap, Ordering::Relaxed);
 }
 
 /// The most lights one shader takes on every device this process opened.
-pub(crate) fn light_cap() -> u32 {
+pub(crate) fn read_cap() -> u32 {
     let cap = LIGHT_CAP.load(Ordering::Relaxed);
     #[cfg(test)]
-    let cap = cap.min(TEST_CAP.with(std::cell::Cell::get));
+    let cap = cap.min(crate::testing::light_cap::read());
     cap
-}
-
-/// Lowers the light cap for the calling test thread only.
-#[cfg(test)]
-pub(crate) fn lower_test_cap(cap: u32) {
-    TEST_CAP.with(|current| current.set(current.get().min(cap)));
 }
 
 /// The fewest entries a light list holds before it drops the dead ones.
@@ -181,7 +168,7 @@ pub(crate) fn share_light(
 /// Checks that the lights `incoming` names, each named once, fit next to the ones in
 /// `lights`, a list of a shader whose light roots hold `capacity` lights.
 fn check_room(lights: &mut ShaderLights, capacity: u32, incoming: &[u64]) -> Result<(), PassError> {
-    let cap = light_cap().min(capacity);
+    let cap = read_cap().min(capacity);
     let fresh = incoming
         .iter()
         .filter(|id| !lights.ids.contains(id))
@@ -199,9 +186,9 @@ fn check_room(lights: &mut ShaderLights, capacity: u32, incoming: &[u64]) -> Res
 
 impl ShaderObject {
     /// The hash and count of the live lights, taken once per light epoch.
-    pub(crate) fn light_summary(&self) -> LightSummary {
+    pub(crate) fn summarize_lights(&self) -> LightSummary {
         // Read the epoch first, so a change that lands meanwhile moves it past the stored one.
-        let epoch = current_epoch();
+        let epoch = read_epoch();
         if let Some((taken, summary)) = self.lights.read().summary
             && taken == epoch
         {
@@ -258,12 +245,12 @@ impl ShaderObject {
 
     /// The lights this shader draws with, in attach order: its live lights,
     /// or the placeholder when it has one and no light reaches it.
-    pub(crate) fn gpu_lights(&self) -> Vec<GpuLight> {
+    pub(crate) fn collect_lights(&self) -> Vec<GpuLight> {
         let list = self.light_list();
         if list.lights.is_empty() && list.placeholder {
             return vec![GpuLight::placeholder()];
         }
-        list.lights.iter().map(|light| light.gpu()).collect()
+        list.lights.iter().map(|light| light.to_gpu()).collect()
     }
 }
 
@@ -271,7 +258,7 @@ impl ShaderObject {
 mod tests {
     use std::sync::Arc;
 
-    use crate::scene::{Light, bump_epoch, current_epoch};
+    use crate::scene::{Light, bump_epoch, read_epoch};
 
     // Story: a shader's light summary holds for the light epoch it was taken at,
     // so a render reads it without walking the lights, and the next epoch takes it again.
@@ -286,19 +273,19 @@ mod tests {
         // A list change that skips the epoch stays out of the summary. Another
         // test can move the epoch between the reads, so a few tries are allowed.
         let held = (0..64).any(|_| {
-            let epoch = current_epoch();
-            let before = shader.light_summary();
+            let epoch = read_epoch();
+            let before = shader.summarize_lights();
             push();
-            let during = shader.light_summary();
+            let during = shader.summarize_lights();
             shader.lights.write().list.pop();
-            current_epoch() == epoch && during == before
+            read_epoch() == epoch && during == before
         });
         assert!(held, "the summary walked the lights again within one epoch");
 
         push();
         bump_epoch();
         assert_eq!(
-            shader.light_summary().count,
+            shader.summarize_lights().count,
             1,
             "a new epoch counts the lamp"
         );

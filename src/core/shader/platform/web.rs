@@ -40,14 +40,14 @@ impl Shader {
     // Static helpers that mirror Rust API for the JS side
     #[wasm_bindgen(js_name = "fromVertex")]
     #[lsp_doc("docs/api/core/shader/from_vertex.md")]
-    pub fn from_vertex_js(v: &crate::Vertex) -> Result<Shader, ShaderError> {
-        Self::from_vertex(v)
+    pub fn from_vertex_js(vertex: &crate::Vertex) -> Result<Shader, ShaderError> {
+        Self::from_vertex(vertex)
     }
 
     #[wasm_bindgen(js_name = "fromMesh")]
     #[lsp_doc("docs/api/core/shader/from_mesh.md")]
-    pub fn from_mesh_js(m: &crate::Mesh) -> Result<Shader, ShaderError> {
-        Self::from_mesh(m)
+    pub fn from_mesh_js(mesh: &crate::Mesh) -> Result<Shader, ShaderError> {
+        Self::from_mesh(mesh)
     }
 
     #[wasm_bindgen(js_name = "set")]

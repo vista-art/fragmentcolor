@@ -389,7 +389,7 @@ fn check_output(
 /// The WebGPU spec ("validating GPUFragmentState") takes a color target with no
 /// fragment output at its location only with a `writeMask` of 0. wgpu-core accepts
 /// any mask there, and the browser refuses the pipeline.
-pub(in crate::core::renderer) fn pick_color_writes(shader: &ShaderObject) -> wgpu::ColorWrites {
+pub(in crate::core::renderer) fn pick_writes(shader: &ShaderObject) -> wgpu::ColorWrites {
     match find_output(shader) {
         Some(_) => wgpu::ColorWrites::ALL,
         None => wgpu::ColorWrites::empty(),
@@ -650,7 +650,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
         let pick = |fragment: &str| {
             let source = format!("{vertex}\n{fragment}");
             let shader = Shader::new(source.as_str()).expect("a shader");
-            pick_color_writes(&shader.object)
+            pick_writes(&shader.object)
         };
         let direct =
             pick("@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }");
@@ -1162,7 +1162,7 @@ fn fs_main() -> @location(0) vec4<f32> {
             renderer.render(&pass, &frame).expect("the pass draws");
             let id = read_bound(&shader, "base_color_map");
 
-            let unset = crate::texture::TextureMeta::with_id_only(TextureId { id: 0 });
+            let unset = crate::texture::TextureMeta::from(TextureId { id: 0 });
             shader
                 .object
                 .set("base_color_map", UniformData::Texture(unset))

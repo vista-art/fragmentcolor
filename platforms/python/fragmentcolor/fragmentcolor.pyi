@@ -2535,16 +2535,16 @@ class Scene:
         By default the loader instantiates the glTF file's own camera and light nodes.
         When you bring your own (a spring-arm rig, a UI-locked overlay camera, an
         animated key/fill setup) the embedded ones would only fight for the same
-        shader uniforms. Load through `gltf(...)` to get a builder with `cameras(false)`
-        and `lights(false)` toggles:
+        shader uniforms. Load through `GltfSource::from(...)` to get a builder with
+        `cameras(false)` and `lights(false)` toggles:
 
         ```rust,no_run
         # fn main() -> Result<(), Box<dyn std::error::Error>> {
-        use fragmentcolor::{Camera, Scene, SceneSource};
+        use fragmentcolor::{Camera, GltfSource, Scene};
 
         // Load geometry + materials only; drop the file's camera and lights.
         let scene = Scene::load(
-            SceneSource::gltf("path/to/model.glb")
+            GltfSource::from("path/to/model.glb")
                 .cameras(false)
                 .lights(false),
         )?;

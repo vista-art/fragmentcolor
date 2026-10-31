@@ -35,8 +35,8 @@ impl Material {
         &self,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] color: &JsValue,
     ) -> Result<Material, WebError> {
-        let arr = read_vector::<4>(color, "Material.baseColor")?;
-        Ok(self.base_color(arr))
+        let color = read_vector::<4>(color, "Material.baseColor")?;
+        Ok(self.base_color(color))
     }
 
     #[wasm_bindgen(js_name = "metallic")]
@@ -81,8 +81,8 @@ impl Material {
         &self,
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] factor: &JsValue,
     ) -> Result<Material, WebError> {
-        let arr = read_vector::<3>(factor, "Material.emissive")?;
-        Ok(self.emissive(arr))
+        let factor = read_vector::<3>(factor, "Material.emissive")?;
+        Ok(self.emissive(factor))
     }
 
     #[wasm_bindgen(js_name = "alphaCutoff")]
@@ -102,10 +102,10 @@ impl Material {
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] scale: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "number")] rotation: &JsValue,
     ) -> Result<Material, WebError> {
-        let o = read_vector::<2>(offset, "Material.uvTransform: offset")?;
-        let s = read_vector::<2>(scale, "Material.uvTransform: scale")?;
+        let offset = read_vector::<2>(offset, "Material.uvTransform: offset")?;
+        let scale = read_vector::<2>(scale, "Material.uvTransform: scale")?;
         let rotation = read_float(rotation, "Material.uvTransform: rotation")?;
-        Ok(self.uv_transform(o, s, rotation))
+        Ok(self.uv_transform(offset, scale, rotation))
     }
 
     #[wasm_bindgen(js_name = "textureUv")]
@@ -128,10 +128,10 @@ impl Material {
         #[wasm_bindgen(unchecked_param_type = "number[] | Float32Array")] scale: &JsValue,
         #[wasm_bindgen(unchecked_param_type = "number")] rotation: &JsValue,
     ) -> Result<Material, WebError> {
-        let o = read_vector::<2>(offset, "Material.textureTransform: offset")?;
-        let s = read_vector::<2>(scale, "Material.textureTransform: scale")?;
+        let offset = read_vector::<2>(offset, "Material.textureTransform: offset")?;
+        let scale = read_vector::<2>(scale, "Material.textureTransform: scale")?;
         let rotation = read_float(rotation, "Material.textureTransform: rotation")?;
-        Ok(self.texture_transform(read_texture_slot(slot)?, o, s, rotation))
+        Ok(self.texture_transform(read_texture_slot(slot)?, offset, scale, rotation))
     }
 
     #[wasm_bindgen(js_name = "alphaMode")]

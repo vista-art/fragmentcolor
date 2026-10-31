@@ -20,7 +20,7 @@ pub(super) fn write(
 
     let size = object.size;
     let format = object.format;
-    let bpp = super::texel_size(format)?;
+    let bpp = super::measure_texel(format)?;
 
     let whole = [size.width, size.height, size.depth_or_array_layers];
     let region = match region {
@@ -72,7 +72,7 @@ pub(super) fn write(
         None => default_stride(data.len(), row_stride, rows_per_image, region.size)?,
     };
 
-    let required = least_bytes(bytes_per_row, row_stride, rows_per_image, region.size);
+    let required = count_bytes(bytes_per_row, row_stride, rows_per_image, region.size);
     if (data.len() as u64) < required {
         return Err(TextureError::Error(
             "Input data smaller than required for layout".into(),
@@ -93,7 +93,7 @@ pub(super) fn write(
                 "a write can't rebuild the mip chain of a {format:?} texture"
             )));
         }
-        let rows = tight_rows(data, bytes_per_row, row_stride, region.size[1]);
+        let rows = trim_rows(data, bytes_per_row, row_stride, region.size[1]);
         return super::write_levels(&tex.context, &rows, &object.inner, size, format, levels);
     }
 
@@ -126,7 +126,7 @@ pub(super) fn write(
 }
 
 /// The `height` rows of `data` at `bytes_per_row`, each cut to its `row_stride` bytes.
-fn tight_rows(data: &[u8], bytes_per_row: u32, row_stride: u32, height: u32) -> Cow<'_, [u8]> {
+fn trim_rows(data: &[u8], bytes_per_row: u32, row_stride: u32, height: u32) -> Cow<'_, [u8]> {
     let (stride, used) = (bytes_per_row as usize, row_stride as usize);
     let length = used * height as usize;
     if stride == used {
@@ -138,7 +138,7 @@ fn tight_rows(data: &[u8], bytes_per_row: u32, row_stride: u32, height: u32) -> 
 
 /// The fewest bytes WebGPU reads for a region of `size`:
 /// every row but the last at `bytes_per_row`, then the last row's `row_stride`.
-fn least_bytes(bytes_per_row: u32, row_stride: u32, rows_per_image: u32, size: [u32; 3]) -> u64 {
+fn count_bytes(bytes_per_row: u32, row_stride: u32, rows_per_image: u32, size: [u32; 3]) -> u64 {
     let rows = (size[2].saturating_sub(1) as u64)
         .saturating_mul(rows_per_image as u64)
         .saturating_add(size[1].saturating_sub(1) as u64);
@@ -147,12 +147,12 @@ fn least_bytes(bytes_per_row: u32, row_stride: u32, rows_per_image: u32, size: [
         .saturating_add(row_stride as u64)
 }
 
-/// Row stride for data of `len` bytes passed without `bytes_per_row`.
+/// Row stride for data of `length` bytes passed without `bytes_per_row`.
 /// Rows are tightly packed, since `Queue::write_texture` takes any stride,
 /// and data sized exactly for rows padded to 256 bytes reads at the padded stride.
 /// Any other length is an error, so a buffer for a different region never uploads cropped.
 fn default_stride(
-    len: usize,
+    length: usize,
     row_stride: u32,
     rows_per_image: u32,
     size: [u32; 3],
@@ -164,16 +164,18 @@ fn default_stride(
             .saturating_mul(rows_per_image as u64)
             .saturating_mul(size[2] as u64)
     };
-    let len = len as u64;
-    if len == full(row_stride) || len == least_bytes(row_stride, row_stride, rows_per_image, size) {
+    let length = length as u64;
+    if length == full(row_stride)
+        || length == count_bytes(row_stride, row_stride, rows_per_image, size)
+    {
         return Ok(row_stride);
     }
-    if len == full(padded) {
+    if length == full(padded) {
         return Ok(padded);
     }
     let [width, height, depth] = size;
     Err(TextureError::InvalidInput(format!(
-        "{len} bytes don't fit a {width}x{height}x{depth} region, which takes {} in tight rows or {} in rows padded to {align} bytes; give the region a bytes per row for any other layout",
+        "{length} bytes don't fit a {width}x{height}x{depth} region, which takes {} in tight rows or {} in rows padded to {align} bytes; give the region a bytes per row for any other layout",
         full(row_stride),
         full(padded)
     )))

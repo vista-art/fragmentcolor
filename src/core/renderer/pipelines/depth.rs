@@ -18,7 +18,7 @@ pub(in crate::core::renderer) enum DepthUse {
 impl DepthUse {
     /// The pipeline's depth state for `alpha_mode`.
     /// Blended fragments test depth but never write it, so they hide nothing drawn later.
-    pub(in crate::core::renderer) fn state(
+    pub(in crate::core::renderer) fn describe_state(
         self,
         alpha_mode: AlphaMode,
     ) -> Option<wgpu::DepthStencilState> {
@@ -56,7 +56,7 @@ pub(in crate::core::renderer) enum PassDepth<'pool> {
 
 impl PassDepth<'_> {
     /// The attachment the render pass begins with. Depth clears on every pass.
-    pub(in crate::core::renderer) fn attachment(
+    pub(in crate::core::renderer) fn describe_attachment(
         &self,
     ) -> Option<wgpu::RenderPassDepthStencilAttachment<'_>> {
         let (view, store) = match self {

@@ -62,12 +62,12 @@ impl Target for WindowTarget {
 
     #[lsp_doc("docs/api/targets/target/get_image.md")]
     async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
-        Err(unreadable())
+        Err(refuse_read())
     }
 }
 
 /// What `get_image` returns for every window target, in each binding.
-pub(crate) fn unreadable() -> TextureError {
+pub(crate) fn refuse_read() -> TextureError {
     TextureError::Readback(
         "a window target can't be read back. Render to a TextureTarget to read its pixels".into(),
     )

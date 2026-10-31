@@ -64,17 +64,17 @@ impl PyRenderable {
         Ok(Self { items })
     }
 
-    fn read_object(obj: &Bound<'_, PyAny>) -> Option<Item> {
-        if let Ok(pass) = obj.cast::<Pass>() {
+    fn read_object(object: &Bound<'_, PyAny>) -> Option<Item> {
+        if let Ok(pass) = object.cast::<Pass>() {
             return Some(Item::Whole(Box::new(pass.borrow().clone())));
         }
-        if let Ok(shader) = obj.cast::<Shader>() {
+        if let Ok(shader) = object.cast::<Shader>() {
             return Some(Item::Whole(Box::new(shader.borrow().clone())));
         }
-        if let Ok(mesh) = obj.cast::<Mesh>() {
+        if let Ok(mesh) = object.cast::<Mesh>() {
             return Some(Item::Whole(Box::new(mesh.borrow().clone())));
         }
-        if let Ok(scene) = obj.cast::<Scene>() {
+        if let Ok(scene) = object.cast::<Scene>() {
             return Some(Item::Whole(Box::new(scene.borrow().clone())));
         }
         None

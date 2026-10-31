@@ -1,8 +1,10 @@
-use crate::scene::LightObject;
-use crate::texture::Registration;
-use crate::{Color, Mesh, Renderable, ScreenRegion, Shader, ShaderObject};
+use crate::geometry::MeshObject;
+use crate::scene::{LightObject, ModelEntry, PassLights, SceneObject};
+use crate::texture::{Registration, Texture, TextureObject};
+use crate::{Color, Mesh, Renderable, ScreenRegion, Shader, ShaderObject, TextureTarget};
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -114,7 +116,7 @@ impl Pass {
     /// their uniforms into every shader the pass renders (current and
     /// future). Chainable; errors short-circuit the chain.
     #[lsp_doc("docs/api/core/pass/add.md")]
-    pub fn add<O: crate::scene::SceneObject>(&self, object: &O) -> Result<&Self, PassError> {
+    pub fn add<O: SceneObject>(&self, object: &O) -> Result<&Self, PassError> {
         object.attach(self)?;
         Ok(self)
     }
@@ -123,7 +125,7 @@ impl Pass {
     /// given shader. Called by `Model::attach` when a Model brings a new
     /// shader to the pass, so a Camera writes its state into it. The pass's
     /// lights reach the shader through `add_shader`.
-    pub(crate) fn replay_scene_objects(&self, shader: &crate::Shader) {
+    pub(crate) fn replay_scene_objects(&self, shader: &Shader) {
         for object in self.object.scene_objects.read().iter() {
             object.apply_to_shader(shader);
         }
@@ -252,20 +254,20 @@ pub struct DepthTarget {
     pub(crate) registration: Arc<Registration>,
 }
 
-impl TryFrom<&crate::texture::Texture> for ColorTarget {
+impl TryFrom<&Texture> for ColorTarget {
     type Error = PassError;
 
     /// Validate usage and format for color attachment
-    fn try_from(tex: &crate::texture::Texture) -> Result<Self, Self::Error> {
-        let object = tex.object();
+    fn try_from(texture: &Texture) -> Result<Self, Self::Error> {
+        let object = texture.object();
         let usage = object.usage;
         if !usage.contains(wgpu::TextureUsages::RENDER_ATTACHMENT) {
             return Err(PassError::InvalidColorTarget(
                 "texture was not created with RENDER_ATTACHMENT usage".into(),
             ));
         }
-        let fmt = object.format;
-        match fmt {
+        let format = object.format;
+        match format {
             wgpu::TextureFormat::Depth32Float
             | wgpu::TextureFormat::Depth16Unorm
             | wgpu::TextureFormat::Depth24Plus
@@ -279,37 +281,37 @@ impl TryFrom<&crate::texture::Texture> for ColorTarget {
         }
         check_plane(&object, "color")?;
         Ok(ColorTarget {
-            registration: tex.registration.clone(),
+            registration: texture.registration.clone(),
         })
     }
 }
 
-impl TryFrom<&crate::TextureTarget> for ColorTarget {
+impl TryFrom<&TextureTarget> for ColorTarget {
     type Error = PassError;
 
     // Convert to a Texture handle and reuse validation
-    fn try_from(target: &crate::TextureTarget) -> Result<Self, Self::Error> {
+    fn try_from(target: &TextureTarget) -> Result<Self, Self::Error> {
         let texture = target.texture();
         ColorTarget::try_from(&texture)
     }
 }
 
-impl TryFrom<&crate::TextureTarget> for DepthTarget {
+impl TryFrom<&TextureTarget> for DepthTarget {
     type Error = PassError;
 
     // Convert to a Texture handle and reuse validation for depth targets
-    fn try_from(target: &crate::TextureTarget) -> Result<Self, Self::Error> {
+    fn try_from(target: &TextureTarget) -> Result<Self, Self::Error> {
         let texture = target.texture();
         DepthTarget::try_from(&texture)
     }
 }
 
-impl TryFrom<&crate::texture::Texture> for DepthTarget {
+impl TryFrom<&Texture> for DepthTarget {
     type Error = PassError;
 
     /// Validate usage and format for depth/stencil attachment
-    fn try_from(tex: &crate::texture::Texture) -> Result<Self, Self::Error> {
-        let object = tex.object();
+    fn try_from(texture: &Texture) -> Result<Self, Self::Error> {
+        let object = texture.object();
         let usage = object.usage;
         if !usage.contains(wgpu::TextureUsages::RENDER_ATTACHMENT) {
             return Err(PassError::InvalidColorTarget(
@@ -331,7 +333,7 @@ impl TryFrom<&crate::texture::Texture> for DepthTarget {
         }
         check_plane(&object, "depth")?;
         Ok(DepthTarget {
-            registration: tex.registration.clone(),
+            registration: texture.registration.clone(),
         })
     }
 }
@@ -339,7 +341,7 @@ impl TryFrom<&crate::texture::Texture> for DepthTarget {
 /// Refuses a texture with more than one mip level or layer as a `role` target.
 /// A pass draws into one level of one layer and has no way to pick it,
 /// so the other levels and layers would keep what they held.
-fn check_plane(object: &crate::TextureObject, role: &str) -> Result<(), PassError> {
+fn check_plane(object: &TextureObject, role: &str) -> Result<(), PassError> {
     let levels = object.inner.mip_level_count();
     if levels != 1 {
         return Err(PassError::InvalidColorTarget(format!(
@@ -402,7 +404,7 @@ pub struct PassObject {
     // instances, with no shader duplication and no mutation of the Mesh's own
     // instance buffer (so the same Mesh in another Pass with different Models
     // doesn't clobber state).
-    pub(crate) model_entries: RwLock<Vec<crate::scene::ModelEntry>>,
+    pub(crate) model_entries: RwLock<Vec<ModelEntry>>,
     // Scene-level objects (Camera, Light, ...) absorbed via `Pass::add`.
     // Each one's `apply_to_shader` hook is re-invoked when a new shader
     // joins the pass via `Model::attach`, so order of attachment doesn't
@@ -410,11 +412,11 @@ pub struct PassObject {
     // track their own `Weak<ShaderObject>` list so subsequent mutations
     // on the source value reach every absorbed shader without a second
     // `add` call. Model doesn't go in this list (its work is one-shot).
-    pub(crate) scene_objects: RwLock<Vec<Box<dyn crate::scene::SceneObject>>>,
+    pub(crate) scene_objects: RwLock<Vec<Box<dyn SceneObject>>>,
     /// The lights added to this pass, in add order. Holding them keeps them
     /// lighting after the caller drops its handles, and a shader that joins
     /// the pass later takes every one.
-    pub(crate) lights: RwLock<crate::scene::PassLights>,
+    pub(crate) lights: RwLock<PassLights>,
     pub(crate) viewport: RwLock<Option<ScreenRegion>>,
     pub(crate) required_buffer_size: RwLock<u64>,
     /// Snapshot of the most recently attached Camera's `(view, position)`,
@@ -441,13 +443,13 @@ pub struct PassObject {
     // DAG metadata and cached traversal
     pub(crate) dependencies: RwLock<Vec<Arc<PassObject>>>,
     /// The ids of the passes in `dependencies`, which tell two passes of one name apart.
-    pub(crate) dependency_ids: RwLock<std::collections::HashSet<u64>>,
+    pub(crate) dependency_ids: RwLock<HashSet<u64>>,
     // Every pass this one requires, deps first. Never this pass:
     // an Arc to itself would keep the pass and its shaders alive forever.
     pub(crate) flat: RwLock<Arc<[Arc<PassObject>]>>,
     pub(crate) built_version: AtomicU64,
     /// The mesh whose quick view this pass draws, on a mesh's own pass.
-    preview: Option<Arc<crate::geometry::MeshObject>>,
+    preview: Option<Arc<MeshObject>>,
 }
 
 impl PassObject {
@@ -459,7 +461,7 @@ impl PassObject {
             shaders: RwLock::new(Vec::new()),
             model_entries: RwLock::new(Vec::new()),
             scene_objects: RwLock::new(Vec::new()),
-            lights: RwLock::new(crate::scene::PassLights::default()),
+            lights: RwLock::new(PassLights::default()),
             viewport: RwLock::new(None),
             input: RwLock::new(PassInput::Clear(Color::transparent())),
             required_buffer_size: RwLock::new(0),
@@ -469,7 +471,7 @@ impl PassObject {
             color_target: RwLock::new(None),
             depth_target: RwLock::new(None),
             dependencies: RwLock::new(Vec::new()),
-            dependency_ids: RwLock::new(std::collections::HashSet::new()),
+            dependency_ids: RwLock::new(HashSet::new()),
             flat: RwLock::new(Arc::from(Vec::<Arc<PassObject>>::new().into_boxed_slice())),
             built_version: AtomicU64::new(0),
             preview: None,
@@ -477,7 +479,7 @@ impl PassObject {
     }
 
     /// The pass that draws `mesh` for its quick view.
-    pub(crate) fn for_mesh(name: &str, mesh: Arc<crate::geometry::MeshObject>) -> Self {
+    pub(crate) fn for_mesh(name: &str, mesh: Arc<MeshObject>) -> Self {
         Self {
             preview: Some(mesh),
             ..Self::new(name, PassType::Render)
@@ -696,7 +698,7 @@ impl PassObject {
 
     /// Whether this pass is `target` or reaches it through its dependencies.
     fn reaches(&self, target: &PassObject) -> bool {
-        use std::collections::{HashSet, VecDeque};
+        use std::collections::VecDeque;
         let mut seen: HashSet<*const PassObject> = HashSet::new();
         let mut q: VecDeque<*const PassObject> = VecDeque::new();
         q.push_back(self as *const _);
@@ -725,12 +727,11 @@ impl PassObject {
         if built == global {
             return;
         }
-        use std::collections::HashSet;
         let mut out: Vec<Arc<PassObject>> = Vec::new();
         let mut seen: HashSet<*const PassObject> = HashSet::new();
         fn dfs(
             n_arc: &Arc<PassObject>,
-            seen: &mut std::collections::HashSet<*const PassObject>,
+            seen: &mut HashSet<*const PassObject>,
             out: &mut Vec<Arc<PassObject>>,
         ) {
             let k = &**n_arc as *const _;

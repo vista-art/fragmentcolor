@@ -7,7 +7,22 @@
 use super::grid::GRID_MARGIN;
 use super::*;
 use crate::{Camera, Light, Material, Mesh, Model, Pass, Renderer, Shader, Target, Vertex};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+/// Counts set prepares, uploaded bytes and binning dispatches, and turns grids off, for the tests.
+#[derive(Debug, Default)]
+pub(in crate::core::renderer) struct LightProbe {
+    pub(super) prepares: AtomicU64,
+    pub(super) uploads: AtomicU64,
+    pub(super) dispatches: AtomicU64,
+    no_grid: AtomicBool,
+}
+
+impl LightProbe {
+    pub(super) fn no_grid(&self) -> bool {
+        self.no_grid.load(Ordering::Relaxed)
+    }
+}
 
 /// How a test renderer hands lights to its shaders.
 #[derive(Debug, Clone, Copy)]
@@ -41,7 +56,7 @@ async fn open(mode: Mode, size: u32) -> (Renderer, crate::TextureTarget, Arc<Ren
         Mode::Reference => context.light_probe.no_grid.store(true, Ordering::Relaxed),
         Mode::Uniform(count) => {
             *context.light_path.write() = LightPath::Uniform { count };
-            crate::core::lower_test_cap(count);
+            crate::testing::light_cap::lower(count);
         }
         Mode::Limit(limit) => *context.light_path.write() = LightPath::Clustered { limit },
         Mode::LimitReference(limit) => {
@@ -300,7 +315,7 @@ fn lights_on_cluster_boundaries_match_the_reference() {
             center: far,
             radius: 9.0,
         }]);
-        let grid = frustum.grid(reach);
+        let grid = frustum.build_grid(reach);
         let mut lights = vec![bulb(far.to_array(), [0.2; 3], 0.2, 9.0)];
         let mut seeds = Seeds(3);
         let [width, _, slices] = frustum.size;
@@ -896,7 +911,7 @@ fn the_uniform_path_caps_lights_at_its_block() {
             "{joined:?}"
         );
         assert!(three.object.shaders.read().is_empty());
-        assert_eq!(material.shader().object.gpu_lights().len(), 2);
+        assert_eq!(material.shader().object.collect_lights().len(), 2);
 
         // The fixed-size `LightArray` shape caps at its own length.
         let older = Material::custom(fullscreen(
@@ -1079,7 +1094,7 @@ fn a_shader_added_later_takes_the_pass_lights() {
             "{joined:?}"
         );
         assert!(pass.object.shaders.read().is_empty());
-        assert!(small.object.gpu_lights().is_empty());
+        assert!(small.object.collect_lights().is_empty());
     });
 }
 
@@ -1165,7 +1180,7 @@ fn layout(module: &naga::Module, name: &str, member: &str) -> (u32, u32) {
 fn constants_match() {
     let pbr = Material::pbr();
     let shading = &pbr.shader().object.module;
-    let binning = binning_module().expect("binning module");
+    let binning = parse_binning().expect("binning module");
     for module in [shading, &binning] {
         assert_eq!(
             constant(module, "GRID_LONG"),

@@ -57,7 +57,7 @@ macro_rules! impl_tryfrom_js_ref_anchor {
         impl $t {
             #[doc(hidden)]
             #[wasm_bindgen(js_name = "__fc_share")]
-            pub fn js_fc_share(&self) -> $t {
+            pub fn share_js(&self) -> $t {
                 self.clone()
             }
         }

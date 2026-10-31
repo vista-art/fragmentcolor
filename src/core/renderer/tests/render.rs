@@ -7,6 +7,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::targets::TargetFrame;
+use crate::testing::device::request_small_device;
 use crate::{Pass, Shader};
 
 // Story: Creating a texture from RGBA8 raw bytes with explicit size succeeds and yields expected size.
@@ -1936,7 +1937,7 @@ fn models_with_other_layouts_share_a_material() {
 #[test]
 fn model_buffers_stay_within_the_buffer_limit() {
     pollster::block_on(async move {
-        let (device, queue) = device::request_small_device(65536).await;
+        let (device, queue) = request_small_device(65536).await.expect("device");
         let ctx = RenderContext::new(device, queue);
         let material = red_glow();
         let mesh = strip(&material, -1.0, 1.0).mesh().clone();

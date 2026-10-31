@@ -24,7 +24,9 @@ use lsp_doc::lsp_doc;
 
 use crate::MobileTextureTarget;
 use crate::error::platform::mobile::FragmentColorError;
-use crate::{Renderer, Size};
+use crate::texture::TextureInputMobile;
+use crate::{LogLevel, Renderer, Shader, Size};
+use crate::{Texture, TextureData, TextureFormat, TextureId, TextureInput, TextureOptions};
 
 #[uniffi::export]
 impl Renderer {
@@ -41,7 +43,7 @@ impl Renderer {
     /// spell it `Renderer.setLogLevel(level)` with no return value.
     #[uniffi::constructor(name = "useLogLevel")]
     #[lsp_doc("docs/api/core/renderer/hidden/use_log_level_mobile.md")]
-    pub fn use_log_level_mobile(level: crate::LogLevel) -> Arc<Self> {
+    pub fn use_log_level_mobile(level: LogLevel) -> Arc<Self> {
         Self::set_log_level(level);
         Arc::new(Self::new())
     }
@@ -55,8 +57,8 @@ impl Renderer {
         self: Arc<Self>,
         size: Size,
     ) -> Result<Arc<MobileTextureTarget>, FragmentColorError> {
-        let tex = self.create_texture_target(size).await?;
-        Ok(MobileTextureTarget::new(tex))
+        let target = self.create_texture_target(size).await?;
+        Ok(MobileTextureTarget::new(target))
     }
 
     /// Single mobile entry point for texture creation. Mirrors the canonical
@@ -69,15 +71,15 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/create_texture.md")]
     pub async fn create_texture_mobile(
         self: Arc<Self>,
-        input: crate::texture::TextureInputMobile,
-        options: Option<crate::texture::TextureOptions>,
-    ) -> Result<Arc<crate::texture::Texture>, FragmentColorError> {
-        let spec = crate::texture::TextureInput {
+        input: TextureInputMobile,
+        options: Option<TextureOptions>,
+    ) -> Result<Arc<Texture>, FragmentColorError> {
+        let spec = TextureInput {
             data: input.into(),
             options: options.unwrap_or_default(),
         };
-        let tex = self.create_texture(spec).await?;
-        Ok(Arc::new(tex))
+        let texture = self.create_texture(spec).await?;
+        Ok(Arc::new(texture))
     }
 
     /// Allocate a storage-class texture, optionally pre-seeded with `data`.
@@ -91,24 +93,24 @@ impl Renderer {
     pub async fn create_storage_texture_mobile(
         self: Arc<Self>,
         size: Size,
-        format: crate::TextureFormat,
+        format: TextureFormat,
         data: Option<Vec<u8>>,
         usage_bits: Option<u32>,
-    ) -> Result<Arc<crate::texture::Texture>, FragmentColorError> {
-        let input = crate::TextureInput {
+    ) -> Result<Arc<Texture>, FragmentColorError> {
+        let input = TextureInput {
             data: match data {
-                Some(bytes) => crate::TextureData::Bytes(bytes),
-                None => crate::TextureData::Empty,
+                Some(bytes) => TextureData::Bytes(bytes),
+                None => TextureData::Empty,
             },
-            options: crate::TextureOptions {
+            options: TextureOptions {
                 size: Some(size),
                 format,
                 usage: usage_bits,
                 ..Default::default()
             },
         };
-        let tex = self.create_storage_texture(input).await?;
-        Ok(Arc::new(tex))
+        let texture = self.create_storage_texture(input).await?;
+        Ok(Arc::new(texture))
     }
 
     /// Single mobile `render` entry. Mirrors the canonical Rust
@@ -124,7 +126,7 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/load.md")]
     pub async fn load_mobile(
         self: Arc<Self>,
-        renderable: crate::RenderableHandle,
+        renderable: RenderableHandle,
     ) -> Result<(), FragmentColorError> {
         Ok(self.load(&renderable).await?)
     }
@@ -133,7 +135,7 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/read_storage.md")]
     pub async fn read_storage_mobile(
         self: Arc<Self>,
-        shader: Arc<crate::Shader>,
+        shader: Arc<Shader>,
         binding: String,
     ) -> Result<Vec<u8>, FragmentColorError> {
         Ok(self.read_storage(&shader, &binding).await?)
@@ -143,14 +145,14 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render_mobile(
         self: Arc<Self>,
-        renderable: crate::RenderableHandle,
-        target: crate::TargetHandle,
+        renderable: RenderableHandle,
+        target: TargetHandle,
     ) -> Result<(), FragmentColorError> {
         match target {
-            crate::TargetHandle::Window(window_target) => {
+            TargetHandle::Window(window_target) => {
                 Ok(self.render(&renderable, window_target.as_ref())?)
             }
-            crate::TargetHandle::Texture(texture_target) => {
+            TargetHandle::Texture(texture_target) => {
                 Ok(self.render(&renderable, texture_target.as_ref())?)
             }
         }
@@ -164,9 +166,9 @@ impl Renderer {
     pub async fn create_depth_texture_mobile(
         self: Arc<Self>,
         size: Size,
-    ) -> Result<Arc<crate::texture::Texture>, FragmentColorError> {
-        let tex = self.create_depth_texture(size).await?;
-        Ok(Arc::new(tex))
+    ) -> Result<Arc<Texture>, FragmentColorError> {
+        let texture = self.create_depth_texture(size).await?;
+        Ok(Arc::new(texture))
     }
 
     /// Read back the mip-0 contents of a registered texture as tightly-packed
@@ -180,9 +182,7 @@ impl Renderer {
         self: Arc<Self>,
         texture_id: u64,
     ) -> Result<Vec<u8>, FragmentColorError> {
-        Ok(self
-            .read_texture(crate::texture::TextureId { id: texture_id })
-            .await?)
+        Ok(self.read_texture(TextureId { id: texture_id }).await?)
     }
 
     /// Remove a texture from the renderer's registry by its raw numeric ID.
@@ -194,7 +194,7 @@ impl Renderer {
         self: Arc<Self>,
         texture_id: u64,
     ) -> Result<(), FragmentColorError> {
-        Ok(self.unregister_texture(crate::texture::TextureId { id: texture_id })?)
+        Ok(self.unregister_texture(TextureId { id: texture_id })?)
     }
 }
 

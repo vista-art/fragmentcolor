@@ -127,27 +127,35 @@ impl Renderer {
         self: Arc<Self>,
         native_window_ptr: u64,
     ) -> Result<Arc<MobileWindowTarget>, FragmentColorError> {
-        let raw = native_window_ptr as *mut ndk_sys::ANativeWindow;
-        if raw.is_null() {
-            return Err(FragmentColorError::Init(
-                "createTarget: the ANativeWindow pointer is null".into(),
-            ));
-        }
-        // SAFETY: the caller guarantees the ANativeWindow is alive and valid
-        // for the duration of this call. We immediately retain it via
-        // ANativeWindow_acquire and release in AndroidNativeWindow::drop.
-        unsafe { ndk_sys::ANativeWindow_acquire(raw) };
-        let window = AndroidNativeWindow { window: raw };
-        let [width, height] = window.read_size()?;
-        let size = wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        };
+        let (window, size) = acquire_window(native_window_ptr)?;
         // The instance has no display handle, so wgpu takes it from the window.
         let (context, surface, config) = pollster::block_on(self.create_surface(window, size))?;
         Ok(MobileWindowTarget::new(WindowTarget::new(
             context, surface, config,
         )))
     }
+}
+
+/// The `ANativeWindow` at `pointer`, retained until it drops, and its size.
+fn acquire_window(
+    pointer: u64,
+) -> Result<(AndroidNativeWindow, wgpu::Extent3d), FragmentColorError> {
+    let raw = pointer as *mut ndk_sys::ANativeWindow;
+    if raw.is_null() {
+        return Err(FragmentColorError::Init(
+            "createTarget: the ANativeWindow pointer is null".into(),
+        ));
+    }
+    // SAFETY: the caller guarantees the ANativeWindow is alive and valid
+    // for the duration of this call. We immediately retain it via
+    // ANativeWindow_acquire and release in AndroidNativeWindow::drop.
+    unsafe { ndk_sys::ANativeWindow_acquire(raw) };
+    let window = AndroidNativeWindow { window: raw };
+    let [width, height] = window.read_size()?;
+    let size = wgpu::Extent3d {
+        width,
+        height,
+        depth_or_array_layers: 1,
+    };
+    Ok((window, size))
 }

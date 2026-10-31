@@ -91,7 +91,7 @@ fn rebuild(
         return Ok(None);
     }
     check_extent(&context.device.limits(), extent, current.inner.dimension())?;
-    Ok(Some(current.resized(context, extent)))
+    Ok(Some(current.create_resized(context, extent)))
 }
 
 #[cfg(test)]

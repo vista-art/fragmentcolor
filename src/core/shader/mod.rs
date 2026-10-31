@@ -2,8 +2,9 @@
 
 pub(crate) mod error;
 use crate::core::renderer::device::CANDIDATES;
+use crate::geometry::{Binding, MeshObject, build_columns};
 use crate::texture::{Registration, TextureId};
-use crate::{PassObject, Renderable};
+use crate::{AlphaMode, Mesh, PassObject, Renderable, Vertex, VertexData};
 use dashmap::DashMap;
 use error::Source;
 pub use error::{Diagnostic, ShaderError, SourceLocation};
@@ -15,9 +16,10 @@ use naga::{
 };
 use parking_lot::{Mutex, RwLock};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
 use wgpu::DownlevelFlags;
 use wgpu_naga_bridge::features_to_naga_capabilities;
 
@@ -44,10 +46,8 @@ mod rewrites;
 pub(crate) use rewrites::immediates::lower_immediates;
 pub(crate) use rewrites::struct_layouts::{LayoutLoss, list_explicit, name_entries, write_layouts};
 pub(in crate::core) mod lights;
-#[cfg(test)]
-pub(crate) use lights::lower_test_cap;
 use lights::roots::LightRoots;
-pub(crate) use lights::{ShaderLights, lower_light_cap, share_light};
+pub(crate) use lights::{ShaderLights, lower_cap, share_light};
 mod platform;
 use uniforms::bytes::*;
 
@@ -128,29 +128,29 @@ impl Shader {
     }
 
     #[lsp_doc("docs/api/core/shader/from_vertex.md")]
-    pub fn from_vertex(v: &crate::Vertex) -> Result<Self, ShaderError> {
-        Ok(Self::from(Arc::new(ShaderObject::from_vertex(v)?)))
+    pub fn from_vertex(vertex: &Vertex) -> Result<Self, ShaderError> {
+        Ok(Self::from(Arc::new(ShaderObject::from_vertex(vertex)?)))
     }
 
     #[lsp_doc("docs/api/core/shader/from_mesh.md")]
-    pub fn from_mesh(mesh: &crate::Mesh) -> Result<Self, ShaderError> {
+    pub fn from_mesh(mesh: &Mesh) -> Result<Self, ShaderError> {
         Ok(Self::from(Arc::new(ShaderObject::from_mesh(mesh)?)))
     }
 
     #[lsp_doc("docs/api/core/shader/add_mesh.md")]
-    pub fn add_mesh(&self, mesh: &crate::Mesh) -> Result<(), ShaderError> {
+    pub fn add_mesh(&self, mesh: &Mesh) -> Result<(), ShaderError> {
         self.object.add_mesh(mesh.object.clone())
     }
 
     #[lsp_doc("docs/api/core/shader/remove_mesh.md")]
-    pub fn remove_mesh(&self, mesh: &crate::Mesh) {
+    pub fn remove_mesh(&self, mesh: &Mesh) {
         self.object.remove_mesh(&mesh.object);
     }
 
     #[lsp_doc("docs/api/core/shader/remove_meshes.md")]
     pub fn remove_meshes<'list, I>(&self, list: I)
     where
-        I: IntoIterator<Item = &'list crate::Mesh>,
+        I: IntoIterator<Item = &'list Mesh>,
     {
         for mesh in list {
             self.object.remove_mesh(&mesh.object);
@@ -163,7 +163,7 @@ impl Shader {
     }
 
     #[lsp_doc("docs/api/core/shader/validate_mesh.md")]
-    pub fn validate_mesh(&self, mesh: &crate::Mesh) -> Result<(), ShaderError> {
+    pub fn validate_mesh(&self, mesh: &Mesh) -> Result<(), ShaderError> {
         self.object.validate_mesh(&mesh.object)
     }
 
@@ -202,12 +202,12 @@ pub(crate) struct ShaderObject {
     /// Module with uniform bindings padded to 16-byte multiples, built on
     /// first use by a backend that requires it. `None` when no binding
     /// needs padding or the rewrite fails.
-    padded: std::sync::OnceLock<Option<Module>>,
+    padded: OnceLock<Option<Module>>,
     pub(crate) storage: RwLock<UniformStorage>,
     pub(crate) total_bytes: u64,
     pub(crate) pending: DashMap<String, PendingUpdate>,
-    pub(crate) meshes: RwLock<Vec<Arc<crate::geometry::MeshObject>>>,
-    pub(crate) alpha_mode: RwLock<crate::AlphaMode>,
+    pub(crate) meshes: RwLock<Vec<Arc<MeshObject>>>,
+    pub(crate) alpha_mode: RwLock<AlphaMode>,
     pub(crate) double_sided: RwLock<bool>,
     /// The `lights` and `light_grid` roots the renderer fills, when the shader declares them.
     pub(crate) light_roots: Option<LightRoots>,
@@ -235,14 +235,14 @@ pub(crate) struct ShaderObject {
 /// The shader then holds no mesh, and `render` checks it again to report why.
 #[derive(Debug)]
 struct Preview {
-    mesh: Arc<crate::geometry::MeshObject>,
+    mesh: Arc<MeshObject>,
     checked: Option<u64>,
 }
 
 /// The quick view's mesh and the generation it passed its check at, which only
 /// that mesh's upload is held to. Other meshes on the shader upload as any do.
 pub(crate) struct Passed {
-    pub(crate) mesh: Arc<crate::geometry::MeshObject>,
+    pub(crate) mesh: Arc<MeshObject>,
     pub(crate) generation: u64,
 }
 
@@ -291,46 +291,46 @@ impl ShaderObject {
     /// It never waits for a draw. A texture waits while the shader binds another texture
     /// or applies its queued values, since both hold `texture_writes`, so the latest one wins.
     pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
-        let val: UniformData = value.into();
+        let value: UniformData = value.into();
         if self.routes_ambient(key) {
-            let input = UniformInput::try_from(val)
+            let input = UniformInput::try_from(value)
                 .map_err(|_| ShaderError::TypeMismatch(AMBIENT_KEY.into()))?;
             return self.set_input(key, input);
         }
-        let texture = matches!(&val, UniformData::Texture(_));
+        let texture = matches!(&value, UniformData::Texture(_));
         let writing = texture.then(|| self.texture_writes.lock());
-        let released = self.write_value(key, val)?;
+        let released = self.write_value(key, value)?;
         drop(writing);
         drop(released);
         Ok(())
     }
 
-    /// Writes `val` under `key` and holds the texture it names. A texture with id 0 unsets
+    /// Writes `value` under `key` and holds the texture it names. A texture with id 0 unsets
     /// the key, which then holds neither a map nor a texture, and another slot's map is refused.
     /// A caller writing a texture holds `texture_writes` and drops what this returns after it.
-    fn write_value(&self, key: &str, val: UniformData) -> Result<Released, ShaderError> {
-        let texture = match &val {
+    fn write_value(&self, key: &str, value: UniformData) -> Result<Released, ShaderError> {
+        let texture = match &value {
             UniformData::Texture(meta) => Some(meta.id),
             _ => None,
         };
         if let Some(id) = texture {
             self.check_bind(key, id)?;
         }
-        self.write_slot(key, val)?;
+        self.write_slot(key, value)?;
         Ok(match texture {
             Some(id) => self.bind_texture(key, id),
             None => (None, None),
         })
     }
 
-    /// Writes `val` under `key`, or queues it in `pending` when the storage is busy.
-    fn write_slot(&self, key: &str, val: UniformData) -> Result<(), ShaderError> {
+    /// Writes `value` under `key`, or queues it in `pending` when the storage is busy.
+    fn write_slot(&self, key: &str, value: UniformData) -> Result<(), ShaderError> {
         if let Some(mut storage) = self.storage.try_write() {
             self.pending.remove(key);
-            storage.update(key, &val)?;
+            storage.update(key, &value)?;
         } else {
             self.pending
-                .insert(key.to_string(), PendingUpdate::Value(val));
+                .insert(key.to_string(), PendingUpdate::Value(value));
         }
         Ok(())
     }
@@ -413,13 +413,13 @@ impl ShaderObject {
     }
 
     /// Create a basic Shader from a vertex.
-    pub fn from_vertex(v: &crate::Vertex) -> Result<Self, ShaderError> {
-        Self::new(&build_wgsl_from_vertex(v))
+    pub fn from_vertex(vertex: &Vertex) -> Result<Self, ShaderError> {
+        Self::new(&build_wgsl_from_vertex(vertex))
     }
 
     /// Create a shader from a mesh's first vertex, with the mesh attached.
     /// An empty mesh, and a mesh the shader refuses, fail.
-    pub fn from_mesh(mesh: &crate::Mesh) -> Result<Self, ShaderError> {
+    pub fn from_mesh(mesh: &Mesh) -> Result<Self, ShaderError> {
         let first = mesh.object.verts.read().first().cloned();
         let Some(vertex) = first else {
             return Err(ShaderError::InvalidKey(
@@ -434,7 +434,7 @@ impl ShaderObject {
 
     /// Add a mesh to this shader, giving its untyped attributes the types this shader declares.
     /// Every vertex and instance the mesh takes later must hold the attributes this shader reads.
-    pub fn add_mesh(&self, mesh: Arc<crate::geometry::MeshObject>) -> Result<(), ShaderError> {
+    pub fn add_mesh(&self, mesh: Arc<MeshObject>) -> Result<(), ShaderError> {
         let binding = self.bind_mesh(&mesh)?;
         self.record(mesh, binding, false)
     }
@@ -442,16 +442,13 @@ impl ShaderObject {
     /// Adds the mesh of a `Model` unless the shader holds it already. For a mesh with
     /// no instances and no instance layout, the check assumes the Model columns, and
     /// the mesh takes them as its layout only once the attach succeeds.
-    pub(crate) fn add_model_mesh(
-        &self,
-        mesh: Arc<crate::geometry::MeshObject>,
-    ) -> Result<(), ShaderError> {
+    pub(crate) fn attach_model(&self, mesh: Arc<MeshObject>) -> Result<(), ShaderError> {
         if self.holds(&mesh) {
             return Ok(());
         }
         #[cfg(test)]
         crate::testing::race_hooks::run("model attach");
-        let columns = crate::geometry::model_schema();
+        let columns = build_columns();
         let binding = self.bind_mesh_with(&mesh, Some(&columns))?;
         self.record(mesh, binding, true)
     }
@@ -461,8 +458,8 @@ impl ShaderObject {
     /// a mesh the shader holds already stays as it is.
     fn record(
         &self,
-        mesh: Arc<crate::geometry::MeshObject>,
-        binding: crate::geometry::Binding,
+        mesh: Arc<MeshObject>,
+        binding: Binding,
         once: bool,
     ) -> Result<(), ShaderError> {
         let mut meshes = self.meshes.write();
@@ -479,11 +476,7 @@ impl ShaderObject {
     /// Records `binding` on `mesh` and holds the mesh, unless it holds it already.
     /// Unlike `record`, it records the binding for a held mesh too, so the types
     /// a check of the quick view finds again stay, as the first check's do.
-    fn hold(
-        &self,
-        mesh: Arc<crate::geometry::MeshObject>,
-        binding: crate::geometry::Binding,
-    ) -> Result<(), ShaderError> {
+    fn hold(&self, mesh: Arc<MeshObject>, binding: Binding) -> Result<(), ShaderError> {
         let mut meshes = self.meshes.write();
         mesh.declare(self.id, binding)?;
         if !meshes.iter().any(|held| Arc::ptr_eq(held, &mesh)) {
@@ -493,7 +486,7 @@ impl ShaderObject {
     }
 
     /// Whether this shader holds `mesh`.
-    fn holds(&self, mesh: &Arc<crate::geometry::MeshObject>) -> bool {
+    fn holds(&self, mesh: &Arc<MeshObject>) -> bool {
         self.meshes
             .read()
             .iter()
@@ -501,7 +494,7 @@ impl ShaderObject {
     }
 
     /// Draws `mesh` for the quick view and checks it, as `check_preview` does.
-    pub(crate) fn preview(&self, mesh: &Arc<crate::geometry::MeshObject>) {
+    pub(crate) fn preview(&self, mesh: &Arc<MeshObject>) {
         #[cfg(test)]
         crate::testing::race_hooks::run("preview");
         let mut preview = self.preview.lock();
@@ -527,7 +520,7 @@ impl ShaderObject {
     /// renderer reads them on every render of this shader, however it reached it.
     pub(crate) fn read_meshes(
         &self,
-    ) -> Result<(Vec<Arc<crate::geometry::MeshObject>>, Option<Passed>), ShaderError> {
+    ) -> Result<(Vec<Arc<MeshObject>>, Option<Passed>), ShaderError> {
         let mut preview = self.preview.lock();
         let passed = match preview.as_mut() {
             Some(kept) => Some(Passed {
@@ -566,16 +559,13 @@ impl ShaderObject {
     }
 
     /// Check that a mesh can attach to this shader, without attaching it or recording any type.
-    pub(crate) fn validate_mesh(
-        &self,
-        mesh: &crate::geometry::MeshObject,
-    ) -> Result<(), ShaderError> {
+    pub(crate) fn validate_mesh(&self, mesh: &MeshObject) -> Result<(), ShaderError> {
         self.bind_mesh(mesh).map(drop)
     }
 
     /// Remove a mesh from this shader. Once the shader holds the mesh no
     /// more, the mesh stops checking for the attributes this shader reads.
-    pub fn remove_mesh(&self, mesh: &Arc<crate::geometry::MeshObject>) {
+    pub fn remove_mesh(&self, mesh: &Arc<MeshObject>) {
         let mut v = self.meshes.write();
         if let Some(pos) = v.iter().position(|m| Arc::ptr_eq(m, mesh)) {
             v.remove(pos);
@@ -594,8 +584,8 @@ impl ShaderObject {
 
     /// Set the pipeline-state alpha mode for this shader. Called by
     /// `Material::alpha_mode`; the renderer reads it when building a
-    /// `RenderPipelineKey`. See [`crate::AlphaMode`].
-    pub(crate) fn set_alpha_mode(&self, mode: crate::AlphaMode) {
+    /// `RenderPipelineKey`. See [`AlphaMode`].
+    pub(crate) fn set_alpha_mode(&self, mode: AlphaMode) {
         *self.alpha_mode.write() = mode;
     }
 
@@ -678,12 +668,12 @@ impl ShaderObject {
             hash,
             module,
             source: source.to_string(),
-            padded: std::sync::OnceLock::new(),
+            padded: OnceLock::new(),
             storage,
             total_bytes,
             pending: DashMap::new(),
             meshes: RwLock::new(Vec::new()),
-            alpha_mode: RwLock::new(crate::AlphaMode::default()),
+            alpha_mode: RwLock::new(AlphaMode::default()),
             // Default `double_sided=true` for shaders used directly: this
             // preserves the pre-Material renderer behavior (no back-face
             // cull) for callers who build a Shader without going through
@@ -706,22 +696,22 @@ impl ShaderObject {
 
     /// The module a pipeline compiles on a device that takes lights through a
     /// uniform block of `uniform_lights` lights, or through storage when `None`.
-    pub(crate) fn module_for_device(
+    pub(crate) fn lower_module(
         &self,
         pad_uniforms: bool,
         uniform_lights: Option<u32>,
-    ) -> Result<std::borrow::Cow<'_, Module>, ShaderError> {
+    ) -> Result<Cow<'_, Module>, ShaderError> {
         let module = self.module_for_pipeline(pad_uniforms);
         let (Some(count), Some(roots)) = (uniform_lights, self.light_roots.as_ref()) else {
-            return Ok(std::borrow::Cow::Borrowed(module));
+            return Ok(Cow::Borrowed(module));
         };
         let key = (count, pad_uniforms);
         if let Some(lowered) = self.lowered.read().get(&key) {
-            return Ok(std::borrow::Cow::Owned(lowered.clone()));
+            return Ok(Cow::Owned(lowered.clone()));
         }
         let lowered = lights::roots::lower_roots(module, roots, count)?;
         self.lowered.write().insert(key, lowered.clone());
-        Ok(std::borrow::Cow::Owned(lowered))
+        Ok(Cow::Owned(lowered))
     }
 
     /// Module to compile for a pipeline. Backends that reject uniform
@@ -938,13 +928,10 @@ fn hash(source: &str) -> ShaderHash {
 /// comes from a function parameter), every image global is conservatively
 /// reported as sampled — filterable=true is always a safe layout, filterable=false
 /// is not.
-fn sampled_image_globals(
-    module: &Module,
-) -> std::collections::HashSet<naga::Handle<naga::GlobalVariable>> {
+fn sampled_image_globals(module: &Module) -> HashSet<naga::Handle<naga::GlobalVariable>> {
     use naga::Expression;
 
-    let mut sampled: std::collections::HashSet<naga::Handle<naga::GlobalVariable>> =
-        Default::default();
+    let mut sampled: HashSet<naga::Handle<naga::GlobalVariable>> = Default::default();
     let mut indirect = false;
 
     let mut visit = |function: &naga::Function| {
@@ -1108,7 +1095,7 @@ fn parse_uniforms(
                         group: 0,
                         binding: 0,
                         stages,
-                        data: UniformData::PushConstant(vec![crate::PushEntry {
+                        data: UniformData::PushConstant(vec![PushEntry {
                             inner: vec![inner],
                             span,
                         }]),
@@ -1152,7 +1139,7 @@ fn parse_uniforms(
                 // convert_type will yield a Struct/Array/etc. shape; wrap it
                 let inner = convert_type(module, ty)?;
                 let span = inner.size();
-                UniformData::Storage(vec![crate::StorageEntry {
+                UniformData::Storage(vec![StorageEntry {
                     inner: vec![inner],
                     span,
                     access: access.into(),
@@ -1254,7 +1241,7 @@ fn naga_ty_to_vertex_format(ty: &naga::Type) -> Result<wgpu::VertexFormat, Shade
     }
 }
 
-fn build_wgsl_from_vertex(v: &crate::Vertex) -> String {
+fn build_wgsl_from_vertex(v: &Vertex) -> String {
     // Position: location 0, vec2<f32> or vec3<f32>
     let pos_ty = if v.dimensions <= 2 {
         "vec2<f32>"
@@ -1266,10 +1253,7 @@ fn build_wgsl_from_vertex(v: &crate::Vertex) -> String {
     // whatever its place among the vertex's properties, since the mesh feeds it by name.
     let mut color_decl: Option<(u32, &'static str)> = None;
     if let Some(val) = v.properties.get("color")
-        && matches!(
-            val,
-            crate::VertexData::F32x4(_) | crate::VertexData::Number4(_)
-        )
+        && matches!(val, VertexData::F32x4(_) | VertexData::Number4(_))
     {
         color_decl = Some((1, "vec4<f32>"));
     }
@@ -2692,7 +2676,7 @@ struct VertexIn { @location(0) position: vec2<f32>, @location(1) uv: vec2<f32> }
         };
         std::thread::scope(|scope| {
             let held = object.texture_writes.lock();
-            let meta = crate::texture::TextureMeta::with_id_only(TextureId { id: 7 });
+            let meta = crate::texture::TextureMeta::from(TextureId { id: 7 });
             let writers = [
                 scope.spawn(|| count(object.set("image", UniformData::Texture(meta)))),
                 scope.spawn(|| {

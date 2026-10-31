@@ -114,7 +114,7 @@ pub(crate) fn find_roots(
             }
             LightShape::Storage
         }
-        AddressSpace::Uniform => match array_count(module, global.ty) {
+        AddressSpace::Uniform => match count_array(module, global.ty) {
             Some(count) => LightShape::Array { count },
             None => {
                 log::warn!(
@@ -365,7 +365,7 @@ fn matches_lights(module: &Module, ty: Handle<Type>) -> bool {
 
 /// The light count of the fixed-size `LightArray` shape, or `None` for any other type,
 /// one whose `@align` raises its size past the bytes the renderer binds included.
-fn array_count(module: &Module, ty: Handle<Type>) -> Option<u32> {
+fn count_array(module: &Module, ty: Handle<Type>) -> Option<u32> {
     let TypeInner::Struct { members, span } = &module.types[ty].inner else {
         return None;
     };

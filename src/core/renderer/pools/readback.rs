@@ -2,6 +2,10 @@
 
 use std::collections::VecDeque;
 use std::sync::Arc;
+#[cfg(not(wasm))]
+use std::thread;
+#[cfg(not(wasm))]
+use std::time::{Duration, Instant};
 
 use parking_lot::RwLock;
 
@@ -126,18 +130,18 @@ pub(crate) type MapReceiver =
 
 /// How long a native readback waits for its buffer to map.
 #[cfg(not(wasm))]
-pub(crate) const MAP_LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
+pub(crate) const MAP_LIMIT: Duration = Duration::from_secs(10);
 
 /// The longest one device poll inside a map wait blocks.
 #[cfg(not(wasm))]
-const POLL_STEP: std::time::Duration = std::time::Duration::from_millis(100);
+const POLL_STEP: Duration = Duration::from_millis(100);
 
 /// Why a readback stopped waiting for its buffer to map.
 #[cfg(not(wasm))]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum MapError {
     #[error("the buffer did not map within {0:?}")]
-    Timeout(std::time::Duration),
+    Timeout(Duration),
     #[error("map_async failed: {0}")]
     Failed(#[from] wgpu::BufferAsyncError),
     #[error("the map callback was dropped")]
@@ -152,19 +156,19 @@ pub(crate) enum MapError {
 /// So every turn of the wait polls it, for at most `POLL_STEP`, and a map
 /// that never lands returns `MapError::Timeout` instead of blocking forever.
 #[cfg(not(wasm))]
-pub(crate) fn wait_for_map(
+pub(crate) fn poll_map(
     device: &wgpu::Device,
     receiver: &mut MapReceiver,
-    limit: std::time::Duration,
+    limit: Duration,
 ) -> Result<(), MapError> {
-    let deadline = std::time::Instant::now() + limit;
+    let deadline = Instant::now() + limit;
     loop {
         match receiver.try_recv() {
             Ok(Some(result)) => return Ok(result?),
             Ok(None) => {}
             Err(_) => return Err(MapError::Dropped),
         }
-        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        let left = deadline.saturating_duration_since(Instant::now());
         if left.is_zero() {
             return Err(MapError::Timeout(limit));
         }
@@ -174,9 +178,7 @@ pub(crate) fn wait_for_map(
         };
         match device.poll(wait) {
             // Nothing is in flight, so the map waits on no submission: check again shortly.
-            Ok(wgpu::PollStatus::QueueEmpty) => {
-                std::thread::sleep(left.min(std::time::Duration::from_millis(1)))
-            }
+            Ok(wgpu::PollStatus::QueueEmpty) => thread::sleep(left.min(Duration::from_millis(1))),
             Ok(_) | Err(wgpu::PollError::Timeout) => {}
             Err(error) => return Err(error.into()),
         }
@@ -289,7 +291,7 @@ mod tests {
                     });
 
                 // Act
-                super::wait_for_map(&device, &mut receiver, super::MAP_LIMIT)
+                super::poll_map(&device, &mut receiver, super::MAP_LIMIT)
                     .map_err(|error| error.to_string())
             })
         };
@@ -311,7 +313,7 @@ mod tests {
                 let (_sender, mut receiver) = futures::channel::oneshot::channel();
 
                 // Act
-                super::wait_for_map(&device, &mut receiver, limit)
+                super::poll_map(&device, &mut receiver, limit)
             })
         };
 

@@ -161,10 +161,7 @@ pub(crate) fn read_class(value: &wasm_bindgen::JsValue) -> Option<String> {
 
 /// The numbers of a float vector or matrix from JavaScript: an array or a `Float32Array`.
 /// Any other value, or an item that isn't a number, fails with an error that names `label`.
-pub(crate) fn read_vector_items(
-    value: &wasm_bindgen::JsValue,
-    label: &str,
-) -> Result<Vec<f64>, WebError> {
+pub(crate) fn read_items(value: &wasm_bindgen::JsValue, label: &str) -> Result<Vec<f64>, WebError> {
     use js_sys::{Array, Float32Array};
     use wasm_bindgen::JsCast;
     if !(Array::is_array(value) || value.is_instance_of::<Float32Array>()) {
@@ -185,7 +182,7 @@ pub(crate) fn read_floats(
     value: &wasm_bindgen::JsValue,
     label: &str,
 ) -> Result<Vec<f32>, WebError> {
-    let items = read_vector_items(value, label)?;
+    let items = read_items(value, label)?;
     Ok(super::numbers::read_floats(items, label)?)
 }
 
@@ -194,7 +191,7 @@ pub(crate) fn read_vector<const N: usize>(
     value: &wasm_bindgen::JsValue,
     label: &str,
 ) -> Result<[f32; N], WebError> {
-    let items = read_vector_items(value, label)?;
+    let items = read_items(value, label)?;
     Ok(super::numbers::read_vector::<N>(items, label)?)
 }
 
@@ -203,7 +200,7 @@ pub(crate) fn read_color(
     value: &wasm_bindgen::JsValue,
     label: &str,
 ) -> Result<crate::Color, WebError> {
-    let items = read_vector_items(value, label)?;
+    let items = read_items(value, label)?;
     Ok(super::numbers::read_color(items, label)?)
 }
 

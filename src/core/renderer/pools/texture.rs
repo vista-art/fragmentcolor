@@ -89,8 +89,8 @@ impl TexturePool {
 
     pub fn acquire(&mut self, device: &wgpu::Device, key: TextureKey) -> wgpu::Texture {
         // search best (any) matching entry (first fit)
-        if let Some(idx) = self.entries.iter().position(|entry| entry.key == key)
-            && let Some(entry) = self.entries.remove(idx)
+        if let Some(index) = self.entries.iter().position(|entry| entry.key == key)
+            && let Some(entry) = self.entries.remove(index)
         {
             // move to MRU happens by pushing when we release; on acquire we just return it
             return entry.texture;
@@ -116,11 +116,6 @@ impl TexturePool {
         if self.entries.len() > self.entry_limit {
             let _ = self.entries.pop_front();
         }
-    }
-
-    #[cfg(test)]
-    pub fn keys(&self) -> impl Iterator<Item = &TextureKey> {
-        self.entries.iter().map(|entry| &entry.key)
     }
 }
 
@@ -157,5 +152,16 @@ impl<'pool> Lease<'pool> {
 impl Drop for Lease<'_> {
     fn drop(&mut self) {
         self.pool.write().release(self.key, self.texture.clone());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    impl TexturePool {
+        pub(crate) fn keys(&self) -> impl Iterator<Item = &TextureKey> {
+            self.entries.iter().map(|entry| &entry.key)
+        }
     }
 }

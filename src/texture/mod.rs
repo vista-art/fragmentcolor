@@ -22,10 +22,13 @@ pub use usage::TextureUsage;
 mod platform;
 #[cfg(python)]
 pub(crate) use platform::{
-    PySamplerOptions, PyTextureBytes, PyTextureId, PyTextureSource, PyTextureUsage, ndarray_input,
+    PySamplerOptions, PyTextureBytes, PyTextureId, PyTextureSource, PyTextureUsage, read_ndarray,
 };
 #[cfg(wasm)]
-pub(crate) use platform::{parse_compare, read_format, read_texture_input, read_usage};
+pub(crate) use platform::{
+    js_to_texture_bytes, js_to_texture_id, parse_compare, read_format, read_texture_input,
+    read_usage,
+};
 
 use crate::{RenderContext, Size};
 use image::{DynamicImage, GenericImageView};
@@ -172,12 +175,17 @@ impl Mipmap {
     /// `Rg16Unorm`, `Rgba16Unorm`, `Rgba16Float`, `Rgba32Float`, and the
     /// aliases for them. Other formats return [`TextureError::UnsupportedMipmapFormat`].
     #[lsp_doc("docs/api/texture/mipmap/build.md")]
-    pub fn build(input: impl Into<crate::TextureInput>) -> Result<Mipmap, TextureError> {
-        let crate::TextureInput { data, options } = input.into();
+    pub fn build(input: impl Into<TextureInput>) -> Result<Mipmap, TextureError> {
+        Self::build_chain(input.into())
+    }
+
+    /// The chain `build` makes, from a source the CPU reads at once.
+    fn build_chain(input: TextureInput) -> Result<Mipmap, TextureError> {
+        let TextureInput { data, options } = input;
         check_source(data.is_sized(), options.size)?;
         let public_format = options.format;
-        let wfmt: wgpu::TextureFormat = public_format.to_wgpu();
-        if !supports_cpu_mipmaps(wfmt) {
+        let format: wgpu::TextureFormat = public_format.to_wgpu();
+        if !supports_cpu_mipmaps(format) {
             return Err(TextureError::UnsupportedMipmapFormat {
                 format: public_format,
             });
@@ -201,19 +209,19 @@ impl Mipmap {
                             extent.depth_or_array_layers
                         )));
                     }
-                    let bpp = texel_size(wfmt)? as usize;
-                    let expected = bpp * (extent.width as usize) * (extent.height as usize);
+                    let texel = measure_texel(format)? as usize;
+                    let expected = texel * (extent.width as usize) * (extent.height as usize);
                     if bytes.len() != expected {
                         return Err(TextureError::InvalidInput(format!(
                             "build: expected {} bytes for {}x{} @ {} bpp, got {}",
                             expected,
                             extent.width,
                             extent.height,
-                            bpp,
+                            texel,
                             bytes.len()
                         )));
                     }
-                    let image = bytes_as_image(&bytes, extent.width, extent.height, wfmt)?;
+                    let image = bytes_as_image(&bytes, extent.width, extent.height, format)?;
                     (image, Some(bytes))
                 }
             },
@@ -249,7 +257,7 @@ impl Mipmap {
                 ));
             }
         };
-        Self::from_dynamic_image(&image, public_format, wfmt, raw)
+        Self::from_dynamic_image(&image, public_format, format, raw)
     }
 
     /// The chain of `image`, with `raw`, the caller's own bytes for it, as level 0.
@@ -414,166 +422,6 @@ impl From<TextureInputMobile> for TextureData {
     }
 }
 
-/// A texture source decoded from JS, for the call `label` names.
-/// `ImageData` and canvases carry their pixel size in `options.size`,
-/// so their raw RGBA bytes upload without a size argument.
-/// A value no source takes, or an item of a byte list that isn't a number, is a `TypeError`,
-/// as Python raises, and a byte that isn't a whole number from 0 to 255 an `InvalidInputError`.
-#[cfg(wasm)]
-pub(crate) fn read_source(
-    value: &wasm_bindgen::JsValue,
-    label: &str,
-) -> Result<TextureInput, crate::error::WebError> {
-    use crate::error::WebError;
-    use js_sys::{Array, ArrayBuffer, Uint8Array, Uint8ClampedArray};
-    use wasm_bindgen::JsCast;
-
-    let pixels = |bytes: Vec<u8>, width: u32, height: u32| TextureInput {
-        data: TextureData::Bytes(bytes),
-        options: TextureOptions::from(Size::from([width, height])),
-    };
-
-    // Case: Mipmap handle (built off-thread via Mipmap.build).
-    // Detected through the branded __fc_kind + __wbg_ptr anchor so it
-    // survives bundler renaming. Must come before the Uint8Array / object
-    // cases because wasm-bindgen handles also satisfy `is_object()`.
-    if let Ok(chain) = Mipmap::try_from(value) {
-        return Ok(TextureData::Prepared(chain).into());
-    }
-
-    // Case: an existing Texture handle, shared as is
-    if let Ok(texture) = Texture::try_from(value) {
-        return Ok(TextureData::CloneOf(texture).into());
-    }
-
-    // Case: Uint8Array (fast path)
-    if let Some(u8a) = value.dyn_ref::<Uint8Array>() {
-        let mut bytes = vec![0u8; u8a.length() as usize];
-        u8a.copy_to(&mut bytes[..]);
-        return Ok(TextureData::Bytes(bytes).into());
-    }
-
-    // Case: Uint8ClampedArray (ImageData.data)
-    if let Some(u8c) = value.dyn_ref::<Uint8ClampedArray>() {
-        let mut bytes = vec![0u8; u8c.length() as usize];
-        u8c.copy_to(&mut bytes[..]);
-        return Ok(TextureData::Bytes(bytes).into());
-    }
-
-    // Case: ArrayBuffer
-    if let Some(buf) = value.dyn_ref::<ArrayBuffer>() {
-        // Guard against detached buffers via byte_length() == 0; safe fallback for empty too.
-        if buf.byte_length() == 0 {
-            return Ok(TextureData::Bytes(Vec::new()).into());
-        }
-        let u8a = Uint8Array::new(buf);
-        let mut bytes = vec![0u8; u8a.length() as usize];
-        u8a.copy_to(&mut bytes[..]);
-        return Ok(TextureData::Bytes(bytes).into());
-    }
-
-    // Case: ImageData -> its RGBA pixels and size
-    if let Some(image_data) = value.dyn_ref::<web_sys::ImageData>() {
-        let bytes = image_data.data().0;
-        return Ok(pixels(bytes, image_data.width(), image_data.height()));
-    }
-
-    // Case: HTMLCanvasElement or OffscreenCanvas -> raw pixel bytes via 2D context
-    if let Some(input) = read_canvas(value)? {
-        return Ok(input);
-    }
-
-    // Case: HTMLImageElement -> pass through as URL
-    if let Some(img) = value.dyn_ref::<web_sys::HtmlImageElement>() {
-        return Ok(TextureData::Url(img.src()).into());
-    }
-
-    // Case: Plain JS Array of numbers
-    if Array::is_array(value) {
-        let bytes = Array::from(value)
-            .iter()
-            .enumerate()
-            .map(|(index, item)| js_to_byte(&item, label, index))
-            .collect::<Result<Vec<u8>, WebError>>()?;
-        return Ok(TextureData::Bytes(bytes).into());
-    }
-
-    // Case: String -> selector or URL
-    if let Some(s) = value.as_string() {
-        let url = if s.starts_with('#') || s.starts_with('.') {
-            if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
-                if let Ok(Some(elem)) = doc.query_selector(&s) {
-                    if let Some(img) = elem.dyn_ref::<web_sys::HtmlImageElement>() {
-                        img.src()
-                    } else if let Some(canvas) = elem.dyn_ref::<web_sys::HtmlCanvasElement>() {
-                        canvas.to_data_url().unwrap_or(s.clone())
-                    } else {
-                        s.clone()
-                    }
-                } else {
-                    s.clone()
-                }
-            } else {
-                s.clone()
-            }
-        } else {
-            s.clone()
-        };
-        return Ok(TextureData::Url(url).into());
-    }
-
-    Err(WebError::type_error(&format!(
-        "{label} takes bytes (a Uint8Array, an ArrayBuffer or an array of numbers), an ImageData, a canvas, an image, a URL, a Texture or a Mipmap, got {}",
-        crate::bindings::web::describe(value)
-    )))
-}
-
-/// The RGBA pixels and size of an `HTMLCanvasElement` or `OffscreenCanvas` with a 2D context,
-/// or `None` for any other value.
-#[cfg(wasm)]
-fn read_canvas(value: &wasm_bindgen::JsValue) -> Result<Option<TextureInput>, TextureError> {
-    use wasm_bindgen::JsCast;
-    let image = if let Some(canvas) = value.dyn_ref::<web_sys::HtmlCanvasElement>()
-        && let Ok(Some(context)) = canvas.get_context("2d")
-        && let Ok(context) = context.dyn_into::<web_sys::CanvasRenderingContext2d>()
-    {
-        let (width, height) = (canvas.width(), canvas.height());
-        context.get_image_data(0.0, 0.0, width as f64, height as f64)?
-    } else if let Some(canvas) = value.dyn_ref::<web_sys::OffscreenCanvas>()
-        && let Ok(Some(context)) = canvas.get_context("2d")
-        && let Ok(context) = context.dyn_into::<web_sys::OffscreenCanvasRenderingContext2d>()
-    {
-        let (width, height) = (canvas.width(), canvas.height());
-        context.get_image_data(0.0, 0.0, width as f64, height as f64)?
-    } else {
-        return Ok(None);
-    };
-    let size = Size::from([image.width(), image.height()]);
-    Ok(Some(TextureInput {
-        data: TextureData::Bytes(image.data().0),
-        options: TextureOptions::from(size),
-    }))
-}
-
-/// One item of a JS byte list, named `label`: a `TypeError` for a value that isn't a number,
-/// as Python raises, and an `InvalidInputError` for one that isn't a whole number from 0 to 255.
-#[cfg(wasm)]
-fn js_to_byte(
-    value: &wasm_bindgen::JsValue,
-    label: &str,
-    index: usize,
-) -> Result<u8, crate::error::WebError> {
-    let item = format_args!("{label}: item {index}");
-    let number = crate::bindings::web::read_number(value, item)?;
-    if number.fract() == 0.0 && (0.0..=255.0).contains(&number) {
-        return Ok(number as u8);
-    }
-    Err(TextureError::InvalidInput(format!(
-        "{label}: item {index} must be a whole number from 0 to 255, got {number}"
-    ))
-    .into())
-}
-
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(from_py_object, get_all, eq, hash, frozen))]
 #[cfg_attr(mobile, derive(uniffi::Record))]
@@ -618,68 +466,6 @@ impl From<TextureId> for u64 {
 
 crate::impl_fc_kind!(TextureId, "TextureId");
 crate::impl_js_bridge!(TextureId, crate::texture::TextureError);
-
-/// A texture id from JS: a `TextureId`, a whole number or a bigint. A value of another type
-/// is a `TypeError`, as Python raises, and a negative, fractional or out-of-range number an
-/// `InvalidInputError`.
-#[cfg(wasm)]
-pub(crate) fn js_to_texture_id(
-    value: &wasm_bindgen::JsValue,
-) -> Result<TextureId, crate::error::WebError> {
-    use crate::bindings::web::describe;
-    let invalid = |shown: String| {
-        TextureError::InvalidInput(format!(
-            "a texture id is a whole number from 0 to {}, got {shown}",
-            u64::MAX
-        ))
-    };
-    if let Some(number) = value.as_f64() {
-        // `u64::MAX as f64` rounds up to 2^64, so the range leaves it out.
-        if number.fract() != 0.0 || !(0.0..u64::MAX as f64).contains(&number) {
-            return Err(invalid(number.to_string()).into());
-        }
-        return Ok(TextureId { id: number as u64 });
-    }
-    if value.is_bigint() {
-        let Ok(id) = u64::try_from(value.clone()) else {
-            let shown = js_sys::BigInt::from(value.clone()).to_string(10);
-            return Err(invalid(shown.map(String::from).unwrap_or_default()).into());
-        };
-        return Ok(TextureId::from(id));
-    }
-    if let Ok(id) = TextureId::try_from(value) {
-        return Ok(id);
-    }
-    Err(crate::error::WebError::type_error(&format!(
-        "a texture id is a TextureId or a whole number, got {}",
-        describe(value)
-    )))
-}
-
-#[cfg(wasm)]
-/// The bytes of a JS source for a texture of `format` and, when known, `size`,
-/// with the size the source brings. An `ImageData` or canvas holds RGBA pixels,
-/// like a decoded image, so it gets the checks and the BGRA swap `createTexture` gives it.
-/// A value of another type, such as a string or a `Texture`, is a `TypeError` that names `label`.
-pub(crate) fn js_to_texture_bytes(
-    value: &wasm_bindgen::JsValue,
-    size: Option<Size>,
-    format: wgpu::TextureFormat,
-    label: &str,
-) -> Result<(Vec<u8>, Option<Size>), crate::error::WebError> {
-    let TextureInput { data, options } = read_source(value, label)?;
-    let TextureData::Bytes(mut bytes) = data else {
-        return Err(crate::error::WebError::type_error(&format!(
-            "{label} takes bytes (a Uint8Array, an ArrayBuffer or an array of numbers), an ImageData or a canvas, got {}",
-            crate::bindings::web::describe(value)
-        )));
-    };
-    if let Some(own) = options.size {
-        check_pixels(own, size, format)?;
-        swap_bgra(&mut bytes, format);
-    }
-    Ok((bytes, options.size))
-}
 
 impl std::fmt::Display for TextureId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -777,8 +563,9 @@ pub struct TextureMeta {
     pub sampled: bool,
 }
 
-impl TextureMeta {
-    pub fn with_id_only(id: TextureId) -> Self {
+/// A 2D float texture that a shader samples, named by `id`.
+impl From<TextureId> for TextureMeta {
+    fn from(id: TextureId) -> Self {
         TextureMeta {
             id,
             dim: TextureDim::D2,
@@ -796,7 +583,7 @@ impl TextureMeta {
 impl From<&Texture> for UniformData {
     fn from(texture: &Texture) -> Self {
         // Provide a placeholder meta; storage.update will merge with shader-parsed meta at set time.
-        let meta = TextureMeta::with_id_only(*texture.id());
+        let meta = TextureMeta::from(*texture.id());
         UniformData::Texture(meta)
     }
 }
@@ -823,7 +610,7 @@ impl TextureObject {
         usage: wgpu::TextureUsages,
         options: SamplerOptions,
     ) -> Result<Self, TextureError> {
-        check_format(context, format, usage, dimension(size))?;
+        check_format(context, format, usage, pick_dimension(size))?;
         let descriptor = Self::texture_descriptor("Generic Texture", size, format, usage, 1, 1); // @TODO mip_count, sample_count
         let inner = context.device.create_texture(&descriptor);
         let size = inner.size();
@@ -945,10 +732,10 @@ impl TextureObject {
         generate_mipmaps: bool,
         usage: wgpu::TextureUsages,
     ) -> Result<Self, TextureError> {
-        check_format(context, format, usage, dimension(size))?;
+        check_format(context, format, usage, pick_dimension(size))?;
         check_upload(format)?;
-        check_extent(&context.device.limits(), size, dimension(size))?;
-        let bpp = texel_size(format)?;
+        check_extent(&context.device.limits(), size, pick_dimension(size))?;
+        let bpp = measure_texel(format)?;
 
         let expected = (size.width as usize)
             .saturating_mul(size.height as usize)
@@ -1014,10 +801,10 @@ impl TextureObject {
             depth_or_array_layers: 1,
         };
         let format = format_override.unwrap_or_else(|| infer_format(image.color()));
-        check_format(context, format, usage, dimension(size))?;
+        check_format(context, format, usage, pick_dimension(size))?;
         check_upload(format)?;
         check_decode(format)?;
-        check_extent(&context.device.limits(), size, dimension(size))?;
+        check_extent(&context.device.limits(), size, pick_dimension(size))?;
 
         let want_mips = generate_mipmaps && supports_cpu_mipmaps(format);
         let mip_level_count = if want_mips {
@@ -1064,7 +851,7 @@ impl TextureObject {
         let levels = chain.levels.as_slice();
         let format = pick.apply(chain.format, "a Mipmap")?;
         check_format(context, format, usage, wgpu::TextureDimension::D2)?;
-        let bpp = texel_size(format)?;
+        let bpp = measure_texel(format)?;
 
         for (i, level_bytes) in levels.iter().enumerate() {
             let level_w = (w >> i).max(1);
@@ -1088,7 +875,7 @@ impl TextureObject {
             height: h,
             depth_or_array_layers: 1,
         };
-        check_extent(&context.device.limits(), size, dimension(size))?;
+        check_extent(&context.device.limits(), size, pick_dimension(size))?;
         let mip_level_count = levels.len() as u32;
         let descriptor =
             Self::texture_descriptor("Prepared Texture", size, format, usage, 1, mip_level_count);
@@ -1170,7 +957,7 @@ impl TextureObject {
             size,
             mip_level_count: 1,
             sample_count: sample_count.max(1),
-            dimension: dimension(size),
+            dimension: pick_dimension(size),
             format,
             view_formats: &[],
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
@@ -1237,7 +1024,7 @@ impl TextureObject {
 
     /// This texture at `size`, with the same format, usage, sample count and
     /// sampler, and as many of its mip levels as fit. Its pixels start blank.
-    pub(crate) fn resized(&self, context: &RenderContext, size: wgpu::Extent3d) -> Self {
+    pub(crate) fn create_resized(&self, context: &RenderContext, size: wgpu::Extent3d) -> Self {
         let label = match self.format.is_depth_stencil_format() {
             true => "Depth Texture",
             false => "Render Target Texture",
@@ -1298,7 +1085,7 @@ impl TextureObject {
             size,
             mip_level_count,
             sample_count,
-            dimension: dimension(size),
+            dimension: pick_dimension(size),
             format,
             view_formats: &[],
             usage,
@@ -1446,7 +1233,7 @@ pub(crate) fn source_usage(extra: Option<u32>) -> Result<wgpu::TextureUsages, Te
 }
 
 /// The dimension a texture of `size` gets: 2D with one layer, and 3D with more.
-pub(crate) fn dimension(size: wgpu::Extent3d) -> wgpu::TextureDimension {
+pub(crate) fn pick_dimension(size: wgpu::Extent3d) -> wgpu::TextureDimension {
     match size.depth_or_array_layers {
         1 => wgpu::TextureDimension::D2,
         _ => wgpu::TextureDimension::D3,
@@ -1668,7 +1455,7 @@ fn write_floats(
     format: wgpu::TextureFormat,
     raw: Option<&[u8]>,
 ) -> Result<(), TextureError> {
-    let size = texel_size(format)?;
+    let size = measure_texel(format)?;
     for (level, image) in downsample_floats(base, count as usize).enumerate() {
         let bytes = match (level, raw) {
             (0, Some(raw)) => std::borrow::Cow::Borrowed(raw),
@@ -1770,7 +1557,7 @@ pub(crate) fn array_pixels(
     };
     let side = |value: usize| u32::try_from(value).ok().ok_or_else(invalid);
     let size = Size::new(side(width)?, side(height)?, None);
-    if channels == texel_size(format)? as usize {
+    if channels == measure_texel(format)? as usize {
         return Ok((read(), size));
     }
     if !holds_rgba8(format) || !matches!(channels, 1 | 3) {
@@ -1908,7 +1695,7 @@ pub(crate) fn bytes_as_image(
             )
         }
         wgpu::TextureFormat::Rgba16Float | wgpu::TextureFormat::Rgba32Float => {
-            let length = pixel_count * texel_size(format)? as usize;
+            let length = pixel_count * measure_texel(format)? as usize;
             let values = read_floats(&bytes[..length], format);
             DynamicImage::ImageRgba32F(
                 image::Rgba32FImage::from_raw(width, height, values)
@@ -2019,7 +1806,7 @@ pub(crate) fn write_levels(
     mip_level_count: u32,
 ) -> Result<(), TextureError> {
     if mip_level_count == 1 {
-        let bpp = texel_size(format)?;
+        let bpp = measure_texel(format)?;
         context.queue.write_texture(
             wgpu::TexelCopyTextureInfo {
                 aspect: wgpu::TextureAspect::All,
@@ -2090,7 +1877,7 @@ pub(crate) fn write_levels(
             write_pixel_levels(context, base, texture, mip_level_count, 8);
         }
         wgpu::TextureFormat::Rgba16Float | wgpu::TextureFormat::Rgba32Float => {
-            let length = pixel_count * texel_size(format)? as usize;
+            let length = pixel_count * measure_texel(format)? as usize;
             let raw = &bytes[..length];
             let base = image::Rgba32FImage::from_raw(w, h, read_floats(raw, format))
                 .ok_or_else(|| wrap_err("Rgba32F"))?;
@@ -2099,7 +1886,7 @@ pub(crate) fn write_levels(
         _ => {
             // Caller should have caught this via supports_cpu_mipmaps;
             // be defensive and write a single level.
-            let bpp = texel_size(format)?;
+            let bpp = measure_texel(format)?;
             context.queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
                     aspect: wgpu::TextureAspect::All,
@@ -2144,7 +1931,7 @@ pub(crate) fn write_pixel_levels<P>(
     base: image::ImageBuffer<P, Vec<P::Subpixel>>,
     texture: &wgpu::Texture,
     mip_level_count: u32,
-    bpp: u32,
+    texel: u32,
 ) where
     P: image::Pixel + 'static,
     P::Subpixel: bytemuck::NoUninit + 'static,
@@ -2157,7 +1944,7 @@ pub(crate) fn write_pixel_levels<P>(
             level as u32,
             bytes,
             image.dimensions(),
-            bpp,
+            texel,
         );
     }
 }
@@ -2169,7 +1956,7 @@ fn write_level(
     level: u32,
     bytes: &[u8],
     (width, height): (u32, u32),
-    bpp: u32,
+    texel: u32,
 ) {
     context.queue.write_texture(
         wgpu::TexelCopyTextureInfo {
@@ -2181,7 +1968,7 @@ fn write_level(
         bytes,
         wgpu::TexelCopyBufferLayout {
             offset: 0,
-            bytes_per_row: Some(bpp * width),
+            bytes_per_row: Some(texel * width),
             rows_per_image: Some(height),
         },
         wgpu::Extent3d {
@@ -2194,7 +1981,7 @@ fn write_level(
 
 /// The bytes a texel of `format` takes in a copy, one texel at a time.
 /// A block-compressed format, and a depth format with no copy size, are refused.
-pub(crate) fn texel_size(format: wgpu::TextureFormat) -> Result<u32, TextureError> {
+pub(crate) fn measure_texel(format: wgpu::TextureFormat) -> Result<u32, TextureError> {
     match (format.block_dimensions(), format.block_copy_size(None)) {
         ((1, 1), Some(size)) => Ok(size),
         _ => Err(TextureError::InvalidInput(format!(
@@ -2476,7 +2263,7 @@ mod tests {
     fn read_level(texture: &Texture, level: u32) -> Vec<u8> {
         let object = texture.object();
         let context = &texture.context;
-        let bpp = texel_size(object.format).expect("texel size");
+        let bpp = measure_texel(object.format).expect("texel size");
         let (width, height) = (
             (object.size.width >> level).max(1),
             (object.size.height >> level).max(1),

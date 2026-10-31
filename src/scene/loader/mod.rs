@@ -24,6 +24,7 @@ use glam::{Mat4, Quat, Vec3};
 use gltf::Semantic;
 use gltf::accessor::{DataType, Dimensions};
 
+use crate::core::shader::error::describe;
 use crate::scene::{Camera, Light, Scene};
 use crate::scene::{TextureSlot, UvSet, UvTransform};
 use crate::texture::{SourceData, TextureSource};
@@ -36,26 +37,13 @@ pub enum SceneSource {
     Gltf(GltfSource),
 }
 
-impl SceneSource {
-    /// Build a [`GltfSource`] from anything that converts into one — `&str`
-    /// / `&Path` / `PathBuf` for file inputs, `Vec<u8>` / `&[u8]` for
-    /// in-memory `.glb` bytes. Use this when you need the per-load filter
-    /// methods (`cameras`, `lights`); the resulting `GltfSource` converts to
-    /// `SceneSource` automatically when handed to
-    /// [`Scene::load`](crate::Scene::load). For the common case, pass the
-    /// path or bytes straight to `Scene::load` instead.
-    pub fn gltf(source: impl Into<GltfSource>) -> GltfSource {
-        source.into()
-    }
-}
-
 /// Payload for `SceneSource::Gltf`. Carries the file-or-bytes input plus
 /// per-load filter options that decide which glTF node kinds the loader
 /// instantiates as FragmentColor objects.
 ///
 /// Built via the `From` impls below — `&str` / `String` / `&Path` / `PathBuf`
 /// for file inputs, `Vec<u8>` / `&[u8]` for in-memory `.glb` bytes. Filter
-/// methods chain after the conversion: `SceneSource::gltf("model.glb")
+/// methods chain after the conversion: `GltfSource::from("model.glb")
 /// .cameras(false).lights(false)` skips embedded camera + light nodes
 /// during the walk, leaving the user free to attach their own.
 #[derive(Debug, Clone)]
@@ -218,7 +206,7 @@ pub(crate) struct GltfFailure(#[from] gltf::Error);
 
 impl From<GltfFailure> for SceneLoadError {
     fn from(failure: GltfFailure) -> Self {
-        SceneLoadError::Gltf(crate::core::shader::error::describe(&failure.0))
+        SceneLoadError::Gltf(describe(&failure.0))
     }
 }
 
@@ -359,20 +347,20 @@ fn visit_node(
 
     if let Some(mesh) = node.mesh() {
         for primitive in mesh.primitives() {
-            let fc_mesh = build_mesh(&mesh, &primitive, buffers)?;
-            let mat_key = primitive.material().index();
-            let fc_material = match cache.materials.get(&mat_key) {
-                Some(m) => m.clone(),
+            let mesh = build_mesh(&mesh, &primitive, buffers)?;
+            let key = primitive.material().index();
+            let material = match cache.materials.get(&key) {
+                Some(material) => material.clone(),
                 None => {
-                    let m = build_material(&primitive.material(), images)?;
-                    cache.materials.insert(mat_key, m.clone());
-                    m
+                    let material = build_material(&primitive.material(), images)?;
+                    cache.materials.insert(key, material.clone());
+                    material
                 }
             };
-            let model = Model::new(fc_mesh, fc_material);
+            let model = Model::new(mesh, material);
             model.set_transform(world.to_cols_array_2d());
-            scene.add(&model).map_err(|e| {
-                SceneLoadError::Invalid(format!("attaching glTF Model to Scene: {e}"))
+            scene.add(&model).map_err(|error| {
+                SceneLoadError::Invalid(format!("attaching glTF Model to Scene: {error}"))
             })?;
         }
     }
@@ -381,9 +369,9 @@ fn visit_node(
         && let Some(gltf_camera) = node.camera()
     {
         let camera = build_camera(&gltf_camera, world)?;
-        scene
-            .add(&camera)
-            .map_err(|e| SceneLoadError::Invalid(format!("attaching glTF Camera to Scene: {e}")))?;
+        scene.add(&camera).map_err(|error| {
+            SceneLoadError::Invalid(format!("attaching glTF Camera to Scene: {error}"))
+        })?;
     }
 
     if options.lights
@@ -883,40 +871,40 @@ fn compute_vertex_normals(
     positions: &[[f32; 3]],
     indices: Option<&[u32]>,
 ) -> Result<Vec<[f32; 3]>, SceneLoadError> {
-    let n_verts = positions.len();
-    let mut accum = reserve(n_verts, label)?;
-    accum.resize(n_verts, Vec3::ZERO);
-    let visit_triangle = |a: usize, b: usize, c: usize, accum: &mut [Vec3]| {
-        if a >= n_verts || b >= n_verts || c >= n_verts {
+    let count = positions.len();
+    let mut sums = reserve(count, label)?;
+    sums.resize(count, Vec3::ZERO);
+    let visit_triangle = |a: usize, b: usize, c: usize, sums: &mut [Vec3]| {
+        if a >= count || b >= count || c >= count {
             return;
         }
         let v0 = Vec3::from(positions[a]);
         let v1 = Vec3::from(positions[b]);
         let v2 = Vec3::from(positions[c]);
         let face = (v1 - v0).cross(v2 - v0);
-        accum[a] += face;
-        accum[b] += face;
-        accum[c] += face;
+        sums[a] += face;
+        sums[b] += face;
+        sums[c] += face;
     };
-    if let Some(idx) = indices {
-        for tri in idx.as_chunks::<3>().0 {
+    if let Some(indices) = indices {
+        for triangle in indices.as_chunks::<3>().0 {
             visit_triangle(
-                tri[0] as usize,
-                tri[1] as usize,
-                tri[2] as usize,
-                &mut accum,
+                triangle[0] as usize,
+                triangle[1] as usize,
+                triangle[2] as usize,
+                &mut sums,
             );
         }
     } else {
-        let mut i = 0;
-        while i + 2 < n_verts {
-            visit_triangle(i, i + 1, i + 2, &mut accum);
-            i += 3;
+        let mut index = 0;
+        while index + 2 < count {
+            visit_triangle(index, index + 1, index + 2, &mut sums);
+            index += 3;
         }
     }
-    let mut normals = reserve(n_verts, label)?;
-    normals.extend(accum.iter().map(|v| {
-        v.try_normalize()
+    let mut normals = reserve(count, label)?;
+    normals.extend(sums.iter().map(|sum| {
+        sum.try_normalize()
             .unwrap_or(Vec3::new(0.0, 0.0, 1.0))
             .to_array()
     }));
@@ -1025,7 +1013,7 @@ const TEXTURE_TRANSFORM: &str = "KHR_texture_transform";
 /// The UVs a glTF texture reference reads: the `TEXCOORD_<n>` set it
 /// names, and the transform from its `KHR_texture_transform`.
 struct TextureUv {
-    tex_coord: u32,
+    uv_set: u32,
     transform: UvTransform,
 }
 
@@ -1035,7 +1023,7 @@ struct TextureUv {
 fn read_info_uv(info: &gltf::texture::Info<'_>) -> TextureUv {
     match info.texture_transform() {
         Some(transform) => TextureUv {
-            tex_coord: transform.tex_coord().unwrap_or(info.tex_coord()),
+            uv_set: transform.tex_coord().unwrap_or(info.tex_coord()),
             transform: UvTransform {
                 offset: transform.offset(),
                 scale: transform.scale(),
@@ -1043,7 +1031,7 @@ fn read_info_uv(info: &gltf::texture::Info<'_>) -> TextureUv {
             },
         },
         None => TextureUv {
-            tex_coord: info.tex_coord(),
+            uv_set: info.tex_coord(),
             transform: UvTransform::default(),
         },
     }
@@ -1053,7 +1041,7 @@ fn read_info_uv(info: &gltf::texture::Info<'_>) -> TextureUv {
 /// keeps their `KHR_texture_transform` as raw JSON, parsed here as it parses
 /// the typed slots, so a `null` extension counts as no extension.
 fn read_extension_uv(
-    tex_coord: u32,
+    uv_set: u32,
     extension: Option<&gltf::json::Value>,
 ) -> Result<TextureUv, SceneLoadError> {
     use gltf::json::extensions::texture::TextureTransform;
@@ -1064,12 +1052,12 @@ fn read_extension_uv(
     };
     let Some(transform) = parsed else {
         return Ok(TextureUv {
-            tex_coord,
+            uv_set,
             transform: UvTransform::default(),
         });
     };
     Ok(TextureUv {
-        tex_coord: transform.tex_coord.unwrap_or(tex_coord),
+        uv_set: transform.tex_coord.unwrap_or(uv_set),
         transform: UvTransform {
             offset: transform.offset.0,
             scale: transform.scale.0,
@@ -1081,11 +1069,11 @@ fn read_extension_uv(
 /// Point one material slot at the UV set and transform its glTF texture reads.
 /// The PBR shader samples two UV sets, so `TEXCOORD_2` and above are an error.
 fn apply_uv(material: &Material, slot: TextureSlot, uv: TextureUv) -> Result<(), SceneLoadError> {
-    let Ok(set) = UvSet::try_from(uv.tex_coord) else {
+    let Ok(set) = UvSet::try_from(uv.uv_set) else {
         return Err(SceneLoadError::Invalid(format!(
             "glTF {} reads TEXCOORD_{}, and the PBR material samples TEXCOORD_0 and TEXCOORD_1 only",
             name_slot(slot),
-            uv.tex_coord
+            uv.uv_set
         )));
     };
     material.set_slot_uv(slot, set, uv.transform);
@@ -1142,14 +1130,13 @@ fn read_image(
         Some(name) => format!("glTF image {} ({name})", image.index()),
         None => format!("glTF image {}", image.index()),
     };
-    let refuse = |reason: String| SceneLoadError::Invalid(format!("{label}: {reason}"));
+    let refuse = |reason: ImageRefusal| SceneLoadError::Invalid(format!("{label}: {reason}"));
     let data = match image.source() {
         gltf::image::Source::View { view, .. } => {
             let buffer = buffers.get(view.buffer().index());
             let range = view.offset()..view.offset() + view.length();
             let bytes = buffer.and_then(|buffer| buffer.get(range));
-            let bytes =
-                bytes.ok_or_else(|| refuse("its buffer view lies past its buffer".into()))?;
+            let bytes = bytes.ok_or_else(|| refuse(ImageRefusal::PastBuffer))?;
             SourceData::Bytes(bytes.to_vec())
         }
         gltf::image::Source::Uri { uri, .. } => read_uri(uri, base).map_err(refuse)?,
@@ -1159,25 +1146,46 @@ fn read_image(
     Ok(source.named(label))
 }
 
+/// Why a glTF image can't become a texture source.
+#[derive(Debug, thiserror::Error)]
+enum ImageRefusal {
+    #[error("its buffer view lies past its buffer")]
+    PastBuffer,
+    #[error("{}", describe(.0))]
+    Uri(#[from] gltf::Error),
+    #[error(
+        "it names the file {0}, which a glTF loaded from bytes can't reach; load the file from its path"
+    )]
+    Unreachable(String),
+    #[cfg(not(wasm))]
+    #[error("can't read {}: {source}", .path.display())]
+    File {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Image(#[from] image::ImageError),
+    #[error("its header gives it no pixels")]
+    Empty,
+}
+
 /// The data a glTF image URI names: a data URI's bytes, or the path of a file the glTF refers to.
-fn read_uri(uri: &str, base: Option<&Path>) -> Result<SourceData, String> {
+fn read_uri(uri: &str, base: Option<&Path>) -> Result<SourceData, ImageRefusal> {
     if let Some(data) = uri.strip_prefix("data:") {
         let payload = data
             .split_once(";base64,")
             .map_or(data, |(_, payload)| payload);
         let source = gltf::buffer::Source::Uri(uri);
         let read = gltf::buffer::Data::from_source(source, None);
-        let mut bytes = read
-            .map_err(|error| crate::core::shader::error::describe(&error))?
-            .0;
+        let mut bytes = read?.0;
         // The buffer reader pads to four bytes, and the image keeps exactly what the URI holds.
         bytes.truncate(payload.trim_end_matches('=').len() * 3 / 4);
         return Ok(SourceData::Bytes(bytes));
     }
     let Some(base) = base else {
-        return Err(format!(
-            "it names the file {uri}, which a glTF loaded from bytes can't reach; load the file from its path"
-        ));
+        return Err(ImageRefusal::Unreachable(uri.to_string()));
     };
     let path = match uri
         .strip_prefix("file://")
@@ -1214,22 +1222,23 @@ fn decode_uri(uri: &str) -> String {
 }
 
 /// Reads an encoded image's header, its format and its size, without decoding its pixels.
-fn check_header(data: &SourceData) -> Result<(), String> {
+fn check_header(data: &SourceData) -> Result<(), ImageRefusal> {
     let size = match data {
         SourceData::Bytes(bytes) => image::ImageReader::new(std::io::Cursor::new(bytes))
-            .with_guessed_format()
-            .map_err(|error| error.to_string())?
+            .with_guessed_format()?
             .into_dimensions(),
         #[cfg(not(wasm))]
         SourceData::Path(path) => image::ImageReader::open(path)
-            .map_err(|error| format!("can't read {}: {error}", path.display()))?
-            .with_guessed_format()
-            .map_err(|error| error.to_string())?
+            .map_err(|source| ImageRefusal::File {
+                path: path.clone(),
+                source,
+            })?
+            .with_guessed_format()?
             .into_dimensions(),
         _ => return Ok(()),
     };
-    match size.map_err(|error| error.to_string())? {
-        (0, _) | (_, 0) => Err("its header gives it no pixels".into()),
+    match size? {
+        (0, _) | (_, 0) => Err(ImageRefusal::Empty),
         _ => Ok(()),
     }
 }
@@ -1244,8 +1253,12 @@ fn build_camera(gltf_camera: &gltf::Camera<'_>, world: Mat4) -> Result<Camera, S
     let index = gltf_camera.index();
     let blame_camera = |source| SceneLoadError::Camera { index, source };
     let (near, zfar) = match gltf_camera.projection() {
-        gltf::camera::Projection::Perspective(p) => (p.znear(), p.zfar()),
-        gltf::camera::Projection::Orthographic(o) => (o.znear(), Some(o.zfar())),
+        gltf::camera::Projection::Perspective(perspective) => {
+            (perspective.znear(), perspective.zfar())
+        }
+        gltf::camera::Projection::Orthographic(orthographic) => {
+            (orthographic.znear(), Some(orthographic.zfar()))
+        }
     };
     // A Camera takes far < near as reverse-Z, but glTF requires zfar > znear.
     if let Some(far) = zfar
@@ -1256,22 +1269,30 @@ fn build_camera(gltf_camera: &gltf::Camera<'_>, world: Mat4) -> Result<Camera, S
         )));
     }
     let camera = match gltf_camera.projection() {
-        gltf::camera::Projection::Perspective(p) => {
+        gltf::camera::Projection::Perspective(perspective) => {
             // glTF's aspectRatio is optional; fall back to 1.0 (a common
             // default that gets overridden when the user retargets to a
             // specific render target).
-            let aspect = p.aspect_ratio().unwrap_or(1.0);
+            let aspect = perspective.aspect_ratio().unwrap_or(1.0);
             match zfar {
-                Some(far) => Camera::perspective(p.yfov(), aspect, near, far),
-                None => Camera::create_infinite_perspective(p.yfov(), aspect, near),
+                Some(far) => Camera::perspective(perspective.yfov(), aspect, near, far),
+                None => Camera::create_infinite(perspective.yfov(), aspect, near),
             }
             .map_err(blame_camera)?
         }
-        gltf::camera::Projection::Orthographic(o) => {
-            let half_w = o.xmag();
-            let half_h = o.ymag();
-            Camera::orthographic(-half_w, half_w, -half_h, half_h, near, o.zfar())
-                .map_err(blame_camera)?
+        gltf::camera::Projection::Orthographic(orthographic) => {
+            let half_width = orthographic.xmag();
+            let half_height = orthographic.ymag();
+            let far = orthographic.zfar();
+            Camera::orthographic(
+                -half_width,
+                half_width,
+                -half_height,
+                half_height,
+                near,
+                far,
+            )
+            .map_err(blame_camera)?
         }
     };
 
@@ -1282,9 +1303,9 @@ fn build_camera(gltf_camera: &gltf::Camera<'_>, world: Mat4) -> Result<Camera, S
     let eye: [f32; 3] = translation.into();
     let forward = rotation * Vec3::new(0.0, 0.0, -1.0);
     let up = rotation * Vec3::new(0.0, 1.0, 0.0);
-    let target_v = translation + forward;
+    let target = translation + forward;
     camera
-        .look_at(eye, target_v.into(), up.into())
+        .look_at(eye, target.into(), up.into())
         .map_err(blame_camera)
 }
 
@@ -1562,7 +1583,7 @@ mod tests {
     #[test]
     fn cameras_filter_skips_gltf_camera_nodes() {
         let bytes = build_triangle_with_camera_and_light_glb();
-        let scene = Scene::load(SceneSource::gltf(bytes).cameras(false)).expect("load");
+        let scene = Scene::load(GltfSource::from(bytes).cameras(false)).expect("load");
         assert_eq!(scene.models().len(), 1, "geometry stays");
         assert!(
             scene.cameras().is_empty(),
@@ -1574,7 +1595,7 @@ mod tests {
     #[test]
     fn lights_filter_skips_khr_lights_punctual() {
         let bytes = build_triangle_with_camera_and_light_glb();
-        let scene = Scene::load(SceneSource::gltf(bytes).lights(false)).expect("load");
+        let scene = Scene::load(GltfSource::from(bytes).lights(false)).expect("load");
         assert_eq!(scene.models().len(), 1);
         assert_eq!(scene.cameras().len(), 1, "cameras still load by default");
         assert!(
@@ -1587,7 +1608,7 @@ mod tests {
     fn both_filters_off_yields_geometry_only_scene() {
         let bytes = build_triangle_with_camera_and_light_glb();
         let scene =
-            Scene::load(SceneSource::gltf(bytes).cameras(false).lights(false)).expect("load");
+            Scene::load(GltfSource::from(bytes).cameras(false).lights(false)).expect("load");
         assert_eq!(scene.models().len(), 1, "geometry survives every filter");
         assert!(scene.cameras().is_empty());
         assert!(scene.lights().is_empty());

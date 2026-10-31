@@ -5,25 +5,29 @@
 //! through a uniform block instead, and its shaders loop over every light.
 
 use glam::{Mat4, Vec3};
+use std::borrow::Cow;
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::iter;
+use std::num::NonZeroU64;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use super::{RenderContext, RendererError};
-use crate::PassError;
-use crate::PassObject;
-use crate::core::ShaderObject;
 use crate::core::shader::lights::roots::{
     ARRAY_HEADER, LIGHT_SIZE, LIGHTS_HEADER, LightRoots, LightShape,
 };
-use crate::scene::{GpuLight, current_epoch};
+use crate::core::{ShaderObject, parse_wgsl};
+use crate::scene::{GpuLight, LIGHT, read_epoch};
+use crate::{PassError, PassObject, ShaderError, UniformData};
 
 mod grid;
 use grid::{Frustum, GRID_CELLS, Grid, Sphere};
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;
 
 /// Renders a light set may sit unused before the context frees it.
 const IDLE_RENDERS: u64 = 8;
@@ -72,7 +76,7 @@ impl LightPath {
         match clustered {
             true => LightPath::Clustered { limit },
             false => LightPath::Uniform {
-                count: uniform_count(limits.max_uniform_buffer_binding_size),
+                count: count_uniforms(limits.max_uniform_buffer_binding_size),
             },
         }
     }
@@ -99,13 +103,13 @@ impl LightPath {
 
 /// The lights a uniform block of at most `size` bytes holds, capped at 64 KiB
 /// so a driver that reports a huge block doesn't make a huge shader.
-fn uniform_count(size: u64) -> u32 {
+fn count_uniforms(size: u64) -> u32 {
     let lights = size.min(65536).saturating_sub(u64::from(LIGHTS_HEADER)) / u64::from(LIGHT_SIZE);
     u32::try_from(lights).unwrap_or(u32::MAX)
 }
 
 /// The layout entries of a shader's light roots on `path`, by group.
-pub(crate) fn layout_entries(
+pub(crate) fn list_entries(
     roots: &LightRoots,
     path: LightPath,
 ) -> Vec<(u32, wgpu::BindGroupLayoutEntry)> {
@@ -115,7 +119,7 @@ pub(crate) fn layout_entries(
         ty: wgpu::BindingType::Buffer {
             ty,
             has_dynamic_offset: false,
-            min_binding_size: std::num::NonZeroU64::new(size),
+            min_binding_size: NonZeroU64::new(size),
         },
         count: None,
     };
@@ -153,7 +157,7 @@ pub(crate) struct LightBuffers {
 
 impl LightBuffers {
     /// Each buffer with the group and binding of the root it fills.
-    pub(crate) fn bindings(&self, roots: &LightRoots) -> Vec<(u32, u32, wgpu::Buffer)> {
+    pub(crate) fn list_bindings(&self, roots: &LightRoots) -> Vec<(u32, u32, wgpu::Buffer)> {
         let lights = (
             roots.lights.group,
             roots.lights.binding,
@@ -163,7 +167,7 @@ impl LightBuffers {
             .grid
             .zip(self.grid.clone())
             .map(|(root, buffer)| (root.group, root.binding, buffer));
-        std::iter::once(lights).chain(grid).collect()
+        iter::once(lights).chain(grid).collect()
     }
 }
 
@@ -247,7 +251,7 @@ impl Packed {
 }
 
 /// The 144-byte `Lights` header.
-fn lights_header(
+fn build_header(
     count: u32,
     global_count: u32,
     promoted_count: u32,
@@ -281,7 +285,7 @@ fn write_matrix(matrix: &Mat4, out: &mut Vec<u8>) {
 }
 
 /// The bits of a matrix, which compare exactly.
-fn matrix_bits(matrix: &Mat4) -> [u32; 16] {
+fn encode_matrix(matrix: &Mat4) -> [u32; 16] {
     matrix.to_cols_array().map(f32::to_bits)
 }
 
@@ -389,13 +393,13 @@ impl LightSet {
         matrix: Option<Mat4>,
         limit: u64,
     ) -> Result<(), RendererError> {
-        let epoch = current_epoch();
+        let epoch = read_epoch();
         let mut changed = false;
         let mut rebin = false;
         if self.epoch != epoch {
             self.epoch = epoch;
             self.ambient = shader.ambient();
-            let packed = Packed::for_shape(&shader.gpu_lights(), self.shape);
+            let packed = Packed::for_shape(&shader.collect_lights(), self.shape);
             rebin = packed.spheres != self.packed.spheres;
             self.packed = packed;
             changed = true;
@@ -418,7 +422,7 @@ impl LightSet {
         }
         // Without a `light_grid` root no shader reads a grid, so the set never bins.
         let matrix = matrix.filter(|_| grid);
-        let bits = matrix.map(|matrix| matrix_bits(&matrix));
+        let bits = matrix.map(|matrix| encode_matrix(&matrix));
         if bits != self.matrix {
             self.matrix = bits;
             rebin = true;
@@ -435,7 +439,7 @@ impl LightSet {
             Some((grid, promoted)) => (Some(grid), *promoted),
             None => (None, 0),
         };
-        let mut bytes = lights_header(
+        let mut bytes = build_header(
             self.packed.count,
             self.packed.global_count,
             promoted,
@@ -463,7 +467,7 @@ impl LightSet {
                 header.extend_from_slice(&[0; 4]);
                 header
             }
-            _ => lights_header(packed.count, packed.count, 0, self.ambient, None),
+            _ => build_header(packed.count, packed.count, 0, self.ambient, None),
         };
         bytes.extend_from_slice(&packed.array);
         bytes
@@ -502,7 +506,7 @@ impl LightSet {
         context
             .light_probe
             .uploads
-            .fetch_add(bytes.len() as u64, std::sync::atomic::Ordering::Relaxed);
+            .fetch_add(bytes.len() as u64, Ordering::Relaxed);
     }
 
     /// Bins the bounded lights in `frustum`, and returns the grid with the
@@ -526,32 +530,35 @@ impl LightSet {
         let Some(frustum) = frustum.filter(|_| !spheres.is_empty()) else {
             return Ok(None);
         };
-        let grid = frustum.grid(frustum.reach(&spheres));
+        let grid = frustum.build_grid(frustum.reach(&spheres));
         let boxed: Vec<(u32, Sphere, grid::Cells)> = self
             .packed
             .spheres
             .iter()
-            .filter_map(|(index, sphere)| grid.cells(sphere).map(|cells| (*index, *sphere, cells)))
+            .filter_map(|(index, sphere)| {
+                grid.find_cells(sphere)
+                    .map(|cells| (*index, *sphere, cells))
+            })
             .collect();
 
         // A light whose box covers half the grid is cheaper to read everywhere.
         let (mut promoted, mut kept): (Vec<_>, Vec<_>) = boxed
             .into_iter()
-            .partition(|(_, _, cells)| cells.volume() > GRID_CELLS / 2);
+            .partition(|(_, _, cells)| cells.count_cells() > GRID_CELLS / 2);
         let budget = limit / 4;
         let fixed = 2 * u64::from(GRID_CELLS);
         let listed = |kept: &[(u32, Sphere, grid::Cells)]| -> u64 {
             kept.iter()
-                .map(|(_, _, cells)| u64::from(cells.volume()))
+                .map(|(_, _, cells)| u64::from(cells.count_cells()))
                 .sum()
         };
         let mut words = promoted.len() as u64 + fixed + listed(&kept);
         if words > budget {
             // Promote the largest boxes until every index list fits one binding.
-            kept.sort_by_key(|(index, _, cells)| (std::cmp::Reverse(cells.volume()), *index));
+            kept.sort_by_key(|(index, _, cells)| (Reverse(cells.count_cells()), *index));
             let mut cut = 0;
             while words > budget && cut < kept.len() {
-                words = words + 1 - u64::from(kept[cut].2.volume());
+                words = words + 1 - u64::from(kept[cut].2.count_cells());
                 cut += 1;
             }
             promoted.extend(kept.drain(..cut));
@@ -641,21 +648,21 @@ pub(crate) struct BinningPipeline {
 }
 
 /// The binning module: the light types and constants, then the binning pass.
-fn binning_module() -> Result<naga::Module, crate::ShaderError> {
-    let source = format!("{}\n{}", crate::scene::LIGHT, BINNING);
-    crate::core::parse_wgsl(&source)
+fn parse_binning() -> Result<naga::Module, ShaderError> {
+    let source = format!("{}\n{}", LIGHT, BINNING);
+    parse_wgsl(&source)
 }
 
 impl BinningPipeline {
     fn new(device: &wgpu::Device) -> Result<Self, RendererError> {
-        let module = binning_module()?;
+        let module = parse_binning()?;
         let entry = |binding: u32, size: u64| wgpu::BindGroupLayoutEntry {
             binding,
             visibility: wgpu::ShaderStages::COMPUTE,
             ty: wgpu::BindingType::Buffer {
                 ty: wgpu::BufferBindingType::Storage { read_only: false },
                 has_dynamic_offset: false,
-                min_binding_size: std::num::NonZeroU64::new(size),
+                min_binding_size: NonZeroU64::new(size),
             },
             count: None,
         };
@@ -670,7 +677,7 @@ impl BinningPipeline {
         });
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Light Binning"),
-            source: wgpu::ShaderSource::Naga(std::borrow::Cow::Owned(module)),
+            source: wgpu::ShaderSource::Naga(Cow::Owned(module)),
         });
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("Light Binning"),
@@ -684,28 +691,11 @@ impl BinningPipeline {
     }
 }
 
-/// Counts set prepares, uploaded bytes and binning dispatches, and turns grids off, for the tests.
-#[cfg(test)]
-#[derive(Debug, Default)]
-pub(crate) struct LightProbe {
-    prepares: std::sync::atomic::AtomicU64,
-    uploads: std::sync::atomic::AtomicU64,
-    dispatches: std::sync::atomic::AtomicU64,
-    no_grid: std::sync::atomic::AtomicBool,
-}
-
-#[cfg(test)]
-impl LightProbe {
-    fn no_grid(&self) -> bool {
-        self.no_grid.load(std::sync::atomic::Ordering::Relaxed)
-    }
-}
-
 /// The key of a light set: the light ids in order, the placeholder and ambient
 /// bits, the shape, and the shader when the pass has no camera to bin in.
 fn set_key(shader: &ShaderObject, shape: SetShape, own_matrix: bool) -> u64 {
     let mut hasher = DefaultHasher::new();
-    shader.light_summary().hash.hash(&mut hasher);
+    shader.summarize_lights().hash.hash(&mut hasher);
     shape.hash(&mut hasher);
     if own_matrix {
         (shader as *const ShaderObject as usize).hash(&mut hasher);
@@ -714,9 +704,9 @@ fn set_key(shader: &ShaderObject, shape: SetShape, own_matrix: bool) -> u64 {
 }
 
 /// The matrix a shader without a pass camera bins in: its own `camera.view_proj`.
-fn shader_matrix(shader: &ShaderObject) -> Option<Mat4> {
+fn read_matrix(shader: &ShaderObject) -> Option<Mat4> {
     match shader.get_uniform_data("camera.view_proj") {
-        Ok(crate::UniformData::Mat4(values)) => {
+        Ok(UniformData::Mat4(values)) => {
             let values: [f32; 16] = values.try_into().ok()?;
             Some(Mat4::from_cols_array(&values))
         }
@@ -734,14 +724,11 @@ impl RenderContext {
     /// light sets no render used for `IDLE_RENDERS` renders, whether or not a
     /// lit pass renders now. After a failed frame, every other light set packs,
     /// uploads and bins again, since that frame's binning never ran.
-    pub(crate) fn start_light_render(&self) {
+    pub(crate) fn start_lights(&self) {
         let render = self.texture_pool.read().render();
         let mut sets = self.light_sets.write();
         sets.retain(|_, set| render.saturating_sub(set.used) <= IDLE_RENDERS);
-        if self
-            .lights_failed
-            .swap(false, std::sync::atomic::Ordering::Relaxed)
-        {
+        if self.lights_failed.swap(false, Ordering::Relaxed) {
             for set in sets.values_mut() {
                 set.forget();
             }
@@ -750,12 +737,12 @@ impl RenderContext {
 
     /// Checks that no lit shader on `pass` holds more lights than this device
     /// takes. `plan_pass` runs it before the frame is acquired.
-    pub(crate) fn check_light_cap(&self, pass: &PassObject) -> Result<(), RendererError> {
+    pub(crate) fn check_lights(&self, pass: &PassObject) -> Result<(), RendererError> {
         let path = self.light_path();
         for shader in pass.shaders.read().iter() {
             if let Some(roots) = shader.light_roots.as_ref() {
                 let cap = path.cap().min(roots.capacity());
-                if shader.light_summary().count > u64::from(cap) {
+                if shader.summarize_lights().count > u64::from(cap) {
                     return Err(PassError::LightCapReached { cap }.into());
                 }
             }
@@ -830,10 +817,8 @@ impl RenderContext {
             if set.used != render {
                 set.used = render;
                 #[cfg(test)]
-                self.light_probe
-                    .prepares
-                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                let matrix = camera.or_else(|| shader_matrix(shader));
+                self.light_probe.prepares.fetch_add(1, Ordering::Relaxed);
+                let matrix = camera.or_else(|| read_matrix(shader));
                 set.prepare(self, encoder, shader, matrix, limit)?;
             }
             prepared.insert(Arc::as_ptr(shader) as usize, set.buffers());
@@ -848,7 +833,7 @@ impl RenderContext {
         bins: &wgpu::Buffer,
         light_grid: &wgpu::Buffer,
     ) -> Result<(), RendererError> {
-        let binning = self.binning_pipeline()?;
+        let binning = self.fetch_binning()?;
         let group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Light Binning"),
             layout: &binning.layout,
@@ -871,16 +856,14 @@ impl RenderContext {
         compute.set_bind_group(0, &group, &[]);
         compute.dispatch_workgroups(GRID_CELLS / WORKGROUP, 1, 1);
         #[cfg(test)]
-        self.light_probe
-            .dispatches
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.light_probe.dispatches.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
     /// The binning pipeline, built on first use. A build that fails isn't
     /// kept, so the next frame builds it again and reports the same error.
     /// On wasm the error lands after the insert, so the pipeline leaves then.
-    fn binning_pipeline(&self) -> Result<Arc<BinningPipeline>, RendererError> {
+    fn fetch_binning(&self) -> Result<Arc<BinningPipeline>, RendererError> {
         if let Some(pipeline) = self.binning.read().clone() {
             return Ok(pipeline);
         }
@@ -890,7 +873,7 @@ impl RenderContext {
             if let Some(cache) = cache.upgrade() {
                 *cache.write() = None;
             }
-            failed.store(true, std::sync::atomic::Ordering::Relaxed);
+            failed.store(true, Ordering::Relaxed);
         };
         let pipeline = Arc::new(self.validate_with(
             "light binning pipeline",

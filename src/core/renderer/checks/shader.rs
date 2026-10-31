@@ -3,7 +3,7 @@
 
 use crate::core::renderer::lights::LightPath;
 use crate::core::renderer::pipelines::layout::{
-    Layout, Slot, build_module, plan_layout, texture_binding,
+    Layout, Slot, build_module, describe_texture, plan_layout,
 };
 use crate::core::renderer::{PbrDefaults, PushMode, RenderContext, RendererError, report_missing};
 use crate::core::shader::error::describe;
@@ -198,7 +198,7 @@ impl RenderContext {
             if uniform.name.contains('.') {
                 continue;
             }
-            let slot = texture_binding(meta);
+            let slot = describe_texture(meta);
             match self.get_texture(&meta.id) {
                 Some(texture) => {
                     let facts = TextureFacts::read(&texture);
