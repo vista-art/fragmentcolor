@@ -1378,6 +1378,8 @@ mod reflect {
         pub params: Vec<Type>,
         /// How many trailing parameters a `default(...)` argument covers.
         pub defaults: usize,
+        /// The exported type a call returns, when it returns one.
+        pub returns: Option<String>,
     }
 
     /// A uniffi enum whose variants carry no data.
@@ -1460,6 +1462,24 @@ mod reflect {
                 .collect()
         }
 
+        /// The type a call of `sig` returns, by the name Swift and Kotlin give it,
+        /// when that is one crate type. `Self` is `owner`, and `Result` and `Arc` unwrap.
+        fn returned_type(&self, sig: &Signature, owner: &str, build: Build) -> Option<String> {
+            let mut ty = return_type(sig)?;
+            for wrapper in ["Result", "Arc"] {
+                ty = generic_arg(ty, wrapper).unwrap_or(ty);
+            }
+            let Type::Path(path) = ty else {
+                return None;
+            };
+            let last = path.path.segments.last()?;
+            let ident = last.ident.to_string();
+            let plain = matches!(last.arguments, syn::PathArguments::None);
+            let named = ident.starts_with(|c: char| c.is_ascii_uppercase());
+            let ident = if ident == "Self" { owner } else { ident.as_str() };
+            (plain && named).then(|| self.uniffi_type_name(ident, build))
+        }
+
         /// The name Swift and Kotlin give the crate type `ident`.
         fn uniffi_type_name(&self, ident: &str, build: Build) -> String {
             self.type_named(ident, build)
@@ -1488,6 +1508,7 @@ mod reflect {
                         throws: returns_result(&f.sig),
                         params: typed_params(&f.sig),
                         defaults: uniffi_defaults(f, build),
+                        returns: self.returned_type(&f.sig, owner, build),
                     }
                 })
                 .collect()

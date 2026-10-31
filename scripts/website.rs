@@ -1276,7 +1276,7 @@ if __name__ == '__main__':
         let body = match lang {
             Lang::Js => crate::convert::to_js(items),
             Lang::Python => crate::convert::to_py(items),
-            Lang::Swift => crate::convert::to_swift(items),
+            Lang::Swift => crate::convert::to_swift(items, example.harness(lang).read_setup()),
             Lang::Kotlin => crate::convert::to_kotlin(items),
         };
         example.harness(lang).wrap(&body)

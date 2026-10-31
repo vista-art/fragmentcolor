@@ -31,7 +31,7 @@ mod kotlin {
     use crate::reflect::{Build, CallKind, Reflection, SliceGetter, StandIn, replace_qualified};
     use crate::source_text::{
         Nesting, arg_spans, closing, code_only, drop_semicolon_before_comment, extension_files,
-        is_ident_char, read_ident, skip_space, split_args, top_level_words,
+        is_ident_char, opening, read_ident, skip_space, split_args, top_level_words,
     };
 
     /// The extension functions written by hand on top of uniffi's Kotlin.
@@ -1861,22 +1861,6 @@ mod kotlin {
         }
         out.push_str(&format!("\n{}{}", layout.close, &line[close..]));
         Some(out)
-    }
-
-    /// Byte offset of the `(` that the `)` at `close` closes. `code` has its strings blanked out.
-    fn opening(code: &str, close: usize) -> Option<usize> {
-        let mut depth = 0i32;
-        for (at, c) in code[..=close].char_indices().rev() {
-            match c {
-                ')' | ']' => depth += 1,
-                '(' | '[' => depth -= 1,
-                _ => {}
-            }
-            if depth == 0 {
-                return Some(at);
-            }
-        }
-        None
     }
 
     /// Strip a trailing `//` line comment from a Kotlin/JS line (outside strings).

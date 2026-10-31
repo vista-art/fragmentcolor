@@ -135,6 +135,23 @@ mod source_text {
         (&code[at..at + len], at + len)
     }
 
+    /// Byte offset of the bracket that the `)` or `]` at `close` closes.
+    /// `code` has its strings blanked out, as `code_only` leaves them.
+    pub fn opening(code: &str, close: usize) -> Option<usize> {
+        let mut depth = 0i32;
+        for (at, c) in code[..=close].char_indices().rev() {
+            match c {
+                ')' | ']' => depth += 1,
+                '(' | '[' => depth -= 1,
+                _ => {}
+            }
+            if depth == 0 {
+                return Some(at);
+            }
+        }
+        None
+    }
+
     /// Byte offset of the bracket closing the one at `open`. String literals don't count.
     pub fn closing(code: &str, open: usize) -> Option<usize> {
         let mut depth = 0i32;

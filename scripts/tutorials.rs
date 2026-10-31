@@ -109,7 +109,7 @@ mod tutorials {
         entry.full.rust = Some(rust_text.clone());
         let full_items = lines_as_items(&rust_text);
         entry.full.py = Some(super::convert::to_py(&full_items));
-        entry.full.swift = Some(super::convert::to_swift(&full_items));
+        entry.full.swift = Some(super::convert::to_swift(&full_items, &[]));
         entry.full.kotlin = Some(super::convert::to_kotlin(&full_items));
 
         let rust_regions = extract_regions(&rust_text);
@@ -118,7 +118,7 @@ mod tutorials {
             slice.rust = Some(body.clone());
             let items = lines_as_items(body);
             slice.py = Some(super::convert::to_py(&items));
-            slice.swift = Some(super::convert::to_swift(&items));
+            slice.swift = Some(super::convert::to_swift(&items, &[]));
             slice.kotlin = Some(super::convert::to_kotlin(&items));
         }
 
